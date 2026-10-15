@@ -98,6 +98,8 @@ fn marvinblue_sections_end_where_imhex_says() {
         )
     );
     assert_eq!(p0.ends.objects_start, expected_start("player0.objects"));
+    assert_eq!(p0.objects.len(), expected_count("player0.objects"));
+    assert_eq!(p0.ends.objects_end, expected("player0.objects"));
 }
 
 fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {

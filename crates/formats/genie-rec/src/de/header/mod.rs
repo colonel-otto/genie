@@ -9,6 +9,7 @@ mod ai;
 mod lobby;
 mod main_object;
 mod map;
+mod object;
 mod player;
 mod primitives;
 mod replay;
@@ -17,6 +18,10 @@ pub use ai::{AiConfig, AiData, AiRule, AiRuleGroup, SizedString32};
 pub use lobby::{AiFile, LobbyPlayer, LobbySettings};
 pub use main_object::MainObject;
 pub use map::{MapInfo, MapZone, Obstructions, Tile};
+pub use object::{
+    ActionExtra, ActionObject, AnimatedObject, BaseMoving, BuildingObject, CombatObject,
+    MovingObject, Object, ObjectBody, StaticObject, UnitAction, UnitAi,
+};
 pub use player::{
     InitialMap, PlayerEnds, PlayerPrelude, PlayerSection, RestoreObject, StateRestore, TechUnlock,
     UnitUnlock, Unlock, Unlocks,

@@ -13,6 +13,8 @@ pub struct PlayerEnds {
     pub initial_map: usize,
     pub initial_state_restore: usize,
     pub objects_start: usize,
+    /// The end of the last live object.
+    pub objects_end: usize,
 }
 
 /// One player's section.
@@ -27,6 +29,8 @@ pub struct PlayerSection {
     pub initial_map: InitialMap,
     pub state_restore: StateRestore,
     pub unknown23: u32,
+    /// The live objects (the list the checkpoint sums over).
+    pub objects: Vec<super::object::Object>,
 }
 
 /// The player fields before the unlock tables.
@@ -370,6 +374,13 @@ pub fn read_player(
     let unknown23 = u32::read_le(r)?;
     expect(r, b"\x02\x00\x00")?;
     ends.objects_start = r.position() as usize;
+    let objects =
+        super::object::read_objects(r, v).map_err(|e| match super::object::unsupported_in(&e) {
+            Some((what, at)) => ReadError::Unsupported { what, at },
+            None => ReadError::Bin(e),
+        })?;
+    ends.objects_end = r.position() as usize;
+    expect(r, b"\x00\x0b")?;
     Ok(PlayerSection {
         ends,
         prelude,
@@ -379,5 +390,6 @@ pub fn read_player(
         initial_map,
         state_restore,
         unknown23,
+        objects,
     })
 }
