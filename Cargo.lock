@@ -268,6 +268,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "genie-oracle"
+version = "0.1.0"
+dependencies = [
+ "genie-core",
+ "genie-rec",
+]
+
+[[package]]
 name = "genie-rec"
 version = "0.1.1"
 dependencies = [

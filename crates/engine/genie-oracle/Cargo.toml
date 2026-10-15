@@ -1,0 +1,12 @@
+[package]
+name = "genie-oracle"
+version = "0.1.0"
+description = "Checks the genie engine against Age of Empires II: Definitive Edition recorded games"
+edition = "2024"
+license = "AGPL-3.0-only"
+repository.workspace = true
+publish = false
+
+[dependencies]
+genie-core = { path = "../genie-core" }
+genie-rec = { version = "0.1.1", path = "../../formats/genie-rec" }

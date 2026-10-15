@@ -37,10 +37,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # The engine crates must be warning-free. Add every new engine crate here.
       - name: Clippy (engine crates, warnings are errors)
-        run: cargo clippy --locked -p genie-core --all-targets -- -D warnings
+        run: cargo clippy --locked --no-deps -p genie-core -p genie-oracle --all-targets -- -D warnings
       # The format crates imported from genie-rs still carry warnings; they are reported only.
       - name: Clippy (whole workspace, report only)
         run: cargo clippy --locked --workspace --all-targets
+
+  dependencies:
+    name: Format crates do not depend on engine crates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      # The format crates are GPL and must stay usable without the AGPL engine.
+      - run: |
+          cargo metadata --locked --format-version 1 --no-deps | jq -e -r '
+            [.packages[] | select(.manifest_path | contains("/crates/engine/")) | .name] as $engine
+            | [.packages[] | select(.manifest_path | contains("/crates/formats/"))
+               | .name as $crate | .dependencies[] | select(.name | IN($engine[]))
+               | "\($crate) depends on \(.name)"]
+            | if length == 0 then "ok" else (.[] | halt_error) end'
 
   test:
     name: Test (${{ matrix.os }})
@@ -64,7 +79,8 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      # The engine core must stay compilable to WebAssembly. Add every new engine crate here.
+      # The engine core must stay compilable to WebAssembly. Add every new engine crate here;
+      # genie-oracle, a host-side test harness, is exempt.
       - run: cargo build --locked -p genie-core --target wasm32-unknown-unknown
 
   docs:
