@@ -44,6 +44,48 @@ pub fn string_list(max: usize) -> binrw::BinResult<StringList> {
     })
 }
 
+/// The next byte, without consuming it.
+pub fn peek_u8<R: binrw::io::Read + binrw::io::Seek>(reader: &mut R) -> binrw::BinResult<u8> {
+    use binrw::io::SeekFrom;
+    let mut b = [0u8; 1];
+    reader.read_exact(&mut b)?;
+    reader.seek(SeekFrom::Current(-1))?;
+    Ok(b[0])
+}
+
+/// The bytes up to (not including) the next `stop` byte.
+pub fn bytes_until<R: binrw::io::Read + binrw::io::Seek>(
+    reader: &mut R,
+    stop: u8,
+) -> binrw::BinResult<Vec<u8>> {
+    let mut out = Vec::new();
+    loop {
+        let b = peek_u8(reader)?;
+        if b == stop {
+            return Ok(out);
+        }
+        out.push(b);
+        reader.seek(binrw::io::SeekFrom::Current(1))?;
+    }
+}
+
+/// Consume `magic` or fail with `BadMagic` at its position.
+pub fn expect<R: binrw::io::Read + binrw::io::Seek>(
+    reader: &mut R,
+    magic: &[u8],
+) -> binrw::BinResult<()> {
+    let pos = reader.stream_position()?;
+    let mut got = vec![0u8; magic.len()];
+    reader.read_exact(&mut got)?;
+    if got != magic {
+        return Err(binrw::Error::BadMagic {
+            pos,
+            found: Box::new(got),
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

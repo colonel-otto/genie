@@ -7,13 +7,20 @@
 
 mod ai;
 mod lobby;
+mod main_object;
 mod map;
+mod player;
 mod primitives;
 mod replay;
 
 pub use ai::{AiConfig, AiData, AiRule, AiRuleGroup, SizedString32};
 pub use lobby::{AiFile, LobbyPlayer, LobbySettings};
+pub use main_object::MainObject;
 pub use map::{MapInfo, MapZone, Obstructions, Tile};
+pub use player::{
+    InitialMap, PlayerEnds, PlayerPrelude, PlayerSection, RestoreObject, StateRestore, TechUnlock,
+    UnitUnlock, Unlock, Unlocks,
+};
 pub use primitives::{DeString, StringList};
 pub use replay::Replay;
 
@@ -72,6 +79,8 @@ pub struct Header {
     pub particles: Vec<u8>,
     pub identifier: u32,
     pub ends: SectionEnds,
+    /// One section per player, Gaia first.
+    pub players: Vec<PlayerSection>,
 }
 
 /// Read an inflated chapter header.
@@ -114,6 +123,14 @@ pub fn parse(inflated: &[u8]) -> Result<Header, super::Error> {
     .map_err(header_error)?;
     let identifier = u32::read_le(&mut r).map_err(header_error)?;
     ends.players_start = r.position() as usize;
+    // Step C: the first player's section up to its object lists.
+    let num_players = replay.num_players as usize;
+    let players = vec![
+        player::read_player(&mut r, v, num_players).map_err(|e| match e {
+            player::ReadError::Bin(e) => header_error(e),
+            player::ReadError::Unsupported { what, at } => super::Error::Unsupported { what, at },
+        })?,
+    ];
     Ok(Header {
         version,
         lobby,
@@ -124,6 +141,7 @@ pub fn parse(inflated: &[u8]) -> Result<Header, super::Error> {
         particles,
         identifier,
         ends,
+        players,
     })
 }
 

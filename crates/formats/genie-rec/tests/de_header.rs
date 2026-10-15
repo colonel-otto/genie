@@ -38,6 +38,18 @@ fn expected_start(section: &str) -> usize {
         .unwrap_or_else(|| panic!("no {section} in the fixture"))
 }
 
+/// The element count of a named array section.
+fn expected_count(section: &str) -> usize {
+    FIXTURE
+        .lines()
+        .filter(|l| !l.starts_with('#'))
+        .find_map(|l| {
+            let mut f = l.split_whitespace();
+            (f.next() == Some(section)).then(|| f.nth(2).unwrap().parse().unwrap())
+        })
+        .unwrap_or_else(|| panic!("no count for {section} in the fixture"))
+}
+
 fn header_of(path: &Path) -> Vec<u8> {
     let data = std::fs::read(path).unwrap();
     de::chapters(&data).unwrap()[0].inflate_header().unwrap()
@@ -64,6 +76,28 @@ fn marvinblue_sections_end_where_imhex_says() {
     assert_eq!(ends.replay, expected("replay"));
     assert_eq!(ends.map, expected("map_info"));
     assert_eq!(ends.players_start, expected_start("players"));
+
+    let p0 = &header.players[0];
+    assert_eq!(p0.ends.start, expected_start("player0"));
+    assert_eq!(
+        (p0.ends.enabled_objects, p0.ends.initial_objects),
+        (
+            expected("player0.enabled_objects"),
+            expected("player0.initial_objects")
+        )
+    );
+    assert_eq!(
+        p0.main_objects.len(),
+        expected_count("player0.initial_objects")
+    );
+    assert_eq!(
+        (p0.ends.initial_map, p0.ends.initial_state_restore),
+        (
+            expected("player0.initial_map"),
+            expected("player0.initial_state_restore")
+        )
+    );
+    assert_eq!(p0.ends.objects_start, expected_start("player0.objects"));
 }
 
 fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -77,6 +111,9 @@ fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// How far the corpus parses. Tier 1 (save 66.6, build 158041, the analysed binary) is strict: only
+/// the typed gaps of aoe2rec's pattern may stop it. Other versions are only reported, since the
+/// pattern also fails on some of them in ImHex (save 68.0 player data, for one).
 #[test]
 fn every_corpus_header_parses() {
     let Some(dir) = corpus() else {
@@ -84,26 +121,31 @@ fn every_corpus_header_parses() {
     };
     let mut paths = Vec::new();
     recordings(&dir, &mut paths);
-    let (mut failures, mut with_ai) = (Vec::new(), 0);
+    let mut tier1 = std::collections::BTreeMap::<String, usize>::new();
+    let mut others = std::collections::BTreeMap::<String, usize>::new();
+    let mut tier1_failures = Vec::new();
     for path in &paths {
-        let header = header_of(path);
-        match de::header::parse(&header) {
-            Ok(_) => {}
-            // the known gap: aoe2rec's AI layout does not fit games with AI scripts
-            Err(de::Error::Unsupported {
-                what: "AI data (has_ai = 1)",
-                ..
-            }) => with_ai += 1,
-            Err(e) => failures.push(format!(
-                "{}: {e}",
-                path.strip_prefix(&dir).unwrap().display()
-            )),
-        }
+        let data = std::fs::read(path).unwrap();
+        let chapter = de::chapters(&data).unwrap()[0];
+        let version = chapter.save_version().unwrap();
+        let is_tier1 = (version.hundredths(), version.build) == (6660, 158041);
+        let outcome = match de::header::parse(&chapter.inflate_header().unwrap()) {
+            Ok(_) => "parsed".to_string(),
+            Err(de::Error::Unsupported { what, .. }) => format!("unsupported: {what}"),
+            Err(e) => {
+                if is_tier1 {
+                    tier1_failures.push(format!(
+                        "{}: {e}",
+                        path.strip_prefix(&dir).unwrap().display()
+                    ));
+                }
+                "failed".to_string()
+            }
+        };
+        *(if is_tier1 { &mut tier1 } else { &mut others })
+            .entry(outcome)
+            .or_default() += 1;
     }
-    eprintln!(
-        "{} recordings, {with_ai} with unsupported AI data, {} failed",
-        paths.len(),
-        failures.len()
-    );
-    assert!(failures.is_empty(), "{failures:#?}");
+    eprintln!("tier 1: {tier1:?}\nother versions: {others:?}");
+    assert!(tier1_failures.is_empty(), "{tier1_failures:#?}");
 }
