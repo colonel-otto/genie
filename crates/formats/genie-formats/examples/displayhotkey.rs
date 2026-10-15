@@ -1,7 +1,5 @@
 //! Displays a hotkey to `stdout`.
 
-extern crate structopt;
-
 use genie_formats::hki::HotkeyInfo;
 use std::fs::File;
 use std::path::PathBuf;

@@ -1,7 +1,5 @@
 //! Displays civilizations from a specified dat file.
 
-extern crate structopt;
-
 use genie_formats::DatFile;
 use std::fs::File;
 use std::path::PathBuf;

@@ -1,5 +1,3 @@
-extern crate simplelog;
-
 use genie_formats::Scenario;
 use simplelog::{ColorChoice, LevelFilter, TermLogger, TerminalMode};
 use std::fs::File;

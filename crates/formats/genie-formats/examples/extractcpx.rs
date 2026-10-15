@@ -1,5 +1,3 @@
-extern crate structopt;
-
 use genie_formats::Campaign;
 use std::{cmp, fs::File, path::PathBuf};
 use structopt::StructOpt;
