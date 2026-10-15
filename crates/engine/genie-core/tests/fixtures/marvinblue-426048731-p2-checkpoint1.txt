@@ -1,0 +1,74 @@
+# Player 2 of the tier-1 recording MarvinBlue/426048731 (save 66.6, build 158041), as of its
+# first checkpoint (after 500 syncs). Derived from the header save: player 2's commands before
+# the checkpoint changed none of these values. Objects of master types 1909, 332 and 890
+# (PLACEHOLDER2, FLARE3, Empty TC annex) are left out: they are not in the counted live list by
+# then (INFERRED). See the /work FD-008 decision D07.
+#
+# player <id> <resource 0> <resource 1> <resource 2> <resource 3> <sleeping count>
+# object <id> <master id> <state> <amount held> <x> <y> <z>
+# expected <word 0> ... <word 10>   ('-' = not reproducible without simulation)
+player 2 200 200 200 100 0
+object 9156 109 2 0 29 94 0
+object 9157 618 2 0 30 93 0
+object 9158 619 2 0 28.5 94.5 0
+object 9159 1649 2 0 29.25 93.75 0
+object 9160 620 2 0 28 95 0
+object 9175 83 2 0 30 89 0
+object 9177 83 2 0 28 89 0
+object 9181 293 2 0 29 99 0
+object 9185 448 2 0 34 94 0
+object 9303 88 2 0 49.5 87 0
+object 9304 95 2 0 49.5 88.5 0
+object 9305 95 2 0 49.5 85.5 0
+object 9306 117 2 0 49.5 75.5 0
+object 9307 117 2 0 49.5 76.5 0
+object 9308 117 2 0 49.5 77.5 0
+object 9309 117 2 0 49.5 78.5 0
+object 9310 117 2 0 49.5 79.5 0
+object 9311 117 2 0 49.5 80.5 0
+object 9312 117 2 0 49.5 81.5 0
+object 9313 117 2 0 49.5 82.5 0
+object 9314 117 2 0 49.5 83.5 0
+object 9315 117 2 0 49.5 84.5 0
+object 9316 117 2 0 49.5 89.5 0
+object 9317 117 2 0 49.5 90.5 0
+object 9318 117 2 0 49.5 91.5 0
+object 9319 117 2 0 49.5 92.5 0
+object 9320 117 2 0 49.5 93.5 0
+object 9321 117 2 0 49.5 94.5 0
+object 9322 117 2 0 49.5 95.5 0
+object 9323 117 2 0 49.5 96.5 0
+object 9324 117 2 0 49.5 97.5 0
+object 9325 117 2 0 49.5 98.5 0
+object 9326 117 2 0 49.5 99.5 0
+object 9327 117 2 0 49.5 100.5 0
+object 9328 64 2 0 34 74.5 0
+object 9329 81 2 0 32.5 74.5 0
+object 9330 81 2 0 35.5 74.5 0
+object 9331 117 2 0 20.5 74.5 0
+object 9332 117 2 0 21.5 74.5 0
+object 9333 117 2 0 22.5 74.5 0
+object 9334 117 2 0 23.5 74.5 0
+object 9335 117 2 0 24.5 74.5 0
+object 9336 117 2 0 25.5 74.5 0
+object 9337 117 2 0 26.5 74.5 0
+object 9338 117 2 0 27.5 74.5 0
+object 9339 117 2 0 28.5 74.5 0
+object 9340 117 2 0 29.5 74.5 0
+object 9341 117 2 0 30.5 74.5 0
+object 9342 117 2 0 31.5 74.5 0
+object 9343 117 2 0 36.5 74.5 0
+object 9344 117 2 0 37.5 74.5 0
+object 9345 117 2 0 38.5 74.5 0
+object 9346 117 2 0 39.5 74.5 0
+object 9347 117 2 0 40.5 74.5 0
+object 9348 117 2 0 41.5 74.5 0
+object 9349 117 2 0 42.5 74.5 0
+object 9350 117 2 0 43.5 74.5 0
+object 9351 117 2 0 44.5 74.5 0
+object 9352 117 2 0 45.5 74.5 0
+object 9353 117 2 0 46.5 74.5 0
+object 9354 117 2 0 47.5 74.5 0
+object 9355 117 2 0 48.5 74.5 0
+object 9517 705 2 150 21.5 91.5 0
+expected 0 700 11230 126 150 0 63 771100 2 - 586462

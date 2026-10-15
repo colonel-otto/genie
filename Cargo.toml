@@ -14,6 +14,7 @@ members = [
   "crates/formats/genie-scx",
   "crates/formats/genie-support",
   "crates/formats/jascpal",
+  "crates/engine/genie-core",
 ]
 
 [workspace.package]
