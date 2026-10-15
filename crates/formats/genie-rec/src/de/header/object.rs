@@ -33,14 +33,14 @@ pub enum ObjectBody {
     Static(StaticObject),
     /// Kinds 20 and 25.
     Animated(AnimatedObject),
-    /// Kind 30.
-    Moving(MovingObject),
+    /// Kind 30. The larger kinds are boxed: Gaia's lists are mostly small static objects.
+    Moving(Box<MovingObject>),
     /// Kind 40.
-    Action(ActionObject),
+    Action(Box<ActionObject>),
     /// Kind 70.
-    Combat(CombatObject),
+    Combat(Box<CombatObject>),
     /// Kind 80.
-    Building(BuildingObject),
+    Building(Box<BuildingObject>),
 }
 
 impl Object {
@@ -116,10 +116,10 @@ pub fn read_object<R: binrw::io::Read + binrw::io::Seek>(
     let body = match kind {
         10 | 90 => ObjectBody::Static(StaticObject::read_options(r, e, ())?),
         20 | 25 => ObjectBody::Animated(AnimatedObject::read_options(r, e, ())?),
-        30 => ObjectBody::Moving(MovingObject::read_options(r, e, ())?),
-        40 => ObjectBody::Action(ActionObject::read_options(r, e, ())?),
-        70 => ObjectBody::Combat(CombatObject::read_options(r, e, (v,))?),
-        80 => ObjectBody::Building(BuildingObject::read_options(r, e, (v,))?),
+        30 => ObjectBody::Moving(Box::new(MovingObject::read_options(r, e, ())?)),
+        40 => ObjectBody::Action(Box::new(ActionObject::read_options(r, e, ())?)),
+        70 => ObjectBody::Combat(Box::new(CombatObject::read_options(r, e, (v,))?)),
+        80 => ObjectBody::Building(Box::new(BuildingObject::read_options(r, e, (v,))?)),
         other => {
             return Err(binrw::Error::AssertFail {
                 pos: r.stream_position()?,
