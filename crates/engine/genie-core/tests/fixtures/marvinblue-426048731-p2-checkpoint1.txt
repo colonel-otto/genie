@@ -1,11 +1,11 @@
 # Player 2 of the tier-1 recording MarvinBlue/426048731 (save 66.6, build 158041), as of its
 # first checkpoint (after 500 syncs). Derived from the header save: player 2's commands before
-# the checkpoint changed none of these values. Objects of master types 1909, 332 and 890
+# the checkpoint changed none of these values. Objects of main types 1909, 332 and 890
 # (PLACEHOLDER2, FLARE3, Empty TC annex) are left out: they are not in the counted live list by
 # then (INFERRED). See the /work FD-008 decision D07.
 #
 # player <id> <resource 0> <resource 1> <resource 2> <resource 3> <sleeping count>
-# object <id> <master id> <state> <amount held> <x> <y> <z>
+# object <id> <main id> <state> <amount held> <x> <y> <z>
 # expected <word 0> ... <word 10>   ('-' = not reproducible without simulation)
 player 2 200 200 200 100 0
 object 9156 109 2 0 29 94 0

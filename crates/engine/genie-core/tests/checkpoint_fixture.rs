@@ -23,7 +23,7 @@ fn load() -> (PlayerState, [Option<u32>; 11]) {
             }
             "object" => player.live.push(ObjectState {
                 id: v[0].parse().unwrap(),
-                master_id: v[1].parse().unwrap(),
+                main_id: v[1].parse().unwrap(),
                 state: v[2].parse().unwrap(),
                 amount_held: num(3),
                 position: [num(4), num(5), num(6)],

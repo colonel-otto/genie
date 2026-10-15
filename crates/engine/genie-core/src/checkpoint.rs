@@ -8,7 +8,7 @@
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ObjectState {
     pub id: i32,
-    pub master_id: i16,
+    pub main_id: i16,
     pub state: u8,
     pub amount_held: f32,
     pub position: [f32; 3],
@@ -41,7 +41,7 @@ pub fn player_block(player: &PlayerState) -> [u32; 11] {
         .iter()
         .fold(0u32, |acc, r| acc.wrapping_add(cvttss2si(*r) as u32));
     for o in &player.live {
-        w[2] = w[2].wrapping_add(i32::from(o.master_id) as u32);
+        w[2] = w[2].wrapping_add(i32::from(o.main_id) as u32);
         w[3] = w[3].wrapping_add(u32::from(o.state));
         w[4] = w[4].wrapping_add(cvttss2si(o.amount_held) as u32);
         for axis in o.position {
@@ -82,7 +82,7 @@ mod tests {
     fn object() -> ObjectState {
         ObjectState {
             id: 1,
-            master_id: 4,
+            main_id: 4,
             state: 2,
             ..ObjectState::default()
         }
@@ -129,14 +129,14 @@ mod tests {
     }
 
     #[test]
-    fn master_ids_are_sign_extended() {
+    fn main_ids_are_sign_extended() {
         let p = player(vec![
             ObjectState {
-                master_id: -1,
+                main_id: -1,
                 ..object()
             },
             ObjectState {
-                master_id: 3,
+                main_id: 3,
                 ..object()
             },
         ]);
