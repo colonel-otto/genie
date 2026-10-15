@@ -4,3 +4,4 @@ version = "0.1.0"
 description = "Deterministic simulation core of the genie Age of Empires II: Definitive Edition engine"
 edition = "2024"
 license = "AGPL-3.0-only"
+repository.workspace = true

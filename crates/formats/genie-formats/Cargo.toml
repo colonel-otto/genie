@@ -3,7 +3,7 @@ name = "genie-formats"
 version = "0.5.0"
 description = "Readers and writers for Age of Empires II data files (formerly the `genie` crate)"
 documentation = "https://docs.rs/genie-formats/"
-homepage = "https://github.com/SiegeEngineers/genie-rs"
+homepage = "https://github.com/librematch/genie/tree/main/crates/formats/genie-formats"
 readme = "../README.md"
 
 authors.workspace = true

@@ -1,4 +1,4 @@
-//! Internal utilities for genie-rs modules.
+//! Internal utilities for the genie format crates.
 
 #![deny(future_incompatible)]
 #![deny(nonstandard_style)]

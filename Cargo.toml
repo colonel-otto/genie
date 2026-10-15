@@ -22,7 +22,7 @@ authors = ["Renée Kooi <renee@kooi.me>"]
 edition = "2021"
 rust-version = "1.64.0"
 license = "GPL-3.0-only"
-repository = "https://github.com/SiegeEngineers/genie-rs"
+repository = "https://github.com/librematch/genie"
 
 [workspace.dependencies]
 structopt = "0.3.26"

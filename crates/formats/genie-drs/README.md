@@ -2,7 +2,7 @@
 
 [![docs.rs](https://img.shields.io/badge/docs.rs-genie--drs-blue?style=flat-square&color=blue)](https://docs.rs/genie-drs/)
 [![crates.io](https://img.shields.io/crates/v/genie-drs.svg?style=flat-square&color=orange)](https://crates.io/crates/genie-drs)
-[![GitHub license](https://img.shields.io/github/license/SiegeEngineers/genie-rs?style=flat-square&color=darkred)](https://github.com/SiegeEngineers/genie-rs/blob/default/crates/genie-drs/LICENSE.md)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-darkred?style=flat-square)](https://github.com/librematch/genie/blob/main/crates/formats/genie-drs/LICENSE)
 ![MSRV](https://img.shields.io/badge/MSRV-1.64.0%2B-blue?style=flat-square)
 
 Read .drs archive files from the Genie Engine, used in Age of Empires 1/2 and SWGB
