@@ -4,8 +4,8 @@ use crate::element::{ReadableHeaderElement, WritableHeaderElement};
 use crate::reader::RecordingHeaderReader;
 use crate::unit::Waypoint;
 use crate::{ObjectID, PlayerID, Result};
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use genie_support::{read_opt_u16, read_opt_u32, ReadSkipExt, ReadStringsExt, UnitTypeID};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
+use genie_support::{ReadSkipExt, ReadStringsExt, UnitTypeID, read_opt_u16, read_opt_u32};
 use std::convert::TryInto;
 use std::io::{Read, Write};
 

@@ -14,8 +14,8 @@
 
 use genie_lang::{LangFile, StringKey};
 
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use flate2::{read::DeflateDecoder, write::DeflateEncoder, Compression};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
+use flate2::{Compression, read::DeflateDecoder, write::DeflateEncoder};
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Read, Write};

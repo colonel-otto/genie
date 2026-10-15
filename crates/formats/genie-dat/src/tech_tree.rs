@@ -3,8 +3,8 @@
 use crate::civ::CivilizationID;
 use crate::unit_type::UnitTypeID;
 use arrayvec::ArrayVec;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use genie_support::{read_opt_u32, TechID};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
+use genie_support::{TechID, read_opt_u32};
 use std::convert::{TryFrom, TryInto};
 use std::io::{self, Read, Result, Write};
 

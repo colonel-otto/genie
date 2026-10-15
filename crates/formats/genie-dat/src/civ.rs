@@ -1,9 +1,9 @@
 //! Types related to civilizations.
 
-use crate::unit_type::{UnitType, UnitTypeID};
 use crate::GameVersion;
+use crate::unit_type::{UnitType, UnitTypeID};
 use arrayvec::ArrayString;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use encoding_rs::WINDOWS_1252;
 use genie_support::{fallible_try_from, infallible_try_into, read_opt_u16};
 use std::convert::TryInto;

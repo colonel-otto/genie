@@ -1,6 +1,6 @@
 use crate::FileVersion;
 use arrayvec::ArrayString;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{fallible_try_from, fallible_try_into, infallible_try_into};
 use std::convert::TryInto;
 use std::io::{Read, Result, Write};

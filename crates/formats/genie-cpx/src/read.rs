@@ -1,5 +1,5 @@
-use crate::{CPXVersion, CampaignHeader, ScenarioMeta, AOE1_DE, AOE2_DE};
-use byteorder::{ReadBytesExt, LE};
+use crate::{AOE1_DE, AOE2_DE, CPXVersion, CampaignHeader, ScenarioMeta};
+use byteorder::{LE, ReadBytesExt};
 use chardet::detect as detect_encoding;
 use encoding_rs::Encoding;
 use genie_scx::{self as scx, DLCPackage, Scenario};
@@ -279,7 +279,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AOE1_DE, AOE2_DE, AOE_AOK};
+    use crate::{AOE_AOK, AOE1_DE, AOE2_DE};
     use anyhow::Context;
     use std::fs::File;
 

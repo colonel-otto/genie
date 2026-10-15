@@ -1,16 +1,16 @@
+use crate::Result;
 use crate::element::{OptionalReadableElement, ReadableHeaderElement, WritableHeaderElement};
 use crate::reader::RecordingHeaderReader;
 use crate::unit_action::UnitAction;
 use crate::unit_type::UnitBaseClass;
-use crate::Result;
 use crate::{ObjectID, PlayerID};
 use arrayvec::ArrayVec;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 pub use genie_dat::sprite::SpriteID;
 pub use genie_dat::terrain::TerrainID;
 pub use genie_dat::unit_type::AttributeCost;
 use genie_dat::unit_type::UnitType;
-use genie_support::{read_opt_u32, ReadSkipExt};
+use genie_support::{ReadSkipExt, read_opt_u32};
 pub use genie_support::{StringKey, UnitTypeID};
 use std::convert::TryInto;
 use std::io::{Read, Write};
@@ -496,11 +496,7 @@ impl ReadableHeaderElement for MovingUnitAttributes {
             let x = input.read_f32::<LE>()?;
             let y = input.read_f32::<LE>()?;
             let z = input.read_f32::<LE>()?;
-            if exists {
-                Some((x, y, z))
-            } else {
-                None
-            }
+            if exists { Some((x, y, z)) } else { None }
         };
         attrs.consecutive_substitute_count = input.read_u32::<LE>()?;
         Ok(attrs)

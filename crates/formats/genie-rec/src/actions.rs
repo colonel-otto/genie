@@ -2,8 +2,8 @@
 
 use crate::{ObjectID, PlayerID, Result};
 use arrayvec::ArrayVec;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use genie_support::{f32_neq, read_opt_u32, ReadSkipExt, ReadStringsExt, TechID, UnitTypeID};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
+use genie_support::{ReadSkipExt, ReadStringsExt, TechID, UnitTypeID, f32_neq, read_opt_u32};
 use std::convert::TryInto;
 use std::io::{Read, Write};
 

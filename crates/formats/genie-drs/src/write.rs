@@ -1,5 +1,5 @@
 use crate::{DRSHeader, DRSResource, DRSTable, ResourceType};
-use byteorder::{WriteBytesExt, LE};
+use byteorder::{LE, WriteBytesExt};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
 /// Strategy to use when writing files to the archive.

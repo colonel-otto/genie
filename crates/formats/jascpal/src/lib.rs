@@ -36,11 +36,11 @@
 #![warn(unused)]
 #![allow(missing_docs)]
 
+use nom::IResult;
 use nom::bytes::complete::tag;
 use nom::character::complete::{digit1, one_of};
 use nom::combinator::{map, map_res};
 use nom::multi::many1;
-use nom::IResult;
 use rgb::RGB;
 use std::convert::{TryFrom, TryInto};
 

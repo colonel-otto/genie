@@ -5,9 +5,9 @@ use crate::sprite::{GraphicID, SpriteID};
 use crate::task::TaskList;
 use crate::terrain::TerrainID;
 use arrayvec::ArrayVec;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 pub use genie_support::UnitTypeID;
-use genie_support::{read_opt_u16, read_opt_u32, MapInto, StringKey, TechID};
+use genie_support::{MapInto, StringKey, TechID, read_opt_u16, read_opt_u32};
 use std::cmp::{Ordering, PartialOrd};
 use std::convert::{TryFrom, TryInto};
 use std::io::{self, Read, Result, Write};
@@ -234,7 +234,10 @@ impl UnitType {
                 .expect("Unit's base class was Animated, but it has no Animated attributes")
                 .write_to(&mut output, version)?;
         } else {
-            assert!(self.animated.is_none(), "Unexpected Animated attributes in a unit type whose base class does not support it");
+            assert!(
+                self.animated.is_none(),
+                "Unexpected Animated attributes in a unit type whose base class does not support it"
+            );
         }
 
         if self.unit_base_class >= UnitBaseClass::Moving {
@@ -267,7 +270,10 @@ impl UnitType {
                 .expect("Unit's base class was BaseCombat, but it has no BaseCombat attributes")
                 .write_to(&mut output, version)?;
         } else {
-            assert!(self.base_combat.is_none(), "Unexpected BaseCombat attributes in a unit type whose base class does not support it");
+            assert!(
+                self.base_combat.is_none(),
+                "Unexpected BaseCombat attributes in a unit type whose base class does not support it"
+            );
         }
 
         if self.unit_base_class >= UnitBaseClass::Missile {
@@ -300,7 +306,10 @@ impl UnitType {
                 .expect("Unit's base class was Building, but it has no Building attributes")
                 .write_to(&mut output, version)?;
         } else {
-            assert!(self.building.is_none(), "Unexpected Building attributes in a unit type whose base class does not support it");
+            assert!(
+                self.building.is_none(),
+                "Unexpected Building attributes in a unit type whose base class does not support it"
+            );
         }
 
         Ok(())

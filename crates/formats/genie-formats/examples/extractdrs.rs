@@ -3,8 +3,8 @@ extern crate structopt;
 
 use genie_drs::{DRSReader, DRSWriter, ReserveDirectoryStrategy};
 use std::collections::HashSet;
-use std::fs::{create_dir_all, File};
-use std::io::{self, stdout, Write};
+use std::fs::{File, create_dir_all};
+use std::io::{self, Write, stdout};
 use std::path::PathBuf;
 use structopt::StructOpt;
 

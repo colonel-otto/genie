@@ -1,7 +1,7 @@
 extern crate structopt;
 
-use genie_formats::scx::{convert::AutoToWK, VersionBundle};
 use genie_formats::Scenario;
+use genie_formats::scx::{VersionBundle, convert::AutoToWK};
 use std::{fs::File, path::PathBuf};
 use structopt::StructOpt;
 

@@ -108,7 +108,7 @@
 #![warn(unused)]
 #![allow(missing_docs)]
 
-use byteorder::{ReadBytesExt, LE};
+use byteorder::{LE, ReadBytesExt};
 use encoding_rs::{UTF_16LE, WINDOWS_1252};
 use encoding_rs_io::DecodeReaderBytesBuilder;
 pub use genie_support::{StringKey, TryFromStringKeyError};
@@ -116,8 +116,8 @@ use pelite::{
     pe32::{Pe, PeFile},
     resources::Name,
 };
-use std::collections::hash_map::{Drain, Entry, IntoIter, Iter, IterMut, Keys, Values, ValuesMut};
 use std::collections::HashMap;
+use std::collections::hash_map::{Drain, Entry, IntoIter, Iter, IterMut, Keys, Values, ValuesMut};
 use std::fmt;
 use std::io::{self, BufRead, BufReader, Error as IoError, Read, Write};
 use std::iter::FromIterator;

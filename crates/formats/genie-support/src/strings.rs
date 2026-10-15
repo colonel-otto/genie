@@ -1,4 +1,4 @@
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use encoding_rs::WINDOWS_1252;
 use std::io::{self, Read, Write};
 
@@ -78,7 +78,7 @@ pub fn write_opt_str<W: Write>(
     output: &mut W,
     option: &Option<String>,
 ) -> Result<(), WriteStringError> {
-    if let Some(ref string) = option {
+    if let Some(string) = option {
         write_str(output, string)
     } else {
         output.write_i16::<LE>(0)?;
@@ -93,7 +93,7 @@ pub fn write_opt_i32_str<W: Write>(
     output: &mut W,
     option: &Option<String>,
 ) -> Result<(), WriteStringError> {
-    if let Some(ref string) = option {
+    if let Some(string) = option {
         write_i32_str(output, string)
     } else {
         output.write_i32::<LE>(0)?;

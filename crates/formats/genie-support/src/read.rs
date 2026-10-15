@@ -1,4 +1,4 @@
-use byteorder::{ReadBytesExt, LE};
+use byteorder::{LE, ReadBytesExt};
 use std::convert::{TryFrom, TryInto};
 use std::io::{self, Error, ErrorKind, Read, Result};
 

@@ -1,10 +1,10 @@
 use crate::civ::CivilizationID;
 use crate::unit_type::UnitTypeID;
 use arrayvec::{ArrayString, ArrayVec};
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use encoding_rs::WINDOWS_1252;
 pub use genie_support::TechID;
-use genie_support::{read_opt_u16, read_opt_u32, MapInto, StringKey};
+use genie_support::{MapInto, StringKey, read_opt_u16, read_opt_u32};
 use std::io::{Read, Result, Write};
 
 /// An effect command specifies an attribute change when a tech effect is triggered.

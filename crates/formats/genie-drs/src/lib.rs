@@ -29,7 +29,7 @@
 #![warn(unused)]
 #![allow(missing_docs)]
 
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use sorted_vec::SortedVec;
 use std::io::{Error, Read, Write};
 use std::slice;
@@ -201,13 +201,14 @@ impl DRSHeader {
 
 impl std::fmt::Debug for DRSHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,
-           "DRSHeader {{ banner_msg: '{}', version: '{}', password: '{}', num_resource_types: {}, directory_size: {} }}",
-           str::from_utf8(&self.banner_msg).expect("banner must be utf8"),
-           str::from_utf8(&self.version).expect("version must be utf8"),
-           str::from_utf8(&self.password).expect("password must be utf8"),
-           self.num_resource_types,
-           self.directory_size
+        write!(
+            f,
+            "DRSHeader {{ banner_msg: '{}', version: '{}', password: '{}', num_resource_types: {}, directory_size: {} }}",
+            str::from_utf8(&self.banner_msg).expect("banner must be utf8"),
+            str::from_utf8(&self.version).expect("version must be utf8"),
+            str::from_utf8(&self.password).expect("password must be utf8"),
+            self.num_resource_types,
+            self.directory_size
         )
     }
 }

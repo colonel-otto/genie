@@ -1,5 +1,5 @@
 use crate::Result;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::read_opt_u16;
 use std::io::{self, Read, Write};
 

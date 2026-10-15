@@ -11,10 +11,10 @@ use crate::triggers::TriggerSystem;
 use crate::types::*;
 use crate::victory::*;
 use crate::{Error, Result, VersionBundle};
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use flate2::{read::DeflateDecoder, write::DeflateEncoder, Compression};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
+use flate2::{Compression, read::DeflateDecoder, write::DeflateEncoder};
 use genie_support::{
-    f32_eq, read_opt_u32, write_opt_str, write_str, ReadStringsExt, StringKey, UnitTypeID,
+    ReadStringsExt, StringKey, UnitTypeID, f32_eq, read_opt_u32, write_opt_str, write_str,
 };
 use std::convert::{TryFrom, TryInto};
 use std::io::{self, Read, Write};
@@ -342,7 +342,7 @@ impl RGEScen {
             assert_eq!(self.player_names.len(), 16);
             for name in &self.player_names {
                 let mut padded_bytes = Vec::with_capacity(256);
-                if let Some(ref name) = name {
+                if let Some(name) = name {
                     let name_bytes = name.as_bytes();
                     padded_bytes.write_all(name_bytes)?;
                 }
@@ -863,7 +863,7 @@ impl TribeScen {
             assert_eq!(self.base.player_names.len(), 16);
             for name in &self.base.player_names {
                 let mut padded_bytes = Vec::with_capacity(256);
-                if let Some(ref name) = name {
+                if let Some(name) = name {
                     let name_bytes = name.as_bytes();
                     padded_bytes.write_all(name_bytes)?;
                 }

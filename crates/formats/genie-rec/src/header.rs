@@ -4,7 +4,7 @@ use crate::player::Player;
 use crate::reader::RecordingHeaderReader;
 use crate::string_table::StringTable;
 use crate::{GameVersion, Result};
-use byteorder::{ReadBytesExt, LE};
+use byteorder::{LE, ReadBytesExt};
 use genie_scx::TribeScen;
 use genie_support::ReadSkipExt;
 pub use genie_support::SpriteID;

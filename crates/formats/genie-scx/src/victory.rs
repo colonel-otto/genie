@@ -1,6 +1,6 @@
-use crate::types::VictoryCondition;
 use crate::Result;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use crate::types::VictoryCondition;
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::convert::TryFrom;
 use std::io::{Read, Write};

@@ -1,4 +1,4 @@
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 pub use jascpal::PaletteIndex;
 use std::convert::TryInto;
 use std::io::{Read, Result, Write};

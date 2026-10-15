@@ -3,7 +3,7 @@
 #![allow(missing_docs)]
 
 use crate::unit_type::UnitTypeID;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 

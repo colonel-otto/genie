@@ -19,8 +19,8 @@ members = [
 
 [workspace.package]
 authors = ["Renée Kooi <renee@kooi.me>"]
-edition = "2021"
-rust-version = "1.64.0"
+edition = "2024"
+rust-version = "1.99.0"
 license = "GPL-3.0-only"
 repository = "https://github.com/librematch/genie"
 

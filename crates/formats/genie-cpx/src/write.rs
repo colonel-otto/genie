@@ -1,5 +1,5 @@
-use crate::{CPXVersion, CampaignHeader, ScenarioMeta, AOE1_DE, AOE2_DE, AOE_AOK};
-use byteorder::{WriteBytesExt, LE};
+use crate::{AOE_AOK, AOE1_DE, AOE2_DE, CPXVersion, CampaignHeader, ScenarioMeta};
+use byteorder::{LE, WriteBytesExt};
 use genie_scx::{DLCPackage, Result as SCXResult, Scenario};
 use std::io::{self, Write};
 

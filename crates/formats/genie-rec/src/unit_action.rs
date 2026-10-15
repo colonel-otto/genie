@@ -1,8 +1,8 @@
-use crate::element::{ReadableHeaderElement, WritableHeaderElement};
-use crate::reader::RecordingHeaderReader;
 use crate::ObjectID;
 use crate::Result;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use crate::element::{ReadableHeaderElement, WritableHeaderElement};
+use crate::reader::RecordingHeaderReader;
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 pub use genie_dat::sprite::SpriteID;
 pub use genie_support::UnitTypeID;
 use genie_support::{read_opt_u16, read_opt_u32};

@@ -34,7 +34,7 @@ pub mod version;
 use crate::actions::{Action, Meta};
 use crate::element::ReadableHeaderElement;
 use crate::reader::{RecordingHeaderReader, SmallBufReader};
-use byteorder::{ReadBytesExt, LE};
+use byteorder::{LE, ReadBytesExt};
 use flate2::bufread::DeflateDecoder;
 use genie_scx::DLCOptions;
 use genie_support::{fallible_try_from, fallible_try_into, infallible_try_into};
@@ -108,7 +108,9 @@ fallible_try_into!(ObjectID, i32);
 ///
 #[derive(Debug, thiserror::Error)]
 pub enum SyncError {
-    #[error("Got a sync message, but the log header said there would be a sync message {0} ticks later. The recorded game file may be corrupt")]
+    #[error(
+        "Got a sync message, but the log header said there would be a sync message {0} ticks later. The recorded game file may be corrupt"
+    )]
     UnexpectedSync(u32),
     #[error("Expected a sync message at this point, the recorded game file may be corrupt")]
     ExpectedSync,

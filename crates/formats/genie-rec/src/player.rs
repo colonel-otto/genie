@@ -4,11 +4,11 @@ use crate::reader::RecordingHeaderReader;
 use crate::unit::Unit;
 use crate::unit_type::CompactUnitType;
 use crate::{ObjectID, PlayerID, Result};
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use genie_dat::tech_tree::TechTree;
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_dat::CivilizationID;
+use genie_dat::tech_tree::TechTree;
 use genie_scx::VictoryConditions;
-use genie_support::{read_opt_u32, ReadStringsExt};
+use genie_support::{ReadStringsExt, read_opt_u32};
 use std::convert::TryInto;
 use std::io::{Read, Write};
 

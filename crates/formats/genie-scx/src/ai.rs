@@ -1,6 +1,6 @@
 use crate::Result;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use genie_support::{write_i32_str, DecodeStringError, ReadStringError, ReadStringsExt};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
+use genie_support::{DecodeStringError, ReadStringError, ReadStringsExt, write_i32_str};
 use std::convert::TryFrom;
 use std::io::{Read, Write};
 

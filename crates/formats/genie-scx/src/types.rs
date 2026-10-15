@@ -201,11 +201,7 @@ impl From<DLCPackage> for i32 {
 }
 
 fn expected_range(version: f32) -> &'static str {
-    if version < 1.25 {
-        "-1-4"
-    } else {
-        "-1-6"
-    }
+    if version < 1.25 { "-1-4" } else { "-1-6" }
 }
 
 /// Could not parse a starting age because given number refers to an unknown age.

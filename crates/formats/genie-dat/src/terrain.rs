@@ -1,13 +1,13 @@
 //! Types related to terrains.
 
+use crate::FileVersion;
 use crate::sound::SoundID;
 use crate::sprite::{GraphicID, SpriteID};
 use crate::unit_type::UnitTypeID;
-use crate::FileVersion;
 use arrayvec::ArrayString;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use genie_support::{
-    fallible_try_from, fallible_try_into, infallible_try_into, read_opt_u16, read_opt_u32, MapInto,
+    MapInto, fallible_try_from, fallible_try_into, infallible_try_into, read_opt_u16, read_opt_u32,
 };
 use std::convert::TryInto;
 use std::io::{Read, Result, Write};
