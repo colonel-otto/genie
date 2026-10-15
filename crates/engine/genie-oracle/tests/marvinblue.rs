@@ -1,12 +1,10 @@
 //! Recordings' header saves against the checkpoints in their own bodies. Needs
 //! `GENIE_REC_CORPUS`; skips without it.
 
-use genie_oracle::{Error, SAVE_WORDS, compare_first_checkpoint};
-use std::path::{Path, PathBuf};
+mod common;
 
-fn corpus() -> Option<PathBuf> {
-    std::env::var_os("GENIE_REC_CORPUS").map(PathBuf::from)
-}
+use common::{corpus, is_scenario, tier1_recordings};
+use genie_oracle::{Error, SAVE_WORDS, compare_first_checkpoint};
 
 fn differing(from_save: &[u32; 11], checkpoint: &[u32; 11]) -> Vec<usize> {
     (0..11).filter(|&k| from_save[k] != checkpoint[k]).collect()
@@ -50,24 +48,6 @@ fn marvinblue_header_save_reproduces_the_first_checkpoint_of_player_2() {
     assert_eq!((p1.from_save[6], p1.checkpoint[6]), (66, 70));
 }
 
-/// The lobby's game type 3, a scenario.
-fn is_scenario(recording: &[u8]) -> bool {
-    let chapter = genie_rec::de::chapters(recording).unwrap()[0];
-    let header = genie_rec::de::header::parse(&chapter.inflate_header().unwrap()).unwrap();
-    header.lobby.game_type == 3
-}
-
-fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).unwrap().map(Result::unwrap) {
-        let path = entry.path();
-        if path.is_dir() {
-            recordings(&path, out);
-        } else if path.extension().is_some_and(|e| e == "aoe2record") {
-            out.push(path);
-        }
-    }
-}
-
 /// How many players of the tier-1 corpus the save alone reproduces. Only reported: a player who
 /// acts in the first 500 ticks needs the simulation. Words 0, 5 and 8 (sleeping count, waypoints,
 /// player id) must match for every player, whatever they did, except in scenario games: there the
@@ -79,18 +59,9 @@ fn tier1_corpus_report() {
     let Some(dir) = corpus() else {
         return eprintln!("GENIE_REC_CORPUS is not set; skipping");
     };
-    let mut paths = Vec::new();
-    recordings(&dir, &mut paths);
     let mut outcomes = std::collections::BTreeMap::<String, usize>::new();
     let mut lanes = std::collections::BTreeMap::<String, usize>::new();
-    for path in &paths {
-        let data = std::fs::read(path).unwrap();
-        let version = genie_rec::de::chapters(&data).unwrap()[0]
-            .save_version()
-            .unwrap();
-        if (version.hundredths(), version.build) != (6660, 158041) {
-            continue;
-        }
+    for (path, data) in tier1_recordings(&dir) {
         if is_scenario(&data) {
             *outcomes
                 .entry("scenario, not compared".to_string())

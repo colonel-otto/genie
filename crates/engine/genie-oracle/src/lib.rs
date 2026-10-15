@@ -6,7 +6,8 @@
 //! it sums each object's top action and unit-AI retarget timer, which the engine redraws while the
 //! game runs, so reproducing it needs the simulation.
 
-use genie_core::checkpoint::{ObjectState, PlayerState, player_block};
+use genie_core::artifact::ARTIFACT_TYPE;
+use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
 use genie_rec::de::{self, Op, header::PlayerSection};
 
 /// The words of the first checkpoint that the start-of-game save determines: all but word 9.
@@ -141,6 +142,20 @@ pub struct Word9 {
     pub unsupported: Option<(u32, usize, genie_core::unit_ai::Unsupported)>,
 }
 
+/// Unit-AI type 19, livestock: their default task is the Artifact action (the .dat's livestock task
+/// lists), which an idle animal holds as its top action.
+const LIVESTOCK_AI: u32 = 19;
+
+/// The slice's view of one saved object: its unit AI and, for livestock, the Artifact action.
+fn unit(object: &de::header::Object) -> genie_core::turn::Unit {
+    let ai = unit_ai(object);
+    let artifact = ai
+        .as_ref()
+        .filter(|ai| ai.ai_type == LIVESTOCK_AI)
+        .map(|_| genie_core::artifact::Artifact::new(object.player == 0));
+    genie_core::turn::Unit { ai, artifact }
+}
+
 fn unit_ai(object: &de::header::Object) -> Option<genie_core::unit_ai::UnitAi> {
     use de::header::ObjectBody;
     let combat = match &object.body {
@@ -202,7 +217,7 @@ pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
         .players
         .iter()
         .map(|p| Player {
-            objects: p.objects.iter().map(unit_ai).collect(),
+            objects: p.objects.iter().map(unit).collect(),
             computer: false,
             unsupported: None,
         })
@@ -230,14 +245,18 @@ pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
                 .ok_or(Error::NoSuchPlayer(id))?;
             let simulated = turns.players[id as usize].clone();
             let mut state = player_state(section, id);
-            let timers = section
+            let units = section
                 .objects
                 .iter()
                 .zip(&simulated.objects)
                 .filter(|(o, _)| !NOT_COUNTED.contains(&o.static_part().main_id))
-                .map(|(_, ai)| ai.as_ref().map(|ai| ai.retarget_timer as i32));
-            for (object, timer) in state.live.iter_mut().zip(timers) {
-                object.retarget_timer = timer;
+                .map(|(_, unit)| unit);
+            for (object, unit) in state.live.iter_mut().zip(units) {
+                object.retarget_timer = unit.ai.as_ref().map(|ai| ai.retarget_timer as i32);
+                object.top_action = unit.artifact.map(|a| TopAction {
+                    kind: ARTIFACT_TYPE,
+                    state: a.state,
+                });
             }
             Ok(Word9 {
                 id,

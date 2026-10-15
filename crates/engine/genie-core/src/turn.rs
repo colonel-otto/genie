@@ -6,13 +6,22 @@
 //! the turn player's slot and pass the turn on, then the next frame seed `= World.rand15`. The slice
 //! assumes no other World draw runs in a tick (no triggers, XS or unit groups).
 
+use crate::artifact::Artifact;
 use crate::rng::{Stream, Streams};
 use crate::unit_ai::{UnitAi, Unsupported};
 
-/// One player's objects in live-list order; `None` for an object without a unit AI.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// What the slice tracks of one object.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Unit {
+    pub ai: Option<UnitAi>,
+    /// The livestock default action, the object's top action.
+    pub artifact: Option<Artifact>,
+}
+
+/// One player's objects in live-list order.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Player {
-    pub objects: Vec<Option<UnitAi>>,
+    pub objects: Vec<Unit>,
     /// `player+0x10 == 3`.
     pub computer: bool,
     /// The first update this slice could not model, with the tick (1-based) and object index.
@@ -20,7 +29,7 @@ pub struct Player {
 }
 
 /// World state the slice carries from tick to tick. All of it is in the header save.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Turns {
     pub world_time: u32,
     /// `world+0x7d0`.
@@ -60,11 +69,22 @@ impl Turns {
         self.streams.seed_all(self.frame_seed);
         for (p, player) in self.players.iter_mut().enumerate() {
             self.player_time[p] = self.player_time[p].wrapping_add(dt);
+            // The default action exists from tick 1 on, but its first update is in tick 2: fitted
+            // to 16 checkpoints of idle players with livestock (workspace FD-008).
+            if self.ticks > 1 {
+                for artifact in player
+                    .objects
+                    .iter_mut()
+                    .filter_map(|o| o.artifact.as_mut())
+                {
+                    artifact.update(dt);
+                }
+            }
             if p != self.player_turn || player.unsupported.is_some() {
                 continue;
             }
             for (i, object) in player.objects.iter_mut().enumerate() {
-                let Some(ai) = object else { continue };
+                let Some(ai) = &mut object.ai else { continue };
                 let rng = self.streams.get(Stream::Ai);
                 if let Err(e) =
                     ai.update_idle(self.player_time[p], self.world_time, player.computer, rng)
@@ -88,7 +108,10 @@ mod tests {
 
     fn player(objects: Vec<Option<UnitAi>>) -> Player {
         Player {
-            objects,
+            objects: objects
+                .into_iter()
+                .map(|ai| Unit { ai, artifact: None })
+                .collect(),
             ..Player::default()
         }
     }
@@ -123,11 +146,19 @@ mod tests {
         assert_eq!(t.player_turn, 2);
         assert_eq!(t.player_time, [10, 0, 10]);
         assert_eq!(
-            t.players[0].objects[0].as_ref().unwrap().last_retarget_time,
+            t.players[0].objects[0]
+                .ai
+                .as_ref()
+                .unwrap()
+                .last_retarget_time,
             0
         );
         assert_eq!(
-            t.players[1].objects[0].as_ref().unwrap().last_retarget_time,
+            t.players[1].objects[0]
+                .ai
+                .as_ref()
+                .unwrap()
+                .last_retarget_time,
             10
         );
         t.tick(10);
@@ -136,7 +167,11 @@ mod tests {
         assert_eq!(t.player_turn, 1);
         assert_eq!(t.player_time, [0, 20, 10]);
         assert_eq!(
-            t.players[0].objects[0].as_ref().unwrap().last_retarget_time,
+            t.players[0].objects[0]
+                .ai
+                .as_ref()
+                .unwrap()
+                .last_retarget_time,
             30
         );
     }
@@ -149,6 +184,30 @@ mod tests {
         let mut s = Streams::default();
         s.seed_all(19550);
         assert_eq!(t.frame_seed, s.get(Stream::World).rand15());
+    }
+
+    #[test]
+    fn artifacts_of_every_player_start_updating_in_the_second_tick() {
+        let animal = |gaia| Unit {
+            ai: None,
+            artifact: Some(Artifact::new(gaia)),
+        };
+        let players = vec![
+            Player {
+                objects: vec![animal(true)],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![animal(false)],
+                ..Player::default()
+            },
+        ];
+        let mut t = Turns::new(0, 1, 0, vec![0, 0], players);
+        let state = |t: &Turns, p: usize| t.players[p].objects[0].artifact.unwrap().state;
+        t.tick(50);
+        assert_eq!((state(&t, 0), state(&t, 1)), (6, 6));
+        t.tick(50);
+        assert_eq!((state(&t, 0), state(&t, 1)), (10, 10));
     }
 
     #[test]
