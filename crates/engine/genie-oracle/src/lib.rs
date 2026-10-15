@@ -113,3 +113,140 @@ pub fn compare_first_checkpoint(recording: &[u8]) -> Result<Vec<PlayerComparison
         })
         .collect()
 }
+
+/// Commands whose handlers create a unit group (158041 `FUN_14152efc0`): INTERACT, WORK, MOVE,
+/// FORM_FORMATION, GROUP_MULTI_WAYPOINTS, BUILD, REPAIR. More player-side callers exist and are not
+/// mapped yet. A group draws from the World stream every tick while active and every 3 s while idle
+/// (`FUN_14103d910` → `FUN_14102d370`), which the unit-AI slice does not model: from the first such
+/// command on, the simulated frame-seed chain is no longer the game's.
+pub const GROUP_COMMANDS: [u8; 7] = [0x00, 0x02, 0x03, 0x17, 0x1f, 0x66, 0x6e];
+
+/// A command that takes the frame-seed chain out of the slice's model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChainBreak {
+    /// The tick (1-based) the command executes in.
+    pub tick: u32,
+    pub player: u8,
+    pub command: u8,
+}
+
+/// Word 9 of one player's first checkpoint, from the unit-AI slice and as recorded.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Word9 {
+    pub id: u32,
+    pub simulated: u32,
+    pub checkpoint: u32,
+    /// The first group-creating command before the checkpoint, by any player.
+    pub chain_break: Option<ChainBreak>,
+    /// The first unit update of this player the slice could not model.
+    pub unsupported: Option<(u32, usize, genie_core::unit_ai::Unsupported)>,
+}
+
+fn unit_ai(object: &de::header::Object) -> Option<genie_core::unit_ai::UnitAi> {
+    use de::header::ObjectBody;
+    let combat = match &object.body {
+        ObjectBody::Combat(c) => &**c,
+        ObjectBody::Building(b) => &b.combat,
+        _ => return None,
+    };
+    let ai = combat.unit_ai.as_ref()?;
+    Some(genie_core::unit_ai::UnitAi {
+        ai_type: combat.has_ai,
+        current_order: ai.current_order,
+        current_action: ai.current_action,
+        current_target: ai.current_target,
+        idle_timer: ai.idle_timer,
+        adjusted_idle_timeout: ai.adjusted_idle_timeout,
+        secondary_timer: ai.secondary_timer,
+        look_around_timer: ai.look_around_timer,
+        look_around_timeout: ai.look_around_timeout,
+        last_retarget_time: ai.last_retarget_time,
+        retarget_timer: ai.randomized_target_timer,
+        stance: ai.state,
+        retarget_disabled: ai.unknown_de2,
+    })
+}
+
+/// Run the unit-AI slice from the header save up to the first checkpoint and compare word 9.
+///
+/// The checkpoint block is built before the player loop of the tick that records it, so it shows
+/// the state after one tick fewer than the syncs before it. Objects stay in their saved order; how
+/// and when the [`NOT_COUNTED`] objects leave the live list is not known, so they stay in it.
+pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
+    use genie_core::turn::{Player, Turns};
+    let chapter = de::chapters(recording)?[0];
+    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let mut dts = Vec::new();
+    let mut chain_break = None;
+    let mut checkpoint = None;
+    for op in chapter.ops() {
+        match op? {
+            Op::Sync { dt } => dts.push(dt),
+            Op::Command { packet, .. } => {
+                if chain_break.is_none() && GROUP_COMMANDS.contains(&packet[0]) {
+                    chain_break = Some(ChainBreak {
+                        tick: dts.len() as u32 + 1,
+                        player: packet.get(1).copied().unwrap_or_default(),
+                        command: packet[0],
+                    });
+                }
+            }
+            Op::Checkpoint { checkpoint: c, .. } => {
+                checkpoint = Some(c);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let checkpoint = checkpoint.ok_or(Error::NoCheckpoint)?;
+    let players = header
+        .players
+        .iter()
+        .map(|p| Player {
+            objects: p.objects.iter().map(unit_ai).collect(),
+            computer: false,
+            unsupported: None,
+        })
+        .collect();
+    let replay = &header.replay;
+    let mut turns = Turns::new(
+        replay.world_time,
+        replay.random_seed_2,
+        replay.player_turn as usize,
+        replay.player_turns.clone(),
+        players,
+    );
+    for &dt in &dts {
+        turns.tick(dt);
+    }
+    checkpoint
+        .lanes
+        .iter()
+        .filter(|lane| lane.iter().any(|&w| w != 0))
+        .map(|lane| {
+            let id = lane[8];
+            let section = header
+                .players
+                .get(id as usize)
+                .ok_or(Error::NoSuchPlayer(id))?;
+            let simulated = turns.players[id as usize].clone();
+            let mut state = player_state(section, id);
+            let timers = section
+                .objects
+                .iter()
+                .zip(&simulated.objects)
+                .filter(|(o, _)| !NOT_COUNTED.contains(&o.static_part().main_id))
+                .map(|(_, ai)| ai.as_ref().map(|ai| ai.retarget_timer as i32));
+            for (object, timer) in state.live.iter_mut().zip(timers) {
+                object.retarget_timer = timer;
+            }
+            Ok(Word9 {
+                id,
+                simulated: player_block(&state)[9],
+                checkpoint: lane[9],
+                chain_break,
+                unsupported: simulated.unsupported,
+            })
+        })
+        .collect()
+}
