@@ -1,4 +1,3 @@
-extern crate genie;
 extern crate genie_drs;
 extern crate structopt;
 

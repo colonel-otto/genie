@@ -1,10 +1,9 @@
 //! Sets a hotkey in a hotkey file.
 
-extern crate genie;
 extern crate genie_hki;
 extern crate structopt;
 
-use genie::hki::HotkeyInfo;
+use genie_formats::hki::HotkeyInfo;
 use std::fs::File;
 use std::path::PathBuf;
 use structopt::StructOpt;

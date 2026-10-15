@@ -13,8 +13,8 @@
 //!
 //! ```rust
 //! # fn main() -> anyhow::Result<()> {
-//! use genie::DatFile;
-//! let mut input = std::fs::File::open("./crates/genie-dat/fixtures/aok.dat")?;
+//! use genie_formats::DatFile;
+//! let mut input = std::fs::File::open("../genie-dat/fixtures/aok.dat")?;
 //!
 //! let dat = DatFile::read_from(&mut input)?;
 //! assert_eq!(dat.civilizations.len(), 14);
@@ -34,11 +34,11 @@
 //!
 //! ```rust
 //! # fn main() -> anyhow::Result<()> {
-//! use genie::Scenario;
-//! use genie::scx::VersionBundle;
+//! use genie_formats::Scenario;
+//! use genie_formats::scx::VersionBundle;
 //!
 //! /// Read an AoE1 scenario file
-//! let infile = "./crates/genie-scx/test/scenarios/Dawn of a New Age.scn";
+//! let infile = "../genie-scx/test/scenarios/Dawn of a New Age.scn";
 //! let input = std::fs::File::open(infile)?;
 //! let output = std::fs::File::create("converted.scx")?;
 //!

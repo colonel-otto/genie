@@ -9,4 +9,4 @@ Read different types of language resource files from Age of Empires 1 and 2.
 
 ## License
 
-[GPL-3.0](../../LICENSE.md)
+[GPL-3.0](../../../LICENSE-GPL-3.0)

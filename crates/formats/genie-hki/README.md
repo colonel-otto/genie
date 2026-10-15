@@ -118,4 +118,4 @@ Unlisted keycodes are blank or whitespace in the hotkey menu.
 
 ## License
 
-[GPL-3.0](../../LICENSE.md)
+[GPL-3.0](../../../LICENSE-GPL-3.0)

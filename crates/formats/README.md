@@ -30,4 +30,4 @@ cargo run --example wolololang ~/path/to/input/key-value-strings.txt ~/path/to/o
 
 ## License
 
-[GPL-3.0](./LICENSE.md)
+[GPL-3.0](../../LICENSE-GPL-3.0)

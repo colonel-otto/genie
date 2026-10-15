@@ -1,0 +1,24 @@
+genie
+=====
+
+A deterministic reimplementation of the Age of Empires II: Definitive Edition engine, plus readers
+and writers for the game's file formats.
+
+Licences
+--------
+
+- Format crates, crates/formats/*: GPL-3.0-only (genie-drs: GPL-3.0-or-later). Text: LICENSE-GPL-3.0.
+- Engine crates: AGPL-3.0-only. Text: LICENSE-AGPL-3.0.
+
+Engine crates may depend on format crates. Format crates never depend on engine crates, so a GPL
+crate never pulls in AGPL code.
+
+Origin of the format crates
+---------------------------
+
+The crates under crates/formats/ continue genie-rs (https://github.com/SiegeEngineers/genie-rs),
+written mainly by Renée Kooi (goto-bus-stop) with its contributors. They were imported with their
+full history on 2026-10-15; the root umbrella crate `genie` became `genie-formats`.
+
+Age of Empires II (c) Microsoft Corporation. This project is not endorsed by or affiliated with
+Microsoft.

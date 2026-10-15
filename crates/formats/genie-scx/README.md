@@ -9,4 +9,4 @@ Age of Empires 2 scenario reader, writer, and converter.
 
 ## License
 
-[GPL-3.0](../../LICENSE.md)
+[GPL-3.0](../../../LICENSE-GPL-3.0)

@@ -48,4 +48,4 @@ for table in drs.tables() {
 
 ## License
 
-[GPL-3.0 or later](./LICENSE.md)
+[GPL-3.0 or later](./LICENSE)

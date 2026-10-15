@@ -6,11 +6,10 @@
 // Example language file path:
 // D:\SteamLibrary\steamapps\common\Age2HD\resources\en\strings\key-value\key-value-strings-utf8.txt
 
-extern crate genie;
 extern crate structopt;
 
-use genie::hki::{self, HotkeyInfo};
-use genie::lang::LangFileType;
+use genie_formats::hki::{self, HotkeyInfo};
+use genie_formats::lang::LangFileType;
 use std::fs::File;
 use std::path::PathBuf;
 use structopt::StructOpt;

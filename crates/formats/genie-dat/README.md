@@ -9,4 +9,4 @@ Read and write Age of Empires I/II data files.
 
 ## License
 
-[GPL-3.0](../../LICENSE.md)
+[GPL-3.0](../../../LICENSE-GPL-3.0)
