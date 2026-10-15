@@ -1,6 +1,6 @@
 //! A player section (pattern: `Init`), read through its object lists.
 
-use super::generated::player::{PlayerMasters, WorldPlayer};
+use super::generated::player::{PlayerMasters, RgeVisibleMap, VisibleResourceManager, WorldPlayer};
 use binrw::io::{Read, Seek};
 use binrw::{BinRead, binread};
 
@@ -31,8 +31,10 @@ pub struct PlayerSection {
     /// The player's masters (unit types): the enabled flags, then each enabled master by type
     /// (generated from the player's master list load).
     pub masters: PlayerMasters,
-    pub initial_map: InitialMap,
-    pub state_restore: StateRestore,
+    /// The player's visible map (generated; HD `RGE_Visible_Map`).
+    pub initial_map: RgeVisibleMap,
+    /// The player's visible resources (generated; HD `Visible_Resource_Manager`).
+    pub state_restore: VisibleResourceManager,
     pub unknown23: u32,
     /// The live objects (the list the checkpoint sums over).
     pub objects: Vec<super::object::Object>,
@@ -157,54 +159,6 @@ pub struct TechUnlock {
     pub unknown2: Vec<u8>,
 }
 
-#[binread]
-#[derive(Debug, Clone, PartialEq)]
-#[br(little)]
-pub struct InitialMap {
-    pub size_x: u32,
-    pub size_y: u32,
-    pub unknown1: u32,
-    pub unknown2: u16,
-    #[br(count = size_x * size_y)]
-    pub tiles: Vec<i16>,
-}
-
-/// The restore table. The pattern reads restore objects until the next `0x0b` byte instead of
-/// using `restore_sizes`; this port does the same.
-#[binread]
-#[derive(Debug, Clone, PartialEq)]
-#[br(little)]
-pub struct StateRestore {
-    #[br(temp)]
-    count: u32,
-    #[br(count = count)]
-    pub sizes: Vec<[u32; 2]>,
-    #[br(parse_with = restore_objects)]
-    pub objects: Vec<RestoreObject>,
-}
-
-#[binread]
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[br(little)]
-pub struct RestoreObject {
-    pub unknown1: [u8; 4],
-    pub unknown2: u32,
-    pub unknown3: u32,
-    pub unknown4: u32,
-    pub unknown5: u8,
-    pub unknown6: f32,
-    pub unknown7: f32,
-}
-
-#[binrw::parser(reader, endian)]
-fn restore_objects() -> binrw::BinResult<Vec<RestoreObject>> {
-    let mut out = Vec::new();
-    while super::primitives::peek_u8(reader)? != 0x0b {
-        out.push(RestoreObject::read_options(reader, endian, ())?);
-    }
-    Ok(out)
-}
-
 /// Why a player section could not be read.
 #[derive(Debug)]
 pub enum ReadError {
@@ -283,9 +237,9 @@ pub fn read_player<R: Read + Seek>(
     ends.enabled_objects = masters_start + 5 + 4 * masters.enabled.len();
     ends.initial_objects = position(r)?;
     expect(r, b"\x0b")?;
-    let initial_map = InitialMap::read(r)?;
+    let initial_map = RgeVisibleMap::read_args(r, (ver,))?;
     ends.initial_map = position(r)?;
-    let state_restore = StateRestore::read(r)?;
+    let state_restore = VisibleResourceManager::read_args(r, (ver,))?;
     ends.initial_state_restore = position(r)?;
     expect(r, b"\x0b\x00")?;
     let unknown23 = u32::read_le(r)?;

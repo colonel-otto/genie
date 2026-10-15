@@ -1091,3 +1091,91 @@ pub struct PlayerMasters {
     #[br(magic = b"\x0b", if(!(master_object_num < 1) && master_object_num > 0), count = enabled.iter().filter(|&&e| e != 0).count() as usize, args { inner: (ver,) })]
     pub masters: Option<Vec<PlayerMaster>>,
 }
+
+/// Read by `FUN_141282780` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct RgeVisibleMap {
+    /// HD RGE_Visible_Map::widthValue (int32), after four pointers
+    pub width_value: i32,
+    /// HD RGE_Visible_Map::heightValue (int32)
+    pub height_value: i32,
+    /// HD RGE_Visible_Map::numberTilesExploredValue (int32)
+    pub number_tiles_explored_value: i32,
+    /// unnamed in the binary
+    /// read at 0x1412829a8 into a local (local_58)
+    pub unnamed_at_0x1412829a8: u16,
+    /// HD RGE_Visible_Map::visible_map (int16 per tile)
+    #[br(if(!((width_value < 1) || (height_value < 1))), count = (width_value.max(0) as usize) * (height_value.max(0) as usize))]
+    pub visible_map: Option<Vec<i16>>,
+}
+
+/// Read by `FUN_141289120` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct VisibleResourceRec {
+    /// unnamed in the binary
+    /// read at 0x141289181 into a local (local_218)
+    pub unnamed_at_0x141289181: u32,
+    /// unnamed in the binary
+    /// read at 0x141289264
+    #[br(if(!(unnamed_at_0x141289181 != 1448232259)))]
+    pub unnamed_0x8: Option<i32>,
+    /// unnamed in the binary
+    /// read at 0x14128938f
+    #[br(if(!(unnamed_at_0x141289181 != 1448232259) && !(unnamed_0x8.unwrap_or_default() != 1)))]
+    pub unnamed_0xc: Option<u32>,
+    /// unnamed in the binary
+    /// read at 0x141289443
+    #[br(if(!(unnamed_at_0x141289181 != 1448232259) && !(unnamed_0x8.unwrap_or_default() != 1)))]
+    pub unnamed_0x10: Option<u32>,
+    /// unnamed in the binary
+    /// read at 0x1412894f7
+    #[br(if(!(unnamed_at_0x141289181 != 1448232259) && !(unnamed_0x8.unwrap_or_default() != 1)))]
+    pub unnamed_0x14: Option<u8>,
+    /// unnamed in the binary
+    /// read at 0x1412895ab
+    #[br(if(!(unnamed_at_0x141289181 != 1448232259) && !(unnamed_0x8.unwrap_or_default() != 1)))]
+    pub unnamed_0x18: Option<u32>,
+    /// unnamed in the binary
+    /// read at 0x141289665
+    #[br(if(!(unnamed_at_0x141289181 != 1448232259) && !(unnamed_0x8.unwrap_or_default() != 1)))]
+    pub unnamed_0x1c: Option<u32>,
+}
+
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little)]
+pub struct VisibleResourceListSize {
+    /// HD Visible_Resource_Manager::VR_ListSize[i]
+    pub vr_list_size: i32,
+    /// HD Visible_Resource_Manager::VR_ListUsed[i]
+    pub vr_list_used: i32,
+}
+
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(vr_list_used: i32))]
+pub struct VisibleResourceList {
+    /// unnamed in the binary
+    /// read by 0x141289120
+    #[br(count = vr_list_used as usize)]
+    pub visible_resource_rec: Vec<VisibleResourceRec>,
+}
+
+/// Read by `FUN_141287720` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct VisibleResourceManager {
+    /// HD Visible_Resource_Manager::num_visible_resource_lists
+    pub num_visible_resource_lists: i32,
+    /// size and used count per list
+    #[br(if(!(num_visible_resource_lists < 1) && num_visible_resource_lists > 0), count = num_visible_resource_lists.max(0) as usize)]
+    pub list_sizes: Option<Vec<VisibleResourceListSize>>,
+    /// the used records per list
+    #[br(if(!(num_visible_resource_lists < 1) && num_visible_resource_lists > 0), parse_with = binrw::helpers::args_iter(list_sizes.iter().flatten().map(|e| e.vr_list_used.max(0)).map(|x| (x as i32,)).collect::<Vec<_>>()))]
+    pub lists: Option<Vec<VisibleResourceList>>,
+}

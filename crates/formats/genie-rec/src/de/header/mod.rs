@@ -37,8 +37,7 @@ pub use object::{
     OrderQueue, PatrolPath, ProductionQueueEntry, StaticObject, UnitAction, UnitAi,
 };
 pub use player::{
-    InitialMap, PlayerEnds, PlayerPrelude, PlayerSection, PlayerTail, RestoreObject, StateRestore,
-    TechUnlock, UnitUnlock, Unlock, Unlocks,
+    PlayerEnds, PlayerPrelude, PlayerSection, PlayerTail, TechUnlock, UnitUnlock, Unlock, Unlocks,
 };
 pub use primitives::{DeString, StringList};
 pub use replay::Replay;
