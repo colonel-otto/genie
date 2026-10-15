@@ -20,6 +20,7 @@
 
 pub mod actions;
 pub mod ai;
+pub mod de;
 pub mod element;
 pub mod header;
 pub mod map;
