@@ -327,12 +327,16 @@ pub struct MovingObject {
     pub unknown_moving_1: [u8; 21],
 }
 
-/// One entry of an action list; it holds its own sub-actions.
+/// One entry of an action list; it holds its own sub-actions. The base part follows
+/// `RGE_Action::save` (158041 `0x140a78790`); the type-specific tails are the pattern's and are
+/// unchecked: no action list of the tier-1 corpus holds an action.
 #[binread]
 #[derive(Debug, Clone, PartialEq)]
 #[br(little)]
 pub struct UnitAction {
     pub action_type: u16,
+    /// `+0x18`, which checkpoint word 9 adds. The pattern does not read it.
+    pub state: u8,
     pub target_object_pointer: i32,
     pub target_object_pointer2: i32,
     pub target_object_id: i32,
@@ -888,6 +892,28 @@ mod tests {
         assert_eq!(tail.active_stingers.len(), 1);
         assert_eq!(tail.local_attributes, vec![(9, 2.5)]);
         assert_eq!((tail.conversion_rate, tail.skip_volley_attack), (1.0, 1));
+    }
+
+    #[test]
+    fn an_action_reads_its_state_after_the_type() {
+        let bytes = Bytes::default()
+            .u16(107) // action type
+            .u8(10) // state
+            .i32(-1) // target, target 2
+            .i32(-1)
+            .i32(-1) // target id, target id 2
+            .i32(-1)
+            .zeros(12 + 4) // position, timer
+            .u8(0) // target moved state
+            .u16(0) // task
+            .u8(0) // sub-action value
+            .u16(0) // no sub-actions
+            .i16(-1) // sprite
+            .u16(0); // the end of the list
+        let mut r = Cursor::new(&bytes.0[..]);
+        let actions = action_list(&mut r, binrw::Endian::Little, ()).unwrap();
+        assert_eq!(r.position(), bytes.0.len() as u64);
+        assert_eq!((actions[0].action_type, actions[0].state), (107, 10));
     }
 
     #[test]
