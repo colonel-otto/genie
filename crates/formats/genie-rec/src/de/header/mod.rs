@@ -8,6 +8,8 @@
 //! gates compare [`SaveVersion::hundredths`](super::SaveVersion::hundredths): 6660 is save 66.6.
 
 mod ai;
+pub mod generated;
+mod layout_types;
 mod lobby;
 mod main_object;
 mod map;
@@ -21,6 +23,7 @@ mod test_bytes;
 mod tribe;
 
 pub use ai::{AiConfig, AiData, AiRule, AiRuleGroup, SizedString32};
+pub use layout_types::{LenString16, LenString32, LenVec32};
 pub use lobby::{AiFile, LobbyPlayer, LobbySettings};
 pub use main_object::{MainObject, Task, TaskList};
 pub use map::{MapInfo, MapZone, Obstructions, Tile};
@@ -70,6 +73,12 @@ impl VersionBlock {
             build: self.build,
         }
         .hundredths()
+    }
+
+    /// The version as the game compares it: 16.16 fixed point, e.g. `0x429999` for 66.6 (158041
+    /// `DAT_143cd8948`). The generated readers' version gates take this value.
+    pub fn raw(&self) -> u32 {
+        (u32::from(self.major) << 16) | u32::from(self.minor)
     }
 }
 
@@ -156,9 +165,10 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, super::Error> {
     let identifier = u32::read_le(r).map_err(header_error)?;
     ends.players_start = position(r)?;
     let num_players = replay.num_players as usize;
+    let ver = version.raw();
     let players = (0..num_players)
         .map(|_| {
-            player::read_player(r, v, num_players).map_err(|e| match e {
+            player::read_player(r, v, ver, num_players).map_err(|e| match e {
                 player::ReadError::Bin(e) => header_error(e),
                 player::ReadError::Unsupported { what, at } => {
                     super::Error::Unsupported { what, at }

@@ -1,9 +1,9 @@
 //! A player section (pattern: `Init`), read through its object lists.
 
+use super::generated::player::WorldPlayer;
 use super::main_object::MainObject;
-use super::primitives::DeString;
 use binrw::io::{Read, Seek};
-use binrw::{BinRead, NullString, binread};
+use binrw::{BinRead, binread};
 
 /// Where the parts of a player section end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -53,82 +53,16 @@ pub struct PlayerTail {
     pub unknown24: [u32; 6],
 }
 
-/// The player fields before the tribe player's tech states: the base player save
-/// (`WorldPlayerBase::save`, 158041 `0x14166b820`) and the first tribe player fields (`unknown16`).
+/// The player fields before the tribe player's tech states: the player class byte, then the
+/// generated part of the player load (`WorldPlayer.cpp`, which starts with `WorldPlayerBase.cpp`).
 #[binread]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(v: u32, num_players: usize))]
+#[br(little, import(ver: u32, num_players: usize))]
 pub struct PlayerPrelude {
+    /// `&type`, read by the player list's load (158041 `0x14167b900`) to pick the player class.
     pub player_type: u8,
-    pub unknown1: u8,
-    #[br(count = num_players)]
-    pub other_player_diplomacy: Vec<u8>,
-    #[br(count = num_players)]
-    pub player_stances: Vec<u32>,
-    pub allied_vision: u32,
-    pub allied_victory: u8,
-    pub name_length: u16,
-    pub name: NullString,
-    #[br(magic = b"\x16", temp)]
-    num_attributes: u32,
-    #[br(magic = b"\x21", count = num_attributes)]
-    pub attributes: Vec<f32>,
-    #[br(count = num_attributes)]
-    pub extra_attributes: Vec<f32>,
-    #[br(magic = b"\x0b")]
-    pub camera: [f32; 2],
-    #[br(temp)]
-    num_saved_views: i32,
-    #[br(count = num_saved_views.max(0) as usize)]
-    pub saved_views: Vec<[f32; 2]>,
-    pub spawn_x: u16,
-    pub spawn_y: u16,
-    pub culture: u8,
-    #[br(if(v >= 6720))]
-    pub player_name: Option<DeString>,
-    pub civilization: u8,
-    pub game_status: u8,
-    pub resigned: u8,
-    pub unknown2: u8,
-    pub player_color: u8,
-    pub unknown3: u8,
-    #[br(parse_with = player_marker, args(v))]
-    pub unknown4: u8,
-    #[br(magic = b"\x0b")]
-    pub unknown5: [u32; 2],
-    #[br(temp)]
-    unknown_count: u32,
-    #[br(count = unknown_count)]
-    pub unknown_vals: Vec<u32>,
-    pub unknown6: [u32; 5],
-    pub unknown7: f32,
-    pub unknown8: [u32; 14],
-    pub unknown9: f32,
-    pub unknown10: u32,
-    pub unknown11: f32,
-    pub unknown12: u32,
-    pub unknown13: f32,
-    pub unknown14: [u32; 14],
-    pub unknown15: f32,
-    #[br(count = 61)]
-    pub unknown16: Vec<u8>,
-}
-
-/// Before 67.2 the byte before `unknown4` is `00 0b`; from 67.2 on it is `0b`.
-#[binrw::parser(reader, endian)]
-fn player_marker(v: u32) -> binrw::BinResult<u8> {
-    let expected: &[u8] = if v >= 6720 { b"\x0b" } else { b"\x00\x0b" };
-    for &b in expected {
-        let pos = reader.stream_position()?;
-        let got = u8::read_options(reader, endian, ())?;
-        if got != b {
-            return Err(binrw::Error::BadMagic {
-                pos,
-                found: Box::new(got),
-            });
-        }
-    }
-    u8::read_options(reader, endian, ())
+    #[br(args(ver, num_players))]
+    pub player: WorldPlayer,
 }
 
 /// The age, building, unit and tech unlock tables.
@@ -332,6 +266,7 @@ fn read_tail<R: Read + Seek>(r: &mut R, v: u32) -> Result<PlayerTail, ReadError>
 pub fn read_player<R: Read + Seek>(
     r: &mut R,
     v: u32,
+    ver: u32,
     num_players: usize,
 ) -> Result<PlayerSection, ReadError> {
     use super::primitives::expect;
@@ -339,7 +274,7 @@ pub fn read_player<R: Read + Seek>(
         start: position(r)?,
         ..PlayerEnds::default()
     };
-    let prelude = PlayerPrelude::read_args(r, (v, num_players))?;
+    let prelude = PlayerPrelude::read_args(r, (ver, num_players))?;
     let tribe = super::tribe::TribeState::read_args(r, (v, num_players))?;
     let unlocks = Unlocks::read(r)?;
     let tribe_end = super::tribe::read_end(r, prelude.player_type).map_err(unsupported_or_bin)?;

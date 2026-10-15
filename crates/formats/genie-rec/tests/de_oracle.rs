@@ -80,6 +80,13 @@ struct Crossing {
 /// The first of `ours` (position, length) that neither nests inside one read of `game_sizes` (read
 /// back to back from offset 0) nor covers whole game reads; also a read past the game's last byte.
 fn first_crossing(ours: &[(u64, u64)], game_sizes: &[u32]) -> Option<Crossing> {
+    crossings(ours, game_sizes).into_iter().next()
+}
+
+/// Every read of `ours` that crosses a game read (see `first_crossing`). After a misparse the two
+/// readers can fall back into step, so later crossings are separate findings.
+fn crossings(ours: &[(u64, u64)], game_sizes: &[u32]) -> Vec<Crossing> {
+    let mut found = Vec::new();
     let mut starts = Vec::with_capacity(game_sizes.len() + 1);
     let mut at = 0u64;
     for &s in game_sizes {
@@ -100,21 +107,22 @@ fn first_crossing(ours: &[(u64, u64)], game_sizes: &[u32]) -> Option<Crossing> {
             (starts[i], u64::from(game_sizes[i]), i)
         };
         if stop > end {
-            return Some(Crossing {
+            found.push(Crossing {
                 ours: (pos, len),
                 theirs: theirs(),
             });
+            break;
         }
         let inside = stop <= starts[i + 1];
         let covers = pos == starts[i] && is_boundary(stop);
         if !inside && !covers {
-            return Some(Crossing {
+            found.push(Crossing {
                 ours: (pos, len),
                 theirs: theirs(),
             });
         }
     }
-    None
+    found
 }
 
 #[test]
@@ -224,9 +232,11 @@ fn the_reader_agrees_with_the_games_reads_on_every_traced_recording() {
     let mut paths = Vec::new();
     recordings(&corpus, &mut paths);
     paths.sort();
-    let (mut checked, mut crossings, mut stops) = (0, Vec::new(), Vec::new());
+    let (mut checked, mut crossed, mut stops) = (0, Vec::new(), Vec::new());
     let mut first_context = None;
     let (mut read_by_us, mut read_by_game) = (0u64, 0u64);
+    // crossings per caller of the crossed game read: which routines this reader misreads
+    let mut by_caller = std::collections::BTreeMap::<u32, (usize, usize)>::new();
     for path in paths {
         let trace_path = traces.join(trace_name(&path, &corpus));
         if !trace_path.exists() {
@@ -246,12 +256,21 @@ fn the_reader_agrees_with_the_games_reads_on_every_traced_recording() {
         read_by_us += reader.inner.position();
         read_by_game += total;
         stops.push((reader.inner.position(), total, path.clone()));
-        if let Some(c) = first_crossing(&reader.reads, &trace.sizes) {
+        let all = crossings(&reader.reads, &trace.sizes);
+        let mut callers_here = std::collections::BTreeSet::new();
+        for c in &all {
+            let e = by_caller.entry(trace.callers[c.theirs.2]).or_default();
+            e.0 += 1;
+            if callers_here.insert(trace.callers[c.theirs.2]) {
+                e.1 += 1;
+            }
+        }
+        if let Some(c) = all.into_iter().next() {
             if first_context.is_none() {
                 first_context = Some(context(&header, &reader.reads, &trace, c.ours.0, 24));
             }
             let (site, caller) = (trace.sites[c.theirs.2], trace.callers[c.theirs.2]);
-            crossings.push(format!(
+            crossed.push(format!(
                 "{}: our read {:?} crosses the game's read at {:#x} (+{}, site {:#x} from {:#x}; RVAs)",
                 path.display(),
                 c.ours,
@@ -269,12 +288,24 @@ fn the_reader_agrees_with_the_games_reads_on_every_traced_recording() {
     for (at, total, path) in stops.iter().take(3) {
         eprintln!("  stops at {at:#x} of {total:#x}: {}", path.display());
     }
+    let mut ranked: Vec<_> = by_caller.into_iter().collect();
+    ranked.sort_by_key(|(_, (n, _))| std::cmp::Reverse(*n));
+    eprintln!("  crossed game reads come from {} callers", ranked.len());
+    // GENIE_REC_ALL_CALLERS lists every caller, not only the first twelve
+    let shown = if std::env::var_os("GENIE_REC_ALL_CALLERS").is_some() {
+        ranked.len()
+    } else {
+        12
+    };
+    for (caller, (n, recs)) in ranked.iter().take(shown) {
+        eprintln!("  {n:>6} crossings in {recs:>3} recordings at game reads from {caller:#x}");
+    }
     assert!(checked > 0, "no trace in {}", traces.display());
     assert!(
-        crossings.is_empty(),
+        crossed.is_empty(),
         "{} recordings cross the game's reads:\n{}\nfirst one:\n{}",
-        crossings.len(),
-        crossings
+        crossed.len(),
+        crossed
             .iter()
             .take(5)
             .cloned()
