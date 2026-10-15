@@ -1,4 +1,4 @@
-//! A player section (pattern: `Init`), read up to the start of the object lists.
+//! A player section (pattern: `Init`), read through its object lists.
 
 use super::main_object::MainObject;
 use super::primitives::DeString;
@@ -15,6 +15,8 @@ pub struct PlayerEnds {
     pub objects_start: usize,
     /// The end of the last live object.
     pub objects_end: usize,
+    /// The end of what this reader parsed of the section.
+    pub end: usize,
 }
 
 /// One player's section.
@@ -31,6 +33,22 @@ pub struct PlayerSection {
     pub unknown23: u32,
     /// The live objects (the list the checkpoint sums over).
     pub objects: Vec<super::object::Object>,
+    /// The lists after the live objects; the pattern does not read Gaia's.
+    pub tail: Option<PlayerTail>,
+    /// Bytes jumped over by searching for the next player, as the pattern does (Gaia's tail).
+    pub skipped: Option<std::ops::Range<usize>>,
+}
+
+/// The sleeping and doppelganger object lists after a player's live objects.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerTail {
+    pub sleeping_size: u32,
+    pub sleeping_grow: u32,
+    pub sleeping_objects: Vec<super::object::Object>,
+    pub doppel_size: u32,
+    pub doppel_grow: u32,
+    pub doppel_objects: Vec<super::object::Object>,
+    pub unknown24: [u32; 6],
 }
 
 /// The player fields before the unlock tables.
@@ -103,6 +121,12 @@ pub struct PlayerPrelude {
     pub unknown_section_4: Vec<u8>,
     #[br(magic = b"\x0b", count = 72)]
     pub unknown_section_5: Vec<u8>,
+}
+
+impl PlayerPrelude {
+    /// Where `name_length` lies after the section start, without the `num_players * 5` bytes of
+    /// diplomacy and stances: `player_type`, `unknown1`, `allied_vision`, `allied_victory`.
+    const NAME_LENGTH_AT: usize = 1 + 1 + 4 + 1;
 }
 
 /// Before 67.2 the byte before `unknown4` is `00 0b`; from 67.2 on it is `0b`.
@@ -327,7 +351,67 @@ impl From<binrw::Error> for ReadError {
     }
 }
 
-/// Read one player section up to the start of its object lists.
+fn objects_of(
+    r: &mut binrw::io::Cursor<&[u8]>,
+    v: u32,
+) -> Result<Vec<super::object::Object>, ReadError> {
+    super::object::read_objects(r, v).map_err(unsupported_or_bin)
+}
+
+fn unsupported_or_bin(e: binrw::Error) -> ReadError {
+    match super::object::unsupported_in(&e) {
+        Some((what, at)) => ReadError::Unsupported { what, at },
+        None => ReadError::Bin(e),
+    }
+}
+
+fn read_tail(r: &mut binrw::io::Cursor<&[u8]>, v: u32) -> Result<PlayerTail, ReadError> {
+    use super::primitives::expect;
+    let sleeping_size = u32::read_le(r)?;
+    let sleeping_grow = u32::read_le(r)?;
+    let sleeping_objects = objects_of(r, v)?;
+    expect(r, b"\x00\x0b")?;
+    let doppel_size = u32::read_le(r)?;
+    let doppel_grow = u32::read_le(r)?;
+    let doppel_objects = objects_of(r, v)?;
+    expect(r, b"\x00\x0b\x00\x0b")?;
+    let unknown24 = <[u32; 6]>::read_le(r)?;
+    expect(r, b"\x00\x0b")?;
+    Ok(PlayerTail {
+        sleeping_size,
+        sleeping_grow,
+        sleeping_objects,
+        doppel_size,
+        doppel_grow,
+        doppel_objects,
+        unknown24,
+    })
+}
+
+/// The pattern's `find_next_player`: find the next `16 <num_attributes>` from `from`, walk back over
+/// the name to its `u16` length, and back again by `backtrack`, the distance from a section's start
+/// to its `name_length`. The pattern matches only the low byte of `num_attributes`, which also
+/// occurs inside Gaia's tail; this port matches `16 <num_attributes as u32> 21`, which every player
+/// section has there.
+fn find_next_player(
+    data: &[u8],
+    from: usize,
+    num_attributes: u32,
+    backtrack: usize,
+) -> Option<usize> {
+    let mut needle = [0x16, 0, 0, 0, 0, 0x21];
+    needle[1..5].copy_from_slice(&num_attributes.to_le_bytes());
+    let loc = from + data.get(from..)?.windows(6).position(|w| w == needle)?;
+    let name_len = (1..=loc.saturating_sub(2)).find(|&name_len| {
+        let at = loc - name_len - 2;
+        u16::from_le_bytes([data[at], data[at + 1]]) as usize == name_len
+    })?;
+    (loc - name_len - 2).checked_sub(backtrack)
+}
+
+/// Read one player section: down to the live objects, then the tail lists for every player but
+/// Gaia (`player_type` 2), whose tail the pattern skips by searching for the next player. As in the
+/// pattern, every player but the last one moves to where that search lands.
 pub fn read_player(
     r: &mut binrw::io::Cursor<&[u8]>,
     v: u32,
@@ -363,7 +447,8 @@ pub fn read_player(
     expect(r, b"\x0b")?;
     let main_objects = (0..main_count)
         .map(|_| MainObject::read_args(r, (v,)))
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(unsupported_or_bin)?;
     ends.initial_objects = r.position() as usize;
     expect(r, b"\x0b")?;
     let initial_map = InitialMap::read(r)?;
@@ -374,13 +459,29 @@ pub fn read_player(
     let unknown23 = u32::read_le(r)?;
     expect(r, b"\x02\x00\x00")?;
     ends.objects_start = r.position() as usize;
-    let objects =
-        super::object::read_objects(r, v).map_err(|e| match super::object::unsupported_in(&e) {
-            Some((what, at)) => ReadError::Unsupported { what, at },
-            None => ReadError::Bin(e),
-        })?;
+    let objects = objects_of(r, v)?;
     ends.objects_end = r.position() as usize;
     expect(r, b"\x00\x0b")?;
+    let tail = (prelude.player_type != 2)
+        .then(|| read_tail(r, v))
+        .transpose()?;
+    ends.end = r.position() as usize;
+    let mut skipped = None;
+    // the pattern's test for "not the last player": a player's diplomacy towards itself is 0
+    if prelude.other_player_diplomacy.last() != Some(&0) {
+        let data: &[u8] = r.get_ref();
+        let backtrack = PlayerPrelude::NAME_LENGTH_AT + num_players * 5;
+        let next = find_next_player(data, ends.end, prelude.attributes.len() as u32, backtrack)
+            .filter(|&next| next >= ends.end)
+            .ok_or(ReadError::Unsupported {
+                what: "next player not found",
+                at: ends.end,
+            })?;
+        if next > ends.end {
+            skipped = Some(ends.end..next);
+        }
+        r.set_position(next as u64);
+    }
     Ok(PlayerSection {
         ends,
         prelude,
@@ -391,5 +492,40 @@ pub fn read_player(
         state_restore,
         unknown23,
         objects,
+        tail,
+        skipped,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::find_next_player;
+
+    /// A section start, 3 bytes before the name length, then a name and `16 <u32> 21`.
+    fn section(name: &[u8], num_attributes: u32) -> Vec<u8> {
+        let mut out = vec![0xaa; 3];
+        out.extend_from_slice(&(name.len() as u16 + 1).to_le_bytes());
+        out.extend_from_slice(name);
+        out.push(0);
+        out.push(0x16);
+        out.extend_from_slice(&num_attributes.to_le_bytes());
+        out.push(0x21);
+        out
+    }
+
+    #[test]
+    fn finds_the_section_start() {
+        let mut data = vec![0x55; 10];
+        data.extend(section(b"Metal", 601));
+        assert_eq!(find_next_player(&data, 0, 601, 3), Some(10));
+        assert_eq!(find_next_player(&data, data.len() - 5, 601, 3), None);
+    }
+
+    #[test]
+    fn skips_a_low_byte_match() {
+        // `16 59` is 601's low byte, but no section follows it: the pattern would stop here
+        let mut data = vec![0x01, 0x00, 0x16, 0x59, 0x56, 0x40];
+        data.extend(section(b"Vlad Tepes", 601));
+        assert_eq!(find_next_player(&data, 0, 601, 3), Some(6));
+    }
 }

@@ -1,8 +1,9 @@
 //! The live objects of a player (pattern: `Object` and the chain `StaticObject` … `Building`).
 //!
-//! Each kind extends the previous one: static, animated, moving, action, combat, building. Two
-//! features the pattern itself does not implement stop the reader with an `Unsupported` error:
-//! object properties (`has_object_props == 1`) and an own base unit in a combat object.
+//! Each kind extends the previous one: static, animated, moving, action, combat, building. Features
+//! the pattern itself does not implement stop the reader with an `Unsupported` error: object
+//! properties (`has_object_props == 1`) and an own base unit in a combat object here, a main
+//! object's task list in `main_object`.
 
 use super::primitives::{DeString, peek_u8};
 use binrw::{BinRead, binread};
@@ -86,7 +87,7 @@ impl std::fmt::Display for UnsupportedFeature {
     }
 }
 
-fn unsupported<R: binrw::io::Seek>(reader: &mut R, what: &'static str) -> binrw::Error {
+pub(super) fn unsupported<R: binrw::io::Seek>(reader: &mut R, what: &'static str) -> binrw::Error {
     binrw::Error::Custom {
         pos: reader.stream_position().unwrap_or_default(),
         err: Box::new(UnsupportedFeature(what)),

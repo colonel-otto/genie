@@ -134,6 +134,10 @@ pub struct MainOffence {
     pub line_of_sight: f32,
     pub work_rate: f32,
     pub unknown5: f32,
+    /// 0 in every main object the pattern reads. Where it is 1 (a civilisation's villagers or
+    /// fortified church, for example), what follows looks like a task list of the player's own, which
+    /// the pattern does not read: the reader stops with `Unsupported`.
+    #[br(parse_with = no_task_list)]
     pub unknown6: u8,
     pub attack_sound: i16,
     pub move_sound: i16,
@@ -172,6 +176,17 @@ pub struct MainOffence {
     pub garrison_firepower: f32,
     pub attack_graphic_2: i16,
     pub graphic_displacement: [f32; 3],
+}
+
+#[binrw::parser(reader, endian)]
+fn no_task_list() -> binrw::BinResult<u8> {
+    match u8::read_options(reader, endian, ())? {
+        0 => Ok(0),
+        _ => Err(super::object::unsupported(
+            reader,
+            "main object task list (unknown6 != 0)",
+        )),
+    }
 }
 
 /// An attack bonus or armour entry: an armour class and its amount.

@@ -77,29 +77,66 @@ fn marvinblue_sections_end_where_imhex_says() {
     assert_eq!(ends.map, expected("map_info"));
     assert_eq!(ends.players_start, expected_start("players"));
 
-    let p0 = &header.players[0];
-    assert_eq!(p0.ends.start, expected_start("player0"));
-    assert_eq!(
-        (p0.ends.enabled_objects, p0.ends.initial_objects),
-        (
-            expected("player0.enabled_objects"),
-            expected("player0.initial_objects")
-        )
-    );
-    assert_eq!(
-        p0.main_objects.len(),
-        expected_count("player0.initial_objects")
-    );
-    assert_eq!(
-        (p0.ends.initial_map, p0.ends.initial_state_restore),
-        (
-            expected("player0.initial_map"),
-            expected("player0.initial_state_restore")
-        )
-    );
-    assert_eq!(p0.ends.objects_start, expected_start("player0.objects"));
-    assert_eq!(p0.objects.len(), expected_count("player0.objects"));
-    assert_eq!(p0.ends.objects_end, expected("player0.objects"));
+    assert_eq!(header.players.len(), 3);
+    for (i, p) in header.players.iter().enumerate() {
+        let name = |part: &str| format!("player{i}{part}");
+        assert_eq!(p.ends.start, expected_start(&name("")), "player {i}");
+        assert_eq!(
+            p.ends.enabled_objects,
+            expected(&name(".enabled_objects")),
+            "player {i}"
+        );
+        assert_eq!(
+            p.ends.initial_objects,
+            expected(&name(".initial_objects")),
+            "player {i}"
+        );
+        assert_eq!(
+            p.main_objects.len(),
+            expected_count(&name(".initial_objects")),
+            "player {i}"
+        );
+        assert_eq!(
+            p.ends.initial_map,
+            expected(&name(".initial_map")),
+            "player {i}"
+        );
+        assert_eq!(
+            p.ends.initial_state_restore,
+            expected(&name(".initial_state_restore")),
+            "player {i}"
+        );
+        assert_eq!(
+            p.ends.objects_start,
+            expected_start(&name(".objects")),
+            "player {i}"
+        );
+        assert_eq!(
+            p.objects.len(),
+            expected_count(&name(".objects")),
+            "player {i}"
+        );
+        assert_eq!(
+            p.ends.objects_end,
+            expected(&name(".objects")),
+            "player {i}"
+        );
+    }
+    // Gaia's tail is skipped by searching for the next player, as in the pattern; the other players
+    // are read to the end of their section.
+    let gaia = &header.players[0];
+    assert!(gaia.tail.is_none());
+    assert_eq!(gaia.skipped, Some(gaia.ends.end..expected_start("player1")));
+    for (i, p) in header.players.iter().enumerate().skip(1) {
+        let tail = p.tail.as_ref().unwrap();
+        assert_eq!(
+            (tail.sleeping_objects.len(), tail.doppel_objects.len()),
+            (0, 0),
+            "player {i}"
+        );
+        assert_eq!(p.ends.end, expected(&format!("player{i}")), "player {i}");
+        assert_eq!(p.skipped, None, "player {i}");
+    }
 }
 
 fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {

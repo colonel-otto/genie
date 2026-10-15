@@ -1,4 +1,4 @@
-//! The world save at the start of a chapter, read as far as each player's object lists.
+//! The world save at the start of a chapter, read through every player's object lists.
 //!
 //! Hand-ported from aoe2rec's `patterns/aoe2header.hexpat` (MIT, see `NOTICE`) and checked byte
 //! for byte against ImHex's offsets for that pattern. Read-only: the writer will be generated from
@@ -23,8 +23,8 @@ pub use object::{
     MovingObject, Object, ObjectBody, StaticObject, UnitAction, UnitAi,
 };
 pub use player::{
-    InitialMap, PlayerEnds, PlayerPrelude, PlayerSection, RestoreObject, StateRestore, TechUnlock,
-    UnitUnlock, Unlock, Unlocks,
+    InitialMap, PlayerEnds, PlayerPrelude, PlayerSection, PlayerTail, RestoreObject, StateRestore,
+    TechUnlock, UnitUnlock, Unlock, Unlocks,
 };
 pub use primitives::{DeString, StringList};
 pub use replay::Replay;
@@ -128,14 +128,17 @@ pub fn parse(inflated: &[u8]) -> Result<Header, super::Error> {
     .map_err(header_error)?;
     let identifier = u32::read_le(&mut r).map_err(header_error)?;
     ends.players_start = r.position() as usize;
-    // Step C: the first player's section up to its object lists.
     let num_players = replay.num_players as usize;
-    let players = vec![
-        player::read_player(&mut r, v, num_players).map_err(|e| match e {
-            player::ReadError::Bin(e) => header_error(e),
-            player::ReadError::Unsupported { what, at } => super::Error::Unsupported { what, at },
-        })?,
-    ];
+    let players = (0..num_players)
+        .map(|_| {
+            player::read_player(&mut r, v, num_players).map_err(|e| match e {
+                player::ReadError::Bin(e) => header_error(e),
+                player::ReadError::Unsupported { what, at } => {
+                    super::Error::Unsupported { what, at }
+                }
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(Header {
         version,
         lobby,
