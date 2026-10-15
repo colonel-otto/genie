@@ -9,6 +9,7 @@
 //! borrows from the recording's bytes.
 
 pub mod body;
+pub mod header;
 
 pub use body::{Checkpoint, Op, OpReader, Pregame, TriggerSync, View};
 
@@ -23,6 +24,10 @@ pub enum Error {
     InvalidChapter { at: usize },
     #[error("the header of the chapter at byte {at:#x} does not inflate")]
     Inflate { at: usize },
+    #[error("header: {message}")]
+    Header { message: String },
+    #[error("unsupported in this reader yet: {what} at header byte {at:#x}")]
+    Unsupported { what: &'static str, at: usize },
 }
 
 /// One chapter: a compressed world save and the ops recorded after it.
@@ -95,6 +100,16 @@ impl<'a> Chapter<'a> {
     /// The ops of this chapter.
     pub fn ops(&self) -> OpReader<'a> {
         OpReader::new(self.body, self.body_offset, self.index == 0)
+    }
+
+    /// Inflate the whole header (the chapter's world save).
+    pub fn inflate_header(&self) -> Result<Vec<u8>, Error> {
+        use std::io::Read;
+        let mut out = Vec::new();
+        flate2::read::DeflateDecoder::new(self.compressed_header)
+            .read_to_end(&mut out)
+            .map_err(|_| Error::Inflate { at: self.offset })?;
+        Ok(out)
     }
 
     /// Inflate the start of the header and read its version fields.

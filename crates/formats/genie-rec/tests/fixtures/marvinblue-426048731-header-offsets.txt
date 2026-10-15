@@ -1,0 +1,9 @@
+# Section offsets in the inflated chapter-0 header of the tier-1 recording
+# MarvinBlue/426048731.aoe2record (save 66.6, build 158041), from ImHex running aoe2rec's
+# patterns/aoe2header.hexpat with metadata (`imhex --pl format -m`).
+# <section> <start> <end>
+lobby_settings 0x20 0x6d4
+ai_config 0x6d4 0x6d8
+replay 0x6d8 0x736
+map_info 0x736 0x7d0e4
+players 0x7d0f0 0x476cd3
