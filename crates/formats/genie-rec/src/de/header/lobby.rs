@@ -74,8 +74,9 @@ pub struct LobbySettings {
     pub treaty_length: u32,
     pub population_limit: u32,
     pub n_players: u32,
+    /// `mMaxPlayersForLobby`: the game reads one byte here (FD-014 load oracle).
+    pub max_players_for_lobby: u8,
     pub unused_player_color: u32,
-    pub unknown1: u8,
     pub victory_amount: i32,
     /// trade, team bonus disabled, random positions, all techs, starting units, lock teams, lock
     /// speed, multiplayer, cheats, record game, animals, predators, turbo, shared exploration, team

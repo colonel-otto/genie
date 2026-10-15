@@ -2,6 +2,7 @@
 
 use super::main_object::MainObject;
 use super::primitives::DeString;
+use binrw::io::{Read, Seek};
 use binrw::{BinRead, NullString, binread};
 
 /// Where the parts of a player section end.
@@ -288,11 +289,12 @@ impl From<binrw::Error> for ReadError {
     }
 }
 
-fn objects_of(
-    r: &mut binrw::io::Cursor<&[u8]>,
-    v: u32,
-) -> Result<Vec<super::object::Object>, ReadError> {
+fn objects_of<R: Read + Seek>(r: &mut R, v: u32) -> Result<Vec<super::object::Object>, ReadError> {
     super::object::read_objects(r, v).map_err(unsupported_or_bin)
+}
+
+fn position<R: Seek>(r: &mut R) -> Result<usize, ReadError> {
+    Ok(r.stream_position().map_err(binrw::Error::Io)? as usize)
 }
 
 fn unsupported_or_bin(e: binrw::Error) -> ReadError {
@@ -302,7 +304,7 @@ fn unsupported_or_bin(e: binrw::Error) -> ReadError {
     }
 }
 
-fn read_tail(r: &mut binrw::io::Cursor<&[u8]>, v: u32) -> Result<PlayerTail, ReadError> {
+fn read_tail<R: Read + Seek>(r: &mut R, v: u32) -> Result<PlayerTail, ReadError> {
     use super::primitives::expect;
     let sleeping_size = u32::read_le(r)?;
     let sleeping_grow = u32::read_le(r)?;
@@ -327,14 +329,14 @@ fn read_tail(r: &mut binrw::io::Cursor<&[u8]>, v: u32) -> Result<PlayerTail, Rea
 
 /// Read one player section, from its prelude to the end of its tail lists. The next section starts
 /// right after it. aoe2rec's pattern instead skips Gaia's tail and searches for the next player.
-pub fn read_player(
-    r: &mut binrw::io::Cursor<&[u8]>,
+pub fn read_player<R: Read + Seek>(
+    r: &mut R,
     v: u32,
     num_players: usize,
 ) -> Result<PlayerSection, ReadError> {
     use super::primitives::expect;
     let mut ends = PlayerEnds {
-        start: r.position() as usize,
+        start: position(r)?,
         ..PlayerEnds::default()
     };
     let prelude = PlayerPrelude::read_args(r, (v, num_players))?;
@@ -347,28 +349,28 @@ pub fn read_player(
         r,
         binrw::VecArgs::builder().count(count as usize).finalize(),
     )?;
-    ends.enabled_objects = r.position() as usize;
+    ends.enabled_objects = position(r)?;
     let main_count: u32 = enabled_objects.iter().sum();
     expect(r, b"\x0b")?;
     let main_objects = (0..main_count)
         .map(|_| MainObject::read_args(r, (v,)))
         .collect::<Result<Vec<_>, _>>()
         .map_err(unsupported_or_bin)?;
-    ends.initial_objects = r.position() as usize;
+    ends.initial_objects = position(r)?;
     expect(r, b"\x0b")?;
     let initial_map = InitialMap::read(r)?;
-    ends.initial_map = r.position() as usize;
+    ends.initial_map = position(r)?;
     let state_restore = StateRestore::read(r)?;
-    ends.initial_state_restore = r.position() as usize;
+    ends.initial_state_restore = position(r)?;
     expect(r, b"\x0b\x00")?;
     let unknown23 = u32::read_le(r)?;
     expect(r, b"\x02\x00\x00")?;
-    ends.objects_start = r.position() as usize;
+    ends.objects_start = position(r)?;
     let objects = objects_of(r, v)?;
-    ends.objects_end = r.position() as usize;
+    ends.objects_end = position(r)?;
     expect(r, b"\x00\x0b")?;
     let tail = read_tail(r, v)?;
-    ends.end = r.position() as usize;
+    ends.end = position(r)?;
     Ok(PlayerSection {
         ends,
         prelude,

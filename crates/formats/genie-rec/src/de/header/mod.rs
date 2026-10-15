@@ -45,6 +45,7 @@ pub use tribe::{
 };
 
 use binrw::BinRead;
+use binrw::io::{Read, Seek, SeekFrom};
 
 /// The fixed fields before the lobby settings.
 #[derive(BinRead, Debug, Clone, PartialEq)]
@@ -105,48 +106,59 @@ pub struct Header {
 
 /// Read an inflated chapter header.
 pub fn parse(inflated: &[u8]) -> Result<Header, super::Error> {
-    let mut r = binrw::io::Cursor::new(inflated);
-    let version = VersionBlock::read(&mut r).map_err(header_error)?;
+    parse_reader(&mut binrw::io::Cursor::new(inflated))
+}
+
+/// Read an inflated chapter header from any seekable reader, e.g. one that logs its reads.
+pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, super::Error> {
+    let version = VersionBlock::read(r).map_err(header_error)?;
     let v = version.hundredths();
     if v < MIN_HUNDREDTHS {
         return Err(super::Error::Header {
             message: format!("save version {v} is older than 66.0"),
         });
     }
-    let lobby = LobbySettings::read_args(&mut r, (v,)).map_err(header_error)?;
+    let lobby = LobbySettings::read_args(r, (v,)).map_err(header_error)?;
     let mut ends = SectionEnds {
-        lobby: r.position() as usize,
+        lobby: position(r)?,
         ..SectionEnds::default()
     };
     // aoe2rec's AI layout fails on current single-player games with AI scripts, in ImHex too.
-    let ai_start = r.position() as usize;
-    let ai = AiConfig::read(&mut r).map_err(|e| match inflated.get(ai_start..ai_start + 4) {
-        Some([1, 0, 0, 0]) => super::Error::Unsupported {
-            what: "AI data (has_ai = 1)",
-            at: ai_start,
-        },
-        _ => header_error(e),
-    })?;
-    ends.ai = r.position() as usize;
-    let replay = Replay::read(&mut r).map_err(header_error)?;
-    ends.replay = r.position() as usize;
-    let map = MapInfo::read(&mut r).map_err(header_error)?;
-    ends.map = r.position() as usize;
-    let restore_time = u32::read_le(&mut r).map_err(header_error)?;
-    let particles_count = u32::read_le(&mut r).map_err(header_error)?;
+    let ai_start = position(r)?;
+    let ai = match AiConfig::read(r) {
+        Ok(ai) => ai,
+        Err(e) => {
+            r.seek(SeekFrom::Start(ai_start as u64))
+                .map_err(|e| header_error(e.into()))?;
+            return Err(match u32::read_le(r) {
+                Ok(1) => super::Error::Unsupported {
+                    what: "AI data (has_ai = 1)",
+                    at: ai_start,
+                },
+                _ => header_error(e),
+            });
+        }
+    };
+    ends.ai = position(r)?;
+    let replay = Replay::read(r).map_err(header_error)?;
+    ends.replay = position(r)?;
+    let map = MapInfo::read(r).map_err(header_error)?;
+    ends.map = position(r)?;
+    let restore_time = u32::read_le(r).map_err(header_error)?;
+    let particles_count = u32::read_le(r).map_err(header_error)?;
     let particles = Vec::<u8>::read_le_args(
-        &mut r,
+        r,
         binrw::VecArgs::builder()
             .count(particles_count as usize * 27)
             .finalize(),
     )
     .map_err(header_error)?;
-    let identifier = u32::read_le(&mut r).map_err(header_error)?;
-    ends.players_start = r.position() as usize;
+    let identifier = u32::read_le(r).map_err(header_error)?;
+    ends.players_start = position(r)?;
     let num_players = replay.num_players as usize;
     let players = (0..num_players)
         .map(|_| {
-            player::read_player(&mut r, v, num_players).map_err(|e| match e {
+            player::read_player(r, v, num_players).map_err(|e| match e {
                 player::ReadError::Bin(e) => header_error(e),
                 player::ReadError::Unsupported { what, at } => {
                     super::Error::Unsupported { what, at }
@@ -166,6 +178,10 @@ pub fn parse(inflated: &[u8]) -> Result<Header, super::Error> {
         ends,
         players,
     })
+}
+
+fn position<R: Seek>(r: &mut R) -> Result<usize, super::Error> {
+    Ok(r.stream_position().map_err(|e| header_error(e.into()))? as usize)
 }
 
 fn header_error(e: binrw::Error) -> super::Error {
