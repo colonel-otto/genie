@@ -114,16 +114,18 @@ pub fn compare_first_checkpoint(recording: &[u8]) -> Result<Vec<PlayerComparison
         .collect()
 }
 
-/// Commands whose handlers create a unit group (158041 `FUN_14152efc0`): INTERACT, WORK, MOVE,
-/// FORM_FORMATION, GROUP_MULTI_WAYPOINTS, BUILD, REPAIR. More player-side callers exist and are not
-/// mapped yet. A group draws from the World stream every tick while active and every 3 s while idle
-/// (`FUN_14103d910` → `FUN_14102d370`), which the unit-AI slice does not model: from the first such
-/// command on, the simulated frame-seed chain is no longer the game's.
+/// Commands whose handlers can create a unit group (158041 `FUN_14152efc0`): INTERACT, WORK,
+/// MOVE, FORM_FORMATION, GROUP_MULTI_WAYPOINTS, BUILD, REPAIR. More player-side callers exist and
+/// are not mapped yet. A group draws from the World stream every tick while active and every 3 s
+/// while idle (`FUN_14103d910` → `FUN_14102d370`), which the slice does not model. Whether a command
+/// creates one depends on its units: the splitter (`FUN_140fd76d0`) groups only clusters of two or
+/// more formation-capable units, and villagers never join a formation (as openage's
+/// `doc/reverse_engineering/game_mechanics/formations.md` describes for AoC).
 pub const GROUP_COMMANDS: [u8; 7] = [0x00, 0x02, 0x03, 0x17, 0x1f, 0x66, 0x6e];
 
-/// A command that takes the frame-seed chain out of the slice's model.
+/// A command that may create a unit group and so take the frame-seed chain out of the slice's model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ChainBreak {
+pub struct GroupCommand {
     /// The tick (1-based) the command executes in.
     pub tick: u32,
     pub player: u8,
@@ -136,8 +138,8 @@ pub struct Word9 {
     pub id: u32,
     pub simulated: u32,
     pub checkpoint: u32,
-    /// The first group-creating command before the checkpoint, by any player.
-    pub chain_break: Option<ChainBreak>,
+    /// The first command before the checkpoint, by any player, that may create a unit group.
+    pub group_command: Option<GroupCommand>,
     /// The first unit update of this player the slice could not model.
     pub unsupported: Option<(u32, usize, genie_core::unit_ai::Unsupported)>,
 }
@@ -177,14 +179,14 @@ pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = de::header::parse(&chapter.inflate_header()?)?;
     let mut dts = Vec::new();
-    let mut chain_break = None;
+    let mut group_command = None;
     let mut checkpoint = None;
     for op in chapter.ops() {
         match op? {
             Op::Sync { dt } => dts.push(dt),
             Op::Command { packet, .. } => {
-                if chain_break.is_none() && GROUP_COMMANDS.contains(&packet[0]) {
-                    chain_break = Some(ChainBreak {
+                if group_command.is_none() && GROUP_COMMANDS.contains(&packet[0]) {
+                    group_command = Some(GroupCommand {
                         tick: dts.len() as u32 + 1,
                         player: packet.get(1).copied().unwrap_or_default(),
                         command: packet[0],
@@ -244,7 +246,7 @@ pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
                 id,
                 simulated: player_block(&state)[9],
                 checkpoint: lane[9],
-                chain_break,
+                group_command,
                 unsupported: simulated.unsupported,
             })
         })
