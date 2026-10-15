@@ -1,7 +1,6 @@
 //! A player section (pattern: `Init`), read through its object lists.
 
-use super::generated::player::WorldPlayer;
-use super::main_object::MainObject;
+use super::generated::player::{PlayerMasters, WorldPlayer};
 use binrw::io::{Read, Seek};
 use binrw::{BinRead, binread};
 
@@ -29,9 +28,9 @@ pub struct PlayerSection {
     /// The tech tree (`tech_tree_help->save`, `techtree.cpp`); the pattern calls it the unlock tables.
     pub unlocks: Unlocks,
     pub tribe_end: super::tribe::TribeEnd,
-    /// The `enabled` flags; their sum is the number of main objects.
-    pub enabled_objects: Vec<u32>,
-    pub main_objects: Vec<MainObject>,
+    /// The player's masters (unit types): the enabled flags, then each enabled master by type
+    /// (generated from the player's master list load).
+    pub masters: PlayerMasters,
     pub initial_map: InitialMap,
     pub state_restore: StateRestore,
     pub unknown23: u32,
@@ -278,19 +277,10 @@ pub fn read_player<R: Read + Seek>(
     let tribe = super::tribe::TribeState::read_args(r, (v, num_players))?;
     let unlocks = Unlocks::read(r)?;
     let tribe_end = super::tribe::read_end(r, prelude.player_type).map_err(unsupported_or_bin)?;
-    expect(r, super::tribe::MARKER)?;
-    let count = u32::read_le(r)?;
-    let enabled_objects = Vec::<u32>::read_le_args(
-        r,
-        binrw::VecArgs::builder().count(count as usize).finalize(),
-    )?;
-    ends.enabled_objects = position(r)?;
-    let main_count: u32 = enabled_objects.iter().sum();
-    expect(r, b"\x0b")?;
-    let main_objects = (0..main_count)
-        .map(|_| MainObject::read_args(r, (v,)))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(unsupported_or_bin)?;
+    let masters_start = position(r)?;
+    let masters = PlayerMasters::read_args(r, (ver,))?;
+    // the marker, the count, the flags
+    ends.enabled_objects = masters_start + 5 + 4 * masters.enabled.len();
     ends.initial_objects = position(r)?;
     expect(r, b"\x0b")?;
     let initial_map = InitialMap::read(r)?;
@@ -312,8 +302,7 @@ pub fn read_player<R: Read + Seek>(
         tribe,
         unlocks,
         tribe_end,
-        enabled_objects,
-        main_objects,
+        masters,
         initial_map,
         state_restore,
         unknown23,

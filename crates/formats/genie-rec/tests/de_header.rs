@@ -92,7 +92,7 @@ fn marvinblue_sections_end_where_imhex_says() {
             "player {i}"
         );
         assert_eq!(
-            p.main_objects.len(),
+            p.masters.masters.as_ref().map_or(0, Vec::len),
             expected_count(&name(".initial_objects")),
             "player {i}"
         );

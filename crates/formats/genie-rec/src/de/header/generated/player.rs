@@ -3,7 +3,7 @@
 
 #![allow(clippy::all)]
 
-use super::super::layout_types::{LenString16, LenString32, LenVec32};
+use super::super::layout_types::{LenString16, LenString32, LenVec32, SigString};
 use binrw::binread;
 
 #[binread]
@@ -284,4 +284,810 @@ pub struct WorldPlayer {
     /// unnamed in the binary
     /// read at 0x1415f1b08
     pub unnamed_0x7a4: u32,
+}
+
+/// Read by `FUN_141120780` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct Unnamed141120780 {
+    /// game: `stringId`
+    /// read at 0x1411207f1
+    pub string_id: i32,
+    /// unnamed in the binary
+    /// helper 0x140932fa0
+    pub unnamed_at_0x14112098f: LenString32,
+}
+
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little)]
+pub struct RgeMasterStaticObjectEntry1 {
+    /// game: `attribute_type_held[index]`
+    /// read at 0x141133867
+    pub attribute_type_held: i16,
+    /// game: `attribute_amount_held[index]`
+    /// read at 0x1411338d2
+    pub attribute_amount_held: f32,
+    /// game: `attribute_flag[index]`
+    /// read at 0x14113393c
+    pub attribute_flag: u8,
+}
+
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little)]
+pub struct RgeMasterStaticObjectEntry2 {
+    /// game: `&tempId`
+    /// helper 0x140a90f60
+    pub temp_id: i16,
+    /// game: `&spriteInfo.damage_percent`
+    /// helper 0x140c94e10
+    pub sprite_info_damage_percent: u8,
+    /// game: `&spriteInfo.flag`
+    /// helper 0x140c94e10
+    pub sprite_info_flag: u8,
+}
+
+/// Read by `FUN_1411319f0` (`MasterStaticObject.cpp`) of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct RgeMasterStaticObject {
+    /// game: `readTemp`
+    /// read at 0x141131a5f
+    pub read_temp: i16,
+    /// game: `readTemp`
+    /// read at 0x141131c51
+    pub read_temp_2: i16,
+    /// game: `readTemp`
+    /// read at 0x141131e3a
+    pub read_temp_3: i16,
+    /// game: `readTemp`
+    /// read at 0x141131ff9
+    pub read_temp_4: i16,
+    /// game: `readTemp`
+    /// read at 0x14113217a
+    pub read_temp_5: i16,
+    /// game: `available`
+    /// read at 0x141132afc
+    pub available: u8,
+    /// game: `hide_in_scenario_editor`
+    /// read at 0x141132c7c
+    pub hide_in_scenario_editor: u8,
+    /// game: `readTemp`
+    /// read at 0x141132e36
+    pub read_temp_6: i16,
+    /// game: `los`
+    /// read at 0x141133053
+    pub los: f32,
+    /// game: `obj_max`
+    /// read at 0x14113316b
+    pub obj_max: u8,
+    /// game: `radius_x`
+    /// read at 0x14113332c
+    pub radius_x: f32,
+    /// game: `radius_y`
+    /// read at 0x141133473
+    pub radius_y: f32,
+    /// game: `attribute_max_amount`
+    /// read at 0x1411335b3
+    pub attribute_max_amount: i16,
+    /// unnamed in the binary
+    /// a loop of 3 reads; unnamed in the binary
+    #[br(count = 3)]
+    pub unnamed_list_at_0x141133867: Vec<RgeMasterStaticObjectEntry1>,
+    /// game: `disabled`
+    /// read at 0x1411339be
+    pub disabled: u8,
+    /// game: `string_id`
+    /// read at 0x141133af9
+    pub string_id: u32,
+    /// game: `string_id2`
+    /// read at 0x141133c43
+    pub string_id2: u32,
+    /// game: `mTerrainRestrictionMaskId`
+    /// read at 0x141133f84
+    pub terrain_restriction_mask_id: i16,
+    /// game: `death_spawn_obj_id`
+    /// read at 0x1411340c3
+    pub death_spawn_obj_id: i16,
+    /// game: `button_pict`
+    /// read at 0x141134216
+    pub button_pict: i16,
+    /// game: `area_effect_object_level`
+    /// read at 0x141134337
+    pub area_effect_object_level: u8,
+    /// game: `fog_flag`
+    /// read at 0x141134497
+    pub fog_flag: u8,
+    /// game: `occlusion_flag`
+    /// read at 0x1411345b8
+    pub occlusion_flag: u8,
+    /// game: `object_flags`
+    /// read at 0x141134706
+    pub object_flags: u32,
+    /// game: `mDeathSpawnObjId2`
+    /// read at 0x141134833
+    pub death_spawn_obj_id2: i16,
+    /// game: `radius_z`
+    /// read at 0x141134987
+    pub radius_z: f32,
+    /// game: `obstruction_type`
+    /// read at 0x141134ae7
+    pub obstruction_type: u8,
+    /// game: `obstruction_class`
+    /// read at 0x141134c66
+    pub obstruction_class: u8,
+    /// game: `can_be_built_on`
+    /// read at 0x141134d76
+    pub can_be_built_on: u8,
+    /// game: `idleSpriteId`
+    /// read at 0x141134ec1
+    pub idle_sprite_id: i16,
+    /// game: `idle2SpriteId`
+    /// read at 0x141135001
+    pub idle2_sprite_id: i16,
+    /// game: `deathSpriteId`
+    /// read at 0x141135141
+    pub death_sprite_id: i16,
+    /// game: `undeadSpriteId`
+    /// read at 0x141135281
+    pub undead_sprite_id: i16,
+    /// unnamed in the binary
+    /// read by 0x141120780
+    #[br(args(ver))]
+    pub unnamed141120780: Unnamed141120780,
+    /// game: `&tempSoundNum`
+    /// helper 0x140a90f60
+    pub temp_sound_num: i16,
+    /// game: `&tempSoundNum`
+    /// helper 0x140a90f60
+    pub temp_sound_num_2: i16,
+    /// game: `&tempSoundNum`
+    /// helper 0x140a90f60
+    pub temp_sound_num_3: i16,
+    /// game: `&tempSoundNum`
+    /// helper 0x140a90f60
+    pub temp_sound_num_4: i16,
+    /// game: `&selected_sound_event.mEventId`
+    /// helper 0x140b4b760
+    pub selected_sound_event_m_event_id: u32,
+    /// game: `&death_sound_event.mEventId`
+    /// helper 0x140b4b760
+    pub death_sound_event_m_event_id: u32,
+    /// game: `&created_sound_event.mEventId`
+    /// helper 0x140b4b760
+    pub created_sound_event_m_event_id: u32,
+    /// game: `&damage_sound_event.mEventId`
+    /// helper 0x140b4b760
+    pub damage_sound_event_m_event_id: u32,
+    /// game: `&unit_level`
+    /// helper 0x140c94e10
+    pub unit_level: u8,
+    /// game: `&combat_level`
+    /// helper 0x140c94e10
+    pub combat_level: u8,
+    /// game: `&select_level`
+    /// helper 0x140c94e10
+    pub select_level: u8,
+    /// game: `&map_draw_level`
+    /// helper 0x140c94e10
+    pub map_draw_level: u8,
+    /// game: `&mDamageSpriteEntryMod`
+    /// helper 0x140c94e10
+    pub damage_sprite_entry_mod: u8,
+    /// game: `&damageSpriteNum`
+    /// helper 0x140c94e10
+    pub damage_sprite_num: u8,
+    /// unnamed in the binary
+    /// a loop of 3 reads; unnamed in the binary
+    #[br(count = damage_sprite_num as usize)]
+    pub unnamed_list_at_0x141136826: Vec<RgeMasterStaticObjectEntry2>,
+    /// unnamed in the binary
+    /// helper 0x140932010
+    pub unnamed_at_0x141136980: SigString,
+}
+
+/// Read by `FUN_1410a9400` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct RgeMasterAnimatedObject {
+    /// read by 0x1411319f0
+    #[br(args(ver))]
+    pub rge_master_static_object: RgeMasterStaticObject,
+    /// game: `mMaxSpeed`
+    /// read at 0x1410a95f1
+    pub max_speed: f32,
+}
+
+/// Read by `FUN_1410e5440` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct RgeMasterMovingObject {
+    /// read by 0x1410a9400
+    #[br(args(ver))]
+    pub rge_master_animated_object: RgeMasterAnimatedObject,
+    /// game: `turn_speed`
+    /// read at 0x1410e5741
+    pub turn_speed: f32,
+    /// game: `moveSpriteId`
+    /// read at 0x1410e58f2
+    pub move_sprite_id: i16,
+    /// game: `runSpriteId`
+    /// read at 0x1410e5a8b
+    pub run_sprite_id: i16,
+    /// game: `&obj_trail_id`
+    /// read at 0x1410e5ccd
+    pub obj_trail_id: u16,
+    /// game: `&obj_trail_options`
+    /// read at 0x1410e5f26
+    pub obj_trail_options: u8,
+    /// game: `&obj_trail_spacing`
+    /// read at 0x1410e6190
+    pub obj_trail_spacing: u32,
+}
+
+/// Read by `FUN_141062470` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct Unnamed141062470 {
+    /// game: `id`
+    /// read at 0x1410624e6
+    pub id: i16,
+    /// game: `is_default`
+    /// read at 0x14106268d
+    pub is_default: u8,
+    /// game: `action_type`
+    /// read at 0x141062821
+    pub action_type: i16,
+    /// game: `object_group`
+    /// read at 0x14106297f
+    pub object_group: i16,
+    /// game: `object_id`
+    /// read at 0x141062b11
+    pub object_id: i16,
+    /// game: `terrain_id`
+    /// read at 0x141062c9f
+    pub terrain_id: i16,
+    /// game: `attribute_type`
+    /// read at 0x141062e3b
+    pub attribute_type: i16,
+    /// game: `attribute_type2`
+    /// read at 0x141062fb0
+    pub attribute_type2: i16,
+    /// game: `attribute_type3`
+    /// read at 0x141063160
+    pub attribute_type3: i16,
+    /// game: `attribute_type4`
+    /// read at 0x141063310
+    pub attribute_type4: i16,
+    /// game: `work_val1`
+    /// read at 0x1410634b1
+    pub work_val1: f32,
+    /// game: `work_val2`
+    /// read at 0x141063662
+    pub work_val2: f32,
+    /// game: `work_range`
+    /// read at 0x141063813
+    pub work_range: f32,
+    /// game: `search_flag`
+    /// read at 0x1410639d0
+    pub search_flag: u8,
+    /// game: `search_wait_time`
+    /// read at 0x141063b82
+    pub search_wait_time: f32,
+    /// game: `combat_level`
+    /// read at 0x141063d33
+    pub combat_level: u8,
+    /// game: `combat_level_flag`
+    /// read at 0x141063ecf
+    pub combat_level_flag: u8,
+    /// game: `work_flag`
+    /// read at 0x141064080
+    pub work_flag: i16,
+    /// game: `work_flag2`
+    /// read at 0x141064230
+    pub work_flag2: i16,
+    /// game: `owner_type`
+    /// read at 0x1410643e0
+    pub owner_type: u8,
+    /// game: `holding_attr`
+    /// read at 0x14106458e
+    pub holding_attr: u8,
+    /// game: `state_building`
+    /// read at 0x1410646d8
+    pub state_building: u8,
+    /// game: `short_val`
+    /// read at 0x141064829
+    pub short_val: i16,
+    /// game: `short_val`
+    /// read at 0x14106499a
+    pub short_val_2: i16,
+    /// game: `short_val`
+    /// read at 0x141064b0b
+    pub short_val_3: i16,
+    /// game: `short_val`
+    /// read at 0x141064c7b
+    pub short_val_4: i16,
+    /// game: `gather_sound_num`
+    /// read at 0x141064de9
+    pub gather_sound_num: i16,
+    /// game: `desposit_sound_num`
+    /// read at 0x141064f3b
+    pub desposit_sound_num: i16,
+    /// game: `gather_sound_event.mEventId`
+    /// read at 0x141064ffb
+    pub gather_sound_event_m_event_id: u32,
+    /// game: `deposit_sound_event.mEventId`
+    /// read at 0x1410650ab
+    pub deposit_sound_event_m_event_id: u32,
+    /// game: `enablementResourceID`
+    /// read at 0x1410651d5
+    pub enablement_resource_id: i16,
+}
+
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct Unnamed1411a8f80Entry1 {
+    /// game: `task_type`
+    /// read at 0x1411a9235
+    pub task_type: i16,
+    /// unnamed in the binary
+    /// read by 0x141062470
+    #[br(args(ver))]
+    pub unnamed141062470: Unnamed141062470,
+}
+
+/// Read by `FUN_1411a8f80` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct Unnamed1411a8f80 {
+    /// game: `list_num`
+    /// read at 0x1411a8ff7
+    #[br(temp)]
+    list_num: i16,
+    /// unnamed in the binary
+    /// a loop of 2 reads; unnamed in the binary
+    #[br(count = list_num.max(0) as usize, args { inner: (ver,) })]
+    pub unnamed_list_at_0x1411a9235: Vec<Unnamed1411a8f80Entry1>,
+}
+
+/// Read by `FUN_1410a3510` (`MasterActionObject.cpp`) of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct RgeMasterActionObject {
+    /// read by 0x1410e5440
+    #[br(args(ver))]
+    pub rge_master_moving_object: RgeMasterMovingObject,
+    /// game: `&search_radius`
+    /// helper 0x140a91160
+    pub search_radius: f32,
+    /// game: `&work_rate`
+    /// helper 0x140a91160
+    pub work_rate: f32,
+    /// game: `&mHandicappedWorkRate`
+    /// helper 0x140a91160
+    pub handicapped_work_rate: f32,
+    /// game: `&mObjectTaskFlags`
+    /// helper 0x140c94e10
+    pub object_task_flags: u8,
+    /// unnamed in the binary
+    /// read by 0x1411a8f80
+    #[br(if((object_task_flags & 1) != 0), args(ver))]
+    pub unnamed1411a8f80: Option<Unnamed1411a8f80>,
+    /// game: `&tempSoundNum`
+    /// read at 0x1410a41e3
+    pub temp_sound_num: u16,
+    /// game: `&tempSoundNum`
+    /// read at 0x1410a4470
+    pub temp_sound_num_2: u16,
+    /// game: `&soundEvent->mEventId`
+    /// read at 0x1410a4721
+    #[br(count = 2)]
+    pub sound_event_m_event_id: Vec<u32>,
+    /// game: `&run_pattern`
+    /// helper 0x140c94e10
+    pub run_pattern: u8,
+}
+
+/// Read by `FUN_1410c8520` (`MasterCombatObject.cpp`) of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct RgeMasterCombatObject {
+    /// read by 0x1410a3510
+    #[br(args(ver))]
+    pub rge_master_action_object: RgeMasterActionObject,
+    /// game: `base_armor`
+    /// read at 0x1410c88b1
+    pub base_armor: i16,
+    /// game: `weapon_num`
+    /// read at 0x1410c8bdf
+    pub weapon_num: i16,
+    /// unnamed in the binary
+    /// read at 0x1410c8da0
+    #[br(count = weapon_num.max(0) as usize)]
+    pub unnamed_at_0x1410c8da0: Vec<u32>,
+    /// game: `armor_num`
+    /// read at 0x1410c8f74
+    pub armor_num: i16,
+    /// unnamed in the binary
+    /// read at 0x1410c914c
+    #[br(count = armor_num.max(0) as usize)]
+    pub unnamed_at_0x1410c914c: Vec<u32>,
+    /// game: `speed_of_attack`
+    /// read at 0x1410c9332
+    pub speed_of_attack: f32,
+    /// game: `weapon_range`
+    /// read at 0x1410c94ec
+    pub weapon_range: f32,
+    /// game: `base_hit_chance`
+    /// read at 0x1410c96a9
+    pub base_hit_chance: i16,
+    /// game: `missile_id`
+    /// read at 0x1410c9849
+    pub missile_id: i16,
+    /// game: `defense_terrain_bonus`
+    /// read at 0x1410c9a09
+    pub defense_terrain_bonus: i16,
+    /// game: `mBonusDamageResistance`
+    /// read at 0x1410c9bdb
+    pub bonus_damage_resistance: f32,
+    /// game: `area_effect_range`
+    /// read at 0x1410c9f0c
+    pub area_effect_range: f32,
+    /// game: `minimum_weapon_range`
+    /// read at 0x1410ca0cb
+    pub minimum_weapon_range: f32,
+    /// game: `fire_missile_at_frame`
+    /// read at 0x1410ca29c
+    pub fire_missile_at_frame: i16,
+    /// game: `area_effect_level`
+    /// read at 0x1410ca45b
+    pub area_effect_level: u8,
+    /// game: `orig_armor`
+    /// read at 0x1410ca62c
+    pub orig_armor: i16,
+    /// game: `orig_weapon`
+    /// read at 0x1410ca7eb
+    pub orig_weapon: i16,
+    /// game: `orig_weapon_range`
+    /// read at 0x1410ca93e
+    pub orig_weapon_range: f32,
+    /// game: `mCombatAbility`
+    /// read at 0x1410caa9c
+    pub combat_ability: u8,
+    /// game: `missed_missile_spread`
+    /// read at 0x1410cabeb
+    pub missed_missile_spread: f32,
+    /// game: `fightSpriteId`
+    /// read at 0x1410cad4a
+    pub fight_sprite_id: i16,
+    /// game: `area_damage`
+    /// read at 0x1410caf03
+    pub area_damage: f32,
+    /// game: `mDamageReflection`
+    /// read at 0x1410cb05e
+    pub damage_reflection: f32,
+    /// game: `mFriendlyFireDamage`
+    /// read at 0x1410cb1ab
+    pub friendly_fire_damage: f32,
+    /// game: `mInterruptFrame`
+    /// read at 0x1410cb2e0
+    pub interrupt_frame: i16,
+    /// game: `mGarrisonFirepower`
+    /// read at 0x1410cb41c
+    pub garrison_firepower: f32,
+    /// game: `temp_fight_sprite`
+    /// read at 0x1410cb56e
+    pub temp_fight_sprite: i16,
+    /// game: `&weapon_offset_x`
+    /// helper 0x140a91160
+    pub weapon_offset_x: f32,
+    /// game: `&weapon_offset_y`
+    /// helper 0x140a91160
+    pub weapon_offset_y: f32,
+    /// game: `&weapon_offset_z`
+    /// helper 0x140a91160
+    pub weapon_offset_z: f32,
+}
+
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little)]
+pub struct TribeMasterCombatObjectEntry1 {
+    /// game: `trainTime`
+    /// read at 0x14126f93a
+    pub train_time: i16,
+    /// game: `trainLocationID`
+    /// read at 0x14126f9c1
+    pub train_location_id: i16,
+    /// game: `buttonLocationID`
+    /// read at 0x14126fa42
+    pub button_location_id: u8,
+    /// game: `hotkeyID`
+    /// read at 0x14126fac5
+    pub hotkey_id: i32,
+}
+
+/// Read by `FUN_14126f2a0` (`TribeMasterCombatObject.cpp`) of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct TribeMasterCombatObject {
+    /// read by 0x1410c8520
+    #[br(args(ver))]
+    pub rge_master_combat_object: RgeMasterCombatObject,
+    /// game: `(build_inventory[index])`
+    /// read at 0x14126f6d5
+    #[br(count = 3)]
+    pub build_inventory: Vec<[u8; 6]>,
+    /// game: `num_train_locations`
+    /// read at 0x14126f78c
+    pub num_train_locations: i16,
+    /// unnamed in the binary
+    /// a loop of 4 reads; unnamed in the binary
+    #[br(count = num_train_locations.max(0) as usize)]
+    pub unnamed_list_at_0x14126f93a: Vec<TribeMasterCombatObjectEntry1>,
+    /// game: `volley_fire_amount`
+    /// read at 0x14127003f
+    pub volley_fire_amount: f32,
+    /// game: `max_attacks_in_volley`
+    /// read at 0x14127014b
+    pub max_attacks_in_volley: u8,
+    /// game: `hero_flag`
+    /// read at 0x141270306
+    pub hero_flag: u8,
+    /// game: `orig_pierce_armor`
+    /// read at 0x141270fa5
+    pub orig_pierce_armor: i16,
+    /// game: `regeneration_rate`
+    /// read at 0x14127110c
+    pub regeneration_rate: f32,
+    /// game: `mMaxCharge`
+    /// read at 0x14127126c
+    pub max_charge: f32,
+    /// game: `mRechargeRate`
+    /// read at 0x1412713bd
+    pub recharge_rate: f32,
+    /// game: `mChargeEvent`
+    /// read at 0x141271508
+    pub charge_event: i16,
+    /// game: `mChargeType`
+    /// read at 0x14127165a
+    pub charge_type: i16,
+    /// game: `mChargeTarget`
+    /// read at 0x1412717bb
+    pub charge_target: i16,
+    /// game: `mChargeProjectileUnit`
+    /// read at 0x14127190f
+    pub charge_projectile_unit: i32,
+    /// game: `mAttackPriority`
+    /// read at 0x141271a5d
+    pub attack_priority: u8,
+    /// game: `mInvulnerabilityLevel`
+    /// read at 0x141271bad
+    pub invulnerability_level: f32,
+    /// game: `mButtonIconID`
+    /// read at 0x141271d09
+    pub button_icon_id: i16,
+    /// game: `mButtonShortTooltipID`
+    /// read at 0x141271e4e
+    pub button_short_tooltip_id: i32,
+    /// game: `mButtonExtendedTooltipID`
+    /// read at 0x141271f9d
+    pub button_extended_tooltip_id: i32,
+    /// game: `mButtonHotkeyAction`
+    /// read at 0x1412720e8
+    pub button_hotkey_action: i16,
+    /// game: `mMinConversionTimeAdj`
+    /// read at 0x14127224c
+    pub min_conversion_time_adj: f32,
+    /// game: `mMaxConversionTimeAdj`
+    /// read at 0x14127239d
+    pub max_conversion_time_adj: f32,
+    /// game: `mConversionChanceAdj`
+    /// read at 0x1412724eb
+    pub conversion_chance_adj: f32,
+    /// game: `volley_missile_id`
+    /// read at 0x14127264e
+    pub volley_missile_id: i32,
+    /// game: `tempFormationCategory`
+    /// read at 0x1412727b5
+    pub temp_formation_category: u8,
+    /// game: `specialSpriteId`
+    /// read at 0x141272913
+    pub special_sprite_id: i16,
+    /// game: `&special_attack_flag`
+    /// read at 0x141272aaf
+    pub special_attack_flag: u8,
+    /// game: `&tempId`
+    /// helper 0x140a90f60
+    pub temp_id: i16,
+    /// game: `&tempId`
+    /// helper 0x140a90f60
+    pub temp_id_2: i16,
+    /// game: `&tempId`
+    /// helper 0x140a90f60
+    pub temp_id_3: i16,
+    /// game: `&volley_x_spread`
+    /// helper 0x140a91160
+    pub volley_x_spread: f32,
+    /// game: `&volley_y_spread`
+    /// helper 0x140a91160
+    pub volley_y_spread: f32,
+    /// game: `&volley_start_spread_adjustment`
+    /// helper 0x140a91160
+    pub volley_start_spread_adjustment: f32,
+    /// game: `&mTrainLocationEntryMod`
+    /// helper 0x140a90f60
+    #[br(if(ver >= 0x426666))]
+    pub train_location_entry_mod: Option<i16>,
+}
+
+/// Read by `FUN_1410d7320` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct RgeMasterMissileObject {
+    /// read by 0x1410c8520
+    #[br(args(ver))]
+    pub rge_master_combat_object: RgeMasterCombatObject,
+    /// game: `targetting_type`
+    /// read at 0x1410d75d1
+    pub targetting_type: u8,
+    /// game: `missile_hit_info`
+    /// read at 0x1410d7776
+    pub missile_hit_info: u8,
+    /// game: `missile_die_info`
+    /// read at 0x1410d7905
+    pub missile_die_info: u8,
+    /// game: `ballistics_ratio`
+    /// read at 0x1410d7a95
+    pub ballistics_ratio: f32,
+}
+
+/// Read by `FUN_141665db0` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32, master_type: u8))]
+pub struct RgeMaster {
+    /// read by 0x1410ee760
+    #[br(if((10..61).contains(&master_type) && master_type == 10), args(ver))]
+    pub rge_master_static_object: Option<RgeMasterStaticObject>,
+    /// read by 0x1410a6b70
+    #[br(if((10..61).contains(&master_type) && master_type == 20), args(ver))]
+    pub rge_master_animated_object: Option<RgeMasterAnimatedObject>,
+    /// read by 0x1410cf320
+    #[br(if((10..61).contains(&master_type) && master_type == 25), args(ver))]
+    pub rge_master_doppleganger_object: Option<RgeMasterAnimatedObject>,
+    /// read by 0x1410d9790
+    #[br(if((10..61).contains(&master_type) && master_type == 30), args(ver))]
+    pub rge_master_moving_object: Option<RgeMasterMovingObject>,
+    /// read by 0x141094d30
+    #[br(if((10..61).contains(&master_type) && master_type == 40), args(ver))]
+    pub rge_master_action_object: Option<RgeMasterActionObject>,
+    /// read by 0x1410ab7c0
+    #[br(if((10..61).contains(&master_type) && master_type == 50), args(ver))]
+    pub rge_master_combat_object: Option<RgeMasterCombatObject>,
+    /// read by 0x1410d11e0
+    #[br(if((10..61).contains(&master_type) && master_type == 60), args(ver))]
+    pub rge_master_missile_object: Option<RgeMasterMissileObject>,
+}
+
+/// Read by `FUN_1412439d0` (`TribeMasterBuildingObject.cpp`) of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct TribeMasterBuildingObject {
+    /// read by 0x14126f2a0
+    #[br(args(ver))]
+    pub tribe_master_combat_object: TribeMasterCombatObject,
+    /// game: `building_facet`
+    /// read at 0x141243f5e
+    pub building_facet: u16,
+    /// game: `garrison_heal_rate`
+    /// read at 0x14124412a
+    pub garrison_heal_rate: f32,
+    /// game: `garrison_repair_rate`
+    /// read at 0x1412442e9
+    pub garrison_repair_rate: f32,
+    /// game: `garrison_units`
+    /// read at 0x1412444ba
+    pub garrison_units: u8,
+    /// game: `on_build_make_tile`
+    /// read at 0x14124468a
+    pub on_build_make_tile: i16,
+    /// game: `&tempId`
+    /// read at 0x141244869
+    pub temp_id: u16,
+    /// game: `&tempId`
+    /// read at 0x141244b06
+    pub temp_id_2: u16,
+    /// game: `&tempId`
+    /// read at 0x141244d92
+    pub temp_id_3: u16,
+    /// game: `&tempId`
+    /// read at 0x141245022
+    pub temp_id_4: u16,
+    /// game: `&tempId`
+    /// read at 0x1412452b2
+    pub temp_id_5: u16,
+    /// game: `&tempId`
+    /// read at 0x141245542
+    pub temp_id_6: u16,
+    /// game: `&tempId`
+    /// read at 0x1412457de
+    pub temp_id_7: u16,
+    /// game: `&tempId`
+    /// read at 0x141245a8f
+    pub temp_id_8: u16,
+    /// game: `&construction_sound_event.mEventId`
+    /// helper 0x140b4b760
+    pub construction_sound_event_m_event_id: u32,
+    /// game: `&open_close_sound_event.mEventId`
+    /// helper 0x140b4b760
+    pub open_close_sound_event_m_event_id: u32,
+}
+
+/// Read by `FUN_14162bef0` of the build.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32, master_type: u8))]
+pub struct Master {
+    /// read by 0x141277b70
+    #[br(if(master_type == 15), args(ver))]
+    pub tribe_master_tree_object: Option<RgeMasterStaticObject>,
+    /// read by 0x14124b140
+    #[br(if(!(master_type == 15) && master_type == 70), args(ver))]
+    pub tribe_master_combat_object: Option<TribeMasterCombatObject>,
+    /// unnamed in the binary
+    /// read by 0x141665db0
+    #[br(if(!(master_type == 15) && !(master_type == 70) && master_type != 80), args(ver, master_type))]
+    pub rge_master: Option<RgeMaster>,
+    /// read by 0x141229be0
+    #[br(if(!(master_type == 15) && !(master_type == 70) && !(master_type != 80)), args(ver))]
+    pub tribe_master_building_object: Option<TribeMasterBuildingObject>,
+}
+
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct PlayerMaster {
+    /// the type the master factory (param_5) switches on
+    #[br(magic = b"\x16")]
+    pub master_type: u8,
+    /// unnamed in the binary
+    /// read by 0x14162bef0
+    #[br(args(ver, master_type))]
+    pub master: Master,
+    /// unnamed in the binary
+    /// the entry's closing marker
+    #[br(magic = b"!")]
+    pub end_marker: (),
+}
+
+/// Read by `FUN_1416267a0` (`WorldPlayer.cpp`) of the build.
+/// Ends before the read at `0x141627b1c`: the routine goes on, read by hand-written code.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little, import(ver: u32))]
+pub struct PlayerMasters {
+    /// game: `master_object_num`
+    /// read at 0x1416269ed
+    #[br(magic = b"\x0b")]
+    pub master_object_num: i32,
+    /// one flag per master; the loop below reads the enabled ones
+    #[br(count = master_object_num.max(0) as usize)]
+    pub enabled: Vec<u32>,
+    /// an enabled master: marker, type, the master, marker
+    #[br(magic = b"\x0b", if(!(master_object_num < 1) && master_object_num > 0), count = enabled.iter().filter(|&&e| e != 0).count() as usize, args { inner: (ver,) })]
+    pub masters: Option<Vec<PlayerMaster>>,
 }

@@ -233,6 +233,7 @@ fn the_reader_agrees_with_the_games_reads_on_every_traced_recording() {
     recordings(&corpus, &mut paths);
     paths.sort();
     let (mut checked, mut crossed, mut stops) = (0, Vec::new(), Vec::new());
+    let mut failures = Vec::new();
     let mut first_context = None;
     let (mut read_by_us, mut read_by_game) = (0u64, 0u64);
     // crossings per caller of the crossed game read: which routines this reader misreads
@@ -250,7 +251,19 @@ fn the_reader_agrees_with_the_games_reads_on_every_traced_recording() {
             reads: Vec::new(),
         };
         let parsed = de::header::parse_reader(&mut reader);
-        assert!(parsed.is_ok(), "{}: {:?}", path.display(), parsed.err());
+        if let Err(e) = parsed {
+            // the reads before the failure still say where this reader left the game's
+            if failures.is_empty() {
+                let at = reader.reads.last().map_or(0, |&(p, l)| p + l);
+                failures.push(format!(
+                    "{}: {e:?}\n{}",
+                    path.display(),
+                    context(&header, &reader.reads, &trace, at, 48)
+                ));
+            } else {
+                failures.push(format!("{}: {e:?}", path.display()));
+            }
+        }
         checked += 1;
         let total = trace.sizes.iter().map(|&s| u64::from(s)).sum::<u64>();
         read_by_us += reader.inner.position();
@@ -301,8 +314,15 @@ fn the_reader_agrees_with_the_games_reads_on_every_traced_recording() {
         eprintln!("  {n:>6} crossings in {recs:>3} recordings at game reads from {caller:#x}");
     }
     assert!(checked > 0, "no trace in {}", traces.display());
+    if !failures.is_empty() {
+        eprintln!(
+            "{} recordings fail to parse, e.g.\n  {}",
+            failures.len(),
+            failures[0]
+        );
+    }
     assert!(
-        crossed.is_empty(),
+        crossed.is_empty() && failures.is_empty(),
         "{} recordings cross the game's reads:\n{}\nfirst one:\n{}",
         crossed.len(),
         crossed

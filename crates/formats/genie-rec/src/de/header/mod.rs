@@ -23,7 +23,7 @@ mod test_bytes;
 mod tribe;
 
 pub use ai::{AiConfig, AiData, AiRule, AiRuleGroup, SizedString32};
-pub use layout_types::{LenString16, LenString32, LenVec32};
+pub use layout_types::{LenString16, LenString32, LenVec32, STRING_SIGNATURE, SigString};
 pub use lobby::{AiFile, LobbyPlayer, LobbySettings};
 pub use main_object::{MainObject, Task, TaskList};
 pub use map::{MapInfo, MapZone, Obstructions, Tile};
