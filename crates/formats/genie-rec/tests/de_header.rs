@@ -122,20 +122,17 @@ fn marvinblue_sections_end_where_imhex_says() {
             "player {i}"
         );
     }
-    // Gaia's tail is skipped by searching for the next player, as in the pattern; the other players
-    // are read to the end of their section.
-    let gaia = &header.players[0];
-    assert!(gaia.tail.is_none());
-    assert_eq!(gaia.skipped, Some(gaia.ends.end..expected_start("player1")));
+    // Every section, Gaia's included, is read to its end, and the next one starts right there. The
+    // pattern skips Gaia's tail by searching for player 1; ImHex's offset for player 1 is the check.
+    assert_eq!(header.players[0].ends.end, expected_start("player1"));
     for (i, p) in header.players.iter().enumerate().skip(1) {
-        let tail = p.tail.as_ref().unwrap();
+        let tail = &p.tail;
         assert_eq!(
             (tail.sleeping_objects.len(), tail.doppel_objects.len()),
             (0, 0),
             "player {i}"
         );
         assert_eq!(p.ends.end, expected(&format!("player{i}")), "player {i}");
-        assert_eq!(p.skipped, None, "player {i}");
     }
 }
 
@@ -150,9 +147,9 @@ fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// How far the corpus parses. Tier 1 (save 66.6, build 158041, the analysed binary) is strict: only
-/// the typed gaps of aoe2rec's pattern may stop it. Other versions are only reported, since the
-/// pattern also fails on some of them in ImHex (save 68.0 player data, for one).
+/// How far the corpus parses. Tier 1 (save 66.6, build 158041, the analysed binary) is strict: every
+/// recording must parse. The reader is sequential, so each player section must end where the next
+/// one starts. Other versions are only reported.
 #[test]
 fn every_corpus_header_parses() {
     let Some(dir) = corpus() else {
@@ -170,7 +167,6 @@ fn every_corpus_header_parses() {
         let is_tier1 = (version.hundredths(), version.build) == (6660, 158041);
         let outcome = match de::header::parse(&chapter.inflate_header().unwrap()) {
             Ok(_) => "parsed".to_string(),
-            Err(de::Error::Unsupported { what, .. }) => format!("unsupported: {what}"),
             Err(e) => {
                 if is_tier1 {
                     tier1_failures.push(format!(
@@ -178,7 +174,10 @@ fn every_corpus_header_parses() {
                         path.strip_prefix(&dir).unwrap().display()
                     ));
                 }
-                "failed".to_string()
+                match e {
+                    de::Error::Unsupported { what, .. } => format!("unsupported: {what}"),
+                    _ => "failed".to_string(),
+                }
             }
         };
         *(if is_tier1 { &mut tier1 } else { &mut others })
@@ -187,4 +186,5 @@ fn every_corpus_header_parses() {
     }
     eprintln!("tier 1: {tier1:?}\nother versions: {others:?}");
     assert!(tier1_failures.is_empty(), "{tier1_failures:#?}");
+    assert_eq!(tier1.get("parsed"), Some(&137));
 }

@@ -1,26 +1,37 @@
-//! The world save at the start of a chapter, read through every player's object lists.
+//! The world save at the start of a chapter, read sequentially through every player section.
 //!
 //! Hand-ported from aoe2rec's `patterns/aoe2header.hexpat` (MIT, see `NOTICE`) and checked byte
-//! for byte against ImHex's offsets for that pattern. Read-only: the writer will be generated from
-//! the codegen IR that replaces this port (workspace FD-006-D05). Version gates compare
-//! [`SaveVersion::hundredths`](super::SaveVersion::hundredths): 6660 is save 66.6.
+//! for byte against ImHex's offsets for that pattern. Where the pattern guesses (fixed sizes,
+//! look-aheads, delimiter runs, the search for the next player), the reader follows the save
+//! functions of build 158041 instead; each such part names its function. Read-only: the writer
+//! will be generated from the codegen IR that replaces this port (workspace FD-006-D05). Version
+//! gates compare [`SaveVersion::hundredths`](super::SaveVersion::hundredths): 6660 is save 66.6.
 
 mod ai;
 mod lobby;
 mod main_object;
 mod map;
+mod master;
 mod object;
 mod player;
 mod primitives;
 mod replay;
+#[cfg(test)]
+mod test_bytes;
+mod tribe;
 
 pub use ai::{AiConfig, AiData, AiRule, AiRuleGroup, SizedString32};
 pub use lobby::{AiFile, LobbyPlayer, LobbySettings};
-pub use main_object::MainObject;
+pub use main_object::{MainObject, Task, TaskList};
 pub use map::{MapInfo, MapZone, Obstructions, Tile};
+pub use master::{
+    DamageSprite, MasterAction, MasterBody, MasterBuilding, MasterCombat, MasterCreatable,
+    MasterMissile, MasterMoving, MasterObject, OverrideDescription,
+};
 pub use object::{
-    ActionExtra, ActionObject, AnimatedObject, BaseMoving, BuildingObject, CombatObject,
-    MovingObject, Object, ObjectBody, StaticObject, UnitAction, UnitAi,
+    ActionExtra, ActionObject, AnimatedObject, BackToWork, BaseMoving, BuildingObject,
+    BuildingTail, CombatObject, CombatTail, MovingObject, Object, ObjectBody, OrderEvent,
+    OrderQueue, PatrolPath, ProductionQueueEntry, StaticObject, UnitAction, UnitAi,
 };
 pub use player::{
     InitialMap, PlayerEnds, PlayerPrelude, PlayerSection, PlayerTail, RestoreObject, StateRestore,
@@ -28,6 +39,10 @@ pub use player::{
 };
 pub use primitives::{DeString, StringList};
 pub use replay::Replay;
+pub use tribe::{
+    GaiaState, History, HistoryNode, Offer, ResearchLocation, ScoutMap, TechState, Trade, TribeEnd,
+    TribeState,
+};
 
 use binrw::BinRead;
 

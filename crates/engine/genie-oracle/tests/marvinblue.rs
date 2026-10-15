@@ -50,6 +50,13 @@ fn marvinblue_header_save_reproduces_the_first_checkpoint_of_player_2() {
     assert_eq!((p1.from_save[6], p1.checkpoint[6]), (66, 70));
 }
 
+/// The lobby's game type 3, a scenario.
+fn is_scenario(recording: &[u8]) -> bool {
+    let chapter = genie_rec::de::chapters(recording).unwrap()[0];
+    let header = genie_rec::de::header::parse(&chapter.inflate_header().unwrap()).unwrap();
+    header.lobby.game_type == 3
+}
+
 fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).unwrap().map(Result::unwrap) {
         let path = entry.path();
@@ -63,7 +70,10 @@ fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// How many players of the tier-1 corpus the save alone reproduces. Only reported: a player who
 /// acts in the first 500 ticks needs the simulation. Words 0, 5 and 8 (sleeping count, waypoints,
-/// player id) must match for every player, whatever they did.
+/// player id) must match for every player, whatever they did, except in scenario games: there the
+/// header holds the scenario's placed objects, and the scenario start replaces them before the first
+/// checkpoint (`MarvinBlue/426048681`: player 1 has 193 live and 2 sleeping objects in the header,
+/// 40 and 0 at checkpoint 1). Scenarios are only counted.
 #[test]
 fn tier1_corpus_report() {
     let Some(dir) = corpus() else {
@@ -79,6 +89,12 @@ fn tier1_corpus_report() {
             .save_version()
             .unwrap();
         if (version.hundredths(), version.build) != (6660, 158041) {
+            continue;
+        }
+        if is_scenario(&data) {
+            *outcomes
+                .entry("scenario, not compared".to_string())
+                .or_default() += 1;
             continue;
         }
         let outcome = match compare_first_checkpoint(&data) {
@@ -104,6 +120,7 @@ fn tier1_corpus_report() {
             Err(Error::Rec(genie_rec::de::Error::Unsupported { what, .. })) => {
                 format!("unsupported: {what}")
             }
+            Err(Error::NoCheckpoint) => "no checkpoint".to_string(),
             Err(e) => panic!("{}: {e}", path.display()),
         };
         *outcomes.entry(outcome).or_default() += 1;

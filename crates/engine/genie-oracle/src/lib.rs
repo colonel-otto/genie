@@ -60,10 +60,7 @@ pub fn player_state(section: &PlayerSection, id: u32) -> PlayerState {
     PlayerState {
         id,
         resources: [resource(0), resource(1), resource(2), resource(3)],
-        sleeping_count: section
-            .tail
-            .as_ref()
-            .map_or(0, |t| t.sleeping_objects.len() as u32),
+        sleeping_count: section.tail.sleeping_objects.len() as u32,
         live: section
             .objects
             .iter()
@@ -165,7 +162,7 @@ fn unit_ai(object: &de::header::Object) -> Option<genie_core::unit_ai::UnitAi> {
         last_retarget_time: ai.last_retarget_time,
         retarget_timer: ai.randomized_target_timer,
         stance: ai.state,
-        retarget_disabled: ai.unknown_de2,
+        retarget_disabled: ai.disable_retargeting,
     })
 }
 

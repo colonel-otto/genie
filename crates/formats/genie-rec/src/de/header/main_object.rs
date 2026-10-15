@@ -20,7 +20,9 @@ pub struct MainObject {
     pub collision_size_y: f32,
     pub resource_capacity: i16,
     pub resources: [ResourceStorage; 3],
-    #[br(magic = b"\x00")]
+    /// 1 when the unit is disabled for the player (158041: `Write(&disabled, 1)` at `0x141139adb`
+    /// in the main static object save `0x1411380d0`). The pattern reads it as a magic `0x00`.
+    pub disabled: u8,
     pub name_string_id: u32,
     pub create_string_id: u32,
     pub terrain_table: i16,
@@ -133,12 +135,13 @@ pub struct MainOffence {
     pub unknown_67_2: Option<u8>,
     pub line_of_sight: f32,
     pub work_rate: f32,
+    /// `mHandicappedWorkRate` (158041: the small action-object save `0x1410a4e70`).
     pub unknown5: f32,
-    /// 0 in every main object the pattern reads. Where it is 1 (a civilisation's villagers or
-    /// fortified church, for example), what follows looks like a task list of the player's own, which
-    /// the pattern does not read: the reader stops with `Unsupported`.
-    #[br(parse_with = no_task_list)]
-    pub unknown6: u8,
+    /// `mObjectTaskFlags`. With bit 0 set, the player's own task list follows (a civilisation's
+    /// villagers or fortified church, for example).
+    pub object_task_flags: u8,
+    #[br(if(object_task_flags & 1 != 0))]
+    pub tasks: Option<TaskList>,
     pub attack_sound: i16,
     pub move_sound: i16,
     pub attack_sound_big: u32,
@@ -178,15 +181,47 @@ pub struct MainOffence {
     pub graphic_displacement: [f32; 3],
 }
 
-#[binrw::parser(reader, endian)]
-fn no_task_list() -> binrw::BinResult<u8> {
-    match u8::read_options(reader, endian, ())? {
-        0 => Ok(0),
-        _ => Err(super::object::unsupported(
-            reader,
-            "main object task list (unknown6 != 0)",
-        )),
-    }
+/// A main object's own task list (`tasks->save`, `0x1411a9720`).
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little)]
+pub struct TaskList {
+    #[br(temp)]
+    count: i16,
+    #[br(count = count.max(0) as usize)]
+    pub tasks: Vec<Task>,
+}
+
+/// One task (`0x1410652a0`), in write order.
+#[binread]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[br(little)]
+pub struct Task {
+    pub task_type: i16,
+    pub id: i16,
+    pub is_default: u8,
+    pub action_type: i16,
+    pub object_group: i16,
+    pub object_id: i16,
+    pub terrain_id: i16,
+    pub attribute_types: [i16; 4],
+    pub work_value_1: f32,
+    pub work_value_2: f32,
+    pub work_range: f32,
+    pub search_flag: u8,
+    pub search_wait_time: f32,
+    pub combat_level: u8,
+    pub combat_level_flag: u8,
+    pub work_flag: i16,
+    pub work_flag_2: i16,
+    pub owner_type: u8,
+    pub holding_attribute: u8,
+    pub state_building: u8,
+    /// Six values the binary writes through one `short_val` temporary.
+    pub short_values: [i16; 6],
+    pub gather_sound_event: u32,
+    pub deposit_sound_event: u32,
+    pub enablement_resource_id: i16,
 }
 
 /// An attack bonus or armour entry: an armour class and its amount.

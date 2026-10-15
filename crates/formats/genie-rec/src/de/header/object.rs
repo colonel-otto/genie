@@ -1,10 +1,12 @@
 //! The live objects of a player (pattern: `Object` and the chain `StaticObject` … `Building`).
 //!
-//! Each kind extends the previous one: static, animated, moving, action, combat, building. Features
-//! the pattern itself does not implement stop the reader with an `Unsupported` error: object
-//! properties (`has_object_props == 1`) and an own base unit in a combat object here, a main
-//! object's task list in `main_object`.
+//! Each kind extends the previous one: static, animated, moving, action, combat, building. From
+//! the moving part to the combat object's attribute amounts the reader keeps the pattern's fields,
+//! whose sizes add up but whose names are about 30 bytes off the binary's (the combat object's
+//! kill-reward list lies in that range and is not read). The masters, the unit AI and the tails
+//! after it follow the 158041 save functions.
 
+use super::master::MasterObject;
 use super::primitives::{DeString, peek_u8};
 use binrw::{BinRead, binread};
 
@@ -101,6 +103,9 @@ pub fn read_objects<R: binrw::io::Read + binrw::io::Seek>(
 ) -> binrw::BinResult<Vec<Object>> {
     let mut out = Vec::new();
     while peek_u8(r)? != 0 {
+        if std::env::var_os("ZZ_TRACE").is_some() {
+            eprintln!("OBJ {:#x}", r.stream_position()?);
+        }
         out.push(read_object(r, v)?);
     }
     Ok(out)
@@ -161,6 +166,15 @@ pub struct StaticObject {
     pub roo_already_called: u8,
     pub unknown1: [u8; 17],
     pub unknown2: u8,
+    /// `hasOwnMasterObject` and `hasSuccessorMasterObj` (158041 static save `0x1411985d0`, at
+    /// `0x14119bbd2`); each set flag is followed by that master's full save. The pattern reads the
+    /// pair as one u16 `has_object_props`.
+    pub has_own_master: u8,
+    pub has_successor_master: u8,
+    #[br(if(has_own_master != 0))]
+    pub own_master: Option<Box<MasterObject>>,
+    #[br(if(has_successor_master != 0))]
+    pub successor_master: Option<Box<MasterObject>>,
     #[br(parse_with = sprite_list)]
     pub sprites: Vec<Sprite>,
     pub particles: [Particle; 5],
@@ -176,16 +190,9 @@ pub struct StaticObject {
     pub unknown_de_66_2: [u8; 4],
 }
 
-/// `has_object_props` (u16), then, without props, `has_sprite_list` and the sprites up to a 0 byte.
+/// `has_sprite_list`, then the sprites up to a 0 byte.
 #[binrw::parser(reader, endian)]
 fn sprite_list() -> binrw::BinResult<Vec<Sprite>> {
-    let has_object_props = u16::read_options(reader, endian, ())?;
-    if has_object_props == 1 {
-        return Err(unsupported(
-            reader,
-            "object properties (has_object_props = 1)",
-        ));
-    }
     let has_sprite_list = u8::read_options(reader, endian, ())?;
     let mut out = Vec::new();
     if has_sprite_list > 0 {
@@ -440,10 +447,13 @@ pub struct CombatObject {
     pub unknown_de2: [u8; 16],
     pub unknown_de3: [u8; 4],
     pub unknown_de_64_2: [u8; 19],
+    /// The last byte of the combat object save (`RGE_Combat_Object::save`, `0x1410870e0`). The
+    /// pattern calls these three bytes `next_volley`, `using_special_animation` and `own_base`;
+    /// the binary writes `attr_amt[6]` right after `using_special_attack_animation`
+    /// (`TRIBE_Combat_Object::save`, `0x141218920`).
+    pub processed_kill: u8,
     pub next_volley: u8,
-    pub using_special_animation: u8,
-    #[br(parse_with = no_own_base)]
-    pub own_base: u8,
+    pub using_special_attack_animation: u8,
     pub attribute_amounts: [u16; 6],
     pub decay_timer: u16,
     pub raider_build_countdown: u32,
@@ -452,44 +462,67 @@ pub struct CombatObject {
     pub has_ai: u32,
     #[br(if(has_ai > 0), args(v, has_ai))]
     pub unit_ai: Option<UnitAi>,
-    /// The pattern's look-ahead: a position follows unless the next five bytes are
-    /// `00 ff ff ff ff`. A heuristic, not a known field.
-    #[br(parse_with = optional_position)]
-    pub position: Option<([f32; 3], u8)>,
     #[br(if(v >= 6720))]
     pub unknown_de_67_2_1: Option<i8>,
     #[br(parse_with = optional_position_67_2, args(v))]
     pub unknown_vector_67_2: Option<([f32; 3], u8)>,
+    pub tail: CombatTail,
+}
+
+/// The rest of `TRIBE_Combat_Object::save` (`0x141218920`) after the unit AI, in write order.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little)]
+pub struct CombatTail {
     pub town_bell_flag: u8,
-    pub town_bell_target_id: i32,
-    pub town_bell_target: [f32; 2],
-    pub town_bell_target_id2: i32,
-    pub town_bell_target_type: i32,
-    pub town_bell_action: i32,
+    /// `mBackToWork1` and `mBackToWork2`.
+    pub back_to_work: [BackToWork; 2],
     pub berserker_timer: f32,
     pub num_builders: u8,
     pub num_healers: u8,
-    pub unknown_de4: u32,
-    pub unknown_de5: u32,
-    pub unknown_de6: [u8; 4],
-    #[br(count = 48)]
-    pub unknown_de7: Vec<u8>,
-    #[br(count = 40)]
-    pub unknown_de8: Vec<u8>,
-    pub unknown_de9: u16,
-    /// 8 bytes (an f32 and four bytes) when `has_ai == 15`, else 2 bytes.
-    #[br(count = if has_ai == 15 { 8 } else { 2 })]
-    pub unknown_de10: Vec<u8>,
-    pub unknown_de_64_3: u8,
+    pub charge: f32,
+    pub melee_armor_removed: i16,
+    pub pierce_armor_removed: i16,
+    pub movement_damage_timer: f32,
+    pub attack_powerup: f32,
+    pub reload_powerup: f32,
+    pub powerup_update_offset: u32,
+    pub speed_powerup: f32,
+    pub work_rate_powerup: f32,
+    pub regeneration_rate_powerup: f32,
+    pub speed_stinger: f32,
+    pub regeneration_stinger: f32,
+    pub reload_stinger: f32,
+    #[br(temp)]
+    active_stinger_count: i32,
+    /// `ActiveStingerData`, 32 bytes each; the fields are not mapped.
+    #[br(count = active_stinger_count.max(0) as usize)]
+    pub active_stingers: Vec<[u8; 32]>,
+    pub hitpoints_powerup: f32,
+    pub hitpoints_max_powerup: f32,
+    pub max_range_powerup: f32,
+    pub melee_armor_powerup: i32,
+    pub pierce_armor_powerup: i32,
+    #[br(temp)]
+    local_attribute_count: u32,
+    /// Attribute key and value. Towers usually hold one entry, which the pattern read as six
+    /// extra bytes for unit-AI type 15.
+    #[br(count = local_attribute_count)]
+    pub local_attributes: Vec<(u16, f32)>,
+    pub conversion_rate: f32,
+    pub skip_volley_attack: u8,
 }
 
-#[binrw::parser(reader, endian)]
-fn no_own_base() -> binrw::BinResult<u8> {
-    let own_base = u8::read_options(reader, endian, ())?;
-    if own_base > 0 {
-        return Err(unsupported(reader, "own base unit in a combat object"));
-    }
-    Ok(own_base)
+/// Where a unit returns to work after the town bell.
+#[binread]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[br(little)]
+pub struct BackToWork {
+    pub target_id: i32,
+    pub target: [f32; 2],
+    pub target_id2: i32,
+    pub target_type: i32,
+    pub action: i32,
 }
 
 fn position_follows<R: binrw::io::Read + binrw::io::Seek>(
@@ -502,15 +535,6 @@ fn position_follows<R: binrw::io::Read + binrw::io::Seek>(
 }
 
 #[binrw::parser(reader, endian)]
-fn optional_position() -> binrw::BinResult<Option<([f32; 3], u8)>> {
-    if position_follows(reader)? {
-        Ok(Some(<([f32; 3], u8)>::read_options(reader, endian, ())?))
-    } else {
-        Ok(None)
-    }
-}
-
-#[binrw::parser(reader, endian)]
 fn optional_position_67_2(v: u32) -> binrw::BinResult<Option<([f32; 3], u8)>> {
     if v >= 6720 && position_follows(reader)? {
         Ok(Some(<([f32; 3], u8)>::read_options(reader, endian, ())?))
@@ -519,17 +543,26 @@ fn optional_position_67_2(v: u32) -> binrw::BinResult<Option<([f32; 3], u8)>> {
     }
 }
 
+/// An `OrderEvent`, 52 bytes (`UnitAIModule::save` writes `0x34` per order); the fields are not
+/// mapped. The pattern read 36 bytes per order.
+pub type OrderEvent = [u8; 52];
+
+/// A unit AI's patrol path (`0x140f98f00`).
 #[binread]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[br(little)]
-pub struct Order {
-    pub issuer: u32,
-    pub kind: u32,
-    pub priority: u32,
-    pub target_id: u32,
-    pub target_player: u32,
-    pub target_location: [f32; 3],
-    pub range: f32,
+pub struct PatrolPath {
+    pub value_0: u32,
+    #[br(temp)]
+    waypoint_count: u32,
+    #[br(count = waypoint_count)]
+    pub waypoints: Vec<[f32; 3]>,
+    /// The words at `+4` … `+0x10`.
+    pub values: [u32; 4],
+    #[br(temp)]
+    id_count: i32,
+    #[br(count = id_count.max(0) as usize)]
+    pub ids: Vec<i32>,
 }
 
 #[binread]
@@ -587,7 +620,7 @@ pub struct UnitAi {
     #[br(temp)]
     num_orders: u32,
     #[br(count = num_orders)]
-    pub orders: Vec<Order>,
+    pub orders: Vec<OrderEvent>,
     #[br(temp)]
     num_notifications: u32,
     #[br(count = num_notifications)]
@@ -603,6 +636,8 @@ pub struct UnitAi {
     pub alert_mode: u8,
     pub alert_mode_object_id: i32,
     pub has_patrol_path: u32,
+    #[br(if(has_patrol_path != 0))]
+    pub patrol_path: Option<PatrolPath>,
     pub patrol_current_waypoint: u32,
     #[br(temp)]
     num_order_history: u32,
@@ -618,12 +653,30 @@ pub struct UnitAi {
     pub retarget_entries: Vec<[u32; 2]>,
     pub best_unit_to_attack: i32,
     pub formation_type: u8,
-    pub unknown_de1: [u8; 4],
-    pub unknown_de2: u8,
+    pub time_since_last_search: u32,
+    pub disable_retargeting: u8,
+    /// Tower and building unit AIs (types 15 and 17; `0x140c2b580`, `0x140c2aa00`): their
+    /// order queue, a count and the orders.
     #[br(if(ai_type == 15 || ai_type == 17))]
-    pub unknown_de3: Option<[u8; 4]>,
+    pub building_order_queue: Option<OrderQueue>,
     #[br(if(v >= 6720))]
     pub unknown_de4: Option<i8>,
+    /// Elephant unit AI (type 4, `0x140c2ae70`): the words at `+0x1f0`, `+0x1f4`, `+0x1f8` and
+    /// the byte at `+0x1fc`. The words read as a map position. The pattern found these bytes
+    /// with a look-ahead.
+    #[br(if(ai_type == 4))]
+    pub elephant_position: Option<([f32; 3], u8)>,
+}
+
+/// A count and that many orders.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little)]
+pub struct OrderQueue {
+    #[br(temp)]
+    count: i32,
+    #[br(count = count.max(0) as usize)]
+    pub orders: Vec<OrderEvent>,
 }
 
 #[binread]
@@ -652,9 +705,8 @@ pub struct BuildingObject {
     pub extra_actions: Vec<UnitAction>,
     #[br(temp)]
     capacity: u16,
-    /// Unit type id and count.
     #[br(count = capacity)]
-    pub production_queue: Vec<[u16; 2]>,
+    pub production_queue: Vec<ProductionQueueEntry>,
     pub size: u16,
     pub production_queue_total_units: u16,
     pub production_queue_enabled: u8,
@@ -665,15 +717,206 @@ pub struct BuildingObject {
     pub gate_locked: u32,
     pub first_update: u32,
     pub close_timer: u32,
+    pub tail: BuildingTail,
+}
+
+/// One entry of a building's production queue, 36 bytes (`TRIBE_Building_Object::save`,
+/// `0x1411d72c0`, writes `+0`, `+2`, `+4`, `+0x2c`, `+0x28`, `+8`).
+#[binread]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[br(little)]
+pub struct ProductionQueueEntry {
+    pub master_unit_id: i16,
+    pub unit_count: i16,
+    /// `mTechId` and `mTrainTime`; which is which is not mapped.
+    pub value_04: i16,
+    pub value_2c: i16,
+    pub button_location_id: i32,
+    /// `mCosts`.
+    pub costs: [u8; 24],
+}
+
+/// The rest of `TRIBE_Building_Object::save` (`0x1411d72c0`) after the close timer, in write order.
+/// The pattern read it as 36 fixed bytes, which holds while every list is empty and the building
+/// has no open/closed master.
+#[binread]
+#[derive(Debug, Clone, PartialEq)]
+#[br(little)]
+pub struct BuildingTail {
     pub terrain_type: u8,
     pub semi_asleep: u8,
     pub snow_flag: u8,
-    pub unknown_de_flag: u8,
-    pub unknown_building_de1: u16,
-    pub unknown_building_de2: u8,
-    pub unknown_building_de3: [u8; 4],
-    pub unknown_building_de4: [u8; 4],
-    pub unknown_building_de5: [u8; 12],
-    pub unknown_building_de_64: u32,
-    pub unknown_building_de_66: [u8; 5],
+    pub original_owner: i8,
+    /// The id of the master at `+0xc90`, or -1.
+    pub master_id_c90: i16,
+    pub livestock_summation: f32,
+    #[br(temp)]
+    pasture_livestock_count: i32,
+    #[br(count = pasture_livestock_count.max(0) as usize)]
+    pub pasture_livestock: Vec<i32>,
+    #[br(temp)]
+    pasture_worker_count: i32,
+    #[br(count = pasture_worker_count.max(0) as usize)]
+    pub pasture_workers: Vec<i32>,
+    pub has_open_closed_master: u8,
+    /// A gate's open or closed master, saved in full.
+    #[br(if(has_open_closed_master != 0))]
+    pub open_closed_master: Option<Box<MasterObject>>,
+    #[br(temp)]
+    attacking_unit_count: i32,
+    #[br(count = attacking_unit_count.max(0) as usize)]
+    pub attacking_units: Vec<i32>,
+    #[br(temp)]
+    disabled_tech_count: u32,
+    #[br(count = disabled_tech_count)]
+    pub disabled_techs: Vec<i16>,
+    #[br(temp)]
+    available_unit_count: u32,
+    #[br(count = available_unit_count)]
+    pub available_units: Vec<i16>,
+    #[br(temp)]
+    researched_tech_count: u32,
+    #[br(count = researched_tech_count)]
+    pub researched_techs: Vec<i16>,
+    pub is_on_mangrove_shallows: u8,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::master::tests::static_part;
+    use super::super::test_bytes::Bytes;
+    use super::*;
+    use binrw::io::Cursor;
+
+    /// A unit AI up to its type-specific part: `orders` 52-byte orders, an optional patrol path
+    /// with two waypoints and one id, `retarget_timer` as the randomized retarget timer.
+    fn unit_ai_base(orders: usize, patrol: bool, retarget_timer: u32) -> Bytes {
+        let mut b = Bytes::default()
+            .zeros(4 * 5 + 2 + 2 + 12 + 4) // mood … desired target distance
+            .zeros(4 * 5 + 4 * 6 + 4 + 4 + 16) // last action … last world position
+            .u32(orders as u32)
+            .zeros(52 * orders)
+            .u32(1) // one notification
+            .zeros(24)
+            .u32(2) // two attacking units
+            .u32(11)
+            .u32(12)
+            .zeros(1 + 1 + 8 + 4 + 1 + 4) // stop after kill … alert mode object
+            .u32(patrol as u32);
+        if patrol {
+            b = b
+                .u32(3)
+                .u32(2) // two waypoints
+                .f32(1.0)
+                .f32(2.0)
+                .f32(0.0)
+                .f32(3.0)
+                .f32(4.0)
+                .f32(0.0)
+                .zeros(16)
+                .u32(1) // one id
+                .i32(77);
+        }
+        b.u32(0) // patrol current waypoint
+            .u32(1) // one order history entry
+            .zeros(44)
+            .u32(100) // last retarget time
+            .u32(retarget_timer)
+            .u32(1) // one retarget entry
+            .zeros(8)
+            .i32(-1) // best unit to attack
+            .u8(0) // formation type
+            .u32(5) // time since last search
+            .u8(1) // disable retargeting
+    }
+
+    fn read_unit_ai(bytes: &Bytes, ai_type: u32) -> (UnitAi, u64) {
+        let mut r = Cursor::new(&bytes.0[..]);
+        let ai = UnitAi::read_le_args(&mut r, (6660, ai_type)).unwrap();
+        (ai, r.position())
+    }
+
+    #[test]
+    fn a_unit_ai_reads_52_byte_orders_and_its_patrol_path() {
+        let bytes = unit_ai_base(2, true, 989);
+        let (ai, end) = read_unit_ai(&bytes, 13);
+        assert_eq!(end, bytes.0.len() as u64);
+        assert_eq!(ai.orders.len(), 2);
+        let path = ai.patrol_path.as_ref().unwrap();
+        assert_eq!(path.waypoints, vec![[1.0, 2.0, 0.0], [3.0, 4.0, 0.0]]);
+        assert_eq!(path.ids, vec![77]);
+        assert_eq!(ai.attacking_units, vec![11, 12]);
+        assert_eq!(ai.randomized_target_timer, 989);
+        assert_eq!((ai.time_since_last_search, ai.disable_retargeting), (5, 1));
+    }
+
+    #[test]
+    fn a_tower_unit_ai_reads_its_order_queue() {
+        let bytes = unit_ai_base(0, false, 0).u32(1).zeros(52);
+        let (ai, end) = read_unit_ai(&bytes, 15);
+        assert_eq!(end, bytes.0.len() as u64);
+        assert_eq!(ai.building_order_queue.map(|q| q.orders.len()), Some(1));
+    }
+
+    #[test]
+    fn an_elephant_unit_ai_reads_13_more_bytes() {
+        let bytes = unit_ai_base(0, false, 0).f32(42.5).f32(40.5).f32(0.0).u8(0);
+        let (ai, end) = read_unit_ai(&bytes, 4);
+        assert_eq!(end, bytes.0.len() as u64);
+        assert_eq!(ai.elephant_position, Some(([42.5, 40.5, 0.0], 0)));
+    }
+
+    #[test]
+    fn a_combat_tail_reads_stingers_and_local_attributes() {
+        let bytes = Bytes::default()
+            .u8(0) // town bell flag
+            .zeros(24 * 2) // back to work 1 and 2
+            .f32(0.0) // berserker timer
+            .zeros(1 + 1 + 4 + 2 + 2 + 4) // builders … movement damage timer
+            .zeros(4 * 6 + 4 * 3) // powerups, stingers
+            .i32(1) // one active stinger
+            .zeros(32)
+            .zeros(4 * 5) // hit point … pierce armour powerups
+            .u32(1) // one local attribute: key, value
+            .u16(9)
+            .f32(2.5)
+            .f32(1.0) // conversion rate
+            .u8(1); // skip volley attack
+        let mut r = Cursor::new(&bytes.0[..]);
+        let tail = CombatTail::read_le(&mut r).unwrap();
+        assert_eq!(r.position(), bytes.0.len() as u64);
+        assert_eq!(tail.active_stingers.len(), 1);
+        assert_eq!(tail.local_attributes, vec![(9, 2.5)]);
+        assert_eq!((tail.conversion_rate, tail.skip_volley_attack), (1.0, 1));
+    }
+
+    #[test]
+    fn a_building_tail_reads_its_lists_and_the_gate_master() {
+        let bytes = Bytes::default()
+            .zeros(1 + 1 + 1 + 1) // terrain type … original owner
+            .i16(-1) // master id at +0xc90
+            .f32(0.0) // livestock summation
+            .i32(1) // one pastured animal
+            .i32(31)
+            .i32(0) // no pasture workers
+            .u8(1) // an open/closed master
+            .bytes(&static_part(10, 88, b"GATE").0)
+            .i32(1) // one attacking unit
+            .i32(41)
+            .u32(2) // two disabled techs
+            .i16(5)
+            .i16(6)
+            .u32(0) // no available units
+            .u32(1) // one researched tech
+            .i16(7)
+            .u8(0); // on mangrove shallows
+        let mut r = Cursor::new(&bytes.0[..]);
+        let tail = BuildingTail::read_le(&mut r).unwrap();
+        assert_eq!(r.position(), bytes.0.len() as u64);
+        assert_eq!(tail.pasture_livestock, vec![31]);
+        assert_eq!(tail.open_closed_master.as_ref().map(|m| m.id), Some(88));
+        assert_eq!(tail.attacking_units, vec![41]);
+        assert_eq!(tail.disabled_techs, vec![5, 6]);
+        assert_eq!(tail.researched_techs, vec![7]);
+    }
 }
