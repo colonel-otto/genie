@@ -1,0 +1,22 @@
+[package]
+name = "genie-drs"
+version = "0.2.1"
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license = "GPL-3.0-or-later"
+license-file = "./LICENSE.md"
+description = "Read .drs archive files from the Genie Engine, used in Age of Empires 1/2 and SWGB"
+homepage = "https://github.com/SiegeEngineers/genie-rs/tree/default/crates/genie-drs"
+documentation = "https://docs.rs/genie-drs"
+repository.workspace = true
+readme = "./README.md"
+exclude = ["*.drs"]
+
+[dependencies]
+byteorder.workspace = true
+sorted-vec = "0.8.0"
+thiserror.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true

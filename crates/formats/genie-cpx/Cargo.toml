@@ -1,0 +1,23 @@
+[package]
+name = "genie-cpx"
+version = "0.5.0"
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Read and write Age of Empires I/II campaign files."
+homepage = "https://github.com/SiegeEngineers/genie-rs/tree/default/crates/genie-cpx"
+documentation = "https://docs.rs/genie-cpx"
+repository.workspace = true
+readme = "./README.md"
+exclude = ["test/campaigns"]
+
+[dependencies]
+byteorder.workspace = true
+chardet = "0.2.4"
+encoding_rs.workspace = true
+genie-scx = { version = "4.0.0", path = "../genie-scx" }
+thiserror.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
