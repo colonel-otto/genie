@@ -19,10 +19,10 @@ members = [
 ]
 
 [workspace.package]
-authors = ["Renée Kooi <renee@kooi.me>"]
+authors = ["Libre:Match Authors <info@librematch.org>"]
 edition = "2024"
 rust-version = "1.99.0"
-license = "GPL-3.0-only"
+license = "AGPL-3.0-only"
 repository = "https://github.com/librematch/genie"
 
 [workspace.dependencies]
