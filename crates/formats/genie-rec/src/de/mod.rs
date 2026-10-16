@@ -9,6 +9,7 @@
 //! borrows from the recording's bytes.
 
 pub mod body;
+pub mod command;
 pub mod header;
 
 pub use body::{Checkpoint, Op, OpReader, Pregame, TriggerSync, View};

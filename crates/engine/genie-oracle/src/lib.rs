@@ -403,13 +403,6 @@ fn frames<'a>(chapter: &de::Chapter<'a>, limit: usize) -> Result<Vec<Frame<'a>>,
     Ok(out)
 }
 
-/// The commands that name their units as `u16 count (+0x10), i32 ids (+0x18)` and that the game's
-/// unit-list reader (`FUN_140e6b290`) remembers per comm player: INTERACT, WORK, MOVE, RETREAT.
-const UNIT_LIST_COMMANDS: [u8; 4] = [0x00, 0x02, 0x03, 0x23];
-
-/// The commands among them that reset their units' idle timeouts (`FUN_140e6cfc0`).
-const ORDER_COMMANDS: [u8; 3] = [0x00, 0x03, 0x23];
-
 /// A count of `0xffff` names the comm player's last commanded units.
 const LAST_COMMANDED: u16 = 0xffff;
 
@@ -417,9 +410,11 @@ const LAST_COMMANDED: u16 = 0xffff;
 /// players `FUN_141659cf0` accepts).
 const MAX_UNITS: usize = 60;
 
-/// Decodes what the slice runs of the recorded commands, in their order. It remembers each comm
-/// player's last commanded units, as the game's unit-list reader does. BUILD and the orders run;
-/// every other command is left out (see [`GROUP_COMMANDS`] for what that may miss).
+/// Decodes what the slice runs of the recorded commands, in their order (the packets through
+/// genie-rec's generated layouts). It remembers each comm player's last commanded units, as the
+/// game's unit-list reader (`FUN_140e6b290`) does for INTERACT, WORK, MOVE and RETREAT. BUILD,
+/// QUEUE and the orders run; every other command is left out (see [`GROUP_COMMANDS`] for what
+/// that may miss).
 ///
 /// The player byte is the comm player, which the handlers map to a world player through the lobby
 /// (`FUN_140e6b210`); the slice takes the two as equal.
@@ -430,60 +425,57 @@ struct Decoder {
 
 impl Decoder {
     fn command(&mut self, packet: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
-        let (&kind, &player) = (packet.first()?, packet.get(1)?);
-        if kind == 0x66 {
-            return build(packet, sections);
-        }
-        if kind == 0x81 {
-            return Some(queue(packet, sections));
-        }
-        if !UNIT_LIST_COMMANDS.contains(&kind) || packet.len() < 0x18 {
-            return None;
-        }
-        let count = u16::from_le_bytes([packet[0x10], packet[0x11]]);
-        let units = if count == LAST_COMMANDED {
+        use genie_rec::de::command::Command as Packet;
+        // INTERACT, MOVE and RETREAT reset their units' idle timeouts (`FUN_140e6cfc0`), WORK not
+        let (player, num, ids, order) = match Packet::decode(packet) {
+            Packet::Build(build) => return Some(build_command(&build, sections)),
+            Packet::MultiQueue(queue) => return Some(queue_command(&queue, sections)),
+            Packet::Interact(c) => (c.commp_id, c.num, c.ids, true),
+            Packet::Work(c) => (c.commp_id, c.num, c.ids, false),
+            Packet::Move(c) => (c.commp_id, c.num, c.ids, true),
+            Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true),
+            _ => return None,
+        };
+        let units = if num == LAST_COMMANDED {
             self.last_commanded
                 .get(&player)
                 .cloned()
                 .unwrap_or_default()
         } else {
-            let units: Vec<i32> = packet[0x18..]
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .take((count as usize).min(MAX_UNITS))
-                .map(|&b| i32::from_le_bytes(b))
+            let units: Vec<i32> = ids
+                .into_iter()
+                .take((num as usize).min(MAX_UNITS))
                 .collect();
             self.last_commanded.insert(player, units.clone());
             units
         };
-        ORDER_COMMANDS.contains(&kind).then_some(Command::Order {
+        order.then_some(Command::Order {
             player: player as usize,
             units,
         })
     }
 }
 
-/// QUEUE's packet (`do_command` case 0x81): `u16 buildings (+4), i16 unit (+0xc), i16 amount
-/// (+0xe), i32 train button (+0x10, -1 for none), i32 building ids (+0x14)`. The cost, the train time
-/// and the building's work rate come from the save (the player's masters and the building).
-fn queue(packet: &[u8], sections: &[PlayerSection<'_>]) -> Command {
-    let player = packet[1] as usize;
+/// QUEUE (`do_command` case 0x81, MULTI_QUEUE): `num` buildings, the unit `t_id`, `count` of it and
+/// the train button (`button_location_id`, -1 for none); the building ids follow. The cost, the
+/// train time and the building's work rate come from the save (the player's masters and the
+/// building).
+fn queue_command(
+    packet: &genie_rec::de::command::MultiQueue,
+    sections: &[PlayerSection<'_>],
+) -> Command {
+    let player = packet.commp_id as usize;
     let unmodelled = |why| Command::Unmodelled {
         player,
         why: Unsupported(why),
     };
-    if packet.len() < 0x18 {
+    let Some(&building) = packet.ids.first() else {
         return unmodelled("a QUEUE packet without a building");
-    }
-    let word = |at: usize| i16::from_le_bytes([packet[at], packet[at + 1]]);
-    let int = |at: usize| {
-        i32::from_le_bytes([packet[at], packet[at + 1], packet[at + 2], packet[at + 3]])
     };
-    if word(4) != 1 {
+    if packet.num != 1 {
         return unmodelled("QUEUE at several buildings");
     }
-    let (unit, amount, button, building) = (word(0xc), word(0xe), int(0x10), int(0x14));
+    let (unit, amount, button) = (packet.t_id, packet.count, packet.button_location_id);
     let Some(section) = sections.get(player) else {
         return unmodelled("QUEUE by a player the save does not have");
     };
@@ -584,23 +576,23 @@ fn queue_data(
     })
 }
 
-/// BUILD's packet: `u8 0x66, u8 player, u16 length, u16 builders (+4), f32 x (+8), f32 y (+0xc),
-/// i16 master (+0x10), ..., i32 builder ids (+0x20)` (`FUN_140e7a400`).
-fn build(packet: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
-    if packet.len() < 0x12 {
-        return None;
-    }
-    let player = packet[1] as usize;
-    let master = i16::from_le_bytes([packet[0x10], packet[0x11]]);
+/// BUILD (`FUN_140e7a400`): `num` builders put a foundation of master `o_id` at (`x`, `y`); the
+/// builder ids follow. The handler reads the master as an i16 (`+0x10`).
+fn build_command(
+    packet: &genie_rec::de::command::Build,
+    sections: &[PlayerSection<'_>],
+) -> Command {
+    let player = packet.commp_id as usize;
+    let master = packet.o_id as i16;
     let unit_ai = match sections.get(player) {
         Some(section) => new_unit_ai(section.objects(), master),
         None => Err(Unsupported("BUILD names a player the save does not have")),
     };
-    Some(Command::Build {
+    Command::Build {
         player,
         master,
         unit_ai,
-    })
+    }
 }
 
 /// The unit AI a new object of `master` gets, by its class (`FUN_141215a90`): the building AI
