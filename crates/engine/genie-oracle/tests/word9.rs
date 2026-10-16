@@ -46,7 +46,7 @@ fn an_idle_player_with_livestock_is_reproduced() {
 
 /// Word 9 on every tier-1 lane whose ten save words already match the first checkpoint, the lanes
 /// whose players changed nothing the save words see. Pinned, so that a model change is noticed.
-/// Every lane the slice models reproduces; open: the two whose unit-AI types it does not model.
+/// Every one of them reproduces.
 #[test]
 fn tier1_lanes_with_matching_save_words() {
     let (Some(dir), Some(masters)) = (corpus(), masters()) else {
@@ -88,5 +88,5 @@ fn tier1_lanes_with_matching_save_words() {
         }
     }
     eprintln!("exact {exact:#?}\noff {off:#?}\nunsupported {unsupported:#?}");
-    assert_eq!((exact.len(), off.len(), unsupported.len()), (20, 0, 2));
+    assert_eq!((exact.len(), off.len(), unsupported.len()), (22, 0, 0));
 }

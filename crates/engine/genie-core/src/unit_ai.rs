@@ -56,8 +56,9 @@ fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
     match ai_type {
         // villagers (0x140c21da0) and livestock (0x140c21f20) return 9 from slot 73
         8 | 19 => Ok(Retarget::Never),
-        // soldier (13), tower (15), building (17); their slot 72 draws nothing for an idle unit
-        13 | 15 | 17 => Ok(Retarget::Base),
+        // transport ship (11, slot 72 0x140c21d20), soldier (13), tower (15), building (17); their
+        // slot 72 draws nothing for an idle unit
+        11 | 13 | 15 | 17 => Ok(Retarget::Base),
         _ => Err(Unsupported("unit-AI type not modelled")),
     }
 }
@@ -333,5 +334,18 @@ mod tests {
         let mut r = rng();
         low.reset_for_order(&mut r);
         assert_eq!((low.adjusted_idle_timeout, r.draws), (749, 0));
+    }
+
+    #[test]
+    fn an_idle_transport_ship_retargets_like_a_soldier() {
+        // type 11, TribeTransportShipUnitAIModule: base slots 4 and 73, slot 72 0x140c21d20 draws
+        // nothing
+        let mut u = idle(11);
+        let mut r = rng();
+        u.update_idle(50, 900, false, &mut r).unwrap();
+        assert_eq!(
+            (u.last_retarget_time, u.retarget_timer),
+            (900, 750 + 7241 % 500)
+        );
     }
 }
