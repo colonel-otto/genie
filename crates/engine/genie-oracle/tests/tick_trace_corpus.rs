@@ -93,15 +93,17 @@ fn the_slice_follows_the_game_up_to_a_named_tick() {
     let trace = TickTrace::decode(&std::fs::read(trace).unwrap()).unwrap();
     let first = first_difference(&trace, &std::fs::read(rec).unwrap(), 2, &masters);
     eprintln!("first difference (tick, [(word, slice, game)]): {first:?}");
-    // the slice holds the whole block, through player 1's BUILDs at ticks 135 and 281 (their
-    // foundations' unit-AI constructors draw three AI values each), until player 2's own first
-    // command: a villager QUEUE (0x81) at its town centre in tick 553
+    // the slice holds the whole block through player 1's BUILDs (ticks 135 and 281: their
+    // foundations' unit-AI constructors draw three AI values each) and player 2's three villager
+    // QUEUEs (ticks 553, 586, 591: the cost from the save's master, the Town Centre's make action in
+    // state 6), until player 2's own BUILD in tick 679, whose foundation, cost and builders the
+    // slice does not model for the builder's own lane
     let words: Option<Vec<usize>> = first
         .as_ref()
         .map(|(_, w)| w.iter().map(|&(w, ..)| w).collect());
     assert_eq!(
         (first.map(|(t, _)| t), words),
-        (Some(553), Some(vec![1, 9]))
+        (Some(679), Some(vec![1, 2, 6, 7, 9, 10]))
     );
 }
 

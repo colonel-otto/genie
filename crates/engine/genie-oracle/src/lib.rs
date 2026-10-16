@@ -193,6 +193,7 @@ fn unit(
         ai: unit_ai(object),
         artifact,
         unmodelled_default_task,
+        production: None,
     }
 }
 
@@ -341,12 +342,15 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         .iter()
         .map(|p| {
             let civ = p.world_player().base.civ_id;
+            let attributes = &p.world_player().base.attributes;
+            let resource = |i: usize| attributes.get(i).copied().unwrap_or_default();
             Player {
                 objects: p
                     .live_objects()
                     .map(|o| unit(o, p.objects(), civ, masters))
                     .collect(),
                 computer: false,
+                resources: [resource(0), resource(1), resource(2), resource(3)],
                 unsupported: None,
             }
         })
@@ -430,6 +434,9 @@ impl Decoder {
         if kind == 0x66 {
             return build(packet, sections);
         }
+        if kind == 0x81 {
+            return Some(queue(packet, sections));
+        }
         if !UNIT_LIST_COMMANDS.contains(&kind) || packet.len() < 0x18 {
             return None;
         }
@@ -455,6 +462,126 @@ impl Decoder {
             units,
         })
     }
+}
+
+/// QUEUE's packet (`do_command` case 0x81): `u16 buildings (+4), i16 unit (+0xc), i16 amount
+/// (+0xe), i32 train button (+0x10, -1 for none), i32 building ids (+0x14)`. The cost, the train time
+/// and the building's work rate come from the save (the player's masters and the building).
+fn queue(packet: &[u8], sections: &[PlayerSection<'_>]) -> Command {
+    let player = packet[1] as usize;
+    let unmodelled = |why| Command::Unmodelled {
+        player,
+        why: Unsupported(why),
+    };
+    if packet.len() < 0x18 {
+        return unmodelled("a QUEUE packet without a building");
+    }
+    let word = |at: usize| i16::from_le_bytes([packet[at], packet[at + 1]]);
+    let int = |at: usize| {
+        i32::from_le_bytes([packet[at], packet[at + 1], packet[at + 2], packet[at + 3]])
+    };
+    if word(4) != 1 {
+        return unmodelled("QUEUE at several buildings");
+    }
+    let (unit, amount, button, building) = (word(0xc), word(0xe), int(0x10), int(0x14));
+    let Some(section) = sections.get(player) else {
+        return unmodelled("QUEUE by a player the save does not have");
+    };
+    // the generic villager becomes the villager before anything is read (FUN_1411cbc40)
+    let master_id = if unit == 0x712 { 0x53 } else { unit };
+    match queue_data(section, master_id, button, building) {
+        Ok(QueueData {
+            train_time,
+            rate,
+            cost,
+        }) => Command::Queue {
+            player,
+            building,
+            unit,
+            amount: amount.max(0) as u16,
+            train_time,
+            rate,
+            cost,
+        },
+        Err(why) => Command::Unmodelled { player, why },
+    }
+}
+
+/// What QUEUE needs from the save: the unit's train time at the building, the building's work rate,
+/// and the unit's cost entries `(resource, amount, paid)`.
+struct QueueData {
+    train_time: f32,
+    rate: f32,
+    cost: Vec<(i16, i16, bool)>,
+}
+
+/// QUEUE's train time, the building's work rate and the unit's cost, from the save.
+fn queue_data(
+    section: &PlayerSection<'_>,
+    master_id: i16,
+    button: i32,
+    building: i32,
+) -> Result<QueueData, Unsupported> {
+    let objects = section.objects();
+    let combat = |id| {
+        objects
+            .master(id)
+            .and_then(|m| m.tribe_master_combat_object.as_ref())
+    };
+    let unit = combat(master_id).ok_or(Unsupported("QUEUE of a master without a combat part"))?;
+    let building_object = section
+        .live_objects()
+        .find(|o| o.static_part().is_some_and(|s| s.id == building))
+        .ok_or(Unsupported("QUEUE at a building not in the save"))?;
+    let building_master = building_object
+        .static_part()
+        .expect("found by it")
+        .master_obj;
+    let powerup = building_object
+        .combat()
+        .map_or(0.0, |c| c.work_rate_powerup);
+    let work_rate = objects
+        .master(building_master)
+        .and_then(|m| combat_master(m))
+        .map(|c| c.rge_master_action_object.work_rate)
+        .ok_or(Unsupported("a building master without an action part"))?;
+    // FUN_140acf280: the train location of this building and button, else the first
+    let train_time = |c: &genie_rec::de::header::generated::world::TribeMasterCombatObject| {
+        c.train_location
+            .iter()
+            .find(|t| {
+                button != -1
+                    && t.train_location_id == building_master
+                    && t.button_location_id == button as u8
+            })
+            .or(c.train_location.first())
+            .map(|t| t.train_time)
+    };
+    let time = train_time(unit).ok_or(Unsupported("a master without a train location"))?;
+    // a villager is drawn male or female, and each pays and trains by its own master: the slice
+    // takes one cost and one time, so both must agree
+    if master_id == 0x53 {
+        let female = combat(0x125).ok_or(Unsupported("no female villager master"))?;
+        if female.build_inventory != unit.build_inventory || train_time(female) != Some(time) {
+            return Err(Unsupported("villager sexes that cost or train differently"));
+        }
+    }
+    let cost = unit
+        .build_inventory
+        .iter()
+        .map(|e| {
+            let kind = i16::from_le_bytes([e[0], e[1]]);
+            let amount = i16::from_le_bytes([e[2], e[3]]);
+            let flag = i16::from_le_bytes([e[4], e[5]]);
+            (kind, amount, flag != 0)
+        })
+        .filter(|&(kind, ..)| kind >= 0)
+        .collect();
+    Ok(QueueData {
+        train_time: f32::from(time),
+        rate: powerup + work_rate,
+        cost,
+    })
 }
 
 /// BUILD's packet: `u8 0x66, u8 player, u16 length, u16 builders (+4), f32 x (+8), f32 y (+0xc),
@@ -586,11 +713,12 @@ pub fn simulate_word9(
 }
 
 /// A player's block with the slice's objects in place of the save's: the save gives what the slice
-/// leaves alone (resources, sleeping objects, each object's main id and position), the slice its
-/// live list and each object's state, held amount, top action and retarget timer. An object the
-/// save does not have is left out; the slice creates none.
+/// leaves alone (sleeping objects, each object's main id and position), the slice its resources,
+/// its live list and each object's state, held amount, top action and retarget timer. An object
+/// the save does not have (one the slice created) is left out.
 fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32; 11] {
     let mut state = player_state(section, id);
+    state.resources = simulated.resources;
     let saved: std::collections::HashMap<i32, ObjectState> = live(section)
         .map(|(_, s)| (s.id, object_state(s)))
         .collect();
@@ -602,10 +730,17 @@ fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32;
             object.state = unit.life.state;
             object.amount_held = unit.life.amount;
             object.retarget_timer = unit.ai.as_ref().map(|ai| ai.retarget_timer as i32);
-            object.top_action = unit.artifact.map(|a| TopAction {
-                kind: ARTIFACT_TYPE,
-                state: a.state,
-            });
+            // a producing building's action state is its make action's; its type stays -1
+            object.top_action = unit
+                .artifact
+                .map(|a| TopAction {
+                    kind: ARTIFACT_TYPE,
+                    state: a.state,
+                })
+                .or(unit.production.as_ref().map(|_| TopAction {
+                    kind: -1,
+                    state: genie_core::production::Production::MAKING,
+                }));
             Some(object)
         })
         .collect();

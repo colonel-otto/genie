@@ -65,6 +65,15 @@ impl Well512 {
     }
 
     /// `rand15`: a step masked to 15 bits, kept as `last`.
+    /// A 64-bit draw (`FUN_140811100`): two steps, the first one's word high and the second
+    /// one's low, counted as one draw.
+    pub fn raw64(&mut self) -> u64 {
+        let hi = self.raw();
+        let lo = self.raw();
+        self.draws = self.draws.wrapping_sub(1);
+        (u64::from(hi) << 32) | u64::from(lo)
+    }
+
     pub fn rand15(&mut self) -> u32 {
         self.last = self.raw() & 0x7fff;
         self.last
@@ -173,5 +182,17 @@ mod tests {
         let ai: Vec<u32> = (0..3).map(|_| s.get(Stream::Ai).rand15()).collect();
         assert_eq!(world, [19550, 2220, 13198]);
         assert_eq!(ai, [16591, 22366, 24306]);
+    }
+
+    #[test]
+    fn a_64_bit_draw_is_two_steps_counted_once() {
+        // FUN_140811100: the first step's word high, the second's low, the draw count +1
+        let (mut a, mut b) = (Well512::default(), Well512::default());
+        a.set_seed(7);
+        b.set_seed(7);
+        let wide = a.raw64();
+        let (hi, lo) = (b.raw(), b.raw());
+        assert_eq!(wide, (u64::from(hi) << 32) | u64::from(lo));
+        assert_eq!((a.draws, b.draws), (1, 2));
     }
 }

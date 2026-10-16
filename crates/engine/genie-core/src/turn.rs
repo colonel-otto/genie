@@ -13,6 +13,7 @@
 
 use crate::artifact::Artifact;
 use crate::lifecycle::{Class, Lifecycle, seconds};
+use crate::production::{Production, Queued};
 use crate::rng::{Stream, Streams};
 use crate::unit_ai::{UnitAi, Unsupported};
 
@@ -29,12 +30,14 @@ pub struct Unit {
     /// starts it in an object's first update if the object is still in state 2 after its static
     /// step; the slice does not model it, so that update stops the player.
     pub unmodelled_default_task: Option<Unsupported>,
+    /// A building's production queue and make action.
+    pub production: Option<Production>,
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
 /// the players update (`TRIBE_Command::do_command`, `0x140e77b00`). The slice runs only what other
 /// players' lanes see of a command; the issuing player's lane stops.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     /// BUILD (0x66, `FUN_140e7a400`): the player places a foundation of `master` (state 0, hit
     /// points 1), with a unit AI of the given type if its class gets one; `Err` when the slice
@@ -45,10 +48,54 @@ pub enum Command {
         master: i16,
         unit_ai: Result<Option<u32>, Unsupported>,
     },
+    /// QUEUE (0x81, the player's queue `FUN_141614450`, the building's `FUN_1411cbc40`): `amount`
+    /// units of master `unit` at one building. Each paid `cost` entry `(resource, amount, paid)`
+    /// comes off the player's resources per unit; a villager's master is drawn male or female from
+    /// the Action stream. The make action then works `rate` seconds of `train_time` per second.
+    Queue {
+        player: usize,
+        building: i32,
+        unit: i16,
+        amount: u16,
+        train_time: f32,
+        rate: f32,
+        cost: Vec<(i16, i16, bool)>,
+    },
+    /// A command the slice runs part of or none, for a reason the decoder names: it stops the
+    /// issuing player's lane.
+    Unmodelled { player: usize, why: Unsupported },
     /// INTERACT (0x00), MOVE (0x03) or RETREAT (0x23): before the order runs, each listed unit's AI
     /// resets its idle timeout ([`UnitAi::reset_for_order`]), in list order, wherever the unit is.
     /// The slice does not move the units.
     Order { player: usize, units: Vec<i32> },
+}
+
+/// QUEUE's unit and building (the fields of [`Command::Queue`] but the cost).
+struct QueueAt {
+    building: i32,
+    unit: i16,
+    amount: u16,
+    train_time: f32,
+    rate: f32,
+}
+
+/// The villager master QUEUE draws a sex for (`0x53`), and the generic villager id that becomes
+/// 0x53 first (`0x712`), both in `FUN_1411cbc40`.
+const VILLAGER: i16 = 0x53;
+const VILLAGER_ANY: i16 = 0x712;
+/// The female villager master (`0x125`).
+const VILLAGER_FEMALE: i16 = 0x125;
+/// A building's queue holds at most 15 units (`FUN_1411cbc40`).
+const QUEUE_LIMIT: usize = 15;
+
+/// A queued villager's master: male when the 64-bit Action draw times 100 (wrapping) is below 50
+/// modulo 100.
+fn villager(draw: u64) -> i16 {
+    if draw.wrapping_mul(100) % 100 < 50 {
+        VILLAGER
+    } else {
+        VILLAGER_FEMALE
+    }
 }
 
 /// What a tick's update of one object needs from the world.
@@ -75,6 +122,9 @@ impl Unit {
         {
             return Err(e);
         }
+        if let Some(production) = self.production.as_mut().filter(|_| self.life.state == 2) {
+            production.update(c.dt_seconds)?;
+        }
         if !self.life.is_alive() {
             // RGE_Action_Object::update deletes a dead object's action list
             self.artifact = None;
@@ -97,6 +147,8 @@ pub struct Player {
     pub objects: Vec<Unit>,
     /// `player+0x10 == 3`.
     pub computer: bool,
+    /// Food, wood, stone and gold (the player's attributes 0 to 3).
+    pub resources: [f32; 4],
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, Unsupported)>,
 }
@@ -173,12 +225,38 @@ impl Turns {
                     ai,
                     artifact: None,
                     unmodelled_default_task: None,
+                    production: None,
                 });
                 owner.unsupported.get_or_insert((
                     self.ticks,
                     owner.objects.len() - 1,
                     Unsupported("BUILD tasks the builders"),
                 ));
+            }
+            Command::Queue {
+                player,
+                building,
+                unit,
+                amount,
+                train_time,
+                rate,
+                ref cost,
+            } => {
+                let queue = QueueAt {
+                    building,
+                    unit,
+                    amount,
+                    train_time,
+                    rate,
+                };
+                if let Err(e) = self.queue(player, &queue, cost) {
+                    let owner = &mut self.players[player];
+                    owner.unsupported.get_or_insert((self.ticks, 0, e));
+                }
+            }
+            Command::Unmodelled { player, why } => {
+                let owner = &mut self.players[player];
+                owner.unsupported.get_or_insert((self.ticks, 0, why));
             }
             Command::Order { player, ref units } => {
                 for &id in units {
@@ -200,6 +278,60 @@ impl Turns {
                 ));
             }
         }
+    }
+
+    /// QUEUE at one building: per unit (the game recurses, so the last unit drawn is queued first)
+    /// the villager's male or female draw, then the cost and the queue entry.
+    fn queue(
+        &mut self,
+        player: usize,
+        q: &QueueAt,
+        cost: &[(i16, i16, bool)],
+    ) -> Result<(), Unsupported> {
+        let action = self.streams.get(Stream::Action);
+        let masters: Vec<i16> = (0..q.amount)
+            .map(|_| match q.unit {
+                VILLAGER | VILLAGER_ANY => villager(action.raw64()),
+                other => other,
+            })
+            .collect();
+        let owner = &mut self.players[player];
+        let index = owner
+            .objects
+            .iter()
+            .position(|o| o.id == q.building)
+            .ok_or(Unsupported("QUEUE at a building the slice does not have"))?;
+        let queued = owner.objects[index]
+            .production
+            .as_ref()
+            .map_or(0, |p| p.queue.len());
+        if queued + masters.len() > QUEUE_LIMIT {
+            return Err(Unsupported("QUEUE beyond a building's 15 units"));
+        }
+        for master in masters.into_iter().rev() {
+            for &(resource, amount, _) in cost.iter().filter(|c| c.2) {
+                let slot = owner
+                    .resources
+                    .get_mut(resource as usize)
+                    .ok_or(Unsupported("a cost in a resource the slice does not track"))?;
+                if *slot < f32::from(amount) {
+                    return Err(Unsupported("QUEUE the player cannot pay"));
+                }
+                *slot -= f32::from(amount);
+            }
+            let production = owner.objects[index]
+                .production
+                .get_or_insert_with(|| Production {
+                    queue: Default::default(),
+                    progress: 0.0,
+                    rate: q.rate,
+                });
+            production.queue.push_back(Queued {
+                master,
+                train_time: q.train_time,
+            });
+        }
+        Ok(())
     }
 
     /// One world update of `dt` game milliseconds without commands.
@@ -627,5 +759,105 @@ mod tests {
             ..Lifecycle::default()
         };
         assert_eq!(run(with_task(dying)), None);
+    }
+
+    fn town_centre(id: i32) -> Unit {
+        Unit {
+            id,
+            ..Unit::default()
+        }
+    }
+
+    fn queue(building: i32, unit: i16, amount: u16) -> Command {
+        Command::Queue {
+            player: 0,
+            building,
+            unit,
+            amount,
+            train_time: 25.0,
+            rate: 1.0,
+            cost: vec![(0, 46, true), (4, 1, false)],
+        }
+    }
+
+    fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> Turns {
+        Turns::new(
+            0,
+            29910,
+            0,
+            vec![0],
+            vec![Player {
+                objects,
+                resources,
+                ..Player::default()
+            }],
+        )
+    }
+
+    #[test]
+    fn a_queue_pays_its_cost_and_the_building_starts_making() {
+        let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
+        t.tick_with(104, &[queue(9, 83, 1)]);
+        let p = &t.players[0];
+        assert_eq!(p.resources, [154.0, 200.0, 200.0, 200.0]);
+        let production = p.objects[0].production.as_ref().unwrap();
+        // the make action works in the tick it is created in
+        assert_eq!(production.progress, 0.104);
+        assert_eq!(production.queue.len(), 1);
+        assert!(p.unsupported.is_none());
+    }
+
+    #[test]
+    fn a_queued_villager_is_male_or_female_by_an_action_stream_draw() {
+        let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
+        t.tick_with(104, &[queue(9, 83, 1)]);
+        let mut streams = Streams::default();
+        streams.seed_all(29910);
+        let r = streams.get(Stream::Action).raw64();
+        let expected = if r.wrapping_mul(100) % 100 < 50 {
+            83
+        } else {
+            293
+        };
+        assert_eq!(
+            t.players[0].objects[0].production.as_ref().unwrap().queue[0].master,
+            expected
+        );
+    }
+
+    #[test]
+    fn a_queue_the_player_cannot_pay_or_a_missing_building_stops_the_player() {
+        let mut poor = one_player(vec![town_centre(9)], [40.0, 0.0, 0.0, 0.0]);
+        poor.tick_with(104, &[queue(9, 83, 1)]);
+        assert!(poor.players[0].unsupported.is_some());
+        let mut missing = one_player(vec![town_centre(9)], [200.0; 4]);
+        missing.tick_with(104, &[queue(8, 83, 1)]);
+        assert!(missing.players[0].unsupported.is_some());
+    }
+
+    #[test]
+    fn an_unmodelled_command_stops_its_player() {
+        let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
+        let why = Unsupported("QUEUE at two buildings");
+        t.tick_with(104, &[Command::Unmodelled { player: 0, why }]);
+        assert_eq!(t.players[0].unsupported, Some((1, 0, why)));
+    }
+
+    #[test]
+    fn a_unit_due_to_spawn_stops_the_player() {
+        let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
+        let quick = Command::Queue {
+            player: 0,
+            building: 9,
+            unit: 4,
+            amount: 1,
+            train_time: 2.0,
+            rate: 1.0,
+            cost: vec![],
+        };
+        t.tick_with(1000, &[quick]);
+        assert!(t.players[0].unsupported.is_none());
+        t.tick(1000);
+        assert!(t.players[0].unsupported.is_some());
     }
 }
