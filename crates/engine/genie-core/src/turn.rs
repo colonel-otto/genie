@@ -25,6 +25,10 @@ pub struct Unit {
     pub ai: Option<UnitAi>,
     /// The livestock default action, the object's top action.
     pub artifact: Option<Artifact>,
+    /// A default task other than the Artifact action. `RGE_Action_Object::update` (0x14106ac90)
+    /// starts it in an object's first update if the object is still in state 2 after its static
+    /// step; the slice does not model it, so that update stops the player.
+    pub unmodelled_default_task: Option<Unsupported>,
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
@@ -65,6 +69,12 @@ impl Unit {
     /// One update; true when the object leaves its list.
     fn update(&mut self, c: &mut Context<'_>) -> Result<bool, Unsupported> {
         let leaves = self.life.update(c.dt_seconds)?;
+        if let Some(e) = self
+            .unmodelled_default_task
+            .filter(|_| self.life.state == 2)
+        {
+            return Err(e);
+        }
         if !self.life.is_alive() {
             // RGE_Action_Object::update deletes a dead object's action list
             self.artifact = None;
@@ -162,6 +172,7 @@ impl Turns {
                     },
                     ai,
                     artifact: None,
+                    unmodelled_default_task: None,
                 });
                 owner.unsupported.get_or_insert((
                     self.ticks,
@@ -591,5 +602,30 @@ mod tests {
             next
         );
         assert!(t.players[0].unsupported.is_some());
+    }
+
+    #[test]
+    fn an_unmodelled_default_task_stops_its_player_unless_the_object_dies_first() {
+        let task = Unsupported("a default task the slice does not model");
+        let with_task = |life| Unit {
+            id: 5,
+            life,
+            unmodelled_default_task: Some(task),
+            ..Unit::default()
+        };
+        let run = |unit| {
+            let mut t = Turns::new(0, 1, 0, vec![0], vec![player(vec![])]);
+            t.players[0].objects.push(unit);
+            t.tick(10);
+            t.players[0].unsupported
+        };
+        assert_eq!(run(with_task(Lifecycle::default())), Some((1, 0, task)));
+        let dying = Lifecycle {
+            class: Class::Animated,
+            hp: 0.0,
+            master: Some(MasterData::default()),
+            ..Lifecycle::default()
+        };
+        assert_eq!(run(with_task(dying)), None);
     }
 }

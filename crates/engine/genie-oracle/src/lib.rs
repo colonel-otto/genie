@@ -9,7 +9,7 @@
 pub mod masters;
 pub mod tick_trace;
 
-pub use masters::MasterTable;
+pub use masters::{DefaultAction, MasterTable};
 
 use genie_core::artifact::ARTIFACT_TYPE;
 use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
@@ -169,35 +169,95 @@ pub struct Word9 {
     pub unsupported: Option<(u32, usize, genie_core::unit_ai::Unsupported)>,
 }
 
-/// Unit-AI type 19, livestock: their default task is the Artifact action (the .dat's livestock task
-/// lists), which an idle animal holds as its top action.
-const LIVESTOCK_AI: u32 = 19;
-
-/// The slice's view of one saved object: its lifecycle, its unit AI and, for livestock, the Artifact
-/// action.
+/// The slice's view of one saved object: its lifecycle, its unit AI and its default task.
 fn unit(
     object: &de::header::Object,
     objects: &PlayerObjects,
     civ: u8,
     masters: Option<&MasterTable>,
 ) -> Unit {
-    let ai = unit_ai(object);
-    let gaia = object.static_part().is_some_and(|s| s.owner == 0);
-    let artifact = ai
-        .as_ref()
-        .filter(|ai| ai.ai_type == LIVESTOCK_AI)
-        .map(|_| genie_core::artifact::Artifact::new(gaia));
-    let (id, life) = object
-        .static_part()
-        .map_or((-1, Lifecycle::default()), |s| {
-            (s.id, lifecycle(object, s, objects, civ, masters))
-        });
+    let Some(s) = object.static_part() else {
+        return Unit {
+            id: -1,
+            unmodelled_default_task: Some(Unsupported("an object without a static part")),
+            ..Unit::default()
+        };
+    };
+    let (artifact, unmodelled_default_task) = match default_task(object, s, civ, masters) {
+        Ok(artifact) => (artifact, None),
+        Err(e) => (None, Some(e)),
+    };
     Unit {
-        id,
-        life,
-        ai,
+        id: s.id,
+        life: lifecycle(object, s, objects, civ, masters),
+        ai: unit_ai(object),
         artifact,
+        unmodelled_default_task,
     }
+}
+
+/// What an object's first update starts of its master's default task (`RGE_Action_Object::update`,
+/// 0x14106ac90): only action objects (types 40 and up) have one. The default task is game data:
+/// the table's, from the `.dat`, or the object's own master's. The slice models the Artifact action
+/// (type 107, the default task of livestock); any other default task is reported.
+fn default_task(
+    object: &de::header::Object,
+    s: &RgeStaticObject,
+    civ: u8,
+    masters: Option<&MasterTable>,
+) -> Result<Option<genie_core::artifact::Artifact>, Unsupported> {
+    if !is_action_object(object) {
+        return Ok(None);
+    }
+    let action = match s.own_master() {
+        Some(_) => match own_default_task(s) {
+            Some(-1) | None => DefaultAction::None,
+            Some(_) => return Err(Unsupported("the default task of an object's own master")),
+        },
+        None => masters
+            .ok_or(Unsupported("no master table: the default task is unknown"))?
+            .default_action(civ, s.master_obj)
+            .ok_or(Unsupported("a master the table does not have"))?,
+    };
+    match action {
+        DefaultAction::None => Ok(None),
+        DefaultAction::Type(ARTIFACT_TYPE) => {
+            Ok(Some(genie_core::artifact::Artifact::new(s.owner == 0)))
+        }
+        DefaultAction::Type(_) => Err(Unsupported("a default task other than the Artifact action")),
+        DefaultAction::NoSuchTask => Err(Unsupported("a default task id that names no task")),
+    }
+}
+
+/// Whether the object runs `RGE_Action_Object::update`: types 40 (action), 50 (combat), 60
+/// (missile), 70 (tribe combat) and 80 (building).
+fn is_action_object(object: &de::header::Object) -> bool {
+    object.combat().is_some()
+        || object.rge_object.as_ref().is_some_and(|r| {
+            r.rge_action_object.is_some()
+                || r.rge_combat_object.is_some()
+                || r.rge_missile_object.is_some()
+        })
+}
+
+/// The default task id of an object's own action master, if it has one.
+fn own_default_task(s: &RgeStaticObject) -> Option<i16> {
+    let tribe = |c: &genie_rec::de::header::generated::world::OwnTribeMasterCombatObject| {
+        c.own_rge_master_combat_object
+            .own_rge_master_action_object
+            .default_task
+    };
+    None.or(s.rge_master_action_object.as_ref().map(|a| a.default_task))
+        .or(s.rge_master_missile_object.as_ref().map(|m| {
+            m.own_rge_master_combat_object
+                .own_rge_master_action_object
+                .default_task
+        }))
+        .or(s.tribe_master_combat_object.as_ref().map(tribe))
+        .or(s
+            .tribe_master_building_object
+            .as_ref()
+            .map(|b| tribe(&b.own_tribe_master_combat_object)))
 }
 
 /// The object's lifecycle fields. An object with its own master takes every master value from it;
