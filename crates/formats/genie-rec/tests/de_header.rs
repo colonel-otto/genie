@@ -73,7 +73,7 @@ fn marvinblue_sections_end_where_imhex_says() {
     let ends = header.ends;
     assert_eq!(ends.lobby, expected("lobby_settings"));
     // aoe2rec's replay block ends 8 bytes into the game's map load: the map's 0xdeaddead marker
-    // and its format version (MapInfo), which the pattern counts to the replay
+    // and its format version (RgeMap's header and version), which the pattern counts to the replay
     assert_eq!(ends.replay + 8, expected("replay"));
     assert_eq!(ends.map, expected("map_info"));
     assert_eq!(ends.players_start, expected_start("players"));

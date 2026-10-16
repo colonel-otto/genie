@@ -1,8 +1,8 @@
 //! The world save at the start of a chapter, read and written to its last byte.
 //!
 //! The version block and the lobby settings are hand-ported from aoe2rec's
-//! `patterns/aoe2header.hexpat` (MIT, see `NOTICE`), as is the map ([`MapInfo`]); everything after
-//! the lobby is the world (`World::load_world`), generated from build 158041's load routines
+//! `patterns/aoe2header.hexpat` (MIT, see `NOTICE`); everything after the lobby is the world
+//! (`World::load_world`), the map included, generated from build 158041's load routines
 //! (aoe2de-exe-re `layout`, workspace FD-014) into [`generated::world`]. Every field's boundary is
 //! checked against the game's own reads (tests/de_oracle.rs), and a parsed header writes back byte
 //! for byte (tests/de_roundtrip.rs). The lobby's version gates compare
@@ -12,20 +12,18 @@
 pub mod generated;
 mod layout_types;
 mod lobby;
-mod map;
 mod objects;
 mod player;
 mod primitives;
 
 pub use generated::world::{
-    BaseWorld, Object, ObjectList, Player, PlayerObjects, World, WorldPlayer,
+    BaseWorld, Object, ObjectList, Player, PlayerObjects, RgeMap, RgeTile, World, WorldPlayer,
 };
 pub use layout_types::{
     LenString16, LenString32, LenVec32, Positioned, STRING_SIGNATURE, SigString,
 };
 pub use layout_types::{Unsupported, UnsupportedFeature, unsupported_in};
 pub use lobby::{AiFile, LobbyPlayer, LobbySettings};
-pub use map::{MapInfo, MapZone, Obstructions, Tile};
 pub use player::{PlayerEnds, PlayerSection};
 pub use primitives::{DeString, StringList};
 
@@ -161,7 +159,7 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, super::Error> {
             });
         }
     }
-    let map = &world.base_world.map_info;
+    let map = &world.base_world.map;
     let ends = SectionEnds {
         lobby: lobby_end,
         replay: map.pos as usize,

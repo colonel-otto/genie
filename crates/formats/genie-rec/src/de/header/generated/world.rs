@@ -3,9 +3,7 @@
 
 #![allow(clippy::all)]
 
-use super::super::{
-    LenString16, LenString32, LenVec32, MapInfo, Positioned, SigString, Unsupported,
-};
+use super::super::{LenString16, LenString32, LenVec32, Positioned, SigString, Unsupported};
 use binrw::binrw;
 
 #[binrw]
@@ -500,7 +498,7 @@ pub struct TechTree {
 pub struct TribeInformationAIModuleEntry1 {
     /// game: `tempBYTE`
     /// read at 0x140f4c865
-    #[br(if(x_size_value > 0), count = x_size_value as usize)]
+    #[br(if(x_size_value > 0), count = x_size_value.max(0) as usize)]
     pub temp_byte: Option<Vec<u8>>,
 }
 
@@ -2666,7 +2664,7 @@ pub struct VisibleResourceListSize {
 pub struct VisibleResourceList {
     /// unnamed in the binary
     /// read by 0x141289120
-    #[br(count = vr_list_used as usize, args { inner: (ver,) })]
+    #[br(count = vr_list_used.max(0) as usize, args { inner: (ver,) })]
     pub visible_resource_rec: Vec<VisibleResourceRec>,
 }
 
@@ -6287,6 +6285,178 @@ pub struct WorldPlayerBase {
     pub end_marker: (),
 }
 
+/// Read by `FUN_141410870` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, map_width: i32, map_height: i32))]
+pub struct ZoneMap {
+    /// game: `numberTilesInZoneValue`
+    /// read at 0x141410a47; named by the save's write in the same place (0x141413c80, write at 0x141413cf8)
+    #[br(count = 512)]
+    pub number_tiles_in_zone_value: Vec<u32>,
+    /// game: `zone_map`
+    /// read at 0x141410c9e; named by the save's write in the same place (0x141413c80, write at 0x141413ee4)
+    #[br(count = (map_height.max(0) as usize) * (map_width.max(0) as usize))]
+    pub zone_map: Vec<u16>,
+    /// unnamed in the binary
+    /// read at 0x141410d39 into a local (local_180)
+    pub unnamed_at_0x141410d39: i32,
+    /// game: `&mFloatValue`
+    /// read at 0x141410e87
+    #[br(count = unnamed_at_0x141410d39.max(0) as usize)]
+    pub float_value: Vec<u32>,
+    /// game: `mNumberZones`
+    /// read at 0x141410fea; named by the save's write in the same place (0x141413c80, write at 0x140a913c7)
+    pub number_zones: u32,
+}
+
+/// Read by `FUN_1414110f0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, map_width: i32, map_height: i32))]
+pub struct ZoneMaps {
+    /// game: `numZoneMaps`
+    /// read at 0x141411157; named by the save's write in the same place (0x141414790, write at 0x141414806)
+    pub num_zone_maps: i32,
+    /// unnamed in the binary
+    /// read by 0x141410870
+    #[br(count = num_zone_maps.max(0) as usize, args { inner: (ver, map_width, map_height,) })]
+    pub zone_map: Vec<ZoneMap>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct UmvDataListEntry1 {
+    /// game: `n`
+    /// read at 0x140f6a285
+    pub n: i32,
+    /// game: `(p[1])`
+    /// read at 0x140f6a344; named by the save's write in the same place (0x140f6e1d0, write at 0x140f6e803)
+    #[br(count = n.max(0) as usize)]
+    pub p: Vec<u64>,
+}
+
+/// Read by `FUN_140f69c40` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct UmvDataList {
+    /// game: `UMV_Data_List_Used`
+    /// read at 0x140f69d0a
+    pub umv_data_list_used: i32,
+    /// game: `UMV_Data_List_Size`
+    /// read at 0x140f69ebc
+    pub umv_data_list_size: i32,
+    /// game: `UMV_Data_GUID`
+    /// read at 0x140f6a0ad; named by the save's write in the same place (0x140f6e1d0, write at 0x140f6e595)
+    #[br(count = umv_data_list_used.max(0) as usize)]
+    pub umv_data_guid: Vec<u32>,
+    /// unnamed in the binary
+    /// a loop of 2 reads; unnamed in the binary
+    #[br(count = umv_data_list_used.max(0) as usize)]
+    pub unnamed_list_at_0x140f6a285: Vec<UmvDataListEntry1>,
+}
+
+/// Read by `FUN_1412853e0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct UnifiedVisibleMap {
+    /// game: `mapWidth`
+    /// read at 0x14128544d
+    pub map_width: i32,
+    /// game: `mapHeight`
+    /// read at 0x1412855f6
+    pub map_height: i32,
+    /// game: `UnifiedVisibleMap`
+    /// read at 0x141285a6e; named by the save's write in the same place (0x141286060, write at 0x1412863ea)
+    #[br(if(!((map_height < 1) || (map_width < 1))), count = (map_width.max(0) as usize) * (map_height.max(0) as usize))]
+    pub unified_visible_map: Option<Vec<u64>>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct RgeTile {
+    /// game: `terrainType`
+    /// read at 0x140f6b3f7
+    pub terrain_type: u8,
+    /// game: `restoreTerrainType`
+    /// read at 0x140f6b4a9
+    pub restore_terrain_type: u8,
+    /// game: `terrainType`
+    /// read at 0x140f6b546
+    pub terrain_type_2: u8,
+    /// game: `t->m_elevation`
+    /// read at 0x140f6b5e6
+    pub t_m_elevation: u8,
+    /// game: `t->mask_type`
+    /// read at 0x140f6b8a1
+    pub t_mask_type: i16,
+    /// game: `layer`
+    /// read at 0x140f6b902
+    pub layer: i16,
+    /// game: `layer`
+    /// read at 0x140f6b9a1
+    pub layer_2: i16,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(map_width: i32))]
+pub struct RgeMapRow {
+    /// one tile per `map_width` (HD RGE_Tile)
+    #[br(count = map_width.max(0) as usize)]
+    pub tiles: Vec<RgeTile>,
+}
+
+/// Read by `FUN_140f6a610` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct RgeMap {
+    /// game: `w`
+    /// the save's `header`, 0xdeaddead
+    #[br(assert(header == 3735936685, "the build writes header 3735936685"))]
+    pub header: u32,
+    /// game: `h`
+    /// the save's `version`, the map format (3)
+    #[br(assert(version == 3, "the build writes version 3"))]
+    pub version: u32,
+    /// game: `w`
+    /// the save's `map_width` (+0x18)
+    pub map_width: i32,
+    /// game: `h`
+    /// the save's `map_height` (+0x1c)
+    pub map_height: i32,
+    /// read by 0x1414110f0; named by the save's write in the same place (0x140f6eaf0)
+    #[br(args(ver, map_width, map_height))]
+    pub map_zones: ZoneMaps,
+    /// game: `unencrypted_visible`
+    /// read at 0x140f6ae0c
+    pub unencrypted_visible: u8,
+    /// game: `unencrypted_fog`
+    /// read at 0x140f6b005
+    pub unencrypted_fog: u8,
+    /// one row of tiles per `map_height`
+    #[br(count = map_height.max(0) as usize, args { inner: (map_width,) })]
+    pub rows: Vec<RgeMapRow>,
+    /// unnamed in the binary
+    /// read by 0x140f69c40
+    #[br(args(ver))]
+    pub umv_data_list: UmvDataList,
+    /// read by 0x1412853e0; named by the save's write in the same place (0x140f6eaf0)
+    #[br(args(ver))]
+    pub unified_vis_map: UnifiedVisibleMap,
+}
+
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
@@ -6709,7 +6879,7 @@ pub struct TribeScenarioEntry1 {
 pub struct TribeScenarioEntry2 {
     /// game: `Opponent[i].Attitude.data()`
     /// helper 0x140c68f90
-    #[br(count = base_scenario_max_players as usize)]
+    #[br(count = base_scenario_max_players.max(0) as usize)]
     pub opponent_attitude: Vec<i32>,
 }
 
@@ -6720,7 +6890,7 @@ pub struct TribeScenarioEntry2 {
 pub struct DisabledTechnology {
     /// game: `&DisabledTechnology[i][d]`
     /// read at 0x140ce9016
-    #[br(if(count < 0x7fff && 0 < count), count = count as usize)]
+    #[br(if(count < 0x7fff && 0 < count), count = count.max(0) as usize)]
     pub disabled_technology: Option<Vec<u32>>,
 }
 
@@ -6731,7 +6901,7 @@ pub struct DisabledTechnology {
 pub struct DisabledUnit {
     /// game: `&DisabledUnit[i][d]`
     /// read at 0x140ce94b6
-    #[br(if(count < 0x7fff && 0 < count), count = count as usize)]
+    #[br(if(count < 0x7fff && 0 < count), count = count.max(0) as usize)]
     pub disabled_unit: Option<Vec<u32>>,
 }
 
@@ -6742,7 +6912,7 @@ pub struct DisabledUnit {
 pub struct DisabledBuilding {
     /// game: `&DisabledBuilding[i][d]`
     /// read at 0x140ce9976
-    #[br(if(count < 0x7fff && 0 < count), count = count as usize)]
+    #[br(if(count < 0x7fff && 0 < count), count = count.max(0) as usize)]
     pub disabled_building: Option<Vec<u32>>,
 }
 
@@ -6906,7 +7076,7 @@ pub struct CommandsEntry1 {
     pub sel_unit_count: i16,
     /// game: `dummy`
     /// read at 0x140e6c5eb
-    #[br(if(com_unit_count > 0), count = com_unit_count as usize)]
+    #[br(if(com_unit_count > 0), count = com_unit_count.max(0) as usize)]
     pub dummy: Option<Vec<i32>>,
 }
 
@@ -7572,9 +7742,9 @@ pub struct BaseWorld {
     /// read at 0x14153adfc
     #[br(count = num_players.max(0) as usize)]
     pub player_time_delta: Vec<u32>,
-    /// unnamed in the binary
-    /// read by 0x140f6a610
-    pub map_info: Positioned<MapInfo>,
+    /// read by 0x140f6a610; named by the save's write in the same place (0x141546db0)
+    #[br(args(ver))]
+    pub map: Positioned<RgeMap>,
     /// read by 0x1413bf460; named by the save's write in the same place (0x141546db0)
     #[br(args(ver))]
     pub particle_system: ParticleSystem,
