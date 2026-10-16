@@ -11,7 +11,7 @@ use binrw::binrw;
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed140cba350 {
+pub struct Dependencies {
     /// game: `&numElements`
     /// read at 0x140cba3c6
     pub num_elements: u32,
@@ -37,7 +37,7 @@ pub struct GameOptionsDlcs {
     /// game: `&dependencies`
     /// read by 0x140cba350
     #[br(args(ver))]
-    pub dependencies: Unnamed140cba350,
+    pub dependencies: Dependencies,
 }
 
 /// Read by `FUN_1412d1a30` of the build.
@@ -45,7 +45,7 @@ pub struct GameOptionsDlcs {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed1412d1a30 {
+pub struct StarredCivilizationsIds {
     /// game: `&numElements`
     /// read at 0x1412d1aa4
     pub num_elements: u32,
@@ -70,7 +70,7 @@ pub struct PlayerCivilization {
     /// game: `&mStarredCivilizationsIds`
     /// read by 0x1412d1a30
     #[br(args(ver))]
-    pub starred_civilizations_ids: Unnamed1412d1a30,
+    pub starred_civilizations_ids: StarredCivilizationsIds,
 }
 
 /// Read by `FUN_14131a930` (`GameOptionsPlayer.cpp`) of the build.
@@ -101,10 +101,10 @@ pub struct PlayerInfo {
     /// game: `&mMultiPlayerGameVersion`
     /// helper 0x140c94e10
     pub multi_player_game_version: u8,
-    /// unnamed in the binary
+    /// game: `mCivilizationChoice`
     /// read by 0x1412d2de0
     #[br(args(ver))]
-    pub player_civilization: PlayerCivilization,
+    pub civilization_choice: PlayerCivilization,
     /// game: `&mAiScriptBaseName`
     /// read by 0x140ed8050, a routine of one read
     pub ai_script_base_name: SigString,
@@ -163,7 +163,7 @@ pub struct UniqueFile {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed140d45910 {
+pub struct StandardMapPool {
     /// game: `&numElements`
     /// read at 0x140d45984
     pub num_elements: u32,
@@ -411,28 +411,25 @@ pub struct GameOptions {
     /// game: `&rawData`
     /// read by 0x140d073b0, a routine of one read
     pub raw_data_3: u32,
-    /// unnamed in the binary
-    /// a loop of 4 reads; unnamed in the binary
+    /// a loop of 4 reads; named after the member its entries index (`mCustomMapPool`)
     #[br(count = 10, args { inner: (ver,) })]
-    pub unnamed_list_at_0x14130c23c: Vec<GameOptionsEntry1>,
+    pub custom_map_pool: Vec<GameOptionsEntry1>,
     /// game: `&mStandardMapPool`
     /// read by 0x1412dce30
     #[br(args(ver))]
-    pub standard_map_pool: Unnamed140d45910,
+    pub standard_map_pool: StandardMapPool,
     /// game: `&capacity`
     /// read by 0x1412dd700, a routine of one read
     pub capacity: u64,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after the member its entries index (`mCustomAIFiles`)
     #[br(count = capacity as usize, args { inner: (ver,) })]
-    pub unnamed_list_at_0x14130c7e8: Vec<GameOptionsEntry2>,
+    pub custom_aifiles: Vec<GameOptionsEntry2>,
     /// game: `&capacity`
     /// read by 0x1412dd700, a routine of one read
     pub capacity_2: u64,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after the member its entries index (`mCustomXSFiles`)
     #[br(count = capacity_2 as usize, args { inner: (ver,) })]
-    pub unnamed_list_at_0x14130cb58: Vec<GameOptionsEntry3>,
+    pub custom_xsfiles: Vec<GameOptionsEntry3>,
     /// game: `&mGameId`
     /// read by 0x1412dca90, a routine of one read
     pub game_id: [u8; 16],
@@ -651,12 +648,10 @@ pub struct TechPlayerTree {
     /// game: `(tech_player_tree[index].mAllowMultipleResearch)`
     /// read at 0x1413c34d9; named by the save's write in the same place (0x1413d1a60, write at 0x1413d1f1e)
     pub tech_player_tree_allow_multiple_research: u8,
-    /// unnamed in the binary
-    /// helper 0x140932010
-    pub unnamed_at_0x1413c3574: SigString,
-    /// unnamed in the binary
-    /// helper 0x140932010
-    pub unnamed_at_0x1413c35c2: SigString,
+    /// a state's +0x10: shown instead of the tech's name (FUN_1414ab460), set by a trigger (FUN_1415c3f20 case 7)
+    pub name_override: SigString,
+    /// a state's +0x28: shown instead of the tech's description (FUN_1414ab460), set by a trigger (FUN_1415c3f20 case 8)
+    pub description_override: SigString,
     /// game: `(tech_player_tree[index].mStackTech)`
     /// read at 0x1413c3621; named by the save's write in the same place (0x1413d1a60, write at 0x1413d205e)
     pub tech_player_tree_stack_tech: u8,
@@ -666,10 +661,9 @@ pub struct TechPlayerTree {
     /// game: `(tech_player_tree[index].mPendingCount)`
     /// read at 0x1413c3762; named by the save's write in the same place (0x1413d1a60, write at 0x1413d2184)
     pub tech_player_tree_pending_count: u16,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
+    /// a loop of 3 reads; named by the words its entries' members share (`mCostAmountOverride`, `mCostAttributeTypeOverride`, `mCostAttributeUsedOverride`)
     #[br(count = 3)]
-    pub unnamed_list_at_0x1413c381a: Vec<TribePlayerTechEntry1>,
+    pub cost_override: Vec<TribePlayerTechEntry1>,
     /// game: `(tech_player_tree[index].mIconOverride)`
     /// read at 0x1413c39d6; named by the save's write in the same place (0x1413d1a60, write at 0x1413d23fd)
     pub tech_player_tree_icon_override: u16,
@@ -1088,10 +1082,10 @@ pub struct TechTree {
 #[brw(little)]
 #[br(import(x_size_value: i32))]
 pub struct TribeInformationAIModuleEntry1 {
-    /// game: `tempBYTE`
-    /// read at 0x140f4c865
+    /// game: `(rowValue[j][i])`
+    /// read at 0x140f4c865 into the temporary `tempBYTE`; named by the save's write in the same place (0x140f4cb50, write at 0x140f4d3ce)
     #[br(if(x_size_value > 0), count = x_size_value.max(0) as usize)]
-    pub temp_byte: Option<Vec<u8>>,
+    pub row_value: Option<Vec<u8>>,
 }
 
 /// Read by `FUN_140f4c080` of the build.
@@ -1115,10 +1109,9 @@ pub struct TribeInformationAIModule {
     /// game: `unchangeableLimitValue`
     /// read at 0x140f4c6a2
     pub unchangeable_limit_value: u8,
-    /// unnamed in the binary
-    /// a loop of 1 reads; unnamed in the binary
+    /// a loop of 1 reads; named after the member its entries index (`rowValue`)
     #[br(count = y_size_value.max(0) as usize, args { inner: (x_size_value,) })]
-    pub unnamed_list_at_0x140f4c865: Vec<TribeInformationAIModuleEntry1>,
+    pub row_value: Vec<TribeInformationAIModuleEntry1>,
 }
 
 /// Read by `FUN_1416b3320` of the build.
@@ -1972,7 +1965,7 @@ pub struct BxsData {
     pub output_get_number: Option<i32>,
     /// a loop of 4 reads; named after its count `output_get_number`
     #[br(if(has_output == 1 && output_get_number.unwrap_or_default() > 0), count = output_get_number.unwrap_or_default().max(0) as usize)]
-    pub output_get: Option<Vec<BxsDataEntry1>>,
+    pub output: Option<Vec<BxsDataEntry1>>,
     /// game: `&mOutputLineNumber`
     /// helper 0x140a91060
     #[br(if(has_output == 1))]
@@ -1989,34 +1982,30 @@ pub struct BxsData {
     /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
     pub integer_arrays_get_number: Option<i32>,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `integer_arrays_get_number`
     #[br(if(version > 1 && integer_arrays_get_number.unwrap_or_default() > 0), count = integer_arrays_get_number.unwrap_or_default() as usize)]
-    pub unnamed_list_at_0x1416e04f7: Option<Vec<BxsDataEntry3>>,
+    pub integer_arrays: Option<Vec<BxsDataEntry3>>,
     /// game: `mFloatArrays.getNumber()`
     /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
     pub float_arrays_get_number: Option<i32>,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `float_arrays_get_number`
     #[br(if(version > 1 && float_arrays_get_number.unwrap_or_default() > 0), count = float_arrays_get_number.unwrap_or_default() as usize)]
-    pub unnamed_list_at_0x1416e0a4e: Option<Vec<BxsDataEntry4>>,
+    pub float_arrays: Option<Vec<BxsDataEntry4>>,
     /// game: `mBoolArrays.getNumber()`
     /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
     pub bool_arrays_get_number: Option<i32>,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `bool_arrays_get_number`
     #[br(if(version > 1 && bool_arrays_get_number.unwrap_or_default() > 0), count = bool_arrays_get_number.unwrap_or_default() as usize)]
-    pub unnamed_list_at_0x1416e0fd9: Option<Vec<BxsDataEntry5>>,
+    pub bool_arrays: Option<Vec<BxsDataEntry5>>,
     /// game: `mStringArrays.getNumber()`
     /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
     pub string_arrays_get_number: Option<i32>,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `string_arrays_get_number`
     #[br(if(version > 1 && string_arrays_get_number.unwrap_or_default() > 0), count = string_arrays_get_number.unwrap_or_default() as usize)]
-    pub unnamed_list_at_0x1416e155f: Option<Vec<BxsDataEntry6>>,
+    pub string_arrays: Option<Vec<BxsDataEntry6>>,
     /// game: `mVectorArrays.getNumber()`
     /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
@@ -2029,10 +2018,9 @@ pub struct BxsData {
     /// helper 0x140a91060
     #[br(if(version > 3))]
     pub number_user_heap: Option<i32>,
-    /// unnamed in the binary
-    /// a loop of 5 reads; unnamed in the binary
+    /// a loop of 5 reads; named after its count `number_user_heap`
     #[br(if(version > 3 && number_user_heap.unwrap_or_default() > 0), count = number_user_heap.unwrap_or_default() as usize)]
-    pub unnamed_list_at_0x1416e20fa: Option<Vec<BxsDataEntry8>>,
+    pub user_heap: Option<Vec<BxsDataEntry8>>,
     /// game: `&mUnitID`
     /// helper 0x140a91060
     #[br(if(!(version < 3)))]
@@ -2246,11 +2234,10 @@ pub struct WorldPlayer {
     /// game: `artifact_held_time`
     /// read at 0x1415f204a; named by the save's write of this member at 0x141633126
     pub artifact_held_time: f32,
-    /// unnamed in the binary
-    /// a loop of 18 reads; unnamed in the binary
+    /// a loop of 18 reads; one entry per player slot (`diplomacy[i]`, `trade[i]`, `offer[i]` for i < 9: arrays of 9 bytes at +0xe12, +0xe1b, +0xe24)
     #[brw(magic = b"\x0b")]
     #[br(count = 9)]
-    pub unnamed_list_at_0x1415f21be: Vec<WorldPlayerEntry1>,
+    pub per_player: Vec<WorldPlayerEntry1>,
     /// game: `fealty`
     /// read at 0x1415f2c69; named by the save's write in the same place (0x141631420, write at 0x1416339c0)
     pub fealty: u16,
@@ -2416,7 +2403,7 @@ pub struct OverrideDescription {
     /// read at 0x1411207f1
     pub string_id: i32,
     /// game: `string`
-    /// helper 0x140932fa0; named by the save's write in the same place (0x141120d00, write at 0x141120f1d)
+    /// helper 0x140932fa0
     pub string: LenString32,
 }
 
@@ -2495,10 +2482,9 @@ pub struct RgeMasterStaticObject {
     /// game: `attribute_max_amount`
     /// read at 0x1411335b3
     pub attribute_max_amount: i16,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
+    /// a loop of 3 reads; named by the words its entries' members share (`attribute_type_held`, `attribute_amount_held`, `attribute_flag`)
     #[br(count = 3)]
-    pub unnamed_list_at_0x141133867: Vec<RgeMasterStaticObjectEntry1>,
+    pub attribute: Vec<RgeMasterStaticObjectEntry1>,
     /// game: `disabled`
     /// read at 0x1411339be
     pub disabled: u8,
@@ -2777,7 +2763,8 @@ pub struct TaskList {
     /// game: `list_num`
     /// read at 0x1411a8ff7
     pub list_num: i16,
-    /// a loop of 2 reads; named after its count `list_num`
+    /// game: `list`
+    /// a loop of 2 reads; named by the save's write in the same place (0x1411a9720)
     #[br(count = list_num.max(0) as usize, args { inner: (ver,) })]
     pub list: Vec<TaskListEntry1>,
 }
@@ -3216,27 +3203,22 @@ pub struct RgeVisibleMap {
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct VisibleResourceRec {
-    /// game: `CERV`
-    /// read at 0x141289181; named by the save's write in the same place (0x141289c50, write at 0x141289cae)
-    pub cerv: u32,
-    /// unnamed in the binary
-    /// read at 0x141289264
-    pub unnamed_0x8: u32,
-    /// unnamed in the binary
-    /// read at 0x14128938f
-    pub unnamed_0xc: u32,
-    /// unnamed in the binary
-    /// read at 0x141289443
-    pub unnamed_0x10: u32,
-    /// unnamed in the binary
-    /// read at 0x1412894f7
-    pub unnamed_0x14: u8,
-    /// unnamed in the binary
-    /// read at 0x1412895ab
-    pub unnamed_0x18: u32,
-    /// unnamed in the binary
-    /// read at 0x141289665
-    pub unnamed_0x1c: u32,
+    /// `VISIBLE_RESOURCE_REC: Invalid struct ID` unless 0x56524543
+    #[br(assert(struct_id == 1448232259, "the build writes struct_id 1448232259"))]
+    pub struct_id: u32,
+    /// `Invalid struct version` unless 1
+    #[br(assert(struct_version == 1, "the build writes struct_version 1"))]
+    pub struct_version: u32,
+    /// HD VISIBLE_RESOURCE_REC::object_id, stored at +0xc
+    pub object_id: i32,
+    /// HD VISIBLE_RESOURCE_REC::distance, stored as a float at +0x10
+    pub distance: f32,
+    /// HD VISIBLE_RESOURCE_REC::zone, stored at +0x14
+    pub zone: u8,
+    /// HD VISIBLE_RESOURCE_REC::pos_x, stored as a float at +0x18
+    pub pos_x: f32,
+    /// HD VISIBLE_RESOURCE_REC::pos_y, stored as a float at +0x1c
+    pub pos_y: f32,
 }
 
 #[binrw]
@@ -3499,10 +3481,9 @@ pub struct OwnRgeMasterStaticObject {
     /// read by 0x141120780
     #[br(args(ver))]
     pub override_description: OverrideDescription,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
+    /// a loop of 3 reads; named by the words its entries' members share (`attribute_type_held`, `attribute_amount_held`, `attribute_flag`)
     #[br(count = 3)]
-    pub unnamed_list_at_0x14113088a: Vec<OwnRgeMasterStaticObjectEntry1>,
+    pub attribute: Vec<OwnRgeMasterStaticObjectEntry1>,
     /// game: `damageSpriteNum`
     /// read at 0x1411309a3
     pub damage_sprite_num: u8,
@@ -3999,10 +3980,9 @@ pub struct OwnTribeMasterBuildingObject {
     /// game: `can_burn`
     /// read at 0x141241e5f
     pub can_burn: u8,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
+    /// a loop of 3 reads; named by the words its entries' members share (`linked_id`, `linked_x`, `linked_y`)
     #[br(count = 4)]
-    pub unnamed_list_at_0x14124201c: Vec<OwnTribeMasterBuildingObjectEntry1>,
+    pub linked: Vec<OwnTribeMasterBuildingObjectEntry1>,
     /// game: `construction_id`
     /// read at 0x1412421f1
     pub construction_id: i16,
@@ -6891,13 +6871,12 @@ pub struct ZoneMap {
     /// read at 0x141410c9e; named by the save's write in the same place (0x141413c80, write at 0x141413ee4)
     #[br(count = (map_height.max(0) as usize) * (map_width.max(0) as usize))]
     pub zone_map: Vec<u16>,
-    /// unnamed in the binary
-    /// read at 0x141410d39 into a local (local_180)
-    pub unnamed_at_0x141410d39: i32,
+    /// the count of mFloatValue (TerrainRestriction.h); unnamed in the binary
+    pub float_value_count: i32,
     /// game: `&mFloatValue`
-    /// read at 0x141410e87
-    #[br(count = unnamed_at_0x141410d39.max(0) as usize)]
-    pub float_value: Vec<u32>,
+    /// `&mFloatValue` (TerrainRestriction.h): floats
+    #[br(count = float_value_count.max(0) as usize)]
+    pub float_value: Vec<f32>,
     /// game: `mNumberZones`
     /// read at 0x141410fea; named by the save's write in the same place (0x141413c80, write at 0x140a913c7)
     pub number_zones: u32,
@@ -6947,10 +6926,9 @@ pub struct UmvDataList {
     /// read at 0x140f6a0ad; named by the save's write in the same place (0x140f6e1d0, write at 0x140f6e595)
     #[br(count = umv_data_list_used.max(0) as usize)]
     pub umv_data_guid: Vec<u32>,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `umv_data_list_used`
     #[br(count = umv_data_list_used.max(0) as usize)]
-    pub unnamed_list_at_0x140f6a285: Vec<UmvDataListEntry1>,
+    pub umv_data_list: Vec<UmvDataListEntry1>,
 }
 
 /// Read by `FUN_1412853e0` of the build.
@@ -7256,10 +7234,10 @@ pub struct Picture {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct BaseScenarioEntry1 {
-    /// game: `v[0]`
-    /// helper 0x140938490; named by the save's write in the same place (0x140cac1b0, write at 0x140938a46)
+    /// game: `playerName`
+    /// helper 0x140938490
     #[br(count = 256)]
-    pub v: Vec<u8>,
+    pub player_name: Vec<u8>,
 }
 
 #[binrw]
@@ -7326,18 +7304,16 @@ pub struct BaseScenario {
     /// game: `&GaiaPlayerIndex`
     /// read by 0x140ca5250, a routine of one read
     pub gaia_player_index: u32,
-    /// unnamed in the binary
-    /// a loop of 1 reads; unnamed in the binary
+    /// a loop of 1 reads; named after its entries' only member (`playerName`)
     #[br(count = max_players.max(0) as usize)]
-    pub unnamed_list_at_0x140ca7718: Vec<BaseScenarioEntry1>,
+    pub player_name: Vec<BaseScenarioEntry1>,
     /// game: `&playerNameStringId`
     /// read by 0x140c949d0, a routine of one read
     #[br(count = max_players.max(0) as usize)]
     pub player_name_string_id: Vec<i32>,
-    /// unnamed in the binary
-    /// a loop of 5 reads; unnamed in the binary
+    /// a loop of 5 reads; named by the words its entries' members share (`mPlayerActiveArray`, `mPlayerType`, `mPlayerCivilization`, `mPlayerArchitecture`, `mPlayerPosture`)
     #[br(count = max_players.max(0) as usize)]
-    pub unnamed_list_at_0x140ca758f: Vec<BaseScenarioEntry2>,
+    pub player: Vec<BaseScenarioEntry2>,
     /// game: `mPlayerCivLockArray.data()`
     /// helper 0x140c68f90
     #[br(count = max_players.max(0) as usize)]
@@ -7359,7 +7335,7 @@ pub struct BaseScenario {
     /// helper 0x140a91160
     pub old_time: f32,
     /// game: `mScenarioName`
-    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140cae472)
+    /// helper 0x140934200
     pub scenario_name: LenString16,
     /// game: `mDescription.mStringId`
     /// read by 0x14087ba80, a routine of one read; the save writes it as part of `mDescription` in the same place (0x140cac1b0, write at 0x14087c233)
@@ -7380,34 +7356,34 @@ pub struct BaseScenario {
     /// read by 0x14087ba80, a routine of one read; the save writes it as part of `mScoutMessage` in the same place (0x140cac1b0, write at 0x14087c233)
     pub scout_message_string_id: u32,
     /// game: `mDescription`
-    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    /// read by 0x14087b840, a routine of one read
     pub description: LenString16,
     /// game: `mHints`
-    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    /// read by 0x14087b840, a routine of one read
     pub hints: LenString16,
     /// game: `mWinMessage`
-    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    /// read by 0x14087b840, a routine of one read
     pub win_message: LenString16,
     /// game: `mLossMessage`
-    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    /// read by 0x14087b840, a routine of one read
     pub loss_message: LenString16,
     /// game: `mHistoricalNotes`
-    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    /// read by 0x14087b840, a routine of one read
     pub historical_notes: LenString16,
     /// game: `mScoutMessage`
-    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    /// read by 0x14087b840, a routine of one read
     pub scout_message: LenString16,
     /// game: `mPreGameMovieFileName`
-    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140caf592)
+    /// helper 0x140934200
     pub pre_game_movie_file_name: LenString16,
     /// game: `mWinMovieFileName`
-    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140caf62e)
+    /// helper 0x140934200
     pub win_movie_file_name: LenString16,
     /// game: `mLossMovieFileName`
-    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140caf772)
+    /// helper 0x140934200
     pub loss_movie_file_name: LenString16,
     /// game: `mMissionBmpName`
-    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140caf8b5)
+    /// helper 0x140934200
     pub mission_bmp_name: LenString16,
     /// read by 0x1408d0e80; named by the save's write in the same place (0x140cac1b0)
     #[br(args(ver))]
@@ -7424,10 +7400,9 @@ pub struct BaseScenario {
     /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140cafd46)
     #[br(count = max_players.max(0) as usize)]
     pub ai_rules_file_name: Vec<LenString16>,
-    /// unnamed in the binary
-    /// a loop of 6 reads; unnamed in the binary
+    /// a loop of 6 reads; named by the words its entries' members share (`mBuildListFileData`, `mCityPlanFileData`, `mAiRulesFileData`)
     #[br(count = max_players.max(0) as usize)]
-    pub unnamed_list_at_0x140cab1ba: Vec<BaseScenarioEntry3>,
+    pub file_data: Vec<BaseScenarioEntry3>,
     /// game: `mAiRulesType.data()`
     /// helper 0x140c94660
     #[br(count = max_players.max(0) as usize)]
@@ -7530,8 +7505,7 @@ pub struct TribeScenario {
     /// read by 0x140ca6c50
     #[br(args(ver))]
     pub base_scenario: BaseScenario,
-    /// game: `player_info`
-    /// a loop of 7 reads; named by the save's write in the same place (0x140ced220)
+    /// a loop of 7 reads; named after the member its entries index (`player_info`)
     #[br(count = base_scenario.max_players as usize)]
     pub player_info: Vec<TribeScenarioEntry1>,
     /// game: `&checksum`
@@ -7552,8 +7526,7 @@ pub struct TribeScenario {
     /// game: `&victory_time`
     /// helper 0x140a91060
     pub victory_time: i32,
-    /// game: `Opponent`
-    /// a loop of 1 reads; named by the save's write in the same place (0x140ced220)
+    /// a loop of 1 reads; named after the member its entries index (`Opponent`)
     #[br(count = base_scenario.max_players as usize, args { inner: (base_scenario.max_players,) })]
     pub opponent: Vec<TribeScenarioEntry2>,
     /// game: `buffer`
@@ -7661,15 +7634,14 @@ pub struct TribeScenario {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(com_unit_count: i16))]
 pub struct CommandsEntry1 {
     /// game: `&selUnitCount`
     /// helper 0x140e536e0
     pub sel_unit_count: i16,
-    /// game: `dummy`
-    /// read at 0x140e6c5eb
-    #[br(if(com_unit_count > 0), count = com_unit_count.max(0) as usize)]
-    pub dummy: Option<Vec<i32>>,
+    /// game: `(last_commanded_units[j][i].id)`
+    /// read at 0x140e6c66b
+    #[br(if(sel_unit_count > 0), count = sel_unit_count.max(0) as usize)]
+    pub last_commanded_units_id: Option<Vec<i32>>,
 }
 
 /// Read by `FUN_140e6baf0` (`command.cpp`) of the build.
@@ -7688,10 +7660,9 @@ pub struct Commands {
     /// read at 0x140e6c157
     #[br(count = com_unit_count.max(0) as usize)]
     pub dummy: Vec<i32>,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
-    #[br(count = 9, args { inner: (com_unit_count,) })]
-    pub unnamed_list_at_0x140e6c45a: Vec<CommandsEntry1>,
+    /// a loop of 2 reads; one entry per player slot (`while (local_210 < 9)`): the units each player last commanded
+    #[br(count = 9)]
+    pub per_player: Vec<CommandsEntry1>,
 }
 
 /// Read by `FUN_141046660` of the build.
@@ -8139,10 +8110,12 @@ pub struct UnitGroup {
     /// game: `mLargestRangedUnitRange`
     /// read at 0x1410206a7
     pub largest_ranged_unit_range: f32,
-    /// read by 0x14101bb60; named by the save's write in the same place (0x1410321e0)
+    /// game: `mStoredPositions`
+    /// read by 0x14101bb60
     #[br(args(ver))]
     pub stored_positions: PointLine,
-    /// read by 0x141024960; named by the save's write in the same place (0x1410321e0)
+    /// game: `mUnitTypes`
+    /// read by 0x141024960
     #[br(args(ver))]
     pub unit_types: UnitTypeStatisticManager,
     /// game: `mNumberWaypoints`
@@ -8155,7 +8128,8 @@ pub struct UnitGroup {
     /// game: `mCurrentCommand`
     /// read at 0x141020c81
     pub current_command: i32,
-    /// read by 0x14101c7d0; named by the save's write in the same place (0x1410321e0)
+    /// game: `mCurrentTarget`
+    /// read by 0x14101c7d0
     #[br(args(ver))]
     pub current_target: TargetData,
     /// game: `mAttackPlanType`
@@ -8246,10 +8220,10 @@ pub struct BaseWorldEntry1 {
     /// game: `nameSize`
     /// read at 0x14153c254
     pub name_size: i32,
-    /// game: `playerName.cString()`
-    /// helper 0x140938490; named by the save's write in the same place (0x141546db0, write at 0x14154a8cc)
+    /// game: `playerName`
+    /// helper 0x140938490
     #[br(if(name_size > 0), count = name_size.max(0) as usize)]
-    pub player_name_c_string: Option<Vec<u8>>,
+    pub player_name: Option<Vec<u8>>,
 }
 
 /// Read by `FUN_141537e30` (`BaseWorld.cpp`) of the build.
@@ -8359,10 +8333,9 @@ pub struct BaseWorld {
     /// game: `allianceLocked`
     /// read at 0x14153bf7c
     pub alliance_locked: i32,
-    /// unnamed in the binary
-    /// a loop of 4 reads; unnamed in the binary
+    /// a loop of 4 reads; one entry per player slot (`worldPlayerIndex`, `humanity`, `playerName` for i < 9)
     #[br(count = 9)]
-    pub unnamed_list_at_0x14153c18b: Vec<BaseWorldEntry1>,
+    pub per_player: Vec<BaseWorldEntry1>,
     /// game: `is_resigned`
     /// read at 0x14153c4e7
     #[br(count = 9)]
@@ -8677,10 +8650,9 @@ pub struct TriggerSystem {
     /// game: `size`
     /// read at 0x14156e5f8; named by the save's write in the same place (0x141587990, write at 0x141588517)
     pub size_2: u32,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
+    /// a loop of 3 reads; named after the member its entries index (`mVariableNames`)
     #[br(count = size_2 as usize)]
-    pub unnamed_list_at_0x14156e6bb: Vec<TriggerSystemEntry1>,
+    pub variable_names: Vec<TriggerSystemEntry1>,
     /// game: `mCurrentTriggerId`
     /// read at 0x14156e945; named by the save's write in the same place (0x141587990, write at 0x141588a0a)
     pub current_trigger_id: u32,
@@ -8762,10 +8734,10 @@ pub struct WorldEntry2 {
     /// read at 0x1415d5738
     #[br(if(valid_timer != 0))]
     pub length: Option<i32>,
-    /// unnamed in the binary
-    /// read at 0x1415d57a1
+    /// game: `str`
+    /// read at 0x1415d57a1; named by the save's write in the same place (0x1415e25e0, write at 0x141460458)
     #[br(if(valid_timer != 0 && length.unwrap_or_default() > 0), count = length.unwrap_or_default().max(0) as usize)]
-    pub unnamed_at_0x1415d57a1: Option<Vec<u8>>,
+    pub str: Option<Vec<u8>>,
 }
 
 #[binrw]
@@ -8961,10 +8933,9 @@ pub struct World {
     /// game: `size`
     /// read at 0x1415d4035
     pub size: u64,
-    /// unnamed in the binary
-    /// helper 0x140932010
+    /// the XS module filenames of the random map's script system (World::SetupScriptedRandomMapScriptSystem, FUN_14171ab60)
     #[br(count = size as usize)]
-    pub unnamed_at_0x1415d40f6: Vec<SigString>,
+    pub rms_module_filenames: Vec<SigString>,
     /// game: `isRMSXSEnabled`
     /// read at 0x1415d4165
     pub is_rmsxsenabled: u8,
@@ -9017,10 +8988,10 @@ pub struct World {
     /// game: `mUseFeatureFlags`
     /// read at 0x1415d5279
     pub use_feature_flags: u8,
-    /// unnamed in the binary
-    /// a loop of 9 reads; unnamed in the binary
+    /// game: `mCountDownClock`
+    /// a loop of 9 reads; named by the save's write in the same place (0x1415e25e0)
     #[br(count = 10)]
-    pub unnamed_list_at_0x1415d5484: Vec<WorldEntry2>,
+    pub count_down_clock: Vec<WorldEntry2>,
     /// game: `tradeObjects`
     /// read at 0x1415d585f
     pub trade_objects: i32,
