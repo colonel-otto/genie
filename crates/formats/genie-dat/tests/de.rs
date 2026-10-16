@@ -1,5 +1,6 @@
-//! The DE data file against the installed game's: `GENIE_DAT` names an `empires2_x2_p1.dat`
-//! (compressed, or inflated); skips without it. The values come from genieutils-py on the same file.
+//! The DE data file against a game's: `GENIE_DAT` names an `empires2_x2_p1.dat` (compressed, or
+//! inflated); skips without it. The values come from genieutils-py on the same files: VER 8.8 as
+//! build 158041 ships it (Steam build 20295388), VER 8.9 as build 185872 does.
 
 use flate2::read::DeflateDecoder;
 use genie_dat::de::{DatFile, Version};
@@ -32,11 +33,14 @@ fn the_installed_data_file_has_the_values_genieutils_reads() {
         return eprintln!("GENIE_DAT is not set; skipping");
     };
     let dat = DatFile::from_inflated(&data).unwrap();
-    // VER 8.9 as installed, or the load oracle's VER 8.8 rewrite of it
-    assert!([Version(31), Version(32)].contains(&dat.version()));
+    let units = match dat.version() {
+        Version(31) => 2539, // VER 8.8, build 158041
+        Version(32) => 2750, // VER 8.9, build 185872
+        other => panic!("no genieutils values for {other:?}"),
+    };
     assert_eq!(dat.unit_headers.len(), 1701);
     let civ2 = &dat.civs[2];
-    assert_eq!(civ2.units.len(), 2750);
+    assert_eq!(civ2.units.len(), units);
     // the cow: decay 0.25 per second, default task 0 with action type 107 (the Artifact action)
     let cow = civ2.units[705].as_ref().unwrap();
     assert_eq!((cow.name.as_str(), cow.resource_decay), ("Cow Black and White".into(), 0.25));
