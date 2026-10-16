@@ -261,10 +261,7 @@ pub(super) fn read_end<R: binrw::io::Read + binrw::io::Seek>(
     let [sharing_is_caring, is_first_update, d3kt_military_unit_built] = <[u8; 3]>::read_le(r)?;
     expect(r, MARKER)?;
     if player_type == COMPUTER && u32::read_le(r)? != 0 {
-        return Err(super::object::unsupported(
-            r,
-            "computer player AI state (playerAI->save)",
-        ));
+        return Err(unsupported(r, "computer player AI state (playerAI->save)"));
     }
     expect(r, MARKER)?;
     let gaia = (player_type == GAIA)
@@ -278,4 +275,34 @@ pub(super) fn read_end<R: binrw::io::Read + binrw::io::Seek>(
         d3kt_military_unit_built,
         gaia,
     })
+}
+
+/// Marks a feature this port does not read yet, so callers can tell it from a parse error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnsupportedFeature(pub &'static str);
+
+impl std::fmt::Display for UnsupportedFeature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unsupported: {}", self.0)
+    }
+}
+
+impl std::error::Error for UnsupportedFeature {}
+
+pub(super) fn unsupported<R: binrw::io::Seek>(reader: &mut R, what: &'static str) -> binrw::Error {
+    binrw::Error::Custom {
+        pos: reader.stream_position().unwrap_or_default(),
+        err: Box::new(UnsupportedFeature(what)),
+    }
+}
+
+/// The feature named by an `Unsupported` marker anywhere in a read error, with its position.
+pub fn unsupported_in(e: &binrw::Error) -> Option<(&'static str, usize)> {
+    let root = e.root_cause();
+    let what = root.custom_err::<UnsupportedFeature>()?.0;
+    let at = match root {
+        binrw::Error::Custom { pos, .. } => *pos as usize,
+        _ => 0,
+    };
+    Some((what, at))
 }

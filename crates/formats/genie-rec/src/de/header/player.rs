@@ -1,20 +1,15 @@
 //! A player section (pattern: `Init`), read through its object lists.
 
-use super::generated::player::{PlayerMasters, RgeVisibleMap, VisibleResourceManager, WorldPlayer};
+use super::generated::player::{Object, PlayerObjects, WorldPlayer};
 use binrw::io::{Read, Seek};
 use binrw::{BinRead, binread};
 
-/// Where the parts of a player section end.
+/// Where the parts of a player section start and end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PlayerEnds {
     pub start: usize,
-    pub enabled_objects: usize,
-    pub initial_objects: usize,
-    pub initial_map: usize,
-    pub initial_state_restore: usize,
+    /// Where the player's objects start (WorldPlayer vtable slot 29: its masters, maps, objects).
     pub objects_start: usize,
-    /// The end of the last live object.
-    pub objects_end: usize,
     /// The end of what this reader parsed of the section.
     pub end: usize,
 }
@@ -28,30 +23,21 @@ pub struct PlayerSection {
     /// The tech tree (`tech_tree_help->save`, `techtree.cpp`); the pattern calls it the unlock tables.
     pub unlocks: Unlocks,
     pub tribe_end: super::tribe::TribeEnd,
-    /// The player's masters (unit types): the enabled flags, then each enabled master by type
-    /// (generated from the player's master list load).
-    pub masters: PlayerMasters,
-    /// The player's visible map (generated; HD `RGE_Visible_Map`).
-    pub initial_map: RgeVisibleMap,
-    /// The player's visible resources (generated; HD `Visible_Resource_Manager`).
-    pub state_restore: VisibleResourceManager,
-    pub unknown23: u32,
-    /// The live objects (the list the checkpoint sums over).
-    pub objects: Vec<super::object::Object>,
-    /// The lists after the live objects.
-    pub tail: PlayerTail,
+    /// The player's masters, visible map and resources, its live, sleeping and doppelganger
+    /// objects (generated from WorldPlayer vtable slot 29).
+    pub objects: PlayerObjects,
 }
 
-/// The sleeping and doppelganger object lists after a player's live objects.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PlayerTail {
-    pub sleeping_size: u32,
-    pub sleeping_grow: u32,
-    pub sleeping_objects: Vec<super::object::Object>,
-    pub doppel_size: u32,
-    pub doppel_grow: u32,
-    pub doppel_objects: Vec<super::object::Object>,
-    pub unknown24: [u32; 6],
+impl PlayerSection {
+    /// The live objects (the list the checkpoint sums over).
+    pub fn live_objects(&self) -> impl Iterator<Item = &Object> {
+        self.objects.objects.objects()
+    }
+
+    /// The sleeping objects.
+    pub fn sleeping_objects(&self) -> impl Iterator<Item = &Object> {
+        self.objects.sleeping_objects.objects()
+    }
 }
 
 /// The player fields before the tribe player's tech states: the player class byte, then the
@@ -176,42 +162,8 @@ impl From<binrw::Error> for ReadError {
     }
 }
 
-fn objects_of<R: Read + Seek>(r: &mut R, v: u32) -> Result<Vec<super::object::Object>, ReadError> {
-    super::object::read_objects(r, v).map_err(unsupported_or_bin)
-}
-
 fn position<R: Seek>(r: &mut R) -> Result<usize, ReadError> {
     Ok(r.stream_position().map_err(binrw::Error::Io)? as usize)
-}
-
-fn unsupported_or_bin(e: binrw::Error) -> ReadError {
-    match super::object::unsupported_in(&e) {
-        Some((what, at)) => ReadError::Unsupported { what, at },
-        None => ReadError::Bin(e),
-    }
-}
-
-fn read_tail<R: Read + Seek>(r: &mut R, v: u32) -> Result<PlayerTail, ReadError> {
-    use super::primitives::expect;
-    let sleeping_size = u32::read_le(r)?;
-    let sleeping_grow = u32::read_le(r)?;
-    let sleeping_objects = objects_of(r, v)?;
-    expect(r, b"\x00\x0b")?;
-    let doppel_size = u32::read_le(r)?;
-    let doppel_grow = u32::read_le(r)?;
-    let doppel_objects = objects_of(r, v)?;
-    expect(r, b"\x00\x0b\x00\x0b")?;
-    let unknown24 = <[u32; 6]>::read_le(r)?;
-    expect(r, b"\x00\x0b")?;
-    Ok(PlayerTail {
-        sleeping_size,
-        sleeping_grow,
-        sleeping_objects,
-        doppel_size,
-        doppel_grow,
-        doppel_objects,
-        unknown24,
-    })
 }
 
 /// Read one player section, from its prelude to the end of its tail lists. The next section starts
@@ -222,7 +174,6 @@ pub fn read_player<R: Read + Seek>(
     ver: u32,
     num_players: usize,
 ) -> Result<PlayerSection, ReadError> {
-    use super::primitives::expect;
     let mut ends = PlayerEnds {
         start: position(r)?,
         ..PlayerEnds::default()
@@ -230,25 +181,14 @@ pub fn read_player<R: Read + Seek>(
     let prelude = PlayerPrelude::read_args(r, (ver, num_players))?;
     let tribe = super::tribe::TribeState::read_args(r, (v, num_players))?;
     let unlocks = Unlocks::read(r)?;
-    let tribe_end = super::tribe::read_end(r, prelude.player_type).map_err(unsupported_or_bin)?;
-    let masters_start = position(r)?;
-    let masters = PlayerMasters::read_args(r, (ver,))?;
-    // the marker, the count, the flags
-    ends.enabled_objects = masters_start + 5 + 4 * masters.enabled.len();
-    ends.initial_objects = position(r)?;
-    expect(r, b"\x0b")?;
-    let initial_map = RgeVisibleMap::read_args(r, (ver,))?;
-    ends.initial_map = position(r)?;
-    let state_restore = VisibleResourceManager::read_args(r, (ver,))?;
-    ends.initial_state_restore = position(r)?;
-    expect(r, b"\x0b\x00")?;
-    let unknown23 = u32::read_le(r)?;
-    expect(r, b"\x02\x00\x00")?;
+    let tribe_end = super::tribe::read_end(r, prelude.player_type).map_err(|e| {
+        match super::tribe::unsupported_in(&e) {
+            Some((what, at)) => ReadError::Unsupported { what, at },
+            None => ReadError::Bin(e),
+        }
+    })?;
     ends.objects_start = position(r)?;
-    let objects = objects_of(r, v)?;
-    ends.objects_end = position(r)?;
-    expect(r, b"\x00\x0b")?;
-    let tail = read_tail(r, v)?;
+    let objects = PlayerObjects::read_args(r, (ver, num_players))?;
     ends.end = position(r)?;
     Ok(PlayerSection {
         ends,
@@ -256,11 +196,6 @@ pub fn read_player<R: Read + Seek>(
         tribe,
         unlocks,
         tribe_end,
-        masters,
-        initial_map,
-        state_restore,
-        unknown23,
         objects,
-        tail,
     })
 }

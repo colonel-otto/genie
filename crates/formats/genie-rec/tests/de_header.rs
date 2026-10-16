@@ -78,47 +78,19 @@ fn marvinblue_sections_end_where_imhex_says() {
     assert_eq!(ends.players_start, expected_start("players"));
 
     assert_eq!(header.players.len(), 3);
+    // The boundaries inside a player section are checked against the game's own reads
+    // (tests/de_oracle.rs); against ImHex, the section starts, ends and counts.
     for (i, p) in header.players.iter().enumerate() {
         let name = |part: &str| format!("player{i}{part}");
         assert_eq!(p.ends.start, expected_start(&name("")), "player {i}");
         assert_eq!(
-            p.ends.enabled_objects,
-            expected(&name(".enabled_objects")),
-            "player {i}"
-        );
-        assert_eq!(
-            p.ends.initial_objects,
-            expected(&name(".initial_objects")),
-            "player {i}"
-        );
-        assert_eq!(
-            p.masters.masters.as_ref().map_or(0, Vec::len),
+            p.objects.masters.as_ref().map_or(0, Vec::len),
             expected_count(&name(".initial_objects")),
             "player {i}"
         );
         assert_eq!(
-            p.ends.initial_map,
-            expected(&name(".initial_map")),
-            "player {i}"
-        );
-        assert_eq!(
-            p.ends.initial_state_restore,
-            expected(&name(".initial_state_restore")),
-            "player {i}"
-        );
-        assert_eq!(
-            p.ends.objects_start,
-            expected_start(&name(".objects")),
-            "player {i}"
-        );
-        assert_eq!(
-            p.objects.len(),
+            p.live_objects().count(),
             expected_count(&name(".objects")),
-            "player {i}"
-        );
-        assert_eq!(
-            p.ends.objects_end,
-            expected(&name(".objects")),
             "player {i}"
         );
     }
@@ -126,9 +98,11 @@ fn marvinblue_sections_end_where_imhex_says() {
     // pattern skips Gaia's tail by searching for player 1; ImHex's offset for player 1 is the check.
     assert_eq!(header.players[0].ends.end, expected_start("player1"));
     for (i, p) in header.players.iter().enumerate().skip(1) {
-        let tail = &p.tail;
         assert_eq!(
-            (tail.sleeping_objects.len(), tail.doppel_objects.len()),
+            (
+                p.sleeping_objects().count(),
+                p.objects.doppleganger_objects.objects().count()
+            ),
             (0, 0),
             "player {i}"
         );

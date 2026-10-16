@@ -11,10 +11,8 @@ mod ai;
 pub mod generated;
 mod layout_types;
 mod lobby;
-mod main_object;
 mod map;
-mod master;
-mod object;
+mod objects;
 mod player;
 mod primitives;
 mod replay;
@@ -23,21 +21,12 @@ mod test_bytes;
 mod tribe;
 
 pub use ai::{AiConfig, AiData, AiRule, AiRuleGroup, SizedString32};
+pub use generated::player::{Object, ObjectList, PlayerObjects};
 pub use layout_types::{LenString16, LenString32, LenVec32, STRING_SIGNATURE, SigString};
 pub use lobby::{AiFile, LobbyPlayer, LobbySettings};
-pub use main_object::{MainObject, Task, TaskList};
 pub use map::{MapInfo, MapZone, Obstructions, Tile};
-pub use master::{
-    DamageSprite, MasterAction, MasterBody, MasterBuilding, MasterCombat, MasterCreatable,
-    MasterMissile, MasterMoving, MasterObject, OverrideDescription,
-};
-pub use object::{
-    ActionExtra, ActionObject, AnimatedObject, BackToWork, BaseMoving, BuildingObject,
-    BuildingTail, CombatObject, CombatTail, MovingObject, Object, ObjectBody, OrderEvent,
-    OrderQueue, PatrolPath, ProductionQueueEntry, StaticObject, UnitAction, UnitAi,
-};
 pub use player::{
-    PlayerEnds, PlayerPrelude, PlayerSection, PlayerTail, TechUnlock, UnitUnlock, Unlock, Unlocks,
+    PlayerEnds, PlayerPrelude, PlayerSection, TechUnlock, UnitUnlock, Unlock, Unlocks,
 };
 pub use primitives::{DeString, StringList};
 pub use replay::Replay;

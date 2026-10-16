@@ -57,14 +57,6 @@ pub fn write_string_list(list: &StringList) -> binrw::BinResult<()> {
     list.terminator.write_options(writer, endian, ())
 }
 
-pub fn peek_u8<R: binrw::io::Read + binrw::io::Seek>(reader: &mut R) -> binrw::BinResult<u8> {
-    use binrw::io::SeekFrom;
-    let mut b = [0u8; 1];
-    reader.read_exact(&mut b)?;
-    reader.seek(SeekFrom::Current(-1))?;
-    Ok(b[0])
-}
-
 /// Consume `magic` or fail with `BadMagic` at its position.
 pub fn expect<R: binrw::io::Read + binrw::io::Seek>(
     reader: &mut R,

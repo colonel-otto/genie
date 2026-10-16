@@ -8,6 +8,7 @@
 
 use genie_core::artifact::ARTIFACT_TYPE;
 use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
+use genie_rec::de::header::generated::player::RgeStaticObject;
 use genie_rec::de::{self, Op, header::PlayerSection};
 
 /// The words of the first checkpoint that the start-of-game save determines: all but word 9.
@@ -54,6 +55,18 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// The static part of each live object, with its object.
+fn live(section: &PlayerSection) -> impl Iterator<Item = (&de::header::Object, &RgeStaticObject)> {
+    section
+        .live_objects()
+        .filter_map(|o| o.static_part().map(|s| (o, s)))
+}
+
+/// Whether the checkpoint counts the object (see [`NOT_COUNTED`]).
+fn counted(s: &RgeStaticObject) -> bool {
+    !NOT_COUNTED.contains(&(s.master_obj as u16))
+}
+
 /// The checkpoint inputs of one player section. Word 9's inputs stay empty (see the crate docs).
 pub fn player_state(section: &PlayerSection, id: u32) -> PlayerState {
     let attributes = &section.prelude.player.base.attributes;
@@ -61,18 +74,16 @@ pub fn player_state(section: &PlayerSection, id: u32) -> PlayerState {
     PlayerState {
         id,
         resources: [resource(0), resource(1), resource(2), resource(3)],
-        sleeping_count: section.tail.sleeping_objects.len() as u32,
-        live: section
-            .objects
-            .iter()
-            .map(|o| o.static_part())
-            .filter(|s| !NOT_COUNTED.contains(&s.main_id))
+        sleeping_count: section.sleeping_objects().count() as u32,
+        live: live(section)
+            .map(|(_, s)| s)
+            .filter(|s| counted(s))
             .map(|s| ObjectState {
-                id: s.id as i32,
-                main_id: s.main_id as i16,
-                state: s.state,
-                amount_held: s.amount,
-                position: s.position,
+                id: s.id,
+                main_id: s.master_obj,
+                state: s.object_state,
+                amount_held: s.attribute_amount_held,
+                position: [s.t_x, s.t_y, s.t_z],
                 top_action: None,
                 retarget_timer: None,
             })
@@ -149,34 +160,30 @@ const LIVESTOCK_AI: u32 = 19;
 /// The slice's view of one saved object: its unit AI and, for livestock, the Artifact action.
 fn unit(object: &de::header::Object) -> genie_core::turn::Unit {
     let ai = unit_ai(object);
+    let gaia = object.static_part().is_some_and(|s| s.owner == 0);
     let artifact = ai
         .as_ref()
         .filter(|ai| ai.ai_type == LIVESTOCK_AI)
-        .map(|_| genie_core::artifact::Artifact::new(object.player == 0));
+        .map(|_| genie_core::artifact::Artifact::new(gaia));
     genie_core::turn::Unit { ai, artifact }
 }
 
 fn unit_ai(object: &de::header::Object) -> Option<genie_core::unit_ai::UnitAi> {
-    use de::header::ObjectBody;
-    let combat = match &object.body {
-        ObjectBody::Combat(c) => &**c,
-        ObjectBody::Building(b) => &b.combat,
-        _ => return None,
-    };
-    let ai = combat.unit_ai.as_ref()?;
+    let combat = object.combat()?;
+    let ai = combat.unit_ai()?;
     Some(genie_core::unit_ai::UnitAi {
-        ai_type: combat.has_ai,
-        current_order: ai.current_order,
-        current_action: ai.current_action,
-        current_target: ai.current_target,
-        idle_timer: ai.idle_timer,
-        adjusted_idle_timeout: ai.adjusted_idle_timeout,
-        secondary_timer: ai.secondary_timer,
-        look_around_timer: ai.look_around_timer,
-        look_around_timeout: ai.look_around_timeout,
+        ai_type: combat.need_unit_ai as u32,
+        current_order: ai.current_order_value,
+        current_action: ai.current_action_value,
+        current_target: ai.current_target_value,
+        idle_timer: ai.idle_timer_value,
+        adjusted_idle_timeout: ai.adjusted_idle_timeout_value,
+        secondary_timer: ai.secondary_timer_value,
+        look_around_timer: ai.look_around_timer_value,
+        look_around_timeout: ai.look_around_timeout_value,
         last_retarget_time: ai.last_retarget_time,
-        retarget_timer: ai.randomized_target_timer,
-        stance: ai.state,
+        retarget_timer: ai.randomized_retarget_timer,
+        stance: ai.state_value,
         retarget_disabled: ai.disable_retargeting,
     })
 }
@@ -217,7 +224,7 @@ pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
         .players
         .iter()
         .map(|p| Player {
-            objects: p.objects.iter().map(unit).collect(),
+            objects: p.live_objects().map(unit).collect(),
             computer: false,
             unsupported: None,
         })
@@ -245,11 +252,9 @@ pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
                 .ok_or(Error::NoSuchPlayer(id))?;
             let simulated = turns.players[id as usize].clone();
             let mut state = player_state(section, id);
-            let units = section
-                .objects
-                .iter()
+            let units = live(section)
                 .zip(&simulated.objects)
-                .filter(|(o, _)| !NOT_COUNTED.contains(&o.static_part().main_id))
+                .filter(|((_, s), _)| counted(s))
                 .map(|(_, unit)| unit);
             for (object, unit) in state.live.iter_mut().zip(units) {
                 object.retarget_timer = unit.ai.as_ref().map(|ai| ai.retarget_timer as i32);

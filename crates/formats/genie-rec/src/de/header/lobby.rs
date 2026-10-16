@@ -168,6 +168,8 @@ fn string_lists(count: usize) -> binrw::BinResult<Vec<StringList>> {
         .collect()
 }
 
+// binrw passes the field itself, a `&Vec`
+#[allow(clippy::ptr_arg)]
 #[binrw::writer(writer, endian)]
 fn write_string_lists(lists: &Vec<StringList>) -> binrw::BinResult<()> {
     lists
