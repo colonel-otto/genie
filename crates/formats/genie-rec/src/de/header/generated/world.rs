@@ -12,36 +12,36 @@ use binrw::binrw;
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct TribePlayerTechEntry1 {
-    /// unnamed in the binary
-    /// read into *param_1+((longlong)local_f0+0x21)*2
-    pub unnamed_at_0x1413c381a: u16,
-    /// unnamed in the binary
-    /// read into *param_1+((longlong)local_f0+0x24)*2
-    pub unnamed_at_0x1413c38ae: u16,
-    /// unnamed in the binary
-    /// read into lVar15
-    pub unnamed_at_0x1413c3965: u16,
+    /// game: `(tech_player_tree[index].mCostAmountOverride[j])`
+    /// read at 0x1413c381a; named by the save's write in the same place (0x1413d1a60, write at 0x1413d2229)
+    pub tech_player_tree_cost_amount_override: u16,
+    /// game: `(tech_player_tree[index].mCostAttributeTypeOverride[j])`
+    /// read at 0x1413c38ae; named by the save's write in the same place (0x1413d1a60, write at 0x1413d22bf)
+    pub tech_player_tree_cost_attribute_type_override: u16,
+    /// game: `(tech_player_tree[index].mCostAttributeUsedOverride[j])`
+    /// read at 0x1413c3965; named by the save's write in the same place (0x1413d1a60, write at 0x1413d2358)
+    pub tech_player_tree_cost_attribute_used_override: u16,
 }
 
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct TribePlayerTechEntry2 {
-    /// unnamed in the binary
-    /// read at 0x1413c3d76 into a local (local_6c)
-    pub unnamed_at_0x1413c3d76: u16,
-    /// unnamed in the binary
-    /// read at 0x1413c3df2 into a local (local_68)
-    pub unnamed_at_0x1413c3df2: u16,
-    /// unnamed in the binary
-    /// read at 0x1413c3e6e into a local (local_70)
-    pub unnamed_at_0x1413c3e6e: u8,
-    /// unnamed in the binary
-    /// read at 0x1413c3eb7 into a local (local_5c)
-    pub unnamed_at_0x1413c3eb7: u32,
-    /// unnamed in the binary
-    /// read at 0x1413c3f00 into a local (local_60)
-    pub unnamed_at_0x1413c3f00: u32,
+    /// game: `location.mResearchLocationID`
+    /// read at 0x1413c3d76; named by the save's write in the same place (0x1413d1a60, write at 0x1413d2716)
+    pub location_research_location_id: u16,
+    /// game: `location.mResearchTime`
+    /// read at 0x1413c3df2; named by the save's write in the same place (0x1413d1a60, write at 0x1413d278f)
+    pub location_research_time: u16,
+    /// game: `location.mButtonLocationID`
+    /// read at 0x1413c3e6e; named by the save's write in the same place (0x1413d1a60, write at 0x1413d2802)
+    pub location_button_location_id: u8,
+    /// game: `location.mHotkeyID`
+    /// read at 0x1413c3eb7; named by the save's write in the same place (0x1413d1a60, write at 0x1413d2856)
+    pub location_hotkey_id: u32,
+    /// game: `location.mResearchAdjustment`
+    /// read at 0x1413c3f00; named by the save's write in the same place (0x1413d1a60, write at 0x1413d28b6)
+    pub location_research_adjustment: u32,
 }
 
 #[binrw]
@@ -55,52 +55,53 @@ pub struct TechPlayerTree {
     /// HD Tech_Player_Tree::cost_adj (int16 x 3, +6)
     #[br(count = 3)]
     pub cost_adj: Vec<i16>,
-    /// HD Tech_Player_Tree::research_adj (int16, +0xc)
-    pub research_adj: i16,
-    /// unnamed in the binary
-    /// read into local_f8+*param_1+0xe
-    pub unnamed_at_0x1413c34d9: u8,
+    /// game: `(tech_player_tree[index].mTimesResearched)`
+    /// read at 0x1413c340b; named by the save's write in the same place (0x1413d1a60, write at 0x1413d1e88)
+    pub tech_player_tree_times_researched: u16,
+    /// game: `(tech_player_tree[index].mAllowMultipleResearch)`
+    /// read at 0x1413c34d9; named by the save's write in the same place (0x1413d1a60, write at 0x1413d1f1e)
+    pub tech_player_tree_allow_multiple_research: u8,
     /// unnamed in the binary
     /// helper 0x140932010
     pub unnamed_at_0x1413c3574: SigString,
     /// unnamed in the binary
     /// helper 0x140932010
     pub unnamed_at_0x1413c35c2: SigString,
-    /// unnamed in the binary
-    /// read into *param_1+local_f8+0x40
-    pub unnamed_at_0x1413c3621: u8,
-    /// unnamed in the binary
-    /// read into *param_1+local_f8+0x56
-    pub unnamed_at_0x1413c36d1: u16,
-    /// unnamed in the binary
-    /// read into *param_1+local_f8+0x58
-    pub unnamed_at_0x1413c3762: u16,
+    /// game: `(tech_player_tree[index].mStackTech)`
+    /// read at 0x1413c3621; named by the save's write in the same place (0x1413d1a60, write at 0x1413d205e)
+    pub tech_player_tree_stack_tech: u8,
+    /// game: `(tech_player_tree[index].mResearchCap)`
+    /// read at 0x1413c36d1; named by the save's write in the same place (0x1413d1a60, write at 0x1413d20f1)
+    pub tech_player_tree_research_cap: u16,
+    /// game: `(tech_player_tree[index].mPendingCount)`
+    /// read at 0x1413c3762; named by the save's write in the same place (0x1413d1a60, write at 0x1413d2184)
+    pub tech_player_tree_pending_count: u16,
     /// unnamed in the binary
     /// a loop of 3 reads; unnamed in the binary
     #[br(count = 3)]
     pub unnamed_list_at_0x1413c381a: Vec<TribePlayerTechEntry1>,
-    /// unnamed in the binary
-    /// read into *param_1+local_f8+0x54
-    pub unnamed_at_0x1413c39d6: u16,
-    /// unnamed in the binary
-    /// read into *param_1+local_f8+0x5c
-    pub unnamed_at_0x1413c3adc: u32,
-    /// unnamed in the binary
-    /// read into *param_1+local_f8+0x60
-    pub unnamed_at_0x1413c3b8d: u8,
-    /// unnamed in the binary
-    /// read into *param_1+local_f8+0x62
-    pub unnamed_at_0x1413c3c38: u16,
-    /// unnamed in the binary
-    /// read at 0x1413c3cde into a local (local_64)
-    pub unnamed_at_0x1413c3cde: u16,
-    /// unnamed in the binary
-    /// a loop of 5 reads; unnamed in the binary
-    #[br(if(unnamed_at_0x1413c3cde > 0), count = unnamed_at_0x1413c3cde as usize)]
-    pub unnamed_list_at_0x1413c3d76: Option<Vec<TribePlayerTechEntry2>>,
-    /// unnamed in the binary
-    /// read into None
-    pub unnamed_at_0x1413c3ff5: u16,
+    /// game: `(tech_player_tree[index].mIconOverride)`
+    /// read at 0x1413c39d6; named by the save's write in the same place (0x1413d1a60, write at 0x1413d23fd)
+    pub tech_player_tree_icon_override: u16,
+    /// game: `(tech_player_tree[index].mHotkeyOverride)`
+    /// read at 0x1413c3adc; named by the save's write in the same place (0x1413d1a60, write at 0x1413d2493)
+    pub tech_player_tree_hotkey_override: u32,
+    /// game: `(tech_player_tree[index].mEnabledTech)`
+    /// read at 0x1413c3b8d; named by the save's write in the same place (0x1413d1a60, write at 0x1413d2529)
+    pub tech_player_tree_enabled_tech: u8,
+    /// game: `(tech_player_tree[index].mEffectOverride)`
+    /// read at 0x1413c3c38; named by the save's write in the same place (0x1413d1a60, write at 0x1413d25bc)
+    pub tech_player_tree_effect_override: u16,
+    /// game: `numLocations`
+    /// read at 0x1413c3cde; named by the save's write in the same place (0x1413d1a60, write at 0x1413d265a)
+    pub num_locations: u16,
+    /// game: `location`
+    /// a loop of 5 reads; named by the save's write in the same place (0x1413d1a60)
+    #[br(if(num_locations > 0), count = num_locations as usize)]
+    pub location: Option<Vec<TribePlayerTechEntry2>>,
+    /// game: `tech_player_tree[index].mResearchBuildingMasterId`
+    /// read at 0x1413c3ff5; named by the save's write in the same place (0x1413d1a60, write at 0x1413d293e)
+    pub tech_player_tree_research_building_master_id: u16,
 }
 
 /// Read by `FUN_1413c2a40` of the build.
@@ -274,38 +275,38 @@ pub struct TechTreeEntry1 {
     /// game: `(mTech_tree_ages[cntr1].number_dependent_buildings)`
     /// read at 0x1413ea1ed
     pub tech_tree_ages_number_dependent_buildings: u8,
-    /// unnamed in the binary
-    /// read at 0x1413ea2a6
+    /// game: `mTech_tree_ages[cntr1].dependent_building_ids`
+    /// read at 0x1413ea2a6; named by the save's write in the same place (0x1413f15e0, write at 0x1413f2048)
     #[br(count = tech_tree_ages_number_dependent_buildings as usize)]
-    pub unnamed_at_0x1413ea2a6: Vec<u32>,
+    pub tech_tree_ages_dependent_building_ids: Vec<u32>,
     /// game: `(mTech_tree_ages[cntr1].number_dependent_units)`
     /// read at 0x1413ea341
     pub tech_tree_ages_number_dependent_units: u8,
-    /// unnamed in the binary
-    /// read at 0x1413ea3ce
+    /// game: `mTech_tree_ages[cntr1].dependent_unit_ids`
+    /// read at 0x1413ea3ce; named by the save's write in the same place (0x1413f15e0, write at 0x1413f217f)
     #[br(count = tech_tree_ages_number_dependent_units as usize)]
-    pub unnamed_at_0x1413ea3ce: Vec<u32>,
+    pub tech_tree_ages_dependent_unit_ids: Vec<u32>,
     /// game: `(mTech_tree_ages[cntr1].number_dependent_techs)`
     /// read at 0x1413ea43e
     pub tech_tree_ages_number_dependent_techs: u8,
-    /// unnamed in the binary
-    /// read at 0x1413ea4cf
+    /// game: `mTech_tree_ages[cntr1].dependent_tech_ids`
+    /// read at 0x1413ea4cf; named by the save's write in the same place (0x1413f15e0, write at 0x1413f22c2)
     #[br(count = tech_tree_ages_number_dependent_techs as usize)]
-    pub unnamed_at_0x1413ea4cf: Vec<u32>,
+    pub tech_tree_ages_dependent_tech_ids: Vec<u32>,
     /// game: `(mTech_tree_ages[cntr1].age_preregs)`
     /// read at 0x1413ea82f
     pub tech_tree_ages_age_preregs: [u8; 84],
     /// game: `(mTech_tree_ages[cntr1].num_building_levels)`
     /// read at 0x1413ea8b3
     pub tech_tree_ages_num_building_levels: u8,
-    /// unnamed in the binary
-    /// read at 0x1413ea925
+    /// game: `(mTech_tree_ages[cntr1].bld_per_zone)`
+    /// read at 0x1413ea925; named by the save's write in the same place (0x1413f15e0, write at 0x1413f247e)
     #[br(count = 10)]
-    pub unnamed_at_0x1413ea925: Vec<u8>,
-    /// unnamed in the binary
-    /// read at 0x1413ea997
+    pub tech_tree_ages_bld_per_zone: Vec<u8>,
+    /// game: `(mTech_tree_ages[cntr1].grp_len_per_zone)`
+    /// read at 0x1413ea997; named by the save's write in the same place (0x1413f15e0, write at 0x1413f24ec)
     #[br(count = 10)]
-    pub unnamed_at_0x1413ea997: Vec<u8>,
+    pub tech_tree_ages_grp_len_per_zone: Vec<u8>,
     /// game: `(mTech_tree_ages[cntr1].max_age_len)`
     /// read at 0x1413eaa0a
     pub tech_tree_ages_max_age_len: u8,
@@ -327,24 +328,24 @@ pub struct TechTreeEntry2 {
     /// game: `(mTech_tree_buildings[cntr1].number_dependent_buildings)`
     /// read at 0x1413eac24
     pub tech_tree_buildings_number_dependent_buildings: u8,
-    /// unnamed in the binary
-    /// read at 0x1413eacb1
+    /// game: `mTech_tree_buildings[cntr1].dependent_building_ids`
+    /// read at 0x1413eacb1; named by the save's write in the same place (0x1413f15e0, write at 0x1413f27b6)
     #[br(count = tech_tree_buildings_number_dependent_buildings as usize)]
-    pub unnamed_at_0x1413eacb1: Vec<u32>,
+    pub tech_tree_buildings_dependent_building_ids: Vec<u32>,
     /// game: `(mTech_tree_buildings[cntr1].number_dependent_units)`
     /// read at 0x1413ead1c
     pub tech_tree_buildings_number_dependent_units: u8,
-    /// unnamed in the binary
-    /// read at 0x1413eada9
+    /// game: `mTech_tree_buildings[cntr1].dependent_unit_ids`
+    /// read at 0x1413eada9; named by the save's write in the same place (0x1413f15e0, write at 0x1413f288d)
     #[br(count = tech_tree_buildings_number_dependent_units as usize)]
-    pub unnamed_at_0x1413eada9: Vec<u32>,
+    pub tech_tree_buildings_dependent_unit_ids: Vec<u32>,
     /// game: `(mTech_tree_buildings[cntr1].number_dependent_techs)`
     /// read at 0x1413eae14
     pub tech_tree_buildings_number_dependent_techs: u8,
-    /// unnamed in the binary
-    /// read at 0x1413eaea5
+    /// game: `mTech_tree_buildings[cntr1].dependent_tech_ids`
+    /// read at 0x1413eaea5; named by the save's write in the same place (0x1413f15e0, write at 0x1413f2964)
     #[br(count = tech_tree_buildings_number_dependent_techs as usize)]
-    pub unnamed_at_0x1413eaea5: Vec<u32>,
+    pub tech_tree_buildings_dependent_tech_ids: Vec<u32>,
     /// game: `(mTech_tree_buildings[cntr1].building_preregs)`
     /// read at 0x1413ec86b
     pub tech_tree_buildings_building_preregs: [u8; 84],
@@ -387,10 +388,10 @@ pub struct TechTreeEntry3 {
     /// game: `(mTech_tree_units[cntr1].number_dependent_units)`
     /// read at 0x1413ecd3a
     pub tech_tree_units_number_dependent_units: u8,
-    /// unnamed in the binary
-    /// read at 0x1413ecdbf
+    /// game: `mTech_tree_units[cntr1].dependent_unit_ids`
+    /// read at 0x1413ecdbf; named by the save's write in the same place (0x1413f15e0, write at 0x1413f2f53)
     #[br(count = tech_tree_units_number_dependent_units as usize)]
-    pub unnamed_at_0x1413ecdbf: Vec<u32>,
+    pub tech_tree_units_dependent_unit_ids: Vec<u32>,
     /// game: `(mTech_tree_units[cntr1].level_no)`
     /// read at 0x1413ee4fa
     pub tech_tree_units_level_no: i32,
@@ -421,24 +422,24 @@ pub struct TechTreeEntry4 {
     /// game: `(mTech_tree_techs[cntr1].number_dependent_buildings)`
     /// read at 0x1413ee82c
     pub tech_tree_techs_number_dependent_buildings: u8,
-    /// unnamed in the binary
-    /// read at 0x1413ee8ad
+    /// game: `mTech_tree_techs[cntr1].dependent_building_ids`
+    /// read at 0x1413ee8ad; named by the save's write in the same place (0x1413f15e0, write at 0x1413f334c)
     #[br(count = tech_tree_techs_number_dependent_buildings as usize)]
-    pub unnamed_at_0x1413ee8ad: Vec<u32>,
+    pub tech_tree_techs_dependent_building_ids: Vec<u32>,
     /// game: `(mTech_tree_techs[cntr1].number_dependent_units)`
     /// read at 0x1413ee90c
     pub tech_tree_techs_number_dependent_units: u8,
-    /// unnamed in the binary
-    /// read at 0x1413ee98d
+    /// game: `mTech_tree_techs[cntr1].dependent_units_ids`
+    /// read at 0x1413ee98d; named by the save's write in the same place (0x1413f15e0, write at 0x1413f340b)
     #[br(count = tech_tree_techs_number_dependent_units as usize)]
-    pub unnamed_at_0x1413ee98d: Vec<u32>,
+    pub tech_tree_techs_dependent_units_ids: Vec<u32>,
     /// game: `(mTech_tree_techs[cntr1].number_dependent_techs)`
     /// read at 0x1413ee9ec
     pub tech_tree_techs_number_dependent_techs: u8,
-    /// unnamed in the binary
-    /// read at 0x1413eea71
+    /// game: `mTech_tree_techs[cntr1].dependent_tech_ids`
+    /// read at 0x1413eea71; named by the save's write in the same place (0x1413f15e0, write at 0x1413f34ca)
     #[br(count = tech_tree_techs_number_dependent_techs as usize)]
-    pub unnamed_at_0x1413eea71: Vec<u32>,
+    pub tech_tree_techs_dependent_tech_ids: Vec<u32>,
     /// game: `(mTech_tree_techs[cntr1].tech_preregs)`
     /// read at 0x1413efb32
     pub tech_tree_techs_tech_preregs: [u8; 84],
@@ -474,22 +475,22 @@ pub struct TechTree {
     /// game: `mNumber_grps`
     /// read at 0x1413e9e7b
     pub number_grps: i32,
-    /// unnamed in the binary
-    /// a loop of 14 reads; unnamed in the binary
+    /// game: `mTech_tree_ages`
+    /// a loop of 14 reads; named by the save's write in the same place (0x1413f15e0)
     #[br(count = number_ages as usize)]
-    pub unnamed_list_at_0x1413ea0a2: Vec<TechTreeEntry1>,
-    /// unnamed in the binary
-    /// a loop of 14 reads; unnamed in the binary
+    pub tech_tree_ages: Vec<TechTreeEntry1>,
+    /// game: `mTech_tree_buildings`
+    /// a loop of 14 reads; named by the save's write in the same place (0x1413f15e0)
     #[br(count = number_buildings as usize)]
-    pub unnamed_list_at_0x1413eab3e: Vec<TechTreeEntry2>,
-    /// unnamed in the binary
-    /// a loop of 11 reads; unnamed in the binary
+    pub tech_tree_buildings: Vec<TechTreeEntry2>,
+    /// game: `mTech_tree_units`
+    /// a loop of 11 reads; named by the save's write in the same place (0x1413f15e0)
     #[br(count = number_units as usize)]
-    pub unnamed_list_at_0x1413ecb2d: Vec<TechTreeEntry3>,
-    /// unnamed in the binary
-    /// a loop of 13 reads; unnamed in the binary
+    pub tech_tree_units: Vec<TechTreeEntry3>,
+    /// game: `mTech_tree_techs`
+    /// a loop of 13 reads; named by the save's write in the same place (0x1413f15e0)
     #[br(count = number_techs as usize)]
-    pub unnamed_list_at_0x1413ee6de: Vec<TechTreeEntry4>,
+    pub tech_tree_techs: Vec<TechTreeEntry4>,
 }
 
 #[binrw]
@@ -701,7 +702,7 @@ pub struct BxsSyscallEntry {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed141732ca0 {
+pub struct BxsSymbol {
     /// game: `&symbolLength`
     /// read at 0x141732d7f
     pub symbol_length: u32,
@@ -731,7 +732,7 @@ pub struct BxsSymbolTableEntry1 {
     /// unnamed in the binary
     /// read by 0x141732ca0
     #[br(if(entry_count > 0), count = entry_count.max(0) as usize, args { inner: (ver,) })]
-    pub unnamed141732ca0: Option<Vec<Unnamed141732ca0>>,
+    pub bxs_symbol: Option<Vec<BxsSymbol>>,
 }
 
 /// Read by `FUN_141733980` (`xssymboltable.cpp`) of the build.
@@ -755,10 +756,9 @@ pub struct BxsSymbolTable {
     /// game: `&mInvalidType`
     /// helper 0x140c94e10
     pub invalid_type: u8,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `hash_table_size`
     #[br(count = hash_table_size.max(0) as usize, args { inner: (ver,) })]
-    pub unnamed_list_at_0x141734805: Vec<BxsSymbolTableEntry1>,
+    pub hash_table: Vec<BxsSymbolTableEntry1>,
 }
 
 /// Read by `FUN_14173fde0` (`xssyscallmodule.cpp`) of the build.
@@ -1021,17 +1021,6 @@ pub struct BxsRuleModule {
     pub next_sorted_rule_index: i32,
 }
 
-/// Read by `FUN_140ed8050` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140ed8050 {
-    /// unnamed in the binary
-    /// helper 0x140932010
-    pub unnamed_at_0x140ed80a3: SigString,
-}
-
 /// Read by `FUN_1416fb1d0` (`xsfunctionentry.cpp`) of the build.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
@@ -1097,7 +1086,7 @@ pub struct BxsUserClassEntry {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed1416e2ab0 {
+pub struct BxsEvent {
     /// game: `&mFunctionID`
     /// helper 0x140a91060
     pub function_id: i32,
@@ -1140,7 +1129,7 @@ pub struct XsActivationRecord {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed1416db640 {
+pub struct BxsBreakpoint {
     /// game: `&mFileID`
     /// helper 0x140a91060
     pub file_id: i32,
@@ -1149,48 +1138,13 @@ pub struct Unnamed1416db640 {
     pub line_number: i32,
 }
 
-/// Read by `FUN_140ed8050` of the build.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140ed8050_3_2543 {
-    /// unnamed in the binary
-    /// helper 0x140932010
-    pub unnamed_at_0x140ed80a3: SigString,
-}
-
-/// Read by `FUN_140ed8050` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140ed8050_3_2570 {
-    /// unnamed in the binary
-    /// helper 0x140932010
-    pub unnamed_at_0x140ed80a3: SigString,
-}
-
-/// Read by `FUN_140ed8050` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140ed8050_3_2643 {
-    /// unnamed in the binary
-    /// helper 0x140932010
-    pub unnamed_at_0x140ed80a3: SigString,
-}
-
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
 pub struct BxsDataEntry1 {
-    /// unnamed in the binary
-    /// read by 0x140ed8050
-    #[br(args(ver))]
-    pub unnamed140ed8050_3_2543: Unnamed140ed8050_3_2543,
+    /// game: `mOutput[i]`
+    /// read by 0x140ed8050, a routine of one read; named by the save's write in the same place (0x1416e4fa0, write at 0x141310c13)
+    pub output: SigString,
     /// game: `&mOutputColors[i].r`
     /// helper 0x140a91160
     pub output_colors_r: f32,
@@ -1205,12 +1159,10 @@ pub struct BxsDataEntry1 {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
 pub struct BxsDataEntry2 {
-    /// unnamed in the binary
-    /// read by 0x140ed8050
-    #[br(args(ver))]
-    pub unnamed140ed8050_3_2570: Unnamed140ed8050_3_2570,
+    /// game: `mArrayInfos.get(i)->mName`
+    /// read by 0x140ed8050, a routine of one read; named by the save's write in the same place (0x1416e4fa0, write at 0x141310c13)
+    pub array_infos_geti_name: SigString,
     /// game: `&info->mArrayID`
     /// helper 0x140a91060
     pub info_array_id: i32,
@@ -1261,28 +1213,27 @@ pub struct BxsDataEntry5 {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
 pub struct BxsDataEntry6 {
-    /// game: `&count`
-    /// helper 0x140a91060
-    pub count: i32,
-    /// unnamed in the binary
-    /// read by 0x140ed8050
-    #[br(if(count > 0), count = count.max(0) as usize, args { inner: (ver,) })]
-    pub unnamed140ed8050_3_2643: Option<Vec<Unnamed140ed8050_3_2643>>,
+    /// game: `array->getNumber()`
+    /// helper 0x140a91060; read into the temporary `&count`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
+    pub array_get_number: i32,
+    /// game: `array`
+    /// read by 0x140ed8050, a routine of one read; named by the save's write in the same place (0x1416e4fa0)
+    #[br(if(array_get_number > 0), count = array_get_number.max(0) as usize)]
+    pub array: Option<Vec<SigString>>,
 }
 
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry7 {
-    /// game: `&count`
-    /// helper 0x140a91060
-    pub count: i32,
-    /// game: `tempVector`
-    /// read at 0x1416e1b7c
-    #[br(if(count > 0), count = count.max(0) as usize)]
-    pub temp_vector: Option<Vec<[u8; 12]>>,
+    /// game: `array->getNumber()`
+    /// helper 0x140a91060; read into the temporary `&count`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
+    pub array_get_number: i32,
+    /// game: `array->get(j)`
+    /// read at 0x1416e1b7c into the temporary `tempVector`; named by the save's write in the same place (0x1416e4fa0, write at 0x1416ea960)
+    #[br(if(array_get_number > 0), count = array_get_number.max(0) as usize)]
+    pub array_getj: Option<Vec<[u8; 12]>>,
 }
 
 #[binrw]
@@ -1323,10 +1274,9 @@ pub struct BxsData {
     /// game: `&mID`
     /// helper 0x140a91060
     pub id: i32,
-    /// unnamed in the binary
-    /// read by 0x140ed8050
-    #[br(args(ver))]
-    pub unnamed140ed8050: Unnamed140ed8050,
+    /// game: `mName`
+    /// read by 0x140ed8050, a routine of one read; named by the save's write in the same place (0x1416e4fa0, write at 0x141310c13)
+    pub name: SigString,
     /// game: `&numberFunctions`
     /// read at 0x1416dc2fc
     pub number_functions: u32,
@@ -1361,7 +1311,7 @@ pub struct BxsData {
     /// unnamed in the binary
     /// read by 0x1416e2ab0
     #[br(count = number_events.max(0) as usize, args { inner: (ver,) })]
-    pub unnamed1416e2ab0: Vec<Unnamed1416e2ab0>,
+    pub bxs_event: Vec<BxsEvent>,
     /// game: `&stackSize`
     /// helper 0x140a91060
     pub stack_size: i32,
@@ -1410,7 +1360,7 @@ pub struct BxsData {
     /// unnamed in the binary
     /// read by 0x1416db640
     #[br(count = number_breakpoints.max(0) as usize, args { inner: (ver,) })]
-    pub unnamed1416db640: Vec<Unnamed1416db640>,
+    pub bxs_breakpoint: Vec<BxsBreakpoint>,
     /// game: `&mBreakpointGo`
     /// helper 0x140a91060
     pub breakpoint_go: i32,
@@ -1426,66 +1376,65 @@ pub struct BxsData {
     /// game: `&hasOutput`
     /// helper 0x140ccd170
     pub has_output: u8,
-    /// game: `&num`
-    /// helper 0x140a91060
+    /// game: `mOutput.getNumber()`
+    /// helper 0x140a91060; read into the temporary `&num`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(has_output == 1))]
-    pub num: Option<i32>,
-    /// unnamed in the binary
-    /// a loop of 4 reads; unnamed in the binary
-    #[br(if(has_output == 1 && num.unwrap_or_default() > 0), count = num.unwrap_or_default().max(0) as usize, args { inner: (ver,) })]
-    pub unnamed_list_at_0x1416df584: Option<Vec<BxsDataEntry1>>,
+    pub output_get_number: Option<i32>,
+    /// a loop of 4 reads; named after its count `output_get_number`
+    #[br(if(has_output == 1 && output_get_number.unwrap_or_default() > 0), count = output_get_number.unwrap_or_default().max(0) as usize)]
+    pub output_get: Option<Vec<BxsDataEntry1>>,
     /// game: `&mOutputLineNumber`
     /// helper 0x140a91060
     #[br(if(has_output == 1))]
     pub output_line_number: Option<i32>,
-    /// game: `&length`
-    /// helper 0x140a91060
+    /// game: `mArrayInfos.getNumber()`
+    /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
-    pub length: Option<i32>,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
-    #[br(if(version > 1 && length.unwrap_or_default() > 0), count = length.unwrap_or_default() as usize, args { inner: (ver,) })]
-    pub unnamed_list_at_0x1416dfedb: Option<Vec<BxsDataEntry2>>,
-    /// game: `&length`
-    /// helper 0x140a91060
+    pub array_infos_get_number: Option<i32>,
+    /// game: `mArrayInfos`
+    /// a loop of 3 reads; named by the save's write in the same place (0x1416e4fa0)
+    #[br(if(version > 1 && array_infos_get_number.unwrap_or_default() > 0), count = array_infos_get_number.unwrap_or_default() as usize)]
+    pub array_infos: Option<Vec<BxsDataEntry2>>,
+    /// game: `mIntegerArrays.getNumber()`
+    /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
-    pub length_2: Option<i32>,
+    pub integer_arrays_get_number: Option<i32>,
     /// unnamed in the binary
     /// a loop of 2 reads; unnamed in the binary
-    #[br(if(version > 1 && length_2.unwrap_or_default() > 0), count = length_2.unwrap_or_default() as usize)]
+    #[br(if(version > 1 && integer_arrays_get_number.unwrap_or_default() > 0), count = integer_arrays_get_number.unwrap_or_default() as usize)]
     pub unnamed_list_at_0x1416e04f7: Option<Vec<BxsDataEntry3>>,
-    /// game: `&length`
-    /// helper 0x140a91060
+    /// game: `mFloatArrays.getNumber()`
+    /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
-    pub length_3: Option<i32>,
+    pub float_arrays_get_number: Option<i32>,
     /// unnamed in the binary
     /// a loop of 2 reads; unnamed in the binary
-    #[br(if(version > 1 && length_3.unwrap_or_default() > 0), count = length_3.unwrap_or_default() as usize)]
+    #[br(if(version > 1 && float_arrays_get_number.unwrap_or_default() > 0), count = float_arrays_get_number.unwrap_or_default() as usize)]
     pub unnamed_list_at_0x1416e0a4e: Option<Vec<BxsDataEntry4>>,
-    /// game: `&length`
-    /// helper 0x140a91060
+    /// game: `mBoolArrays.getNumber()`
+    /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
-    pub length_4: Option<i32>,
+    pub bool_arrays_get_number: Option<i32>,
     /// unnamed in the binary
     /// a loop of 2 reads; unnamed in the binary
-    #[br(if(version > 1 && length_4.unwrap_or_default() > 0), count = length_4.unwrap_or_default() as usize)]
+    #[br(if(version > 1 && bool_arrays_get_number.unwrap_or_default() > 0), count = bool_arrays_get_number.unwrap_or_default() as usize)]
     pub unnamed_list_at_0x1416e0fd9: Option<Vec<BxsDataEntry5>>,
-    /// game: `&length`
-    /// helper 0x140a91060
+    /// game: `mStringArrays.getNumber()`
+    /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
-    pub length_5: Option<i32>,
+    pub string_arrays_get_number: Option<i32>,
     /// unnamed in the binary
     /// a loop of 2 reads; unnamed in the binary
-    #[br(if(version > 1 && length_5.unwrap_or_default() > 0), count = length_5.unwrap_or_default() as usize, args { inner: (ver,) })]
+    #[br(if(version > 1 && string_arrays_get_number.unwrap_or_default() > 0), count = string_arrays_get_number.unwrap_or_default() as usize)]
     pub unnamed_list_at_0x1416e155f: Option<Vec<BxsDataEntry6>>,
-    /// game: `&length`
-    /// helper 0x140a91060
+    /// game: `mVectorArrays.getNumber()`
+    /// helper 0x140a91060; read into the temporary `&length`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     #[br(if(version > 1))]
-    pub length_6: Option<i32>,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
-    #[br(if(version > 1 && length_6.unwrap_or_default() > 0), count = length_6.unwrap_or_default() as usize)]
-    pub unnamed_list_at_0x1416e1aff: Option<Vec<BxsDataEntry7>>,
+    pub vector_arrays_get_number: Option<i32>,
+    /// game: `array`
+    /// a loop of 2 reads; named by the save's write in the same place (0x1416e4fa0)
+    #[br(if(version > 1 && vector_arrays_get_number.unwrap_or_default() > 0), count = vector_arrays_get_number.unwrap_or_default() as usize)]
+    pub array: Option<Vec<BxsDataEntry7>>,
     /// game: `&numberUserHeap`
     /// helper 0x140a91060
     #[br(if(version > 3))]
@@ -1544,10 +1493,9 @@ pub struct BxsRuntime {
     /// game: `&numDatas`
     /// read at 0x14171d0b5
     pub num_datas: u32,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `num_datas`
     #[br(count = num_datas as usize, args { inner: (ver,) })]
-    pub unnamed_list_at_0x14171d3ec: Vec<BxsRuntimeEntry1>,
+    pub datas: Vec<BxsRuntimeEntry1>,
     /// game: `&mInstanceLimit`
     /// helper 0x140a91060
     pub instance_limit: i32,
@@ -1584,61 +1532,61 @@ pub struct BxsRuntime {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct WorldPlayerEntry1 {
-    /// unnamed in the binary
-    /// read into (longlong)plVar13+(longlong)local_1260+0xe12
-    pub unnamed_at_0x1415f21be: u8,
-    /// unnamed in the binary
-    /// read into (longlong)plVar13+(longlong)local_1260+0xe1b
-    pub unnamed_at_0x1415f2290: u8,
-    /// unnamed in the binary
-    /// read into (longlong)plVar13+(longlong)local_1260+0xe24
-    pub unnamed_at_0x1415f2362: u8,
-    /// unnamed in the binary
-    /// read into local_1260+(longlong)plVar13*0x10+0x1c6
-    pub unnamed_at_0x1415f2439: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xe31
-    pub unnamed_at_0x1415f2507: u8,
-    /// unnamed in the binary
-    /// read into local_1260+(longlong)plVar13*0x10+0x1c7
-    pub unnamed_at_0x1415f25d5: u32,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xe3c
-    pub unnamed_at_0x1415f26a3: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xe3d
-    pub unnamed_at_0x1415f2771: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xe3e
-    pub unnamed_at_0x1415f283f: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xe3f
-    pub unnamed_at_0x1415f28de: u8,
-    /// unnamed in the binary
-    /// read into local_1260+(longlong)plVar13*0x10+0x1c8
-    pub unnamed_at_0x1415f2941: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xe41
-    pub unnamed_at_0x1415f299e: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xe42
-    pub unnamed_at_0x1415f29fb: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xe43
-    pub unnamed_at_0x1415f2a58: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xe44
-    pub unnamed_at_0x1415f2ab8: u32,
-    /// unnamed in the binary
-    /// read at 0x1415f2b18 into a local (local_12f)
-    pub unnamed_at_0x1415f2b18: u8,
-    /// unnamed in the binary
-    /// read at 0x1415f2b86
-    #[br(if(unnamed_at_0x1415f2b18 != 0), count = unnamed_at_0x1415f2b18 as usize)]
-    pub unnamed_at_0x1415f2b86: Option<Vec<u8>>,
-    /// unnamed in the binary
-    /// read into (longlong)local_1260+lVar21+0xeac
-    pub unnamed_at_0x1415f2c03: u8,
+    /// game: `diplomacy[i]`
+    /// read at 0x1415f21be; named by the save's write in the same place (0x141631420, write at 0x1416332f8)
+    pub diplomacy: u8,
+    /// game: `intelligence[i]`
+    /// read at 0x1415f2290; named by the save's write in the same place (0x141631420, write at 0x14163335e)
+    pub intelligence: u8,
+    /// game: `trade[i]`
+    /// read at 0x1415f2362; named by the save's write in the same place (0x141631420, write at 0x1416333c4)
+    pub trade: u8,
+    /// game: `(offer[i].sequence)`
+    /// read at 0x1415f2439; named by the save's write in the same place (0x141631420, write at 0x141633432)
+    pub offer_sequence: u8,
+    /// game: `(offer[i].started_by)`
+    /// read at 0x1415f2507; named by the save's write in the same place (0x141631420, write at 0x141633498)
+    pub offer_started_by: u8,
+    /// game: `(offer[i].game_time)`
+    /// read at 0x1415f25d5; named by the save's write in the same place (0x141631420, write at 0x1416334fe)
+    pub offer_game_time: u32,
+    /// game: `(offer[i].declare)`
+    /// read at 0x1415f26a3; named by the save's write in the same place (0x141631420, write at 0x141633564)
+    pub offer_declare: u8,
+    /// game: `(offer[i].old_diplomacy)`
+    /// read at 0x1415f2771; named by the save's write in the same place (0x141631420, write at 0x1416335be)
+    pub offer_old_diplomacy: u8,
+    /// game: `(offer[i].new_diplomacy)`
+    /// read at 0x1415f283f; named by the save's write in the same place (0x141631420, write at 0x141633618)
+    pub offer_new_diplomacy: u8,
+    /// game: `(offer[i].old_intelligence)`
+    /// read at 0x1415f28de; named by the save's write in the same place (0x141631420, write at 0x141633672)
+    pub offer_old_intelligence: u8,
+    /// game: `(offer[i].new_intelligence)`
+    /// read at 0x1415f2941; named by the save's write in the same place (0x141631420, write at 0x1416336cc)
+    pub offer_new_intelligence: u8,
+    /// game: `(offer[i].old_trade)`
+    /// read at 0x1415f299e; named by the save's write in the same place (0x141631420, write at 0x141633726)
+    pub offer_old_trade: u8,
+    /// game: `(offer[i].new_trade)`
+    /// read at 0x1415f29fb; named by the save's write in the same place (0x141631420, write at 0x141633780)
+    pub offer_new_trade: u8,
+    /// game: `(offer[i].demand)`
+    /// read at 0x1415f2a58; named by the save's write in the same place (0x141631420, write at 0x1416337da)
+    pub offer_demand: u8,
+    /// game: `(offer[i].gold)`
+    /// read at 0x1415f2ab8; named by the save's write in the same place (0x141631420, write at 0x141633834)
+    pub offer_gold: u32,
+    /// game: `temp_len`
+    /// read at 0x1415f2b18; named by the save's write in the same place (0x141631420, write at 0x1416338a2)
+    pub temp_len: u8,
+    /// game: `offer[i].message`
+    /// read at 0x1415f2b86; named by the save's write in the same place (0x141631420, write at 0x141633900)
+    #[br(if(temp_len != 0), count = temp_len as usize)]
+    pub offer_message: Option<Vec<u8>>,
+    /// game: `(offer[i].status)`
+    /// read at 0x1415f2c03; named by the save's write in the same place (0x141631420, write at 0x14163395e)
+    pub offer_status: u8,
 }
 
 /// Read by `FUN_1415f1160` (`WorldPlayer.cpp`) of the build.
@@ -1693,15 +1641,13 @@ pub struct WorldPlayer {
     /// game: `mUpdateTime`
     /// read at 0x1415f1b08; named by the save's write of this member at 0x141632b16
     pub update_time: f32,
-    /// unnamed in the binary
-    /// read by 0x1413c2a40
+    /// read by 0x1413c2a40; named by the save's write in the same place (0x141631420)
     #[br(args(ver))]
-    pub tribe_player_tech: TribePlayerTech,
+    pub tech_tree: TribePlayerTech,
     /// game: `update_history_count`
     /// read at 0x1415f1c65; named by the save's write of this member at 0x141632d57
     pub update_history_count: i32,
-    /// unnamed in the binary
-    /// read by 0x1415541b0
+    /// read by 0x1415541b0; named by the save's write in the same place (0x141631420)
     #[br(args(ver))]
     pub history: History,
     /// game: `ruin_held_time`
@@ -1715,16 +1661,16 @@ pub struct WorldPlayer {
     #[brw(magic = b"\x0b")]
     #[br(count = 9)]
     pub unnamed_list_at_0x1415f21be: Vec<WorldPlayerEntry1>,
-    /// unnamed in the binary
-    /// read into local_1260+0x25f
-    pub unnamed_at_0x1415f2c69: u16,
-    /// unnamed in the binary
-    /// read at 0x1415f2d4f
+    /// game: `fealty`
+    /// read at 0x1415f2c69; named by the save's write in the same place (0x141631420, write at 0x1416339c0)
+    pub fealty: u16,
+    /// game: `offboard_trade_route_explored`
+    /// read at 0x1415f2d4f; named by the save's write in the same place (0x141631420, write at 0x141633bd1)
     #[brw(magic = b"\x0b")]
-    pub unnamed_0x12fa: [u8; 20],
-    /// unnamed in the binary
-    /// read at 0x1415f2dbd
-    pub unnamed_0x130e: [u8; 20],
+    pub offboard_trade_route_explored: [u8; 20],
+    /// game: `offboard_trade_route_being_explored`
+    /// read at 0x1415f2dbd; named by the save's write in the same place (0x141631420, write at 0x141633d16)
+    pub offboard_trade_route_being_explored: [u8; 20],
     /// game: `max_trade_amount`
     /// read at 0x1415f2e76; named by the save's write of this member at 0x141633ed6
     #[brw(magic = b"\x0b")]
@@ -1790,10 +1736,10 @@ pub struct WorldPlayer {
     /// read at 0x1415f34e1; named by the save's write of this member at 0x141634e22
     #[brw(magic = b"\x0b")]
     pub sudden_death_can_be_eliminated: u8,
-    /// unnamed in the binary
-    /// read at 0x1415f358a into a local (local_118)
+    /// game: `mTCFlared[i]`
+    /// read at 0x1415f358a; named by the save's write in the same place (0x141631420, write at 0x140ccd2d8)
     #[br(count = num_players)]
-    pub unnamed_at_0x1415f358a: Vec<u8>,
+    pub tcflared: Vec<u8>,
     /// game: `old_kills`
     /// read at 0x1415f363f; named by the save's write of this member at 0x141634fa3
     pub old_kills: i32,
@@ -1822,10 +1768,9 @@ pub struct WorldPlayer {
     /// helper 0x140a91060
     #[br(count = 9)]
     pub old_player_kills: Vec<i32>,
-    /// unnamed in the binary
-    /// read by 0x1413d5390
+    /// read by 0x1413d5390; named by the save's write in the same place (0x141631420)
     #[br(args(ver))]
-    pub tech_tree: TechTree,
+    pub tech_tree_help: TechTree,
     /// game: `&mIsScoutMapEnabled`
     /// helper 0x140a91060
     #[br(if(type_ == 1))]
@@ -1849,21 +1794,21 @@ pub struct WorldPlayer {
     /// a marker the game checks
     #[brw(magic = b"\x0b")]
     pub marker: (),
-    /// unnamed in the binary
-    /// read at 0x1415f3df2 into a local (local_128)
+    /// game: `temp`
+    /// read at 0x1415f3df2; named by the save's write in the same place (0x141631420, write at 0x141635b45)
     #[br(if(type_ == 3))]
-    pub unnamed_at_0x1415f3df2: Option<i32>,
+    pub temp: Option<i32>,
     /// unnamed in the binary
     /// not generated: computer player AI state (TribeMainDecisionAIModule) (0x140b9cae0)
-    #[br(if(type_ == 3 && !(unnamed_at_0x1415f3df2.unwrap_or_default() != 1)), args("computer player AI state (TribeMainDecisionAIModule)",))]
+    #[br(if(type_ == 3 && !(temp.unwrap_or_default() != 1)), args("computer player AI state (TribeMainDecisionAIModule)",))]
     pub unsupported_at_0x1415f3e84: Option<Unsupported>,
-    /// unnamed in the binary
-    /// read into None
-    #[br(if(type_ == 3 && !(unnamed_at_0x1415f3df2.unwrap_or_default() != 1)))]
-    pub unnamed_at_0x1415f3f03: Option<u8>,
+    /// game: `usingXS`
+    /// read at 0x1415f3f03; named by the save's write in the same place (0x141631420, write at 0x141635c9a)
+    #[br(if(type_ == 3 && !(temp.unwrap_or_default() != 1)))]
+    pub using_xs: Option<u8>,
     /// unnamed in the binary
     /// read by 0x141613020
-    #[br(if(type_ == 3 && !(unnamed_at_0x1415f3df2.unwrap_or_default() != 1) && unnamed_at_0x1415f3f03.unwrap_or_default() != 0), args(ver))]
+    #[br(if(type_ == 3 && !(temp.unwrap_or_default() != 1) && using_xs.unwrap_or_default() != 0), args(ver))]
     pub bxs_runtime: Option<BxsRuntime>,
     /// unnamed in the binary
     /// the routine's closing marker
@@ -1880,9 +1825,9 @@ pub struct OverrideDescription {
     /// game: `stringId`
     /// read at 0x1411207f1
     pub string_id: i32,
-    /// unnamed in the binary
-    /// helper 0x140932fa0
-    pub unnamed_at_0x14112098f: LenString32,
+    /// game: `string`
+    /// helper 0x140932fa0; named by the save's write in the same place (0x141120d00, write at 0x141120f1d)
+    pub string: LenString32,
 }
 
 #[binrw]
@@ -2067,10 +2012,9 @@ pub struct RgeMasterStaticObject {
     /// game: `&damageSpriteNum`
     /// helper 0x140c94e10
     pub damage_sprite_num: u8,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
+    /// a loop of 3 reads; named after its count `damage_sprite_num`
     #[br(count = damage_sprite_num as usize)]
-    pub unnamed_list_at_0x141136826: Vec<RgeMasterStaticObjectEntry2>,
+    pub damage_sprite: Vec<RgeMasterStaticObjectEntry2>,
     /// game: `mName`
     /// helper 0x140932010
     pub name: SigString,
@@ -2243,10 +2187,9 @@ pub struct TaskList {
     /// game: `list_num`
     /// read at 0x1411a8ff7
     pub list_num: i16,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `list_num`
     #[br(count = list_num.max(0) as usize, args { inner: (ver,) })]
-    pub unnamed_list_at_0x1411a9235: Vec<TaskListEntry1>,
+    pub list: Vec<TaskListEntry1>,
 }
 
 /// Read by `FUN_1410a3510` (`MasterActionObject.cpp`) of the build.
@@ -2270,10 +2213,9 @@ pub struct RgeMasterActionObject {
     /// game: `&mObjectTaskFlags`
     /// helper 0x140c94e10
     pub object_task_flags: u8,
-    /// unnamed in the binary
-    /// read by 0x1411a8f80
+    /// read by 0x1411a8f80; named by the save's write in the same place (0x1410a4e70)
     #[br(if((object_task_flags & 1) != 0), args(ver))]
-    pub task_list: Option<TaskList>,
+    pub tasks: Option<TaskList>,
     /// game: `&tempSoundNum`
     /// read at 0x1410a41e3
     pub temp_sound_num: u16,
@@ -2304,17 +2246,17 @@ pub struct RgeMasterCombatObject {
     /// game: `weapon_num`
     /// read at 0x1410c8bdf
     pub weapon_num: i16,
-    /// unnamed in the binary
-    /// read at 0x1410c8da0
+    /// game: `weapon`
+    /// read at 0x1410c8da0; named by the save's write in the same place (0x1410cc180, write at 0x1410cc6a6)
     #[br(count = weapon_num.max(0) as usize)]
-    pub unnamed_at_0x1410c8da0: Vec<u32>,
+    pub weapon: Vec<u32>,
     /// game: `armor_num`
     /// read at 0x1410c8f74
     pub armor_num: i16,
-    /// unnamed in the binary
-    /// read at 0x1410c914c
+    /// game: `armor`
+    /// read at 0x1410c914c; named by the save's write in the same place (0x1410cc180, write at 0x1410cc9bc)
     #[br(count = armor_num.max(0) as usize)]
-    pub unnamed_at_0x1410c914c: Vec<u32>,
+    pub armor: Vec<u32>,
     /// game: `speed_of_attack`
     /// read at 0x1410c9332
     pub speed_of_attack: f32,
@@ -2426,10 +2368,10 @@ pub struct TribeMasterCombatObject {
     /// game: `num_train_locations`
     /// read at 0x14126f78c
     pub num_train_locations: i16,
-    /// unnamed in the binary
-    /// a loop of 4 reads; unnamed in the binary
+    /// game: `trainLocation`
+    /// a loop of 4 reads; named by the save's write in the same place (0x141273dc0)
     #[br(count = num_train_locations.max(0) as usize)]
-    pub unnamed_list_at_0x14126f93a: Vec<TribeMasterCombatObjectEntry1>,
+    pub train_location: Vec<TribeMasterCombatObjectEntry1>,
     /// game: `volley_fire_amount`
     /// read at 0x14127003f
     pub volley_fire_amount: f32,
@@ -2661,15 +2603,18 @@ pub struct Master {
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeVisibleMap {
-    /// HD RGE_Visible_Map::widthValue (int32), after four pointers
+    /// game: `widthValue`
+    /// read at 0x1412827e6; named by the save's write of this member at 0x14128661e
     pub width_value: i32,
-    /// HD RGE_Visible_Map::heightValue (int32)
+    /// game: `heightValue`
+    /// read at 0x141282884; named by the save's write of this member at 0x1412867bf
     pub height_value: i32,
-    /// HD RGE_Visible_Map::numberTilesExploredValue (int32)
+    /// game: `numberTilesExploredValue`
+    /// read at 0x14128292d; named by the save's write of this member at 0x141286961
     pub number_tiles_explored_value: i32,
-    /// unnamed in the binary
-    /// read at 0x1412829a8 into a local (local_58)
-    pub unnamed_at_0x1412829a8: u16,
+    /// game: `player->getId()`
+    /// read at 0x1412829a8; named by the save's write in the same place (0x1412865c0, write at 0x141286b11)
+    pub player_get_id: u16,
     /// HD RGE_Visible_Map::visible_map (int16 per tile)
     #[br(if(!((width_value < 1) || (height_value < 1))), count = (width_value.max(0) as usize) * (height_value.max(0) as usize))]
     pub visible_map: Option<Vec<i16>>,
@@ -2681,9 +2626,9 @@ pub struct RgeVisibleMap {
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct VisibleResourceRec {
-    /// unnamed in the binary
-    /// read at 0x141289181 into a local (local_218)
-    pub unnamed_at_0x141289181: u32,
+    /// game: `CERV`
+    /// read at 0x141289181; named by the save's write in the same place (0x141289c50, write at 0x141289cae)
+    pub cerv: u32,
     /// unnamed in the binary
     /// read at 0x141289264
     pub unnamed_0x8: u32,
@@ -2971,10 +2916,9 @@ pub struct OwnRgeMasterStaticObject {
     /// game: `damageSpriteNum`
     /// read at 0x1411309a3
     pub damage_sprite_num: u8,
-    /// unnamed in the binary
-    /// a loop of 4 reads; unnamed in the binary
+    /// a loop of 4 reads; named after its count `damage_sprite_num`
     #[br(count = damage_sprite_num as usize)]
-    pub unnamed_list_at_0x141130a71: Vec<OwnRgeMasterStaticObjectEntry2>,
+    pub damage_sprite: Vec<OwnRgeMasterStaticObjectEntry2>,
     /// game: `selected_sound_num`
     /// read at 0x141130c2b
     pub selected_sound_num: i16,
@@ -3120,10 +3064,9 @@ pub struct OwnRgeMasterActionObject {
     /// game: `run_pattern`
     /// read at 0x1410a2e46
     pub run_pattern: u8,
-    /// unnamed in the binary
-    /// read by 0x1411a8f80
+    /// read by 0x1411a8f80; named by the save's write in the same place (0x14109ff30)
     #[br(args(ver))]
-    pub task_list: TaskList,
+    pub tasks: TaskList,
 }
 
 /// Read by `FUN_1410c50b0` of the build.
@@ -3141,17 +3084,17 @@ pub struct OwnRgeMasterCombatObject {
     /// game: `weapon_num`
     /// read at 0x1410c55ef
     pub weapon_num: i16,
-    /// unnamed in the binary
-    /// read at 0x1410c57ae
+    /// game: `weapon`
+    /// read at 0x1410c57ae; named by the save's write in the same place (0x1410c2190, write at 0x1410c2633)
     #[br(count = weapon_num.max(0) as usize)]
-    pub unnamed_at_0x1410c57ae: Vec<u32>,
+    pub weapon: Vec<u32>,
     /// game: `armor_num`
     /// read at 0x1410c5974
     pub armor_num: i16,
-    /// unnamed in the binary
-    /// read at 0x1410c5b49
+    /// game: `armor`
+    /// read at 0x1410c5b49; named by the save's write in the same place (0x1410c2190, write at 0x1410c2993)
     #[br(count = armor_num.max(0) as usize)]
-    pub unnamed_at_0x1410c5b49: Vec<u32>,
+    pub armor: Vec<u32>,
     /// game: `defense_terrain_bonus`
     /// read at 0x1410c5d14
     pub defense_terrain_bonus: i16,
@@ -3295,10 +3238,10 @@ pub struct OwnTribeMasterCombatObject {
     /// game: `num_train_locations`
     /// read at 0x14126b345
     pub num_train_locations: i16,
-    /// unnamed in the binary
-    /// a loop of 4 reads; unnamed in the binary
+    /// game: `trainLocation`
+    /// a loop of 4 reads; named by the save's write in the same place (0x141267460)
     #[br(count = num_train_locations.max(0) as usize)]
-    pub unnamed_list_at_0x14126b4e6: Vec<OwnTribeMasterCombatObjectEntry1>,
+    pub train_location: Vec<OwnTribeMasterCombatObjectEntry1>,
     /// game: `regeneration_rate`
     /// read at 0x14126c3ac
     pub regeneration_rate: f32,
@@ -3512,21 +3455,21 @@ pub struct OwnTribeMasterBuildingObject {
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeActiveSprite {
-    /// unnamed in the binary
-    /// read at 0x1413b0ca7 into a local (local_48)
-    pub unnamed_at_0x1413b0ca7: u16,
-    /// unnamed in the binary
-    /// read at 0x1413b0d62
-    pub unnamed_0x10: u32,
-    /// unnamed in the binary
-    /// read at 0x1413b0dfa
-    pub unnamed_0x14: u32,
-    /// unnamed in the binary
-    /// read at 0x1413b0e98
-    pub unnamed_0x24: u16,
-    /// unnamed in the binary
-    /// read at 0x1413b0f0a
-    pub unnamed_0x26: u8,
+    /// game: `(sprite_id)`
+    /// read at 0x1413b0ca7; named by the save's write in the same place (0x1413b4570, write at 0x1413b4789)
+    pub sprite_id: u16,
+    /// game: `offset_x`
+    /// read at 0x1413b0d62; named by the save's write of this member at 0x1413b4925
+    pub offset_x: i32,
+    /// game: `offset_y`
+    /// read at 0x1413b0dfa; named by the save's write of this member at 0x1413b4aaf
+    pub offset_y: i32,
+    /// game: `frame`
+    /// read at 0x1413b0e98; named by the save's write of this member at 0x1413b4c3f
+    pub frame: i16,
+    /// game: `invis_flag`
+    /// read at 0x1413b0f0a; named by the save's write of this member at 0x1413b4dcf
+    pub invis_flag: u8,
 }
 
 /// Read by `FUN_1413b07d0` of the build.
@@ -3538,27 +3481,27 @@ pub struct RgeActiveAnimatedSprite {
     /// read by 0x1413b0c50
     #[br(args(ver))]
     pub rge_active_sprite: RgeActiveSprite,
-    /// unnamed in the binary
-    /// read at 0x1413b08b1
-    pub unnamed_0x28: u32,
-    /// unnamed in the binary
-    /// read at 0x1413b0942
-    pub unnamed_0x2c: u32,
-    /// unnamed in the binary
-    /// read at 0x1413b09d2
-    pub unnamed_0x30: u16,
-    /// unnamed in the binary
-    /// read at 0x1413b0a3d
-    pub unnamed_0x34: u8,
-    /// unnamed in the binary
-    /// read at 0x1413b0aa8
-    pub unnamed_0x35: u8,
-    /// unnamed in the binary
-    /// read at 0x1413b0b13
-    pub unnamed_0x36: u8,
-    /// unnamed in the binary
-    /// read at 0x1413b0b7d
-    pub unnamed_0x38: u32,
+    /// game: `animate_interval`
+    /// read at 0x1413b08b1; named by the save's write of this member at 0x1413b3ae5
+    pub animate_interval: f32,
+    /// game: `animate_last`
+    /// read at 0x1413b0942; named by the save's write of this member at 0x1413b3c75
+    pub animate_last: f32,
+    /// game: `last_frame`
+    /// read at 0x1413b09d2; named by the save's write of this member at 0x1413b3e04
+    pub last_frame: u16,
+    /// game: `frame_changed`
+    /// read at 0x1413b0a3d; named by the save's write of this member at 0x1413b3eea
+    pub frame_changed: u8,
+    /// game: `frame_looped`
+    /// read at 0x1413b0aa8; named by the save's write of this member at 0x1413b4081
+    pub frame_looped: u8,
+    /// game: `animate_flag`
+    /// read at 0x1413b0b13; named by the save's write of this member at 0x1413b4211
+    pub animate_flag: u8,
+    /// game: `lastSpeedValue`
+    /// read at 0x1413b0b7d; named by the save's write of this member at 0x1413b43b2
+    pub last_speed_value: f32,
 }
 
 /// Read by `FUN_1413b8a90` of the build.
@@ -3753,10 +3696,9 @@ pub struct RgeStaticObject {
     /// game: `&attributesSize`
     /// read at 0x1411a00c3
     pub attributes_size: u16,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `attributes_size`
     #[br(count = attributes_size as usize)]
-    pub unnamed_list_at_0x1411a02cc: Vec<RgeStaticObjectEntry1>,
+    pub attributes: Vec<RgeStaticObjectEntry1>,
     /// game: `mWorkerNum`
     /// read at 0x1411a0485
     pub worker_num: i32,
@@ -3860,24 +3802,21 @@ pub struct RgeStaticObject {
     /// game: `short_val`
     /// read at 0x1411a2eee
     pub short_val_2: i16,
-    /// unnamed in the binary
-    /// read by 0x1408cb520
+    /// read by 0x1408cb520; named by the save's write in the same place (0x1411985d0)
     #[br(if(short_val_2 != 0), args(ver))]
-    pub particle: Option<Particle>,
+    pub particle_instance: Option<Particle>,
     /// game: `short_val`
     /// read at 0x1411a307a
     pub short_val_3: i16,
-    /// unnamed in the binary
-    /// read by 0x1408cb520
+    /// read by 0x1408cb520; named by the save's write in the same place (0x1411985d0)
     #[br(count = short_val_3.max(0) as usize, args { inner: (ver,) })]
-    pub particle_2: Vec<Particle>,
+    pub instance: Vec<Particle>,
     /// game: `short_val`
     /// read at 0x1411a31fe
     pub short_val_4: i16,
-    /// unnamed in the binary
-    /// read by 0x1408cb520
+    /// read by 0x1408cb520; named by the save's write in the same place (0x1411985d0)
     #[br(count = short_val_4.max(0) as usize, args { inner: (ver,) })]
-    pub particle_3: Vec<Particle>,
+    pub instance_2: Vec<Particle>,
     /// game: `mLastHumanOrderTime`
     /// read at 0x1411a33f2
     pub last_human_order_time: u32,
@@ -3929,10 +3868,10 @@ pub struct RgeStaticObject {
     /// game: `captionLength`
     /// read at 0x1411a40ad
     pub caption_length: i32,
-    /// unnamed in the binary
-    /// read at 0x1411a417a
+    /// game: `mCaption.c_str()`
+    /// read at 0x1411a417a; named by the save's write in the same place (0x1411985d0, write at 0x14119cff1)
     #[br(count = caption_length.max(0) as usize)]
-    pub unnamed_at_0x1411a417a: Vec<u8>,
+    pub caption_c_str: Vec<u8>,
 }
 
 /// Read by `FUN_141072310` of the build.
@@ -4035,28 +3974,26 @@ pub struct RgeMovingObject {
     /// game: `numPathDatas`
     /// read at 0x14115f1d4
     pub num_path_datas: i32,
-    /// unnamed in the binary
-    /// read by 0x140f97360
+    /// read by 0x140f97360; named by the save's write in the same place (0x141159ab0)
     #[br(count = num_path_datas.max(0) as usize, args { inner: (ver,) })]
-    pub path_data: Vec<PathData>,
+    pub temp_path_data: Vec<PathData>,
     /// game: `haveFuturePathData`
     /// read at 0x14115f41f
     pub have_future_path_data: u32,
-    /// unnamed in the binary
-    /// read by 0x140f97360
+    /// read by 0x140f97360; named by the save's write in the same place (0x141159ab0)
     #[br(if(have_future_path_data == 1), args(ver))]
-    pub path_data_2: Option<PathData>,
+    pub future_path_data: Option<PathData>,
     /// game: `haveMovement`
     /// read at 0x14115f7ea
     pub have_movement: u32,
-    /// game: `tempVector`
-    /// read at 0x14115f96b
+    /// game: `velocity`
+    /// read at 0x14115f96b into the temporary `tempVector`; named by the save's write in the same place (0x141159ab0, write at 0x14115b64f)
     #[br(if(have_movement == 1))]
-    pub temp_vector: Option<[u8; 12]>,
-    /// game: `tempVector`
-    /// read at 0x14115fad9
+    pub velocity: Option<[u8; 12]>,
+    /// game: `acceleration`
+    /// read at 0x14115fad9 into the temporary `tempVector`; named by the save's write in the same place (0x141159ab0, write at 0x14115b803)
     #[br(if(have_movement == 1))]
-    pub temp_vector_2: Option<[u8; 12]>,
+    pub acceleration: Option<[u8; 12]>,
     /// game: `positionValue`
     /// read at 0x14115fc49
     pub position_value: [u8; 12],
@@ -4072,10 +4009,10 @@ pub struct RgeMovingObject {
     /// game: `nUDWV`
     /// read at 0x14116017b
     pub n_udwv: i32,
-    /// game: `tempVector`
-    /// read at 0x141160360
+    /// game: `userDefinedWaypoints[i]`
+    /// read at 0x141160360 into the temporary `tempVector`; named by the save's write in the same place (0x141159ab0, write at 0x14115c132)
     #[br(count = n_udwv.max(0) as usize)]
-    pub temp_vector_3: Vec<[u8; 12]>,
+    pub user_defined_waypoints: Vec<[u8; 12]>,
     /// game: `mHasSubstitutePosition`
     /// read at 0x14116040c
     pub has_substitute_position: u8,
@@ -4184,9 +4121,9 @@ pub struct RgeActionMoveTo {
     /// game: `mTimer`
     /// read at 0x140aa14c2; named by the save's write of this member at 0x140aa269f
     pub timer: f32,
-    /// unnamed in the binary
-    /// read at 0x140aa1546
-    pub unnamed_0x74: u32,
+    /// game: `kDefaultWaitTime`
+    /// read at 0x140aa1546; named by the save's write in the same place (0x140aa2180, write at 0x140aa2834)
+    pub k_default_wait_time: u32,
 }
 
 /// Read by `FUN_140a88940` of the build.
@@ -4304,18 +4241,18 @@ pub struct RgeActionAttack {
     /// game: `indirect_fire_flag`
     /// read at 0x140a7cc6a; named by the save's write of this member at 0x140a80eec
     pub indirect_fire_flag: u8,
-    /// unnamed in the binary
-    /// read at 0x140a7ccdc into a local (local_60)
-    pub unnamed_at_0x140a7ccdc: u16,
-    /// unnamed in the binary
-    /// read at 0x140a7cd6a into a local (local_60)
-    pub unnamed_at_0x140a7cd6a: u16,
-    /// unnamed in the binary
-    /// read at 0x140a7cdf8 into a local (local_60)
-    pub unnamed_at_0x140a7cdf8: u16,
-    /// unnamed in the binary
-    /// read at 0x140a7ce9a into a local (local_60)
-    pub unnamed_at_0x140a7ce9a: u16,
+    /// game: `short_val`
+    /// read at 0x140a7ccdc; named by the save's write in the same place (0x140a80380, write at 0x140a810b9)
+    pub short_val: u16,
+    /// game: `short_val`
+    /// read at 0x140a7cd6a; named by the save's write in the same place (0x140a80380, write at 0x140a8128b)
+    pub short_val_2: u16,
+    /// game: `short_val`
+    /// read at 0x140a7cdf8; named by the save's write in the same place (0x140a80380, write at 0x140a8145c)
+    pub short_val_3: u16,
+    /// game: `short_val`
+    /// read at 0x140a7ce9a; named by the save's write in the same place (0x140a80380, write at 0x140a8162e)
+    pub short_val_4: u16,
     /// game: `lastTargetPositionX`
     /// read at 0x140a7cf3d; named by the save's write of this member at 0x140a817e5
     pub last_target_position_x: f32,
@@ -4328,9 +4265,9 @@ pub struct RgeActionAttack {
     /// game: `interrupt_animation_at_frame`
     /// read at 0x140a7d0b9; named by the save's write of this member at 0x140a81d27
     pub interrupt_animation_at_frame: i16,
-    /// unnamed in the binary
-    /// read at 0x140a7d131 into a local (local_60)
-    pub unnamed_at_0x140a7d131: u16,
+    /// game: `short_val`
+    /// read at 0x140a7d131; named by the save's write in the same place (0x140a80380, write at 0x140a81ef9)
+    pub short_val_5: u16,
 }
 
 /// Read by `FUN_140a99480` of the build.
@@ -4587,21 +4524,21 @@ pub struct TribeActionHunt {
     /// game: `targetType`
     /// read at 0x140ac3159; named by the save's write of this member at 0x140ac5765
     pub target_type: i32,
-    /// unnamed in the binary
-    /// read into puVar1
-    pub unnamed_at_0x140ac31f7: u32,
-    /// unnamed in the binary
-    /// read into puVar3
-    pub unnamed_at_0x140ac3364: u16,
-    /// unnamed in the binary
-    /// read into plVar4
-    pub unnamed_at_0x140ac33d2: u32,
-    /// unnamed in the binary
-    /// read into puVar5
-    pub unnamed_at_0x140ac3446: u32,
-    /// unnamed in the binary
-    /// read into plVar2
-    pub unnamed_at_0x140ac34ba: u32,
+    /// game: `moved_sheep`
+    /// read at 0x140ac31f7; named by the save's write in the same place (0x140ac5580, write at 0x140ac58f5)
+    pub moved_sheep: u32,
+    /// game: `sheep_still_time`
+    /// read at 0x140ac3364; named by the save's write in the same place (0x140ac5580, write at 0x140ac5a81)
+    pub sheep_still_time: u16,
+    /// game: `sheep_start_x`
+    /// read at 0x140ac33d2; named by the save's write in the same place (0x140ac5580, write at 0x140ac5c13)
+    pub sheep_start_x: u32,
+    /// game: `sheep_start_y`
+    /// read at 0x140ac3446; named by the save's write in the same place (0x140ac5580, write at 0x140ac5da4)
+    pub sheep_start_y: u32,
+    /// game: `sheep_drop_site_id`
+    /// read at 0x140ac34ba; named by the save's write in the same place (0x140ac5580, write at 0x140ac5f34)
+    pub sheep_drop_site_id: u32,
 }
 
 /// Read by `FUN_140adea70` of the build.
@@ -4908,10 +4845,9 @@ pub struct RgeActionObject {
     /// game: `mSpeedupValue`
     /// read at 0x14106f666
     pub speedup_value: f32,
-    /// unnamed in the binary
-    /// read by 0x140a98850
+    /// read by 0x140a98850; named by the save's write in the same place (0x14106d940)
     #[br(args(ver, num_players))]
-    pub action_list: ActionList,
+    pub actions: ActionList,
 }
 
 #[binrw]
@@ -4972,10 +4908,10 @@ pub struct RgeCombatObject {
     /// game: `numKillRewards`
     /// read at 0x14108ab72
     pub num_kill_rewards: i32,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
+    /// game: `killReward`
+    /// a loop of 3 reads; named by the save's write in the same place (0x1410870e0)
     #[br(count = num_kill_rewards.max(0) as usize)]
-    pub unnamed_list_at_0x14108ad2f: Vec<RgeCombatObjectEntry1>,
+    pub kill_reward: Vec<RgeCombatObjectEntry1>,
     /// game: `mObjectTriggerFlags.m_bits`
     /// read at 0x14108af38
     pub object_trigger_flags_m_bits: u32,
@@ -5008,10 +4944,10 @@ pub struct Path {
     /// game: `nWV`
     /// read at 0x140f963e0
     pub n_wv: i32,
-    /// game: `temp`
-    /// read at 0x140f96586
+    /// game: `(m_waypoints[i])`
+    /// read at 0x140f96586 into the temporary `temp`; named by the save's write in the same place (0x140f98f00, write at 0x140f99313)
     #[br(count = n_wv.max(0) as usize)]
-    pub temp: Vec<[u8; 12]>,
+    pub m_waypoints: Vec<[u8; 12]>,
     /// game: `mPathLengthValue`
     /// read at 0x140f96640
     pub path_length_value: f32,
@@ -5024,13 +4960,13 @@ pub struct Path {
     /// game: `mReferenceCount`
     /// read at 0x140f96c24
     pub reference_count: i32,
-    /// game: `tempInt`
-    /// read at 0x140f96dec
-    pub temp_int: i32,
-    /// unnamed in the binary
-    /// read at 0x140f97057
-    #[br(count = temp_int.max(0) as usize)]
-    pub unnamed_at_0x140f97057: Vec<u32>,
+    /// game: `numberIgnoreUnits`
+    /// read at 0x140f96dec into the temporary `tempInt`; named by the save's write in the same place (0x140f98f00, write at 0x140f99b62)
+    pub number_ignore_units: i32,
+    /// game: `data[0]`
+    /// read at 0x140f97057; named by the save's write in the same place (0x140f98f00, write at 0x140f99e2b)
+    #[br(count = number_ignore_units.max(0) as usize)]
+    pub data: Vec<u32>,
 }
 
 #[binrw]
@@ -5195,33 +5131,31 @@ pub struct UnitAiModule {
     /// game: `hasPatrolPath`
     /// read at 0x140c52a9d
     pub has_patrol_path: u32,
-    /// unnamed in the binary
-    /// read by 0x140f961e0
+    /// read by 0x140f961e0; named by the save's write in the same place (0x140c5f900)
     #[br(if(has_patrol_path == 1), args(ver))]
-    pub path: Option<Path>,
+    pub patrol_path: Option<Path>,
     /// game: `mPatrolCurrentWaypoint`
     /// read at 0x140c52c43
     pub patrol_current_waypoint: i32,
     /// game: `ohCount`
     /// read at 0x140c52d0a
     pub oh_count: i32,
-    /// unnamed in the binary
-    /// a loop of 7 reads; unnamed in the binary
+    /// a loop of 7 reads; named after its count `oh_count`
     #[br(count = oh_count.max(0) as usize)]
-    pub unnamed_list_at_0x140c52e15: Vec<UnitAiModuleEntry1>,
+    pub oh: Vec<UnitAiModuleEntry1>,
     /// game: `mLastRetargetTime`
     /// read at 0x140c530c2
     pub last_retarget_time: u32,
     /// game: `mRandomizedRetargetTimer`
     /// read at 0x140c53422
     pub randomized_retarget_timer: u32,
-    /// game: `tempInt`
-    /// read at 0x140c53520
-    pub temp_int_2: i32,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
-    #[br(count = temp_int_2.max(0) as usize)]
-    pub unnamed_list_at_0x140c535df: Vec<UnitAiModuleEntry2>,
+    /// game: `mNumberRetargetEntries`
+    /// read at 0x140c53520 into the temporary `tempInt`; named by the save's write in the same place (0x140c5f900, write at 0x140c637e4)
+    pub number_retarget_entries: i32,
+    /// game: `mRetargetEntries`
+    /// a loop of 2 reads; named by the save's write in the same place (0x140c5f900)
+    #[br(count = number_retarget_entries.max(0) as usize)]
+    pub retarget_entries: Vec<UnitAiModuleEntry2>,
     /// game: `mBestUnitToAttackThisUpdate`
     /// read at 0x140c536b6
     pub best_unit_to_attack_this_update: i32,
@@ -5476,10 +5410,9 @@ pub struct TribeCombatObject {
     /// game: `localResourceStoreSize`
     /// read at 0x141224c7f
     pub local_resource_store_size: u32,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `local_resource_store_size`
     #[br(count = local_resource_store_size as usize)]
-    pub unnamed_list_at_0x141224ded: Vec<TribeCombatObjectEntry1>,
+    pub local_resource_store: Vec<TribeCombatObjectEntry1>,
     /// game: `mConversionRate`
     /// read at 0x141224ed2
     pub conversion_rate: f32,
@@ -5579,17 +5512,16 @@ pub struct TribeBuildingObject {
     /// game: `captured_unit_count`
     /// read at 0x1411e1157
     pub captured_unit_count: u8,
-    /// unnamed in the binary
-    /// read by 0x140a98850
+    /// read by 0x140a98850; named by the save's write in the same place (0x1411d72c0)
     #[br(args(ver, num_players))]
-    pub action_list: ActionList,
+    pub extra_actions: ActionList,
     /// game: `mProductionQueueSize`
     /// read at 0x1411e1528
     pub production_queue_size: i16,
-    /// unnamed in the binary
-    /// a loop of 6 reads; unnamed in the binary
+    /// game: `mProductionQueue`
+    /// a loop of 6 reads; named by the save's write in the same place (0x1411d72c0)
     #[br(count = production_queue_size.max(0) as usize)]
-    pub unnamed_list_at_0x1411e169b: Vec<TribeBuildingObjectEntry1>,
+    pub production_queue: Vec<TribeBuildingObjectEntry1>,
     /// game: `mProductionQueueCount`
     /// read at 0x1411e2326
     pub production_queue_count: i16,
@@ -5599,10 +5531,9 @@ pub struct TribeBuildingObject {
     /// game: `mProductionQueueEnabled`
     /// read at 0x1411e25c6
     pub production_queue_enabled: u8,
-    /// unnamed in the binary
-    /// read by 0x140a98850
+    /// read by 0x140a98850; named by the save's write in the same place (0x1411d72c0)
     #[br(args(ver, num_players))]
-    pub action_list_2: ActionList,
+    pub production_queue_actions: ActionList,
     /// game: `mEndpoint1`
     /// read at 0x1411e2f14
     pub endpoint1: [u8; 12],
@@ -5703,18 +5634,18 @@ pub struct RgeDopplegangerObject {
     /// read by 0x141092570
     #[br(args(ver))]
     pub rge_animated_object: RgeAnimatedObject,
-    /// unnamed in the binary
-    /// read at 0x14108df65 into a local (local_58)
-    pub unnamed_at_0x14108df65: u32,
+    /// game: `long_val`
+    /// read at 0x14108df65; named by the save's write in the same place (0x1410913c0, write at 0x1410915e4)
+    pub long_val: u32,
     /// game: `map_draw_level`
     /// read at 0x14108e00d; named by the save's write of this member at 0x14109177a
     pub map_draw_level: u8,
     /// game: `map_color`
     /// read at 0x14108e07b; named by the save's write of this member at 0x141091907
     pub map_color: i32,
-    /// unnamed in the binary
-    /// read at 0x14108e0e9 into a local (local_58)
-    pub unnamed_at_0x14108e0e9: u32,
+    /// game: `long_val`
+    /// read at 0x14108e0e9; named by the save's write in the same place (0x1410913c0, write at 0x141091af5)
+    pub long_val_2: u32,
     /// game: `doppled_player`
     /// read at 0x14108e165; named by the save's write of this member at 0x141091c87
     pub doppled_player: i32,
@@ -5991,15 +5922,15 @@ pub struct HumanOrCoopPlayer {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct WorldPlayerGaiaEntry1 {
-    /// unnamed in the binary
-    /// read into param_1+(longlong)local_4c4*3+0x28f
-    pub unnamed_at_0x14167c329: u32,
-    /// unnamed in the binary
-    /// read into local_4a0*8+0x147c+(longlong)param_1
-    pub unnamed_at_0x14167c3db: u32,
-    /// unnamed in the binary
-    /// read into param_1+local_4a0+0x290
-    pub unnamed_at_0x14167c491: u32,
+    /// game: `(creatures[index].growth_rate)`
+    /// read at 0x14167c329; named by the save's write in the same place (0x14167fc40, write at 0x141680176)
+    pub creatures_growth_rate: u32,
+    /// game: `(creatures[index].remainder)`
+    /// read at 0x14167c3db; named by the save's write in the same place (0x14167fc40, write at 0x14168020b)
+    pub creatures_remainder: u32,
+    /// game: `(creatures[index].max)`
+    /// read at 0x14167c491; named by the save's write in the same place (0x14167fc40, write at 0x1416802a0)
+    pub creatures_max: u32,
 }
 
 /// Read by `FUN_14167be80` of the build.
@@ -6017,49 +5948,49 @@ pub struct WorldPlayerGaia {
     /// game: `update_nature`
     /// read at 0x14167c117; named by the save's write of this member at 0x14167ffbd
     pub update_nature: i32,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
+    /// game: `creatures`
+    /// a loop of 3 reads; named by the save's write in the same place (0x14167fc40)
     #[br(count = 5)]
-    pub unnamed_list_at_0x14167c329: Vec<WorldPlayerGaiaEntry1>,
-    /// unnamed in the binary
-    /// read at 0x14167c57b into a local (local_478)
-    pub unnamed_at_0x14167c57b: u32,
-    /// unnamed in the binary
-    /// read at 0x14167c616 into a local (local_470)
-    pub unnamed_at_0x14167c616: u32,
-    /// unnamed in the binary
-    /// read at 0x14167c68c into a local (local_468)
-    pub unnamed_at_0x14167c68c: u32,
-    /// unnamed in the binary
-    /// read at 0x14167c702 into a local (local_460)
-    pub unnamed_at_0x14167c702: u32,
-    /// unnamed in the binary
-    /// read at 0x14167c778 into a local (local_458)
-    pub unnamed_at_0x14167c778: [u8; 36],
-    /// unnamed in the binary
-    /// read at 0x14167c7ee into a local (local_450)
-    pub unnamed_at_0x14167c7ee: [u8; 36],
-    /// unnamed in the binary
-    /// read at 0x14167c89e into a local (local_498)
-    pub unnamed_at_0x14167c89e: u32,
-    /// unnamed in the binary
-    /// read at 0x14167c914 into a local (local_448)
-    pub unnamed_at_0x14167c914: [u8; 40],
-    /// unnamed in the binary
-    /// read into plVar1
-    pub unnamed_at_0x14167c989: u32,
-    /// unnamed in the binary
-    /// read at 0x14167c9ff into a local (local_440)
-    pub unnamed_at_0x14167c9ff: u32,
-    /// unnamed in the binary
-    /// read at 0x14167ca75 into a local (local_438)
-    pub unnamed_at_0x14167ca75: [u8; 200],
-    /// unnamed in the binary
-    /// read into plVar3
-    pub unnamed_at_0x14167caea: u32,
-    /// unnamed in the binary
-    /// read at 0x14167cb5d into a local (local_480)
-    pub unnamed_at_0x14167cb5d: [u8; 40],
+    pub creatures: Vec<WorldPlayerGaiaEntry1>,
+    /// game: `(mNextWolfAttackUpdateTime)`
+    /// read at 0x14167c57b; named by the save's write in the same place (0x14167fc40, write at 0x14168033e)
+    pub next_wolf_attack_update_time: u32,
+    /// game: `(mWolfAttackUpdateInterval)`
+    /// read at 0x14167c616; named by the save's write in the same place (0x14167fc40, write at 0x1416804dd)
+    pub wolf_attack_update_interval: u32,
+    /// game: `(mWolfAttackStopTime)`
+    /// read at 0x14167c68c; named by the save's write in the same place (0x14167fc40, write at 0x14168067d)
+    pub wolf_attack_stop_time: u32,
+    /// game: `(mMinVillagerDistance)`
+    /// read at 0x14167c702; named by the save's write in the same place (0x14167fc40, write at 0x141680813)
+    pub min_villager_distance: u32,
+    /// game: `mTcPositionX`
+    /// read at 0x14167c778; named by the save's write in the same place (0x14167fc40, write at 0x1416809b2)
+    pub tc_position_x: [u8; 36],
+    /// game: `mTcPositionY`
+    /// read at 0x14167c7ee; named by the save's write in the same place (0x14167fc40, write at 0x141680b60)
+    pub tc_position_y: [u8; 36],
+    /// game: `mWolfCurrentPlayer`
+    /// read at 0x14167c89e; named by the save's write in the same place (0x14167fc40, write at 0x141680d21)
+    pub wolf_current_player: u32,
+    /// game: `mWolfCurrentVillagerList`
+    /// read at 0x14167c914; named by the save's write in the same place (0x14167fc40, write at 0x141680ed0)
+    pub wolf_current_villager_list: [u8; 40],
+    /// game: `mWolfCurrentVillager`
+    /// read at 0x14167c989; named by the save's write in the same place (0x14167fc40, write at 0x14168109e)
+    pub wolf_current_villager: u32,
+    /// game: `mWolfVillagerCount`
+    /// read at 0x14167c9ff; named by the save's write in the same place (0x14167fc40, write at 0x14168124e)
+    pub wolf_villager_count: u32,
+    /// game: `mWolfList`
+    /// read at 0x14167ca75; named by the save's write in the same place (0x14167fc40, write at 0x1416813fe)
+    pub wolf_list: [u8; 200],
+    /// game: `mCurrentWolf`
+    /// read at 0x14167caea; named by the save's write in the same place (0x14167fc40, write at 0x1416815ce)
+    pub current_wolf: u32,
+    /// game: `mWolfCount`
+    /// read at 0x14167cb5d; named by the save's write in the same place (0x14167fc40, write at 0x14168177e)
+    pub wolf_count: [u8; 40],
 }
 
 /// Read by `FUN_14167a670` of the build.
@@ -6208,13 +6139,13 @@ pub struct WorldPlayerBase {
     /// game: `pathingDelayCapValue`
     /// read at 0x141640c83; named by the save's write of this member at 0x14166e18b
     pub pathing_delay_cap_value: i32,
-    /// unnamed in the binary
-    /// read at 0x141640e51 into a local (local_4774)
-    pub unnamed_at_0x141640e51: i32,
-    /// unnamed in the binary
-    /// read at 0x141640eaa into a local (local_4770)
-    #[br(count = unnamed_at_0x141640e51.max(0) as usize)]
-    pub unnamed_at_0x141640eaa: Vec<u32>,
+    /// game: `count`
+    /// read at 0x141640e51; named by the save's write in the same place (0x14166b820, write at 0x14166e2e6)
+    pub count: i32,
+    /// game: `mStartingScouts[i]`
+    /// read at 0x141640eaa; named by the save's write in the same place (0x14166b820, write at 0x14166e44f)
+    #[br(count = count.max(0) as usize)]
+    pub starting_scouts: Vec<u32>,
     /// game: `mLineRatio`
     /// read at 0x1416416b5; named by the save's write of this member at 0x14166e4bc
     pub line_ratio: i32,
@@ -6308,27 +6239,27 @@ pub struct WorldPlayerBase {
     /// game: `&stringId`
     /// helper 0x140a91060
     pub string_id: i32,
-    /// unnamed in the binary
-    /// helper 0x140932fa0
-    pub unnamed_at_0x141642029: LenString32,
+    /// game: `string`
+    /// helper 0x140932fa0; named by the save's write in the same place (0x14166b820, write at 0x141670168)
+    pub string: LenString32,
     /// game: `&mNameMode`
     /// helper 0x14163caf0
     pub name_mode: i32,
     /// game: `active_selection_count`
     /// read at 0x14164214f; named by the save's write of this member at 0x1416702e5
     pub active_selection_count: i32,
-    /// unnamed in the binary
-    /// read at 0x1416421a4 into a local (local_477c)
+    /// game: `(selected_obj->id)`
+    /// read at 0x1416421a4; named by the save's write in the same place (0x14166b820, write at 0x1416703b6)
     #[br(if(active_selection_count > 0))]
-    pub unnamed_at_0x1416421a4: Option<u32>,
+    pub selected_obj_id: Option<u32>,
     /// game: `selected_object_properties`
     /// read at 0x1416421f2; named by the save's write of this member at 0x141670475
     #[br(if(active_selection_count > 0))]
     pub selected_object_properties: Option<u32>,
-    /// unnamed in the binary
-    /// read at 0x14164224a into a local (local_477c)
+    /// game: `temp_int`
+    /// read at 0x14164224a; named by the save's write in the same place (0x14166b820, write at 0x1416705a2)
     #[br(count = active_selection_count.max(0) as usize)]
-    pub unnamed_at_0x14164224a: Vec<u32>,
+    pub temp_int: Vec<u32>,
     /// game: `&preferredTradeDistance`
     /// helper 0x140a91160
     pub preferred_trade_distance: f32,
@@ -6359,7 +6290,7 @@ pub struct WorldPlayerBase {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-pub struct Unnamed1413bf460Entry1 {
+pub struct ParticleSystemEntry1 {
     /// game: `start_time`
     /// read at 0x1413bf820
     pub start_time: i32,
@@ -6381,9 +6312,9 @@ pub struct Unnamed1413bf460Entry1 {
     /// game: `z`
     /// read at 0x1413bfb48
     pub z: f32,
-    /// game: `flags`
-    /// read at 0x1413bfbc8
-    pub flags: u8,
+    /// game: `(list->flags)`
+    /// read at 0x1413bfbc8 into the temporary `flags`; named by the save's write in the same place (0x1413c07b0, write at 0x1413c0f17)
+    pub list_flags: u8,
 }
 
 /// Read by `FUN_1413bf460` of the build.
@@ -6391,104 +6322,104 @@ pub struct Unnamed1413bf460Entry1 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed1413bf460 {
+pub struct ParticleSystem {
     /// game: `time`
     /// read at 0x1413bf4ca
     pub time: i32,
     /// game: `count`
     /// read at 0x1413bf66b
     pub count: i32,
-    /// unnamed in the binary
-    /// a loop of 8 reads; unnamed in the binary
+    /// game: `list`
+    /// a loop of 8 reads; named by the save's write in the same place (0x1413c07b0)
     #[br(count = count.max(0) as usize)]
-    pub unnamed_list_at_0x1413bf820: Vec<Unnamed1413bf460Entry1>,
+    pub list: Vec<ParticleSystemEntry1>,
 }
 
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct RgeVictoryConditionsEntry1 {
-    /// unnamed in the binary
-    /// read at 0x1414e6812 into a local (local_708)
-    pub unnamed_at_0x1414e6812: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+4
-    pub unnamed_at_0x1414e68cf: u32,
-    /// unnamed in the binary
-    /// read at 0x1414e698a into a local (local_ac)
-    pub unnamed_at_0x1414e698a: u32,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+0x10
-    pub unnamed_at_0x1414e6a4a: u32,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+0x14
-    pub unnamed_at_0x1414e6b0a: u32,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+0x18
-    pub unnamed_at_0x1414e6bca: u32,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+0x1c
-    pub unnamed_at_0x1414e6c8a: u32,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+0x20
-    pub unnamed_at_0x1414e6d4a: u32,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+0x24
-    pub unnamed_at_0x1414e6e0c: u32,
-    /// unnamed in the binary
-    /// read at 0x1414e6ec9 into a local (local_a4)
-    pub unnamed_at_0x1414e6ec9: u32,
-    /// unnamed in the binary
-    /// read at 0x1414e6f86 into a local (local_b0)
-    pub unnamed_at_0x1414e6f86: u32,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+0x38
-    pub unnamed_at_0x1414e7048: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+0x39
-    pub unnamed_at_0x1414e710a: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+0x3a
-    pub unnamed_at_0x1414e71cc: u8,
+    /// game: `(temp->command)`
+    /// read at 0x1414e6812; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0654)
+    pub temp_command: u8,
+    /// game: `(temp->obj_type)`
+    /// read at 0x1414e68cf; named by the save's write in the same place (0x1414f00b0, write at 0x1414f06df)
+    pub temp_obj_type: u32,
+    /// game: `(target_player)`
+    /// read at 0x1414e698a; named by the save's write in the same place (0x1414f00b0, write at 0x1414f076b)
+    pub target_player: u32,
+    /// game: `(temp->x0)`
+    /// read at 0x1414e6a4a; named by the save's write in the same place (0x1414f00b0, write at 0x1414f07f6)
+    pub temp_x0: u32,
+    /// game: `(temp->y0)`
+    /// read at 0x1414e6b0a; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0881)
+    pub temp_y0: u32,
+    /// game: `(temp->x1)`
+    /// read at 0x1414e6bca; named by the save's write in the same place (0x1414f00b0, write at 0x1414f090c)
+    pub temp_x1: u32,
+    /// game: `(temp->y1)`
+    /// read at 0x1414e6c8a; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0997)
+    pub temp_y1: u32,
+    /// game: `(temp->number)`
+    /// read at 0x1414e6d4a; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0a22)
+    pub temp_number: u32,
+    /// game: `(temp->count)`
+    /// read at 0x1414e6e0c; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0aad)
+    pub temp_count: u32,
+    /// game: `(this_obj)`
+    /// read at 0x1414e6ec9; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0b39)
+    pub this_obj: u32,
+    /// game: `(target_obj)`
+    /// read at 0x1414e6f86; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0bc5)
+    pub target_obj: u32,
+    /// game: `(temp->victory_group)`
+    /// read at 0x1414e7048; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0c44)
+    pub temp_victory_group: u8,
+    /// game: `(temp->ally_flag)`
+    /// read at 0x1414e710a; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0cba)
+    pub temp_ally_flag: u8,
+    /// game: `(temp->state)`
+    /// read at 0x1414e71cc; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0d2d)
+    pub temp_state: u8,
 }
 
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct RgeVictoryConditionsEntry2 {
-    /// unnamed in the binary
-    /// read at 0x1414e779b into a local (local_708)
-    pub unnamed_at_0x1414e779b: u8,
-    /// unnamed in the binary
-    /// read into (longlong)local_708+1
-    pub unnamed_at_0x1414e7857: u8,
-    /// unnamed in the binary
-    /// read into local_708+1
-    pub unnamed_at_0x1414e7917: u32,
-    /// unnamed in the binary
-    /// read into local_708+2
-    pub unnamed_at_0x1414e79d7: u32,
-    /// unnamed in the binary
-    /// read at 0x1414e7a9c into a local (local_6d8)
-    pub unnamed_at_0x1414e7a9c: u32,
-    /// unnamed in the binary
-    /// read into local_708+3
-    pub unnamed_at_0x1414e7b53: u32,
-    /// unnamed in the binary
-    /// read at 0x1414e7c11 into a local (local_6c8)
-    pub unnamed_at_0x1414e7c11: u8,
-    /// unnamed in the binary
-    /// read into (undefined2*)((longlong)local_708+4)
-    pub unnamed_at_0x1414e7d42: u8,
-    /// unnamed in the binary
-    /// read into (undefined2*)((longlong)local_708+0x1c)
-    pub unnamed_at_0x1414e7dfb: u32,
-    /// unnamed in the binary
-    /// read into (undefined4*)((longlong)local_708+0xc)
-    pub unnamed_at_0x1414e7f19: u32,
-    /// unnamed in the binary
-    /// read into local_708+4
-    pub unnamed_at_0x1414e7fd6: u32,
+    /// game: `(point_temp->command)`
+    /// read at 0x1414e779b; named by the save's write in the same place (0x1414f00b0, write at 0x1414f247e)
+    pub point_temp_command: u8,
+    /// game: `(point_temp->state)`
+    /// read at 0x1414e7857; named by the save's write in the same place (0x1414f00b0, write at 0x1414f24de)
+    pub point_temp_state: u8,
+    /// game: `(point_temp->attribute)`
+    /// read at 0x1414e7917; named by the save's write in the same place (0x1414f00b0, write at 0x1414f253e)
+    pub point_temp_attribute: u32,
+    /// game: `(point_temp->amount)`
+    /// read at 0x1414e79d7; named by the save's write in the same place (0x1414f00b0, write at 0x1414f259e)
+    pub point_temp_amount: u32,
+    /// game: `(point_temp->points)`
+    /// read at 0x1414e7a9c; named by the save's write in the same place (0x1414f00b0, write at 0x1414f25fe)
+    pub point_temp_points: u32,
+    /// game: `(point_temp->curr_points)`
+    /// read at 0x1414e7b53; named by the save's write in the same place (0x1414f00b0, write at 0x1414f265e)
+    pub point_temp_curr_points: u32,
+    /// game: `(point_temp->id)`
+    /// read at 0x1414e7c11; named by the save's write in the same place (0x1414f00b0, write at 0x1414f26be)
+    pub point_temp_id: u8,
+    /// game: `(point_temp->group)`
+    /// read at 0x1414e7d42; named by the save's write in the same place (0x1414f00b0, write at 0x1414f271e)
+    pub point_temp_group: u8,
+    /// game: `(point_temp->curr_attribute_amount)`
+    /// read at 0x1414e7dfb; named by the save's write in the same place (0x1414f00b0, write at 0x1414f277e)
+    pub point_temp_curr_attribute_amount: u32,
+    /// game: `(point_temp->attribute1)`
+    /// read at 0x1414e7f19; named by the save's write in the same place (0x1414f00b0, write at 0x1414f27de)
+    pub point_temp_attribute1: u32,
+    /// game: `(point_temp->curr_attribute_amount1)`
+    /// read at 0x1414e7fd6; named by the save's write in the same place (0x1414f00b0, write at 0x1414f283e)
+    pub point_temp_curr_attribute_amount1: u32,
 }
 
 /// Read by `FUN_1414e6270` of the build.
@@ -6500,76 +6431,31 @@ pub struct RgeVictoryConditions {
     /// the victory conditions' version (a float)
     #[br(assert(version == 2.1, "the build writes version 2.1"))]
     pub version: f32,
-    /// unnamed in the binary
-    /// read into piVar1
-    pub unnamed_at_0x1414e664a: u32,
-    /// unnamed in the binary
-    /// read into local_6f0+4
-    pub unnamed_at_0x1414e66f4: u8,
-    /// unnamed in the binary
-    /// a loop of 14 reads; unnamed in the binary
-    #[br(count = unnamed_at_0x1414e664a as usize)]
-    pub unnamed_list_at_0x1414e6812: Vec<RgeVictoryConditionsEntry1>,
-    /// unnamed in the binary
-    /// read at 0x1414e745b into a local (local_9c)
-    pub unnamed_at_0x1414e745b: u32,
-    /// unnamed in the binary
-    /// read at 0x1414e7557 into a local (local_a0)
-    pub unnamed_at_0x1414e7557: u32,
-    /// unnamed in the binary
-    /// read into puVar23+0x1e
-    pub unnamed_at_0x1414e760f: u32,
-    /// unnamed in the binary
-    /// read into (longlong)puVar23+0xf4
-    pub unnamed_at_0x1414e768a: u32,
-    /// unnamed in the binary
-    /// a loop of 11 reads; unnamed in the binary
-    #[br(count = unnamed_at_0x1414e7557 as usize)]
-    pub unnamed_list_at_0x1414e779b: Vec<RgeVictoryConditionsEntry2>,
-}
-
-/// Read by `FUN_140ca5250` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140ca5250 {
-    /// unnamed in the binary
-    /// read at 0x140ca52a2 into a local (local_60)
-    pub unnamed_at_0x140ca52a2: u32,
-}
-
-/// Read by `FUN_140c949d0` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140c949d0 {
-    /// unnamed in the binary
-    /// helper 0x140a91060
-    pub unnamed_at_0x140c94a2d: i32,
-}
-
-/// Read by `FUN_14087ba80` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed14087ba80 {
-    /// game: `&mStringId`
-    /// read at 0x14087badf
-    pub string_id: u32,
-}
-
-/// Read by `FUN_14087b840` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed14087b840 {
-    /// unnamed in the binary
-    /// helper 0x140934200
-    pub unnamed_at_0x14087b89e: LenString16,
+    /// game: `list_num`
+    /// read at 0x1414e664a; named by the save's write in the same place (0x1414f00b0, write at 0x1414f02bd)
+    pub list_num: u32,
+    /// game: `victory`
+    /// read at 0x1414e66f4; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0451)
+    pub victory: u8,
+    /// a loop of 14 reads; named after its count `list_num`
+    #[br(count = list_num as usize)]
+    pub list: Vec<RgeVictoryConditionsEntry1>,
+    /// game: `temp0`
+    /// read at 0x1414e745b; named by the save's write in the same place (0x1414f00b0, write at 0x1414f0dfd)
+    pub temp0: u32,
+    /// game: `point_list_num`
+    /// read at 0x1414e7557; named by the save's write in the same place (0x1414f00b0, write at 0x1414f1f70)
+    pub point_list_num: u32,
+    /// game: `starting_points`
+    /// read at 0x1414e760f; named by the save's write in the same place (0x1414f00b0, write at 0x1414f2125)
+    pub starting_points: u32,
+    /// game: `starting_group`
+    /// read at 0x1414e768a; named by the save's write in the same place (0x1414f00b0, write at 0x1414f22e3)
+    pub starting_group: u32,
+    /// game: `point_temp`
+    /// a loop of 11 reads; named by the save's write in the same place (0x1414f00b0)
+    #[br(count = point_list_num as usize)]
+    pub point_temp: Vec<RgeVictoryConditionsEntry2>,
 }
 
 /// Read by `FUN_1408d0450` of the build.
@@ -6577,7 +6463,7 @@ pub struct Unnamed14087b840 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed1408d0450 {
+pub struct PictureSize {
     /// game: `&width`
     /// read at 0x1408d04c9
     pub width: u32,
@@ -6591,14 +6477,14 @@ pub struct Unnamed1408d0450 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed1408d0e80 {
+pub struct Picture {
     /// game: `&version`
     /// read at 0x1408d0ef2
     pub version: u32,
     /// unnamed in the binary
     /// read by 0x1408d0450
     #[br(args(ver))]
-    pub unnamed1408d0450: Unnamed1408d0450,
+    pub picture_size: PictureSize,
     /// game: `&orientation`
     /// read at 0x1408d13a6
     pub orientation: u16,
@@ -6608,10 +6494,10 @@ pub struct Unnamed1408d0e80 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct BaseScenarioEntry1 {
-    /// unnamed in the binary
-    /// helper 0x140938490
+    /// game: `v[0]`
+    /// helper 0x140938490; named by the save's write in the same place (0x140cac1b0, write at 0x140938a46)
     #[br(count = 256)]
-    pub unnamed_at_0x140ca7718: Vec<u8>,
+    pub v: Vec<u8>,
 }
 
 #[binrw]
@@ -6648,18 +6534,18 @@ pub struct BaseScenarioEntry3 {
     /// game: `&aiRulesFileSize`
     /// helper 0x140a91060
     pub ai_rules_file_size: i32,
-    /// unnamed in the binary
-    /// helper 0x140c9ea30
+    /// game: `&mBuildListFileData[i][0]`
+    /// helper 0x140c9ea30; named by the save's write in the same place (0x140cac1b0, write at 0x140cb09d3)
     #[br(count = build_list_file_size.max(0) as usize)]
-    pub unnamed_at_0x140cab333: Vec<u8>,
-    /// unnamed in the binary
-    /// helper 0x140c9ea30
+    pub build_list_file_data: Vec<u8>,
+    /// game: `&mCityPlanFileData[i][0]`
+    /// helper 0x140c9ea30; named by the save's write in the same place (0x140cac1b0, write at 0x140cb0a57)
     #[br(count = city_plan_file_size.max(0) as usize)]
-    pub unnamed_at_0x140cab392: Vec<u8>,
-    /// unnamed in the binary
-    /// helper 0x140c9ea30
+    pub city_plan_file_data: Vec<u8>,
+    /// game: `&mAiRulesFileData[i][0]`
+    /// helper 0x140c9ea30; named by the save's write in the same place (0x140cac1b0, write at 0x140cb0add)
     #[br(count = ai_rules_file_size.max(0) as usize)]
-    pub unnamed_at_0x140cab3f4: Vec<u8>,
+    pub ai_rules_file_data: Vec<u8>,
 }
 
 /// Read by `FUN_140ca6c50` (`BaseScenario.cpp`) of the build.
@@ -6675,18 +6561,17 @@ pub struct BaseScenario {
     /// game: `&MaxPlayers`
     /// helper 0x140b4b760
     pub max_players: i32,
-    /// unnamed in the binary
-    /// read by 0x140ca5250
-    #[br(args(ver))]
-    pub unnamed140ca5250: Unnamed140ca5250,
+    /// game: `GaiaPlayerIndex`
+    /// read by 0x140ca5250, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x140cac6dc)
+    pub gaia_player_index: u32,
     /// unnamed in the binary
     /// a loop of 1 reads; unnamed in the binary
     #[br(count = max_players.max(0) as usize)]
     pub unnamed_list_at_0x140ca7718: Vec<BaseScenarioEntry1>,
-    /// unnamed in the binary
-    /// read by 0x140c949d0
-    #[br(count = max_players.max(0) as usize, args { inner: (ver,) })]
-    pub unnamed140c949d0: Vec<Unnamed140c949d0>,
+    /// game: `mPlayerNames[i].getStringId()`
+    /// read by 0x140c949d0, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x140caca3c)
+    #[br(count = max_players.max(0) as usize)]
+    pub player_names_get_string_id: Vec<i32>,
     /// unnamed in the binary
     /// a loop of 5 reads; unnamed in the binary
     #[br(count = max_players.max(0) as usize)]
@@ -6711,85 +6596,72 @@ pub struct BaseScenario {
     /// game: `&old_time`
     /// helper 0x140a91160
     pub old_time: f32,
-    /// unnamed in the binary
-    /// helper 0x140934200
-    pub unnamed_at_0x140ca93bf: LenString16,
-    /// unnamed in the binary
-    /// read by 0x14087ba80
+    /// game: `mScenarioName`
+    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140cae472)
+    pub scenario_name: LenString16,
+    /// game: `mDescription.mStringId`
+    /// read by 0x14087ba80, a routine of one read; the save writes it as part of `mDescription` in the same place (0x140cac1b0, write at 0x14087c233)
+    pub description_string_id: u32,
+    /// game: `mHints.mStringId`
+    /// read by 0x14087ba80, a routine of one read; the save writes it as part of `mHints` in the same place (0x140cac1b0, write at 0x14087c233)
+    pub hints_string_id: u32,
+    /// game: `mWinMessage.mStringId`
+    /// read by 0x14087ba80, a routine of one read; the save writes it as part of `mWinMessage` in the same place (0x140cac1b0, write at 0x14087c233)
+    pub win_message_string_id: u32,
+    /// game: `mLossMessage.mStringId`
+    /// read by 0x14087ba80, a routine of one read; the save writes it as part of `mLossMessage` in the same place (0x140cac1b0, write at 0x14087c233)
+    pub loss_message_string_id: u32,
+    /// game: `mHistoricalNotes.mStringId`
+    /// read by 0x14087ba80, a routine of one read; the save writes it as part of `mHistoricalNotes` in the same place (0x140cac1b0, write at 0x14087c233)
+    pub historical_notes_string_id: u32,
+    /// game: `mScoutMessage.mStringId`
+    /// read by 0x14087ba80, a routine of one read; the save writes it as part of `mScoutMessage` in the same place (0x140cac1b0, write at 0x14087c233)
+    pub scout_message_string_id: u32,
+    /// game: `mDescription`
+    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    pub description: LenString16,
+    /// game: `mHints`
+    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    pub hints: LenString16,
+    /// game: `mWinMessage`
+    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    pub win_message: LenString16,
+    /// game: `mLossMessage`
+    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    pub loss_message: LenString16,
+    /// game: `mHistoricalNotes`
+    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    pub historical_notes: LenString16,
+    /// game: `mScoutMessage`
+    /// read by 0x14087b840, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x14087c01a)
+    pub scout_message: LenString16,
+    /// game: `mPreGameMovieFileName`
+    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140caf592)
+    pub pre_game_movie_file_name: LenString16,
+    /// game: `mWinMovieFileName`
+    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140caf62e)
+    pub win_movie_file_name: LenString16,
+    /// game: `mLossMovieFileName`
+    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140caf772)
+    pub loss_movie_file_name: LenString16,
+    /// game: `mMissionBmpName`
+    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140caf8b5)
+    pub mission_bmp_name: LenString16,
+    /// read by 0x1408d0e80; named by the save's write in the same place (0x140cac1b0)
     #[br(args(ver))]
-    pub unnamed14087ba80: Unnamed14087ba80,
-    /// unnamed in the binary
-    /// read by 0x14087ba80
-    #[br(args(ver))]
-    pub unnamed14087ba80_2: Unnamed14087ba80,
-    /// unnamed in the binary
-    /// read by 0x14087ba80
-    #[br(args(ver))]
-    pub unnamed14087ba80_3: Unnamed14087ba80,
-    /// unnamed in the binary
-    /// read by 0x14087ba80
-    #[br(args(ver))]
-    pub unnamed14087ba80_4: Unnamed14087ba80,
-    /// unnamed in the binary
-    /// read by 0x14087ba80
-    #[br(args(ver))]
-    pub unnamed14087ba80_5: Unnamed14087ba80,
-    /// unnamed in the binary
-    /// read by 0x14087ba80
-    #[br(args(ver))]
-    pub unnamed14087ba80_6: Unnamed14087ba80,
-    /// unnamed in the binary
-    /// read by 0x14087b840
-    #[br(args(ver))]
-    pub unnamed14087b840: Unnamed14087b840,
-    /// unnamed in the binary
-    /// read by 0x14087b840
-    #[br(args(ver))]
-    pub unnamed14087b840_2: Unnamed14087b840,
-    /// unnamed in the binary
-    /// read by 0x14087b840
-    #[br(args(ver))]
-    pub unnamed14087b840_3: Unnamed14087b840,
-    /// unnamed in the binary
-    /// read by 0x14087b840
-    #[br(args(ver))]
-    pub unnamed14087b840_4: Unnamed14087b840,
-    /// unnamed in the binary
-    /// read by 0x14087b840
-    #[br(args(ver))]
-    pub unnamed14087b840_5: Unnamed14087b840,
-    /// unnamed in the binary
-    /// read by 0x14087b840
-    #[br(args(ver))]
-    pub unnamed14087b840_6: Unnamed14087b840,
-    /// unnamed in the binary
-    /// helper 0x140934200
-    pub unnamed_at_0x140caa955: LenString16,
-    /// unnamed in the binary
-    /// helper 0x140934200
-    pub unnamed_at_0x140caaa9f: LenString16,
-    /// unnamed in the binary
-    /// helper 0x140934200
-    pub unnamed_at_0x140caabdf: LenString16,
-    /// unnamed in the binary
-    /// helper 0x140934200
-    pub unnamed_at_0x140caad32: LenString16,
-    /// unnamed in the binary
-    /// read by 0x1408d0e80
-    #[br(args(ver))]
-    pub unnamed1408d0e80: Unnamed1408d0e80,
-    /// unnamed in the binary
-    /// helper 0x140934200
+    pub mupt_mission_picture: Picture,
+    /// game: `mBuildListFileName[i]`
+    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140cafc54)
     #[br(count = max_players.max(0) as usize)]
-    pub unnamed_at_0x140cab030: Vec<LenString16>,
-    /// unnamed in the binary
-    /// helper 0x140934200
+    pub build_list_file_name: Vec<LenString16>,
+    /// game: `mCityPlanFileName[i]`
+    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140cafcd0)
     #[br(count = max_players.max(0) as usize)]
-    pub unnamed_at_0x140cab0a0: Vec<LenString16>,
-    /// unnamed in the binary
-    /// helper 0x140934200
+    pub city_plan_file_name: Vec<LenString16>,
+    /// game: `mAiRulesFileName[i]`
+    /// helper 0x140934200; named by the save's write in the same place (0x140cac1b0, write at 0x140cafd46)
     #[br(count = max_players.max(0) as usize)]
-    pub unnamed_at_0x140cab123: Vec<LenString16>,
+    pub ai_rules_file_name: Vec<LenString16>,
     /// unnamed in the binary
     /// a loop of 6 reads; unnamed in the binary
     #[br(count = max_players.max(0) as usize)]
@@ -6801,29 +6673,6 @@ pub struct BaseScenario {
     /// game: `&val`
     /// helper 0x140a91060
     pub val: i32,
-}
-
-/// Read by `FUN_140ce16a0` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140ce16a0 {
-    /// game: `&((*pA)[i])`
-    /// read at 0x140ce1712
-    #[br(count = 3)]
-    pub p_a: Vec<u32>,
-}
-
-/// Read by `FUN_140cccd30` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140cccd30 {
-    /// unnamed in the binary
-    /// helper 0x140a91060
-    pub unnamed_at_0x140cccd8d: i32,
 }
 
 #[binrw]
@@ -6919,10 +6768,10 @@ pub struct TribeScenario {
     /// read by 0x140ca6c50
     #[br(args(ver))]
     pub base_scenario: BaseScenario,
-    /// unnamed in the binary
-    /// a loop of 7 reads; unnamed in the binary
+    /// game: `player_info`
+    /// a loop of 7 reads; named by the save's write in the same place (0x140ced220)
     #[br(count = base_scenario.max_players as usize)]
-    pub unnamed_list_at_0x140ce4ae9: Vec<TribeScenarioEntry1>,
+    pub player_info: Vec<TribeScenarioEntry1>,
     /// game: `&checksum`
     /// helper 0x140a91060
     pub checksum: i32,
@@ -6941,10 +6790,10 @@ pub struct TribeScenario {
     /// game: `&victory_time`
     /// helper 0x140a91060
     pub victory_time: i32,
-    /// unnamed in the binary
-    /// a loop of 1 reads; unnamed in the binary
+    /// game: `Opponent`
+    /// a loop of 1 reads; named by the save's write in the same place (0x140ced220)
     #[br(count = base_scenario.max_players as usize, args { inner: (base_scenario.max_players,) })]
-    pub unnamed_list_at_0x140ce7466: Vec<TribeScenarioEntry2>,
+    pub opponent: Vec<TribeScenarioEntry2>,
     /// game: `buffer`
     /// read at 0x140ce7519
     #[br(count = base_scenario.max_players as usize)]
@@ -6989,14 +6838,14 @@ pub struct TribeScenario {
     /// one per player, counted by num_disable_buildings
     #[br(if(base_scenario.max_players != 0), parse_with = binrw::helpers::args_iter(num_disable_buildings.iter().copied().map(|x| (x as i32,)).collect::<Vec<_>>()))]
     pub disabled_building: Option<Vec<DisabledBuilding>>,
-    /// unnamed in the binary
-    /// read by 0x140ce16a0
-    #[br(args(ver))]
-    pub unnamed140ce16a0: Unnamed140ce16a0,
-    /// unnamed in the binary
-    /// read by 0x140cccd30
-    #[br(count = base_scenario.max_players as usize, args { inner: (ver,) })]
-    pub unnamed140cccd30: Vec<Unnamed140cccd30>,
+    /// game: `&((*pA)[i])`
+    /// read by 0x140ce16a0, a routine of one read; read at 0x140ce1712
+    #[br(count = 3)]
+    pub p_a: Vec<u32>,
+    /// game: `mPlayerAge[i]`
+    /// read by 0x140cccd30, a routine of one read; named by the save's write in the same place (0x140ced220, write at 0x140a913c7)
+    #[br(count = base_scenario.max_players as usize)]
+    pub player_age: Vec<i32>,
     /// game: `checksum`
     /// read at 0x140ceb5c4
     pub checksum_3: i32,
@@ -7031,10 +6880,10 @@ pub struct TribeScenario {
     /// game: `&mVillagerForceDrop`
     /// helper 0x140ccd170
     pub villager_force_drop: u8,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// game: `mPlayerViews`
+    /// a loop of 2 reads; named by the save's write in the same place (0x140ced220)
     #[br(count = base_scenario.max_players as usize)]
-    pub unnamed_list_at_0x140cec4bb: Vec<TribeScenarioEntry6>,
+    pub player_views: Vec<TribeScenarioEntry6>,
     /// game: `&mBlockHumanityTeamChange`
     /// helper 0x140ccd170
     pub block_humanity_team_change: u8,
@@ -7047,44 +6896,11 @@ pub struct TribeScenario {
     pub secondary_game_modes: i32,
 }
 
-/// Read by `FUN_141507c70` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed141507c70 {
-    /// unnamed in the binary
-    /// helper 0x140a91060
-    pub unnamed_at_0x141507ccd: i32,
-}
-
-/// Read by `FUN_1415080b0` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed1415080b0 {
-    /// unnamed in the binary
-    /// helper 0x140a91060
-    pub unnamed_at_0x14150810d: i32,
-}
-
-/// Read by `FUN_141507830` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed141507830 {
-    /// unnamed in the binary
-    /// helper 0x140a91060
-    pub unnamed_at_0x14150788d: i32,
-}
-
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(com_unit_count: i16))]
-pub struct Unnamed140e6baf0Entry1 {
+pub struct CommandsEntry1 {
     /// game: `&selUnitCount`
     /// helper 0x140e536e0
     pub sel_unit_count: i16,
@@ -7099,7 +6915,7 @@ pub struct Unnamed140e6baf0Entry1 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed140e6baf0 {
+pub struct Commands {
     /// game: `&comUnitCount`
     /// helper 0x140e536e0
     pub com_unit_count: i16,
@@ -7113,18 +6929,7 @@ pub struct Unnamed140e6baf0 {
     /// unnamed in the binary
     /// a loop of 2 reads; unnamed in the binary
     #[br(count = 9, args { inner: (com_unit_count,) })]
-    pub unnamed_list_at_0x140e6c45a: Vec<Unnamed140e6baf0Entry1>,
-}
-
-/// Read by `FUN_140e94260` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140e94260 {
-    /// unnamed in the binary
-    /// helper 0x140a91060
-    pub unnamed_at_0x140e942b3: i32,
+    pub unnamed_list_at_0x140e6c45a: Vec<CommandsEntry1>,
 }
 
 /// Read by `FUN_141046660` of the build.
@@ -7132,7 +6937,7 @@ pub struct Unnamed140e94260 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed141046660 {
+pub struct Motion {
     /// game: `mPosition`
     /// read at 0x1410466f1
     pub position: [u8; 48],
@@ -7169,10 +6974,9 @@ pub struct Unnamed141046660 {
     /// game: `numPathDatas`
     /// read at 0x141047856
     pub num_path_datas: i32,
-    /// unnamed in the binary
-    /// read by 0x140f97360
+    /// read by 0x140f97360; named by the save's write in the same place (0x1410482b0)
     #[br(count = num_path_datas.max(0) as usize, args { inner: (ver,) })]
-    pub path_data: Vec<PathData>,
+    pub temp_path_data: Vec<PathData>,
     /// game: `mMotionFlags.m_bits`
     /// read at 0x141047c25
     pub motion_flags_m_bits: u32,
@@ -7189,17 +6993,17 @@ pub struct Unnamed141046660 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed14101b290 {
+pub struct FormationLine {
     /// game: `tempWidth`
     /// read at 0x14101b2eb
     pub temp_width: i32,
     /// game: `tempDepth`
     /// read at 0x14101b494
     pub temp_depth: i32,
-    /// unnamed in the binary
-    /// read at 0x14101b6a0
+    /// game: `mLineIndices`
+    /// read at 0x14101b6a0; named by the save's write in the same place (0x141030280, write at 0x141030616)
     #[br(count = temp_width.max(0) as usize)]
-    pub unnamed_at_0x14101b6a0: Vec<u32>,
+    pub line_indices: Vec<u32>,
     /// game: `mAttackRange`
     /// read at 0x14101b841
     pub attack_range: f32,
@@ -7211,7 +7015,7 @@ pub struct Unnamed14101b290 {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-pub struct Unnamed1410180b0Entry1 {
+pub struct FormationEntry1 {
     /// game: `(mSlots[i].mUnitID)`
     /// read at 0x141018503
     pub slots_unit_id: i32,
@@ -7252,17 +7056,17 @@ pub struct Unnamed1410180b0Entry1 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed1410180b0 {
+pub struct Formation {
     /// game: `mType`
     /// read at 0x141018118
     pub type_: i32,
     /// game: `mNumberSlots`
     /// read at 0x1410182b9
     pub number_slots: i32,
-    /// unnamed in the binary
-    /// a loop of 11 reads; unnamed in the binary
+    /// game: `mSlots`
+    /// a loop of 11 reads; named by the save's write in the same place (0x14102dcf0)
     #[br(count = number_slots.max(0) as usize)]
-    pub unnamed_list_at_0x141018503: Vec<Unnamed1410180b0Entry1>,
+    pub slots: Vec<FormationEntry1>,
     /// game: `mNumberTransformedSlots`
     /// read at 0x141018f9c
     pub number_transformed_slots: i32,
@@ -7278,10 +7082,9 @@ pub struct Unnamed1410180b0 {
     /// game: `tempMaxLines`
     /// read at 0x14101a910
     pub temp_max_lines: i32,
-    /// unnamed in the binary
-    /// read by 0x14101b290
+    /// read by 0x14101b290; named by the save's write in the same place (0x14102dcf0)
     #[br(count = temp_max_lines.max(0) as usize, args { inner: (ver,) })]
-    pub unnamed14101b290: Vec<Unnamed14101b290>,
+    pub lines: Vec<FormationLine>,
     /// game: `mTransformType`
     /// read at 0x14101ad11
     pub transform_type: i32,
@@ -7296,7 +7099,7 @@ pub struct Unnamed1410180b0 {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-pub struct Unnamed14101bb60Entry1 {
+pub struct PointLineEntry1 {
     /// game: `(ve->mPoint)`
     /// read at 0x14101be0b
     pub ve_point: [u8; 12],
@@ -7316,14 +7119,13 @@ pub struct Unnamed14101bb60Entry1 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed14101bb60 {
+pub struct PointLine {
     /// game: `mNumberPoints`
     /// read at 0x14101bc0a
     pub number_points: i32,
-    /// unnamed in the binary
-    /// a loop of 4 reads; unnamed in the binary
+    /// a loop of 4 reads; named after its count `number_points`
     #[br(count = number_points.max(0) as usize)]
-    pub unnamed_list_at_0x14101be0b: Vec<Unnamed14101bb60Entry1>,
+    pub points: Vec<PointLineEntry1>,
     /// game: `mLength`
     /// read at 0x14101c012
     pub length: f32,
@@ -7332,40 +7134,15 @@ pub struct Unnamed14101bb60 {
     pub desired_length: f32,
 }
 
-/// Read by `FUN_140e94260` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140e94260_3_4627_6_1234 {
-    /// unnamed in the binary
-    /// helper 0x140a91060
-    pub unnamed_at_0x140e942b3: i32,
-}
-
-/// Read by `FUN_140e94260` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140e94260_3_4665_6_1234 {
-    /// unnamed in the binary
-    /// helper 0x140a91060
-    pub unnamed_at_0x140e942b3: i32,
-}
-
 /// Read by `FUN_141023570` (`group.cpp`) of the build.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed141023570 {
-    /// unnamed in the binary
-    /// read by 0x140e94260
-    #[br(args(ver))]
-    pub unnamed140e94260_3_4627_6_1234: Unnamed140e94260_3_4627_6_1234,
+pub struct UnitTypeStatistic {
     /// game: `mFormationCategory`
     /// read at 0x1410237bb
+    #[brw(magic = b"\xd2\x04\x00\x00")]
     pub formation_category: i32,
     /// game: `mNumberUnits`
     /// read at 0x14102394f
@@ -7393,9 +7170,9 @@ pub struct Unnamed141023570 {
     /// read at 0x141024573
     pub unit_type_counts: [u8; 200],
     /// unnamed in the binary
-    /// read by 0x140e94260
-    #[br(args(ver))]
-    pub unnamed140e94260_3_4665_6_1234: Unnamed140e94260_3_4665_6_1234,
+    /// the routine's closing marker
+    #[brw(magic = b"\xd2\x04\x00\x00")]
+    pub end_marker: (),
 }
 
 /// Read by `FUN_141024960` of the build.
@@ -7403,14 +7180,14 @@ pub struct Unnamed141023570 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed141024960 {
+pub struct UnitTypeStatisticManager {
     /// game: `mNumberCategories`
     /// read at 0x141024a3e
     pub number_categories: i32,
     /// unnamed in the binary
     /// read by 0x141023570
     #[br(count = number_categories.max(0) as usize, args { inner: (ver,) })]
-    pub unnamed141023570: Vec<Unnamed141023570>,
+    pub unit_type_statistic: Vec<UnitTypeStatistic>,
 }
 
 /// Read by `FUN_14101c7d0` of the build.
@@ -7418,7 +7195,7 @@ pub struct Unnamed141024960 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
-pub struct Unnamed14101c7d0 {
+pub struct TargetData {
     /// game: `mTarget`
     /// read at 0x14101c830
     pub target: i32,
@@ -7440,17 +7217,6 @@ pub struct Unnamed14101c7d0 {
     /// game: `mCertainAction`
     /// read at 0x14101d1d2
     pub certain_action: i16,
-}
-
-/// Read by `FUN_140e94260` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140e94260_3_10042_6_1234 {
-    /// unnamed in the binary
-    /// helper 0x140a91060
-    pub unnamed_at_0x140e942b3: i32,
 }
 
 #[binrw]
@@ -7544,13 +7310,10 @@ pub struct UnitGroupEntry3 {
 #[br(import(ver: u32))]
 pub struct UnitGroup {
     /// unnamed in the binary
-    /// read by 0x140e94260
-    #[br(args(ver))]
-    pub unnamed140e94260: Unnamed140e94260,
-    /// unnamed in the binary
     /// read by 0x141046660
+    #[brw(magic = b"\xd2\x04\x00\x00")]
     #[br(args(ver))]
-    pub unnamed141046660: Unnamed141046660,
+    pub motion: Motion,
     /// game: `mID`
     /// read at 0x14101d911
     pub id: i32,
@@ -7563,24 +7326,21 @@ pub struct UnitGroup {
     /// game: `mNumberUnits`
     /// read at 0x14101de4b
     pub number_units: i32,
-    /// unnamed in the binary
-    /// a loop of 10 reads; unnamed in the binary
+    /// a loop of 10 reads; named after its count `number_units`
     #[br(count = number_units.max(0) as usize)]
-    pub unnamed_list_at_0x14101e0af: Vec<UnitGroupEntry1>,
+    pub units: Vec<UnitGroupEntry1>,
     /// game: `tempBOOL`
     /// read at 0x14101e68b
     pub temp_bool: u32,
-    /// unnamed in the binary
-    /// read by 0x1410180b0
+    /// read by 0x1410180b0; named by the save's write in the same place (0x1410321e0)
     #[br(if(temp_bool == 1), args(ver))]
-    pub unnamed1410180b0: Option<Unnamed1410180b0>,
+    pub previous_formation: Option<Formation>,
     /// game: `tempBOOL`
     /// read at 0x14101f432
     pub temp_bool_2: u32,
-    /// unnamed in the binary
-    /// read by 0x1410180b0
+    /// read by 0x1410180b0; named by the save's write in the same place (0x1410321e0)
     #[br(if(temp_bool_2 == 1), args(ver))]
-    pub unnamed1410180b0_2: Option<Unnamed1410180b0>,
+    pub current_formation: Option<Formation>,
     /// game: `garbage`
     /// read at 0x14101f6d2
     pub garbage: u32,
@@ -7617,14 +7377,12 @@ pub struct UnitGroup {
     /// game: `mLargestRangedUnitRange`
     /// read at 0x1410206a7
     pub largest_ranged_unit_range: f32,
-    /// unnamed in the binary
-    /// read by 0x14101bb60
+    /// read by 0x14101bb60; named by the save's write in the same place (0x1410321e0)
     #[br(args(ver))]
-    pub unnamed14101bb60: Unnamed14101bb60,
-    /// unnamed in the binary
-    /// read by 0x141024960
+    pub stored_positions: PointLine,
+    /// read by 0x141024960; named by the save's write in the same place (0x1410321e0)
     #[br(args(ver))]
-    pub unnamed141024960: Unnamed141024960,
+    pub unit_types: UnitTypeStatisticManager,
     /// game: `mNumberWaypoints`
     /// read at 0x141020a75
     pub number_waypoints: i32,
@@ -7635,10 +7393,9 @@ pub struct UnitGroup {
     /// game: `mCurrentCommand`
     /// read at 0x141020c81
     pub current_command: i32,
-    /// unnamed in the binary
-    /// read by 0x14101c7d0
+    /// read by 0x14101c7d0; named by the save's write in the same place (0x1410321e0)
     #[br(args(ver))]
-    pub unnamed14101c7d0: Unnamed14101c7d0,
+    pub current_target: TargetData,
     /// game: `mAttackPlanType`
     /// read at 0x141021238
     pub attack_plan_type: i32,
@@ -7648,20 +7405,18 @@ pub struct UnitGroup {
     /// game: `mOrderQueueSize`
     /// read at 0x1410214e5
     pub order_queue_size: i32,
-    /// unnamed in the binary
-    /// a loop of 5 reads; unnamed in the binary
+    /// a loop of 5 reads; named after its count `order_queue_size`
     #[br(count = order_queue_size.max(0) as usize)]
-    pub unnamed_list_at_0x14102167c: Vec<UnitGroupEntry2>,
+    pub order_queue: Vec<UnitGroupEntry2>,
     /// game: `mHibernating`
     /// read at 0x141021bf4
     pub hibernating: u8,
     /// game: `mCommandQueueSize`
     /// read at 0x141021d45
     pub command_queue_size: i32,
-    /// unnamed in the binary
-    /// a loop of 7 reads; unnamed in the binary
+    /// a loop of 7 reads; named after its count `command_queue_size`
     #[br(count = command_queue_size.max(0) as usize)]
-    pub unnamed_list_at_0x141021ef5: Vec<UnitGroupEntry3>,
+    pub command_queue: Vec<UnitGroupEntry3>,
     /// game: `objCount`
     /// read at 0x1410226e9
     pub obj_count: i32,
@@ -7678,24 +7433,24 @@ pub struct UnitGroup {
     /// game: `mNumberDifferentiatorGroups`
     /// read at 0x141022ca1
     pub number_differentiator_groups: i32,
-    /// unnamed in the binary
-    /// read at 0x141022e2d
+    /// game: `mDifferentiatorGroups`
+    /// read at 0x141022e2d; named by the save's write in the same place (0x1410321e0, write at 0x1410377eb)
     #[br(count = number_differentiator_groups.max(0) as usize)]
-    pub unnamed_at_0x141022e2d: Vec<u32>,
+    pub differentiator_groups: Vec<u32>,
     /// game: `mTotalSpacing`
     /// read at 0x141022fae
     pub total_spacing: f32,
     /// game: `mNumberNonRetargetUnits`
     /// read at 0x1410230de
     pub number_non_retarget_units: i32,
-    /// unnamed in the binary
-    /// read at 0x14102323b
+    /// game: `mNonRetargetUnits`
+    /// read at 0x14102323b; named by the save's write in the same place (0x1410321e0, write at 0x141037c4b)
     #[br(count = number_non_retarget_units.max(0) as usize)]
-    pub unnamed_0x48c: Vec<u32>,
+    pub non_retarget_units: Vec<u32>,
     /// unnamed in the binary
-    /// read by 0x140e94260
-    #[br(args(ver))]
-    pub unnamed140e94260_3_10042_6_1234: Unnamed140e94260_3_10042_6_1234,
+    /// the routine's closing marker
+    #[brw(magic = b"\xd2\x04\x00\x00")]
+    pub end_marker: (),
 }
 
 /// Read by `FUN_141536ef0` of the build.
@@ -7716,37 +7471,23 @@ pub struct UnitGroups {
     pub unit_group: Vec<UnitGroup>,
 }
 
-/// Read by `FUN_1415082d0` of the build.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed1415082d0 {
-    /// unnamed in the binary
-    /// helper 0x140932010
-    pub unnamed_at_0x141508351: SigString,
-}
-
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
 pub struct BaseWorldEntry1 {
-    /// unnamed in the binary
-    /// read by 0x141507c70
-    #[br(args(ver))]
-    pub unnamed141507c70: Unnamed141507c70,
-    /// unnamed in the binary
-    /// read by 0x1415080b0
-    #[br(args(ver))]
-    pub unnamed1415080b0: Unnamed1415080b0,
+    /// game: `worldPlayerIndex`
+    /// read by 0x141507c70, a routine of one read; named by the save's write in the same place (0x141546db0, write at 0x140a913c7)
+    pub world_player_index: i32,
+    /// game: `humanity`
+    /// read by 0x1415080b0, a routine of one read; named by the save's write in the same place (0x141546db0, write at 0x140a913c7)
+    pub humanity: i32,
     /// game: `nameSize`
     /// read at 0x14153c254
     pub name_size: i32,
-    /// unnamed in the binary
-    /// helper 0x140938490
+    /// game: `playerName.cString()`
+    /// helper 0x140938490; named by the save's write in the same place (0x141546db0, write at 0x14154a8cc)
     #[br(if(name_size > 0), count = name_size.max(0) as usize)]
-    pub unnamed_at_0x14153c2b3: Option<Vec<u8>>,
+    pub player_name_c_string: Option<Vec<u8>>,
 }
 
 /// Read by `FUN_141537e30` (`BaseWorld.cpp`) of the build.
@@ -7834,10 +7575,9 @@ pub struct BaseWorld {
     /// unnamed in the binary
     /// read by 0x140f6a610
     pub map_info: Positioned<MapInfo>,
-    /// unnamed in the binary
-    /// read by 0x1413bf460
+    /// read by 0x1413bf460; named by the save's write in the same place (0x141546db0)
     #[br(args(ver))]
-    pub unnamed1413bf460: Unnamed1413bf460,
+    pub particle_system: ParticleSystem,
     /// game: `exe_id`
     /// read at 0x14153b4ac
     pub exe_id: i32,
@@ -7859,36 +7599,34 @@ pub struct BaseWorld {
     pub alliance_locked: i32,
     /// unnamed in the binary
     /// a loop of 4 reads; unnamed in the binary
-    #[br(count = 9, args { inner: (ver,) })]
+    #[br(count = 9)]
     pub unnamed_list_at_0x14153c18b: Vec<BaseWorldEntry1>,
     /// game: `is_resigned`
     /// read at 0x14153c4e7
     #[br(count = 9)]
     pub is_resigned: Vec<u32>,
-    /// unnamed in the binary
-    /// read by 0x141507830
-    #[br(args(ver))]
-    pub unnamed141507830: Unnamed141507830,
+    /// game: `num_players`
+    /// read by 0x141507830, a routine of one read; named by the save's write in the same place (0x141546db0, write at 0x14154a9e5)
+    pub num_players_2: i32,
     /// game: `playerGameVersion`
     /// read at 0x14153ce1d
     pub player_game_version: f32,
-    /// unnamed in the binary
-    /// read at 0x14153cfc8
-    pub unnamed_0x230: u32,
+    /// game: `mBattleRoyalePosition`
+    /// read at 0x14153cfc8; named by the save's write in the same place (0x141546db0, write at 0x140c95087)
+    pub battle_royale_position: u32,
     /// game: `mBattleRoyaleCommander`
     /// read at 0x14153d178
     pub battle_royale_commander: u32,
-    /// game: `count`
-    /// read at 0x14153d337
-    pub count: i32,
-    /// game: `temp`
-    /// read at 0x14153d4e7
-    #[br(count = count.max(0) as usize)]
-    pub temp: Vec<i32>,
-    /// unnamed in the binary
-    /// read by 0x140e6baf0
+    /// game: `mBattleRoyaleTeamRankApplied.number()`
+    /// read at 0x14153d337 into the temporary `count`; named by the save's write in the same place (0x141546db0, write at 0x140a913c7)
+    pub battle_royale_team_rank_applied_number: i32,
+    /// game: `mBattleRoyaleTeamRankApplied[i]`
+    /// read at 0x14153d4e7 into the temporary `temp`; named by the save's write in the same place (0x141546db0, write at 0x140a913c7)
+    #[br(count = battle_royale_team_rank_applied_number.max(0) as usize)]
+    pub battle_royale_team_rank_applied: Vec<i32>,
+    /// read by 0x140e6baf0; named by the save's write in the same place (0x141546db0)
     #[br(args(ver))]
-    pub unnamed140e6baf0: Unnamed140e6baf0,
+    pub commands: Commands,
     /// game: `tempPathCount`
     /// read at 0x14153d837
     pub temp_path_count: i32,
@@ -7901,26 +7639,25 @@ pub struct BaseWorld {
     #[br(args(ver))]
     pub unit_groups: UnitGroups,
     /// unnamed in the binary
-    /// read by 0x1415082d0
-    #[br(args(ver))]
-    pub unnamed1415082d0: Unnamed1415082d0,
-    /// game: `&yes`
-    /// helper 0x140ccd170
-    pub yes: u8,
-    /// game: `&count`
-    /// helper 0x140a91060
-    pub count_2: i32,
+    /// read by 0x1415082d0, a routine of one read
+    pub unnamed_at_0x14153dee7: SigString,
+    /// game: `Game::Get()->IsUnitDeletionAllowed()`
+    /// helper 0x140ccd170; read into the temporary `&yes`; named by the save's write in the same place (0x141546db0, write at 0x140ccd2d8)
+    pub game_get_is_unit_deletion_allowed: u8,
+    /// game: `triggerCount`
+    /// helper 0x140a91060; read into the temporary `&count`; named by the save's write in the same place (0x141546db0, write at 0x140a913c7)
+    pub trigger_count: i32,
     /// game: `&triggerId`
     /// helper 0x140a91060
-    #[br(count = count_2.max(0) as usize)]
+    #[br(count = trigger_count.max(0) as usize)]
     pub trigger_id: Vec<i32>,
-    /// game: `&count`
-    /// helper 0x140a91060
-    pub count_3: i32,
-    /// game: `&value`
-    /// helper 0x140a91060
-    #[br(count = count_3.max(0) as usize)]
-    pub value: Vec<i32>,
+    /// game: `signalCount`
+    /// helper 0x140a91060; read into the temporary `&count`; named by the save's write in the same place (0x141546db0, write at 0x140a913c7)
+    pub signal_count: i32,
+    /// game: `mMultiplayerAITriggerSignals[i]`
+    /// helper 0x140a91060; read into the temporary `&value`; named by the save's write in the same place (0x141546db0, write at 0x140a913c7)
+    #[br(count = signal_count.max(0) as usize)]
+    pub multiplayer_aitrigger_signals: Vec<i32>,
     /// game: `&targetColorCorrection`
     /// helper 0x140a91060
     pub target_color_correction: i32,
@@ -7932,45 +7669,12 @@ pub struct BaseWorld {
     pub fade_interval_start: f32,
 }
 
-/// Read by `FUN_140ee47f0` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140ee47f0 {
-    /// unnamed in the binary
-    /// read at 0x140ee485d into a local (local_98)
-    pub unnamed_at_0x140ee485d: u8,
-}
-
-/// Read by `FUN_140ee47f0` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed140ee47f0_3_1589 {
-    /// unnamed in the binary
-    /// read at 0x140ee485d into a local (local_98)
-    pub unnamed_at_0x140ee485d: u8,
-}
-
-/// Read by `FUN_141599000` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed141599000 {
-    /// unnamed in the binary
-    /// helper 0x140ccd170
-    pub unnamed_at_0x14159905d: u8,
-}
-
 /// Read by `FUN_141570220` of the build.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, trigger_version: f64))]
-pub struct Unnamed141570220 {
+pub struct TriggerEffect {
     /// the save's `Write(&effect, sizeof(TriggerEffectType))`
     pub effect: i32,
     /// the save's `Write(&temp_num, sizeof(int32_t))`
@@ -8008,24 +7712,23 @@ pub struct Unnamed141570220 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, trigger_version: f64))]
-pub struct Unnamed14156d0b0 {
-    /// unnamed in the binary
-    /// read into puVar1
-    pub unnamed_at_0x14156d163: u32,
-    /// unnamed in the binary
-    /// read at 0x14156d87f into a local (local_90)
-    pub unnamed_at_0x14156d87f: i32,
-    /// unnamed in the binary
-    /// read at 0x14156d918
-    #[br(count = unnamed_at_0x14156d87f.max(0) as usize)]
-    pub unnamed_at_0x14156d918: Vec<u32>,
-    /// unnamed in the binary
-    /// read at 0x14156d9f9 into a local (local_88)
-    pub unnamed_at_0x14156d9f9: i32,
-    /// unnamed in the binary
-    /// read at 0x14156daba
-    #[br(count = unnamed_at_0x14156d9f9.max(0) as usize)]
-    pub unnamed_at_0x14156daba: Vec<u8>,
+pub struct TribeTriggerCondition {
+    /// game: `condition`
+    /// read at 0x14156d163; named by the save's write in the same place (0x141586e20, write at 0x141586e85)
+    pub condition: u32,
+    /// game: `tempNum`
+    /// read at 0x14156d87f; named by the save's write in the same place (0x141586e20, write at 0x141587040)
+    pub temp_num: i32,
+    /// read at 0x14156d918; named after its count `temp_num`
+    #[br(count = temp_num.max(0) as usize)]
+    pub temp: Vec<u32>,
+    /// game: `len`
+    /// read at 0x14156d9f9; named by the save's write in the same place (0x141586e20, write at 0x141587616)
+    pub len: i32,
+    /// game: `mScriptText`
+    /// read at 0x14156daba; named by the save's write in the same place (0x141586e20, write at 0x1415877ac)
+    #[br(count = len.max(0) as usize)]
+    pub script_text: Vec<u8>,
 }
 
 /// Read by `FUN_14156bd00` of the build.
@@ -8033,10 +7736,10 @@ pub struct Unnamed14156d0b0 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, trigger_version: f64))]
-pub struct Unnamed14156bd00 {
-    /// unnamed in the binary
-    /// read at 0x14156bdff
-    pub unnamed_0x0: u32,
+pub struct TribeTrigger {
+    /// game: `state`
+    /// read at 0x14156bdff; named by the save's write in the same place (0x141584a50, write at 0x141584ab4)
+    pub state: u32,
     /// game: `loopable`
     /// read at 0x14156be96; named by the save's write of this member at 0x141584c4f
     pub loopable: u8,
@@ -8070,30 +7773,28 @@ pub struct Unnamed14156bd00 {
     /// game: `mute_objectives`
     /// read at 0x14156c3a1; named by the save's write of this member at 0x141585c63
     pub mute_objectives: u8,
-    /// unnamed in the binary
-    /// helper 0x140932fa0
-    pub unnamed_at_0x14156c40b: LenString32,
-    /// unnamed in the binary
-    /// helper 0x140932fa0
-    pub unnamed_at_0x14156c477: LenString32,
-    /// unnamed in the binary
-    /// helper 0x140932fa0
-    pub unnamed_at_0x14156c4f4: LenString32,
+    /// game: `mDescription`
+    /// helper 0x140932fa0; named by the save's write in the same place (0x141584a50, write at 0x141585e07)
+    pub description: LenString32,
+    /// game: `mName`
+    /// helper 0x140932fa0; named by the save's write in the same place (0x141584a50, write at 0x141585fb7)
+    pub name: LenString32,
+    /// game: `mShortDescription`
+    /// helper 0x140932fa0; named by the save's write in the same place (0x141584a50, write at 0x14158616c)
+    pub short_description: LenString32,
     /// the save's `Write(&effect_num, sizeof(int32_t))`
     pub effect_num: i32,
-    /// unnamed in the binary
-    /// read by 0x141570220
+    /// read by 0x141570220; named by the save's write in the same place (0x141584a50)
     #[br(count = effect_num.max(0) as usize, args { inner: (ver, trigger_version,) })]
-    pub unnamed141570220: Vec<Unnamed141570220>,
+    pub effect_list: Vec<TriggerEffect>,
     /// the save's `Write(&effect_order[i], …)`
     #[br(count = effect_num.max(0) as usize)]
     pub effect_order: Vec<i32>,
     /// the save's `Write(&condition_num, …)`
     pub condition_num: i32,
-    /// unnamed in the binary
-    /// read by 0x14156d0b0
+    /// read by 0x14156d0b0; named by the save's write in the same place (0x141584a50)
     #[br(if(!(condition_num < 1) && condition_num > 0), count = condition_num.max(0) as usize, args { inner: (ver, trigger_version,) })]
-    pub unnamed14156d0b0: Option<Vec<Unnamed14156d0b0>>,
+    pub condition_list: Option<Vec<TribeTriggerCondition>>,
     /// the save's `Write(&condition_order[i], …)`
     #[br(count = condition_num.max(0) as usize)]
     pub condition_order: Vec<i32>,
@@ -8103,80 +7804,80 @@ pub struct Unnamed14156bd00 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry1 {
-    /// unnamed in the binary
-    /// read at 0x14156e6bb into a local (local_b8)
-    pub unnamed_at_0x14156e6bb: u32,
-    /// unnamed in the binary
-    /// read at 0x14156e763 into a local (local_b4)
-    pub unnamed_at_0x14156e763: u32,
-    /// unnamed in the binary
-    /// read at 0x14156e847
-    #[br(if(unnamed_at_0x14156e763 > 0), count = unnamed_at_0x14156e763 as usize)]
-    pub unnamed_at_0x14156e847: Option<Vec<u8>>,
+    /// game: `i`
+    /// read at 0x14156e6bb; named by the save's write in the same place (0x141587990, write at 0x141588829)
+    pub i: u32,
+    /// game: `size`
+    /// read at 0x14156e763; named by the save's write in the same place (0x141587990, write at 0x1415888cf)
+    pub size: u32,
+    /// game: `mVariableNames[i]`
+    /// read at 0x14156e847; named by the save's write in the same place (0x141587990, write at 0x141588966)
+    #[br(if(size > 0), count = size as usize)]
+    pub variable_names: Option<Vec<u8>>,
 }
 
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry2 {
-    /// unnamed in the binary
-    /// read at 0x14156ef40 into a local (local_70)
-    pub unnamed_at_0x14156ef40: u32,
-    /// unnamed in the binary
-    /// read into (longlong)&local_70+4
-    pub unnamed_at_0x14156efe3: u8,
+    /// game: `goal.m_stringId`
+    /// read at 0x14156ef40; named by the save's write in the same place (0x141587990, write at 0x14158949b)
+    pub goal_m_string_id: u32,
+    /// game: `goal.m_goalStatus`
+    /// read at 0x14156efe3; named by the save's write in the same place (0x141587990, write at 0x141589526)
+    pub goal_m_goal_status: u8,
 }
 
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry3 {
-    /// unnamed in the binary
-    /// read into local_94+4
-    pub unnamed_at_0x14156f1ab: u32,
-    /// unnamed in the binary
-    /// read at 0x14156f24e into a local (local_a8)
-    pub unnamed_at_0x14156f24e: u8,
+    /// game: `decisionId`
+    /// read at 0x14156f1ab; named by the save's write in the same place (0x141587990, write at 0x141589a00)
+    pub decision_id: u32,
+    /// game: `decisionState`
+    /// read at 0x14156f24e; named by the save's write in the same place (0x141587990, write at 0x141589a5f)
+    pub decision_state: u8,
 }
 
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry4 {
-    /// unnamed in the binary
-    /// read at 0x14156f5fc into a local (local_58)
-    pub unnamed_at_0x14156f5fc: u32,
-    /// unnamed in the binary
-    /// read into (longlong)&local_68+4
-    pub unnamed_at_0x14156f6bb: u32,
-    /// unnamed in the binary
-    /// read at 0x14156f77a into a local (local_68)
-    pub unnamed_at_0x14156f77a: u32,
-    /// unnamed in the binary
-    /// read into &uStack_60
-    pub unnamed_at_0x14156f802: u32,
-    /// unnamed in the binary
-    /// read into (longlong)&uStack_60+4
-    pub unnamed_at_0x14156f88a: u32,
-    /// unnamed in the binary
-    /// read into &uStack_54
-    pub unnamed_at_0x14156f912: u32,
+    /// game: `attackedData.mAttackedObjectID`
+    /// read at 0x14156f5fc; named by the save's write in the same place (0x141587990, write at 0x141589fbc)
+    pub attacked_data_attacked_object_id: u32,
+    /// game: `attackedData.mAttackerObjectGroup`
+    /// read at 0x14156f6bb; named by the save's write in the same place (0x141587990, write at 0x14158a019)
+    pub attacked_data_attacker_object_group: u32,
+    /// game: `attackedData.mAttackerObjectType`
+    /// read at 0x14156f77a; named by the save's write in the same place (0x141587990, write at 0x14158a075)
+    pub attacked_data_attacker_object_type: u32,
+    /// game: `attackedData.mAttackerUnitLevel`
+    /// read at 0x14156f802; named by the save's write in the same place (0x141587990, write at 0x14158a0d2)
+    pub attacked_data_attacker_unit_level: u32,
+    /// game: `attackedData.mAttackingPlayerID`
+    /// read at 0x14156f88a; named by the save's write in the same place (0x141587990, write at 0x14158a12f)
+    pub attacked_data_attacking_player_id: u32,
+    /// game: `attackedData.mAttackedTime`
+    /// read at 0x14156f912; named by the save's write in the same place (0x141587990, write at 0x14158a18c)
+    pub attacked_data_attacked_time: u32,
 }
 
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry5 {
-    /// unnamed in the binary
-    /// read at 0x14156f45e into a local (local_94)
-    pub unnamed_at_0x14156f45e: u32,
-    /// unnamed in the binary
-    /// read at 0x14156f51d into a local (local_78)
-    pub unnamed_at_0x14156f51d: u64,
-    /// unnamed in the binary
-    /// a loop of 6 reads; unnamed in the binary
-    #[br(if(unnamed_at_0x14156f51d != 0), count = unnamed_at_0x14156f51d as usize)]
-    pub unnamed_list_at_0x14156f5fc: Option<Vec<TriggerSystemEntry4>>,
+    /// game: `unitID`
+    /// read at 0x14156f45e; named by the save's write in the same place (0x141587990, write at 0x141589eec)
+    pub unit_id: u32,
+    /// game: `numAttackers`
+    /// read at 0x14156f51d; named by the save's write in the same place (0x141587990, write at 0x141589f4c)
+    pub num_attackers: u64,
+    /// game: `attackedData`
+    /// a loop of 6 reads; named by the save's write in the same place (0x141587990)
+    #[br(if(num_attackers != 0), count = num_attackers as usize)]
+    pub attacked_data: Option<Vec<TriggerSystemEntry4>>,
 }
 
 /// Read by `FUN_14156dbc0` of the build.
@@ -8190,79 +7891,65 @@ pub struct TriggerSystem {
     pub trigger_version: f64,
     /// HD TRIBE_Trigger_System::objectives_updated, the uchar after the world pointer
     pub objectives_updated: u8,
-    /// unnamed in the binary
-    /// read at 0x14156dea5
-    pub unnamed_0xc90: i32,
-    /// unnamed in the binary
-    /// read by 0x14156bd00
-    #[br(if(!(unnamed_0xc90 < 1) && unnamed_0xc90 > 0), count = unnamed_0xc90.max(0) as usize, args { inner: (ver, trigger_version,) })]
-    pub unnamed14156bd00: Option<Vec<Unnamed14156bd00>>,
-    /// unnamed in the binary
-    /// read into param_1\[0x191\]+(longlong)iVar24*4
-    #[br(if(!(unnamed_0xc90 < 1) && unnamed_0xc90 > 0), count = unnamed_0xc90.max(0) as usize)]
-    pub unnamed_at_0x14156e1c6: Option<Vec<u32>>,
-    /// unnamed in the binary
-    /// read into (longlong)local_800+(longlong)iVar24*4+0xc
+    /// game: `trigger_num`
+    /// read at 0x14156dea5; named by the save's write in the same place (0x141587990, write at 0x141587d48)
+    pub trigger_num: i32,
+    /// read by 0x14156bd00; named by the save's write in the same place (0x141587990)
+    #[br(if(!(trigger_num < 1) && trigger_num > 0), count = trigger_num.max(0) as usize, args { inner: (ver, trigger_version,) })]
+    pub trigger_list: Option<Vec<TribeTrigger>>,
+    /// game: `trigger_order[i]`
+    /// read at 0x14156e1c6; named by the save's write in the same place (0x141587990, write at 0x141587f83)
+    #[br(if(!(trigger_num < 1) && trigger_num > 0), count = trigger_num.max(0) as usize)]
+    pub trigger_order: Option<Vec<u32>>,
+    /// game: `variables[i]`
+    /// read at 0x14156e2e8; named by the save's write in the same place (0x141587990, write at 0x14158802c)
     #[br(count = 256)]
-    pub unnamed_at_0x14156e2e8: Vec<u32>,
-    /// unnamed in the binary
-    /// read at 0x14156e3c5 into a local (local_a4)
-    pub unnamed_at_0x14156e3c5: u32,
-    /// unnamed in the binary
-    /// read into *plVar17+(longlong)iVar24*4
-    #[br(count = unnamed_at_0x14156e3c5 as usize)]
-    pub unnamed_at_0x14156e503: Vec<u32>,
-    /// unnamed in the binary
-    /// read at 0x14156e5f8 into a local (local_98)
-    pub unnamed_at_0x14156e5f8: u32,
+    pub variables: Vec<u32>,
+    /// game: `size`
+    /// read at 0x14156e3c5; named by the save's write in the same place (0x141587990, write at 0x1415880e3)
+    pub size: u32,
+    /// game: `mEnabledTechs[i]`
+    /// read at 0x14156e503; named by the save's write in the same place (0x141587990, write at 0x14158843b)
+    #[br(count = size as usize)]
+    pub enabled_techs: Vec<u32>,
+    /// game: `size`
+    /// read at 0x14156e5f8; named by the save's write in the same place (0x141587990, write at 0x141588517)
+    pub size_2: u32,
     /// unnamed in the binary
     /// a loop of 3 reads; unnamed in the binary
-    #[br(count = unnamed_at_0x14156e5f8 as usize)]
+    #[br(count = size_2 as usize)]
     pub unnamed_list_at_0x14156e6bb: Vec<TriggerSystemEntry1>,
-    /// unnamed in the binary
-    /// read into (longlong)puVar22+0xcb4
-    pub unnamed_at_0x14156e945: u32,
-    /// unnamed in the binary
-    /// read into local_800+0x19b
-    pub unnamed_at_0x14156ed25: u32,
-    /// unnamed in the binary
-    /// read into puVar22+0x18d
-    pub unnamed_at_0x14156edc7: u8,
-    /// unnamed in the binary
-    /// read at 0x14156ee81 into a local (local_88)
-    pub unnamed_at_0x14156ee81: u64,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
-    #[br(count = unnamed_at_0x14156ee81 as usize)]
-    pub unnamed_list_at_0x14156ef40: Vec<TriggerSystemEntry2>,
-    /// unnamed in the binary
-    /// read at 0x14156f0e8 into a local (local_80)
-    pub unnamed_at_0x14156f0e8: u64,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
-    #[br(count = unnamed_at_0x14156f0e8 as usize)]
-    pub unnamed_list_at_0x14156f1ab: Vec<TriggerSystemEntry3>,
-    /// unnamed in the binary
-    /// read at 0x14156f34d into a local (local_a0)
-    pub unnamed_at_0x14156f34d: u64,
-    /// unnamed in the binary
-    /// a loop of 3 reads; unnamed in the binary
-    #[br(count = unnamed_at_0x14156f34d as usize)]
-    pub unnamed_list_at_0x14156f45e: Vec<TriggerSystemEntry5>,
-    /// unnamed in the binary
-    /// read at 0x14156fa3b into a local (local_7c0)
-    pub unnamed_at_0x14156fa3b: u8,
-}
-
-/// Read by `FUN_141310780` of the build.
-#[binrw]
-#[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Unnamed141310780 {
-    /// unnamed in the binary
-    /// helper 0x140c94e10
-    pub unnamed_at_0x1413107dd: u8,
+    /// game: `mCurrentTriggerId`
+    /// read at 0x14156e945; named by the save's write in the same place (0x141587990, write at 0x141588a0a)
+    pub current_trigger_id: u32,
+    /// game: `mLastTradeObjectArraySize`
+    /// read at 0x14156ed25; named by the save's write in the same place (0x141587990, write at 0x141588f51)
+    pub last_trade_object_array_size: u32,
+    /// game: `mFoundTradeObject`
+    /// read at 0x14156edc7; named by the save's write in the same place (0x141587990, write at 0x141589104)
+    pub found_trade_object: u8,
+    /// game: `totalGoalCount`
+    /// read at 0x14156ee81; named by the save's write in the same place (0x141587990, write at 0x1415892c8)
+    pub total_goal_count: u64,
+    /// game: `goal`
+    /// a loop of 2 reads; named by the save's write in the same place (0x141587990)
+    #[br(count = total_goal_count as usize)]
+    pub goal: Vec<TriggerSystemEntry2>,
+    /// game: `decisionsCount`
+    /// read at 0x14156f0e8; named by the save's write in the same place (0x141587990, write at 0x1415895ce)
+    pub decisions_count: u64,
+    /// a loop of 2 reads; named after its count `decisions_count`
+    #[br(count = decisions_count as usize)]
+    pub decisions: Vec<TriggerSystemEntry3>,
+    /// game: `attackedObjectSize`
+    /// read at 0x14156f34d; named by the save's write in the same place (0x141587990, write at 0x141589adb)
+    pub attacked_object_size: u64,
+    /// a loop of 3 reads; named after its count `attacked_object_size`
+    #[br(count = attacked_object_size as usize)]
+    pub attacked_object: Vec<TriggerSystemEntry5>,
+    /// game: `m_isLegacyExecutionOrder`
+    /// read at 0x14156fa3b; named by the save's write in the same place (0x141587990, write at 0x14158a237)
+    pub m_is_legacy_execution_order: u8,
 }
 
 #[binrw]
@@ -8272,10 +7959,10 @@ pub struct WorldEntry1 {
     /// game: `length`
     /// read at 0x1415d4f4f
     pub length: i32,
-    /// unnamed in the binary
-    /// read at 0x1415d4fd6
+    /// game: `chat_str`
+    /// read at 0x1415d4fd6; named by the save's write in the same place (0x1415e25e0, write at 0x1415e6c63)
     #[br(if(length > 0), count = length.max(0) as usize)]
-    pub unnamed_at_0x1415d4fd6: Option<Vec<u8>>,
+    pub chat_str: Option<Vec<u8>>,
 }
 
 #[binrw]
@@ -8379,18 +8066,15 @@ pub struct World {
     /// game: `countdown_clock`
     /// read at 0x1415d12bb
     pub countdown_clock: f32,
-    /// unnamed in the binary
-    /// read by 0x140ee47f0
-    #[br(args(ver))]
-    pub unnamed140ee47f0: Unnamed140ee47f0,
-    /// unnamed in the binary
-    /// read by 0x140ee47f0
-    #[br(args(ver))]
-    pub unnamed140ee47f0_3_1589: Unnamed140ee47f0_3_1589,
-    /// unnamed in the binary
-    /// read by 0x141599000
-    #[br(args(ver))]
-    pub unnamed141599000: Unnamed141599000,
+    /// game: `mWorldScoreDisplayOn`
+    /// read by 0x140ee47f0, a routine of one read; named by the save's write in the same place (0x1415e25e0, write at 0x140c94f78)
+    pub world_score_display_on: u8,
+    /// game: `mWorldTimeDisplayOn`
+    /// read by 0x140ee47f0, a routine of one read; named by the save's write in the same place (0x1415e25e0, write at 0x140c94f78)
+    pub world_time_display_on: u8,
+    /// game: `mWorldResearchDisplayOn`
+    /// read by 0x141599000, a routine of one read; named by the save's write in the same place (0x1415e25e0, write at 0x140ccd2d8)
+    pub world_research_display_on: u8,
     /// game: `controllingComputerPlayer`
     /// read at 0x1415d18db
     pub controlling_computer_player: u8,
@@ -8502,17 +8186,15 @@ pub struct World {
     /// game: `mGuardStateFlags`
     /// read at 0x1415d3d53
     pub guard_state_flags: i16,
-    /// unnamed in the binary
-    /// read by 0x14156dbc0
+    /// read by 0x14156dbc0; named by the save's write in the same place (0x1415e25e0)
     #[br(args(ver))]
     pub trigger_system: TriggerSystem,
     /// game: `isXSEnabled`
     /// read at 0x1415d3f55
     pub is_xsenabled: u8,
-    /// unnamed in the binary
-    /// read by 0x1415c7950
+    /// read by 0x1415c7950; named by the save's write in the same place (0x1415e25e0)
     #[br(if(is_xsenabled != 0), args(ver))]
-    pub bxs_runtime: Option<BxsRuntime>,
+    pub scripted_trigger_system: Option<BxsRuntime>,
     /// game: `size`
     /// read at 0x1415d4035
     pub size: u64,
@@ -8523,14 +8205,13 @@ pub struct World {
     /// game: `isRMSXSEnabled`
     /// read at 0x1415d4165
     pub is_rmsxsenabled: u8,
-    /// unnamed in the binary
-    /// read by 0x1415c72c0
+    /// read by 0x1415c72c0; named by the save's write in the same place (0x1415e25e0)
     #[br(if(is_rmsxsenabled != 0), args(ver))]
-    pub bxs_runtime_2: Option<BxsRuntime>,
-    /// unnamed in the binary
-    /// read by 0x141310780
-    #[br(count = 8, args { inner: (ver,) })]
-    pub unnamed141310780: Vec<Unnamed141310780>,
+    pub scripted_rmssystem: Option<BxsRuntime>,
+    /// game: `playerTeams[i]`
+    /// read by 0x141310780, a routine of one read; named by the save's write in the same place (0x1415e25e0, write at 0x140c94f78)
+    #[br(count = 8)]
+    pub player_teams: Vec<u8>,
     /// game: `vis_set`
     /// read at 0x1415d43a1
     pub vis_set: i32,
@@ -8564,10 +8245,9 @@ pub struct World {
     /// game: `number_of_chats`
     /// read at 0x1415d4e63
     pub number_of_chats: i32,
-    /// unnamed in the binary
-    /// a loop of 2 reads; unnamed in the binary
+    /// a loop of 2 reads; named after its count `number_of_chats`
     #[br(count = number_of_chats.max(0) as usize)]
-    pub unnamed_list_at_0x1415d4f4f: Vec<WorldEntry1>,
+    pub chats: Vec<WorldEntry1>,
     /// game: `mSavedSeed`
     /// read at 0x1415d50a4
     pub saved_seed: u32,
@@ -8581,17 +8261,16 @@ pub struct World {
     /// game: `tradeObjects`
     /// read at 0x1415d585f
     pub trade_objects: i32,
-    /// game: `temp`
-    /// read at 0x1415d5d1f
+    /// game: `mTradingObjectIds[i]`
+    /// read at 0x1415d5d1f into the temporary `temp`; named by the save's write in the same place (0x1415e25e0, write at 0x1415e724d)
     #[br(count = trade_objects.max(0) as usize)]
-    pub temp: Vec<i32>,
+    pub trading_object_ids: Vec<i32>,
     /// game: `tutorialPromptCount`
     /// read at 0x1415d5d9d
     pub tutorial_prompt_count: i32,
-    /// unnamed in the binary
-    /// a loop of 6 reads; unnamed in the binary
+    /// a loop of 6 reads; named after its count `tutorial_prompt_count`
     #[br(count = tutorial_prompt_count.max(0) as usize)]
-    pub unnamed_list_at_0x1415d5efe: Vec<WorldEntry3>,
+    pub tutorial_prompt: Vec<WorldEntry3>,
     /// game: `mWaterDefIndex`
     /// read at 0x1415d6115
     pub water_def_index: i32,
