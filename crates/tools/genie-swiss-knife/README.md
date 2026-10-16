@@ -16,6 +16,8 @@ crates read and write the game's files, and gsk makes them usable without writin
 - `--format` names the format where the file does not tell it
 - text output for people, `--json` for scripts
 
+gsk is built on the [Abscissa](https://github.com/iqlusioninc/abscissa) application framework.
+
 ```sh
 cargo install genie-swiss-knife   # installs the command `gsk`
 ```
