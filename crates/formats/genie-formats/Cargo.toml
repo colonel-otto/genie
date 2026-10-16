@@ -23,6 +23,7 @@ genie-scx = { version = "4.0.0", path = "../genie-scx" }
 jascpal = { version = "0.1.1", path = "../jascpal" }
 
 [dev-dependencies]
+flate2.workspace = true
 structopt.workspace = true
 anyhow.workspace = true
 simplelog.workspace = true
