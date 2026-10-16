@@ -57,23 +57,6 @@ pub fn write_string_list(list: &StringList) -> binrw::BinResult<()> {
     list.terminator.write_options(writer, endian, ())
 }
 
-/// Consume `magic` or fail with `BadMagic` at its position.
-pub fn expect<R: binrw::io::Read + binrw::io::Seek>(
-    reader: &mut R,
-    magic: &[u8],
-) -> binrw::BinResult<()> {
-    let pos = reader.stream_position()?;
-    let mut got = vec![0u8; magic.len()];
-    reader.read_exact(&mut got)?;
-    if got != magic {
-        return Err(binrw::Error::BadMagic {
-            pos,
-            found: Box::new(got),
-        });
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

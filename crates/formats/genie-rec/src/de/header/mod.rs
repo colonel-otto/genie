@@ -16,8 +16,6 @@ mod objects;
 mod player;
 mod primitives;
 mod replay;
-#[cfg(test)]
-mod test_bytes;
 
 pub use ai::{AiConfig, AiData, AiRule, AiRuleGroup, SizedString32};
 pub use generated::player::{Object, ObjectList, Player, PlayerObjects, WorldPlayer};
@@ -93,6 +91,10 @@ pub struct Header {
     pub ends: SectionEnds,
     /// One section per player, Gaia first.
     pub players: Vec<PlayerSection>,
+    /// The bytes after the last player: the players' second pass, the scenario, the triggers and
+    /// the rest of `World::load_world`. Not derived yet (aoe2de-exe-re `layout` PENDING `World`):
+    /// kept as they are, so a header writes back whole.
+    pub tail: Vec<u8>,
 }
 
 /// Read an inflated chapter header.
@@ -158,7 +160,18 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, super::Error> {
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
+    // one read of the rest, not read_to_end's growing chunks: a read must not cut a game read
+    let here = r.stream_position().map_err(|e| header_error(e.into()))?;
+    let end = r
+        .seek(SeekFrom::End(0))
+        .map_err(|e| header_error(e.into()))?;
+    r.seek(SeekFrom::Start(here))
+        .map_err(|e| header_error(e.into()))?;
+    let mut tail = vec![0u8; (end - here) as usize];
+    r.read_exact(&mut tail)
+        .map_err(|e| header_error(e.into()))?;
     Ok(Header {
+        tail,
         version,
         lobby,
         ai,
@@ -170,6 +183,32 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, super::Error> {
         ends,
         players,
     })
+}
+
+/// Write a header as `parse` read it: every section in read order, the tail as it was. Read, then
+/// write gives back the inflated header byte for byte (tests/de_roundtrip.rs).
+pub fn write<W: binrw::io::Write + Seek>(h: &Header, w: &mut W) -> Result<(), super::Error> {
+    use binrw::BinWrite;
+    let particles_count =
+        u32::try_from(h.particles.len() / 27).map_err(|_| super::Error::Header {
+            message: format!("{} particle bytes", h.particles.len()),
+        })?;
+    (|| {
+        h.version.write_le(w)?;
+        h.lobby.write_le(w)?;
+        h.ai.write_le(w)?;
+        h.replay.write_le(w)?;
+        h.map.write_le(w)?;
+        h.restore_time.write_le(w)?;
+        particles_count.write_le(w)?;
+        h.particles.write_le(w)?;
+        h.identifier.write_le(w)?;
+        for p in &h.players {
+            p.player.write_le(w)?;
+        }
+        h.tail.write_le(w)
+    })()
+    .map_err(header_error)
 }
 
 fn position<R: Seek>(r: &mut R) -> Result<usize, super::Error> {

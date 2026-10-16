@@ -3,7 +3,7 @@
 
 #![allow(clippy::all)]
 
-use super::super::layout_types::{LenString16, LenString32, LenVec32, SigString, Unsupported};
+use super::super::{LenString16, LenString32, LenVec32, SigString, Unsupported};
 use binrw::binrw;
 
 #[binrw]
