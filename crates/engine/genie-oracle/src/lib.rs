@@ -69,7 +69,7 @@ fn counted(s: &RgeStaticObject) -> bool {
 
 /// The checkpoint inputs of one player section. Word 9's inputs stay empty (see the crate docs).
 pub fn player_state(section: &PlayerSection, id: u32) -> PlayerState {
-    let attributes = &section.prelude.player.base.attributes;
+    let attributes = &section.world_player().base.attributes;
     let resource = |i: usize| attributes.get(i).copied().unwrap_or_default();
     PlayerState {
         id,

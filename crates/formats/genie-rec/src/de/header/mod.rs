@@ -18,22 +18,16 @@ mod primitives;
 mod replay;
 #[cfg(test)]
 mod test_bytes;
-mod tribe;
 
 pub use ai::{AiConfig, AiData, AiRule, AiRuleGroup, SizedString32};
-pub use generated::player::{Object, ObjectList, PlayerObjects};
+pub use generated::player::{Object, ObjectList, Player, PlayerObjects, WorldPlayer};
 pub use layout_types::{LenString16, LenString32, LenVec32, STRING_SIGNATURE, SigString};
+pub use layout_types::{Unsupported, UnsupportedFeature, unsupported_in};
 pub use lobby::{AiFile, LobbyPlayer, LobbySettings};
 pub use map::{MapInfo, MapZone, Obstructions, Tile};
-pub use player::{
-    PlayerEnds, PlayerPrelude, PlayerSection, TechUnlock, UnitUnlock, Unlock, Unlocks,
-};
+pub use player::{PlayerEnds, PlayerSection};
 pub use primitives::{DeString, StringList};
 pub use replay::Replay;
-pub use tribe::{
-    GaiaState, History, HistoryNode, Offer, ResearchLocation, ScoutMap, TechState, Trade, TribeEnd,
-    TribeState,
-};
 
 use binrw::BinRead;
 use binrw::io::{Read, Seek, SeekFrom};
@@ -156,7 +150,7 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, super::Error> {
     let ver = version.raw();
     let players = (0..num_players)
         .map(|_| {
-            player::read_player(r, v, ver, num_players).map_err(|e| match e {
+            player::read_player(r, ver, num_players).map_err(|e| match e {
                 player::ReadError::Bin(e) => header_error(e),
                 player::ReadError::Unsupported { what, at } => {
                     super::Error::Unsupported { what, at }

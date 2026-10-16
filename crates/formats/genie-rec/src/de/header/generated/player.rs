@@ -3,239 +3,597 @@
 
 #![allow(clippy::all)]
 
-use super::super::layout_types::{LenString16, LenString32, LenVec32, SigString};
+use super::super::layout_types::{LenString16, LenString32, LenVec32, SigString, Unsupported};
 use binrw::binrw;
 
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-pub struct SavedView {
-    /// HD RGE_View_Stack entry, first float
-    pub x: f32,
-    /// HD RGE_View_Stack entry, second float
-    pub y: f32,
+pub struct TribePlayerTechEntry1 {
+    /// unnamed in the binary
+    /// read into *param_1+((longlong)local_f0+0x21)*2
+    pub unnamed_at_0x1413c381a: u16,
+    /// unnamed in the binary
+    /// read into *param_1+((longlong)local_f0+0x24)*2
+    pub unnamed_at_0x1413c38ae: u16,
+    /// unnamed in the binary
+    /// read into lVar15
+    pub unnamed_at_0x1413c3965: u16,
 }
 
-/// Read by `FUN_14163e970` (`WorldPlayerBase.cpp`) of the build.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32, num_players: usize))]
-pub struct WorldPlayerBase {
-    /// game: `&relation`
-    /// read at 0x14163f09e
+pub struct TribePlayerTechEntry2 {
+    /// unnamed in the binary
+    /// read at 0x1413c3d76 into a local (local_6c)
+    pub unnamed_at_0x1413c3d76: u16,
+    /// unnamed in the binary
+    /// read at 0x1413c3df2 into a local (local_68)
+    pub unnamed_at_0x1413c3df2: u16,
+    /// unnamed in the binary
+    /// read at 0x1413c3e6e into a local (local_70)
+    pub unnamed_at_0x1413c3e6e: u8,
+    /// unnamed in the binary
+    /// read at 0x1413c3eb7 into a local (local_5c)
+    pub unnamed_at_0x1413c3eb7: u32,
+    /// unnamed in the binary
+    /// read at 0x1413c3f00 into a local (local_60)
+    pub unnamed_at_0x1413c3f00: u32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct TechPlayerTree {
+    /// unnamed in the binary
+    /// read into *param_1+local_f8
+    pub unnamed_at_0x1413c3011: u32,
+    /// unnamed in the binary
+    /// read into *param_1+local_f8+4
+    pub unnamed_at_0x1413c30a3: u16,
+    /// unnamed in the binary
+    /// read into *param_1+6+((longlong)(int)local_104+(longlong)local_b8)*2
+    #[br(count = 3)]
+    pub unnamed_at_0x1413c315f: Vec<u16>,
+    /// unnamed in the binary
+    /// read into *param_1+local_f8+0xc
+    pub unnamed_at_0x1413c340b: u16,
+    /// unnamed in the binary
+    /// read into local_f8+*param_1+0xe
+    pub unnamed_at_0x1413c34d9: u8,
+    /// unnamed in the binary
+    /// helper 0x140932010
+    pub unnamed_at_0x1413c3574: SigString,
+    /// unnamed in the binary
+    /// helper 0x140932010
+    pub unnamed_at_0x1413c35c2: SigString,
+    /// unnamed in the binary
+    /// read into *param_1+local_f8+0x40
+    pub unnamed_at_0x1413c3621: u8,
+    /// unnamed in the binary
+    /// read into *param_1+local_f8+0x56
+    pub unnamed_at_0x1413c36d1: u16,
+    /// unnamed in the binary
+    /// read into *param_1+local_f8+0x58
+    pub unnamed_at_0x1413c3762: u16,
+    /// unnamed in the binary
+    /// a loop of 3 reads; unnamed in the binary
+    #[br(count = 3)]
+    pub unnamed_list_at_0x1413c381a: Vec<TribePlayerTechEntry1>,
+    /// unnamed in the binary
+    /// read into *param_1+local_f8+0x54
+    pub unnamed_at_0x1413c39d6: u16,
+    /// unnamed in the binary
+    /// read into *param_1+local_f8+0x5c
+    pub unnamed_at_0x1413c3adc: u32,
+    /// unnamed in the binary
+    /// read into *param_1+local_f8+0x60
+    pub unnamed_at_0x1413c3b8d: u8,
+    /// unnamed in the binary
+    /// read into *param_1+local_f8+0x62
+    pub unnamed_at_0x1413c3c38: u16,
+    /// unnamed in the binary
+    /// read at 0x1413c3cde into a local (local_64)
+    pub unnamed_at_0x1413c3cde: u16,
+    /// unnamed in the binary
+    /// a loop of 5 reads; unnamed in the binary
+    #[br(if(unnamed_at_0x1413c3cde > 0), count = unnamed_at_0x1413c3cde as usize)]
+    pub unnamed_list_at_0x1413c3d76: Option<Vec<TribePlayerTechEntry2>>,
+    /// unnamed in the binary
+    /// read into None
+    pub unnamed_at_0x1413c3ff5: u16,
+}
+
+/// Read by `FUN_1413c2a40` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct TribePlayerTech {
+    /// HD TRIBE_Player_Tech::tech_player_tree_num (int16), the count of the tech states
+    pub tech_player_tree_num: i16,
+    /// HD TRIBE_Player_Tech::tech_player_tree, one state per tech
+    #[br(count = tech_player_tree_num.max(0) as usize)]
+    pub tech_player_tree: Vec<TechPlayerTree>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct HistoryEntry {
+    /// game: `(history[i].civilian_pop)`
+    /// read at 0x14156198c
+    pub history_civilian_pop: i16,
+    /// game: `(history[i].military_pop)`
+    /// read at 0x141561a1d
+    pub history_military_pop: i16,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct HistoryEvent {
+    /// game: `temp->event`
+    /// read at 0x141562124
+    pub temp_event: u8,
+    /// game: `temp->time_slice`
+    /// read at 0x1415621af
+    pub temp_time_slice: i32,
+    /// game: `temp->data1`
+    /// read at 0x14156224a
+    pub temp_data1: f32,
+    /// game: `temp->data2`
+    /// read at 0x1415622d5
+    pub temp_data2: f32,
+    /// game: `temp->data3`
+    /// read at 0x14156237b
+    pub temp_data3: f32,
+    /// game: `temp->world_time`
+    /// read at 0x1415624b8
+    pub temp_world_time: u32,
+}
+
+/// Read by `FUN_141560f20` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct History {
+    /// game: `number_of_entries`
+    /// read at 0x141561160
     #[brw(magic = b"\x0b")]
-    #[br(count = num_players)]
-    pub relation: Vec<u8>,
-    /// HD RGE_Player::unitDiplomacy (int32 per player)
-    #[br(count = num_players)]
-    pub unit_diplomacy: Vec<i32>,
-    /// HD RGE_Player::allied_LOS_Enable (int32), after relations
-    pub allied_los_enable: i32,
-    /// HD RGE_Player::allied_victory (uchar), after allied_LOS_Enable
-    pub allied_victory: u8,
-    /// HD RGE_Player::name (char*)
-    pub name: LenString16,
-    /// HD RGE_Player::attribute_num (int32), counts the attributes
+    pub number_of_entries: i32,
+    /// game: `number_of_events`
+    /// read at 0x1415612f0
+    pub number_of_events: i32,
+    /// game: `max_number_of_entries`
+    /// read at 0x141561480
+    pub max_number_of_entries: i32,
+    /// '(history[i].civilian_pop)', '(history[i].military_pop)'
     #[brw(magic = b"\x16")]
-    pub attribute_num: i32,
-    /// HD RGE_Player::attributes (float*)
-    #[brw(magic = b"!")]
-    #[br(count = attribute_num.max(0) as usize)]
-    pub attributes: Vec<f32>,
-    /// a second attribute array of DE (save > 0x140f5b), unnamed
-    #[br(count = attribute_num.max(0) as usize)]
-    pub attributes_2: Vec<u32>,
-    /// HD RGE_Player::view_x (float)
-    #[brw(magic = b"\x0b")]
-    pub view_x: f32,
-    /// HD RGE_Player::view_y (float)
-    pub view_y: f32,
-    /// HD RGE_Player::view_stack_size (int32), counts the saved views
-    pub view_stack_size: i32,
-    /// HD RGE_Player::view_stack: (x, y) per saved view
-    #[br(if((1..=10).contains(&view_stack_size)), count = view_stack_size.max(0) as usize)]
-    pub views: Option<Vec<SavedView>>,
-    /// HD RGE_Player::map_x (int16)
-    pub map_x: i16,
-    /// HD RGE_Player::map_y (int16)
-    pub map_y: i16,
-    /// HD RGE_Player::culture (uchar), the byte after type
-    pub culture: u8,
-    /// game: `&civId`
-    /// helper 0x14163c630
-    pub civ_id: u8,
-    /// game: `&mEquippedSkins`
-    /// helper 0x140d46ce0
-    pub equipped_skins: LenVec32<i64>,
-    /// HD RGE_Player::game_status (uchar), culture + 1
-    pub game_status: u8,
-    /// HD RGE_Player::resigned (uchar), culture + 3
-    pub resigned: u8,
-    /// game: `&colorTableId`
-    /// helper 0x140c94e10
-    #[brw(magic = b"\x0b")]
-    pub color_table_id: u8,
-    /// unnamed in the binary
-    /// read at 0x141640c43
-    #[brw(magic = b"\x0b")]
-    pub unnamed_0x674: u32,
-    /// unnamed in the binary
-    /// read at 0x141640c83
-    pub unnamed_0x678: u32,
-    /// unnamed in the binary
-    /// read at 0x141640e51 into a local (local_4774)
-    pub unnamed_at_0x141640e51: i32,
-    /// unnamed in the binary
-    /// read at 0x141640eaa into a local (local_4770)
-    #[br(count = unnamed_at_0x141640e51.max(0) as usize)]
-    pub unnamed_at_0x141640eaa: Vec<u32>,
-    /// unnamed in the binary
-    /// read at 0x1416416b5
-    pub unnamed_0x6b0: u32,
-    /// unnamed in the binary
-    /// read at 0x1416416f5
-    pub unnamed_0x6b4: u32,
-    /// unnamed in the binary
-    /// read at 0x141641735
-    pub unnamed_0x6b8: u32,
-    /// unnamed in the binary
-    /// read at 0x141641775
-    pub unnamed_0x6bc: u32,
-    /// unnamed in the binary
-    /// read at 0x1416417b5
-    pub unnamed_0x6c0: u32,
-    /// unnamed in the binary
-    /// read at 0x1416417f5
-    pub unnamed_0x6c4: u32,
-    /// unnamed in the binary
-    /// read at 0x141641841
-    pub unnamed_0x6c8: u32,
-    /// unnamed in the binary
-    /// read at 0x14164188a
-    pub unnamed_0x6cc: [u8; 16],
-    /// unnamed in the binary
-    /// read at 0x1416418ca
-    pub unnamed_0x6dc: [u8; 16],
-    /// unnamed in the binary
-    /// read at 0x14164190a
-    pub unnamed_0x6ec: [u8; 16],
-    /// unnamed in the binary
-    /// read at 0x14164195a
-    pub unnamed_0x31c: u32,
-    /// unnamed in the binary
-    /// read at 0x14164199a
-    pub unnamed_0x320: u32,
-    /// unnamed in the binary
-    /// read at 0x1416419da
-    pub unnamed_0x324: u32,
-    /// unnamed in the binary
-    /// read at 0x141641a1a
-    pub unnamed_0x328: u32,
-    /// unnamed in the binary
-    /// read at 0x141641a5a
-    pub unnamed_0x32c: u32,
-    /// unnamed in the binary
-    /// read at 0x141641a9a
-    pub unnamed_0x330: u32,
-    /// unnamed in the binary
-    /// read at 0x141641ada
-    pub unnamed_0x334: u32,
-    /// unnamed in the binary
-    /// read at 0x141641b1a
-    pub unnamed_0x338: u32,
-    /// unnamed in the binary
-    /// read at 0x141641b70
-    pub unnamed_0x33c: u32,
-    /// unnamed in the binary
-    /// read at 0x141641bc1
-    pub unnamed_0x608: u32,
-    /// unnamed in the binary
-    /// read at 0x141641c01
-    pub unnamed_0x60c: u32,
-    /// unnamed in the binary
-    /// read at 0x141641c41
-    pub unnamed_0x610: u8,
-    /// unnamed in the binary
-    /// read at 0x141641c92
-    pub unnamed_0x611: u8,
-    /// unnamed in the binary
-    /// read at 0x141641cd2
-    pub unnamed_0x612: u8,
-    /// game: `&disable_build_help`
-    /// helper 0x140ccd170
-    pub disable_build_help: u8,
-    /// game: `&local_targeting_mode`
-    /// helper 0x140a91060
-    pub local_targeting_mode: i32,
-    /// game: `&targeting_factor_scalar`
-    /// helper 0x140a91060
-    pub targeting_factor_scalar: i32,
-    /// game: `&tradeAttackEvasion`
-    /// helper 0x140ccd170
-    pub trade_attack_evasion: u8,
-    /// game: `&mVillagerAttackReset`
-    /// helper 0x140ccd170
-    pub villager_attack_reset: u8,
-    /// game: `&boarLureDestination`
-    /// helper 0x140c94e10
-    pub boar_lure_destination: u8,
-    /// game: `&mAttackMoveMaxDistance`
-    /// helper 0x140a91060
-    pub attack_move_max_distance: i32,
-    /// game: `&stringId`
-    /// helper 0x140a91060
-    pub string_id: i32,
-    /// unnamed in the binary
-    /// helper 0x140932fa0
-    pub unnamed_at_0x141642029: LenString32,
-    /// game: `&mNameMode`
-    /// helper 0x14163caf0
-    pub name_mode: i32,
-    /// unnamed in the binary
-    /// read at 0x14164214f
-    pub unnamed_0x55c: i32,
-    /// unnamed in the binary
-    /// read at 0x1416421a4 into a local (local_477c)
-    #[br(if(unnamed_0x55c > 0))]
-    pub unnamed_at_0x1416421a4: Option<u32>,
-    /// unnamed in the binary
-    /// read at 0x1416421f2
-    #[br(if(unnamed_0x55c > 0))]
-    pub unnamed_0x558: Option<u32>,
-    /// unnamed in the binary
-    /// read at 0x14164224a into a local (local_477c)
-    #[br(count = unnamed_0x55c.max(0) as usize)]
-    pub unnamed_at_0x14164224a: Vec<u32>,
-    /// game: `&preferredTradeDistance`
-    /// helper 0x140a91160
-    pub preferred_trade_distance: f32,
-    /// game: `&disableTowerPriority`
-    /// helper 0x140ccd170
-    pub disable_tower_priority: u8,
-    /// game: `&mMoreTechsMode`
-    /// helper 0x140ccd170
-    pub more_techs_mode: u8,
-    /// game: `&mGaiaCiv`
-    /// helper 0x1412ceaf0
-    pub gaia_civ: i32,
-    /// game: `&mDisableVillagerGarrison`
-    /// helper 0x140a91060
-    pub disable_villager_garrison: i32,
-    /// game: `&mAllowSerjeantBuilding`
-    /// helper 0x140ccd170
-    pub allow_serjeant_building: u8,
-    /// game: `&mAllowCapturingGaiaUnits`
-    /// helper 0x140ccd170
-    pub allow_capturing_gaia_units: u8,
+    #[br(count = number_of_entries.max(0) as usize)]
+    pub history: Vec<HistoryEntry>,
+    /// game: `count`
+    /// read at 0x141561812
+    pub count: i32,
+    /// 'temp->event', 'temp->time_slice', …: one per event
+    #[br(count = count.max(0) as usize)]
+    pub events: Vec<HistoryEvent>,
+    /// game: `old_total_razings`
+    /// read at 0x141562eac
+    pub old_total_razings: i32,
+    /// game: `old_build_value_razings`
+    /// read at 0x141562ff9
+    pub old_build_value_razings: i32,
+    /// game: `old_total_razings_other`
+    /// read at 0x141563109
+    pub old_total_razings_other: i32,
+    /// game: `old_build_value_razings_other`
+    /// read at 0x141563248
+    pub old_build_value_razings_other: i32,
+    /// game: `old_total_kills`
+    /// read at 0x14156339b
+    pub old_total_kills: i32,
+    /// game: `old_build_value_kills`
+    /// read at 0x1415634e9
+    pub old_build_value_kills: i32,
+    /// game: `old_total_kills_other`
+    /// read at 0x14156363b
+    pub old_total_kills_other: i32,
+    /// game: `old_build_value_kills_other`
+    /// read at 0x141563789
+    pub old_build_value_kills_other: i32,
+    /// game: `razings_weight`
+    /// read at 0x1415638d9
+    pub razings_weight: f32,
+    /// game: `kills_weight`
+    /// read at 0x141563a2b
+    pub kills_weight: f32,
+    /// game: `razing_percent`
+    /// read at 0x141563b7b
+    pub razing_percent: f32,
+    /// game: `kills_perecent`
+    /// read at 0x141563cc9
+    pub kills_perecent: f32,
+    /// game: `razings_flag`
+    /// read at 0x141563e1b
+    pub razings_flag: u32,
+    /// game: `battle_flag`
+    /// read at 0x141563f29
+    pub battle_flag: u32,
+    /// game: `update_history_count`
+    /// read at 0x141564079
+    pub update_history_count: i32,
+    /// game: `old_current_build_value_units`
+    /// read at 0x1415641da
+    pub old_current_build_value_units: u32,
+    /// game: `old_current_build_value_buildings`
+    /// read at 0x141564329
+    pub old_current_build_value_buildings: u32,
+    /// game: `numMaxPlayers`
+    /// read at 0x1415644ab
+    pub num_max_players: i32,
+    /// game: `old_player_kill_BV[cntr]`
+    /// read at 0x1415646be
+    #[br(count = num_max_players.max(0) as usize)]
+    pub old_player_kill_bv: Vec<u32>,
+    /// game: `old_player_razing_BV[cntr]`
+    /// read at 0x1415647e0
+    #[br(count = num_max_players.max(0) as usize)]
+    pub old_player_razing_bv: Vec<u32>,
+    /// game: `running_ave_BV_percent`
+    /// read at 0x14156484d
+    pub running_ave_bv_percent: f32,
+    /// game: `running_total_BV_kills`
+    /// read at 0x141564dc4
+    pub running_total_bv_kills: u32,
+    /// game: `running_total_BV_razings`
+    /// read at 0x141564ef4
+    pub running_total_bv_razings: u32,
+    /// game: `running_total_kills`
+    /// read at 0x141565059
+    pub running_total_kills: u16,
+    /// game: `running_total_razings`
+    /// read at 0x14156516c
+    pub running_total_razings: u16,
     /// unnamed in the binary
     /// the routine's closing marker
-    #[brw(magic = b"\x0b")]
+    #[brw(magic = b"!")]
     pub end_marker: (),
 }
 
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct TechTreeEntry1 {
+    /// game: `(mTech_tree_ages[cntr1].age_id)`
+    /// read at 0x1413ea0a2
+    pub tech_tree_ages_age_id: i32,
+    /// game: `(mTech_tree_ages[cntr1].age_status)`
+    /// read at 0x1413ea141
+    pub tech_tree_ages_age_status: u8,
+    /// game: `(mTech_tree_ages[cntr1].number_dependent_buildings)`
+    /// read at 0x1413ea1ed
+    pub tech_tree_ages_number_dependent_buildings: u8,
+    /// unnamed in the binary
+    /// read at 0x1413ea2a6
+    #[br(count = tech_tree_ages_number_dependent_buildings as usize)]
+    pub unnamed_at_0x1413ea2a6: Vec<u32>,
+    /// game: `(mTech_tree_ages[cntr1].number_dependent_units)`
+    /// read at 0x1413ea341
+    pub tech_tree_ages_number_dependent_units: u8,
+    /// unnamed in the binary
+    /// read at 0x1413ea3ce
+    #[br(count = tech_tree_ages_number_dependent_units as usize)]
+    pub unnamed_at_0x1413ea3ce: Vec<u32>,
+    /// game: `(mTech_tree_ages[cntr1].number_dependent_techs)`
+    /// read at 0x1413ea43e
+    pub tech_tree_ages_number_dependent_techs: u8,
+    /// unnamed in the binary
+    /// read at 0x1413ea4cf
+    #[br(count = tech_tree_ages_number_dependent_techs as usize)]
+    pub unnamed_at_0x1413ea4cf: Vec<u32>,
+    /// game: `(mTech_tree_ages[cntr1].age_preregs)`
+    /// read at 0x1413ea82f
+    pub tech_tree_ages_age_preregs: [u8; 84],
+    /// game: `(mTech_tree_ages[cntr1].num_building_levels)`
+    /// read at 0x1413ea8b3
+    pub tech_tree_ages_num_building_levels: u8,
+    /// unnamed in the binary
+    /// read at 0x1413ea925
+    #[br(count = 10)]
+    pub unnamed_at_0x1413ea925: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x1413ea997
+    #[br(count = 10)]
+    pub unnamed_at_0x1413ea997: Vec<u8>,
+    /// game: `(mTech_tree_ages[cntr1].max_age_len)`
+    /// read at 0x1413eaa0a
+    pub tech_tree_ages_max_age_len: u8,
+    /// game: `(mTech_tree_ages[cntr1].node_type)`
+    /// read at 0x1413eaa84
+    pub tech_tree_ages_node_type: u32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct TechTreeEntry2 {
+    /// game: `(mTech_tree_buildings[cntr1].building_id)`
+    /// read at 0x1413eab3e
+    pub tech_tree_buildings_building_id: i32,
+    /// game: `(mTech_tree_buildings[cntr1].building_status)`
+    /// read at 0x1413eaba9
+    pub tech_tree_buildings_building_status: u8,
+    /// game: `(mTech_tree_buildings[cntr1].number_dependent_buildings)`
+    /// read at 0x1413eac24
+    pub tech_tree_buildings_number_dependent_buildings: u8,
+    /// unnamed in the binary
+    /// read at 0x1413eacb1
+    #[br(count = tech_tree_buildings_number_dependent_buildings as usize)]
+    pub unnamed_at_0x1413eacb1: Vec<u32>,
+    /// game: `(mTech_tree_buildings[cntr1].number_dependent_units)`
+    /// read at 0x1413ead1c
+    pub tech_tree_buildings_number_dependent_units: u8,
+    /// unnamed in the binary
+    /// read at 0x1413eada9
+    #[br(count = tech_tree_buildings_number_dependent_units as usize)]
+    pub unnamed_at_0x1413eada9: Vec<u32>,
+    /// game: `(mTech_tree_buildings[cntr1].number_dependent_techs)`
+    /// read at 0x1413eae14
+    pub tech_tree_buildings_number_dependent_techs: u8,
+    /// unnamed in the binary
+    /// read at 0x1413eaea5
+    #[br(count = tech_tree_buildings_number_dependent_techs as usize)]
+    pub unnamed_at_0x1413eaea5: Vec<u32>,
+    /// game: `(mTech_tree_buildings[cntr1].building_preregs)`
+    /// read at 0x1413ec86b
+    pub tech_tree_buildings_building_preregs: [u8; 84],
+    /// game: `(mTech_tree_buildings[cntr1].level_no)`
+    /// read at 0x1413ec8de
+    pub tech_tree_buildings_level_no: u8,
+    /// game: `(mTech_tree_buildings[cntr1].dep_units_tech_per_ages)`
+    /// read at 0x1413ec940
+    pub tech_tree_buildings_dep_units_tech_per_ages: [u8; 5],
+    /// game: `(mTech_tree_buildings[cntr1].num_unit_tech_zones_per_ages)`
+    /// read at 0x1413ec9af
+    pub tech_tree_buildings_num_unit_tech_zones_per_ages: [u8; 5],
+    /// game: `(mTech_tree_buildings[cntr1].node_type)`
+    /// read at 0x1413eca18
+    pub tech_tree_buildings_node_type: u32,
+    /// game: `(mTech_tree_buildings[cntr1].inabling_tech_id)`
+    /// read at 0x1413eca81
+    pub tech_tree_buildings_inabling_tech_id: i32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct TechTreeEntry3 {
+    /// game: `(mTech_tree_units[cntr1].unit_id)`
+    /// read at 0x1413ecb2d
+    pub tech_tree_units_unit_id: i32,
+    /// game: `(mTech_tree_units[cntr1].unit_status)`
+    /// read at 0x1413ecb98
+    pub tech_tree_units_unit_status: u8,
+    /// game: `(mTech_tree_units[cntr1].build_from)`
+    /// read at 0x1413ecc00
+    pub tech_tree_units_build_from: i32,
+    /// game: `(mTech_tree_units[cntr1].unit_preregs)`
+    /// read at 0x1413ecc5f
+    pub tech_tree_units_unit_preregs: [u8; 84],
+    /// game: `(mTech_tree_units[cntr1].grp_id)`
+    /// read at 0x1413ecccb
+    pub tech_tree_units_grp_id: i32,
+    /// game: `(mTech_tree_units[cntr1].number_dependent_units)`
+    /// read at 0x1413ecd3a
+    pub tech_tree_units_number_dependent_units: u8,
+    /// unnamed in the binary
+    /// read at 0x1413ecdbf
+    #[br(count = tech_tree_units_number_dependent_units as usize)]
+    pub unnamed_at_0x1413ecdbf: Vec<u32>,
+    /// game: `(mTech_tree_units[cntr1].level_no)`
+    /// read at 0x1413ee4fa
+    pub tech_tree_units_level_no: i32,
+    /// game: `(mTech_tree_units[cntr1].trigger_tech_id)`
+    /// read at 0x1413ee562
+    pub tech_tree_units_trigger_tech_id: i32,
+    /// game: `(mTech_tree_units[cntr1].node_type)`
+    /// read at 0x1413ee5ca
+    pub tech_tree_units_node_type: u32,
+    /// game: `(mTech_tree_units[cntr1].inabling_tech_id)`
+    /// read at 0x1413ee632
+    pub tech_tree_units_inabling_tech_id: i32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct TechTreeEntry4 {
+    /// game: `(mTech_tree_techs[cntr1].tech_id)`
+    /// read at 0x1413ee6de
+    pub tech_tree_techs_tech_id: i32,
+    /// game: `(mTech_tree_techs[cntr1].tech_status)`
+    /// read at 0x1413ee749
+    pub tech_tree_techs_tech_status: u8,
+    /// game: `(mTech_tree_techs[cntr1].research_from)`
+    /// read at 0x1413ee7b1
+    pub tech_tree_techs_research_from: i32,
+    /// game: `(mTech_tree_techs[cntr1].number_dependent_buildings)`
+    /// read at 0x1413ee82c
+    pub tech_tree_techs_number_dependent_buildings: u8,
+    /// unnamed in the binary
+    /// read at 0x1413ee8ad
+    #[br(count = tech_tree_techs_number_dependent_buildings as usize)]
+    pub unnamed_at_0x1413ee8ad: Vec<u32>,
+    /// game: `(mTech_tree_techs[cntr1].number_dependent_units)`
+    /// read at 0x1413ee90c
+    pub tech_tree_techs_number_dependent_units: u8,
+    /// unnamed in the binary
+    /// read at 0x1413ee98d
+    #[br(count = tech_tree_techs_number_dependent_units as usize)]
+    pub unnamed_at_0x1413ee98d: Vec<u32>,
+    /// game: `(mTech_tree_techs[cntr1].number_dependent_techs)`
+    /// read at 0x1413ee9ec
+    pub tech_tree_techs_number_dependent_techs: u8,
+    /// unnamed in the binary
+    /// read at 0x1413eea71
+    #[br(count = tech_tree_techs_number_dependent_techs as usize)]
+    pub unnamed_at_0x1413eea71: Vec<u32>,
+    /// game: `(mTech_tree_techs[cntr1].tech_preregs)`
+    /// read at 0x1413efb32
+    pub tech_tree_techs_tech_preregs: [u8; 84],
+    /// game: `(mTech_tree_techs[cntr1].grp_id)`
+    /// read at 0x1413efb9e
+    pub tech_tree_techs_grp_id: i32,
+    /// game: `(mTech_tree_techs[cntr1].level_no)`
+    /// read at 0x1413efc0a
+    pub tech_tree_techs_level_no: i32,
+    /// game: `(mTech_tree_techs[cntr1].node_type)`
+    /// read at 0x1413efc73
+    pub tech_tree_techs_node_type: u32,
+}
+
+/// Read by `FUN_1413e9790` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct TechTree {
+    /// game: `mNumber_ages`
+    /// read at 0x1413e9804
+    pub number_ages: u8,
+    /// game: `mNumber_buildings`
+    /// read at 0x1413e99a5
+    pub number_buildings: u8,
+    /// game: `mNumber_units`
+    /// read at 0x1413e9b35
+    pub number_units: u8,
+    /// game: `mNumber_techs`
+    /// read at 0x1413e9cd5
+    pub number_techs: u8,
+    /// game: `mNumber_grps`
+    /// read at 0x1413e9e7b
+    pub number_grps: i32,
+    /// unnamed in the binary
+    /// a loop of 14 reads; unnamed in the binary
+    #[br(count = number_ages as usize)]
+    pub unnamed_list_at_0x1413ea0a2: Vec<TechTreeEntry1>,
+    /// unnamed in the binary
+    /// a loop of 14 reads; unnamed in the binary
+    #[br(count = number_buildings as usize)]
+    pub unnamed_list_at_0x1413eab3e: Vec<TechTreeEntry2>,
+    /// unnamed in the binary
+    /// a loop of 11 reads; unnamed in the binary
+    #[br(count = number_units as usize)]
+    pub unnamed_list_at_0x1413ecb2d: Vec<TechTreeEntry3>,
+    /// unnamed in the binary
+    /// a loop of 13 reads; unnamed in the binary
+    #[br(count = number_techs as usize)]
+    pub unnamed_list_at_0x1413ee6de: Vec<TechTreeEntry4>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(x_size_value: i32))]
+pub struct TribeInformationAIModuleEntry1 {
+    /// game: `tempBYTE`
+    /// read at 0x140f4c865
+    #[br(if(x_size_value > 0), count = x_size_value as usize)]
+    pub temp_byte: Option<Vec<u8>>,
+}
+
+/// Read by `FUN_140f4c080` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct TribeInformationAIModule {
+    /// game: `xSizeValue`
+    /// read at 0x140f4c0ec
+    pub x_size_value: i32,
+    /// game: `ySizeValue`
+    /// read at 0x140f4c1ef
+    pub y_size_value: i32,
+    /// game: `xReferencePointValue`
+    /// read at 0x140f4c380
+    pub x_reference_point_value: i32,
+    /// game: `yReferencePointValue`
+    /// read at 0x140f4c512
+    pub y_reference_point_value: i32,
+    /// game: `unchangeableLimitValue`
+    /// read at 0x140f4c6a2
+    pub unchangeable_limit_value: u8,
+    /// unnamed in the binary
+    /// a loop of 1 reads; unnamed in the binary
+    #[br(count = y_size_value.max(0) as usize, args { inner: (x_size_value,) })]
+    pub unnamed_list_at_0x140f4c865: Vec<TribeInformationAIModuleEntry1>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct WorldPlayerEntry1 {
+    /// unnamed in the binary
+    /// read into (longlong)plVar13+(longlong)local_1260+0xe12
+    pub unnamed_at_0x1415f21be: u8,
+    /// unnamed in the binary
+    /// read into (longlong)plVar13+(longlong)local_1260+0xe1b
+    pub unnamed_at_0x1415f2290: u8,
+    /// unnamed in the binary
+    /// read into (longlong)plVar13+(longlong)local_1260+0xe24
+    pub unnamed_at_0x1415f2362: u8,
+    /// unnamed in the binary
+    /// read into local_1260+(longlong)plVar13*0x10+0x1c6
+    pub unnamed_at_0x1415f2439: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xe31
+    pub unnamed_at_0x1415f2507: u8,
+    /// unnamed in the binary
+    /// read into local_1260+(longlong)plVar13*0x10+0x1c7
+    pub unnamed_at_0x1415f25d5: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xe3c
+    pub unnamed_at_0x1415f26a3: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xe3d
+    pub unnamed_at_0x1415f2771: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xe3e
+    pub unnamed_at_0x1415f283f: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xe3f
+    pub unnamed_at_0x1415f28de: u8,
+    /// unnamed in the binary
+    /// read into local_1260+(longlong)plVar13*0x10+0x1c8
+    pub unnamed_at_0x1415f2941: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xe41
+    pub unnamed_at_0x1415f299e: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xe42
+    pub unnamed_at_0x1415f29fb: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xe43
+    pub unnamed_at_0x1415f2a58: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xe44
+    pub unnamed_at_0x1415f2ab8: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f2b18 into a local (local_12f)
+    pub unnamed_at_0x1415f2b18: u8,
+    /// unnamed in the binary
+    /// read at 0x1415f2b86
+    #[br(if(unnamed_at_0x1415f2b18 != 0), count = unnamed_at_0x1415f2b18 as usize)]
+    pub unnamed_at_0x1415f2b86: Option<Vec<u8>>,
+    /// unnamed in the binary
+    /// read into (longlong)local_1260+lVar21+0xeac
+    pub unnamed_at_0x1415f2c03: u8,
+}
+
 /// Read by `FUN_1415f1160` (`WorldPlayer.cpp`) of the build.
-/// Ends before the read at `0x1415f1bb7`: the routine goes on, read by hand-written code.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
@@ -287,6 +645,182 @@ pub struct WorldPlayer {
     /// unnamed in the binary
     /// read at 0x1415f1b08
     pub unnamed_0x7a4: u32,
+    /// unnamed in the binary
+    /// read by 0x1413c2a40
+    #[br(args(ver))]
+    pub tribe_player_tech: TribePlayerTech,
+    /// unnamed in the binary
+    /// read at 0x1415f1c65
+    pub unnamed_0xdc0: u32,
+    /// unnamed in the binary
+    /// read by 0x1415541b0
+    #[br(args(ver))]
+    pub history: History,
+    /// unnamed in the binary
+    /// read at 0x1415f1fcf
+    pub unnamed_0xdb0: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f204a
+    pub unnamed_0xdb4: u32,
+    /// unnamed in the binary
+    /// a loop of 18 reads; unnamed in the binary
+    #[brw(magic = b"\x0b")]
+    #[br(count = 9)]
+    pub unnamed_list_at_0x1415f21be: Vec<WorldPlayerEntry1>,
+    /// unnamed in the binary
+    /// read into local_1260+0x25f
+    pub unnamed_at_0x1415f2c69: u16,
+    /// unnamed in the binary
+    /// read at 0x1415f2d4f
+    #[brw(magic = b"\x0b")]
+    pub unnamed_0x12fa: [u8; 20],
+    /// unnamed in the binary
+    /// read at 0x1415f2dbd
+    pub unnamed_0x130e: [u8; 20],
+    /// unnamed in the binary
+    /// read at 0x1415f2e76
+    #[brw(magic = b"\x0b")]
+    pub unnamed_0x13f0: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f2eb6
+    pub unnamed_0x13f4: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f2ef6
+    pub unnamed_0x13f8: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f2f36
+    pub unnamed_0x13fc: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f2f76
+    pub unnamed_0x1400: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f2fb6
+    pub unnamed_0x1404: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f2ff6
+    pub unnamed_0x1408: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f3036
+    pub unnamed_0x140c: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f3076
+    pub unnamed_0x1410: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f30b6
+    pub unnamed_0x1414: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f30f6
+    pub unnamed_0x1418: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f31b2
+    pub unnamed_0x1358: u8,
+    /// unnamed in the binary
+    /// read at 0x1415f320b
+    pub unnamed_0xe10: u8,
+    /// unnamed in the binary
+    /// read at 0x1415f324b
+    pub unnamed_0xe11: u8,
+    /// unnamed in the binary
+    /// read at 0x1415f32a2
+    pub unnamed_0x1384: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f32f7
+    pub unnamed_0x141c: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f334c
+    pub unnamed_0x1424: u8,
+    /// unnamed in the binary
+    /// read at 0x1415f33a5
+    pub unnamed_0x1420: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f33e5
+    pub unnamed_0x1425: u8,
+    /// unnamed in the binary
+    /// read at 0x1415f3441
+    pub unnamed_0x137c: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f34e1
+    #[brw(magic = b"\x0b")]
+    pub unnamed_0x1380: u8,
+    /// unnamed in the binary
+    /// read at 0x1415f358a into a local (local_118)
+    #[br(count = num_players)]
+    pub unnamed_at_0x1415f358a: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x1415f363f
+    pub unnamed_0xdc4: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f367f
+    pub unnamed_0xdcc: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f36bf
+    pub unnamed_0xdd0: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f36ff
+    pub unnamed_0xdd4: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f373f
+    pub unnamed_0xdd8: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f377f
+    pub unnamed_0xde0: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f37f5
+    pub unnamed_0xdc8: u32,
+    /// unnamed in the binary
+    /// read at 0x1415f3835
+    pub unnamed_0xddc: u32,
+    /// game: `&old_player_kills[i]`
+    /// helper 0x140a91060
+    #[br(count = 9)]
+    pub old_player_kills: Vec<i32>,
+    /// unnamed in the binary
+    /// read by 0x1413d5390
+    #[br(args(ver))]
+    pub tech_tree: TechTree,
+    /// game: `&mIsScoutMapEnabled`
+    /// helper 0x140a91060
+    #[br(if(type_ == 1))]
+    pub is_scout_map_enabled: Option<i32>,
+    /// read by 0x140f4c080
+    #[br(if(type_ == 1 && is_scout_map_enabled.unwrap_or_default() != 0), args(ver))]
+    pub tribe_information_aimodule: Option<TribeInformationAIModule>,
+    /// game: `&mFinalBattleRoyalePosition`
+    /// helper 0x140b4b760
+    pub final_battle_royale_position: u32,
+    /// game: `&mSharingIsCaring`
+    /// helper 0x140ccd170
+    pub sharing_is_caring: u8,
+    /// game: `&mIsFirstUpdate`
+    /// helper 0x140ccd170
+    pub is_first_update: u8,
+    /// game: `&mD3KTMilitaryUnitBuilt`
+    /// helper 0x140ccd170
+    pub d3_ktmilitary_unit_built: u8,
+    /// unnamed in the binary
+    /// a marker the game checks
+    #[brw(magic = b"\x0b")]
+    pub marker: (),
+    /// unnamed in the binary
+    /// read at 0x1415f3df2 into a local (local_128)
+    #[br(if(type_ == 3))]
+    pub unnamed_at_0x1415f3df2: Option<i32>,
+    /// unnamed in the binary
+    /// not generated: computer player AI state (TribeMainDecisionAIModule) (0x140b9cae0)
+    #[br(if(type_ == 3 && !(unnamed_at_0x1415f3df2.unwrap_or_default() != 1)), args("computer player AI state (TribeMainDecisionAIModule)",))]
+    pub unsupported_at_0x1415f3e84: Option<Unsupported>,
+    /// unnamed in the binary
+    /// read into None
+    #[br(if(type_ == 3 && !(unnamed_at_0x1415f3df2.unwrap_or_default() != 1)))]
+    pub unnamed_at_0x1415f3f03: Option<u8>,
+    /// unnamed in the binary
+    /// not generated: a player's XS script state (FUN_14171c470) (0x141613020)
+    #[br(if(type_ == 3 && !(unnamed_at_0x1415f3df2.unwrap_or_default() != 1) && unnamed_at_0x1415f3f03.unwrap_or_default() != 0), args("a player's XS script state (FUN_14171c470)",))]
+    pub unsupported_at_0x1415f3f38: Option<Unsupported>,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b"\x0b")]
+    pub end_marker: (),
 }
 
 /// Read by `FUN_141120780` of the build.
@@ -1141,12 +1675,23 @@ pub struct VisibleResourceListSize {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(vr_list_used: i32))]
-pub struct VisibleResourceList {
+#[br(import(ver: u32))]
+pub struct VisibleResourceManagerEntry2 {
     /// unnamed in the binary
     /// read by 0x141289120
+    #[br(args(ver))]
+    pub visible_resource_rec: VisibleResourceRec,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, vr_list_used: i32))]
+pub struct VisibleResourceList {
+    /// unnamed in the binary
+    /// a loop of 1 reads; unnamed in the binary
     #[br(count = vr_list_used as usize)]
-    pub visible_resource_rec: Vec<VisibleResourceRec>,
+    pub unnamed_list_at_0x141287ae5: Vec<VisibleResourceManagerEntry2>,
 }
 
 /// Read by `FUN_141287720` of the build.
@@ -1161,7 +1706,7 @@ pub struct VisibleResourceManager {
     #[br(if(!(num_visible_resource_lists < 1) && num_visible_resource_lists > 0), count = num_visible_resource_lists.max(0) as usize)]
     pub list_sizes: Option<Vec<VisibleResourceListSize>>,
     /// the used records per list
-    #[br(if(!(num_visible_resource_lists < 1) && num_visible_resource_lists > 0), parse_with = binrw::helpers::args_iter(list_sizes.iter().flatten().map(|e| e.vr_list_used.max(0)).map(|x| (x as i32,)).collect::<Vec<_>>()))]
+    #[br(if(!(num_visible_resource_lists < 1) && num_visible_resource_lists > 0), parse_with = binrw::helpers::args_iter(list_sizes.iter().flatten().map(|e| e.vr_list_used.max(0)).map(|x| (ver, x as i32,)).collect::<Vec<_>>()))]
     pub lists: Option<Vec<VisibleResourceList>>,
 }
 
@@ -1397,8 +1942,8 @@ pub struct OwnRgeMasterStaticObject {
     pub damage_sprite_num: u8,
     /// unnamed in the binary
     /// a loop of 4 reads; unnamed in the binary
-    #[br(if(damage_sprite_num != 0), count = damage_sprite_num as usize)]
-    pub unnamed_list_at_0x141130a71: Option<Vec<OwnRgeMasterStaticObjectEntry2>>,
+    #[br(count = damage_sprite_num as usize)]
+    pub unnamed_list_at_0x141130a71: Vec<OwnRgeMasterStaticObjectEntry2>,
     /// game: `selected_sound_num`
     /// read at 0x141130c2b
     pub selected_sound_num: i16,
@@ -2108,6 +2653,28 @@ pub struct RgeStaticObjectEntry1 {
     pub amount: u32,
 }
 
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct RgeStaticObjectEntry2 {
+    /// unnamed in the binary
+    /// read by 0x1408cb520
+    #[br(args(ver))]
+    pub particle: Particle,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct RgeStaticObjectEntry3 {
+    /// unnamed in the binary
+    /// read by 0x1408cb520
+    #[br(args(ver))]
+    pub particle: Particle,
+}
+
 /// Read by `FUN_14119df60` of the build.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
@@ -2179,8 +2746,8 @@ pub struct RgeStaticObject {
     pub attributes_size: u16,
     /// unnamed in the binary
     /// a loop of 2 reads; unnamed in the binary
-    #[br(if(attributes_size != 0), count = attributes_size as usize)]
-    pub unnamed_list_at_0x1411a02cc: Option<Vec<RgeStaticObjectEntry1>>,
+    #[br(count = attributes_size as usize)]
+    pub unnamed_list_at_0x1411a02cc: Vec<RgeStaticObjectEntry1>,
     /// game: `mWorkerNum`
     /// read at 0x1411a0485
     pub worker_num: i32,
@@ -2292,16 +2859,16 @@ pub struct RgeStaticObject {
     /// read at 0x1411a307a
     pub short_val_3: i16,
     /// unnamed in the binary
-    /// read by 0x1408cb520
-    #[br(count = short_val_3.max(0) as usize)]
-    pub particle_2: Vec<Particle>,
+    /// a loop of 1 reads; unnamed in the binary
+    #[br(count = short_val_3.max(0) as usize, args { inner: (ver,) })]
+    pub unnamed_list_at_0x1411a3162: Vec<RgeStaticObjectEntry2>,
     /// game: `short_val`
     /// read at 0x1411a31fe
     pub short_val_4: i16,
     /// unnamed in the binary
-    /// read by 0x1408cb520
-    #[br(count = short_val_4.max(0) as usize)]
-    pub particle_3: Vec<Particle>,
+    /// a loop of 1 reads; unnamed in the binary
+    #[br(count = short_val_4.max(0) as usize, args { inner: (ver,) })]
+    pub unnamed_list_at_0x1411a3343: Vec<RgeStaticObjectEntry3>,
     /// game: `mLastHumanOrderTime`
     /// read at 0x1411a33f2
     pub last_human_order_time: u32,
@@ -2417,6 +2984,17 @@ pub struct PathData {
     pub repath_time: f32,
 }
 
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct RgeMovingObjectEntry1 {
+    /// unnamed in the binary
+    /// read by 0x140f97360
+    #[br(args(ver))]
+    pub path_data: PathData,
+}
+
 /// Read by `FUN_14115d480` of the build.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
@@ -2460,16 +3038,16 @@ pub struct RgeMovingObject {
     /// read at 0x14115f1d4
     pub num_path_datas: i32,
     /// unnamed in the binary
-    /// read by 0x140f97360
-    #[br(count = num_path_datas.max(0) as usize)]
-    pub path_data: Vec<PathData>,
+    /// a loop of 1 reads; unnamed in the binary
+    #[br(count = num_path_datas.max(0) as usize, args { inner: (ver,) })]
+    pub unnamed_list_at_0x14115f390: Vec<RgeMovingObjectEntry1>,
     /// game: `haveFuturePathData`
     /// read at 0x14115f41f
     pub have_future_path_data: u32,
     /// unnamed in the binary
     /// read by 0x140f97360
     #[br(if(have_future_path_data == 1), args(ver))]
-    pub path_data_2: Option<PathData>,
+    pub path_data: Option<PathData>,
     /// game: `haveMovement`
     /// read at 0x14115f7ea
     pub have_movement: u32,
@@ -3902,8 +4480,8 @@ pub struct TribeCombatObject {
     pub local_resource_store_size: u32,
     /// unnamed in the binary
     /// a loop of 2 reads; unnamed in the binary
-    #[br(if(local_resource_store_size != 0), count = local_resource_store_size as usize)]
-    pub unnamed_list_at_0x141224ded: Option<Vec<TribeCombatObjectEntry1>>,
+    #[br(count = local_resource_store_size as usize)]
+    pub unnamed_list_at_0x141224ded: Vec<TribeCombatObjectEntry1>,
     /// game: `mConversionRate`
     /// read at 0x141224ed2
     pub conversion_rate: f32,
@@ -4096,22 +4674,22 @@ pub struct TribeBuildingObject {
     pub local_disabled_techs_size: u32,
     /// game: `value`
     /// read at 0x1411e4ced
-    #[br(if(local_disabled_techs_size != 0), count = local_disabled_techs_size as usize)]
-    pub value: Option<Vec<i16>>,
+    #[br(count = local_disabled_techs_size as usize)]
+    pub value: Vec<i16>,
     /// game: `localAvailableUnitsSize`
     /// read at 0x1411e4d70
     pub local_available_units_size: u32,
     /// game: `value`
     /// read at 0x1411e4f9c
-    #[br(if(local_available_units_size != 0), count = local_available_units_size as usize)]
-    pub value_2: Option<Vec<i16>>,
+    #[br(count = local_available_units_size as usize)]
+    pub value_2: Vec<i16>,
     /// game: `localResearchedTechsSize`
     /// read at 0x1411e502f
     pub local_researched_techs_size: u32,
     /// game: `value`
     /// read at 0x1411e5294
-    #[br(if(local_researched_techs_size != 0), count = local_researched_techs_size as usize)]
-    pub value_3: Option<Vec<i16>>,
+    #[br(count = local_researched_techs_size as usize)]
+    pub value_3: Vec<i16>,
     /// game: `mIsOnMangroveShallows`
     /// read at 0x1411e532c
     #[br(if(ver >= 0x421999))]
@@ -4280,8 +4858,12 @@ pub struct PlayerObjects {
     /// one flag per master; the loop below reads the enabled ones
     #[br(count = master_object_num.max(0) as usize)]
     pub enabled: Vec<u32>,
-    /// an enabled master: marker, type, the master, marker
+    /// unnamed in the binary
+    /// a marker the game checks
     #[brw(magic = b"\x0b")]
+    #[br(if(!(master_object_num < 1)))]
+    pub marker: Option<()>,
+    /// an enabled master: marker, type, the master, marker
     #[br(if(!(master_object_num < 1) && master_object_num > 0), count = enabled.iter().filter(|&&e| e != 0).count() as usize, args { inner: (ver,) })]
     pub masters: Option<Vec<PlayerMaster>>,
     /// unnamed in the binary
@@ -4371,6 +4953,399 @@ pub struct PlayerObjects {
     /// game: `&stone`
     /// helper 0x140a91060
     pub stone: i32,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b"\x0b")]
+    pub end_marker: (),
+}
+
+/// Read by `FUN_14167b2d0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct ScenarioEditorPhantomPlayer {
+    /// read by 0x141681e80
+    #[br(args(ver, num_players))]
+    pub world_player_scenario_editor_phantom: WorldPlayer,
+    /// unnamed in the binary
+    /// read by 0x1416267a0
+    #[br(args(ver, num_players))]
+    pub player_objects: PlayerObjects,
+}
+
+/// Read by `FUN_14167aca0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct HumanOrCoopPlayer {
+    /// read by 0x141681d10
+    #[br(args(ver, num_players))]
+    pub world_player_human_or_coop: WorldPlayer,
+    /// unnamed in the binary
+    /// read by 0x1416267a0
+    #[br(args(ver, num_players))]
+    pub player_objects: PlayerObjects,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct WorldPlayerGaiaEntry1 {
+    /// unnamed in the binary
+    /// read into param_1+(longlong)local_4c4*3+0x28f
+    pub unnamed_at_0x14167c329: u32,
+    /// unnamed in the binary
+    /// read into local_4a0*8+0x147c+(longlong)param_1
+    pub unnamed_at_0x14167c3db: u32,
+    /// unnamed in the binary
+    /// read into param_1+local_4a0+0x290
+    pub unnamed_at_0x14167c491: u32,
+}
+
+/// Read by `FUN_14167be80` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct WorldPlayerGaia {
+    /// read by 0x1415f1160
+    #[br(args(ver, num_players))]
+    pub world_player: WorldPlayer,
+    /// unnamed in the binary
+    /// read at 0x14167c082
+    pub unnamed_0x1468: u32,
+    /// unnamed in the binary
+    /// read into (undefined4*)((longlong)param_1+0x146c)
+    pub unnamed_at_0x14167c117: u32,
+    /// unnamed in the binary
+    /// a loop of 3 reads; unnamed in the binary
+    #[br(count = 5)]
+    pub unnamed_list_at_0x14167c329: Vec<WorldPlayerGaiaEntry1>,
+    /// unnamed in the binary
+    /// read at 0x14167c57b into a local (local_478)
+    pub unnamed_at_0x14167c57b: u32,
+    /// unnamed in the binary
+    /// read at 0x14167c616 into a local (local_470)
+    pub unnamed_at_0x14167c616: u32,
+    /// unnamed in the binary
+    /// read at 0x14167c68c into a local (local_468)
+    pub unnamed_at_0x14167c68c: u32,
+    /// unnamed in the binary
+    /// read at 0x14167c702 into a local (local_460)
+    pub unnamed_at_0x14167c702: u32,
+    /// unnamed in the binary
+    /// read at 0x14167c778 into a local (local_458)
+    pub unnamed_at_0x14167c778: [u8; 36],
+    /// unnamed in the binary
+    /// read at 0x14167c7ee into a local (local_450)
+    pub unnamed_at_0x14167c7ee: [u8; 36],
+    /// unnamed in the binary
+    /// read at 0x14167c89e into a local (local_498)
+    pub unnamed_at_0x14167c89e: u32,
+    /// unnamed in the binary
+    /// read at 0x14167c914 into a local (local_448)
+    pub unnamed_at_0x14167c914: [u8; 40],
+    /// unnamed in the binary
+    /// read into plVar1
+    pub unnamed_at_0x14167c989: u32,
+    /// unnamed in the binary
+    /// read at 0x14167c9ff into a local (local_440)
+    pub unnamed_at_0x14167c9ff: u32,
+    /// unnamed in the binary
+    /// read at 0x14167ca75 into a local (local_438)
+    pub unnamed_at_0x14167ca75: [u8; 200],
+    /// unnamed in the binary
+    /// read into plVar3
+    pub unnamed_at_0x14167caea: u32,
+    /// unnamed in the binary
+    /// read at 0x14167cb5d into a local (local_480)
+    pub unnamed_at_0x14167cb5d: [u8; 40],
+}
+
+/// Read by `FUN_14167a670` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct GaiaPlayer {
+    /// read by 0x14167be80
+    #[br(args(ver, num_players))]
+    pub world_player_gaia: WorldPlayerGaia,
+    /// unnamed in the binary
+    /// read by 0x1416267a0
+    #[br(args(ver, num_players))]
+    pub player_objects: PlayerObjects,
+}
+
+/// Read by `FUN_14167a040` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct ComputerPlayer {
+    /// read by 0x141677a40
+    #[br(args(ver, num_players))]
+    pub world_player_computer: WorldPlayer,
+    /// unnamed in the binary
+    /// read by 0x1416267a0
+    #[br(args(ver, num_players))]
+    pub player_objects: PlayerObjects,
+}
+
+/// Read by `FUN_14167b900` (`WorldPlayerFactory.cpp`) of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct Player {
+    /// game: `&type`
+    /// helper 0x1415073f0
+    pub type_: u8,
+    /// unnamed in the binary
+    /// read by 0x14167b2d0; the creator FUN_141679be0 registers for the type; its vtable slot 1 constructs the player
+    #[br(if(type_ == 0), args(ver, num_players))]
+    pub scenario_editor_phantom_player: Option<ScenarioEditorPhantomPlayer>,
+    /// unnamed in the binary
+    /// read by 0x14167aca0; the creator FUN_141679be0 registers for the type; its vtable slot 1 constructs the player
+    #[br(if(type_ == 1), args(ver, num_players))]
+    pub human_or_coop_player: Option<HumanOrCoopPlayer>,
+    /// unnamed in the binary
+    /// read by 0x14167a670; the creator FUN_141679be0 registers for the type; its vtable slot 1 constructs the player
+    #[br(if(type_ == 2), args(ver, num_players))]
+    pub gaia_player: Option<GaiaPlayer>,
+    /// unnamed in the binary
+    /// read by 0x14167a040; the creator FUN_141679be0 registers for the type; its vtable slot 1 constructs the player
+    #[br(if(type_ == 3), args(ver, num_players))]
+    pub computer_player: Option<ComputerPlayer>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct SavedView {
+    /// HD RGE_View_Stack entry, first float
+    pub x: f32,
+    /// HD RGE_View_Stack entry, second float
+    pub y: f32,
+}
+
+/// Read by `FUN_14163e970` (`WorldPlayerBase.cpp`) of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct WorldPlayerBase {
+    /// game: `&relation`
+    /// read at 0x14163f09e
+    #[brw(magic = b"\x0b")]
+    #[br(count = num_players)]
+    pub relation: Vec<u8>,
+    /// HD RGE_Player::unitDiplomacy (int32 per player)
+    #[br(count = num_players)]
+    pub unit_diplomacy: Vec<i32>,
+    /// HD RGE_Player::allied_LOS_Enable (int32), after relations
+    pub allied_los_enable: i32,
+    /// HD RGE_Player::allied_victory (uchar), after allied_LOS_Enable
+    pub allied_victory: u8,
+    /// HD RGE_Player::name (char*)
+    pub name: LenString16,
+    /// HD RGE_Player::attribute_num (int32), counts the attributes
+    #[brw(magic = b"\x16")]
+    pub attribute_num: i32,
+    /// unnamed in the binary
+    /// a marker the game checks
+    #[brw(magic = b"!")]
+    pub marker: (),
+    /// HD RGE_Player::attributes (float*)
+    #[br(count = attribute_num.max(0) as usize)]
+    pub attributes: Vec<f32>,
+    /// a second attribute array of DE (save > 0x140f5b), unnamed
+    #[br(count = attribute_num.max(0) as usize)]
+    pub attributes_2: Vec<u32>,
+    /// HD RGE_Player::view_x (float)
+    #[brw(magic = b"\x0b")]
+    pub view_x: f32,
+    /// HD RGE_Player::view_y (float)
+    pub view_y: f32,
+    /// HD RGE_Player::view_stack_size (int32), counts the saved views
+    pub view_stack_size: i32,
+    /// HD RGE_Player::view_stack: (x, y) per saved view
+    #[br(if((1..=10).contains(&view_stack_size)), count = view_stack_size.max(0) as usize)]
+    pub views: Option<Vec<SavedView>>,
+    /// HD RGE_Player::map_x (int16)
+    pub map_x: i16,
+    /// HD RGE_Player::map_y (int16)
+    pub map_y: i16,
+    /// HD RGE_Player::culture (uchar), the byte after type
+    pub culture: u8,
+    /// game: `&civId`
+    /// helper 0x14163c630
+    pub civ_id: u8,
+    /// game: `&mEquippedSkins`
+    /// helper 0x140d46ce0
+    pub equipped_skins: LenVec32<i64>,
+    /// HD RGE_Player::game_status (uchar), culture + 1
+    pub game_status: u8,
+    /// HD RGE_Player::resigned (uchar), culture + 3
+    pub resigned: u8,
+    /// game: `&colorTableId`
+    /// helper 0x140c94e10
+    #[brw(magic = b"\x0b")]
+    pub color_table_id: u8,
+    /// unnamed in the binary
+    /// read at 0x141640c43
+    #[brw(magic = b"\x0b")]
+    pub unnamed_0x674: u32,
+    /// unnamed in the binary
+    /// read at 0x141640c83
+    pub unnamed_0x678: u32,
+    /// unnamed in the binary
+    /// read at 0x141640e51 into a local (local_4774)
+    pub unnamed_at_0x141640e51: i32,
+    /// unnamed in the binary
+    /// read at 0x141640eaa into a local (local_4770)
+    #[br(count = unnamed_at_0x141640e51.max(0) as usize)]
+    pub unnamed_at_0x141640eaa: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x1416416b5
+    pub unnamed_0x6b0: u32,
+    /// unnamed in the binary
+    /// read at 0x1416416f5
+    pub unnamed_0x6b4: u32,
+    /// unnamed in the binary
+    /// read at 0x141641735
+    pub unnamed_0x6b8: u32,
+    /// unnamed in the binary
+    /// read at 0x141641775
+    pub unnamed_0x6bc: u32,
+    /// unnamed in the binary
+    /// read at 0x1416417b5
+    pub unnamed_0x6c0: u32,
+    /// unnamed in the binary
+    /// read at 0x1416417f5
+    pub unnamed_0x6c4: u32,
+    /// unnamed in the binary
+    /// read at 0x141641841
+    pub unnamed_0x6c8: u32,
+    /// unnamed in the binary
+    /// read at 0x14164188a
+    pub unnamed_0x6cc: [u8; 16],
+    /// unnamed in the binary
+    /// read at 0x1416418ca
+    pub unnamed_0x6dc: [u8; 16],
+    /// unnamed in the binary
+    /// read at 0x14164190a
+    pub unnamed_0x6ec: [u8; 16],
+    /// unnamed in the binary
+    /// read at 0x14164195a
+    pub unnamed_0x31c: u32,
+    /// unnamed in the binary
+    /// read at 0x14164199a
+    pub unnamed_0x320: u32,
+    /// unnamed in the binary
+    /// read at 0x1416419da
+    pub unnamed_0x324: u32,
+    /// unnamed in the binary
+    /// read at 0x141641a1a
+    pub unnamed_0x328: u32,
+    /// unnamed in the binary
+    /// read at 0x141641a5a
+    pub unnamed_0x32c: u32,
+    /// unnamed in the binary
+    /// read at 0x141641a9a
+    pub unnamed_0x330: u32,
+    /// unnamed in the binary
+    /// read at 0x141641ada
+    pub unnamed_0x334: u32,
+    /// unnamed in the binary
+    /// read at 0x141641b1a
+    pub unnamed_0x338: u32,
+    /// unnamed in the binary
+    /// read at 0x141641b70
+    pub unnamed_0x33c: u32,
+    /// unnamed in the binary
+    /// read at 0x141641bc1
+    pub unnamed_0x608: u32,
+    /// unnamed in the binary
+    /// read at 0x141641c01
+    pub unnamed_0x60c: u32,
+    /// unnamed in the binary
+    /// read at 0x141641c41
+    pub unnamed_0x610: u8,
+    /// unnamed in the binary
+    /// read at 0x141641c92
+    pub unnamed_0x611: u8,
+    /// unnamed in the binary
+    /// read at 0x141641cd2
+    pub unnamed_0x612: u8,
+    /// game: `&disable_build_help`
+    /// helper 0x140ccd170
+    pub disable_build_help: u8,
+    /// game: `&local_targeting_mode`
+    /// helper 0x140a91060
+    pub local_targeting_mode: i32,
+    /// game: `&targeting_factor_scalar`
+    /// helper 0x140a91060
+    pub targeting_factor_scalar: i32,
+    /// game: `&tradeAttackEvasion`
+    /// helper 0x140ccd170
+    pub trade_attack_evasion: u8,
+    /// game: `&mVillagerAttackReset`
+    /// helper 0x140ccd170
+    pub villager_attack_reset: u8,
+    /// game: `&boarLureDestination`
+    /// helper 0x140c94e10
+    pub boar_lure_destination: u8,
+    /// game: `&mAttackMoveMaxDistance`
+    /// helper 0x140a91060
+    pub attack_move_max_distance: i32,
+    /// game: `&stringId`
+    /// helper 0x140a91060
+    pub string_id: i32,
+    /// unnamed in the binary
+    /// helper 0x140932fa0
+    pub unnamed_at_0x141642029: LenString32,
+    /// game: `&mNameMode`
+    /// helper 0x14163caf0
+    pub name_mode: i32,
+    /// unnamed in the binary
+    /// read at 0x14164214f
+    pub unnamed_0x55c: i32,
+    /// unnamed in the binary
+    /// read at 0x1416421a4 into a local (local_477c)
+    #[br(if(unnamed_0x55c > 0))]
+    pub unnamed_at_0x1416421a4: Option<u32>,
+    /// unnamed in the binary
+    /// read at 0x1416421f2
+    #[br(if(unnamed_0x55c > 0))]
+    pub unnamed_0x558: Option<u32>,
+    /// unnamed in the binary
+    /// read at 0x14164224a into a local (local_477c)
+    #[br(count = unnamed_0x55c.max(0) as usize)]
+    pub unnamed_at_0x14164224a: Vec<u32>,
+    /// game: `&preferredTradeDistance`
+    /// helper 0x140a91160
+    pub preferred_trade_distance: f32,
+    /// game: `&disableTowerPriority`
+    /// helper 0x140ccd170
+    pub disable_tower_priority: u8,
+    /// game: `&mMoreTechsMode`
+    /// helper 0x140ccd170
+    pub more_techs_mode: u8,
+    /// game: `&mGaiaCiv`
+    /// helper 0x1412ceaf0
+    pub gaia_civ: i32,
+    /// game: `&mDisableVillagerGarrison`
+    /// helper 0x140a91060
+    pub disable_villager_garrison: i32,
+    /// game: `&mAllowSerjeantBuilding`
+    /// helper 0x140ccd170
+    pub allow_serjeant_building: u8,
+    /// game: `&mAllowCapturingGaiaUnits`
+    /// helper 0x140ccd170
+    pub allow_capturing_gaia_units: u8,
     /// unnamed in the binary
     /// the routine's closing marker
     #[brw(magic = b"\x0b")]

@@ -18,8 +18,8 @@ fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The header sections before the players, written in read order.
-fn write_before_players(h: &de::header::Header) -> Vec<u8> {
+/// The header sections up to the last player, written in read order.
+fn write_through_players(h: &de::header::Header) -> Vec<u8> {
     let mut out = Cursor::new(Vec::new());
     h.version.write_le(&mut out).unwrap();
     h.lobby.write_le(&mut out).unwrap();
@@ -30,6 +30,9 @@ fn write_before_players(h: &de::header::Header) -> Vec<u8> {
     (h.particles.len() as u32 / 27).write_le(&mut out).unwrap();
     h.particles.write_le(&mut out).unwrap();
     h.identifier.write_le(&mut out).unwrap();
+    for p in &h.players {
+        p.player.write_le(&mut out).unwrap();
+    }
     out.into_inner()
 }
 
@@ -62,8 +65,11 @@ fn tier_1_headers_write_back_their_bytes() {
         }
         let inflated = chapters[0].inflate_header().unwrap();
         let header = de::header::parse(&inflated).unwrap();
-        let theirs = &inflated[..header.ends.players_start];
-        if let Some(at) = first_difference(&write_before_players(&header), theirs) {
+        let end = header
+            .players
+            .last()
+            .map_or(header.ends.players_start, |p| p.ends.end);
+        if let Some(at) = first_difference(&write_through_players(&header), &inflated[..end]) {
             differ.push(format!("{}: first difference at {at:#x}", path.display()));
         }
         checked += 1;

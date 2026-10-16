@@ -84,7 +84,7 @@ fn marvinblue_sections_end_where_imhex_says() {
         let name = |part: &str| format!("player{i}{part}");
         assert_eq!(p.ends.start, expected_start(&name("")), "player {i}");
         assert_eq!(
-            p.objects.masters.as_ref().map_or(0, Vec::len),
+            p.objects().masters.as_ref().map_or(0, Vec::len),
             expected_count(&name(".initial_objects")),
             "player {i}"
         );
@@ -101,7 +101,7 @@ fn marvinblue_sections_end_where_imhex_says() {
         assert_eq!(
             (
                 p.sleeping_objects().count(),
-                p.objects.doppleganger_objects.objects().count()
+                p.objects().doppleganger_objects.objects().count()
             ),
             (0, 0),
             "player {i}"

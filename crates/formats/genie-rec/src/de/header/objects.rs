@@ -3,9 +3,45 @@
 //! the base load first; the factories hold one optional struct per object type.
 
 use super::generated::player::{
-    Object, ObjectList, RgeActionObject, RgeMovingObject, RgeObject, RgeStaticObject,
-    TribeCombatObject, UnitAiModule,
+    Object, ObjectList, Player, PlayerObjects, RgeActionObject, RgeMovingObject, RgeObject,
+    RgeStaticObject, TribeCombatObject, UnitAiModule, WorldPlayer,
 };
+
+impl Player {
+    /// The player load of its class (`WorldPlayer.cpp`); None for a type no creator handles.
+    pub fn world_player(&self) -> Option<&WorldPlayer> {
+        None.or(self
+            .scenario_editor_phantom_player
+            .as_ref()
+            .map(|p| &p.world_player_scenario_editor_phantom))
+            .or(self
+                .human_or_coop_player
+                .as_ref()
+                .map(|p| &p.world_player_human_or_coop))
+            .or(self
+                .gaia_player
+                .as_ref()
+                .map(|p| &p.world_player_gaia.world_player))
+            .or(self
+                .computer_player
+                .as_ref()
+                .map(|p| &p.world_player_computer))
+    }
+
+    /// The masters, maps and objects (WorldPlayer vtable slot 29).
+    pub fn objects(&self) -> Option<&PlayerObjects> {
+        None.or(self
+            .scenario_editor_phantom_player
+            .as_ref()
+            .map(|p| &p.player_objects))
+            .or(self
+                .human_or_coop_player
+                .as_ref()
+                .map(|p| &p.player_objects))
+            .or(self.gaia_player.as_ref().map(|p| &p.player_objects))
+            .or(self.computer_player.as_ref().map(|p| &p.player_objects))
+    }
+}
 
 impl ObjectList {
     /// The objects in list order, without the entry of type 0 that ends the list.

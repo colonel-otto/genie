@@ -128,6 +128,61 @@ where
     }
 }
 
+/// Marks a part this reader does not read yet, so callers can tell it from a parse error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnsupportedFeature(pub &'static str);
+
+impl std::fmt::Display for UnsupportedFeature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unsupported: {}", self.0)
+    }
+}
+
+impl std::error::Error for UnsupportedFeature {}
+
+/// The part named by an [`UnsupportedFeature`] anywhere in a read error, with its position.
+pub fn unsupported_in(e: &binrw::Error) -> Option<(&'static str, usize)> {
+    let root = e.root_cause();
+    let what = root.custom_err::<UnsupportedFeature>()?.0;
+    let at = match root {
+        binrw::Error::Custom { pos, .. } => *pos as usize,
+        _ => 0,
+    };
+    Some((what, at))
+}
+
+/// A part of the layout the generator does not derive yet (aoe2de-exe-re `layout`, helper kind
+/// `unsupported`): reading it fails with an [`UnsupportedFeature`] naming the part; it is never
+/// written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unsupported;
+
+impl BinRead for Unsupported {
+    type Args<'a> = (&'static str,);
+
+    fn read_options<R: Read + Seek>(
+        reader: &mut R,
+        _: Endian,
+        (what,): Self::Args<'_>,
+    ) -> BinResult<Self> {
+        Err(binrw::Error::Custom {
+            pos: reader.stream_position()?,
+            err: Box::new(UnsupportedFeature(what)),
+        })
+    }
+}
+
+impl BinWrite for Unsupported {
+    type Args<'a> = ();
+
+    fn write_options<W: Write + Seek>(&self, writer: &mut W, _: Endian, (): ()) -> BinResult<()> {
+        Err(binrw::Error::Custom {
+            pos: writer.stream_position()?,
+            err: Box::new(UnsupportedFeature("a part this reader never reads")),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,6 +238,13 @@ mod tests {
             round_trip::<LenVec32<i64>>(b"\x01\x00\x00\x00\x07\x00\x00\x00\x00\x00\x00\x00"),
             LenVec32(vec![7])
         );
+    }
+
+    #[test]
+    fn an_unsupported_part_fails_to_read_and_names_itself() {
+        let e = Unsupported::read_le_args(&mut Cursor::new(b"\0".as_slice()), ("the AI state",))
+            .unwrap_err();
+        assert_eq!(unsupported_in(&e), Some(("the AI state", 0)));
     }
 
     #[test]
