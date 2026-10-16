@@ -38,9 +38,9 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The lobby's game type 3, a scenario.
+/// The lobby's game mode 3 (GameOptions' `mGameMode`), a scenario.
 pub fn is_scenario(recording: &[u8]) -> bool {
     let chapter = genie_rec::de::chapters(recording).unwrap()[0];
     let header = genie_rec::de::header::parse(&chapter.inflate_header().unwrap()).unwrap();
-    header.lobby.game_type == 3
+    header.file_header.game_options_read.game_options.game_mode == 3
 }

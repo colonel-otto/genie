@@ -64,9 +64,9 @@ fn marvinblue_sections_end_where_imhex_says() {
         de::header::parse(&header_of(&dir.join("MarvinBlue/426048731.aoe2record"))).unwrap();
     assert_eq!(
         (
-            header.version.major,
-            header.version.build,
-            header.version.hundredths()
+            header.save_version().major,
+            header.save_version().build,
+            header.save_version().hundredths()
         ),
         (66, 158041, 6660)
     );

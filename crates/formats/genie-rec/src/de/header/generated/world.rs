@@ -6,6 +6,598 @@
 use super::super::{LenString16, LenString32, LenVec32, Positioned, SigString, Unsupported};
 use binrw::binrw;
 
+/// Read by `FUN_140cba350` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct Unnamed140cba350 {
+    /// game: `&numElements`
+    /// read at 0x140cba3c6
+    pub num_elements: u32,
+    /// game: `&item`
+    /// read by 0x140cba0a0, a routine of one read
+    #[br(count = num_elements as usize)]
+    pub item: Vec<u32>,
+}
+
+/// Read by `FUN_140ea28c0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct GameOptionsDlcs {
+    /// game: `&version`
+    /// read at 0x140ea2934
+    pub version: u32,
+    /// game: `&mrefGameDataSet`
+    /// read by 0x140ea1e90, a routine of one read
+    #[br(if(!(version < 2)))]
+    pub mref_game_data_set: Option<u32>,
+    /// game: `&dependencies`
+    /// read by 0x140cba350
+    #[br(args(ver))]
+    pub dependencies: Unnamed140cba350,
+}
+
+/// Read by `FUN_1412d1a30` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct Unnamed1412d1a30 {
+    /// game: `&numElements`
+    /// read at 0x1412d1aa4
+    pub num_elements: u32,
+    /// game: `&item`
+    /// read by 0x140e87a00, a routine of one read
+    #[br(count = num_elements as usize)]
+    pub item: Vec<u32>,
+}
+
+/// Read by `FUN_1412d2de0` (`CivilizationChoice.cpp`) of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct PlayerCivilization {
+    /// game: `&mCivilizationModeId`
+    /// read by 0x1412ce850, a routine of one read
+    pub civilization_mode_id: u32,
+    /// game: `&mSpecificCivilizationId`
+    /// helper 0x1412ceaf0
+    pub specific_civilization_id: i32,
+    /// game: `&mStarredCivilizationsIds`
+    /// read by 0x1412d1a30
+    #[br(args(ver))]
+    pub starred_civilizations_ids: Unnamed1412d1a30,
+}
+
+/// Read by `FUN_14131a930` (`GameOptionsPlayer.cpp`) of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct PlayerInfo {
+    /// game: `&version`
+    /// PlayerInfo's own version
+    #[br(assert(version == 14, "the build writes version 14"))]
+    pub version: i32,
+    /// game: `&mScenarioPlayerIndex`
+    /// read by 0x1413109a0, a routine of one read
+    pub scenario_player_index: u32,
+    /// game: `&mOverrideScenarioColorTableId`
+    /// read by 0x1413104e0, a routine of one read
+    pub override_scenario_color_table_id: u8,
+    /// game: `&mUserChosenTeam`
+    /// read by 0x141310780, a routine of one read
+    pub user_chosen_team: u8,
+    /// game: `&mResolvedTeam`
+    /// read by 0x141310780, a routine of one read
+    pub resolved_team: u8,
+    /// game: `&mDatFileCrc`
+    /// helper 0x140b4b760
+    pub dat_file_crc: u32,
+    /// game: `&mMultiPlayerGameVersion`
+    /// helper 0x140c94e10
+    pub multi_player_game_version: u8,
+    /// unnamed in the binary
+    /// read by 0x1412d2de0
+    #[br(args(ver))]
+    pub player_civilization: PlayerCivilization,
+    /// game: `&mAiScriptBaseName`
+    /// read by 0x140ed8050, a routine of one read
+    pub ai_script_base_name: SigString,
+    /// game: `&mAiCivNameIndex`
+    /// helper 0x140c94e10
+    pub ai_civ_name_index: u8,
+    /// game: `&mAiPlayerName`
+    /// read by 0x140ed8050, a routine of one read
+    pub ai_player_name: SigString,
+    /// game: `&mHumanSanitizedPlayerName`
+    /// read by 0x140ed8050, a routine of one read
+    pub human_sanitized_player_name: SigString,
+    /// game: `&mHumanUnsanitizedPlayerName`
+    /// read by 0x140ed8050, a routine of one read
+    pub human_unsanitized_player_name: SigString,
+    /// game: `&mHumanity`
+    /// read at 0x14131c576
+    pub humanity: u32,
+    /// game: `&mRlProfileId`
+    /// read at 0x14131c7f3
+    pub rl_profile_id: u64,
+    /// game: `&mWorldPlayerArrayIndexIncludingGaia`
+    /// read by 0x141319430, a routine of one read
+    pub world_player_array_index_including_gaia: u32,
+    /// game: `&mPrefersRandomCivs`
+    /// helper 0x140ccd170
+    pub prefers_random_civs: u8,
+    /// game: `&mIsCustomAI`
+    /// helper 0x140ccd170
+    pub is_custom_ai: u8,
+    /// game: `&mSlotColorOverride`
+    /// helper 0x140a91060
+    pub slot_color_override: i32,
+    /// game: `&mHandicap`
+    /// helper 0x140a91060
+    pub handicap: i32,
+    /// game: `&mPlayerPlatform`
+    /// read at 0x14131d8d4
+    pub player_platform: u32,
+}
+
+/// Read by `FUN_140d074c0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct UniqueFile {
+    /// read by 0x14085e8a0, a routine of one read; UniqueFile's member `Crc` (FUN_14085ecf0)
+    pub crc: u32,
+    /// read by 0x14085e8e0, a routine of one read; read by 0x140857200, a routine of one read; UniqueFile's member `PathSpec` (FUN_14085ecf0)
+    pub path_spec: SigString,
+}
+
+/// Read by `FUN_140d45910` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct Unnamed140d45910 {
+    /// game: `&numElements`
+    /// read at 0x140d45984
+    pub num_elements: u32,
+    /// game: `&item`
+    /// read at 0x140d45c64
+    #[br(count = num_elements as usize)]
+    pub item: Vec<u32>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct GameOptionsEntry1 {
+    /// game: `&mCustomMapPool[i][0]`
+    /// read by 0x140d074c0
+    #[br(args(ver))]
+    pub custom_map_pool: UniqueFile,
+    /// game: `&rawData`
+    /// read by 0x140d073b0, a routine of one read
+    pub raw_data: u32,
+    /// game: `&mCustomMapPool[i][1]`
+    /// read by 0x140d074c0
+    #[br(args(ver))]
+    pub custom_map_pool_2: UniqueFile,
+    /// game: `&rawData`
+    /// read by 0x140d073b0, a routine of one read
+    pub raw_data_2: u32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct GameOptionsEntry2 {
+    /// game: `&mCustomAIFiles[i]`
+    /// read by 0x140d074c0
+    #[br(args(ver))]
+    pub custom_aifiles: UniqueFile,
+    /// game: `&rawData`
+    /// read by 0x140d073b0, a routine of one read
+    pub raw_data: u32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct GameOptionsEntry3 {
+    /// game: `&mCustomXSFiles[i]`
+    /// read by 0x140d074c0
+    #[br(args(ver))]
+    pub custom_xsfiles: UniqueFile,
+    /// game: `&rawData`
+    /// read by 0x140d073b0, a routine of one read
+    pub raw_data: u32,
+}
+
+/// Read by `FUN_141305310` (`GameOptions.cpp`) of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, version: f32))]
+pub struct GameOptions {
+    /// unnamed in the binary
+    /// read by 0x140efb590
+    #[br(args(ver))]
+    pub game_options_dlcs: GameOptionsDlcs,
+    /// game: `&mDifficulty`
+    /// read by 0x1412dcc90, a routine of one read
+    pub difficulty: u32,
+    /// game: `&mMapSize`
+    /// read by 0x1412dee50, a routine of one read
+    pub map_size: u32,
+    /// game: `&mUserChosenMapType`
+    /// read by 0x140c949d0, a routine of one read
+    pub user_chosen_map_type: i32,
+    /// game: `&mResolvedMapType`
+    /// read by 0x140c949d0, a routine of one read
+    pub resolved_map_type: i32,
+    /// game: `&mVisibilityType`
+    /// read by 0x1412de4f0, a routine of one read
+    pub visibility_type: i32,
+    /// game: `&mVictory.getType()`
+    /// read by 0x1412de2d0, a routine of one read
+    pub victory_get_type: i32,
+    /// game: `&mResourceLevel`
+    /// read by 0x1412de0b0, a routine of one read
+    pub resource_level: i32,
+    /// game: `&mStartingAge`
+    /// read by 0x140cccd30, a routine of one read
+    pub starting_age: i32,
+    /// game: `&mEndingAge`
+    /// read by 0x140cccd30, a routine of one read
+    pub ending_age: i32,
+    /// game: `&mGameMode`
+    /// read by 0x1412dde90, a routine of one read
+    pub game_mode: i32,
+    /// game: `&mGameSpeed`
+    /// read by 0x140f4dea0, a routine of one read
+    #[brw(magic = b"\xa3_\x02\x00\xa3_\x02\x00")]
+    pub game_speed: u32,
+    /// game: `&mTreatyLength`
+    /// read by 0x140ee45b0, a routine of one read
+    pub treaty_length: u32,
+    /// game: `&mPopulationLimit`
+    /// read by 0x140ee45b0, a routine of one read
+    pub population_limit: u32,
+    /// game: `&mNumPlayersExcludingGaia`
+    /// read by 0x140ee4d30, a routine of one read
+    pub num_players_excluding_gaia: u32,
+    /// game: `&mMaxPlayersForLobby`
+    /// read by 0x140f4dc90, a routine of one read
+    pub max_players_for_lobby: u8,
+    /// game: `&unusedPlayerColor`
+    /// read by 0x140ee45b0, a routine of one read
+    pub unused_player_color: u32,
+    /// game: `&mVictory.getAmount()`
+    /// read by 0x140ee45b0, a routine of one read
+    pub victory_get_amount: u32,
+    /// game: `&mTradingEnabled`
+    /// read by 0x140f4dc90, a routine of one read
+    #[brw(magic = b"\xa3_\x02\x00")]
+    pub trading_enabled: u8,
+    /// game: `&mTeamBonusesDisabled`
+    /// read by 0x140f4dc90, a routine of one read
+    pub team_bonuses_disabled: u8,
+    /// game: `&mRandomizePositions`
+    /// read by 0x1412dd820, a routine of one read
+    pub randomize_positions: u8,
+    /// game: `&mFullTechTreeEnabled`
+    /// read by 0x1412dd820, a routine of one read
+    pub full_tech_tree_enabled: u8,
+    /// game: `&mNumberOfStartingUnits`
+    /// read by 0x140f4dc90, a routine of one read
+    pub number_of_starting_units: u8,
+    /// game: `&mTeamsLocked`
+    /// read by 0x140ee46c0, a routine of one read
+    pub teams_locked: u8,
+    /// game: `&mSpeedLocked`
+    /// read by 0x140ee46c0, a routine of one read
+    pub speed_locked: u8,
+    /// game: `&isMultiPlayer`
+    /// read by 0x140ee46c0, a routine of one read
+    pub is_multi_player: u8,
+    /// game: `&mCheatsEnabled`
+    /// read by 0x140ee46c0, a routine of one read
+    pub cheats_enabled: u8,
+    /// game: `&mRecordGameEnabled`
+    /// read by 0x140ee46c0, a routine of one read
+    pub record_game_enabled: u8,
+    /// game: `&mAnimalsEnabled`
+    /// read by 0x140ee46c0, a routine of one read
+    pub animals_enabled: u8,
+    /// game: `&mPredatorsEnabled`
+    /// read by 0x140ee46c0, a routine of one read
+    pub predators_enabled: u8,
+    /// game: `&mTurboEnabled`
+    /// read by 0x140ee46c0, a routine of one read
+    pub turbo_enabled: u8,
+    /// game: `&mSharedExploration`
+    /// read by 0x140ee46c0, a routine of one read
+    pub shared_exploration: u8,
+    /// game: `&mTeamPositions`
+    /// read by 0x140ee46c0, a routine of one read
+    pub team_positions: u8,
+    /// game: `&mSubGameModeFlag`
+    /// read by 0x140c949d0, a routine of one read
+    pub sub_game_mode_flag: i32,
+    /// game: `&mBattleRoyaleTime`
+    /// read by 0x140c949d0, a routine of one read
+    pub battle_royale_time: i32,
+    /// game: `&mHandicap`
+    /// read by 0x140ee46c0, a routine of one read
+    pub handicap: u8,
+    /// game: `&mWalkableFarms`
+    /// read by 0x140ee46c0, a routine of one read
+    pub walkable_farms: u8,
+    /// unnamed in the binary
+    /// a marker the game checks
+    #[brw(magic = b"\xa3_\x02\x00")]
+    pub marker: (),
+    /// game: `&mPlayerInfo[i]`
+    /// read by 0x1412dcf30
+    #[br(count = max_players_for_lobby as usize, args { inner: (ver,) })]
+    pub player_info: Vec<PlayerInfo>,
+    /// game: `&dummyNumberOfMapTiles`
+    /// read by 0x140ee45b0, a routine of one read
+    pub dummy_number_of_map_tiles: u32,
+    /// game: `&mVersion`
+    /// read by 0x140f4dea0, a routine of one read
+    pub version: u32,
+    /// game: `&dummyIsRestoreGame`
+    /// read by 0x140f4dc90, a routine of one read
+    pub dummy_is_restore_game: u8,
+    /// game: `&mFogOfWarEnabled`
+    /// read by 0x140ee46c0, a routine of one read
+    pub fog_of_war_enabled: u8,
+    /// game: `&mCheatNotificationsEnabled`
+    /// read by 0x140ee46c0, a routine of one read
+    pub cheat_notifications_enabled: u8,
+    /// game: `&mColoredChatEnabled`
+    /// read by 0x140ee46c0, a routine of one read
+    pub colored_chat_enabled: u8,
+    /// game: `&mIsRanked`
+    /// read by 0x1412dd820, a routine of one read
+    #[brw(magic = b"\xa3_\x02\x00")]
+    pub is_ranked: u8,
+    /// game: `&mAllowSpectators`
+    /// read by 0x1412dd820, a routine of one read
+    pub allow_spectators: u8,
+    /// game: `&mLobbyVisibility`
+    /// read by 0x1412dec30, a routine of one read
+    pub lobby_visibility: u32,
+    /// game: `&mHideCivNames`
+    /// read by 0x1412dd820, a routine of one read
+    pub hide_civ_names: u8,
+    /// game: `&mIsAutomatch`
+    /// read by 0x1412dd820, a routine of one read
+    pub is_automatch: u8,
+    /// game: `&mSpectatorDelay`
+    /// read by 0x140ee45b0, a routine of one read
+    pub spectator_delay: u32,
+    /// game: `&mIsUsingScenarioCiv`
+    /// read by 0x1412dd820, a routine of one read
+    pub is_using_scenario_civ: u8,
+    /// game: `&mCustomScenarioOrCampaignFile`
+    /// read by 0x140d074c0
+    #[br(args(ver))]
+    pub custom_scenario_or_campaign_file: UniqueFile,
+    /// game: `&mCustomRandomMapFile`
+    /// read by 0x140d074c0
+    #[br(args(ver))]
+    pub custom_random_map_file: UniqueFile,
+    /// game: `&mCustomRandomMapScenarioFile`
+    /// read by 0x140d074c0
+    #[br(args(ver))]
+    pub custom_random_map_scenario_file: UniqueFile,
+    /// game: `&rawData`
+    /// read by 0x140d073b0, a routine of one read
+    pub raw_data: u32,
+    /// game: `&rawData`
+    /// read by 0x140d073b0, a routine of one read
+    pub raw_data_2: u32,
+    /// game: `&rawData`
+    /// read by 0x140d073b0, a routine of one read
+    pub raw_data_3: u32,
+    /// unnamed in the binary
+    /// a loop of 4 reads; unnamed in the binary
+    #[br(count = 10, args { inner: (ver,) })]
+    pub unnamed_list_at_0x14130c23c: Vec<GameOptionsEntry1>,
+    /// game: `&mStandardMapPool`
+    /// read by 0x1412dce30
+    #[br(args(ver))]
+    pub standard_map_pool: Unnamed140d45910,
+    /// game: `&capacity`
+    /// read by 0x1412dd700, a routine of one read
+    pub capacity: u64,
+    /// unnamed in the binary
+    /// a loop of 2 reads; unnamed in the binary
+    #[br(count = capacity as usize, args { inner: (ver,) })]
+    pub unnamed_list_at_0x14130c7e8: Vec<GameOptionsEntry2>,
+    /// game: `&capacity`
+    /// read by 0x1412dd700, a routine of one read
+    pub capacity_2: u64,
+    /// unnamed in the binary
+    /// a loop of 2 reads; unnamed in the binary
+    #[br(count = capacity_2 as usize, args { inner: (ver,) })]
+    pub unnamed_list_at_0x14130cb58: Vec<GameOptionsEntry3>,
+    /// game: `&mGameId`
+    /// read by 0x1412dca90, a routine of one read
+    pub game_id: [u8; 16],
+    /// game: `&mGameTitle`
+    /// read by 0x1412dd030, a routine of one read
+    pub game_title: SigString,
+    /// game: `&mMatchType`
+    /// read by 0x1412dd5e0, a routine of one read
+    pub match_type: u64,
+    /// game: `&mModdedDatasetTitle`
+    /// read by 0x1412dd030, a routine of one read
+    pub modded_dataset_title: SigString,
+    /// game: `&mModdedDatasetWorkshopId`
+    /// read by 0x1412dd700, a routine of one read
+    pub modded_dataset_workshop_id: u64,
+    /// game: `&mModdedDatasetCrc`
+    /// read by 0x140d073b0, a routine of one read
+    pub modded_dataset_crc: u32,
+    /// game: `&mDatasetIsOfficial`
+    /// read by 0x1412dd820, a routine of one read
+    pub dataset_is_official: u8,
+    /// game: `&mSelectedContentMode`
+    /// read by 0x1412dd9a0, a routine of one read
+    pub selected_content_mode: i32,
+    /// game: `&mIsFreeHost`
+    /// read by 0x1412dd820, a routine of one read
+    pub is_free_host: u8,
+    /// game: `&mPlayerInfo[i].getInLobby()`
+    /// read by 0x1412dd820, a routine of one read
+    #[br(count = max_players_for_lobby as usize)]
+    pub player_info_get_in_lobby: Vec<u8>,
+    /// game: `&mStartButtonPressed`
+    /// read by 0x1412dd820, a routine of one read
+    pub start_button_pressed: u8,
+    /// game: `&mCampaignKey`
+    /// read by 0x1412dd030, a routine of one read
+    pub campaign_key: SigString,
+    /// game: `&mMapStyleType`
+    /// read by 0x1412dd3e0, a routine of one read
+    pub map_style_type: u32,
+    /// game: `&mCollideAndCorrecting`
+    /// read by 0x1412dd820, a routine of one read
+    pub collide_and_correcting: u8,
+    /// game: `&mVillagerForceDrop`
+    /// read by 0x1412dd820, a routine of one read
+    pub villager_force_drop: u8,
+    /// game: `&mBlockHumanityTeamChange`
+    /// read by 0x1412dd820, a routine of one read
+    pub block_humanity_team_change: u8,
+    /// game: `&mCoopCampaignIndex`
+    /// read by 0x140ee45b0, a routine of one read
+    pub coop_campaign_index: u32,
+    /// game: `&mCoopScenarioIndex`
+    /// read by 0x140ee45b0, a routine of one read
+    pub coop_scenario_index: u32,
+    /// game: `&mGameSessionId`
+    /// read by 0x1412dcb90, a routine of one read
+    pub game_session_id: [u8; 16],
+    /// game: `&mRandomMapSeed`
+    /// read by 0x140d073b0, a routine of one read
+    pub random_map_seed: u32,
+    /// game: `&mPlaySlideshows`
+    /// read by 0x1412dd820, a routine of one read
+    pub play_slideshows: u8,
+    /// game: `&mOtherPlayers`
+    /// read by 0x140ee45b0, a routine of one read
+    pub other_players: u32,
+    /// game: `&mMapFilters.asArray[i]`
+    /// read by 0x1412dd820, a routine of one read
+    #[br(count = 8)]
+    pub map_filters_as_array: Vec<u8>,
+    /// game: `&mControllerOnlyScenario`
+    /// read by 0x1412dd820, a routine of one read
+    pub controller_only_scenario: u8,
+    /// game: `&mKeyboardAndMouseOnlyScenario`
+    /// read by 0x1412dd820, a routine of one read
+    pub keyboard_and_mouse_only_scenario: u8,
+    /// game: `&mGameWasSaved`
+    /// read by 0x1412dd820, a routine of one read
+    pub game_was_saved: u8,
+    /// game: `&mCampaignDifficultyModifier`
+    /// read by 0x140ee45b0, a routine of one read
+    pub campaign_difficulty_modifier: u32,
+    /// game: `&mIsEventScenario`
+    /// read by 0x1412dd820, a routine of one read
+    pub is_event_scenario: u8,
+    /// game: `&mAllowedCivsOption`
+    /// read by 0x1412dd130, a routine of one read
+    pub allowed_civs_option: u32,
+    /// game: `&mAntiquityMode`
+    /// read by 0x1412dd820, a routine of one read
+    pub antiquity_mode: u8,
+    /// game: `&size`
+    /// read by 0x1412dd700, a routine of one read
+    pub size: u64,
+    /// game: `&civ`
+    /// read by 0x1412dd230, a routine of one read
+    #[br(count = size as usize)]
+    pub civ: Vec<u32>,
+    /// game: `&size_pompeii`
+    /// read by 0x1412dd700, a routine of one read
+    pub size_pompeii: u64,
+    /// game: `&civ`
+    /// read by 0x1412dd230, a routine of one read
+    #[br(count = size_pompeii as usize)]
+    pub civ_2: Vec<u32>,
+}
+
+/// Read by `FUN_1412ff850` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct GameOptionsRead {
+    /// game: `&version`
+    /// GameOptions' `&version`, passed to the serializer
+    #[br(assert(version == 1122.0, "the build writes version 1122.0"))]
+    pub version: f32,
+    /// unnamed in the binary
+    /// read by 0x141305310
+    #[br(args(ver, version))]
+    pub game_options: GameOptions,
+}
+
+/// Read by `FUN_140edcb10` (`SaveGameFileHeader.cpp`) of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct SaveGameFileHeader {
+    /// game: `&mGameVersion`
+    /// read by 0x140edc460, a routine of one read
+    #[br(count = 8)]
+    pub game_version: Vec<u8>,
+    /// game: `&oldSaveGameVersion`
+    /// `&oldSaveGameVersion`, SRead<float>
+    #[br(assert(old_save_game_version == -1.0, "the build writes old_save_game_version -1.0"))]
+    pub old_save_game_version: f32,
+    /// game: `&newSaveGameVersion.data`
+    /// `&newSaveGameVersion.data` (16.16: the save version)
+    pub new_save_game_version: u32,
+    /// game: `&mGameBuildNumber`
+    /// helper 0x140b4b760
+    pub game_build_number: u32,
+    /// game: `&mDateTimePlayed`
+    /// helper 0x140b4b760
+    pub date_time_played: u32,
+    /// unnamed in the binary
+    /// read by 0x1412ff850
+    #[br(args(ver))]
+    pub game_options_read: GameOptionsRead,
+    /// game: `&mSaveGameName`
+    /// read by 0x140ed8050, a routine of one read
+    pub save_game_name: SigString,
+    /// game: `&mRandomSeed`
+    /// helper 0x140a91060
+    pub random_seed: i32,
+    /// game: `&mGameDuration`
+    /// helper 0x140a91160
+    pub game_duration: f32,
+    /// game: `&mTimeOfSave`
+    /// read at 0x140ededb0
+    pub time_of_save: u64,
+}
+
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
@@ -1158,9 +1750,9 @@ pub struct BxsDataEntry1 {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry2 {
-    /// game: `mArrayInfos.get(i)->mName`
-    /// read by 0x140ed8050, a routine of one read; named by the save's write in the same place (0x1416e4fa0, write at 0x141310c13)
-    pub array_infos_geti_name: SigString,
+    /// game: `&(info->mName)`
+    /// read by 0x140ed8050, a routine of one read
+    pub info_name: SigString,
     /// game: `&info->mArrayID`
     /// helper 0x140a91060
     pub info_array_id: i32,
@@ -1215,10 +1807,10 @@ pub struct BxsDataEntry6 {
     /// game: `array->getNumber()`
     /// helper 0x140a91060; read into the temporary `&count`; named by the save's write in the same place (0x1416e4fa0, write at 0x140a913c7)
     pub array_get_number: i32,
-    /// game: `array`
-    /// read by 0x140ed8050, a routine of one read; named by the save's write in the same place (0x1416e4fa0)
+    /// game: `&tempStr`
+    /// read by 0x140ed8050, a routine of one read
     #[br(if(array_get_number > 0), count = array_get_number.max(0) as usize)]
-    pub array: Option<Vec<SigString>>,
+    pub temp_str: Option<Vec<SigString>>,
 }
 
 #[binrw]
@@ -1272,8 +1864,8 @@ pub struct BxsData {
     /// game: `&mID`
     /// helper 0x140a91060
     pub id: i32,
-    /// game: `mName`
-    /// read by 0x140ed8050, a routine of one read; named by the save's write in the same place (0x1416e4fa0, write at 0x141310c13)
+    /// game: `&mName`
+    /// read by 0x140ed8050, a routine of one read
     pub name: SigString,
     /// game: `&numberFunctions`
     /// read at 0x1416dc2fc
@@ -3548,10 +4140,10 @@ pub struct ActiveSpriteListEntry1 {
     /// game: `type`
     /// the type the node factory (param_4) switches on; a type of 0 ends the list (the factory's error result)
     pub sprite_type: u8,
-    /// unnamed in the binary
+    /// game: `type`
     /// read by 0x1413b8a90
     #[br(if(sprite_type != 0), args(ver, sprite_type))]
-    pub active_sprite: Option<ActiveSprite>,
+    pub type_: Option<ActiveSprite>,
 }
 
 /// Read by `FUN_1413b87c0` of the build.
@@ -6651,10 +7243,10 @@ pub struct Picture {
     /// game: `&version`
     /// read at 0x1408d0ef2
     pub version: u32,
-    /// unnamed in the binary
+    /// game: `&picSize`
     /// read by 0x1408d0450
     #[br(args(ver))]
-    pub picture_size: PictureSize,
+    pub pic_size: PictureSize,
     /// game: `&orientation`
     /// read at 0x1408d13a6
     pub orientation: u16,
@@ -6731,17 +7323,17 @@ pub struct BaseScenario {
     /// game: `&MaxPlayers`
     /// helper 0x140b4b760
     pub max_players: i32,
-    /// game: `GaiaPlayerIndex`
-    /// read by 0x140ca5250, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x140cac6dc)
+    /// game: `&GaiaPlayerIndex`
+    /// read by 0x140ca5250, a routine of one read
     pub gaia_player_index: u32,
     /// unnamed in the binary
     /// a loop of 1 reads; unnamed in the binary
     #[br(count = max_players.max(0) as usize)]
     pub unnamed_list_at_0x140ca7718: Vec<BaseScenarioEntry1>,
-    /// game: `mPlayerNames[i].getStringId()`
-    /// read by 0x140c949d0, a routine of one read; named by the save's write in the same place (0x140cac1b0, write at 0x140caca3c)
+    /// game: `&playerNameStringId`
+    /// read by 0x140c949d0, a routine of one read
     #[br(count = max_players.max(0) as usize)]
-    pub player_names_get_string_id: Vec<i32>,
+    pub player_name_string_id: Vec<i32>,
     /// unnamed in the binary
     /// a loop of 5 reads; unnamed in the binary
     #[br(count = max_players.max(0) as usize)]
@@ -7008,12 +7600,12 @@ pub struct TribeScenario {
     /// one per player, counted by num_disable_buildings
     #[br(if(base_scenario.max_players != 0), parse_with = binrw::helpers::args_iter(num_disable_buildings.iter().copied().map(|x| (x as i32,)).collect::<Vec<_>>()))]
     pub disabled_building: Option<Vec<DisabledBuilding>>,
-    /// game: `&((*pA)[i])`
-    /// read by 0x140ce16a0, a routine of one read; read at 0x140ce1712
+    /// game: `&ScenarioOptions`
+    /// read by 0x140ce16a0, a routine of one read
     #[br(count = 3)]
-    pub p_a: Vec<u32>,
-    /// game: `mPlayerAge[i]`
-    /// read by 0x140cccd30, a routine of one read; named by the save's write in the same place (0x140ced220, write at 0x140a913c7)
+    pub scenario_options: Vec<u32>,
+    /// game: `&mPlayerAge[i]`
+    /// read by 0x140cccd30, a routine of one read
     #[br(count = base_scenario.max_players as usize)]
     pub player_age: Vec<i32>,
     /// game: `checksum`
@@ -7645,11 +8237,11 @@ pub struct UnitGroups {
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct BaseWorldEntry1 {
-    /// game: `worldPlayerIndex`
-    /// read by 0x141507c70, a routine of one read; named by the save's write in the same place (0x141546db0, write at 0x140a913c7)
-    pub world_player_index: i32,
-    /// game: `humanity`
-    /// read by 0x1415080b0, a routine of one read; named by the save's write in the same place (0x141546db0, write at 0x140a913c7)
+    /// game: `&worldPlayerArrayIndex`
+    /// read by 0x141507c70, a routine of one read
+    pub world_player_array_index: i32,
+    /// game: `&humanity`
+    /// read by 0x1415080b0, a routine of one read
     pub humanity: i32,
     /// game: `nameSize`
     /// read at 0x14153c254
@@ -7775,8 +8367,8 @@ pub struct BaseWorld {
     /// read at 0x14153c4e7
     #[br(count = 9)]
     pub is_resigned: Vec<u32>,
-    /// game: `num_players`
-    /// read by 0x141507830, a routine of one read; named by the save's write in the same place (0x141546db0, write at 0x14154a9e5)
+    /// game: `&num_players`
+    /// read by 0x141507830, a routine of one read
     pub num_players_2: i32,
     /// game: `playerGameVersion`
     /// read at 0x14153ce1d
@@ -7808,9 +8400,9 @@ pub struct BaseWorld {
     /// read by 0x141536ef0
     #[br(args(ver))]
     pub unit_groups: UnitGroups,
-    /// unnamed in the binary
+    /// game: `&colorCorrectionType`
     /// read by 0x1415082d0, a routine of one read
-    pub unnamed_at_0x14153dee7: SigString,
+    pub color_correction_type: SigString,
     /// game: `Game::Get()->IsUnitDeletionAllowed()`
     /// helper 0x140ccd170; read into the temporary `&yes`; named by the save's write in the same place (0x141546db0, write at 0x140ccd2d8)
     pub game_get_is_unit_deletion_allowed: u8,
@@ -8236,14 +8828,14 @@ pub struct World {
     /// game: `countdown_clock`
     /// read at 0x1415d12bb
     pub countdown_clock: f32,
-    /// game: `mWorldScoreDisplayOn`
-    /// read by 0x140ee47f0, a routine of one read; named by the save's write in the same place (0x1415e25e0, write at 0x140c94f78)
+    /// game: `&mWorldScoreDisplayOn`
+    /// read by 0x140ee47f0, a routine of one read
     pub world_score_display_on: u8,
-    /// game: `mWorldTimeDisplayOn`
-    /// read by 0x140ee47f0, a routine of one read; named by the save's write in the same place (0x1415e25e0, write at 0x140c94f78)
+    /// game: `&mWorldTimeDisplayOn`
+    /// read by 0x140ee47f0, a routine of one read
     pub world_time_display_on: u8,
-    /// game: `mWorldResearchDisplayOn`
-    /// read by 0x141599000, a routine of one read; named by the save's write in the same place (0x1415e25e0, write at 0x140ccd2d8)
+    /// game: `&mWorldResearchDisplayOn`
+    /// read by 0x141599000, a routine of one read
     pub world_research_display_on: u8,
     /// game: `controllingComputerPlayer`
     /// read at 0x1415d18db
@@ -8356,9 +8948,10 @@ pub struct World {
     /// game: `mGuardStateFlags`
     /// read at 0x1415d3d53
     pub guard_state_flags: i16,
-    /// read by 0x14156dbc0; named by the save's write in the same place (0x1415e25e0)
+    /// game: `triggerSystemResult`
+    /// read by 0x14156dbc0
     #[br(args(ver))]
-    pub trigger_system: TriggerSystem,
+    pub trigger_system_result: TriggerSystem,
     /// game: `isXSEnabled`
     /// read at 0x1415d3f55
     pub is_xsenabled: u8,
@@ -8378,8 +8971,8 @@ pub struct World {
     /// read by 0x1415c72c0; named by the save's write in the same place (0x1415e25e0)
     #[br(if(is_rmsxsenabled != 0), args(ver))]
     pub scripted_rmssystem: Option<BxsRuntime>,
-    /// game: `playerTeams[i]`
-    /// read by 0x141310780, a routine of one read; named by the save's write in the same place (0x1415e25e0, write at 0x140c94f78)
+    /// game: `&playerTeams[i]`
+    /// read by 0x141310780, a routine of one read
     #[br(count = 8)]
     pub player_teams: Vec<u8>,
     /// game: `vis_set`
