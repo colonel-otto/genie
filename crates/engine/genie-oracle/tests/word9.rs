@@ -6,13 +6,13 @@ mod common;
 use common::{corpus, is_scenario, masters, tier1_recordings};
 use genie_oracle::{GroupCommand, SAVE_WORDS, compare_first_checkpoint, simulate_word9};
 
-/// MarvinBlue/426048731 player 2 is the corpus's one lane that is idle up to checkpoint 1. The
-/// slice models all its units (no `unsupported`), but word 9 is not reproduced yet: against the tick
-/// oracle the slice holds the whole block up to tick 280; in tick 281 player 1's second BUILD places
-/// a house foundation whose unit-AI constructor draws three AI values before player 2's units update
-/// (`tests/tick_trace_corpus.rs`).
+/// MarvinBlue/426048731 player 2 is the corpus's one lane that is idle up to checkpoint 1, and the
+/// slice reproduces its word 9 there. It needs the objects that die at the start and player 1's two
+/// BUILDs (ticks 135 and 281), whose foundations' unit-AI constructors draw from the shared AI
+/// stream; tick 281 is player 2's turn. The BUILDs may create unit groups (`GROUP_COMMANDS`); with
+/// villagers as builders they do not.
 #[test]
-fn marvinblue_player_2_is_modelled_but_not_reproduced_yet() {
+fn marvinblue_player_2_is_reproduced_at_checkpoint_1() {
     let (Some(dir), Some(masters)) = (corpus(), masters()) else {
         return eprintln!("GENIE_REC_CORPUS / GENIE_MASTERS are not set; skipping");
     };
@@ -20,18 +20,15 @@ fn marvinblue_player_2_is_modelled_but_not_reproduced_yet() {
     let lanes = simulate_word9(&data, Some(&masters)).unwrap();
     let p2 = lanes.iter().find(|w| w.id == 2).unwrap();
     assert_eq!(p2.unsupported, None);
-    assert_eq!(p2.checkpoint, 62248);
     assert_eq!(
         p2.group_command,
         Some(GroupCommand {
-            tick: 137,
+            tick: 136,
             player: 1,
             command: 0x66
         })
     );
-    // the current model's value, pinned so that a model change is noticed; the cow's Artifact
-    // action and the objects that die at the start are in, the remaining 188 too many are open
-    assert_eq!(p2.simulated, 62436);
+    assert_eq!((p2.simulated, p2.checkpoint), (62248, 62248));
 }
 
 /// MarvinBlue/426048869 player 6 (three villagers and a goat, idle up to the checkpoint): the goat's
@@ -49,8 +46,8 @@ fn an_idle_player_with_livestock_is_reproduced() {
 
 /// Word 9 on every tier-1 lane whose ten save words already match the first checkpoint, the lanes
 /// whose players changed nothing the save words see. Pinned, so that a model change is noticed.
-/// Open: the five lanes off (MarvinBlue/426048731 player 2's is another player's BUILD; the others
-/// have a Scout Cavalry or are off by a single AI draw), and the two the slice does not model.
+/// Open: the four lanes off (three with a Scout Cavalry, one off by a single AI draw), and the two
+/// whose unit-AI types the slice does not model.
 #[test]
 fn tier1_lanes_with_matching_save_words() {
     let (Some(dir), Some(masters)) = (corpus(), masters()) else {
@@ -92,5 +89,5 @@ fn tier1_lanes_with_matching_save_words() {
         }
     }
     eprintln!("exact {exact:#?}\noff {off:#?}\nunsupported {unsupported:#?}");
-    assert_eq!((exact.len(), off.len(), unsupported.len()), (15, 5, 2));
+    assert_eq!((exact.len(), off.len(), unsupported.len()), (16, 4, 2));
 }

@@ -52,9 +52,9 @@ fn the_trace_holds_every_checkpoint_of_its_recording() {
     assert!(checked > 0);
 }
 
-/// The slice against the tick oracle, tick by tick: MarvinBlue/426048731 player 2 (lane 1, idle up
-/// to checkpoint 1) and the first tick where the slice's block leaves the game's, with the words
-/// that differ there. Needs the trace of that recording in `GENIE_TICK_TRACE` and `GENIE_MASTERS`.
+/// The slice against the tick oracle, tick by tick over the whole trace: MarvinBlue/426048731 player
+/// 2 (lane 1, idle up to checkpoint 1) and the first tick where the slice's block leaves the game's,
+/// with the words that differ there. Needs the trace of that recording in `GENIE_TICK_TRACE` and `GENIE_MASTERS`.
 #[test]
 fn the_slice_follows_the_game_up_to_a_named_tick() {
     let (Ok(trace), Ok(rec), Some(masters)) = (
@@ -71,7 +71,7 @@ fn the_slice_follows_the_game_up_to_a_named_tick() {
     }
     let trace = TickTrace::decode(&std::fs::read(trace).unwrap()).unwrap();
     let data = std::fs::read(rec).unwrap();
-    let slice = genie_oracle::blocks_per_tick(&data, &[2], 498, Some(&masters)).unwrap();
+    let slice = genie_oracle::blocks_per_tick(&data, &[2], trace.len(), Some(&masters)).unwrap();
     let differing = |t: usize| -> Vec<usize> {
         (0..11)
             .filter(|&w| slice[t][0][w] != trace.lanes(t)[1][w])
@@ -87,9 +87,10 @@ fn the_slice_follows_the_game_up_to_a_named_tick() {
             .map(|&w| trace.lanes(t)[1][w])
             .collect::<Vec<_>>())
     );
-    // tick 281: player 1's second BUILD places a house foundation (object 10027) in do_command,
-    // and its unit-AI constructor (0x140c2e080) draws three AI values before player 2's turn
-    assert_eq!((first, words), (Some(281), vec![9]));
+    // the slice holds the whole block, through player 1's BUILDs at ticks 135 and 281 (their
+    // foundations' unit-AI constructors draw three AI values each), until player 2's own first
+    // command: a villager QUEUE (0x81) at its town centre in tick 553
+    assert_eq!((first, words), (Some(553), vec![1, 9]));
 }
 
 /// The slice's word-9 terms per object against the game's after a tick (MarvinBlue/426048731

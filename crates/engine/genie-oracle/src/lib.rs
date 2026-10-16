@@ -14,9 +14,10 @@ pub use masters::MasterTable;
 use genie_core::artifact::ARTIFACT_TYPE;
 use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
 use genie_core::lifecycle::{Class, Lifecycle, MasterData};
-use genie_core::turn::{Player, Turns, Unit};
+use genie_core::turn::{Command, Player, Turns, Unit};
+use genie_core::unit_ai::Unsupported;
 use genie_rec::de::header::Header;
-use genie_rec::de::header::generated::world::{PlayerObjects, RgeStaticObject};
+use genie_rec::de::header::generated::world::{Master, PlayerObjects, RgeStaticObject};
 use genie_rec::de::{self, Op, header::PlayerSection};
 
 /// The words of the first checkpoint that the start-of-game save determines: all but word 9.
@@ -38,6 +39,8 @@ pub enum Error {
     NoCheckpoint,
     /// A checkpoint lane names a player the header save does not have.
     NoSuchPlayer(u32),
+    /// A command comes before the body's first sync, so no tick runs it.
+    CommandBeforeFirstSync,
 }
 
 impl From<de::Error> for Error {
@@ -52,6 +55,7 @@ impl std::fmt::Display for Error {
             Error::Rec(e) => write!(f, "{e}"),
             Error::NoCheckpoint => write!(f, "the recording has no checkpoint"),
             Error::NoSuchPlayer(id) => write!(f, "a checkpoint names player {id}, not in the save"),
+            Error::CommandBeforeFirstSync => write!(f, "a command comes before the first sync"),
         }
     }
 }
@@ -147,7 +151,7 @@ pub const GROUP_COMMANDS: [u8; 7] = [0x00, 0x02, 0x03, 0x17, 0x1f, 0x66, 0x6e];
 /// A command that may create a unit group and so take the frame-seed chain out of the slice's model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GroupCommand {
-    /// The tick (1-based) the command executes in.
+    /// The tick (1-based) the command executes in: the frame of the sync before it.
     pub tick: u32,
     pub player: u8,
     pub command: u8,
@@ -287,28 +291,126 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         })
         .collect();
     let world = &header.world.base_world;
-    Turns::new(
+    let mut turns = Turns::new(
         world.world_time,
         world.current_frame_random_seed,
         world.player_turn.max(0) as usize,
         world.player_time_delta.clone(),
         players,
-    )
+    );
+    turns.next_object_id = world.next_object_id;
+    turns
 }
 
-/// The tick lengths of the chapter's first `limit` ticks (a sync or a checkpoint each).
-fn dts(chapter: &de::Chapter<'_>, limit: usize) -> Result<Vec<u32>, Error> {
-    let mut out = Vec::new();
+/// One frame of the body (FD-007's per-frame record order): the op-2 record that starts a tick, its
+/// dt and, every interval, a checkpoint, then the op-1 commands the tick runs after its SeedAll.
+struct Frame<'a> {
+    dt: u32,
+    checkpoint: Option<Box<de::Checkpoint>>,
+    commands: Vec<&'a [u8]>,
+}
+
+/// The chapter's first `limit` frames.
+fn frames<'a>(chapter: &de::Chapter<'a>, limit: usize) -> Result<Vec<Frame<'a>>, Error> {
+    let mut out: Vec<Frame<'a>> = Vec::new();
     for op in chapter.ops() {
+        let (dt, checkpoint) = match op? {
+            Op::Sync { dt } => (dt, None),
+            Op::Checkpoint { dt, checkpoint } => (dt, Some(checkpoint)),
+            Op::Command { packet, .. } => {
+                out.last_mut()
+                    .ok_or(Error::CommandBeforeFirstSync)?
+                    .commands
+                    .push(packet);
+                continue;
+            }
+            _ => continue,
+        };
         if out.len() == limit {
             break;
         }
-        match op? {
-            Op::Sync { dt } | Op::Checkpoint { dt, .. } => out.push(dt),
-            _ => {}
-        }
+        out.push(Frame {
+            dt,
+            checkpoint,
+            commands: Vec::new(),
+        });
     }
     Ok(out)
+}
+
+/// What the slice runs of a recorded command: BUILD only; every other command is left out (see
+/// [`GROUP_COMMANDS`] for what that may miss).
+///
+/// BUILD's packet: `u8 0x66, u8 player, u16 length, u16 builders (+4), f32 x (+8), f32 y (+0xc),
+/// i16 master (+0x10), ..., i32 builder ids (+0x20)` (`FUN_140e7a400`). The player byte is the comm
+/// player, which the handler maps to a world player through the lobby (`FUN_140e6b210`); the slice
+/// takes the two as equal.
+fn slice_command(packet: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
+    if packet.first() != Some(&0x66) || packet.len() < 0x12 {
+        return None;
+    }
+    let player = packet[1] as usize;
+    let master = i16::from_le_bytes([packet[0x10], packet[0x11]]);
+    let unit_ai = match sections.get(player) {
+        Some(section) => new_unit_ai(section.objects(), master),
+        None => Err(Unsupported("BUILD names a player the save does not have")),
+    };
+    Some(Command::Build {
+        player,
+        master,
+        unit_ai,
+    })
+}
+
+/// The unit AI a new object of `master` gets, by its class (`FUN_141215a90`): the building AI
+/// (17) for a building class without a missile, none for the classes without one, and for the
+/// rest a class the slice has no constructor for. The class is the master's fifth saved short,
+/// the missile the combat master's `missile_id` (`+0x8d4` in the game).
+fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, Unsupported> {
+    let m = objects
+        .master(master)
+        .ok_or(Unsupported("BUILD of a master the player does not have"))?;
+    let class = m
+        .static_part()
+        .ok_or(Unsupported("BUILD of a master without a static part"))?
+        .read_temp_5;
+    let missile = combat_master(m).map_or(-1, |c| c.missile_id);
+    match class {
+        5 | 7 | 8 | 11 | 14 | 15 | 16 | 30..=34 | 38 | 42 | 48 | 63 => Ok(None),
+        3 | 27 | 39 | 49 | 60 if missile < 0 => Ok(Some(17)),
+        _ => Err(Unsupported(
+            "BUILD of a master whose unit-AI class is not modelled",
+        )),
+    }
+}
+
+fn combat_master(
+    m: &Master,
+) -> Option<&genie_rec::de::header::generated::world::RgeMasterCombatObject> {
+    None.or(m
+        .tribe_master_combat_object
+        .as_ref()
+        .map(|c| &c.rge_master_combat_object))
+        .or(m
+            .tribe_master_building_object
+            .as_ref()
+            .map(|b| &b.tribe_master_combat_object.rge_master_combat_object))
+        .or(m
+            .rge_master
+            .as_ref()
+            .and_then(|r| r.rge_master_combat_object.as_ref()))
+}
+
+/// Run the slice over `frames`, each tick with its commands.
+fn run(turns: &mut Turns, frames: &[Frame<'_>], sections: &[PlayerSection<'_>]) {
+    for frame in frames {
+        let commands: Vec<Command> = frame
+            .commands
+            .iter()
+            .filter_map(|p| slice_command(p, sections))
+            .collect();
+        turns.tick_with(frame.dt, &commands);
+    }
 }
 
 /// Run the unit-AI slice from the header save up to the first checkpoint and compare word 9.
@@ -323,34 +425,23 @@ pub fn simulate_word9(
 ) -> Result<Vec<Word9>, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = de::header::parse(&chapter.inflate_header()?)?;
-    let mut dts = Vec::new();
-    let mut group_command = None;
-    let mut checkpoint = None;
-    for op in chapter.ops() {
-        match op? {
-            Op::Sync { dt } => dts.push(dt),
-            Op::Command { packet, .. } => {
-                if group_command.is_none() && GROUP_COMMANDS.contains(&packet[0]) {
-                    group_command = Some(GroupCommand {
-                        tick: dts.len() as u32 + 1,
-                        player: packet.get(1).copied().unwrap_or_default(),
-                        command: packet[0],
-                    });
-                }
-            }
-            Op::Checkpoint { checkpoint: c, .. } => {
-                checkpoint = Some(c);
-                break;
-            }
-            _ => {}
-        }
-    }
-    let checkpoint = checkpoint.ok_or(Error::NoCheckpoint)?;
+    let all = frames(&chapter, usize::MAX)?;
+    let first = all
+        .iter()
+        .position(|f| f.checkpoint.is_some())
+        .ok_or(Error::NoCheckpoint)?;
+    let checkpoint = all[first].checkpoint.as_ref().expect("found above");
+    let group_command = all[..first].iter().enumerate().find_map(|(i, f)| {
+        let packet = f.commands.iter().find(|p| GROUP_COMMANDS.contains(&p[0]))?;
+        Some(GroupCommand {
+            tick: i as u32 + 1,
+            player: packet.get(1).copied().unwrap_or_default(),
+            command: packet[0],
+        })
+    });
     let sections = header.players();
     let mut turns = slice(&header, masters);
-    for &dt in &dts {
-        turns.tick(dt);
-    }
+    run(&mut turns, &all[..first], &sections);
     checkpoint
         .lanes
         .iter()
@@ -416,13 +507,12 @@ pub fn word9_terms(
 ) -> Result<Vec<Word9Terms>, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = de::header::parse(&chapter.inflate_header()?)?;
-    if header.players().len() <= id as usize {
+    let sections = header.players();
+    if sections.len() <= id as usize {
         return Err(Error::NoSuchPlayer(id));
     }
     let mut turns = slice(&header, masters);
-    for dt in dts(&chapter, ticks)? {
-        turns.tick(dt);
-    }
+    run(&mut turns, &frames(&chapter, ticks)?, &sections);
     Ok(turns.players[id as usize]
         .objects
         .iter()
@@ -452,8 +542,8 @@ pub fn blocks_per_tick(
     }
     let mut turns = slice(&header, masters);
     let mut out = Vec::with_capacity(ticks);
-    for dt in dts(&chapter, ticks)? {
-        turns.tick(dt);
+    for frame in frames(&chapter, ticks)? {
+        run(&mut turns, std::slice::from_ref(&frame), &sections);
         out.push(
             ids.iter()
                 .map(|&id| lane_block(&sections[id as usize], id, &turns.players[id as usize]))

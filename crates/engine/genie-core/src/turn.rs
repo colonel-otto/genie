@@ -12,7 +12,7 @@
 //! slot and updates there in the same tick.
 
 use crate::artifact::Artifact;
-use crate::lifecycle::{Lifecycle, seconds};
+use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::rng::{Stream, Streams};
 use crate::unit_ai::{UnitAi, Unsupported};
 
@@ -25,6 +25,22 @@ pub struct Unit {
     pub ai: Option<UnitAi>,
     /// The livestock default action, the object's top action.
     pub artifact: Option<Artifact>,
+}
+
+/// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
+/// the players update (`TRIBE_Command::do_command`, `0x140e77b00`). The slice runs only what other
+/// players' lanes see of a command; the issuing player's lane stops.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Command {
+    /// BUILD (0x66, `FUN_140e7a400`): the player places a foundation of `master` (state 0, hit
+    /// points 1), with a unit AI of the given type if its class gets one; `Err` when the slice
+    /// cannot tell. The slice takes the placement and the cost as given (the recording's game
+    /// accepted them) and does not task the builders.
+    Build {
+        player: usize,
+        master: i16,
+        unit_ai: Result<Option<u32>, Unsupported>,
+    },
 }
 
 /// What a tick's update of one object needs from the world.
@@ -83,6 +99,8 @@ pub struct Turns {
     pub player_time: Vec<u32>,
     pub players: Vec<Player>,
     pub ticks: u32,
+    /// `mNextObjectId`, the id the next new object gets.
+    pub next_object_id: i32,
     streams: Streams,
 }
 
@@ -101,15 +119,68 @@ impl Turns {
             player_time,
             players,
             ticks: 0,
+            next_object_id: 0,
             streams: Streams::default(),
         }
     }
 
-    /// One world update of `dt` game milliseconds.
+    /// Run a command in the command phase. The issuing player's lane stops: the slice does not
+    /// model what the command does to its own units.
+    fn run(&mut self, command: &Command) {
+        match *command {
+            Command::Build {
+                player,
+                master,
+                unit_ai,
+            } => {
+                let id = self.next_object_id;
+                self.next_object_id += 1;
+                let ai = unit_ai.and_then(|t| {
+                    t.map(|t| UnitAi::constructed(t, self.streams.get(Stream::Ai)))
+                        .transpose()
+                });
+                let ai = ai.unwrap_or_else(|e| {
+                    // the constructor's draws are unknown, so the turn player's are too
+                    let turn = &mut self.players[self.player_turn];
+                    turn.unsupported
+                        .get_or_insert((self.ticks, turn.objects.len(), e));
+                    None
+                });
+                let owner = &mut self.players[player];
+                owner.objects.push(Unit {
+                    id,
+                    life: Lifecycle {
+                        class: Class::Animated,
+                        state: 0,
+                        hp: 1.0,
+                        master_id: master,
+                        ..Lifecycle::default()
+                    },
+                    ai,
+                    artifact: None,
+                });
+                owner.unsupported.get_or_insert((
+                    self.ticks,
+                    owner.objects.len() - 1,
+                    Unsupported("BUILD tasks the builders"),
+                ));
+            }
+        }
+    }
+
+    /// One world update of `dt` game milliseconds without commands.
     pub fn tick(&mut self, dt: u32) {
+        self.tick_with(dt, &[]);
+    }
+
+    /// One world update of `dt` game milliseconds, with the commands recorded in it.
+    pub fn tick_with(&mut self, dt: u32, commands: &[Command]) {
         self.ticks += 1;
         self.world_time = self.world_time.wrapping_add(dt);
         self.streams.seed_all(self.frame_seed);
+        for command in commands {
+            self.run(command);
+        }
         for (p, player) in self.players.iter_mut().enumerate() {
             self.player_time[p] = self.player_time[p].wrapping_add(dt);
             if player.unsupported.is_some() {
@@ -372,6 +443,74 @@ mod tests {
         assert_eq!(
             with_dead.players[0].objects[1].ai,
             alone.players[0].objects[0].ai
+        );
+    }
+
+    #[test]
+    fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_units() {
+        // MarvinBlue/426048731 tick 281: player 1's BUILD draws three AI values in the command
+        // phase, so player 2's units, on their turn, get the draws after them
+        let world = |objects: Vec<Unit>| {
+            let mut t = Turns::new(
+                0,
+                29910,
+                1,
+                vec![0, 0],
+                vec![
+                    Player::default(),
+                    Player {
+                        objects,
+                        ..Player::default()
+                    },
+                ],
+            );
+            t.next_object_id = 100;
+            t
+        };
+        let mut built = world(vec![live(2)]);
+        built.tick_with(
+            40,
+            &[Command::Build {
+                player: 0,
+                master: 70,
+                unit_ai: Ok(Some(17)),
+            }],
+        );
+        let foundation = &built.players[0].objects[0];
+        assert_eq!(
+            (
+                foundation.id,
+                foundation.life.state,
+                foundation.life.master_id
+            ),
+            (100, 0, 70)
+        );
+        assert_eq!(built.next_object_id, 101);
+        assert!(built.players[0].unsupported.is_some());
+        // the same tick without the BUILD, with three AI draws taken by hand after the reseed
+        let mut by_hand = world(vec![live(2)]);
+        let mut streams = Streams::default();
+        streams.seed_all(29910);
+        let ai = streams.get(Stream::Ai);
+        let first = UnitAi::constructed(17, ai).unwrap();
+        assert_eq!(foundation.ai, Some(first));
+        let next = 750 + ai.rand15() % 500;
+        by_hand.tick(40);
+        assert_eq!(
+            built.players[1].objects[0]
+                .ai
+                .as_ref()
+                .unwrap()
+                .retarget_timer,
+            next
+        );
+        assert_ne!(
+            by_hand.players[1].objects[0]
+                .ai
+                .as_ref()
+                .unwrap()
+                .retarget_timer,
+            next
         );
     }
 }

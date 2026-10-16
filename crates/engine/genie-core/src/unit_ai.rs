@@ -60,7 +60,39 @@ fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
     }
 }
 
+/// The base idle timeout (`+0x168`) the constructor sets; the adjusted one is drawn around it.
+const IDLE_TIMEOUT: u32 = 3000;
+
 impl UnitAi {
+    /// The unit AI a new object gets. `UnitAIModule`'s constructor (`0x140c2e080`) draws three
+    /// AI-stream values, in this order: the last retarget time `r % 500`, the adjusted idle timeout
+    /// `r % 1500 + 2250` and the retarget timer `750 + r % 500`. Only the building class (17,
+    /// `TribeBuildingUnitAIModule` `0x140c11470`, which sets the stance to 0) is modelled; for any
+    /// other type nothing is drawn.
+    pub fn constructed(ai_type: u32, ai: &mut Well512) -> Result<UnitAi, Unsupported> {
+        if ai_type != 17 {
+            return Err(Unsupported("constructor of a unit-AI type not modelled"));
+        }
+        let last_retarget_time = ai.rand15() % 500;
+        let adjusted_idle_timeout = ai.rand15() % (IDLE_TIMEOUT >> 1) + ((IDLE_TIMEOUT * 3) >> 2);
+        let retarget_timer = 750 + ai.rand15() % 500;
+        Ok(UnitAi {
+            ai_type,
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            idle_timer: 0,
+            adjusted_idle_timeout,
+            secondary_timer: 750,
+            look_around_timer: 0,
+            look_around_timeout: 1000,
+            last_retarget_time,
+            retarget_timer,
+            stance: 0,
+            retarget_disabled: 0,
+        })
+    }
+
     fn is_idle(&self) -> bool {
         self.current_order == -1 && self.current_action == -1 && self.current_target == -1
     }
@@ -220,5 +252,41 @@ mod tests {
             ..idle(13)
         };
         assert!(defensive.update_idle(1, 0, false, &mut r).is_err());
+    }
+
+    #[test]
+    fn a_new_building_unit_ai_draws_its_three_timers() {
+        // UnitAIModule's constructor: last retarget r % 500, adjusted idle timeout r % 1500 + 2250,
+        // retarget timer 750 + r % 500, in that order
+        let mut r = rng();
+        let ai = UnitAi::constructed(17, &mut r).unwrap();
+        let mut expected = rng();
+        let (a, b, c) = (expected.rand15(), expected.rand15(), expected.rand15());
+        assert_eq!(r.draws, 3);
+        assert_eq!(
+            ai,
+            UnitAi {
+                ai_type: 17,
+                current_order: -1,
+                current_action: -1,
+                current_target: -1,
+                idle_timer: 0,
+                adjusted_idle_timeout: b % 1500 + 2250,
+                secondary_timer: 750,
+                look_around_timer: 0,
+                look_around_timeout: 1000,
+                last_retarget_time: a % 500,
+                retarget_timer: 750 + c % 500,
+                stance: 0,
+                retarget_disabled: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn a_unit_ai_class_without_a_modelled_constructor_draws_nothing() {
+        let mut r = rng();
+        assert!(UnitAi::constructed(13, &mut r).is_err());
+        assert_eq!(r.draws, 0);
     }
 }
