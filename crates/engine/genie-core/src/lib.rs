@@ -2,6 +2,7 @@
 
 pub mod artifact;
 pub mod checkpoint;
+pub mod lifecycle;
 pub mod rng;
 pub mod turn;
 pub mod unit_ai;

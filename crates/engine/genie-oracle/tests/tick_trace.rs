@@ -1,0 +1,57 @@
+//! The tick oracle's per-tick trace (FD-015, `GRTICK1`): every tick's world time and checkpoint
+//! lanes from build 158041's own simulation, the reference the engine is compared with tick by tick.
+
+use flate2::{Compression, write::ZlibEncoder};
+use genie_oracle::tick_trace::{TickTrace, TraceError};
+use std::io::Write;
+
+fn encode(ticks: &[(u32, Vec<[u32; 11]>)]) -> Vec<u8> {
+    let lanes = ticks.first().map_or(0, |t| t.1.len());
+    let mut rows = Vec::new();
+    for (time, ls) in ticks {
+        rows.extend_from_slice(&time.to_le_bytes());
+        for lane in ls {
+            for w in lane {
+                rows.extend_from_slice(&w.to_le_bytes());
+            }
+        }
+    }
+    let mut z = ZlibEncoder::new(Vec::new(), Compression::default());
+    z.write_all(&rows).unwrap();
+    let mut out = b"GRTICK1\0".to_vec();
+    out.extend_from_slice(&(ticks.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(lanes as u32).to_le_bytes());
+    out.extend(z.finish().unwrap());
+    out
+}
+
+#[test]
+fn a_trace_gives_each_ticks_world_time_and_lanes() {
+    let lane = |b: u32| std::array::from_fn(|i| b + i as u32);
+    let ticks = vec![
+        (104, vec![lane(0), lane(11)]),
+        (208, vec![lane(1), lane(12)]),
+    ];
+    let trace = TickTrace::decode(&encode(&ticks)).unwrap();
+    assert_eq!(trace.len(), 2);
+    assert_eq!(trace.world_time(1), 208);
+    assert_eq!(trace.lanes(0), &[lane(0), lane(11)]);
+}
+
+#[test]
+fn a_file_of_another_kind_is_refused() {
+    assert!(matches!(
+        TickTrace::decode(b"GRTRACE3\0\0\0\0"),
+        Err(TraceError::NotATrace)
+    ));
+}
+
+#[test]
+fn the_first_difference_names_the_tick_lane_and_word() {
+    let a = TickTrace::decode(&encode(&[(104, vec![[1; 11]]), (208, vec![[2; 11]])])).unwrap();
+    let mut changed = [2; 11];
+    changed[9] = 7;
+    let b = TickTrace::decode(&encode(&[(104, vec![[1; 11]]), (208, vec![changed])])).unwrap();
+    assert_eq!(a.first_difference(&b), Some((1, 0, 9)));
+    assert_eq!(a.first_difference(&a), None);
+}

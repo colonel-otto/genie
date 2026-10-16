@@ -271,6 +271,7 @@ dependencies = [
 name = "genie-oracle"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "genie-core",
  "genie-rec",
 ]

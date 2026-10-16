@@ -10,3 +10,4 @@ publish = false
 [dependencies]
 genie-core = { path = "../genie-core" }
 genie-rec = { version = "0.1.1", path = "../../formats/genie-rec" }
+flate2.workspace = true

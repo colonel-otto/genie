@@ -1,4 +1,5 @@
-//! Corpus access shared by the oracle's integration tests.
+//! Corpus access shared by the oracle's integration tests. Each test crate uses a part of it.
+#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 
@@ -43,4 +44,11 @@ pub fn is_scenario(recording: &[u8]) -> bool {
     let chapter = genie_rec::de::chapters(recording).unwrap()[0];
     let header = genie_rec::de::header::parse(&chapter.inflate_header().unwrap()).unwrap();
     header.file_header.game_options_read.game_options.game_mode == 3
+}
+
+/// The `.dat` master table from `GENIE_MASTERS` (`scripts/dat_masters.py`); the slice's tests skip
+/// without it, as every start of game has objects that die.
+pub fn masters() -> Option<genie_oracle::MasterTable> {
+    let path = std::env::var_os("GENIE_MASTERS")?;
+    Some(genie_oracle::MasterTable::parse(&std::fs::read_to_string(path).unwrap()).unwrap())
 }
