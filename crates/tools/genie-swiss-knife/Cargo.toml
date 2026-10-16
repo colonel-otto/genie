@@ -1,0 +1,16 @@
+[package]
+name = "genie-swiss-knife"
+version = "0.0.0"
+description = "gsk, the genie swiss knife: one command-line tool for the files of the Genie engine (Age of Empires II). Placeholder: nothing is implemented yet."
+edition = "2024"
+rust-version.workspace = true
+license = "AGPL-3.0-only"
+authors.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["aoe2", "age-of-empires", "genie", "cli"]
+categories = ["command-line-utilities", "parser-implementations"]
+
+[[bin]]
+name = "gsk"
+path = "src/main.rs"

@@ -35,23 +35,23 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      # The engine crates must be warning-free. Add every new engine crate here.
-      - name: Clippy (engine crates, warnings are errors)
-        run: cargo clippy --locked --no-deps -p genie-core -p genie-oracle --all-targets -- -D warnings
+      # The engine and tool crates must be warning-free. Add every new engine or tool crate here.
+      - name: Clippy (engine and tool crates, warnings are errors)
+        run: cargo clippy --locked --no-deps -p genie-core -p genie-oracle -p genie-swiss-knife --all-targets -- -D warnings
       # The format crates imported from genie-rs still carry warnings; they are reported only.
       - name: Clippy (whole workspace, report only)
         run: cargo clippy --locked --workspace --all-targets
 
   dependencies:
-    name: Format crates do not depend on engine crates
+    name: Format crates do not depend on engine or tool crates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      # The format crates are GPL and must stay usable without the AGPL engine.
+      # The format crates are GPL and must stay usable without the AGPL engine and tool crates.
       - run: |
           cargo metadata --locked --format-version 1 --no-deps | jq -e -r '
-            [.packages[] | select(.manifest_path | contains("/crates/engine/")) | .name] as $engine
+            [.packages[] | select(.manifest_path | contains("/crates/engine/") or contains("/crates/tools/")) | .name] as $engine
             | [.packages[] | select(.manifest_path | contains("/crates/formats/"))
                | .name as $crate | .dependencies[] | select(.name | IN($engine[]))
                | "\($crate) depends on \(.name)"]

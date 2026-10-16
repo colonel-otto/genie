@@ -9,9 +9,11 @@ Licences
 
 - Format crates, crates/formats/*: GPL-3.0-only (genie-drs: GPL-3.0-or-later). Text: LICENSE-GPL-3.0.
 - Engine crates: AGPL-3.0-only. Text: LICENSE-AGPL-3.0.
+- Tool crates, crates/tools/* (genie-swiss-knife, the `gsk` command): AGPL-3.0-only. Text:
+  LICENSE-AGPL-3.0.
 
-Engine crates may depend on format crates. Format crates never depend on engine crates, so a GPL
-crate never pulls in AGPL code.
+Engine and tool crates may depend on format crates, and tool crates on engine crates. Format crates
+never depend on engine or tool crates, so a GPL crate never pulls in AGPL code.
 
 Origin of the format crates
 ---------------------------

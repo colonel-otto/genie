@@ -2,6 +2,7 @@
 # Format crates (GPL-3.0, imported from genie-rs) inherit [workspace.package] below.
 # Engine crates (AGPL-3.0) set their own licence, edition and authors; engine crates may depend on
 # format crates, never the reverse (a GPL crate must not pull in AGPL code).
+# Tool crates (AGPL-3.0, crates/tools/) follow the engine crates' rules and may depend on both.
 resolver = "2"
 members = [
   "crates/formats/genie-formats",
@@ -17,6 +18,7 @@ members = [
   "crates/formats/jascpal",
   "crates/engine/genie-core",
   "crates/engine/genie-oracle",
+  "crates/tools/genie-swiss-knife",
 ]
 
 [workspace.package]
