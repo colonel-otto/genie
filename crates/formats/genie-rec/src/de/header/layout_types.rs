@@ -70,7 +70,12 @@ impl BinRead for SigString {
 impl BinWrite for SigString {
     type Args<'a> = ();
 
-    fn write_options<W: Write + Seek>(&self, writer: &mut W, endian: Endian, (): ()) -> BinResult<()> {
+    fn write_options<W: Write + Seek>(
+        &self,
+        writer: &mut W,
+        endian: Endian,
+        (): (),
+    ) -> BinResult<()> {
         let len = u16::try_from(self.bytes.len()).map_err(|e| binrw::Error::Custom {
             pos: writer.stream_position().unwrap_or_default(),
             err: Box::new(e),
@@ -108,7 +113,12 @@ where
 {
     type Args<'a> = ();
 
-    fn write_options<W: Write + Seek>(&self, writer: &mut W, endian: Endian, (): ()) -> BinResult<()> {
+    fn write_options<W: Write + Seek>(
+        &self,
+        writer: &mut W,
+        endian: Endian,
+        (): (),
+    ) -> BinResult<()> {
         let count = u32::try_from(self.0.len()).map_err(|e| binrw::Error::Custom {
             pos: writer.stream_position().unwrap_or_default(),
             err: Box::new(e),

@@ -127,7 +127,10 @@ mod tests {
         binrw::BinWrite::write_le(&s, &mut out).unwrap();
         assert_eq!(out.into_inner(), bytes);
         for (bytes, max) in [
-            (b"\x00\x00\x00\x00\x60\x0a\x01\x00a\x05\x00\x00\x00".as_slice(), 10),
+            (
+                b"\x00\x00\x00\x00\x60\x0a\x01\x00a\x05\x00\x00\x00".as_slice(),
+                10,
+            ),
             (b"\x00\x01\x00\x00\x60\x0a\x00\x00".as_slice(), 1),
         ] {
             let list = string_list(&mut Cursor::new(bytes), binrw::Endian::Little, (max,)).unwrap();
