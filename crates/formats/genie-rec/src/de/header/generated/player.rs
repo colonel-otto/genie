@@ -5016,9 +5016,9 @@ pub struct WorldPlayerGaia {
     /// game: `update_time`
     /// read at 0x14167c082; named by the save's write of this member at 0x14167fe2e
     pub update_time: f32,
-    /// unnamed in the binary
-    /// read into (undefined4*)((longlong)param_1+0x146c)
-    pub unnamed_at_0x14167c117: u32,
+    /// game: `update_nature`
+    /// read at 0x14167c117; named by the save's write of this member at 0x14167ffbd
+    pub update_nature: i32,
     /// unnamed in the binary
     /// a loop of 3 reads; unnamed in the binary
     #[br(count = 5)]
