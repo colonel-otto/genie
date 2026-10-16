@@ -72,15 +72,17 @@ fn marvinblue_sections_end_where_imhex_says() {
     );
     let ends = header.ends;
     assert_eq!(ends.lobby, expected("lobby_settings"));
-    assert_eq!(ends.ai, expected("ai_config"));
-    assert_eq!(ends.replay, expected("replay"));
+    // aoe2rec's replay block ends 8 bytes into the game's map load: the map's 0xdeaddead marker
+    // and its format version (MapInfo), which the pattern counts to the replay
+    assert_eq!(ends.replay + 8, expected("replay"));
     assert_eq!(ends.map, expected("map_info"));
     assert_eq!(ends.players_start, expected_start("players"));
 
-    assert_eq!(header.players.len(), 3);
+    let players = header.players();
+    assert_eq!(players.len(), 3);
     // The boundaries inside a player section are checked against the game's own reads
     // (tests/de_oracle.rs); against ImHex, the section starts, ends and counts.
-    for (i, p) in header.players.iter().enumerate() {
+    for (i, p) in players.iter().enumerate() {
         let name = |part: &str| format!("player{i}{part}");
         assert_eq!(p.ends.start, expected_start(&name("")), "player {i}");
         assert_eq!(
@@ -96,8 +98,8 @@ fn marvinblue_sections_end_where_imhex_says() {
     }
     // Every section, Gaia's included, is read to its end, and the next one starts right there. The
     // pattern skips Gaia's tail by searching for player 1; ImHex's offset for player 1 is the check.
-    assert_eq!(header.players[0].ends.end, expected_start("player1"));
-    for (i, p) in header.players.iter().enumerate().skip(1) {
+    assert_eq!(players[0].ends.end, expected_start("player1"));
+    for (i, p) in players.iter().enumerate().skip(1) {
         assert_eq!(
             (
                 p.sleeping_objects().count(),

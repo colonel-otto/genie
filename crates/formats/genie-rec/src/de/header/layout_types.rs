@@ -183,10 +183,67 @@ impl BinWrite for Unsupported {
     }
 }
 
+/// A value with the stream position it was read at: genie-rec reports where the header's sections
+/// start (aoe2de-exe-re `layout`, overlay `positioned`). Writes the value only. binrw's own
+/// `PosValue` compares only with the bare value, so a struct holding it cannot derive `PartialEq`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Positioned<T> {
+    pub pos: u64,
+    pub val: T,
+}
+
+impl<T> std::ops::Deref for Positioned<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.val
+    }
+}
+
+impl<T: BinRead> BinRead for Positioned<T> {
+    type Args<'a> = T::Args<'a>;
+
+    fn read_options<R: Read + Seek>(
+        reader: &mut R,
+        endian: Endian,
+        args: Self::Args<'_>,
+    ) -> BinResult<Self> {
+        let pos = reader.stream_position()?;
+        Ok(Positioned {
+            pos,
+            val: T::read_options(reader, endian, args)?,
+        })
+    }
+}
+
+impl<T: BinWrite> BinWrite for Positioned<T> {
+    type Args<'a> = T::Args<'a>;
+
+    fn write_options<W: Write + Seek>(
+        &self,
+        writer: &mut W,
+        endian: Endian,
+        args: Self::Args<'_>,
+    ) -> BinResult<()> {
+        self.val.write_options(writer, endian, args)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use binrw::io::Cursor;
+
+    #[test]
+    fn a_positioned_value_keeps_where_it_was_read_and_writes_the_value_only() {
+        let mut c = Cursor::new(b"\x01\x02\x00".as_slice());
+        u8::read_le(&mut c).unwrap();
+        let p = Positioned::<u16>::read_le(&mut c).unwrap();
+        assert_eq!((p.pos, p.val, *p), (1, 2, 2));
+        let mut out = Cursor::new(Vec::new());
+        p.write_le(&mut out).unwrap();
+        assert_eq!(out.into_inner(), b"\x02\x00");
+    }
 
     #[test]
     fn strings_read_their_length_then_the_bytes() {

@@ -1,13 +1,14 @@
-//! The world save at the start of a chapter, read sequentially through every player section.
+//! The world save at the start of a chapter, read and written to its last byte.
 //!
-//! Hand-ported from aoe2rec's `patterns/aoe2header.hexpat` (MIT, see `NOTICE`) and checked byte
-//! for byte against ImHex's offsets for that pattern. Where the pattern guesses (fixed sizes,
-//! look-aheads, delimiter runs, the search for the next player), the reader follows the save
-//! functions of build 158041 instead; each such part names its function. Read-only: the writer
-//! will be generated from the codegen IR that replaces this port (workspace FD-006-D05). Version
-//! gates compare [`SaveVersion::hundredths`](super::SaveVersion::hundredths): 6660 is save 66.6.
+//! The version block and the lobby settings are hand-ported from aoe2rec's
+//! `patterns/aoe2header.hexpat` (MIT, see `NOTICE`), as is the map ([`MapInfo`]); everything after
+//! the lobby is the world (`World::load_world`), generated from build 158041's load routines
+//! (aoe2de-exe-re `layout`, workspace FD-014) into [`generated::world`]. Every field's boundary is
+//! checked against the game's own reads (tests/de_oracle.rs), and a parsed header writes back byte
+//! for byte (tests/de_roundtrip.rs). The lobby's version gates compare
+//! [`SaveVersion::hundredths`](super::SaveVersion::hundredths) (6660 is save 66.6); the generated
+//! ones the raw 16.16 version ([`VersionBlock::raw`]).
 
-mod ai;
 pub mod generated;
 mod layout_types;
 mod lobby;
@@ -15,17 +16,18 @@ mod map;
 mod objects;
 mod player;
 mod primitives;
-mod replay;
 
-pub use ai::{AiConfig, AiData, AiRule, AiRuleGroup, SizedString32};
-pub use generated::player::{Object, ObjectList, Player, PlayerObjects, WorldPlayer};
-pub use layout_types::{LenString16, LenString32, LenVec32, STRING_SIGNATURE, SigString};
+pub use generated::world::{
+    BaseWorld, Object, ObjectList, Player, PlayerObjects, World, WorldPlayer,
+};
+pub use layout_types::{
+    LenString16, LenString32, LenVec32, Positioned, STRING_SIGNATURE, SigString,
+};
 pub use layout_types::{Unsupported, UnsupportedFeature, unsupported_in};
 pub use lobby::{AiFile, LobbyPlayer, LobbySettings};
 pub use map::{MapInfo, MapZone, Obstructions, Tile};
 pub use player::{PlayerEnds, PlayerSection};
 pub use primitives::{DeString, StringList};
-pub use replay::Replay;
 
 use binrw::BinRead;
 use binrw::io::{Read, Seek, SeekFrom};
@@ -68,33 +70,54 @@ pub const MIN_HUNDREDTHS: u32 = 6600;
 /// Where the sections of the header end, for checks against other readers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SectionEnds {
+    /// The game settings end; the world starts (aoe2rec's `ai_config` is the world's first field,
+    /// `loadAIRules`, and the AI scripts it announces).
     pub lobby: usize,
-    pub ai: usize,
+    /// BaseWorld's fields before the map (aoe2rec's `Replay`).
     pub replay: usize,
     pub map: usize,
     /// The first player section starts here.
     pub players_start: usize,
 }
 
-/// The header, as far as it is read so far.
+/// The header: the version block, the game settings, then the world (`World::load_world`,
+/// generated from the game's load code to the header's last byte).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Header {
     pub version: VersionBlock,
     pub lobby: LobbySettings,
-    pub ai: AiConfig,
-    pub replay: Replay,
-    pub map: MapInfo,
-    pub restore_time: u32,
-    /// `particles_count` records of 27 bytes.
-    pub particles: Vec<u8>,
-    pub identifier: u32,
+    pub world: World,
     pub ends: SectionEnds,
-    /// One section per player, Gaia first.
-    pub players: Vec<PlayerSection>,
-    /// The bytes after the last player: the players' second pass, the scenario, the triggers and
-    /// the rest of `World::load_world`. Not derived yet (aoe2de-exe-re `layout` PENDING `World`):
-    /// kept as they are, so a header writes back whole.
-    pub tail: Vec<u8>,
+}
+
+impl Header {
+    /// The player sections, Gaia first, with where each starts and ends.
+    pub fn players(&self) -> Vec<PlayerSection<'_>> {
+        self.world
+            .base_world
+            .players
+            .iter()
+            .map(|p| PlayerSection {
+                ends: PlayerEnds {
+                    start: p.pos as usize,
+                    end: p.pos as usize + written_len(&p.val),
+                },
+                player: &p.val,
+            })
+            .collect()
+    }
+}
+
+/// The bytes a value writes back: as many as it read.
+fn written_len<T: binrw::BinWrite>(value: &T) -> usize
+where
+    for<'a> T::Args<'a>: Default,
+{
+    let mut out = binrw::io::Cursor::new(Vec::new());
+    value
+        .write_le(&mut out)
+        .expect("a value read from a header writes back");
+    out.into_inner().len()
 }
 
 /// Read an inflated chapter header.
@@ -102,7 +125,8 @@ pub fn parse(inflated: &[u8]) -> Result<Header, super::Error> {
     parse_reader(&mut binrw::io::Cursor::new(inflated))
 }
 
-/// Read an inflated chapter header from any seekable reader, e.g. one that logs its reads.
+/// Read an inflated chapter header from any seekable reader, e.g. one that logs its reads. The
+/// world reads to the header's last byte; bytes left after it are an error.
 pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, super::Error> {
     let version = VersionBlock::read(r).map_err(header_error)?;
     let v = version.hundredths();
@@ -112,101 +136,58 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, super::Error> {
         });
     }
     let lobby = LobbySettings::read_args(r, (v,)).map_err(header_error)?;
-    let mut ends = SectionEnds {
-        lobby: position(r)?,
-        ..SectionEnds::default()
-    };
-    // aoe2rec's AI layout fails on current single-player games with AI scripts, in ImHex too.
-    let ai_start = position(r)?;
-    let ai = match AiConfig::read(r) {
-        Ok(ai) => ai,
-        Err(e) => {
-            r.seek(SeekFrom::Start(ai_start as u64))
-                .map_err(|e| header_error(e.into()))?;
-            return Err(match u32::read_le(r) {
-                Ok(1) => super::Error::Unsupported {
-                    what: "AI data (has_ai = 1)",
-                    at: ai_start,
-                },
-                _ => header_error(e),
-            });
-        }
-    };
-    ends.ai = position(r)?;
-    let replay = Replay::read(r).map_err(header_error)?;
-    ends.replay = position(r)?;
-    let map = MapInfo::read(r).map_err(header_error)?;
-    ends.map = position(r)?;
-    let restore_time = u32::read_le(r).map_err(header_error)?;
-    let particles_count = u32::read_le(r).map_err(header_error)?;
-    let particles = Vec::<u8>::read_le_args(
-        r,
-        binrw::VecArgs::builder()
-            .count(particles_count as usize * 27)
-            .finalize(),
-    )
-    .map_err(header_error)?;
-    let identifier = u32::read_le(r).map_err(header_error)?;
-    ends.players_start = position(r)?;
-    let num_players = replay.num_players as usize;
-    let ver = version.raw();
-    let players = (0..num_players)
-        .map(|_| {
-            player::read_player(r, ver, num_players).map_err(|e| match e {
-                player::ReadError::Bin(e) => header_error(e),
-                player::ReadError::Unsupported { what, at } => {
-                    super::Error::Unsupported { what, at }
-                }
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    // one read of the rest, not read_to_end's growing chunks: a read must not cut a game read
-    let here = r.stream_position().map_err(|e| header_error(e.into()))?;
+    let lobby_end = position(r)?;
+    let world = World::read_args(r, (version.raw(),)).map_err(|e| match unsupported_in(&e) {
+        Some((what, at)) => super::Error::Unsupported { what, at },
+        None => header_error(e),
+    })?;
+    let here = position(r)?;
     let end = r
         .seek(SeekFrom::End(0))
-        .map_err(|e| header_error(e.into()))?;
-    r.seek(SeekFrom::Start(here))
-        .map_err(|e| header_error(e.into()))?;
-    let mut tail = vec![0u8; (end - here) as usize];
-    r.read_exact(&mut tail)
-        .map_err(|e| header_error(e.into()))?;
+        .map_err(|e| header_error(e.into()))? as usize;
+    if here != end {
+        return Err(super::Error::Header {
+            message: format!(
+                "the world ends at {here}, {} bytes before the header's end",
+                end - here
+            ),
+        });
+    }
+    for p in &world.base_world.players {
+        if p.val.world_player().is_none() {
+            // the game's WorldPlayerFactory.cpp: "InvalidPlayerType: %d"
+            return Err(super::Error::Header {
+                message: format!("InvalidPlayerType: {} at {}", p.val.type_, p.pos),
+            });
+        }
+    }
+    let map = &world.base_world.map_info;
+    let ends = SectionEnds {
+        lobby: lobby_end,
+        replay: map.pos as usize,
+        map: map.pos as usize + written_len(&map.val),
+        players_start: world
+            .base_world
+            .players
+            .first()
+            .map_or(here, |p| p.pos as usize),
+    };
     Ok(Header {
-        tail,
         version,
         lobby,
-        ai,
-        replay,
-        map,
-        restore_time,
-        particles,
-        identifier,
+        world,
         ends,
-        players,
     })
 }
 
-/// Write a header as `parse` read it: every section in read order, the tail as it was. Read, then
-/// write gives back the inflated header byte for byte (tests/de_roundtrip.rs).
+/// Write a header as `parse` read it, in read order. Read, then write gives back the inflated
+/// header byte for byte (tests/de_roundtrip.rs).
 pub fn write<W: binrw::io::Write + Seek>(h: &Header, w: &mut W) -> Result<(), super::Error> {
     use binrw::BinWrite;
-    let particles_count =
-        u32::try_from(h.particles.len() / 27).map_err(|_| super::Error::Header {
-            message: format!("{} particle bytes", h.particles.len()),
-        })?;
     (|| {
         h.version.write_le(w)?;
         h.lobby.write_le(w)?;
-        h.ai.write_le(w)?;
-        h.replay.write_le(w)?;
-        h.map.write_le(w)?;
-        h.restore_time.write_le(w)?;
-        particles_count.write_le(w)?;
-        h.particles.write_le(w)?;
-        h.identifier.write_le(w)?;
-        for p in &h.players {
-            p.player.write_le(w)?;
-        }
-        h.tail.write_le(w)
+        h.world.write_le(w)
     })()
     .map_err(header_error)
 }

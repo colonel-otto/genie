@@ -8,7 +8,7 @@
 
 use genie_core::artifact::ARTIFACT_TYPE;
 use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
-use genie_rec::de::header::generated::player::RgeStaticObject;
+use genie_rec::de::header::generated::world::RgeStaticObject;
 use genie_rec::de::{self, Op, header::PlayerSection};
 
 /// The words of the first checkpoint that the start-of-game save determines: all but word 9.
@@ -56,7 +56,9 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// The static part of each live object, with its object.
-fn live(section: &PlayerSection) -> impl Iterator<Item = (&de::header::Object, &RgeStaticObject)> {
+fn live<'a>(
+    section: &PlayerSection<'a>,
+) -> impl Iterator<Item = (&'a de::header::Object, &'a RgeStaticObject)> {
     section
         .live_objects()
         .filter_map(|o| o.static_part().map(|s| (o, s)))
@@ -68,7 +70,7 @@ fn counted(s: &RgeStaticObject) -> bool {
 }
 
 /// The checkpoint inputs of one player section. Word 9's inputs stay empty (see the crate docs).
-pub fn player_state(section: &PlayerSection, id: u32) -> PlayerState {
+pub fn player_state(section: &PlayerSection<'_>, id: u32) -> PlayerState {
     let attributes = &section.world_player().base.attributes;
     let resource = |i: usize| attributes.get(i).copied().unwrap_or_default();
     PlayerState {
@@ -104,16 +106,14 @@ pub fn compare_first_checkpoint(recording: &[u8]) -> Result<Vec<PlayerComparison
             Err(e) => Some(Err(e)),
         })
         .ok_or(Error::NoCheckpoint)??;
+    let players = header.players();
     checkpoint
         .lanes
         .iter()
         .filter(|lane| lane.iter().any(|&w| w != 0))
         .map(|lane| {
             let id = lane[8];
-            let section = header
-                .players
-                .get(id as usize)
-                .ok_or(Error::NoSuchPlayer(id))?;
+            let section = players.get(id as usize).ok_or(Error::NoSuchPlayer(id))?;
             Ok(PlayerComparison {
                 id,
                 from_save: player_block(&player_state(section, id)),
@@ -220,8 +220,8 @@ pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
         }
     }
     let checkpoint = checkpoint.ok_or(Error::NoCheckpoint)?;
-    let players = header
-        .players
+    let sections = header.players();
+    let players = sections
         .iter()
         .map(|p| Player {
             objects: p.live_objects().map(unit).collect(),
@@ -229,12 +229,14 @@ pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
             unsupported: None,
         })
         .collect();
-    let replay = &header.replay;
+    // BaseWorld's fields before the map: the frame seed (`mCurrentFrameRandomSeed`, world+0x7d0)
+    // and the turn order (`player_turn`, `player_time_delta[i]`)
+    let world = &header.world.base_world;
     let mut turns = Turns::new(
-        replay.world_time,
-        replay.random_seed_2,
-        replay.player_turn as usize,
-        replay.player_turns.clone(),
+        world.world_time,
+        world.current_frame_random_seed,
+        world.player_turn.max(0) as usize,
+        world.player_time_delta.clone(),
         players,
     );
     for &dt in &dts {
@@ -246,10 +248,7 @@ pub fn simulate_word9(recording: &[u8]) -> Result<Vec<Word9>, Error> {
         .filter(|lane| lane.iter().any(|&w| w != 0))
         .map(|lane| {
             let id = lane[8];
-            let section = header
-                .players
-                .get(id as usize)
-                .ok_or(Error::NoSuchPlayer(id))?;
+            let section = sections.get(id as usize).ok_or(Error::NoSuchPlayer(id))?;
             let simulated = turns.players[id as usize].clone();
             let mut state = player_state(section, id);
             let units = live(section)

@@ -1,8 +1,8 @@
-//! A view of the generated object layouts (`generated/player.rs`): the parts the object classes
+//! A view of the generated object layouts (`generated/world.rs`): the parts the object classes
 //! share. Each class's struct holds its base class's as its first field, as the game's loads call
 //! the base load first; the factories hold one optional struct per object type.
 
-use super::generated::player::{
+use super::generated::world::{
     Object, ObjectList, Player, PlayerObjects, RgeActionObject, RgeMovingObject, RgeObject,
     RgeStaticObject, TribeCombatObject, UnitAiModule, WorldPlayer,
 };

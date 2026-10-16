@@ -2,10 +2,14 @@
 
 use binrw::binrw;
 
+/// The map (158041 `FUN_140f6a610`): `Read(&w, 4); Read(&h, 4); if (w == 0xdeaddead) { version
+/// = h; Read(&w, 4); Read(&h, 4); }`: the current format starts with the marker and its version,
+/// then the size. aoe2rec's pattern counted the first two words to the replay block.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[brw(little)]
+#[brw(little, magic = 0xdeaddead_u32)]
 pub struct MapInfo {
+    pub format_version: u32,
     pub size_x: u32,
     pub size_y: u32,
     #[br(temp)]
