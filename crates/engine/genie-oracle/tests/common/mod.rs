@@ -46,9 +46,10 @@ pub fn is_scenario(recording: &[u8]) -> bool {
     header.file_header.game_options_read.game_options.game_mode == 3
 }
 
-/// The `.dat` master table from `GENIE_MASTERS` (`scripts/dat_masters.py`); the slice's tests skip
-/// without it, as every start of game has objects that die.
+/// The master table of the game data file `GENIE_DAT` (an `empires2_x2_p1.dat`); the slice's tests
+/// skip without it, as every start of game has objects that die.
 pub fn masters() -> Option<genie_oracle::MasterTable> {
-    let path = std::env::var_os("GENIE_MASTERS")?;
-    Some(genie_oracle::MasterTable::parse(&std::fs::read_to_string(path).unwrap()).unwrap())
+    let file = std::fs::File::open(std::env::var_os("GENIE_DAT")?).unwrap();
+    let dat = genie_dat::de::DatFile::read_from(file).unwrap();
+    Some(genie_oracle::MasterTable::from_dat(&dat))
 }

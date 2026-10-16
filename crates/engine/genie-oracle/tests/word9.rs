@@ -1,4 +1,4 @@
-//! The unit-AI slice against checkpoint word 9. Needs `GENIE_REC_CORPUS` and `GENIE_MASTERS`; skips
+//! The unit-AI slice against checkpoint word 9. Needs `GENIE_REC_CORPUS` and `GENIE_DAT`; skips
 //! without them.
 
 mod common;
@@ -14,7 +14,7 @@ use genie_oracle::{GroupCommand, SAVE_WORDS, compare_first_checkpoint, simulate_
 #[test]
 fn marvinblue_player_2_is_reproduced_at_checkpoint_1() {
     let (Some(dir), Some(masters)) = (corpus(), masters()) else {
-        return eprintln!("GENIE_REC_CORPUS / GENIE_MASTERS are not set; skipping");
+        return eprintln!("GENIE_REC_CORPUS / GENIE_DAT are not set; skipping");
     };
     let data = std::fs::read(dir.join("MarvinBlue/426048731.aoe2record")).unwrap();
     let lanes = simulate_word9(&data, Some(&masters)).unwrap();
@@ -36,7 +36,7 @@ fn marvinblue_player_2_is_reproduced_at_checkpoint_1() {
 #[test]
 fn an_idle_player_with_livestock_is_reproduced() {
     let (Some(dir), Some(masters)) = (corpus(), masters()) else {
-        return eprintln!("GENIE_REC_CORPUS / GENIE_MASTERS are not set; skipping");
+        return eprintln!("GENIE_REC_CORPUS / GENIE_DAT are not set; skipping");
     };
     let data = std::fs::read(dir.join("MarvinBlue/426048869.aoe2record")).unwrap();
     let lanes = simulate_word9(&data, Some(&masters)).unwrap();
@@ -50,7 +50,7 @@ fn an_idle_player_with_livestock_is_reproduced() {
 #[test]
 fn tier1_lanes_with_matching_save_words() {
     let (Some(dir), Some(masters)) = (corpus(), masters()) else {
-        return eprintln!("GENIE_REC_CORPUS / GENIE_MASTERS are not set; skipping");
+        return eprintln!("GENIE_REC_CORPUS / GENIE_DAT are not set; skipping");
     };
     let (mut exact, mut off, mut unsupported) = (Vec::new(), Vec::new(), Vec::new());
     for (path, data) in tier1_recordings(&dir) {

@@ -77,7 +77,7 @@ fn first_difference(
 
 /// The slice against the tick oracle, tick by tick over the whole trace: MarvinBlue/426048731 player
 /// 2 (idle up to checkpoint 1) and the first tick where the slice's block leaves the game's. Needs
-/// the trace of that recording in `GENIE_TICK_TRACE` and `GENIE_MASTERS`.
+/// the trace of that recording in `GENIE_TICK_TRACE` and `GENIE_DAT`.
 #[test]
 fn the_slice_follows_the_game_up_to_a_named_tick() {
     let (Ok(trace), Ok(rec), Some(masters)) = (
@@ -85,9 +85,7 @@ fn the_slice_follows_the_game_up_to_a_named_tick() {
         std::env::var("GENIE_TICK_REC"),
         common::masters(),
     ) else {
-        return eprintln!(
-            "GENIE_TICK_TRACE / GENIE_TICK_REC / GENIE_MASTERS are not set; skipping"
-        );
+        return eprintln!("GENIE_TICK_TRACE / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     if !rec.ends_with("426048731.aoe2record") {
         return eprintln!("the pinned lane is MarvinBlue/426048731's player 2; skipping");
@@ -118,7 +116,7 @@ fn the_slice_against_a_trace_report() {
         common::masters(),
     ) else {
         return eprintln!(
-            "GENIE_TICK_TRACE / GENIE_TICK_REC / GENIE_TICK_PLAYER / GENIE_MASTERS are not set; skipping"
+            "GENIE_TICK_TRACE / GENIE_TICK_REC / GENIE_TICK_PLAYER / GENIE_DAT are not set; skipping"
         );
     };
     let trace = TickTrace::decode(&std::fs::read(trace).unwrap()).unwrap();
@@ -139,9 +137,7 @@ fn the_slices_word9_terms_against_the_games_after_a_tick() {
         std::env::var("GENIE_TICK_REC"),
         common::masters(),
     ) else {
-        return eprintln!(
-            "GENIE_WORD9_TERMS / GENIE_TICK_REC / GENIE_MASTERS are not set; skipping"
-        );
+        return eprintln!("GENIE_WORD9_TERMS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     let game: Vec<genie_oracle::Word9Terms> = std::fs::read_to_string(terms)
         .unwrap()

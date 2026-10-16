@@ -11,6 +11,7 @@
 #![allow(missing_docs)]
 
 mod civ;
+pub mod de;
 mod color_table;
 pub mod random_map;
 mod sound;
