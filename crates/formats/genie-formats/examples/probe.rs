@@ -3,7 +3,8 @@
 //! `{"file", "read", "roundtrip" (true, false or null), "error"}`.
 //!
 //! Usage: `cargo run --release -p genie-formats --example probe -- KIND FILE...`, KIND one of
-//! dat-de, scenario, campaign, palette, strings-keyvalue (scripts/formats.toml's `probe`).
+//! dat-de, json-table, scenario, campaign, palette, strings-keyvalue (scripts/formats.toml's
+//! `probe`).
 
 use flate2::read::DeflateDecoder;
 use std::io::{Cursor, Read};
@@ -103,6 +104,47 @@ fn strings_keyvalue(bytes: &[u8]) -> Outcome {
     }
 }
 
+/// A typed JSON table: read it, write it, and compare the written file's value with the original's
+/// (the installed files differ in indentation, so bytes are not compared).
+fn json_table<T>(bytes: &[u8]) -> Outcome
+where
+    T: serde::de::DeserializeOwned + serde::Serialize,
+{
+    let text = match std::str::from_utf8(bytes) {
+        Ok(t) => t,
+        Err(e) => return failed(e),
+    };
+    let table: T = match genie_json::from_str(text) {
+        Ok(t) => t,
+        Err(e) => return failed(e),
+    };
+    let same = genie_json::to_string(&table).ok().and_then(|w| {
+        let a: serde_json::Value = serde_json::from_str(text).ok()?;
+        let b: serde_json::Value = serde_json::from_str(&w).ok()?;
+        Some(a == b)
+    });
+    Outcome {
+        read: true,
+        roundtrip: Some(same == Some(true)),
+        error: None,
+    }
+}
+
+/// The JSON tables genie-json types, by file name.
+fn json(file: &str, bytes: &[u8]) -> Outcome {
+    let name = file.rsplit('/').next().unwrap_or(file);
+    match name {
+        "linkedTechs.json" => json_table::<genie_json::LinkedTechs>(bytes),
+        "dropsites.json" => json_table::<genie_json::DropSites>(bytes),
+        "futuravailableunits.json" | "paphosfutureavailableunits.json" => {
+            json_table::<genie_json::FutureUnits>(bytes)
+        }
+        "maps.json" => json_table::<genie_json::Maps>(bytes),
+        "buttons.json" => json_table::<genie_json::Buttons>(bytes),
+        _ => failed("no typed reader for this table"),
+    }
+}
+
 /// A JSON string literal.
 fn quote(s: &str) -> String {
     let mut out = String::from("\"");
@@ -121,18 +163,19 @@ fn quote(s: &str) -> String {
 fn main() {
     let mut args = std::env::args().skip(1);
     let kind = args.next().expect("a probe kind");
-    let probe: fn(&[u8]) -> Outcome = match kind.as_str() {
-        "dat-de" => dat_de,
-        "scenario" => scenario,
-        "campaign" => campaign,
-        "palette" => palette,
-        "strings-keyvalue" => strings_keyvalue,
+    let probe: fn(&str, &[u8]) -> Outcome = match kind.as_str() {
+        "json-table" => json,
+        "dat-de" => |_, b| dat_de(b),
+        "scenario" => |_, b| scenario(b),
+        "campaign" => |_, b| campaign(b),
+        "palette" => |_, b| palette(b),
+        "strings-keyvalue" => |_, b| strings_keyvalue(b),
         other => panic!("unknown probe kind {other}"),
     };
     for file in args {
         let outcome = match std::fs::read(&file) {
             // an old reader may panic on a version it does not know; that is a failed read
-            Ok(bytes) => std::panic::catch_unwind(|| probe(&bytes)).unwrap_or_else(|p| {
+            Ok(bytes) => std::panic::catch_unwind(|| probe(&file, &bytes)).unwrap_or_else(|p| {
                 failed(format!(
                     "panic: {}",
                     p.downcast_ref::<String>()

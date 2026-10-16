@@ -9,6 +9,7 @@ members = [
   "crates/formats/genie-dat",
   "crates/formats/genie-drs",
   "crates/formats/genie-hki",
+  "crates/formats/genie-json",
   "crates/formats/genie-lang",
   "crates/formats/genie-rec",
   "crates/formats/genie-scx",
@@ -41,3 +42,6 @@ num_enum = "0.5.7"
 arrayvec = "0.7.2"
 # Without the default `verbose-backtrace` feature: error paths stay lean.
 binrw = { version = "0.15", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+indexmap = { version = "2", features = ["serde"] }
