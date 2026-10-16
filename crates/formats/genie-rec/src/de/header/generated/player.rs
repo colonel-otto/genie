@@ -4,11 +4,11 @@
 #![allow(clippy::all)]
 
 use super::super::layout_types::{LenString16, LenString32, LenVec32, SigString};
-use binrw::binread;
+use binrw::binrw;
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct SavedView {
     /// HD RGE_View_Stack entry, first float
     pub x: f32,
@@ -17,13 +17,15 @@ pub struct SavedView {
 }
 
 /// Read by `FUN_14163e970` (`WorldPlayerBase.cpp`) of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32, num_players: usize))]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
 pub struct WorldPlayerBase {
     /// game: `&relation`
     /// read at 0x14163f09e
-    #[br(magic = b"\x0b", count = num_players)]
+    #[brw(magic = b"\x0b")]
+    #[br(count = num_players)]
     pub relation: Vec<u8>,
     /// HD RGE_Player::unitDiplomacy (int32 per player)
     #[br(count = num_players)]
@@ -35,16 +37,17 @@ pub struct WorldPlayerBase {
     /// HD RGE_Player::name (char*)
     pub name: LenString16,
     /// HD RGE_Player::attribute_num (int32), counts the attributes
-    #[br(magic = b"\x16")]
+    #[brw(magic = b"\x16")]
     pub attribute_num: i32,
     /// HD RGE_Player::attributes (float*)
-    #[br(magic = b"!", count = attribute_num.max(0) as usize)]
+    #[brw(magic = b"!")]
+    #[br(count = attribute_num.max(0) as usize)]
     pub attributes: Vec<f32>,
     /// a second attribute array of DE (save > 0x140f5b), unnamed
     #[br(count = attribute_num.max(0) as usize)]
     pub attributes_2: Vec<u32>,
     /// HD RGE_Player::view_x (float)
-    #[br(magic = b"\x0b")]
+    #[brw(magic = b"\x0b")]
     pub view_x: f32,
     /// HD RGE_Player::view_y (float)
     pub view_y: f32,
@@ -71,19 +74,18 @@ pub struct WorldPlayerBase {
     pub resigned: u8,
     /// game: `&colorTableId`
     /// helper 0x140c94e10
-    #[br(magic = b"\x0b")]
+    #[brw(magic = b"\x0b")]
     pub color_table_id: u8,
     /// unnamed in the binary
     /// read at 0x141640c43
-    #[br(magic = b"\x0b")]
+    #[brw(magic = b"\x0b")]
     pub unnamed_0x674: u32,
     /// unnamed in the binary
     /// read at 0x141640c83
     pub unnamed_0x678: u32,
     /// unnamed in the binary
     /// read at 0x141640e51 into a local (local_4774)
-    #[br(temp)]
-    unnamed_at_0x141640e51: i32,
+    pub unnamed_at_0x141640e51: i32,
     /// unnamed in the binary
     /// read at 0x141640eaa into a local (local_4770)
     #[br(count = unnamed_at_0x141640e51.max(0) as usize)]
@@ -228,22 +230,23 @@ pub struct WorldPlayerBase {
     pub allow_capturing_gaia_units: u8,
     /// unnamed in the binary
     /// the routine's closing marker
-    #[br(magic = b"\x0b")]
+    #[brw(magic = b"\x0b")]
     pub end_marker: (),
 }
 
 /// Read by `FUN_1415f1160` (`WorldPlayer.cpp`) of the build.
 /// Ends before the read at `0x1415f1bb7`: the routine goes on, read by hand-written code.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32, num_players: usize))]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
 pub struct WorldPlayer {
     /// the base player load FUN_14163e970 (WorldPlayerBase.cpp)
     #[br(args(ver, num_players))]
     pub base: WorldPlayerBase,
     /// game: `&type`
     /// helper 0x1415073f0
-    #[br(magic = b"\x0b")]
+    #[brw(magic = b"\x0b")]
     pub type_: u8,
     /// unnamed in the binary
     /// read at 0x1415f1514
@@ -287,9 +290,10 @@ pub struct WorldPlayer {
 }
 
 /// Read by `FUN_141120780` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct Unnamed141120780 {
     /// game: `stringId`
     /// read at 0x1411207f1
@@ -299,9 +303,9 @@ pub struct Unnamed141120780 {
     pub unnamed_at_0x14112098f: LenString32,
 }
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct RgeMasterStaticObjectEntry1 {
     /// game: `attribute_type_held[index]`
     /// read at 0x141133867
@@ -314,9 +318,9 @@ pub struct RgeMasterStaticObjectEntry1 {
     pub attribute_flag: u8,
 }
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct RgeMasterStaticObjectEntry2 {
     /// game: `&tempId`
     /// helper 0x140a90f60
@@ -330,9 +334,10 @@ pub struct RgeMasterStaticObjectEntry2 {
 }
 
 /// Read by `FUN_1411319f0` (`MasterStaticObject.cpp`) of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct RgeMasterStaticObject {
     /// game: `readTemp`
     /// read at 0x141131a5f
@@ -490,9 +495,10 @@ pub struct RgeMasterStaticObject {
 }
 
 /// Read by `FUN_1410a9400` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct RgeMasterAnimatedObject {
     /// read by 0x1411319f0
     #[br(args(ver))]
@@ -503,9 +509,10 @@ pub struct RgeMasterAnimatedObject {
 }
 
 /// Read by `FUN_1410e5440` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct RgeMasterMovingObject {
     /// read by 0x1410a9400
     #[br(args(ver))]
@@ -531,9 +538,10 @@ pub struct RgeMasterMovingObject {
 }
 
 /// Read by `FUN_141062470` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct Unnamed141062470 {
     /// game: `id`
     /// read at 0x1410624e6
@@ -630,9 +638,10 @@ pub struct Unnamed141062470 {
     pub enablement_resource_id: i16,
 }
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct Unnamed1411a8f80Entry1 {
     /// game: `task_type`
     /// read at 0x1411a9235
@@ -644,14 +653,14 @@ pub struct Unnamed1411a8f80Entry1 {
 }
 
 /// Read by `FUN_1411a8f80` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct Unnamed1411a8f80 {
     /// game: `list_num`
     /// read at 0x1411a8ff7
-    #[br(temp)]
-    list_num: i16,
+    pub list_num: i16,
     /// unnamed in the binary
     /// a loop of 2 reads; unnamed in the binary
     #[br(count = list_num.max(0) as usize, args { inner: (ver,) })]
@@ -659,9 +668,10 @@ pub struct Unnamed1411a8f80 {
 }
 
 /// Read by `FUN_1410a3510` (`MasterActionObject.cpp`) of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct RgeMasterActionObject {
     /// read by 0x1410e5440
     #[br(args(ver))]
@@ -698,9 +708,10 @@ pub struct RgeMasterActionObject {
 }
 
 /// Read by `FUN_1410c8520` (`MasterCombatObject.cpp`) of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct RgeMasterCombatObject {
     /// read by 0x1410a3510
     #[br(args(ver))]
@@ -799,9 +810,9 @@ pub struct RgeMasterCombatObject {
     pub weapon_offset_z: f32,
 }
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct TribeMasterCombatObjectEntry1 {
     /// game: `trainTime`
     /// read at 0x14126f93a
@@ -818,9 +829,10 @@ pub struct TribeMasterCombatObjectEntry1 {
 }
 
 /// Read by `FUN_14126f2a0` (`TribeMasterCombatObject.cpp`) of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct TribeMasterCombatObject {
     /// read by 0x1410c8520
     #[br(args(ver))]
@@ -933,9 +945,10 @@ pub struct TribeMasterCombatObject {
 }
 
 /// Read by `FUN_1410d7320` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct RgeMasterMissileObject {
     /// read by 0x1410c8520
     #[br(args(ver))]
@@ -955,9 +968,10 @@ pub struct RgeMasterMissileObject {
 }
 
 /// Read by `FUN_141665db0` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32, master_type: u8))]
+#[brw(little)]
+#[br(import(ver: u32, master_type: u8))]
 pub struct RgeMaster {
     /// read by 0x1410ee760
     #[br(if((10..61).contains(&master_type) && master_type == 10), args(ver))]
@@ -983,9 +997,10 @@ pub struct RgeMaster {
 }
 
 /// Read by `FUN_1412439d0` (`TribeMasterBuildingObject.cpp`) of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct TribeMasterBuildingObject {
     /// read by 0x14126f2a0
     #[br(args(ver))]
@@ -1038,9 +1053,10 @@ pub struct TribeMasterBuildingObject {
 }
 
 /// Read by `FUN_14162bef0` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32, master_type: u8))]
+#[brw(little)]
+#[br(import(ver: u32, master_type: u8))]
 pub struct Master {
     /// read by 0x141277b70
     #[br(if(master_type == 15), args(ver))]
@@ -1057,12 +1073,13 @@ pub struct Master {
     pub tribe_master_building_object: Option<TribeMasterBuildingObject>,
 }
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct PlayerMaster {
     /// the type the master factory (param_5) switches on
-    #[br(magic = b"\x16")]
+    #[brw(magic = b"\x16")]
     pub master_type: u8,
     /// unnamed in the binary
     /// read by 0x14162bef0
@@ -1070,32 +1087,35 @@ pub struct PlayerMaster {
     pub master: Master,
     /// unnamed in the binary
     /// the entry's closing marker
-    #[br(magic = b"!")]
+    #[brw(magic = b"!")]
     pub end_marker: (),
 }
 
 /// Read by `FUN_1416267a0` (`WorldPlayer.cpp`) of the build.
 /// Ends before the read at `0x141627b1c`: the routine goes on, read by hand-written code.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct PlayerMasters {
     /// game: `master_object_num`
     /// read at 0x1416269ed
-    #[br(magic = b"\x0b")]
+    #[brw(magic = b"\x0b")]
     pub master_object_num: i32,
     /// one flag per master; the loop below reads the enabled ones
     #[br(count = master_object_num.max(0) as usize)]
     pub enabled: Vec<u32>,
     /// an enabled master: marker, type, the master, marker
-    #[br(magic = b"\x0b", if(!(master_object_num < 1) && master_object_num > 0), count = enabled.iter().filter(|&&e| e != 0).count() as usize, args { inner: (ver,) })]
+    #[brw(magic = b"\x0b")]
+    #[br(if(!(master_object_num < 1) && master_object_num > 0), count = enabled.iter().filter(|&&e| e != 0).count() as usize, args { inner: (ver,) })]
     pub masters: Option<Vec<PlayerMaster>>,
 }
 
 /// Read by `FUN_141282780` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct RgeVisibleMap {
     /// HD RGE_Visible_Map::widthValue (int32), after four pointers
     pub width_value: i32,
@@ -1112,9 +1132,10 @@ pub struct RgeVisibleMap {
 }
 
 /// Read by `FUN_141289120` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct VisibleResourceRec {
     /// unnamed in the binary
     /// read at 0x141289181 into a local (local_218)
@@ -1145,9 +1166,9 @@ pub struct VisibleResourceRec {
     pub unnamed_0x1c: Option<u32>,
 }
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct VisibleResourceListSize {
     /// HD Visible_Resource_Manager::VR_ListSize[i]
     pub vr_list_size: i32,
@@ -1155,9 +1176,10 @@ pub struct VisibleResourceListSize {
     pub vr_list_used: i32,
 }
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(vr_list_used: i32))]
+#[brw(little)]
+#[br(import(vr_list_used: i32))]
 pub struct VisibleResourceList {
     /// unnamed in the binary
     /// read by 0x141289120
@@ -1166,9 +1188,10 @@ pub struct VisibleResourceList {
 }
 
 /// Read by `FUN_141287720` of the build.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(ver: u32))]
+#[brw(little)]
+#[br(import(ver: u32))]
 pub struct VisibleResourceManager {
     /// HD Visible_Resource_Manager::num_visible_resource_lists
     pub num_visible_resource_lists: i32,

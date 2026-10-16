@@ -2,14 +2,15 @@
 
 #[cfg(test)]
 use binrw::BinRead;
-use binrw::binread;
+use binrw::binrw;
 
 /// A DE string: the magic `60 0A`, a u16 length, the bytes.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[br(little, magic = b"\x60\x0a")]
+#[brw(little, magic = b"\x60\x0a")]
 pub struct DeString {
     #[br(temp)]
+    #[bw(try_calc = u16::try_from(bytes.len()))]
     len: u16,
     #[br(count = len)]
     pub bytes: Vec<u8>,
@@ -45,6 +46,17 @@ pub fn string_list(max: usize) -> binrw::BinResult<StringList> {
 }
 
 /// The next byte, without consuming it.
+/// Write a [`StringList`] as [`string_list`] read it: each entry, then the terminator if one ended it.
+#[binrw::writer(writer, endian)]
+pub fn write_string_list(list: &StringList) -> binrw::BinResult<()> {
+    use binrw::BinWrite;
+    for (crc, s) in &list.entries {
+        crc.write_options(writer, endian, ())?;
+        s.write_options(writer, endian, ())?;
+    }
+    list.terminator.write_options(writer, endian, ())
+}
+
 pub fn peek_u8<R: binrw::io::Read + binrw::io::Seek>(reader: &mut R) -> binrw::BinResult<u8> {
     use binrw::io::SeekFrom;
     let mut b = [0u8; 1];
@@ -105,6 +117,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!((list.entries.len(), list.terminator), (1, None));
+    }
+
+    #[test]
+    fn strings_and_string_lists_write_back_what_they_read() {
+        let bytes = b"\x60\x0a\x02\x00hi";
+        let s = DeString::read(&mut Cursor::new(bytes.as_slice())).unwrap();
+        let mut out = Cursor::new(Vec::new());
+        binrw::BinWrite::write_le(&s, &mut out).unwrap();
+        assert_eq!(out.into_inner(), bytes);
+        for (bytes, max) in [
+            (b"\x00\x00\x00\x00\x60\x0a\x01\x00a\x05\x00\x00\x00".as_slice(), 10),
+            (b"\x00\x01\x00\x00\x60\x0a\x00\x00".as_slice(), 1),
+        ] {
+            let list = string_list(&mut Cursor::new(bytes), binrw::Endian::Little, (max,)).unwrap();
+            let mut out = Cursor::new(Vec::new());
+            write_string_list(&list, &mut out, binrw::Endian::Little, ()).unwrap();
+            assert_eq!(out.into_inner(), bytes);
+        }
     }
 
     #[test]

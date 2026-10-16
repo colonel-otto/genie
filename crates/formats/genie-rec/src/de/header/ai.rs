@@ -1,23 +1,24 @@
 //! The AI configuration (pattern: `AIConfig`, `UnknownAI`).
 
-use binrw::{BinRead, binread};
+use binrw::{BinRead, binrw};
 
 /// The AI configuration; empty unless an AI script is loaded.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct AiConfig {
     pub has_ai: u32,
     #[br(if(has_ai == 1))]
     pub ai: Option<AiData>,
 }
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct AiData {
     pub max_strings: u16,
     #[br(temp)]
+    #[bw(try_calc = u16::try_from(strings.len()))]
     strings_count: u16,
     pub unknown1: u32,
     #[br(count = strings_count)]
@@ -38,39 +39,42 @@ pub struct AiData {
 }
 
 /// A string with a u32 length.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[br(little)]
+#[brw(little)]
 pub struct SizedString32 {
     #[br(temp)]
+    #[bw(try_calc = u32::try_from(bytes.len()))]
     len: u32,
     #[br(count = len)]
     pub bytes: Vec<u8>,
 }
 
 /// One of the seven groups of AI rules.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct AiRuleGroup {
     pub max: u16,
-    #[br(temp)]
-    count: u16,
+    /// Kept: the rules can end early, at a crc of -1, before `count` of them.
+    pub count: u16,
     pub unknown: [u32; 3],
     #[br(parse_with = rules, args(count as usize))]
     pub rules: Vec<AiRule>,
 }
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct AiRule {
     pub seq: u16,
-    #[br(magic = b"\xff\xff")]
+    #[brw(magic = b"\xff\xff")]
     pub unknown1: u8,
     #[br(temp)]
+    #[bw(try_calc = u8::try_from(unknown2.len() / 6))]
     unknown_count: u8,
-    #[br(magic = b"\x00\x00", count = unknown_count as usize * 6)]
+    #[brw(magic = b"\x00\x00")]
+    #[br(count = unknown_count as usize * 6)]
     pub unknown2: Vec<u32>,
     pub unknown3: u32,
     pub unknown4: u32,

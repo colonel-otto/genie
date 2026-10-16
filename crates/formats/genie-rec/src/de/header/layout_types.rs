@@ -1,26 +1,29 @@
 //! The value shapes of the generated layouts (`generated/`): what a read helper of the game reads.
 //! Hand-written; the generator names them in its helper table (aoe2de-exe-re `layout/b<build>.py`).
+//! Each writes back the bytes it read: a length is the length of what follows.
 
-use binrw::io::{Read, Seek};
-use binrw::{BinRead, BinResult, Endian, binread};
+use binrw::io::{Read, Seek, Write};
+use binrw::{BinRead, BinResult, BinWrite, Endian, binrw};
 
 /// A u16 length, then that many bytes (158041: `0x140933990`, `SRead<short> &requiredBufSize`).
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[br(little)]
+#[brw(little)]
 pub struct LenString16 {
     #[br(temp)]
+    #[bw(try_calc = u16::try_from(bytes.len()))]
     len: u16,
     #[br(count = len)]
     pub bytes: Vec<u8>,
 }
 
 /// A u32 length, then that many bytes (158041: `0x140932fa0`, `SRead<unsigned int> &requiredBufSize`).
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[br(little)]
+#[brw(little)]
 pub struct LenString32 {
     #[br(temp)]
+    #[bw(try_calc = u32::try_from(bytes.len()))]
     len: u32,
     #[br(count = len)]
     pub bytes: Vec<u8>,
@@ -64,6 +67,24 @@ impl BinRead for SigString {
     }
 }
 
+impl BinWrite for SigString {
+    type Args<'a> = ();
+
+    fn write_options<W: Write + Seek>(&self, writer: &mut W, endian: Endian, (): ()) -> BinResult<()> {
+        let len = u16::try_from(self.bytes.len()).map_err(|e| binrw::Error::Custom {
+            pos: writer.stream_position().unwrap_or_default(),
+            err: Box::new(e),
+        })?;
+        let pair = if self.swapped {
+            [len, STRING_SIGNATURE]
+        } else {
+            [STRING_SIGNATURE, len]
+        };
+        pair.write_options(writer, endian, ())?;
+        self.bytes.write_options(writer, endian, ())
+    }
+}
+
 /// A u32 count, then that many values (158041: `0x140d46ce0`, a `vector<int64_t>`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LenVec32<T>(pub Vec<T>);
@@ -78,6 +99,22 @@ where
         let count = u32::read_options(reader, endian, ())?;
         let args = binrw::VecArgs::builder().count(count as usize).finalize();
         Ok(Self(Vec::<T>::read_options(reader, endian, args)?))
+    }
+}
+
+impl<T> BinWrite for LenVec32<T>
+where
+    T: for<'a> BinWrite<Args<'a> = ()> + 'static,
+{
+    type Args<'a> = ();
+
+    fn write_options<W: Write + Seek>(&self, writer: &mut W, endian: Endian, (): ()) -> BinResult<()> {
+        let count = u32::try_from(self.0.len()).map_err(|e| binrw::Error::Custom {
+            pos: writer.stream_position().unwrap_or_default(),
+            err: Box::new(e),
+        })?;
+        count.write_options(writer, endian, ())?;
+        self.0.write_options(writer, endian, ())
     }
 }
 
@@ -112,6 +149,30 @@ mod tests {
             }
         );
         assert!(SigString::read_le(&mut Cursor::new(b"\x01\x00\x02\x00".as_slice())).is_err());
+    }
+
+    /// Read, then write: the same bytes.
+    fn round_trip<T>(bytes: &[u8]) -> T
+    where
+        T: for<'a> BinRead<Args<'a> = ()> + for<'a> binrw::BinWrite<Args<'a> = ()>,
+    {
+        let value = T::read_le(&mut Cursor::new(bytes)).unwrap();
+        let mut out = Cursor::new(Vec::new());
+        binrw::BinWrite::write_le(&value, &mut out).unwrap();
+        assert_eq!(out.into_inner(), bytes);
+        value
+    }
+
+    #[test]
+    fn every_value_shape_writes_back_the_bytes_it_read() {
+        assert_eq!(round_trip::<LenString16>(b"\x02\x00hi").bytes, b"hi");
+        assert_eq!(round_trip::<LenString32>(b"\x01\x00\x00\x00!").bytes, b"!");
+        assert!(!round_trip::<SigString>(b"\x60\x0a\x02\x00hi").swapped);
+        assert!(round_trip::<SigString>(b"\x01\x00\x60\x0a!").swapped);
+        assert_eq!(
+            round_trip::<LenVec32<i64>>(b"\x01\x00\x00\x00\x07\x00\x00\x00\x00\x00\x00\x00"),
+            LenVec32(vec![7])
+        );
     }
 
     #[test]

@@ -50,10 +50,10 @@ use binrw::BinRead;
 use binrw::io::{Read, Seek, SeekFrom};
 
 /// The fixed fields before the lobby settings.
-#[derive(BinRead, Debug, Clone, PartialEq)]
-#[br(little)]
+#[derive(BinRead, binrw::BinWrite, Debug, Clone, PartialEq)]
+#[brw(little)]
 pub struct VersionBlock {
-    #[br(magic = b"VER 9.4\0")]
+    #[brw(magic = b"VER 9.4\0")]
     pub old_save_version: f32,
     pub minor: u16,
     pub major: u16,

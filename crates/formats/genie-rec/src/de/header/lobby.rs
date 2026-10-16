@@ -1,12 +1,13 @@
 //! The lobby settings (pattern: `LobbySettings`, `Player`, `DeStringArray`, `AIFile`).
 
-use super::primitives::{DeString, StringList, string_list};
-use binrw::binread;
+use super::primitives::{DeString, StringList, string_list, write_string_list};
+use binrw::binrw;
 
 /// One of the eight lobby slots.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(v: u32))]
+#[brw(little)]
+#[br(import(v: u32))]
 pub struct LobbyPlayer {
     pub dlc_id: u32,
     pub color_id: i32,
@@ -18,6 +19,7 @@ pub struct LobbyPlayer {
     pub mp_game_version: u8,
     pub civ_id: u32,
     #[br(temp)]
+    #[bw(try_calc = u32::try_from(custom_civ_ids.len()))]
     custom_civ_count: u32,
     #[br(count = custom_civ_count)]
     pub custom_civ_ids: Vec<u32>,
@@ -40,9 +42,9 @@ pub struct LobbyPlayer {
 }
 
 /// An AI script file named in the lobby.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct AiFile {
     pub unknown: u32,
     pub name: DeString,
@@ -50,12 +52,14 @@ pub struct AiFile {
 }
 
 /// The lobby settings. The 15 single-byte flags follow aoe2rec's names.
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little, import(v: u32))]
+#[brw(little)]
+#[br(import(v: u32))]
 pub struct LobbySettings {
     pub game_options_version: u32,
     #[br(temp)]
+    #[bw(try_calc = u32::try_from(dlcs.len()))]
     num_dlc: u32,
     #[br(count = num_dlc)]
     pub dlcs: Vec<u32>,
@@ -69,7 +73,7 @@ pub struct LobbySettings {
     pub starting_age_id: u32,
     pub ending_age_id: u32,
     pub game_type: u32,
-    #[br(magic = b"\xa3\x5f\x02\x00\xa3\x5f\x02\x00")]
+    #[brw(magic = b"\xa3\x5f\x02\x00\xa3\x5f\x02\x00")]
     pub speed: f32,
     pub treaty_length: u32,
     pub population_limit: u32,
@@ -81,19 +85,20 @@ pub struct LobbySettings {
     /// trade, team bonus disabled, random positions, all techs, starting units, lock teams, lock
     /// speed, multiplayer, cheats, record game, animals, predators, turbo, shared exploration, team
     /// positions.
-    #[br(magic = b"\xa3\x5f\x02\x00")]
+    #[brw(magic = b"\xa3\x5f\x02\x00")]
     pub flags: [u8; 15],
     pub sub_game_mode: u32,
     pub battle_royale_time: u32,
     pub handicap: u8,
     pub unknown2: u8,
-    #[br(magic = b"\xa3\x5f\x02\x00", args(v))]
+    #[brw(magic = b"\xa3\x5f\x02\x00")]
+    #[br(args(v))]
     pub players: [LobbyPlayer; 8],
     pub unknown3: [u8; 9],
     pub fog_of_war: u8,
     pub cheat_notification: u8,
     pub colored_chat: u8,
-    #[br(magic = b"\xa3\x5f\x02\x00")]
+    #[brw(magic = b"\xa3\x5f\x02\x00")]
     pub ranked: u8,
     pub allow_spec: u8,
     pub lobby_visibility: u32,
@@ -102,14 +107,18 @@ pub struct LobbySettings {
     pub spec_delay: u32,
     pub scenario_civ: u8,
     #[br(parse_with = string_list, args(1000))]
+    #[bw(write_with = write_string_list)]
     pub rms_strings: StringList,
     #[br(parse_with = string_lists, args(22))]
+    #[bw(write_with = write_string_lists)]
     pub other_strings: Vec<StringList>,
     #[br(temp)]
+    #[bw(try_calc = u32::try_from(strategic_numbers.len()))]
     num_strategic_numbers: u32,
     #[br(count = num_strategic_numbers)]
     pub strategic_numbers: Vec<i32>,
     #[br(temp)]
+    #[bw(try_calc = u32::try_from(ai_files.len()))]
     num_ai_files: u32,
     #[br(count = num_ai_files)]
     pub ai_files: Vec<AiFile>,
@@ -134,6 +143,7 @@ pub struct LobbySettings {
     pub unknown19: [u8; 8],
     pub unknown24: [u8; 5],
     #[br(temp)]
+    #[bw(try_calc = u32::try_from(unknown_66_values.len()))]
     unknown_66_count: u32,
     pub unknown_66_1: u32,
     #[br(count = unknown_66_count)]
@@ -156,4 +166,11 @@ fn string_lists(count: usize) -> binrw::BinResult<Vec<StringList>> {
     (0..count)
         .map(|_| string_list(reader, endian, (100,)))
         .collect()
+}
+
+#[binrw::writer(writer, endian)]
+fn write_string_lists(lists: &Vec<StringList>) -> binrw::BinResult<()> {
+    lists
+        .iter()
+        .try_for_each(|list| write_string_list(list, writer, endian, ()))
 }

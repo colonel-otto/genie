@@ -1,10 +1,10 @@
 //! The replay block (pattern: `Replay`).
 
-use binrw::binread;
+use binrw::binrw;
 
-#[binread]
+#[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[br(little)]
+#[brw(little)]
 pub struct Replay {
     pub old_time: u32,
     pub world_time: u32,
