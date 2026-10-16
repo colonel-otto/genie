@@ -4616,7 +4616,7 @@ pub struct RgeMovingObject {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct RgeAction {
     /// game: `state`
     /// read at 0x140a7a367
@@ -4654,6 +4654,9 @@ pub struct RgeAction {
     /// game: `subActionValue`
     /// read at 0x140a7b66c
     pub sub_action_value: u8,
+    /// read by 0x140a98850; named by the save's write in the same place (0x140a78790)
+    #[br(args(ver, num_players))]
+    pub sub_actions: ActionList,
     /// game: `short_val`
     /// read at 0x140a7b9c3
     pub short_val_2: i16,
@@ -4663,10 +4666,10 @@ pub struct RgeAction {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionEnter {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `mFirstTimeEnter`
     /// read at 0x140a85771; named by the save's write of this member at 0x140a87169
@@ -4677,10 +4680,10 @@ pub struct RgeActionEnter {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionMoveTo {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `range`
     /// read at 0x140aa12d6; named by the save's write of this member at 0x140aa2363
@@ -4700,10 +4703,10 @@ pub struct RgeActionMoveTo {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionGather {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `mTargetType`
     /// read at 0x140a889be; named by the save's write of this member at 0x140a8baf4
@@ -4744,10 +4747,10 @@ pub struct RgeActionGather {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionMissile {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `velocity_x`
     /// read at 0x140a9a549; named by the save's write of this member at 0x140a9cde7
@@ -4785,10 +4788,10 @@ pub struct RgeActionMissile {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionAttack {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `range`
     /// read at 0x140a7c94e; named by the save's write of this member at 0x140a80564
@@ -4844,10 +4847,10 @@ pub struct RgeActionAttack {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionMake {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `work_timer`
     /// read at 0x140a994f0; named by the save's write of this member at 0x140a99ba9
@@ -4858,10 +4861,10 @@ pub struct RgeActionMake {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct ActionHeroPower {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `&mChargeType`
     /// read at 0x140a91771
@@ -4902,37 +4905,37 @@ pub struct ActionHeroPower {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32, action_type: i16))]
+#[br(import(ver: u32, action_type: i16, num_players: usize))]
 pub struct RgeActionByType {
     /// read by 0x140aa1240
-    #[br(if(action_type == 1), args(ver))]
+    #[br(if(action_type == 1), args(ver, num_players))]
     pub rge_action_move_to: Option<RgeActionMoveTo>,
     /// read by 0x140a85700
-    #[br(if(action_type == 3), args(ver))]
+    #[br(if(action_type == 3), args(ver, num_players))]
     pub rge_action_enter: Option<RgeActionEnter>,
     /// read by 0x140a87da0
-    #[br(if(action_type == 4), args(ver))]
+    #[br(if(action_type == 4), args(ver, num_players))]
     pub rge_action_explore: Option<RgeAction>,
     /// read by 0x140a88940
-    #[br(if(action_type == 5), args(ver))]
+    #[br(if(action_type == 5), args(ver, num_players))]
     pub rge_action_gather: Option<RgeActionGather>,
     /// read by 0x140a9a4d0
-    #[br(if(action_type == 8), args(ver))]
+    #[br(if(action_type == 8), args(ver, num_players))]
     pub rge_action_missile: Option<RgeActionMissile>,
     /// read by 0x140a7c880
-    #[br(if(action_type == 9), args(ver))]
+    #[br(if(action_type == 9), args(ver, num_players))]
     pub rge_action_attack: Option<RgeActionAttack>,
     /// read by 0x140a84700
-    #[br(if(action_type == 10), args(ver))]
+    #[br(if(action_type == 10), args(ver, num_players))]
     pub rge_action_bird: Option<RgeAction>,
     /// read by 0x140a90c60
-    #[br(if(action_type == 13), args(ver))]
+    #[br(if(action_type == 13), args(ver, num_players))]
     pub rge_action_guard: Option<RgeAction>,
     /// read by 0x140a99480
-    #[br(if(action_type == 21), args(ver))]
+    #[br(if(action_type == 21), args(ver, num_players))]
     pub rge_action_make: Option<RgeActionMake>,
     /// read by 0x140a916c0
-    #[br(if(action_type == 126), args(ver))]
+    #[br(if(action_type == 126), args(ver, num_players))]
     pub action_hero_power: Option<ActionHeroPower>,
 }
 
@@ -4940,10 +4943,10 @@ pub struct RgeActionByType {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionBuild {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `added_to_num_builders`
     /// read at 0x140aad6db; named by the save's write of this member at 0x140aae049
@@ -4954,10 +4957,10 @@ pub struct TribeActionBuild {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionMakeObj {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `obj_id`
     /// read at 0x140acb2d2; named by the save's write of this member at 0x140acf6d3
@@ -4980,10 +4983,10 @@ pub struct TribeActionMakeObj {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionMakeTech {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `tech_id`
     /// read at 0x140ad08ae; named by the save's write of this member at 0x140ad2343
@@ -5003,10 +5006,10 @@ pub struct TribeActionMakeTech {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionConvert {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `was_same_owner`
     /// read at 0x140ab3c16; named by the save's write of this member at 0x140ab8c24
@@ -5041,10 +5044,10 @@ pub struct TribeActionConvert {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionRepair {
     /// read by 0x140a7a2f0
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `save_target_command_flag`
     /// read at 0x140ada6a9
@@ -5058,10 +5061,10 @@ pub struct TribeActionRepair {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionArtifact {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `mAutomoveLivestock`
     /// read at 0x140aa8a78; named by the save's write of this member at 0x140aacc79
@@ -5075,7 +5078,7 @@ pub struct TribeActionArtifact {
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionDiscoveryArtifact {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// HD TRIBE_Action_Discovery_Artifact::flags (uchar*), one per player
     #[br(count = num_players)]
@@ -5086,10 +5089,10 @@ pub struct TribeActionDiscoveryArtifact {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionHunt {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `targetType`
     /// read at 0x140ac3159; named by the save's write of this member at 0x140ac5765
@@ -5115,10 +5118,10 @@ pub struct TribeActionHunt {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionTrade {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `trade_attribute`
     /// read at 0x140adeb93; named by the save's write of this member at 0x140ae2748
@@ -5147,10 +5150,10 @@ pub struct TribeActionTrade {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionWonder {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `wonder_time`
     /// read at 0x140ae9099; named by the save's write of this member at 0x140aec119
@@ -5164,10 +5167,10 @@ pub struct TribeActionWonder {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionGather {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `targetType`
     /// read at 0x140abdc88; named by the save's write of this member at 0x140abe9e9
@@ -5178,10 +5181,10 @@ pub struct TribeActionGather {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionHousing {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `unique_id`
     /// read at 0x140ac1c20; named by the save's write of this member at 0x140ac26b9
@@ -5192,10 +5195,10 @@ pub struct TribeActionHousing {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionPack {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `unique_id`
     /// read at 0x140ad517f; named by the save's write of this member at 0x140ad6423
@@ -5212,10 +5215,10 @@ pub struct TribeActionPack {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionUnpack {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `unique_id`
     /// read at 0x140ae5ac0; named by the save's write of this member at 0x140ae6f73
@@ -5235,10 +5238,10 @@ pub struct TribeActionUnpack {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionOffboardTrade {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `trade_route_being_used`
     /// read at 0x140ad30eb; named by the save's write of this member at 0x140ad3abf
@@ -5252,10 +5255,10 @@ pub struct TribeActionOffboardTrade {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionUnitTransform {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `transform_id`
     /// read at 0x140ae4908; named by the save's write of this member at 0x140ae5079
@@ -5266,10 +5269,10 @@ pub struct TribeActionUnitTransform {
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
-#[br(import(ver: u32))]
+#[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionWaitSolidify {
     /// read by 0x140a73f00
-    #[br(args(ver))]
+    #[br(args(ver, num_players))]
     pub rge_action: RgeAction,
     /// game: `mTargetBuildingId`
     /// read at 0x140ae8279; named by the save's write of this member at 0x140ae89a9
@@ -5283,89 +5286,89 @@ pub struct TribeActionWaitSolidify {
 #[br(import(ver: u32, action_type: i16, num_players: usize))]
 pub struct Action {
     /// read by 0x140a85700
-    #[br(if(action_type == 3), args(ver))]
+    #[br(if(action_type == 3), args(ver, num_players))]
     pub rge_action_enter: Option<RgeActionEnter>,
     /// unnamed in the binary
     /// read by 0x140a97a10
-    #[br(if(!(action_type == 3 || action_type == 12 || action_type == 14 || action_type == 101 || action_type == 102 || action_type == 103 || action_type == 104 || action_type == 105 || action_type == 106 || action_type == 107 || action_type == 108 || action_type == 110 || action_type == 111 || action_type == 120 || action_type == 121 || action_type == 122 || action_type == 123 || action_type == 124 || action_type == 125 || action_type == 131 || action_type == 132 || action_type == 133 || action_type == 134 || action_type == 135 || action_type == 136 || action_type == 149 || action_type == 154)), args(ver, action_type))]
+    #[br(if(!(action_type == 3 || action_type == 12 || action_type == 14 || action_type == 101 || action_type == 102 || action_type == 103 || action_type == 104 || action_type == 105 || action_type == 106 || action_type == 107 || action_type == 108 || action_type == 110 || action_type == 111 || action_type == 120 || action_type == 121 || action_type == 122 || action_type == 123 || action_type == 124 || action_type == 125 || action_type == 131 || action_type == 132 || action_type == 133 || action_type == 134 || action_type == 135 || action_type == 136 || action_type == 149 || action_type == 154)), args(ver, action_type, num_players))]
     pub rge_action_by_type: Option<RgeActionByType>,
     /// read by 0x140aa3b20
-    #[br(if(action_type == 12), args(ver))]
+    #[br(if(action_type == 12), args(ver, num_players))]
     pub rge_action_transport: Option<RgeAction>,
     /// read by 0x140aa4b90
-    #[br(if(action_type == 14), args(ver))]
+    #[br(if(action_type == 14), args(ver, num_players))]
     pub rge_action_transport_over_wall: Option<RgeAction>,
     /// read by 0x140aad670
-    #[br(if(action_type == 101), args(ver))]
+    #[br(if(action_type == 101), args(ver, num_players))]
     pub tribe_action_build: Option<TribeActionBuild>,
     /// read by 0x140acb1e0
-    #[br(if(action_type == 102), args(ver))]
+    #[br(if(action_type == 102), args(ver, num_players))]
     pub tribe_action_make_obj: Option<TribeActionMakeObj>,
     /// read by 0x140ad0840
-    #[br(if(action_type == 103), args(ver))]
+    #[br(if(action_type == 103), args(ver, num_players))]
     pub tribe_action_make_tech: Option<TribeActionMakeTech>,
     /// read by 0x140ab3b70
-    #[br(if(action_type == 104), args(ver))]
+    #[br(if(action_type == 104), args(ver, num_players))]
     pub tribe_action_convert: Option<TribeActionConvert>,
     /// read by 0x140ac07e0
-    #[br(if(action_type == 105), args(ver))]
+    #[br(if(action_type == 105), args(ver, num_players))]
     pub tribe_action_heal: Option<RgeAction>,
     /// read by 0x140ad8110
-    #[br(if(action_type == 106), args(ver))]
+    #[br(if(action_type == 106), args(ver, num_players))]
     pub tribe_action_repair: Option<TribeActionRepair>,
     /// read by 0x140aa8a10
-    #[br(if(action_type == 107), args(ver))]
+    #[br(if(action_type == 107), args(ver, num_players))]
     pub tribe_action_artifact: Option<TribeActionArtifact>,
     /// read by 0x140abc4d0
     #[br(if(action_type == 108), args(ver, num_players))]
     pub tribe_action_discovery_artifact: Option<TribeActionDiscoveryArtifact>,
     /// read by 0x140ac3010
-    #[br(if(action_type == 110), args(ver))]
+    #[br(if(action_type == 110), args(ver, num_players))]
     pub tribe_action_hunt: Option<TribeActionHunt>,
     /// read by 0x140adea70
-    #[br(if(action_type == 111), args(ver))]
+    #[br(if(action_type == 111), args(ver, num_players))]
     pub tribe_action_trade: Option<TribeActionTrade>,
     /// read by 0x140ae8fa0
-    #[br(if(action_type == 120), args(ver))]
+    #[br(if(action_type == 120), args(ver, num_players))]
     pub tribe_action_wonder: Option<TribeActionWonder>,
     /// read by 0x140abd5c0
-    #[br(if(action_type == 121), args(ver))]
+    #[br(if(action_type == 121), args(ver, num_players))]
     pub tribe_action_farm: Option<RgeAction>,
     /// read by 0x140abdba0
-    #[br(if(action_type == 122), args(ver))]
+    #[br(if(action_type == 122), args(ver, num_players))]
     pub tribe_action_gather: Option<TribeActionGather>,
     /// read by 0x140ac1bc0
-    #[br(if(action_type == 123), args(ver))]
+    #[br(if(action_type == 123), args(ver, num_players))]
     pub tribe_action_housing: Option<TribeActionHousing>,
     /// read by 0x140ad5090
-    #[br(if(action_type == 124), args(ver))]
+    #[br(if(action_type == 124), args(ver, num_players))]
     pub tribe_action_pack: Option<TribeActionPack>,
     /// read by 0x140ae59d0
-    #[br(if(action_type == 125), args(ver))]
+    #[br(if(action_type == 125), args(ver, num_players))]
     pub tribe_action_unpack: Option<TribeActionUnpack>,
     /// read by 0x140ad3080
-    #[br(if(action_type == 131), args(ver))]
+    #[br(if(action_type == 131), args(ver, num_players))]
     pub tribe_action_offboard_trade: Option<TribeActionOffboardTrade>,
     /// read by 0x140ad70c0
-    #[br(if(action_type == 132), args(ver))]
+    #[br(if(action_type == 132), args(ver, num_players))]
     pub tribe_action_pickup_relic: Option<RgeAction>,
     /// read by 0x140ab2f40
-    #[br(if(action_type == 133), args(ver))]
+    #[br(if(action_type == 133), args(ver, num_players))]
     pub tribe_action_charge: Option<RgeAction>,
     /// read by 0x140ae4820
-    #[br(if(action_type == 134), args(ver))]
+    #[br(if(action_type == 134), args(ver, num_players))]
     pub tribe_action_unit_transform: Option<TribeActionUnitTransform>,
     /// read by 0x140ab1c20
-    #[br(if(action_type == 135), args(ver))]
+    #[br(if(action_type == 135), args(ver, num_players))]
     pub tribe_action_capture: Option<RgeAction>,
     /// read by 0x140abb720
-    #[br(if(action_type == 136), args(ver))]
+    #[br(if(action_type == 136), args(ver, num_players))]
     pub tribe_action_deliver_relic: Option<RgeAction>,
     /// read by 0x140adb7a0
-    #[br(if(action_type == 149), args(ver))]
+    #[br(if(action_type == 149), args(ver, num_players))]
     pub tribe_action_shepherd: Option<RgeAction>,
     /// read by 0x140ae8220
-    #[br(if(action_type == 154), args(ver))]
+    #[br(if(action_type == 154), args(ver, num_players))]
     pub tribe_action_wait_solidify: Option<TribeActionWaitSolidify>,
 }
 
