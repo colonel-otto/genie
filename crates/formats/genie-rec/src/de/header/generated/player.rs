@@ -606,24 +606,24 @@ pub struct WorldPlayer {
     /// helper 0x1415073f0
     #[brw(magic = b"\x0b")]
     pub type_: u8,
-    /// unnamed in the binary
-    /// read at 0x1415f1514
-    pub unnamed_0x76c: u32,
-    /// unnamed in the binary
-    /// read at 0x1415f15b8
-    pub unnamed_0x7a0: u32,
-    /// unnamed in the binary
-    /// read at 0x1415f1643
-    pub unnamed_0x770: u32,
-    /// unnamed in the binary
-    /// read at 0x1415f16bb
-    pub unnamed_0x774: u32,
-    /// unnamed in the binary
-    /// read at 0x1415f1730
-    pub unnamed_0x778: u8,
-    /// unnamed in the binary
-    /// read at 0x1415f17ab
-    pub unnamed_0x77c: u32,
+    /// game: `update_count`
+    /// read at 0x1415f1514; named by the save's write of this member at 0x141631947
+    pub update_count: i32,
+    /// game: `updateCountNeedHelp`
+    /// read at 0x1415f15b8; named by the save's write of this member at 0x141631ae7
+    pub update_count_need_help: i32,
+    /// game: `enemy_alert_count`
+    /// read at 0x1415f1643; named by the save's write of this member at 0x141631c8d
+    pub enemy_alert_count: i32,
+    /// game: `regular_attack_count`
+    /// read at 0x1415f16bb; named by the save's write of this member at 0x141631e3e
+    pub regular_attack_count: i32,
+    /// game: `regular_attack_flag`
+    /// read at 0x1415f1730; named by the save's write of this member at 0x141631ff8
+    pub regular_attack_flag: u8,
+    /// game: `regular_attack_x`
+    /// read at 0x1415f17ab; named by the save's write of this member at 0x1416321b8
+    pub regular_attack_x: f32,
     /// unnamed in the binary
     /// read at 0x1415f1826
     pub unnamed_0x780: u32,
@@ -3163,9 +3163,9 @@ pub struct RgeActionEnter {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140a85771
-    pub unnamed_0x68: u32,
+    /// game: `mFirstTimeEnter`
+    /// read at 0x140a85771; named by the save's write of this member at 0x140a87169
+    pub first_time_enter: u32,
 }
 
 /// Read by `FUN_140aa1240` of the build.
@@ -3177,15 +3177,15 @@ pub struct RgeActionMoveTo {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140aa12d6
-    pub unnamed_0x68: u32,
-    /// unnamed in the binary
-    /// read at 0x140aa142a
-    pub unnamed_0x6c: u8,
-    /// unnamed in the binary
-    /// read at 0x140aa14c2
-    pub unnamed_0x70: u32,
+    /// game: `range`
+    /// read at 0x140aa12d6; named by the save's write of this member at 0x140aa2363
+    pub range: f32,
+    /// game: `mMovementWaitState`
+    /// read at 0x140aa142a; named by the save's write of this member at 0x140aa24f5
+    pub movement_wait_state: u8,
+    /// game: `mTimer`
+    /// read at 0x140aa14c2; named by the save's write of this member at 0x140aa269f
+    pub timer: f32,
     /// unnamed in the binary
     /// read at 0x140aa1546
     pub unnamed_0x74: u32,
@@ -3200,39 +3200,39 @@ pub struct RgeActionGather {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140a889be
-    pub unnamed_0x68: u32,
-    /// unnamed in the binary
-    /// read at 0x140a88a6b
-    pub unnamed_0x6c: u8,
-    /// unnamed in the binary
-    /// read at 0x140a88ad3
-    pub unnamed_0x6d: u8,
-    /// unnamed in the binary
-    /// read at 0x140a88b3d
-    pub unnamed_0x70: u32,
-    /// unnamed in the binary
-    /// read at 0x140a88ba7
-    pub unnamed_0x74: u32,
-    /// unnamed in the binary
-    /// read at 0x140a88c21
-    pub unnamed_0x78: u32,
-    /// unnamed in the binary
-    /// read at 0x140a88c8b
-    pub unnamed_0x7c: u32,
-    /// unnamed in the binary
-    /// read at 0x140a88e26
-    pub unnamed_0x84: u32,
-    /// unnamed in the binary
-    /// read at 0x140a88e9c
-    pub unnamed_0x88: u32,
-    /// unnamed in the binary
-    /// read at 0x140a88f38
-    pub unnamed_0x8c: u32,
-    /// unnamed in the binary
-    /// read at 0x140a88fae
-    pub unnamed_0x90: u32,
+    /// game: `mTargetType`
+    /// read at 0x140a889be; named by the save's write of this member at 0x140a8baf4
+    pub target_type: i32,
+    /// game: `mNumberStops`
+    /// read at 0x140a88a6b; named by the save's write of this member at 0x140a8bc87
+    pub number_stops: u8,
+    /// game: `mCurrentStop`
+    /// read at 0x140a88ad3; named by the save's write of this member at 0x140a8be21
+    pub current_stop: u8,
+    /// game: `mTimePerStop`
+    /// read at 0x140a88b3d; named by the save's write of this member at 0x140a8bfb1
+    pub time_per_stop: f32,
+    /// game: `mTimeAtCurrentStop`
+    /// read at 0x140a88ba7; named by the save's write of this member at 0x140a8c143
+    pub time_at_current_stop: f32,
+    /// game: `mLastStopX`
+    /// read at 0x140a88c21; named by the save's write of this member at 0x140a8c2d4
+    pub last_stop_x: f32,
+    /// game: `mLastStopY`
+    /// read at 0x140a88c8b; named by the save's write of this member at 0x140a8c476
+    pub last_stop_y: f32,
+    /// game: `mFarmX`
+    /// read at 0x140a88e26; named by the save's write of this member at 0x140a8c635
+    pub farm_x: f32,
+    /// game: `mFarmY`
+    /// read at 0x140a88e9c; named by the save's write of this member at 0x140a8c7f5
+    pub farm_y: f32,
+    /// game: `mGatherX`
+    /// read at 0x140a88f38; named by the save's write of this member at 0x140a8c9b5
+    pub gather_x: f32,
+    /// game: `mGatherY`
+    /// read at 0x140a88fae; named by the save's write of this member at 0x140a8cb75
+    pub gather_y: f32,
 }
 
 /// Read by `FUN_140a9a4d0` of the build.
@@ -3244,36 +3244,36 @@ pub struct RgeActionMissile {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140a9a549
-    pub unnamed_0x68: u32,
-    /// unnamed in the binary
-    /// read at 0x140a9a5e1
-    pub unnamed_0x6c: u32,
-    /// unnamed in the binary
-    /// read at 0x140a9a672
-    pub unnamed_0x70: u32,
-    /// unnamed in the binary
-    /// read at 0x140a9a6dc
-    pub unnamed_0x74: u32,
-    /// unnamed in the binary
-    /// read at 0x140a9a746
-    pub unnamed_0x78: u32,
-    /// unnamed in the binary
-    /// read at 0x140a9a80c
-    pub unnamed_0x7c: u32,
-    /// unnamed in the binary
-    /// read at 0x140a9a890
-    pub unnamed_0x90: u8,
-    /// unnamed in the binary
-    /// read at 0x140a9a918
-    pub unnamed_0x94: u32,
-    /// unnamed in the binary
-    /// read at 0x140a9a9a2
-    pub unnamed_0x98: u8,
-    /// unnamed in the binary
-    /// read at 0x140a9ac7b
-    pub unnamed_0x9c: [u8; 28],
+    /// game: `velocity_x`
+    /// read at 0x140a9a549; named by the save's write of this member at 0x140a9cde7
+    pub velocity_x: f32,
+    /// game: `velocity_y`
+    /// read at 0x140a9a5e1; named by the save's write of this member at 0x140a9cf85
+    pub velocity_y: f32,
+    /// game: `velocity_z`
+    /// read at 0x140a9a672; named by the save's write of this member at 0x140a9d111
+    pub velocity_z: f32,
+    /// game: `ballistic_velocity`
+    /// read at 0x140a9a6dc; named by the save's write of this member at 0x140a9d2a3
+    pub ballistic_velocity: f32,
+    /// game: `ballistic_acceleration`
+    /// read at 0x140a9a746; named by the save's write of this member at 0x140a9d433
+    pub ballistic_acceleration: f32,
+    /// game: `distance`
+    /// read at 0x140a9a80c; named by the save's write of this member at 0x140a9d5c4
+    pub distance: f32,
+    /// game: `mHussiteCollsion`
+    /// read at 0x140a9a890; named by the save's write of this member at 0x140a9d769
+    pub hussite_collsion: u8,
+    /// game: `mHussiteWagonId`
+    /// read at 0x140a9a918; named by the save's write of this member at 0x140a9d927
+    pub hussite_wagon_id: i32,
+    /// game: `mInteractedWithAgility`
+    /// read at 0x140a9a9a2; named by the save's write of this member at 0x140a9dae7
+    pub interacted_with_agility: u8,
+    /// game: `mProjectileData`
+    /// read at 0x140a9ac7b; named by the save's write of this member at 0x140a9dca5
+    pub projectile_data: [u8; 28],
 }
 
 /// Read by `FUN_140a7c880` of the build.
@@ -3285,27 +3285,27 @@ pub struct RgeActionAttack {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140a7c94e
-    pub unnamed_0x90: u32,
-    /// unnamed in the binary
-    /// read at 0x140a7c9e9
-    pub unnamed_0x94: u32,
-    /// unnamed in the binary
-    /// read at 0x140a7ca82
-    pub unnamed_0x98: u16,
-    /// unnamed in the binary
-    /// read at 0x140a7cb1a
-    pub unnamed_0x9a: u16,
-    /// unnamed in the binary
-    /// read at 0x140a7cb8a
-    pub unnamed_0x9e: u8,
-    /// unnamed in the binary
-    /// read at 0x140a7cbfa
-    pub unnamed_0x9f: u8,
-    /// unnamed in the binary
-    /// read at 0x140a7cc6a
-    pub unnamed_0xa0: u8,
+    /// game: `range`
+    /// read at 0x140a7c94e; named by the save's write of this member at 0x140a80564
+    pub range: f32,
+    /// game: `min_range`
+    /// read at 0x140a7c9e9; named by the save's write of this member at 0x140a806f4
+    pub min_range: f32,
+    /// game: `missile_id`
+    /// read at 0x140a7ca82; named by the save's write of this member at 0x140a80884
+    pub missile_id: i16,
+    /// game: `frameDelay`
+    /// read at 0x140a7cb1a; named by the save's write of this member at 0x140a80a14
+    pub frame_delay: i16,
+    /// game: `need_to_attack`
+    /// read at 0x140a7cb8a; named by the save's write of this member at 0x140a80ba4
+    pub need_to_attack: u8,
+    /// game: `was_same_owner`
+    /// read at 0x140a7cbfa; named by the save's write of this member at 0x140a80d3d
+    pub was_same_owner: u8,
+    /// game: `indirect_fire_flag`
+    /// read at 0x140a7cc6a; named by the save's write of this member at 0x140a80eec
+    pub indirect_fire_flag: u8,
     /// unnamed in the binary
     /// read at 0x140a7ccdc into a local (local_60)
     pub unnamed_at_0x140a7ccdc: u16,
@@ -3318,18 +3318,18 @@ pub struct RgeActionAttack {
     /// unnamed in the binary
     /// read at 0x140a7ce9a into a local (local_60)
     pub unnamed_at_0x140a7ce9a: u16,
-    /// unnamed in the binary
-    /// read at 0x140a7cf3d
-    pub unnamed_0xa4: u32,
-    /// unnamed in the binary
-    /// read at 0x140a7cfb6
-    pub unnamed_0xa8: u32,
-    /// unnamed in the binary
-    /// read at 0x140a7d02f
-    pub unnamed_0xac: u32,
-    /// unnamed in the binary
-    /// read at 0x140a7d0b9
-    pub unnamed_0x9c: u16,
+    /// game: `lastTargetPositionX`
+    /// read at 0x140a7cf3d; named by the save's write of this member at 0x140a817e5
+    pub last_target_position_x: f32,
+    /// game: `lastTargetPositionY`
+    /// read at 0x140a7cfb6; named by the save's write of this member at 0x140a819a5
+    pub last_target_position_y: f32,
+    /// game: `lastTargetPositionZ`
+    /// read at 0x140a7d02f; named by the save's write of this member at 0x140a81b65
+    pub last_target_position_z: f32,
+    /// game: `interrupt_animation_at_frame`
+    /// read at 0x140a7d0b9; named by the save's write of this member at 0x140a81d27
+    pub interrupt_animation_at_frame: i16,
     /// unnamed in the binary
     /// read at 0x140a7d131 into a local (local_60)
     pub unnamed_at_0x140a7d131: u16,
@@ -3344,9 +3344,9 @@ pub struct RgeActionMake {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140a994f0
-    pub unnamed_0x68: u32,
+    /// game: `work_timer`
+    /// read at 0x140a994f0; named by the save's write of this member at 0x140a99ba9
+    pub work_timer: f32,
 }
 
 /// Read by `FUN_140a916c0` (`ActionHeroPower.cpp`) of the build.
@@ -3440,9 +3440,9 @@ pub struct TribeActionBuild {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140aad6db
-    pub unnamed_0x68: u32,
+    /// game: `added_to_num_builders`
+    /// read at 0x140aad6db; named by the save's write of this member at 0x140aae049
+    pub added_to_num_builders: i32,
 }
 
 /// Read by `FUN_140acb1e0` of the build.
@@ -3454,21 +3454,21 @@ pub struct TribeActionMakeObj {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140acb2d2
-    pub unnamed_0x68: u16,
-    /// unnamed in the binary
-    /// read at 0x140acb36a
-    pub unnamed_0x6c: u32,
-    /// unnamed in the binary
-    /// read at 0x140acb405
-    pub unnamed_0x70: u32,
-    /// unnamed in the binary
-    /// read at 0x140acb48b
-    pub unnamed_0x7c: u16,
-    /// unnamed in the binary
-    /// read at 0x140acb501
-    pub unnamed_0x78: u32,
+    /// game: `obj_id`
+    /// read at 0x140acb2d2; named by the save's write of this member at 0x140acf6d3
+    pub obj_id: i16,
+    /// game: `work_done`
+    /// read at 0x140acb36a; named by the save's write of this member at 0x140acf865
+    pub work_done: f32,
+    /// game: `unique_id`
+    /// read at 0x140acb405; named by the save's write of this member at 0x140acf9ef
+    pub unique_id: i32,
+    /// game: `mTrainTime`
+    /// read at 0x140acb48b; named by the save's write of this member at 0x140acfb7f
+    pub train_time: i16,
+    /// game: `mButtonLocationId`
+    /// read at 0x140acb501; named by the save's write of this member at 0x140acfd0f
+    pub button_location_id: i32,
 }
 
 /// Read by `FUN_140ad0840` of the build.
@@ -3480,18 +3480,18 @@ pub struct TribeActionMakeTech {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ad08ae
-    pub unnamed_0x68: u16,
-    /// unnamed in the binary
-    /// read at 0x140ad0945
-    pub unnamed_0x6c: u32,
-    /// unnamed in the binary
-    /// read at 0x140ad09ed
-    pub unnamed_0x70: u32,
-    /// unnamed in the binary
-    /// read at 0x140ad0b62
-    pub unnamed_0x74: u32,
+    /// game: `tech_id`
+    /// read at 0x140ad08ae; named by the save's write of this member at 0x140ad2343
+    pub tech_id: i16,
+    /// game: `unique_id`
+    /// read at 0x140ad0945; named by the save's write of this member at 0x140ad24d5
+    pub unique_id: i32,
+    /// game: `m_researchProgress`
+    /// read at 0x140ad09ed; named by the save's write of this member at 0x140ad2662
+    pub m_research_progress: f32,
+    /// game: `actual_start_time`
+    /// read at 0x140ad0b62; named by the save's write of this member at 0x140ad27f1
+    pub actual_start_time: u32,
 }
 
 /// Read by `FUN_140ab3b70` of the build.
@@ -3503,33 +3503,33 @@ pub struct TribeActionConvert {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ab3c16
-    pub unnamed_0x68: u8,
-    /// unnamed in the binary
-    /// read at 0x140ab3caa
-    pub unnamed_0x6c: u32,
-    /// unnamed in the binary
-    /// read at 0x140ab3d49
-    pub unnamed_0x70: u32,
-    /// unnamed in the binary
-    /// read at 0x140ab3dc5
-    pub unnamed_0x74: u8,
-    /// unnamed in the binary
-    /// read at 0x140ab3e30
-    pub unnamed_0x75: u8,
-    /// unnamed in the binary
-    /// read at 0x140ab3e9b
-    pub unnamed_0x78: u32,
-    /// unnamed in the binary
-    /// read at 0x140ab3f17
-    pub unnamed_0x7c: u32,
-    /// unnamed in the binary
-    /// read at 0x140ab3f8b
-    pub unnamed_0x80: u32,
-    /// unnamed in the binary
-    /// read at 0x140ab3ffe
-    pub unnamed_0x84: u32,
+    /// game: `was_same_owner`
+    /// read at 0x140ab3c16; named by the save's write of this member at 0x140ab8c24
+    pub was_same_owner: u8,
+    /// game: `requiredRange`
+    /// read at 0x140ab3caa; named by the save's write of this member at 0x140ab8db5
+    pub required_range: f32,
+    /// game: `mTotalTimer`
+    /// read at 0x140ab3d49; named by the save's write of this member at 0x140ab8f32
+    pub total_timer: f32,
+    /// game: `target_locked`
+    /// read at 0x140ab3dc5; named by the save's write of this member at 0x140ab90c1
+    pub target_locked: u8,
+    /// game: `save_own_master`
+    /// read at 0x140ab3e30; named by the save's write of this member at 0x140ab9253
+    pub save_own_master: u8,
+    /// game: `save_speed`
+    /// read at 0x140ab3e9b; named by the save's write of this member at 0x140ab93e4
+    pub save_speed: f32,
+    /// game: `lastTargetXPoint`
+    /// read at 0x140ab3f17; named by the save's write of this member at 0x140ab9586
+    pub last_target_xpoint: f32,
+    /// game: `lastTargetYPoint`
+    /// read at 0x140ab3f8b; named by the save's write of this member at 0x140ab9745
+    pub last_target_ypoint: f32,
+    /// game: `savedTargetID`
+    /// read at 0x140ab3ffe; named by the save's write of this member at 0x140ab9905
+    pub saved_target_id: i32,
 }
 
 /// Read by `FUN_140ada4c0` of the build.
@@ -3558,9 +3558,9 @@ pub struct TribeActionArtifact {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140aa8a78
-    pub unnamed_0x68: u8,
+    /// game: `mAutomoveLivestock`
+    /// read at 0x140aa8a78; named by the save's write of this member at 0x140aacc79
+    pub automove_livestock: u8,
 }
 
 /// Read by `FUN_140abc4d0` of the build.
@@ -3586,9 +3586,9 @@ pub struct TribeActionHunt {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ac3159
-    pub unnamed_0x68: u32,
+    /// game: `targetType`
+    /// read at 0x140ac3159; named by the save's write of this member at 0x140ac5765
+    pub target_type: i32,
     /// unnamed in the binary
     /// read into puVar1
     pub unnamed_at_0x140ac31f7: u32,
@@ -3615,27 +3615,27 @@ pub struct TribeActionTrade {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140adeb93
-    pub unnamed_0x70: u8,
-    /// unnamed in the binary
-    /// read at 0x140adec24
-    pub unnamed_0x74: u32,
-    /// unnamed in the binary
-    /// read at 0x140adec8e
-    pub unnamed_0x78: u32,
-    /// unnamed in the binary
-    /// read at 0x140aded15
-    pub unnamed_0x68: u32,
-    /// unnamed in the binary
-    /// read at 0x140aded7f
-    pub unnamed_0x6c: u32,
-    /// unnamed in the binary
-    /// read at 0x140adee0b
-    pub unnamed_0x7c: u16,
-    /// unnamed in the binary
-    /// read at 0x140adee7a
-    pub unnamed_0x80: u32,
+    /// game: `trade_attribute`
+    /// read at 0x140adeb93; named by the save's write of this member at 0x140ae2748
+    pub trade_attribute: u8,
+    /// game: `trade_left`
+    /// read at 0x140adec24; named by the save's write of this member at 0x140ae28e7
+    pub trade_left: f32,
+    /// game: `total_trade`
+    /// read at 0x140adec8e; named by the save's write of this member at 0x140ae2a81
+    pub total_trade: f32,
+    /// game: `pick_up_x`
+    /// read at 0x140aded15; named by the save's write of this member at 0x140ae2c13
+    pub pick_up_x: f32,
+    /// game: `pick_up_y`
+    /// read at 0x140aded7f; named by the save's write of this member at 0x140ae2da3
+    pub pick_up_y: f32,
+    /// game: `converted_resource`
+    /// read at 0x140adee0b; named by the save's write of this member at 0x140ae2f33
+    pub converted_resource: i16,
+    /// game: `conversion_rate`
+    /// read at 0x140adee7a; named by the save's write of this member at 0x140ae30d5
+    pub conversion_rate: f32,
 }
 
 /// Read by `FUN_140ae8fa0` of the build.
@@ -3647,12 +3647,12 @@ pub struct TribeActionWonder {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ae9099
-    pub unnamed_0x68: u32,
-    /// unnamed in the binary
-    /// read at 0x140ae9146
-    pub unnamed_0x6f: u8,
+    /// game: `wonder_time`
+    /// read at 0x140ae9099; named by the save's write of this member at 0x140aec119
+    pub wonder_time: f32,
+    /// game: `hun_bonus`
+    /// read at 0x140ae9146; named by the save's write of this member at 0x140aec2af
+    pub hun_bonus: u8,
 }
 
 /// Read by `FUN_140abdba0` of the build.
@@ -3664,9 +3664,9 @@ pub struct TribeActionGather {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140abdc88
-    pub unnamed_0x68: u32,
+    /// game: `targetType`
+    /// read at 0x140abdc88; named by the save's write of this member at 0x140abe9e9
+    pub target_type: i32,
 }
 
 /// Read by `FUN_140ac1bc0` of the build.
@@ -3678,9 +3678,9 @@ pub struct TribeActionHousing {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ac1c20
-    pub unnamed_0x68: u32,
+    /// game: `unique_id`
+    /// read at 0x140ac1c20; named by the save's write of this member at 0x140ac26b9
+    pub unique_id: i32,
 }
 
 /// Read by `FUN_140ad5090` of the build.
@@ -3692,15 +3692,15 @@ pub struct TribeActionPack {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ad517f
-    pub unnamed_0x6c: u32,
-    /// unnamed in the binary
-    /// read at 0x140ad5217
-    pub unnamed_0x68: u8,
-    /// unnamed in the binary
-    /// read at 0x140ad52be
-    pub unnamed_0x44: u32,
+    /// game: `unique_id`
+    /// read at 0x140ad517f; named by the save's write of this member at 0x140ad6423
+    pub unique_id: i32,
+    /// game: `m_packStatus`
+    /// read at 0x140ad5217; named by the save's write of this member at 0x140ad65a2
+    pub m_pack_status: u8,
+    /// game: `mTimer`
+    /// read at 0x140ad52be; named by the save's write of this member at 0x140ad672f
+    pub timer: f32,
 }
 
 /// Read by `FUN_140ae59d0` of the build.
@@ -3712,18 +3712,18 @@ pub struct TribeActionUnpack {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ae5ac0
-    pub unnamed_0x68: u32,
-    /// unnamed in the binary
-    /// read at 0x140ae5b58
-    pub unnamed_0x6c: u8,
-    /// unnamed in the binary
-    /// read at 0x140ae5bff
-    pub unnamed_0x70: u32,
-    /// unnamed in the binary
-    /// read at 0x140ae5c8b
-    pub unnamed_0x44: u32,
+    /// game: `unique_id`
+    /// read at 0x140ae5ac0; named by the save's write of this member at 0x140ae6f73
+    pub unique_id: i32,
+    /// game: `m_unpackStatus`
+    /// read at 0x140ae5b58; named by the save's write of this member at 0x140ae7105
+    pub m_unpack_status: u8,
+    /// game: `range`
+    /// read at 0x140ae5bff; named by the save's write of this member at 0x140ae7292
+    pub range: f32,
+    /// game: `mTimer`
+    /// read at 0x140ae5c8b; named by the save's write of this member at 0x140ae7421
+    pub timer: f32,
 }
 
 /// Read by `FUN_140ad3080` of the build.
@@ -3735,12 +3735,12 @@ pub struct TribeActionOffboardTrade {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ad30eb
-    pub unnamed_0x68: u32,
-    /// unnamed in the binary
-    /// read at 0x140ad317d
-    pub unnamed_0x6c: u32,
+    /// game: `trade_route_being_used`
+    /// read at 0x140ad30eb; named by the save's write of this member at 0x140ad3abf
+    pub trade_route_being_used: i32,
+    /// game: `trade_route_being_explored`
+    /// read at 0x140ad317d; named by the save's write of this member at 0x140ad3c50
+    pub trade_route_being_explored: i32,
 }
 
 /// Read by `FUN_140ae4820` of the build.
@@ -3752,9 +3752,9 @@ pub struct TribeActionUnitTransform {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ae4908
-    pub unnamed_0x68: u32,
+    /// game: `transform_id`
+    /// read at 0x140ae4908; named by the save's write of this member at 0x140ae5079
+    pub transform_id: i32,
 }
 
 /// Read by `FUN_140ae8220` of the build.
@@ -3766,9 +3766,9 @@ pub struct TribeActionWaitSolidify {
     /// read by 0x140a73f00
     #[br(args(ver))]
     pub rge_action: RgeAction,
-    /// unnamed in the binary
-    /// read at 0x140ae8279
-    pub unnamed_0x68: u32,
+    /// game: `mTargetBuildingId`
+    /// read at 0x140ae8279; named by the save's write of this member at 0x140ae89a9
+    pub target_building_id: i32,
 }
 
 /// Read by `FUN_140ac9b40` of the build.
@@ -3940,9 +3940,9 @@ pub struct RgeCombatObject {
     /// read by 0x14106ec00
     #[br(args(ver, num_players))]
     pub rge_action_object: RgeActionObject,
-    /// unnamed in the binary
-    /// read at 0x141089ad5
-    pub unnamed_0x925: u8,
+    /// game: `formation_id`
+    /// read at 0x141089ad5; named by the save's write of this member at 0x1410872cf
+    pub formation_id: u8,
     /// game: `formation_row`
     /// read at 0x141089bbd
     pub formation_row: u8,
@@ -4708,24 +4708,24 @@ pub struct RgeDopplegangerObject {
     /// unnamed in the binary
     /// read at 0x14108df65 into a local (local_58)
     pub unnamed_at_0x14108df65: u32,
-    /// unnamed in the binary
-    /// read at 0x14108e00d
-    pub unnamed_0x7f4: u8,
-    /// unnamed in the binary
-    /// read at 0x14108e07b
-    pub unnamed_0x7f5: u32,
+    /// game: `map_draw_level`
+    /// read at 0x14108e00d; named by the save's write of this member at 0x14109177a
+    pub map_draw_level: u8,
+    /// game: `map_color`
+    /// read at 0x14108e07b; named by the save's write of this member at 0x141091907
+    pub map_color: i32,
     /// unnamed in the binary
     /// read at 0x14108e0e9 into a local (local_58)
     pub unnamed_at_0x14108e0e9: u32,
-    /// unnamed in the binary
-    /// read at 0x14108e165
-    pub unnamed_0x7d8: u32,
-    /// unnamed in the binary
-    /// read at 0x14108e1e6
-    pub unnamed_0x7f0: u32,
-    /// unnamed in the binary
-    /// read at 0x14108e266
-    pub unnamed_0x7f6: u8,
+    /// game: `doppled_player`
+    /// read at 0x14108e165; named by the save's write of this member at 0x141091c87
+    pub doppled_player: i32,
+    /// game: `CantSeeBits`
+    /// read at 0x14108e1e6; named by the save's write of this member at 0x141091e34
+    pub cant_see_bits: u32,
+    /// game: `Multi_Unified_Points`
+    /// read at 0x14108e266; named by the save's write of this member at 0x141091fd3
+    pub multi_unified_points: u8,
 }
 
 /// Read by `FUN_141140610` of the build.
@@ -5013,9 +5013,9 @@ pub struct WorldPlayerGaia {
     /// read by 0x1415f1160
     #[br(args(ver, num_players))]
     pub world_player: WorldPlayer,
-    /// unnamed in the binary
-    /// read at 0x14167c082
-    pub unnamed_0x1468: u32,
+    /// game: `update_time`
+    /// read at 0x14167c082; named by the save's write of this member at 0x14167fe2e
+    pub update_time: f32,
     /// unnamed in the binary
     /// read into (undefined4*)((longlong)param_1+0x146c)
     pub unnamed_at_0x14167c117: u32,
@@ -5145,9 +5145,11 @@ pub struct WorldPlayerBase {
     /// HD RGE_Player::unitDiplomacy (int32 per player)
     #[br(count = num_players)]
     pub unit_diplomacy: Vec<i32>,
-    /// HD RGE_Player::allied_LOS_Enable (int32), after relations
-    pub allied_los_enable: i32,
-    /// HD RGE_Player::allied_victory (uchar), after allied_LOS_Enable
+    /// game: `allied_LOS_Enable`
+    /// read at 0x14163f391; named by the save's write of this member at 0x14166c02a
+    pub allied_los_enable: u32,
+    /// game: `allied_victory`
+    /// read at 0x14163f42e; named by the save's write of this member at 0x14166c1dc
     pub allied_victory: u8,
     /// HD RGE_Player::name (char*)
     pub name: LenString16,
@@ -5164,21 +5166,27 @@ pub struct WorldPlayerBase {
     /// a second attribute array of DE (save > 0x140f5b), unnamed
     #[br(count = attribute_num.max(0) as usize)]
     pub attributes_2: Vec<u32>,
-    /// HD RGE_Player::view_x (float)
+    /// game: `view_x`
+    /// read at 0x1416406ee; named by the save's write of this member at 0x14166cd1e
     #[brw(magic = b"\x0b")]
     pub view_x: f32,
-    /// HD RGE_Player::view_y (float)
+    /// game: `view_y`
+    /// read at 0x14164072e; named by the save's write of this member at 0x14166ce6b
     pub view_y: f32,
-    /// HD RGE_Player::view_stack_size (int32), counts the saved views
+    /// game: `view_stack_size`
+    /// read at 0x14164078f; named by the save's write of this member at 0x14166cfbd
     pub view_stack_size: i32,
     /// HD RGE_Player::view_stack: (x, y) per saved view
     #[br(if((1..=10).contains(&view_stack_size)), count = view_stack_size.max(0) as usize)]
     pub views: Option<Vec<SavedView>>,
-    /// HD RGE_Player::map_x (int16)
+    /// game: `map_x`
+    /// read at 0x1416408b4; named by the save's write of this member at 0x14166d212
     pub map_x: i16,
-    /// HD RGE_Player::map_y (int16)
+    /// game: `map_y`
+    /// read at 0x1416408f4; named by the save's write of this member at 0x14166d54b
     pub map_y: i16,
-    /// HD RGE_Player::culture (uchar), the byte after type
+    /// game: `culture`
+    /// read at 0x141640934; named by the save's write of this member at 0x14166d69d
     pub culture: u8,
     /// game: `&civId`
     /// helper 0x14163c630
@@ -5186,7 +5194,8 @@ pub struct WorldPlayerBase {
     /// game: `&mEquippedSkins`
     /// helper 0x140d46ce0
     pub equipped_skins: LenVec32<i64>,
-    /// HD RGE_Player::game_status (uchar), culture + 1
+    /// game: `game_status`
+    /// read at 0x141640ab5; named by the save's write of this member at 0x14166db4c
     pub game_status: u8,
     /// HD RGE_Player::resigned (uchar), culture + 3
     pub resigned: u8,
@@ -5194,13 +5203,13 @@ pub struct WorldPlayerBase {
     /// helper 0x140c94e10
     #[brw(magic = b"\x0b")]
     pub color_table_id: u8,
-    /// unnamed in the binary
-    /// read at 0x141640c43
+    /// game: `pathingAttemptCapValue`
+    /// read at 0x141640c43; named by the save's write of this member at 0x14166e040
     #[brw(magic = b"\x0b")]
-    pub unnamed_0x674: u32,
-    /// unnamed in the binary
-    /// read at 0x141640c83
-    pub unnamed_0x678: u32,
+    pub pathing_attempt_cap_value: i32,
+    /// game: `pathingDelayCapValue`
+    /// read at 0x141640c83; named by the save's write of this member at 0x14166e18b
+    pub pathing_delay_cap_value: i32,
     /// unnamed in the binary
     /// read at 0x141640e51 into a local (local_4774)
     pub unnamed_at_0x141640e51: i32,
@@ -5208,27 +5217,27 @@ pub struct WorldPlayerBase {
     /// read at 0x141640eaa into a local (local_4770)
     #[br(count = unnamed_at_0x141640e51.max(0) as usize)]
     pub unnamed_at_0x141640eaa: Vec<u32>,
-    /// unnamed in the binary
-    /// read at 0x1416416b5
-    pub unnamed_0x6b0: u32,
-    /// unnamed in the binary
-    /// read at 0x1416416f5
-    pub unnamed_0x6b4: u32,
-    /// unnamed in the binary
-    /// read at 0x141641735
-    pub unnamed_0x6b8: u32,
-    /// unnamed in the binary
-    /// read at 0x141641775
-    pub unnamed_0x6bc: u32,
-    /// unnamed in the binary
-    /// read at 0x1416417b5
-    pub unnamed_0x6c0: u32,
-    /// unnamed in the binary
-    /// read at 0x1416417f5
-    pub unnamed_0x6c4: u32,
-    /// unnamed in the binary
-    /// read at 0x141641841
-    pub unnamed_0x6c8: u32,
+    /// game: `mLineRatio`
+    /// read at 0x1416416b5; named by the save's write of this member at 0x14166e4bc
+    pub line_ratio: i32,
+    /// game: `mColumnRatio`
+    /// read at 0x1416416f5; named by the save's write of this member at 0x14166e69b
+    pub column_ratio: i32,
+    /// game: `mMinColumnDistance`
+    /// read at 0x141641735; named by the save's write of this member at 0x14166e7ed
+    pub min_column_distance: i32,
+    /// game: `mColumnToLineDistance`
+    /// read at 0x141641775; named by the save's write of this member at 0x14166e93b
+    pub column_to_line_distance: i32,
+    /// game: `mAutoFormations`
+    /// read at 0x1416417b5; named by the save's write of this member at 0x14166ea8d
+    pub auto_formations: i32,
+    /// game: `mFormationInfluenceDistance`
+    /// read at 0x1416417f5; named by the save's write of this member at 0x14166ebde
+    pub formation_influence_distance: f32,
+    /// game: `mBreakAutoFormationsBySpeed`
+    /// read at 0x141641841; named by the save's write of this member at 0x14166ed2d
+    pub break_auto_formations_by_speed: u32,
     /// unnamed in the binary
     /// read at 0x14164188a
     pub unnamed_0x6cc: [u8; 16],
@@ -5238,48 +5247,48 @@ pub struct WorldPlayerBase {
     /// unnamed in the binary
     /// read at 0x14164190a
     pub unnamed_0x6ec: [u8; 16],
-    /// unnamed in the binary
-    /// read at 0x14164195a
-    pub unnamed_0x31c: u32,
-    /// unnamed in the binary
-    /// read at 0x14164199a
-    pub unnamed_0x320: u32,
-    /// unnamed in the binary
-    /// read at 0x1416419da
-    pub unnamed_0x324: u32,
-    /// unnamed in the binary
-    /// read at 0x141641a1a
-    pub unnamed_0x328: u32,
-    /// unnamed in the binary
-    /// read at 0x141641a5a
-    pub unnamed_0x32c: u32,
-    /// unnamed in the binary
-    /// read at 0x141641a9a
-    pub unnamed_0x330: u32,
-    /// unnamed in the binary
-    /// read at 0x141641ada
-    pub unnamed_0x334: u32,
-    /// unnamed in the binary
-    /// read at 0x141641b1a
-    pub unnamed_0x338: u32,
-    /// unnamed in the binary
-    /// read at 0x141641b70
-    pub unnamed_0x33c: u32,
-    /// unnamed in the binary
-    /// read at 0x141641bc1
-    pub unnamed_0x608: u32,
-    /// unnamed in the binary
-    /// read at 0x141641c01
-    pub unnamed_0x60c: u32,
-    /// unnamed in the binary
-    /// read at 0x141641c41
-    pub unnamed_0x610: u8,
-    /// unnamed in the binary
-    /// read at 0x141641c92
-    pub unnamed_0x611: u8,
-    /// unnamed in the binary
-    /// read at 0x141641cd2
-    pub unnamed_0x612: u8,
+    /// game: `map_scroll_vector_x`
+    /// read at 0x14164195a; named by the save's write of this member at 0x14166f1d0
+    pub map_scroll_vector_x: f32,
+    /// game: `map_scroll_vector_y`
+    /// read at 0x14164199a; named by the save's write of this member at 0x14166f283
+    pub map_scroll_vector_y: f32,
+    /// game: `map_scroll_end_x`
+    /// read at 0x1416419da; named by the save's write of this member at 0x14166f336
+    pub map_scroll_end_x: f32,
+    /// game: `map_scroll_end_y`
+    /// read at 0x141641a1a; named by the save's write of this member at 0x14166f3e9
+    pub map_scroll_end_y: f32,
+    /// game: `map_scroll_start_x`
+    /// read at 0x141641a5a; named by the save's write of this member at 0x14166f49c
+    pub map_scroll_start_x: f32,
+    /// game: `map_scroll_start_y`
+    /// read at 0x141641a9a; named by the save's write of this member at 0x14166f54f
+    pub map_scroll_start_y: f32,
+    /// game: `map_scroll_total_distance`
+    /// read at 0x141641ada; named by the save's write of this member at 0x14166f602
+    pub map_scroll_total_distance: f32,
+    /// game: `map_scroll_distance`
+    /// read at 0x141641b1a; named by the save's write of this member at 0x14166f6b5
+    pub map_scroll_distance: f32,
+    /// game: `mMapScrollInSeconds`
+    /// read at 0x141641b70; named by the save's write of this member at 0x14166f768
+    pub map_scroll_in_seconds: i32,
+    /// game: `easiest_reaction_percentage`
+    /// read at 0x141641bc1; named by the save's write of this member at 0x14166f81b
+    pub easiest_reaction_percentage: i32,
+    /// game: `easier_reaction_percentage`
+    /// read at 0x141641c01; named by the save's write of this member at 0x14166f8ce
+    pub easier_reaction_percentage: i32,
+    /// game: `task_ungrouped_soldiers`
+    /// read at 0x141641c41; named by the save's write of this member at 0x14166f981
+    pub task_ungrouped_soldiers: u8,
+    /// game: `may_attack_walls`
+    /// read at 0x141641c92; named by the save's write of this member at 0x14166fa34
+    pub may_attack_walls: u8,
+    /// game: `livestock_only_to_tc`
+    /// read at 0x141641cd2; named by the save's write of this member at 0x14166fae7
+    pub livestock_only_to_tc: u8,
     /// game: `&disable_build_help`
     /// helper 0x140ccd170
     pub disable_build_help: u8,
@@ -5310,20 +5319,20 @@ pub struct WorldPlayerBase {
     /// game: `&mNameMode`
     /// helper 0x14163caf0
     pub name_mode: i32,
-    /// unnamed in the binary
-    /// read at 0x14164214f
-    pub unnamed_0x55c: i32,
+    /// game: `active_selection_count`
+    /// read at 0x14164214f; named by the save's write of this member at 0x1416702e5
+    pub active_selection_count: i32,
     /// unnamed in the binary
     /// read at 0x1416421a4 into a local (local_477c)
-    #[br(if(unnamed_0x55c > 0))]
+    #[br(if(active_selection_count > 0))]
     pub unnamed_at_0x1416421a4: Option<u32>,
-    /// unnamed in the binary
-    /// read at 0x1416421f2
-    #[br(if(unnamed_0x55c > 0))]
-    pub unnamed_0x558: Option<u32>,
+    /// game: `selected_object_properties`
+    /// read at 0x1416421f2; named by the save's write of this member at 0x141670475
+    #[br(if(active_selection_count > 0))]
+    pub selected_object_properties: Option<u32>,
     /// unnamed in the binary
     /// read at 0x14164224a into a local (local_477c)
-    #[br(count = unnamed_0x55c.max(0) as usize)]
+    #[br(count = active_selection_count.max(0) as usize)]
     pub unnamed_at_0x14164224a: Vec<u32>,
     /// game: `&preferredTradeDistance`
     /// helper 0x140a91160
