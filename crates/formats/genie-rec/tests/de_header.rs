@@ -112,6 +112,55 @@ fn marvinblue_sections_end_where_imhex_says() {
     }
 }
 
+/// A player's masters by id: the static master of every class, a building's included.
+#[test]
+fn marvinblue_player_masters_are_found_by_id() {
+    let Some(dir) = corpus() else {
+        return eprintln!("GENIE_REC_CORPUS is not set; skipping");
+    };
+    let header =
+        de::header::parse(&header_of(&dir.join("MarvinBlue/426048731.aoe2record"))).unwrap();
+    let players = header.players();
+    let objects = players[2].objects();
+    let static_part = |id| objects.master(id).and_then(|m| m.static_part());
+    // FLARE3, a static object with a death sprite and no death spawn
+    let flare = static_part(332).unwrap();
+    assert_eq!(
+        (flare.id(), flare.death_sprite_id, flare.death_spawn_obj_id),
+        (332, 1751, -1)
+    );
+    // the empty town-centre annex, a building
+    assert_eq!(static_part(890).map(|s| s.id()), Some(890));
+    assert!(objects.master(i16::MAX).is_none());
+}
+
+/// An object's own master (one the object carries instead of its player's): Gaia's objects of
+/// master 600 in MarvinBlue/426049890 have one.
+#[test]
+fn an_objects_own_master_is_its_static_master() {
+    let Some(dir) = corpus() else {
+        return eprintln!("GENIE_REC_CORPUS is not set; skipping");
+    };
+    let header =
+        de::header::parse(&header_of(&dir.join("MarvinBlue/426049890.aoe2record"))).unwrap();
+    let players = header.players();
+    let object = |id| {
+        players[0]
+            .live_objects()
+            .filter_map(|o| o.static_part())
+            .find(|s| s.id == id)
+            .unwrap()
+    };
+    let own = object(11664).own_master().unwrap();
+    assert_eq!(own.read_temp, 600);
+    let without = players[0]
+        .live_objects()
+        .filter_map(|o| o.static_part())
+        .find(|s| s.has_own_master_object == 0)
+        .unwrap();
+    assert!(without.own_master().is_none());
+}
+
 fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).unwrap().map(Result::unwrap) {
         let path = entry.path();
