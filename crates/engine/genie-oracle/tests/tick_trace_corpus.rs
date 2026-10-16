@@ -52,9 +52,32 @@ fn the_trace_holds_every_checkpoint_of_its_recording() {
     assert!(checked > 0);
 }
 
+/// A word that differs: its index, the slice's value and the game's.
+type Word = (usize, u32, u32);
+
+/// The first tick where the slice's block of `player` leaves the trace's, with the words that differ
+/// there and both values of each. The trace's lane of a player is the one whose word 8 names it.
+fn first_difference(
+    trace: &TickTrace,
+    recording: &[u8],
+    player: u32,
+    masters: &genie_oracle::MasterTable,
+) -> Option<(usize, Vec<Word>)> {
+    let lane = (0..trace.lanes(0).len()).find(|&l| trace.lanes(0)[l][8] == player)?;
+    let slice =
+        genie_oracle::blocks_per_tick(recording, &[player], trace.len(), Some(masters)).unwrap();
+    (0..slice.len()).find_map(|t| {
+        let words: Vec<_> = (0..11)
+            .filter(|&w| slice[t][0][w] != trace.lanes(t)[lane][w])
+            .map(|w| (w, slice[t][0][w], trace.lanes(t)[lane][w]))
+            .collect();
+        (!words.is_empty()).then_some((t, words))
+    })
+}
+
 /// The slice against the tick oracle, tick by tick over the whole trace: MarvinBlue/426048731 player
-/// 2 (lane 1, idle up to checkpoint 1) and the first tick where the slice's block leaves the game's,
-/// with the words that differ there. Needs the trace of that recording in `GENIE_TICK_TRACE` and `GENIE_MASTERS`.
+/// 2 (idle up to checkpoint 1) and the first tick where the slice's block leaves the game's. Needs
+/// the trace of that recording in `GENIE_TICK_TRACE` and `GENIE_MASTERS`.
 #[test]
 fn the_slice_follows_the_game_up_to_a_named_tick() {
     let (Ok(trace), Ok(rec), Some(masters)) = (
@@ -67,30 +90,41 @@ fn the_slice_follows_the_game_up_to_a_named_tick() {
         );
     };
     if !rec.ends_with("426048731.aoe2record") {
-        return eprintln!("the slice's lane is MarvinBlue/426048731's player 2; skipping");
+        return eprintln!("the pinned lane is MarvinBlue/426048731's player 2; skipping");
     }
     let trace = TickTrace::decode(&std::fs::read(trace).unwrap()).unwrap();
-    let data = std::fs::read(rec).unwrap();
-    let slice = genie_oracle::blocks_per_tick(&data, &[2], trace.len(), Some(&masters)).unwrap();
-    let differing = |t: usize| -> Vec<usize> {
-        (0..11)
-            .filter(|&w| slice[t][0][w] != trace.lanes(t)[1][w])
-            .collect()
-    };
-    let first = (0..slice.len()).find(|&t| !differing(t).is_empty());
-    let words = first.map(differing).unwrap_or_default();
-    eprintln!(
-        "first differing tick: {first:?}, words {words:?} (slice {:?}, game {:?})",
-        first.map(|t| words.iter().map(|&w| slice[t][0][w]).collect::<Vec<_>>()),
-        first.map(|t| words
-            .iter()
-            .map(|&w| trace.lanes(t)[1][w])
-            .collect::<Vec<_>>())
-    );
+    let first = first_difference(&trace, &std::fs::read(rec).unwrap(), 2, &masters);
+    eprintln!("first difference (tick, [(word, slice, game)]): {first:?}");
     // the slice holds the whole block, through player 1's BUILDs at ticks 135 and 281 (their
     // foundations' unit-AI constructors draw three AI values each), until player 2's own first
     // command: a villager QUEUE (0x81) at its town centre in tick 553
-    assert_eq!((first, words), (Some(553), vec![1, 9]));
+    let words: Option<Vec<usize>> = first
+        .as_ref()
+        .map(|(_, w)| w.iter().map(|&(w, ..)| w).collect());
+    assert_eq!(
+        (first.map(|(t, _)| t), words),
+        (Some(553), Some(vec![1, 9]))
+    );
+}
+
+/// The same comparison for any recording and player, unpinned: `GENIE_TICK_PLAYER` names the
+/// player. A report for the lanes the slice does not reproduce yet.
+#[test]
+fn the_slice_against_a_trace_report() {
+    let (Ok(trace), Ok(rec), Ok(player), Some(masters)) = (
+        std::env::var("GENIE_TICK_TRACE"),
+        std::env::var("GENIE_TICK_REC"),
+        std::env::var("GENIE_TICK_PLAYER"),
+        common::masters(),
+    ) else {
+        return eprintln!(
+            "GENIE_TICK_TRACE / GENIE_TICK_REC / GENIE_TICK_PLAYER / GENIE_MASTERS are not set; skipping"
+        );
+    };
+    let trace = TickTrace::decode(&std::fs::read(trace).unwrap()).unwrap();
+    let player = player.parse().unwrap();
+    let first = first_difference(&trace, &std::fs::read(rec).unwrap(), player, &masters);
+    eprintln!("player {player}: first difference (tick, [(word, slice, game)]): {first:?}");
 }
 
 /// The slice's word-9 terms per object against the game's after a tick (MarvinBlue/426048731

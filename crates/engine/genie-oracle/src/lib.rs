@@ -261,6 +261,7 @@ fn unit_ai(object: &de::header::Object) -> Option<genie_core::unit_ai::UnitAi> {
         current_target: ai.current_target_value,
         idle_timer: ai.idle_timer_value,
         adjusted_idle_timeout: ai.adjusted_idle_timeout_value,
+        idle_timeout: ai.idle_timeout_value,
         secondary_timer: ai.secondary_timer_value,
         look_around_timer: ai.look_around_timer_value,
         look_around_timeout: ai.look_around_timeout_value,
@@ -338,15 +339,68 @@ fn frames<'a>(chapter: &de::Chapter<'a>, limit: usize) -> Result<Vec<Frame<'a>>,
     Ok(out)
 }
 
-/// What the slice runs of a recorded command: BUILD only; every other command is left out (see
-/// [`GROUP_COMMANDS`] for what that may miss).
+/// The commands that name their units as `u16 count (+0x10), i32 ids (+0x18)` and that the game's
+/// unit-list reader (`FUN_140e6b290`) remembers per comm player: INTERACT, WORK, MOVE, RETREAT.
+const UNIT_LIST_COMMANDS: [u8; 4] = [0x00, 0x02, 0x03, 0x23];
+
+/// The commands among them that reset their units' idle timeouts (`FUN_140e6cfc0`).
+const ORDER_COMMANDS: [u8; 3] = [0x00, 0x03, 0x23];
+
+/// A count of `0xffff` names the comm player's last commanded units.
+const LAST_COMMANDED: u16 = 0xffff;
+
+/// The unit-list reader keeps at most this many units of a human player's command (500 for the
+/// players `FUN_141659cf0` accepts).
+const MAX_UNITS: usize = 60;
+
+/// Decodes what the slice runs of the recorded commands, in their order. It remembers each comm
+/// player's last commanded units, as the game's unit-list reader does. BUILD and the orders run;
+/// every other command is left out (see [`GROUP_COMMANDS`] for what that may miss).
 ///
+/// The player byte is the comm player, which the handlers map to a world player through the lobby
+/// (`FUN_140e6b210`); the slice takes the two as equal.
+#[derive(Default)]
+struct Decoder {
+    last_commanded: std::collections::HashMap<u8, Vec<i32>>,
+}
+
+impl Decoder {
+    fn command(&mut self, packet: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
+        let (&kind, &player) = (packet.first()?, packet.get(1)?);
+        if kind == 0x66 {
+            return build(packet, sections);
+        }
+        if !UNIT_LIST_COMMANDS.contains(&kind) || packet.len() < 0x18 {
+            return None;
+        }
+        let count = u16::from_le_bytes([packet[0x10], packet[0x11]]);
+        let units = if count == LAST_COMMANDED {
+            self.last_commanded
+                .get(&player)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            let units: Vec<i32> = packet[0x18..]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .take((count as usize).min(MAX_UNITS))
+                .map(|&b| i32::from_le_bytes(b))
+                .collect();
+            self.last_commanded.insert(player, units.clone());
+            units
+        };
+        ORDER_COMMANDS.contains(&kind).then_some(Command::Order {
+            player: player as usize,
+            units,
+        })
+    }
+}
+
 /// BUILD's packet: `u8 0x66, u8 player, u16 length, u16 builders (+4), f32 x (+8), f32 y (+0xc),
-/// i16 master (+0x10), ..., i32 builder ids (+0x20)` (`FUN_140e7a400`). The player byte is the comm
-/// player, which the handler maps to a world player through the lobby (`FUN_140e6b210`); the slice
-/// takes the two as equal.
-fn slice_command(packet: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
-    if packet.first() != Some(&0x66) || packet.len() < 0x12 {
+/// i16 master (+0x10), ..., i32 builder ids (+0x20)` (`FUN_140e7a400`).
+fn build(packet: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
+    if packet.len() < 0x12 {
         return None;
     }
     let player = packet[1] as usize;
@@ -402,12 +456,17 @@ fn combat_master(
 }
 
 /// Run the slice over `frames`, each tick with its commands.
-fn run(turns: &mut Turns, frames: &[Frame<'_>], sections: &[PlayerSection<'_>]) {
+fn run(
+    turns: &mut Turns,
+    decoder: &mut Decoder,
+    frames: &[Frame<'_>],
+    sections: &[PlayerSection<'_>],
+) {
     for frame in frames {
         let commands: Vec<Command> = frame
             .commands
             .iter()
-            .filter_map(|p| slice_command(p, sections))
+            .filter_map(|p| decoder.command(p, sections))
             .collect();
         turns.tick_with(frame.dt, &commands);
     }
@@ -441,7 +500,12 @@ pub fn simulate_word9(
     });
     let sections = header.players();
     let mut turns = slice(&header, masters);
-    run(&mut turns, &all[..first], &sections);
+    run(
+        &mut turns,
+        &mut Decoder::default(),
+        &all[..first],
+        &sections,
+    );
     checkpoint
         .lanes
         .iter()
@@ -512,7 +576,12 @@ pub fn word9_terms(
         return Err(Error::NoSuchPlayer(id));
     }
     let mut turns = slice(&header, masters);
-    run(&mut turns, &frames(&chapter, ticks)?, &sections);
+    run(
+        &mut turns,
+        &mut Decoder::default(),
+        &frames(&chapter, ticks)?,
+        &sections,
+    );
     Ok(turns.players[id as usize]
         .objects
         .iter()
@@ -542,8 +611,14 @@ pub fn blocks_per_tick(
     }
     let mut turns = slice(&header, masters);
     let mut out = Vec::with_capacity(ticks);
+    let mut decoder = Decoder::default();
     for frame in frames(&chapter, ticks)? {
-        run(&mut turns, std::slice::from_ref(&frame), &sections);
+        run(
+            &mut turns,
+            &mut decoder,
+            std::slice::from_ref(&frame),
+            &sections,
+        );
         out.push(
             ids.iter()
                 .map(|&id| lane_block(&sections[id as usize], id, &turns.players[id as usize]))

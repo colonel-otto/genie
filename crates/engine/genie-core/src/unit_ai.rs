@@ -22,6 +22,8 @@ pub struct UnitAi {
     pub idle_timer: u32,
     /// `+0x164`, the randomised timeout the idle timer is compared with.
     pub adjusted_idle_timeout: u32,
+    /// `+0x168`, the base the adjusted timeout is drawn around.
+    pub idle_timeout: u32,
     /// `+0x16c`.
     pub secondary_timer: u32,
     /// `+0x170`.
@@ -63,6 +65,11 @@ fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
 /// The base idle timeout (`+0x168`) the constructor sets; the adjusted one is drawn around it.
 const IDLE_TIMEOUT: u32 = 3000;
 
+/// `UpdateAdjustedIdleTimeout` (`0x140c41e00`): `r % (base / 2) + 3 * base / 4`, one AI draw.
+fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
+    ai.rand15() % (base >> 1) + ((base * 3) >> 2)
+}
+
 impl UnitAi {
     /// The unit AI a new object gets. `UnitAIModule`'s constructor (`0x140c2e080`) draws three
     /// AI-stream values, in this order: the last retarget time `r % 500`, the adjusted idle timeout
@@ -74,7 +81,7 @@ impl UnitAi {
             return Err(Unsupported("constructor of a unit-AI type not modelled"));
         }
         let last_retarget_time = ai.rand15() % 500;
-        let adjusted_idle_timeout = ai.rand15() % (IDLE_TIMEOUT >> 1) + ((IDLE_TIMEOUT * 3) >> 2);
+        let adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
         let retarget_timer = 750 + ai.rand15() % 500;
         Ok(UnitAi {
             ai_type,
@@ -83,6 +90,7 @@ impl UnitAi {
             current_target: -1,
             idle_timer: 0,
             adjusted_idle_timeout,
+            idle_timeout: IDLE_TIMEOUT,
             secondary_timer: 750,
             look_around_timer: 0,
             look_around_timeout: 1000,
@@ -91,6 +99,17 @@ impl UnitAi {
             stance: 0,
             retarget_disabled: 0,
         })
+    }
+
+    /// What an order (INTERACT, MOVE, RETREAT) does to each of its units' AI before it runs
+    /// (`FUN_140e6cfc0`): an adjusted idle timeout of 750 or more is redrawn
+    /// (`UpdateAdjustedIdleTimeout`, unit-AI slot 53, `0x140c41e00`), and the secondary timer is
+    /// capped at 750.
+    pub fn reset_for_order(&mut self, ai: &mut Well512) {
+        if self.adjusted_idle_timeout > 749 {
+            self.adjusted_idle_timeout = adjusted_idle_timeout(self.idle_timeout, ai);
+        }
+        self.secondary_timer = self.secondary_timer.min(750);
     }
 
     fn is_idle(&self) -> bool {
@@ -272,6 +291,7 @@ mod tests {
                 current_target: -1,
                 idle_timer: 0,
                 adjusted_idle_timeout: b % 1500 + 2250,
+                idle_timeout: 3000,
                 secondary_timer: 750,
                 look_around_timer: 0,
                 look_around_timeout: 1000,
@@ -288,5 +308,30 @@ mod tests {
         let mut r = rng();
         assert!(UnitAi::constructed(13, &mut r).is_err());
         assert_eq!(r.draws, 0);
+    }
+
+    #[test]
+    fn an_order_redraws_an_adjusted_idle_timeout_of_750_or_more_and_caps_the_secondary_timer() {
+        // FUN_140e6cfc0 for each unit of an INTERACT, MOVE or RETREAT
+        let mut u = UnitAi {
+            idle_timeout: 3000,
+            adjusted_idle_timeout: 2600,
+            secondary_timer: 900,
+            ..idle(13)
+        };
+        let mut r = rng();
+        u.reset_for_order(&mut r);
+        assert_eq!(
+            (u.adjusted_idle_timeout, u.secondary_timer),
+            (7241 % 1500 + 2250, 750)
+        );
+        let mut low = UnitAi {
+            idle_timeout: 3000,
+            adjusted_idle_timeout: 749,
+            ..idle(13)
+        };
+        let mut r = rng();
+        low.reset_for_order(&mut r);
+        assert_eq!((low.adjusted_idle_timeout, r.draws), (749, 0));
     }
 }

@@ -41,6 +41,10 @@ pub enum Command {
         master: i16,
         unit_ai: Result<Option<u32>, Unsupported>,
     },
+    /// INTERACT (0x00), MOVE (0x03) or RETREAT (0x23): before the order runs, each listed unit's AI
+    /// resets its idle timeout ([`UnitAi::reset_for_order`]), in list order, wherever the unit is.
+    /// The slice does not move the units.
+    Order { player: usize, units: Vec<i32> },
 }
 
 /// What a tick's update of one object needs from the world.
@@ -163,6 +167,25 @@ impl Turns {
                     self.ticks,
                     owner.objects.len() - 1,
                     Unsupported("BUILD tasks the builders"),
+                ));
+            }
+            Command::Order { player, ref units } => {
+                for &id in units {
+                    let ai = self
+                        .players
+                        .iter_mut()
+                        .flat_map(|p| p.objects.iter_mut())
+                        .find(|o| o.id == id)
+                        .and_then(|o| o.ai.as_mut());
+                    if let Some(ai) = ai {
+                        ai.reset_for_order(self.streams.get(Stream::Ai));
+                    }
+                }
+                let owner = &mut self.players[player];
+                owner.unsupported.get_or_insert((
+                    self.ticks,
+                    0,
+                    Unsupported("an order moves its units"),
                 ));
             }
         }
@@ -512,5 +535,61 @@ mod tests {
                 .retarget_timer,
             next
         );
+    }
+
+    #[test]
+    fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
+        // MOVE: one AI draw per listed unit with a unit AI, in list order, before the turn player's
+        // units update; the ordering player's lane stops
+        let ordered = |id| Unit {
+            id,
+            ai: Some(UnitAi {
+                idle_timeout: 3000,
+                adjusted_idle_timeout: 3000,
+                ..building()
+            }),
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            29910,
+            1,
+            vec![0, 0],
+            vec![
+                Player {
+                    objects: vec![ordered(7), ordered(8)],
+                    ..Player::default()
+                },
+                Player {
+                    objects: vec![live(2)],
+                    ..Player::default()
+                },
+            ],
+        );
+        t.tick_with(
+            40,
+            &[Command::Order {
+                player: 0,
+                units: vec![8, 99, 7],
+            }],
+        );
+        let mut streams = Streams::default();
+        streams.seed_all(29910);
+        let ai = streams.get(Stream::Ai);
+        let (eight, seven) = (ai.rand15() % 1500 + 2250, ai.rand15() % 1500 + 2250);
+        let next = 750 + ai.rand15() % 500;
+        let timeout = |t: &Turns, i: usize| {
+            t.players[0].objects[i]
+                .ai
+                .as_ref()
+                .unwrap()
+                .adjusted_idle_timeout
+        };
+        assert_eq!((timeout(&t, 1), timeout(&t, 0)), (eight, seven));
+        assert_eq!(
+            t.players[1].objects[0].ai.as_ref().unwrap().retarget_timer,
+            next
+        );
+        assert!(t.players[0].unsupported.is_some());
     }
 }
