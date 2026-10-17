@@ -33,7 +33,7 @@ pub struct Unit {
     /// A default task other than the Artifact action. `RGE_Action_Object::update` (0x14106ac90)
     /// starts it in an object's first update if the object is still in state 2 after its static
     /// step; the slice does not model it, so that update stops the player.
-    pub unmodelled_default_task: Option<Unsupported>,
+    pub unmodelled_action: Option<Unsupported>,
     /// A building's production queue and make action.
     pub production: Option<Production>,
     /// A builder's Build action, its top action.
@@ -125,10 +125,7 @@ impl Unit {
     /// One update; true when the object leaves its list.
     fn update(&mut self, c: &mut Context<'_>) -> Result<bool, Unsupported> {
         let leaves = self.life.update(c.dt_seconds)?;
-        if let Some(e) = self
-            .unmodelled_default_task
-            .filter(|_| self.life.state == 2)
-        {
+        if let Some(e) = self.unmodelled_action.filter(|_| self.life.state == 2) {
             return Err(e);
         }
         if let Some(production) = self.production.as_mut().filter(|_| self.life.state == 2) {
@@ -242,7 +239,7 @@ impl Turns {
                     },
                     ai,
                     artifact: None,
-                    unmodelled_default_task: None,
+                    unmodelled_action: None,
                     production: None,
                     build: None,
                 });
@@ -926,12 +923,12 @@ mod tests {
     }
 
     #[test]
-    fn an_unmodelled_default_task_stops_its_player_unless_the_object_dies_first() {
+    fn an_unmodelled_action_stops_its_player_unless_the_object_dies_first() {
         let task = Unsupported("a default task the slice does not model");
         let with_task = |life| Unit {
             id: 5,
             life,
-            unmodelled_default_task: Some(task),
+            unmodelled_action: Some(task),
             ..Unit::default()
         };
         let run = |unit| {

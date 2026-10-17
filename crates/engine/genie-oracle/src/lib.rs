@@ -169,7 +169,10 @@ pub struct Word9 {
     pub unsupported: Option<(u32, usize, genie_core::unit_ai::Unsupported)>,
 }
 
-/// The slice's view of one saved object: its lifecycle, its unit AI and its default task.
+/// The slice's view of one saved object: its lifecycle, its unit AI and its actions. A save from
+/// the start of a game holds no actions, so an object starts its master's default task in its
+/// first update ([`default_task`]); a save from later in the game holds them, and the slice
+/// imports the ones it models ([`saved_actions`]).
 fn unit(
     object: &de::header::Object,
     objects: &PlayerObjects,
@@ -179,24 +182,133 @@ fn unit(
     let Some(s) = object.static_part() else {
         return Unit {
             id: -1,
-            unmodelled_default_task: Some(Unsupported("an object without a static part")),
+            unmodelled_action: Some(Unsupported("an object without a static part")),
             ..Unit::default()
         };
     };
-    let (artifact, unmodelled_default_task) = match default_task(object, s, civ, masters) {
-        Ok(artifact) => (artifact, None),
-        Err(e) => (None, Some(e)),
-    };
-    Unit {
+    let saved = object
+        .actions()
+        .is_some_and(|a| a.entries().next().is_some());
+    let mut unit = Unit {
         id: s.id,
         position: [s.t_x, s.t_y, s.t_z],
         life: lifecycle(object, s, objects, civ, masters),
         ai: unit_ai(object),
-        artifact,
-        unmodelled_default_task,
-        production: None,
-        build: None,
+        ..Unit::default()
+    };
+    let imported = if saved {
+        saved_actions(object, s, &mut unit)
+    } else {
+        default_task(object, s, civ, masters).map(|artifact| unit.artifact = artifact)
+    };
+    let production = production(object, objects).map(|p| unit.production = p);
+    unit.unmodelled_action = imported.and(production).err();
+    unit
+}
+
+/// The top action of a saved object as the slice models it: the Artifact action (107) and the
+/// Build action (101) with its MoveTo (type 1). Any other saved action stops the object's player.
+fn saved_actions(
+    object: &de::header::Object,
+    s: &RgeStaticObject,
+    unit: &mut Unit,
+) -> Result<(), Unsupported> {
+    use genie_core::build::{BUILD, BuildAction, MoveTo};
+    let (kind, action) = object
+        .actions()
+        .and_then(|a| a.entries().next())
+        .expect("saved_actions is called for an object with actions");
+    let base = action
+        .base()
+        .ok_or(Unsupported("a saved action without its base"))?;
+    match kind {
+        ARTIFACT_TYPE => {
+            unit.artifact = Some(genie_core::artifact::Artifact {
+                state: base.state,
+                timer: base.timer,
+                gaia: s.owner == 0,
+            });
+            Ok(())
+        }
+        BUILD => {
+            let move_to = match base.sub_actions.entries().next() {
+                None => None,
+                Some((1, sub)) => match sub.base().map(|b| b.state) {
+                    Some(1) => Some(MoveTo::Arrived),
+                    Some(3) => Some(MoveTo::Start),
+                    Some(4) => Some(MoveTo::Moving),
+                    _ => {
+                        return Err(Unsupported(
+                            "a saved MoveTo in a state the slice does not model",
+                        ));
+                    }
+                },
+                Some(_) => return Err(Unsupported("a saved Build action with another sub-action")),
+            };
+            unit.build = Some(BuildAction {
+                target: base.target_id,
+                state: base.state,
+                move_to,
+            });
+            Ok(())
+        }
+        _ => Err(Unsupported("a saved action the slice does not import")),
     }
+}
+
+/// A saved building's production (`TRIBE_Building_Object`'s queue and its make action): each queued
+/// unit with its train time, the make action's work done, and the building's work rate (its
+/// `mWorkRatePowerup` plus its master's `work_rate`). `Ok(None)`: the building produces nothing.
+fn production(
+    object: &de::header::Object,
+    objects: &PlayerObjects,
+) -> Result<Option<genie_core::production::Production>, Unsupported> {
+    let Some(building) = object.tribe_building_object.as_ref() else {
+        return Ok(None);
+    };
+    let mut actions = building.production_queue_actions.entries();
+    let Some((kind, action)) = actions.next() else {
+        return Ok(None);
+    };
+    let Some(make) = action
+        .tribe_action_make_obj
+        .as_ref()
+        .filter(|_| kind == 102)
+    else {
+        return Err(Unsupported(
+            "a saved production action other than making a unit",
+        ));
+    };
+    let queue = building
+        .production_queue
+        .iter()
+        .take(building.production_queue_count.max(0) as usize)
+        .flat_map(|e| {
+            let unit = genie_core::production::Queued {
+                master: e.production_queue_master_unit_id,
+                train_time: f32::from(e.production_queue_train_time),
+            };
+            std::iter::repeat_n(unit, e.production_queue_unit_count.max(0) as usize)
+        })
+        .collect();
+    let master = building
+        .tribe_combat_object
+        .rge_combat_object
+        .rge_action_object
+        .rge_moving_object
+        .rge_animated_object
+        .rge_static_object
+        .master_obj;
+    let work_rate = objects
+        .master(master)
+        .and_then(combat_master)
+        .map(|c| c.rge_master_action_object.work_rate)
+        .ok_or(Unsupported("a building master without an action part"))?;
+    Ok(Some(genie_core::production::Production {
+        queue,
+        progress: make.work_done,
+        rate: building.tribe_combat_object.work_rate_powerup + work_rate,
+    }))
 }
 
 /// What an object's first update starts of its master's default task (`RGE_Action_Object::update`,
@@ -896,4 +1008,153 @@ pub fn blocks_per_tick(
         );
     }
     Ok(out)
+}
+
+/// What the comparison with the game's saves checks of one live object: its master, state, hit
+/// points, held amount and position in full f32, its top action (type, state) and its unit AI's
+/// retarget timer.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ObjectRow {
+    pub id: i32,
+    pub master: i16,
+    pub state: u8,
+    pub hp: f32,
+    pub amount: f32,
+    pub position: [f32; 3],
+    pub action: Option<(i16, u8)>,
+    pub retarget: Option<i32>,
+}
+
+impl ObjectRow {
+    fn of_unit(unit: &Unit) -> Self {
+        ObjectRow {
+            id: unit.id,
+            master: unit.life.master_id,
+            state: unit.life.state,
+            hp: unit.life.hp,
+            amount: unit.life.amount,
+            position: unit.position,
+            action: unit
+                .artifact
+                .map(|a| (ARTIFACT_TYPE, a.state))
+                .or(unit.build.map(|b| (genie_core::build::BUILD, b.state))),
+            retarget: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
+        }
+    }
+}
+
+/// A slice run from a save ([`objects_from_save`]): one player's objects after it, and the first
+/// update the slice could not model, if any.
+#[derive(Clone, Debug)]
+pub struct SliceRun {
+    pub objects: Vec<ObjectRow>,
+    pub unsupported: Option<(u32, usize, Unsupported)>,
+}
+
+/// The live objects of player `id` in a save (a recording's header, or the tick oracle's
+/// `--snapshot`), as [`ObjectRow`]s.
+pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
+    let chapter = de::chapters(save)?[0];
+    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let sections = header.players();
+    let section = sections.get(id as usize).ok_or(Error::NoSuchPlayer(id))?;
+    Ok(live(section)
+        .map(|(object, s)| ObjectRow {
+            id: s.id,
+            master: s.master_obj,
+            state: s.object_state,
+            hp: s.hp,
+            amount: s.attribute_amount_held,
+            position: [s.t_x, s.t_y, s.t_z],
+            action: object
+                .actions()
+                .and_then(|a| a.entries().next())
+                .map(|(kind, action)| (kind, action.base().map_or(0, |b| b.state))),
+            retarget: object
+                .combat()
+                .and_then(|c| c.unit_ai())
+                .map(|ai| ai.randomized_retarget_timer as i32),
+        })
+        .collect())
+}
+
+/// The slice started from the tick oracle's save at tick `start_tick` (`--snapshot`), run through
+/// the `recording`'s next `ticks` ticks: player `id`'s objects after it. The save gives the state,
+/// the recording the ticks' lengths and commands. The tick oracle counts ticks from 0, as its trace
+/// does: its tick N is the game's update N + 1, and the save at tick N holds the state after it.
+pub fn objects_from_save(
+    save: &[u8],
+    recording: &[u8],
+    start_tick: usize,
+    ticks: usize,
+    id: u32,
+    masters: Option<&MasterTable>,
+) -> Result<SliceRun, Error> {
+    let chapter = de::chapters(save)?[0];
+    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let sections = header.players();
+    if sections.len() <= id as usize {
+        return Err(Error::NoSuchPlayer(id));
+    }
+    let mut turns = slice(&header, masters);
+    let updates = start_tick + 1;
+    turns.ticks = updates as u32;
+    let played = de::chapters(recording)?[0];
+    let all = frames(&played, updates + ticks)?;
+    let next = all.get(updates..).unwrap_or_default();
+    run(&mut turns, &mut Decoder::default(), next, &sections);
+    let player = &turns.players[id as usize];
+    Ok(SliceRun {
+        objects: player
+            .objects
+            .iter()
+            .filter(|u| u.id >= 0)
+            .map(ObjectRow::of_unit)
+            .collect(),
+        unsupported: player.unsupported,
+    })
+}
+
+/// Where two object lists differ, one line per object and field: `slice` from the slice, `game`
+/// from the game's save, matched by id. Equal lists give none.
+pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String> {
+    let mut out = Vec::new();
+    for g in game {
+        let Some(s) = slice.iter().find(|s| s.id == g.id) else {
+            out.push(format!("{}: only in the game ({g:?})", g.id));
+            continue;
+        };
+        let mut field = |name: &str, a: String, b: String| {
+            if a != b {
+                out.push(format!("{}: {name} slice {a} game {b}", g.id));
+            }
+        };
+        field("master", s.master.to_string(), g.master.to_string());
+        field("state", s.state.to_string(), g.state.to_string());
+        field("hp", format!("{:?}", s.hp), format!("{:?}", g.hp));
+        field(
+            "amount",
+            format!("{:?}", s.amount),
+            format!("{:?}", g.amount),
+        );
+        field(
+            "position",
+            format!("{:?}", s.position),
+            format!("{:?}", g.position),
+        );
+        field(
+            "action",
+            format!("{:?}", s.action),
+            format!("{:?}", g.action),
+        );
+        field(
+            "retarget",
+            format!("{:?}", s.retarget),
+            format!("{:?}", g.retarget),
+        );
+    }
+    for s in slice.iter().filter(|s| !game.iter().any(|g| g.id == s.id)) {
+        out.push(format!("{}: only in the slice ({s:?})", s.id));
+    }
+    out
 }

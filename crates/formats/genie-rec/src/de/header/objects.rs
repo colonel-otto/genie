@@ -3,10 +3,11 @@
 //! the base load first; the factories hold one optional struct per object type.
 
 use super::generated::world::{
-    Master, Object, ObjectList, OwnRgeMasterActionObject, OwnRgeMasterStaticObject,
-    OwnTribeMasterCombatObject, Player, PlayerObjects, RgeActionObject, RgeMasterActionObject,
-    RgeMasterMovingObject, RgeMasterStaticObject, RgeMovingObject, RgeObject, RgeStaticObject,
-    TribeCombatObject, TribeMasterCombatObject, UnitAiModule, WorldPlayer,
+    Action, ActionList, Master, Object, ObjectList, OwnRgeMasterActionObject,
+    OwnRgeMasterStaticObject, OwnTribeMasterCombatObject, Player, PlayerObjects, RgeAction,
+    RgeActionObject, RgeMasterActionObject, RgeMasterMovingObject, RgeMasterStaticObject,
+    RgeMovingObject, RgeObject, RgeStaticObject, TribeCombatObject, TribeMasterCombatObject,
+    UnitAiModule, WorldPlayer,
 };
 
 impl Player {
@@ -244,5 +245,66 @@ impl TribeCombatObject {
                     .as_ref()
                     .map(|m| &m.unit_ai_module)
             })
+    }
+}
+
+impl Object {
+    /// The action list of an action object (types 40 to 80): its actions, the top one first.
+    pub fn actions(&self) -> Option<&ActionList> {
+        if let Some(c) = self.combat() {
+            return Some(&c.rge_combat_object.rge_action_object.actions);
+        }
+        let r = self.rge_object.as_ref()?;
+        None.or(r.rge_action_object.as_ref())
+            .or(r.rge_combat_object.as_ref().map(|c| &c.rge_action_object))
+            .or(r
+                .rge_missile_object
+                .as_ref()
+                .map(|m| &m.rge_combat_object.rge_action_object))
+            .map(|a| &a.actions)
+    }
+}
+
+impl ActionList {
+    /// The actions with their types, without the entry of type 0 that ends the list.
+    pub fn entries(&self) -> impl Iterator<Item = (i16, &Action)> {
+        self.action_type_list
+            .iter()
+            .filter_map(|e| e.action.as_ref().map(|a| (e.action_type, a)))
+    }
+}
+
+impl Action {
+    /// The base every action class starts with (`RGE_Action`: state, targets, timer, sub-actions),
+    /// whatever class the action's type made.
+    pub fn base(&self) -> Option<&RgeAction> {
+        macro_rules! first {
+            ($($own:ident).+ ; $($field:ident),* ; $($plain:ident),*) => {
+                None$(.or(self.$field.as_ref().map(|a| &a.rge_action)))*
+                    $(.or(self.$plain.as_ref()))*
+                    .or(self.$($own).+.as_ref().and_then(|b| {
+                        None.or(b.rge_action_move_to.as_ref().map(|a| &a.rge_action))
+                            .or(b.rge_action_enter.as_ref().map(|a| &a.rge_action))
+                            .or(b.rge_action_gather.as_ref().map(|a| &a.rge_action))
+                            .or(b.rge_action_missile.as_ref().map(|a| &a.rge_action))
+                            .or(b.rge_action_attack.as_ref().map(|a| &a.rge_action))
+                            .or(b.rge_action_make.as_ref().map(|a| &a.rge_action))
+                            .or(b.action_hero_power.as_ref().map(|a| &a.rge_action))
+                            .or(b.rge_action_explore.as_ref())
+                            .or(b.rge_action_bird.as_ref())
+                            .or(b.rge_action_guard.as_ref())
+                    }))
+            };
+        }
+        first!(rge_action_by_type;
+            rge_action_enter, tribe_action_build, tribe_action_make_obj, tribe_action_make_tech,
+            tribe_action_convert, tribe_action_repair, tribe_action_artifact,
+            tribe_action_discovery_artifact, tribe_action_hunt, tribe_action_trade,
+            tribe_action_wonder, tribe_action_gather, tribe_action_housing, tribe_action_pack,
+            tribe_action_unpack, tribe_action_offboard_trade, tribe_action_unit_transform,
+            tribe_action_wait_solidify;
+            rge_action_transport, rge_action_transport_over_wall, tribe_action_heal,
+            tribe_action_farm, tribe_action_pickup_relic, tribe_action_charge,
+            tribe_action_capture, tribe_action_deliver_relic, tribe_action_shepherd)
     }
 }
