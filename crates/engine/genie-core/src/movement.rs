@@ -412,7 +412,7 @@ fn reach(waypoint: Vec3, position: Vec3, projected: Vec3) -> Reach {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::spatial::Placed;
+    use crate::spatial::{Obstruction, Placed};
 
     const DT: f32 = 0.02;
 
@@ -466,7 +466,12 @@ mod tests {
             position: [x, y, 0.0],
             radius: [0.2, 0.2],
             class: 4,
-            obstruction: Some(5),
+            player: 2,
+            master: 0,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            obstruction: Some(Obstruction { kind: 5, class: 2 }),
         };
         s.insert(9175, unit(30.0, 89.0));
         s.insert(9177, unit(28.0, 89.0));
@@ -476,6 +481,11 @@ mod tests {
                 position: [30.0, 88.0, 0.0],
                 radius: [1.0, 1.0],
                 class: 3,
+                player: 2,
+                master: 0,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
                 obstruction: None,
             },
         );

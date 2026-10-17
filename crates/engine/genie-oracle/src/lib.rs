@@ -9,7 +9,7 @@
 pub mod masters;
 pub mod tick_trace;
 
-pub use masters::{DefaultAction, MasterTable};
+pub use masters::{DefaultAction, MasterTable, TerrainTable};
 
 use genie_core::artifact::ARTIFACT_TYPE;
 use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
@@ -608,7 +608,10 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         players,
     );
     turns.next_object_id = world.next_object_id;
-    turns.spatial = spatial(header);
+    turns.spatial = spatial(
+        header,
+        masters.map_or(&TerrainTable::default(), |t| &t.terrain),
+    );
     if let Some(table) = masters {
         turns.masters = header
             .players()
@@ -657,6 +660,9 @@ fn work_masters(
         let mut work = table.work(civ, s.id())?.clone();
         work.class = s.read_temp_5;
         work.radius = [s.radius_x, s.radius_y];
+        work.tall = 0.0 < s.radius_z;
+        work.obstruction_type = s.obstruction_type;
+        work.buildable_on = s.can_be_built_on;
         if let Some(tasks) = action_part(m).and_then(|a| a.tasks.as_ref()) {
             work.tasks = tasks.list.iter().map(|e| task(&e.task)).collect();
         }
@@ -688,51 +694,86 @@ fn build_cost(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
 
 /// What movement reads of a saved object's master: radii, class and obstruction kind, from the
 /// object's own master or its player's.
-fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<([f32; 3], i16, u8)> {
+/// What movement reads of an object's master (its own or its player's).
+struct Placement {
+    radius: [f32; 3],
+    class: i16,
+    obstruction_type: u8,
+    obstruction_class: u8,
+    buildable_on: u8,
+}
+
+fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<Placement> {
     if let Some(own) = s.own_master() {
         // an own master's class is not named in the save yet
-        let radius = [own.radius_x, own.radius_y, own.radius_z];
-        return Some((radius, -1, own.obstruction_type));
+        return Some(Placement {
+            radius: [own.radius_x, own.radius_y, own.radius_z],
+            class: -1,
+            obstruction_type: own.obstruction_type,
+            obstruction_class: own.obstruction_class,
+            buildable_on: own.can_be_built_on,
+        });
     }
     let m = objects.master(s.master_obj)?.static_part()?;
-    Some((
-        [m.radius_x, m.radius_y, m.radius_z],
-        m.read_temp_5,
-        m.obstruction_type,
-    ))
+    Some(Placement {
+        radius: [m.radius_x, m.radius_y, m.radius_z],
+        class: m.read_temp_5,
+        obstruction_type: m.obstruction_type,
+        obstruction_class: m.obstruction_class,
+        buildable_on: m.can_be_built_on,
+    })
 }
 
 /// The world's objects as movement sees them: every player's live and sleeping objects with their
-/// positions and their masters' radii and class. An object has an obstruction record when its
+/// positions and their masters' radii and class; the players' doppelgangers count on their tiles. An object has an obstruction record when its
 /// master has an obstruction kind and all three radii, unless it is a building marked desolid (a
 /// foundation no builder has started; the first builder's Build state 7 adds its record). Checked
 /// against the game's obstruction manager in `tests/obstructions.rs`.
-fn spatial(header: &Header) -> genie_core::spatial::Spatial {
-    use genie_core::spatial::{Placed, Spatial};
+fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spatial {
+    use genie_core::spatial::{Obstruction, Placed, Spatial, Tiles};
     let map = &header.world.base_world.map;
-    let mut out = Spatial::new([map.map_width, map.map_height]);
-    for section in header.players() {
+    let classes = map
+        .rows
+        .iter()
+        .flat_map(|r| r.tiles.iter().map(|t| terrain.class(t.terrain_type)))
+        .collect();
+    let tiles = Tiles::new(map.map_width, map.map_height, classes);
+    let mut out = Spatial::with_tiles([map.map_width, map.map_height], tiles);
+    for (player, section) in header.players().iter().enumerate() {
         let all = section.live_objects().chain(section.sleeping_objects());
         for o in all {
             let Some(s) = o.static_part() else { continue };
-            let Some((radius, class, kind)) = placement(s, section.objects()) else {
+            let Some(m) = placement(s, section.objects()) else {
                 continue;
             };
             let desolid = o
                 .tribe_building_object
                 .as_ref()
                 .is_some_and(|b| b.desolid_flag != 0);
-            let solid = radius.iter().all(|&r| 0.0 < r) && !desolid;
-            let obstruction = (kind != 0 && solid).then_some(kind);
+            let solid = m.radius.iter().all(|&r| 0.0 < r) && !desolid;
+            let obstruction = (m.obstruction_type != 0 && solid).then_some(Obstruction {
+                kind: m.obstruction_type,
+                class: m.obstruction_class,
+            });
             out.insert(
                 s.id,
                 Placed {
                     position: [s.t_x, s.t_y, s.t_z],
-                    radius: [radius[0], radius[1]],
-                    class,
+                    radius: [m.radius[0], m.radius[1]],
+                    class: m.class,
+                    player,
+                    master: s.master_obj,
+                    obstruction_type: m.obstruction_type,
+                    buildable_on: m.buildable_on,
+                    tall: 0.0 < m.radius[2],
                     obstruction,
                 },
             );
+        }
+        for ghost in section.objects().doppleganger_objects.objects() {
+            if let Some(s) = ghost.static_part() {
+                out.insert_ghost([s.t_x, s.t_y, s.t_z]);
+            }
         }
     }
     out
@@ -1298,11 +1339,19 @@ pub fn objects_from_save(
     })
 }
 
-/// The world's objects as movement sees them, from a save ([`spatial`]).
+/// The world's objects as movement sees them, from a save ([`spatial`]), on a map without terrain.
 pub fn spatial_from_save(save: &[u8]) -> Result<genie_core::spatial::Spatial, Error> {
+    spatial_with_tiles(save, &TerrainTable::default())
+}
+
+/// The world's objects as movement sees them, from a save, with each tile's terrain class.
+pub fn spatial_with_tiles(
+    save: &[u8],
+    terrain: &TerrainTable,
+) -> Result<genie_core::spatial::Spatial, Error> {
     let chapter = de::chapters(save)?[0];
     let header = de::header::parse(&chapter.inflate_header()?)?;
-    Ok(spatial(&header))
+    Ok(spatial(&header, terrain))
 }
 
 /// Where two object lists differ, one line per object and field: `slice` from the slice, `game`

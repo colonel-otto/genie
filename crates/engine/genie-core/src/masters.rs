@@ -30,6 +30,11 @@ pub struct Master {
     pub task_by_group: u8,
     /// `radius_x`, `radius_y` (`+0x5d8`, `+0x5dc`).
     pub radius: [f32; 2],
+    /// `radius_z` (`+0x5e0`) is above 0: its objects count as tall on their tiles.
+    pub tall: bool,
+    /// `obstruction_type` (`+0x651`) and `can_be_built_on` (`+0x5e9`).
+    pub obstruction_type: u8,
+    pub buildable_on: u8,
     pub tasks: Vec<Task>,
     /// The build cost `(resource, amount, paid)`.
     pub cost: Vec<(i16, i16, bool)>,
@@ -165,6 +170,9 @@ mod tests {
             class: 4,
             task_by_group,
             radius: [0.2, 0.2],
+            tall: true,
+            obstruction_type: 0,
+            buildable_on: 0,
             tasks,
             cost: vec![],
         }
@@ -177,6 +185,9 @@ mod tests {
             class: 3,
             task_by_group: 0,
             radius: [1.0, 1.0],
+            tall: true,
+            obstruction_type: 0,
+            buildable_on: 0,
             tasks: vec![],
             cost: vec![(1, 25, true)],
         }

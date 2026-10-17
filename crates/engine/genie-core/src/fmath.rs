@@ -103,3 +103,8 @@ pub fn rotate(m: &[Vec3; 3], v: Vec3) -> Vec3 {
         v[0] * m[2][0] + v[1] * m[2][1] + v[2] * m[2][2],
     ]
 }
+
+/// `atan2f(y, x)` (`0x14099e020`).
+pub fn atan2(y: f32, x: f32) -> f32 {
+    libm::atan2f(y, x)
+}

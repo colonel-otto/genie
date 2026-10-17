@@ -81,11 +81,69 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         class: unit.class,
         task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),
         radius: [unit.collision_size[0], unit.collision_size[1]],
+        tall: 0.0 < unit.collision_size[2],
+        obstruction_type: unit.obstruction_type,
+        buildable_on: unit.can_be_built_on,
         tasks: unit
             .bird
             .as_ref()
             .map_or_else(Vec::new, |b| b.tasks.iter().map(dat_task).collect()),
         cost,
+    }
+}
+
+/// What the `.dat` says of terrain for passability: each terrain's class (`FUN_1413fbff0` of its
+/// `is_water` flags: 1 water, 2 shallows and beach, 4 land, 0 none) and each terrain restriction's
+/// mask, the classes it can pass (the obstruction manager's table, `FUN_141054630`). Checked
+/// against the game's in `tests/obstructions.rs`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TerrainTable {
+    classes: Vec<u8>,
+    masks: Vec<u8>,
+}
+
+/// The class bit of a terrain's flags.
+fn terrain_class(flags: u8) -> u8 {
+    if flags == 0 {
+        0
+    } else if flags & 7 != 0 {
+        1
+    } else if flags & 0x18 != 0 {
+        2
+    } else {
+        (flags >> 3) & 4
+    }
+}
+
+impl TerrainTable {
+    pub fn from_dat(dat: &DatFile) -> Self {
+        let classes: Vec<u8> = dat
+            .terrain_block
+            .terrains
+            .iter()
+            .map(|t| terrain_class(t.is_water))
+            .collect();
+        let masks = dat
+            .terrain_restrictions
+            .iter()
+            .map(|r| {
+                let passable = r.passable_buildable_dmg_multiplier.iter().enumerate();
+                passable
+                    .filter(|&(_, &v)| 0.0 < v)
+                    .fold(0, |m, (t, _)| m | classes.get(t).copied().unwrap_or(0))
+            })
+            .collect();
+        TerrainTable { classes, masks }
+    }
+
+    /// The class bit of terrain `id`; 0 for a terrain the data file does not have.
+    pub fn class(&self, id: u8) -> u8 {
+        self.classes.get(usize::from(id)).copied().unwrap_or(0)
+    }
+
+    /// Each terrain restriction's mask, by restriction id.
+    pub fn masks(&self) -> &[u8] {
+        &self.masks
     }
 }
 
@@ -95,6 +153,7 @@ pub struct MasterTable {
     rows: HashMap<(u8, i16), Row>,
     /// Each sprite's speed factor (the `.dat` graphic's `speed_multiplier`, sprite `+0xc`).
     sprite_speed: HashMap<i16, f32>,
+    pub terrain: TerrainTable,
 }
 
 impl MasterTable {
@@ -139,6 +198,7 @@ impl MasterTable {
                 row.turning = turning;
             }
         }
+        table.terrain = TerrainTable::from_dat(dat);
         table.sprite_speed = dat
             .graphics
             .iter()
@@ -168,6 +228,7 @@ impl MasterTable {
                 })
                 .collect(),
             sprite_speed: HashMap::new(),
+            terrain: TerrainTable::default(),
         }
     }
 

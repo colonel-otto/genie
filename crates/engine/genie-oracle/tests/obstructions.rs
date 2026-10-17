@@ -58,3 +58,88 @@ fn the_slice_s_obstruction_records_are_the_game_s() {
         &differences[..differences.len().min(20)]
     );
 }
+
+/// The dump of the obstruction manager's tile grid and the map's per-tile counts
+/// (`load_oracle/probes/tilegrid.py` after 680 updates): width and height, the grid words row by
+/// row, the terrain restrictions' masks, then per tile `tall:objects`.
+struct GameTiles {
+    width: usize,
+    words: Vec<u64>,
+    masks: Vec<u8>,
+    counts: Vec<(u8, u8)>,
+}
+
+fn game_tiles(text: &str) -> GameTiles {
+    let mut lines = text.lines();
+    let size: Vec<usize> = lines
+        .next()
+        .unwrap()
+        .split(' ')
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let (width, height) = (size[0], size[1]);
+    let words = lines
+        .by_ref()
+        .take(height)
+        .flat_map(|l| l.split(' ').map(|v| u64::from_str_radix(v, 16).unwrap()))
+        .collect();
+    let masks = lines
+        .next()
+        .unwrap()
+        .split(' ')
+        .skip(1)
+        .map(|v| u8::from_str_radix(v, 16).unwrap())
+        .collect();
+    let counts = lines
+        .take(height)
+        .flat_map(|l| {
+            l.split(' ').map(|c| {
+                let (a, b) = c.split_once(':').unwrap();
+                (a.parse().unwrap(), b.parse().unwrap())
+            })
+        })
+        .collect();
+    GameTiles {
+        width,
+        words,
+        masks,
+        counts,
+    }
+}
+
+#[test]
+fn the_slice_s_tile_grid_and_counts_are_the_game_s() {
+    let (Some(dump), Some(dir), Some(dat)) = (
+        std::env::var_os("GENIE_TILEGRID"),
+        std::env::var_os("GENIE_SNAPSHOTS"),
+        std::env::var_os("GENIE_DAT"),
+    ) else {
+        return eprintln!("GENIE_TILEGRID / GENIE_SNAPSHOTS / GENIE_DAT are not set; skipping");
+    };
+    let game = game_tiles(&std::fs::read_to_string(dump).unwrap());
+    let save = std::fs::read(std::path::Path::new(&dir).join("679.aoe2record")).unwrap();
+    let dat = genie_dat::de::DatFile::read_from(std::fs::File::open(dat).unwrap()).unwrap();
+    let terrain = genie_oracle::TerrainTable::from_dat(&dat);
+    assert_eq!(terrain.masks(), &game.masks[..terrain.masks().len()]);
+    let spatial = genie_oracle::spatial_with_tiles(&save, &terrain).unwrap();
+    let tiles = spatial.tiles();
+    let mut differences = Vec::new();
+    for (i, &word) in game.words.iter().enumerate() {
+        let (x, y) = ((i % game.width) as i32, (i / game.width) as i32);
+        let ours = tiles.word(x, y);
+        if ours != Some(word) {
+            differences.push(format!("({x},{y}) word slice {ours:x?} game {word:x}"));
+        }
+        let counts = (tiles.tall(x, y), tiles.objects(x, y));
+        let (o, n) = game.counts[i];
+        if counts != (Some(o), Some(n)) {
+            differences.push(format!("({x},{y}) counts slice {counts:?} game ({o}, {n})"));
+        }
+    }
+    assert!(
+        differences.is_empty(),
+        "{} differences, the first: {:#?}",
+        differences.len(),
+        &differences[..differences.len().min(20)]
+    );
+}
