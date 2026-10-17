@@ -42,7 +42,7 @@ const CIRCLE_MASTER: i16 = 112;
 const MARKET: i16 = 84;
 
 /// `DAT_142eb99cc`: a footprint's high edge, less this, is its last tile.
-const EDGE: f32 = crate::image::DAT_142EB99CC;
+const EDGE: f32 = crate::image::visibility::EDGE;
 
 /// One player's `RGE_Visible_Map` (player `+0x70`).
 #[derive(Clone, Debug, PartialEq)]

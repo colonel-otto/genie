@@ -21,7 +21,7 @@ use crate::unit_ai::Unsupported;
 pub const BUILD: i16 = 101;
 
 /// The gap below which a MoveTo has arrived (`DAT_142eb99cc`).
-const ARRIVED: f32 = crate::image::DAT_142EB99CC;
+const ARRIVED: f32 = crate::image::build::ARRIVED;
 /// The villager's class (4, `-0xea8` encoded): Build's walk off the footprint returns at once.
 const VILLAGER: i16 = 4;
 
@@ -76,13 +76,13 @@ pub struct Site<'a> {
 }
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
-const EXTRA_BUILDER: f32 = crate::image::DAT_142ED66B0;
+const EXTRA_BUILDER: f32 = crate::image::build::EXTRA_BUILDER;
 /// The progress a started foundation holds before its first work (`0x2edbe6ff`, about 1e-10).
 const STARTED: u32 = 0x2edb_e6ff;
 /// The Wonder's master (`0x114`), whose construction rate the player's attribute raises at most to
 /// `DAT_142ed66b4`.
 const WONDER: i16 = 0x114;
-const WONDER_RATE: f32 = crate::image::DAT_142ED66B4;
+const WONDER_RATE: f32 = crate::image::build::WONDER_RATE;
 /// The wall class (27, `0x1b`): two walls beside a builder on a footprint's diagonal stop it.
 const WALL: i16 = 27;
 

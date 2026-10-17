@@ -18,10 +18,10 @@ pub const MASK: u64 = 0x1ff_ffff_01ff_ffff;
 pub const SLOTS: usize = 9;
 
 /// The query's cap on the radius (`DAT_142f64e88`).
-const MOST_RADIUS: f32 = crate::image::DAT_142F64E88;
+const MOST_RADIUS: f32 = crate::image::registry::MOST_RADIUS;
 
 /// The query box's margin (`DAT_142ec9eb8`).
-const MARGIN: f32 = crate::image::DAT_142EC9EB8;
+const MARGIN: f32 = crate::image::registry::MARGIN;
 
 /// The records a query keeps per relation (`0x1c00` bytes per output list).
 pub const MOST_FOUND: usize = 256;

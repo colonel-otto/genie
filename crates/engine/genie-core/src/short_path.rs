@@ -13,8 +13,8 @@ use crate::unit_ai::Unsupported;
 pub type Point = [i32; 2];
 
 /// `DAT_142f43b10`, `DAT_142f43a10`: fixed point to float and back.
-const TO_FLOAT: f32 = crate::image::DAT_142F43B10;
-const TO_FIXED: f32 = crate::image::DAT_142F43A10;
+const TO_FLOAT: f32 = crate::image::short_path::TO_FLOAT;
+const TO_FIXED: f32 = crate::image::short_path::TO_FIXED;
 /// The raycast's start `t` (`0x466666`, 1.1).
 const T_START: i32 = 0x46_6666;
 

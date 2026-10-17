@@ -35,19 +35,19 @@ pub const LONE: u8 = 0x80;
 /// The cost the best node starts from in each search (`0x497423f0`).
 const NO_COST: f32 = 999_999.0;
 /// The goal's own tile counts when the goal is this near it (`DAT_142eb99cc`).
-const GOAL_GAP: f32 = crate::image::DAT_142EB99CC;
+const GOAL_GAP: f32 = crate::image::tile_path::GOAL_GAP;
 /// The planner's half tile (`DAT_142e7f384`) and its −0.5 (`DAT_142eb6e58`).
 const HALF: f32 = 0.5;
 /// A goal's range below 1 grows the marked square by 1 (`DAT_14330eb8c`).
-const ONE: f32 = crate::image::DAT_14330EB8C;
+const ONE: f32 = crate::image::tile_path::ONE;
 /// The hierarchical search marks 0.1 more on the square's far sides (`DAT_142eb5690`).
-const FAR_SIDE: f32 = crate::image::DAT_142EB5690;
+const FAR_SIDE: f32 = crate::image::tile_path::FAR_SIDE;
 /// A computer player's search stops early near the goal (`DAT_14330ebb8`, `DAT_142eb0f4c`).
-const EARLY_LEFT: f32 = crate::image::DAT_14330EBB8;
-const EARLY_START: f32 = crate::image::DAT_142EB0F4C;
+const EARLY_LEFT: f32 = crate::image::tile_path::EARLY_LEFT;
+const EARLY_START: f32 = crate::image::tile_path::EARLY_START;
 /// The level-0 search costs a turn's shortcut from the node before at 1.1 times its cost
 /// (`DAT_142e86c14`).
-const SHORTCUT_COST: f32 = crate::image::DAT_142E86C14;
+const SHORTCUT_COST: f32 = crate::image::tile_path::SHORTCUT_COST;
 
 /// What a search returns (its result byte).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,12 +126,12 @@ impl Path {
 
 /// The longest step between the points the smoothing puts on a straight stretch
 /// (`DAT_142f430e8`).
-const SMOOTH_STEP: f32 = crate::image::DAT_142F430E8;
+const SMOOTH_STEP: f32 = crate::image::tile_path::SMOOTH_STEP;
 /// The level-0 search runs only for paths shorter than this (`DAT_142f430ec`).
-const TILE_SEARCH_LENGTH: f32 = crate::image::DAT_142F430EC;
+const TILE_SEARCH_LENGTH: f32 = crate::image::tile_path::TILE_SEARCH_LENGTH;
 /// The squared distance from the start within which the planner looks for a shorter first
 /// stretch (`DAT_14330ebcc`).
-const SHORTCUT_REACH: f32 = crate::image::DAT_14330EBCC;
+const SHORTCUT_REACH: f32 = crate::image::tile_path::SHORTCUT_REACH;
 
 /// The obstruction manager's segment test the smoothing asks for a unit: whether its straight
 /// walk from one point to another (x, y) meets an obstruction.
