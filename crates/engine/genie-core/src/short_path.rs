@@ -1995,40 +1995,94 @@ pub struct ShortPath {
     pub points: Vec<Point>,
 }
 
+/// The target of a short path (`FUN_140f9e540`'s argument 5): its position and its master's half
+/// sizes (`+0x5d8`, `+0x5dc`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Target {
+    pub id: i32,
+    pub position: [f32; 2],
+    pub half_size: [f32; 2],
+}
+
+/// An object the call is asked to ignore (arguments 6 and 7): its id and its shape in the mesh
+/// (`+0x64c`), if it has one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Listed {
+    pub id: i32,
+    pub shape: Option<u32>,
+}
+
 /// A call of the short pather in the game's own terms (`FUN_140f9e540`, the short branch): the
-/// start and the goal on the map (x, y), the unit's radius and range, the target's half sizes,
-/// the map's size. Result 4 (invalid) for a start or goal off the map; the start and goal become
-/// fixed point by truncation (`(int)(longlong)(f * 2^22)`).
+/// start and the goal on the map (x, y), the unit's radius and range, the target, the objects to
+/// ignore, the map's size and the unit's terrain mask.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Call {
     pub from: [f32; 2],
     pub to: [f32; 2],
     pub radius: f32,
     pub range: f32,
-    pub target_size: [f32; 2],
+    pub target: Option<Target>,
+    pub listed: Vec<Listed>,
     pub map: [i32; 2],
     /// The terrain classes the unit can cross (its restriction's mask).
     pub mask: u8,
 }
 
+/// What the entry makes of a call.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Entry {
+    /// 0: the start lies within range of the target (`FUN_14118faf0` less the radius): the path is
+    /// cleared.
+    InRange,
+    /// 4: the start or the goal lies off the map.
+    Invalid,
+    /// A search with the shapes it ignores.
+    Search { query: Query, ignore: Vec<u32> },
+}
+
 impl Call {
-    /// The fixed-point query, or None when the entry rejects the call (result 4).
-    pub fn query(&self) -> Option<Query> {
+    /// `FUN_140f9e540` up to the search: the target's range test, the map test, fixed point by
+    /// truncation (`(int)(longlong)(f * 2^22)`); the listed objects' shapes are ignored, except the
+    /// target's when the goal is the target's own position, whose half sizes then count.
+    pub fn entry(&self) -> Entry {
+        if let Some(t) = self.target {
+            let fx = (self.from[0] - t.position[0]).abs() - t.half_size[0];
+            let fx = if fx <= 0.0 { 0.0 } else { fx };
+            let fy = (self.from[1] - t.position[1]).abs() - t.half_size[1];
+            let fy = if fy <= 0.0 { 0.0 } else { fy };
+            if fmath::sqrt(fy * fy + fx * fx) - self.radius <= self.range {
+                return Entry::InRange;
+            }
+        }
         let on_map = |[x, y]: [f32; 2]| {
             0.0 <= x && 0.0 <= y && x < self.map[0] as f32 && y < self.map[1] as f32
         };
         if !on_map(self.from) || !on_map(self.to) {
-            return None;
+            return Entry::Invalid;
         }
         let fixed = |f: f32| (f * TO_FIXED) as i64 as i32;
-        Some(Query {
-            from: [fixed(self.from[0]), fixed(self.from[1])],
-            to: [fixed(self.to[0]), fixed(self.to[1])],
-            radius: (self.radius * TO_FIXED) as i64 as u32 as i32,
-            target_size: [fixed(self.target_size[0]), fixed(self.target_size[1])],
-            range: fixed(self.range),
-            blocked: u64::from(self.mask ^ 0xff),
-        })
+        let to = [fixed(self.to[0]), fixed(self.to[1])];
+        let at_target = self
+            .target
+            .filter(|t| to == [fixed(t.position[0]), fixed(t.position[1])]);
+        let ignore = self
+            .listed
+            .iter()
+            .filter(|l| at_target.is_none_or(|t| l.id != t.id))
+            .filter_map(|l| l.shape)
+            .collect();
+        let size = at_target.map_or([0.0, 0.0], |t| t.half_size);
+        Entry::Search {
+            query: Query {
+                from: [fixed(self.from[0]), fixed(self.from[1])],
+                to,
+                radius: (self.radius * TO_FIXED) as i64 as u32 as i32,
+                target_size: [fixed(size[0]), fixed(size[1])],
+                range: fixed(self.range),
+                blocked: u64::from(self.mask ^ 0xff),
+            },
+            ignore,
+        }
     }
 }
 

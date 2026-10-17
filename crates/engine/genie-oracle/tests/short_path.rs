@@ -5,7 +5,7 @@
 //! the save of that tick (the tile words) and `GENIE_DAT` the data file (restriction 7's mask).
 //! Skips without them.
 
-use genie_core::short_path::{Call, Pather, to_path};
+use genie_core::short_path::{Call, Entry, Listed, Pather, ShortPath, Target, to_path};
 
 fn f32_of(hex: &str) -> f32 {
     f32::from_bits(u32::from_str_radix(hex, 16).unwrap())
@@ -31,7 +31,10 @@ fn the_slice_s_short_paths_are_the_game_s() {
     let tiles = spatial.tiles();
     let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);
     let text = std::fs::read_to_string(queries).unwrap();
-    let lines: Vec<&str> = text.lines().collect();
+    let lines: Vec<&str> = text
+        .lines()
+        .take_while(|l| !l.starts_with("mesh "))
+        .collect();
     let mut pather = Pather::default();
     let (mut checked, mut wrong) = (0, Vec::new());
     for pair in lines.chunks(2) {
@@ -40,21 +43,47 @@ fn the_slice_s_short_paths_are_the_game_s() {
         let mask = terrain.masks()[restriction];
         let (sx, sy, gx, gy) = (f32_of(q[1]), f32_of(q[2]), f32_of(q[3]), f32_of(q[4]));
         let (radius, range) = (f32_of(q[5]), f32_of(q[6]));
+        let target = q.iter().position(|&w| w == "target").map(|i| Target {
+            id: q[i + 1].parse().unwrap(),
+            position: [f32_of(q[i + 2]), f32_of(q[i + 3])],
+            half_size: [f32_of(q[i + 4]), f32_of(q[i + 5])],
+        });
+        let listed = q
+            .iter()
+            .position(|&w| w == "ignore")
+            .map_or_else(Vec::new, |i| {
+                q[i + 1..]
+                    .iter()
+                    .map(|w| {
+                        let (id, shape) = w.split_once(':').unwrap();
+                        let shape: u32 = shape.parse().unwrap();
+                        Listed {
+                            id: id.parse().unwrap(),
+                            shape: (shape != u32::MAX).then_some(shape),
+                        }
+                    })
+                    .collect()
+            });
         let call = Call {
             from: [sx, sy],
             to: [gx, gy],
             radius,
             range,
-            target_size: [0.0, 0.0],
+            target,
+            listed,
             map: spatial.map,
             mask,
         };
-        let got = match call.query() {
-            Some(query) => pather.search(&mut mesh, &words, &query, &[]),
-            None => Ok(genie_core::short_path::ShortPath {
-                result: 4,
+        let empty = |result| {
+            Ok(ShortPath {
+                result,
                 points: Vec::new(),
-            }),
+            })
+        };
+        let got = match call.entry() {
+            Entry::Search { query, ignore } => pather.search(&mut mesh, &words, &query, &ignore),
+            Entry::InRange => empty(0),
+            Entry::Invalid => empty(4),
         };
         let r: Vec<&str> = pair[1].split_whitespace().collect();
         let result: u8 = r[1].parse().unwrap();
@@ -92,4 +121,15 @@ fn the_slice_s_short_paths_are_the_game_s() {
         wrong.len(),
         &wrong[..wrong.len().min(8)]
     );
+    eprintln!("{checked} queries reproduce");
+    // the mesh after the sequence: each search's temporary shapes took and gave back free slots
+    let after: String = text
+        .lines()
+        .skip_while(|l| !l.starts_with("mesh "))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    let game = genie_oracle::mesh_from_dump(&after).unwrap();
+    assert_eq!(mesh.free, game.free, "the free list's head");
+    assert!(mesh.shapes == game.shapes, "the shape slots");
+    assert!(mesh.tiles == game.tiles, "the tile lists");
 }
