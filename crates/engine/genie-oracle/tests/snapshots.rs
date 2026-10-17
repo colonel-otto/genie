@@ -138,6 +138,20 @@ fn the_order_to_a_tree_from_a_save_matches_the_game_object_by_object() {
     assert_eq!(found, Vec::<String>::new());
 }
 
+#[test]
+fn the_scout_s_move_from_a_save_matches_the_game_object_by_object() {
+    // updates 682 to 1110: in 1044 player 2's MOVE sends the scout 9185 west: it takes the move
+    // itself (a MoveTo to the point), its unit AI the move order and action with the point, and
+    // it plans its path past Gaia's boar 9732, whose unit AI (its idle check at 1039: a draw of
+    // its leash, a rand15 that is not a multiple of 7) keeps it at its origin; on each of player
+    // 2's turns the scout's AI, busy, keeps its state position, redraws its retarget timer when
+    // due (1080) and its look-around timeout (1100); through 1110, before the cow's MOVE of 1118
+    let Some(found) = differences(680, 430, 2) else {
+        return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
+    };
+    assert_eq!(found, Vec::<String>::new());
+}
+
 /// Not pinned: what the slice gets wrong some ticks after a save, for the tick FD-008 works on
 /// (`GENIE_SNAPSHOT_START`, default 679; `GENIE_SNAPSHOT_TICKS`, default 1), for player 2 or
 /// `GENIE_SNAPSHOT_PLAYER`.

@@ -803,6 +803,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         last_retarget_time: ai.last_retarget_time,
         retarget_timer: ai.randomized_retarget_timer,
         stance: ai.state_value,
+        state_position: [ai.state_position_xvalue, ai.state_position_yvalue],
         retarget_disabled: ai.disable_retargeting,
         stop_after_kill: ai.stop_after_target_killed_value != 0,
         home: combat
@@ -1681,6 +1682,7 @@ impl AiRow {
                 ("look_around_timer", f(&ai.look_around_timer)),
                 ("look_around_timeout", f(&ai.look_around_timeout)),
                 ("last_retarget_time", f(&ai.last_retarget_time)),
+                ("state_position", f(&ai.state_position)),
             ],
         }
     }
@@ -1711,6 +1713,10 @@ impl AiRow {
                 ("look_around_timer", f(&ai.look_around_timer_value)),
                 ("look_around_timeout", f(&ai.look_around_timeout_value)),
                 ("last_retarget_time", f(&ai.last_retarget_time)),
+                (
+                    "state_position",
+                    f(&[ai.state_position_xvalue, ai.state_position_yvalue]),
+                ),
             ],
         }
     }

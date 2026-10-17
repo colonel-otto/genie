@@ -47,6 +47,9 @@ pub struct UnitAi {
     pub retarget_timer: u32,
     /// `+0x1a9`: 1 and 2 add leash checks to slot 73.
     pub stance: u8,
+    /// `+0x1ac`, `+0x1b0`, `state_position`: where a unit with an order last updated, which a
+    /// stance's leash measures from.
+    pub state_position: [f32; 2],
     /// `+0x1d6`: non-zero skips the retarget check.
     pub retarget_disabled: u8,
     /// `+0x1a8`, `stop_after_target_killed_value`: a move does not let the current action take its
@@ -75,7 +78,21 @@ pub struct Surroundings {
     pub position: [f32; 3],
     /// The game's setting at `+0x680` (`FUN_140ec0cd0`) is 1: boars stay put.
     pub mode_1: bool,
+    /// The unit's action list has an action (object slot 0x430, `FUN_14106d0e0`; its slot 0x818,
+    /// `FUN_14106d100`, is 0).
+    pub busy: bool,
+    /// The owner's id (`player+0x718`); Gaia is 0.
+    pub player: usize,
+    /// The unit's master's class (decoded).
+    pub class: i16,
 }
+
+/// The class whose busy units skip the idle check (`-0xe98` raw).
+const CLASS_20: i16 = 20;
+/// Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
+/// `-0xe78` raw).
+const CLASS_3: i16 = 3;
+const CLASS_52: i16 = 52;
 
 /// A move the unit AI gives its unit (unit-AI slot 0x130, `FUN_140c55620`, to the unit's slot
 /// 0x340): a MoveTo to `point` within `range`.
@@ -140,7 +157,11 @@ impl UnitAi {
     /// `r % 1500 + 2250` and the retarget timer `750 + r % 500`. Only the building class (17,
     /// `TribeBuildingUnitAIModule` `0x140c11470`, which sets the stance to 0) is modelled; for any
     /// other type nothing is drawn.
-    pub fn constructed(ai_type: u32, ai: &mut Well512) -> Result<UnitAi, Unsupported> {
+    pub fn constructed(
+        ai_type: u32,
+        position: [f32; 3],
+        ai: &mut Well512,
+    ) -> Result<UnitAi, Unsupported> {
         if ai_type != 17 {
             return Err(Unsupported("constructor of a unit-AI type not modelled"));
         }
@@ -168,6 +189,8 @@ impl UnitAi {
             retarget_timer,
             // the constructor's two bytes at `+0x1a8`: 0x300
             stance: 3,
+            // the object's place
+            state_position: [position[0], position[1]],
             retarget_disabled: 0,
             stop_after_kill: false,
             home: None,
@@ -336,9 +359,59 @@ impl UnitAi {
         self.current_order == -1 && self.current_action == -1 && self.current_target == -1
     }
 
-    /// The full update of an idle unit: `dt` is the time its owner accumulated since its last turn
-    /// (`world+0x18c[player]`), `computer` the owner's type test (`player+0x10 == 3`). The idle
-    /// check may give the unit a move, which the caller hands to the unit (its slot 0x340).
+    /// The full update (slot 4, `0x140c66b10`; the boar's `0x140c2c010`): `dt` is the time the
+    /// owner accumulated since its last turn (`world+0x18c[player]`), `computer` the owner's type
+    /// test (`player+0x10 == 3`). An idle unit ([`UnitAi::update_idle`]) and a busy one on an order
+    /// the slice models ([`UnitAi::update_busy`]); an action value whose action ended, which the
+    /// update resets, is not modelled. The idle check may give the unit a move, which the caller
+    /// hands to the unit (its slot 0x340).
+    pub fn update(
+        &mut self,
+        dt: u32,
+        world_time: u32,
+        computer: bool,
+        at: &Surroundings,
+        ai: &mut Well512,
+    ) -> Result<Option<AiMove>, Unsupported> {
+        if self.is_idle() {
+            if at.busy && at.class == CLASS_20 {
+                return Err(Unsupported("a busy unit of class 20 (its idle part)"));
+            }
+            return self.update_idle(dt, world_time, computer, at, ai);
+        }
+        if !at.busy {
+            return Err(Unsupported(
+                "a unit AI whose action ended (the reset of its action value)",
+            ));
+        }
+        self.update_busy(dt, world_time, computer, at, ai)
+    }
+
+    /// The retarget check of slot 73 (`0x140c567c0`) for a unit without a target, not on the
+    /// attack order 700: a timer used up is redrawn (`750 + r % 500`) and slot 73 returns. Its
+    /// leash checks come first: stance 1's is not modelled; stance 2's (stand ground) stops a
+    /// unit with an action that strayed from its state position by more than its range plus
+    /// `DAT_142eb880c` (0.25), which a unit on an order, whose state position this update set,
+    /// never has, and an idle unit has no action to stop.
+    fn retarget_check(&mut self, world_time: u32, ai: &mut Well512) -> Result<(), Unsupported> {
+        if self.stance == 1 {
+            return Err(Unsupported("stance 1 leash check"));
+        }
+        if self.current_order == 700 || self.current_target != -1 {
+            return Err(Unsupported("a retarget on order 700 or with a target"));
+        }
+        if self.retarget_disabled == 0
+            && world_time.wrapping_sub(self.last_retarget_time) >= self.retarget_timer
+        {
+            self.last_retarget_time = world_time;
+            self.retarget_timer = 750 + ai.rand15() % 500;
+        }
+        Ok(())
+    }
+
+    /// The full update of an idle unit (no order, action or target): the timers, slot 73's
+    /// retarget check, the idle check (slot 72) once the idle timer passes its timeout, the
+    /// look-around check.
     pub fn update_idle(
         &mut self,
         dt: u32,
@@ -355,16 +428,7 @@ impl UnitAi {
         self.look_around_timer = self.look_around_timer.wrapping_add(dt);
         self.idle_timer = self.idle_timer.wrapping_add(dt);
         if let Retarget::Base = retarget {
-            if self.stance == 1 {
-                return Err(Unsupported("stance 1 leash check"));
-            }
-            // An idle stand-ground unit passes its leash check: it returns only with an action.
-            if self.retarget_disabled == 0
-                && world_time.wrapping_sub(self.last_retarget_time) >= self.retarget_timer
-            {
-                self.last_retarget_time = world_time;
-                self.retarget_timer = 750 + ai.rand15() % 500;
-            }
+            self.retarget_check(world_time, ai)?;
         }
         let mut moved = None;
         if self.idle_timer > self.adjusted_idle_timeout {
@@ -375,11 +439,16 @@ impl UnitAi {
         // the boar's slot 4 (0x140c2c010) after the base: its second idle check runs only for a
         // timer the base's left past the timeout (a unit with an action), and a boar without a
         // target calms down
+        self.calm_down();
+        Ok(moved)
+    }
+
+    /// The boar's end of its full update: without a target it is no longer furious.
+    fn calm_down(&mut self) {
         let calm = self.current_target == -1;
         if let Some(home) = self.home.as_mut().filter(|_| calm) {
             home.furious = false;
         }
-        Ok(moved)
     }
 
     /// The look-around check at the end of the full update (`LAB_140c6809c`): a timer past its
@@ -396,33 +465,68 @@ impl UnitAi {
         Ok(())
     }
 
-    /// The full update (slot 4, `0x140c66b10`) of a villager on its build order: its order and
-    /// action stand, so it only runs the timers. With actions in its list the order is not
-    /// re-checked; its action keeps the idle timer at 0 (a player above Gaia); villagers do not
-    /// retarget; the look-around check follows. Its target, a building, never counts as dead
-    /// here. A unit in a group, inside another, with notifies or with other orders is not
-    /// modelled (the caller checks the first two).
-    pub fn update_working(
+    /// The full update (slot 4, `0x140c66b10`) of a busy unit (an action in its list) on an order
+    /// the slice models: a villager building or hunting (702/602, 713/613) or a unit on MOVE's
+    /// order without a target (710/610). The state position follows a unit with an order; the
+    /// timers run; a busy unit's order is not re-checked; slot 73: villagers do not retarget,
+    /// others run the retarget check; the action keeps the idle timer at 0 for a player above
+    /// Gaia, while a Gaia unit's runs on, and a boar's slot 4 (`0x140c2c010`) then runs its idle
+    /// check once the timer passes the timeout; the look-around check follows. A building's or a
+    /// hunted tree's target never counts as dead here (both actions are exempt). A unit in a
+    /// group, inside another or with notifies is not modelled (the caller checks the first two).
+    pub fn update_busy(
         &mut self,
         dt: u32,
+        world_time: u32,
         computer: bool,
+        at: &Surroundings,
         ai: &mut Well512,
-    ) -> Result<(), Unsupported> {
-        if !matches!(
-            (self.current_order, self.current_action),
+    ) -> Result<Option<AiMove>, Unsupported> {
+        let retarget = retarget_kind(self.ai_type)?;
+        let order = (self.current_order, self.current_action);
+        let working = matches!(
+            order,
             (BUILD_ORDER, BUILD_ACTION) | (HUNT_ORDER, HUNT_ACTION)
-        ) {
+        );
+        let moving = order == (MOVE_ORDER, MOVE_ACTION) && self.current_target == -1;
+        match retarget {
+            Retarget::Never if working || moving => {}
+            Retarget::Base if moving => {}
+            _ => {
+                return Err(Unsupported(
+                    "a busy unit AI on an order the slice does not model",
+                ));
+            }
+        }
+        if matches!(at.class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
             return Err(Unsupported(
-                "unit is not idle and not on a build or hunt order",
+                "a busy unit of class 3 or 52 on action 0x26b/0x26c",
             ));
         }
-        if !matches!(retarget_kind(self.ai_type)?, Retarget::Never) {
-            return Err(Unsupported("a unit on a build order that retargets"));
+        if at.class == CLASS_20 {
+            return Err(Unsupported("a busy unit of class 20 (its idle part)"));
         }
+        self.state_position = [at.position[0], at.position[1]];
         self.secondary_timer = self.secondary_timer.saturating_sub(dt);
         self.look_around_timer = self.look_around_timer.wrapping_add(dt);
-        self.idle_timer = 0;
-        self.look_around(computer, ai)
+        self.idle_timer = self.idle_timer.wrapping_add(dt);
+        if let Retarget::Base = retarget {
+            self.retarget_check(world_time, ai)?;
+        }
+        if 0 < at.player {
+            self.idle_timer = 0;
+        }
+        self.look_around(computer, ai)?;
+        let mut moved = None;
+        if let Some(home) = self.home
+            && !home.furious
+            && self.adjusted_idle_timeout < self.idle_timer
+        {
+            self.idle_timer = 0;
+            moved = self.process_idle(at, ai);
+        }
+        self.calm_down();
+        Ok(moved)
     }
 }
 
@@ -470,16 +574,25 @@ mod tests {
             ..idle(8)
         };
         let mut r = rng();
-        u.update_working(50, false, &mut r).unwrap();
+        let at = Surroundings {
+            position: [29.5, 89.5, 0.0],
+            busy: true,
+            player: 2,
+            class: 4,
+            ..Surroundings::default()
+        };
+        u.update(50, 0, false, &at, &mut r).unwrap();
         assert_eq!(
             (u.idle_timer, u.secondary_timer, u.look_around_timer),
             (0, 0, 0)
         );
         assert_eq!(u.look_around_timeout, 4500 + 7241 % 1000);
         assert_eq!(r.draws, 1);
+        // the state position follows a unit with an order
+        assert_eq!(u.state_position, [29.5, 89.5]);
         // another order is not modelled
         u.current_order = 700;
-        assert!(u.update_working(50, false, &mut r).is_err());
+        assert!(u.update(50, 0, false, &at, &mut r).is_err());
     }
 
     #[test]
@@ -631,7 +744,7 @@ mod tests {
         // UnitAIModule's constructor: last retarget r % 500, adjusted idle timeout r % 1500 + 2250,
         // retarget timer 750 + r % 500, in that order
         let mut r = rng();
-        let ai = UnitAi::constructed(17, &mut r).unwrap();
+        let ai = UnitAi::constructed(17, [30.0, 88.0, 0.0], &mut r).unwrap();
         let mut expected = rng();
         let (a, b, c) = (expected.rand15(), expected.rand15(), expected.rand15());
         assert_eq!(r.draws, 3);
@@ -657,6 +770,7 @@ mod tests {
                 last_retarget_time: a % 500,
                 retarget_timer: 750 + c % 500,
                 stance: 3,
+                state_position: [30.0, 88.0],
                 retarget_disabled: 0,
                 stop_after_kill: false,
                 home: None,
@@ -667,7 +781,7 @@ mod tests {
     #[test]
     fn a_unit_ai_class_without_a_modelled_constructor_draws_nothing() {
         let mut r = rng();
-        assert!(UnitAi::constructed(13, &mut r).is_err());
+        assert!(UnitAi::constructed(13, [0.0; 3], &mut r).is_err());
         assert_eq!(r.draws, 0);
     }
 
@@ -722,7 +836,8 @@ mod tests {
     fn at(position: [f32; 3]) -> Surroundings {
         Surroundings {
             position,
-            mode_1: false,
+            class: 11,
+            ..Surroundings::default()
         }
     }
 
@@ -818,8 +933,8 @@ mod tests {
             u.home.as_mut().unwrap().furious = furious;
             let mut r = rng();
             let place = Surroundings {
-                position: [23.5, 105.5, 0.0],
                 mode_1,
+                ..at([23.5, 105.5, 0.0])
             };
             assert_eq!(u.update_idle(10, 0, false, &place, &mut r), Ok(None));
             assert_eq!((r.draws, u.home.unwrap().furious), (0, false));

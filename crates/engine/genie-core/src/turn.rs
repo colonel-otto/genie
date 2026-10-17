@@ -195,6 +195,8 @@ struct Context<'a> {
     victim: Option<&'a mut Victim>,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
     mode_1: bool,
+    /// The owner's id.
+    player: usize,
 }
 
 impl Context<'_> {
@@ -351,28 +353,37 @@ impl Unit {
             self.position = p.position;
         }
         let mut moved = None;
+        let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
+        let class = c
+            .masters
+            .and_then(|ms| ms.get(self.life.master_id))
+            .map(|ms| ms.class);
+        let player = c.player;
         if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
-            if ai.current_order == -1 && ai.current_action == -1 && ai.current_target == -1 {
-                let at = Surroundings {
-                    position: self.position,
-                    mode_1: c.mode_1,
-                };
-                moved =
-                    ai.update_idle(dt, c.world_time, c.computer, &at, c.streams.get(Stream::Ai))?;
-            } else if (self.build.is_some() || self.hunt.is_some()) && !self.life.inside {
-                ai.update_working(dt, c.computer, c.streams.get(Stream::Ai))?;
-            } else {
-                return Err(Unsupported("unit is not idle"));
+            if busy && self.life.inside {
+                return Err(Unsupported("a busy unit inside another"));
             }
+            let at = Surroundings {
+                position: self.position,
+                mode_1: c.mode_1,
+                busy,
+                player,
+                class: match class {
+                    Some(class) => class,
+                    None if busy => {
+                        return Err(Unsupported(
+                            "a busy unit of a master the slice does not have",
+                        ));
+                    }
+                    None => -1,
+                },
+            };
+            moved = ai.update(dt, c.world_time, c.computer, &at, c.streams.get(Stream::Ai))?;
         }
         if let Some(m) = moved {
-            let class = c
-                .masters
-                .and_then(|ms| ms.get(self.life.master_id))
-                .map(|ms| ms.class)
-                .ok_or(Unsupported(
-                    "an AI move of a master the slice does not have",
-                ))?;
+            let class = class.ok_or(Unsupported(
+                "an AI move of a master the slice does not have",
+            ))?;
             self.ai_move(m, class)?;
         }
         Ok(leaves)
@@ -380,19 +391,32 @@ impl Unit {
 
     /// The unit's slot 0x340 (`FUN_141216c50`) on its unit AI's move: a unit of class 51 or 54
     /// (packing) is not modelled; any other runs `FUN_1410866e0`. Without `force`, a MoveTo to the
-    /// same point stands; a current action's slot 0x40 may take the point (neither modelled, so a
-    /// unit with an action is not). Otherwise a MoveTo to the point within the range
-    /// (`FUN_140aa0d30`; its sprite, the master's walking or running one, is not held) replaces
-    /// the action list (`FUN_140a98620`) and starts (slot 0x808, `FUN_14106e990`; its start
-    /// `0x140aa2100` gives a unit far from the point state 3).
+    /// same point stands (not modelled); a current action's slot 0x40 may take the point, which a
+    /// MoveTo's (`FUN_140a78490`) never does (other actions are not modelled). Otherwise a MoveTo
+    /// to the point within the range (`FUN_140aa0d30`; its sprite, the master's walking or running
+    /// one, is not held) replaces the action list (`FUN_140a98620`: the old MoveTo stops the unit)
+    /// and starts (slot 0x808, `FUN_14106e990`; its start `0x140aa2100` gives a unit far from the
+    /// point state 3).
     fn ai_move(&mut self, m: AiMove, class: i16) -> Result<(), Unsupported> {
         if matches!(class, 51 | 54) {
             return Err(Unsupported("an AI move of a unit of class 51 or 54"));
         }
-        if self.top_action_kind().is_some() || self.unmodelled_action.is_some() {
+        if !m.force && self.top_action_kind().is_some() {
+            return Err(Unsupported(
+                "an AI move without force of a unit with an action",
+            ));
+        }
+        let top = self.top_action_kind();
+        if self.unmodelled_action.is_some() || top.is_some_and(|t| t != crate::move_to::MOVE_TO) {
             return Err(Unsupported(
                 "an AI move of a unit with an action (its slot 0x40)",
             ));
+        }
+        if self.move_to.take().is_some() {
+            self.mover
+                .as_mut()
+                .ok_or(Unsupported("a walker without movement state"))?
+                .stop()?;
         }
         self.move_to = Some(MoveToAction {
             state: crate::move_to::MoveTo::Start,
@@ -602,7 +626,7 @@ impl Turns {
                 let id = self.next_object_id;
                 self.next_object_id += 1;
                 let ai = unit_ai.and_then(|t| {
-                    t.map(|t| UnitAi::constructed(t, self.streams.get(Stream::Ai)))
+                    t.map(|t| UnitAi::constructed(t, position, self.streams.get(Stream::Ai)))
                         .transpose()
                 });
                 let ai = ai.unwrap_or_else(|e| {
@@ -966,6 +990,7 @@ impl Turns {
                     elevation,
                     victim: victim.as_mut(),
                     mode_1: self.mode_680 == 1,
+                    player: p,
                 };
                 let result = unit.update(&mut c, &mut player.objects);
                 player.objects[i] = unit;
@@ -1403,7 +1428,7 @@ mod tests {
         let mut streams = Streams::default();
         streams.seed_all(29910);
         let ai = streams.get(Stream::Ai);
-        let first = UnitAi::constructed(17, ai).unwrap();
+        let first = UnitAi::constructed(17, [0.0; 3], ai).unwrap();
         assert_eq!(foundation.ai, Some(first));
         let next = 750 + ai.rand15() % 500;
         by_hand.tick(40);
