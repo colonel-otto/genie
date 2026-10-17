@@ -148,6 +148,10 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .iter()
             .chain(&unit.placement_terrain)
             .any(|&t| 0 <= t),
+        special_graphic: unit
+            .creatable
+            .as_ref()
+            .is_some_and(|c| 0 <= c.special_graphic),
         death_sprite: unit.dying_graphic,
         death_spawn: unit.dead_unit_id >= 0 || unit.blood_unit_id >= 0,
         ..work::Master::default()

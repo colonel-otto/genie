@@ -156,8 +156,11 @@ pub struct Master {
     /// amount; `+0x808`, count `+0x802`), its base armor for a class it does not list (`+0x800`),
     /// `bonus_damage_resistance` (`+0x824`), `combat_ability` (`+0x840`), `damage_reflection`
     /// (`+0x864`), `invulnerability_level` (`+0x930`: a hit point floor, `FUN_141202a80`) and
-    /// `special_attack_flag` (`+0x8d8`); and what an attacker of it reads: `area_effect_range`
-    /// (`+0x82c`), `max_charge` (`+0x918`) and `charge_target` (`+0x924`).
+    /// `special_attack_flag` (`+0x8d8`), `friendly_fire_damage` (`+0x868`), its special graphic
+    /// (`+0x8e8`, the `.dat`'s `special_graphic`) and `area_effect_object_level` (`+0x62b`, the
+    /// blasts that reach it); and what an attacker of it reads: `area_effect_range` (`+0x82c`),
+    /// `area_effect_level` (`+0x830`), `area_damage` (`+0x834`), `max_charge` (`+0x918`) and
+    /// `charge_target` (`+0x924`).
     pub base_armor: i16,
     pub armors: Vec<(i16, i16)>,
     pub resistance: f32,
@@ -165,7 +168,12 @@ pub struct Master {
     pub reflection: f32,
     pub invulnerability: f32,
     pub special_attack: u8,
+    pub friendly_fire: f32,
+    pub special_graphic: bool,
+    pub blast_defense: u8,
     pub area_effect: f32,
+    pub blast_level: u8,
+    pub area_damage: f32,
     pub max_charge: f32,
     pub charge_target: i16,
     /// `+0x5d4`, `obj_max` (the `.dat`'s `garrison_capacity`): a building that garrisons takes a

@@ -6,7 +6,8 @@
 //! 158041: constructor `FUN_140ac2dd0`, start (slot 5) `0x140ac49b0`, update (slot 6)
 //! `0x140ac7a00`, set_state (slot 16) `0x140ac60e0`.
 
-use crate::attack::{Arms, Attack, Engagement, Strike, Victim, set_sprite};
+use crate::attack::{Arms, Attack, Engagement, Strike, set_sprite};
+use crate::damage::Victim;
 use crate::move_to::{Goal, MoveTo, Walk, start_walk, target_moved, walk_on};
 use crate::movement::{Mover, footprint_gap};
 use crate::sprite::Graphic;
@@ -724,19 +725,12 @@ mod tests {
     fn victim(amount: f32) -> Victim {
         Victim {
             id: 9357,
-            hp: 0.0,
             amount,
             state: 3,
-            z: 0.0,
             kind: 10,
-            goto_sleep: false,
-            elevation: [0.0; 2],
             class: 15,
             storage: 100.0,
-            decay: 0.0,
-            armored: None,
-            damaged: None,
-            killed: None,
+            ..Victim::default()
         }
     }
 

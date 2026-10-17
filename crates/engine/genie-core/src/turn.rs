@@ -13,9 +13,10 @@
 //! slot and updates there in the same tick.
 
 use crate::artifact::Artifact;
-use crate::attack::{Strike, Victim};
+use crate::attack::Strike;
 use crate::build::{BUILD, BuildAction, BuildTask, Builder, Completion, Construction, Site, Walk};
 use crate::checkpoint::TopAction;
+use crate::damage::Victim;
 use crate::fly::Fly;
 use crate::hunt::{Gatherer, HuntAction, HuntSprites};
 use crate::lifecycle::{Class, Lifecycle, seconds};
@@ -92,11 +93,13 @@ pub struct Unit {
     /// What a hit reads of its unit and its target besides the masters: `+0xa24`
     /// (`mAttackPowerup`, the attacker's slot 0x6d8), the armor powerups (`+0xa48` melee,
     /// `+0xa4c` pierce, slots 0x708 and 0x710; whole numbers), the armor attacks removed
-    /// (`+0x9e4`, `+0x9e6`) and the charge (`+0x9e0`).
+    /// (`+0x9e4`, `+0x9e6`), the charge (`+0x9e0`) and `mHitSomethingValidForChargeAttack`
+    /// (`+0x8a8`: its last hit was its charge's).
     pub attack_powerup: f32,
     pub armor_powerups: [i16; 2],
     pub armor_removed: [i16; 2],
     pub charge: f32,
+    pub charge_hit: bool,
     /// `+0x644`, `worker_num`: the actions that have the object as their target.
     pub workers: i32,
     /// `+0x650`, `mLastHumanOrderTime`: the world time of the last order a human gave it
@@ -236,11 +239,12 @@ struct Context<'a> {
     construction_rate: f32,
     /// The owner's masters, which an attack reads.
     masters: Option<&'a Masters>,
-    /// The owner's attributes 211 and 212 (with more than 212 attributes, else 0): an attack's
-    /// elevation bonus.
-    elevation: [f32; 2],
-    /// The target of the unit's attack, read before its update and written back after it.
+    /// The target of the unit's attack, read before its update and written back after it, and
+    /// the objects about a unit with an area effect, which its blast may reach.
     victim: Option<&'a mut Victim>,
+    blasted: Vec<Victim>,
+    /// The unit was killed in its update (a retaliation), which the caller handles after it.
+    own_killed: Option<crate::damage::Kill>,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
     mode_1: bool,
     /// The owner's attributes, which a gatherer's productivity reads.
@@ -478,6 +482,32 @@ impl Unit {
         }
     }
 
+    /// The unit's own part of its hit, written back: what a retaliation or reflected damage left
+    /// of its hit points and powerups, its charge and `+0x8a8`, the damage notify (500) a
+    /// retaliation posts to its unit AI; a retaliation that killed it is the caller's (Gaia
+    /// taking a killed attacker is not modelled).
+    fn hit_back(&mut self, own: Victim) -> Result<Option<crate::damage::Kill>, Unsupported> {
+        self.life.hp = own.hp;
+        if let Some(a) = own.armored.as_ref() {
+            self.hp_powerups = a.hp_powerups;
+        }
+        self.charge = own.source.charge;
+        self.charge_hit = own.source.charge_hit;
+        if let (Some((attacker, p)), Some(ai)) = (own.damaged, self.ai.as_mut()) {
+            let n = Notify {
+                caller: attacker,
+                recipient: self.id,
+                kind: crate::unit_ai::DAMAGED,
+                p,
+            };
+            ai.post(n, self.life.state)?;
+        }
+        if own.killed.is_some_and(|k| k.to_gaia) {
+            return Err(Unsupported("a killed attacker that goes to Gaia"));
+        }
+        Ok(own.killed)
+    }
+
     /// One update, and whether the object stays in its list, leaves it or goes to sleep. `others`
     /// are the rest of the owner's objects, whose foundations a builder works on.
     fn update(&mut self, c: &mut Context<'_>, others: &mut [Unit]) -> Result<Step, Unsupported> {
@@ -659,16 +689,29 @@ impl Unit {
                 mover.stop()?;
             }
         }
+        // the hunter as a combat object, which its hits read and change
+        let own = self.hunt.as_ref().and_then(|_| {
+            let master = c.masters?.get(self.life.master_id)?;
+            let terrain = c.spatial.terrain.as_ref();
+            Some(victim_of(
+                self,
+                master,
+                c.attributes,
+                c.player,
+                terrain,
+                c.mode_680,
+            ))
+        });
         if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;
             let master = c
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
                 .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
-            let elevation = c.elevation;
             let victim = c.victim.take().ok_or(Unsupported(
                 "an attack's target the slice does not hold live",
             ))?;
+            let own = own.ok_or(Unsupported("a hunter of a master the slice does not have"))?;
             // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
             let productivity = usize::try_from(hunt.task.productivity)
                 .ok()
@@ -756,41 +799,27 @@ impl Unit {
             } else {
                 None
             };
-            let player = c.player;
-            let attacker = crate::attack::Attacker {
-                id: self.id,
-                kind: master.kind,
-                ability: master.combat_ability,
-                area_effect: master.area_effect,
-                charge_type: master.charge_type,
-                attack_powerup: self.attack_powerup,
-                mode_680: c.mode_680,
-                bonus_tasks: master.tasks.iter().any(|t| t.action_type == 0xa0),
-                player: c.player,
-                kill_bonus_tasks: master.tasks.iter().any(|t| t.action_type == 0x9a),
-            };
+            let mut blasted = std::mem::take(&mut c.blasted);
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
                 anim_speed: &mut self.anim_speed,
                 attack_timer: &mut self.attack_timer,
                 reload: self.reload_stinger + (master.reload - self.reload_powerup),
-                weapons: &master.weapons,
                 hit_chance: master.hit_chance,
-                class: master.class,
-                elevation,
-                z: self.position[2],
                 victim,
+                blasted: &mut blasted,
                 sprite_rng,
-                master_id: master.id,
-                player,
-                attacker,
+                own,
                 executed: None,
             };
             hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
-            if let Some(target) = strike.executed {
+            let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
+            c.blasted = blasted;
+            if let Some(target) = executed {
                 self.post_own(ACTION_EXECUTED, [600, target, 0])?;
             }
+            c.own_killed = self.hit_back(own)?;
         }
         // the motion step may have put the unit onto a waypoint it reached
         if let Some(p) = c.spatial.get(self.id) {
@@ -1151,52 +1180,58 @@ pub struct Player {
 }
 
 impl Turns {
-    /// What an attack reads of its target ([`Victim`]): a live object the slice holds.
-    fn victim(&self, id: i32) -> Option<Victim> {
+    /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): a
+    /// live object the slice holds, with its relations to the attacker's player and whether its
+    /// place is a guess.
+    fn victim(&self, id: i32, attacker: usize) -> Option<Victim> {
         let (p, u) =
             self.players.iter().enumerate().find_map(|(p, player)| {
                 player.objects.iter().find(|u| u.id == id).map(|u| (p, u))
             })?;
         let master = self.masters.get(p)?.get(u.life.master_id)?;
-        let kind = master.kind;
         let attributes = &self.players[p].attributes;
-        let at = |i: usize| attributes.get(i).copied().unwrap_or(0.0);
-        Some(Victim {
-            id,
-            hp: u.life.hp,
-            amount: u.life.amount,
-            state: u.life.state,
-            z: u.position[2],
-            kind,
-            goto_sleep: u.life.goto_sleep,
-            elevation: [at(272), at(273)],
-            class: master.class,
-            storage: master.storage.first().map_or(0.0, |s| s.1),
-            decay: u.life.master.map_or(0.0, |m| m.decay),
-            // a combat object's slot 0xf0 is FUN_141082530 (types 50 and up)
-            armored: (50 <= kind).then(|| crate::attack::Armored {
-                armors: master.armors.clone(),
-                base_armor: master.base_armor,
-                terrain_bonus: master.terrain_bonus,
-                resistance: master.resistance,
-                ability: master.combat_ability,
-                reflection: master.reflection,
-                invulnerability: master.invulnerability,
-                special_attack: master.special_attack,
-                charge_type: master.charge_type,
-                master_hp: master.hit_points,
-                armor_powerups: u.armor_powerups,
-                armor_removed: u.armor_removed,
-                hp_powerups: u.hp_powerups,
-                player: p,
-                kill_tasks: master
-                    .tasks
-                    .iter()
-                    .any(|t| t.action_type == 0xa1 && 1e-7 < t.work_val1),
-            }),
-            damaged: None,
-            killed: None,
-        })
+        let terrain = self.spatial.terrain.as_ref();
+        let mut v = victim_of(u, master, attributes, p, terrain, self.mode_680);
+        let world = World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        v.allied = [
+            world.allied(attacker, p, true),
+            world.allied(p, attacker, true),
+        ];
+        v.uncertain = self.spatial.get(id).is_none_or(|o| o.unknown.is_some());
+        Some(v)
+    }
+
+    /// The objects a blast of `unit` (player `p`) may reach while it hits `target`: for a master
+    /// with an area effect, the objects but the two on the tiles of the blast's rectangle about
+    /// the unit, a tile wider each way (the unit may step in its update). An object the slice
+    /// cannot read stands in with its place alone, as a guess.
+    fn blasted(&self, unit: &Unit, p: usize, target: i32) -> Vec<Victim> {
+        let Some(r) = self
+            .masters
+            .get(p)
+            .and_then(|m| m.get(unit.life.master_id))
+            .map(|m| m.area_effect)
+            .filter(|&r| 0.0 < r)
+        else {
+            return Vec::new();
+        };
+        let [x, y, _] = unit.position;
+        let reach = r + 6.0 + 2.0;
+        self.spatial
+            .objects_within(x - reach, y - reach, x + reach, y + reach)
+            .filter(|&(id, _)| id != unit.id && id != target)
+            .map(|(id, o)| {
+                self.victim(id, p).unwrap_or(Victim {
+                    id,
+                    position: o.position,
+                    uncertain: true,
+                    ..Victim::default()
+                })
+            })
+            .collect()
     }
 
     /// An attack's hit on its target, written back.
@@ -1217,6 +1252,8 @@ impl Turns {
         if let Some(a) = v.armored.as_ref() {
             u.hp_powerups = a.hp_powerups;
         }
+        // a shield spends its charge
+        u.charge = v.source.charge;
         // the damage notify (500) to its unit AI
         if let (Some((attacker, p)), Some(ai)) = (v.damaged, u.ai.as_mut()) {
             let n = Notify {
@@ -1245,7 +1282,7 @@ impl Turns {
     /// 16 and 32, Gaia gains 1, 2 and 32) and its list (the old owner's last object takes its
     /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
     /// player and the particles (`FUN_141158bb0`).
-    fn killed(&mut self, q: usize, j: usize, kill: crate::attack::Kill) -> Result<(), Unsupported> {
+    fn killed(&mut self, q: usize, j: usize, kill: crate::damage::Kill) -> Result<(), Unsupported> {
         if self.players[q].computer {
             return Err(Unsupported(
                 "a computer player's killed object (its AI's slot 0x2f0)",
@@ -1671,6 +1708,7 @@ impl Turns {
                     armor_powerups: [0; 2],
                     armor_removed: [0; 2],
                     charge: 0.0,
+                    charge_hit: false,
                 });
                 if let Err(e) = self.task_builders(player, id, master, position, builders) {
                     let owner = &mut self.players[player];
@@ -2061,12 +2099,6 @@ impl Turns {
         for p in 0..self.players.len() {
             self.player_time[p] = self.player_time[p].wrapping_add(dt);
             let turn = (p == self.player_turn).then_some(self.player_time[p]);
-            let attributes = &self.players[p].attributes;
-            let elevation = if 212 < attributes.len() {
-                [attributes[211], attributes[212]]
-            } else {
-                [0.0; 2]
-            };
             self.pathing.tiles_changed(self.spatial.take_changes());
             // An object whose update is not modelled freezes, and so do all live objects of a
             // player a command stopped; dead objects still run their state steps, which draw
@@ -2091,7 +2123,10 @@ impl Turns {
                     continue;
                 }
                 let mut unit = std::mem::take(&mut self.players[p].objects[i]);
-                let mut victim = unit.attack_target().and_then(|t| self.victim(t));
+                let mut victim = unit.attack_target().and_then(|t| self.victim(t, p));
+                let blasted = victim
+                    .as_ref()
+                    .map_or_else(Vec::new, |v| self.blasted(&unit, p, v.id));
                 let player = &mut self.players[p];
                 let mut c = Context {
                     dt,
@@ -2105,8 +2140,9 @@ impl Turns {
                     pathing: &mut self.pathing,
                     construction_rate: player.construction_rate,
                     masters: self.masters.get(p),
-                    elevation,
                     victim: victim.as_mut(),
+                    blasted,
+                    own_killed: None,
                     mode_1: self.mode_680 == 1,
                     player: p,
                     attributes: &player.attributes,
@@ -2127,6 +2163,7 @@ impl Turns {
                     std::mem::take(&mut c.attribute_adds),
                     c.order_on_target.take(),
                 );
+                let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
                 if let Some(e) = self.spatial.take_sight_unsupported() {
                     result = result.and(Err(e));
                 }
@@ -2151,6 +2188,18 @@ impl Turns {
                     result = Err(Unsupported(
                         "an order on a target of a unit that leaves its list",
                     ));
+                }
+                // a hit's write-backs in the order the hit made them: the blast's objects, the
+                // unit itself (a retaliation), its target
+                for v in &blasted {
+                    if let Err(e) = self.set_victim(v) {
+                        result = result.and(Err(e));
+                    }
+                }
+                if let Some(kill) = own_killed
+                    && let Err(e) = self.killed(p, i, kill)
+                {
+                    result = result.and(Err(e));
                 }
                 if let Some(v) = victim
                     && let Err(e) = self.set_victim(&v)
@@ -2239,6 +2288,113 @@ impl Turns {
         self.player_time[self.player_turn] = 0;
         self.player_turn = (self.player_turn + 1) % self.players.len();
         self.frame_seed = self.streams.get(Stream::World).rand15();
+    }
+}
+
+/// What a hit reads of the object `u` of player `p` ([`Victim`]): its master's values and its
+/// own, its player's elevation attributes, the terrain defense of its tile (`terrain`, the map's;
+/// 1 for an object inside another, which has no tile) and the game's setting `mode_680`. Its
+/// relations to an attacker (`allied`) and whether its place is a guess (`uncertain`) are the
+/// caller's. The slice holds neither its unit AI's alert mode and attackers nor its facing.
+pub(crate) fn victim_of(
+    u: &Unit,
+    master: &crate::masters::Master,
+    attributes: &[f32],
+    p: usize,
+    terrain: Option<&crate::terrain::Terrain>,
+    mode_680: i32,
+) -> Victim {
+    let at = |i: usize| attributes.get(i).copied().unwrap_or(0.0);
+    let kind = master.kind;
+    let attack_elevation = if 212 < attributes.len() {
+        [attributes[211], attributes[212]]
+    } else {
+        [0.0; 2]
+    };
+    let defense = if master.terrain_bonus < 0 || u.life.inside {
+        Some(1.0)
+    } else {
+        terrain.and_then(|t| {
+            t.defense(
+                master.terrain_bonus,
+                u.position[0] as i32,
+                u.position[1] as i32,
+            )
+        })
+    };
+    let tasks = |kind: i16| master.tasks.iter().any(|t| t.action_type == kind);
+    Victim {
+        id: u.id,
+        hp: u.life.hp,
+        amount: u.life.amount,
+        state: u.life.state,
+        position: u.position,
+        kind,
+        class: master.class,
+        master_id: master.id,
+        radius: master.radius,
+        storage: master.storage.first().map_or(0.0, |s| s.1),
+        capacity: master.capacity,
+        blast_defense: master.blast_defense,
+        goto_sleep: u.life.goto_sleep,
+        decay: u.life.master.map_or(0.0, |m| m.decay),
+        player: p,
+        elevation: [at(272), at(273)],
+        attack_elevation,
+        allied: [false; 2],
+        uncertain: false,
+        source: crate::damage::Attacker {
+            id: u.id,
+            kind,
+            class: master.class,
+            master_id: master.id,
+            ability: master.combat_ability,
+            missile: master.missile,
+            weapon_range: master.weapon_range,
+            area_effect: master.area_effect,
+            blast_level: master.blast_level,
+            area_damage: master.area_damage,
+            charge_type: master.charge_type,
+            max_charge: master.max_charge,
+            charge_target: master.charge_target,
+            special_attack: master.special_attack,
+            charge: u.charge,
+            charge_hit: u.charge_hit,
+            attack_powerup: u.attack_powerup,
+            mode_680,
+            bonus_tasks: tasks(0xa0),
+            player: p,
+            kill_bonus_tasks: tasks(0x9a),
+        },
+        weapons: master.weapons.clone(),
+        // a combat object's slot 0xf0 is FUN_141082530 (types 50 and up)
+        armored: (50 <= kind).then(|| crate::damage::Armored {
+            armors: master.armors.clone(),
+            base_armor: master.base_armor,
+            terrain_bonus: master.terrain_bonus,
+            resistance: master.resistance,
+            ability: master.combat_ability,
+            reflection: master.reflection,
+            invulnerability: master.invulnerability,
+            special_attack: master.special_attack,
+            master_hp: master.hit_points,
+            friendly_fire: master.friendly_fire,
+            special_graphic: master.special_graphic,
+            terrain: defense,
+            armor_powerups: u.armor_powerups,
+            armor_removed: u.armor_removed,
+            hp_powerups: u.hp_powerups,
+            kill_tasks: master
+                .tasks
+                .iter()
+                .any(|t| t.action_type == 0xa1 && 1e-7 < t.work_val1),
+            busy: u.top_action_kind().is_some() || u.unmodelled_action.is_some(),
+            unit_ai: u.ai.is_some(),
+            alert_idle: None,
+            facing: None,
+        }),
+        damaged: None,
+        killed: None,
     }
 }
 
@@ -2953,10 +3109,10 @@ mod tests {
                 obstruction: None,
             },
         );
-        let mut v = t.victim(9520).unwrap();
+        let mut v = t.victim(9520, 1).unwrap();
         v.hp = 0.0;
         v.damaged = Some((10029, [10029, -10, 14]));
-        v.killed = Some(crate::attack::Kill {
+        v.killed = Some(crate::damage::Kill {
             attacker: 10029,
             attacker_player: 1,
             to_gaia: true,

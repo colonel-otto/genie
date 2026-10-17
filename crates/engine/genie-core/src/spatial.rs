@@ -295,6 +295,23 @@ impl Spatial {
             .map(|(&id, o)| (id, o))
     }
 
+    /// The objects whose place lies within `x0`..`x1` and `y0`..`y1`, by id.
+    pub fn objects_within(
+        &self,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+    ) -> impl Iterator<Item = (i32, &Placed)> + '_ {
+        self.objects
+            .iter()
+            .filter(move |(_, o)| {
+                let [x, y, _] = o.position;
+                x0 <= x && x <= x1 && y0 <= y && y <= y1
+            })
+            .map(|(&id, o)| (id, o))
+    }
+
     /// Whether another foundation without its record (a master that obstructs, no record yet)
     /// overlaps `site`'s box (`FUN_1411cd0d0`'s test, without its players' visibility).
     pub fn foundations_overlapping(&self, site_id: i32, site: &Placed) -> bool {

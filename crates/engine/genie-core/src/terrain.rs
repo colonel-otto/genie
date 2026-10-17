@@ -107,6 +107,25 @@ impl Terrain {
         self.index(x, y).map(|i| self.kinds[i])
     }
 
+    /// The terrain defense of an object on tile (`x`, `y`) whose master has `defense_terrain_bonus`
+    /// `bonus` (`FUN_141082530`): the restriction's value (`world+0x788`) for the tile's terrain
+    /// to restore, else its terrain (the tile's `+0xa`, else `+0x9`); 0 counts as 1, and an
+    /// object off the tiles has 1. None for a restriction or terrain the data has not got.
+    pub fn defense(&self, bonus: i16, x: i32, y: i32) -> Option<f32> {
+        let Some(i) = self.index(x, y) else {
+            return Some(1.0);
+        };
+        let t = match self.restore[i] {
+            255 => self.kinds[i],
+            t => t,
+        };
+        let v = *self
+            .restrictions
+            .get(usize::try_from(bonus).ok()?)?
+            .get(usize::from(t))?;
+        Some(if v == 0.0 { 1.0 } else { v })
+    }
+
     /// The terrain a map read sees of `t` (`FUN_140f690e0`): `t` when its record exists and it is
     /// shown, else 0.
     fn seen(&self, t: u8) -> u8 {

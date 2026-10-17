@@ -5,6 +5,7 @@ pub mod artifact;
 pub mod attack;
 pub mod build;
 pub mod checkpoint;
+pub mod damage;
 pub mod fly;
 pub mod fmath;
 pub mod hunt;

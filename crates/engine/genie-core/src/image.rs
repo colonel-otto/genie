@@ -9,10 +9,6 @@ pub mod attack {
     pub const ARRIVED: f32 = f32::from_bits(0x3c23d70a);
     /// 1.0000000116860974e-07
     pub const EPSILON: f32 = f32::from_bits(0x33d6bf95);
-    /// 1.25
-    pub const HIGHER: f32 = f32::from_bits(0x3fa00000);
-    /// 0.75
-    pub const LOWER: f32 = f32::from_bits(0x3f400000);
     /// -1.0
     pub const NONE: f32 = f32::from_bits(0xbf800000);
     /// 0.010000000707805157
@@ -26,6 +22,41 @@ pub mod build {
     pub const EXTRA_BUILDER: f32 = f32::from_bits(0x3ea8f5c3);
     /// 1.2000000476837158
     pub const WONDER_RATE: f32 = f32::from_bits(0x3f99999a);
+}
+
+pub mod damage {
+    /// 0.9900000095367432
+    pub const BLAST_RANGE: f32 = f32::from_bits(0x3f7d70a4);
+    /// 0.5
+    pub const CONE: f32 = f32::from_bits(0x3f000000);
+    /// 1.0000000116860974e-07
+    pub const EPSILON: f32 = f32::from_bits(0x33d6bf95);
+    /// 1.2000000476837158
+    pub const FACING: f32 = f32::from_bits(0x3f99999a);
+    /// 1.25
+    pub const HIGHER: f32 = f32::from_bits(0x3fa00000);
+    /// 0.75
+    pub const LOWER: f32 = f32::from_bits(0x3f400000);
+    /// -0.5
+    pub const MINUS_CONE: f32 = f32::from_bits(0xbf000000);
+    /// -1.2000000476837158
+    pub const MINUS_FACING: f32 = f32::from_bits(0xbf99999a);
+    /// -3.1415927410125732
+    pub const MINUS_PI: f32 = f32::from_bits(0xc0490fdb);
+    /// -6.2831854820251465
+    pub const MINUS_TWO_PI: f32 = f32::from_bits(0xc0c90fdb);
+    /// 3.1415927410125732
+    pub const PI: f32 = f32::from_bits(0x40490fdb);
+    /// 0.20000000298023224
+    pub const RETALIATION_RANGE: f32 = f32::from_bits(0x3e4ccccd);
+    /// 4.0
+    pub const RETALIATION_SCALE: f32 = f32::from_bits(0x40800000);
+    /// 0.6600000262260437
+    pub const SPECIAL: f32 = f32::from_bits(0x3f28f5c3);
+    /// 6.2831854820251465
+    pub const TWO_PI: f32 = f32::from_bits(0x40c90fdb);
+    /// 1.6699999570846558
+    pub const WIDE_CONE: f32 = f32::from_bits(0x3fd5c28f);
 }
 
 pub mod fly {

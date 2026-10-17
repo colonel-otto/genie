@@ -238,6 +238,9 @@ fn unit(
             .combat()
             .map_or([0; 2], |c| [c.melee_armor_removed, c.pierce_armor_removed]),
         charge: object.combat().map_or(0.0, |c| c.charge),
+        charge_hit: object
+            .combat()
+            .is_some_and(|c| c.rge_combat_object.hit_something_valid_for_charge_attack != 0),
         gather_point: gather_point(object),
         ..Unit::default()
     };
@@ -1122,6 +1125,7 @@ fn work_masters(
         work.hit_points = s.read_temp_6;
         work.line_of_sight = s.los;
         work.capacity = s.attribute_max_amount;
+        work.blast_defense = s.area_effect_object_level;
         if let Some(a) = action_part(m) {
             work.work_rate = a.work_rate;
             work.search_radius = a.search_radius;
@@ -1161,7 +1165,10 @@ fn work_masters(
             work.resistance = rc.bonus_damage_resistance;
             work.combat_ability = rc.combat_ability;
             work.reflection = rc.damage_reflection;
+            work.friendly_fire = rc.friendly_fire_damage;
             work.area_effect = rc.area_effect_range;
+            work.blast_level = rc.area_effect_level;
+            work.area_damage = rc.area_damage;
             work.invulnerability = c.invulnerability_level;
             work.special_attack = c.special_attack_flag;
             work.max_charge = c.max_charge;
@@ -2164,6 +2171,9 @@ pub struct ObjectRow {
     pub human_order: u32,
     /// A building's gather point: x, y and its target.
     pub gather: Option<([f32; 2], i32)>,
+    /// A combat object's charge, `mHitSomethingValidForChargeAttack` and hit point powerups,
+    /// which its hits and the hits on it change.
+    pub combat: Option<(f32, bool, [f32; 2])>,
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
@@ -2307,6 +2317,9 @@ impl ObjectRow {
             gather: unit
                 .gather_point
                 .map(|g| ([g.point[0], g.point[1]], g.target)),
+            combat: unit
+                .combat
+                .then_some((unit.charge, unit.charge_hit, unit.hp_powerups)),
         }
     }
 }
@@ -2404,6 +2417,13 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
             ai: object.combat().and_then(|c| c.unit_ai()).map(AiRow::saved),
             human_order: s.last_human_order_time,
             gather: gather_point(object).map(|g| ([g.point[0], g.point[1]], g.target)),
+            combat: object.combat().map(|c| {
+                (
+                    c.charge,
+                    c.rge_combat_object.hit_something_valid_for_charge_attack != 0,
+                    [c.hitpoints_powerup, c.hitpoints_max_powerup],
+                )
+            }),
         })
         .collect())
 }
@@ -3190,6 +3210,11 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             "gather point",
             format!("{:?}", s.gather),
             format!("{:?}", g.gather),
+        );
+        field(
+            "charge, charge hit, hp powerups",
+            format!("{:?}", s.combat),
+            format!("{:?}", g.combat),
         );
         match (&s.ai, &g.ai) {
             (Some(a), Some(b)) => {
