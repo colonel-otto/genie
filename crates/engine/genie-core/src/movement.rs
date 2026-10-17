@@ -1611,7 +1611,7 @@ impl Mover {
     /// met unit of the walker's own player or of another non-Gaia one ranks by the last human
     /// order time (`+0x650`, not held: not modelled) or by id, Gaia's never, and a non-Gaia
     /// walker always outranks Gaia's; the pause itself (slot 0x5f0) is not modelled. The paths'
-    /// hash sets (`+0x18`, `FUN_140f96120`) are empty in this game (the probe `_pathsets2.py`),
+    /// hash sets (`+0x18`, `FUN_140f96120`) are empty in this game (the probe `path_sets.py`),
     /// and the slice holds no unit groups (`+0x6d0`).
     #[allow(clippy::too_many_arguments)]
     fn avoid(
