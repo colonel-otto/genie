@@ -66,9 +66,13 @@ impl BuildAction {
             }
             (4, Some(MoveTo::Start)) => {
                 self.move_to = Some(MoveTo::Moving);
-                start_walk(walk, Goal::Target(self.target), self.range)
+                self.move_to = Some(start_walk(walk, Goal::Target(self.target), self.range)?);
+                Ok(())
             }
-            (4, Some(MoveTo::Moving)) => walk_on(walk),
+            (4, Some(MoveTo::Moving)) => {
+                self.move_to = Some(walk_on(walk)?);
+                Ok(())
+            }
             (4, None) => Err(Unsupported("a Build action in state 4 without its MoveTo")),
             (WORK, _) => {
                 // case 5: FUN_141162db0 turns the builder to face its foundation
@@ -86,9 +90,13 @@ impl BuildAction {
             (CLEAR, Some(MoveTo::Start)) => {
                 self.move_to = Some(MoveTo::Moving);
                 let goal = self.goal.expect("set_state(223) sets the goal");
-                start_walk(walk, Goal::Point(goal), 0.0)
+                self.move_to = Some(start_walk(walk, Goal::Point(goal), 0.0)?);
+                Ok(())
             }
-            (CLEAR, Some(MoveTo::Moving)) => walk_on(walk),
+            (CLEAR, Some(MoveTo::Moving)) => {
+                self.move_to = Some(walk_on(walk)?);
+                Ok(())
+            }
             (CLEAR, _) => Err(Unsupported(
                 "a builder off its footprint (its return, set_state 4)",
             )),
@@ -103,7 +111,7 @@ impl BuildAction {
         self.move_to = None;
         self.goal = None;
         self.state = PLACE;
-        let world = walk.world;
+        let world = &*walk.world;
         let site = world
             .get_known(self.target)?
             .ok_or(Unsupported("a foundation that is gone"))?;
@@ -211,7 +219,13 @@ mod tests {
                 restriction: 7,
                 restriction_mask: 6,
                 turns_at_once: true,
+                move_algorithm: 0,
             },
+            waiting: 0,
+            wait_delays: 0,
+            attack_moving: false,
+            last_move: 0,
+            substitute_count: 0,
         };
         let mut build = BuildAction {
             target: 10028,
@@ -228,7 +242,7 @@ mod tests {
                     position: [30.0, 89.0, 0.0],
                 },
                 dt: 0.02,
-                world: &world,
+                world: &mut world,
                 plan: None,
             })
             .unwrap();
@@ -244,22 +258,24 @@ mod tests {
         let mut far = BuildAction::start(10028, 0.8, 0.1);
         assert_eq!((near.state, near.move_to), (4, Some(MoveTo::Arrived)));
         assert_eq!((far.state, far.move_to), (4, Some(MoveTo::Start)));
-        let world = Spatial::default();
-        let walk = |id| Walk {
-            mover: None,
-            me: Me {
-                id,
-                position: [0.0; 3],
-            },
-            dt: 0.02,
-            world: &world,
-            plan: None,
-        };
-        near.update(walk(1)).unwrap();
+        let mut world = Spatial::default();
+        fn walk(id: i32, world: &mut Spatial) -> Walk<'_> {
+            Walk {
+                mover: None,
+                me: Me {
+                    id,
+                    position: [0.0; 3],
+                },
+                dt: 0.02,
+                world,
+                plan: None,
+            }
+        }
+        near.update(walk(1, &mut world)).unwrap();
         assert_eq!((near.state, near.move_to), (6, None));
         // the far one asks for a path to its foundation, which must be on the map
         assert_eq!(
-            far.update(walk(2)),
+            far.update(walk(2, &mut world)),
             Err(Unsupported("a MoveTo whose target is gone"))
         );
         assert_eq!(far.move_to, Some(MoveTo::Moving));

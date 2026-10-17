@@ -159,7 +159,7 @@ impl Unit {
     /// One update; true when the object leaves its list.
     fn update(&mut self, c: &mut Context<'_>) -> Result<bool, Unsupported> {
         if let Some(mover) = self.mover.as_mut() {
-            let at = mover.step_velocity(self.position, c.dt_seconds, c.spatial.map);
+            let at = mover.step_velocity(self.position, c.dt_seconds, c.spatial.map, c.world_time);
             if at != self.position {
                 self.position = at;
                 c.spatial.set_position(self.id, at);
@@ -196,6 +196,10 @@ impl Unit {
         }
         if let Some(fly) = self.fly.as_mut() {
             fly.update(c.walk(self.mover.as_mut(), me))?;
+        }
+        // the motion step may have put the unit onto a waypoint it reached
+        if let Some(p) = c.spatial.get(self.id) {
+            self.position = p.position;
         }
         if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
             if ai.current_order == -1 && ai.current_action == -1 && ai.current_target == -1 {

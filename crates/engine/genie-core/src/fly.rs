@@ -35,7 +35,10 @@ impl Fly {
             return Err(Unsupported("a bird's flight time runs out (set_state 2)"));
         }
         match self.move_to {
-            Some(MoveTo::Moving) => walk_on(walk),
+            Some(MoveTo::Moving) => {
+                self.move_to = Some(walk_on(walk)?);
+                Ok(())
+            }
             _ => Err(Unsupported("a flight whose MoveTo is not moving")),
         }
     }
@@ -49,27 +52,29 @@ mod tests {
 
     #[test]
     fn a_flight_counts_down_and_stops_the_slice_when_its_time_runs_out() {
-        let world = Spatial::default();
-        let walk = || Walk {
-            mover: None,
-            me: Me {
-                id: 9925,
-                position: [0.0; 3],
-            },
-            dt: 0.5,
-            world: &world,
-            plan: None,
-        };
+        let mut world = Spatial::default();
+        fn walk(world: &mut Spatial) -> Walk<'_> {
+            Walk {
+                mover: None,
+                me: Me {
+                    id: 9925,
+                    position: [0.0; 3],
+                },
+                dt: 0.5,
+                world,
+                plan: None,
+            }
+        }
         let mut fly = Fly {
             state: FLYING,
             timer: 0.75,
             move_to: Some(MoveTo::Moving),
         };
         // without movement state the walk itself is not modelled, after the countdown
-        assert!(fly.update(walk()).is_err());
+        assert!(fly.update(walk(&mut world)).is_err());
         assert_eq!(fly.timer, 0.25);
         assert_eq!(
-            fly.update(walk()),
+            fly.update(walk(&mut world)),
             Err(Unsupported("a bird's flight time runs out (set_state 2)"))
         );
     }

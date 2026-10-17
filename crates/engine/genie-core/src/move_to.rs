@@ -40,7 +40,8 @@ pub struct Walk<'a> {
     pub mover: Option<&'a mut Mover>,
     pub me: Me,
     pub dt: f32,
-    pub world: &'a Spatial,
+    /// The objects' places; the motion step moves the unit onto a waypoint it reached.
+    pub world: &'a mut Spatial,
     pub plan: Option<Planning<'a>>,
 }
 
@@ -53,8 +54,9 @@ pub enum Goal {
 
 /// A starting MoveTo's update (state 3): unless the unit is within `range` of its goal already, it
 /// asks for a path (`FUN_14114e410`) and turns to state 4, whose set_state runs the update again at
-/// once ([`walk_on`]). A unit already in range (set_state 1) is not modelled.
-pub fn start_walk(walk: Walk<'_>, goal: Goal, range: f32) -> Result<(), Unsupported> {
+/// once ([`walk_on`]); returns the MoveTo's state after it. A unit already in range (set_state 1)
+/// is not modelled.
+pub fn start_walk(walk: Walk<'_>, goal: Goal, range: f32) -> Result<MoveTo, Unsupported> {
     let (point, target, radius) = match goal {
         Goal::Target(id) => {
             let t = walk
@@ -83,9 +85,12 @@ pub fn start_walk(walk: Walk<'_>, goal: Goal, range: f32) -> Result<(), Unsuppor
     })
 }
 
-/// A moving MoveTo's update (state 4): the motion step, which only the walk keeps going. An
-/// arrival, a unit that cannot go on and a MoveTo without its path are not modelled.
-pub fn walk_on(walk: Walk<'_>) -> Result<(), Unsupported> {
+/// A moving MoveTo's update (state 4, `0x140aa2a70` from `LAB_140aa320c`): the motion step
+/// (slot 193); returns the MoveTo's state after it. A unit that arrived ends the MoveTo
+/// (set_state 1, `0x140aa29e0`, which also sets the unit's idle sprite and clears its `+0x7b8`,
+/// and `FUN_14114d810` its facet; the slice holds neither). A unit that cannot go on (set_state 2
+/// or 13) and a MoveTo without its path are not modelled.
+pub fn walk_on(walk: Walk<'_>) -> Result<MoveTo, Unsupported> {
     let mover = walk
         .mover
         .ok_or(Unsupported("a walker without movement state"))?;
@@ -93,9 +98,10 @@ pub fn walk_on(walk: Walk<'_>) -> Result<(), Unsupported> {
         return Err(Unsupported("the path request (FUN_14114e410)"));
     }
     let mut plan = walk.plan;
-    match mover.motion(&walk.me, walk.dt, walk.world, plan.as_mut())? {
-        Motion::Moving => Ok(()),
-        Motion::Arrived => Err(Unsupported("a MoveTo arrives (set_state 1)")),
+    let mut me = walk.me;
+    match mover.motion(&mut me, walk.dt, walk.world, plan.as_mut())? {
+        Motion::Moving => Ok(MoveTo::Moving),
+        Motion::Arrived => Ok(MoveTo::Arrived),
         Motion::Done => Err(Unsupported("a MoveTo whose unit cannot move on")),
     }
 }
@@ -113,13 +119,17 @@ pub struct MoveToAction {
 impl MoveToAction {
     pub fn update(&mut self, walk: Walk<'_>) -> Result<(), Unsupported> {
         match self.state {
-            MoveTo::Moving => walk_on(walk),
+            MoveTo::Moving => {
+                self.state = walk_on(walk)?;
+                Ok(())
+            }
             MoveTo::Start => {
                 let goal = self
                     .goal
                     .ok_or(Unsupported("a MoveTo of its own to a target object"))?;
                 self.state = MoveTo::Moving;
-                start_walk(walk, Goal::Point(goal), self.range)
+                self.state = start_walk(walk, Goal::Point(goal), self.range)?;
+                Ok(())
             }
             MoveTo::Arrived => Err(Unsupported("a MoveTo that arrived (its removal)")),
         }

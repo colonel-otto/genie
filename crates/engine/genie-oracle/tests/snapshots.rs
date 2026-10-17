@@ -101,10 +101,11 @@ fn the_walk_tick_from_the_save_before_it_matches_the_game_object_by_object() {
 }
 
 #[test]
-fn forty_ticks_of_walking_from_a_save_match_the_game_object_by_object() {
-    // updates 682 to 721: 9175's MoveTo off the footprint plans its path (the tile pathfinder,
-    // then the short pather) and it walks it; 9177 and 9181 walk on to the foundation
-    let Some(found) = differences(680, 40, 2) else {
+fn the_walk_off_the_footprint_from_a_save_matches_the_game_object_by_object() {
+    // updates 682 to 725: 9175's MoveTo off the footprint plans its path (the tile pathfinder,
+    // then the short pather) and it walks it; in 724 its step reaches the waypoint, in 725 it
+    // stands on it, its levels arrive and it stops; 9177 and 9181 walk on to the foundation
+    let Some(found) = differences(680, 44, 2) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

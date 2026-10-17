@@ -356,7 +356,13 @@ fn mover(
                     "a terrain restriction the data file does not have",
                 ))?,
             turns_at_once: turning.stationary_yaw_revolution_time == 0.0,
+            move_algorithm: turning.move_algorithm,
         },
+        waiting: m.waiting_to_move_value,
+        wait_delays: m.number_wait_delays,
+        attack_moving: m.attack_moving != 0,
+        last_move: m.last_move_time_value,
+        substitute_count: m.consecutive_substitute_count,
     }))
 }
 
@@ -1388,6 +1394,12 @@ pub struct MoveRow {
     /// Velocity and acceleration, when the object has velocity data.
     pub velocity: Option<(genie_core::fmath::Vec3, genie_core::fmath::Vec3)>,
     pub paths: Vec<genie_core::movement::PathData>,
+    /// `+0x7f9`, `+0x7fa`, `+0x7fb`, `+0x870`, `+0x874`.
+    pub waiting: u8,
+    pub wait_delays: u8,
+    pub attack_moving: bool,
+    pub last_move: u32,
+    pub substitute_count: i32,
 }
 
 impl ObjectRow {
@@ -1406,6 +1418,11 @@ impl ObjectRow {
                 right: m.right,
                 velocity: m.velocity.as_ref().map(|v| (v.velocity, v.acceleration)),
                 paths: m.paths.clone(),
+                waiting: m.waiting,
+                wait_delays: m.wait_delays,
+                attack_moving: m.attack_moving,
+                last_move: m.last_move,
+                substitute_count: m.substitute_count,
             }),
         }
     }
@@ -1429,6 +1446,11 @@ fn saved_movement(object: &genie_save::Object, paths: &[Path]) -> Option<MoveRow
             .rev()
             .filter_map(|d| path_level(d, paths).ok())
             .collect(),
+        waiting: m.waiting_to_move_value,
+        wait_delays: m.number_wait_delays,
+        attack_moving: m.attack_moving != 0,
+        last_move: m.last_move_time_value,
+        substitute_count: m.consecutive_substitute_count,
     })
 }
 
@@ -1715,6 +1737,23 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
                         format!("{pb:?}"),
                     );
                 }
+                let bytes = |m: &MoveRow| {
+                    format!(
+                        "{:?}",
+                        (
+                            m.waiting,
+                            m.wait_delays,
+                            m.attack_moving,
+                            m.substitute_count
+                        )
+                    )
+                };
+                field("move bytes", bytes(a), bytes(b));
+                field(
+                    "last move",
+                    a.last_move.to_string(),
+                    b.last_move.to_string(),
+                );
             }
             // a building's movement part without velocity data or paths is not modelled
             (None, Some(b)) if b.velocity.is_none() && b.paths.is_empty() => {}

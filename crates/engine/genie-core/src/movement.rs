@@ -80,6 +80,9 @@ pub struct MoveStats {
     /// The master's stationary yaw revolution time (`+0x758`) is 0: the unit faces a target at
     /// once (`FUN_141162db0`).
     pub turns_at_once: bool,
+    /// The master's move algorithm (`+0x768`, the `.dat`'s `move_algorithm`): bit 0 has a stop
+    /// reset the unit's sprite (slot 0x5d8).
+    pub move_algorithm: u8,
 }
 
 /// A moving unit's movement state.
@@ -95,6 +98,16 @@ pub struct Mover {
     /// `+0x878`: moveForward's distance factor.
     pub factor: f32,
     pub stats: MoveStats,
+    /// `+0x7f9`, `waitingToMoveValue`.
+    pub waiting: u8,
+    /// `+0x7fa`, `numberWaitDelays`: plans that failed for want of budget (trade carts).
+    pub wait_delays: u8,
+    /// `+0x7fb`, `mAttackMoving`: a level spends no try, and one without a path pauses.
+    pub attack_moving: bool,
+    /// `+0x870`, `lastMoveTimeValue`: the world's time when the unit last moved.
+    pub last_move: u32,
+    /// `+0x874`, `mConsecutiveSubstituteCount`: above 2 a walk counts its waypoint reached.
+    pub substitute_count: i32,
 }
 
 /// The moving unit, as the motion step needs it besides its [`Mover`].
@@ -212,6 +225,21 @@ fn point_or_zero(path: &Path, index: i32) -> Vec3 {
         .unwrap_or([0.0; 3])
 }
 
+/// A waypoint of a level's path, or the game's static zero point outside it.
+fn point_or_zero_of(level: &PathData, index: i32) -> Vec3 {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| level.points.get(i))
+        .copied()
+        .unwrap_or([0.0; 3])
+}
+
+/// The position setter's test for a move (`FUN_141161950`): a coordinate changed by more than
+/// 1e-7.
+fn moved_far(a: [f32; 3], b: [f32; 3]) -> bool {
+    (0..3).any(|i| EPSILON < (b[i] - a[i]).abs())
+}
+
 /// The length on the ground from `a` to `b`.
 fn ground(a: Vec3, b: Vec3) -> f32 {
     let mut d = fmath::sub(a, b);
@@ -282,6 +310,16 @@ pub struct Planning<'a> {
     pub object: &'a mut Well512,
 }
 
+/// Where the motion step goes on after a pass over the walked level.
+enum Next {
+    /// Back to the top of the step (`LAB_141151124`).
+    Again,
+    /// On to the level's state (`LAB_141151b6d`) with what the pass knew of its goal.
+    Dispatch,
+    /// The step returns.
+    Done(Motion),
+}
+
 /// Where the motion step goes on after a level's path request.
 enum Step {
     /// Back to the top of the step (`LAB_141151124`) for the level now walked.
@@ -303,7 +341,13 @@ impl Mover {
     /// toward the acceleration's target, capped by the top speed (object slot 188, `0x14114f300`),
     /// then the unit moves `dt × speed` along its forward vector (slot 182, `0x141158490`). Returns
     /// the position after it.
-    pub fn step_velocity(&mut self, position: [f32; 3], dt: f32, map: [i32; 2]) -> [f32; 3] {
+    pub fn step_velocity(
+        &mut self,
+        position: [f32; 3],
+        dt: f32,
+        map: [i32; 2],
+        now: u32,
+    ) -> [f32; 3] {
         let Some(v) = self.velocity.as_mut() else {
             return position;
         };
@@ -316,7 +360,11 @@ impl Mover {
             wanted
         };
         v.velocity[2] = speed;
-        self.move_forward(dt * speed, position, map)
+        let at = self.move_forward(dt * speed, position, map);
+        if moved_far(position, at) {
+            self.last_move = now;
+        }
+        at
     }
 
     /// `moveForward` (slot 182): `distance × factor` along the forward vector, through the
@@ -363,17 +411,19 @@ impl Mover {
     }
 
     /// The motion step (object slot 193 -> `0x141150f00`, `doIntelligentMovementUpdate`) along the
-    /// path a walking unit follows. Each pass looks at the level the unit walks: a level that wants
-    /// a path (state 2) gets one ([`Mover::request`]) and the step starts again with the level it
-    /// made; a walking level steers the unit toward its waypoint in a straight line, turning to
-    /// face it. The waypoint arrivals, the arrivals of states 4 and 5, unit groups and obstruction
-    /// avoidance are not modelled. `plan` is None where the caller has no planners: a path request
-    /// then stops the slice.
+    /// path a walking unit follows, as the game's loop: each pass looks at the level the unit
+    /// walks. A level whose waypoint was reached moves on to the next one ([`Mover::reached`]), an
+    /// arrived level hands over to its parent or ends the walk ([`Mover::arrived`]), a level that
+    /// wants a path gets one ([`Mover::request`]); a walking level steers the unit toward its
+    /// waypoint ([`Mover::walk`]). A pass that changes the levels starts the step again. Unit
+    /// groups and obstruction avoidance are not modelled. `plan` is None where the caller has no
+    /// planners: a path request then stops the slice. The unit's place may change (it takes a
+    /// reached waypoint's), in `me` and `world`.
     pub fn motion(
         &mut self,
-        me: &Me,
+        me: &mut Me,
         dt: f32,
-        world: &Spatial,
+        world: &mut Spatial,
         mut plan: Option<&mut Planning<'_>>,
     ) -> Result<Motion, Unsupported> {
         if self.stats.speed == 0.0 {
@@ -391,7 +441,7 @@ impl Mover {
         }
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let mut plans = 0;
-        let target = loop {
+        loop {
             let Some(level) = self.paths.first() else {
                 return Ok(Motion::Done);
             };
@@ -400,17 +450,18 @@ impl Mover {
                 id => Some(
                     world
                         .get_known(id)?
-                        .ok_or(Unsupported("a path target that is gone"))?,
+                        .ok_or(Unsupported("a path target that is gone"))?
+                        .clone(),
                 ),
             };
-            if target.is_some_and(|t| t.class == GATE) {
+            if target.as_ref().is_some_and(|t| t.class == GATE) {
                 return Err(Unsupported("a path to a gate (its annexes)"));
             }
             // the gap to the target, else to where the top level's path ends
-            let gap = target.map_or(FAR, |t| {
+            let gap = target.as_ref().map_or(FAR, |t| {
                 footprint_gap(me.position, ground_radius, t.position, t.radius)
             });
-            let to_end = match (target, self.paths.len()) {
+            let to_end = match (&target, self.paths.len()) {
                 (Some(_), _) => gap,
                 (None, 1) => FAR,
                 (None, _) => self
@@ -420,42 +471,74 @@ impl Mover {
                         footprint_gap(me.position, ground_radius, [x, y, 0.0], [0.0, 0.0])
                     }),
             };
-            if level.flags & 1 != 0 {
-                return Err(Unsupported("a walker reached its waypoint"));
+            let goal = Goal {
+                target: target.as_ref(),
+                gap,
+                to_end,
+            };
+            if self.paths[0].flags & 1 != 0 {
+                let now = plan.as_deref().map_or(0, |p| p.now);
+                let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
+                match self.reached(me, world, pathing, goal, now)? {
+                    Next::Again => continue,
+                    Next::Dispatch => {}
+                    Next::Done(m) => return Ok(m),
+                }
             }
-            match level.state {
-                4 | 5 => return Err(Unsupported("a path level that arrived (states 4 and 5)")),
+            match self.paths[0].state {
+                4 | 5 => match self.arrived(goal)? {
+                    Next::Done(m) => return Ok(m),
+                    _ => continue,
+                },
                 2 => {
                     let plan = plan
                         .as_deref_mut()
                         .ok_or(Unsupported("a path request without the world's planners"))?;
-                    let goal = Goal {
-                        target,
-                        gap,
-                        to_end,
-                    };
                     match self.request(me, world, plan, goal, &mut plans)? {
                         Step::Again => continue,
-                        Step::Walk => break target,
+                        Step::Walk => {}
                     }
                 }
-                _ => break target,
+                _ => {}
             }
-        };
-        let level = &self.paths[0];
+            match self.walk(me, dt, world, goal)? {
+                Next::Done(m) => return Ok(m),
+                _ => continue,
+            }
+        }
+    }
+
+    /// The walk along the level's path (`0x141150f00` from `LAB_141153bd1`): toward the waypoint
+    /// in a straight line, turning to face it. On the waypoint, or when the step would lead away
+    /// from it, the waypoint counts as reached and the motion step starts again; a step that
+    /// reaches it marks it reached and the walk goes on. A walk to a target ends in range of it
+    /// (the waypoint reached); a walk to a point with a range ends where its top path ends (the
+    /// unit stops, the step returns 2). A walk that may meet an obstruction is not modelled.
+    fn walk(
+        &mut self,
+        me: &Me,
+        dt: f32,
+        world: &Spatial,
+        goal: Goal<'_>,
+    ) -> Result<Next, Unsupported> {
+        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let position = vector(me.position);
-        let waypoint = level.point(level.waypoint)?;
+        let level = &self.paths[0];
+        let waypoint = point_or_zero_of(level, level.waypoint);
         if ground(position, waypoint) < EPSILON {
-            return Err(Unsupported("a walker on its waypoint"));
+            self.paths[0].flags |= 3;
+            return Ok(Next::Again);
         }
         let direction = self.direction_to(position, waypoint);
         let projected = self.projected(position, direction, dt);
-        let reach = reach(waypoint, position, projected);
-        if reach == Reach::Away {
-            return Err(Unsupported("a walker moving away from its waypoint"));
-        }
-        if reach == Reach::Reached {
-            return Err(Unsupported("a step that reaches its waypoint"));
+        match reach(waypoint, position, projected) {
+            Reach::Away => {
+                self.paths[0].flags |= 3;
+                return Ok(Next::Again);
+            }
+            Reach::Reached => self.paths[0].flags |= 3,
+            Reach::Short if 2 < self.substitute_count => self.paths[0].flags |= 3,
+            Reach::Short => {}
         }
         if self.stats.radius.iter().all(|&r| 0.0 < r) {
             let rect = self.query_rect(position, projected, world.map);
@@ -471,12 +554,17 @@ impl Mover {
                 return Err(Unsupported("a walker that may meet an obstruction"));
             }
         }
-        match target {
+        let level = &self.paths[0];
+        match goal.target {
             Some(t) => {
                 let gap =
                     footprint_gap(me.position, ground_radius, t.position, t.radius) - level.range;
                 if gap < EPSILON {
-                    return Err(Unsupported("a walker that reached its target"));
+                    // in range of the target: the waypoint counts as reached
+                    let level = &mut self.paths[0];
+                    level.flags &= !2;
+                    level.flags |= 1;
+                    return Ok(Next::Again);
                 }
             }
             // a walk to a point with a range ends where its top level's path ends
@@ -484,7 +572,9 @@ impl Mover {
                 if let Some(&[x, _, y]) = self.top_path().and_then(|p| p.last()) {
                     let gap = footprint_gap(me.position, ground_radius, [x, y, 0.0], [0.0, 0.0]);
                     if gap - level.range < EPSILON {
-                        return Err(Unsupported("a walk to a point reaches its range"));
+                        self.reset_level();
+                        self.stop()?;
+                        return Ok(Next::Done(Motion::Arrived));
                     }
                 }
             }
@@ -492,7 +582,215 @@ impl Mover {
         }
         self.steer(direction, dt);
         self.control_speed(position, waypoint);
-        Ok(Motion::Moving)
+        Ok(Next::Done(Motion::Moving))
+    }
+
+    /// The waypoint the level walks to was reached (`LAB_14115136c`, the level's bit 0): with
+    /// bit 1 the unit takes the waypoint's place (slot 0x58, the position setter); the level moves
+    /// on to its next waypoint, dropping those too near the map's edge for the unit
+    /// (`FUN_140f98d50`). Then (`LAB_14115192d`) a level with waypoints left waits for a path to
+    /// the next (state 2, not level 0); at its last, a unit not yet in range of where it was going
+    /// steps back to the waypoint it left and asks again, else the level arrived (state 4). A
+    /// looping path, a waypoint some object stands on and level 0's look ahead on a level 1
+    /// parent (`FUN_141142750`) are not modelled.
+    fn reached(
+        &mut self,
+        me: &mut Me,
+        world: &mut Spatial,
+        pathing: Option<&mut Pathing>,
+        goal: Goal<'_>,
+        now: u32,
+    ) -> Result<Next, Unsupported> {
+        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
+        let level = &mut self.paths[0];
+        if level.flags & 2 != 0 {
+            if level.waypoint < level.points.len() as i32 {
+                let p = level.point(level.waypoint)?;
+                let at = self.set_position(map_position(p), world.map);
+                self.moved_to(me, at, world, pathing, now);
+            }
+            self.paths[0].flags &= !2;
+        }
+        let level = &mut self.paths[0];
+        level.flags &= !1;
+        level.waypoint += 1;
+        let [rx, ry, _] = self.stats.radius;
+        let [w, h] = world.map;
+        while level.waypoint < level.points.len() as i32 {
+            let [x, _, y] = level.points[level.waypoint as usize];
+            if rx <= x && ry <= y && x <= w as f32 - rx && y <= h as f32 - ry {
+                break;
+            }
+            level.points.remove(level.waypoint as usize);
+        }
+        if level.path_flags & 1 != 0 {
+            return Err(Unsupported(
+                "a looping path's next waypoint (FUN_140f98bc0)",
+            ));
+        }
+        let next = level.waypoint + 1;
+        if level.level != 0 && next < level.points.len() as i32 {
+            let d = fmath::sub(vector(me.position), level.points[next as usize]);
+            if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < TARGET_SHORT_REACH {
+                let [x, _, y] = level.points[level.waypoint as usize];
+                world.check_known([x, y, x, y])?;
+                if !world
+                    .obstruction_candidates([x, y, x, y], 0.0, &[])
+                    .is_empty()
+                {
+                    return Err(Unsupported("a next waypoint some object stands on"));
+                }
+            }
+        }
+        let parent_is_level_1 = self
+            .paths
+            .get(1)
+            .is_some_and(|p| p.level == 1 && !p.points.is_empty());
+        if self.paths[0].level == 0 && parent_is_level_1 {
+            return Err(Unsupported(
+                "level 0's look ahead on its level 1 parent (FUN_141142750)",
+            ));
+        }
+        // LAB_14115192d
+        let level = &self.paths[0];
+        let left = point_or_zero_of(level, level.waypoint - 1);
+        let back = footprint_gap(
+            me.position,
+            ground_radius,
+            [left[0], left[2], 0.0],
+            [0.0, 0.0],
+        );
+        let mut beyond = match goal.target {
+            None => (back - level.range) - RANGE_FLOOR,
+            Some(t) => {
+                footprint_gap(me.position, ground_radius, t.position, t.radius)
+                    - level.range
+                    - RANGE_FLOOR
+            }
+        };
+        if goal.target.is_some() && level.flags & 4 != 0 {
+            self.clear_bit_2();
+            beyond = 0.0;
+        }
+        let level = &mut self.paths[0];
+        if level.waypoint < level.points.len() as i32 {
+            if level.level != 0 {
+                level.state = 2;
+            }
+            return Ok(Next::Dispatch);
+        }
+        if EPSILON <= beyond && (goal.target.is_some() || CLOSE <= beyond || level.level == 0) {
+            if EPSILON <= back {
+                level.waypoint -= 1;
+                level.state = 2;
+                return Ok(Next::Dispatch);
+            }
+            if level.level == 2 {
+                return Err(Unsupported(
+                    "a top level short of its goal at its end stops the unit",
+                ));
+            }
+        }
+        level.state = 4;
+        Ok(Next::Dispatch)
+    }
+
+    /// An arrived level (states 4 and 5, `LAB_141151b6d`): the top level, or one in range of its
+    /// target, is reset (`FUN_140f98e80`) and the unit stops (slot 0x5d0): the step returns 2. Any
+    /// other hands over to its parent by its link (`mLinkedPathType`): 1 marks the parent's
+    /// waypoint reached, 2 has the parent ask again (a looping parent moves on first), 3 has it
+    /// ask again; the step starts again with the parent.
+    fn arrived(&mut self, goal: Goal<'_>) -> Result<Next, Unsupported> {
+        let level = &self.paths[0];
+        if self.paths.len() == 1 || goal.gap <= level.range {
+            self.reset_level();
+            self.stop()?;
+            return Ok(Next::Done(Motion::Arrived));
+        }
+        match level.linked_type {
+            1 => {
+                self.paths.remove(0);
+                self.paths[0].flags |= 1;
+            }
+            2 => {
+                self.paths.remove(0);
+                let parent = &mut self.paths[0];
+                parent.state = 2;
+                if parent.path_flags & 1 != 0 {
+                    return Err(Unsupported(
+                        "a looping parent's next waypoint (FUN_140f98bc0)",
+                    ));
+                }
+            }
+            3 => {
+                self.paths.remove(0);
+                self.paths[0].state = 2;
+            }
+            _ => return Err(Unsupported("an arrived level of another link")),
+        }
+        Ok(Next::Again)
+    }
+
+    /// `FUN_140f98e80` on the walked level: its path goes, its parents with it, and it holds the
+    /// defaults (its tries back to 10, flags clear; its repath time stays).
+    fn reset_level(&mut self) {
+        self.paths.truncate(1);
+        let level = &mut self.paths[0];
+        *level = PathData {
+            repath_time: level.repath_time,
+            created: 0,
+            path_flags: 0,
+            ..PathData::new(0)
+        };
+    }
+
+    /// `FUN_140f9b4d0(level, 2, 0)`: bit 2 goes off the walked level and on for its parents.
+    fn clear_bit_2(&mut self) {
+        self.paths[0].flags &= !4;
+        for parent in &mut self.paths[1..] {
+            parent.flags |= 4;
+        }
+    }
+
+    /// Slot 0x5d0 (`FUN_14108c2f0` -> `FUN_141161730`): the unit stops: its speed and its
+    /// acceleration along its forward vector go to 0 (slots 0x598 and 0x5a8, on velocity data it
+    /// has), it stops waiting to move (`+0x7f9`, slot 0x2a0) and its own ignore list (`+0x678`)
+    /// empties. `+0x7b8` is cleared too, which the slice does not hold; a master whose move
+    /// algorithm has bit 0 also resets the unit's sprite (`+0x78c`, `+0x958`), which is not
+    /// modelled.
+    fn stop(&mut self) -> Result<(), Unsupported> {
+        if self.stats.move_algorithm & 1 != 0 {
+            return Err(Unsupported(
+                "a stop that resets the sprite (move algorithm bit 0)",
+            ));
+        }
+        if let Some(v) = self.velocity.as_mut() {
+            v.velocity[2] = 0.0;
+            v.acceleration[2] = 0.0;
+        }
+        self.waiting = 0;
+        Ok(())
+    }
+
+    /// The unit's place changed inside the motion step: the world's places and the mesh follow
+    /// (`0x1411a58b0` -> `FUN_14118c540`), and the time of the last move with them
+    /// (`FUN_141161950`, `+0x870`).
+    fn moved_to(
+        &mut self,
+        me: &mut Me,
+        at: [f32; 3],
+        world: &mut Spatial,
+        pathing: Option<&mut Pathing>,
+        now: u32,
+    ) {
+        if moved_far(me.position, at) {
+            self.last_move = now;
+        }
+        me.position = at;
+        world.set_position(me.id, at);
+        if let (Some(pathing), Some(p)) = (pathing, world.get(me.id)) {
+            pathing.moved(me.id, p, self.is_moving());
+        }
     }
 
     /// Object slot 185 (`0x1411583d0`): the unit has velocity data whose velocity is longer than 0.
@@ -560,16 +858,16 @@ impl Mover {
                     "a fourth plan in one motion step stops the unit",
                 ));
             }
-            // the owner's count of plans (player +0x67c) and the unit's failed tries (+0x7fa)
-            // only limit trade carts
+            // the owner's count of plans (player +0x67c) only limits trade carts
             *plans += 1;
+            self.wait_delays = 0;
         }
         // the level spends a try unless its top path loops
         let top_loops = self
             .paths
             .last()
             .is_some_and(|t| !t.points.is_empty() && t.path_flags & 1 != 0);
-        if !top_loops {
+        if !top_loops && !self.attack_moving {
             let top_has_more = self.paths.last().is_some_and(PathData::has_more);
             let level = &mut self.paths[0];
             level.continue_counter -= 1;
@@ -586,7 +884,8 @@ impl Mover {
                 return Ok(Step::Again);
             }
         }
-        // the unit's +0x7f9 is cleared (slot 0x2a0); a new level with a new path
+        // the unit stops waiting to move (slot 0x2a0); a new level with a new path
+        self.waiting = 0;
         let mut new = PathData::new(plan.now);
         let mut path = Path::default();
         // `local_19d0`, `bVar35`, `bVar6` and `bVar4`
@@ -870,7 +1169,7 @@ impl Mover {
                         "a level at its last waypoint without a path pauses the unit",
                     ));
                 }
-                if level.path_flags & 1 != 0 {
+                if level.path_flags & 1 != 0 || self.attack_moving {
                     return Err(Unsupported(
                         "a looping level without a path pauses the unit",
                     ));
@@ -1279,6 +1578,7 @@ mod tests {
             restriction: 7,
             restriction_mask: 6,
             turns_at_once: true,
+            move_algorithm: 0,
         }
     }
 
@@ -1317,6 +1617,11 @@ mod tests {
             ],
             factor: 1.0,
             stats: stats(),
+            waiting: 0,
+            wait_delays: 0,
+            attack_moving: false,
+            last_move: 0,
+            substitute_count: 0,
         }
     }
 
@@ -1358,11 +1663,11 @@ mod tests {
 
     /// One tick of the walker: the velocity step, then the motion step from where it got.
     fn tick(m: &mut Mover, at: [f32; 3], world: &mut Spatial) -> ([f32; 3], Motion) {
-        let at = m.step_velocity(at, DT, world.map);
+        let at = m.step_velocity(at, DT, world.map, 0);
         world.set_position(9177, at);
         let motion = m
             .motion(
-                &Me {
+                &mut Me {
                     id: 9177,
                     position: at,
                 },
@@ -1422,12 +1727,12 @@ mod tests {
             l.target = -1;
             l.range = 0.0;
         }
-        let me = Me {
+        let mut me = Me {
             id: 9926,
             position: [28.0, 89.0, 0.0],
         };
         assert_eq!(
-            hawk.motion(&me, DT, &Spatial::new([120, 120]), None),
+            hawk.motion(&mut me, DT, &mut Spatial::new([120, 120]), None),
             Ok(Motion::Moving)
         );
         // a deer's walk with range 0.5 whose top path ends within it
@@ -1437,10 +1742,58 @@ mod tests {
             l.range = 0.5;
         }
         deer.paths[1].points = vec![[28.0, 0.0, 89.0], [28.6, 0.0, 89.0]];
-        assert!(
-            deer.motion(&me, DT, &Spatial::new([120, 120]), None)
-                .is_err()
+        deer.velocity.as_mut().unwrap().velocity = [0.0, 0.0, 0.8];
+        assert_eq!(
+            deer.motion(&mut me, DT, &mut Spatial::new([120, 120]), None),
+            Ok(Motion::Arrived)
         );
+        // the walk ends: one level, reset, and the deer stops
+        assert_eq!(deer.paths.len(), 1);
+        assert_eq!(
+            (
+                deer.paths[0].state,
+                deer.paths[0].target,
+                &deer.paths[0].points
+            ),
+            (0, -1, &vec![])
+        );
+        assert_eq!(
+            deer.velocity
+                .as_ref()
+                .map(|v| (v.velocity[2], v.acceleration[2])),
+            Some((0.0, 0.0))
+        );
+    }
+
+    /// MarvinBlue/426048731's 9175 in update 724..726: the step that reaches its waypoint marks it
+    /// reached; the next motion step puts the unit onto it, the level arrives and hands over to the
+    /// top level, which arrives too: the walk ends.
+    #[test]
+    fn a_reached_waypoint_ends_the_walk_at_the_end_of_the_path() {
+        let mut m = builder_9177();
+        m.paths[0].points = vec![[30.0, 0.0, 89.0], [29.5, 0.0, 89.5]];
+        m.paths[1].points = vec![[30.0, 0.0, 89.0], [29.5, 0.0, 89.5]];
+        for l in &mut m.paths {
+            l.target = -1;
+            l.range = 0.0;
+        }
+        m.forward = [
+            -std::f32::consts::FRAC_1_SQRT_2,
+            0.0,
+            std::f32::consts::FRAC_1_SQRT_2,
+        ];
+        m.velocity.as_mut().unwrap().velocity = [0.0, 0.0, 0.8];
+        let mut world = Spatial::new([120, 120]);
+        let mut me = Me {
+            id: 9175,
+            position: [29.51, 89.49, 0.0],
+        };
+        assert_eq!(m.motion(&mut me, DT, &mut world, None), Ok(Motion::Moving));
+        assert_eq!(m.paths[0].flags, 3);
+        assert_eq!(m.motion(&mut me, DT, &mut world, None), Ok(Motion::Arrived));
+        assert_eq!(me.position, [29.5, 89.5, 0.0]);
+        assert_eq!(m.paths.len(), 1);
+        assert_eq!(m.paths[0].state, 0);
     }
 
     /// MarvinBlue/426048731's 9175 in update 682: the path request of its MoveTo off the house
@@ -1463,12 +1816,12 @@ mod tests {
         );
         assert_eq!(top.points, vec![[30.0, 0.0, 89.0], [29.5, 0.0, 89.5]]);
         // the motion step then plans the path to walk, which the slice does not model
-        let me = Me {
+        let mut me = Me {
             id: 9175,
             position: [30.0, 89.0, 0.0],
         };
         assert_eq!(
-            m.motion(&me, DT, &Spatial::new([120, 120]), None),
+            m.motion(&mut me, DT, &mut Spatial::new([120, 120]), None),
             Err(Unsupported("a path request without the world's planners"))
         );
     }
@@ -1477,14 +1830,14 @@ mod tests {
     fn a_unit_with_no_speed_or_no_path_is_done() {
         let mut m = builder_9177();
         m.stats.speed = 0.0;
-        let me = Me {
+        let mut me = Me {
             id: 9177,
             position: [28.0, 89.0, 0.0],
         };
-        assert_eq!(m.motion(&me, DT, &world(), None), Ok(Motion::Done));
+        assert_eq!(m.motion(&mut me, DT, &mut world(), None), Ok(Motion::Done));
         let mut m = builder_9177();
         m.paths.clear();
-        assert_eq!(m.motion(&me, DT, &world(), None), Ok(Motion::Done));
+        assert_eq!(m.motion(&mut me, DT, &mut world(), None), Ok(Motion::Done));
     }
 
     #[test]
@@ -1494,10 +1847,10 @@ mod tests {
         let mut close = w.get(9175).unwrap().clone();
         close.position = [28.3, 88.9, 0.0];
         w.insert(9175, close);
-        let me = Me {
+        let mut me = Me {
             id: 9177,
             position: [28.0, 89.0, 0.0],
         };
-        assert!(m.motion(&me, DT, &w, None).is_err());
+        assert!(m.motion(&mut me, DT, &mut w, None).is_err());
     }
 }
