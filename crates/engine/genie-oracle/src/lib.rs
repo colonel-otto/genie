@@ -1464,6 +1464,34 @@ pub fn spatial_with_tiles(
     Ok(spatial(&header, terrain))
 }
 
+/// The tile pathfinder's planner for one terrain restriction (`passable`, its value per terrain),
+/// built from a save's map and the tiles its static obstructions block, as the game builds it at
+/// load (`FUN_140f7d310`). Checked against the game's grid in `tests/tile_path.rs`.
+pub fn planner_from_save(
+    save: &[u8],
+    terrain: &TerrainTable,
+    passable: Vec<f32>,
+) -> Result<genie_core::tile_path::Planner, Error> {
+    use genie_core::spatial::BLOCKED;
+    let chapter = de::chapters(save)?[0];
+    let header = chapter.header()?;
+    let map = &header.world.base_world.map;
+    let terrain_ids: Vec<u8> = map
+        .rows
+        .iter()
+        .flat_map(|r| r.tiles.iter().map(|t| t.terrain_type))
+        .collect();
+    let spatial = spatial(&header, terrain);
+    let tiles = spatial.tiles();
+    let blocked = |x: i32, y: i32| tiles.word(x, y).is_some_and(|w| w & BLOCKED != 0);
+    Ok(genie_core::tile_path::Planner::new(
+        [map.map_width, map.map_height],
+        terrain_ids,
+        passable,
+        &blocked,
+    ))
+}
+
 /// Where two object lists differ, one line per object and field: `slice` from the slice, `game`
 /// from the game's save, matched by id. Equal lists give none.
 pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String> {
