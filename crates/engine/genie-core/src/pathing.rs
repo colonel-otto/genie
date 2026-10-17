@@ -35,6 +35,8 @@ pub struct Pathing {
     mesh: Option<Mesh>,
     /// Each object's shape (`+0x64c`).
     shapes: BTreeMap<i32, u32>,
+    /// The temporary shapes of the motion step under way (its `local_1688`).
+    temporary: Vec<u32>,
     pub pather: Pather,
 }
 
@@ -186,6 +188,26 @@ impl Pathing {
             Some(&s) => mesh.replace(s, rect),
         };
         self.shapes.insert(id, s);
+    }
+
+    /// A temporary shape for a kept hit of the walk (`FUN_141054fe0` with 1 on an object without a
+    /// shape, which the object does not keep): [`refreshed_rect`] of its radii.
+    pub fn add_temporary_shape(&mut self, p: &Placed) {
+        if let Some(mesh) = self.mesh.as_mut() {
+            let s = mesh.add(refreshed_rect(p.position, p.radius));
+            self.temporary.push(s);
+        }
+    }
+
+    /// The motion step's exit (`FUN_141055970` on each): the temporary shapes leave the mesh in
+    /// the order they came.
+    pub fn drop_temporary_shapes(&mut self) {
+        let shapes = std::mem::take(&mut self.temporary);
+        if let Some(mesh) = self.mesh.as_mut() {
+            for s in shapes {
+                mesh.remove(s);
+            }
+        }
     }
 
     /// The object left the world: its shape leaves the mesh.

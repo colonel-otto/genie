@@ -223,8 +223,9 @@ fn the_deer_s_idle_checks_from_a_save_match_the_game_object_by_object() {
     // and foxes (hunted animals, unit AI type 2) keep their places, their idle checks (862,
     // 1084) finding nothing of the classes they care about in Gaia's sight and drawing no wander;
     // in 1187 the scout 9185 plans its path past the deer 9657, which stood still; player 2's
-    // objects, its visible map and its unified bits through the save after 1300
-    let Some(found) = differences(680, 620, 2) else {
+    // objects, its visible map and its unified bits through the save after 1327, before the cow
+    // 9517 would pause a unit it meets (1329)
+    let Some(found) = differences(680, 647, 2) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());
@@ -262,9 +263,10 @@ fn player_1_s_scout_and_sheep_from_a_save_match_the_game_object_by_object() {
     // waits with its standing sprite. In 1213 the sheep has left 10029's reach: readyToAttack
     // sends it after the sheep (set_state 4); in 1250 a hit kills the sheep, which goes to Gaia.
     // Every object, its unit AI's queues, player 1's sight and the map's terrain match through
-    // the save after 1315 (in 1309 10029's step meets the mill, which slides nothing), before
-    // 9173 meets an object it goes round (1317)
-    let Some(found) = differences(680, 635, 1) else {
+    // the save after 1327 (in 1309 10029's step meets the mill, which slides nothing; in 1317
+    // 9173 keeps the unit it meets, gives it a temporary mesh shape and plans around it), before
+    // player 2's cow would pause a unit it meets (1329)
+    let Some(found) = differences(680, 647, 1) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());
@@ -282,9 +284,9 @@ fn gaia_s_birds_and_animals_from_a_save_match_the_game_object_by_object() {
     // second, FUN_1410e3a70) and stands while its turn falls short; in 1250 the sheep 9520
     // joins Gaia, killed; in 1252 it dies: its record and mesh shape go and it plays its dying
     // sprite (state 4) until 1334, when it leaves its remains, the blood 10030 (state 5 in its
-    // first update). Every object and Gaia's sight through the save after 1315, before player 1's
-    // walker freezes (1317)
-    let Some(found) = differences(680, 635, 0) else {
+    // first update). Every object and Gaia's sight through the save after 1327, before player 2's
+    // cow would pause a unit it meets (1329)
+    let Some(found) = differences(680, 647, 0) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

@@ -528,6 +528,22 @@ impl Mover {
         world: &mut Spatial,
         mut plan: Option<&mut Planning<'_>>,
     ) -> Result<Motion, Unsupported> {
+        let result = self.motion_passes(me, dt, world, plan.as_deref_mut());
+        // every exit of the step removes the kept hits' temporary shapes (FUN_141055970)
+        if let Some(p) = plan {
+            p.pathing.drop_temporary_shapes();
+        }
+        result
+    }
+
+    /// [`Mover::motion`]'s passes.
+    fn motion_passes(
+        &mut self,
+        me: &mut Me,
+        dt: f32,
+        world: &mut Spatial,
+        mut plan: Option<&mut Planning<'_>>,
+    ) -> Result<Motion, Unsupported> {
         if self.stats.speed == 0.0 {
             return Ok(Motion::Done);
         }
@@ -604,7 +620,8 @@ impl Mover {
                 _ => {}
             }
             let (now, computer) = plan.as_deref().map_or((0, false), |p| (p.now, p.computer));
-            match self.walk(me, dt, world, goal, now, computer)? {
+            let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
+            match self.walk(me, dt, world, pathing, goal, now, computer)? {
                 Next::Done(m) => return Ok(m),
                 _ => continue,
             }
@@ -617,11 +634,13 @@ impl Mover {
     /// reaches it marks it reached and the walk goes on. A walk to a target ends in range of it
     /// (the waypoint reached); a walk to a point with a range ends where its top path ends (the
     /// unit stops, the step returns 2). A walk that may meet an obstruction is not modelled.
+    #[allow(clippy::too_many_arguments)]
     fn walk(
         &mut self,
         me: &Me,
         dt: f32,
         world: &Spatial,
+        pathing: Option<&mut Pathing>,
         goal: Goal<'_>,
         now: u32,
         computer: bool,
@@ -673,7 +692,10 @@ impl Mover {
                 &[me.id],
             )?;
             if !hits.is_empty() {
-                self.avoid(me, world, &hits, projected, dt, now, computer)?;
+                let kept = self.avoid(me, world, &hits, projected, dt, now, computer)?;
+                if !kept.is_empty() {
+                    return self.go_round(me, world, pathing, &hits, &kept, computer);
+                }
             }
         }
         let level = &self.paths[0];
@@ -1680,7 +1702,7 @@ impl Mover {
         dt: f32,
         now: u32,
         computer: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<Vec<i32>, Unsupported> {
         let level = &self.paths[0];
         let top = self.paths.last().filter(|l| !l.points.is_empty());
         let player = world
@@ -1697,6 +1719,7 @@ impl Mover {
             Ok((id, p))
         };
         let mut target_hit = false;
+        let mut kept = Vec::new();
         for &hit in hits {
             let (id, other) = met(hit)?;
             if 0 <= level.target && id == level.target {
@@ -1721,15 +1744,16 @@ impl Mover {
             if next_overlap < now_overlap || (!pushed && !outranks) {
                 continue;
             }
-            return Err(Unsupported(
-                "a walker that meets an object it goes round (its temporary shape)",
-            ));
+            kept.push(id);
         }
         // FUN_141159220 slides the projected step out of the hits of no speed of classes 3, 27,
         // 39 and 52 (buildings, walls, gates): only the kept hits' re-plan reads the slid point,
         // and with no kept hit the slide changes nothing
         if hits.len() == 1 && target_hit {
             return Err(Unsupported("a walker whose step hits only its target"));
+        }
+        if !kept.is_empty() {
+            return Ok(kept);
         }
         if level.waypoint < 2 || (level.waypoint < 3 && level.created.wrapping_add(500) < now) {
             for &hit in hits {
@@ -1757,7 +1781,82 @@ impl Mover {
                 }
             }
         }
-        Ok(())
+        Ok(kept)
+    }
+
+    /// The walk's kept hits (`0x141150f00` after its first hit loop): each kept hit without a
+    /// mesh shape of its own got a temporary one there (`FUN_141054fe0` with 1, not the object's:
+    /// its `+0x64c` stays -1), which the step's every exit removes. Then each hit but the walked
+    /// level's target, a building's annex standing for it: one the walker outranks (as the
+    /// pause loop of [`Mover::avoid`] ranks them; any Gaia hit of a walker of a player) would be
+    /// paused (slot 0x5f0, not modelled), and an enemy of the target's master would notify the
+    /// walker's unit AI (0x215; the slice reads only its own player's hits as allies). Then the
+    /// walked level goes and its parent asks for a path again (state 2), which plans around the
+    /// temporary shapes; without a parent the unit stops (slot 0x5d0).
+    fn go_round(
+        &mut self,
+        me: &Me,
+        world: &Spatial,
+        pathing: Option<&mut Pathing>,
+        hits: &[i32],
+        kept: &[i32],
+        computer: bool,
+    ) -> Result<Next, Unsupported> {
+        let pathing = pathing.ok_or(Unsupported("a kept hit without the world's mesh"))?;
+        for &id in kept {
+            if pathing.shape(id).is_none() {
+                let p = world
+                    .get_known(id)?
+                    .ok_or(Unsupported("a kept hit without a place"))?;
+                if p.obstruction_type == 11 {
+                    return Err(Unsupported(
+                        "a kept hit of obstruction type 11 (its outline)",
+                    ));
+                }
+                pathing.add_temporary_shape(p);
+            }
+        }
+        let level = &self.paths[0];
+        let player = world
+            .get(me.id)
+            .ok_or(Unsupported("a walker without a place"))?
+            .player;
+        for &hit in hits {
+            let id = world.annex_of(hit).unwrap_or(hit);
+            if 0 <= level.target && id == level.target {
+                continue;
+            }
+            let Some(other) = world.get_known(id)? else {
+                continue;
+            };
+            let outranks = if player == 0 || other.player != 0 {
+                let mine = world.gait(me.id).map_or(0, |g| g.human_order);
+                let theirs = world.gait(id).map_or(0, |g| g.human_order);
+                if !computer && (other.player != player || theirs != mine) {
+                    theirs < mine
+                } else {
+                    me.id < id
+                }
+            } else {
+                true
+            };
+            if outranks {
+                return Err(Unsupported("a met unit paused for the walker (slot 0x5f0)"));
+            }
+            if other.player != player {
+                return Err(Unsupported(
+                    "a kept hit of another player (its alliance, the notify 0x215)",
+                ));
+            }
+        }
+        if self.paths.len() < 2 {
+            return Err(Unsupported(
+                "a kept hit on a walk without a parent level (its stop)",
+            ));
+        }
+        self.paths.remove(0);
+        self.paths[0].state = 2;
+        Ok(Next::Again)
     }
 
     /// The obstruction query's ends (`FUN_14114cc60`): the step's two ends, each held within 0.1
