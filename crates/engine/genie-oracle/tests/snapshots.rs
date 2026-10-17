@@ -242,9 +242,15 @@ fn player_1_s_scout_and_sheep_from_a_save_match_the_game_object_by_object() {
     // order times, `+0x650`, which each human order sets); in 927 a queued INTERACT sends its
     // two builders 9171 and 9173 to the sheep 9520: sorted by id, each lists the other in its
     // ignore list and its unit AI queues order 0x2db at its offset from their centroid added to
-    // the order's point (108.700745 and 108.05117); every object, its unit AI's queues and player
-    // 1's sight through the save after 1113, before the house 10026 is finished (1115)
-    let Some(found) = differences(680, 433, 1) else {
+    // the order's point (108.700745 and 108.05117); in 1115 9173's work completes the house
+    // 10026: its storage and attributes 98 and 165 go to player 1, its sight swaps to its line
+    // of sight and its foundation covers the snow under it with terrain 6 (layer 32); 9173's
+    // Build ends its work (224); in 1116 9171's too, both end their Builds (their unit AIs hold
+    // the queued orders) and take order 0x2db: the work command on the sheep (the hunter master,
+    // a Hunt walking to its own livestock within 1.5); every object, its unit AI's queues, player
+    // 1's sight and the map's terrain through the save after 1128, before the TC's villager
+    // spawns (1129)
+    let Some(found) = differences(680, 448, 1) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());
