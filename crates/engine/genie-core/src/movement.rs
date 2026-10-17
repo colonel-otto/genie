@@ -1613,9 +1613,10 @@ impl Mover {
     /// classes 3, 27, 39 or 52 (`FUN_141159220`'s slide) and a step that hits only its target are
     /// not modelled. Then, on the walked level's first two waypoints (or the third of a path more
     /// than 500 old), each hit the unit outranks pauses for `dt` when its own pause is shorter: a
-    /// met unit of the walker's own player or of another non-Gaia one ranks by the last human
-    /// order time (`+0x650`, not held: not modelled) or by id, Gaia's never, and a non-Gaia
-    /// walker always outranks Gaia's; the pause itself (slot 0x5f0) is not modelled. The paths'
+    /// human walker outranks another player's unit, or one of its own ordered at another time,
+    /// whose last human order (`+0x650`) is older; else the lower id outranks (a group's order
+    /// would decide, the slice holds none); a Gaia unit is outranked by any non-Gaia walker; the
+    /// pause itself (slot 0x5f0) is not modelled. The paths'
     /// hash sets (`+0x18`, `FUN_140f96120`) are empty in this game (the probe `path_sets.py`),
     /// and the slice holds no unit groups (`+0x6d0`).
     #[allow(clippy::too_many_arguments)]
@@ -1691,12 +1692,17 @@ impl Mover {
                     continue;
                 }
                 if player == 0 || other.player != 0 {
-                    if !computer {
-                        return Err(Unsupported(
-                            "a met unit ranked by the last human order time (+0x650)",
-                        ));
-                    }
-                    if !(me.id < id) {
+                    // a human walker ranks another player's unit, or one of its own ordered at
+                    // another time, by their last human order times (+0x650): the older order
+                    // pauses; else by id (slot 0x5f8)
+                    let mine = world.gait(me.id).map_or(0, |g| g.human_order);
+                    let theirs = world.gait(id).map_or(0, |g| g.human_order);
+                    let outranks = if !computer && (other.player != player || theirs != mine) {
+                        theirs < mine
+                    } else {
+                        me.id < id
+                    };
+                    if !outranks {
                         continue;
                     }
                 }
@@ -1817,7 +1823,7 @@ fn reach(waypoint: Vec3, position: Vec3, projected: Vec3) -> Reach {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::spatial::{Obstruction, Placed};
+    use crate::spatial::{Gait, Obstruction, Placed};
 
     const DT: f32 = 0.02;
 
@@ -2162,16 +2168,45 @@ mod tests {
     }
 
     #[test]
-    fn a_walker_that_may_meet_an_obstruction_is_not_modelled() {
-        let mut m = builder_9177();
+    fn a_human_walker_pauses_a_met_unit_of_an_older_human_order() {
+        // 9177 meets 9175 of its own player: ordered at the same time, the lower id outranks
+        // and 9177 walks on; once 9175's last human order is the older, 9177 would pause it
+        // (slot 0x5f0, not modelled)
         let mut w = world();
         let mut close = w.get(9175).unwrap().clone();
         close.position = [28.3, 88.9, 0.0];
         w.insert(9175, close);
-        let mut me = Me {
+        let me = Me {
             id: 9177,
             position: [28.0, 89.0, 0.0],
         };
-        assert!(m.motion(&mut me, DT, &mut w, None).is_err());
+        let walker = |human_order| Gait {
+            human_order,
+            ..Gait::default()
+        };
+        w.set_gait(9177, Some(walker(17000)));
+        w.set_gait(
+            9175,
+            Some(Gait {
+                pause: Some(0.0),
+                ..walker(17000)
+            }),
+        );
+        assert!(
+            builder_9177()
+                .motion(&mut me.clone(), DT, &mut w, None)
+                .is_ok()
+        );
+        w.set_gait(
+            9175,
+            Some(Gait {
+                pause: Some(0.0),
+                ..walker(16000)
+            }),
+        );
+        assert_eq!(
+            builder_9177().motion(&mut me.clone(), DT, &mut w, None),
+            Err(Unsupported("a met unit paused for the walker (slot 0x5f0)"))
+        );
     }
 }

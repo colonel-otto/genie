@@ -122,13 +122,15 @@ pub enum Effect {
     Stop,
     /// The AI's move (slot 0x130), which the unit takes (its slot 0x340).
     Move(AiMove),
+    /// `FUN_140c41e50`: the unit's last human order time (`+0x650`) is at most this.
+    CapHumanOrder(u32),
 }
 
 /// The first move among a full update's effects.
 pub fn first_move(effects: &[Effect]) -> Option<AiMove> {
     effects.iter().find_map(|e| match e {
         Effect::Move(m) => Some(*m),
-        Effect::Stop => None,
+        _ => None,
     })
 }
 
@@ -360,6 +362,8 @@ pub const MOVE_ACTION: i32 = 0x262;
 const HUNTED_HOME: f32 = 4.0;
 const HUNTED_STEP: i32 = 3;
 const HUNTED_SIGHT_GROWTH: f32 = 1.0;
+/// What an animal's idle check lowers its last human order time to (`FUN_140fe0d10`).
+const HUMAN_ORDER_CAP: u32 = 5000;
 /// The lion's idle timeout (`FUN_140c1fb70`, as its constructor `FUN_140c11bd0`).
 const LION_IDLE_TIMEOUT: u32 = 6000;
 /// The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
@@ -716,19 +720,29 @@ impl UnitAi {
     }
 
     /// Slot 72 for the factory types modelled: the boar's, the hunted animal's and the lion's do
-    /// something for an idle unit.
+    /// something for an idle unit; each first lowers the unit's last human order time to
+    /// `FUN_140fe0d10`'s 5000 (`FUN_140c41e50`; not on orders 701, 711, 712 and 733, and a
+    /// group's would decide, the slice holds none).
     fn process_idle(
         &mut self,
         at: &Surroundings,
         ai: &mut Well512,
         closest: &mut Closest<'_>,
-    ) -> Result<Option<AiMove>, Unsupported> {
-        match self.ai_type {
-            2 => self.hunted_idle(at, ai, closest),
-            4 => Ok(self.boar_idle(at, ai)),
-            5 => self.lion_idle(at, ai, closest),
-            _ => Ok(None),
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        if matches!(self.ai_type, 2 | 4 | 5)
+            && !matches!(self.current_order, 0x2bd | 0x2c7 | 0x2c8 | 0x2dd)
+        {
+            fx.push(Effect::CapHumanOrder(HUMAN_ORDER_CAP));
         }
+        let moved = match self.ai_type {
+            2 => self.hunted_idle(at, ai, closest)?,
+            4 => self.boar_idle(at, ai),
+            5 => self.lion_idle(at, ai, closest)?,
+            _ => None,
+        };
+        fx.extend(moved.map(Effect::Move));
+        Ok(())
     }
 
     fn is_idle(&self) -> bool {
@@ -796,9 +810,7 @@ impl UnitAi {
             && self.adjusted_idle_timeout < self.idle_timer
         {
             self.idle_timer = 0;
-            if let Some(m) = self.process_idle(at, ai, closest)? {
-                fx.push(Effect::Move(m));
-            }
+            self.process_idle(at, ai, closest, &mut fx)?;
         }
         self.calm_down();
         Ok(fx)
@@ -1271,9 +1283,7 @@ impl UnitAi {
             && (self.current_target == -1 || !busy)
         {
             self.idle_timer = 0;
-            if let Some(m) = self.process_idle(at, ai, closest)? {
-                fx.push(Effect::Move(m));
-            }
+            self.process_idle(at, ai, closest, fx)?;
             return Ok(());
         }
         if matches!(self.current_order, PATROL | PATROL_2) {

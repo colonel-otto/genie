@@ -145,7 +145,6 @@ impl Turns {
         if p != player {
             return Err(Unsupported("an order to another player's unit"));
         }
-        // +0x15: the last human order time (`+0x650`, FUN_140e5e780) is not held
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0) {

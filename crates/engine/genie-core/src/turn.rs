@@ -89,6 +89,9 @@ pub struct Unit {
     pub reload_powerup: f32,
     /// `+0x644`, `worker_num`: the actions that have the object as their target.
     pub workers: i32,
+    /// `+0x650`, `mLastHumanOrderTime`: the world time of the last order a human gave it
+    /// (`FUN_140e5e780`, for a unit with a unit AI); an animal's idle check lowers it to 5000.
+    pub last_human_order: u32,
     /// The object is a combat object (types 50 and up): its update keeps its sight mask and its
     /// records in the objects-in-sight registry.
     pub combat: bool,
@@ -308,6 +311,7 @@ impl Unit {
                 .is_some_and(|v| 0.0 < crate::fmath::length(v.velocity)),
             last_move: m.last_move,
             pause: m.paths.first().map(|l| l.pause_time),
+            human_order: self.last_human_order,
         })
     }
 
@@ -399,6 +403,10 @@ impl Unit {
         for e in effects {
             match e {
                 Effect::Stop => self.stop_action(c)?,
+                Effect::CapHumanOrder(cap) => {
+                    self.last_human_order = self.last_human_order.min(cap);
+                    c.spatial.set_gait(self.id, self.gait());
+                }
                 Effect::Move(m) => {
                     let class = class.ok_or(Unsupported(
                         "an AI move of a master the slice does not have",
@@ -1149,6 +1157,7 @@ impl Turns {
                         }),
                     work_rate_powerup: 0.0,
                     attackable: true,
+                    last_human_order: 0,
                     pasture: -1,
                     my_pasture: -1,
                     annex_of: None,
@@ -1199,15 +1208,35 @@ impl Turns {
                 ref units,
                 order,
             } => {
+                // +0x15: each unit with a unit AI takes the world time as its last human order
+                // time (FUN_140e5e780), after the resets
+                let human = match order {
+                    Some(Order::Interact(o)) => o.human,
+                    Some(Order::Move(o)) => o.human,
+                    None => false,
+                };
                 for &id in units {
-                    let ai = self
+                    let unit = self
                         .players
                         .iter_mut()
                         .flat_map(|p| p.objects.iter_mut())
-                        .find(|o| o.id == id)
-                        .and_then(|o| o.ai.as_mut());
-                    if let Some(ai) = ai {
+                        .find(|o| o.id == id);
+                    if let Some(ai) = unit.and_then(|o| o.ai.as_mut()) {
                         ai.reset_for_order(self.streams.get(Stream::Ai));
+                    }
+                }
+                if human {
+                    for &id in units {
+                        let unit = self
+                            .players
+                            .iter_mut()
+                            .flat_map(|p| p.objects.iter_mut())
+                            .find(|o| o.id == id)
+                            .filter(|o| o.ai.is_some());
+                        if let Some(u) = unit {
+                            u.last_human_order = self.world_time;
+                            self.spatial.set_gait(u.id, u.gait());
+                        }
                     }
                 }
                 let result = match order {

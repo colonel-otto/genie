@@ -223,6 +223,7 @@ fn unit(
             .combat()
             .map_or([0.0; 2], |c| [c.hitpoints_powerup, c.hitpoints_max_powerup]),
         workers: s.worker_num,
+        last_human_order: s.last_human_order_time,
         combat: object.combat().is_some(),
         attack_timer: object
             .combat()
@@ -1933,6 +1934,8 @@ pub struct ObjectRow {
     pub build_added: Option<bool>,
     /// The unit AI's order, action and target with their last values, and its timers.
     pub ai: Option<AiRow>,
+    /// `+0x650`, the last human order time.
+    pub human_order: u32,
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
@@ -2069,6 +2072,7 @@ impl ObjectRow {
                 .map(|c| (c.desolid, c.progress, c.builders)),
             build_added: unit.build.map(|b| b.added),
             ai: unit.ai.as_ref().map(AiRow::of),
+            human_order: unit.last_human_order,
         }
     }
 }
@@ -2155,6 +2159,7 @@ pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
                 .and_then(|(_, a)| a.tribe_action_build.as_ref())
                 .map(|b| b.added_to_num_builders != 0),
             ai: object.combat().and_then(|c| c.unit_ai()).map(AiRow::saved),
+            human_order: s.last_human_order_time,
         })
         .collect())
 }
@@ -2708,6 +2713,11 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             "build added",
             format!("{:?}", s.build_added),
             format!("{:?}", g.build_added),
+        );
+        field(
+            "last human order time",
+            s.human_order.to_string(),
+            g.human_order.to_string(),
         );
         match (&s.ai, &g.ai) {
             (Some(a), Some(b)) => {

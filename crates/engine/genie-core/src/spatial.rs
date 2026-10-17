@@ -25,6 +25,8 @@ pub struct Gait {
     pub moving: bool,
     pub last_move: u32,
     pub pause: Option<f32>,
+    /// `+0x650`, `mLastHumanOrderTime`: a met unit's rank against a human walker.
+    pub human_order: u32,
 }
 
 /// One object as movement sees it.
