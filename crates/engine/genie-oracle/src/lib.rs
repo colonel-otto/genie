@@ -241,6 +241,15 @@ fn unit(
     } else {
         default_task(object, s, civ, masters).map(|artifact| unit.artifact = artifact)
     };
+    // what the default task starts once the action list empties: nothing, the Artifact (whose
+    // restart the slice does not model) or something not modelled
+    unit.default_task = match default_task(object, s, civ, masters) {
+        Ok(None) => None,
+        Ok(Some(_)) => Some(Unsupported(
+            "the default task's restart (the Artifact action)",
+        )),
+        Err(e) => Some(e),
+    };
     let production = production(object, objects).map(|p| unit.production = p);
     let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.mover = m);
     unit.unmodelled_action = imported.and(production).and(moving).err();

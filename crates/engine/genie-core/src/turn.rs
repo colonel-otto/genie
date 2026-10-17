@@ -90,6 +90,9 @@ pub struct Unit {
     /// The object is a combat object (types 50 and up): its update keeps its sight mask and its
     /// records in the objects-in-sight registry.
     pub combat: bool,
+    /// What its master's default task would start once its action list is empty, when the
+    /// slice does not model it (None: nothing, as a wild animal's Explore).
+    pub default_task: Option<Unsupported>,
     /// The slice could not model one of its updates: it freezes (its place is known only within
     /// its speed since) while the rest of its player's objects go on.
     pub stopped: bool,
@@ -355,6 +358,15 @@ impl Unit {
             // RGE_Action_Object::update deletes a dead object's action list
             self.artifact = None;
         }
+        // RGE_Action_Object::update with no action in state 2 starts the master's default task
+        // (slot 0x7f0)
+        if self.life.state == 2
+            && self.top_action_kind().is_none()
+            && self.production.is_none()
+            && let Some(e) = self.default_task
+        {
+            return Err(e);
+        }
         // The default action exists from tick 1 on, but its first update is in tick 2: fitted to
         // 16 checkpoints of idle players with livestock (workspace FD-008).
         let me = Me {
@@ -378,8 +390,15 @@ impl Unit {
                 });
             build.update(c.walk(self.mover.as_mut(), me), site)?;
         }
-        if let Some(move_to) = self.move_to.as_mut() {
-            move_to.update(c.walk(self.mover.as_mut(), me))?;
+        if let Some(move_to) = self.move_to.as_mut()
+            && move_to.update(c.walk(self.mover.as_mut(), me))?
+        {
+            // the action list removes it (FUN_140a98e20): its teardown (0x140aa1f30) stops the
+            // unit (slot 0x5d0)
+            self.move_to = None;
+            if let Some(m) = self.mover.as_mut() {
+                m.stop()?;
+            }
         }
         if let Some(fly) = self.fly.as_mut() {
             fly.update(c.walk(self.mover.as_mut(), me))?;
@@ -794,6 +813,7 @@ impl Turns {
                     hunt: None,
                     workers: 0,
                     combat: true,
+                    default_task: None,
                     stopped: false,
                     sprite: None,
                     anim_speed: None,
@@ -1308,8 +1328,8 @@ mod tests {
     #[test]
     fn an_unsupported_unit_stops_and_is_recorded() {
         let mut odd = building();
-        // a predator's (bear's) unit AI is not modelled
-        odd.ai_type = 5;
+        // a unit-AI type the slice does not model
+        odd.ai_type = 99;
         let mut t = Turns::new(0, 1, 0, vec![0], vec![player(vec![Some(odd)])]);
         t.tick(10);
         t.tick(10);

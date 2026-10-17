@@ -140,11 +140,13 @@ pub struct MoveToAction {
 }
 
 impl MoveToAction {
-    pub fn update(&mut self, walk: Walk<'_>) -> Result<(), Unsupported> {
+    /// One update (`0x140aa2240`): true once it is done (its update in state 1 returns 1), for
+    /// the action list to remove it.
+    pub fn update(&mut self, walk: Walk<'_>) -> Result<bool, Unsupported> {
         match self.state {
             MoveTo::Moving => {
                 self.state = walk_on(walk)?;
-                Ok(())
+                Ok(false)
             }
             MoveTo::Start => {
                 let goal = self
@@ -152,9 +154,9 @@ impl MoveToAction {
                     .ok_or(Unsupported("a MoveTo of its own to a target object"))?;
                 self.state = MoveTo::Moving;
                 self.state = start_walk(walk, Goal::Point(goal), self.range, false)?;
-                Ok(())
+                Ok(false)
             }
-            MoveTo::Arrived => Err(Unsupported("a MoveTo that arrived (its removal)")),
+            MoveTo::Arrived => Ok(true),
         }
     }
 }

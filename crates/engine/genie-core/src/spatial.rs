@@ -716,19 +716,37 @@ impl Spatial {
             .ok_or(Unsupported(
                 "a search that reads nothing (the last answer stands)",
             ))?;
-        for record in found.iter().flatten() {
-            if record.id == me {
-                continue;
-            }
-            let Some(seer) = v.seer(record.id) else {
-                continue;
+        for (kind, records) in found.iter().enumerate() {
+            // the relation filter (`param_3`): 0 friends and itself, 1 neutrals, 2 enemies, 3
+            // itself, else any
+            let related = match search.relation {
+                0 => matches!(kind, 1 | 2),
+                1 => kind == 3,
+                2 => kind == 4,
+                3 => kind == 1,
+                _ => true,
             };
-            if 7 <= seer.state {
-                continue;
+            for record in records {
+                if record.id == me {
+                    continue;
+                }
+                let (Some(seer), Some(p)) = (v.seer(record.id), self.objects.get(&record.id))
+                else {
+                    continue;
+                };
+                if 7 <= seer.state || !related {
+                    continue;
+                }
+                if search.group != -1 && i32::from(p.class) != search.group {
+                    continue;
+                }
+                if search.state != -1 && i32::from(seer.state) != search.state {
+                    continue;
+                }
+                return Err(Unsupported(
+                    "ClosestObject's reachability check (slot 0x3d0) of a found object",
+                ));
             }
-            return Err(Unsupported(
-                "ClosestObject's reachability check (slot 0x3d0) of a found object",
-            ));
         }
         Ok(-1)
     }

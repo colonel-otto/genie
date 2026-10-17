@@ -82,17 +82,27 @@ pub const HUNTED_CARED: [i32; 28] = [
     56, 57, 19, 59,
 ];
 
-/// A unit AI's `ClosestObject` (`FUN_140c488b0`) as a hunted animal's idle check calls it (no
-/// group, relation, type, state or worker filter; reachable targets only): its search
+/// The classes a lion cares about (`+0x190`, `FUN_140c11bd0`'s list; the game's `+0x6b4` of 1,
+/// not met, adds 47, 18, 13 and 55).
+pub const LION_CARED: [i32; 18] = [
+    4, 0, 26, 24, 6, 25, 12, 35, 23, 36, 28, 44, 46, 45, 50, 56, 57, 9,
+];
+
+/// A unit AI's `ClosestObject` (`FUN_140c488b0`) as the animals' idle checks call it: its search
 /// (`FUN_140c63e20`) queries its player's objects in sight of `classes` within `radius` of `at`
-/// for a searcher of radii `size` (`GetVisibleUnits`, mode 0, every relation). The caller answers
-/// with the closest object's id, −1 for none.
+/// for a searcher of radii `size` (`GetVisibleUnits`, mode 0, every relation); then the objects of
+/// master class `group`, of relation `relation` (0 itself or friends, 1 neutrals, 2 enemies, 3
+/// itself) and in state `state` (each −1 for any), reachable ones only. The caller answers with
+/// the closest object's id, −1 for none.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Search<'a> {
     pub at: [f32; 2],
     pub radius: f32,
     pub classes: &'a [i32],
     pub size: [f32; 2],
+    pub group: i32,
+    pub relation: i32,
+    pub state: i32,
 }
 
 /// The caller's answer to a [`Search`].
@@ -171,10 +181,11 @@ fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
     match ai_type {
         // villagers (0x140c21da0) and livestock (0x140c21f20) return 9 from slot 73
         8 | 19 => Ok(Retarget::Never),
-        // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), transport
-        // ship (11, slot 72 0x140c21d20), soldier (13), tower (15), building (17); the slot 72 of
-        // all but the hunted animal and the boar draws nothing for an idle unit
-        2 | 4 | 11 | 13 | 15 | 17 => Ok(Retarget::Base),
+        // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), lion (5,
+        // slot 72 FUN_140c1fb70), transport ship (11, slot 72 0x140c21d20), soldier (13), tower
+        // (15), building (17); the slot 72 of the ship, the soldier, the tower and the building
+        // draws nothing for an idle unit
+        2 | 4 | 5 | 11 | 13 | 15 | 17 => Ok(Retarget::Base),
         _ => Err(Unsupported("unit-AI type not modelled")),
     }
 }
@@ -204,6 +215,8 @@ const MOVE_ACTION: i32 = 0x262;
 const HUNTED_HOME: f32 = 4.0;
 const HUNTED_STEP: i32 = 3;
 const HUNTED_SIGHT_GROWTH: f32 = 1.0;
+/// The lion's idle timeout (`FUN_140c1fb70`, as its constructor `FUN_140c11bd0`).
+const LION_IDLE_TIMEOUT: u32 = 6000;
 /// The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
 const CLASS_KING: i16 = 59;
 
@@ -475,6 +488,9 @@ impl UnitAi {
             radius,
             classes: &HUNTED_CARED,
             size: at.size,
+            group: -1,
+            relation: -1,
+            state: -1,
         })?;
         if found != -1 {
             return Err(Unsupported(
@@ -506,8 +522,49 @@ impl UnitAi {
         Ok(None)
     }
 
-    /// Slot 72 for the factory types modelled: the boar's and the hunted animal's do something
-    /// for an idle unit.
+    /// The lion's idle check (slot 72, `FUN_140c1fb70`, factory type 5: wolves, bears).
+    /// `FUN_140c41e50` first (not held, as for the hunted animal); its idle timeout becomes 6000,
+    /// redrawn (`FUN_140c41bc0`, slot 0x1a8: one draw). Its search looks for an enemy villager
+    /// (class 4) in state 2, then for any enemy in state 2, from the same place (the second reads
+    /// the first's answer). A found one it would attack (slot 0xb8, within half its line of sight
+    /// outside mode 1), which is not modelled.
+    fn lion_idle(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        closest: &mut Closest<'_>,
+    ) -> Result<Option<AiMove>, Unsupported> {
+        self.idle_timeout = LION_IDLE_TIMEOUT;
+        self.update_adjusted_idle_timeout(ai);
+        let sight = at.los + HUNTED_SIGHT_GROWTH;
+        let radius = if sight <= at.search_radius {
+            at.search_radius
+        } else {
+            sight
+        };
+        let search = |group| Search {
+            at: [at.position[0], at.position[1]],
+            radius,
+            classes: &LION_CARED,
+            size: at.size,
+            group,
+            relation: 2,
+            state: 2,
+        };
+        let mut found = closest(&search(4))?;
+        if found < 0 {
+            found = closest(&search(-1))?;
+        }
+        if found != -1 {
+            return Err(Unsupported(
+                "a lion attacking an object it sees (slot 0xb8)",
+            ));
+        }
+        Ok(None)
+    }
+
+    /// Slot 72 for the factory types modelled: the boar's, the hunted animal's and the lion's do
+    /// something for an idle unit.
     fn process_idle(
         &mut self,
         at: &Surroundings,
@@ -517,6 +574,7 @@ impl UnitAi {
         match self.ai_type {
             2 => self.hunted_idle(at, ai, closest),
             4 => Ok(self.boar_idle(at, ai)),
+            5 => self.lion_idle(at, ai, closest),
             _ => Ok(None),
         }
     }
@@ -970,9 +1028,9 @@ mod tests {
             )
             .is_err()
         );
-        // the predators' type (5) is not modelled
+        // a type the slice does not model
         assert!(
-            idle(5)
+            idle(99)
                 .update_idle(
                     1,
                     0,
