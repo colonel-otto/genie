@@ -119,6 +119,11 @@ pub struct Mover {
     /// of the static part): the other units of an order to several (`FUN_14118c790`), which the
     /// short pather ignores for a top path made this update. A stop empties it.
     pub ignore_units: Vec<i32>,
+    /// The point of the MoveTo the unit walks with (`+0x38`..`+0x40`), when it walks to a target
+    /// object: where the target stood when the MoveTo last asked for a path, which its check of
+    /// the target reads ([`crate::move_to::target_moved`]). A stop (the MoveTo's teardown)
+    /// forgets it.
+    pub move_to_point: Option<[f32; 3]>,
 }
 
 /// The moving unit, as the motion step needs it besides its [`Mover`].
@@ -921,6 +926,7 @@ impl Mover {
         }
         self.waiting = 0;
         self.ignore_units.clear();
+        self.move_to_point = None;
         Ok(())
     }
 
@@ -1899,6 +1905,7 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            move_to_point: None,
         }
     }
 

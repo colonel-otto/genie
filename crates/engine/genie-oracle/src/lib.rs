@@ -487,7 +487,18 @@ fn mover(
         last_move: m.last_move_time_value,
         substitute_count: m.consecutive_substitute_count,
         ignore_units: s.temp_int.clone(),
+        move_to_point: saved_move_to_point(object),
     }))
+}
+
+/// The point of the MoveTo a saved unit walks with to a target object: its top action's first
+/// sub-action when that is a MoveTo with a target (its `target_x`..`target_z`).
+fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
+    let (_, top) = object.actions()?.entries().next()?;
+    let (kind, sub) = top.base()?.sub_actions.entries().next()?;
+    let b = sub.base()?;
+    (kind == genie_core::move_to::MOVE_TO && b.target_id != -1)
+        .then_some([b.target_x, b.target_y, b.target_z])
 }
 
 /// The top action of a saved object as the slice models it: the Artifact action (107), the

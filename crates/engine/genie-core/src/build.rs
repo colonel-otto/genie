@@ -964,6 +964,7 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            move_to_point: None,
         };
         let mut build = BuildAction {
             target: 10028,

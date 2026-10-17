@@ -7,7 +7,7 @@
 //! `0x140ac7a00`, set_state (slot 16) `0x140ac60e0`.
 
 use crate::attack::{Arms, Attack, Engagement, Strike, Victim, set_sprite};
-use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_on};
+use crate::move_to::{Goal, MoveTo, Walk, start_walk, target_moved, walk_on};
 use crate::movement::{Mover, footprint_gap};
 use crate::sprite::Graphic;
 use crate::unit_ai::Unsupported;
@@ -338,6 +338,10 @@ impl HuntAction {
                     Ok(())
                 }
                 Some(MoveTo::Moving) => {
+                    if target_moved(&walk, self.target, true)? {
+                        self.move_to = Some(MoveTo::Start);
+                        return Ok(());
+                    }
                     walk.me.action_state = self.state;
                     self.move_to = Some(walk_on(walk)?);
                     Ok(())
@@ -612,6 +616,7 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            move_to_point: None,
         }
     }
 

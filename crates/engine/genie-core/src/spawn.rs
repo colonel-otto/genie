@@ -858,6 +858,7 @@ impl Turns {
                 last_move: self.world_time,
                 substitute_count: 0,
                 ignore_units: Vec::new(),
+                move_to_point: None,
             }),
             attackable: true,
             pasture: -1,

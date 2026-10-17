@@ -102,6 +102,8 @@ pub fn start_walk(
     }
     let now = walk.plan.as_ref().map_or(0, |p| p.now);
     mover.request_path(walk.me.position, point, range, target, now);
+    // the MoveTo's point (`+0x38`): the target's place when it asks for the path
+    mover.move_to_point = (target != -1).then_some(point);
     walk_on(Walk {
         mover: Some(mover),
         ..walk
@@ -127,6 +129,42 @@ pub fn walk_on(walk: Walk<'_>) -> Result<MoveTo, Unsupported> {
         Motion::Arrived => Ok(MoveTo::Arrived),
         Motion::Done => Err(Unsupported("a MoveTo whose unit cannot move on")),
     }
+}
+
+/// A target leaves the MoveTo's point when it is more than this off it on either axis
+/// (`DAT_142eb6e58`, `DAT_142e7f384`).
+const OFF_LOW: f32 = crate::image::move_to::OFF_LOW;
+const OFF_HIGH: f32 = crate::image::move_to::OFF_HIGH;
+
+/// The moving MoveTo's check of its target object (`0x140aa2a70` in state 4, before the motion
+/// step): a target that left the MoveTo's point (more than half a tile off on either axis) makes
+/// a MoveTo with `+0x61` at 1 (`quiet`: a hunt's and its Attack's) ask for a path again: it turns
+/// to state 3 (the slice's [`MoveTo::Start`]) and its update ends there. With `+0x61` at 0 the
+/// MoveTo first tries to move its path's end to the target (`FUN_140f9b890` after a line test,
+/// else notify 0x1fc), which is not modelled. True when the MoveTo turns to state 3.
+pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<bool, Unsupported> {
+    let t = walk
+        .world
+        .get_known(target)?
+        .ok_or(Unsupported("a MoveTo whose target is gone"))?;
+    let point = walk
+        .mover
+        .as_deref()
+        .ok_or(Unsupported("a walker without movement state"))?
+        .move_to_point
+        .ok_or(Unsupported(
+            "a MoveTo to a target whose point the slice does not hold",
+        ))?;
+    let (dx, dy) = (point[0] - t.position[0], point[1] - t.position[1]);
+    if !(dx < OFF_LOW || OFF_HIGH < dx || dy < OFF_LOW || OFF_HIGH < dy) {
+        return Ok(false);
+    }
+    if !quiet {
+        return Err(Unsupported(
+            "a MoveTo whose target moved (its path's end follows, FUN_140f9b890)",
+        ));
+    }
+    Ok(true)
 }
 
 /// A MoveTo as a unit's own top action (a wandering animal's).

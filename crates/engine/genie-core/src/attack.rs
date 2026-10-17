@@ -10,7 +10,7 @@
 //! (`readyToAttack`); the hit (object slot 0x858, `FUN_14120c0a0` -> `FUN_141081020` -> slot 0x860
 //! `FUN_1412115e0` -> `FUN_141084230` -> the target's slot 0xe8).
 
-use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_on};
+use crate::move_to::{Goal, MoveTo, Walk, start_walk, target_moved, walk_on};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::rng::Well512;
 use crate::sprite::{ActiveSprite, Graphic};
@@ -486,7 +486,13 @@ impl Attack {
                 0
             }
             Some(MoveTo::Moving) => {
-                self.move_to = Some(walk_on(walk.reborrow())?);
+                // the MoveTo takes the Attack's `+0x61` (`0x140a824ac`), which the Hunt's
+                // set_state(12) sets: a target that left its point asks for a path again
+                if target_moved(&walk, self.target, true)? {
+                    self.move_to = Some(MoveTo::Start);
+                } else {
+                    self.move_to = Some(walk_on(walk.reborrow())?);
+                }
                 0
             }
             Some(MoveTo::Arrived) => {

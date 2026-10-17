@@ -252,10 +252,11 @@ fn player_1_s_scout_and_sheep_from_a_save_match_the_game_object_by_object() {
     // right side's third spot (the sheep blocks the first two and stays), with its draws, its
     // place, sight and unit AI, and walks to hunt the sheep at the gather point; in 1130 it faces
     // the live sheep: the TC, its drop site, is within 3 tiles, so it attacks (the Attack starts
-    // in reach, faces the sheep and walks to it) and follows the sheep as it moves. Every object,
-    // its unit AI's queues, player 1's sight and the map's terrain match through the save after
-    // 1151, before 9171 and 9173 re-plan their walks to the moving sheep (1152)
-    let Some(found) = differences(680, 471, 1) else {
+    // in reach, faces the sheep and walks to it) and follows the sheep as it moves; in 1151 the
+    // sheep has left the points of 9171's and 9173's MoveTos, which ask for paths again (1152).
+    // Every object, its unit AI's queues, player 1's sight and the map's terrain match through the
+    // save after 1167, before the sheep 9516's unit AI moves it while its Artifact runs (1168)
+    let Some(found) = differences(680, 487, 1) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

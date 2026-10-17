@@ -48,6 +48,13 @@ pub mod hunt {
     pub const REMAINDER: f32 = f32::from_bits(0x3dcccccd);
 }
 
+pub mod move_to {
+    /// 0.5
+    pub const OFF_HIGH: f32 = f32::from_bits(0x3f000000);
+    /// -0.5
+    pub const OFF_LOW: f32 = f32::from_bits(0xbf000000);
+}
+
 pub mod movement {
     /// 1.0
     pub const CLOSE: f32 = f32::from_bits(0x3f800000);
