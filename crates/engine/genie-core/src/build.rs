@@ -391,8 +391,9 @@ impl Construction {
     /// The construction starts (`FUN_1411cd0d0`, then `FUN_1411e5670`): other players' foundations
     /// it overlaps would be removed (not modelled); it is no longer desolid, holds a sliver of
     /// progress, and gets its obstruction record (`FUN_141056460`: the tiles it marks, which the
-    /// planners see, and its shape in the mesh). Its damage sprites, line of sight, map tile marks
-    /// (`FUN_140f73900`), `+0xa00`, `+0xca4` and last move time are not held by the slice.
+    /// planners see, and its shape in the mesh); its footprint comes into its player's sight and
+    /// its tiles link to its anchor again (`FUN_140f73900`). Its damage sprites, `+0xa00`,
+    /// `+0xca4` and last move time are not held by the slice.
     fn start(
         id: i32,
         c: &mut Construction,
@@ -408,6 +409,9 @@ impl Construction {
         }
         c.desolid = false;
         c.progress = f32::from_bits(STARTED);
+        if let Some(v) = world.sight.as_mut() {
+            v.construction_started(id, placed.position, placed.radius);
+        }
         world.add_record(id, c.record);
         pathing.tiles_changed(world.take_changes());
         if let Some(p) = world.get(id) {

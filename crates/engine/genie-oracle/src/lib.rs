@@ -16,6 +16,7 @@ use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
 use genie_core::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::turn::{Command, Player, Turns, Unit};
 use genie_core::unit_ai::Unsupported;
+use genie_core::visibility::{BuildingSight, Extent, Seer, Visibility, VisibleMap};
 use genie_rec::de::{self, Op};
 use genie_save::Header;
 use genie_save::PlayerSection;
@@ -990,6 +991,7 @@ fn work_masters(
         work.obstruction_class = s.obstruction_class;
         work.object_flags = s.object_flags;
         work.hit_points = s.read_temp_6;
+        work.line_of_sight = s.los;
         work.capacity = s.attribute_max_amount;
         if let Some(a) = action_part(m) {
             work.work_rate = a.work_rate;
@@ -1106,13 +1108,14 @@ fn moving_speed(o: &genie_save::Object, s: &RgeStaticObject, objects: &PlayerObj
         .map_or(f32::INFINITY, |a| a.max_speed)
 }
 
-/// What movement reads of an object's master (its own or its player's).
+/// What movement and sight read of an object's master (its own or its player's).
 struct Placement {
     radius: [f32; 3],
     class: i16,
     obstruction_type: u8,
     obstruction_class: u8,
     buildable_on: u8,
+    los: f32,
 }
 
 fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<Placement> {
@@ -1124,6 +1127,7 @@ fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<Placement> 
             obstruction_type: own.obstruction_type,
             obstruction_class: own.obstruction_class,
             buildable_on: own.can_be_built_on,
+            los: own.los,
         });
     }
     let m = objects.master(s.master_obj)?.static_part()?;
@@ -1133,6 +1137,7 @@ fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<Placement> 
         obstruction_type: m.obstruction_type,
         obstruction_class: m.obstruction_class,
         buildable_on: m.can_be_built_on,
+        los: m.los,
     })
 }
 
@@ -1151,6 +1156,7 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
         .collect();
     let tiles = Tiles::new(map.map_width, map.map_height, classes);
     let mut out = Spatial::with_tiles([map.map_width, map.map_height], tiles);
+    let mut sight = saved_sight(header);
     for (player, section) in header.players().iter().enumerate() {
         let all = section.live_objects().chain(section.sleeping_objects());
         for o in all {
@@ -1158,6 +1164,37 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
             let Some(m) = placement(s, section.objects()) else {
                 continue;
             };
+            let building = o.tribe_building_object.as_ref();
+            sight.add_seer(
+                s.id,
+                Seer {
+                    player,
+                    master: s.master_obj,
+                    los: m.los,
+                    state: s.object_state,
+                    // a foundation made in the game explores first when its construction starts
+                    explored: building.is_none_or(|b| b.built != 0 || b.build_pts != 0.0),
+                    building: building.map(|b| BuildingSight {
+                        built: b.built != 0,
+                        started: b.build_pts != 0.0,
+                    }),
+                },
+            );
+            // a building's place links its tiles (FUN_1411e6780), an annex's does not, and a
+            // foundation made desolid lost them (FUN_1411cf770); so do a combat unit's that does
+            // not move and is more than a tile wide (FUN_14108c320)
+            let speed = moving_speed(o, s, section.objects());
+            let links = match building {
+                Some(b) => {
+                    b.mupt_linked_object_references_linked_owner_id == -1 && b.desolid_flag == 0
+                }
+                None => {
+                    o.combat().is_some() && speed == 0.0 && (0.5 < m.radius[0] || 0.5 < m.radius[1])
+                }
+            };
+            if links {
+                sight.link_building([s.t_x, s.t_y, s.t_z], [m.radius[0], m.radius[1]]);
+            }
             let desolid = o
                 .tribe_building_object
                 .as_ref()
@@ -1188,6 +1225,94 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
             if let Some(s) = ghost.static_part() {
                 out.insert_ghost([s.t_x, s.t_y, s.t_z]);
             }
+        }
+    }
+    out.sight = Some(sight);
+    out
+}
+
+/// What the players see in a save: each player's visible map, the map's unified map and UMV list
+/// and which players are computers; no tile links and no objects' sight.
+fn saved_sight(header: &Header) -> Visibility {
+    let map = &header.world.base_world.map;
+    let n = (map.map_width.max(0) * map.map_height.max(0)) as usize;
+    let players = header.players();
+    let maps = players
+        .iter()
+        .map(|p| {
+            let vm = &p.objects().rge_visible_map;
+            VisibleMap {
+                counts: vm.visible_map.clone().unwrap_or_else(|| vec![-1; n]),
+                explored: vm.number_tiles_explored_value,
+            }
+        })
+        .collect();
+    let umv = &map.umv_data_list;
+    let extents = umv
+        .umv_data_guid
+        .iter()
+        .zip(&umv.umv_data_list)
+        .map(|(&guid, e)| Extent {
+            guid,
+            offsets: e
+                .p
+                .iter()
+                .map(|&v| [v as u32 as i32, (v >> 32) as u32 as i32])
+                .collect(),
+            capacity: e.n + 1,
+        })
+        .collect();
+    Visibility::new(
+        map.map_width,
+        map.map_height,
+        maps,
+        map.unified_vis_map
+            .unified_visible_map
+            .clone()
+            .unwrap_or_else(|| vec![0; n]),
+        extents,
+        umv.umv_data_list_size,
+        players
+            .iter()
+            .map(|p| p.world_player().type_ == 3)
+            .collect(),
+    )
+}
+
+/// The players' visible maps and the unified map of a save, as [`Visibility`] holds them.
+pub fn saved_visibility(save: &[u8]) -> Result<Visibility, Error> {
+    let chapter = de::chapters(save)?[0];
+    let header = chapter.header()?;
+    Ok(saved_sight(&header))
+}
+
+/// Where player `player`'s sight in `slice` differs from `game`'s: its explored count, each tile's
+/// count and its two bits of the unified map.
+pub fn visibility_differences(slice: &Visibility, game: &Visibility, player: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let (Some(a), Some(b)) = (slice.maps.get(player), game.maps.get(player)) else {
+        return vec![format!("player {player} has no visible map")];
+    };
+    if a.explored != b.explored {
+        out.push(format!(
+            "player {player} explored {} tiles, the game {}",
+            a.explored, b.explored
+        ));
+    }
+    let w = slice.width.max(1) as usize;
+    let bits = 1u64 << player | 1u64 << (32 + player);
+    for (i, (&c, &g)) in a.counts.iter().zip(&b.counts).enumerate() {
+        let (x, y) = (i % w, i / w);
+        if c != g {
+            out.push(format!(
+                "player {player} tile ({x}, {y}) count {c}, the game {g}"
+            ));
+        }
+        let (u, v) = (slice.unified[i] & bits, game.unified[i] & bits);
+        if u != v {
+            out.push(format!(
+                "player {player} tile ({x}, {y}) unified bits {u:#x}, the game {v:#x}"
+            ));
         }
     }
     out
@@ -1846,6 +1971,8 @@ pub struct SliceRun {
     pub unsupported_id: Option<i32>,
     /// Every player's first unsupported update, by player.
     pub stopped: Vec<Option<(u32, usize, Unsupported)>>,
+    /// What the players see after the run.
+    pub visibility: Option<Visibility>,
 }
 
 /// The live objects of player `id` in a save (a recording's header, or the tick oracle's
@@ -1937,6 +2064,7 @@ pub fn objects_from_save(
             .unsupported
             .and_then(|(_, i, _)| player.objects.get(i).map(|u| u.id)),
         stopped: turns.players.iter().map(|p| p.unsupported).collect(),
+        visibility: turns.spatial.sight.take(),
     })
 }
 

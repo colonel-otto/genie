@@ -82,6 +82,8 @@ pub struct Master {
     pub radius: [f32; 2],
     /// `radius_z` (`+0x5e0`) is above 0: its objects count as tall on their tiles.
     pub tall: bool,
+    /// `line_of_sight` (`+0x5d0`).
+    pub line_of_sight: f32,
     /// `obstruction_type` (`+0x651`) and `can_be_built_on` (`+0x5e9`).
     pub obstruction_type: u8,
     pub buildable_on: u8,

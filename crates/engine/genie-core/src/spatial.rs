@@ -10,6 +10,7 @@
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
 use crate::unit_ai::Unsupported;
+use crate::visibility::Visibility;
 use std::collections::BTreeMap;
 
 /// Obstruction kinds the query tests (`FUN_141051e00`): boxes (2, 3, 11, 13) and circles (5).
@@ -227,6 +228,9 @@ pub struct Spatial {
     annexes: BTreeMap<i32, i32>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
     pub relations: Vec<Vec<u8>>,
+    /// What the players see, when the slice holds it: the objects' sight follows their tiles
+    /// ([`Spatial::set_position`]).
+    pub sight: Option<Visibility>,
 }
 
 impl Spatial {
@@ -248,6 +252,7 @@ impl Spatial {
             gaits: BTreeMap::new(),
             annexes: BTreeMap::new(),
             relations: Vec::new(),
+            sight: None,
         }
     }
 
@@ -398,6 +403,14 @@ impl Spatial {
             self.changed.push(self.tiles.covered_rect(&placed));
         }
         self.objects.insert(id, placed);
+    }
+
+    /// The object leaves the world: its place and its sight's state go.
+    pub fn leave(&mut self, id: i32) {
+        self.remove(id);
+        if let Some(v) = self.sight.as_mut() {
+            v.remove_seer(id);
+        }
     }
 
     pub fn remove(&mut self, id: i32) {
@@ -605,12 +618,38 @@ impl Spatial {
         Ok(hits)
     }
 
+    /// The object's new place (`new_position`, `0x1411a58b0`): its tile's counts and, on a new
+    /// tile, its sight follow.
     pub fn set_position(&mut self, id: i32, position: [f32; 3]) {
         if let Some(p) = self.objects.get_mut(&id) {
             self.tiles.count(p.position, p.tall, false);
+            let from = p.position;
             p.position = position;
             self.tiles.count(p.position, p.tall, true);
+            if let Some(v) = self.sight.as_mut() {
+                v.moved(id, from, position, p.radius);
+            }
         }
+    }
+
+    /// The object's set_state to `state` ([`Visibility::state_changed`]).
+    pub fn sight_state(&mut self, id: i32, state: u8) {
+        if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
+            v.state_changed(id, p.position, p.radius, state);
+        }
+    }
+
+    /// The object's master changes to `master` with radii `radius` and line of sight `los`
+    /// ([`Visibility::master_changed`]); the caller files the object's new radii.
+    pub fn sight_master(&mut self, id: i32, radius: [f32; 2], master: i16, los: f32) {
+        if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
+            v.master_changed(id, p.position, p.radius, radius, master, los);
+        }
+    }
+
+    /// The first part of the players' sight the slice met and does not model.
+    pub fn take_sight_unsupported(&mut self) -> Option<Unsupported> {
+        self.sight.as_mut().and_then(Visibility::take_unsupported)
     }
 
     /// A player's ghost of an object it saw (a doppelganger, type 25): it counts on its tile, and

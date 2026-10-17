@@ -37,8 +37,17 @@ fn differences(start: usize, ticks: usize, player: u32) -> Option<Vec<String>> {
         mesh(&dir, start).as_deref(),
     )
     .unwrap();
-    let game = genie_oracle::saved_objects(&save(&dir, start + ticks), player).unwrap();
+    let after = save(&dir, start + ticks);
+    let game = genie_oracle::saved_objects(&after, player).unwrap();
     let mut out = genie_oracle::object_differences(&run.objects, &game);
+    // the player's sight: its visible map and its bits of the unified map
+    let seen = genie_oracle::saved_visibility(&after).unwrap();
+    let sight = run.visibility.as_ref().expect("the slice holds the sight");
+    out.extend(genie_oracle::visibility_differences(
+        sight,
+        &seen,
+        player as usize,
+    ));
     if let Some(u) = run.unsupported {
         out.push(format!("unsupported: {u:?}"));
         if let Some(id) = run.unsupported_id {

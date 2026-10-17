@@ -704,10 +704,11 @@ impl Turns {
     /// Slot 0x90 (`FUN_141225b70` with 0): the unit changes its master. Its action list is
     /// cleared; in a state below 3 (`FUN_1411a6a70`) the old master's storage leaves its player's
     /// attributes and the new one's comes in (`FUN_1411a56c0`, flag 2), its hit points keep their
-    /// share of the new master's (whole, at least 1), its place and obstruction record take the
-    /// new master's (`FUN_141055b40`, `FUN_14118c540`) and it moves with the new master's values;
-    /// its powerups go (`FUN_1412066b0`). Its line of sight, per-master counts, sprite, facet,
-    /// class registry (`DAT_143f69170`) and particles are not held.
+    /// share of the new master's (whole, at least 1), its sight goes and the new master's comes
+    /// (slots 0x1d8, 0x1d0), its place and obstruction record take the new master's
+    /// (`FUN_141055b40`, `FUN_14118c540`) and it moves with the new master's values; its powerups
+    /// go (`FUN_1412066b0`). Its per-master counts, sprite, facet, class registry
+    /// (`DAT_143f69170`) and particles are not held.
     fn change_master(&mut self, player: usize, idx: usize, new: i16) -> Result<(), Unsupported> {
         self.clear_actions(player, idx)?;
         let unit = &self.players[player].objects[idx];
@@ -761,6 +762,8 @@ impl Turns {
                     o.class = next.obstruction_class;
                 }
                 self.pathing.removed(id);
+                self.spatial
+                    .sight_master(id, next.radius, new, next.line_of_sight);
                 self.spatial.insert(id, placed.clone());
                 self.pathing.moved(id, &placed, moving);
             }

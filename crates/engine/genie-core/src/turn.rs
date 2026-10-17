@@ -30,6 +30,7 @@ use crate::spatial::{Placed, Spatial};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::{AiMove, BUILD_ACTION, BUILD_ORDER, Surroundings, UnitAi, Unsupported};
+use crate::visibility::{BuildingSight, Seer};
 
 /// What the slice tracks of one object.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -316,6 +317,7 @@ impl Unit {
                 return Err(Unsupported("a dying object's storage leaves its player"));
             }
         }
+        let before = self.life.state;
         let leaves = if self
             .life
             .update(c.dt_seconds, c.streams.get(Stream::Object))?
@@ -324,6 +326,16 @@ impl Unit {
         } else {
             Step::Stay
         };
+        // the set_states of the steps (FUN_14119d710): a death goes through state 3
+        let after = self.life.state;
+        if after != before {
+            if before <= 2 && 3 <= after {
+                c.spatial.sight_state(self.id, 3);
+            }
+            if after != 3 {
+                c.spatial.sight_state(self.id, after);
+            }
+        }
         // the animated object's update (0x141071880): its sprite's clock at its animation speed
         if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.anim_speed) {
             sprite.update(c.dt_seconds, speed);
@@ -873,6 +885,23 @@ impl Turns {
                 obstruction: None,
             },
         );
+        // its sight waits for its construction to start; its place links its tiles to its anchor
+        // (FUN_1411e6780) and its desolid flag unlinks them (FUN_1411cf770)
+        if let Some(v) = self.spatial.sight.as_mut() {
+            v.add_seer(
+                foundation,
+                Seer {
+                    player,
+                    master,
+                    los: site.line_of_sight,
+                    state: 0,
+                    explored: false,
+                    building: Some(BuildingSight::default()),
+                },
+            );
+            v.link_building(position, site.radius);
+            v.unlink_building(position, site.radius);
+        }
         let target = TaskTarget {
             id: foundation,
             master: site,
@@ -935,20 +964,22 @@ impl Turns {
                 work_value: task.work_val1,
                 work_rate: builder.work_rate + unit.work_rate_powerup,
             };
-            chosen.push((id, with, BuildAction::start(foundation, gap, task)));
+            let sight = (builder.radius, builder.line_of_sight);
+            chosen.push((id, with, BuildAction::start(foundation, gap, task), sight));
         }
         for _ in &chosen {
             // the Build action takes its foundation (FUN_140a7a230, slot 0x178)
             self.take(foundation);
         }
         let owner = &mut self.players[player];
-        for (id, with, build) in chosen {
+        for (id, with, build, (radius, los)) in chosen {
             let unit = owner
                 .objects
                 .iter_mut()
                 .find(|o| o.id == id)
                 .expect("found above");
             unit.life.master_id = with;
+            self.spatial.sight_master(id, radius, with, los);
             unit.build = Some(build);
             // the work command's notify (slot 0x828): the build order and the foundation, with
             // the point slot 0x128 passes (BUILD's x and y, on the ground)
@@ -1092,7 +1123,10 @@ impl Turns {
                     attributes: &player.attributes,
                     graphics: &self.graphics,
                 };
-                let result = unit.update(&mut c, &mut player.objects);
+                let mut result = unit.update(&mut c, &mut player.objects);
+                if let Some(e) = self.spatial.take_sight_unsupported() {
+                    result = result.and(Err(e));
+                }
                 self.spatial.set_gait(unit.id, unit.gait());
                 player.objects[i] = unit;
                 if let Some(v) = victim {
@@ -1103,7 +1137,7 @@ impl Turns {
                 match result {
                     Ok(Step::Leave) => {
                         let gone = player.objects.swap_remove(i);
-                        self.spatial.remove(gone.id);
+                        self.spatial.leave(gone.id);
                         self.pathing.removed(gone.id);
                         self.pathing.tiles_changed(self.spatial.take_changes());
                     }
