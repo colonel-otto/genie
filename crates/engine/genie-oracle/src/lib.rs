@@ -401,21 +401,38 @@ fn mover(
     let Some(m) = object.moving_part() else {
         return Ok(None);
     };
-    if s.own_master().is_some() {
-        return Err(Unsupported("the movement of an object with its own master"));
-    }
     if m.future_path_data.is_some() {
         return Err(Unsupported("saved future path data"));
     }
-    let master = objects
-        .master(s.master_obj)
-        .ok_or(Unsupported("a moving object whose master is not saved"))?;
-    let placement = master
-        .static_part()
-        .ok_or(Unsupported("a moving master without a static part"))?;
-    let base = animated_master(master)
-        .ok_or(Unsupported("a moving master without an animated part"))?
-        .max_speed;
+    // an object with its own master (a copy, say a captured animal's) moves by its own values
+    let (radius, restriction, base) = match (s.own_master(), s.own_animated_master()) {
+        (Some(own), Some(animated)) => (
+            [own.radius_x, own.radius_y, own.radius_z],
+            own.terrain_restriction_mask_id,
+            animated.max_speed,
+        ),
+        (Some(_), None) => {
+            return Err(Unsupported(
+                "a moving object's own master without an animated part",
+            ));
+        }
+        (None, _) => {
+            let master = objects
+                .master(s.master_obj)
+                .ok_or(Unsupported("a moving object whose master is not saved"))?;
+            let placement = master
+                .static_part()
+                .ok_or(Unsupported("a moving master without a static part"))?;
+            let base = animated_master(master)
+                .ok_or(Unsupported("a moving master without an animated part"))?
+                .max_speed;
+            (
+                [placement.radius_x, placement.radius_y, placement.radius_z],
+                placement.terrain_restriction_mask_id,
+                base,
+            )
+        }
+    };
     let table = masters.ok_or(Unsupported("no master table: turning is unknown"))?;
     let factor = table
         .sprite_speed(s.sprite)
@@ -445,10 +462,10 @@ fn mover(
             turn_rate: turning.max_yaw_per_second_moving,
             turn_radius: turning.turn_radius,
             turn_radius_speed: turning.turn_radius_speed,
-            radius: [placement.radius_x, placement.radius_y, placement.radius_z],
-            restriction: usize::try_from(placement.terrain_restriction_mask_id)
+            radius,
+            restriction: usize::try_from(restriction)
                 .map_err(|_| Unsupported("a negative terrain restriction"))?,
-            restriction_mask: usize::try_from(placement.terrain_restriction_mask_id)
+            restriction_mask: usize::try_from(restriction)
                 .ok()
                 .and_then(|r| table.terrain.masks().get(r))
                 .copied()
@@ -1135,10 +1152,11 @@ struct Placement {
 
 fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<Placement> {
     if let Some(own) = s.own_master() {
-        // an own master's class is not named in the save yet
+        // an own master's second readTemp is its class (its first the id, its third the hit
+        // points: as the shared masters' of the same id read)
         return Some(Placement {
             radius: [own.radius_x, own.radius_y, own.radius_z],
-            class: -1,
+            class: own.read_temp_2,
             obstruction_type: own.obstruction_type,
             obstruction_class: own.obstruction_class,
             buildable_on: own.can_be_built_on,
