@@ -266,17 +266,25 @@ impl UnitAi {
         self.set_target(id, class, point);
     }
 
-    /// MOVE's notify of a unit that took the move itself (`FUN_140e67800`): the move order and
-    /// action, the target forgotten (`FUN_140c4dcb0`), then the target (None for a point) and the
-    /// order's point on the ground (`FUN_140c64be0`).
-    pub fn notify_move(&mut self, target: Option<(i32, i32)>, point: [f32; 2], ai: &mut Well512) {
-        self.set_order(MOVE_ORDER, ai);
-        self.set_action(MOVE_ACTION);
-        self.last_target = -1;
-        self.last_target_type = -1;
-        self.current_target = -1;
-        self.target_type = -1;
-        self.target_point = [-1.0; 3];
+    /// MOVE's notify (`FUN_140e67800`): a unit that took the move as a MoveTo (`moved`) gets the
+    /// move order and action and forgets its target (`FUN_140c4dcb0`); every unit then takes the
+    /// target (None for a point) and the order's point on the ground (`FUN_140c64be0`).
+    pub fn notify_move(
+        &mut self,
+        moved: bool,
+        target: Option<(i32, i32)>,
+        point: [f32; 2],
+        ai: &mut Well512,
+    ) {
+        if moved {
+            self.set_order(MOVE_ORDER, ai);
+            self.set_action(MOVE_ACTION);
+            self.last_target = -1;
+            self.last_target_type = -1;
+            self.current_target = -1;
+            self.target_type = -1;
+            self.target_point = [-1.0; 3];
+        }
         let (id, class) = target.unwrap_or((-1, -1));
         self.set_target(id, class, [point[0], point[1], 0.0]);
     }
@@ -962,7 +970,7 @@ mod tests {
             target_type: 15,
             ..idle(13)
         };
-        u.notify_move(None, [21.947916, 92.489586], &mut rng());
+        u.notify_move(true, None, [21.947916, 92.489586], &mut rng());
         assert_eq!(
             (
                 u.current_order,

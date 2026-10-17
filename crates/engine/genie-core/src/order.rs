@@ -216,28 +216,43 @@ impl Turns {
         if order.target != -1 {
             return Err(Unsupported("a move that follows an object"));
         }
-        // FUN_140a97730: the current action's slot 8 may take the point itself; a MoveTo's
-        // (`FUN_140a78490`) never does
-        let unit = &self.players[player].objects[idx];
+        // a unit with a unit AI (FUN_140c5dc10 sets its notify time, not held) lets its current
+        // action's slot 8 take the point (FUN_140a97730) unless it stops after a kill
+        // (FUN_140c41c10): an Artifact action's does (FUN_140aaca30), a MoveTo's
+        // (`FUN_140a78490`) never
+        let point = [order.point[0], order.point[1], 0.0];
+        let unit = &mut self.players[player].objects[idx];
         let top = unit.top_action_kind();
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
-        if !stop_after_kill && top.is_some() && top != Some(crate::move_to::MOVE_TO) {
-            return Err(Unsupported("a move of a unit with an action (its slot 8)"));
+        let taken = match (unit.ai.is_some() && !stop_after_kill, top) {
+            (true, Some(crate::artifact::ARTIFACT_TYPE)) => {
+                if let Some(a) = unit.artifact.as_mut() {
+                    a.take_point(point);
+                }
+                true
+            }
+            (true, Some(t)) if t != crate::move_to::MOVE_TO => {
+                return Err(Unsupported("a move of a unit with an action (its slot 8)"));
+            }
+            _ => false,
+        };
+        if !taken {
+            // the MoveTo to the point (FUN_140aa0d30, range 0) and its install (slot 0x808)
+            self.clear_actions(player, idx)?;
+            let unit = &mut self.players[player].objects[idx];
+            unit.move_to = Some(crate::move_to::MoveToAction {
+                // FUN_140aa2100: no target, so far from it: state 3 for a unit with speed
+                state: crate::move_to::MoveTo::Start,
+                goal: Some(point),
+                range: 0.0,
+            });
         }
-        // the MoveTo to the point (FUN_140aa0d30, range 0) and its install (slot 0x808)
-        self.clear_actions(player, idx)?;
+        // the order handler's notify: a unit that took the move as a MoveTo gets the move order
+        // and action, its target forgotten (FUN_140c4dcb0); every unit then the point
+        // (FUN_140c64be0); slot 0x2d8's walk and show targets are not held
         let unit = &mut self.players[player].objects[idx];
-        unit.move_to = Some(crate::move_to::MoveToAction {
-            // FUN_140aa2100: no target, so far from it: state 3 for a unit with speed
-            state: crate::move_to::MoveTo::Start,
-            goal: Some([order.point[0], order.point[1], 0.0]),
-            range: 0.0,
-        });
-        // the order handler's notify: the move order and action, the target forgotten
-        // (FUN_140c4dcb0), then the point (FUN_140c64be0); slot 0x2d8's walk and show targets are
-        // not held
         if let Some(ai) = unit.ai.as_mut() {
-            ai.notify_move(None, order.point, self.streams.get(Stream::Ai));
+            ai.notify_move(!taken, None, order.point, self.streams.get(Stream::Ai));
         }
         Ok(())
     }

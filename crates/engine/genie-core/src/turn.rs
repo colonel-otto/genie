@@ -258,9 +258,19 @@ impl Unit {
             .or(self.hunt.map(|_| crate::hunt::HUNT))
     }
 
-    /// One update; true when the object leaves its list. `others` are the rest of the owner's
-    /// objects, whose foundations a builder works on.
-    fn update(&mut self, c: &mut Context<'_>, others: &mut [Unit]) -> Result<bool, Unsupported> {
+    /// One update, and whether the object stays in its list, leaves it or goes to sleep. `others`
+    /// are the rest of the owner's objects, whose foundations a builder works on.
+    fn update(&mut self, c: &mut Context<'_>, others: &mut [Unit]) -> Result<Step, Unsupported> {
+        // RGE_Static_Object::update (0x14118ad50): an object flagged to sleep (`+0x643`) drops
+        // the flag, is marked asleep (`+0x641`) and moves to its player's sleeping list (player
+        // slots 0x2d8 and 0x2d0), and its update ends; only static objects (type 10) are flagged
+        if self.life.goto_sleep {
+            if self.life.class != Class::Static || self.mover.is_some() || self.ai.is_some() {
+                return Err(Unsupported("an object above the static type goes to sleep"));
+            }
+            self.life.goto_sleep = false;
+            return Ok(Step::Sleep);
+        }
         // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
         // `+0x87c` (1.0 for every unit the slice has met; its writer is not ported)
         if 0.0 < self.attack_timer {
@@ -279,7 +289,11 @@ impl Unit {
                 }
             }
         }
-        let leaves = self.life.update(c.dt_seconds)?;
+        let leaves = if self.life.update(c.dt_seconds)? {
+            Step::Leave
+        } else {
+            Step::Stay
+        };
         // the animated object's update (0x141071880): its sprite's clock at its animation speed
         if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.anim_speed) {
             sprite.update(c.dt_seconds, speed);
@@ -296,13 +310,14 @@ impl Unit {
         }
         // The default action exists from tick 1 on, but its first update is in tick 2: fitted to
         // 16 checkpoints of idle players with livestock (workspace FD-008).
-        if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
-            artifact.update(c.dt);
-        }
         let me = Me {
             id: self.id,
             position: self.position,
         };
+        if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
+            let dt = c.dt;
+            artifact.update(Some(c.walk(self.mover.as_mut(), me)), dt)?;
+        }
         if let Some(build) = self.build.as_mut() {
             let site = others
                 .iter_mut()
@@ -425,6 +440,16 @@ impl Unit {
         });
         Ok(())
     }
+}
+
+/// What an object's update leaves of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Step {
+    Stay,
+    /// It leaves its list for good (`RGE_Object_List::update` deletes it).
+    Leave,
+    /// It moves to its player's sleeping list.
+    Sleep,
 }
 
 /// One player's objects in live-list order.
@@ -1000,13 +1025,21 @@ impl Turns {
                 self.pathing.tiles_changed(self.spatial.take_changes());
                 let player = &mut self.players[p];
                 match result {
-                    Ok(true) => {
+                    Ok(Step::Leave) => {
                         let gone = player.objects.swap_remove(i);
                         self.spatial.remove(gone.id);
                         self.pathing.removed(gone.id);
                         self.pathing.tiles_changed(self.spatial.take_changes());
                     }
-                    Ok(false) => i += 1,
+                    Ok(Step::Sleep) => {
+                        // the list's remove (FUN_1411664a0) puts its last object in the
+                        // sleeper's place, and the list's loop (0x141166550) goes on past it:
+                        // that object's update waits for the next tick
+                        let asleep = player.objects.swap_remove(i);
+                        player.sleeping.push(asleep);
+                        i += 1;
+                    }
+                    Ok(Step::Stay) => i += 1,
                     Err(e) => {
                         player.unsupported.get_or_insert((self.ticks, i, e));
                         player.objects[i].stopped = true;

@@ -152,6 +152,19 @@ fn the_scout_s_move_from_a_save_matches_the_game_object_by_object() {
     assert_eq!(found, Vec::<String>::new());
 }
 
+#[test]
+fn the_cow_s_move_from_a_save_matches_the_game_object_by_object() {
+    // updates 682 to 1160: in 797 the tree 9365, let go and flagged to sleep, moves in its own
+    // update to Gaia's sleeping list, the last live object (the tree 9357, just woken) taking its
+    // place without an update in that tick; in 1118 player 2's MOVE sends the cow 9517: its
+    // Artifact action takes the point (slot 8) with a MoveTo sub-action, its unit AI only the
+    // point, and the cow walks; through 1160, before its walk may meet an obstruction (1164)
+    let Some(found) = differences(680, 480, 2) else {
+        return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
+    };
+    assert_eq!(found, Vec::<String>::new());
+}
+
 /// Not pinned: what the slice gets wrong some ticks after a save, for the tick FD-008 works on
 /// (`GENIE_SNAPSHOT_START`, default 679; `GENIE_SNAPSHOT_TICKS`, default 1), for player 2 or
 /// `GENIE_SNAPSHOT_PLAYER`.

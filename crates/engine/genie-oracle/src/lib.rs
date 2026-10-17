@@ -477,10 +477,21 @@ fn saved_actions(
         .ok_or(Unsupported("a saved action without its base"))?;
     match kind {
         ARTIFACT_TYPE => {
+            let move_to = match base.sub_actions.entries().next() {
+                None => None,
+                Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
+                Some(_) => {
+                    return Err(Unsupported(
+                        "a saved Artifact action with another sub-action",
+                    ));
+                }
+            };
             unit.artifact = Some(genie_core::artifact::Artifact {
                 state: base.state,
                 timer: base.timer,
                 gaia: s.owner == 0,
+                move_to,
+                goal: move_to.and(point(base)),
             });
             Ok(())
         }

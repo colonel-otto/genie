@@ -97,6 +97,7 @@ impl Lifecycle {
     /// One update of `dt_seconds` ([`seconds`]). True when the object leaves its list.
     pub fn update(&mut self, dt_seconds: f32) -> Result<bool, Unsupported> {
         if self.goto_sleep {
+            // the object's update moves it to the sleeping list first (`Unit::update`)
             return Err(Unsupported("the object goes to sleep"));
         }
         match self.state {
