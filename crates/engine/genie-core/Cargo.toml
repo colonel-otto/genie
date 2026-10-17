@@ -5,3 +5,7 @@ description = "Deterministic simulation core of the genie Age of Empires II: Def
 edition = "2024"
 license = "AGPL-3.0-only"
 repository.workspace = true
+
+[dependencies]
+# The game's acosf, cosf and sinf are FreeBSD msun's, as libm's are (crates/engine/genie-core/tests/crt_math.rs)
+libm = "0.2"

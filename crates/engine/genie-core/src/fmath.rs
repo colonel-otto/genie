@@ -1,0 +1,105 @@
+//! The game's f32 math, bit for bit (checked by `tests/crt_math.rs` against build 158041's own
+//! routines on recorded inputs).
+//!
+//! The game links software routines from FreeBSD's msun: acosf `0x14099dc60`, cosf `0x14099e4d0`,
+//! sinf `0x14099ed60`. The `libm` crate ports the same sources. Its sqrtf `0x14099ef70` is an
+//! integer Newton iteration that rounds correctly, so IEEE's square root gives the same bits.
+
+pub fn sqrt(x: f32) -> f32 {
+    x.sqrt()
+}
+
+pub fn acos(x: f32) -> f32 {
+    libm::acosf(x)
+}
+
+pub fn cos(x: f32) -> f32 {
+    libm::cosf(x)
+}
+
+pub fn sin(x: f32) -> f32 {
+    libm::sinf(x)
+}
+
+/// A vector in the game's order (`BVector`): x, height, y. The map's y is the third component.
+pub type Vec3 = [f32; 3];
+
+/// `a - b` (`FUN_14087e560`).
+pub fn sub(a: Vec3, b: Vec3) -> Vec3 {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+/// `a + b` (`FUN_14087e5e0`).
+pub fn add(a: Vec3, b: Vec3) -> Vec3 {
+    [b[0] + a[0], b[1] + a[1], b[2] + a[2]]
+}
+
+/// `s * v` (`FUN_14087e4a0`).
+pub fn scale(s: f32, v: Vec3) -> Vec3 {
+    [s * v[0], s * v[1], s * v[2]]
+}
+
+/// `a · b`, summed left to right.
+pub fn dot(a: Vec3, b: Vec3) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// `a × b` (`FUN_14087e4d0`), each component in the game's operand order.
+pub fn cross(a: Vec3, b: Vec3) -> Vec3 {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        b[0] * a[2] - a[0] * b[2],
+        a[0] * b[1] - b[0] * a[1],
+    ]
+}
+
+/// `|v|`, the squares summed x, height, y.
+pub fn length(v: Vec3) -> f32 {
+    sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+}
+
+/// `v / |v|` (`FUN_141027d00`).
+pub fn normalize(v: Vec3) -> Vec3 {
+    let l = length(v);
+    [v[0] / l, v[1] / l, v[2] / l]
+}
+
+/// The angle between two unit vectors (`FUN_14087e650`): π/2 when their dot product is below
+/// 1e-7 in size, 0 from 1 up, π from -1 down, else its arc cosine.
+pub fn angle_between(a: Vec3, b: Vec3) -> f32 {
+    let d = dot(a, b);
+    if d.abs() < 1e-7 {
+        std::f32::consts::FRAC_PI_2
+    } else if d >= 1.0 {
+        0.0
+    } else if d > -1.0 {
+        acos(d)
+    } else {
+        std::f32::consts::PI
+    }
+}
+
+/// The rotation by `angle` about the unit `axis` (`FUN_14087e350`): the 3×3 part of the game's
+/// 3×4 matrix, rows as it stores them.
+pub fn rotation(angle: f32, axis: Vec3) -> [Vec3; 3] {
+    let (c, s) = (cos(angle), sin(angle));
+    let t = 1.0 - c;
+    let [x, y, z] = axis;
+    let xy = y * x * t;
+    let xz = z * x * t;
+    let yz = z * y * t;
+    [
+        [x * x * t + c, xy - z * s, y * s + xz],
+        [z * s + xy, y * y * t + c, yz - x * s],
+        [xz - y * s, x * s + yz, z * z * t + c],
+    ]
+}
+
+/// `m · v` (`FUN_14087e2c0`), each row's products summed in the game's order.
+pub fn rotate(m: &[Vec3; 3], v: Vec3) -> Vec3 {
+    [
+        v[1] * m[0][1] + v[0] * m[0][0] + v[2] * m[0][2],
+        v[0] * m[1][0] + v[1] * m[1][1] + v[2] * m[1][2],
+        v[0] * m[2][0] + v[1] * m[2][1] + v[2] * m[2][2],
+    ]
+}

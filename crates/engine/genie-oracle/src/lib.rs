@@ -17,7 +17,9 @@ use genie_core::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::turn::{Command, Player, Turns, Unit};
 use genie_core::unit_ai::Unsupported;
 use genie_rec::de::header::Header;
-use genie_rec::de::header::generated::world::{Master, PlayerObjects, RgeStaticObject};
+use genie_rec::de::header::generated::world::{
+    Master, Path, PathData, PlayerObjects, RgeMasterAnimatedObject, RgeStaticObject,
+};
 use genie_rec::de::{self, Op, header::PlayerSection};
 
 /// The words of the first checkpoint that the start-of-game save determines: all but word 9.
@@ -176,6 +178,7 @@ pub struct Word9 {
 fn unit(
     object: &de::header::Object,
     objects: &PlayerObjects,
+    paths: &[Path],
     civ: u8,
     masters: Option<&MasterTable>,
 ) -> Unit {
@@ -202,8 +205,135 @@ fn unit(
         default_task(object, s, civ, masters).map(|artifact| unit.artifact = artifact)
     };
     let production = production(object, objects).map(|p| unit.production = p);
-    unit.unmodelled_action = imported.and(production).err();
+    let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.mover = m);
+    unit.unmodelled_action = imported.and(production).and(moving).err();
     unit
+}
+
+fn vec3(b: &[u8; 12]) -> genie_core::fmath::Vec3 {
+    let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+    [f(0), f(4), f(8)]
+}
+
+/// The animated part of a player's master, which holds its speed (`mMaxSpeed`, master `+0x740`).
+fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
+    let combat = m.tribe_master_combat_object.as_ref().or(m
+        .tribe_master_building_object
+        .as_ref()
+        .map(|b| &b.tribe_master_combat_object));
+    if let Some(c) = combat {
+        let moving = &c
+            .rge_master_combat_object
+            .rge_master_action_object
+            .rge_master_moving_object;
+        return Some(&moving.rge_master_animated_object);
+    }
+    let r = m.rge_master.as_ref()?;
+    None.or(r.rge_master_animated_object.as_ref())
+        .or(r
+            .rge_master_moving_object
+            .as_ref()
+            .map(|m| &m.rge_master_animated_object))
+        .or(r
+            .rge_master_action_object
+            .as_ref()
+            .map(|a| &a.rge_master_moving_object.rge_master_animated_object))
+        .or(r.rge_master_combat_object.as_ref().map(|c| {
+            &c.rge_master_action_object
+                .rge_master_moving_object
+                .rge_master_animated_object
+        }))
+}
+
+/// One saved level of path data, with its path's waypoints from the world's path table.
+fn path_level(d: &PathData, paths: &[Path]) -> Result<genie_core::movement::PathData, Unsupported> {
+    let path = paths
+        .iter()
+        .find(|p| p.idvalue == d.path_id)
+        .ok_or(Unsupported(
+            "path data whose path is not in the world's table",
+        ))?;
+    Ok(genie_core::movement::PathData {
+        level: d.waypoint_level,
+        linked_type: d.linked_path_type,
+        points: path.m_waypoints.iter().map(vec3).collect(),
+        path_flags: path.flags_m_bits,
+        waypoint: d.waypoint,
+        state: d.state,
+        range: d.range,
+        target: d.target_id,
+        pause_time: f32::from_bits(d.pause_time),
+        flags: d.flags_m_bits,
+    })
+}
+
+/// A moving object's movement state from the save: orientation, velocity data and path data (the
+/// save lists the levels top first; the game walks the last), and from its master and the `.dat`
+/// its speed, turning and radii. `None` for an object that does not move (types below 30).
+///
+/// The top speed is the master's speed times the saved sprite's speed factor when that is above 0
+/// (`FUN_14114d1d0`); slot 65's other terms (`+0xa08`, `+0xa2c`, `+0xb38`, a followed object) are
+/// not read yet. moveForward's factor `+0x878` is not in the save; every moving object of
+/// MarvinBlue/426048731 holds 1.0 at tick 680 (the tick oracle).
+fn mover(
+    object: &de::header::Object,
+    s: &RgeStaticObject,
+    objects: &PlayerObjects,
+    paths: &[Path],
+    civ: u8,
+    masters: Option<&MasterTable>,
+) -> Result<Option<genie_core::movement::Mover>, Unsupported> {
+    use genie_core::movement::{MoveStats, Mover, Velocity};
+    let Some(m) = object.moving_part() else {
+        return Ok(None);
+    };
+    if s.own_master().is_some() {
+        return Err(Unsupported("the movement of an object with its own master"));
+    }
+    if m.future_path_data.is_some() {
+        return Err(Unsupported("saved future path data"));
+    }
+    let master = objects
+        .master(s.master_obj)
+        .ok_or(Unsupported("a moving object whose master is not saved"))?;
+    let placement = master
+        .static_part()
+        .ok_or(Unsupported("a moving master without a static part"))?;
+    let base = animated_master(master)
+        .ok_or(Unsupported("a moving master without an animated part"))?
+        .max_speed;
+    let table = masters.ok_or(Unsupported("no master table: turning is unknown"))?;
+    let factor = table
+        .sprite_speed(s.sprite)
+        .ok_or(Unsupported("a sprite the data file does not have"))?;
+    let speed = if 0.0 < factor { base * factor } else { base };
+    let turning = table
+        .turning(civ, s.master_obj)
+        .ok_or(Unsupported("a moving master the data file does not have"))?;
+    let velocity = (m.have_movement == 1).then(|| Velocity {
+        velocity: m.velocity.as_ref().map_or([0.0; 3], vec3),
+        acceleration: m.acceleration.as_ref().map_or([0.0; 3], vec3),
+    });
+    let levels = m
+        .temp_path_data
+        .iter()
+        .rev()
+        .map(|d| path_level(d, paths))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(Mover {
+        forward: vec3(&m.orientation_forward_value),
+        right: vec3(&m.orientation_right_value),
+        velocity,
+        paths: levels,
+        factor: 1.0,
+        stats: MoveStats {
+            speed,
+            turn_rate: turning.max_yaw_per_second_moving,
+            turn_radius: turning.turn_radius,
+            turn_radius_speed: turning.turn_radius_speed,
+            radius: [placement.radius_x, placement.radius_y, placement.radius_z],
+        },
+    }))
 }
 
 /// The top action of a saved object as the slice models it: the Artifact action (107) and the
@@ -461,7 +591,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
             Player {
                 objects: p
                     .live_objects()
-                    .map(|o| unit(o, p.objects(), civ, masters))
+                    .map(|o| unit(o, p.objects(), &header.world.base_world.path, civ, masters))
                     .collect(),
                 computer: false,
                 resources: [resource(0), resource(1), resource(2), resource(3)],
@@ -478,6 +608,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         players,
     );
     turns.next_object_id = world.next_object_id;
+    turns.spatial = spatial(header);
     if let Some(table) = masters {
         turns.masters = header
             .players()
@@ -553,6 +684,58 @@ fn build_cost(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
         })
         .filter(|&(kind, ..)| kind >= 0)
         .collect()
+}
+
+/// What movement reads of a saved object's master: radii, class and obstruction kind, from the
+/// object's own master or its player's.
+fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<([f32; 3], i16, u8)> {
+    if let Some(own) = s.own_master() {
+        // an own master's class is not named in the save yet
+        let radius = [own.radius_x, own.radius_y, own.radius_z];
+        return Some((radius, -1, own.obstruction_type));
+    }
+    let m = objects.master(s.master_obj)?.static_part()?;
+    Some((
+        [m.radius_x, m.radius_y, m.radius_z],
+        m.read_temp_5,
+        m.obstruction_type,
+    ))
+}
+
+/// The world's objects as movement sees them: every player's live and sleeping objects with their
+/// positions and their masters' radii and class. An object has an obstruction record when its
+/// master has an obstruction kind and all three radii, unless it is a building marked desolid (a
+/// foundation no builder has started; the first builder's Build state 7 adds its record). Checked
+/// against the game's obstruction manager in `tests/obstructions.rs`.
+fn spatial(header: &Header) -> genie_core::spatial::Spatial {
+    use genie_core::spatial::{Placed, Spatial};
+    let map = &header.world.base_world.map;
+    let mut out = Spatial::new([map.map_width, map.map_height]);
+    for section in header.players() {
+        let all = section.live_objects().chain(section.sleeping_objects());
+        for o in all {
+            let Some(s) = o.static_part() else { continue };
+            let Some((radius, class, kind)) = placement(s, section.objects()) else {
+                continue;
+            };
+            let desolid = o
+                .tribe_building_object
+                .as_ref()
+                .is_some_and(|b| b.desolid_flag != 0);
+            let solid = radius.iter().all(|&r| 0.0 < r) && !desolid;
+            let obstruction = (kind != 0 && solid).then_some(kind);
+            out.insert(
+                s.id,
+                Placed {
+                    position: [s.t_x, s.t_y, s.t_z],
+                    radius: [radius[0], radius[1]],
+                    class,
+                    obstruction,
+                },
+            );
+        }
+    }
+    out
 }
 
 /// One frame of the body (FD-007's per-frame record order): the op-2 record that starts a tick, its
@@ -1113,6 +1296,13 @@ pub fn objects_from_save(
             .collect(),
         unsupported: player.unsupported,
     })
+}
+
+/// The world's objects as movement sees them, from a save ([`spatial`]).
+pub fn spatial_from_save(save: &[u8]) -> Result<genie_core::spatial::Spatial, Error> {
+    let chapter = de::chapters(save)?[0];
+    let header = de::header::parse(&chapter.inflate_header()?)?;
+    Ok(spatial(&header))
 }
 
 /// Where two object lists differ, one line per object and field: `slice` from the slice, `game`

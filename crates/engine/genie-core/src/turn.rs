@@ -7,16 +7,19 @@
 //! assumes no other World draw runs in a tick (no triggers, XS or unit groups).
 //!
 //! A player's update walks its live list in order (`RGE_Object_List::update`, `0x141166550`). Each
-//! object runs its static state step ([`Lifecycle`]), then its actions (the livestock default
-//! action), then its unit AI. An object whose update returns 1 leaves: the last object takes its
+//! object moves by its velocity ([`Mover::step_velocity`]), runs its static state step
+//! ([`Lifecycle`]), then its actions (the livestock default action, a builder's Build action with
+//! its walk), then its unit AI. An object whose update returns 1 leaves: the last object takes its
 //! slot and updates there in the same tick.
 
 use crate::artifact::Artifact;
-use crate::build::{BUILD, BuildAction, footprint_gap};
+use crate::build::{BUILD, BuildAction, Walk};
 use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::masters::{Masters, Target};
+use crate::movement::{Me, Mover, footprint_gap};
 use crate::production::{Production, Queued};
 use crate::rng::{Stream, Streams};
+use crate::spatial::{Placed, Spatial};
 use crate::unit_ai::{UnitAi, Unsupported};
 
 /// What the slice tracks of one object.
@@ -38,6 +41,8 @@ pub struct Unit {
     pub production: Option<Production>,
     /// A builder's Build action, its top action.
     pub build: Option<BuildAction>,
+    /// A moving object's movement state (types 30 and up).
+    pub mover: Option<Mover>,
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
@@ -119,11 +124,20 @@ struct Context<'a> {
     world_time: u32,
     computer: bool,
     ai: &'a mut crate::rng::Well512,
+    /// Every object's place, which a walker reads and its moves update.
+    spatial: &'a mut Spatial,
 }
 
 impl Unit {
     /// One update; true when the object leaves its list.
     fn update(&mut self, c: &mut Context<'_>) -> Result<bool, Unsupported> {
+        if let Some(mover) = self.mover.as_mut() {
+            let at = mover.step_velocity(self.position, c.dt_seconds, c.spatial.map);
+            if at != self.position {
+                self.position = at;
+                c.spatial.set_position(self.id, at);
+            }
+        }
         let leaves = self.life.update(c.dt_seconds)?;
         if let Some(e) = self.unmodelled_action.filter(|_| self.life.state == 2) {
             return Err(e);
@@ -141,7 +155,15 @@ impl Unit {
             artifact.update(c.dt);
         }
         if let Some(build) = self.build.as_mut() {
-            build.update()?;
+            build.update(Walk {
+                mover: self.mover.as_mut(),
+                me: Me {
+                    id: self.id,
+                    position: self.position,
+                },
+                dt: c.dt_seconds,
+                world: c.spatial,
+            })?;
         }
         if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
             ai.update_idle(dt, c.world_time, c.computer, c.ai)?;
@@ -178,6 +200,8 @@ pub struct Turns {
     pub next_object_id: i32,
     /// Each player's masters, which BUILD reads; a player without them stops at its own BUILD.
     pub masters: Vec<Masters>,
+    /// Every object's place on the map.
+    pub spatial: Spatial,
     streams: Streams,
 }
 
@@ -198,6 +222,7 @@ impl Turns {
             ticks: 0,
             next_object_id: 0,
             masters: Vec::new(),
+            spatial: Spatial::default(),
             streams: Streams::default(),
         }
     }
@@ -242,6 +267,7 @@ impl Turns {
                     unmodelled_action: None,
                     production: None,
                     build: None,
+                    mover: None,
                 });
                 if let Err(e) = self.task_builders(player, id, master, position, builders) {
                     let owner = &mut self.players[player];
@@ -323,6 +349,16 @@ impl Turns {
                 *slot -= f32::from(amount);
             }
         }
+        // a new foundation is desolid: its obstruction record comes with its first builder
+        self.spatial.insert(
+            foundation,
+            Placed {
+                position,
+                radius: site.radius,
+                class: site.class,
+                obstruction: None,
+            },
+        );
         let target = Target {
             id: foundation,
             owner: player,
@@ -351,8 +387,7 @@ impl Turns {
                 ));
             }
             unit.life.master_id = with;
-            let at = |p: [f32; 3]| [p[0], p[1]];
-            let gap = footprint_gap(at(unit.position), builder.radius, at(position), site.radius);
+            let gap = footprint_gap(unit.position, builder.radius, position, site.radius);
             unit.build = Some(BuildAction::start(foundation, gap));
         }
         Ok(())
@@ -438,12 +473,14 @@ impl Turns {
                 world_time: self.world_time,
                 computer: player.computer,
                 ai: self.streams.get(Stream::Ai),
+                spatial: &mut self.spatial,
             };
             let mut i = 0;
             while i < player.objects.len() {
                 match player.objects[i].update(&mut c) {
                     Ok(true) => {
-                        player.objects.swap_remove(i);
+                        let gone = player.objects.swap_remove(i);
+                        c.spatial.remove(gone.id);
                     }
                     Ok(false) => i += 1,
                     Err(e) => {

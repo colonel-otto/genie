@@ -171,6 +171,24 @@ impl Object {
         self.rge_object.as_ref().and_then(RgeObject::static_part)
     }
 
+    /// The moving object of the types 30 and up: its velocity, orientation and path data.
+    pub fn moving_part(&self) -> Option<&RgeMovingObject> {
+        if let Some(c) = self.combat() {
+            return Some(&c.rge_combat_object.rge_action_object.rge_moving_object);
+        }
+        let r = self.rge_object.as_ref()?;
+        None.or(r.rge_moving_object.as_ref())
+            .or(r.rge_action_object.as_ref().map(|a| &a.rge_moving_object))
+            .or(r
+                .rge_combat_object
+                .as_ref()
+                .map(|c| &c.rge_action_object.rge_moving_object))
+            .or(r
+                .rge_missile_object
+                .as_ref()
+                .map(|m| &m.rge_combat_object.rge_action_object.rge_moving_object))
+    }
+
     /// The tribe combat object of a combat object (type 70) or a building (type 80).
     pub fn combat(&self) -> Option<&TribeCombatObject> {
         self.tribe_combat_object.as_ref().or_else(|| {

@@ -44,6 +44,16 @@ struct Row {
     default_action: DefaultAction,
     /// What the work command reads of the master, as the `.dat` has it ([`MasterTable::work`]).
     work: Option<work::Master>,
+    turning: Option<Turning>,
+}
+
+/// How a moving master turns (the `.dat` unit's moving part; master `+0x76c`, `+0x770`, `+0x774`),
+/// which the save does not hold.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Turning {
+    pub turn_radius: f32,
+    pub turn_radius_speed: f32,
+    pub max_yaw_per_second_moving: f32,
 }
 
 /// A `.dat` task as the task finder reads it (`genie_core::masters::Task`).
@@ -83,6 +93,8 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MasterTable {
     rows: HashMap<(u8, i16), Row>,
+    /// Each sprite's speed factor (the `.dat` graphic's `speed_multiplier`, sprite `+0xc`).
+    sprite_speed: HashMap<i16, f32>,
 }
 
 impl MasterTable {
@@ -102,19 +114,37 @@ impl MasterTable {
                         b.tasks.iter().map(|t| (t.id, t.action_type)),
                     )
                 });
-                Some(((c as u8, m as i16), data, action, dat_work(m as i16, unit)))
+                let turning = unit.dead_fish.as_ref().map(|d| Turning {
+                    turn_radius: d.turn_radius,
+                    turn_radius_speed: d.turn_radius_speed,
+                    max_yaw_per_second_moving: d.max_yaw_per_second_moving,
+                });
+                Some((
+                    (c as u8, m as i16),
+                    data,
+                    action,
+                    dat_work(m as i16, unit),
+                    turning,
+                ))
             })
         });
         let rows: Vec<_> = rows.collect();
         let mut table = Self::from_rows(
             rows.iter()
-                .map(|(key, data, action, _)| (*key, *data, *action)),
+                .map(|(key, data, action, _, _)| (*key, *data, *action)),
         );
-        for (key, _, _, w) in rows {
+        for (key, _, _, w, turning) in rows {
             if let Some(row) = table.rows.get_mut(&key) {
                 row.work = Some(w);
+                row.turning = turning;
             }
         }
+        table.sprite_speed = dat
+            .graphics
+            .iter()
+            .enumerate()
+            .filter_map(|(id, g)| Some((id as i16, g.as_ref()?.speed_multiplier)))
+            .collect();
         table
     }
 
@@ -132,10 +162,12 @@ impl MasterTable {
                             data,
                             default_action,
                             work: None,
+                            turning: None,
                         },
                     )
                 })
                 .collect(),
+            sprite_speed: HashMap::new(),
         }
     }
 
@@ -153,6 +185,16 @@ impl MasterTable {
     /// the tasks a master without saved ones has.
     pub fn work(&self, civ: u8, master: i16) -> Option<&work::Master> {
         self.rows.get(&(civ, master)).and_then(|r| r.work.as_ref())
+    }
+
+    /// How a civ's moving master turns; None for a master without a moving part.
+    pub fn turning(&self, civ: u8, master: i16) -> Option<Turning> {
+        self.rows.get(&(civ, master)).and_then(|r| r.turning)
+    }
+
+    /// A sprite's speed factor; None for a sprite the data file does not have.
+    pub fn sprite_speed(&self, sprite: i16) -> Option<f32> {
+        self.sprite_speed.get(&sprite).copied()
     }
 }
 
