@@ -1661,9 +1661,8 @@ impl Mover {
     /// shrinks (`FUN_1411615a0`); else one in the walked path's ignore units (`FUN_140f98d20`)
     /// that moved before the top path was made, or one that moved after the walked path was made
     /// (or at the same time and outranks the unit: a higher player, or the same and a higher id).
-    /// A kept hit (its temporary shape `FUN_141054fe0` and the step's slide), a hit of no speed of
-    /// classes 3, 27, 39 or 52 (`FUN_141159220`'s slide) and a step that hits only its target are
-    /// not modelled. Then, on the walked level's first two waypoints (or the third of a path more
+    /// A kept hit (its temporary shape `FUN_141054fe0`, the step's slide `FUN_141159220` and the
+    /// re-plan) and a step that hits only its target are not modelled. Then, on the walked level's first two waypoints (or the third of a path more
     /// than 500 old), each hit the unit outranks pauses for `dt` when its own pause is shorter: a
     /// human walker outranks another player's unit, or one of its own ordered at another time,
     /// whose last human order (`+0x650`) is older; else the lower id outranks (a group's order
@@ -1726,14 +1725,9 @@ impl Mover {
                 "a walker that meets an object it goes round (its temporary shape)",
             ));
         }
-        for &hit in hits {
-            let (_, other) = met(hit)?;
-            if other.speed <= 0.0 && matches!(other.class, 3 | 27 | 39 | 52) {
-                return Err(Unsupported(
-                    "a walker whose step slides along a wall or building (FUN_141159220)",
-                ));
-            }
-        }
+        // FUN_141159220 slides the projected step out of the hits of no speed of classes 3, 27,
+        // 39 and 52 (buildings, walls, gates): only the kept hits' re-plan reads the slid point,
+        // and with no kept hit the slide changes nothing
         if hits.len() == 1 && target_hit {
             return Err(Unsupported("a walker whose step hits only its target"));
         }
