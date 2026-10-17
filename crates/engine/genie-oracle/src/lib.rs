@@ -219,6 +219,11 @@ fn unit(
             .combat()
             .map_or([0.0; 2], |c| [c.hitpoints_powerup, c.hitpoints_max_powerup]),
         workers: s.worker_num,
+        attack_timer: object
+            .combat()
+            .map_or(0.0, |c| c.rge_combat_object.attack_timer),
+        reload_stinger: object.combat().map_or(0.0, |c| c.reload_stinger),
+        reload_powerup: object.combat().map_or(0.0, |c| c.reload_powerup),
         ..Unit::default()
     };
     let imported = if saved {
@@ -673,10 +678,21 @@ fn default_task(
         DefaultAction::Type(ARTIFACT_TYPE) => {
             Ok(Some(genie_core::artifact::Artifact::new(s.owner == 0)))
         }
+        // the action list's factory (`FUN_140aca4b0`, then the RGE one `FUN_140a97e00`) makes
+        // no action of the other types: the default task starts nothing (wild animals' Explore,
+        // type 6)
+        DefaultAction::Type(t) if !FACTORY_TYPES.contains(&t) => Ok(None),
         DefaultAction::Type(_) => Err(Unsupported("a default task other than the Artifact action")),
         DefaultAction::NoSuchTask => Err(Unsupported("a default task id that names no task")),
     }
 }
+
+/// The task types the action list's factory makes an action of: the TRIBE factory's
+/// (`FUN_140aca4b0`) and the RGE factory's it falls back on (`FUN_140a97e00`).
+const FACTORY_TYPES: [i16; 28] = [
+    3, 0xc, 0xe, 0x65, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6e, 0x6f, 0x78, 0x79, 0x7a, 0x7b, 0x7d,
+    0x83, 0x84, 0x87, 0x88, 0x95, 0x9a, 4, 5, 7, 10, 0xd, 0x15,
+];
 
 /// Whether the object runs `RGE_Action_Object::update`: types 40 (action), 50 (combat), 60
 /// (missile), 70 (tribe combat) and 80 (building).
@@ -778,6 +794,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         retarget_timer: ai.randomized_retarget_timer,
         stance: ai.state_value,
         retarget_disabled: ai.disable_retargeting,
+        stop_after_kill: ai.stop_after_target_killed_value != 0,
     })
 }
 
@@ -836,6 +853,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     );
     if let Some(table) = masters {
         turns.drop_sites = table.drop_sites.clone();
+        turns.graphics = table.graphics.clone();
         turns.masters = header
             .players()
             .iter()
@@ -883,6 +901,7 @@ fn work_masters(
         work_val1: t.work_val1,
         work_range: t.work_range,
         enablement: t.enablement_resource_id,
+        sprites: [t.short_val, t.short_val_2, t.short_val_3, t.short_val_4],
     };
     fn action_part(m: &Master) -> Option<&RgeMasterActionObject> {
         None.or(m
@@ -927,8 +946,20 @@ fn work_masters(
             work.cost = build_cost(&c.build_inventory);
             work.build_time = c.train_location.first().map_or(0, |t| t.train_time);
             work.charge_type = c.charge_type;
-            work.weapon_range = c.rge_master_combat_object.weapon_range;
-            work.min_range = c.rge_master_combat_object.minimum_weapon_range;
+            let rc = &c.rge_master_combat_object;
+            work.weapon_range = rc.weapon_range;
+            work.min_range = rc.minimum_weapon_range;
+            work.missile = rc.missile_id;
+            work.attack_sprite = rc.fight_sprite_id;
+            work.fire_frame = rc.fire_missile_at_frame;
+            work.interrupt_frame = rc.interrupt_frame;
+            work.hit_chance = rc.base_hit_chance;
+            work.reload = rc.speed_of_attack;
+            work.weapons = rc
+                .weapon
+                .iter()
+                .map(|&w| ((w & 0xffff) as i16, (w >> 16) as i16))
+                .collect();
         }
         work.storage = s
             .attribute
@@ -942,6 +973,7 @@ fn work_masters(
             })
             .collect();
         work.damage_sprites = !s.damage_sprite.is_empty();
+        work.standing_sprite = s.idle_sprite_id;
         work.moving = moving_stats(m, s, civ, table);
         Some(work)
     }))
@@ -1174,10 +1206,21 @@ impl Decoder {
                     human: c.field_0x15 == 1,
                     filter: c.field_0x16 as i16,
                 };
+                let order = genie_core::turn::Order::Interact(order);
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             Packet::Work(c) => (c.commp_id, c.num, c.ids, false, None),
-            Packet::Move(c) => (c.commp_id, c.num, c.ids, true, None),
+            Packet::Move(c) => {
+                let order = genie_core::order::MoveOrder {
+                    target: c.t_id,
+                    point: [c.x, c.y],
+                    queued: c.field_0x13 != 0,
+                    direct: c.field_0x14 != 0,
+                    human: c.field_0x15 == 1,
+                };
+                let order = genie_core::turn::Order::Move(order);
+                (c.commp_id, c.num, c.ids, true, Some(order))
+            }
             Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true, None),
             _ => return None,
         };
@@ -1197,7 +1240,7 @@ impl Decoder {
         order.then_some(Command::Order {
             player: player as usize,
             units,
-            interact,
+            order: interact,
         })
     }
 }

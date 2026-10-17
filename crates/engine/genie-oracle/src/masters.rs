@@ -76,6 +76,12 @@ fn dat_task(t: &genie_dat::de::Task) -> work::Task {
         work_val1: t.work_value1,
         work_range: t.work_range,
         enablement: t.enabled.unwrap_or(-1),
+        sprites: [
+            t.moving_graphic_id,
+            t.proceeding_graphic_id,
+            t.working_graphic_id,
+            t.carrying_graphic_id,
+        ],
     }
 }
 
@@ -112,6 +118,11 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .as_ref()
             .and_then(|c| c.train_locations.first())
             .map_or(0, |t| t.queue_time),
+        attack_sprite2: unit
+            .type50
+            .as_ref()
+            .and_then(|t| t.attack_graphic2)
+            .unwrap_or(-1),
         ..work::Master::default()
     }
 }
@@ -193,6 +204,8 @@ pub struct MasterTable {
     rows: HashMap<(u8, i16), Row>,
     /// Each sprite's speed factor (the `.dat` graphic's `speed_multiplier`, sprite `+0xc`).
     sprite_speed: HashMap<i16, f32>,
+    /// What the sprite clock reads of each graphic.
+    pub graphics: std::collections::BTreeMap<i16, genie_core::sprite::Graphic>,
     pub terrain: TerrainTable,
     /// The drop-site table (`dropsites.json` beside the `.dat`, [`crate::drop_sites`]); empty
     /// when not loaded.
@@ -250,6 +263,25 @@ impl MasterTable {
             .enumerate()
             .filter_map(|(id, g)| Some((id as i16, g.as_ref()?.speed_multiplier)))
             .collect();
+        table.graphics = dat
+            .graphics
+            .iter()
+            .enumerate()
+            .filter_map(|(id, g)| {
+                let g = g.as_ref()?;
+                Some((
+                    id as i16,
+                    genie_core::sprite::Graphic {
+                        id: id as i16,
+                        frames: g.frame_count,
+                        speed_multiplier: g.speed_multiplier,
+                        frame_duration: g.frame_duration,
+                        replay_delay: g.replay_delay,
+                        flags: g.sequence_type,
+                    },
+                ))
+            })
+            .collect();
         table
     }
 
@@ -273,6 +305,7 @@ impl MasterTable {
                 })
                 .collect(),
             sprite_speed: HashMap::new(),
+            graphics: Default::default(),
             terrain: TerrainTable::default(),
             drop_sites: Vec::new(),
         }

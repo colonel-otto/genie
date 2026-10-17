@@ -5,7 +5,7 @@
 //! builds the Hunt action ([`crate::hunt`]); other actions, orders to points and orders to several
 //! units are not modelled yet.
 
-use crate::attack::{Engagement, gaps};
+use crate::attack::{Arms, Engagement, gaps};
 use crate::hunt::{HUNT, HuntAction, HuntTask, Quarry};
 use crate::masters::Master;
 use crate::rng::Stream;
@@ -31,6 +31,24 @@ pub struct Interact {
     /// `+0x16`: the work command's task filter, -1 for any.
     pub filter: i16,
 }
+
+/// MOVE's fields past its units (`+0x4`..`+0x15`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MoveOrder {
+    /// `t_id` (`+0x4`): an object to follow, -1 for the point.
+    pub target: i32,
+    /// `x`, `y` (`+0x8`, `+0xc`).
+    pub point: [f32; 2],
+    /// `+0x13`: queued; `+0x14`: a unit with a unit AI takes it at once; `+0x15`: the last human
+    /// order time is set.
+    pub queued: bool,
+    pub direct: bool,
+    pub human: bool,
+}
+
+/// The unit-AI order and action values of a move (`0x2c6`, `0x262`, `FUN_140e67800`).
+const MOVE_ORDER: i32 = 0x2c6;
+const MOVE_ACTION: i32 = 0x262;
 
 /// Masters and classes the order handler and slot 0x7e8 treat apart (decoded; the game stores a
 /// class as its value − 0xeac, a master id as its id + 0x609c).
@@ -155,6 +173,76 @@ impl Turns {
             return Ok(());
         }
         self.order_work(player, idx, order)
+    }
+
+    /// MOVE (`FUN_140e67800`) to its units, after their unit AIs reset: one unit takes the order
+    /// itself (the loop of `LAB_140e6838c`); several units, which the handler gives places around
+    /// the point by their offsets, are not modelled. An object that does not move ignores it.
+    pub(crate) fn move_order(
+        &mut self,
+        player: usize,
+        units: &[i32],
+        order: &MoveOrder,
+    ) -> Result<(), Unsupported> {
+        let id = match units {
+            [] => return Ok(()),
+            &[id] => id,
+            _ => return Err(Unsupported("a move of several units (their offsets)")),
+        };
+        let Some(Place::Live(p, idx)) = self.place(id) else {
+            return Err(Unsupported("a move of a unit the slice does not hold live"));
+        };
+        if p != player {
+            return Err(Unsupported("a move of another player's unit"));
+        }
+        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
+        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
+        if master.kind < MOVING || speed <= 0.0 {
+            if order.queued {
+                return Err(Unsupported("a queued move of an object that does not move"));
+            }
+            return Ok(());
+        }
+        let unit = &mut self.players[player].objects[idx];
+        // FUN_141197da0, then slot 0x2a0 with 1: it waits to move
+        unit.mover
+            .as_mut()
+            .ok_or(Unsupported("a moved unit without movement state"))?
+            .waiting = 1;
+        if order.queued || (unit.ai.is_some() && !order.direct) {
+            return Err(Unsupported("a move its unit AI takes (its slot 0x30)"));
+        }
+        // slot 0x138 (FUN_141216f10): a villager's town-bell flag and the unit AI's `+0x18`
+        // (neither held), then FUN_14106d340
+        if order.target == id {
+            return Ok(());
+        }
+        if order.target != -1 {
+            return Err(Unsupported("a move that follows an object"));
+        }
+        // FUN_140a97730: the current action's slot 8 may take the point itself; a MoveTo's
+        // (`FUN_140a78490`) never does
+        let unit = &self.players[player].objects[idx];
+        let top = unit.top_action_kind();
+        let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
+        if !stop_after_kill && top.is_some() && top != Some(crate::move_to::MOVE_TO) {
+            return Err(Unsupported("a move of a unit with an action (its slot 8)"));
+        }
+        // the MoveTo to the point (FUN_140aa0d30, range 0) and its install (slot 0x808)
+        self.clear_actions(player, idx)?;
+        let unit = &mut self.players[player].objects[idx];
+        unit.move_to = Some(crate::move_to::MoveToAction {
+            // FUN_140aa2100: no target, so far from it: state 3 for a unit with speed
+            state: crate::move_to::MoveTo::Start,
+            goal: Some([order.point[0], order.point[1], 0.0]),
+            range: 0.0,
+        });
+        // the order handler's notify: the move order and action, no target (FUN_140c4dcb0), the
+        // point (FUN_140c64be0); slot 0x2d8's walk and show targets are not held
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(MOVE_ORDER, MOVE_ACTION, -1, self.streams.get(Stream::Ai));
+        }
+        Ok(())
     }
 
     /// Slot 0x7e8 (`FUN_141227190`) of a unit on a target object: a unit in state 3 or later
@@ -329,6 +417,7 @@ impl Turns {
                     id: task.id,
                     range: task.work_range,
                     resource: task.attribute_type,
+                    sprites: task.sprites,
                 },
             ),
             _ => Err(Unsupported(
@@ -343,13 +432,17 @@ impl Turns {
     fn retarget_hunt(&mut self, player: usize, idx: usize, target: i32) -> Result<(), Unsupported> {
         let quarry = self.quarry(player, target)?;
         let engagement = self.engagement(player, idx, target)?;
+        let sprites = self.players[player].objects[idx]
+            .hunt
+            .map_or([-1; 4], |h| h.task.sprites);
+        let arms = self.arms(player, idx, sprites)?;
         let unit = &mut self.players[player].objects[idx];
         let old = unit.hunt.map(|h| h.target);
         let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.mover.as_mut()) else {
             return Err(Unsupported("a hunter without its hunt or movement state"));
         };
         let unit_player = player;
-        if hunt.retarget(&quarry, unit_player, &engagement, mover)? {
+        if hunt.retarget(&quarry, unit_player, &engagement, arms, mover)? {
             if let Some(old) = old {
                 self.release(old)?;
             }
@@ -377,6 +470,23 @@ impl Turns {
             player: tp,
             amount: t.life.amount,
             allied: world.allied(player, tp, true),
+        })
+    }
+
+    /// The Attack constructor's sprites and frames (`FUN_140a7c210` from Hunt's set_state 12): the
+    /// task's proceeding sprite (else the master's attack sprite), the master's second attack
+    /// sprite and standing sprite, missile, firing and interrupting frames.
+    fn arms(&self, player: usize, idx: usize, sprites: [i16; 4]) -> Result<Arms, Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let master = self.master_of(player, unit.life.master_id)?;
+        let g = |id: i16| (0 <= id).then(|| self.graphics.get(&id).copied()).flatten();
+        Ok(Arms {
+            sprite: g(sprites[1]).or(g(master.attack_sprite)),
+            second_sprite: g(master.attack_sprite2),
+            idle_sprite: g(master.standing_sprite),
+            missile: master.missile,
+            fire_frame: master.fire_frame,
+            interrupt_frame: master.interrupt_frame,
         })
     }
 
@@ -439,6 +549,7 @@ impl Turns {
         }
         self.clear_actions(player, idx)?;
         let engagement = self.engagement(player, idx, target)?;
+        let arms = self.arms(player, idx, task.sprites)?;
         let computer = self.players[player].computer;
         let carry_rule = self.carry_rule;
         let unit = &mut self.players[player].objects[idx];
@@ -455,6 +566,7 @@ impl Turns {
             carry_rule,
             &mut held,
             &engagement,
+            arms,
             mover,
         )?;
         (unit.life.attribute_type, unit.life.amount) = held;

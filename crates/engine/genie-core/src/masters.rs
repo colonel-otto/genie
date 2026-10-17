@@ -35,6 +35,9 @@ pub struct Task {
     pub work_range: f32,
     /// `+0x38`, `enablement_resource_id` (`enabled`): the resource that enables the task, -1 none.
     pub enablement: i16,
+    /// `+0x40`..`+0x58`: the moving, proceeding, working and carrying sprites (graphic ids, -1 for
+    /// none).
+    pub sprites: [i16; 4],
 }
 
 /// A task for any target, with no resource, terrain or requirement.
@@ -54,6 +57,7 @@ impl Default for Task {
             work_val1: 0.0,
             work_range: 0.0,
             enablement: -1,
+            sprites: [-1; 4],
         }
     }
 }
@@ -104,6 +108,20 @@ pub struct Master {
     /// The master has damage sprites (`+0x638`..`+0x640`): a master change checks them
     /// (`FUN_1411859a0`).
     pub damage_sprites: bool,
+    /// What a combat master's attack reads: its standing sprite (`+0x470`), its attack sprite
+    /// (`+0x7f8`, `fight_sprite_id`), a second attack sprite
+    /// (`+0x878`, the `.dat`'s `attack_graphic2`), `missile_id`, `fire_missile_at_frame`,
+    /// `interrupt_frame`, `base_hit_chance`, `speed_of_attack` (the reload time) and its weapons
+    /// (class, amount).
+    pub standing_sprite: i16,
+    pub attack_sprite: i16,
+    pub attack_sprite2: i16,
+    pub missile: i16,
+    pub fire_frame: i16,
+    pub interrupt_frame: i16,
+    pub hit_chance: i16,
+    pub reload: f32,
+    pub weapons: Vec<(i16, i16)>,
     /// What a unit of this master moves with, its speed with the master's walking sprite (the
     /// run sprite `+0x750` if it has one, else the move sprite `+0x748`); None for a master that
     /// does not move.

@@ -126,6 +126,19 @@ impl Streams {
     pub fn get(&mut self, stream: Stream) -> &mut Well512 {
         &mut self.rngs[stream as usize]
     }
+
+    /// Two different streams at once.
+    pub fn two(&mut self, a: Stream, b: Stream) -> (&mut Well512, &mut Well512) {
+        let (i, j) = (a as usize, b as usize);
+        assert_ne!(i, j, "two different streams");
+        if i < j {
+            let (lo, hi) = self.rngs.split_at_mut(j);
+            (&mut lo[i], &mut hi[0])
+        } else {
+            let (lo, hi) = self.rngs.split_at_mut(i);
+            (&mut hi[0], &mut lo[j])
+        }
+    }
 }
 
 #[cfg(test)]

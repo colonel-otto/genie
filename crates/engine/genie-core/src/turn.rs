@@ -13,6 +13,7 @@
 //! slot and updates there in the same tick.
 
 use crate::artifact::Artifact;
+use crate::attack::{Strike, Victim};
 use crate::build::{BUILD, BuildAction, BuildTask, Construction, Site, Walk};
 use crate::fly::Fly;
 use crate::hunt::HuntAction;
@@ -20,11 +21,13 @@ use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::masters::Masters;
 use crate::move_to::MoveToAction;
 use crate::movement::{Me, Mover, Planning, footprint_gap};
-use crate::order::Interact;
+use crate::order::{Interact, MoveOrder};
 use crate::pathing::Pathing;
 use crate::production::{Production, Queued};
+use crate::rng::Well512;
 use crate::rng::{Stream, Streams};
 use crate::spatial::{Placed, Spatial};
+use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::{UnitAi, Unsupported};
 
@@ -70,6 +73,15 @@ pub struct Unit {
     pub hp_powerups: [f32; 2],
     /// A villager's Hunt action, its top action.
     pub hunt: Option<HuntAction>,
+    /// Its active sprite and animation speed (`+0x7b8`, the save's `current_speed`), held from
+    /// an attack's swing on; None while the slice does not know them.
+    pub sprite: Option<ActiveSprite>,
+    pub anim_speed: Option<f32>,
+    /// `+0x91c`, `attack_timer`: the time until it may attack again; `mReloadStinger` and
+    /// `mReloadPowerup` (`+0xb40`, `+0xa28`), which change its reload time.
+    pub attack_timer: f32,
+    pub reload_stinger: f32,
+    pub reload_powerup: f32,
     /// `+0x644`, `worker_num`: the actions that have the object as their target.
     pub workers: i32,
     /// The slice could not model one of its updates: it freezes (its place is known only within
@@ -112,12 +124,20 @@ pub enum Command {
     Unmodelled { player: usize, why: Unsupported },
     /// INTERACT (0x00), MOVE (0x03) or RETREAT (0x23): before the order runs, each listed unit's AI
     /// resets its idle timeout ([`UnitAi::reset_for_order`]), in list order, wherever the unit is.
-    /// INTERACT's order then runs ([`Interact`]); MOVE and RETREAT are not modelled.
+    /// INTERACT's order then runs ([`Interact`]), and MOVE's ([`MoveOrder`]); RETREAT is not
+    /// modelled.
     Order {
         player: usize,
         units: Vec<i32>,
-        interact: Option<Interact>,
+        order: Option<Order>,
     },
+}
+
+/// What an order command gives its units.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Order {
+    Interact(Interact),
+    Move(MoveOrder),
 }
 
 /// QUEUE's unit and building (the fields of [`Command::Queue`] but the cost).
@@ -166,9 +186,41 @@ struct Context<'a> {
     pathing: &'a mut Pathing,
     /// The owner's construction rate (attribute 195).
     construction_rate: f32,
+    /// The owner's masters, which an attack reads.
+    masters: Option<&'a Masters>,
+    /// The owner's attributes 211 and 212 (with more than 212 attributes, else 0): an attack's
+    /// elevation bonus.
+    elevation: [f32; 2],
+    /// The target of the unit's attack, read before its update and written back after it.
+    victim: Option<&'a mut Victim>,
 }
 
 impl Context<'_> {
+    /// A walk and the Sprite stream, for an attacker's update.
+    fn walk_and_sprites<'b>(
+        &'b mut self,
+        mover: Option<&'b mut Mover>,
+        me: Me,
+    ) -> (Walk<'b>, &'b mut Well512) {
+        let (object, sprite) = self.streams.two(Stream::Object, Stream::Sprite);
+        (
+            Walk {
+                mover,
+                me,
+                dt: self.dt_seconds,
+                world: self.spatial,
+                plan: Some(Planning {
+                    pathing: self.pathing,
+                    now: self.world_time,
+                    computer: self.computer,
+                    object,
+                    construction_rate: self.construction_rate,
+                }),
+            },
+            sprite,
+        )
+    }
+
     /// What an object's walking action needs from the tick.
     fn walk<'b>(&'b mut self, mover: Option<&'b mut Mover>, me: Me) -> Walk<'b> {
         Walk {
@@ -188,6 +240,11 @@ impl Context<'_> {
 }
 
 impl Unit {
+    /// The target of its attack, if it attacks (a hunt's Attack sub-action).
+    fn attack_target(&self) -> Option<i32> {
+        self.hunt.and_then(|h| h.attack).map(|a| a.target)
+    }
+
     /// The type of its top action, if it has one.
     pub fn top_action_kind(&self) -> Option<i16> {
         None.or(self.artifact.map(|_| crate::artifact::ARTIFACT_TYPE))
@@ -200,6 +257,14 @@ impl Unit {
     /// One update; true when the object leaves its list. `others` are the rest of the owner's
     /// objects, whose foundations a builder works on.
     fn update(&mut self, c: &mut Context<'_>, others: &mut [Unit]) -> Result<bool, Unsupported> {
+        // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
+        // `+0x87c` (1.0 for every unit the slice has met; its writer is not ported)
+        if 0.0 < self.attack_timer {
+            self.attack_timer -= c.dt_seconds;
+            if self.attack_timer < 0.0 {
+                self.attack_timer = 0.0;
+            }
+        }
         if let Some(mover) = self.mover.as_mut() {
             let at = mover.step_velocity(self.position, c.dt_seconds, c.spatial.map, c.world_time);
             if at != self.position {
@@ -211,6 +276,10 @@ impl Unit {
             }
         }
         let leaves = self.life.update(c.dt_seconds)?;
+        // the animated object's update (0x141071880): its sprite's clock at its animation speed
+        if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.anim_speed) {
+            sprite.update(c.dt_seconds, speed);
+        }
         if let Some(e) = self.unmodelled_action.filter(|_| self.life.state == 2) {
             return Err(e);
         }
@@ -251,7 +320,29 @@ impl Unit {
         }
         if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;
-            hunt.update(c.walk(self.mover.as_mut(), me), computer)?;
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+            let elevation = c.elevation;
+            let victim = c.victim.take().ok_or(Unsupported(
+                "an attack's target the slice does not hold live",
+            ))?;
+            let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+            let mut strike = Strike {
+                sprite: &mut self.sprite,
+                anim_speed: &mut self.anim_speed,
+                attack_timer: &mut self.attack_timer,
+                reload: self.reload_stinger + (master.reload - self.reload_powerup),
+                weapons: &master.weapons,
+                hit_chance: master.hit_chance,
+                class: master.class,
+                elevation,
+                z: self.position[2],
+                victim,
+                sprite_rng,
+            };
+            hunt.update(walk, computer, &mut strike)?;
         }
         // the motion step may have put the unit onto a waypoint it reached
         if let Some(p) = c.spatial.get(self.id) {
@@ -294,6 +385,43 @@ pub struct Player {
     pub unsupported: Option<(u32, usize, Unsupported)>,
     /// A command the slice could not model stopped the whole player: its objects freeze.
     pub stopped: bool,
+}
+
+impl Turns {
+    /// What an attack reads of its target ([`Victim`]): a live object the slice holds.
+    fn victim(&self, id: i32) -> Option<Victim> {
+        let (p, u) =
+            self.players.iter().enumerate().find_map(|(p, player)| {
+                player.objects.iter().find(|u| u.id == id).map(|u| (p, u))
+            })?;
+        let kind = self.masters.get(p)?.get(u.life.master_id)?.kind;
+        let attributes = &self.players[p].attributes;
+        let at = |i: usize| attributes.get(i).copied().unwrap_or(0.0);
+        Some(Victim {
+            id,
+            hp: u.life.hp,
+            amount: u.life.amount,
+            state: u.life.state,
+            z: u.position[2],
+            kind,
+            goto_sleep: u.life.goto_sleep,
+            elevation: [at(272), at(273)],
+        })
+    }
+
+    /// An attack's hit on its target, written back.
+    fn set_victim(&mut self, v: &Victim) {
+        let found = self
+            .players
+            .iter_mut()
+            .flat_map(|p| p.objects.iter_mut())
+            .find(|u| u.id == v.id);
+        if let Some(u) = found {
+            u.life.hp = v.hp;
+            u.life.amount = v.amount;
+            u.life.goto_sleep = v.goto_sleep;
+        }
+    }
 }
 
 impl Player {
@@ -347,6 +475,8 @@ pub struct Turns {
     pub spatial: Spatial,
     /// The planners and the mesh.
     pub pathing: Pathing,
+    /// What the sprite clock reads of each graphic (the `.dat`'s).
+    pub graphics: std::collections::BTreeMap<i16, Graphic>,
     /// The game's drop-site table (`dropsites.json`).
     pub drop_sites: Vec<DropSite>,
     /// The game settings' test `FUN_141302150` (their `+0x1070` flag, then a table entry's
@@ -404,6 +534,7 @@ impl Turns {
             masters: Vec::new(),
             spatial: Spatial::default(),
             pathing: Pathing::default(),
+            graphics: Default::default(),
             drop_sites: Vec::new(),
             carry_rule: false,
             streams: Streams::default(),
@@ -478,6 +609,11 @@ impl Turns {
                     hunt: None,
                     workers: 0,
                     stopped: false,
+                    sprite: None,
+                    anim_speed: None,
+                    attack_timer: 0.0,
+                    reload_stinger: 0.0,
+                    reload_powerup: 0.0,
                 });
                 if let Err(e) = self.task_builders(player, id, master, position, builders) {
                     let owner = &mut self.players[player];
@@ -512,7 +648,7 @@ impl Turns {
             Command::Order {
                 player,
                 ref units,
-                interact,
+                order,
             } => {
                 for &id in units {
                     let ai = self
@@ -525,8 +661,9 @@ impl Turns {
                         ai.reset_for_order(self.streams.get(Stream::Ai));
                     }
                 }
-                let result = match interact {
-                    Some(order) => self.interact(player, units, &order),
+                let result = match order {
+                    Some(Order::Interact(o)) => self.interact(player, units, &o),
+                    Some(Order::Move(o)) => self.move_order(player, units, &o),
                     None => Err(Unsupported("an order moves its units")),
                 };
                 if let Err(e) = result {
@@ -730,48 +867,65 @@ impl Turns {
         for command in commands {
             self.run(command);
         }
-        for (p, player) in self.players.iter_mut().enumerate() {
+        for p in 0..self.players.len() {
             self.player_time[p] = self.player_time[p].wrapping_add(dt);
-            let mut c = Context {
-                dt,
-                dt_seconds: seconds(dt),
-                tick: self.ticks,
-                turn: (p == self.player_turn).then_some(self.player_time[p]),
-                world_time: self.world_time,
-                computer: player.computer,
-                streams: &mut self.streams,
-                spatial: &mut self.spatial,
-                pathing: &mut self.pathing,
-                construction_rate: player.construction_rate,
+            let turn = (p == self.player_turn).then_some(self.player_time[p]);
+            let attributes = &self.players[p].attributes;
+            let elevation = if 212 < attributes.len() {
+                [attributes[211], attributes[212]]
+            } else {
+                [0.0; 2]
             };
-            c.pathing.tiles_changed(c.spatial.take_changes());
+            self.pathing.tiles_changed(self.spatial.take_changes());
             // An object whose update is not modelled freezes, and so do all live objects of a
             // player a command stopped; dead objects still run their state steps, which draw
             // nothing and depend on nothing the stop changed.
             let mut i = 0;
-            while i < player.objects.len() {
+            while i < self.players[p].objects.len() {
+                let player = &self.players[p];
                 let stopped = player.stopped || player.objects[i].stopped;
                 if stopped && player.objects[i].life.is_alive() {
-                    c.spatial.freeze(player.objects[i].id);
+                    self.spatial.freeze(player.objects[i].id);
                     i += 1;
                     continue;
                 }
-                let mut unit = std::mem::take(&mut player.objects[i]);
+                let mut unit = std::mem::take(&mut self.players[p].objects[i]);
+                let mut victim = unit.attack_target().and_then(|t| self.victim(t));
+                let player = &mut self.players[p];
+                let mut c = Context {
+                    dt,
+                    dt_seconds: seconds(dt),
+                    tick: self.ticks,
+                    turn,
+                    world_time: self.world_time,
+                    computer: player.computer,
+                    streams: &mut self.streams,
+                    spatial: &mut self.spatial,
+                    pathing: &mut self.pathing,
+                    construction_rate: player.construction_rate,
+                    masters: self.masters.get(p),
+                    elevation,
+                    victim: victim.as_mut(),
+                };
                 let result = unit.update(&mut c, &mut player.objects);
                 player.objects[i] = unit;
-                c.pathing.tiles_changed(c.spatial.take_changes());
+                if let Some(v) = victim {
+                    self.set_victim(&v);
+                }
+                self.pathing.tiles_changed(self.spatial.take_changes());
+                let player = &mut self.players[p];
                 match result {
                     Ok(true) => {
                         let gone = player.objects.swap_remove(i);
-                        c.spatial.remove(gone.id);
-                        c.pathing.removed(gone.id);
-                        c.pathing.tiles_changed(c.spatial.take_changes());
+                        self.spatial.remove(gone.id);
+                        self.pathing.removed(gone.id);
+                        self.pathing.tiles_changed(self.spatial.take_changes());
                     }
                     Ok(false) => i += 1,
                     Err(e) => {
                         player.unsupported.get_or_insert((self.ticks, i, e));
                         player.objects[i].stopped = true;
-                        c.spatial.freeze(player.objects[i].id);
+                        self.spatial.freeze(player.objects[i].id);
                         i += 1;
                     }
                 }
@@ -1245,7 +1399,7 @@ mod tests {
             &[Command::Order {
                 player: 0,
                 units: vec![8, 99, 7],
-                interact: None,
+                order: None,
             }],
         );
         let mut streams = Streams::default();

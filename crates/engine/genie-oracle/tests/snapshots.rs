@@ -125,13 +125,14 @@ fn the_walk_off_the_footprint_from_a_save_matches_the_game_object_by_object() {
 
 #[test]
 fn the_order_to_a_tree_from_a_save_matches_the_game_object_by_object() {
-    // updates 682 to 850: in 748 player 2's INTERACT sends builder 9181 to the tree 9365: the work
+    // updates 682 to 1041: in 748 player 2's INTERACT sends builder 9181 to the tree 9365: the work
     // command finds the gather task of master 218 (VFLUM), the master changes (the Build action
     // and its MoveTo go), the Hunt wakes the tree and attacks it first (Hunt state 12, Attack
     // state 4 with a MoveTo, built twice), and 9181 walks to the tree from the same update on; in
     // 797 the next order sends it to the tree 9357: the hunt keeps its task, takes the new target
-    // (the old one is flagged to sleep) and starts over; it walks on through 850
-    let Some(found) = differences(680, 169, 2) else {
+    // (the old one is flagged to sleep) and starts over; in 1008 it reaches the tree: the
+    // Attack turns ready (state 6) and swings (7) with its sprite from frame 0; through 1040
+    let Some(found) = differences(680, 360, 2) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

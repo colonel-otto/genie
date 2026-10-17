@@ -38,6 +38,9 @@ pub struct UnitAi {
     pub stance: u8,
     /// `+0x1d6`: non-zero skips the retarget check.
     pub retarget_disabled: u8,
+    /// `+0x1a8`, `stop_after_target_killed_value`: a move does not let the current action take its
+    /// point (`FUN_140c41c10`).
+    pub stop_after_kill: bool,
 }
 
 /// Why an update was not modelled.
@@ -97,8 +100,10 @@ impl UnitAi {
             look_around_timeout: 1000,
             last_retarget_time,
             retarget_timer,
-            stance: 0,
+            // the constructor's two bytes at `+0x1a8`: 0x300
+            stance: 3,
             retarget_disabled: 0,
+            stop_after_kill: false,
         })
     }
 
@@ -408,8 +413,9 @@ mod tests {
                 look_around_timeout: 1000,
                 last_retarget_time: a % 500,
                 retarget_timer: 750 + c % 500,
-                stance: 0,
+                stance: 3,
                 retarget_disabled: 0,
+                stop_after_kill: false,
             }
         );
     }

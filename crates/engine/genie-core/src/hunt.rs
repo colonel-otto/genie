@@ -6,7 +6,7 @@
 //! 158041: constructor `FUN_140ac2dd0`, start (slot 5) `0x140ac49b0`, update (slot 6)
 //! `0x140ac7a00`, set_state (slot 16) `0x140ac60e0`.
 
-use crate::attack::{Attack, Engagement};
+use crate::attack::{Arms, Attack, Engagement, Strike};
 use crate::move_to::Walk;
 use crate::movement::Mover;
 use crate::unit_ai::Unsupported;
@@ -46,6 +46,8 @@ pub struct HuntTask {
     pub id: i16,
     pub range: f32,
     pub resource: i16,
+    /// Its moving, proceeding, working and carrying sprites (`+0x40`..`+0x58`).
+    pub sprites: [i16; 4],
 }
 
 /// What the hunt reads of its target when it starts.
@@ -88,6 +90,7 @@ impl HuntAction {
         carry_rule: bool,
         held: &mut (i16, f32),
         attack: &Engagement,
+        arms: Arms,
         mover: &mut Mover,
     ) -> Result<Self, Unsupported> {
         let mut hunt = HuntAction {
@@ -120,7 +123,7 @@ impl HuntAction {
                 "a hunt on its own player's target (FUN_14109d4f0)",
             ));
         }
-        hunt.chase(target, player, attack, mover)?;
+        hunt.chase(target, player, attack, arms, mover)?;
         Ok(hunt)
     }
 
@@ -132,6 +135,7 @@ impl HuntAction {
         target: &Quarry,
         player: usize,
         attack: &Engagement,
+        arms: Arms,
         mover: &mut Mover,
     ) -> Result<(), Unsupported> {
         self.tear_down(Some(mover))?;
@@ -144,7 +148,7 @@ impl HuntAction {
             return Err(Unsupported("a hunt on an allied target (set_state 13)"));
         }
         self.state = ATTACK;
-        self.attack = Some(Attack::start(target.id, attack, mover)?);
+        self.attack = Some(Attack::start(target.id, attack, arms, mover)?);
         Ok(())
     }
 
@@ -157,6 +161,7 @@ impl HuntAction {
         target: &Quarry,
         player: usize,
         attack: &Engagement,
+        arms: Arms,
         mover: &mut Mover,
     ) -> Result<bool, Unsupported> {
         if target.kind == BUILDING {
@@ -174,7 +179,7 @@ impl HuntAction {
         }
         self.target = target.id;
         self.target_class = target.class;
-        self.chase(target, player, attack, mover)?;
+        self.chase(target, player, attack, arms, mover)?;
         Ok(true)
     }
 
@@ -190,7 +195,12 @@ impl HuntAction {
     /// One update (slot 6, `0x140ac7a00`) in state 12: a human player's hunter updates its Attack
     /// (`FUN_140a992b0`); the attack still under way (code 0) keeps the state. A computer
     /// player's hunt and the attack's end are not modelled.
-    pub fn update(&mut self, walk: Walk<'_>, computer: bool) -> Result<(), Unsupported> {
+    pub fn update(
+        &mut self,
+        walk: Walk<'_>,
+        computer: bool,
+        strike: &mut Strike<'_>,
+    ) -> Result<(), Unsupported> {
         if self.state != ATTACK {
             return Err(Unsupported("a Hunt action in a state other than 12"));
         }
@@ -201,8 +211,11 @@ impl HuntAction {
             .attack
             .as_mut()
             .ok_or(Unsupported("a Hunt in state 12 without its Attack"))?;
-        match attack.update(walk)? {
+        match attack.update(walk, strike)? {
             0 | 6.. => Ok(()),
+            5 => Err(Unsupported(
+                "a Hunt whose Attack ended on its dead target (FUN_140ac44b0, set_state 4)",
+            )),
             _ => Err(Unsupported("a Hunt whose Attack ended")),
         }
     }
@@ -269,10 +282,20 @@ mod tests {
         }
     }
 
+    const ARMS: Arms = Arms {
+        sprite: None,
+        second_sprite: None,
+        idle_sprite: None,
+        missile: -1,
+        fire_frame: 0,
+        interrupt_frame: -1,
+    };
+
     const CHOP: HuntTask = HuntTask {
         id: 0,
         range: 0.0,
         resource: 15,
+        sprites: [-1, 1239, 1961, 1960],
     };
 
     #[test]
@@ -287,6 +310,7 @@ mod tests {
             false,
             &mut held,
             &engagement(),
+            ARMS,
             &mut mover,
         )
         .unwrap();
@@ -318,6 +342,7 @@ mod tests {
                 carry_rule,
                 &mut held,
                 &engagement(),
+                ARMS,
                 &mut walker(),
             )
             .unwrap();
@@ -345,6 +370,7 @@ mod tests {
                 false,
                 &mut held,
                 &engagement(),
+                ARMS,
                 &mut walker(),
             );
             assert!(r.is_err());
