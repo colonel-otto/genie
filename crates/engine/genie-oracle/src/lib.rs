@@ -16,7 +16,7 @@ use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
 use genie_core::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::turn::{Command, Player, Turns, Unit};
 use genie_core::unit_ai::Unsupported;
-use genie_core::visibility::{BuildingSight, Extent, Seer, Visibility, VisibleMap};
+use genie_core::visibility::{BuildingSight, Extent, Seer, Visibility, VisibleMap, capture_kind};
 use genie_rec::de::{self, Op};
 use genie_save::Header;
 use genie_save::PlayerSection;
@@ -47,6 +47,8 @@ pub enum Error {
     CommandBeforeFirstSync,
     /// A mesh dump without its header line.
     BadMeshDump,
+    /// A registry dump without its header line, or a line out of shape.
+    BadRegistryDump,
 }
 
 impl From<de::Error> for Error {
@@ -63,6 +65,7 @@ impl std::fmt::Display for Error {
             Error::NoSuchPlayer(id) => write!(f, "a checkpoint names player {id}, not in the save"),
             Error::CommandBeforeFirstSync => write!(f, "a command comes before the first sync"),
             Error::BadMeshDump => write!(f, "the mesh dump has no mesh line"),
+            Error::BadRegistryDump => write!(f, "the registry dump is out of shape"),
         }
     }
 }
@@ -220,6 +223,7 @@ fn unit(
             .combat()
             .map_or([0.0; 2], |c| [c.hitpoints_powerup, c.hitpoints_max_powerup]),
         workers: s.worker_num,
+        combat: object.combat().is_some(),
         attack_timer: object
             .combat()
             .map_or(0.0, |c| c.rge_combat_object.attack_timer),
@@ -1165,6 +1169,30 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
                 continue;
             };
             let building = o.tribe_building_object.as_ref();
+            // a building's place links its tiles (FUN_1411e6780), an annex's does not, and a
+            // foundation made desolid lost them (FUN_1411cf770); so do a combat unit's that does
+            // not move and is more than a tile wide (FUN_14108c320). A building keeps its
+            // footprint's UMV entry (+0x904)
+            let place = [s.t_x, s.t_y, s.t_z];
+            let footprint = [m.radius[0], m.radius[1]];
+            let speed = moving_speed(o, s, section.objects());
+            let links = match building {
+                Some(b) => {
+                    b.mupt_linked_object_references_linked_owner_id == -1 && b.desolid_flag == 0
+                }
+                None => {
+                    o.combat().is_some() && speed == 0.0 && (0.5 < m.radius[0] || 0.5 < m.radius[1])
+                }
+            };
+            let umv = match (links, building.is_some()) {
+                (true, true) => sight.link_building(place, footprint),
+                (true, false) => {
+                    sight.link_building(place, footprint);
+                    0
+                }
+                (false, true) => sight.building_entry(place, footprint),
+                (false, false) => 0,
+            };
             sight.add_seer(
                 s.id,
                 Seer {
@@ -1178,23 +1206,10 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
                         built: b.built != 0,
                         started: b.build_pts != 0.0,
                     }),
+                    umv: umv as u8,
+                    capture: capture_kind(player, m.class, s.master_obj),
                 },
             );
-            // a building's place links its tiles (FUN_1411e6780), an annex's does not, and a
-            // foundation made desolid lost them (FUN_1411cf770); so do a combat unit's that does
-            // not move and is more than a tile wide (FUN_14108c320)
-            let speed = moving_speed(o, s, section.objects());
-            let links = match building {
-                Some(b) => {
-                    b.mupt_linked_object_references_linked_owner_id == -1 && b.desolid_flag == 0
-                }
-                None => {
-                    o.combat().is_some() && speed == 0.0 && (0.5 < m.radius[0] || 0.5 < m.radius[1])
-                }
-            };
-            if links {
-                sight.link_building([s.t_x, s.t_y, s.t_z], [m.radius[0], m.radius[1]]);
-            }
             let desolid = o
                 .tribe_building_object
                 .as_ref()
@@ -1973,6 +1988,8 @@ pub struct SliceRun {
     pub stopped: Vec<Option<(u32, usize, Unsupported)>>,
     /// What the players see after the run.
     pub visibility: Option<Visibility>,
+    /// The objects the slice stopped updating, of every player.
+    pub frozen: Vec<i32>,
 }
 
 /// The live objects of player `id` in a save (a recording's header, or the tick oracle's
@@ -2017,14 +2034,81 @@ pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
         .collect())
 }
 
+/// What the tick oracle dumps of the game at a save's tick that the save does not hold.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Dumps<'a> {
+    /// The shape mesh with each object's shape (`load_oracle/probes/mesh.py`); without it a path
+    /// request stops the slice where it needs the short pather.
+    pub mesh: Option<&'a str>,
+    /// The objects-in-sight registry and the objects' masks (`load_oracle/probes/registry.py`);
+    /// without it the slice keeps no registry, and a unit AI's search stops it.
+    pub registry: Option<&'a str>,
+}
+
+/// The objects-in-sight registry as the tick oracle dumps it (`load_oracle/probes/registry.py`):
+/// a `registry PLAYERS CLASSES` line, a `list PLAYER CLASS COUNT CAPACITY` line before each list's
+/// `rec ID DIST OWNER X Y RX RY` lines (the floats as hex bits), then `mask ID HEX SLOTS...` per
+/// combat object (its record's index in each player's list of its class, -1 for none).
+pub fn registry_from_dump(text: &str) -> Result<genie_core::registry::Registry, Error> {
+    use genie_core::registry::{Entry, Record, Registry};
+    let bad = || Error::BadRegistryDump;
+    let mut lines = text.lines();
+    let head: Vec<&str> = lines.next().ok_or_else(bad)?.split_whitespace().collect();
+    let [_, players, classes] = head[..] else {
+        return Err(bad());
+    };
+    let number = |w: &str| w.parse::<i64>().map_err(|_| bad());
+    let bits = |w: &str| {
+        u32::from_str_radix(w, 16)
+            .map(f32::from_bits)
+            .map_err(|_| bad())
+    };
+    let mut out = Registry::new(number(players)? as usize, number(classes)? as usize);
+    let mut list: Option<(usize, usize)> = None;
+    for line in lines {
+        let w: Vec<&str> = line.split_whitespace().collect();
+        match w.first().copied() {
+            Some("list") if w.len() == 5 => {
+                let (p, c) = (number(w[1])? as usize, number(w[2])? as usize);
+                if out.players <= p || out.classes <= c {
+                    return Err(bad());
+                }
+                list = Some((p, c));
+            }
+            Some("rec") if w.len() == 8 => {
+                let (p, c) = list.ok_or_else(bad)?;
+                out.lists[p][c].push(Record {
+                    id: number(w[1])? as i32,
+                    distance: bits(w[2])?,
+                    owner: number(w[3])? as u8,
+                    x: bits(w[4])?,
+                    y: bits(w[5])?,
+                    rx: bits(w[6])?,
+                    ry: bits(w[7])?,
+                });
+            }
+            Some("mask") if w.len() == 3 + genie_core::registry::SLOTS => {
+                let mut entry = Entry {
+                    mask: u64::from_str_radix(w[2], 16).map_err(|_| bad())?,
+                    ..Entry::default()
+                };
+                for (k, slot) in entry.slots.iter_mut().enumerate() {
+                    let v = number(w[3 + k])?;
+                    *slot = usize::try_from(v).ok();
+                }
+                out.entries.insert(number(w[1])? as i32, entry);
+            }
+            _ => return Err(bad()),
+        }
+    }
+    Ok(out)
+}
+
 /// The slice started from the tick oracle's save at tick `start_tick` (`--snapshot`), run through
 /// the `recording`'s next `ticks` ticks: player `id`'s objects after it. The save gives the state,
-/// the recording the ticks' lengths and commands. The tick oracle counts ticks from 0, as its trace
-/// does: its tick N is the game's update N + 1, and the save at tick N holds the state after it.
-///
-/// `mesh` is the game's shape mesh at that tick with each object's shape
-/// (`load_oracle/probes/mesh.py`), which the save does not hold; without it a path request stops
-/// the slice where it needs the short pather.
+/// the recording the ticks' lengths and commands, `dumps` what the save does not hold. The tick
+/// oracle counts ticks from 0, as its trace does: its tick N is the game's update N + 1, and the
+/// save at tick N holds the state after it.
 pub fn objects_from_save(
     save: &[u8],
     recording: &[u8],
@@ -2032,7 +2116,7 @@ pub fn objects_from_save(
     ticks: usize,
     id: u32,
     masters: Option<&MasterTable>,
-    mesh: Option<&str>,
+    dumps: Dumps<'_>,
 ) -> Result<SliceRun, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
@@ -2041,9 +2125,12 @@ pub fn objects_from_save(
         return Err(Error::NoSuchPlayer(id));
     }
     let mut turns = slice(&header, masters);
-    if let Some(text) = mesh {
+    if let Some(text) = dumps.mesh {
         let m = mesh_from_dump(text).ok_or(Error::BadMeshDump)?;
         turns.pathing.set_mesh(m, mesh_owners_from_dump(text));
+    }
+    if let (Some(text), Some(sight)) = (dumps.registry, turns.spatial.sight.as_mut()) {
+        sight.registry = Some(registry_from_dump(text)?);
     }
     let updates = start_tick + 1;
     turns.ticks = updates as u32;
@@ -2065,6 +2152,12 @@ pub fn objects_from_save(
             .and_then(|(_, i, _)| player.objects.get(i).map(|u| u.id)),
         stopped: turns.players.iter().map(|p| p.unsupported).collect(),
         visibility: turns.spatial.sight.take(),
+        frozen: turns
+            .players
+            .iter()
+            .flat_map(|p| p.objects.iter().filter(|u| p.stopped || u.stopped))
+            .map(|u| u.id)
+            .collect(),
     })
 }
 

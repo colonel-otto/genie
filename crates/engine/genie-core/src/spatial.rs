@@ -405,12 +405,15 @@ impl Spatial {
         self.objects.insert(id, placed);
     }
 
-    /// The object leaves the world: its place and its sight's state go.
-    pub fn leave(&mut self, id: i32) {
-        self.remove(id);
-        if let Some(v) = self.sight.as_mut() {
+    /// The object leaves the world: its place, its sight's state and its records in the registry
+    /// (its destructor, `FUN_141073060`) go.
+    pub fn leave(&mut self, id: i32) -> Result<(), Unsupported> {
+        if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
+            v.registry_leave(id, p.player, p.position, p.radius, p.class)?;
             v.remove_seer(id);
         }
+        self.remove(id);
+        Ok(())
     }
 
     pub fn remove(&mut self, id: i32) {
@@ -628,8 +631,22 @@ impl Spatial {
             self.tiles.count(p.position, p.tall, true);
             if let Some(v) = self.sight.as_mut() {
                 v.moved(id, from, position, p.radius);
+                v.registry_moved(id, p.class, from, position);
             }
         }
+    }
+
+    /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its
+    /// main building's place and UMV entry.
+    pub fn combat_sight(&mut self, id: i32) -> Result<(), Unsupported> {
+        let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) else {
+            return Ok(());
+        };
+        let main = self.annexes.get(&id).and_then(|main| {
+            let place = self.objects.get(main)?.position;
+            Some((place, v.seer(*main).map_or(0, |s| s.umv)))
+        });
+        v.combat_sight(id, p.player, p.position, p.radius, p.class, main)
     }
 
     /// The object's set_state to `state` ([`Visibility::state_changed`]).
@@ -639,12 +656,29 @@ impl Spatial {
         }
     }
 
-    /// The object's master changes to `master` with radii `radius` and line of sight `los`
-    /// ([`Visibility::master_changed`]); the caller files the object's new radii.
-    pub fn sight_master(&mut self, id: i32, radius: [f32; 2], master: i16, los: f32) {
+    /// The object's master changes to `master` with radii `radius`, class `class` and line of
+    /// sight `los` (`FUN_14108c990`: its records leave the registry's lists of its old class,
+    /// [`Visibility::master_changed`], and join those of the new one); the caller files the
+    /// object's new radii and class.
+    pub fn sight_master(
+        &mut self,
+        id: i32,
+        radius: [f32; 2],
+        class: i16,
+        master: i16,
+        los: f32,
+    ) -> Result<(), Unsupported> {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
             v.master_changed(id, p.position, p.radius, radius, master, los);
+            v.registry_master(
+                id,
+                p.player,
+                p.position,
+                (p.radius, p.class),
+                (radius, class),
+            )?;
         }
+        Ok(())
     }
 
     /// The first part of the players' sight the slice met and does not model.

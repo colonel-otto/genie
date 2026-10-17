@@ -763,7 +763,7 @@ impl Turns {
                 }
                 self.pathing.removed(id);
                 self.spatial
-                    .sight_master(id, next.radius, new, next.line_of_sight);
+                    .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
                 self.spatial.insert(id, placed.clone());
                 self.pathing.moved(id, &placed, moving);
             }

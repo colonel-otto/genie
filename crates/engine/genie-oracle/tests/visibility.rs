@@ -58,8 +58,12 @@ fn a_foundation_s_tiles_link_when_its_construction_starts() {
     let rec = std::fs::read(rec).unwrap();
     let save = std::fs::read(dir.join("680.aoe2record")).unwrap();
     let mesh = std::fs::read_to_string(dir.join("680.mesh")).unwrap();
-    let run = genie_oracle::objects_from_save(&save, &rec, 680, 60, 2, Some(&masters), Some(&mesh))
-        .unwrap();
+    let dumps = genie_oracle::Dumps {
+        mesh: Some(&mesh),
+        registry: None,
+    };
+    let run =
+        genie_oracle::objects_from_save(&save, &rec, 680, 60, 2, Some(&masters), dumps).unwrap();
     assert_eq!(run.unsupported, None);
     let slice = links(run.visibility.as_ref().unwrap());
     assert_eq!(slice.len(), 52);
@@ -82,4 +86,79 @@ fn a_save_s_sight_read_as_the_slice_s_start_is_the_save() {
     // the town centre's circle of 8 counts on its player's map
     let tc = spatial.sight.as_ref().unwrap().seer(9156).unwrap();
     assert_eq!((tc.player, tc.master, tc.los), (2, 109, 8.0));
+}
+
+/// Player `p`'s registry lists in the dump's format without the records of the objects
+/// `frozen`, and the masks and slots of the objects `ids`.
+fn registry_lines(
+    r: &genie_core::registry::Registry,
+    p: usize,
+    ids: &[i32],
+    frozen: &[i32],
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for (c, list) in r.lists[p].iter().enumerate() {
+        let list: Vec<_> = list.iter().filter(|x| !frozen.contains(&x.id)).collect();
+        if list.is_empty() {
+            continue;
+        }
+        out.push(format!("list {p} {c} {}", list.len()));
+        for x in list {
+            out.push(format!(
+                "rec {} {:08x} {} {:08x} {:08x} {:08x} {:08x}",
+                x.id,
+                x.distance.to_bits(),
+                x.owner,
+                x.x.to_bits(),
+                x.y.to_bits(),
+                x.rx.to_bits(),
+                x.ry.to_bits()
+            ));
+        }
+    }
+    for &id in ids {
+        let e = r.entry(id).copied().unwrap_or_default();
+        let slots: Vec<String> = e
+            .slots
+            .iter()
+            .map(|s| s.map_or("-1".to_string(), |i| i.to_string()))
+            .collect();
+        out.push(format!("mask {id} {:x} {}", e.mask, slots.join(" ")));
+    }
+    out
+}
+
+#[test]
+fn player_2_s_registry_from_a_save_matches_the_game_s_through_1180() {
+    // the slice from the save after 680 with the game's registry then, through the save after
+    // 1180: player 2's lists (its own objects and the livestock it sees, less the objects the
+    // slice stopped: Gaia's bird 9926, frozen before 880, flew through its sight) and its objects'
+    // masks
+    let Some(dir) = std::env::var_os("GENIE_SNAPSHOTS").map(PathBuf::from) else {
+        return eprintln!("GENIE_SNAPSHOTS is not set; skipping");
+    };
+    let (Some(rec), Some(masters)) = (std::env::var_os("GENIE_TICK_REC"), common::masters()) else {
+        return eprintln!("GENIE_TICK_REC / GENIE_DAT are not set; skipping");
+    };
+    let rec = std::fs::read(rec).unwrap();
+    let save = std::fs::read(dir.join("680.aoe2record")).unwrap();
+    let mesh = std::fs::read_to_string(dir.join("680.mesh")).unwrap();
+    let start = std::fs::read_to_string(dir.join("680.registry")).unwrap();
+    let dumps = genie_oracle::Dumps {
+        mesh: Some(&mesh),
+        registry: Some(&start),
+    };
+    let run =
+        genie_oracle::objects_from_save(&save, &rec, 680, 500, 2, Some(&masters), dumps).unwrap();
+    assert_eq!(run.unsupported, None);
+    let game = genie_oracle::registry_from_dump(
+        &std::fs::read_to_string(dir.join("1180.registry")).unwrap(),
+    )
+    .unwrap();
+    let ids: Vec<i32> = run.objects.iter().map(|o| o.id).collect();
+    let slice = run.visibility.as_ref().unwrap().registry.as_ref().unwrap();
+    assert_eq!(
+        registry_lines(slice, 2, &ids, &run.frozen),
+        registry_lines(&game, 2, &ids, &run.frozen)
+    );
 }

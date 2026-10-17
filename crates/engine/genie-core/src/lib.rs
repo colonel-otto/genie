@@ -17,6 +17,7 @@ pub mod msvc;
 pub mod order;
 pub mod pathing;
 pub mod production;
+pub mod registry;
 pub mod rng;
 pub mod short_path;
 pub mod spatial;

@@ -19,6 +19,7 @@
 //! every object probed) and the line-of-sight powerup (`+0xad4`, unsaved, 0 after a load).
 
 use crate::los_tables::{CENTRED, OFFSET};
+use crate::registry::{MASK, Registry};
 use crate::unit_ai::Unsupported;
 use std::collections::BTreeMap;
 
@@ -78,6 +79,11 @@ pub struct Seer {
     /// building's slot 0x1d8 reads it.
     pub explored: bool,
     pub building: Option<BuildingSight>,
+    /// A building's UMV entry (`+0x904`, from 1; 0 for none): the extra tiles its mask reads.
+    pub umv: u8,
+    /// `+0x924` (`FUN_14121df60`): 1 for an object another player takes over by seeing it, 3
+    /// for livestock.
+    pub capture: u8,
 }
 
 /// An entry of the map's UMV data list (map `+0x5e08`, `+0x5e10`): a building's extent around
@@ -111,8 +117,29 @@ pub struct Visibility {
     /// (its slot 0x88), which the slice does not model.
     pub computer: Vec<bool>,
     seers: BTreeMap<i32, Seer>,
+    /// The objects-in-sight registry, when the slice holds it (the save does not).
+    pub registry: Option<Registry>,
     /// The first part of the game the slice met and does not model, for its caller.
     unsupported: Option<Unsupported>,
+}
+
+/// `+0x924` as a combat object's setup sets it (`FUN_14121df60`): 1 for Gaia's objects other
+/// than its animals, buildings and a few classes (those of 40, 42, 58, 14, 11, 1, 60, 38, 41, 9
+/// and 10, and master 826), and for masters 854 and Gaia's 814, which another player takes over
+/// by seeing them; 3 for classes 58 and 1 (livestock).
+pub fn capture_kind(player: usize, class: i16, master: i16) -> u8 {
+    const KEPT: [i16; 11] = [40, 42, 58, 14, 11, 1, 60, 38, 41, 9, 10];
+    let mut kind = 0;
+    if (player == 0 && !KEPT.contains(&class) && master != 826) || master == 854 {
+        kind = 1;
+    }
+    if player == 0 && master == 814 {
+        kind = 1;
+    }
+    if class == 58 || class == 1 {
+        kind = 3;
+    }
+    kind
 }
 
 /// The tile of a position as `new_position` files the object (`0x1411a58b0`): the position held
@@ -149,6 +176,7 @@ impl Visibility {
             extents_capacity,
             computer,
             seers: BTreeMap::new(),
+            registry: None,
             unsupported: None,
         }
     }
@@ -567,6 +595,13 @@ impl Visibility {
         self.link_tiles(ax, ay, x0, y0, x1, y1)
     }
 
+    /// A building's UMV entry for its footprint (`FUN_1411e6780`'s `FUN_140f68650`), without
+    /// linking its tiles.
+    pub fn building_entry(&mut self, position: [f32; 3], radius: [f32; 2]) -> i32 {
+        let ([ax, ay], [x0, y0, x1, y1]) = Self::footprint(position, radius);
+        self.extent_entry(ax, ay, x0, y0, x1, y1)
+    }
+
     /// The building leaves its tiles (`FUN_1411e6780` before a move, `FUN_1411dbb70`).
     pub fn unlink_building(&mut self, position: [f32; 3], radius: [f32; 2]) {
         let (_, [x0, y0, x1, y1]) = Self::footprint(position, radius);
@@ -764,6 +799,133 @@ impl Visibility {
         self.sight_on(id, position, new_radius, false, false);
     }
 
+    /// The unified map's word at tile (`x`, `y`) of a position, masked ([`MASK`]).
+    fn word_at(&self, x: f32, y: f32) -> u64 {
+        self.unified[self.index(x as i32, y as i32)] & MASK
+    }
+
+    /// `RGE_Combat_Object::update`'s sight (`0x14107dfb0`, after the actions): the object's mask
+    /// is the unified map's word at its tile with those of its UMV entry's tiles on the map; an
+    /// annex not yet dead (state below 7) reads its main building's (`main`: its place and UMV
+    /// entry), with no test of the map's edge. A changed mask updates the registry with the place
+    /// read, the master's radii and class (`Update_Unit_Info`). An object another player takes
+    /// over by seeing it (`+0x924` 1) is not modelled.
+    #[allow(clippy::too_many_arguments)]
+    pub fn combat_sight(
+        &mut self,
+        id: i32,
+        owner: usize,
+        at: [f32; 3],
+        radius: [f32; 2],
+        class: i16,
+        main: Option<([f32; 3], u8)>,
+    ) -> Result<(), Unsupported> {
+        let Some(s) = self.seers.get(&id).copied() else {
+            return Ok(());
+        };
+        if self.registry.is_none() || id < 0 {
+            return Ok(());
+        }
+        let annex = main.filter(|_| s.state < 7 && s.building.is_some());
+        let ([x, y, _], umv, edge) = match annex {
+            Some((place, umv)) => (place, umv, false),
+            None => (at, s.umv, true),
+        };
+        let mut mask = self.word_at(x, y);
+        if umv != 0 {
+            let offsets = self
+                .extents
+                .get(usize::from(umv) - 1)
+                .map(|e| e.offsets.clone())
+                .ok_or(Unsupported("an object's UMV entry beyond the list"))?;
+            for [dx, dy] in offsets {
+                let (fx, fy) = (dx as f32 + x, dy as f32 + y);
+                let on_map =
+                    0.0 <= fx && 0.0 <= fy && fx < self.width as f32 && fy < self.height as f32;
+                if on_map || !edge {
+                    mask |= self.word_at(fx, fy);
+                }
+            }
+        }
+        let registry = self.registry.as_mut().expect("checked above");
+        let old = registry.entry(id).map_or(0, |e| e.mask);
+        if mask == old {
+            return Ok(());
+        }
+        registry.entries.entry(id).or_default().mask = mask;
+        registry.update_unit(
+            id,
+            owner as u8,
+            [x, y],
+            radius,
+            class,
+            old & 0xffff_ffff,
+            mask,
+        )?;
+        let others = mask & 0xffff & !(1 << owner) & !1;
+        if s.capture == 1 && others != 0 {
+            return Err(Unsupported(
+                "an object another player takes over by seeing it",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The registry's part of a combat object's new place (`FUN_14108c320`): its records follow.
+    pub fn registry_moved(&mut self, id: i32, class: i16, from: [f32; 3], to: [f32; 3]) {
+        if id < 0 || (from[0] == to[0] && from[1] == to[1]) {
+            return;
+        }
+        if let Some(r) = self.registry.as_mut() {
+            r.moved(id, class, [to[0], to[1]]);
+        }
+    }
+
+    /// A master change's registry part (`FUN_14108c990`): the object leaves every list of its
+    /// old class and joins those of its new one, with its mask as it was.
+    pub fn registry_master(
+        &mut self,
+        id: i32,
+        owner: usize,
+        at: [f32; 3],
+        old: ([f32; 2], i16),
+        new: ([f32; 2], i16),
+    ) -> Result<(), Unsupported> {
+        let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
+            return Ok(());
+        };
+        let mask = r.entry(id).map_or(0, |e| e.mask);
+        let place = [at[0], at[1]];
+        r.update_unit(id, owner as u8, place, old.0, old.1, mask & 0xffff_ffff, 0)?;
+        r.update_unit(id, owner as u8, place, new.0, new.1, 0, mask)
+    }
+
+    /// The combat object's destructor (`FUN_141073060`): it leaves every list.
+    pub fn registry_leave(
+        &mut self,
+        id: i32,
+        owner: usize,
+        at: [f32; 3],
+        radius: [f32; 2],
+        class: i16,
+    ) -> Result<(), Unsupported> {
+        let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
+            return Ok(());
+        };
+        let mask = r.entry(id).map_or(0, |e| e.mask);
+        r.update_unit(
+            id,
+            owner as u8,
+            [at[0], at[1]],
+            radius,
+            class,
+            mask & 0xffff_ffff,
+            0,
+        )?;
+        r.entries.remove(&id);
+        Ok(())
+    }
+
     /// A foundation's construction starts (`FUN_1411e5670`): its build points become a sliver,
     /// its footprint comes into sight and its tiles link again.
     pub fn construction_started(&mut self, id: i32, position: [f32; 3], radius: [f32; 2]) {
@@ -806,6 +968,8 @@ mod tests {
             state: 2,
             explored: true,
             building: None,
+            umv: 0,
+            capture: 0,
         }
     }
 

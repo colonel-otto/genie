@@ -24,6 +24,11 @@ fn mesh(dir: &std::path::Path, tick: usize) -> Option<String> {
     std::fs::read_to_string(dir.join(format!("{tick}.mesh"))).ok()
 }
 
+/// The game's objects-in-sight registry at a tick, where the directory has it.
+fn registry(dir: &std::path::Path, tick: usize) -> Option<String> {
+    std::fs::read_to_string(dir.join(format!("{tick}.registry"))).ok()
+}
+
 /// The slice from the save after `start`, run `ticks` ticks, against the save after `start + ticks`.
 fn differences(start: usize, ticks: usize, player: u32) -> Option<Vec<String>> {
     let (dir, rec, masters) = inputs()?;
@@ -34,7 +39,10 @@ fn differences(start: usize, ticks: usize, player: u32) -> Option<Vec<String>> {
         ticks,
         player,
         Some(&masters),
-        mesh(&dir, start).as_deref(),
+        genie_oracle::Dumps {
+            mesh: mesh(&dir, start).as_deref(),
+            registry: registry(&dir, start).as_deref(),
+        },
     )
     .unwrap();
     let after = save(&dir, start + ticks);
@@ -72,8 +80,16 @@ fn a_save_read_as_the_slice_s_start_is_the_save() {
     };
     let rec = std::fs::read(std::env::var_os("GENIE_TICK_REC").unwrap()).unwrap();
     let start = save(&dir, 679);
-    let run =
-        genie_oracle::objects_from_save(&start, &rec, 679, 0, 2, Some(&masters), None).unwrap();
+    let run = genie_oracle::objects_from_save(
+        &start,
+        &rec,
+        679,
+        0,
+        2,
+        Some(&masters),
+        Default::default(),
+    )
+    .unwrap();
     let game = genie_oracle::saved_objects(&start, 2).unwrap();
     assert_eq!(
         genie_oracle::object_differences(&run.objects, &game),
