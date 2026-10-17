@@ -2,6 +2,7 @@
 //! changes into to do them. The values are game data: the player's masters in the save, with the
 //! `.dat`'s values for what the save does not carry.
 
+use crate::movement::MoveStats;
 use crate::tasks::{Actor, Diplomacy, TaskTarget, find_task};
 use crate::unit_ai::Unsupported;
 
@@ -89,6 +90,24 @@ pub struct Master {
     /// (`+0x898`'s first entry), 0 without one.
     pub hit_points: i16,
     pub build_time: i16,
+    /// The combat master's `weapon_range` (`+0x828`, object slot 0x230) and
+    /// `minimum_weapon_range` (`+0x850`, slot 0x240).
+    pub weapon_range: f32,
+    pub min_range: f32,
+    /// `charge_type` (`+0x922`): 6 and 7 add `charge_event` (`+0x920`) to the range against some
+    /// targets (slot 0x2f8).
+    pub charge_type: i16,
+    /// The resource storage (`attribute_type_held`, `attribute_amount_held`, `attribute_flag`:
+    /// `+0x60a`, `+0x610`, `+0x628`): what an object of this master adds to its player's
+    /// attributes, by its flag.
+    pub storage: Vec<(i16, f32, u8)>,
+    /// The master has damage sprites (`+0x638`..`+0x640`): a master change checks them
+    /// (`FUN_1411859a0`).
+    pub damage_sprites: bool,
+    /// What a unit of this master moves with, its speed with the master's walking sprite (the
+    /// run sprite `+0x750` if it has one, else the move sprite `+0x748`); None for a master that
+    /// does not move.
+    pub moving: Option<MoveStats>,
 }
 
 /// A player's masters by id.
@@ -112,6 +131,11 @@ impl Masters {
 
     pub fn get(&self, id: i16) -> Option<&Master> {
         self.by_id.get(usize::try_from(id).ok()?)?.as_ref()
+    }
+
+    /// Every master, by id.
+    pub fn iter(&self) -> impl Iterator<Item = &Master> {
+        self.by_id.iter().flatten()
     }
 
     /// The work command's choice of master and task (`FUN_14106ff70` up to the task's
@@ -224,6 +248,7 @@ mod tests {
             work_rate: 1.0,
             hit_points: 25,
             build_time: 0,
+            ..Master::default()
         }
     }
 
@@ -245,6 +270,7 @@ mod tests {
             work_rate: 0.0,
             hit_points: 550,
             build_time: 25,
+            ..Master::default()
         }
     }
 

@@ -1,16 +1,19 @@
 //! Deterministic simulation core of the genie engine reimplementation.
 
 pub mod artifact;
+pub mod attack;
 pub mod build;
 pub mod checkpoint;
 pub mod fly;
 pub mod fmath;
+pub mod hunt;
 pub mod lifecycle;
 pub mod masters;
 pub mod mesh;
 pub mod move_to;
 pub mod movement;
 pub mod msvc;
+pub mod order;
 pub mod pathing;
 pub mod production;
 pub mod rng;

@@ -312,6 +312,19 @@ pub struct Planning<'a> {
     pub construction_rate: f32,
 }
 
+impl Planning<'_> {
+    /// The same planning for a call that ends before this one is used again.
+    pub fn reborrow(&mut self) -> Planning<'_> {
+        Planning {
+            pathing: &mut *self.pathing,
+            now: self.now,
+            computer: self.computer,
+            object: &mut *self.object,
+            construction_rate: self.construction_rate,
+        }
+    }
+}
+
 /// Where the motion step goes on after a pass over the walked level.
 enum Next {
     /// Back to the top of the step (`LAB_141151124`).
@@ -328,6 +341,19 @@ enum Step {
     Again,
     /// On to the walk (`LAB_141153bd1`).
     Walk,
+}
+
+/// The squared distance between two footprints on the ground (`FUN_14118f8c0`): per axis the
+/// centre distance minus both radii, at least 0, squared and summed.
+pub fn footprint_gap_squared(
+    a: [f32; 3],
+    a_radius: [f32; 2],
+    b: [f32; 3],
+    b_radius: [f32; 2],
+) -> f32 {
+    let x = ((b[0] - a[0]).abs() - (a_radius[0] + b_radius[0])).max(0.0);
+    let y = ((b[1] - a[1]).abs() - (a_radius[1] + b_radius[1])).max(0.0);
+    x * x + y * y
 }
 
 /// The distance between two footprints on the ground (`FUN_14118f680`): per axis the centre
@@ -760,7 +786,7 @@ impl Mover {
     /// empties. `+0x7b8` is cleared too, which the slice does not hold; a master whose move
     /// algorithm has bit 0 also resets the unit's sprite (`+0x78c`, `+0x958`), which is not
     /// modelled.
-    fn stop(&mut self) -> Result<(), Unsupported> {
+    pub(crate) fn stop(&mut self) -> Result<(), Unsupported> {
         if self.stats.move_algorithm & 1 != 0 {
             return Err(Unsupported(
                 "a stop that resets the sprite (move algorithm bit 0)",

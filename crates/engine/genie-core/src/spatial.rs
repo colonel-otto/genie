@@ -204,6 +204,13 @@ pub struct Spatial {
     /// The tile rectangles (x0, y0, x1, y1) whose static marks changed, for the planners
     /// ([`Spatial::take_changes`]).
     changed: Vec<[i16; 4]>,
+    /// The seconds since each frozen object froze.
+    frozen_for: BTreeMap<i32, f32>,
+    /// What a stopped player's units may have done since: the fastest any of the players' unit
+    /// masters (type 70) moves and the farthest any acts beyond its footprint (its weapon or work
+    /// range), for [`Spatial::check_known`]. 0 when not set.
+    pub fastest: f32,
+    pub reach: f32,
 }
 
 impl Spatial {
@@ -219,6 +226,9 @@ impl Spatial {
             objects: BTreeMap::new(),
             tiles,
             changed: Vec::new(),
+            frozen_for: BTreeMap::new(),
+            fastest: 0.0,
+            reach: 0.0,
         }
     }
 
@@ -283,6 +293,7 @@ impl Spatial {
     pub fn freeze(&mut self, id: i32) {
         if let Some(p) = self.objects.get_mut(&id) {
             p.unknown.get_or_insert(0.0);
+            self.frozen_for.entry(id).or_insert(0.0);
         }
     }
 
@@ -293,21 +304,56 @@ impl Spatial {
                 *u += p.speed * dt;
             }
         }
+        for t in self.frozen_for.values_mut() {
+            *t += dt;
+        }
     }
 
-    /// Fails when a frozen object may be within `rect` (`x0, y0, x1, y1`): the answer of a query
-    /// over it depends on where that object really is.
+    /// Fails when a frozen object may be within `rect` (`x0, y0, x1, y1`) or may have changed
+    /// there: the answer of a query over it depends on where that object really is. A frozen
+    /// object that does not move stays where it was; it can only have changed when a stopped
+    /// player's unit (Gaia's animals do not work on objects) may have reached it: a frozen unit
+    /// within what it may have moved, or a unit a stopped player's building may have made since,
+    /// at the fastest speed of the players' units, each plus the farthest reach.
     pub fn check_known(&self, rect: [f32; 4]) -> Result<(), Unsupported> {
-        let near = self.objects.values().any(|p| {
+        let near = self.objects.iter().any(|(&id, p)| {
             p.unknown.is_some_and(|u| {
                 let [x0, y0, x1, y1] = p.bounds();
-                rect[0] <= x1 + u && x0 - u <= rect[2] && rect[1] <= y1 + u && y0 - u <= rect[3]
+                let inside = rect[0] <= x1 + u
+                    && x0 - u <= rect[2]
+                    && rect[1] <= y1 + u
+                    && y0 - u <= rect[3];
+                inside && (0.0 < u || self.touchable(id, [x0, y0, x1, y1]))
             })
         });
         if near {
             return Err(Unsupported("an object of a stopped player may be near"));
         }
         Ok(())
+    }
+
+    /// Whether a stopped player's unit may have reached the frozen object `id` within `rect`.
+    fn touchable(&self, id: i32, rect: [f32; 4]) -> bool {
+        self.objects.iter().any(|(&other, q)| {
+            let Some(u) = q.unknown.filter(|_| other != id) else {
+                return false;
+            };
+            if q.player == 0 {
+                // Gaia's units (animals) do not work on objects
+                return false;
+            }
+            let moved = if 0.0 < q.speed {
+                u
+            } else {
+                self.fastest * self.frozen_for.get(&other).copied().unwrap_or(0.0)
+            };
+            let grow = moved + self.reach;
+            let [x0, y0, x1, y1] = q.bounds();
+            rect[0] <= x1 + grow
+                && x0 - grow <= rect[2]
+                && rect[1] <= y1 + grow
+                && y0 - grow <= rect[3]
+        })
     }
 
     /// A new object, in the order the game adds them: a static record marks only the tiles no
@@ -863,5 +909,30 @@ mod tests {
         s.grow_unknown(0.5);
         assert!(s.footprint_occupants(10028, &house).is_err());
         assert!(s.get_known(9656).is_err());
+    }
+
+    #[test]
+    fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_it() {
+        let mut s = Spatial::new([64, 64]);
+        let tree = Placed {
+            player: 0,
+            speed: 0.0,
+            ..villager(24.5, 97.5 - 60.0)
+        };
+        s.insert(9365, tree);
+        s.freeze(9365);
+        s.reach = 1.0;
+        let near = [24.0, 37.0, 24.6, 38.0];
+        assert!(s.check_known(near).is_ok());
+        // a stopped villager 10 tiles off, 0.8 tiles a second
+        let mut walker = villager(34.5, 37.5);
+        walker.player = 1;
+        walker.speed = 0.8;
+        s.insert(9200, walker);
+        s.freeze(9200);
+        s.grow_unknown(10.0);
+        assert!(s.check_known(near).is_ok());
+        s.grow_unknown(2.0);
+        assert!(s.check_known(near).is_err());
     }
 }

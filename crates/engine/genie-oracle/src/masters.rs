@@ -112,6 +112,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .as_ref()
             .and_then(|c| c.train_locations.first())
             .map_or(0, |t| t.queue_time),
+        ..work::Master::default()
     }
 }
 

@@ -113,6 +113,25 @@ impl UnitAi {
         self.secondary_timer = self.secondary_timer.min(750);
     }
 
+    /// The work command's notify of its new action (`FUN_14106e4e0`, object slot 0x828): the unit
+    /// AI takes the order and action values of the action's type and the target
+    /// (`FUN_140c64b60`, `FUN_140c64b50`, `FUN_140c64be0`). Leaving order 711 or 733 redraws an
+    /// adjusted idle timeout of exactly 750 (`UpdateAdjustedIdleTimeout`) and caps the secondary
+    /// timer at 750. The last order, action and target, the target's class and point, the order
+    /// history (`FUN_140c42080`) and the notifies (`FUN_140c5dc10`) are not held.
+    pub fn notify_work(&mut self, order: i32, action: i32, target: i32, ai: &mut Well512) {
+        let leaving = |o| self.current_order == o && order != o;
+        if leaving(711) || leaving(733) {
+            if self.adjusted_idle_timeout == 750 {
+                self.adjusted_idle_timeout = adjusted_idle_timeout(self.idle_timeout, ai);
+            }
+            self.secondary_timer = self.secondary_timer.min(750);
+        }
+        self.current_order = order;
+        self.current_action = action;
+        self.current_target = target;
+    }
+
     fn is_idle(&self) -> bool {
         self.current_order == -1 && self.current_action == -1 && self.current_target == -1
     }
@@ -178,8 +197,13 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
     ) -> Result<(), Unsupported> {
-        if (self.current_order, self.current_action) != (BUILD_ORDER, BUILD_ACTION) {
-            return Err(Unsupported("unit is not idle and not on a build order"));
+        if !matches!(
+            (self.current_order, self.current_action),
+            (BUILD_ORDER, BUILD_ACTION) | (HUNT_ORDER, HUNT_ACTION)
+        ) {
+            return Err(Unsupported(
+                "unit is not idle and not on a build or hunt order",
+            ));
         }
         if !matches!(retarget_kind(self.ai_type)?, Retarget::Never) {
             return Err(Unsupported("a unit on a build order that retargets"));
@@ -194,6 +218,9 @@ impl UnitAi {
 /// The build order (`0x2be`) and the build action value (`0x25a`) of a villager's unit AI.
 pub const BUILD_ORDER: i32 = 702;
 pub const BUILD_ACTION: i32 = 602;
+/// The hunt order (`0x2c9`) and action value (`0x265`) of a villager's unit AI.
+pub const HUNT_ORDER: i32 = 713;
+pub const HUNT_ACTION: i32 = 613;
 
 #[cfg(test)]
 mod tests {
@@ -242,6 +269,29 @@ mod tests {
         // another order is not modelled
         u.current_order = 700;
         assert!(u.update_working(50, false, &mut r).is_err());
+    }
+
+    #[test]
+    fn a_work_notify_sets_the_order_and_redraws_a_timeout_left_by_order_711() {
+        let mut u = UnitAi {
+            current_order: BUILD_ORDER,
+            current_action: BUILD_ACTION,
+            current_target: 10028,
+            adjusted_idle_timeout: 750,
+            idle_timeout: 3000,
+            secondary_timer: 900,
+            ..idle(8)
+        };
+        let mut r = rng();
+        u.notify_work(HUNT_ORDER, HUNT_ACTION, 9365, &mut r);
+        assert_eq!(
+            (u.current_order, u.current_action, u.current_target, r.draws),
+            (HUNT_ORDER, HUNT_ACTION, 9365, 0)
+        );
+        u.current_order = 711;
+        u.notify_work(HUNT_ORDER, HUNT_ACTION, 9365, &mut r);
+        assert_eq!((r.draws, u.secondary_timer), (1, 750));
+        assert_ne!(u.adjusted_idle_timeout, 750);
     }
 
     #[test]

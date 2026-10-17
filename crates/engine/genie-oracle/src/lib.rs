@@ -207,9 +207,18 @@ fn unit(
         ai: unit_ai(object),
         construction: construction(object, s, objects),
         work_rate_powerup: object.combat().map_or(0.0, |c| c.work_rate_powerup),
-        held: (s.attribute_type_held, s.attribute_amount_held),
         attackable: s.unit_attackable_flag != 0,
         pasture: s.parent_pasture_id,
+        my_pasture: s.my_pasture_id,
+        annex_of: object
+            .tribe_building_object
+            .as_ref()
+            .map(|b| b.mupt_linked_object_references_linked_owner_id)
+            .filter(|&owner| owner != -1),
+        hp_powerups: object
+            .combat()
+            .map_or([0.0; 2], |c| [c.hitpoints_powerup, c.hitpoints_max_powerup]),
+        workers: s.worker_num,
         ..Unit::default()
     };
     let imported = if saved {
@@ -292,6 +301,31 @@ fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
                 .rge_master_moving_object
                 .rge_master_animated_object
         }))
+}
+
+/// The moving part of a saved master, when its class has one.
+fn moving_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterMovingObject> {
+    let combat = m.tribe_master_combat_object.as_ref().or(m
+        .tribe_master_building_object
+        .as_ref()
+        .map(|b| &b.tribe_master_combat_object));
+    if let Some(c) = combat {
+        return Some(
+            &c.rge_master_combat_object
+                .rge_master_action_object
+                .rge_master_moving_object,
+        );
+    }
+    let r = m.rge_master.as_ref()?;
+    None.or(r.rge_master_moving_object.as_ref())
+        .or(r
+            .rge_master_action_object
+            .as_ref()
+            .map(|a| &a.rge_master_moving_object))
+        .or(r
+            .rge_master_combat_object
+            .as_ref()
+            .map(|c| &c.rge_master_action_object.rge_master_moving_object))
 }
 
 /// One saved level of path data, with its path's waypoints from the world's path table.
@@ -763,6 +797,10 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                     .live_objects()
                     .map(|o| unit(o, p.objects(), &header.world.base_world.path, civ, masters))
                     .collect(),
+                sleeping: p
+                    .sleeping_objects()
+                    .map(|o| unit(o, p.objects(), &header.world.base_world.path, civ, masters))
+                    .collect(),
                 computer: false,
                 resources: [resource(0), resource(1), resource(2), resource(3)],
                 construction_rate: resource(CONSTRUCTION_RATE),
@@ -802,6 +840,21 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
             .iter()
             .map(|p| work_masters(p.objects(), p.world_player().base.civ_id, table))
             .collect();
+        // the players' unit masters (type 70), Gaia's left out
+        let all = || {
+            turns
+                .masters
+                .iter()
+                .skip(1)
+                .flat_map(|m| m.iter())
+                .filter(|m| m.kind == 70)
+        };
+        turns.spatial.fastest = all()
+            .filter_map(|m| m.moving.as_ref().map(|s| s.speed))
+            .fold(0.0, f32::max);
+        turns.spatial.reach = all()
+            .flat_map(|m| m.tasks.iter().map(|t| t.work_range).chain([m.weapon_range]))
+            .fold(0.0, f32::max);
     }
     turns
 }
@@ -872,9 +925,58 @@ fn work_masters(
         if let Some(c) = combat {
             work.cost = build_cost(&c.build_inventory);
             work.build_time = c.train_location.first().map_or(0, |t| t.train_time);
+            work.charge_type = c.charge_type;
+            work.weapon_range = c.rge_master_combat_object.weapon_range;
+            work.min_range = c.rge_master_combat_object.minimum_weapon_range;
         }
+        work.storage = s
+            .attribute
+            .iter()
+            .map(|e| {
+                (
+                    e.attribute_type_held,
+                    e.attribute_amount_held,
+                    e.attribute_flag,
+                )
+            })
+            .collect();
+        work.damage_sprites = !s.damage_sprite.is_empty();
+        work.moving = moving_stats(m, s, civ, table);
         Some(work)
     }))
+}
+
+/// What a unit of a saved master moves with ([`genie_core::movement::MoveStats`]): the master's
+/// top speed times its walking sprite's speed factor when above 0 (the run sprite if it has one,
+/// else the move sprite: the MoveTo's, slots 2000 and 0x7c8), the `.dat`'s turning, the radii and
+/// the terrain restriction with its mask.
+fn moving_stats(
+    m: &Master,
+    s: &genie_save::generated::world::RgeMasterStaticObject,
+    civ: u8,
+    table: &MasterTable,
+) -> Option<genie_core::movement::MoveStats> {
+    let moving = moving_master(m)?;
+    let sprite = if moving.run_sprite_id >= 0 {
+        moving.run_sprite_id
+    } else {
+        moving.move_sprite_id
+    };
+    let base = moving.rge_master_animated_object.max_speed;
+    let factor = table.sprite_speed(sprite).unwrap_or(0.0);
+    let turning = table.turning(civ, s.id())?;
+    let restriction = usize::try_from(s.terrain_restriction_mask_id).ok()?;
+    Some(genie_core::movement::MoveStats {
+        speed: if 0.0 < factor { base * factor } else { base },
+        turn_rate: turning.max_yaw_per_second_moving,
+        turn_radius: turning.turn_radius,
+        turn_radius_speed: turning.turn_radius_speed,
+        radius: [s.radius_x, s.radius_y, s.radius_z],
+        restriction,
+        restriction_mask: *table.terrain.masks().get(restriction)?,
+        turns_at_once: turning.stationary_yaw_revolution_time == 0.0,
+        move_algorithm: turning.move_algorithm,
+    })
 }
 
 /// A combat master's `build_inventory` entries `(resource, amount, flag)`, three shorts each; the
@@ -1058,13 +1160,24 @@ impl Decoder {
     fn command(&mut self, packet: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
         use genie_rec::de::command::Command as Packet;
         // INTERACT, MOVE and RETREAT reset their units' idle timeouts (`FUN_140e6cfc0`), WORK not
-        let (player, num, ids, order) = match Packet::decode(packet) {
+        let (player, num, ids, order, interact) = match Packet::decode(packet) {
             Packet::Build(build) => return Some(build_command(&build, sections)),
             Packet::MultiQueue(queue) => return Some(queue_command(&queue, sections)),
-            Packet::Interact(c) => (c.commp_id, c.num, c.ids, true),
-            Packet::Work(c) => (c.commp_id, c.num, c.ids, false),
-            Packet::Move(c) => (c.commp_id, c.num, c.ids, true),
-            Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true),
+            Packet::Interact(c) => {
+                let order = genie_core::order::Interact {
+                    target: c.t_id,
+                    point: [c.x, c.y],
+                    carry_test: c.field_0x12 != 0,
+                    queued: c.field_0x13 != 0,
+                    direct: c.field_0x14 != 0,
+                    human: c.field_0x15 == 1,
+                    filter: c.field_0x16 as i16,
+                };
+                (c.commp_id, c.num, c.ids, true, Some(order))
+            }
+            Packet::Work(c) => (c.commp_id, c.num, c.ids, false, None),
+            Packet::Move(c) => (c.commp_id, c.num, c.ids, true, None),
+            Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true, None),
             _ => return None,
         };
         let units = if num == LAST_COMMANDED {
@@ -1083,6 +1196,7 @@ impl Decoder {
         order.then_some(Command::Order {
             player: player as usize,
             units,
+            interact,
         })
     }
 }
@@ -1344,6 +1458,7 @@ pub fn simulate_word9(
 fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32; 11] {
     let mut state = player_state(section, id);
     state.resources = simulated.resources;
+    state.sleeping_count = simulated.sleeping.len() as u32;
     state.live = simulated
         .objects
         .iter()
@@ -1376,6 +1491,7 @@ fn top_action(unit: &Unit) -> Option<TopAction> {
             .move_to
             .map(|m| action(genie_core::move_to::MOVE_TO, m.state.number())))
         .or(unit.fly.map(|f| action(genie_core::fly::FLY, f.state)))
+        .or(unit.hunt.map(|h| action(genie_core::hunt::HUNT, h.state)))
 }
 
 /// One live object's word-9 terms in the slice after a number of ticks: its id, the top action's

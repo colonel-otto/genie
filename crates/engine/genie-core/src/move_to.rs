@@ -45,6 +45,19 @@ pub struct Walk<'a> {
     pub plan: Option<Planning<'a>>,
 }
 
+impl Walk<'_> {
+    /// The same walk for a call that ends before this one is used again.
+    pub fn reborrow(&mut self) -> Walk<'_> {
+        Walk {
+            mover: self.mover.as_deref_mut(),
+            me: self.me,
+            dt: self.dt,
+            world: &mut *self.world,
+            plan: self.plan.as_mut().map(|p| p.reborrow()),
+        }
+    }
+}
+
 /// Where a MoveTo goes: a target object or a point (`x, y, z` on the map).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Goal {

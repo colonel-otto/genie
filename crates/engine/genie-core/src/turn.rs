@@ -15,10 +15,12 @@
 use crate::artifact::Artifact;
 use crate::build::{BUILD, BuildAction, BuildTask, Construction, Site, Walk};
 use crate::fly::Fly;
+use crate::hunt::HuntAction;
 use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::masters::Masters;
 use crate::move_to::MoveToAction;
 use crate::movement::{Me, Mover, Planning, footprint_gap};
+use crate::order::Interact;
 use crate::pathing::Pathing;
 use crate::production::{Production, Queued};
 use crate::rng::{Stream, Streams};
@@ -55,12 +57,21 @@ pub struct Unit {
     pub construction: Option<Construction>,
     /// `+0xa30`, `mWorkRatePowerup`: what the unit adds to its master's work rate.
     pub work_rate_powerup: f32,
-    /// `+0x308`, `+0x310`: the kind and amount of the resource it holds (−1, 0 for none).
-    pub held: (i16, f32),
     /// `+0x68a`, `unit_attackable_flag`.
     pub attackable: bool,
-    /// `+0x790`, `parent_pasture_id`.
+    /// `+0x790`, `parent_pasture_id`: the pasture it is in; `+0x794`, `my_pasture_id`: the one it
+    /// tends. -1 for none.
     pub pasture: i32,
+    pub my_pasture: i32,
+    /// An annex's main building (`+0xbb8`, the save's linked owner).
+    pub annex_of: Option<i32>,
+    /// `mHitpointsPowerup` and `mHitpointsMaxPowerup` (`+0xa38`, `+0xa3c`), which the task finder
+    /// adds to the hit points.
+    pub hp_powerups: [f32; 2],
+    /// A villager's Hunt action, its top action.
+    pub hunt: Option<HuntAction>,
+    /// `+0x644`, `worker_num`: the actions that have the object as their target.
+    pub workers: i32,
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
@@ -98,8 +109,12 @@ pub enum Command {
     Unmodelled { player: usize, why: Unsupported },
     /// INTERACT (0x00), MOVE (0x03) or RETREAT (0x23): before the order runs, each listed unit's AI
     /// resets its idle timeout ([`UnitAi::reset_for_order`]), in list order, wherever the unit is.
-    /// The slice does not move the units.
-    Order { player: usize, units: Vec<i32> },
+    /// INTERACT's order then runs ([`Interact`]); MOVE and RETREAT are not modelled.
+    Order {
+        player: usize,
+        units: Vec<i32>,
+        interact: Option<Interact>,
+    },
 }
 
 /// QUEUE's unit and building (the fields of [`Command::Queue`] but the cost).
@@ -170,6 +185,15 @@ impl Context<'_> {
 }
 
 impl Unit {
+    /// The type of its top action, if it has one.
+    pub fn top_action_kind(&self) -> Option<i16> {
+        None.or(self.artifact.map(|_| crate::artifact::ARTIFACT_TYPE))
+            .or(self.build.map(|_| crate::build::BUILD))
+            .or(self.move_to.map(|_| crate::move_to::MOVE_TO))
+            .or(self.fly.map(|_| crate::fly::FLY))
+            .or(self.hunt.map(|_| crate::hunt::HUNT))
+    }
+
     /// One update; true when the object leaves its list. `others` are the rest of the owner's
     /// objects, whose foundations a builder works on.
     fn update(&mut self, c: &mut Context<'_>, others: &mut [Unit]) -> Result<bool, Unsupported> {
@@ -222,6 +246,10 @@ impl Unit {
         if let Some(fly) = self.fly.as_mut() {
             fly.update(c.walk(self.mover.as_mut(), me))?;
         }
+        if let Some(hunt) = self.hunt.as_mut() {
+            let computer = c.computer;
+            hunt.update(c.walk(self.mover.as_mut(), me), computer)?;
+        }
         // the motion step may have put the unit onto a waypoint it reached
         if let Some(p) = c.spatial.get(self.id) {
             self.position = p.position;
@@ -229,7 +257,7 @@ impl Unit {
         if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
             if ai.current_order == -1 && ai.current_action == -1 && ai.current_target == -1 {
                 ai.update_idle(dt, c.world_time, c.computer, c.streams.get(Stream::Ai))?;
-            } else if self.build.is_some() && !self.life.inside {
+            } else if (self.build.is_some() || self.hunt.is_some()) && !self.life.inside {
                 ai.update_working(dt, c.computer, c.streams.get(Stream::Ai))?;
             } else {
                 return Err(Unsupported("unit is not idle"));
@@ -256,8 +284,36 @@ pub struct Player {
     pub civ: u8,
     /// `relation[i]` (`player+0x260`): how the player stands to player i.
     pub relations: Vec<u8>,
+    /// The sleeping objects, in their list's order: they are not updated; a unit's work on one
+    /// wakes it.
+    pub sleeping: Vec<Unit>,
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, Unsupported)>,
+}
+
+impl Player {
+    /// `FUN_141616820` for the attributes an object's storage holds: the attribute's value grows
+    /// by `amount` (`FUN_14165d040`; the peak of attribute 11, `+0x6fc`, and the resource events of
+    /// `FUN_140c898a0` are not held). Food, wood, stone and gold are the slice's `resources`; the
+    /// attributes whose change has side effects (50, 183, 196) are not modelled.
+    pub fn add_attribute(&mut self, kind: i16, amount: f32) -> Result<(), Unsupported> {
+        let i = usize::try_from(kind).map_err(|_| Unsupported("a negative attribute"))?;
+        match i {
+            50 | 183 | 196 => Err(Unsupported("an attribute whose change has side effects")),
+            0..=3 => {
+                self.resources[i] += amount;
+                Ok(())
+            }
+            _ => {
+                let v = self
+                    .attributes
+                    .get_mut(i)
+                    .ok_or(Unsupported("an attribute the player does not have"))?;
+                *v += amount;
+                Ok(())
+            }
+        }
+    }
 }
 
 /// World state the slice carries from tick to tick. All of it is in the header save.
@@ -282,13 +338,17 @@ pub struct Turns {
     pub pathing: Pathing,
     /// The game's drop-site table (`dropsites.json`).
     pub drop_sites: Vec<DropSite>,
-    streams: Streams,
+    /// The game settings' test `FUN_141302150` (their `+0x1070` flag, then a table entry's
+    /// `+0x9c`): a hunter drops another resource it carries. The tick oracle read the flag as 0 in
+    /// MarvinBlue/426048731; where the save or the lobby holds it is not known yet.
+    pub carry_rule: bool,
+    pub(crate) streams: Streams,
 }
 
 /// The players' relations and the drop sites, as the task finder reads them.
-struct World<'a> {
-    players: &'a [Player],
-    drop_sites: &'a [DropSite],
+pub(crate) struct World<'a> {
+    pub(crate) players: &'a [Player],
+    pub(crate) drop_sites: &'a [DropSite],
 }
 
 impl Diplomacy for World<'_> {
@@ -334,6 +394,7 @@ impl Turns {
             spatial: Spatial::default(),
             pathing: Pathing::default(),
             drop_sites: Vec::new(),
+            carry_rule: false,
             streams: Streams::default(),
         }
     }
@@ -397,9 +458,13 @@ impl Turns {
                             },
                         }),
                     work_rate_powerup: 0.0,
-                    held: (-1, 0.0),
                     attackable: true,
                     pasture: -1,
+                    my_pasture: -1,
+                    annex_of: None,
+                    hp_powerups: [0.0; 2],
+                    hunt: None,
+                    workers: 0,
                 });
                 if let Err(e) = self.task_builders(player, id, master, position, builders) {
                     let owner = &mut self.players[player];
@@ -431,7 +496,11 @@ impl Turns {
                 let owner = &mut self.players[player];
                 owner.unsupported.get_or_insert((self.ticks, 0, why));
             }
-            Command::Order { player, ref units } => {
+            Command::Order {
+                player,
+                ref units,
+                interact,
+            } => {
                 for &id in units {
                     let ai = self
                         .players
@@ -443,12 +512,14 @@ impl Turns {
                         ai.reset_for_order(self.streams.get(Stream::Ai));
                     }
                 }
-                let owner = &mut self.players[player];
-                owner.unsupported.get_or_insert((
-                    self.ticks,
-                    0,
-                    Unsupported("an order moves its units"),
-                ));
+                let result = match interact {
+                    Some(order) => self.interact(player, units, &order),
+                    None => Err(Unsupported("an order moves its units")),
+                };
+                if let Err(e) = result {
+                    let owner = &mut self.players[player];
+                    owner.unsupported.get_or_insert((self.ticks, 0, e));
+                }
             }
         }
     }
@@ -536,7 +607,7 @@ impl Turns {
                     .get(unit.life.master_id)
                     .ok_or(Unsupported("a unit of a master the player does not have"))?,
                 player,
-                held: unit.held,
+                held: (unit.life.attribute_type, unit.life.amount),
                 attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
                 civ: owner.civ,
             };
@@ -561,6 +632,10 @@ impl Turns {
                 work_rate: builder.work_rate + unit.work_rate_powerup,
             };
             chosen.push((id, with, BuildAction::start(foundation, gap, task)));
+        }
+        for _ in &chosen {
+            // the Build action takes its foundation (FUN_140a7a230, slot 0x178)
+            self.take(foundation);
         }
         let owner = &mut self.players[player];
         for (id, with, build) in chosen {
@@ -951,6 +1026,7 @@ mod tests {
             work_rate: 1.0,
             hit_points: 25,
             build_time: 0,
+            ..Master::default()
         };
         let base = || vec![task(7, -1), task(3, 3)];
         let builder = || vec![task(101, -1), task(3, 3)];
@@ -976,6 +1052,7 @@ mod tests {
                 work_rate: 0.0,
                 hit_points: 550,
                 build_time: 25,
+                ..Master::default()
             },
         ])
     }
@@ -1153,6 +1230,7 @@ mod tests {
             &[Command::Order {
                 player: 0,
                 units: vec![8, 99, 7],
+                interact: None,
             }],
         );
         let mut streams = Streams::default();
