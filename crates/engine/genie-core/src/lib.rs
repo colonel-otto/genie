@@ -13,6 +13,7 @@ pub mod movement;
 pub mod msvc;
 pub mod production;
 pub mod rng;
+pub mod short_path;
 pub mod spatial;
 pub mod tile_path;
 pub mod turn;
