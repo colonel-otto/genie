@@ -5,7 +5,7 @@
 //! `0x140aa29e0`. A MoveTo in state 3 asks for a path (`FUN_14114e410`) and turns to state 4; in
 //! state 4 each update runs the motion step (object slot 193, [`Mover::motion`]).
 
-use crate::movement::{Me, Motion, Mover, footprint_gap};
+use crate::movement::{Me, Motion, Mover, Planning, footprint_gap};
 use crate::spatial::Spatial;
 use crate::unit_ai::Unsupported;
 
@@ -34,12 +34,14 @@ impl MoveTo {
     }
 }
 
-/// What a walking unit's update needs: its movement state, where it is, and the world.
+/// What a walking unit's update needs: its movement state, where it is, and the world; the
+/// planners and the world's time for a path request (None where the caller has none).
 pub struct Walk<'a> {
     pub mover: Option<&'a mut Mover>,
     pub me: Me,
     pub dt: f32,
     pub world: &'a Spatial,
+    pub plan: Option<Planning<'a>>,
 }
 
 /// Where a MoveTo goes: a target object or a point (`x, y, z` on the map).
@@ -73,7 +75,8 @@ pub fn start_walk(walk: Walk<'_>, goal: Goal, range: f32) -> Result<(), Unsuppor
             "a MoveTo in range when it starts (set_state 1)",
         ));
     }
-    mover.request_path(walk.me.position, point, range, target);
+    let now = walk.plan.as_ref().map_or(0, |p| p.now);
+    mover.request_path(walk.me.position, point, range, target, now);
     walk_on(Walk {
         mover: Some(mover),
         ..walk
@@ -89,7 +92,8 @@ pub fn walk_on(walk: Walk<'_>) -> Result<(), Unsupported> {
     if mover.paths.is_empty() {
         return Err(Unsupported("the path request (FUN_14114e410)"));
     }
-    match mover.motion(&walk.me, walk.dt, walk.world)? {
+    let mut plan = walk.plan;
+    match mover.motion(&walk.me, walk.dt, walk.world, plan.as_mut())? {
         Motion::Moving => Ok(()),
         Motion::Arrived => Err(Unsupported("a MoveTo arrives (set_state 1)")),
         Motion::Done => Err(Unsupported("a MoveTo whose unit cannot move on")),

@@ -11,6 +11,7 @@ pub mod mesh;
 pub mod move_to;
 pub mod movement;
 pub mod msvc;
+pub mod pathing;
 pub mod production;
 pub mod rng;
 pub mod short_path;

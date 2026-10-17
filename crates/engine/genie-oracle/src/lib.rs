@@ -44,6 +44,8 @@ pub enum Error {
     NoSuchPlayer(u32),
     /// A command comes before the body's first sync, so no tick runs it.
     CommandBeforeFirstSync,
+    /// A mesh dump without its header line.
+    BadMeshDump,
 }
 
 impl From<de::Error> for Error {
@@ -59,6 +61,7 @@ impl std::fmt::Display for Error {
             Error::NoCheckpoint => write!(f, "the recording has no checkpoint"),
             Error::NoSuchPlayer(id) => write!(f, "a checkpoint names player {id}, not in the save"),
             Error::CommandBeforeFirstSync => write!(f, "a command comes before the first sync"),
+            Error::BadMeshDump => write!(f, "the mesh dump has no mesh line"),
         }
     }
 }
@@ -271,6 +274,10 @@ fn path_level(d: &PathData, paths: &[Path]) -> Result<genie_core::movement::Path
         target: d.target_id,
         pause_time: f32::from_bits(d.pause_time),
         flags: d.flags_m_bits,
+        length: path.map_or(0.0, |p| p.path_length_value),
+        created: path.map_or(0, |p| p.creation_time_value),
+        continue_counter: d.continue_counter,
+        repath_time: d.repath_time,
     })
 }
 
@@ -339,6 +346,8 @@ fn mover(
             turn_radius: turning.turn_radius,
             turn_radius_speed: turning.turn_radius_speed,
             radius: [placement.radius_x, placement.radius_y, placement.radius_z],
+            restriction: usize::try_from(placement.terrain_restriction_mask_id)
+                .map_err(|_| Unsupported("a negative terrain restriction"))?,
             restriction_mask: usize::try_from(placement.terrain_restriction_mask_id)
                 .ok()
                 .and_then(|r| table.terrain.masks().get(r))
@@ -698,9 +707,18 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         players,
     );
     turns.next_object_id = world.next_object_id;
-    turns.spatial = spatial(
-        header,
-        masters.map_or(&TerrainTable::default(), |t| &t.terrain),
+    let none = TerrainTable::default();
+    let terrain = masters.map_or(&none, |t| &t.terrain);
+    turns.spatial = spatial(header, terrain);
+    let map = &world.map;
+    turns.pathing = genie_core::pathing::Pathing::new(
+        [map.map_width, map.map_height],
+        map.rows
+            .iter()
+            .flat_map(|r| r.tiles.iter().map(|t| t.terrain_type))
+            .collect(),
+        terrain.passable().to_vec(),
+        header.world.game_type,
     );
     if let Some(table) = masters {
         turns.masters = header
@@ -785,15 +803,16 @@ fn build_cost(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
 
 /// What movement reads of a saved object's master: radii, class and obstruction kind, from the
 /// object's own master or its player's.
-/// How fast an object may move, for the slice's bound on a frozen object's place: its player's
-/// master's speed, 0 for an object that does not move, and no bound for a moving object with its
-/// own master.
+/// How fast an object may move, for the slice's bound on a frozen object's place: its own or its
+/// player's master's speed, 0 for an object that does not move.
 fn moving_speed(o: &genie_save::Object, s: &RgeStaticObject, objects: &PlayerObjects) -> f32 {
     if o.moving_part().is_none() {
         return 0.0;
     }
     if s.own_master().is_some() {
-        return f32::INFINITY;
+        return s
+            .own_animated_master()
+            .map_or(f32::INFINITY, |a| a.max_speed);
     }
     objects
         .master(s.master_obj)
@@ -1357,6 +1376,18 @@ pub struct ObjectRow {
     pub position: [f32; 3],
     pub action: Option<(i16, u8)>,
     pub retarget: Option<i32>,
+    /// A moving object's orientation, velocity data and path data (the level it walks first).
+    pub movement: Option<MoveRow>,
+}
+
+/// What a moving object's row compares of its movement.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MoveRow {
+    pub forward: genie_core::fmath::Vec3,
+    pub right: genie_core::fmath::Vec3,
+    /// Velocity and acceleration, when the object has velocity data.
+    pub velocity: Option<(genie_core::fmath::Vec3, genie_core::fmath::Vec3)>,
+    pub paths: Vec<genie_core::movement::PathData>,
 }
 
 impl ObjectRow {
@@ -1370,8 +1401,35 @@ impl ObjectRow {
             position: unit.position,
             action: top_action(unit).map(|a| (a.kind, a.state)),
             retarget: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
+            movement: unit.mover.as_ref().map(|m| MoveRow {
+                forward: m.forward,
+                right: m.right,
+                velocity: m.velocity.as_ref().map(|v| (v.velocity, v.acceleration)),
+                paths: m.paths.clone(),
+            }),
         }
     }
+}
+
+/// A saved moving object's [`MoveRow`]; a level whose path the world's table lacks is left out.
+fn saved_movement(object: &genie_save::Object, paths: &[Path]) -> Option<MoveRow> {
+    let m = object.moving_part()?;
+    Some(MoveRow {
+        forward: vec3(&m.orientation_forward_value),
+        right: vec3(&m.orientation_right_value),
+        velocity: (m.have_movement == 1).then(|| {
+            (
+                m.velocity.as_ref().map_or([0.0; 3], vec3),
+                m.acceleration.as_ref().map_or([0.0; 3], vec3),
+            )
+        }),
+        paths: m
+            .temp_path_data
+            .iter()
+            .rev()
+            .filter_map(|d| path_level(d, paths).ok())
+            .collect(),
+    })
 }
 
 /// A slice run from a save ([`objects_from_save`]): one player's objects after it, and the first
@@ -1380,6 +1438,8 @@ impl ObjectRow {
 pub struct SliceRun {
     pub objects: Vec<ObjectRow>,
     pub unsupported: Option<(u32, usize, Unsupported)>,
+    /// The id of the object whose update was not modelled.
+    pub unsupported_id: Option<i32>,
     /// Every player's first unsupported update, by player.
     pub stopped: Vec<Option<(u32, usize, Unsupported)>>,
 }
@@ -1407,6 +1467,7 @@ pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
                 .combat()
                 .and_then(|c| c.unit_ai())
                 .map(|ai| ai.randomized_retarget_timer as i32),
+            movement: saved_movement(object, &header.world.base_world.path),
         })
         .collect())
 }
@@ -1415,6 +1476,10 @@ pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
 /// the `recording`'s next `ticks` ticks: player `id`'s objects after it. The save gives the state,
 /// the recording the ticks' lengths and commands. The tick oracle counts ticks from 0, as its trace
 /// does: its tick N is the game's update N + 1, and the save at tick N holds the state after it.
+///
+/// `mesh` is the game's shape mesh at that tick with each object's shape
+/// (`load_oracle/probes/mesh.py`), which the save does not hold; without it a path request stops
+/// the slice where it needs the short pather.
 pub fn objects_from_save(
     save: &[u8],
     recording: &[u8],
@@ -1422,6 +1487,7 @@ pub fn objects_from_save(
     ticks: usize,
     id: u32,
     masters: Option<&MasterTable>,
+    mesh: Option<&str>,
 ) -> Result<SliceRun, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
@@ -1430,6 +1496,10 @@ pub fn objects_from_save(
         return Err(Error::NoSuchPlayer(id));
     }
     let mut turns = slice(&header, masters);
+    if let Some(text) = mesh {
+        let m = mesh_from_dump(text).ok_or(Error::BadMeshDump)?;
+        turns.pathing.set_mesh(m, mesh_owners_from_dump(text));
+    }
     let updates = start_tick + 1;
     turns.ticks = updates as u32;
     let played = de::chapters(recording)?[0];
@@ -1445,6 +1515,9 @@ pub fn objects_from_save(
             .map(ObjectRow::of_unit)
             .collect(),
         unsupported: player.unsupported,
+        unsupported_id: player
+            .unsupported
+            .and_then(|(_, i, _)| player.objects.get(i).map(|u| u.id)),
         stopped: turns.players.iter().map(|p| p.unsupported).collect(),
     })
 }
@@ -1514,6 +1587,17 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::mesh::Mesh> {
         }
     }
     mesh
+}
+
+/// The owner of each shape in a mesh dump (its `owner ID SHAPE` lines): the objects' `+0x64c`.
+pub fn mesh_owners_from_dump(text: &str) -> Vec<(i32, u32)> {
+    text.lines()
+        .filter_map(|line| {
+            let mut w = line.split_whitespace();
+            (w.next()? == "owner").then_some(())?;
+            Some((w.next()?.parse().ok()?, w.next()?.parse().ok()?))
+        })
+        .collect()
 }
 
 /// What the tile pathfinder reads of object `id` in a save: its master's x radius and terrain
@@ -1606,6 +1690,40 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             format!("{:?}", s.retarget),
             format!("{:?}", g.retarget),
         );
+        match (&s.movement, &g.movement) {
+            (Some(a), Some(b)) => {
+                field(
+                    "forward",
+                    format!("{:?}", a.forward),
+                    format!("{:?}", b.forward),
+                );
+                field("right", format!("{:?}", a.right), format!("{:?}", b.right));
+                field(
+                    "velocity",
+                    format!("{:?}", a.velocity),
+                    format!("{:?}", b.velocity),
+                );
+                field(
+                    "path levels",
+                    a.paths.len().to_string(),
+                    b.paths.len().to_string(),
+                );
+                for (i, (pa, pb)) in a.paths.iter().zip(&b.paths).enumerate() {
+                    field(
+                        &format!("path level {i}"),
+                        format!("{pa:?}"),
+                        format!("{pb:?}"),
+                    );
+                }
+            }
+            // a building's movement part without velocity data or paths is not modelled
+            (None, Some(b)) if b.velocity.is_none() && b.paths.is_empty() => {}
+            (a, b) => field(
+                "movement",
+                format!("{:?}", a.is_some()),
+                format!("{:?}", b.is_some()),
+            ),
+        }
     }
     for s in slice.iter().filter(|s| !game.iter().any(|g| g.id == s.id)) {
         out.push(format!("{}: only in the slice ({s:?})", s.id));

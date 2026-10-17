@@ -208,6 +208,7 @@ mod tests {
                 turn_radius: 0.0,
                 turn_radius_speed: f32::MAX,
                 radius: [0.2, 0.2, 0.5],
+                restriction: 7,
                 restriction_mask: 6,
                 turns_at_once: true,
             },
@@ -228,6 +229,7 @@ mod tests {
                 },
                 dt: 0.02,
                 world: &world,
+                plan: None,
             })
             .unwrap();
         assert_eq!(
@@ -251,6 +253,7 @@ mod tests {
             },
             dt: 0.02,
             world: &world,
+            plan: None,
         };
         near.update(walk(1)).unwrap();
         assert_eq!((near.state, near.move_to), (6, None));

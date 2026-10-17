@@ -38,7 +38,9 @@ fn dump(m: &Mesh) -> Vec<String> {
 /// A dump's lines with each contact's flag word cut to its byte: the game writes the flag as a
 /// byte and leaves the word's upper bytes as the stack held them.
 fn normalised(text: &str) -> Vec<String> {
+    // the shapes' owners are the objects' (`mesh_owners_from_dump`), not the mesh's
     text.lines()
+        .filter(|l| !l.starts_with("owner "))
         .map(|l| {
             let w: Vec<&str> = l.split_whitespace().collect();
             if w.first() == Some(&"side") && w.len() == 9 {

@@ -244,7 +244,7 @@ struct Node {
 
 /// The open nodes (`+0x480`): a bucket per whole cost, the lowest one sorted with its cheapest
 /// node last (`FUN_140f9cba0`, `FUN_140f9cd40`).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct OpenList {
     buckets: Vec<Vec<usize>>,
     /// `+0x18` with its flag `+0x1c`, `+0x20` with `+0x24`.
@@ -320,7 +320,7 @@ impl OpenList {
 }
 
 /// A terrain restriction's planner (`0x4a8` bytes, built by `FUN_140f74f90`).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Planner {
     /// `+0x400`, `+0x402`: the map's size.
     size: [i16; 2],

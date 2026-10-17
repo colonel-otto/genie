@@ -1,0 +1,204 @@
+//! The world's path planning state besides the objects' places: the tile pathfinder's planners
+//! (`world+0x140`, one per terrain restriction), the obstruction manager's shape mesh
+//! (`*(DAT_143f0a088 + 8)`) with each object's shape, and the short pather's own state.
+//!
+//! The mesh's ids and orders follow the game's history and are not in a save, so a slice started
+//! from a save gets them from the game ([`Pathing::set_mesh`]); from then on the slice keeps them as
+//! the game does: every position change of a tall object with an obstruction record updates its
+//! shape (`RGE_Static_Object::new_position` `0x1411a58b0` -> `FUN_14118c540` -> `FUN_141056460`),
+//! and every change of a static record's tiles rebuilds the planners' cells over them (the
+//! manager's callback `FUN_140f7d4b0` -> `FUN_140f7e4b0`).
+
+use crate::mesh::{Mesh, ONE, Rect};
+use crate::short_path::Pather;
+use crate::spatial::{BLOCKED, Placed, Tiles};
+use crate::tile_path::Planner;
+use std::collections::BTreeMap;
+
+/// What a planner is built from and the planners built so far.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Pathing {
+    /// The map's size in tiles.
+    pub size: [i32; 2],
+    /// Each tile's terrain, row by row.
+    pub terrain: Vec<u8>,
+    /// Each terrain restriction's value per terrain (above 0 passes), by restriction id.
+    pub restrictions: Vec<Vec<f32>>,
+    /// The game type (the world's `game_type`): type 12 has the escape the motion step runs for
+    /// a unit on an `E` tile (`FUN_141158210` result 1), which the slice does not model.
+    pub game_type: u8,
+    planners: BTreeMap<usize, Planner>,
+    /// Tile rectangles (x0, y0, x1, y1) whose static marks changed since the planners last saw
+    /// them.
+    pending: Vec<[i16; 4]>,
+    /// The mesh, None until the slice has the game's.
+    mesh: Option<Mesh>,
+    /// Each object's shape (`+0x64c`).
+    shapes: BTreeMap<i32, u32>,
+    pub pather: Pather,
+}
+
+/// A shape's rectangle for an object (`FUN_141056460`): its box grown by half a tile, in fixed
+/// point by truncation.
+pub fn shape_rect(p: &Placed) -> Rect {
+    let [x, y, _] = p.position;
+    let [rx, ry] = p.radius;
+    let fixed = |v: f32| (v * ONE as f32) as i64 as i32;
+    [
+        fixed((x - rx) - 0.5),
+        fixed((y - ry) - 0.5),
+        fixed((x + rx) + 0.5),
+        fixed((y + ry) + 0.5),
+    ]
+}
+
+impl Pathing {
+    pub fn new(
+        size: [i32; 2],
+        terrain: Vec<u8>,
+        restrictions: Vec<Vec<f32>>,
+        game_type: u8,
+    ) -> Self {
+        Pathing {
+            size,
+            terrain,
+            restrictions,
+            game_type,
+            ..Pathing::default()
+        }
+    }
+
+    /// The game's mesh and each object's shape in it, at the tick the slice starts from.
+    pub fn set_mesh(&mut self, mesh: Mesh, shapes: impl IntoIterator<Item = (i32, u32)>) {
+        self.mesh = Some(mesh);
+        self.shapes = shapes.into_iter().collect();
+    }
+
+    pub fn mesh(&self) -> Option<&Mesh> {
+        self.mesh.as_ref()
+    }
+
+    /// The mesh and the short pather together, for a search.
+    pub fn mesh_and_pather(&mut self) -> Option<(&mut Mesh, &mut Pather)> {
+        Some((self.mesh.as_mut()?, &mut self.pather))
+    }
+
+    /// An object's shape in the mesh.
+    pub fn shape(&self, id: i32) -> Option<u32> {
+        self.shapes.get(&id).copied()
+    }
+
+    /// The planner of a terrain restriction (`FUN_140f7cb30` -> `FUN_140f7ca70`), built from the
+    /// map on first use (`FUN_140f74f90`); the planners built before see the tiles' changes first.
+    /// None for a restriction the data has not got.
+    pub fn planner(&mut self, restriction: usize, tiles: &Tiles) -> Option<&mut Planner> {
+        let blocked = |x: i32, y: i32| tiles.word(x, y).is_some_and(|w| w & BLOCKED != 0);
+        for rect in self.pending.drain(..) {
+            for p in self.planners.values_mut() {
+                p.update(rect, &blocked);
+            }
+        }
+        if !self.planners.contains_key(&restriction) {
+            let passable = self.restrictions.get(restriction)?.clone();
+            let planner = Planner::new(self.size, self.terrain.clone(), passable, &blocked);
+            self.planners.insert(restriction, planner);
+        }
+        self.planners.get_mut(&restriction)
+    }
+
+    /// Static marks changed over these tile rectangles.
+    pub fn tiles_changed(&mut self, rects: impl IntoIterator<Item = [i16; 4]>) {
+        self.pending.extend(rects);
+    }
+
+    /// The object's position changed (`FUN_141056460`'s shape part, through `FUN_14118c540`): a
+    /// tall object with a record of a kind other than 0 and 12 and a class other than 0 has a shape
+    /// while it is not moving (object slot 185, `0x1411583d0`), added or replaced
+    /// (`FUN_140fdb8d0`, `FUN_140fdc730`), and none while it moves (`FUN_140fdc250`). Without the
+    /// game's mesh nothing is kept.
+    pub fn moved(&mut self, id: i32, p: &Placed, moving: bool) {
+        let Some(mesh) = self.mesh.as_mut() else {
+            return;
+        };
+        let has_shape = p.tall
+            && p.obstruction
+                .is_some_and(|o| o.kind != 0 && o.kind != 12 && o.class != 0);
+        if !has_shape {
+            return;
+        }
+        if moving {
+            if let Some(s) = self.shapes.remove(&id) {
+                mesh.remove(s);
+            }
+            return;
+        }
+        let rect = shape_rect(p);
+        let s = match self.shapes.get(&id) {
+            None => mesh.add(rect),
+            Some(&s) => mesh.replace(s, rect),
+        };
+        self.shapes.insert(id, s);
+    }
+
+    /// The object left the world: its shape leaves the mesh.
+    pub fn removed(&mut self, id: i32) {
+        if let (Some(mesh), Some(s)) = (self.mesh.as_mut(), self.shapes.remove(&id)) {
+            mesh.remove(s);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::spatial::Obstruction;
+
+    fn villager(x: f32, y: f32) -> Placed {
+        Placed {
+            position: [x, y, 0.0],
+            radius: [0.2, 0.2],
+            class: 4,
+            player: 2,
+            master: 118,
+            obstruction_type: 5,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.8,
+            unknown: None,
+            obstruction: Some(Obstruction { kind: 5, class: 2 }),
+        }
+    }
+
+    #[test]
+    fn a_unit_s_shape_is_its_box_grown_by_half_a_tile() {
+        let r = shape_rect(&villager(30.0, 89.0));
+        assert_eq!(
+            r,
+            [
+                (29.3f32 * 4_194_304.0) as i32,
+                (88.3f32 * 4_194_304.0) as i32,
+                (30.7f32 * 4_194_304.0) as i32,
+                (89.7f32 * 4_194_304.0) as i32
+            ]
+        );
+    }
+
+    #[test]
+    fn a_unit_has_a_shape_while_it_stands_and_none_while_it_moves() {
+        let mut p = Pathing::default();
+        p.set_mesh(Mesh::new(120), []);
+        p.moved(9175, &villager(30.0, 89.0), false);
+        let s = p.shape(9175).unwrap();
+        assert_eq!(p.mesh().unwrap().shapes[s as usize], {
+            let r = shape_rect(&villager(30.0, 89.0));
+            [r[0] & !1, r[1] & !1, (r[2] + 1) & !1, (r[3] + 1) & !1]
+        });
+        p.moved(9175, &villager(30.1, 89.0), true);
+        assert_eq!(p.shape(9175), None);
+        // a foundation without its record has none
+        let mut site = villager(30.0, 88.0);
+        site.obstruction = None;
+        p.moved(10028, &site, false);
+        assert_eq!(p.shape(10028), None);
+    }
+}

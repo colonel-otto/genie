@@ -158,6 +158,12 @@ impl Tiles {
         (xs, ys)
     }
 
+    /// The covered tiles as a rectangle, as the manager hands it to the planners' callback.
+    fn covered_rect(&self, p: &Placed) -> [i16; 4] {
+        let (xs, ys) = self.covered(p);
+        [*xs.start(), *ys.start(), *xs.end(), *ys.end()].map(|v| v as i16)
+    }
+
     /// A static record marks the tiles it covers that no player marked yet.
     fn mark(&mut self, p: &Placed, o: Obstruction) {
         let player = p.player as u64;
@@ -195,6 +201,9 @@ pub struct Spatial {
     pub map: [i32; 2],
     objects: BTreeMap<i32, Placed>,
     tiles: Tiles,
+    /// The tile rectangles (x0, y0, x1, y1) whose static marks changed, for the planners
+    /// ([`Spatial::take_changes`]).
+    changed: Vec<[i16; 4]>,
 }
 
 impl Spatial {
@@ -209,11 +218,17 @@ impl Spatial {
             map,
             objects: BTreeMap::new(),
             tiles,
+            changed: Vec::new(),
         }
     }
 
     pub fn tiles(&self) -> &Tiles {
         &self.tiles
+    }
+
+    /// The tile rectangles whose static marks changed since the last call.
+    pub fn take_changes(&mut self) -> Vec<[i16; 4]> {
+        std::mem::take(&mut self.changed)
     }
 
     pub fn get(&self, id: i32) -> Option<&Placed> {
@@ -270,6 +285,7 @@ impl Spatial {
         self.tiles.count(placed.position, placed.tall, true);
         if let Some(o) = placed.obstruction.filter(|o| o.marks_tiles()) {
             self.tiles.mark(&placed, o);
+            self.changed.push(self.tiles.covered_rect(&placed));
         }
         self.objects.insert(id, placed);
     }
@@ -279,6 +295,7 @@ impl Spatial {
             self.tiles.count(gone.position, gone.tall, false);
             if gone.obstruction.is_some_and(|o| o.marks_tiles()) {
                 self.tiles.unmark(&gone);
+                self.changed.push(self.tiles.covered_rect(&gone));
             }
         }
     }

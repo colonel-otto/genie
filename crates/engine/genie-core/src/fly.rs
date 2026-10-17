@@ -58,6 +58,7 @@ mod tests {
             },
             dt: 0.5,
             world: &world,
+            plan: None,
         };
         let mut fly = Fly {
             state: FLYING,

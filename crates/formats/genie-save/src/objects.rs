@@ -4,10 +4,10 @@
 
 use super::generated::world::{
     Action, ActionList, Master, Object, ObjectList, OwnRgeMasterActionObject,
-    OwnRgeMasterStaticObject, OwnTribeMasterCombatObject, Player, PlayerObjects, RgeAction,
-    RgeActionObject, RgeMasterActionObject, RgeMasterMovingObject, RgeMasterStaticObject,
-    RgeMovingObject, RgeObject, RgeStaticObject, TribeCombatObject, TribeMasterCombatObject,
-    UnitAiModule, WorldPlayer,
+    OwnRgeMasterAnimatedObject, OwnRgeMasterStaticObject, OwnTribeMasterCombatObject, Player,
+    PlayerObjects, RgeAction, RgeActionObject, RgeMasterActionObject, RgeMasterMovingObject,
+    RgeMasterStaticObject, RgeMovingObject, RgeObject, RgeStaticObject, TribeCombatObject,
+    TribeMasterCombatObject, UnitAiModule, WorldPlayer,
 };
 
 impl Player {
@@ -141,6 +141,42 @@ impl RgeStaticObject {
                 .as_ref()
                 .map(|b| own_tribe_combat_master(&b.own_tribe_master_combat_object)))
     }
+}
+
+impl RgeStaticObject {
+    /// The animated part of the object's own master, which holds its speed (`mMaxSpeed`); None
+    /// for an object without an own master or one without an animated part.
+    pub fn own_animated_master(&self) -> Option<&OwnRgeMasterAnimatedObject> {
+        None.or(self.rge_master_animated_object.as_ref())
+            .or(self
+                .rge_master_moving_object
+                .as_ref()
+                .map(|m| &m.own_rge_master_animated_object))
+            .or(self
+                .rge_master_action_object
+                .as_ref()
+                .map(own_action_animated))
+            .or(self.rge_master_missile_object.as_ref().map(|m| {
+                own_action_animated(&m.own_rge_master_combat_object.own_rge_master_action_object)
+            }))
+            .or(self
+                .tribe_master_combat_object
+                .as_ref()
+                .map(own_combat_animated))
+            .or(self
+                .tribe_master_building_object
+                .as_ref()
+                .map(|b| own_combat_animated(&b.own_tribe_master_combat_object)))
+    }
+}
+
+fn own_action_animated(a: &OwnRgeMasterActionObject) -> &OwnRgeMasterAnimatedObject {
+    &a.own_rge_master_moving_object
+        .own_rge_master_animated_object
+}
+
+fn own_combat_animated(c: &OwnTribeMasterCombatObject) -> &OwnRgeMasterAnimatedObject {
+    own_action_animated(&c.own_rge_master_combat_object.own_rge_master_action_object)
 }
 
 fn own_action_master(a: &OwnRgeMasterActionObject) -> &OwnRgeMasterStaticObject {

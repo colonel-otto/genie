@@ -103,6 +103,8 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
 pub struct TerrainTable {
     classes: Vec<u8>,
     masks: Vec<u8>,
+    /// Each terrain restriction's value per terrain (`passable_buildable_dmg_multiplier`).
+    passable: Vec<Vec<f32>>,
 }
 
 /// The class bit of a terrain's flags.
@@ -136,7 +138,16 @@ impl TerrainTable {
                     .fold(0, |m, (t, _)| m | classes.get(t).copied().unwrap_or(0))
             })
             .collect();
-        TerrainTable { classes, masks }
+        let passable = dat
+            .terrain_restrictions
+            .iter()
+            .map(|r| r.passable_buildable_dmg_multiplier.clone())
+            .collect();
+        TerrainTable {
+            classes,
+            masks,
+            passable,
+        }
     }
 
     /// The class bit of terrain `id`; 0 for a terrain the data file does not have.
@@ -147,6 +158,11 @@ impl TerrainTable {
     /// Each terrain restriction's mask, by restriction id.
     pub fn masks(&self) -> &[u8] {
         &self.masks
+    }
+
+    /// Each terrain restriction's value per terrain, by restriction id.
+    pub fn passable(&self) -> &[Vec<f32>] {
+        &self.passable
     }
 }
 

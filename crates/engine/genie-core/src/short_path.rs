@@ -2098,7 +2098,7 @@ pub fn to_path(points: &[Point]) -> crate::tile_path::Path {
 
 /// The pather's state between searches: its temporary shapes (`pather + 0x98`, removed at the end
 /// of each call by `FUN_140f9d2b0`) and the flag per ignored shape (`+0xd8`).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Pather {
     temp: Vec<u32>,
     ignore: Vec<bool>,

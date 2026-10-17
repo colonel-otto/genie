@@ -18,7 +18,8 @@ use crate::fly::Fly;
 use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::masters::{Masters, Target};
 use crate::move_to::MoveToAction;
-use crate::movement::{Me, Mover, footprint_gap};
+use crate::movement::{Me, Mover, Planning, footprint_gap};
+use crate::pathing::Pathing;
 use crate::production::{Production, Queued};
 use crate::rng::{Stream, Streams};
 use crate::spatial::{Placed, Spatial};
@@ -129,19 +130,27 @@ struct Context<'a> {
     turn: Option<u32>,
     world_time: u32,
     computer: bool,
-    ai: &'a mut crate::rng::Well512,
+    streams: &'a mut Streams,
     /// Every object's place, which a walker reads and its moves update.
     spatial: &'a mut Spatial,
+    /// The planners and the mesh, which a walker's path request uses.
+    pathing: &'a mut Pathing,
 }
 
 impl Context<'_> {
     /// What an object's walking action needs from the tick.
-    fn walk<'b>(&'b self, mover: Option<&'b mut Mover>, me: Me) -> Walk<'b> {
+    fn walk<'b>(&'b mut self, mover: Option<&'b mut Mover>, me: Me) -> Walk<'b> {
         Walk {
             mover,
             me,
             dt: self.dt_seconds,
             world: self.spatial,
+            plan: Some(Planning {
+                pathing: self.pathing,
+                now: self.world_time,
+                computer: self.computer,
+                object: self.streams.get(Stream::Object),
+            }),
         }
     }
 }
@@ -154,6 +163,9 @@ impl Unit {
             if at != self.position {
                 self.position = at;
                 c.spatial.set_position(self.id, at);
+                if let Some(p) = c.spatial.get(self.id) {
+                    c.pathing.moved(self.id, p, mover.is_moving());
+                }
             }
         }
         let leaves = self.life.update(c.dt_seconds)?;
@@ -187,9 +199,9 @@ impl Unit {
         }
         if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
             if ai.current_order == -1 && ai.current_action == -1 && ai.current_target == -1 {
-                ai.update_idle(dt, c.world_time, c.computer, c.ai)?;
+                ai.update_idle(dt, c.world_time, c.computer, c.streams.get(Stream::Ai))?;
             } else if self.build.is_some() && !self.life.inside {
-                ai.update_working(dt, c.computer, c.ai)?;
+                ai.update_working(dt, c.computer, c.streams.get(Stream::Ai))?;
             } else {
                 return Err(Unsupported("unit is not idle"));
             }
@@ -228,6 +240,8 @@ pub struct Turns {
     pub masters: Vec<Masters>,
     /// Every object's place on the map.
     pub spatial: Spatial,
+    /// The planners and the mesh.
+    pub pathing: Pathing,
     streams: Streams,
 }
 
@@ -249,6 +263,7 @@ impl Turns {
             next_object_id: 0,
             masters: Vec::new(),
             spatial: Spatial::default(),
+            pathing: Pathing::default(),
             streams: Streams::default(),
         }
     }
@@ -510,9 +525,11 @@ impl Turns {
                 turn: (p == self.player_turn).then_some(self.player_time[p]),
                 world_time: self.world_time,
                 computer: player.computer,
-                ai: self.streams.get(Stream::Ai),
+                streams: &mut self.streams,
                 spatial: &mut self.spatial,
+                pathing: &mut self.pathing,
             };
+            c.pathing.tiles_changed(c.spatial.take_changes());
             // Once a player's update is not modelled, its live objects freeze; its dead ones still
             // run their state steps, which draw nothing and depend on nothing the stop changed.
             let mut i = 0;
@@ -523,10 +540,14 @@ impl Turns {
                     i += 1;
                     continue;
                 }
-                match player.objects[i].update(&mut c) {
+                let result = player.objects[i].update(&mut c);
+                c.pathing.tiles_changed(c.spatial.take_changes());
+                match result {
                     Ok(true) => {
                         let gone = player.objects.swap_remove(i);
                         c.spatial.remove(gone.id);
+                        c.pathing.removed(gone.id);
+                        c.pathing.tiles_changed(c.spatial.take_changes());
                     }
                     Ok(false) => i += 1,
                     Err(e) => {
