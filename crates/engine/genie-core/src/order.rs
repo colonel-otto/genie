@@ -12,7 +12,7 @@ use crate::masters::Master;
 use crate::rng::Stream;
 use crate::tasks::{Actor, Diplomacy, TaskTarget, enabled};
 use crate::turn::{Turns, Unit, World};
-use crate::unit_ai::{HUNT_ACTION, HUNT_ORDER, Unsupported};
+use crate::unit_ai::{HUNT_ACTION, HUNT_ORDER, MOVE_ORDER, Unsupported};
 
 /// INTERACT's fields past its units (`+0x4`..`+0x16`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -213,11 +213,10 @@ impl Turns {
     /// (`FUN_14118c790`). With a centroid its point is its offset from it added to the order's,
     /// kept `EDGE` inside the map. A unit without a unit AI, or of an order that is not queued and
     /// either direct (`+0x14`) or to a unit AI with every queued order ready (`FUN_140c4dfa0`),
-    /// takes the order itself (slot 0x128); any other unit AI queues order `0x2db` on the target
-    /// (slot 0x28, priority 100, the order's point shown, ready when direct). An order to one unit
-    /// queued through slot 0x30, whose shown point and ready flag the game reads past the
-    /// arguments it passes, and the readiness pass after an order neither queued nor direct
-    /// (`FUN_140c42b60`) are not modelled.
+    /// takes the order itself (slot 0x128); any other unit AI queues order `0x2db` on the target at
+    /// the unit's point (slot 0x28, or without a centroid slot 0x30, which shows the point it
+    /// queues: priority 100, the order's point shown, ready when direct). The readiness pass after
+    /// an order neither queued nor direct (`FUN_140c42b60`) is not modelled.
     fn interact_unit(
         &mut self,
         player: usize,
@@ -274,9 +273,6 @@ impl Turns {
             }
             return self.order_work(player, idx, &Interact { point, ..*order });
         }
-        if centroid.is_none() {
-            return Err(Unsupported("an order its unit AI queues through slot 0x30"));
-        }
         let (target_type, target_owner) =
             target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
         let queued = crate::unit_ai::QueuedOrder {
@@ -306,8 +302,13 @@ impl Turns {
     }
 
     /// MOVE (`FUN_140e67800`) to its units, after their unit AIs reset: one unit takes the order
-    /// itself (the loop of `LAB_140e6838c`); several units, which the handler gives places around
-    /// the point by their offsets, are not modelled. An object that does not move ignores it.
+    /// (the loop of `LAB_140e6838c`); several units, which the handler sets out in a grid around
+    /// the point, are not modelled. An object that does not move ignores an order not queued. The
+    /// unit's ignore list empties and it waits to move; an order that is queued, or neither
+    /// direct nor to a unit AI with every queued order ready (`FUN_140c4dfa0`), goes to its unit
+    /// AI's queue as order `0x2c6` at the point (slot 0x30 -> 0x28: range 0, priority 100, the
+    /// point shown, ready when direct); a unit without a unit AI then does nothing. Otherwise the
+    /// unit takes the move itself (slot 0x138).
     pub(crate) fn move_order(
         &mut self,
         player: usize,
@@ -317,9 +318,12 @@ impl Turns {
         let id = match units {
             [] => return Ok(()),
             &[id] => id,
-            _ => return Err(Unsupported("a move of several units (their offsets)")),
+            _ => return Err(Unsupported("a move of several units (their grid)")),
         };
-        let Some(Place::Live(p, idx)) = self.place(id) else {
+        let Some(place) = self.place(id) else {
+            return Ok(());
+        };
+        let Place::Live(p, idx) = place else {
             return Err(Unsupported("a move of a unit the slice does not hold live"));
         };
         if p != player {
@@ -333,17 +337,54 @@ impl Turns {
             }
             return Ok(());
         }
+        let target = self
+            .object(order.target)
+            .map(|(tp, t)| (t.life.master_id, tp));
         let unit = &mut self.players[player].objects[idx];
         // FUN_141197da0, then slot 0x2a0 with 1: it waits to move
-        unit.mover
+        let mover = unit
+            .mover
             .as_mut()
-            .ok_or(Unsupported("a moved unit without movement state"))?
-            .waiting = 1;
-        if order.queued || (unit.ai.is_some() && !order.direct) {
-            return Err(Unsupported("a move its unit AI takes (its slot 0x30)"));
+            .ok_or(Unsupported("a moved unit without movement state"))?;
+        mover.ignore_units.clear();
+        mover.waiting = 1;
+        let takes_it = !order.queued
+            && unit
+                .ai
+                .as_ref()
+                .is_none_or(|ai| order.direct || !ai.has_unready_order());
+        if !takes_it {
+            let state = unit.life.state;
+            let Some(ai) = unit.ai.as_mut() else {
+                return Ok(());
+            };
+            let (target_type, target_owner) =
+                target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
+            let queued = crate::unit_ai::QueuedOrder {
+                issuer: player as i32,
+                order: MOVE_ORDER,
+                priority: 100,
+                target: if target.is_some() { order.target } else { -1 },
+                target_owner,
+                point: [order.point[0], order.point[1], 0.0],
+                range: 0.0,
+                shown: order.point,
+                ready: order.direct,
+                target_type,
+            };
+            ai.queue_order(state, queued, false, false)?;
+            if !order.queued && !order.direct {
+                return Err(Unsupported(
+                    "the readiness pass after a move neither queued nor direct (FUN_140c42b60)",
+                ));
+            }
+            return Ok(());
         }
-        // slot 0x138 (FUN_141216f10): a villager's town-bell flag and the unit AI's `+0x18`
-        // (neither held), then FUN_14106d340
+        // slot 0x138 (FUN_141216f10): a villager's town-bell flag (not held) and, `+0xa14` being
+        // 1, the unit AI's order queue empties (FUN_140c5e010); then FUN_14106d340
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.orders.clear();
+        }
         if order.target == id {
             return Ok(());
         }
