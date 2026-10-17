@@ -324,6 +324,14 @@ impl Spatial {
         }
     }
 
+    /// The object's place is the game's again (the oracle's forced replay): it is known.
+    pub fn unfreeze(&mut self, id: i32) {
+        if let Some(p) = self.objects.get_mut(&id) {
+            p.unknown = None;
+        }
+        self.frozen_for.remove(&id);
+    }
+
     /// A tick of `dt` seconds passed: every frozen object may have moved its speed times dt.
     pub fn grow_unknown(&mut self, dt: f32) {
         for p in self.objects.values_mut() {

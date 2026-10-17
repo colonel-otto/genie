@@ -1482,6 +1482,16 @@ struct Decoder {
 }
 
 impl Decoder {
+    /// The commands of the frames a save already played: decoded for the unit lists they leave
+    /// (a later command's 'last commanded units'), not run.
+    fn prime(&mut self, frames: &[Frame<'_>], sections: &[PlayerSection<'_>]) {
+        for frame in frames {
+            for p in &frame.commands {
+                self.command(p, sections);
+            }
+        }
+    }
+
     fn command(&mut self, packet: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
         use genie_rec::de::command::Command as Packet;
         // INTERACT, MOVE and RETREAT reset their units' idle timeouts (`FUN_140e6cfc0`), WORK not
@@ -2126,6 +2136,11 @@ pub struct SliceRun {
 pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
+    header_objects(&header, id)
+}
+
+/// [`saved_objects`] of a read header.
+fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
     let sections = header.players();
     let section = sections.get(id as usize).ok_or(Error::NoSuchPlayer(id))?;
     Ok(live(section)
@@ -2248,27 +2263,10 @@ pub fn objects_from_save(
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
 ) -> Result<SliceRun, Error> {
-    let chapter = de::chapters(save)?[0];
-    let header = chapter.header()?;
-    let sections = header.players();
-    if sections.len() <= id as usize {
+    let mut turns = run_from_save(save, recording, start_tick, ticks, masters, dumps)?;
+    if turns.players.len() <= id as usize {
         return Err(Error::NoSuchPlayer(id));
     }
-    let mut turns = slice(&header, masters);
-    if let Some(text) = dumps.mesh {
-        let m = mesh_from_dump(text).ok_or(Error::BadMeshDump)?;
-        turns.pathing.set_mesh(m, mesh_owners_from_dump(text));
-    }
-    if let (Some(text), Some(sight)) = (dumps.registry, turns.spatial.sight.as_mut()) {
-        sight.registry = Some(registry_from_dump(text)?);
-    }
-    let played = de::chapters(recording)?[0];
-    hunted_origins(&mut turns, &played.header()?);
-    let updates = start_tick + 1;
-    turns.ticks = updates as u32;
-    let all = frames(&played, updates + ticks)?;
-    let next = all.get(updates..).unwrap_or_default();
-    run(&mut turns, &mut Decoder::default(), next, &sections);
     let player = &turns.players[id as usize];
     Ok(SliceRun {
         objects: player
@@ -2291,6 +2289,232 @@ pub fn objects_from_save(
             .collect(),
         freezes: turns.players.iter().map(|p| p.freezes.clone()).collect(),
     })
+}
+
+/// What one forced replay step found ([`forced_ticks`]): the slice started from the game's save
+/// after `start`, run `ticks` updates, against the game's save after `start + ticks`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TickReport {
+    pub start: usize,
+    pub ticks: usize,
+    /// What differs, by player: the objects that ran modelled (an object that froze, or every
+    /// object of a player that stopped, is left out: its reason is in `unsupported`) and the
+    /// player's sight.
+    pub differences: Vec<(u32, String)>,
+    /// What the slice could not model: the player, the object (None for the player's stop), the
+    /// update and why.
+    pub unsupported: Vec<(u32, Option<i32>, u32, Unsupported)>,
+}
+
+/// One step of the forced replay (FD-008, CONTINUE.md): genie-core from the game's own save after
+/// update `start` (`save`, with that save's mesh and registry dumps), `ticks` updates, compared
+/// with the game's save after `start + ticks` (`after`) for every player. Every step starts from
+/// the game's state, so the frame seed and every object, a frozen one too, are the game's again:
+/// nothing the slice gets wrong carries into the next step. Dev only: the saves and dumps come
+/// from the tick oracle, which genie-core never reads.
+pub fn forced_ticks(
+    save: &[u8],
+    after: &[u8],
+    recording: &[u8],
+    start: usize,
+    ticks: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+) -> Result<TickReport, Error> {
+    let turns = run_from_save(save, recording, start, ticks, masters, dumps)?;
+    let mut report = TickReport {
+        start,
+        ticks,
+        ..TickReport::default()
+    };
+    let chapter = de::chapters(after)?[0];
+    compare_players(&turns, &chapter.header()?, None, &mut report)?;
+    Ok(report)
+}
+
+/// The forced replay's continuous mode (FD-008, CONTINUE.md): genie-core from the game's save
+/// after `start` (with its dumps), then `ticks` updates, each compared with the game's save after
+/// it (`save_after(update)`, which may end the run early with None) and then forced to the game's
+/// state where the slice did not model it or got it wrong ([`genie_core::turn::Turns::force`]: the
+/// frame seed, the frozen and the differing objects, a stopped player, the sight). The objects the
+/// slice gets right keep their own state, the saved and the unsaved, from tick to tick. One
+/// report per update, each with that update's own differences. Dev only.
+pub fn forced_run(
+    start_save: &[u8],
+    recording: &[u8],
+    start: usize,
+    ticks: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+    save_after: &dyn Fn(usize) -> Option<Vec<u8>>,
+) -> Result<Vec<TickReport>, Error> {
+    let chapter = de::chapters(start_save)?[0];
+    let header = chapter.header()?;
+    let sections = header.players();
+    let mut turns = slice(&header, masters);
+    if let Some(text) = dumps.mesh {
+        let m = mesh_from_dump(text).ok_or(Error::BadMeshDump)?;
+        turns.pathing.set_mesh(m, mesh_owners_from_dump(text));
+    }
+    if let (Some(text), Some(sight)) = (dumps.registry, turns.spatial.sight.as_mut()) {
+        sight.registry = Some(registry_from_dump(text)?);
+    }
+    let played = de::chapters(recording)?[0];
+    let start_header = played.header()?;
+    hunted_origins(&mut turns, &start_header);
+    let updates = start + 1;
+    turns.ticks = updates as u32;
+    let all = frames(&played, updates + ticks)?;
+    let mut decoder = Decoder::default();
+    decoder.prime(&all[..updates.min(all.len())], &sections);
+    let mut reports = Vec::new();
+    for k in 0..ticks {
+        let Some(frame) = all.get(updates + k) else {
+            break;
+        };
+        let Some(after) = save_after(start + k + 1) else {
+            break;
+        };
+        run(
+            &mut turns,
+            &mut decoder,
+            std::slice::from_ref(frame),
+            &sections,
+        );
+        let mut report = TickReport {
+            start: start + k,
+            ticks: 1,
+            ..TickReport::default()
+        };
+        let tick = turns.ticks;
+        let chapter = de::chapters(&after)?[0];
+        let after = chapter.header()?;
+        compare_players(&turns, &after, Some(tick), &mut report)?;
+        let mut game = game_state(&after, masters);
+        // what the slice got wrong takes the game's state too: each update's differences are
+        // its own, not an earlier update's carried on
+        game.resync = report
+            .differences
+            .iter()
+            .filter_map(|(_, d)| d.split(':').next().and_then(|o| o.parse::<i32>().ok()))
+            .collect();
+        if report
+            .differences
+            .iter()
+            .any(|(_, d)| d.starts_with("player "))
+        {
+            let seen = saved_sight(&after);
+            game.sight = Some((seen.maps, seen.unified));
+        }
+        for (p, id, why) in turns.force(&game) {
+            report.unsupported.push((p as u32, Some(id), tick, why));
+        }
+        reports.push(report);
+    }
+    Ok(reports)
+}
+
+/// The game's state in a save as the slice's units ([`genie_core::turn::GameState`]).
+fn game_state(header: &Header, masters: Option<&MasterTable>) -> genie_core::turn::GameState {
+    let world = &header.world.base_world;
+    let mut game = genie_core::turn::GameState {
+        frame_seed: world.current_frame_random_seed,
+        ..Default::default()
+    };
+    for p in header.players() {
+        let civ = p.world_player().base.civ_id;
+        game.players.push(
+            p.live_objects()
+                .map(|o| unit(o, p.objects(), &world.path, civ, masters))
+                .collect(),
+        );
+        let attributes = &p.world_player().base.attributes;
+        let r = |i: usize| attributes.get(i).copied().unwrap_or_default();
+        game.resources.push([r(0), r(1), r(2), r(3)]);
+    }
+    game
+}
+
+/// Every player's objects and sight after a run against the game's save `after`; with `tick`,
+/// only the freezes of that update count, else all. A frozen object's differences are left out.
+fn compare_players(
+    turns: &Turns,
+    after: &Header,
+    tick: Option<u32>,
+    report: &mut TickReport,
+) -> Result<(), Error> {
+    let seen = saved_sight(after);
+    for (p, player) in turns.players.iter().enumerate() {
+        let id = p as u32;
+        let now = |t: u32| tick.is_none_or(|n| n == t);
+        if let Some((t, _, why)) = player.unsupported.filter(|u| player.stopped && now(u.0)) {
+            report.unsupported.push((id, None, t, why));
+        }
+        let frozen: Vec<i32> = player
+            .objects
+            .iter()
+            .filter(|u| u.stopped)
+            .map(|u| u.id)
+            .chain(player.freezes.iter().map(|&(_, o, _)| o))
+            .collect();
+        for &(t, o, why) in player.freezes.iter().filter(|f| now(f.0)) {
+            report.unsupported.push((id, Some(o), t, why));
+        }
+        let rows: Vec<ObjectRow> = player
+            .objects
+            .iter()
+            .filter(|u| u.id >= 0)
+            .map(ObjectRow::of_unit)
+            .collect();
+        let game = header_objects(after, id)?;
+        if !player.stopped {
+            for d in object_differences(&rows, &game) {
+                let object = d.split(':').next().and_then(|o| o.parse::<i32>().ok());
+                if object.is_some_and(|o| frozen.contains(&o)) {
+                    continue;
+                }
+                report.differences.push((id, d));
+            }
+        }
+        if let Some(sight) = turns.spatial.sight.as_ref() {
+            for d in visibility_differences(sight, &seen, p) {
+                report.differences.push((id, d));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The slice from a save: [`objects_from_save`]'s run, every player's state after it.
+fn run_from_save(
+    save: &[u8],
+    recording: &[u8],
+    start_tick: usize,
+    ticks: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+) -> Result<Turns, Error> {
+    let chapter = de::chapters(save)?[0];
+    let header = chapter.header()?;
+    let sections = header.players();
+    let mut turns = slice(&header, masters);
+    if let Some(text) = dumps.mesh {
+        let m = mesh_from_dump(text).ok_or(Error::BadMeshDump)?;
+        turns.pathing.set_mesh(m, mesh_owners_from_dump(text));
+    }
+    if let (Some(text), Some(sight)) = (dumps.registry, turns.spatial.sight.as_mut()) {
+        sight.registry = Some(registry_from_dump(text)?);
+    }
+    let played = de::chapters(recording)?[0];
+    hunted_origins(&mut turns, &played.header()?);
+    let updates = start_tick + 1;
+    turns.ticks = updates as u32;
+    let all = frames(&played, updates + ticks)?;
+    let next = all.get(updates..).unwrap_or_default();
+    let mut decoder = Decoder::default();
+    decoder.prime(&all[..updates.min(all.len())], &sections);
+    run(&mut turns, &mut decoder, next, &sections);
+    Ok(turns)
 }
 
 /// The hunted animals' unit AI fields the save does not hold (`TribeHuntedAnimalUnitAIModule`,

@@ -974,6 +974,126 @@ impl Turns {
     }
 }
 
+/// The game's state after a tick, for the oracle's forced replay (dev only: the oracle reads it
+/// from the tick oracle's saves, genie-core never reads the game): the frame seed and every
+/// player's live units and resources as the game holds them.
+#[derive(Clone, Debug, Default)]
+pub struct GameState {
+    pub frame_seed: u32,
+    pub players: Vec<Vec<Unit>>,
+    pub resources: Vec<[f32; 4]>,
+    /// Objects the slice modelled but got wrong this tick: they take the game's state too.
+    pub resync: Vec<i32>,
+    /// The players' visible maps and the unified map, when the slice's differ.
+    pub sight: Option<(Vec<crate::visibility::VisibleMap>, Vec<u64>)>,
+}
+
+impl Turns {
+    /// The forced replay's step after a tick: the frame seed is the game's, and so is every
+    /// object the slice did not model (it froze, or its player stopped) or got wrong (`resync`),
+    /// and the players' sight where it differs: its unit is the game's
+    /// (with what the save does not hold, a hunted animal's origin and a boar's flag, kept),
+    /// placed where the game has it, and it runs again from the next tick; a frozen object the
+    /// game no longer holds goes. A stopped player takes the game's resources and runs again.
+    /// Returns what could not be forced (an object that changed hands or masters, or that the
+    /// game made and the slice did not). Not part of a replay: a dev hook to see past a freeze.
+    pub fn force(&mut self, game: &GameState) -> Vec<(usize, i32, Unsupported)> {
+        let mut notes = Vec::new();
+        self.frame_seed = game.frame_seed;
+        if let (Some((maps, unified)), Some(sight)) =
+            (game.sight.as_ref(), self.spatial.sight.as_mut())
+        {
+            sight.maps.clone_from(maps);
+            sight.unified.clone_from(unified);
+        }
+        for p in 0..self.players.len() {
+            let Some(theirs) = game.players.get(p) else {
+                continue;
+            };
+            let stopped = self.players[p].stopped;
+            if stopped {
+                if let Some(r) = game.resources.get(p) {
+                    self.players[p].resources = *r;
+                }
+                self.players[p].stopped = false;
+                self.players[p].unsupported = None;
+            }
+            let mut i = 0;
+            while i < self.players[p].objects.len() {
+                let unit = &self.players[p].objects[i];
+                let (id, frozen) = (
+                    unit.id,
+                    stopped || unit.stopped || game.resync.contains(&unit.id),
+                );
+                if !frozen || !unit.life.is_alive() {
+                    i += 1;
+                    continue;
+                }
+                let Some(g) = theirs.iter().find(|g| g.id == id) else {
+                    let elsewhere = game.players.iter().any(|q| q.iter().any(|g| g.id == id));
+                    if elsewhere {
+                        notes.push((p, id, Unsupported("a forced object changed hands")));
+                        i += 1;
+                        continue;
+                    }
+                    let gone = self.players[p].objects.swap_remove(i);
+                    let _ = self.spatial.leave(gone.id);
+                    self.pathing.removed(gone.id);
+                    continue;
+                };
+                if g.life.master_id != unit.life.master_id {
+                    notes.push((p, id, Unsupported("a forced object changed masters")));
+                    i += 1;
+                    continue;
+                }
+                let mut forced = g.clone();
+                if let (Some(old), Some(new)) = (unit.ai.as_ref(), forced.ai.as_mut()) {
+                    new.hunted = old.hunted;
+                    if let (Some(o), Some(n)) = (old.home, new.home.as_mut()) {
+                        n.go_home = o.go_home;
+                    }
+                }
+                let (before, state) = (unit.life.state, forced.life.state);
+                if forced.position != unit.position {
+                    self.spatial.set_position(id, forced.position);
+                }
+                if state != before {
+                    if before <= 2 && 3 <= state {
+                        self.spatial.sight_state(id, 3);
+                    }
+                    if state != 3 {
+                        self.spatial.sight_state(id, state);
+                    }
+                }
+                self.spatial.unfreeze(id);
+                self.spatial.set_gait(id, forced.gait());
+                if let Some(placed) = self.spatial.get(id).cloned() {
+                    let moving = forced.mover.as_ref().is_some_and(|m| m.is_moving());
+                    self.pathing.moved(id, &placed, moving);
+                }
+                forced.stopped = false;
+                self.players[p].objects[i] = forced;
+                i += 1;
+            }
+            for g in theirs {
+                let known = self
+                    .players
+                    .iter()
+                    .any(|q| q.objects.iter().chain(&q.sleeping).any(|u| u.id == g.id));
+                if !known {
+                    notes.push((
+                        p,
+                        g.id,
+                        Unsupported("an object the game made and the slice did not"),
+                    ));
+                }
+            }
+        }
+        self.pathing.tiles_changed(self.spatial.take_changes());
+        notes
+    }
+}
+
 impl Player {
     /// A command the slice does not model for this player: the player stops.
     fn stop(&mut self, tick: u32, why: Unsupported) {
@@ -2169,6 +2289,60 @@ mod tests {
             rate: 1.0,
             cost: vec![(0, 46, true), (4, 1, false)],
         }
+    }
+
+    #[test]
+    fn the_forced_replay_takes_the_game_s_state_for_what_froze() {
+        // a frozen unit takes the game's (and runs again), a frozen unit the game no longer
+        // holds goes, a unit that ran keeps the slice's, a stopped player takes its resources
+        let mut t = one_player(vec![live(7), live(8), live(9)], [0.0; 4]);
+        t.players[0].objects[0].stopped = true;
+        t.players[0].objects[2].stopped = true;
+        t.players[0].stopped = false;
+        let game_unit = |id, timer| Unit {
+            id,
+            ai: Some(UnitAi {
+                retarget_timer: timer,
+                ..building()
+            }),
+            ..Unit::default()
+        };
+        let game = GameState {
+            frame_seed: 77,
+            players: vec![vec![game_unit(7, 900), game_unit(8, 901)]],
+            resources: vec![[1.0, 2.0, 3.0, 4.0]],
+            ..GameState::default()
+        };
+        assert_eq!(t.force(&game), vec![]);
+        assert_eq!(t.frame_seed, 77);
+        assert_eq!(ids(&t), vec![7, 8]);
+        assert_eq!(retarget(&t), vec![900, 40]);
+        assert!(t.players[0].objects.iter().all(|u| !u.stopped));
+        // a stopped player runs again with the game's resources; what differed is forced too
+        t.players[0].stopped = true;
+        let game = GameState {
+            resync: vec![8],
+            ..game
+        };
+        t.force(&game);
+        assert_eq!(
+            (t.players[0].stopped, t.players[0].resources),
+            (false, [1.0, 2.0, 3.0, 4.0])
+        );
+        assert_eq!(retarget(&t), vec![900, 901]);
+        // a game object the slice never made is named, not added
+        let made = GameState {
+            players: vec![vec![game_unit(7, 900), game_unit(8, 901), game_unit(10, 5)]],
+            ..GameState::default()
+        };
+        assert_eq!(
+            t.force(&made),
+            vec![(
+                0,
+                10,
+                Unsupported("an object the game made and the slice did not")
+            )]
+        );
     }
 
     fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> Turns {
