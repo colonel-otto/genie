@@ -47,15 +47,11 @@ struct Row {
     turning: Option<Turning>,
 }
 
-/// How a moving master turns (the `.dat` unit's moving part; master `+0x76c`, `+0x770`, `+0x774`),
-/// which the save does not hold.
+/// What the save does not hold of a moving master's movement (the `.dat` unit's moving part).
+/// Its turning is not here: every copy of a master derives it from its turn speed and walking
+/// sprite ([`genie_core::movement::turn_rate`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Turning {
-    pub turn_radius: f32,
-    pub turn_radius_speed: f32,
-    pub max_yaw_per_second_moving: f32,
-    /// Master `+0x758`; 0 turns a unit to face its work at once.
-    pub stationary_yaw_revolution_time: f32,
     /// Master `+0x768`, `old_move_algorithm`: bit 0 has a stop reset the unit's sprite.
     pub move_algorithm: u8,
     /// Master `+0x780`.
@@ -284,10 +280,6 @@ impl MasterTable {
                     )
                 });
                 let turning = unit.dead_fish.as_ref().map(|d| Turning {
-                    turn_radius: d.turn_radius,
-                    turn_radius_speed: d.turn_radius_speed,
-                    max_yaw_per_second_moving: d.max_yaw_per_second_moving,
-                    stationary_yaw_revolution_time: d.stationary_yaw_revolution_time,
                     move_algorithm: d.old_move_algorithm,
                     min_collision_size_multiplier: d.min_collision_size_multiplier,
                 });

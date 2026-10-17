@@ -70,9 +70,10 @@ pub struct MoveStats {
     /// The top speed (object slot 65, `0x141202c70`): the master's speed (`+0x740`), times the
     /// current sprite's speed factor when that is above 0.
     pub speed: f32,
-    /// Master `+0x774`: the most the unit turns per second.
+    /// Master `+0x774`: the most the unit turns per second ([`turn_rate`]).
     pub turn_rate: f32,
-    /// Master `+0x76c` and `+0x770`: the turn radius is `turn_radius × speed / turn_radius_speed`.
+    /// Master `+0x76c` and `+0x770`: the turn radius is `turn_radius × speed / turn_radius_speed`
+    /// (0 and the largest float for every master the game copies, [`turn_rate`]).
     pub turn_radius: f32,
     pub turn_radius_speed: f32,
     /// Master `+0x5d8`, `+0x5dc`, `+0x5e0`.
@@ -81,8 +82,8 @@ pub struct MoveStats {
     /// on (its mask).
     pub restriction: usize,
     pub restriction_mask: u8,
-    /// The master's stationary yaw revolution time (`+0x758`) is 0: the unit faces a target at
-    /// once (`FUN_141162db0`).
+    /// The master's turn speed (`+0x758`, the `.dat`'s `rotation_speed`) is 0: the unit faces a
+    /// target at once (`FUN_141162db0`).
     pub turns_at_once: bool,
     /// The master's move algorithm (`+0x768`, the `.dat`'s `move_algorithm`): bit 0 has a stop
     /// reset the unit's sprite (slot 0x5d8).
@@ -90,6 +91,8 @@ pub struct MoveStats {
     /// Master `+0x780`, `min_collision_size_multiplier`: the walk's query grows moving allies by
     /// the unit's radius times this.
     pub min_collision: f32,
+    /// The master's object flags (`+0x654`) have bit 1: the unit turns a hundred times faster.
+    pub fast_turn: bool,
 }
 
 /// A moving unit's movement state.
@@ -299,6 +302,30 @@ fn short_range(near: bool, range: f32) -> f32 {
     }
     let r = range - RANGE_FLOOR;
     if r <= 0.0 { 0.0 } else { r }
+}
+
+/// A master whose object flags have bit 1 turns as if dt were this many times longer
+/// (`DAT_14330ebcc`).
+const FAST_TURN: f32 = crate::image::movement::FAST_TURN;
+/// 2π (`DAT_142eb56ac`): over a revolution's time, the most a unit turns per second.
+const TWO_PI: f32 = crate::image::movement::TWO_PI;
+
+/// The most a unit of a moving master turns per second (`+0x774`) as every copy of the master
+/// sets it (master slot 0x80, `FUN_1410e3a70`, which also leaves the turn radius 0 and its
+/// speed the largest float): with a turn speed (`+0x758`) and a walking sprite, the sprite's
+/// facets times the turn speed are the time of a revolution (`+0x778`, slot 0x98
+/// `FUN_1410e39e0`), and 2π over that is the rate (`+0x77c`, copied to `+0x774`); without either
+/// the largest float. The `.dat`'s own turning values do not survive the copy.
+pub fn turn_rate(turn_speed: f32, walking_facets: Option<i16>) -> f32 {
+    let Some(facets) = walking_facets.filter(|_| turn_speed != 0.0) else {
+        return f32::MAX;
+    };
+    let revolution = f32::from(facets) * turn_speed;
+    if revolution == 0.0 {
+        f32::MAX
+    } else {
+        TWO_PI / revolution
+    }
 }
 
 /// A path too short to walk: fewer than two points or shorter than 0.01.
@@ -672,8 +699,8 @@ impl Mover {
             }
             None => {}
         }
-        self.steer(direction, dt);
-        self.control_speed(position, waypoint);
+        let clipped = self.steer(direction, dt);
+        self.control_speed(position, waypoint, clipped);
         Ok(Next::Done(Motion::Moving))
     }
 
@@ -1748,30 +1775,40 @@ impl Mover {
 
     /// Turn toward `direction` (slot 195, `0x14114f630`, then the yaw, slot 184, `0x141163140`):
     /// by the angle between the flat forward vector and the direction, at most the turn rate times
-    /// dt, about the up axis; then the forward vector and its right are renormalised (slot 173,
-    /// `0x14115d150`, which rebuilds the right vector from up and forward).
-    fn steer(&mut self, direction: Vec3, dt: f32) {
+    /// dt (a hundred times dt for a master whose object flags have bit 1), about the up axis; then
+    /// the forward vector and its right are renormalised (slot 173, `0x14115d150`, which rebuilds
+    /// the right vector from up and forward). Returns whether the turn fell short (the angle was
+    /// above the most), which brakes the unit ([`Mover::control_speed`]).
+    fn steer(&mut self, direction: Vec3, dt: f32) -> bool {
         let mut flat = self.forward;
         flat[1] = 0.0;
         let flat = fmath::normalize(flat);
         let angle = fmath::angle_between(direction, flat);
+        let dt = if self.stats.fast_turn {
+            dt * FAST_TURN
+        } else {
+            dt
+        };
         let most = self.stats.turn_rate * dt;
+        let clipped = most < angle;
         let mut turn = if angle <= most { angle } else { most };
         if 0.0 < fmath::cross(direction, flat)[1] {
             turn = -turn;
         }
         if self.paths[0].flags & 1 != 0 && turn == 0.0 {
-            return;
+            return clipped;
         }
         let m = fmath::rotation(turn, UP);
         let forward = fmath::normalize(fmath::rotate(&m, self.forward));
         self.forward = forward;
         self.right = fmath::normalize(fmath::cross(UP, forward));
+        clipped
     }
 
-    /// The speed control toward the waypoint (slot 198, `0x141150a80`): accelerate to the top speed
-    /// unless the waypoint lies inside the turning circle, where the unit brakes.
-    fn control_speed(&mut self, position: Vec3, waypoint: Vec3) {
+    /// The speed control toward the waypoint (slot 198, `0x141150a80`): a unit whose turn fell
+    /// short stops (its speed 0, slot 0x598) and brakes; else it accelerates to the top speed
+    /// unless the waypoint lies inside the turning circle, where it brakes.
+    fn control_speed(&mut self, position: Vec3, waypoint: Vec3, clipped: bool) {
         let Some(v) = self.velocity.as_mut() else {
             self.velocity = Some(Velocity {
                 velocity: [0.0; 3],
@@ -1779,6 +1816,11 @@ impl Mover {
             });
             return;
         };
+        if clipped {
+            v.acceleration[2] = -f32::MAX;
+            v.velocity[2] = 0.0;
+            return;
+        }
         let d = fmath::sub(waypoint, position);
         let length = fmath::sqrt(d[1] * d[1] + d[0] * d[0] + d[2] * d[2]);
         let toward = [d[0] / length, d[1] / length, d[2] / length];
@@ -1848,6 +1890,17 @@ mod tests {
 
     const DT: f32 = 0.02;
 
+    /// MarvinBlue/426048731's boar (master 48): a walking sprite of 16 facets at a turn speed of
+    /// 0.05 turns 2π / 0.8 a second, 11.25° in a tick of 0.025 s; a villager turns at once.
+    #[test]
+    fn a_master_s_turn_rate_comes_from_its_turn_speed_and_walking_facets() {
+        let rate = turn_rate(0.05, Some(16));
+        assert_eq!(rate, TWO_PI / (16.0f32 * 0.05));
+        assert_eq!(rate.to_bits(), 7.853_982f32.to_bits());
+        assert_eq!(turn_rate(0.0, Some(16)), f32::MAX);
+        assert_eq!(turn_rate(0.05, None), f32::MAX);
+    }
+
     fn stats() -> MoveStats {
         MoveStats {
             speed: 0.8,
@@ -1860,6 +1913,7 @@ mod tests {
             turns_at_once: true,
             move_algorithm: 0,
             min_collision: 1.0,
+            fast_turn: false,
         }
     }
 

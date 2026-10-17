@@ -421,11 +421,14 @@ fn mover(
         return Err(Unsupported("saved future path data"));
     }
     // an object with its own master (a copy, say a captured animal's) moves by its own values
-    let (radius, restriction, base) = match (s.own_master(), s.own_animated_master()) {
+    let (radius, restriction, base, turn, flags) = match (s.own_master(), s.own_animated_master()) {
         (Some(own), Some(animated)) => (
             [own.radius_x, own.radius_y, own.radius_z],
             own.terrain_restriction_mask_id,
             animated.max_speed,
+            s.own_moving_master()
+                .map(|m| (m.turn_speed, m.temp_move_sprite)),
+            own.object_flags,
         ),
         (Some(_), None) => {
             return Err(Unsupported(
@@ -446,6 +449,8 @@ fn mover(
                 [placement.radius_x, placement.radius_y, placement.radius_z],
                 placement.terrain_restriction_mask_id,
                 base,
+                moving_master(master).map(|m| (m.turn_speed, m.move_sprite_id)),
+                placement.object_flags,
             )
         }
     };
@@ -457,6 +462,8 @@ fn mover(
     let turning = table
         .turning(civ, s.master_obj)
         .ok_or(Unsupported("a moving master the data file does not have"))?;
+    let (turn_speed, walking) = turn.ok_or(Unsupported("a moving master without a moving part"))?;
+    let facets = table.graphics.get(&walking).map(|g| g.facets);
     let velocity = (m.have_movement == 1).then(|| Velocity {
         velocity: m.velocity.as_ref().map_or([0.0; 3], vec3),
         acceleration: m.acceleration.as_ref().map_or([0.0; 3], vec3),
@@ -475,9 +482,9 @@ fn mover(
         factor: 1.0,
         stats: MoveStats {
             speed,
-            turn_rate: turning.max_yaw_per_second_moving,
-            turn_radius: turning.turn_radius,
-            turn_radius_speed: turning.turn_radius_speed,
+            turn_rate: genie_core::movement::turn_rate(turn_speed, facets),
+            turn_radius: 0.0,
+            turn_radius_speed: f32::MAX,
             radius,
             restriction: usize::try_from(restriction)
                 .map_err(|_| Unsupported("a negative terrain restriction"))?,
@@ -488,9 +495,10 @@ fn mover(
                 .ok_or(Unsupported(
                     "a terrain restriction the data file does not have",
                 ))?,
-            turns_at_once: turning.stationary_yaw_revolution_time == 0.0,
+            turns_at_once: turn_speed == 0.0,
             move_algorithm: turning.move_algorithm,
             min_collision: turning.min_collision_size_multiplier,
+            fast_turn: flags & 2 != 0,
         },
         waiting: m.waiting_to_move_value,
         wait_delays: m.number_wait_delays,
@@ -1223,17 +1231,19 @@ fn moving_stats(
     let factor = table.sprite_speed(sprite).unwrap_or(0.0);
     let turning = table.turning(civ, s.id())?;
     let restriction = usize::try_from(s.terrain_restriction_mask_id).ok()?;
+    let facets = table.graphics.get(&moving.move_sprite_id).map(|g| g.facets);
     Some(genie_core::movement::MoveStats {
         speed: if 0.0 < factor { base * factor } else { base },
-        turn_rate: turning.max_yaw_per_second_moving,
-        turn_radius: turning.turn_radius,
-        turn_radius_speed: turning.turn_radius_speed,
+        turn_rate: genie_core::movement::turn_rate(moving.turn_speed, facets),
+        turn_radius: 0.0,
+        turn_radius_speed: f32::MAX,
         radius: [s.radius_x, s.radius_y, s.radius_z],
         restriction,
         restriction_mask: *table.terrain.masks().get(restriction)?,
-        turns_at_once: turning.stationary_yaw_revolution_time == 0.0,
+        turns_at_once: moving.turn_speed == 0.0,
         move_algorithm: turning.move_algorithm,
         min_collision: turning.min_collision_size_multiplier,
+        fast_turn: s.object_flags & 2 != 0,
     })
 }
 

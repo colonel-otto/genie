@@ -276,9 +276,12 @@ fn gaia_s_birds_and_animals_from_a_save_match_the_game_object_by_object() {
     // time from the Action stream; in 718 it draws the angle (0..360) and its sprite, and flies
     // speed times time along it; the walked level lets its path go (a bird is not solid); the
     // hawk 9926 likewise in 861; the fox 9851's completed wander becomes its last action (the
-    // notify of 716, processed on Gaia's turn); every object and Gaia's sight through the save
-    // after 1080, before the deer near player 1's frozen scout (1084)
-    let Some(found) = differences(680, 400, 0) else {
+    // notify of 716, processed on Gaia's turn); in 1232 the boar 9731 turns toward its MoveTo's
+    // point at its master's rate (a sixteen-facet walking sprite at 0.05 s a facet: 2π / 0.8 a
+    // second, FUN_1410e3a70) and stands while its turn falls short; in 1250 the sheep 9520
+    // joins Gaia, killed. Every object and Gaia's sight through the save after 1251, before the
+    // sheep's dying sprite (1253)
+    let Some(found) = differences(680, 571, 0) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

@@ -957,6 +957,7 @@ mod tests {
                 turns_at_once: true,
                 move_algorithm: 0,
                 min_collision: 1.0,
+                fast_turn: false,
             },
             waiting: 0,
             wait_delays: 0,

@@ -98,6 +98,8 @@ pub mod movement {
     /// 3.4028234663852886e+38
     pub const FAR: f32 = f32::from_bits(0x7f7fffff);
     /// 100.0
+    pub const FAST_TURN: f32 = f32::from_bits(0x42c80000);
+    /// 100.0
     pub const LOOK_AHEAD: f32 = f32::from_bits(0x42c80000);
     /// 0.25
     pub const PUSHED: f32 = f32::from_bits(0x3e800000);
@@ -113,6 +115,8 @@ pub mod movement {
     pub const STRAIGHT_GROW: f32 = f32::from_bits(0x3f000000);
     /// 10.0
     pub const TARGET_SHORT_REACH: f32 = f32::from_bits(0x41200000);
+    /// 6.2831854820251465
+    pub const TWO_PI: f32 = f32::from_bits(0x40c90fdb);
 }
 
 pub mod order {

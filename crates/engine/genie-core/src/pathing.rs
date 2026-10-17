@@ -241,7 +241,10 @@ mod tests {
         p.refresh(10029, &hunter, false, [0.0; 2]);
         let s = p.shape(10029).unwrap();
         let r = refreshed_rect(hunter.position, hunter.radius);
-        assert_eq!(r[0], (106.53662f32 * 4_194_304.0) as i32 - 838_860 - 0x20_0000);
+        assert_eq!(
+            r[0],
+            (106.53662f32 * 4_194_304.0) as i32 - 838_860 - 0x20_0000
+        );
         assert_eq!(
             p.mesh().unwrap().shapes[s as usize],
             [r[0] & !1, r[1] & !1, (r[2] + 1) & !1, (r[3] + 1) & !1]
