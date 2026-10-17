@@ -230,8 +230,12 @@ impl Turns {
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
         let taken = match (unit.ai.is_some() && !stop_after_kill, top) {
             (true, Some(crate::artifact::ARTIFACT_TYPE)) => {
-                if let Some(a) = unit.artifact.as_mut() {
-                    a.take_point(point);
+                let walked = unit.artifact.as_mut().is_some_and(|a| a.take_point(point));
+                if walked {
+                    unit.mover
+                        .as_mut()
+                        .ok_or(Unsupported("a walker without movement state"))?
+                        .stop()?;
                 }
                 true
             }

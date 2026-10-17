@@ -1682,12 +1682,19 @@ fn run(
     frames: &[Frame<'_>],
     sections: &[PlayerSection<'_>],
 ) {
+    // GENIE_TRACE_COMMANDS lists each decoded command with the update it runs in
+    let trace = std::env::var_os("GENIE_TRACE_COMMANDS").is_some();
     for frame in frames {
         let commands: Vec<Command> = frame
             .commands
             .iter()
             .filter_map(|p| decoder.command(p, sections))
             .collect();
+        if trace {
+            for c in &commands {
+                eprintln!("update {}: {c:?}", turns.ticks + 1);
+            }
+        }
         turns.tick_with(frame.dt, &commands);
     }
 }

@@ -31,8 +31,8 @@ use crate::spatial::{Placed, Spatial};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::{
-    ACTION_COMPLETED, AiMove, BUILD_ACTION, BUILD_ORDER, Effect, Notify, OWNER_CHANGED, Search,
-    Surroundings, UnitAi, Unsupported,
+    ACTION_COMPLETED, ACTION_EXECUTED, AiMove, BUILD_ACTION, BUILD_ORDER, Effect, Notify,
+    OWNER_CHANGED, Search, Surroundings, UnitAi, Unsupported,
 };
 use crate::visibility::{BuildingSight, Seer, capture_kind};
 
@@ -580,8 +580,13 @@ impl Unit {
                 z: self.position[2],
                 victim,
                 sprite_rng,
+                master_id: master.id,
+                executed: None,
             };
             hunt.update(walk, computer, &mut strike, &mut gather)?;
+            if let Some(target) = strike.executed {
+                self.post_own(ACTION_EXECUTED, [600, target, 0])?;
+            }
         }
         // the motion step may have put the unit onto a waypoint it reached
         if let Some(p) = c.spatial.get(self.id) {

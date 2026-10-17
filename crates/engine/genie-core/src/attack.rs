@@ -156,7 +156,15 @@ pub struct Strike<'a> {
     /// The Sprite stream, which a sprite with a random first frame draws from; the hit draws
     /// from the walk's Object stream.
     pub sprite_rng: &'a mut Well512,
+    /// The unit's master's id: masters 73 and 559 post no executed action.
+    pub master_id: i16,
+    /// The target of a swing this update, whose executed action (notify 0x200 with 600 and the
+    /// target) the unit posts to its unit AI.
+    pub executed: Option<i32>,
 }
+
+/// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
+const QUIET_SWINGS: [i16; 2] = [73, 559];
 
 /// Slot 0x68 (`FUN_141217000`): the unit's sprite becomes `g` unless it is already; a new sprite
 /// starts a new instance (`FUN_1413b2ef0`).
@@ -537,13 +545,17 @@ impl Attack {
     /// `FUN_141084230`): a 64-bit Object-stream draw against the hit chance; a hit costs the target
     /// the attacker's weapons' sum times the elevation factor (a static object has no armor, slot
     /// 0xf0 `FUN_14118cab0`); below 1 hit point it has 0 and wakes, and a non-villager's hit takes
-    /// what it holds (slot 0xe8 `FUN_14118efd0`). The attack count, the last attack time, the
-    /// unit AI's notify and the sounds are not held.
+    /// what it holds (slot 0xe8 `FUN_14118efd0`). Before the draw the unit tells its unit AI the
+    /// action executed (0x200, but for masters 73 and 559). The attack count, the last attack
+    /// time (`+0x648`) and the sounds are not held.
     fn hit(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
-        let v = &mut *s.victim;
-        if 30 <= v.kind {
+        if 30 <= s.victim.kind {
             return Err(Unsupported("a hit on an object with armor"));
         }
+        if !QUIET_SWINGS.contains(&s.master_id) {
+            s.executed = Some(s.victim.id);
+        }
+        let v = &mut *s.victim;
         let draw = object_rng.raw64();
         let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
         if i64::from(s.hit_chance) < r {

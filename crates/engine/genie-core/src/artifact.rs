@@ -47,11 +47,13 @@ impl Artifact {
     /// set_state(4) (`0x140aace30`): its sub-actions go (`FUN_140a98620`), a MoveTo to the point
     /// within 0 (`FUN_140aa0d30` with its task's sprite, walking; the sprite is not held) is added
     /// and starts (state 3 for an animal away from the point), and the action checks again
-    /// (set_state 6). A move to an object (set_state 5) is not modelled.
-    pub fn take_point(&mut self, point: [f32; 3]) {
+    /// (set_state 6). A move to an object (set_state 5) is not modelled. Returns whether a MoveTo
+    /// went, whose teardown (`0x140aa1f30`) stops the unit (slot 0x5d0, the caller's).
+    pub fn take_point(&mut self, point: [f32; 3]) -> bool {
         self.goal = Some(point);
-        self.move_to = Some(MoveTo::Start);
+        let walked = self.move_to.replace(MoveTo::Start).is_some();
         self.state = CHECK;
+        walked
     }
 
     /// Slot 0x38 (`FUN_140aad1a0`), as the unit's stop (`FUN_14106fa60`) calls it before a new
@@ -166,11 +168,19 @@ mod tests {
             timer: 0.4,
             ..Artifact::new(false)
         };
-        a.take_point([28.5, 93.5, 0.0]);
+        assert!(!a.take_point([28.5, 93.5, 0.0]));
         assert_eq!(
             (a.state, a.timer, a.move_to, a.goal),
             (6, 0.4, Some(MoveTo::Start), Some([28.5, 93.5, 0.0]))
         );
+        // a second move while the first walks: its MoveTo goes, which stops the unit (the
+        // sheep 9520 in 768)
+        let mut walking = Artifact {
+            move_to: Some(MoveTo::Moving),
+            ..a
+        };
+        assert!(walking.take_point([28.5, 94.5, 0.0]));
+        assert_eq!(walking.move_to, Some(MoveTo::Start));
         // its walk needs the animal's movement state
         assert!(a.update(None, 50, true, &mut || Ok(None)).is_err());
         // a MoveTo that ended goes with the point, then the check waits again
