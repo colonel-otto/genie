@@ -259,8 +259,10 @@ fn the_forced_replay_report() {
          | --- | --- | --- | --- | --- | --- |\n",
         if restart {
             format!("a restart from every save, {ticks} update(s) each")
+        } else if length == usize::MAX {
+            "one run, forced after each update".to_string()
         } else {
-            format!("segments of {length} updates, forced after each")
+            format!("segments of {length} updates, forced after each update")
         },
         reports.len()
     );
