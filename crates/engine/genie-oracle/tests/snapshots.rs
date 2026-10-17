@@ -207,6 +207,19 @@ fn the_felled_tree_s_wood_from_a_save_matches_the_game_object_by_object() {
     assert_eq!(found, Vec::<String>::new());
 }
 
+#[test]
+fn the_deer_s_idle_checks_from_a_save_match_the_game_object_by_object() {
+    // updates 682 to 1300, with the game's objects-in-sight registry at the start: Gaia's deer
+    // and foxes (hunted animals, unit AI type 2) keep their places, their idle checks (862,
+    // 1084) finding nothing of the classes they care about in Gaia's sight and drawing no wander;
+    // in 1187 the scout 9185 plans its path past the deer 9657, which stood still; player 2's
+    // objects, its visible map and its unified bits through the save after 1300
+    let Some(found) = differences(680, 620, 2) else {
+        return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
+    };
+    assert_eq!(found, Vec::<String>::new());
+}
+
 /// Not pinned: what the slice gets wrong some ticks after a save, for the tick FD-008 works on
 /// (`GENIE_SNAPSHOT_START`, default 679; `GENIE_SNAPSHOT_TICKS`, default 1), for player 2 or
 /// `GENIE_SNAPSHOT_PLAYER`.

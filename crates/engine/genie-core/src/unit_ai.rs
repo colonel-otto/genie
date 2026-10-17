@@ -5,7 +5,10 @@
 //! the retarget timer, slot 72 is the idle check (`processIdle`). Only an idle unit is modelled: no
 //! order, no action, no target, no actions in its list. Anything else is [`Unsupported`]. A boar
 //! (factory type 4, `TribeElephantUnitAIModule`, slot 4 `0x140c2c010`) wanders around its origin
-//! ([`Home`]); its moves go to the unit as an [`AiMove`].
+//! ([`Home`]); its moves go to the unit as an [`AiMove`]. A hunted animal (type 2,
+//! `TribeHuntedAnimalUnitAIModule`: deer, foxes) looks for the closest object of the classes it
+//! cares about in its player's sight ([`Search`], answered by the caller) and otherwise wanders
+//! around its origin ([`Hunted`]).
 
 use crate::rng::Well512;
 
@@ -57,6 +60,47 @@ pub struct UnitAi {
     pub stop_after_kill: bool,
     /// A boar's own fields (factory type 4).
     pub home: Option<Home>,
+    /// A hunted animal's own fields (factory type 2).
+    pub hunted: Option<Hunted>,
+}
+
+/// A hunted animal's part of its unit AI (`TribeHuntedAnimalUnitAIModule`, factory type 2), set
+/// when the AI is made (`FUN_140c11920`) and not saved: a loaded game makes it from the loaded
+/// unit.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Hunted {
+    /// `+0x1f0`..`+0x1f8`: the unit's place when its AI was made.
+    pub origin: [f32; 3],
+    /// `+0x1fc`: the unit's slot 0x7b0 then (`+0xb74`, the work range of its master's last task
+    /// of action type 6, `FUN_141206d50`): beyond it the animal goes home.
+    pub leash: f32,
+}
+
+/// The classes a hunted animal cares about (`+0x190`, the constructor's list).
+pub const HUNTED_CARED: [i32; 28] = [
+    0, 4, 26, 24, 6, 25, 17, 10, 12, 35, 23, 36, 28, 18, 13, 44, 46, 43, 45, 47, 50, 51, 54, 55,
+    56, 57, 19, 59,
+];
+
+/// A unit AI's `ClosestObject` (`FUN_140c488b0`) as a hunted animal's idle check calls it (no
+/// group, relation, type, state or worker filter; reachable targets only): its search
+/// (`FUN_140c63e20`) queries its player's objects in sight of `classes` within `radius` of `at`
+/// for a searcher of radii `size` (`GetVisibleUnits`, mode 0, every relation). The caller answers
+/// with the closest object's id, −1 for none.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Search<'a> {
+    pub at: [f32; 2],
+    pub radius: f32,
+    pub classes: &'a [i32],
+    pub size: [f32; 2],
+}
+
+/// The caller's answer to a [`Search`].
+pub type Closest<'a> = dyn FnMut(&Search<'_>) -> Result<i32, Unsupported> + 'a;
+
+/// A search that never runs (units without a search).
+pub fn no_search(_: &Search<'_>) -> Result<i32, Unsupported> {
+    Err(Unsupported("a unit AI's search the caller does not answer"))
 }
 
 /// A boar's part of its unit AI (`TribeElephantUnitAIModule`, factory type 4), which its idle check
@@ -85,6 +129,11 @@ pub struct Surroundings {
     pub player: usize,
     /// The unit's master's class (decoded).
     pub class: i16,
+    /// The master's radii (`+0x5d8`, `+0x5dc`), line of sight (`+0x5d0`) and search radius
+    /// (`+0x794`, the unit's slot 0x2c8).
+    pub size: [f32; 2],
+    pub los: f32,
+    pub search_radius: f32,
 }
 
 /// The class whose busy units skip the idle check (`-0xe98` raw).
@@ -122,9 +171,10 @@ fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
     match ai_type {
         // villagers (0x140c21da0) and livestock (0x140c21f20) return 9 from slot 73
         8 | 19 => Ok(Retarget::Never),
-        // boar (4, slot 72 FUN_140c1e630), transport ship (11, slot 72 0x140c21d20), soldier (13),
-        // tower (15), building (17); the slot 72 of all but the boar draws nothing for an idle unit
-        4 | 11 | 13 | 15 | 17 => Ok(Retarget::Base),
+        // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), transport
+        // ship (11, slot 72 0x140c21d20), soldier (13), tower (15), building (17); the slot 72 of
+        // all but the hunted animal and the boar draws nothing for an idle unit
+        2 | 4 | 11 | 13 | 15 | 17 => Ok(Retarget::Base),
         _ => Err(Unsupported("unit-AI type not modelled")),
     }
 }
@@ -145,6 +195,22 @@ const AI_MOVE_RANGE: f32 = 0.5;
 /// The move order and action values (`0x2c6`, `0x262`), which moves set.
 const MOVE_ORDER: i32 = 0x2c6;
 const MOVE_ACTION: i32 = 0x262;
+
+/// The hunted animal's idle check (`FUN_140c1eea0`): away from its origin by more than
+/// `DAT_142eb0f48` (4, squared) it goes home once in 7 checks; otherwise it wanders 1 to 3 tiles
+/// each way (`HUNTED_STEP`), in mode 1 once in 28 and by a tile. Its search reaches its line of
+/// sight plus `DAT_14330eb8c` (1), or its search radius if that is as far, plus `+0x1e8` (unsaved,
+/// 0 in every unit probed).
+const HUNTED_HOME: f32 = 4.0;
+const HUNTED_STEP: i32 = 3;
+const HUNTED_SIGHT_GROWTH: f32 = 1.0;
+/// The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
+const CLASS_KING: i16 = 59;
+
+/// The action values the full update resets once the unit's actions ended (`0x140c66b10`, the
+/// unit's slot 0x430 false): attack, `0x261`, move, hunt, `0x269`, `0x26b`, `0x26c`, build and
+/// `0x2bf`.
+const ENDED_ACTIONS: [i32; 9] = [600, 0x261, 0x262, 0x265, 0x269, 0x26b, 0x26c, 0x2be, 0x2bf];
 
 /// `UpdateAdjustedIdleTimeout` (`0x140c41e00`): `r % (base / 2) + 3 * base / 4`, one AI draw.
 fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
@@ -194,6 +260,7 @@ impl UnitAi {
             retarget_disabled: 0,
             stop_after_kill: false,
             home: None,
+            hunted: None,
         })
     }
 
@@ -354,12 +421,103 @@ impl UnitAi {
         self.move_to(go_home)
     }
 
-    /// Slot 72 for the factory types modelled: only the boar's does anything for an idle unit.
-    fn process_idle(&mut self, at: &Surroundings, ai: &mut Well512) -> Option<AiMove> {
-        if self.ai_type == 4 {
-            self.boar_idle(at, ai)
+    /// The hunted animal's idle check (slot 72, `FUN_140c1eea0`). `FUN_140c41e50`, first, lowers
+    /// the unit's last human order time to 5000, which the slice does not hold; the king's branch
+    /// (class 59) is not modelled. Beyond its leash (squared, from the unit's footprint,
+    /// `FUN_140a847c0`) it goes home. Then its search: with nothing found, one draw; once in 7 it
+    /// goes home from more than 2 tiles away, else once in 7 (the same draw) it wanders, two more
+    /// draws; mode 1's herd is not modelled. A found object it would evade (slot 0x150), which is
+    /// not modelled. Its moves keep its height and come within 0.5, forced and walking.
+    fn hunted_idle(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        closest: &mut Closest<'_>,
+    ) -> Result<Option<AiMove>, Unsupported> {
+        let h = self
+            .hunted
+            .ok_or(Unsupported("a hunted animal without its origin"))?;
+        if at.class == CLASS_KING {
+            return Err(Unsupported("the hunted animal's branch for class 59"));
+        }
+        let [x, y, z] = at.position;
+        let go_home = AiMove {
+            point: [h.origin[0], h.origin[1], z],
+            range: AI_MOVE_RANGE,
+            force: true,
+            walk: true,
+        };
+        let leash = h.leash * h.leash;
+        if 0.0 < leash {
+            let gap = |d: f32, r: f32| {
+                let g = d.abs() - r;
+                if 0.0 <= g { g } else { 0.0 }
+            };
+            let dx = gap(h.origin[0] - x, at.size[0]);
+            let dy = gap(h.origin[1] - y, at.size[1]);
+            if leash < dy * dy + dx * dx {
+                return Ok(self.move_to(go_home));
+            }
+        }
+        if at.mode_1 {
+            return Err(Unsupported(
+                "a hunted animal's idle check in mode 1 (its herd)",
+            ));
+        }
+        let sight = at.los + HUNTED_SIGHT_GROWTH;
+        let radius = if sight <= at.search_radius {
+            at.search_radius
         } else {
-            None
+            sight
+        };
+        let found = closest(&Search {
+            at: [x, y],
+            radius,
+            classes: &HUNTED_CARED,
+            size: at.size,
+        })?;
+        if found != -1 {
+            return Err(Unsupported(
+                "a hunted animal evading an object it sees (slot 0x150)",
+            ));
+        }
+        let r = ai.rand15();
+        if r.is_multiple_of(BOAR_WANDER) {
+            let dx = x - h.origin[0];
+            let dy = y - h.origin[1];
+            if HUNTED_HOME < dy * dy + dx * dx {
+                return Ok(self.move_to(go_home));
+            }
+            let step = |ai: &mut Well512| {
+                let n = (ai.rand15() % (2 * HUNTED_STEP as u32)) as i32;
+                if HUNTED_STEP <= n {
+                    n - 2 * HUNTED_STEP
+                } else {
+                    n + 1
+                }
+            };
+            let sx = step(ai) as f32;
+            let sy = step(ai) as f32;
+            return Ok(self.move_to(AiMove {
+                point: [x + sx, sy + y, z],
+                ..go_home
+            }));
+        }
+        Ok(None)
+    }
+
+    /// Slot 72 for the factory types modelled: the boar's and the hunted animal's do something
+    /// for an idle unit.
+    fn process_idle(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        closest: &mut Closest<'_>,
+    ) -> Result<Option<AiMove>, Unsupported> {
+        match self.ai_type {
+            2 => self.hunted_idle(at, ai, closest),
+            4 => Ok(self.boar_idle(at, ai)),
+            _ => Ok(None),
         }
     }
 
@@ -380,19 +538,32 @@ impl UnitAi {
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
+        closest: &mut Closest<'_>,
     ) -> Result<Option<AiMove>, Unsupported> {
+        if !at.busy
+            && self.current_order == -1
+            && self.current_target == -1
+            && ENDED_ACTIONS.contains(&self.current_action)
+        {
+            // the unit's actions ended: the action value goes (0x2bf's stance-2 branch, which
+            // also sets the state position, is not modelled)
+            if self.current_action == 0x2bf && self.stance == 2 {
+                return Err(Unsupported("an ended action 0x2bf of stance 2"));
+            }
+            self.current_action = -1;
+        }
         if self.is_idle() {
             if at.busy && at.class == CLASS_20 {
                 return Err(Unsupported("a busy unit of class 20 (its idle part)"));
             }
-            return self.update_idle(dt, world_time, computer, at, ai);
+            return self.update_idle(dt, world_time, computer, at, ai, closest);
         }
         if !at.busy {
             return Err(Unsupported(
                 "a unit AI whose action ended (the reset of its action value)",
             ));
         }
-        self.update_busy(dt, world_time, computer, at, ai)
+        self.update_busy(dt, world_time, computer, at, ai, closest)
     }
 
     /// The retarget check of slot 73 (`0x140c567c0`) for a unit without a target, not on the
@@ -427,6 +598,7 @@ impl UnitAi {
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
+        closest: &mut Closest<'_>,
     ) -> Result<Option<AiMove>, Unsupported> {
         if !self.is_idle() {
             return Err(Unsupported("unit is not idle"));
@@ -441,7 +613,7 @@ impl UnitAi {
         let mut moved = None;
         if self.idle_timer > self.adjusted_idle_timeout {
             self.idle_timer = 0;
-            moved = self.process_idle(at, ai);
+            moved = self.process_idle(at, ai, closest)?;
         }
         self.look_around(computer, ai)?;
         // the boar's slot 4 (0x140c2c010) after the base: its second idle check runs only for a
@@ -489,6 +661,7 @@ impl UnitAi {
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
+        closest: &mut Closest<'_>,
     ) -> Result<Option<AiMove>, Unsupported> {
         let retarget = retarget_kind(self.ai_type)?;
         let order = (self.current_order, self.current_action);
@@ -496,7 +669,8 @@ impl UnitAi {
             order,
             (BUILD_ORDER, BUILD_ACTION) | (HUNT_ORDER, HUNT_ACTION)
         );
-        let moving = order == (MOVE_ORDER, MOVE_ACTION) && self.current_target == -1;
+        // a move on MOVE's order, or one the unit AI gave itself (an animal's wander)
+        let moving = matches!(order, (MOVE_ORDER | -1, MOVE_ACTION)) && self.current_target == -1;
         match retarget {
             Retarget::Never if working || moving => {}
             Retarget::Base if moving => {}
@@ -514,7 +688,9 @@ impl UnitAi {
         if at.class == CLASS_20 {
             return Err(Unsupported("a busy unit of class 20 (its idle part)"));
         }
-        self.state_position = [at.position[0], at.position[1]];
+        if self.current_order != -1 {
+            self.state_position = [at.position[0], at.position[1]];
+        }
         self.secondary_timer = self.secondary_timer.saturating_sub(dt);
         self.look_around_timer = self.look_around_timer.wrapping_add(dt);
         self.idle_timer = self.idle_timer.wrapping_add(dt);
@@ -531,7 +707,7 @@ impl UnitAi {
             && self.adjusted_idle_timeout < self.idle_timer
         {
             self.idle_timer = 0;
-            moved = self.process_idle(at, ai);
+            moved = self.process_idle(at, ai, closest)?;
         }
         self.calm_down();
         Ok(moved)
@@ -589,7 +765,7 @@ mod tests {
             class: 4,
             ..Surroundings::default()
         };
-        u.update(50, 0, false, &at, &mut r).unwrap();
+        u.update(50, 0, false, &at, &mut r, &mut no_search).unwrap();
         assert_eq!(
             (u.idle_timer, u.secondary_timer, u.look_around_timer),
             (0, 0, 0)
@@ -600,7 +776,7 @@ mod tests {
         assert_eq!(u.state_position, [29.5, 89.5]);
         // another order is not modelled
         u.current_order = 700;
-        assert!(u.update(50, 0, false, &at, &mut r).is_err());
+        assert!(u.update(50, 0, false, &at, &mut r, &mut no_search).is_err());
     }
 
     #[test]
@@ -642,11 +818,25 @@ mod tests {
     fn retarget_waits_for_the_timer() {
         let mut u = idle(17);
         let mut r = rng();
-        u.update_idle(50, 899, false, &Surroundings::default(), &mut r)
-            .unwrap();
+        u.update_idle(
+            50,
+            899,
+            false,
+            &Surroundings::default(),
+            &mut r,
+            &mut no_search,
+        )
+        .unwrap();
         assert_eq!((u.retarget_timer, r.draws), (900, 0));
-        u.update_idle(50, 900, false, &Surroundings::default(), &mut r)
-            .unwrap();
+        u.update_idle(
+            50,
+            900,
+            false,
+            &Surroundings::default(),
+            &mut r,
+            &mut no_search,
+        )
+        .unwrap();
         // the first rand15 after seed 0 is 7241
         assert_eq!(
             (u.last_retarget_time, u.retarget_timer),
@@ -661,8 +851,15 @@ mod tests {
             ..idle(15)
         };
         let mut r = rng();
-        u.update_idle(50, 100, false, &Surroundings::default(), &mut r)
-            .unwrap();
+        u.update_idle(
+            50,
+            100,
+            false,
+            &Surroundings::default(),
+            &mut r,
+            &mut no_search,
+        )
+        .unwrap();
         assert_eq!((u.last_retarget_time, r.draws), (100, 1));
     }
 
@@ -671,8 +868,15 @@ mod tests {
         for t in [8, 19] {
             let mut u = idle(t);
             let mut r = rng();
-            u.update_idle(50, 5000, false, &Surroundings::default(), &mut r)
-                .unwrap();
+            u.update_idle(
+                50,
+                5000,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
             assert_eq!((u.retarget_timer, r.draws), (900, 0), "type {t}");
         }
     }
@@ -684,11 +888,25 @@ mod tests {
             ..idle(8)
         };
         let mut r = rng();
-        u.update_idle(1000, 0, false, &Surroundings::default(), &mut r)
-            .unwrap();
+        u.update_idle(
+            1000,
+            0,
+            false,
+            &Surroundings::default(),
+            &mut r,
+            &mut no_search,
+        )
+        .unwrap();
         assert_eq!((u.look_around_timer, r.draws), (1000, 0));
-        u.update_idle(1, 0, false, &Surroundings::default(), &mut r)
-            .unwrap();
+        u.update_idle(
+            1,
+            0,
+            false,
+            &Surroundings::default(),
+            &mut r,
+            &mut no_search,
+        )
+        .unwrap();
         assert_eq!(
             (u.look_around_timer, u.look_around_timeout),
             (0, 4500 + 7241 % 1000)
@@ -702,8 +920,15 @@ mod tests {
             ..idle(13)
         };
         let mut r = rng();
-        u.update_idle(1, 900, false, &Surroundings::default(), &mut r)
-            .unwrap();
+        u.update_idle(
+            1,
+            900,
+            false,
+            &Surroundings::default(),
+            &mut r,
+            &mut no_search,
+        )
+        .unwrap();
         assert_eq!(u.retarget_timer, 750 + 7241 % 500);
         assert_eq!(u.look_around_timeout, 4500 + 25269 % 1000);
     }
@@ -715,8 +940,15 @@ mod tests {
             ..idle(8)
         };
         let mut r = rng();
-        u.update_idle(3001, 0, false, &Surroundings::default(), &mut r)
-            .unwrap();
+        u.update_idle(
+            3001,
+            0,
+            false,
+            &Surroundings::default(),
+            &mut r,
+            &mut no_search,
+        )
+        .unwrap();
         assert_eq!((u.idle_timer, u.secondary_timer), (0, 0));
     }
 
@@ -728,12 +960,27 @@ mod tests {
             ..idle(17)
         };
         assert!(
-            busy.update_idle(1, 0, false, &Surroundings::default(), &mut r)
-                .is_err()
+            busy.update_idle(
+                1,
+                0,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search
+            )
+            .is_err()
         );
+        // the predators' type (5) is not modelled
         assert!(
-            idle(2)
-                .update_idle(1, 0, false, &Surroundings::default(), &mut r)
+            idle(5)
+                .update_idle(
+                    1,
+                    0,
+                    false,
+                    &Surroundings::default(),
+                    &mut r,
+                    &mut no_search
+                )
                 .is_err()
         );
         let mut defensive = UnitAi {
@@ -742,7 +989,14 @@ mod tests {
         };
         assert!(
             defensive
-                .update_idle(1, 0, false, &Surroundings::default(), &mut r)
+                .update_idle(
+                    1,
+                    0,
+                    false,
+                    &Surroundings::default(),
+                    &mut r,
+                    &mut no_search
+                )
                 .is_err()
         );
     }
@@ -782,6 +1036,7 @@ mod tests {
                 retarget_disabled: 0,
                 stop_after_kill: false,
                 home: None,
+                hunted: None,
             }
         );
     }
@@ -871,7 +1126,14 @@ mod tests {
         // multiple of 7; nothing moves
         let mut u = boar();
         let mut r = seed_for(false);
-        let moved = u.update_idle(10, 0, false, &at([23.5, 105.5, 0.0]), &mut r);
+        let moved = u.update_idle(
+            10,
+            0,
+            false,
+            &at([23.5, 105.5, 0.0]),
+            &mut r,
+            &mut no_search,
+        );
         assert_eq!(moved, Ok(None));
         assert_eq!((u.idle_timer, u.current_action, r.draws), (0, -1, 2));
     }
@@ -885,7 +1147,14 @@ mod tests {
         e.rand15();
         let (dx, dy) = (e.rand15() % 6, e.rand15() % 6);
         let moved = u
-            .update_idle(10, 0, false, &at([23.5, 105.5, 0.0]), &mut r)
+            .update_idle(
+                10,
+                0,
+                false,
+                &at([23.5, 105.5, 0.0]),
+                &mut r,
+                &mut no_search,
+            )
             .unwrap()
             .unwrap();
         let point = [dx as f32 - 3.0 + 23.5, dy as f32 - 3.0 + 105.5, 0.0];
@@ -917,7 +1186,14 @@ mod tests {
         let mut u = boar();
         let mut r = seed_for(true);
         let moved = u
-            .update_idle(10, 0, false, &at([26.0, 105.5, 0.5]), &mut r)
+            .update_idle(
+                10,
+                0,
+                false,
+                &at([26.0, 105.5, 0.5]),
+                &mut r,
+                &mut no_search,
+            )
             .unwrap()
             .unwrap();
         assert_eq!(moved.point, [23.5, 105.5, 0.5]);
@@ -925,7 +1201,14 @@ mod tests {
         // beyond the leash (more than 144 + 80, squared) it heads home unless it already does
         let mut far = boar();
         let mut r = seed_for(false);
-        let moved = far.update_idle(10, 0, false, &at([43.5, 105.5, 0.0]), &mut r);
+        let moved = far.update_idle(
+            10,
+            0,
+            false,
+            &at([43.5, 105.5, 0.0]),
+            &mut r,
+            &mut no_search,
+        );
         assert_eq!(moved.unwrap().map(|m| m.point), Some([23.5, 105.5, 0.0]));
         assert_eq!(r.draws, 1);
         let mut heading = UnitAi {
@@ -933,7 +1216,14 @@ mod tests {
             ..boar()
         };
         let mut r = seed_for(false);
-        let moved = heading.update_idle(10, 0, false, &at([43.5, 105.5, 0.0]), &mut r);
+        let moved = heading.update_idle(
+            10,
+            0,
+            false,
+            &at([43.5, 105.5, 0.0]),
+            &mut r,
+            &mut no_search,
+        );
         assert_eq!((moved, heading.current_action), (Ok(None), -1));
         // furious, or in mode 1, it does not draw at all; without a target it calms down after
         for (furious, mode_1) in [(true, false), (false, true)] {
@@ -944,7 +1234,10 @@ mod tests {
                 mode_1,
                 ..at([23.5, 105.5, 0.0])
             };
-            assert_eq!(u.update_idle(10, 0, false, &place, &mut r), Ok(None));
+            assert_eq!(
+                u.update_idle(10, 0, false, &place, &mut r, &mut no_search),
+                Ok(None)
+            );
             assert_eq!((r.draws, u.home.unwrap().furious), (0, false));
         }
     }
@@ -998,11 +1291,158 @@ mod tests {
         // nothing
         let mut u = idle(11);
         let mut r = rng();
-        u.update_idle(50, 900, false, &Surroundings::default(), &mut r)
-            .unwrap();
+        u.update_idle(
+            50,
+            900,
+            false,
+            &Surroundings::default(),
+            &mut r,
+            &mut no_search,
+        )
+        .unwrap();
         assert_eq!(
             (u.last_retarget_time, u.retarget_timer),
             (900, 750 + 7241 % 500)
+        );
+    }
+
+    fn deer() -> UnitAi {
+        UnitAi {
+            idle_timer: 5000,
+            adjusted_idle_timeout: 5000,
+            idle_timeout: 4000,
+            look_around_timeout: 5424,
+            retarget_timer: 1212,
+            target_type: -1,
+            target_point: [-1.0; 3],
+            last_order: -1,
+            last_action: -1,
+            last_target: -1,
+            last_target_type: -1,
+            hunted: Some(Hunted {
+                origin: [31.5, 106.5, 0.0],
+                leash: 0.0,
+            }),
+            ..idle(2)
+        }
+    }
+
+    fn deer_at(position: [f32; 3]) -> Surroundings {
+        Surroundings {
+            position,
+            class: 9,
+            size: [0.2, 0.2],
+            los: 2.0,
+            search_radius: 1.0,
+            ..Surroundings::default()
+        }
+    }
+
+    /// A stream whose next rand15 is a multiple of 7 or not.
+    fn wander_seed(wanders: bool) -> Well512 {
+        (0..)
+            .map(|seed| {
+                let mut r = Well512::default();
+                r.set_seed(seed);
+                r
+            })
+            .find(|r| (r.clone().rand15() % 7 == 0) == wanders)
+            .unwrap()
+    }
+
+    #[test]
+    fn a_deer_that_sees_nothing_stays_six_times_in_seven_and_otherwise_wanders() {
+        let mut searched = Vec::new();
+        let mut nothing = |s: &Search<'_>| {
+            searched.push((s.at, s.radius, s.classes.len(), s.size));
+            Ok(-1)
+        };
+        let mut u = deer();
+        let mut r = wander_seed(false);
+        let place = deer_at([31.5, 106.5, 0.0]);
+        let moved = u
+            .update_idle(10, 0, false, &place, &mut r, &mut nothing)
+            .unwrap();
+        assert_eq!(moved, None);
+        // the search reaches the line of sight plus 1, the search radius being shorter
+        assert_eq!(searched, vec![([31.5, 106.5], 3.0, 28, [0.2, 0.2])]);
+        assert_eq!(r.draws, 1);
+
+        let mut u = deer();
+        let mut r = wander_seed(true);
+        let mut e = r.clone();
+        e.rand15();
+        let step = |n: u32| if 3 <= n { n as i32 - 6 } else { n as i32 + 1 };
+        let (dx, dy) = (step(e.rand15() % 6), step(e.rand15() % 6));
+        let moved = u
+            .update_idle(10, 0, false, &place, &mut r, &mut |_: &Search<'_>| Ok(-1))
+            .unwrap()
+            .unwrap();
+        assert_eq!(moved.point, [31.5 + dx as f32, 106.5 + dy as f32, 0.0]);
+        assert!(dx != 0 && dy != 0 && dx.abs() <= 3 && dy.abs() <= 3);
+        assert_eq!(r.draws, 3);
+    }
+
+    #[test]
+    fn a_deer_away_from_home_goes_back_and_one_beyond_its_leash_at_once() {
+        let mut u = deer();
+        let mut r = wander_seed(true);
+        let away = deer_at([34.5, 106.5, 0.5]);
+        let moved = u
+            .update_idle(10, 0, false, &away, &mut r, &mut |_: &Search<'_>| Ok(-1))
+            .unwrap()
+            .unwrap();
+        assert_eq!((moved.point, r.draws), ([31.5, 106.5, 0.5], 1));
+        // a fox's leash of 2.5: 3 tiles off (2.8 from its footprint) it goes home without a
+        // search or a draw
+        let mut u = deer();
+        u.hunted.as_mut().unwrap().leash = 2.5;
+        let mut r = wander_seed(false);
+        let moved = u
+            .update_idle(10, 0, false, &away, &mut r, &mut no_search)
+            .unwrap()
+            .unwrap();
+        assert_eq!((moved.point, r.draws), ([31.5, 106.5, 0.5], 0));
+    }
+
+    #[test]
+    fn a_deer_that_sees_an_object_would_evade_it_which_is_not_modelled() {
+        let mut u = deer();
+        let mut r = wander_seed(false);
+        let place = deer_at([31.5, 106.5, 0.0]);
+        assert!(
+            u.update_idle(10, 0, false, &place, &mut r, &mut |_: &Search<'_>| Ok(9185))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn an_animal_whose_wander_ended_drops_its_move_action_and_turns_idle() {
+        let mut u = UnitAi {
+            current_action: 0x262,
+            idle_timer: 10,
+            ..deer()
+        };
+        let mut r = wander_seed(false);
+        let place = deer_at([31.5, 106.5, 0.0]);
+        let moved = u
+            .update(10, 0, false, &place, &mut r, &mut no_search)
+            .unwrap();
+        assert_eq!((moved, u.current_action, u.idle_timer), (None, -1, 20));
+        // while it walks, its timers run and nothing else happens
+        let mut u = UnitAi {
+            current_action: 0x262,
+            ..deer()
+        };
+        let walking = Surroundings {
+            busy: true,
+            ..place
+        };
+        u.update(10, 0, false, &walking, &mut r, &mut no_search)
+            .unwrap();
+        assert_eq!(
+            (u.current_action, u.idle_timer, u.state_position),
+            (0x262, 5010, [0.0; 2])
         );
     }
 }

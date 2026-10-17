@@ -29,7 +29,9 @@ use crate::rng::{Stream, Streams};
 use crate::spatial::{Placed, Spatial};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, Diplomacy, DropSite, TaskTarget};
-use crate::unit_ai::{AiMove, BUILD_ACTION, BUILD_ORDER, Surroundings, UnitAi, Unsupported};
+use crate::unit_ai::{
+    AiMove, BUILD_ACTION, BUILD_ORDER, Search, Surroundings, UnitAi, Unsupported,
+};
 use crate::visibility::{BuildingSight, Seer, capture_kind};
 
 /// What the slice tracks of one object.
@@ -442,10 +444,8 @@ impl Unit {
         }
         let mut moved = None;
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
-        let class = c
-            .masters
-            .and_then(|ms| ms.get(self.life.master_id))
-            .map(|ms| ms.class);
+        let master = c.masters.and_then(|ms| ms.get(self.life.master_id));
+        let class = master.map(|ms| ms.class);
         let player = c.player;
         if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
             if busy && self.life.inside {
@@ -465,8 +465,21 @@ impl Unit {
                     }
                     None => -1,
                 },
+                size: master.map_or([0.0; 2], |m| m.radius),
+                los: master.map_or(0.0, |m| m.line_of_sight),
+                search_radius: master.map_or(0.0, |m| m.search_radius),
             };
-            moved = ai.update(dt, c.world_time, c.computer, &at, c.streams.get(Stream::Ai))?;
+            let me = self.id;
+            let spatial: &Spatial = c.spatial;
+            let mut closest = |s: &Search<'_>| spatial.closest_object(me, player, s);
+            moved = ai.update(
+                dt,
+                c.world_time,
+                c.computer,
+                &at,
+                c.streams.get(Stream::Ai),
+                &mut closest,
+            )?;
         }
         if let Some(m) = moved {
             let class = class.ok_or(Unsupported(
@@ -1295,7 +1308,8 @@ mod tests {
     #[test]
     fn an_unsupported_unit_stops_and_is_recorded() {
         let mut odd = building();
-        odd.ai_type = 2;
+        // a predator's (bear's) unit AI is not modelled
+        odd.ai_type = 5;
         let mut t = Turns::new(0, 1, 0, vec![0], vec![player(vec![Some(odd)])]);
         t.tick(10);
         t.tick(10);

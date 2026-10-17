@@ -856,6 +856,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
                 furious: e.furious != 0,
                 go_home: false,
             }),
+        hunted: None,
     })
 }
 
@@ -999,6 +1000,7 @@ fn work_masters(
         work.capacity = s.attribute_max_amount;
         if let Some(a) = action_part(m) {
             work.work_rate = a.work_rate;
+            work.search_radius = a.search_radius;
             if let Some(tasks) = a.tasks.as_ref() {
                 work.tasks = tasks.list.iter().map(|e| task(&e.task)).collect();
             }
@@ -2132,9 +2134,10 @@ pub fn objects_from_save(
     if let (Some(text), Some(sight)) = (dumps.registry, turns.spatial.sight.as_mut()) {
         sight.registry = Some(registry_from_dump(text)?);
     }
+    let played = de::chapters(recording)?[0];
+    hunted_origins(&mut turns, &played.header()?);
     let updates = start_tick + 1;
     turns.ticks = updates as u32;
-    let played = de::chapters(recording)?[0];
     let all = frames(&played, updates + ticks)?;
     let next = all.get(updates..).unwrap_or_default();
     run(&mut turns, &mut Decoder::default(), next, &sections);
@@ -2159,6 +2162,39 @@ pub fn objects_from_save(
             .map(|u| u.id)
             .collect(),
     })
+}
+
+/// The hunted animals' unit AI fields the save does not hold (`TribeHuntedAnimalUnitAIModule`,
+/// made with the unit: `FUN_140c11920`): the origin is the animal's place at the recording's
+/// start (`start`, the recording's header save, whose load made the AI), the leash its master's
+/// last task of action type 6's work range (the unit's `+0xb74`, `FUN_141206d50`).
+fn hunted_origins(turns: &mut Turns, start: &Header) {
+    let places: std::collections::BTreeMap<i32, [f32; 3]> = start
+        .players()
+        .iter()
+        .flat_map(|p| {
+            p.live_objects()
+                .chain(p.sleeping_objects())
+                .collect::<Vec<_>>()
+        })
+        .filter_map(|o| o.static_part().map(|s| (s.id, [s.t_x, s.t_y, s.t_z])))
+        .collect();
+    for (p, player) in turns.players.iter_mut().enumerate() {
+        let masters = turns.masters.get(p);
+        for unit in player.objects.iter_mut().chain(player.sleeping.iter_mut()) {
+            let Some(ai) = unit.ai.as_mut().filter(|ai| ai.ai_type == 2) else {
+                continue;
+            };
+            let Some(&origin) = places.get(&unit.id) else {
+                continue;
+            };
+            let leash = masters
+                .and_then(|m| m.get(unit.life.master_id))
+                .and_then(|m| m.tasks.iter().rev().find(|t| t.action_type == 6))
+                .map_or(0.0, |t| t.work_range);
+            ai.hunted = Some(genie_core::unit_ai::Hunted { origin, leash });
+        }
+    }
 }
 
 /// The world's objects as movement sees them, from a save ([`spatial`]), on a map without terrain.

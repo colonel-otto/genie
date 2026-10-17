@@ -9,7 +9,8 @@
 //! [`Tiles`] holds what the game keeps per tile: the obstruction manager's word (terrain class,
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
-use crate::unit_ai::Unsupported;
+use crate::registry::relation_kind;
+use crate::unit_ai::{Search, Unsupported};
 use crate::visibility::Visibility;
 use std::collections::BTreeMap;
 
@@ -634,6 +635,102 @@ impl Spatial {
                 v.registry_moved(id, p.class, from, position);
             }
         }
+    }
+
+    /// Fails when a frozen object of `player` that may have moved sees, or saw, near `rect`: the
+    /// player's visible map there, and the registry's records the objects' masks keep, may differ
+    /// from the game's (its sight, plus a tile, beyond what it may have moved).
+    pub fn check_sight(&self, player: usize, rect: [f32; 4]) -> Result<(), Unsupported> {
+        let Some(v) = self.sight.as_ref() else {
+            return Ok(());
+        };
+        let near = self.objects.iter().any(|(&id, p)| {
+            let Some(u) = p.unknown.filter(|&u| 0.0 < u && p.player == player) else {
+                return false;
+            };
+            let los = v.seer(id).map_or(0, |s| s.los as i32);
+            if los <= 0 {
+                return false;
+            }
+            let grow = u + los as f32 + 1.0;
+            let [x0, y0, x1, y1] = p.bounds();
+            rect[0] <= x1 + grow
+                && x0 - grow <= rect[2]
+                && rect[1] <= y1 + grow
+                && y0 - grow <= rect[3]
+        });
+        if near {
+            return Err(Unsupported("a stopped object's sight may reach the search"));
+        }
+        Ok(())
+    }
+
+    /// `ClosestObject` (`FUN_140c488b0`) for object `me` of `player` as a hunted animal calls it
+    /// ([`Search`]): the query over the player's registry ([`Registry::visible_units`]), then each
+    /// record by relation and order: itself, an object that is gone and one dying (state 7 and up)
+    /// are passed; any other would need the reachability check (the unit's slot 0x3d0,
+    /// `FUN_140fa0370`, the pathfinders), which is not modelled. Nothing found answers −1. A query
+    /// near a frozen object, or that reads nothing (which leaves the game's last answer), fails.
+    pub fn closest_object(
+        &self,
+        me: i32,
+        player: usize,
+        search: &Search<'_>,
+    ) -> Result<i32, Unsupported> {
+        let v = self
+            .sight
+            .as_ref()
+            .ok_or(Unsupported("a search without the players' sight"))?;
+        let r = v.registry.as_ref().ok_or(Unsupported(
+            "a search without the objects-in-sight registry",
+        ))?;
+        let own = self
+            .relations
+            .get(player)
+            .ok_or(Unsupported("a search of a player without relations"))?;
+        let relations = (0..r.players.min(own.len()))
+            .map(|o| relation_kind(player, o, own[o]))
+            .collect::<Result<Vec<u32>, _>>()?;
+        let radius = search.radius.min(1000.0);
+        let [x, y] = search.at;
+        let [rx, ry] = search.size;
+        let rect = [
+            (x - (radius + rx)) - 0.001,
+            (y - (radius + ry)) - 0.001,
+            x + (radius + rx) + 0.001,
+            y + (radius + ry) + 0.001,
+        ];
+        self.check_known(rect)?;
+        self.check_sight(player, rect)?;
+        let found = r
+            .visible_units(
+                player,
+                search.at,
+                search.radius,
+                0,
+                search.classes,
+                &relations,
+                search.size,
+                0xff,
+            )?
+            .ok_or(Unsupported(
+                "a search that reads nothing (the last answer stands)",
+            ))?;
+        for record in found.iter().flatten() {
+            if record.id == me {
+                continue;
+            }
+            let Some(seer) = v.seer(record.id) else {
+                continue;
+            };
+            if 7 <= seer.state {
+                continue;
+            }
+            return Err(Unsupported(
+                "ClosestObject's reachability check (slot 0x3d0) of a found object",
+            ));
+        }
+        Ok(-1)
     }
 
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its

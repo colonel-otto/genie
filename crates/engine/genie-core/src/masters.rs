@@ -98,6 +98,8 @@ pub struct Master {
     pub cost: Vec<(i16, i16, bool)>,
     /// `work_rate` (`+0x798`): what a builder of this master adds to the work per second.
     pub work_rate: f32,
+    /// `search_radius` (`+0x794`, the object's slot 0x2c8).
+    pub search_radius: f32,
     /// The hit points (`+0x530`) and the build time: the first train location's train time
     /// (`+0x898`'s first entry), 0 without one.
     pub hit_points: i16,

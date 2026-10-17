@@ -56,6 +56,25 @@ pub struct Registry {
     pub entries: BTreeMap<i32, Entry>,
 }
 
+/// What owner `owner` is to `viewer` in its queries (`player+0x278`): 1 itself, 0 Gaia, then by
+/// the diplomacy `relation` (`player+0x260`): an ally (0) 2, a neutral (1) 3, an enemy (3) 4. The
+/// mapping reproduces the game's lists of this recording's players (Gaia `[1, 4, 4]`, player 1
+/// `[0, 1, 4]`, player 2 `[0, 4, 1]`); its writer is not ported.
+pub fn relation_kind(viewer: usize, owner: usize, relation: u8) -> Result<u32, Unsupported> {
+    if viewer == owner {
+        return Ok(1);
+    }
+    if owner == 0 {
+        return Ok(0);
+    }
+    match relation {
+        0 => Ok(2),
+        1 => Ok(3),
+        3 => Ok(4),
+        _ => Err(Unsupported("a diplomacy relation other than 0, 1 and 3")),
+    }
+}
+
 impl Registry {
     pub fn new(players: usize, classes: usize) -> Self {
         Registry {
