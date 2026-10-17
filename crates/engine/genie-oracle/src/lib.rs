@@ -1280,21 +1280,100 @@ fn header_terrain_differences(
     slice: &genie_core::terrain::Terrain,
     header: &Header,
 ) -> Vec<String> {
+    let (width, tiles) = saved_terrain(header);
+    tile_differences(slice, width, &tiles)
+}
+
+/// A save's terrain per tile, row by row: the terrain, the terrain to restore, the layer; and the
+/// map's width.
+fn saved_terrain(header: &Header) -> (usize, Vec<(u8, u8, i16)>) {
     let map = &header.world.base_world.map;
+    let tiles = map
+        .rows
+        .iter()
+        .flat_map(|r| {
+            r.tiles
+                .iter()
+                .map(|t| (t.terrain_type, t.restore_terrain_type, t.layer))
+        })
+        .collect();
+    (map.map_width as usize, tiles)
+}
+
+/// The tiles whose terrain differs between the slice and the game's.
+fn tile_differences(
+    slice: &genie_core::terrain::Terrain,
+    width: usize,
+    tiles: &[(u8, u8, i16)],
+) -> Vec<String> {
     let mut out = Vec::new();
-    for (y, row) in map.rows.iter().enumerate() {
-        for (x, t) in row.tiles.iter().enumerate() {
-            let i = y * map.map_width as usize + x;
-            let ours = (slice.kinds[i], slice.restore[i], slice.layers[i]);
-            let theirs = (t.terrain_type, t.restore_terrain_type, t.layer);
-            if ours != theirs {
-                out.push(format!(
-                    "terrain tile ({x}, {y}): slice {ours:?} game {theirs:?}"
-                ));
-            }
+    for (i, &theirs) in tiles.iter().enumerate() {
+        let ours = (slice.kinds[i], slice.restore[i], slice.layers[i]);
+        if ours != theirs {
+            let (x, y) = (i % width, i / width);
+            out.push(format!(
+                "terrain tile ({x}, {y}): slice {ours:?} game {theirs:?}"
+            ));
         }
     }
     out
+}
+
+/// What the forced replay reads of the game's save after an update: every player's object rows,
+/// the sight, the map's terrain and the state the forcing takes. Parsing a save takes most of
+/// the replay's time, so [`forced_run`] builds these on worker threads ahead of the replay.
+struct SavedStep {
+    objects: Vec<Vec<ObjectRow>>,
+    seen: Visibility,
+    width: usize,
+    terrain: Vec<(u8, u8, i16)>,
+    game: genie_core::turn::GameState,
+}
+
+impl SavedStep {
+    fn of(save: &[u8], masters: Option<&MasterTable>) -> Result<Self, Error> {
+        let chapter = de::chapters(save)?[0];
+        let header = chapter.header()?;
+        let objects = (0..header.players().len() as u32)
+            .map(|id| header_objects(&header, id))
+            .collect::<Result<_, _>>()?;
+        let (width, terrain) = saved_terrain(&header);
+        Ok(SavedStep {
+            objects,
+            seen: saved_sight(&header),
+            width,
+            terrain,
+            game: game_state(&header, masters),
+        })
+    }
+}
+
+/// `f(0..n)` on up to `threads` worker threads, in order.
+fn parse_ahead<T: Send>(n: usize, threads: usize, f: &(dyn Fn(usize) -> T + Sync)) -> Vec<T> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let done: Vec<std::sync::Mutex<Option<T>>> =
+        (0..n).map(|_| std::sync::Mutex::new(None)).collect();
+    std::thread::scope(|scope| {
+        for _ in 0..threads.min(n) {
+            scope.spawn(|| {
+                loop {
+                    let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if n <= k {
+                        break;
+                    }
+                    let v = f(k);
+                    *done[k].lock().expect("a worker panicked") = Some(v);
+                }
+            });
+        }
+    });
+    done.into_iter()
+        .map(|m| {
+            m.into_inner()
+                .expect("a worker panicked")
+                .expect("every index ran")
+        })
+        .collect()
 }
 
 fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spatial {
@@ -2399,8 +2478,7 @@ pub fn forced_ticks(
         ticks,
         ..TickReport::default()
     };
-    let chapter = de::chapters(after)?[0];
-    compare_players(&turns, &chapter.header()?, None, &mut report)?;
+    compare_players(&turns, &SavedStep::of(after, masters)?, None, &mut report)?;
     Ok(report)
 }
 
@@ -2418,7 +2496,7 @@ pub fn forced_run(
     ticks: usize,
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
-    save_after: &dyn Fn(usize) -> Option<Vec<u8>>,
+    save_after: &(dyn Fn(usize) -> Option<Vec<u8>> + Sync),
 ) -> Result<Vec<TickReport>, Error> {
     let chapter = de::chapters(start_save)?[0];
     let header = chapter.header()?;
@@ -2440,13 +2518,23 @@ pub fn forced_run(
     let mut decoder = Decoder::default();
     decoder.prime(&all[..updates.min(all.len())], &sections);
     let mut reports = Vec::new();
+    // the game's saves after each update, parsed ahead on every core a batch at a time
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let mut ahead = std::collections::VecDeque::new();
     for k in 0..ticks {
         let Some(frame) = all.get(updates + k) else {
             break;
         };
-        let Some(after) = save_after(start + k + 1) else {
+        if ahead.is_empty() {
+            let n = (2 * threads).min(ticks - k);
+            let parse =
+                |i: usize| save_after(start + k + i + 1).map(|save| SavedStep::of(&save, masters));
+            ahead.extend(parse_ahead(n, threads, &parse));
+        }
+        let Some(after) = ahead.pop_front().flatten() else {
             break;
         };
+        let after = after?;
         run(
             &mut turns,
             &mut decoder,
@@ -2459,10 +2547,8 @@ pub fn forced_run(
             ..TickReport::default()
         };
         let tick = turns.ticks;
-        let chapter = de::chapters(&after)?[0];
-        let after = chapter.header()?;
         compare_players(&turns, &after, Some(tick), &mut report)?;
-        let mut game = game_state(&after, masters);
+        let mut game = after.game;
         // what the slice got wrong takes the game's state too: each update's differences are
         // its own, not an earlier update's carried on
         game.resync = report
@@ -2475,8 +2561,7 @@ pub fn forced_run(
             .iter()
             .any(|(_, d)| d.starts_with("player "))
         {
-            let seen = saved_sight(&after);
-            game.sight = Some((seen.maps, seen.unified));
+            game.sight = Some((after.seen.maps, after.seen.unified));
         }
         for (p, id, why) in turns.force(&game) {
             report.unsupported.push((p as u32, Some(id), tick, why));
@@ -2511,14 +2596,14 @@ fn game_state(header: &Header, masters: Option<&MasterTable>) -> genie_core::tur
 /// only the freezes of that update count, else all. A frozen object's differences are left out.
 fn compare_players(
     turns: &Turns,
-    after: &Header,
+    after: &SavedStep,
     tick: Option<u32>,
     report: &mut TickReport,
 ) -> Result<(), Error> {
-    let seen = saved_sight(after);
+    let seen = &after.seen;
     // the map's terrain is the world's: its differences go with Gaia's
     if let Some(t) = turns.spatial.terrain.as_ref() {
-        for d in header_terrain_differences(t, after) {
+        for d in tile_differences(t, after.width, &after.terrain) {
             report.differences.push((0, d));
         }
     }
@@ -2544,9 +2629,9 @@ fn compare_players(
             .filter(|u| u.id >= 0)
             .map(ObjectRow::of_unit)
             .collect();
-        let game = header_objects(after, id)?;
+        let game = after.objects.get(p).ok_or(Error::NoSuchPlayer(id))?;
         if !player.stopped {
-            for d in object_differences(&rows, &game) {
+            for d in object_differences(&rows, game) {
                 let object = d.split(':').next().and_then(|o| o.parse::<i32>().ok());
                 if object.is_some_and(|o| frozen.contains(&o)) {
                     continue;
@@ -2555,7 +2640,7 @@ fn compare_players(
             }
         }
         if let Some(sight) = turns.spatial.sight.as_ref() {
-            for d in visibility_differences(sight, &seen, p) {
+            for d in visibility_differences(sight, seen, p) {
                 report.differences.push((id, d));
             }
         }
