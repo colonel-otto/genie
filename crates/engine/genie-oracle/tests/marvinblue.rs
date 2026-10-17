@@ -88,7 +88,10 @@ fn tier1_corpus_report() {
                 }
                 "compared".to_string()
             }
-            Err(Error::Rec(genie_rec::de::Error::Unsupported { what, .. })) => {
+            Err(Error::Rec(genie_rec::de::Error::Header(genie_save::Error::Unsupported {
+                what,
+                ..
+            }))) => {
                 format!("unsupported: {what}")
             }
             Err(Error::NoCheckpoint) => "no checkpoint".to_string(),

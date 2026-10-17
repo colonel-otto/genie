@@ -18,9 +18,9 @@ fn recordings(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 /// The header written back.
-fn written(h: &de::header::Header) -> Vec<u8> {
+fn written(h: &genie_save::Header) -> Vec<u8> {
     let mut out = Cursor::new(Vec::new());
-    de::header::write(h, &mut out).unwrap();
+    genie_save::write(h, &mut out).unwrap();
     out.into_inner()
 }
 
@@ -52,7 +52,7 @@ fn tier_1_headers_write_back_their_bytes() {
             continue;
         }
         let inflated = chapters[0].inflate_header().unwrap();
-        let header = de::header::parse(&inflated).unwrap();
+        let header = genie_save::parse(&inflated).unwrap();
         if let Some(at) = first_difference(&written(&header), &inflated) {
             differ.push(format!("{}: first difference at {at:#x}", path.display()));
         }

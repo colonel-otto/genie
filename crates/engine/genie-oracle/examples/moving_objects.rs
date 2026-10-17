@@ -23,7 +23,7 @@ fn main() {
         .collect();
     let data = std::fs::read(path).expect("the save");
     let chapter = de::chapters(&data).expect("chapters")[0];
-    let header = de::header::parse(&chapter.inflate_header().expect("inflate")).expect("header");
+    let header = chapter.header().expect("the world save");
     let paths = &header.world.base_world.path;
     let player: usize = player.parse().expect("a player number");
     for object in header.players()[player].live_objects() {

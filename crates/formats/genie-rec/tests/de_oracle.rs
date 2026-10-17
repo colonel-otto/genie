@@ -250,7 +250,7 @@ fn the_reader_agrees_with_the_games_reads_on_every_traced_recording() {
             inner: Cursor::new(&header),
             reads: Vec::new(),
         };
-        let parsed = de::header::parse_reader(&mut reader);
+        let parsed = genie_save::parse_reader(&mut reader);
         if let Err(e) = parsed {
             // the reads before the failure still say where this reader left the game's
             if failures.is_empty() {

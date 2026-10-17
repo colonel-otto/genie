@@ -13,6 +13,7 @@ members = [
   "crates/formats/genie-json",
   "crates/formats/genie-lang",
   "crates/formats/genie-rec",
+  "crates/formats/genie-save",
   "crates/formats/genie-scx",
   "crates/formats/genie-support",
   "crates/formats/jascpal",

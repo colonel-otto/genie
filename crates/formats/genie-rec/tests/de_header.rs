@@ -61,7 +61,7 @@ fn marvinblue_sections_end_where_imhex_says() {
         return eprintln!("GENIE_REC_CORPUS is not set; skipping");
     };
     let header =
-        de::header::parse(&header_of(&dir.join("MarvinBlue/426048731.aoe2record"))).unwrap();
+        genie_save::parse(&header_of(&dir.join("MarvinBlue/426048731.aoe2record"))).unwrap();
     assert_eq!(
         (
             header.save_version().major,
@@ -119,7 +119,7 @@ fn marvinblue_player_masters_are_found_by_id() {
         return eprintln!("GENIE_REC_CORPUS is not set; skipping");
     };
     let header =
-        de::header::parse(&header_of(&dir.join("MarvinBlue/426048731.aoe2record"))).unwrap();
+        genie_save::parse(&header_of(&dir.join("MarvinBlue/426048731.aoe2record"))).unwrap();
     let players = header.players();
     let objects = players[2].objects();
     let static_part = |id| objects.master(id).and_then(|m| m.static_part());
@@ -142,7 +142,7 @@ fn an_objects_own_master_is_its_static_master() {
         return eprintln!("GENIE_REC_CORPUS is not set; skipping");
     };
     let header =
-        de::header::parse(&header_of(&dir.join("MarvinBlue/426049890.aoe2record"))).unwrap();
+        genie_save::parse(&header_of(&dir.join("MarvinBlue/426049890.aoe2record"))).unwrap();
     let players = header.players();
     let object = |id| {
         players[0]
@@ -190,7 +190,7 @@ fn every_corpus_header_parses() {
         let chapter = de::chapters(&data).unwrap()[0];
         let version = chapter.save_version().unwrap();
         let is_tier1 = (version.hundredths(), version.build) == (6660, 158041);
-        let outcome = match de::header::parse(&chapter.inflate_header().unwrap()) {
+        let outcome = match genie_save::parse(&chapter.inflate_header().unwrap()) {
             Ok(_) => "parsed".to_string(),
             Err(e) => {
                 if is_tier1 {
@@ -200,7 +200,7 @@ fn every_corpus_header_parses() {
                     ));
                 }
                 match e {
-                    de::Error::Unsupported { what, .. } => format!("unsupported: {what}"),
+                    genie_save::Error::Unsupported { what, .. } => format!("unsupported: {what}"),
                     _ => "failed".to_string(),
                 }
             }

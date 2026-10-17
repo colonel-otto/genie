@@ -23,14 +23,14 @@ impl<'a> PlayerSection<'a> {
     pub fn world_player(&self) -> &'a WorldPlayer {
         self.player
             .world_player()
-            .expect("the header reader accepts only a type with a class")
+            .expect("the save reader accepts only a type with a class")
     }
 
     /// The masters, maps and objects.
     pub fn objects(&self) -> &'a PlayerObjects {
         self.player
             .objects()
-            .expect("the header reader accepts only a type with a class")
+            .expect("the save reader accepts only a type with a class")
     }
 
     /// The live objects (the list the checkpoint sums over).

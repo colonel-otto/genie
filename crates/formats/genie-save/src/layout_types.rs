@@ -183,7 +183,7 @@ impl BinWrite for Unsupported {
     }
 }
 
-/// A value with the stream position it was read at: genie-rec reports where the header's sections
+/// A value with the stream position it was read at: the reader reports where the save's sections
 /// start (aoe2de-exe-re `layout`, overlay `positioned`). Writes the value only. binrw's own
 /// `PosValue` compares only with the bare value, so a struct holding it cannot derive `PartialEq`.
 #[derive(Debug, Clone, PartialEq)]

@@ -20,7 +20,7 @@ fn main() {
     };
     let data = std::fs::read(path).expect("the recording");
     let chapter = de::chapters(&data).expect("chapters")[0];
-    let header = de::header::parse(&chapter.inflate_header().expect("inflate")).expect("header");
+    let header = chapter.header().expect("the world save");
     let player: usize = player.parse().expect("a player number");
     let section = &header.players()[player];
     println!("id\tmaster\tstate\thp\tx\ty\tz\taction\taction_state\tretarget");
@@ -53,7 +53,7 @@ fn main() {
     }
 }
 
-fn action_object(o: &de::header::Object) -> Option<&de::header::generated::world::RgeActionObject> {
+fn action_object(o: &genie_save::Object) -> Option<&genie_save::generated::world::RgeActionObject> {
     if let Some(c) = o.combat() {
         return Some(&c.rge_combat_object.rge_action_object);
     }

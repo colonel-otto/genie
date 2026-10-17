@@ -89,6 +89,7 @@ pub use genie_hki;
 pub use genie_json;
 pub use genie_lang;
 pub use genie_rec;
+pub use genie_save;
 pub use genie_scx;
 pub use jascpal;
 
@@ -99,6 +100,7 @@ pub use genie_hki as hki;
 pub use genie_json as json;
 pub use genie_lang as lang;
 pub use genie_rec as rec;
+pub use genie_save as save;
 pub use genie_scx as scx;
 pub use jascpal as pal;
 

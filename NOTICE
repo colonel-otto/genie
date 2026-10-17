@@ -28,7 +28,7 @@ Microsoft.
 Third-party material
 --------------------
 
-genie-rec's `de` module follows record layouts from these MIT-licensed projects:
+genie-rec's `de` module and genie-save follow record layouts from these MIT-licensed projects:
 
 - aoe2rec (https://github.com/aoe2ct/aoe2rec): Rust crate and ImHex patterns. Copyright (c) 2024
   Stéphane Bisinger and contributors (the upstream LICENSE leaves its copyright line unfilled).

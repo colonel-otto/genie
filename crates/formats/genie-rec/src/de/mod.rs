@@ -4,15 +4,15 @@
 //! one. Its layouts follow the workspace's reverse engineering of the 158041 engine and the
 //! [aoe2rec](https://github.com/aoe2ct/aoe2rec) crate and ImHex patterns (MIT, see `NOTICE`).
 //!
-//! A recording is a list of chapters. Each chapter is a compressed world save (the "header") and
-//! the ops recorded after it, up to the next chapter or the end of the file. Everything here
-//! borrows from the recording's bytes.
+//! A recording is a list of chapters. Each chapter is a compressed world save (the "header", read
+//! by genie-save) and the ops recorded after it, up to the next chapter or the end of the file.
+//! Everything here borrows from the recording's bytes.
 
 pub mod body;
 pub mod command;
-pub mod header;
 
 pub use body::{Checkpoint, Op, OpReader, Pregame, TriggerSync, View};
+pub use genie_save::SaveVersion;
 
 /// Errors while reading a DE recording. Offsets are byte offsets into the recording file.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -25,10 +25,8 @@ pub enum Error {
     InvalidChapter { at: usize },
     #[error("the header of the chapter at byte {at:#x} does not inflate")]
     Inflate { at: usize },
-    #[error("header: {message}")]
-    Header { message: String },
-    #[error("unsupported in this reader yet: {what} at header byte {at:#x}")]
-    Unsupported { what: &'static str, at: usize },
+    #[error("header: {0}")]
+    Header(#[from] genie_save::Error),
 }
 
 /// One chapter: a compressed world save and the ops recorded after it.
@@ -44,24 +42,6 @@ pub struct Chapter<'a> {
     pub body_offset: usize,
     /// The ops, up to the next chapter or the end of the file.
     pub body: &'a [u8],
-}
-
-/// The version fields at the start of a chapter header.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SaveVersion {
-    pub major: u16,
-    /// A binary fraction: 39321 / 65536 is the ".6" of save 66.6.
-    pub minor: u16,
-    /// The engine build (`de.build`), the UI build + 0x20000.
-    pub build: u32,
-}
-
-impl SaveVersion {
-    /// The save version in hundredths, e.g. 6660 for 66.6.
-    pub fn hundredths(&self) -> u32 {
-        // the engine rounds the fraction to two decimals (66.6 -> 6660)
-        u32::from(self.major) * 100 + (u32::from(self.minor) * 100 + 32768) / 65536
-    }
 }
 
 /// Split a recording into its chapters.
@@ -111,6 +91,11 @@ impl<'a> Chapter<'a> {
             .read_to_end(&mut out)
             .map_err(|_| Error::Inflate { at: self.offset })?;
         Ok(out)
+    }
+
+    /// Inflate the header and read it as a world save.
+    pub fn header(&self) -> Result<genie_save::Header, Error> {
+        Ok(genie_save::parse(&self.inflate_header()?)?)
     }
 
     /// Inflate the start of the header and read its version fields.

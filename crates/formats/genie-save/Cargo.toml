@@ -1,0 +1,15 @@
+[package]
+name = "genie-save"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license = "GPL-3.0-only"
+description = "Read and write the world save of Age of Empires II: Definitive Edition, which recorded games, saved games and the tick oracle's snapshots hold."
+homepage = "https://github.com/librematch/genie/tree/main/crates/formats/genie-save"
+documentation = "https://docs.rs/genie-save"
+repository.workspace = true
+readme = "./README.md"
+
+[dependencies]
+binrw.workspace = true
+thiserror.workspace = true

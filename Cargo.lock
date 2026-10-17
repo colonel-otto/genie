@@ -471,6 +471,7 @@ dependencies = [
  "genie-json",
  "genie-lang",
  "genie-rec",
+ "genie-save",
  "genie-scx",
  "jascpal",
  "serde",
@@ -520,6 +521,7 @@ dependencies = [
  "genie-core",
  "genie-dat",
  "genie-rec",
+ "genie-save",
 ]
 
 [[package]]
@@ -532,8 +534,17 @@ dependencies = [
  "byteorder",
  "flate2",
  "genie-dat",
+ "genie-save",
  "genie-scx",
  "genie-support",
+ "thiserror",
+]
+
+[[package]]
+name = "genie-save"
+version = "0.1.0"
+dependencies = [
+ "binrw",
  "thiserror",
 ]
 

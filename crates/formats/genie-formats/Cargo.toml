@@ -20,6 +20,7 @@ genie-hki = { version = "0.2.1", path = "../genie-hki" }
 genie-json = { version = "0.1.0", path = "../genie-json" }
 genie-lang = { version = "0.2.1", path = "../genie-lang" }
 genie-rec = { version = "0.1.1", path = "../genie-rec" }
+genie-save = { version = "0.1.0", path = "../genie-save" }
 genie-scx = { version = "4.0.0", path = "../genie-scx" }
 jascpal = { version = "0.1.1", path = "../jascpal" }
 

@@ -16,11 +16,12 @@ use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
 use genie_core::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::turn::{Command, Player, Turns, Unit};
 use genie_core::unit_ai::Unsupported;
-use genie_rec::de::header::Header;
-use genie_rec::de::header::generated::world::{
+use genie_rec::de::{self, Op};
+use genie_save::Header;
+use genie_save::PlayerSection;
+use genie_save::generated::world::{
     Master, Path, PathData, PlayerObjects, RgeMasterAnimatedObject, RgeStaticObject,
 };
-use genie_rec::de::{self, Op, header::PlayerSection};
 
 /// The words of the first checkpoint that the start-of-game save determines: all but word 9.
 pub const SAVE_WORDS: [usize; 10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10];
@@ -67,7 +68,7 @@ impl std::error::Error for Error {}
 /// The static part of each live object, with its object.
 fn live<'a>(
     section: &PlayerSection<'a>,
-) -> impl Iterator<Item = (&'a de::header::Object, &'a RgeStaticObject)> {
+) -> impl Iterator<Item = (&'a genie_save::Object, &'a RgeStaticObject)> {
     section
         .live_objects()
         .filter_map(|o| o.static_part().map(|s| (o, s)))
@@ -115,7 +116,7 @@ pub fn player_state(section: &PlayerSection<'_>, id: u32) -> PlayerState {
 /// order of the checkpoint's lanes. Lanes that are all zero hold no player.
 pub fn compare_first_checkpoint(recording: &[u8]) -> Result<Vec<PlayerComparison>, Error> {
     let chapter = de::chapters(recording)?[0];
-    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let header = chapter.header()?;
     let checkpoint = chapter
         .ops()
         .find_map(|op| match op {
@@ -176,7 +177,7 @@ pub struct Word9 {
 /// first update ([`default_task`]); a save from later in the game holds them, and the slice
 /// imports the ones it models ([`saved_actions`]).
 fn unit(
-    object: &de::header::Object,
+    object: &genie_save::Object,
     objects: &PlayerObjects,
     paths: &[Path],
     civ: u8,
@@ -282,7 +283,7 @@ fn path_level(d: &PathData, paths: &[Path]) -> Result<genie_core::movement::Path
 /// not read yet. moveForward's factor `+0x878` is not in the save; every moving object of
 /// MarvinBlue/426048731 holds 1.0 at tick 680 (the tick oracle).
 fn mover(
-    object: &de::header::Object,
+    object: &genie_save::Object,
     s: &RgeStaticObject,
     objects: &PlayerObjects,
     paths: &[Path],
@@ -354,7 +355,7 @@ fn mover(
 /// Build action (101) with its MoveTo, a MoveTo of its own (type 1) and a bird's Fly action (10)
 /// with its MoveTo. Any other saved action stops the object's player.
 fn saved_actions(
-    object: &de::header::Object,
+    object: &genie_save::Object,
     s: &RgeStaticObject,
     work: impl Fn(i16) -> Result<f32, Unsupported>,
     unit: &mut Unit,
@@ -370,7 +371,7 @@ fn saved_actions(
             "a saved MoveTo in a state the slice does not model",
         )),
     };
-    let point = |b: &genie_rec::de::header::generated::world::RgeAction| {
+    let point = |b: &genie_save::generated::world::RgeAction| {
         (b.target_id == -1).then_some([b.target_x, b.target_y, b.target_z])
     };
     let (kind, action) = object
@@ -479,7 +480,7 @@ fn build_range(
 /// unit with its train time, the make action's work done, and the building's work rate (its
 /// `mWorkRatePowerup` plus its master's `work_rate`). `Ok(None)`: the building produces nothing.
 fn production(
-    object: &de::header::Object,
+    object: &genie_save::Object,
     objects: &PlayerObjects,
 ) -> Result<Option<genie_core::production::Production>, Unsupported> {
     let Some(building) = object.tribe_building_object.as_ref() else {
@@ -535,7 +536,7 @@ fn production(
 /// the table's, from the `.dat`, or the object's own master's. The slice models the Artifact action
 /// (type 107, the default task of livestock); any other default task is reported.
 fn default_task(
-    object: &de::header::Object,
+    object: &genie_save::Object,
     s: &RgeStaticObject,
     civ: u8,
     masters: Option<&MasterTable>,
@@ -565,7 +566,7 @@ fn default_task(
 
 /// Whether the object runs `RGE_Action_Object::update`: types 40 (action), 50 (combat), 60
 /// (missile), 70 (tribe combat) and 80 (building).
-fn is_action_object(object: &de::header::Object) -> bool {
+fn is_action_object(object: &genie_save::Object) -> bool {
     object.combat().is_some()
         || object.rge_object.as_ref().is_some_and(|r| {
             r.rge_action_object.is_some()
@@ -576,7 +577,7 @@ fn is_action_object(object: &de::header::Object) -> bool {
 
 /// The default task id of an object's own action master, if it has one.
 fn own_default_task(s: &RgeStaticObject) -> Option<i16> {
-    let tribe = |c: &genie_rec::de::header::generated::world::OwnTribeMasterCombatObject| {
+    let tribe = |c: &genie_save::generated::world::OwnTribeMasterCombatObject| {
         c.own_rge_master_combat_object
             .own_rge_master_action_object
             .default_task
@@ -598,7 +599,7 @@ fn own_default_task(s: &RgeStaticObject) -> Option<i16> {
 /// otherwise the death sprite and spawns come from its player's master in the save, and the decay
 /// and undead flag from the table, which the save lacks.
 fn lifecycle(
-    object: &de::header::Object,
+    object: &genie_save::Object,
     s: &RgeStaticObject,
     objects: &PlayerObjects,
     civ: u8,
@@ -645,7 +646,7 @@ fn lifecycle(
     }
 }
 
-fn unit_ai(object: &de::header::Object) -> Option<genie_core::unit_ai::UnitAi> {
+fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
     let combat = object.combat()?;
     let ai = combat.unit_ai()?;
     Some(genie_core::unit_ai::UnitAi {
@@ -719,7 +720,7 @@ fn work_masters(
     civ: u8,
     table: &MasterTable,
 ) -> genie_core::masters::Masters {
-    use genie_rec::de::header::generated::world::{RgeMasterActionObject, Task};
+    use genie_save::generated::world::{RgeMasterActionObject, Task};
     let task = |t: &Task| genie_core::masters::Task {
         action_type: t.action_type,
         object_group: t.object_group,
@@ -787,7 +788,7 @@ fn build_cost(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
 /// How fast an object may move, for the slice's bound on a frozen object's place: its player's
 /// master's speed, 0 for an object that does not move, and no bound for a moving object with its
 /// own master.
-fn moving_speed(o: &de::header::Object, s: &RgeStaticObject, objects: &PlayerObjects) -> f32 {
+fn moving_speed(o: &genie_save::Object, s: &RgeStaticObject, objects: &PlayerObjects) -> f32 {
     if o.moving_part().is_none() {
         return 0.0;
     }
@@ -1058,7 +1059,7 @@ fn queue_data(
         .map(|c| c.rge_master_action_object.work_rate)
         .ok_or(Unsupported("a building master without an action part"))?;
     // FUN_140acf280: the train location of this building and button, else the first
-    let train_time = |c: &genie_rec::de::header::generated::world::TribeMasterCombatObject| {
+    let train_time = |c: &genie_save::generated::world::TribeMasterCombatObject| {
         c.train_location
             .iter()
             .find(|t| {
@@ -1141,9 +1142,7 @@ fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, Unsu
     }
 }
 
-fn combat_master(
-    m: &Master,
-) -> Option<&genie_rec::de::header::generated::world::RgeMasterCombatObject> {
+fn combat_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterCombatObject> {
     None.or(m
         .tribe_master_combat_object
         .as_ref()
@@ -1186,7 +1185,7 @@ pub fn simulate_word9(
     masters: Option<&MasterTable>,
 ) -> Result<Vec<Word9>, Error> {
     let chapter = de::chapters(recording)?[0];
-    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let header = chapter.header()?;
     let all = frames(&chapter, usize::MAX)?;
     let first = all
         .iter()
@@ -1287,7 +1286,7 @@ pub fn word9_terms(
     masters: Option<&MasterTable>,
 ) -> Result<Vec<Word9Terms>, Error> {
     let chapter = de::chapters(recording)?[0];
-    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let header = chapter.header()?;
     let sections = header.players();
     if sections.len() <= id as usize {
         return Err(Error::NoSuchPlayer(id));
@@ -1321,7 +1320,7 @@ pub fn blocks_per_tick(
     masters: Option<&MasterTable>,
 ) -> Result<Vec<Vec<[u32; 11]>>, Error> {
     let chapter = de::chapters(recording)?[0];
-    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let header = chapter.header()?;
     let sections = header.players();
     if let Some(&id) = ids.iter().find(|&&id| sections.len() <= id as usize) {
         return Err(Error::NoSuchPlayer(id));
@@ -1389,7 +1388,7 @@ pub struct SliceRun {
 /// `--snapshot`), as [`ObjectRow`]s.
 pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
     let chapter = de::chapters(save)?[0];
-    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let header = chapter.header()?;
     let sections = header.players();
     let section = sections.get(id as usize).ok_or(Error::NoSuchPlayer(id))?;
     Ok(live(section)
@@ -1425,7 +1424,7 @@ pub fn objects_from_save(
     masters: Option<&MasterTable>,
 ) -> Result<SliceRun, Error> {
     let chapter = de::chapters(save)?[0];
-    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let header = chapter.header()?;
     let sections = header.players();
     if sections.len() <= id as usize {
         return Err(Error::NoSuchPlayer(id));
@@ -1461,7 +1460,7 @@ pub fn spatial_with_tiles(
     terrain: &TerrainTable,
 ) -> Result<genie_core::spatial::Spatial, Error> {
     let chapter = de::chapters(save)?[0];
-    let header = de::header::parse(&chapter.inflate_header()?)?;
+    let header = chapter.header()?;
     Ok(spatial(&header, terrain))
 }
 

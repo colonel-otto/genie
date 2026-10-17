@@ -10,7 +10,7 @@ fn main() {
     let n = |i: usize| args[i].parse::<usize>().expect("a tile coordinate");
     let (x0, x1, y0, y1) = (n(2), n(3), n(4), n(5));
     let chapter = de::chapters(&data).expect("chapters")[0];
-    let header = de::header::parse(&chapter.inflate_header().expect("inflate")).expect("header");
+    let header = chapter.header().expect("the world save");
     let map = &header.world.base_world.map;
     println!("map {} x {}", map.map_width, map.map_height);
     let at = |r: usize, c: usize| {
