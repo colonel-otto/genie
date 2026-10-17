@@ -125,23 +125,27 @@ fn the_walk_off_the_footprint_from_a_save_matches_the_game_object_by_object() {
 
 #[test]
 fn the_order_to_a_tree_from_a_save_matches_the_game_object_by_object() {
-    // updates 682 to 796: in 748 player 2's INTERACT sends builder 9181 to the tree 9365: the work
+    // updates 682 to 850: in 748 player 2's INTERACT sends builder 9181 to the tree 9365: the work
     // command finds the gather task of master 218 (VFLUM), the master changes (the Build action
     // and its MoveTo go), the Hunt wakes the tree and attacks it first (Hunt state 12, Attack
-    // state 4 with a MoveTo, built twice), and 9181 walks to the tree from the same update on
-    let Some(found) = differences(680, 115, 2) else {
+    // state 4 with a MoveTo, built twice), and 9181 walks to the tree from the same update on; in
+    // 797 the next order sends it to the tree 9357: the hunt keeps its task, takes the new target
+    // (the old one is flagged to sleep) and starts over; it walks on through 850
+    let Some(found) = differences(680, 169, 2) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());
 }
 
 /// Not pinned: what the slice gets wrong some ticks after a save, for the tick FD-008 works on
-/// (`GENIE_SNAPSHOT_START`, default 679; `GENIE_SNAPSHOT_TICKS`, default 1).
+/// (`GENIE_SNAPSHOT_START`, default 679; `GENIE_SNAPSHOT_TICKS`, default 1), for player 2 or
+/// `GENIE_SNAPSHOT_PLAYER`.
 #[test]
 fn the_slice_one_tick_after_a_save_report() {
     let start = std::env::var("GENIE_SNAPSHOT_START").map_or(679, |s| s.parse().unwrap());
     let ticks = std::env::var("GENIE_SNAPSHOT_TICKS").map_or(1, |s| s.parse().unwrap());
-    let Some(found) = differences(start, ticks, 2) else {
+    let player = std::env::var("GENIE_SNAPSHOT_PLAYER").map_or(2, |s| s.parse().unwrap());
+    let Some(found) = differences(start, ticks, player) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     eprintln!(

@@ -808,6 +808,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 civ,
                 relations: p.world_player().base.relation.clone(),
                 unsupported: None,
+                stopped: false,
             }
         })
         .collect();

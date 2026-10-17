@@ -72,6 +72,9 @@ pub struct Unit {
     pub hunt: Option<HuntAction>,
     /// `+0x644`, `worker_num`: the actions that have the object as their target.
     pub workers: i32,
+    /// The slice could not model one of its updates: it freezes (its place is known only within
+    /// its speed since) while the rest of its player's objects go on.
+    pub stopped: bool,
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
@@ -289,9 +292,17 @@ pub struct Player {
     pub sleeping: Vec<Unit>,
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, Unsupported)>,
+    /// A command the slice could not model stopped the whole player: its objects freeze.
+    pub stopped: bool,
 }
 
 impl Player {
+    /// A command the slice does not model for this player: the player stops.
+    fn stop(&mut self, tick: u32, why: Unsupported) {
+        self.unsupported.get_or_insert((tick, 0, why));
+        self.stopped = true;
+    }
+
     /// `FUN_141616820` for the attributes an object's storage holds: the attribute's value grows
     /// by `amount` (`FUN_14165d040`; the peak of attribute 11, `+0x6fc`, and the resource events of
     /// `FUN_140c898a0` are not held). Food, wood, stone and gold are the slice's `resources`; the
@@ -419,8 +430,9 @@ impl Turns {
                 let ai = ai.unwrap_or_else(|e| {
                     // the constructor's draws are unknown, so the turn player's are too
                     let turn = &mut self.players[self.player_turn];
-                    turn.unsupported
-                        .get_or_insert((self.ticks, turn.objects.len(), e));
+                    let at = turn.objects.len();
+                    turn.unsupported.get_or_insert((self.ticks, at, e));
+                    turn.stopped = true;
                     None
                 });
                 let owner = &mut self.players[player];
@@ -465,10 +477,11 @@ impl Turns {
                     hp_powerups: [0.0; 2],
                     hunt: None,
                     workers: 0,
+                    stopped: false,
                 });
                 if let Err(e) = self.task_builders(player, id, master, position, builders) {
                     let owner = &mut self.players[player];
-                    owner.unsupported.get_or_insert((self.ticks, 0, e));
+                    owner.stop(self.ticks, e);
                 }
             }
             Command::Queue {
@@ -489,12 +502,12 @@ impl Turns {
                 };
                 if let Err(e) = self.queue(player, &queue, cost) {
                     let owner = &mut self.players[player];
-                    owner.unsupported.get_or_insert((self.ticks, 0, e));
+                    owner.stop(self.ticks, e);
                 }
             }
             Command::Unmodelled { player, why } => {
                 let owner = &mut self.players[player];
-                owner.unsupported.get_or_insert((self.ticks, 0, why));
+                owner.stop(self.ticks, why);
             }
             Command::Order {
                 player,
@@ -518,7 +531,7 @@ impl Turns {
                 };
                 if let Err(e) = result {
                     let owner = &mut self.players[player];
-                    owner.unsupported.get_or_insert((self.ticks, 0, e));
+                    owner.stop(self.ticks, e);
                 }
             }
         }
@@ -732,11 +745,12 @@ impl Turns {
                 construction_rate: player.construction_rate,
             };
             c.pathing.tiles_changed(c.spatial.take_changes());
-            // Once a player's update is not modelled, its live objects freeze; its dead ones still
-            // run their state steps, which draw nothing and depend on nothing the stop changed.
+            // An object whose update is not modelled freezes, and so do all live objects of a
+            // player a command stopped; dead objects still run their state steps, which draw
+            // nothing and depend on nothing the stop changed.
             let mut i = 0;
             while i < player.objects.len() {
-                let stopped = player.unsupported.is_some();
+                let stopped = player.stopped || player.objects[i].stopped;
                 if stopped && player.objects[i].life.is_alive() {
                     c.spatial.freeze(player.objects[i].id);
                     i += 1;
@@ -755,7 +769,8 @@ impl Turns {
                     }
                     Ok(false) => i += 1,
                     Err(e) => {
-                        player.unsupported = Some((self.ticks, i, e));
+                        player.unsupported.get_or_insert((self.ticks, i, e));
+                        player.objects[i].stopped = true;
                         c.spatial.freeze(player.objects[i].id);
                         i += 1;
                     }
@@ -884,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unsupported_unit_stops_its_player_and_is_recorded() {
+    fn an_unsupported_unit_stops_and_is_recorded() {
         let mut odd = building();
         odd.ai_type = 2;
         let mut t = Turns::new(0, 1, 0, vec![0], vec![player(vec![Some(odd)])]);
