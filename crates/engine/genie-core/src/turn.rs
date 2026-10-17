@@ -29,7 +29,7 @@ use crate::rng::{Stream, Streams};
 use crate::spatial::{Placed, Spatial};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, Diplomacy, DropSite, TaskTarget};
-use crate::unit_ai::{UnitAi, Unsupported};
+use crate::unit_ai::{AiMove, BUILD_ACTION, BUILD_ORDER, Surroundings, UnitAi, Unsupported};
 
 /// What the slice tracks of one object.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -193,6 +193,8 @@ struct Context<'a> {
     elevation: [f32; 2],
     /// The target of the unit's attack, read before its update and written back after it.
     victim: Option<&'a mut Victim>,
+    /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
+    mode_1: bool,
 }
 
 impl Context<'_> {
@@ -348,16 +350,56 @@ impl Unit {
         if let Some(p) = c.spatial.get(self.id) {
             self.position = p.position;
         }
+        let mut moved = None;
         if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
             if ai.current_order == -1 && ai.current_action == -1 && ai.current_target == -1 {
-                ai.update_idle(dt, c.world_time, c.computer, c.streams.get(Stream::Ai))?;
+                let at = Surroundings {
+                    position: self.position,
+                    mode_1: c.mode_1,
+                };
+                moved =
+                    ai.update_idle(dt, c.world_time, c.computer, &at, c.streams.get(Stream::Ai))?;
             } else if (self.build.is_some() || self.hunt.is_some()) && !self.life.inside {
                 ai.update_working(dt, c.computer, c.streams.get(Stream::Ai))?;
             } else {
                 return Err(Unsupported("unit is not idle"));
             }
         }
+        if let Some(m) = moved {
+            let class = c
+                .masters
+                .and_then(|ms| ms.get(self.life.master_id))
+                .map(|ms| ms.class)
+                .ok_or(Unsupported(
+                    "an AI move of a master the slice does not have",
+                ))?;
+            self.ai_move(m, class)?;
+        }
         Ok(leaves)
+    }
+
+    /// The unit's slot 0x340 (`FUN_141216c50`) on its unit AI's move: a unit of class 51 or 54
+    /// (packing) is not modelled; any other runs `FUN_1410866e0`. Without `force`, a MoveTo to the
+    /// same point stands; a current action's slot 0x40 may take the point (neither modelled, so a
+    /// unit with an action is not). Otherwise a MoveTo to the point within the range
+    /// (`FUN_140aa0d30`; its sprite, the master's walking or running one, is not held) replaces
+    /// the action list (`FUN_140a98620`) and starts (slot 0x808, `FUN_14106e990`; its start
+    /// `0x140aa2100` gives a unit far from the point state 3).
+    fn ai_move(&mut self, m: AiMove, class: i16) -> Result<(), Unsupported> {
+        if matches!(class, 51 | 54) {
+            return Err(Unsupported("an AI move of a unit of class 51 or 54"));
+        }
+        if self.top_action_kind().is_some() || self.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "an AI move of a unit with an action (its slot 0x40)",
+            ));
+        }
+        self.move_to = Some(MoveToAction {
+            state: crate::move_to::MoveTo::Start,
+            goal: Some(m.point),
+            range: m.range,
+        });
+        Ok(())
     }
 }
 
@@ -483,6 +525,10 @@ pub struct Turns {
     /// `+0x9c`): a hunter drops another resource it carries. The tick oracle read the flag as 0 in
     /// MarvinBlue/426048731; where the save or the lobby holds it is not known yet.
     pub carry_rule: bool,
+    /// The game's setting that `FUN_140ec0cd0` reads at its `+0x680` (a value and a kind); a boar
+    /// does not wander when it is 1. The tick oracle reads 0 in MarvinBlue/426048731; where the
+    /// save or the lobby holds it is not known yet (the save's `mGameMode` sits elsewhere).
+    pub mode_680: i32,
     pub(crate) streams: Streams,
 }
 
@@ -537,6 +583,7 @@ impl Turns {
             graphics: Default::default(),
             drop_sites: Vec::new(),
             carry_rule: false,
+            mode_680: 0,
             streams: Streams::default(),
         }
     }
@@ -692,6 +739,7 @@ impl Turns {
         let site = masters
             .get(master)
             .ok_or(Unsupported("BUILD of a master the player does not have"))?;
+        let site_class = i32::from(site.class);
         let owner = &mut self.players[player];
         for &(resource, amount, paid) in &site.cost {
             let slot = usize::try_from(resource)
@@ -796,6 +844,17 @@ impl Turns {
                 .expect("found above");
             unit.life.master_id = with;
             unit.build = Some(build);
+            // the work command's notify (slot 0x828): the build order and the foundation, with
+            // the point slot 0x128 passes (BUILD's x and y, on the ground)
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.notify_work(
+                    BUILD_ORDER,
+                    BUILD_ACTION,
+                    Some((foundation, site_class)),
+                    [position[0], position[1], 0.0],
+                    self.streams.get(Stream::Ai),
+                );
+            }
         }
         Ok(())
     }
@@ -906,6 +965,7 @@ impl Turns {
                     masters: self.masters.get(p),
                     elevation,
                     victim: victim.as_mut(),
+                    mode_1: self.mode_680 == 1,
                 };
                 let result = unit.update(&mut c, &mut player.objects);
                 player.objects[i] = unit;

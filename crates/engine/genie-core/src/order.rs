@@ -46,10 +46,6 @@ pub struct MoveOrder {
     pub human: bool,
 }
 
-/// The unit-AI order and action values of a move (`0x2c6`, `0x262`, `FUN_140e67800`).
-const MOVE_ORDER: i32 = 0x2c6;
-const MOVE_ACTION: i32 = 0x262;
-
 /// Masters and classes the order handler and slot 0x7e8 treat apart (decoded; the game stores a
 /// class as its value − 0xeac, a master id as its id + 0x609c).
 const VILLAGER: i16 = 4;
@@ -237,10 +233,11 @@ impl Turns {
             goal: Some([order.point[0], order.point[1], 0.0]),
             range: 0.0,
         });
-        // the order handler's notify: the move order and action, no target (FUN_140c4dcb0), the
-        // point (FUN_140c64be0); slot 0x2d8's walk and show targets are not held
+        // the order handler's notify: the move order and action, the target forgotten
+        // (FUN_140c4dcb0), then the point (FUN_140c64be0); slot 0x2d8's walk and show targets are
+        // not held
         if let Some(ai) = unit.ai.as_mut() {
-            ai.notify_work(MOVE_ORDER, MOVE_ACTION, -1, self.streams.get(Stream::Ai));
+            ai.notify_move(None, order.point, self.streams.get(Stream::Ai));
         }
         Ok(())
     }
@@ -298,7 +295,16 @@ impl Turns {
             ));
         }
         // FUN_141206a20's town-bell record (`+0x9ac`..) and the flag `+0x9dc` are not held
-        self.work_command(player, idx, order.target, order.filter, order.carry_test)?;
+        // slot 0x7e8 with the order's point on the ground
+        let point = [order.point[0], order.point[1], 0.0];
+        self.work_command(
+            player,
+            idx,
+            order.target,
+            order.filter,
+            order.carry_test,
+            point,
+        )?;
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         let target = self.task_target(order.target, 0)?;
@@ -326,6 +332,7 @@ impl Turns {
         target: i32,
         filter: i16,
         carry_test: bool,
+        point: [f32; 3],
     ) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         if unit.id == target {
@@ -378,13 +385,15 @@ impl Turns {
                 if t.master.id == MASTER_84 && t.player == player {
                     return Err(Unsupported("a hunt sent to its player's master 84"));
                 }
+                let class = i32::from(t.master.class);
                 self.retarget_hunt(player, idx, target)?;
                 let unit = &mut self.players[player].objects[idx];
                 if let Some(ai) = unit.ai.as_mut() {
                     ai.notify_work(
                         HUNT_ORDER,
                         HUNT_ACTION,
-                        target,
+                        Some((target, class)),
+                        point,
                         self.streams.get(Stream::Ai),
                     );
                 }
@@ -419,6 +428,7 @@ impl Turns {
                     resource: task.attribute_type,
                     sprites: task.sprites,
                 },
+                point,
             ),
             _ => Err(Unsupported(
                 "the action factory for a task the slice does not model",
@@ -535,6 +545,7 @@ impl Turns {
         idx: usize,
         target: i32,
         task: HuntTask,
+        point: [f32; 3],
     ) -> Result<(), Unsupported> {
         let quarry = self.quarry(player, target)?;
         self.take(target);
@@ -543,7 +554,8 @@ impl Turns {
             ai.notify_work(
                 HUNT_ORDER,
                 HUNT_ACTION,
-                target,
+                Some((target, i32::from(quarry.class))),
+                point,
                 self.streams.get(Stream::Ai),
             );
         }

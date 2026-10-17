@@ -571,7 +571,7 @@ impl Mover {
         if self.stats.radius.iter().all(|&r| 0.0 < r) {
             let rect = self.query_rect(position, projected, world.map);
             let grow = self.stats.radius[0];
-            world.check_known([
+            world.check_known_records([
                 rect[0] - grow,
                 rect[1] - grow,
                 rect[2] + grow,
@@ -661,7 +661,7 @@ impl Mover {
             let d = fmath::sub(vector(me.position), level.points[next as usize]);
             if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < TARGET_SHORT_REACH {
                 let [x, _, y] = level.points[level.waypoint as usize];
-                world.check_known([x, y, x, y])?;
+                world.check_known_records([x, y, x, y])?;
                 if !world
                     .obstruction_candidates([x, y, x, y], 0.0, &[])
                     .is_empty()
@@ -1289,7 +1289,7 @@ impl Mover {
                 let grow = self.stats.radius[0] + RANGE_FLOOR;
                 let [x, y, _] = me.position;
                 let rect = [x, y, x, y];
-                world.check_known([x - grow, y - grow, x + grow, y + grow])?;
+                world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
                 if !world.obstruction_candidates(rect, grow, &list).is_empty() {
                     return Err(Unsupported(
                         "the ignore list's workers near the unit (FUN_14114ece0)",
@@ -1342,7 +1342,7 @@ impl Mover {
         };
         // the search's box: four tiles around its ends
         let reach = 4.0 + self.stats.radius[0];
-        world.check_known([
+        world.check_known_records([
             x.min(to[0]) - reach,
             y.min(to[2]) - reach,
             x.max(to[0]) + reach,

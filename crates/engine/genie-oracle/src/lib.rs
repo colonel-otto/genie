@@ -784,6 +784,16 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         current_order: ai.current_order_value,
         current_action: ai.current_action_value,
         current_target: ai.current_target_value,
+        target_type: ai.current_target_type_value,
+        target_point: [
+            ai.current_target_xvalue,
+            ai.current_target_yvalue,
+            ai.current_target_zvalue,
+        ],
+        last_order: ai.last_order_value,
+        last_action: ai.last_action_value,
+        last_target: ai.last_target_value,
+        last_target_type: ai.last_target_type_value,
         idle_timer: ai.idle_timer_value,
         adjusted_idle_timeout: ai.adjusted_idle_timeout_value,
         idle_timeout: ai.idle_timeout_value,
@@ -795,6 +805,14 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         stance: ai.state_value,
         retarget_disabled: ai.disable_retargeting,
         stop_after_kill: ai.stop_after_target_killed_value != 0,
+        home: combat
+            .tribe_elephant_unit_ai_module
+            .as_ref()
+            .map(|e| genie_core::unit_ai::Home {
+                origin: [e.origin_x, e.origin_y, e.origin_z],
+                furious: e.furious != 0,
+                go_home: false,
+            }),
     })
 }
 
@@ -1633,6 +1651,69 @@ pub struct ObjectRow {
     pub construction: Option<(bool, f32, u8)>,
     /// A Build action's `added_to_num_builders`.
     pub build_added: Option<bool>,
+    /// The unit AI's order, action and target with their last values, and its timers.
+    pub ai: Option<AiRow>,
+}
+
+/// What an object's row compares of its unit AI (named as in the save).
+#[derive(Clone, Debug, PartialEq)]
+pub struct AiRow {
+    pub fields: Vec<(&'static str, String)>,
+}
+
+impl AiRow {
+    fn of(ai: &genie_core::unit_ai::UnitAi) -> Self {
+        let f = |v: &dyn std::fmt::Debug| format!("{v:?}");
+        AiRow {
+            fields: vec![
+                ("current_order", f(&ai.current_order)),
+                ("current_action", f(&ai.current_action)),
+                ("current_target", f(&ai.current_target)),
+                ("current_target_type", f(&ai.target_type)),
+                ("current_target_point", f(&ai.target_point)),
+                ("last_order", f(&ai.last_order)),
+                ("last_action", f(&ai.last_action)),
+                ("last_target", f(&ai.last_target)),
+                ("last_target_type", f(&ai.last_target_type)),
+                ("idle_timer", f(&ai.idle_timer)),
+                ("adjusted_idle_timeout", f(&ai.adjusted_idle_timeout)),
+                ("secondary_timer", f(&ai.secondary_timer)),
+                ("look_around_timer", f(&ai.look_around_timer)),
+                ("look_around_timeout", f(&ai.look_around_timeout)),
+                ("last_retarget_time", f(&ai.last_retarget_time)),
+            ],
+        }
+    }
+
+    fn saved(ai: &genie_save::generated::world::UnitAiModule) -> Self {
+        let f = |v: &dyn std::fmt::Debug| format!("{v:?}");
+        AiRow {
+            fields: vec![
+                ("current_order", f(&ai.current_order_value)),
+                ("current_action", f(&ai.current_action_value)),
+                ("current_target", f(&ai.current_target_value)),
+                ("current_target_type", f(&ai.current_target_type_value)),
+                (
+                    "current_target_point",
+                    f(&[
+                        ai.current_target_xvalue,
+                        ai.current_target_yvalue,
+                        ai.current_target_zvalue,
+                    ]),
+                ),
+                ("last_order", f(&ai.last_order_value)),
+                ("last_action", f(&ai.last_action_value)),
+                ("last_target", f(&ai.last_target_value)),
+                ("last_target_type", f(&ai.last_target_type_value)),
+                ("idle_timer", f(&ai.idle_timer_value)),
+                ("adjusted_idle_timeout", f(&ai.adjusted_idle_timeout_value)),
+                ("secondary_timer", f(&ai.secondary_timer_value)),
+                ("look_around_timer", f(&ai.look_around_timer_value)),
+                ("look_around_timeout", f(&ai.look_around_timeout_value)),
+                ("last_retarget_time", f(&ai.last_retarget_time)),
+            ],
+        }
+    }
 }
 
 /// What a moving object's row compares of its movement.
@@ -1677,6 +1758,7 @@ impl ObjectRow {
                 .construction
                 .map(|c| (c.desolid, c.progress, c.builders)),
             build_added: unit.build.map(|b| b.added),
+            ai: unit.ai.as_ref().map(AiRow::of),
         }
     }
 }
@@ -1756,6 +1838,7 @@ pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
                 .filter(|&(kind, _)| kind == genie_core::build::BUILD)
                 .and_then(|(_, a)| a.tribe_action_build.as_ref())
                 .map(|b| b.added_to_num_builders != 0),
+            ai: object.combat().and_then(|c| c.unit_ai()).map(AiRow::saved),
         })
         .collect())
 }
@@ -2198,6 +2281,18 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             format!("{:?}", s.build_added),
             format!("{:?}", g.build_added),
         );
+        match (&s.ai, &g.ai) {
+            (Some(a), Some(b)) => {
+                for ((name, x), (_, y)) in a.fields.iter().zip(&b.fields) {
+                    field(name, x.clone(), y.clone());
+                }
+            }
+            (a, b) => field(
+                "unit AI",
+                format!("{}", a.is_some()),
+                format!("{}", b.is_some()),
+            ),
+        }
         match (&s.movement, &g.movement) {
             (Some(a), Some(b)) => {
                 field(

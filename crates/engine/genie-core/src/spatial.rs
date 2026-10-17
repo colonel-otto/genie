@@ -316,7 +316,20 @@ impl Spatial {
     /// within what it may have moved, or a unit a stopped player's building may have made since,
     /// at the fastest speed of the players' units, each plus the farthest reach.
     pub fn check_known(&self, rect: [f32; 4]) -> Result<(), Unsupported> {
+        self.check_known_of(rect, false)
+    }
+
+    /// [`Spatial::check_known`] for a query over obstruction records and the mesh (the motion
+    /// step's and the short pather's): a frozen object without a record (a bird) has no say.
+    pub fn check_known_records(&self, rect: [f32; 4]) -> Result<(), Unsupported> {
+        self.check_known_of(rect, true)
+    }
+
+    fn check_known_of(&self, rect: [f32; 4], records: bool) -> Result<(), Unsupported> {
         let near = self.objects.iter().any(|(&id, p)| {
+            if records && p.obstruction.is_none() {
+                return false;
+            }
             p.unknown.is_some_and(|u| {
                 let [x0, y0, x1, y1] = p.bounds();
                 let inside = rect[0] <= x1 + u

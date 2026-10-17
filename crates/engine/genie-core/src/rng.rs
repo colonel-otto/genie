@@ -78,6 +78,11 @@ impl Well512 {
         self.last = self.raw() & 0x7fff;
         self.last
     }
+
+    /// A step scaled to `0..n` (`FUN_140810cb0`): `step × n >> 32`; `last` stays.
+    pub fn below(&mut self, n: u32) -> u32 {
+        ((u64::from(self.raw()) * u64::from(n)) >> 32) as u32
+    }
 }
 
 /// Bob Jenkins' 32-bit integer hash, as the compiler folded it in setSeed.
