@@ -236,6 +236,7 @@ fn unit(
             object,
             s,
             |m| build_task(objects, civ, masters, m),
+            |m| fly_task(objects, civ, masters, m),
             &mut unit,
         )
     } else {
@@ -491,6 +492,7 @@ fn saved_actions(
     object: &genie_save::Object,
     s: &RgeStaticObject,
     work: impl Fn(i16) -> Result<genie_core::build::BuildTask, Unsupported>,
+    fly_task: impl Fn(i16) -> Result<genie_core::masters::Task, Unsupported>,
     unit: &mut Unit,
 ) -> Result<(), Unsupported> {
     use genie_core::build::{BUILD, BuildAction, MoveTo};
@@ -545,15 +547,19 @@ fn saved_actions(
             Ok(())
         }
         FLY => {
-            let move_to = match base.sub_actions.entries().next() {
+            let sub = match base.sub_actions.entries().next() {
                 None => None,
-                Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
+                Some((MOVE_TO, sub)) => sub.base(),
                 Some(_) => return Err(Unsupported("a saved Fly action with another sub-action")),
             };
+            let move_to = sub.map(|b| move_to_state(b.state)).transpose()?;
             unit.fly = Some(Fly {
                 state: base.state,
                 timer: base.timer,
                 move_to,
+                goal: sub.and_then(point),
+                home: [base.target_x, base.target_y],
+                task: fly_task(s.master_obj)?,
             });
             Ok(())
         }
@@ -611,6 +617,34 @@ fn build_task(
         work_value,
         work_rate,
     })
+}
+
+/// A bird master's Fly task: its saved task list's, else the `.dat`'s.
+fn fly_task(
+    objects: &PlayerObjects,
+    civ: u8,
+    masters: Option<&MasterTable>,
+    master: i16,
+) -> Result<genie_core::masters::Task, Unsupported> {
+    let fly = genie_core::fly::FLY;
+    let saved = objects
+        .master(master)
+        .and_then(|m| m.rge_master.as_ref())
+        .and_then(|r| r.rge_master_action_object.as_ref())
+        .and_then(|a| a.tasks.as_ref());
+    if let Some(tasks) = saved {
+        return tasks
+            .list
+            .iter()
+            .find(|e| e.task.action_type == fly)
+            .map(|e| core_task(&e.task))
+            .ok_or(Unsupported("a bird whose master has no Fly task"));
+    }
+    masters
+        .and_then(|t| t.work(civ, master))
+        .and_then(|w| w.tasks.iter().find(|t| t.action_type == fly))
+        .copied()
+        .ok_or(Unsupported("a bird whose Fly task is not in the data file"))
 }
 
 /// The work range and value of a builder master's Build task.
@@ -979,16 +1013,9 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     turns
 }
 
-/// A player's masters as the work command reads them: each master the save holds, with its saved
-/// class, radii, cost and (where saved) tasks, and the `.dat`'s task swap group and type, which
-/// the save does not carry (the game copies them from the `.dat` master).
-fn work_masters(
-    objects: &PlayerObjects,
-    civ: u8,
-    table: &MasterTable,
-) -> genie_core::masters::Masters {
-    use genie_save::generated::world::{RgeMasterActionObject, Task};
-    let task = |t: &Task| genie_core::masters::Task {
+/// A saved task as the engine reads it.
+fn core_task(t: &genie_save::generated::world::Task) -> genie_core::masters::Task {
+    genie_core::masters::Task {
         id: t.id,
         action_type: t.action_type,
         object_group: t.object_group,
@@ -1001,11 +1028,25 @@ fn work_masters(
         attribute_type2: t.attribute_type2,
         attribute_type3: t.attribute_type3,
         attribute_type4: t.attribute_type4,
+        wait_time: t.search_wait_time,
         work_val1: t.work_val1,
+        work_val2: t.work_val2,
         work_range: t.work_range,
         enablement: t.enablement_resource_id,
         sprites: [t.short_val, t.short_val_2, t.short_val_3, t.short_val_4],
-    };
+    }
+}
+
+/// A player's masters as the work command reads them: each master the save holds, with its saved
+/// class, radii, cost and (where saved) tasks, and the `.dat`'s task swap group and type, which
+/// the save does not carry (the game copies them from the `.dat` master).
+fn work_masters(
+    objects: &PlayerObjects,
+    civ: u8,
+    table: &MasterTable,
+) -> genie_core::masters::Masters {
+    use genie_save::generated::world::RgeMasterActionObject;
+    let task = core_task;
     fn action_part(m: &Master) -> Option<&RgeMasterActionObject> {
         None.or(m
             .tribe_master_combat_object

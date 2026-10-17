@@ -77,7 +77,9 @@ fn dat_task(t: &genie_dat::de::Task) -> work::Task {
         attribute_type2: t.resource_multiplier,
         attribute_type3: t.resource_out,
         attribute_type4: t.unused_resource,
+        wait_time: t.search_wait_time,
         work_val1: t.work_value1,
+        work_val2: t.work_value2,
         work_range: t.work_range,
         enablement: t.enabled.unwrap_or(-1),
         sprites: [

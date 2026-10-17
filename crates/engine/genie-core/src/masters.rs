@@ -33,8 +33,11 @@ pub struct Task {
     pub attribute_type2: i16,
     pub attribute_type3: i16,
     pub attribute_type4: i16,
-    /// `+0x28`, the save's `work_val1`.
+    /// `+0x1c`, `search_wait_time`: a Fly task's rest between flights.
+    pub wait_time: f32,
+    /// `+0x28`, the save's `work_val1`; `+0x2c`, `work_val2`.
     pub work_val1: f32,
+    pub work_val2: f32,
     /// `+0x30`: how near the target the work is done.
     pub work_range: f32,
     /// `+0x38`, `enablement_resource_id` (`enabled`): the resource that enables the task, -1 none.
@@ -60,7 +63,9 @@ impl Default for Task {
             attribute_type2: -1,
             attribute_type3: -1,
             attribute_type4: -1,
+            wait_time: 0.0,
             work_val1: 0.0,
+            work_val2: 0.0,
             work_range: 0.0,
             enablement: -1,
             sprites: [-1; 4],

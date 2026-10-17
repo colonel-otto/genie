@@ -248,6 +248,32 @@ impl Context<'_> {
         )
     }
 
+    /// A walk and another stream than the walk's Object stream.
+    fn walk_with<'b>(
+        &'b mut self,
+        mover: Option<&'b mut Mover>,
+        me: Me,
+        other: Stream,
+    ) -> (Walk<'b>, &'b mut Well512) {
+        let (object, other) = self.streams.two(Stream::Object, other);
+        (
+            Walk {
+                mover,
+                me,
+                dt: self.dt_seconds,
+                world: self.spatial,
+                plan: Some(Planning {
+                    pathing: self.pathing,
+                    now: self.world_time,
+                    computer: self.computer,
+                    object,
+                    construction_rate: self.construction_rate,
+                }),
+            },
+            other,
+        )
+    }
+
     /// What an object's walking action needs from the tick.
     fn walk<'b>(&'b mut self, mover: Option<&'b mut Mover>, me: Me) -> Walk<'b> {
         Walk {
@@ -531,7 +557,26 @@ impl Unit {
             }
         }
         if let Some(fly) = self.fly.as_mut() {
-            fly.update(c.walk(self.mover.as_mut(), me))?;
+            let mover = self
+                .mover
+                .as_mut()
+                .ok_or(Unsupported("a bird without movement state"))?;
+            let (speed, radius) = (
+                mover.stats.speed,
+                [mover.stats.radius[0], mover.stats.radius[1]],
+            );
+            let map = c.spatial.map;
+            let (walk, action) = c.walk_with(Some(&mut *mover), me, Stream::Action);
+            let sky = crate::fly::Sky {
+                speed,
+                position: me.position,
+                radius,
+                map,
+                action,
+            };
+            if fly.update(walk, sky)? {
+                mover.stop()?;
+            }
         }
         if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;

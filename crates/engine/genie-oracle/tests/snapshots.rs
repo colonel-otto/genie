@@ -242,6 +242,21 @@ fn player_1_s_scout_and_sheep_from_a_save_match_the_game_object_by_object() {
     assert_eq!(found, Vec::<String>::new());
 }
 
+#[test]
+fn gaia_s_birds_and_animals_from_a_save_match_the_game_object_by_object() {
+    // updates 682 to 1080 for Gaia: in 717 the hawk 9925's flight time runs out: its Fly action
+    // drops its MoveTo (the bird stops) and, its task having no rest, draws the next flight's
+    // time from the Action stream; in 718 it draws the angle (0..360) and its sprite, and flies
+    // speed times time along it; the walked level lets its path go (a bird is not solid); the
+    // hawk 9926 likewise in 861; the fox 9851's completed wander becomes its last action (the
+    // notify of 716, processed on Gaia's turn); every object and Gaia's sight through the save
+    // after 1080, before the deer near player 1's frozen scout (1084)
+    let Some(found) = differences(680, 400, 0) else {
+        return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
+    };
+    assert_eq!(found, Vec::<String>::new());
+}
+
 /// Not pinned: what the slice gets wrong some ticks after a save, for the tick FD-008 works on
 /// (`GENIE_SNAPSHOT_START`, default 679; `GENIE_SNAPSHOT_TICKS`, default 1), for player 2 or
 /// `GENIE_SNAPSHOT_PLAYER`.

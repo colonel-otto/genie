@@ -1379,8 +1379,13 @@ impl Mover {
         new.level = 0;
         new.linked_type = if !found || partial { 2 } else { 1 };
         if !solid {
-            // the walked level lets its path go (FUN_140f95b70)
-            self.paths[0].points.clear();
+            // the walked level lets its path go (FUN_140f95b70): it holds none (path id -1),
+            // which reads as no points, flags, length or time
+            let level = &mut self.paths[0];
+            level.points.clear();
+            level.path_flags = 0;
+            level.length = 0.0;
+            level.created = 0;
         }
         self.paths.insert(0, new);
         Step::Walk
