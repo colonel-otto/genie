@@ -1464,6 +1464,58 @@ pub fn spatial_with_tiles(
     Ok(spatial(&header, terrain))
 }
 
+/// The obstruction manager's shape mesh as the tick oracle dumps it (`load_oracle/probes/mesh.py`):
+/// a header line `mesh width W shapes N free F`, a `shape ID X0 Y0 X1 Y1` line per slot with its
+/// sides' contacts (`  side S` and seven hex words), then `tile X Y IDS...` for every tile that
+/// holds shapes. The save does not hold the mesh: its ids and orders follow the game's history.
+pub fn mesh_from_dump(text: &str) -> Option<genie_core::mesh::Mesh> {
+    use genie_core::mesh::{Contact, Mesh};
+    let mut mesh: Option<Mesh> = None;
+    for line in text.lines() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match words.first().copied() {
+            Some("mesh") => {
+                let width = words.get(2)?.parse().ok()?;
+                let free = u32::from_str_radix(words.get(6)?.trim_start_matches("0x"), 16).ok()?;
+                let mut m = Mesh::new(width);
+                m.free = free;
+                mesh = Some(m);
+            }
+            Some("shape") => {
+                let m = mesh.as_mut()?;
+                let v: Vec<i32> = words[2..6].iter().map(|w| w.parse().unwrap()).collect();
+                m.shapes.push([v[0], v[1], v[2], v[3]]);
+                m.sides.push(Default::default());
+            }
+            Some("side") => {
+                let m = mesh.as_mut()?;
+                let side: usize = words.get(1)?.parse().ok()?;
+                let w: Vec<u32> = words[2..9]
+                    .iter()
+                    .map(|w| u32::from_str_radix(w, 16).unwrap())
+                    .collect();
+                m.sides.last_mut()?[side].push(Contact {
+                    other: w[0],
+                    side: w[1],
+                    at: [w[2] as i32, w[3] as i32],
+                    along: w[4] as i32,
+                    flag: w[5] as u8,
+                    half: w[6] as i32,
+                });
+            }
+            Some("tile") => {
+                let m = mesh.as_mut()?;
+                let x: u32 = words.get(1)?.parse().ok()?;
+                let y: u32 = words.get(2)?.parse().ok()?;
+                m.tiles[(y * m.width + x) as usize] =
+                    words[3..].iter().map(|w| w.parse().unwrap()).collect();
+            }
+            _ => {}
+        }
+    }
+    mesh
+}
+
 /// What the tile pathfinder reads of object `id` in a save: its master's x radius and terrain
 /// restriction (master `+0x5d8`, `+0x606`). None for an object the save does not hold.
 pub fn unit_terrain(save: &[u8], id: i32) -> Result<Option<(f32, usize)>, Error> {

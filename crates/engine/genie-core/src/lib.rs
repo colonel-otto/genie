@@ -7,6 +7,7 @@ pub mod fly;
 pub mod fmath;
 pub mod lifecycle;
 pub mod masters;
+pub mod mesh;
 pub mod move_to;
 pub mod movement;
 pub mod msvc;

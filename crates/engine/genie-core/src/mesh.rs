@@ -1,0 +1,434 @@
+//! The obstruction manager's shape mesh (`*(*(DAT_143f0a088 + 8))`): the rectangles the short
+//! pather searches around, in fixed point (2^22 units per tile).
+//!
+//! A shape is an obstruction record's box grown by half a tile (an object that is not moving, or
+//! a temporary shape of a search); each of its four sides keeps its contacts with the shapes that
+//! touch or overlap it, and each tile the ids of the shapes over it. The game adds a shape with
+//! `FUN_140fdb8d0`, removes one with `FUN_140fdc250` and replaces one with `FUN_140fdc730`.
+//!
+//! Ids, the free list and the order of every list follow the game's history, and the short
+//! pather's ties follow that order (`docs/AoE2DE_s_exe_SHORT_PATHER.md` §5), so the mesh keeps them
+//! exactly: a freed slot links the next free one through its first word, last in first out; the
+//! tile lists and contact lists keep their order of insertion.
+
+use std::collections::HashSet;
+
+/// One tile in fixed point.
+pub const ONE: i32 = 0x40_0000;
+/// No free slot (`mesh + 0x60`).
+const NONE: u32 = u32::MAX;
+
+/// A shape: x0, y0, x1, y1.
+pub type Rect = [i32; 4];
+
+/// A contact on a shape's side (28 bytes): where the outline that walks the side meets another
+/// shape and goes on along one of its sides.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Contact {
+    /// w0: the other shape.
+    pub other: u32,
+    /// w1: the side of the other shape the outline goes on along.
+    pub side: u32,
+    /// w2, w3: the junction.
+    pub at: [i32; 2],
+    /// w4: the junction along the owner side's axis (x for sides 0 and 2, y for 1 and 3).
+    pub along: i32,
+    /// w5: a collinear contact at the start of its side in one of the two shapes.
+    pub flag: u8,
+    /// w6: half the overlap's smaller extent; the contact counts for a unit only while the
+    /// shrinking of the shapes for it stays below this.
+    pub half: i32,
+}
+
+/// The mesh.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Mesh {
+    /// `mesh[0..2]`: every slot; a free one holds the next free slot's id in its first word.
+    pub shapes: Vec<Rect>,
+    /// `mesh[3..5]`: each slot's four sides (side s runs from corner s to corner s + 1).
+    pub sides: Vec<[Vec<Contact>; 4]>,
+    /// `mesh[6]`: per tile, row by row, the ids of the shapes over it.
+    pub tiles: Vec<Vec<u32>>,
+    /// `mesh + 0x38`: the map's width in tiles (the map is square).
+    pub width: u32,
+    /// `mesh + 0x60`: the first free slot.
+    pub free: u32,
+}
+
+/// Corner `k` of a rectangle (`FUN_14087c6b0`): 0 = (x0, y0), 1 = (x1, y0), 2 = (x1, y1),
+/// 3 = (x0, y1).
+pub fn corner(r: Rect, k: u32) -> [i32; 2] {
+    match k {
+        0 => [r[0], r[1]],
+        1 => [r[2], r[1]],
+        2 => [r[2], r[3]],
+        _ => [r[0], r[3]],
+    }
+}
+
+/// Which sides of the existing shape `o` (`lo`) and the new shape `n` (`hi`) a corner of their
+/// overlap lies on, and whether it lies on both along one line (`FUN_140fdb8d0`,
+/// 0x140fdbcb0..0x140fdbddc, transliterated from the disassembly: each test overwrites what an
+/// earlier one set); None when the corner yields no contact.
+fn classify([cx, cy]: [i32; 2], o: Rect, n: Rect) -> Option<(u32, u32, bool)> {
+    let (mut lo, mut hi) = (0u32, 0u32);
+    let (mut collinear, mut found) = (false, false);
+    let mut by_n_y = false;
+    if cx == o[0] {
+        lo = 3;
+        if cx == n[0] {
+            hi = 3;
+            collinear = true;
+            found = true;
+        } else {
+            by_n_y = true;
+        }
+    } else if cx == o[2] {
+        lo = 1;
+        if cx == n[2] {
+            hi = 1;
+            collinear = true;
+            found = true;
+        } else {
+            by_n_y = true;
+        }
+    } else if cx == n[0] {
+        hi = 3;
+        if cy == o[1] {
+            lo = 0;
+            if cy == n[1] {
+                hi = 0;
+                collinear = true;
+            }
+            found = true;
+        } else if cy == o[3] {
+            lo = 2;
+            if cy == n[3] {
+                hi = 2;
+                collinear = true;
+            }
+            found = true;
+        }
+    } else if cx == n[2] {
+        hi = 1;
+        if cy == o[1] {
+            lo = 0;
+            if cy == n[1] {
+                hi = 0;
+                collinear = true;
+            }
+            found = true;
+        }
+        if cy == o[3] {
+            lo = 2;
+            if cy == n[3] {
+                hi = 2;
+                collinear = true;
+            }
+            found = true;
+        }
+    }
+    if by_n_y {
+        if cy == n[1] {
+            hi = 0;
+            if cy == o[1] {
+                lo = 0;
+                collinear = true;
+            }
+            found = true;
+        } else if cy == n[3] {
+            hi = 2;
+            if cy == o[3] {
+                lo = 2;
+                collinear = true;
+            }
+            found = true;
+        }
+    }
+    found.then_some((lo, hi, collinear))
+}
+
+/// The tiles a shape covers (`FUN_140fdb8d0`, `FUN_140fdc250`): from its low edge's tile to the
+/// tile of its high edge truncated toward zero, each held to the map; a high edge left of the map
+/// counts as its last tile (an unsigned compare).
+fn tile_range(r: Rect, width: u32) -> (u32, u32, u32, u32) {
+    let last = width.wrapping_sub(1);
+    let low = |v: i32| if v < 0 { 0 } else { (v >> 22) as u32 };
+    let high = |v: i32| {
+        let v = if v < 0 {
+            v.wrapping_add(0x3f_ffff) & !0x3f_ffff
+        } else {
+            v
+        };
+        (v >> 22) as u32
+    };
+    let hold_low = |t: u32| if last < t { last } else { t };
+    let hold_high = |t: u32| if t <= last { t } else { last };
+    (
+        hold_low(low(r[0])),
+        hold_low(low(r[1])),
+        hold_high(high(r[2])),
+        hold_high(high(r[3])),
+    )
+}
+
+/// The overlap of two rectangles (`FUN_14087c550` of the larger lows and smaller highs).
+fn overlap(a: Rect, b: Rect) -> Rect {
+    [
+        if a[0] < b[0] { b[0] } else { a[0] },
+        if a[1] < b[1] { b[1] } else { a[1] },
+        if b[2] < a[2] { b[2] } else { a[2] },
+        if b[3] < a[3] { b[3] } else { a[3] },
+    ]
+}
+
+/// Half of `v`, truncated: the game's `(v << 22 + bias) >> 23`.
+fn half(v: i32) -> i32 {
+    let wide = i64::from(v) << 22;
+    let bias = (wide >> 63) & 0x7f_ffff;
+    ((wide + bias) >> 23) as i32
+}
+
+impl Mesh {
+    pub fn new(width: u32) -> Self {
+        Mesh {
+            shapes: Vec::new(),
+            sides: Vec::new(),
+            tiles: vec![Vec::new(); (width * width) as usize],
+            width,
+            free: NONE,
+        }
+    }
+
+    /// Whether slot `id` holds a shape (a free slot is all zero past its link).
+    pub fn is_shape(&self, id: u32) -> bool {
+        self.shapes
+            .get(id as usize)
+            .is_some_and(|r| r[1] != 0 || r[2] != 0 || r[3] != 0)
+    }
+
+    /// `FUN_140fdb8d0`: a new shape, rounded to even units, in the first free slot or a new one;
+    /// the contacts of each corner of its overlap with every shape it overlaps, met tile by tile
+    /// in the tiles' order. Returns its id.
+    pub fn add(&mut self, rect: Rect) -> u32 {
+        let n = [
+            rect[0] & !1,
+            rect[1] & !1,
+            rect[2].wrapping_add(1) & !1,
+            rect[3].wrapping_add(1) & !1,
+        ];
+        let id = if self.free == NONE {
+            self.shapes.push(n);
+            self.sides.push(Default::default());
+            (self.shapes.len() - 1) as u32
+        } else {
+            let id = self.free;
+            self.free = self.shapes[id as usize][0] as u32;
+            self.shapes[id as usize] = n;
+            id
+        };
+        let (tx0, ty0, tx1, ty1) = tile_range(n, self.width);
+        let mut visited = HashSet::new();
+        for ty in ty0..=ty1 {
+            for tx in tx0..=tx1 {
+                let t = (ty * self.width + tx) as usize;
+                for k in 0..self.tiles[t].len() {
+                    let o = self.tiles[t][k];
+                    if visited.insert(o) {
+                        self.touch(o, id);
+                    }
+                }
+                self.tiles[t].push(id);
+            }
+        }
+        id
+    }
+
+    /// The contacts between an existing shape `o` and the new shape `n`: one per corner of their
+    /// overlap that lies on both outlines.
+    fn touch(&mut self, o: u32, n: u32) {
+        let (or, nr) = (self.shapes[o as usize], self.shapes[n as usize]);
+        let i = overlap(nr, or);
+        if !(i[0] < i[2] && i[1] < i[3]) {
+            return;
+        }
+        let w = i[2] - i[0];
+        let h = i[3] - i[1];
+        let half = half(if h < w { h } else { w });
+        for k in 0..4 {
+            let c = corner(i, k);
+            let Some((lo, hi, collinear)) = classify(c, or, nr) else {
+                continue;
+            };
+            let along = |side: u32| if side & 1 == 1 { c[1] } else { c[0] };
+            if collinear {
+                // the owner: the shape with the junction as a corner, o before n at each corner
+                let owner = (0..4).find_map(|j| {
+                    if corner(or, j) == c {
+                        Some((o, n))
+                    } else if corner(nr, j) == c {
+                        Some((n, o))
+                    } else {
+                        None
+                    }
+                });
+                let Some((owner, other)) = owner else {
+                    // the game would index slot -1 here (0x140fdbf7a)
+                    continue;
+                };
+                let (a, b) = (self.shapes[other as usize], self.shapes[owner as usize]);
+                let flag = match lo {
+                    0 => c[0] == a[0] || c[0] == b[0],
+                    1 => c[1] == a[1] || c[1] == b[1],
+                    2 => c[0] == a[2] || c[0] == b[2],
+                    _ => c[1] == a[3] || c[1] == b[3],
+                };
+                self.sides[owner as usize][lo as usize].push(Contact {
+                    other,
+                    side: hi,
+                    at: c,
+                    along: along(lo),
+                    flag: u8::from(flag),
+                    half,
+                });
+            } else if (hi + 1) & 3 == lo {
+                self.sides[o as usize][lo as usize].push(Contact {
+                    other: n,
+                    side: hi,
+                    at: c,
+                    along: along(lo),
+                    flag: 0,
+                    half,
+                });
+            } else if hi.wrapping_sub(1) & 3 == lo {
+                self.sides[n as usize][hi as usize].push(Contact {
+                    other: o,
+                    side: lo,
+                    at: c,
+                    along: along(hi),
+                    flag: 0,
+                    half,
+                });
+            }
+        }
+    }
+
+    /// `FUN_140fdc250`: the shape's contacts leave every shape over its tiles, its id leaves the
+    /// tiles; the last slot is dropped, any other becomes the first free one.
+    pub fn remove(&mut self, id: u32) {
+        let r = self.shapes[id as usize];
+        let (tx0, ty0, tx1, ty1) = tile_range(r, self.width);
+        let mut visited = HashSet::new();
+        for ty in ty0..=ty1 {
+            for tx in tx0..=tx1 {
+                let t = (ty * self.width + tx) as usize;
+                for k in 0..self.tiles[t].len() {
+                    let s = self.tiles[t][k];
+                    if visited.insert(s) {
+                        for side in &mut self.sides[s as usize] {
+                            side.retain(|c| c.other != id);
+                        }
+                    }
+                }
+                if let Some(at) = self.tiles[t].iter().position(|&x| x == id) {
+                    self.tiles[t].remove(at);
+                }
+            }
+        }
+        if id as usize == self.shapes.len() - 1 {
+            self.shapes.pop();
+            self.sides.pop();
+        } else {
+            self.shapes[id as usize] = [self.free as i32, 0, 0, 0];
+            for side in &mut self.sides[id as usize] {
+                side.clear();
+            }
+            self.free = id;
+        }
+    }
+
+    /// `FUN_140fdc730`: the shape moved: removed and added again when the new box differs from
+    /// the stored one (compared before rounding, so an odd box always differs). Returns its id.
+    pub fn replace(&mut self, id: u32, rect: Rect) -> u32 {
+        if self.shapes[id as usize] == rect {
+            return id;
+        }
+        self.remove(id);
+        self.add(rect)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tile_box(x: i32, y: i32, w: i32, h: i32) -> Rect {
+        [x * ONE, y * ONE, (x + w) * ONE, (y + h) * ONE]
+    }
+
+    #[test]
+    fn a_shape_is_rounded_to_even_units_and_listed_on_its_tiles() {
+        let mut m = Mesh::new(8);
+        let id = m.add([ONE + 1, ONE + 3, 2 * ONE + 1, 3 * ONE - 2]);
+        assert_eq!(id, 0);
+        assert_eq!(m.shapes[0], [ONE, ONE + 2, 2 * ONE + 2, 3 * ONE - 2]);
+        // x from tile 1 to tile 2 (the high edge 2 + 2 units), y from 1 to 2
+        let on = |x: u32, y: u32| m.tiles[(y * 8 + x) as usize].contains(&0);
+        assert!(on(1, 1) && on(2, 1) && on(1, 2) && on(2, 2));
+        assert!(!on(3, 1) && !on(1, 3));
+    }
+
+    #[test]
+    fn two_boxes_side_by_side_meet_where_their_outlines_cross() {
+        // MarvinBlue/426048731 at tick 679: tree shapes 61, (93.5, 44.5)-(95.5, 46.5), and 63, one
+        // tile right of and below it; 63's left side crosses 61's bottom at (94.5, 44.5)
+        let mut m = Mesh::new(120);
+        let at = |x: f32, y: f32| [(x * ONE as f32) as i32, (y * ONE as f32) as i32];
+        let rect = |a: [i32; 2], b: [i32; 2]| [a[0], a[1], b[0], b[1]];
+        let a = m.add(rect(at(93.5, 44.5), at(95.5, 46.5)));
+        let b = m.add(rect(at(94.5, 43.5), at(96.5, 45.5)));
+        // the game's contact on the left shape's bottom: `3f 3 17a00000 b200000 17a00000 0 200000`
+        assert_eq!(
+            m.sides[a as usize][0],
+            [Contact {
+                other: b,
+                side: 3,
+                at: [0x17a0_0000, 0x0b20_0000],
+                along: 0x17a0_0000,
+                flag: 0,
+                half: 0x20_0000,
+            }]
+        );
+        // removing the second shape clears every contact with it
+        m.remove(b);
+        assert_eq!(m.sides[a as usize].iter().map(Vec::len).sum::<usize>(), 0);
+        assert_eq!(m.shapes.len(), 1);
+    }
+
+    #[test]
+    fn a_freed_slot_is_reused_last_in_first_out() {
+        let mut m = Mesh::new(16);
+        let ids: Vec<u32> = (0..4).map(|i| m.add(tile_box(2 * i, 0, 1, 1))).collect();
+        m.remove(ids[1]);
+        m.remove(ids[2]);
+        assert_eq!(m.free, 2);
+        assert_eq!(m.shapes[2], [1, 0, 0, 0]);
+        assert_eq!(m.add(tile_box(10, 10, 1, 1)), 2);
+        assert_eq!(m.add(tile_box(12, 10, 1, 1)), 1);
+        assert_eq!(m.free, NONE);
+        // the last slot is dropped, not freed
+        m.remove(3);
+        assert_eq!(m.shapes.len(), 3);
+        assert_eq!(m.free, NONE);
+    }
+
+    #[test]
+    fn a_replace_with_an_odd_box_always_moves_the_shape() {
+        let mut m = Mesh::new(16);
+        let a = m.add(tile_box(1, 1, 1, 1));
+        assert_eq!(m.replace(a, tile_box(1, 1, 1, 1)), a);
+        let odd = [ONE + 1, ONE, 2 * ONE, 2 * ONE];
+        assert_eq!(m.replace(a, odd), a);
+        assert_eq!(m.shapes[a as usize], [ONE, ONE, 2 * ONE, 2 * ONE]);
+    }
+}
