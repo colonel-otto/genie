@@ -13,7 +13,7 @@
 //! slot and updates there in the same tick.
 
 use crate::artifact::Artifact;
-use crate::build::{BUILD, BuildAction, Walk};
+use crate::build::{BUILD, BuildAction, BuildTask, Construction, Site, Walk};
 use crate::fly::Fly;
 use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::masters::{Masters, Target};
@@ -50,6 +50,10 @@ pub struct Unit {
     pub move_to: Option<MoveToAction>,
     /// A bird's Fly action, its top action.
     pub fly: Option<Fly>,
+    /// A building's construction.
+    pub construction: Option<Construction>,
+    /// `+0xa30`, `mWorkRatePowerup`: what the unit adds to its master's work rate.
+    pub work_rate_powerup: f32,
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
@@ -135,6 +139,8 @@ struct Context<'a> {
     spatial: &'a mut Spatial,
     /// The planners and the mesh, which a walker's path request uses.
     pathing: &'a mut Pathing,
+    /// The owner's construction rate (attribute 195).
+    construction_rate: f32,
 }
 
 impl Context<'_> {
@@ -150,14 +156,16 @@ impl Context<'_> {
                 now: self.world_time,
                 computer: self.computer,
                 object: self.streams.get(Stream::Object),
+                construction_rate: self.construction_rate,
             }),
         }
     }
 }
 
 impl Unit {
-    /// One update; true when the object leaves its list.
-    fn update(&mut self, c: &mut Context<'_>) -> Result<bool, Unsupported> {
+    /// One update; true when the object leaves its list. `others` are the rest of the owner's
+    /// objects, whose foundations a builder works on.
+    fn update(&mut self, c: &mut Context<'_>, others: &mut [Unit]) -> Result<bool, Unsupported> {
         if let Some(mover) = self.mover.as_mut() {
             let at = mover.step_velocity(self.position, c.dt_seconds, c.spatial.map, c.world_time);
             if at != self.position {
@@ -189,7 +197,17 @@ impl Unit {
             position: self.position,
         };
         if let Some(build) = self.build.as_mut() {
-            build.update(c.walk(self.mover.as_mut(), me))?;
+            let site = others
+                .iter_mut()
+                .find(|u| u.id == build.target)
+                .and_then(|u| {
+                    Some(Site {
+                        id: u.id,
+                        life: &mut u.life,
+                        construction: u.construction.as_mut()?,
+                    })
+                });
+            build.update(c.walk(self.mover.as_mut(), me), site)?;
         }
         if let Some(move_to) = self.move_to.as_mut() {
             move_to.update(c.walk(self.mover.as_mut(), me))?;
@@ -222,6 +240,8 @@ pub struct Player {
     pub computer: bool,
     /// Food, wood, stone and gold (the player's attributes 0 to 3).
     pub resources: [f32; 4],
+    /// Attribute 195, the construction rate modifier, which builders' work reads.
+    pub construction_rate: f32,
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, Unsupported)>,
 }
@@ -315,6 +335,22 @@ impl Turns {
                     mover: None,
                     move_to: None,
                     fly: None,
+                    construction: self
+                        .masters
+                        .get(player)
+                        .and_then(|m| m.get(master))
+                        .map(|m| Construction {
+                            progress: 0.0,
+                            desolid: true,
+                            builders: 0,
+                            hit_points: m.hit_points,
+                            build_time: m.build_time,
+                            record: crate::spatial::Obstruction {
+                                kind: m.obstruction_type,
+                                class: m.obstruction_class,
+                            },
+                        }),
+                    work_rate_powerup: 0.0,
                 });
                 if let Err(e) = self.task_builders(player, id, master, position, builders) {
                     let owner = &mut self.players[player];
@@ -447,8 +483,12 @@ impl Turns {
             }
             unit.life.master_id = with;
             let gap = footprint_gap(unit.position, builder.radius, position, site.radius);
-            let range = task.map_or(0.0, |t| t.work_range);
-            unit.build = Some(BuildAction::start(foundation, gap, range));
+            let task = BuildTask {
+                range: task.map_or(0.0, |t| t.work_range),
+                work_value: task.map_or(0.0, |t| t.work_val1),
+                work_rate: builder.work_rate + unit.work_rate_powerup,
+            };
+            unit.build = Some(BuildAction::start(foundation, gap, task));
         }
         Ok(())
     }
@@ -532,6 +572,7 @@ impl Turns {
                 streams: &mut self.streams,
                 spatial: &mut self.spatial,
                 pathing: &mut self.pathing,
+                construction_rate: player.construction_rate,
             };
             c.pathing.tiles_changed(c.spatial.take_changes());
             // Once a player's update is not modelled, its live objects freeze; its dead ones still
@@ -544,7 +585,9 @@ impl Turns {
                     i += 1;
                     continue;
                 }
-                let result = player.objects[i].update(&mut c);
+                let mut unit = std::mem::take(&mut player.objects[i]);
+                let result = unit.update(&mut c, &mut player.objects);
+                player.objects[i] = unit;
                 c.pathing.tiles_changed(c.spatial.take_changes());
                 match result {
                     Ok(true) => {
@@ -822,6 +865,10 @@ mod tests {
             buildable_on: 0,
             tasks,
             cost: vec![],
+            obstruction_class: 0,
+            work_rate: 1.0,
+            hit_points: 25,
+            build_time: 0,
         };
         let base = || vec![task(7, -1), task(3, 3)];
         let builder = || vec![task(101, -1), task(3, 3)];
@@ -841,6 +888,10 @@ mod tests {
                 buildable_on: 0,
                 tasks: vec![],
                 cost: vec![(1, 25, true)],
+                obstruction_class: 2,
+                work_rate: 0.0,
+                hit_points: 550,
+                build_time: 25,
             },
         ])
     }

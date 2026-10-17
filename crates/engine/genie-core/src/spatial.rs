@@ -226,6 +226,38 @@ impl Spatial {
         &self.tiles
     }
 
+    /// An object gets its obstruction record (`FUN_141056460` for a started foundation): a static
+    /// one marks its tiles.
+    pub fn add_record(&mut self, id: i32, o: Obstruction) {
+        let Some(p) = self.objects.get_mut(&id) else {
+            return;
+        };
+        p.obstruction = Some(o);
+        if o.marks_tiles() {
+            self.tiles.mark(p, o);
+            self.changed.push(self.tiles.covered_rect(p));
+        }
+    }
+
+    /// Whether an object on tile (`x`, `y`) (its centre there) satisfies `pred`.
+    pub fn object_on_tile(&self, x: i32, y: i32, pred: impl Fn(&Placed) -> bool) -> bool {
+        self.objects
+            .values()
+            .any(|o| o.position[0] as i32 == x && o.position[1] as i32 == y && pred(o))
+    }
+
+    /// Whether another foundation without its record (a master that obstructs, no record yet)
+    /// overlaps `site`'s box (`FUN_1411cd0d0`'s test, without its players' visibility).
+    pub fn foundations_overlapping(&self, site_id: i32, site: &Placed) -> bool {
+        self.objects.iter().any(|(&id, o)| {
+            id != site_id
+                && o.obstruction.is_none()
+                && o.obstruction_type != 0
+                && (o.position[0] - site.position[0]).abs() < o.radius[0] + site.radius[0]
+                && (o.position[1] - site.position[1]).abs() < o.radius[1] + site.radius[1]
+        })
+    }
+
     /// The tile rectangles whose static marks changed since the last call.
     pub fn take_changes(&mut self) -> Vec<[i16; 4]> {
         std::mem::take(&mut self.changed)

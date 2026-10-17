@@ -89,11 +89,19 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         tall: 0.0 < unit.collision_size[2],
         obstruction_type: unit.obstruction_type,
         buildable_on: unit.can_be_built_on,
+        obstruction_class: unit.obstruction_class,
         tasks: unit
             .bird
             .as_ref()
             .map_or_else(Vec::new, |b| b.tasks.iter().map(dat_task).collect()),
         cost,
+        work_rate: unit.bird.as_ref().map_or(0.0, |b| b.work_rate),
+        hit_points: unit.hit_points,
+        build_time: unit
+            .creatable
+            .as_ref()
+            .and_then(|c| c.train_locations.first())
+            .map_or(0, |t| t.queue_time),
     }
 }
 

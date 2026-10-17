@@ -154,6 +154,10 @@ pub fn compare_first_checkpoint(recording: &[u8]) -> Result<Vec<PlayerComparison
 /// `doc/reverse_engineering/game_mechanics/formations.md` describes for AoC).
 pub const GROUP_COMMANDS: [u8; 7] = [0x00, 0x02, 0x03, 0x17, 0x1f, 0x66, 0x6e];
 
+/// The player attribute of the construction rate modifier (195; the work reads it at player
+/// attributes `+0x618`, eight bytes per attribute).
+const CONSTRUCTION_RATE: usize = 195;
+
 /// A command that may create a unit group and so take the frame-seed chain out of the slice's model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GroupCommand {
@@ -201,13 +205,15 @@ fn unit(
         position: [s.t_x, s.t_y, s.t_z],
         life: lifecycle(object, s, objects, civ, masters),
         ai: unit_ai(object),
+        construction: construction(object, s, objects),
+        work_rate_powerup: object.combat().map_or(0.0, |c| c.work_rate_powerup),
         ..Unit::default()
     };
     let imported = if saved {
         saved_actions(
             object,
             s,
-            |m| build_range(objects, civ, masters, m),
+            |m| build_task(objects, civ, masters, m),
             &mut unit,
         )
     } else {
@@ -217,6 +223,37 @@ fn unit(
     let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.mover = m);
     unit.unmodelled_action = imported.and(production).and(moving).err();
     unit
+}
+
+/// A saved building's construction: its `build_pts`, `desolid_flag` and `num_builders`, its
+/// master's hit points (the sixth `readTemp`), build time (the first train location's) and
+/// obstruction kind and class. None for an object that is not a building.
+fn construction(
+    object: &genie_save::Object,
+    s: &RgeStaticObject,
+    objects: &PlayerObjects,
+) -> Option<genie_core::build::Construction> {
+    let b = object.tribe_building_object.as_ref()?;
+    let m = objects.master(s.master_obj)?;
+    let ms = m.static_part()?;
+    let build_time = m
+        .tribe_master_building_object
+        .as_ref()
+        .map(|b| &b.tribe_master_combat_object)
+        .or(m.tribe_master_combat_object.as_ref())
+        .and_then(|c| c.train_location.first())
+        .map_or(0, |t| t.train_time);
+    Some(genie_core::build::Construction {
+        progress: b.build_pts,
+        desolid: b.desolid_flag != 0,
+        builders: b.tribe_combat_object.num_builders,
+        hit_points: ms.read_temp_6,
+        build_time,
+        record: genie_core::spatial::Obstruction {
+            kind: ms.obstruction_type,
+            class: ms.obstruction_class,
+        },
+    })
 }
 
 fn vec3(b: &[u8; 12]) -> genie_core::fmath::Vec3 {
@@ -372,7 +409,7 @@ fn mover(
 fn saved_actions(
     object: &genie_save::Object,
     s: &RgeStaticObject,
-    work: impl Fn(i16) -> Result<f32, Unsupported>,
+    work: impl Fn(i16) -> Result<genie_core::build::BuildTask, Unsupported>,
     unit: &mut Unit,
 ) -> Result<(), Unsupported> {
     use genie_core::build::{BUILD, BuildAction, MoveTo};
@@ -442,12 +479,18 @@ fn saved_actions(
                 .and_then(|(_, sub)| sub.base())
                 .filter(|b| b.target_id == -1)
                 .map(|b| [b.target_x, b.target_y, b.target_z]);
+            let mut task = work(s.master_obj)?;
+            task.work_rate += unit.work_rate_powerup;
             unit.build = Some(BuildAction {
                 target: base.target_id,
                 state: base.state,
                 move_to,
                 goal,
-                range: work(s.master_obj)?,
+                task,
+                added: action
+                    .tribe_action_build
+                    .as_ref()
+                    .is_some_and(|b| b.added_to_num_builders != 0),
             });
             Ok(())
         }
@@ -455,18 +498,37 @@ fn saved_actions(
     }
 }
 
-/// The work range of a builder's Build task (task `+0x30`): the game's Build action keeps a
-/// pointer to that task, which is in its master's saved task list or, for a master that saves
-/// none, in the `.dat`'s.
-fn build_range(
+/// A builder's Build task (the game's Build action keeps a pointer to it, in its master's saved
+/// task list or, for a master that saves none, in the `.dat`'s): its work range (task `+0x30`)
+/// and work value (`+0x28`), with the master's work rate (its action part's `work_rate`).
+fn build_task(
     objects: &PlayerObjects,
     civ: u8,
     masters: Option<&MasterTable>,
     master: i16,
-) -> Result<f32, Unsupported> {
+) -> Result<genie_core::build::BuildTask, Unsupported> {
     let m = objects
         .master(master)
         .ok_or(Unsupported("a builder whose master is not saved"))?;
+    let work_rate = combat_master(m)
+        .map(|c| c.rge_master_action_object.work_rate)
+        .ok_or(Unsupported("a builder master without an action part"))?;
+    let (range, work_value) = build_range(objects, civ, masters, m, master)?;
+    Ok(genie_core::build::BuildTask {
+        range,
+        work_value,
+        work_rate,
+    })
+}
+
+/// The work range and value of a builder master's Build task.
+fn build_range(
+    _objects: &PlayerObjects,
+    civ: u8,
+    masters: Option<&MasterTable>,
+    m: &Master,
+    master: i16,
+) -> Result<(f32, f32), Unsupported> {
     let saved = m.tribe_master_combat_object.as_ref().and_then(|c| {
         c.rge_master_combat_object
             .rge_master_action_object
@@ -479,13 +541,13 @@ fn build_range(
             .list
             .iter()
             .find(|e| e.task.action_type == build)
-            .map(|e| e.task.work_range)
+            .map(|e| (e.task.work_range, e.task.work_val1))
             .ok_or(Unsupported("a builder whose master has no Build task"));
     }
     masters
         .and_then(|t| t.work(civ, master))
         .and_then(|w| w.tasks.iter().find(|t| t.action_type == build))
-        .map(|t| t.work_range)
+        .map(|t| (t.work_range, t.work_val1))
         .ok_or(Unsupported(
             "a builder whose Build task is not in the data file",
         ))
@@ -700,6 +762,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                     .collect(),
                 computer: false,
                 resources: [resource(0), resource(1), resource(2), resource(3)],
+                construction_rate: resource(CONSTRUCTION_RATE),
                 unsupported: None,
             }
         })
@@ -778,8 +841,13 @@ fn work_masters(
         work.tall = 0.0 < s.radius_z;
         work.obstruction_type = s.obstruction_type;
         work.buildable_on = s.can_be_built_on;
-        if let Some(tasks) = action_part(m).and_then(|a| a.tasks.as_ref()) {
-            work.tasks = tasks.list.iter().map(|e| task(&e.task)).collect();
+        work.obstruction_class = s.obstruction_class;
+        work.hit_points = s.read_temp_6;
+        if let Some(a) = action_part(m) {
+            work.work_rate = a.work_rate;
+            if let Some(tasks) = a.tasks.as_ref() {
+                work.tasks = tasks.list.iter().map(|e| task(&e.task)).collect();
+            }
         }
         let combat = m.tribe_master_combat_object.as_ref().or(m
             .tribe_master_building_object
@@ -787,6 +855,7 @@ fn work_masters(
             .map(|b| &b.tribe_master_combat_object));
         if let Some(c) = combat {
             work.cost = build_cost(&c.build_inventory);
+            work.build_time = c.train_location.first().map_or(0, |t| t.train_time);
         }
         Some(work)
     }))
@@ -1384,6 +1453,10 @@ pub struct ObjectRow {
     pub retarget: Option<i32>,
     /// A moving object's orientation, velocity data and path data (the level it walks first).
     pub movement: Option<MoveRow>,
+    /// A building's construction: desolid, progress, builders.
+    pub construction: Option<(bool, f32, u8)>,
+    /// A Build action's `added_to_num_builders`.
+    pub build_added: Option<bool>,
 }
 
 /// What a moving object's row compares of its movement.
@@ -1424,6 +1497,10 @@ impl ObjectRow {
                 last_move: m.last_move,
                 substitute_count: m.substitute_count,
             }),
+            construction: unit
+                .construction
+                .map(|c| (c.desolid, c.progress, c.builders)),
+            build_added: unit.build.map(|b| b.added),
         }
     }
 }
@@ -1490,6 +1567,19 @@ pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
                 .and_then(|c| c.unit_ai())
                 .map(|ai| ai.randomized_retarget_timer as i32),
             movement: saved_movement(object, &header.world.base_world.path),
+            construction: object.tribe_building_object.as_ref().map(|b| {
+                (
+                    b.desolid_flag != 0,
+                    b.build_pts,
+                    b.tribe_combat_object.num_builders,
+                )
+            }),
+            build_added: object
+                .actions()
+                .and_then(|a| a.entries().next())
+                .filter(|&(kind, _)| kind == genie_core::build::BUILD)
+                .and_then(|(_, a)| a.tribe_action_build.as_ref())
+                .map(|b| b.added_to_num_builders != 0),
         })
         .collect())
 }
@@ -1711,6 +1801,16 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             "retarget",
             format!("{:?}", s.retarget),
             format!("{:?}", g.retarget),
+        );
+        field(
+            "construction",
+            format!("{:?}", s.construction),
+            format!("{:?}", g.construction),
+        );
+        field(
+            "build added",
+            format!("{:?}", s.build_added),
+            format!("{:?}", g.build_added),
         );
         match (&s.movement, &g.movement) {
             (Some(a), Some(b)) => {

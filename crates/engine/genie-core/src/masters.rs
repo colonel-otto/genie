@@ -37,9 +37,17 @@ pub struct Master {
     /// `obstruction_type` (`+0x651`) and `can_be_built_on` (`+0x5e9`).
     pub obstruction_type: u8,
     pub buildable_on: u8,
+    /// `obstruction_class` (`+0x652`).
+    pub obstruction_class: u8,
     pub tasks: Vec<Task>,
     /// The build cost `(resource, amount, paid)`.
     pub cost: Vec<(i16, i16, bool)>,
+    /// `work_rate` (`+0x798`): what a builder of this master adds to the work per second.
+    pub work_rate: f32,
+    /// The hit points (`+0x530`) and the build time: the first train location's train time
+    /// (`+0x898`'s first entry), 0 without one.
+    pub hit_points: i16,
+    pub build_time: i16,
 }
 
 /// A player's masters by id.
@@ -178,6 +186,10 @@ mod tests {
             buildable_on: 0,
             tasks,
             cost: vec![],
+            obstruction_class: 0,
+            work_rate: 1.0,
+            hit_points: 25,
+            build_time: 0,
         }
     }
 
@@ -193,6 +205,10 @@ mod tests {
             buildable_on: 0,
             tasks: vec![],
             cost: vec![(1, 25, true)],
+            obstruction_class: 2,
+            work_rate: 0.0,
+            hit_points: 550,
+            build_time: 25,
         }
     }
 

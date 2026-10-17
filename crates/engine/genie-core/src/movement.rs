@@ -308,6 +308,8 @@ pub struct Planning<'a> {
     pub computer: bool,
     /// The Object stream (`DAT_143f07160`), which a long new path's repath time draws from.
     pub object: &'a mut Well512,
+    /// The owner's construction rate (attribute 195), which a builder's work reads.
+    pub construction_rate: f32,
 }
 
 /// Where the motion step goes on after a pass over the walked level.

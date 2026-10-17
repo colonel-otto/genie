@@ -101,6 +101,18 @@ fn the_walk_tick_from_the_save_before_it_matches_the_game_object_by_object() {
 }
 
 #[test]
+fn the_construction_from_a_save_matches_the_game_object_by_object() {
+    // updates 682 to 741: 9175 walks off the footprint and back (Build 223 -> 4); 9177 reaches
+    // the foundation (729), joins its work (730: state 7, a builder) and starts it with its first
+    // work (731: the record, the mesh shape and the planners' tiles, a sliver of progress), then
+    // works on: the house's hit points and progress are the game's
+    let Some(found) = differences(680, 60, 2) else {
+        return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
+    };
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
 fn the_walk_off_the_footprint_from_a_save_matches_the_game_object_by_object() {
     // updates 682 to 725: 9175's MoveTo off the footprint plans its path (the tile pathfinder,
     // then the short pather) and it walks it; in 724 its step reaches the waypoint, in 725 it
