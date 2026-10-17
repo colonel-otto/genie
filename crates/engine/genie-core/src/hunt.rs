@@ -24,6 +24,11 @@ pub const ATTACK: u8 = 12;
 
 /// A MoveTo starts in place within this gap of its target (`0x140aa2100`).
 const ARRIVED: f32 = 0.01;
+/// Own livestock farther than this squared from its drop site is led there first
+/// (`DAT_142ecccc4`).
+const HERD_REACH: f32 = crate::image::hunt::HERD_REACH;
+/// A face on dead livestock beyond the task's range plus this walks again (`DAT_142eb5690`).
+const GAP: f32 = crate::image::hunt::GAP;
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
 const REMAINDER: f32 = crate::image::hunt::REMAINDER;
 /// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
@@ -37,7 +42,7 @@ const BUILDING: u8 = 80;
 /// The range of the walk to the hunter's own player's livestock (`DAT_142eb4838`).
 const OWN_LIVESTOCK_RANGE: f32 = crate::image::hunt::OWN_LIVESTOCK_RANGE;
 /// Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
-const LIVESTOCK: i16 = 58;
+pub const LIVESTOCK: i16 = 58;
 const CLASS_49: i16 = 49;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -59,6 +64,20 @@ pub struct HuntAction {
     /// The MoveTo's range: the task's (`+0x30`) to a dead target, `OWN_LIVESTOCK_RANGE` to its
     /// own player's livestock.
     pub walk_range: f32,
+    /// `+0x70`: the drop site its own livestock is led to, −1 for none yet.
+    pub drop_site: i32,
+}
+
+/// What set_state(6) reads of a live livestock target (`0x140ac60e0` case 6).
+pub struct Herd {
+    /// The target's player is the hunter's.
+    pub own: bool,
+    /// For its own livestock, the drop site (the hunt's, else the nearest that takes livestock,
+    /// `FUN_1411671e0`) and the gap between it and the target squared (`FUN_14118f8c0`).
+    pub drop_site: Option<(i32, f32)>,
+    /// The Attack set_state(12) starts.
+    pub engagement: Engagement,
+    pub arms: Arms,
 }
 
 /// What the hunt reads of its task (`+0x48`): its id in the master's list (`+0xa`; the work command
@@ -161,6 +180,7 @@ impl HuntAction {
             attack: None,
             move_to: None,
             walk_range: task.range,
+            drop_site: -1,
         };
         if 0.0 < target.amount {
             let kind = task.resource;
@@ -289,6 +309,7 @@ impl HuntAction {
         computer: bool,
         strike: &mut Strike<'_>,
         gather: &mut Gatherer<'_>,
+        herd: Option<Herd>,
     ) -> Result<(), Unsupported> {
         if computer {
             return Err(Unsupported("a computer player's hunt (FUN_140fde4f0)"));
@@ -321,10 +342,16 @@ impl HuntAction {
                     self.move_to = Some(walk_on(walk)?);
                     Ok(())
                 }
-                // its update in state 1 returns 1
+                // its update in state 1 returns 1: the list deletes it, and its destructor
+                // (`0x140aa1f30`) stops the unit (slot 0x5d0)
                 Some(MoveTo::Arrived) => {
+                    self.move_to = None;
+                    walk.mover
+                        .as_deref_mut()
+                        .ok_or(Unsupported("a hunter without movement state"))?
+                        .stop()?;
                     self.decay_check(gather, strike.victim)?;
-                    self.set_face(strike, gather)
+                    self.set_face(walk, strike, gather, herd)
                 }
                 None => Err(Unsupported("a Hunt in state 4 without its MoveTo")),
             },
@@ -407,18 +434,65 @@ impl HuntAction {
         Ok(())
     }
 
-    /// set_state(6) (case 6) on a target that is not livestock or of class 49: the unit takes the
-    /// hunt's sprite (`FUN_140ac51d0`: the carrying one for a load of the task's resource of 1 or
-    /// more, else the moving one; slot 0x68 takes the standing sprite for none).
+    /// set_state(6) (case 6): the hunt faces its target. Live livestock of its own player is led
+    /// to its drop site first when it stands more than 3 tiles from it (`HERD_REACH` squared,
+    /// set_state 10, not modelled); then live livestock is attacked (set_state 12, with an Attack
+    /// of the master's ranges: [`Herd`]). Dead livestock out of the task's range plus `GAP` is
+    /// walked to again (set_state 4, not modelled). Otherwise the unit takes the hunt's sprite
+    /// (`FUN_140ac51d0`: the carrying one for a load of the task's resource of 1 or more, else the
+    /// moving one; slot 0x68 takes the standing sprite for none). A target of class 49 (its
+    /// owner's change, `FUN_141185360`) is not modelled.
     fn set_face(
         &mut self,
+        walk: Walk<'_>,
         strike: &mut Strike<'_>,
         gather: &Gatherer<'_>,
+        herd: Option<Herd>,
     ) -> Result<(), Unsupported> {
-        if matches!(gather.target_class, LIVESTOCK | CLASS_49) {
+        if gather.target_class == CLASS_49 {
             return Err(Unsupported(
-                "a hunt facing livestock or class 49 (set_state 6)",
+                "a hunt facing a target of class 49 (set_state 6)",
             ));
+        }
+        if gather.target_class == LIVESTOCK {
+            if strike.victim.state <= 2 {
+                let herd = herd.ok_or(Unsupported("a hunt facing live livestock unprepared"))?;
+                if let (true, Some((site, gap_squared))) = (herd.own, herd.drop_site) {
+                    self.drop_site = site;
+                    if HERD_REACH < gap_squared {
+                        return Err(Unsupported(
+                            "a hunt that leads its livestock to a drop site (set_state 10)",
+                        ));
+                    }
+                }
+                let mover = walk
+                    .mover
+                    .ok_or(Unsupported("a hunter without movement state"))?;
+                self.move_to = None;
+                self.state = ATTACK;
+                self.attack = Some(Attack::start(
+                    self.target,
+                    &herd.engagement,
+                    herd.arms,
+                    mover,
+                )?);
+                return Ok(());
+            }
+            let t = walk
+                .world
+                .get_known(self.target)?
+                .ok_or(Unsupported("a hunt's target without a place"))?;
+            let me = walk.me.position;
+            let ground = walk
+                .mover
+                .as_deref()
+                .map(|m| [m.stats.radius[0], m.stats.radius[1]])
+                .ok_or(Unsupported("a hunter without movement state"))?;
+            if self.task.range + GAP < footprint_gap(me, ground, t.position, t.radius) {
+                return Err(Unsupported(
+                    "a hunt facing dead livestock out of its range (set_state 4)",
+                ));
+            }
         }
         self.move_to = None;
         self.state = FACE;
@@ -673,6 +747,7 @@ mod tests {
             attack: None,
             move_to: None,
             walk_range: 0.0,
+            drop_site: -1,
         };
         let (mut kind, mut held) = (1, 0.0f32);
         let mut gather = |held: &mut f32, kind: &mut i16, tree: &mut Victim| {

@@ -111,6 +111,9 @@ pub struct DropSite {
     pub workers: Vec<i16>,
     pub civs: Vec<u8>,
     pub resources: Vec<i16>,
+    /// The entry has `accepts_livestock` (`FUN_140fdf480` keeps the key's presence): its building
+    /// is one of the drop sites a hunted livestock is led to (`DAT_143f157f0`, in table order).
+    pub livestock: bool,
 }
 
 /// `FUN_140fdd190` over the table: the first entry for the actor's civ and kind of worker whose

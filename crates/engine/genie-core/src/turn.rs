@@ -21,7 +21,7 @@ use crate::hunt::{Gatherer, HuntAction, HuntSprites};
 use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::masters::Masters;
 use crate::move_to::MoveToAction;
-use crate::movement::{Me, Mover, Planning, footprint_gap};
+use crate::movement::{Me, Mover, Planning, footprint_gap, footprint_gap_squared};
 use crate::order::{Interact, MoveOrder};
 use crate::pathing::Pathing;
 use crate::production::{Production, Queued};
@@ -239,6 +239,8 @@ struct Context<'a> {
     attributes: &'a [f32],
     /// The graphics, for the sprites a hunter takes.
     graphics: &'a std::collections::BTreeMap<i16, Graphic>,
+    /// The drop-site table, whose livestock entries a hunt leads its livestock to.
+    drop_sites: &'a [DropSite],
     /// The owner's id.
     player: usize,
     /// Every player's masters and attribute 97 (by player), for a capture.
@@ -684,6 +686,69 @@ impl Unit {
                 stops_decay: c.attributes.get(292) == Some(&1.0),
                 sprites,
             };
+            // what set_state(6) on live livestock reads (0x140ac60e0 case 6)
+            let herd = if hunt.state == crate::hunt::WALK
+                && hunt.move_to == Some(crate::move_to::MoveTo::Arrived)
+                && victim.class == crate::hunt::LIVESTOCK
+                && victim.state <= 2
+            {
+                let at = |id| {
+                    c.spatial
+                        .get_known(id)?
+                        .ok_or(Unsupported("a hunt's object without a place"))
+                };
+                let (me_at, them) = (at(self.id)?, at(hunt.target)?);
+                let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+                let engagement =
+                    crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them)?;
+                let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites);
+                let own = them.player == c.player;
+                let drop_site = if !own {
+                    None
+                } else if hunt.drop_site != -1 {
+                    let site = c.spatial.get(hunt.drop_site);
+                    site.map(|s| {
+                        let d =
+                            footprint_gap_squared(them.position, them.radius, s.position, s.radius);
+                        (hunt.drop_site, d)
+                    })
+                } else {
+                    if computer {
+                        return Err(Unsupported(
+                            "a computer player's hunt of its livestock (its drop-site search)",
+                        ));
+                    }
+                    let sites: Vec<i16> = c
+                        .drop_sites
+                        .iter()
+                        .filter(|d| d.livestock)
+                        .map(|d| d.building)
+                        .collect();
+                    nearest_drop_site(others, &sites, them.position)
+                        .map(|(id, _)| -> Result<(i32, f32), Unsupported> {
+                            let s = at(id)?;
+                            Ok((
+                                id,
+                                footprint_gap_squared(
+                                    them.position,
+                                    them.radius,
+                                    s.position,
+                                    s.radius,
+                                ),
+                            ))
+                        })
+                        .transpose()?
+                };
+                Some(crate::hunt::Herd {
+                    own,
+                    drop_site,
+                    engagement,
+                    arms,
+                })
+            } else {
+                None
+            };
+            let player = c.player;
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
@@ -698,9 +763,10 @@ impl Unit {
                 victim,
                 sprite_rng,
                 master_id: master.id,
+                player,
                 executed: None,
             };
-            hunt.update(walk, computer, &mut strike, &mut gather)?;
+            hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             if let Some(target) = strike.executed {
                 self.post_own(ACTION_EXECUTED, [600, target, 0])?;
             }
@@ -968,6 +1034,25 @@ enum Step {
     /// A player took it (and these other objects of its player) over: they move to the end of
     /// that player's list.
     Captured(usize, Vec<i32>),
+}
+
+/// `FUN_1411671e0` with a point and no unit: of the player's live objects (`others`, in list
+/// order) of a master in `sites` and in state 2, the one nearest `at` (its centre's squared
+/// distance, the first of equals), with that distance.
+fn nearest_drop_site(others: &[Unit], sites: &[i16], at: [f32; 3]) -> Option<(i32, f32)> {
+    let mut best: Option<(i32, f32)> = None;
+    for o in others {
+        if !sites.contains(&o.life.master_id) || o.life.state != 2 {
+            continue;
+        }
+        let [x, y, _] = at;
+        let (dx, dy) = (x - o.position[0], y - o.position[1]);
+        let d = dy * dy + dx * dx;
+        if best.is_none_or(|(_, b)| d < b) {
+            best = Some((o.id, d));
+        }
+    }
+    best
 }
 
 /// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
@@ -1828,6 +1913,7 @@ impl Turns {
                     player: p,
                     attributes: &player.attributes,
                     graphics: &self.graphics,
+                    drop_sites: &self.drop_sites,
                     every_masters: &self.masters,
                     attribute_97: &attribute_97,
                     player_turn: self.player_turn,

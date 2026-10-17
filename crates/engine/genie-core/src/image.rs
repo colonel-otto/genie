@@ -36,6 +36,10 @@ pub mod fly {
 }
 
 pub mod hunt {
+    /// 0.10000000149011612
+    pub const GAP: f32 = f32::from_bits(0x3dcccccd);
+    /// 9.0
+    pub const HERD_REACH: f32 = f32::from_bits(0x41100000);
     /// 0.0010000000474974513
     pub const LAST_BIT: f32 = f32::from_bits(0x3a83126f);
     /// 1.5

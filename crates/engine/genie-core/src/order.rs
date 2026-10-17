@@ -735,24 +735,14 @@ impl Turns {
         })
     }
 
-    /// The Attack constructor's sprites and frames (`FUN_140a7c210` from Hunt's set_state 12): the
-    /// task's proceeding sprite (else the master's attack sprite), the master's second attack
-    /// sprite and standing sprite, missile, firing and interrupting frames.
+    /// [`crate::attack::arms`] of the unit at `idx`.
     fn arms(&self, player: usize, idx: usize, sprites: [i16; 4]) -> Result<Arms, Unsupported> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
-        let g = |id: i16| (0 <= id).then(|| self.graphics.get(&id).copied()).flatten();
-        Ok(Arms {
-            sprite: g(sprites[1]).or(g(master.attack_sprite)),
-            second_sprite: g(master.attack_sprite2),
-            idle_sprite: g(master.standing_sprite),
-            missile: master.missile,
-            fire_frame: master.fire_frame,
-            interrupt_frame: master.interrupt_frame,
-        })
+        Ok(crate::attack::arms(master, &self.graphics, sprites))
     }
 
-    /// What an Attack of the unit reads of it and its target.
+    /// [`crate::attack::engagement`] of the unit at `idx` with `target`.
     fn engagement(
         &self,
         player: usize,
@@ -761,11 +751,6 @@ impl Turns {
     ) -> Result<Engagement, Unsupported> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
-        if matches!(master.charge_type, 6 | 7) {
-            return Err(Unsupported(
-                "an attacker whose charge adds to its range (slot 0x2f8)",
-            ));
-        }
         let me = self
             .spatial
             .get(unit.id)
@@ -774,18 +759,8 @@ impl Turns {
             .spatial
             .get_known(target)?
             .ok_or(Unsupported("an attack's target without a place"))?;
-        let (gap_squared, gap) = gaps(me.position, me.radius, them.position, them.radius);
-        let ai = unit.ai.as_ref();
-        Ok(Engagement {
-            gap_squared,
-            gap,
-            target_position: them.position,
-            speed: unit.mover.as_ref().map_or(0.0, |m| m.stats.speed),
-            range: master.weapon_range,
-            min_range: master.min_range,
-            can_move: ai.is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1),
-            stance: ai.map_or(0, |ai| ai.stance),
-        })
+        let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        crate::attack::engagement(unit.ai.as_ref(), speed, master, me, them)
     }
 
     /// The Hunt from the factory (`FUN_140aca4b0` case 0x6e): the action takes its target (slot

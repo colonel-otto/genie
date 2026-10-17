@@ -160,6 +160,8 @@ pub struct Strike<'a> {
     pub sprite_rng: &'a mut Well512,
     /// The unit's master's id: masters 73 and 559 post no executed action.
     pub master_id: i16,
+    /// The unit's player, whose sight of a target that moved the update reads (its slot 0x1e0).
+    pub player: usize,
     /// The target of a swing this update, whose executed action (notify 0x200 with 600 and the
     /// target) the unit posts to its unit AI.
     pub executed: Option<i32>,
@@ -187,8 +189,9 @@ impl Attack {
     /// The constructor (`FUN_140a7c210`, from Hunt's set_state 12 with the master's weapon range,
     /// least range, missile and frame) and the start (slot 5 with 1, `0x140a7f8c0`): the target is
     /// the object itself (the area-effect and gate cases are not reached by a villager); a range of
-    /// 0 becomes slot 0x238's. The start runs the range test; a unit out of reach that may move
-    /// turns to state 4 there and again in the start, each time with a new MoveTo (whose teardown
+    /// 0 becomes slot 0x238's. The start runs the range test: a target in reach becomes the
+    /// point and the unit faces it, a unit out of reach that may move turns to state 4; a unit that
+    /// may move turns to state 4 again in the start, each time with a new MoveTo (whose teardown
     /// stops the unit). The unit's `+0x900` (attack count) is cleared and its sprites set; the
     /// slice holds neither.
     pub fn start(
@@ -211,28 +214,40 @@ impl Attack {
             rest: 0.0,
             arms,
         };
-        // readyToAttack (`FUN_140a7f9d0`): the target has not moved from the attack's point, which
-        // is none, so only the reach decides
+        // readyToAttack (`FUN_140a7f9d0`): the target has moved from the attack's point (none,
+        // FUN_140a7bbf0 and FUN_140a7bd10), so the reach decides
         if a.min_range > e.gap {
             return Err(Unsupported(
                 "an attack on a target closer than the least range",
             ));
         }
+        let movable = e.speed != 0.0 && e.can_move;
         if a.reach() >= e.gap {
-            return Err(Unsupported(
-                "an attack whose target is in reach when it starts",
-            ));
+            // in reach: the target's place becomes the point and the unit faces it
+            // (FUN_141162db0, at once for a unit without a turn time; its angle is not held)
+            a.point = e.target_position;
+            if !mover.stats.turns_at_once {
+                return Err(Unsupported(
+                    "an attacker that turns over time to face its target",
+                ));
+            }
+            if !movable {
+                return Err(Unsupported(
+                    "an attack that starts in reach and cannot move (set_state 6)",
+                ));
+            }
+        } else {
+            if e.stance == 1 {
+                return Err(Unsupported("an attack's leash test (stance 1)"));
+            }
+            if !movable {
+                return Err(Unsupported(
+                    "an attack whose unit cannot move to its target",
+                ));
+            }
+            a.set_move(e, mover)?;
         }
-        if e.stance == 1 {
-            return Err(Unsupported("an attack's leash test (stance 1)"));
-        }
-        if e.speed == 0.0 || !e.can_move {
-            return Err(Unsupported(
-                "an attack whose unit cannot move to its target",
-            ));
-        }
-        a.set_move(e, mover)?;
-        // the start's own test of the speed and the unit AI: state 4 again
+        // the start's own test of the speed and the unit AI (slots 0x208 and 0x1d0): state 4
         a.set_move(e, mover)?;
         Ok(a)
     }
@@ -407,8 +422,26 @@ impl Attack {
             .get_known(self.target)?
             .ok_or(Unsupported("an Attack whose target is gone"))?
             .clone();
-        if self.state != KILLED && t.position != self.seen {
-            return Err(Unsupported("an Attack whose target moved"));
+        if self.state != KILLED && (t.position[0] != self.seen[0] || t.position[1] != self.seen[1])
+        {
+            // the target moved: where it was seen follows (`+0xa4`..`+0xac`); one the unit's
+            // player sees (the target's slot 0x1e0: 0xf) keeps the attack going, but an attack in
+            // state 5 or 11 walks again (set_state 4). A target out of sight (or only explored,
+            // with its master's fog flag) is not modelled.
+            self.seen = t.position;
+            if !walk
+                .world
+                .sees_tile(s.player, t.position[0] as i32, t.position[1] as i32)
+            {
+                return Err(Unsupported(
+                    "an Attack whose target moved out of its player's sight",
+                ));
+            }
+            if matches!(self.state, 5 | 11) {
+                return Err(Unsupported(
+                    "an Attack in state 5 or 11 whose target moved (set_state 4)",
+                ));
+            }
         }
         match self.state {
             MOVE => self.walk(walk, s, t.position, t.radius),
@@ -584,6 +617,52 @@ impl Attack {
         }
         Ok(())
     }
+}
+
+/// The Attack constructor's sprites and frames (`FUN_140a7c210` from Hunt's set_state 12): the
+/// task's proceeding sprite (else the master's attack sprite), the master's second attack sprite
+/// and standing sprite, missile, firing and interrupting frames.
+pub fn arms(
+    master: &crate::masters::Master,
+    graphics: &std::collections::BTreeMap<i16, Graphic>,
+    sprites: [i16; 4],
+) -> Arms {
+    let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
+    Arms {
+        sprite: g(sprites[1]).or(g(master.attack_sprite)),
+        second_sprite: g(master.attack_sprite2),
+        idle_sprite: g(master.standing_sprite),
+        missile: master.missile,
+        fire_frame: master.fire_frame,
+        interrupt_frame: master.interrupt_frame,
+    }
+}
+
+/// What an Attack of a unit (its unit AI, top speed and master, placed at `me`) reads of it and
+/// its target (placed at `them`).
+pub fn engagement(
+    ai: Option<&crate::unit_ai::UnitAi>,
+    speed: f32,
+    master: &crate::masters::Master,
+    me: &crate::spatial::Placed,
+    them: &crate::spatial::Placed,
+) -> Result<Engagement, Unsupported> {
+    if matches!(master.charge_type, 6 | 7) {
+        return Err(Unsupported(
+            "an attacker whose charge adds to its range (slot 0x2f8)",
+        ));
+    }
+    let (gap_squared, gap) = gaps(me.position, me.radius, them.position, them.radius);
+    Ok(Engagement {
+        gap_squared,
+        gap,
+        target_position: them.position,
+        speed,
+        range: master.weapon_range,
+        min_range: master.min_range,
+        can_move: ai.is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1),
+        stance: ai.map_or(0, |ai| ai.stance),
+    })
 }
 
 /// The gap between two footprints, for an [`Engagement`].

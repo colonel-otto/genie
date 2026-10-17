@@ -3031,6 +3031,7 @@ pub fn drop_sites(json: &str) -> Result<Vec<genie_core::tasks::DropSite>, serde_
                             .map(|t| t.get("attribute_type").map_or(-1, num) as i16)
                             .collect()
                     }),
+                    livestock: e.get("accepts_livestock").is_some(),
                 })
                 .collect()
         }))
