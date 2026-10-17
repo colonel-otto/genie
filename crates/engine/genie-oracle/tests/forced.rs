@@ -232,12 +232,15 @@ fn the_forced_replay_report() {
     reports.sort_by_key(|r| r.start);
     let mut unsupported: BTreeMap<String, Tally> = BTreeMap::new();
     let mut differences: BTreeMap<String, Tally> = BTreeMap::new();
+    // the slice's update numbers (as its freezes name them): the step from save file S ends in
+    // the save file S + ticks, which holds the state after update S + ticks + 1
+    let update = |r: &TickReport| r.start + r.ticks + 1;
     for r in &reports {
         for &(player, object, _, why) in &r.unsupported {
             unsupported
                 .entry(why.0.to_string())
                 .or_default()
-                .add(r.start, player, object, true);
+                .add(update(r), player, object, true);
         }
         let clean = r.unsupported.is_empty();
         for (player, d) in &r.differences {
@@ -245,7 +248,7 @@ fn the_forced_replay_report() {
             differences
                 .entry(field(d))
                 .or_default()
-                .add(r.start, *player, object, clean);
+                .add(update(r), *player, object, clean);
         }
     }
     let clean = reports
@@ -253,9 +256,10 @@ fn the_forced_replay_report() {
         .filter(|r| r.unsupported.is_empty() && r.differences.is_empty())
         .count();
     let mut md = format!(
-        "# Forced replay ({}): saves {first}..{last}\n\n\
-         {} steps run, {clean} without a difference or an unmodelled update.\n\n\
-         ## Not modelled, by first step\n\n| why | count | first | - | players | objects |\n\
+        "# Forced replay ({}): from the save files {first}..{last}\n\n\
+         {} updates run, {clean} without a difference or an unmodelled update. Updates are the \
+         slice's numbers (its freezes'): the step from save file S plays update S + 2.\n\n\
+         ## Not modelled, by first update\n\n| why | count | first | - | players | objects |\n\
          | --- | --- | --- | --- | --- | --- |\n",
         if restart {
             format!("a restart from every save, {ticks} update(s) each")
@@ -270,8 +274,8 @@ fn the_forced_replay_report() {
         md += &t.row(why);
         md.push('\n');
     }
-    md += "\n## Differences of objects that ran, by field and first step\n\n\
-           The second step column is the first step without an unmodelled update (where the \
+    md += "\n## Differences of objects that ran, by field and first update\n\n\
+           The second update column is the first update without anything unmodelled (where the \
            difference is the object's own, not an earlier frozen object's missing draws).\n\n\
            | field | count | first | first without a freeze | players | objects |\n\
            | --- | --- | --- | --- | --- | --- |\n";
@@ -279,13 +283,13 @@ fn the_forced_replay_report() {
         md += &t.row(f);
         md.push('\n');
     }
-    md += "\n## The first steps with differences\n\n";
+    md += "\n## The first updates with differences\n\n";
     for r in reports
         .iter()
         .filter(|r| !r.differences.is_empty())
         .take(40)
     {
-        md += &format!("- save {} + {}:\n", r.start, r.ticks);
+        md += &format!("- update {} (from the save file {}):\n", update(r), r.start);
         for (player, d) in r.differences.iter().take(8) {
             let d: String = d.chars().take(300).collect();
             md += &format!("  - player {player}: {d}\n");
