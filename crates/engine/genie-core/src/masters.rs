@@ -137,6 +137,9 @@ pub struct Master {
     /// `+0x8bc`, `mFormationCategory`: 0 (villagers) keeps a unit out of the groups an order's
     /// splitter forms (`FUN_140fd76d0`).
     pub formation_category: u8,
+    /// `+0x688`, `+0x68c`: the `.dat`'s `outline_size` (x, y), an obstruction-type-11 object's
+    /// shape radii (`FUN_141054fe0`).
+    pub outline: [f32; 2],
     /// `+0x5fc`, `clearance_size`: a completed building's foundation terrain covers its position
     /// plus and minus this.
     pub clearance: [f32; 2],

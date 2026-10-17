@@ -52,6 +52,21 @@ pub fn shape_rect(p: &Placed) -> Rect {
     ]
 }
 
+/// A shape's rectangle at the end of an action object's update (`FUN_141054fe0`): the place and
+/// the radii each in fixed point by truncation, the box grown by half a tile (`0x200000`).
+pub fn refreshed_rect(position: [f32; 3], radius: [f32; 2]) -> Rect {
+    let fixed = |v: f32| (v * ONE as f32) as i64 as i32;
+    let [x, y, _] = position;
+    let (rx, ry) = (fixed(radius[0]), fixed(radius[1]));
+    let half = ONE / 2;
+    [
+        (fixed(x) - rx) - half,
+        (fixed(y) - ry) - half,
+        fixed(x) + half + rx,
+        fixed(y) + half + ry,
+    ]
+}
+
 impl Pathing {
     pub fn new(
         size: [i32; 2],
@@ -140,6 +155,39 @@ impl Pathing {
         self.shapes.insert(id, s);
     }
 
+    /// The end of an action object's update (`RGE_Action_Object::update` -> `FUN_141163080` ->
+    /// `FUN_141055270` -> `FUN_141054fe0`), every tick: an object with an obstruction record has a
+    /// shape while it is not moving (slot 185), its box (`outline`, the master's `+0x688`,
+    /// `+0x68c`, for obstruction type 11, else its radii) grown by half a tile
+    /// ([`refreshed_rect`]), added or replaced (an odd box always replaces: its shape is removed
+    /// and added again); none while it moves. The record's moving flag (byte 3, 0x10) is not
+    /// held: the walk reads the gait. Without the game's mesh nothing is kept.
+    pub fn refresh(&mut self, id: i32, p: &Placed, moving: bool, outline: [f32; 2]) {
+        let Some(mesh) = self.mesh.as_mut() else {
+            return;
+        };
+        if p.obstruction.is_none() {
+            return;
+        }
+        if moving {
+            if let Some(s) = self.shapes.remove(&id) {
+                mesh.remove(s);
+            }
+            return;
+        }
+        let radius = if p.obstruction_type == 11 {
+            outline
+        } else {
+            p.radius
+        };
+        let rect = refreshed_rect(p.position, radius);
+        let s = match self.shapes.get(&id) {
+            None => mesh.add(rect),
+            Some(&s) => mesh.replace(s, rect),
+        };
+        self.shapes.insert(id, s);
+    }
+
     /// The object left the world: its shape leaves the mesh.
     pub fn removed(&mut self, id: i32) {
         if let (Some(mesh), Some(s)) = (self.mesh.as_mut(), self.shapes.remove(&id)) {
@@ -181,6 +229,30 @@ mod tests {
                 (89.7f32 * 4_194_304.0) as i32
             ]
         );
+    }
+
+    #[test]
+    /// MarvinBlue/426048731's update 1141: the hunter 10029 at (106.53662, 46.65576), standing,
+    /// gets its shape at its update's end, the box of its radii (0.2) grown by half a tile.
+    fn a_standing_unit_gets_its_shape_at_its_update_s_end() {
+        let mut p = Pathing::default();
+        p.set_mesh(Mesh::new(120), []);
+        let hunter = villager(106.53662, 46.65576);
+        p.refresh(10029, &hunter, false, [0.0; 2]);
+        let s = p.shape(10029).unwrap();
+        let r = refreshed_rect(hunter.position, hunter.radius);
+        assert_eq!(r[0], (106.53662f32 * 4_194_304.0) as i32 - 838_860 - 0x20_0000);
+        assert_eq!(
+            p.mesh().unwrap().shapes[s as usize],
+            [r[0] & !1, r[1] & !1, (r[2] + 1) & !1, (r[3] + 1) & !1]
+        );
+        // moving, it has none; without a record, none either
+        p.refresh(10029, &hunter, true, [0.0; 2]);
+        assert_eq!(p.shape(10029), None);
+        let mut bare = hunter.clone();
+        bare.obstruction = None;
+        p.refresh(10029, &bare, false, [0.0; 2]);
+        assert_eq!(p.shape(10029), None);
     }
 
     #[test]

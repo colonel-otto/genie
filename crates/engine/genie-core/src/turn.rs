@@ -825,6 +825,16 @@ impl Unit {
         if let Some(p) = c.spatial.get(self.id) {
             self.position = p.position;
         }
+        // RGE_Action_Object::update's end (FUN_141163080): an action object's shape
+        if let Some(m) = c
+            .masters
+            .and_then(|ms| ms.get(self.life.master_id))
+            .filter(|m| 40 <= m.kind)
+            && let Some(p) = c.spatial.get(self.id).cloned()
+        {
+            let moving = self.mover.as_ref().is_some_and(Mover::is_moving);
+            c.pathing.refresh(self.id, &p, moving, m.outline);
+        }
         // RGE_Combat_Object::update after the actions: the object's sight mask
         if self.combat {
             c.spatial.combat_sight(self.id)?;

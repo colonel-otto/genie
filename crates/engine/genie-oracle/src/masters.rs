@@ -131,6 +131,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .and_then(|t| t.attack_graphic2)
             .unwrap_or(-1),
         clearance: unit.clearance_size,
+        outline: [unit.outline_size[0], unit.outline_size[1]],
         terrain_bonus: unit.type50.as_ref().map_or(-1, |t| t.defense_terrain_bonus),
         building: unit.building.as_ref().map(|b| work::BuildingMaster {
             adjacent_mode: b.adjacent_mode,
