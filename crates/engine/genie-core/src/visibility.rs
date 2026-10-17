@@ -959,6 +959,21 @@ impl Visibility {
         Ok(())
     }
 
+    /// A building's construction completes (`FUN_1411dbb70` with 2): once built, the sight of its
+    /// footprint goes (slot 0x1d8, square) and that of its line of sight comes (slot 0x1d0), each
+    /// on a tile corner when its radii add up to an even number.
+    pub fn construction_completed(&mut self, id: i32, position: [f32; 3], radius: [f32; 2]) {
+        let Some(b) = self.seers.get_mut(&id).and_then(|s| s.building.as_mut()) else {
+            return;
+        };
+        if b.built {
+            return;
+        }
+        b.built = true;
+        self.sight_off(id, position, radius, true, false);
+        self.sight_on(id, position, radius, false, false);
+    }
+
     /// A foundation's construction starts (`FUN_1411e5670`): its build points become a sliver,
     /// its footprint comes into sight and its tiles link again.
     pub fn construction_started(&mut self, id: i32, position: [f32; 3], radius: [f32; 2]) {

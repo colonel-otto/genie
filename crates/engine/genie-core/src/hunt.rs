@@ -34,6 +34,8 @@ const FARM_TASK: i16 = 0x124;
 
 /// A building's master type (`'P'`).
 const BUILDING: u8 = 80;
+/// The range of the walk to the hunter's own player's livestock (`DAT_142eb4838`).
+const OWN_LIVESTOCK_RANGE: f32 = crate::image::hunt::OWN_LIVESTOCK_RANGE;
 /// Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
 const LIVESTOCK: i16 = 58;
 const CLASS_49: i16 = 49;
@@ -51,9 +53,12 @@ pub struct HuntAction {
     pub task: HuntTask,
     /// The sub-action of state 12.
     pub attack: Option<Attack>,
-    /// The sub-action of state 4: a MoveTo to the target within the task's range, quiet (its
+    /// The sub-action of state 4: a MoveTo to the target within `walk_range`, quiet (its
     /// `+0x60` and `+0x61` set: its end changes neither the sprite nor the unit's notifies).
     pub move_to: Option<MoveTo>,
+    /// The MoveTo's range: the task's (`+0x30`) to a dead target, `OWN_LIVESTOCK_RANGE` to its
+    /// own player's livestock.
+    pub walk_range: f32,
 }
 
 /// What the hunt reads of its task (`+0x48`): its id in the master's list (`+0xa`; the work command
@@ -152,6 +157,7 @@ impl HuntAction {
             task,
             attack: None,
             move_to: None,
+            walk_range: task.range,
         };
         if 0.0 < target.amount {
             let kind = task.resource;
@@ -170,9 +176,11 @@ impl HuntAction {
                 "a hunt on a building (its annex and drop-site tests)",
             ));
         }
-        if target.player == player {
+        // an own target among the hunter's master's drop sites (`+0x7a0`, FUN_14109d4f0) takes a
+        // load there (set_state 8); a hunter carrying nothing does not get there
+        if target.player == player && 0.0 < held.1 {
             return Err(Unsupported(
-                "a hunt on its own player's target (FUN_14109d4f0)",
+                "a loaded hunt on its own player's object (FUN_14109d4f0, set_state 8)",
             ));
         }
         hunt.chase(target, player, attack, arms, mover)?;
@@ -180,8 +188,12 @@ impl HuntAction {
     }
 
     /// set_state(4) (`0x140ac60e0` case 4): the sub-actions go (an Attack's MoveTo stops the
-    /// unit); a target not dead yet of another, unallied player (or of class 49) is attacked
-    /// first: set_state(12) (case 0xc) with an Attack of the master's ranges.
+    /// unit) and the target's place becomes the point. A dead target, or the hunter's own
+    /// player's livestock, is walked to: a quiet MoveTo within the task's range, or
+    /// `OWN_LIVESTOCK_RANGE` to the livestock (`FUN_140aa0df0`; its start `0x140aa2100`: a unit
+    /// within 0.01 of the target's footprint is there already). A target not dead yet of another,
+    /// unallied player (or of class 49) is attacked first: set_state(12) (case 0xc) with an
+    /// Attack of the master's ranges.
     fn chase(
         &mut self,
         target: &Quarry,
@@ -193,8 +205,22 @@ impl HuntAction {
         self.tear_down(Some(mover))?;
         self.state = 4;
         self.point = target.position;
-        if 2 < target.state || (target.class == LIVESTOCK && target.player == player) {
-            return Err(Unsupported("a hunt on a dead target (its MoveTo)"));
+        let own_livestock = target.class == LIVESTOCK && target.player == player;
+        if 2 < target.state || own_livestock {
+            self.walk_range = if 2 < target.state {
+                self.task.range
+            } else {
+                OWN_LIVESTOCK_RANGE
+            };
+            self.move_to = Some(if ARRIVED < attack.gap {
+                if mover.stats.speed == 0.0 {
+                    return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+                }
+                MoveTo::Start
+            } else {
+                MoveTo::Arrived
+            });
+            return Ok(());
         }
         if target.class != CLASS_49 && target.allied {
             return Err(Unsupported("a hunt on an allied target (set_state 13)"));
@@ -282,11 +308,13 @@ impl HuntAction {
             WALK => match self.move_to {
                 Some(MoveTo::Start) => {
                     self.move_to = Some(MoveTo::Moving);
-                    let range = self.task.range;
+                    let range = self.walk_range;
+                    walk.me.action_state = self.state;
                     self.move_to = Some(start_walk(walk, Goal::Target(self.target), range, true)?);
                     Ok(())
                 }
                 Some(MoveTo::Moving) => {
+                    walk.me.action_state = self.state;
                     self.move_to = Some(walk_on(walk)?);
                     Ok(())
                 }
@@ -354,6 +382,7 @@ impl HuntAction {
             .get_known(self.target)?
             .ok_or(Unsupported("a hunt's target without a place"))?;
         self.point = t.position;
+        self.walk_range = self.task.range;
         let mover = walk
             .mover
             .as_deref()
@@ -635,6 +664,7 @@ mod tests {
             },
             attack: None,
             move_to: None,
+            walk_range: 0.0,
         };
         let (mut kind, mut held) = (1, 0.0f32);
         let mut gather = |held: &mut f32, kind: &mut i16, tree: &mut Victim| {
@@ -667,15 +697,40 @@ mod tests {
     }
 
     #[test]
-    fn a_hunt_on_an_ally_or_a_dead_target_is_not_modelled() {
+    fn a_hunt_on_an_ally_is_not_modelled() {
         let ally = Quarry {
             allied: true,
             ..tree()
         };
+        let mut held = (-1, 0.0);
+        let r = HuntAction::start(
+            CHOP,
+            &ally,
+            2,
+            false,
+            false,
+            &mut held,
+            &engagement(),
+            ARMS,
+            &mut walker(),
+        );
+        assert!(r.is_err());
+    }
+
+    /// set_state(4) on a dead target, or on the hunter's own livestock, walks to it: a quiet
+    /// MoveTo within the task's range, or 1.5 to the livestock (MarvinBlue/426048731's 9171 to its
+    /// own sheep 9520 in update 1116).
+    #[test]
+    fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
         let dead = Quarry { state: 3, ..tree() };
-        for q in [ally, dead] {
+        let sheep = Quarry {
+            class: LIVESTOCK,
+            player: 2,
+            ..tree()
+        };
+        for (q, range) in [(dead, CHOP.range), (sheep, 1.5)] {
             let mut held = (-1, 0.0);
-            let r = HuntAction::start(
+            let hunt = HuntAction::start(
                 CHOP,
                 &q,
                 2,
@@ -685,8 +740,12 @@ mod tests {
                 &engagement(),
                 ARMS,
                 &mut walker(),
+            )
+            .unwrap();
+            assert_eq!(
+                (hunt.state, hunt.move_to, hunt.walk_range, hunt.attack),
+                (WALK, Some(MoveTo::Start), range, None)
             );
-            assert!(r.is_err());
         }
     }
 }

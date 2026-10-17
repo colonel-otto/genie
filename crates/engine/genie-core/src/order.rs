@@ -47,6 +47,20 @@ pub struct MoveOrder {
     pub human: bool,
 }
 
+/// What a unit's slot 0x7e8 (`FUN_141227190`) is given through slot 0x128: the target, the point
+/// (x, y, z), the work command's carried-resource test and task filter, and the unit's `+0xa14`
+/// while it runs (`notified`: INTERACT passes 1, the unit AI's queued order on a target 0): only
+/// with it does the new action's notify clear the unit AI's notifies (`FUN_140c64e50`, for a unit
+/// of a type above 69).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Work {
+    pub target: i32,
+    pub point: [f32; 3],
+    pub carry_test: bool,
+    pub filter: i16,
+    pub notified: bool,
+}
+
 /// Masters and classes the order handler and slot 0x7e8 treat apart (decoded; the game stores a
 /// class as its value − 0xeac, a master id as its id + 0x609c).
 const VILLAGER: i16 = 4;
@@ -271,7 +285,15 @@ impl Turns {
             if order.target == id {
                 return Ok(());
             }
-            return self.order_work(player, idx, &Interact { point, ..*order });
+            let at = [point[0], point[1], 0.0];
+            let work = Work {
+                target: order.target,
+                point: at,
+                carry_test: order.carry_test,
+                filter: order.filter,
+                notified: true,
+            };
+            return self.order_work(player, idx, &work);
         }
         let (target_type, target_owner) =
             target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
@@ -298,6 +320,41 @@ impl Turns {
                 "the readiness pass after an order neither queued nor direct (FUN_140c42b60)",
             ));
         }
+        Ok(())
+    }
+
+    /// The unit AI's order on a target (`FUN_140c5c170` case `0x2db`, from its queue): the unit's
+    /// slot 0x128 on the target at its place with 0 — its `+0xa14` clear while the work command
+    /// runs, so the new action's notify leaves the AI's notifies, and its order queue stays —
+    /// with no carried-resource test and no filter; `FUN_14106c590` passes it on unless the target
+    /// is the unit itself (its `+0x888` count is not held). Then the order's priority becomes the
+    /// AI's (the tail at `LAB_140c5d432`, which keeps the order the work gave it). A target that is
+    /// gone, whose type the AI would look for again (slots 0x1b0, 0x88), is not modelled.
+    pub(crate) fn order_on_target(
+        &mut self,
+        player: usize,
+        idx: usize,
+        order: crate::unit_ai::QueuedOrder,
+    ) -> Result<(), Unsupported> {
+        let (_, t) = self
+            .object(order.target)
+            .ok_or(Unsupported("a queued order on a target that is gone"))?;
+        let point = t.position;
+        if order.target != self.players[player].objects[idx].id {
+            let work = Work {
+                target: order.target,
+                point,
+                carry_test: false,
+                filter: -1,
+                notified: false,
+            };
+            self.order_work(player, idx, &work)?;
+        }
+        let ai = self.players[player].objects[idx]
+            .ai
+            .as_mut()
+            .ok_or(Unsupported("an order on a target without a unit AI"))?;
+        ai.order_priority = order.priority;
         Ok(())
     }
 
@@ -444,12 +501,7 @@ impl Turns {
     /// ignores it; against an unallied target the unit's least range must not exceed the gap
     /// (`FUN_1410862c0`); a villager drops its town-bell flag (`FUN_1412067f0`); then the work
     /// command; then it leaves the pasture it is in (`FUN_141189ca0`).
-    fn order_work(
-        &mut self,
-        player: usize,
-        idx: usize,
-        order: &Interact,
-    ) -> Result<(), Unsupported> {
+    fn order_work(&mut self, player: usize, idx: usize, order: &Work) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         if master.class == CLASS_54 {
@@ -493,16 +545,7 @@ impl Turns {
             ));
         }
         // FUN_141206a20's town-bell record (`+0x9ac`..) and the flag `+0x9dc` are not held
-        // slot 0x7e8 with the order's point on the ground
-        let point = [order.point[0], order.point[1], 0.0];
-        self.work_command(
-            player,
-            idx,
-            order.target,
-            order.filter,
-            order.carry_test,
-            point,
-        )?;
+        self.work_command(player, idx, order)?;
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         let target = self.task_target(order.target, 0)?;
@@ -523,19 +566,20 @@ impl Turns {
     /// task of [`crate::masters::Masters::work_master`] (the master changes, slot 0x90), the task's
     /// requirement, then the task's action from the action list's factory (slot 0x10), the unit
     /// AI's notify (slot 0x828) and the install (slot 0x808).
-    fn work_command(
-        &mut self,
-        player: usize,
-        idx: usize,
-        target: i32,
-        filter: i16,
-        carry_test: bool,
-        point: [f32; 3],
-    ) -> Result<(), Unsupported> {
+    fn work_command(&mut self, player: usize, idx: usize, order: &Work) -> Result<(), Unsupported> {
+        let Work {
+            target,
+            point,
+            carry_test,
+            filter,
+            notified,
+        } = *order;
         let unit = &self.players[player].objects[idx];
         if unit.id == target {
             return Ok(());
         }
+        // FUN_140c64e50: a unit of a type below 70 always clears its AI's notifies
+        let clears = notified || self.master_of(player, unit.life.master_id)?.kind < 70;
         let found = {
             let masters = self
                 .masters
@@ -592,6 +636,7 @@ impl Turns {
                         HUNT_ACTION,
                         Some((target, class)),
                         point,
+                        clears,
                         self.streams.get(Stream::Ai),
                     )?;
                 }
@@ -630,6 +675,7 @@ impl Turns {
                     kind4: task.attribute_type4,
                 },
                 point,
+                clears,
             ),
             _ => Err(Unsupported(
                 "the action factory for a task the slice does not model",
@@ -747,6 +793,7 @@ impl Turns {
         target: i32,
         task: HuntTask,
         point: [f32; 3],
+        clears: bool,
     ) -> Result<(), Unsupported> {
         let quarry = self.quarry(player, target)?;
         self.take(target);
@@ -757,6 +804,7 @@ impl Turns {
                 HUNT_ACTION,
                 Some((target, i32::from(quarry.class))),
                 point,
+                clears,
                 self.streams.get(Stream::Ai),
             )?;
         }

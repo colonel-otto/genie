@@ -130,6 +130,15 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .as_ref()
             .and_then(|t| t.attack_graphic2)
             .unwrap_or(-1),
+        clearance: unit.clearance_size,
+        terrain_bonus: unit.type50.as_ref().map_or(-1, |t| t.defense_terrain_bonus),
+        building: unit.building.as_ref().map(|b| work::BuildingMaster {
+            adjacent_mode: b.adjacent_mode,
+            disappears_when_built: b.disappears_when_built != 0,
+            stack_unit: b.stack_unit_id,
+            foundation_terrain: b.foundation_terrain_id,
+            tech: b.tech_id,
+        }),
         ..work::Master::default()
     }
 }
@@ -141,6 +150,8 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TerrainTable {
     classes: Vec<u8>,
+    /// Each terrain's record as the map's terrain reads see it.
+    kinds: Vec<genie_core::terrain::TerrainKind>,
     masks: Vec<u8>,
     /// Each terrain restriction's value per terrain (`passable_buildable_dmg_multiplier`).
     passable: Vec<Vec<f32>>,
@@ -182,8 +193,18 @@ impl TerrainTable {
             .iter()
             .map(|r| r.passable_buildable_dmg_multiplier.clone())
             .collect();
+        let kinds = dat
+            .terrain_block
+            .terrains
+            .iter()
+            .map(|t| genie_core::terrain::TerrainKind {
+                shown: t.enabled != 0 || 0 <= t.terrain_to_draw,
+                flags: t.is_water,
+            })
+            .collect();
         TerrainTable {
             classes,
+            kinds,
             masks,
             passable,
         }
@@ -202,6 +223,11 @@ impl TerrainTable {
     /// Each terrain restriction's value per terrain, by restriction id.
     pub fn passable(&self) -> &[Vec<f32>] {
         &self.passable
+    }
+
+    /// Each terrain's record as the map's terrain reads see it.
+    pub fn kinds(&self) -> &[genie_core::terrain::TerrainKind] {
+        &self.kinds
     }
 }
 

@@ -48,6 +48,9 @@ fn differences(start: usize, ticks: usize, player: u32) -> Option<Vec<String>> {
     let after = save(&dir, start + ticks);
     let game = genie_oracle::saved_objects(&after, player).unwrap();
     let mut out = genie_oracle::object_differences(&run.objects, &game);
+    if let Some(t) = run.terrain.as_ref() {
+        out.extend(genie_oracle::terrain_differences(t, &after).unwrap());
+    }
     // the player's sight: its visible map and its bits of the unified map
     let seen = genie_oracle::saved_visibility(&after).unwrap();
     let sight = run.visibility.as_ref().expect("the slice holds the sight");

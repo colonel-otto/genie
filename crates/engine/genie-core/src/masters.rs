@@ -73,6 +73,22 @@ impl Default for Task {
     }
 }
 
+/// What a building's completion (`FUN_1411dbb70` with 2) reads of its master, the `.dat`'s type
+/// 80 values.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BuildingMaster {
+    /// `+0x980`, `adjacent_mode`: walls and gates join their neighbours (`FUN_1411ce890`).
+    pub adjacent_mode: u8,
+    /// `+0x984`, `disappears_when_built`.
+    pub disappears_when_built: bool,
+    /// `+0x986`, `stack_unit_id`: the building becomes another (−1 for none).
+    pub stack_unit: i16,
+    /// `+0x988`, `foundation_terrain_id` (the save's `on_build_make_tile`; −1 for none).
+    pub foundation_terrain: i16,
+    /// `+0x98c`, `tech_id`: the technology its completion researches (−1 for none).
+    pub tech: i16,
+}
+
 /// The master values the task finder and the work command read.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Master {
@@ -121,6 +137,14 @@ pub struct Master {
     /// `+0x8bc`, `mFormationCategory`: 0 (villagers) keeps a unit out of the groups an order's
     /// splitter forms (`FUN_140fd76d0`).
     pub formation_category: u8,
+    /// `+0x5fc`, `clearance_size`: a completed building's foundation terrain covers its position
+    /// plus and minus this.
+    pub clearance: [f32; 2],
+    /// `+0x820`, the `.dat`'s `defense_terrain_bonus` (a terrain restriction): a completed
+    /// building keeps to restore a tile's terrain whose value in it is neither 0 nor 1.
+    pub terrain_bonus: i16,
+    /// What a building's completion reads (type 80), None for other masters.
+    pub building: Option<BuildingMaster>,
     /// The resource storage (`attribute_type_held`, `attribute_amount_held`, `attribute_flag`:
     /// `+0x60a`, `+0x610`, `+0x628`): what an object of this master adds to its player's
     /// attributes, by its flag.

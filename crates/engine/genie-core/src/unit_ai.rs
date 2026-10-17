@@ -129,6 +129,9 @@ pub enum Effect {
     Move(AiMove),
     /// `FUN_140c41e50`: the unit's last human order time (`+0x650`) is at most this.
     CapHumanOrder(u32),
+    /// The queued order on a target (`0x2db`) the AI took: the unit's slot 0x128 on the target,
+    /// then the order's priority becomes the AI's (the caller's, `Turns::order_on_target`).
+    OrderOnTarget(QueuedOrder),
 }
 
 /// The first move among a full update's effects.
@@ -470,6 +473,19 @@ impl UnitAi {
         self.current_order = order;
     }
 
+    /// The end of a Build whose AI holds queued orders (`0x140ab0370` case 0xdf): no order and no
+    /// action (`FUN_140c64b60` with −1 and 1, `FUN_140c64b50` with −1); leaving a patrol order,
+    /// whose timers reset, is not modelled.
+    pub fn end_order_and_action(&mut self) -> Result<(), Unsupported> {
+        if matches!(self.current_order, PATROL | PATROL_2) {
+            return Err(Unsupported("the end of a Build on a patrol order"));
+        }
+        self.last_order = self.current_order;
+        self.current_order = -1;
+        self.set_action(-1);
+        Ok(())
+    }
+
     /// `FUN_140c64b50`.
     fn set_action(&mut self, action: i32) {
         self.last_action = self.current_action;
@@ -488,23 +504,27 @@ impl UnitAi {
     /// The work command's notify of its new action (`FUN_14106e4e0`, object slot 0x828): the unit
     /// AI takes the order and action values of the action's type, and the target with its class
     /// (None for a point) and the order's point (`FUN_140c64b60`, `FUN_140c64b50`,
-    /// `FUN_140c64be0`); then `FUN_140c64e50` clears the notifies with time 0 (`FUN_140c5dc10`;
-    /// for a unit of type 70 or more only with its `+0xa14`, which is 1 but inside slot 0x128's
-    /// work command, where INTERACT passes 1 too). The order history (`FUN_140c42080`) is not
-    /// held.
+    /// `FUN_140c64be0`); then, when `clears`, `FUN_140c64e50` clears the notifies with time 0
+    /// (`FUN_140c5dc10`; for a unit of type 70 or more only with its `+0xa14`, which is 1 but
+    /// inside slot 0x128's work command, where INTERACT passes 1 and the queued order on a target
+    /// 0). The order history (`FUN_140c42080`) is not held.
     pub fn notify_work(
         &mut self,
         order: i32,
         action: i32,
         target: Option<(i32, i32)>,
         point: [f32; 3],
+        clears: bool,
         ai: &mut Well512,
     ) -> Result<(), Unsupported> {
         self.set_order(order, ai);
         self.set_action(action);
         let (id, class) = target.unwrap_or((-1, -1));
         self.set_target(id, class, point);
-        self.clear_notifies(0)
+        if clears {
+            self.clear_notifies(0)?;
+        }
+        Ok(())
     }
 
     /// MOVE's notify (`FUN_140e67800`): a unit that took the move as a MoveTo (`moved`) gets the
@@ -1277,13 +1297,23 @@ impl UnitAi {
     /// (`0x2c6`) is the AI's move to its point within its range, forced and walking (slot 0x130),
     /// and the unit's slot 0x2d8 shows its points (`+0x7c0`..`+0x7cc`, not held); once taken
     /// (1) the order and its priority become the AI's (leaving a patrol order caps the secondary
-    /// timer). Other orders are not modelled.
+    /// timer). An order on a target (`0x2db`) goes to the unit ([`Effect::OrderOnTarget`]) and is
+    /// taken. Other orders are not modelled.
     fn process_order(&mut self, o: &QueuedOrder, fx: &mut Vec<Effect>) -> Result<u32, Unsupported> {
         if !o.ready {
             return Ok(0xe);
         }
+        if o.order == ORDER_ON_TARGET {
+            // case 0x2db: the unit's slot 0x128 on the target, then the tail keeps the order the
+            // work gave the AI and takes the order's priority (the caller runs both); a patrol
+            // order before cannot be left there (the work's order is the record's)
+            fx.push(Effect::OrderOnTarget(*o));
+            return Ok(1);
+        }
         if o.order != MOVE_ORDER {
-            return Err(Unsupported("a queued order other than a move"));
+            return Err(Unsupported(
+                "a queued order other than a move or on a target",
+            ));
         }
         let Some(m) = self.move_to(AiMove {
             point: o.point,
@@ -1486,6 +1516,7 @@ mod tests {
             HUNT_ACTION,
             Some((9365, 15)),
             [24.5, 97.5, 0.0],
+            true,
             &mut r,
         )
         .unwrap();
@@ -1499,6 +1530,7 @@ mod tests {
             HUNT_ACTION,
             Some((9365, 15)),
             [24.5, 97.5, 0.0],
+            true,
             &mut r,
         )
         .unwrap();
@@ -2349,7 +2381,10 @@ mod tests {
         assert_eq!(ai.queue_order(3, order(1, true), false, false), Ok(false));
         assert!(ai.orders.is_empty());
         for (target, front) in [(1, true), (2, false), (3, true)] {
-            assert_eq!(ai.queue_order(2, order(target, true), false, front), Ok(true));
+            assert_eq!(
+                ai.queue_order(2, order(target, true), false, front),
+                Ok(true)
+            );
         }
         let targets: Vec<i32> = ai.orders.iter().map(|o| o.target).collect();
         assert_eq!(targets, [3, 1, 2]);

@@ -25,6 +25,7 @@ pub mod short_path;
 pub mod spatial;
 pub mod sprite;
 pub mod tasks;
+pub mod terrain;
 pub mod tile_path;
 pub mod turn;
 pub mod unit_ai;

@@ -127,6 +127,10 @@ pub struct Me {
     pub id: i32,
     /// x, y, z on the map.
     pub position: [f32; 3],
+    /// Its top action's state (slot 0x2b0, `RGE_Action_Object::actionState`; 0 without one),
+    /// which the short pather's ignore list reads: an action that walks after changing its state
+    /// sets its own.
+    pub action_state: u8,
 }
 
 /// What the motion step returns to the MoveTo action.
@@ -1399,8 +1403,9 @@ impl Mover {
 
     /// The objects the short pather ignores (`FUN_14114ece0`): the unit, its target, the unit's
     /// own list but itself when its top path was made this update (`+0x858`'s path at `+0x8`),
-    /// and with a target the allied workers about to work on it near a standing unit, which the
-    /// slice does not model (it stops when any object is that near).
+    /// and, for a standing unit with a target whose action is in state 8 (a drop-off), the
+    /// allied workers standing near it farther from the target than the unit's radius squared,
+    /// which the slice does not model (it stops when any object is that near).
     fn ignore_list(
         &self,
         me: &Me,
@@ -1412,7 +1417,7 @@ impl Mover {
         let mut list = vec![me.id];
         if target.is_some() {
             list.push(target_id);
-            if !self.is_moving() {
+            if !self.is_moving() && me.action_state == 8 {
                 let grow = self.stats.radius[0] + RANGE_FLOOR;
                 let [x, y, _] = me.position;
                 let rect = [x, y, x, y];
@@ -1923,6 +1928,7 @@ mod tests {
         let me = Me {
             id: 9517,
             position: [21.8, 92.2, 0.0],
+            action_state: 0,
         };
         // land of a terrain class the unit's mask (6) has
         let mut w = Spatial::with_tiles(
@@ -2008,6 +2014,7 @@ mod tests {
                 &mut Me {
                     id: 9177,
                     position: at,
+                    action_state: 0,
                 },
                 DT,
                 world,
@@ -2068,6 +2075,7 @@ mod tests {
         let mut me = Me {
             id: 9926,
             position: [28.0, 89.0, 0.0],
+            action_state: 0,
         };
         assert_eq!(
             hawk.motion(&mut me, DT, &mut Spatial::new([120, 120]), None),
@@ -2125,6 +2133,7 @@ mod tests {
         let mut me = Me {
             id: 9175,
             position: [29.51, 89.49, 0.0],
+            action_state: 0,
         };
         assert_eq!(m.motion(&mut me, DT, &mut world, None), Ok(Motion::Moving));
         assert_eq!(m.paths[0].flags, 3);
@@ -2157,6 +2166,7 @@ mod tests {
         let mut me = Me {
             id: 9175,
             position: [30.0, 89.0, 0.0],
+            action_state: 0,
         };
         assert_eq!(
             m.motion(&mut me, DT, &mut Spatial::new([120, 120]), None),
@@ -2171,6 +2181,7 @@ mod tests {
         let mut me = Me {
             id: 9177,
             position: [28.0, 89.0, 0.0],
+            action_state: 0,
         };
         assert_eq!(m.motion(&mut me, DT, &mut world(), None), Ok(Motion::Done));
         let mut m = builder_9177();
@@ -2190,6 +2201,7 @@ mod tests {
         let me = Me {
             id: 9177,
             position: [28.0, 89.0, 0.0],
+            action_state: 0,
         };
         let walker = |human_order| Gait {
             human_order,

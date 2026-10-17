@@ -286,6 +286,8 @@ fn construction(
             kind: ms.obstruction_type,
             class: ms.obstruction_class,
         },
+        snow: b.snow_flag != 0,
+        sprite_override: s.sprite_override_id != -1,
     })
 }
 
@@ -1122,6 +1124,13 @@ fn work_masters(
                 )
             })
             .collect();
+        // the save holds the foundation terrain of its own building masters
+        if let (Some(b), Some(saved)) = (
+            work.building.as_mut(),
+            m.tribe_master_building_object.as_ref(),
+        ) {
+            b.foundation_terrain = saved.on_build_make_tile;
+        }
         work.damage_sprites = !s.damage_sprite.is_empty();
         work.standing_sprite = s.idle_sprite_id;
         work.moving = moving_stats(m, s, civ, table);
@@ -1236,6 +1245,58 @@ fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<Placement> 
 /// master has an obstruction kind and all three radii, unless it is a building marked desolid (a
 /// foundation no builder has started; the first builder's Build state 7 adds its record). Checked
 /// against the game's obstruction manager in `tests/obstructions.rs`.
+/// The map's terrain per tile from the save, with the `.dat`'s terrain records.
+fn map_terrain(header: &Header, terrain: &TerrainTable) -> genie_core::terrain::Terrain {
+    let map = &header.world.base_world.map;
+    let tiles = map
+        .rows
+        .iter()
+        .flat_map(|r| {
+            r.tiles
+                .iter()
+                .map(|t| (t.terrain_type, t.restore_terrain_type, t.layer))
+        })
+        .collect();
+    genie_core::terrain::Terrain::new(
+        map.map_width,
+        map.map_height,
+        tiles,
+        terrain.kinds().to_vec(),
+        terrain.passable().to_vec(),
+    )
+}
+
+/// The differences between the slice's map terrain and a save's, tile by tile.
+pub fn terrain_differences(
+    slice: &genie_core::terrain::Terrain,
+    save: &[u8],
+) -> Result<Vec<String>, Error> {
+    let chapter = de::chapters(save)?[0];
+    Ok(header_terrain_differences(slice, &chapter.header()?))
+}
+
+/// [`terrain_differences`] of a read header.
+fn header_terrain_differences(
+    slice: &genie_core::terrain::Terrain,
+    header: &Header,
+) -> Vec<String> {
+    let map = &header.world.base_world.map;
+    let mut out = Vec::new();
+    for (y, row) in map.rows.iter().enumerate() {
+        for (x, t) in row.tiles.iter().enumerate() {
+            let i = y * map.map_width as usize + x;
+            let ours = (slice.kinds[i], slice.restore[i], slice.layers[i]);
+            let theirs = (t.terrain_type, t.restore_terrain_type, t.layer);
+            if ours != theirs {
+                out.push(format!(
+                    "terrain tile ({x}, {y}): slice {ours:?} game {theirs:?}"
+                ));
+            }
+        }
+    }
+    out
+}
+
 fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spatial {
     use genie_core::spatial::{Obstruction, Placed, Spatial, Tiles};
     let map = &header.world.base_world.map;
@@ -1246,6 +1307,7 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
         .collect();
     let tiles = Tiles::new(map.map_width, map.map_height, classes);
     let mut out = Spatial::with_tiles([map.map_width, map.map_height], tiles);
+    out.terrain = Some(map_terrain(header, terrain));
     let mut sight = saved_sight(header);
     for (player, section) in header.players().iter().enumerate() {
         let all = section.live_objects().chain(section.sleeping_objects());
@@ -2132,6 +2194,8 @@ pub struct SliceRun {
     pub stopped: Vec<Option<(u32, usize, Unsupported)>>,
     /// What the players see after the run.
     pub visibility: Option<Visibility>,
+    /// The map's terrain after the run.
+    pub terrain: Option<genie_core::terrain::Terrain>,
     /// The objects the slice stopped updating, of every player.
     pub frozen: Vec<i32>,
     /// Every object's freeze, by player: the tick, the object and why.
@@ -2288,6 +2352,7 @@ pub fn objects_from_save(
             .and_then(|(_, i, _)| player.objects.get(i).map(|u| u.id)),
         stopped: turns.players.iter().map(|p| p.unsupported).collect(),
         visibility: turns.spatial.sight.take(),
+        terrain: turns.spatial.terrain.take(),
         frozen: turns
             .players
             .iter()
@@ -2451,6 +2516,12 @@ fn compare_players(
     report: &mut TickReport,
 ) -> Result<(), Error> {
     let seen = saved_sight(after);
+    // the map's terrain is the world's: its differences go with Gaia's
+    if let Some(t) = turns.spatial.terrain.as_ref() {
+        for d in header_terrain_differences(t, after) {
+            report.differences.push((0, d));
+        }
+    }
     for (p, player) in turns.players.iter().enumerate() {
         let id = p as u32;
         let now = |t: u32| tick.is_none_or(|n| n == t);

@@ -38,6 +38,8 @@ pub mod fly {
 pub mod hunt {
     /// 0.0010000000474974513
     pub const LAST_BIT: f32 = f32::from_bits(0x3a83126f);
+    /// 1.5
+    pub const OWN_LIVESTOCK_RANGE: f32 = f32::from_bits(0x3fc00000);
     /// 0.10000000149011612
     pub const REMAINDER: f32 = f32::from_bits(0x3dcccccd);
 }
@@ -99,6 +101,11 @@ pub mod sprite {
     pub const EPSILON: f32 = f32::from_bits(0x33d6bf95);
     /// 0.0010000000474974513
     pub const SHORTEST: f32 = f32::from_bits(0x3a83126f);
+}
+
+pub mod terrain {
+    /// 0.0010000000474974513
+    pub const INSIDE: f32 = f32::from_bits(0x3a83126f);
 }
 
 pub mod tile_path {

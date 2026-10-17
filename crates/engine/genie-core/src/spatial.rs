@@ -234,6 +234,8 @@ pub struct Spatial {
     /// What the players see, when the slice holds it: the objects' sight follows their tiles
     /// ([`Spatial::set_position`]).
     pub sight: Option<Visibility>,
+    /// The map's terrain, when the slice holds it.
+    pub terrain: Option<crate::terrain::Terrain>,
 }
 
 impl Spatial {
@@ -256,6 +258,7 @@ impl Spatial {
             annexes: BTreeMap::new(),
             relations: Vec::new(),
             sight: None,
+            terrain: None,
         }
     }
 

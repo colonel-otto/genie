@@ -14,7 +14,7 @@
 
 use crate::artifact::Artifact;
 use crate::attack::{Strike, Victim};
-use crate::build::{BUILD, BuildAction, BuildTask, Construction, Site, Walk};
+use crate::build::{BUILD, BuildAction, BuildTask, Builder, Completion, Construction, Site, Walk};
 use crate::checkpoint::TopAction;
 use crate::fly::Fly;
 use crate::hunt::{Gatherer, HuntAction, HuntSprites};
@@ -223,6 +223,16 @@ struct Context<'a> {
     player_turn: usize,
     player_time: &'a [u32],
     computers: &'a [bool],
+    /// Some player's attribute 204 is not 0, which a building's completion reads.
+    attribute_204: bool,
+    /// [`Turns::mode_680`].
+    mode_680: i32,
+    /// The attributes the owner gains from the object's update (a building it completed), which
+    /// the caller adds after it.
+    attribute_adds: Vec<(i16, f32)>,
+    /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
+    /// runs after the update ([`Turns::order_on_target`]).
+    order_on_target: Option<crate::unit_ai::QueuedOrder>,
 }
 
 impl Context<'_> {
@@ -413,6 +423,11 @@ impl Unit {
                     ))?;
                     self.ai_move(m, class)?;
                 }
+                Effect::OrderOnTarget(order) => {
+                    if c.order_on_target.replace(order).is_some() {
+                        return Err(Unsupported("two orders on targets in one update"));
+                    }
+                }
             }
         }
         Ok(())
@@ -515,6 +530,7 @@ impl Unit {
         let me = Me {
             id: self.id,
             position: self.position,
+            action_state: self.top_action().map_or(0, |a| a.state),
         };
         let mut captured = None;
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
@@ -539,18 +555,42 @@ impl Unit {
             }
         }
         if let Some(build) = self.build.as_mut() {
-            let site = others
-                .iter_mut()
-                .find(|u| u.id == build.target)
-                .and_then(|u| {
-                    Some(Site {
-                        id: u.id,
-                        life: &mut u.life,
-                        construction: u.construction.as_mut()?,
-                        mover: u.mover.as_mut(),
-                    })
-                });
-            build.update(c.walk(self.mover.as_mut(), me), site)?;
+            let target = build.target;
+            let annexed = others.iter().any(|u| u.annex_of == Some(target));
+            let masters = c.masters;
+            let (attribute_204, mode_680) = (c.attribute_204, c.mode_680);
+            let site = others.iter_mut().find(|u| u.id == target).and_then(|u| {
+                let master = masters.and_then(|m| m.get(u.life.master_id));
+                Some(Site {
+                    id: u.id,
+                    life: &mut u.life,
+                    construction: u.construction.as_mut()?,
+                    mover: u.mover.as_mut(),
+                    completion: Completion {
+                        master,
+                        annexed,
+                        attribute_204,
+                        mode_680,
+                    },
+                })
+            });
+            let builder = Builder {
+                class: masters
+                    .and_then(|m| m.get(self.life.master_id))
+                    .map_or(-1, |m| m.class),
+                held: self.life.amount,
+                ai: self.ai.as_mut(),
+            };
+            let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
+            if let Some(adds) = step.completed {
+                c.attribute_adds.extend(adds);
+            }
+            if step.done {
+                // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
+                // builders (set_state left them) and releases the foundation (slot 0x180)
+                self.build = None;
+                release_own(others, masters, target)?;
+            }
         }
         if let Some(move_to) = self.move_to.as_mut()
             && move_to.update(c.walk(self.mover.as_mut(), me))?
@@ -904,6 +944,29 @@ enum Step {
     /// A player took it (and these other objects of its player) over: they move to the end of
     /// that player's list.
     Captured(usize, Vec<i32>),
+}
+
+/// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
+/// update: its worker count falls, and a static object no one works on any more that is alive is
+/// flagged to sleep.
+fn release_own(others: &mut [Unit], masters: Option<&Masters>, id: i32) -> Result<(), Unsupported> {
+    let u = others.iter_mut().find(|u| u.id == id).ok_or(Unsupported(
+        "a release of an object not in the unit's live list",
+    ))?;
+    let kind = masters
+        .and_then(|m| m.get(u.life.master_id))
+        .ok_or(Unsupported(
+            "a released object of a master the slice does not have",
+        ))?
+        .kind;
+    if 0 < u.workers {
+        u.workers -= 1;
+    }
+    let alive = (u.life.state == 2 && 0.0 <= u.life.hp) || u.life.state == 6;
+    if kind < 30 && u.workers == 0 && alive {
+        u.life.goto_sleep = true;
+    }
+    Ok(())
 }
 
 /// One player's objects in live-list order.
@@ -1274,6 +1337,8 @@ impl Turns {
                                 kind: m.obstruction_type,
                                 class: m.obstruction_class,
                             },
+                            snow: false,
+                            sprite_override: false,
                         }),
                     work_rate_powerup: 0.0,
                     attackable: true,
@@ -1525,6 +1590,7 @@ impl Turns {
                     BUILD_ACTION,
                     Some((foundation, site_class)),
                     [position[0], position[1], 0.0],
+                    true,
                     self.streams.get(Stream::Ai),
                 )?;
             }
@@ -1634,6 +1700,10 @@ impl Turns {
                 .map(|q| q.attributes.get(97).copied().unwrap_or(0.0))
                 .collect();
             let computers: Vec<bool> = self.players.iter().map(|q| q.computer).collect();
+            let attribute_204 = self
+                .players
+                .iter()
+                .any(|q| q.attributes.get(204).is_some_and(|&v| v != 0.0));
             let mut i = 0;
             while i < self.players[p].objects.len() {
                 let player = &self.players[p];
@@ -1669,13 +1739,35 @@ impl Turns {
                     player_turn: self.player_turn,
                     player_time: &self.player_time,
                     computers: &computers,
+                    attribute_204,
+                    mode_680: self.mode_680,
+                    attribute_adds: Vec::new(),
+                    order_on_target: None,
                 };
                 let mut result = unit.update(&mut c, &mut player.objects);
+                let (adds, ordered) = (
+                    std::mem::take(&mut c.attribute_adds),
+                    c.order_on_target.take(),
+                );
                 if let Some(e) = self.spatial.take_sight_unsupported() {
                     result = result.and(Err(e));
                 }
                 self.spatial.set_gait(unit.id, unit.gait());
                 player.objects[i] = unit;
+                for (kind, amount) in adds {
+                    if let Err(e) = self.players[p].add_attribute(kind, amount) {
+                        result = result.and(Err(e));
+                    }
+                }
+                if let (Ok(Step::Stay), Some(order)) = (&result, ordered) {
+                    if let Err(e) = self.order_on_target(p, i, order) {
+                        result = Err(e);
+                    }
+                } else if ordered.is_some() && result.is_ok() {
+                    result = Err(Unsupported(
+                        "an order on a target of a unit that leaves its list",
+                    ));
+                }
                 if let Some(v) = victim {
                     self.set_victim(&v);
                 }

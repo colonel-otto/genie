@@ -7,15 +7,18 @@
 //! it first checks the footprint, and a builder standing on it walks to a free tile beside it
 //! (state 223) and comes back (state 4). The work adds to the foundation's construction each
 //! update ([`Construction::work`]); the first work starts it: the foundation gets its obstruction
-//! record. Its completion is not modelled.
+//! record. The work that reaches the build time completes the building ([`Construction::complete`])
+//! and ends the builder's work (state 224); a builder whose unit AI holds queued orders then lets
+//! the Build end (state 1) and the AI runs its queue.
 
 use crate::lifecycle::Lifecycle;
+use crate::masters::Master;
 use crate::move_to::{Goal, start_walk, walk_on};
 pub use crate::move_to::{MoveTo, Walk};
 use crate::movement::footprint_gap;
 use crate::pathing::Pathing;
 use crate::spatial::{Obstruction, Spatial};
-use crate::unit_ai::Unsupported;
+use crate::unit_ai::{UnitAi, Unsupported};
 
 /// The Build action's type, which word 9 adds.
 pub const BUILD: i16 = 101;
@@ -64,6 +67,10 @@ pub struct Construction {
     pub build_time: i16,
     /// The record its start adds: its master's obstruction kind and class.
     pub record: Obstruction,
+    /// `+0xc61`, `snow_flag`: it was completed on snow (its decal is not held).
+    pub snow: bool,
+    /// `+0x788`, `sprite_override_id`, is not −1.
+    pub sprite_override: bool,
 }
 
 /// What a builder's work reaches of its foundation.
@@ -73,6 +80,52 @@ pub struct Site<'a> {
     pub construction: &'a mut Construction,
     /// The foundation's movement state (its last move time), if the slice holds it.
     pub mover: Option<&'a mut crate::movement::Mover>,
+    /// What its completion reads ([`Construction::complete`]).
+    pub completion: Completion<'a>,
+}
+
+/// What a building's completion reads besides its construction.
+#[derive(Clone, Copy, Debug)]
+pub struct Completion<'a> {
+    /// The building's master.
+    pub master: Option<&'a Master>,
+    /// Another object is its annex (its `+0xbc0` list).
+    pub annexed: bool,
+    /// Some player's attribute 204 is not 0 (`FUN_14152bcb0`).
+    pub attribute_204: bool,
+    /// The game's setting at `+0x680` ([`crate::turn::Turns::mode_680`]).
+    pub mode_680: i32,
+}
+
+/// What a builder's work did to its foundation ([`Construction::work`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Worked {
+    /// The construction goes on.
+    Going,
+    /// The foundation was no longer under construction (state not 0, or no hit points).
+    Done,
+    /// This work completed it: the attributes its owner gains, (attribute, amount).
+    Completed(Vec<(i16, f32)>),
+}
+
+/// What a builder brings to its Build action's update besides its walk.
+pub struct Builder<'a> {
+    /// The builder's class (`+0x0a`, decoded).
+    pub class: i16,
+    /// What it carries (`+0x310`).
+    pub held: f32,
+    /// Its unit AI, which a finished Build hands its queued orders to.
+    pub ai: Option<&'a mut UnitAi>,
+}
+
+/// What a Build action's update leaves to its unit and player.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BuildStep {
+    /// The update returned 1: the action list removes the action, whose destructor
+    /// (`FUN_140aadbf0`) releases the foundation (slot 0x180).
+    pub done: bool,
+    /// The work completed the building: the attributes its owner gains.
+    pub completed: Option<Vec<(i16, f32)>>,
 }
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
@@ -92,6 +145,21 @@ const WORK: u8 = 6;
 const PLACE: u8 = 7;
 /// 223 (`0xdf`): off the footprint, to a free tile beside it.
 const CLEAR: u8 = 223;
+/// 224 (`0xe0`): the work ended, the building completed.
+const FINISHED: u8 = 224;
+/// 1: the action is done.
+const DONE: u8 = 1;
+/// The masters and the class the end of the work treats apart: 621 and 1889 among the
+/// foundations, class 39 among the builders, 1893 and 1897 (`id - 0x765 & !4 == 0`), the fish
+/// trap 199 and farms (class 49, `FUN_141194b20`).
+const MASTER_621: i16 = 621;
+const MASTER_1889: i16 = 1889;
+const CLASS_39: i16 = 39;
+const FISH_TRAP: i16 = 199;
+const FARM: i16 = 49;
+/// The build order (`0x2be`), which the end of the work drops from the AI's queue once its
+/// foundation is gone or built (`FUN_140c5dcd0`).
+const BUILD_ORDER: i32 = crate::ai_kinds::ORDER_BUILD;
 
 impl BuildAction {
     /// The action's start (slot 5, `0x140aadd80`): state 4 for a target, whose set_state
@@ -113,9 +181,46 @@ impl BuildAction {
 
     /// One update (slot 6, `0x140ab0370`), which first updates the MoveTo (`0x140aa2a70`); a
     /// moving MoveTo calls the motion step (object slot 193). `site` is the foundation, when it
-    /// is the builder's player's.
-    pub fn update(&mut self, walk: Walk<'_>, site: Option<Site<'_>>) -> Result<(), Unsupported> {
-        match (self.state, self.move_to) {
+    /// is the builder's player's. Before its state's case it checks its foundation: one that is
+    /// no longer under construction (a state above 0) ends the work (set_state(224)) unless the
+    /// Build already ended (224, 4, 8); one that is gone, a dead one, master 621, a builder of
+    /// class 39 and master 1889 of a human player are not modelled.
+    pub fn update(
+        &mut self,
+        mut walk: Walk<'_>,
+        site: Option<Site<'_>>,
+        builder: Builder<'_>,
+    ) -> Result<BuildStep, Unsupported> {
+        let mut step = BuildStep::default();
+        let computer = walk.plan.as_ref().is_some_and(|p| p.computer);
+        let mut site = site;
+        if let Some(site) = site.as_mut() {
+            let master = site.completion.master;
+            if !computer && master.is_some_and(|m| m.id == MASTER_1889) {
+                return Err(Unsupported("a Build on master 1889"));
+            }
+            let state = site.life.state;
+            if state != 0 && !matches!(self.state, FINISHED | MOVE | 8) {
+                if master.is_some_and(|m| m.id == MASTER_621) || builder.class == CLASS_39 {
+                    return Err(Unsupported(
+                        "the end of a Build on master 621 or by class 39",
+                    ));
+                }
+                if 3 <= state {
+                    return Err(Unsupported("a Build whose foundation died"));
+                }
+                self.finish(&mut walk, Some(&mut *site.construction), builder.held)?;
+            }
+        } else if walk.world.get(self.target).is_none() {
+            return Err(Unsupported("a Build whose foundation is gone"));
+        }
+        if self.state == FINISHED {
+            step.done = self.after_work(&walk, site.as_ref(), computer, builder)?;
+            return Ok(step);
+        }
+        let walk = walk;
+        let held = builder.held;
+        let r = match (self.state, self.move_to) {
             (4, Some(MoveTo::Arrived)) => {
                 self.state = 6;
                 self.move_to = None;
@@ -145,7 +250,7 @@ impl BuildAction {
                 }
                 self.place(&walk, site)
             }
-            (PLACE, _) => self.work(walk, site),
+            (PLACE, _) => self.work(walk, site, held).map(|c| step.completed = c),
             (CLEAR, Some(MoveTo::Start)) => {
                 self.move_to = Some(MoveTo::Moving);
                 let goal = self.goal.expect("set_state(223) sets the goal");
@@ -163,7 +268,109 @@ impl BuildAction {
                 "a builder off its footprint without its MoveTo",
             )),
             _ => Err(Unsupported("a Build state not modelled")),
+        };
+        r.map(|()| step)
+    }
+
+    /// The prelude of every set_state (`0x140aae200`): a builder counted among the foundation's
+    /// builders leaves them, and the sub-actions go (`FUN_140a98620`: a MoveTo's teardown stops
+    /// the unit, slot 0x5d0).
+    fn leave(
+        &mut self,
+        walk: &mut Walk<'_>,
+        site: Option<&mut Construction>,
+    ) -> Result<(), Unsupported> {
+        if self.added {
+            if let Some(c) = site {
+                c.builders = c.builders.wrapping_sub(1);
+            }
+            self.added = false;
         }
+        if self.move_to.take().is_some()
+            && let Some(m) = walk.mover.as_deref_mut()
+        {
+            m.stop()?;
+        }
+        self.goal = None;
+        Ok(())
+    }
+
+    /// set_state(224) (`0x140aae200` case 0xe0): the work ended. A builder carrying a resource
+    /// the finished building takes (`FUN_140fde180`, then `FUN_140aadc50`'s drop) is not
+    /// modelled.
+    fn finish(
+        &mut self,
+        walk: &mut Walk<'_>,
+        site: Option<&mut Construction>,
+        held: f32,
+    ) -> Result<(), Unsupported> {
+        if self.added && site.is_none() {
+            return Err(Unsupported(
+                "the end of a Build counted among another player's builders",
+            ));
+        }
+        self.leave(walk, site)?;
+        self.state = FINISHED;
+        if 0.0 < held {
+            return Err(Unsupported(
+                "a builder carrying a resource when its building completes (FUN_140fde180)",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Case 0xdf of the update, the work ended (224): a farm, the fish trap and masters 1893 and
+    /// 1897 are not modelled; the builder's unit AI drops its build orders on foundations gone or
+    /// built (`FUN_140c5dcd0`); with orders left in its queue (`FUN_140c564a0`) it has no order
+    /// and no action (`FUN_140c64b60`, `FUN_140c64b50` with −1) and the Build ends (set_state(1),
+    /// then the update returns 1, true). A builder without queued orders looks for more work
+    /// within its line of sight (4 to 20 tiles), which is not modelled; nor is a computer
+    /// player's.
+    fn after_work(
+        &mut self,
+        walk: &Walk<'_>,
+        site: Option<&Site<'_>>,
+        computer: bool,
+        builder: Builder<'_>,
+    ) -> Result<bool, Unsupported> {
+        if computer {
+            return Err(Unsupported("a computer player's builder after its work"));
+        }
+        let master = site.and_then(|s| s.completion.master).ok_or(Unsupported(
+            "the end of a Build on a foundation the slice does not read",
+        ))?;
+        if master.class == FARM || master.id == FISH_TRAP || matches!(master.id, 1893 | 1897) {
+            return Err(Unsupported(
+                "the end of a Build on a farm, a fish trap or master 1893/1897",
+            ));
+        }
+        let ai = builder
+            .ai
+            .ok_or(Unsupported("a builder without a unit AI after its work"))?;
+        if ai.orders.iter().any(|o| o.order == BUILD_ORDER) {
+            return Err(Unsupported(
+                "a builder's queued build orders (FUN_140c5dcd0)",
+            ));
+        }
+        if ai.orders.is_empty() {
+            return Err(Unsupported(
+                "a builder's search for more work after its building",
+            ));
+        }
+        ai.end_order_and_action()?;
+        self.done(walk)?;
+        Ok(true)
+    }
+
+    /// set_state(1) (`0x140aae200` case 1): the builder takes its standing sprite (slot 0x68,
+    /// not held for builders) and its owner's slot 0x380 hears of it (`FUN_141618d30`: only a
+    /// computer player's AI listens).
+    fn done(&mut self, walk: &Walk<'_>) -> Result<(), Unsupported> {
+        if walk.mover.as_ref().is_some_and(|_| self.move_to.is_some()) {
+            return Err(Unsupported("a Build ending with its MoveTo"));
+        }
+        self.state = DONE;
+        Ok(())
     }
 
     /// set_state(7) (`0x140aae200` case 7) on a foundation no builder started: clear the
@@ -261,10 +468,16 @@ impl BuildAction {
     /// construction rate (attribute 195) when that is above 0 (the Wonder's at most 1.2), each
     /// builder after the first adding a third ([`Construction::work`]). A finished building, a
     /// farm's reseeding and the instant-build cheat (`game+0xc14`) are not modelled.
-    fn work(&mut self, walk: Walk<'_>, site: Option<Site<'_>>) -> Result<(), Unsupported> {
-        let site = site.ok_or(Unsupported("a foundation of another player"))?;
+    fn work(
+        &mut self,
+        mut walk: Walk<'_>,
+        site: Option<Site<'_>>,
+        held: f32,
+    ) -> Result<Option<Vec<(i16, f32)>>, Unsupported> {
+        let mut site = site.ok_or(Unsupported("a foundation of another player"))?;
         let plan = walk
             .plan
+            .as_mut()
             .ok_or(Unsupported("work without the world's planners"))?;
         let mut rate = self.task.work_rate * self.task.work_value * walk.dt;
         let mut factor = plan.construction_rate;
@@ -278,13 +491,22 @@ impl BuildAction {
         if 1.0 < n {
             rate *= ((n - 1.0) * EXTRA_BUILDER + 1.0) / n;
         }
-        let done = Construction::work(site, rate, walk.world, plan.pathing, plan.now)?;
-        if done {
+        let (pathing, now) = (&mut *plan.pathing, plan.now);
+        let worked = Construction::work(&mut site, rate, walk.world, pathing, now)?;
+        let completed = match worked {
+            Worked::Going => return Ok(None),
+            Worked::Done => None,
+            Worked::Completed(attributes) => Some(attributes),
+        };
+        // a finished foundation with hit points ends the work (its `+0x278`, decoded)
+        if 0.0 < site.life.hp {
+            self.finish(&mut walk, Some(&mut *site.construction), held)?;
+        } else {
             return Err(Unsupported(
-                "a finished construction (Build set_state 0xe0)",
+                "work on a finished foundation without hit points",
             ));
         }
-        Ok(())
+        Ok(completed)
     }
 
     /// set_state(4) after the walk off the footprint (`0x140aae200` case 4): the goal is the
@@ -353,24 +575,24 @@ fn beside_diagonal(bx: i32, by: i32, dx: i32, dy: i32) -> ([i32; 2], [i32; 2]) {
 impl Construction {
     /// `FUN_1411cc430`: `amount` seconds of work on a foundation (state 0, at least 1 hit point;
     /// else the work is done): the first starts it ([`Construction::start`]), each adds its share
-    /// of the master's hit points (all of them without a build time) up to the build time, and
-    /// true when the work reaches it (its completion, set_state 2, is not modelled). A building
-    /// with annexes is not modelled.
+    /// of the master's hit points (all of them without a build time) up to the build time, and the
+    /// work that reaches it completes the building ([`Construction::complete`]). A building with
+    /// annexes is not modelled.
     pub fn work(
-        site: Site<'_>,
+        site: &mut Site<'_>,
         mut amount: f32,
         world: &mut Spatial,
         pathing: &mut Pathing,
         now: u32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<Worked, Unsupported> {
         if site.life.state != 0 || site.life.hp < 1.0 {
-            return Ok(true);
+            return Ok(Worked::Done);
         }
         let c = &mut *site.construction;
         if c.desolid {
             Construction::start(site.id, c, world, pathing)?;
             // FUN_1411e5670's last line: the last move time is the world's time plus 1
-            if let Some(m) = site.mover {
+            if let Some(m) = site.mover.as_deref_mut() {
                 m.last_move = now.wrapping_add(1);
             }
         }
@@ -388,11 +610,114 @@ impl Construction {
         let before = c.progress;
         c.progress = amount + before;
         if amount + before < build_time {
-            return Ok(false);
+            return Ok(Worked::Going);
         }
-        Err(Unsupported(
-            "a building's construction completes (set_state 2)",
-        ))
+        Construction::complete(site, world).map(Worked::Completed)
+    }
+
+    /// The construction completes: `FUN_1411cc430`'s set_state(2) (`FUN_1411dbb70`), then
+    /// `FUN_14152bcb0`, whose part for players with attribute 204 is not modelled. The building
+    /// (`FUN_1411c6bd0` first: its player's object index `+0x18` and its count `+0x6c` are not
+    /// held; a computer player's, a farm's, an overridden sprite's and a master with a task of
+    /// action type 0x99 are not modelled) holds its build time as its build points; its master's
+    /// storage of modes 4, 8 and 64 goes to its owner (slot 0xf8, returned); it is built, and its
+    /// sight swaps from its footprint to its line of sight (slots 0x1d8, 0x1d0); it takes its
+    /// standing sprite (not held); on snow it gets its snow flag; its foundation terrain covers
+    /// its clearance ([`crate::terrain::Terrain::cover`]; the tile it stands on, `+0x2e8`, keeps
+    /// no terrain to restore in the slice); its owner's attributes 98 and 165 grow by 1; then the
+    /// base set_state (`FUN_14121cc40`, `FUN_14119d710`) puts it in state 2. The local player's
+    /// sound (slot 0x4c0), the event 0x69 (`FUN_140c898a0`) and the owner's AI (slot 0x388) are
+    /// not held. Walls and gates (`adjacent_mode`), a stack unit, a technology, a building that
+    /// disappears when built, own stores (mode 16), the castle (82), the monastery (104), the
+    /// wonder (276) and masters with object flag 0x40 are not modelled.
+    pub fn complete(
+        site: &mut Site<'_>,
+        world: &mut Spatial,
+    ) -> Result<Vec<(i16, f32)>, Unsupported> {
+        let id = site.id;
+        let done = &site.completion;
+        let master = done.master.ok_or(Unsupported(
+            "a completion of a master the slice does not have",
+        ))?;
+        let building = master
+            .building
+            .ok_or(Unsupported("a completion of a master that is no building"))?;
+        if done.annexed {
+            return Err(Unsupported("a building with annexes completes"));
+        }
+        if done.attribute_204 {
+            return Err(Unsupported(
+                "a completion with a player's attribute 204 (FUN_14152bcb0)",
+            ));
+        }
+        if master.class == FARM
+            || site.construction.sprite_override
+            || master.tasks.iter().any(|t| t.action_type == 0x99)
+        {
+            return Err(Unsupported(
+                "a completion of a farm, an overridden sprite or a task of action type 0x99",
+            ));
+        }
+        if building.adjacent_mode != 0
+            || building.stack_unit >= 0
+            || building.tech >= 0
+            || building.disappears_when_built
+        {
+            return Err(Unsupported(
+                "a completion of walls, a stack unit, a technology or a vanishing building",
+            ));
+        }
+        if matches!(master.id, 82 | 104 | 276) || master.object_flags & 0x40 != 0 {
+            return Err(Unsupported(
+                "a completion of the castle, the monastery, the wonder or object flag 0x40",
+            ));
+        }
+        let c = &mut *site.construction;
+        c.progress = f32::from(c.build_time);
+        let mut attributes = Vec::new();
+        for &(kind, amount, flag) in &master.storage {
+            if kind < 0 || amount <= 0.0 {
+                continue;
+            }
+            if matches!(flag, 4 | 8 | 64) {
+                attributes.push((kind, amount));
+            }
+            if flag & 0x10 != 0 {
+                return Err(Unsupported("a completion with an own store (mode 16)"));
+            }
+        }
+        let placed = world
+            .get(id)
+            .ok_or(Unsupported("a completed building without a place"))?
+            .clone();
+        if let Some(v) = world.sight.as_mut() {
+            v.construction_completed(id, placed.position, placed.radius);
+        }
+        let terrain = world
+            .terrain
+            .as_mut()
+            .ok_or(Unsupported("a completion without the map's terrain"))?;
+        let [x, y, _] = placed.position;
+        if !c.snow && 0 <= x as i32 && 0 <= y as i32 && terrain.snow_under(x as i32, y as i32)? {
+            c.snow = true;
+        }
+        if 0 <= building.foundation_terrain {
+            terrain.cover(&crate::terrain::Foundation {
+                position: placed.position,
+                clearance: master.clearance,
+                terrain: building.foundation_terrain as u8,
+                snow: c.snow,
+                master: master.id,
+                class: master.class,
+                terrain_bonus: master.terrain_bonus,
+                mode_680: done.mode_680,
+            })?;
+        }
+        attributes.push((98, 1.0));
+        attributes.push((165, 1.0));
+        site.life.state = 2;
+        world.sight_state(id, 2);
+        Ok(attributes)
     }
 
     /// The construction starts (`FUN_1411cd0d0`, then `FUN_1411e5670`): other players' foundations
@@ -440,28 +765,115 @@ mod tests {
         work_rate: 1.0,
     };
 
+    /// MarvinBlue/426048731's house 10028 as BUILD placed it: a foundation of master 70.
+    fn house() -> crate::spatial::Placed {
+        crate::spatial::Placed {
+            position: [30.0, 88.0, 0.0],
+            radius: [1.0, 1.0],
+            class: 3,
+            player: 2,
+            master: 70,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        }
+    }
+
+    /// MarvinBlue/426048731's house 10026 in update 1115 (player 1): the work that reaches 25 s
+    /// completes it: its build points hold the build time, its storage (population headroom, 4,
+    /// of mode 4) and attributes 98 and 165 go to its owner, it stands in state 2 and its
+    /// foundation (27) covers its snow with terrain 6 under layer 32.
+    #[test]
+    fn the_work_that_reaches_the_build_time_completes_the_building() {
+        use crate::spatial::Tiles;
+        use crate::terrain::{Terrain, TerrainKind};
+        let mut world = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
+        world.insert(
+            10026,
+            crate::spatial::Placed {
+                position: [2.0, 2.0, 0.0],
+                ..house()
+            },
+        );
+        let mut kinds = vec![
+            TerrainKind {
+                shown: true,
+                flags: 0x20
+            };
+            40
+        ];
+        kinds[32].flags = 0xa0;
+        world.terrain = Some(Terrain::new(
+            4,
+            4,
+            vec![(32, 255, -1); 16],
+            kinds,
+            vec![vec![0.0; 40]; 5],
+        ));
+        let master = Master {
+            id: 70,
+            kind: 80,
+            class: 3,
+            clearance: [1.0, 1.0],
+            terrain_bonus: 4,
+            storage: vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)],
+            building: Some(crate::masters::BuildingMaster {
+                adjacent_mode: 0,
+                disappears_when_built: false,
+                stack_unit: -1,
+                foundation_terrain: 27,
+                tech: -1,
+            }),
+            ..Master::default()
+        };
+        let mut life = Lifecycle {
+            state: 0,
+            hp: 548.0,
+            master_id: 70,
+            ..Lifecycle::default()
+        };
+        let mut c = Construction {
+            progress: 24.99,
+            desolid: false,
+            builders: 2,
+            hit_points: 550,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+        };
+        let mut site = Site {
+            id: 10026,
+            life: &mut life,
+            construction: &mut c,
+            mover: None,
+            completion: Completion {
+                master: Some(&master),
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+            },
+        };
+        let worked = Construction::work(&mut site, 0.02, &mut world, &mut Pathing::default(), 0);
+        assert_eq!(
+            worked,
+            Ok(Worked::Completed(vec![(4, 5.0), (98, 1.0), (165, 1.0)]))
+        );
+        assert_eq!((life.state, c.progress, c.snow), (2, 25.0, true));
+        let t = world.terrain.as_ref().unwrap();
+        assert_eq!((t.kinds[5], t.layers[5], t.kinds[0]), (6, 32, 32));
+    }
+
     /// MarvinBlue/426048731's house 10028 in update 731: 9177's first work starts it (its record
     /// marks its tiles) and adds 0.021 s of work: 550 hit points over 25 s, so 1.462 hit points.
     #[test]
     fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
-        use crate::spatial::{Placed, Tiles};
+        use crate::spatial::Tiles;
         let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
-        world.insert(
-            10028,
-            Placed {
-                position: [30.0, 88.0, 0.0],
-                radius: [1.0, 1.0],
-                class: 3,
-                player: 2,
-                master: 70,
-                obstruction_type: 2,
-                buildable_on: 0,
-                tall: true,
-                speed: 0.0,
-                unknown: None,
-                obstruction: None,
-            },
-        );
+        world.insert(10028, house());
         let mut life = Lifecycle {
             state: 0,
             hp: 1.0,
@@ -475,18 +887,26 @@ mod tests {
             hit_points: 550,
             build_time: 25,
             record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
         };
         let mut pathing = Pathing::default();
-        let site = Site {
+        let mut site = Site {
             id: 10028,
             life: &mut life,
             construction: &mut c,
             mover: None,
+            completion: Completion {
+                master: None,
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+            },
         };
         let rate = 1.0f32 * 1.0 * 0.021;
         assert_eq!(
-            Construction::work(site, rate, &mut world, &mut pathing, 0),
-            Ok(false)
+            Construction::work(&mut site, rate, &mut world, &mut pathing, 0),
+            Ok(Worked::Going)
         );
         assert_eq!(life.hp, 1.462);
         assert!(!c.desolid);
@@ -553,7 +973,10 @@ mod tests {
             task: TASK,
             added: false,
         };
-        let mut life = Lifecycle::default();
+        let mut life = Lifecycle {
+            state: 0,
+            ..Lifecycle::default()
+        };
         let mut construction = Construction {
             progress: 0.0,
             desolid: true,
@@ -561,12 +984,20 @@ mod tests {
             hit_points: 550,
             build_time: 25,
             record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
         };
         let site = Site {
             id: 10028,
             life: &mut life,
             construction: &mut construction,
             mover: None,
+            completion: Completion {
+                master: None,
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+            },
         };
         build
             .update(
@@ -575,12 +1006,18 @@ mod tests {
                     me: Me {
                         id: 9175,
                         position: [30.0, 89.0, 0.0],
+                        action_state: 0,
                     },
                     dt: 0.02,
                     world: &mut world,
                     plan: None,
                 },
                 Some(site),
+                Builder {
+                    class: VILLAGER,
+                    held: 0.0,
+                    ai: None,
+                },
             )
             .unwrap();
         assert_eq!(
@@ -602,19 +1039,27 @@ mod tests {
                 me: Me {
                     id,
                     position: [0.0; 3],
+                    action_state: 0,
                 },
                 dt: 0.02,
                 world,
                 plan: None,
             }
         }
-        near.update(walk(1, &mut world), None).unwrap();
+        let builder = || Builder {
+            class: VILLAGER,
+            held: 0.0,
+            ai: None,
+        };
+        world.insert(10028, house());
+        near.update(walk(1, &mut world), None, builder()).unwrap();
         assert_eq!((near.state, near.move_to), (6, None));
-        // the far one asks for a path to its foundation, which must be on the map
+        // the far one checks its foundation, which must be in the world
+        let mut empty = Spatial::default();
         assert_eq!(
-            far.update(walk(2, &mut world), None),
-            Err(Unsupported("a MoveTo whose target is gone"))
+            far.update(walk(2, &mut empty), None, builder()),
+            Err(Unsupported("a Build whose foundation is gone"))
         );
-        assert_eq!(far.move_to, Some(MoveTo::Moving));
+        assert_eq!(far.move_to, Some(MoveTo::Start));
     }
 }
