@@ -152,6 +152,22 @@ pub struct Master {
     /// The master has damage sprites (`+0x638`..`+0x640`): a master change checks them
     /// (`FUN_1411859a0`).
     pub damage_sprites: bool,
+    /// What a hit on an object of this master reads (`FUN_141082530`): its armor classes (class,
+    /// amount; `+0x808`, count `+0x802`), its base armor for a class it does not list (`+0x800`),
+    /// `bonus_damage_resistance` (`+0x824`), `combat_ability` (`+0x840`), `damage_reflection`
+    /// (`+0x864`), `invulnerability_level` (`+0x930`: a hit point floor, `FUN_141202a80`) and
+    /// `special_attack_flag` (`+0x8d8`); and what an attacker of it reads: `area_effect_range`
+    /// (`+0x82c`), `max_charge` (`+0x918`) and `charge_target` (`+0x924`).
+    pub base_armor: i16,
+    pub armors: Vec<(i16, i16)>,
+    pub resistance: f32,
+    pub combat_ability: u8,
+    pub reflection: f32,
+    pub invulnerability: f32,
+    pub special_attack: u8,
+    pub area_effect: f32,
+    pub max_charge: f32,
+    pub charge_target: i16,
     /// `+0x5d4`, `obj_max` (the `.dat`'s `garrison_capacity`): a building that garrisons takes a
     /// gather point (`FUN_140e7e9a0`).
     pub garrison: u8,

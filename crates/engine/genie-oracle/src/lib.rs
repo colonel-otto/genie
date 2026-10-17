@@ -230,6 +230,14 @@ fn unit(
             .map_or(0.0, |c| c.rge_combat_object.attack_timer),
         reload_stinger: object.combat().map_or(0.0, |c| c.reload_stinger),
         reload_powerup: object.combat().map_or(0.0, |c| c.reload_powerup),
+        attack_powerup: object.combat().map_or(0.0, |c| c.attack_powerup),
+        armor_powerups: object.combat().map_or([0; 2], |c| {
+            [c.melee_armor_powerup as i16, c.pierce_armor_powerup as i16]
+        }),
+        armor_removed: object
+            .combat()
+            .map_or([0; 2], |c| [c.melee_armor_removed, c.pierce_armor_removed]),
+        charge: object.combat().map_or(0.0, |c| c.charge),
         gather_point: gather_point(object),
         ..Unit::default()
     };
@@ -1144,6 +1152,20 @@ fn work_masters(
                 .iter()
                 .map(|&w| ((w & 0xffff) as i16, (w >> 16) as i16))
                 .collect();
+            work.base_armor = rc.base_armor;
+            work.armors = rc
+                .armor
+                .iter()
+                .map(|&a| ((a & 0xffff) as i16, (a >> 16) as i16))
+                .collect();
+            work.resistance = rc.bonus_damage_resistance;
+            work.combat_ability = rc.combat_ability;
+            work.reflection = rc.damage_reflection;
+            work.area_effect = rc.area_effect_range;
+            work.invulnerability = c.invulnerability_level;
+            work.special_attack = c.special_attack_flag;
+            work.max_charge = c.max_charge;
+            work.charge_target = c.charge_target;
         }
         work.storage = s
             .attribute

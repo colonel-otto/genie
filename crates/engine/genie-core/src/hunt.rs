@@ -734,6 +734,8 @@ mod tests {
             class: 15,
             storage: 100.0,
             decay: 0.0,
+            armored: None,
+            damaged: None,
         }
     }
 

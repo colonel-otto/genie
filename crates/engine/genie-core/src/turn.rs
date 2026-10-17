@@ -89,6 +89,14 @@ pub struct Unit {
     pub attack_timer: f32,
     pub reload_stinger: f32,
     pub reload_powerup: f32,
+    /// What a hit reads of its unit and its target besides the masters: `+0xa24`
+    /// (`mAttackPowerup`, the attacker's slot 0x6d8), the armor powerups (`+0xa48` melee,
+    /// `+0xa4c` pierce, slots 0x708 and 0x710; whole numbers), the armor attacks removed
+    /// (`+0x9e4`, `+0x9e6`) and the charge (`+0x9e0`).
+    pub attack_powerup: f32,
+    pub armor_powerups: [i16; 2],
+    pub armor_removed: [i16; 2],
+    pub charge: f32,
     /// `+0x644`, `worker_num`: the actions that have the object as their target.
     pub workers: i32,
     /// `+0x650`, `mLastHumanOrderTime`: the world time of the last order a human gave it
@@ -749,6 +757,16 @@ impl Unit {
                 None
             };
             let player = c.player;
+            let attacker = crate::attack::Attacker {
+                id: self.id,
+                kind: master.kind,
+                ability: master.combat_ability,
+                area_effect: master.area_effect,
+                charge_type: master.charge_type,
+                attack_powerup: self.attack_powerup,
+                mode_680: c.mode_680,
+                bonus_tasks: master.tasks.iter().any(|t| t.action_type == 0xa0),
+            };
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
@@ -764,6 +782,7 @@ impl Unit {
                 sprite_rng,
                 master_id: master.id,
                 player,
+                attacker,
                 executed: None,
             };
             hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
@@ -1152,11 +1171,29 @@ impl Turns {
             class: master.class,
             storage: master.storage.first().map_or(0.0, |s| s.1),
             decay: u.life.master.map_or(0.0, |m| m.decay),
+            // a combat object's slot 0xf0 is FUN_141082530 (types 50 and up)
+            armored: (50 <= kind).then(|| crate::attack::Armored {
+                armors: master.armors.clone(),
+                base_armor: master.base_armor,
+                terrain_bonus: master.terrain_bonus,
+                resistance: master.resistance,
+                ability: master.combat_ability,
+                reflection: master.reflection,
+                invulnerability: master.invulnerability,
+                special_attack: master.special_attack,
+                charge_type: master.charge_type,
+                master_hp: master.hit_points,
+                armor_powerups: u.armor_powerups,
+                armor_removed: u.armor_removed,
+                hp_powerups: u.hp_powerups,
+                player: p,
+            }),
+            damaged: None,
         })
     }
 
     /// An attack's hit on its target, written back.
-    fn set_victim(&mut self, v: &Victim) {
+    fn set_victim(&mut self, v: &Victim) -> Result<(), Unsupported> {
         let found = self
             .players
             .iter_mut()
@@ -1166,7 +1203,21 @@ impl Turns {
             u.life.hp = v.hp;
             u.life.amount = v.amount;
             u.life.goto_sleep = v.goto_sleep;
+            if let Some(a) = v.armored.as_ref() {
+                u.hp_powerups = a.hp_powerups;
+            }
+            // the damage notify (500) to its unit AI
+            if let (Some((attacker, p)), Some(ai)) = (v.damaged, u.ai.as_mut()) {
+                let n = Notify {
+                    caller: attacker,
+                    recipient: v.id,
+                    kind: crate::unit_ai::DAMAGED,
+                    p,
+                };
+                return ai.post(n, u.life.state);
+            }
         }
+        Ok(())
     }
 }
 
@@ -1496,6 +1547,10 @@ impl Turns {
                     attack_timer: 0.0,
                     reload_stinger: 0.0,
                     reload_powerup: 0.0,
+                    attack_powerup: 0.0,
+                    armor_powerups: [0; 2],
+                    armor_removed: [0; 2],
+                    charge: 0.0,
                 });
                 if let Err(e) = self.task_builders(player, id, master, position, builders) {
                     let owner = &mut self.players[player];
@@ -1977,8 +2032,10 @@ impl Turns {
                         "an order on a target of a unit that leaves its list",
                     ));
                 }
-                if let Some(v) = victim {
-                    self.set_victim(&v);
+                if let Some(v) = victim
+                    && let Err(e) = self.set_victim(&v)
+                {
+                    result = result.and(Err(e));
                 }
                 self.pathing.tiles_changed(self.spatial.take_changes());
                 let player = &mut self.players[p];

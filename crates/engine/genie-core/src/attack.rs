@@ -112,8 +112,8 @@ pub struct Engagement {
 }
 
 /// The target as a hit reads and changes it: a static object (type below 30), which has no
-/// armor.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// armor, or a combat object ([`Armored`]).
+#[derive(Clone, Debug, PartialEq)]
 pub struct Victim {
     pub id: i32,
     /// Its hit points (`+0x278`), what it holds (`+0x310`), its state and height.
@@ -132,6 +132,35 @@ pub struct Victim {
     pub storage: f32,
     /// Its master's decay (`+0x620`), which a hunt's decay stop reads (`FUN_140ac44b0`).
     pub decay: f32,
+    /// A combat object's armor and what its damage reads (types 50 and up); None for others.
+    pub armored: Option<Armored>,
+    /// The damage notify (500, `FUN_141082e80`) a hit posts to its unit AI: the attacker, its hit
+    /// points after (truncated) and its master's hit points.
+    pub damaged: Option<(i32, [i32; 3])>,
+}
+
+/// What a hit on a combat object reads of it (its master's and its own values) and changes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Armored {
+    /// Its master's armor classes (class, amount), base armor, `defense_terrain_bonus`,
+    /// `bonus_damage_resistance`, `combat_ability`, `damage_reflection`,
+    /// `invulnerability_level`, `special_attack_flag`, `charge_type` and hit points.
+    pub armors: Vec<(i16, i16)>,
+    pub base_armor: i16,
+    pub terrain_bonus: i16,
+    pub resistance: f32,
+    pub ability: u8,
+    pub reflection: f32,
+    pub invulnerability: f32,
+    pub special_attack: u8,
+    pub charge_type: i16,
+    pub master_hp: i16,
+    /// The object's armor powerups and armor removed (melee, pierce), its hit point powerups
+    /// (`+0xa38`, `+0xa3c`, which absorb damage first) and its player.
+    pub armor_powerups: [i16; 2],
+    pub armor_removed: [i16; 2],
+    pub hp_powerups: [f32; 2],
+    pub player: usize,
 }
 
 /// What the Attack's update reads of its unit besides its movement, and changes.
@@ -162,9 +191,27 @@ pub struct Strike<'a> {
     pub master_id: i16,
     /// The unit's player, whose sight of a target that moved the update reads (its slot 0x1e0).
     pub player: usize,
+    /// What a hit on a combat object reads of the unit: its id, master type, `combat_ability`,
+    /// `area_effect_range`, `charge_type`, attack powerup (`+0xa24`), the game's setting
+    /// `+0x680` ([`crate::turn::Turns::mode_680`]: at 1 a hit may do no damage), and whether its
+    /// master has a task of action type 0xa0 (bonus damage, `FUN_14107ce60`).
+    pub attacker: Attacker,
     /// The target of a swing this update, whose executed action (notify 0x200 with 600 and the
     /// target) the unit posts to its unit AI.
     pub executed: Option<i32>,
+}
+
+/// What a hit on a combat object reads of its attacker.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Attacker {
+    pub id: i32,
+    pub kind: u8,
+    pub ability: u8,
+    pub area_effect: f32,
+    pub charge_type: i16,
+    pub attack_powerup: f32,
+    pub mode_680: i32,
+    pub bonus_tasks: bool,
 }
 
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
@@ -590,25 +637,24 @@ impl Attack {
     /// action executed (0x200, but for masters 73 and 559). The attack count, the last attack
     /// time (`+0x648`) and the sounds are not held.
     fn hit(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
+        if s.victim.armored.is_some() {
+            return self.hit_armored(s, object_rng);
+        }
         if 30 <= s.victim.kind {
-            return Err(Unsupported("a hit on an object with armor"));
+            return Err(Unsupported(
+                "a hit on a moving object without combat values",
+            ));
         }
         if !QUIET_SWINGS.contains(&s.master_id) {
             s.executed = Some(s.victim.id);
         }
-        let v = &mut *s.victim;
         let draw = object_rng.raw64();
         let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
         if i64::from(s.hit_chance) < r {
             return Ok(());
         }
-        let factor = if v.z < s.z {
-            s.elevation[0] + HIGHER + v.elevation[0]
-        } else if s.z < v.z {
-            s.elevation[1] + LOWER + v.elevation[1]
-        } else {
-            1.0
-        };
+        let factor = elevation_factor(s);
+        let v = &mut *s.victim;
         let mut damage = 0.0f32;
         for &(_, amount) in s.weapons {
             damage += f32::from(amount) * factor;
@@ -623,6 +669,288 @@ impl Attack {
         }
         Ok(())
     }
+}
+
+impl Attack {
+    /// The hit of a melee unit on a combat object (`FUN_141084230` -> the target's slot 0xe8,
+    /// `FUN_1412108e0` -> `FUN_141082e80`): a target whose charge blocks the hit (charge types 4
+    /// and 5, `FUN_14108d8a0`) and an attacker with an area effect are not modelled. The unit
+    /// tells its unit AI the action executed, then the 64-bit Object-stream draw against the hit
+    /// chance; a hit's damage is [`armor_damage`] at the elevation factor (slot 0x1f0,
+    /// `FUN_14120d780`). The damage goes to the hit point powerups first, then the hit points,
+    /// which stay above the master's `invulnerability_level` floor (slot 0xb0,
+    /// `FUN_141205c80`); a hit takes at least one hit point (`FUN_1412108e0`). The target's unit
+    /// AI gets notify 500 with the attacker, the hit points left and the master's. Not modelled:
+    /// the special attack and the retaliation (`special_attack_flag` 1 and 2), a hit that kills,
+    /// damage reflection, the attacker's charge after a hit (slot 0x2f0, `+0x8a8`) and its
+    /// combat ability's effects (bits 2 and 7, `FUN_141206250`, `FUN_14107bdf0`); the damaged
+    /// flag (`+0x683`), the last damage time (`+0x648`), the alerts of another owner (slot
+    /// 0x2e8), the trigger events (`+0x950` bit 1), the sounds and the statistics are not held.
+    fn hit_armored(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
+        let a = s.attacker;
+        let armored = s.victim.armored.clone().expect("checked by the caller");
+        if s.victim.kind == 70 && matches!(armored.charge_type, 4 | 5) {
+            return Err(Unsupported("a hit on a target whose charge may block it"));
+        }
+        if 60 <= a.kind && 0.0 < a.area_effect {
+            return Err(Unsupported("a hit with an area effect (blast damage)"));
+        }
+        if !QUIET_SWINGS.contains(&s.master_id) {
+            s.executed = Some(s.victim.id);
+        }
+        let draw = object_rng.raw64();
+        let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
+        if i64::from(s.hit_chance) < r && self.arms.missile < 0 {
+            return Ok(());
+        }
+        let factor = elevation_factor(s);
+        let v = &mut *s.victim;
+        if v.hp < 1.0 {
+            return Ok(());
+        }
+        if matches!(armored.special_attack, 1 | 2) {
+            return Err(Unsupported(
+                "a hit on a target with a special attack or retaliation",
+            ));
+        }
+        // slot 0xc0: the hit points with the powerups' room
+        let effective = |v: &Victim, pu: [f32; 2]| (pu[1] - pu[0]) + v.hp;
+        let before = effective(v, armored.hp_powerups);
+        let damage = armor_damage(&armored, v.class, v.kind, v.state, s.weapons, factor, &a)?;
+        let mut powerups = armored.hp_powerups;
+        if 0.0 < damage {
+            if 70 <= a.kind && a.charge_type != 0 {
+                return Err(Unsupported(
+                    "an attacker whose charge reads its hit (slot 0x2f0)",
+                ));
+            }
+            // slot 0xb0 (FUN_141205c80): the powerups' room first
+            let mut d = damage;
+            if powerups[0] < powerups[1] {
+                let room = powerups[1] - powerups[0];
+                if d <= room {
+                    powerups[0] += d;
+                    d = -1.0;
+                } else {
+                    powerups[0] += room;
+                    d -= room;
+                }
+            }
+            if 0.0 <= d {
+                let floor = hp_floor(&armored);
+                let left = v.hp - d;
+                v.hp = if floor == 0.0 || floor <= left {
+                    left
+                } else {
+                    floor
+                };
+                if v.hp < 1.0 {
+                    return Err(Unsupported("a hit that kills a combat object"));
+                }
+            }
+        }
+        if 60 <= a.kind && a.ability & 4 != 0 && v.kind == 70 {
+            return Err(Unsupported(
+                "an attacker whose combat ability marks its target (FUN_141206250)",
+            ));
+        }
+        if s.class == ELEPHANT_ARCHER {
+            return Err(Unsupported(
+                "a hit by a unit of class 64 (its owner's alert)",
+            ));
+        }
+        v.damaged = Some((a.id, [a.id, v.hp as i32, i32::from(armored.master_hp)]));
+        // FUN_1412108e0: a hit takes at least one hit point
+        let lost = before - effective(v, powerups);
+        let floor = hp_floor(&armored);
+        if lost < 1.0 && (floor == 0.0 || floor + 1.0 <= before) {
+            v.hp = before - 1.0;
+        }
+        if 1e-7 < armored.reflection {
+            return Err(Unsupported("a hit on a target that reflects damage"));
+        }
+        if 50 <= a.kind && a.ability & 0x80 != 0 {
+            return Err(Unsupported(
+                "an attacker whose hits apply effects (FUN_14107bdf0)",
+            ));
+        }
+        if let Some(armored) = v.armored.as_mut() {
+            armored.hp_powerups = powerups;
+        }
+        Ok(())
+    }
+}
+
+/// The class whose damage alerts its target's owner itself (`-0xe6c` raw).
+const ELEPHANT_ARCHER: i16 = 64;
+
+/// Slot 0x1f0 (`FUN_14120d780`): a hit from higher up gains 25% and the attacker's attribute 211
+/// and the target's 272, one from lower down 75% and attributes 212 and 273.
+fn elevation_factor(s: &Strike<'_>) -> f32 {
+    let v = &*s.victim;
+    if v.z < s.z {
+        s.elevation[0] + HIGHER + v.elevation[0]
+    } else if s.z < v.z {
+        s.elevation[1] + LOWER + v.elevation[1]
+    } else {
+        1.0
+    }
+}
+
+/// `FUN_141202a80`: the hit points the master's `invulnerability_level` keeps (a share of its hit
+/// points when above 0, the level itself when below), 0 for none.
+fn hp_floor(a: &Armored) -> f32 {
+    let level = a.invulnerability;
+    if level == 0.0 {
+        0.0
+    } else if 0.0 < level {
+        f32::from(a.master_hp) * level
+    } else {
+        level.abs()
+    }
+}
+
+/// The armor a combat object (type 70 and up) has against melee (class 4; slot 0x868,
+/// `FUN_141085450` and `FUN_141213810`) or pierce (class 3; slot 0x870, `FUN_1410857f0`): its
+/// best armor of the class, else its best of any (melee) or its base armor and best of any
+/// (pierce), plus its powerup (the stingers `+0xb4c`, `+0xb50`, unsaved and written nowhere in
+/// this recording, are 0), less the armor removed. A wall foundation (class 27 in state 0) has
+/// no melee armor.
+fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> Result<i16, Unsupported> {
+    let best = |c: i16, from: i16| {
+        a.armors
+            .iter()
+            .filter(|&&(k, _)| k == c)
+            .fold(from, |m, &(_, n)| if m < n { n } else { m })
+    };
+    let any = |from: i16| {
+        a.armors
+            .iter()
+            .fold(from, |m, &(_, n)| if m < n { n } else { m })
+    };
+    match class {
+        4 => {
+            let mut armor = best(4, i16::MIN);
+            if armor == i16::MIN {
+                armor = any(i16::MIN);
+                if armor == i16::MIN {
+                    armor = a.base_armor;
+                }
+            }
+            armor = armor.wrapping_add(a.armor_powerups[0]);
+            if own_class == 27 && state == 0 {
+                armor = 0;
+            }
+            Ok(armor.wrapping_sub(a.armor_removed[0]))
+        }
+        3 => {
+            if own_class == 27 && state == 0 {
+                return Err(Unsupported("the pierce armor of a wall foundation"));
+            }
+            let mut armor = best(3, -1);
+            if armor == -1 {
+                armor = any(a.base_armor);
+            }
+            Ok(armor
+                .wrapping_add(a.armor_powerups[1])
+                .wrapping_sub(a.armor_removed[1]))
+        }
+        _ => unreachable!("only melee and pierce armor have their own slots"),
+    }
+}
+
+/// Slot 0xf0 of a combat object (`FUN_141082530`): per weapon (class, amount) the armor of its
+/// class (the last armor entry of the class wins: its amount, or for a type of 70 and up the
+/// melee or pierce armor, [`class_armor`]; an attacker of type 60 and up whose combat ability
+/// has bit 0 ignores melee and pierce armor unless the target's has bit 1), else the base armor.
+/// The first melee, pierce or class-31 weapon of an attacker of type 70 and up adds the
+/// attacker's attack powerup (the stinger `+0xb48`, unsaved and never written here, is 0); a
+/// weapon of class 11 adds ten per `+0xad8` (unsaved, written only by `FUN_141209d60`, which no
+/// update of this recording runs). Another class is scaled by 1 less the
+/// `bonus_damage_resistance` when it does damage. Each weapon's attack less armor, times the
+/// elevation factor, adds when above 0 (or below 0 against an armor below the base that rises
+/// above the attack: then at most 0). The damage is the sum, at least 1 (0 under the game's
+/// setting `+0x680` at 1). Not modelled: the terrain defense bonus (`defense_terrain_bonus` 0 or
+/// above), a charge's damage (charge types 1 and 3, `FUN_1412623d0`, `FUN_141202580`) and the
+/// bonus damage tasks (action type 0xa0, `FUN_14107ce60`).
+pub fn armor_damage(
+    a: &Armored,
+    own_class: i16,
+    kind: u8,
+    state: u8,
+    weapons: &[(i16, i16)],
+    factor: f32,
+    attacker: &Attacker,
+) -> Result<f32, Unsupported> {
+    if 0 <= a.terrain_bonus {
+        return Err(Unsupported(
+            "a hit on a target with a terrain defense bonus",
+        ));
+    }
+    let terrain = 1.0f32;
+    let mut sum = 0.0f32;
+    let mut bonused = false;
+    for &(class, amount) in weapons {
+        let mut armor = a.base_armor;
+        for &(k, n) in &a.armors {
+            if k != class {
+                continue;
+            }
+            if 60 <= attacker.kind
+                && matches!(k, 3 | 4)
+                && attacker.ability & 1 != 0
+                && a.ability & 2 == 0
+            {
+                armor = 0;
+                continue;
+            }
+            armor = n;
+            if 70 <= kind && matches!(k, 3 | 4) {
+                armor = class_armor(a, k, own_class, state)?;
+            }
+        }
+        let armor_f = f32::from(armor);
+        let mut attack = f32::from(amount);
+        let pierce_or_melee = matches!(class, 3 | 4 | 31);
+        let mut resist = 1.0f32;
+        if 70 <= attacker.kind {
+            if 0.0 < attack && matches!(attacker.charge_type, 1 | 3) {
+                return Err(Unsupported("a charged attack (FUN_141202580)"));
+            }
+            attack += 0.0;
+            if pierce_or_melee && !bonused {
+                if attacker.bonus_tasks {
+                    return Err(Unsupported(
+                        "an attacker with bonus damage tasks (FUN_14107ce60)",
+                    ));
+                }
+                let bonus = 0.0f32 + attacker.attack_powerup;
+                attack += 0.0 + bonus;
+                bonused = true;
+            }
+        }
+        if !pierce_or_melee && a.resistance != 0.0 && 0.0 < attack - armor_f {
+            resist = 1.0 - a.resistance;
+        }
+        let mut armor_f = armor_f;
+        let mut below = false;
+        if attack < 0.0 && attack < armor_f && armor_f != f32::from(a.base_armor) {
+            armor_f = if armor_f < 0.0 { armor_f } else { 0.0 };
+            below = true;
+        }
+        let v = (attack - armor_f) * factor * terrain * resist;
+        if 0.0 < v || below {
+            sum += v;
+        }
+    }
+    let least = if attacker.mode_680 == 1 { 0.0 } else { 1.0 };
+    Ok(if weapons.is_empty() {
+        sum
+    } else if least > sum {
+        least
+    } else {
+        sum
+    })
 }
 
 /// The Attack constructor's sprites and frames (`FUN_140a7c210` from Hunt's set_state 12): the
@@ -690,6 +1018,58 @@ fn squared_reach(range: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sheep() -> Armored {
+        Armored {
+            armors: vec![(4, 0), (3, 0), (31, 0)],
+            base_armor: 0,
+            terrain_bonus: -1,
+            resistance: 0.0,
+            ability: 0,
+            reflection: 0.0,
+            invulnerability: 0.0,
+            special_attack: 0,
+            charge_type: 0,
+            master_hp: 14,
+            armor_powerups: [0; 2],
+            armor_removed: [0; 2],
+            hp_powerups: [0.0; 2],
+            player: 1,
+        }
+    }
+
+    /// MarvinBlue/426048731's update 1170: the hunter 10029 (master 592: classes 11, 4, 13 and
+    /// 17 at 3, 3, 6 and 0) strikes its sheep 9520 (master 705: armor 0 for 4, 3 and 31, base 0):
+    /// 3 + 3 + 6 = 12, the game's 14 -> 2 hit points.
+    #[test]
+    fn a_hunter_strikes_its_sheep_for_twelve() {
+        let hunter = Attacker {
+            id: 10029,
+            kind: 70,
+            ..Attacker::default()
+        };
+        let weapons = [(11, 3), (4, 3), (13, 6), (17, 0)];
+        let d = armor_damage(&sheep(), 58, 70, 2, &weapons, 1.0, &hunter).unwrap();
+        assert_eq!(d, 12.0);
+        // armor above the attack does nothing, and a hit does at least one
+        let armored = Armored {
+            armors: vec![(4, 10)],
+            base_armor: 10000,
+            ..sheep()
+        };
+        assert_eq!(
+            armor_damage(&armored, 58, 70, 2, &[(4, 3)], 1.0, &hunter).unwrap(),
+            1.0
+        );
+        let zero = Attacker {
+            mode_680: 1,
+            ..hunter
+        };
+        assert_eq!(
+            armor_damage(&armored, 58, 70, 2, &[(4, 3)], 1.0, &zero).unwrap(),
+            0.0
+        );
+    }
 
     #[test]
     fn a_rangeless_attack_reaches_a_tenth_squared_in_f32() {
