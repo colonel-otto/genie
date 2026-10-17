@@ -913,6 +913,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 civ,
                 relations: p.world_player().base.relation.clone(),
                 unsupported: None,
+                freezes: Vec::new(),
                 stopped: false,
             }
         })
@@ -2027,6 +2028,8 @@ pub struct SliceRun {
     pub visibility: Option<Visibility>,
     /// The objects the slice stopped updating, of every player.
     pub frozen: Vec<i32>,
+    /// Every object's freeze, by player: the tick, the object and why.
+    pub freezes: Vec<Vec<(u32, i32, Unsupported)>>,
 }
 
 /// The live objects of player `id` in a save (a recording's header, or the tick oracle's
@@ -2196,6 +2199,7 @@ pub fn objects_from_save(
             .flat_map(|p| p.objects.iter().filter(|u| p.stopped || u.stopped))
             .map(|u| u.id)
             .collect(),
+        freezes: turns.players.iter().map(|p| p.freezes.clone()).collect(),
     })
 }
 

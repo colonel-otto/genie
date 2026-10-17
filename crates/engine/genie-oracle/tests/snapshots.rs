@@ -70,6 +70,13 @@ fn differences(start: usize, ticks: usize, player: u32) -> Option<Vec<String>> {
     for (p, u) in others {
         eprintln!("player {p} stopped: {u:?}");
     }
+    if std::env::var_os("GENIE_SNAPSHOT_FREEZES").is_some() {
+        for (p, freezes) in run.freezes.iter().enumerate() {
+            for (tick, id, why) in freezes {
+                eprintln!("player {p}: {id} froze in tick {tick}: {}", why.0);
+            }
+        }
+    }
     Some(out)
 }
 

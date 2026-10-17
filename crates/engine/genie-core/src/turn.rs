@@ -744,6 +744,8 @@ pub struct Player {
     pub sleeping: Vec<Unit>,
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, Unsupported)>,
+    /// Every object the slice stopped updating, with the tick and why.
+    pub freezes: Vec<(u32, i32, Unsupported)>,
     /// A command the slice could not model stopped the whole player: its objects freeze.
     pub stopped: bool,
 }
@@ -1419,6 +1421,7 @@ impl Turns {
                     }
                     Ok(Step::Stay) => i += 1,
                     Err(e) => {
+                        player.freezes.push((self.ticks, player.objects[i].id, e));
                         player.unsupported.get_or_insert((self.ticks, i, e));
                         player.objects[i].stopped = true;
                         self.spatial.freeze(player.objects[i].id);
