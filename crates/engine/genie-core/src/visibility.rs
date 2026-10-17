@@ -84,6 +84,8 @@ pub struct Seer {
     /// `+0x924` (`FUN_14121df60`): 1 for an object another player takes over by seeing it, 3
     /// for livestock.
     pub capture: u8,
+    /// The object's type (`+0xf`): 70 a combat unit, 80 a building, below 70 anything else.
+    pub kind: u8,
 }
 
 /// An entry of the map's UMV data list (map `+0x5e08`, `+0x5e10`): a building's extent around
@@ -926,6 +928,37 @@ impl Visibility {
         Ok(())
     }
 
+    /// An ownership change's sight (`FUN_14120f800`): the object's records keep their place in
+    /// every list with the new owner's id; an object in state 2 and not inside another loses its
+    /// sight on the old owner's map and gains it, with `los` (a livestock's own master takes the
+    /// new owner's master's line of sight), on the new one's.
+    pub fn owner_changed(
+        &mut self,
+        id: i32,
+        position: [f32; 3],
+        radius: [f32; 2],
+        new: usize,
+        los: f32,
+    ) -> Result<(), Unsupported> {
+        let Some(s) = self.seers.get(&id).copied() else {
+            return Ok(());
+        };
+        if let Some(r) = self.registry.as_mut() {
+            r.owner_changed(id, new)?;
+        }
+        if s.state == 2 {
+            self.sight_off(id, position, radius, false, false);
+        }
+        if let Some(s) = self.seers.get_mut(&id) {
+            s.player = new;
+            s.los = los;
+        }
+        if s.state == 2 {
+            self.sight_on(id, position, radius, false, false);
+        }
+        Ok(())
+    }
+
     /// A foundation's construction starts (`FUN_1411e5670`): its build points become a sliver,
     /// its footprint comes into sight and its tiles link again.
     pub fn construction_started(&mut self, id: i32, position: [f32; 3], radius: [f32; 2]) {
@@ -970,6 +1003,7 @@ mod tests {
             building: None,
             umv: 0,
             capture: 0,
+            kind: 70,
         }
     }
 

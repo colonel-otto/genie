@@ -1,5 +1,6 @@
 //! The Artifact action (type 107): the default task of livestock, which keeps checking whether a
-//! unit of another player is close enough to take the animal over.
+//! unit of another player is close enough to take the animal over (the search is the caller's,
+//! [`crate::spatial::Spatial::artifact_owner`]).
 //!
 //! 158041: `TRIBE_Action_Artifact`, vtable `0x142ed6520`; update `0x140aad250` (slot 6), set_state
 //! `0x140aace30` (slot 16). The .dat gives Goat, Goose, Cow and Sheep the default task 0, a task with
@@ -53,11 +54,41 @@ impl Artifact {
         self.state = CHECK;
     }
 
+    /// Slot 0x38 (`FUN_140aad1a0`), as the unit's stop (`FUN_14106fa60`) calls it before a new
+    /// owner takes the animal: its sub-actions go (a MoveTo's teardown would stop the unit, which
+    /// is not modelled), with the point and the target, and it checks again (set_state 6). The
+    /// unit's standing sprite (slot 0x68) is not held.
+    pub fn stop(&mut self) -> Result<(), Unsupported> {
+        if self.move_to.is_some() {
+            return Err(Unsupported(
+                "a captured animal walking its MoveTo (its teardown)",
+            ));
+        }
+        self.goal = None;
+        self.state = CHECK;
+        Ok(())
+    }
+
     /// One update (`0x140aad250`) with the tick's `dt_ms`. Its MoveTo goes first: it starts its
     /// walk, walks on, and once it ended (its update in state 1 returns 1) the sub-actions go, with
-    /// the point and the target (slot 0x68 with none). Then the check always finds no new owner:
-    /// the slice assumes no unit of another player comes near the animal.
-    pub fn update(&mut self, walk: Option<Walk<'_>>, dt_ms: u32) -> Result<(), Unsupported> {
+    /// the point and the target (slot 0x68 with none). Then the check (state 6): an animal of the
+    /// combat type whose `+0x924` is 0 (`FUN_14107cc90`, `searches` false) never changes hands; any
+    /// other asks `owner` (`FUN_140aabc40`) and returns the player that takes it, after its
+    /// sub-actions went (`FUN_140a98620`), for the caller's conversion (`FUN_140aab570`). With no
+    /// new owner it waits (set_state 10).
+    pub fn update(
+        &mut self,
+        walk: Option<Walk<'_>>,
+        dt_ms: u32,
+        searches: bool,
+        owner: &mut dyn FnMut() -> Result<Option<usize>, Unsupported>,
+    ) -> Result<Option<usize>, Unsupported> {
+        self.walk(walk)?;
+        self.step(dt_ms, searches, owner)
+    }
+
+    /// The update's first part: its MoveTo sub-action.
+    pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<(), Unsupported> {
         let need = || Unsupported("a walking animal without its walk");
         match self.move_to {
             Some(MoveTo::Start) => {
@@ -79,8 +110,27 @@ impl Artifact {
             }
             None => {}
         }
+        Ok(())
+    }
+
+    /// The update's second part: the state's step.
+    pub fn step(
+        &mut self,
+        dt_ms: u32,
+        searches: bool,
+        owner: &mut dyn FnMut() -> Result<Option<usize>, Unsupported>,
+    ) -> Result<Option<usize>, Unsupported> {
         match self.state {
             CHECK => {
+                if searches && let Some(new) = owner()? {
+                    if self.move_to.is_some() {
+                        return Err(Unsupported(
+                            "a captured animal walking its MoveTo (its teardown)",
+                        ));
+                    }
+                    self.goal = None;
+                    return Ok(Some(new));
+                }
                 self.state = WAIT;
                 self.timer = if self.gaia { 0.5 } else { 1.0 };
             }
@@ -93,7 +143,7 @@ impl Artifact {
             }
             _ => {}
         }
-        Ok(())
+        Ok(None)
     }
 }
 
@@ -104,7 +154,7 @@ mod tests {
     #[test]
     fn a_check_finds_no_owner_and_waits_one_second() {
         let mut a = Artifact::new(false);
-        a.update(None, 50).unwrap();
+        a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer), (10, 1.0));
     }
 
@@ -122,32 +172,52 @@ mod tests {
             (6, 0.4, Some(MoveTo::Start), Some([28.5, 93.5, 0.0]))
         );
         // its walk needs the animal's movement state
-        assert!(a.update(None, 50).is_err());
+        assert!(a.update(None, 50, true, &mut || Ok(None)).is_err());
         // a MoveTo that ended goes with the point, then the check waits again
         a.move_to = Some(MoveTo::Arrived);
-        a.update(None, 50).unwrap();
+        a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer, a.move_to, a.goal), (10, 1.0, None, None));
     }
 
     #[test]
     fn gaia_waits_half_a_second() {
         let mut a = Artifact::new(true);
-        a.update(None, 50).unwrap();
+        a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!(a.timer, 0.5);
     }
 
     #[test]
     fn the_wait_ends_when_the_timer_reaches_zero_then_one_check_follows() {
         let mut a = Artifact::new(false);
-        a.update(None, 50).unwrap();
+        a.update(None, 50, true, &mut || Ok(None)).unwrap();
         // 1.0 - 20 × 0.05 in f32 is -1.56e-7, so the 20th update ends the wait
         let waits = (0..30).take_while(|_| {
-            a.update(None, 50).unwrap();
+            a.update(None, 50, true, &mut || Ok(None)).unwrap();
             a.state == 10
         });
         assert_eq!(waits.count(), 19);
         assert_eq!(a.state, 6);
-        a.update(None, 50).unwrap();
+        a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer), (10, 1.0));
+    }
+
+    #[test]
+    fn a_check_that_finds_a_new_owner_hands_the_animal_over_and_stays_a_check() {
+        let mut a = Artifact::new(true);
+        let mut asked = 0;
+        let found = a
+            .update(None, 50, true, &mut || {
+                asked += 1;
+                Ok(Some(2))
+            })
+            .unwrap();
+        assert_eq!((found, a.state, asked), (Some(2), 6, 1));
+        // a combat-type animal whose +0x924 is 0 never asks
+        let mut b = Artifact::new(true);
+        let found = b.update(None, 50, false, &mut || Ok(Some(2))).unwrap();
+        assert_eq!((found, b.state), (None, 10));
+        // the conversion's stop: the check again
+        b.stop().unwrap();
+        assert_eq!(b.state, 6);
     }
 }

@@ -172,6 +172,23 @@ impl Registry {
         Ok(())
     }
 
+    /// An ownership change (`FUN_14120f800`): the object's records take the new owner's id.
+    pub fn owner_changed(&mut self, id: i32, owner: usize) -> Result<(), Unsupported> {
+        let Some(e) = self.entries.get(&id).copied() else {
+            return Ok(());
+        };
+        for (p, slot) in e.slots.iter().enumerate().take(self.players) {
+            let Some(i) = *slot else { continue };
+            let record = self.lists[p]
+                .iter_mut()
+                .flat_map(|list| list.get_mut(i))
+                .find(|r| r.id == id)
+                .ok_or(Unsupported("an object's registry slot without its record"))?;
+            record.owner = owner as u8;
+        }
+        Ok(())
+    }
+
     /// The combat object's new place (`FUN_14108c320`): its records in every list follow.
     pub fn moved(&mut self, id: i32, class: i16, [x, y]: [f32; 2]) {
         let Some(e) = self.entries.get(&id).copied() else {

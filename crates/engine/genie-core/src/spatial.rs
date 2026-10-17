@@ -751,6 +751,162 @@ impl Spatial {
         Ok(-1)
     }
 
+    /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects
+    /// whose centre is on a tile within the animal's radius (whole) plus 3 tiles of its own tile,
+    /// combat units (type 70) in state 2 of a player that is not out (`+0x89`, 0 for every player
+    /// probed), Gaia's only with `+0x924` 0, of no class of 1, 60, 42, 11, 14, 30, 58, 3, 52, 27,
+    /// 39, 49, 37, 9, 10 or 38, counted per player with the nearest footprint gap (squared). A
+    /// unit of its own owner keeps it, unless that owner's attribute 97 (`attribute_97`, by
+    /// player) is above 0 and it is livestock (class 58), which then takes it from nobody; a
+    /// player whose attribute 97 is above 0 counts 100 more (the most units then win). One other
+    /// player takes it; of several, the nearest (Gaia never). A frozen unit that counts and may
+    /// have moved onto the tiles fails it.
+    pub fn artifact_owner(
+        &self,
+        me: i32,
+        attribute_97: &[f32],
+    ) -> Result<Option<usize>, Unsupported> {
+        const KEPT: [i16; 16] = [1, 60, 42, 11, 14, 30, 58, 3, 52, 27, 39, 49, 37, 9, 10, 38];
+        // a world without the players' sight (the unit tests') holds nobody near
+        let Some(v) = self.sight.as_ref() else {
+            return Ok(None);
+        };
+        let p = self.objects.get(&me).ok_or(Unsupported(
+            "an owner search of an object the world does not hold",
+        ))?;
+        let reach = (p.radius[0] as i32 as i16).wrapping_add(3);
+        let [x, y, _] = p.position;
+        let (x0, x1) = (
+            (x as i32 as i16).wrapping_sub(reach),
+            (x as i32 as i16).wrapping_add(reach),
+        );
+        let (y0, y1) = (
+            (y as i32 as i16).wrapping_sub(reach),
+            (y as i32 as i16).wrapping_add(reach),
+        );
+        let (x0, y0) = (i32::from(x0.max(0)), i32::from(y0.max(0)));
+        let x1 = i32::from(x1).min(self.map[0] - 1);
+        let y1 = i32::from(y1).min(self.map[1] - 1);
+        // a frozen unit that could count (of the combat type and a class that counts) may have
+        // moved onto the tiles
+        let area = [x0 as f32, y0 as f32, (x1 + 1) as f32, (y1 + 1) as f32];
+        let unsure = self.objects.iter().any(|(&id, q)| {
+            q.unknown.is_some_and(|u| {
+                let counts = v.seer(id).is_some_and(|s| s.kind == 70) && !KEPT.contains(&q.class);
+                let [bx0, by0, bx1, by1] = q.bounds();
+                counts
+                    && 0.0 < u
+                    && area[0] <= bx1 + u
+                    && bx0 - u <= area[2]
+                    && area[1] <= by1 + u
+                    && by0 - u <= area[3]
+            })
+        });
+        if unsure {
+            return Err(Unsupported(
+                "an owner search near a stopped unit that counts",
+            ));
+        }
+        let players = self.relations.len().max(attribute_97.len());
+        let mut counts = vec![0i32; players];
+        let mut nearest = vec![999.0f32; players];
+        let mut own_seen = false;
+        let mut taker = false;
+        let livestock = p.class == 58;
+        for (&id, q) in &self.objects {
+            let (tx, ty) = (q.position[0] as i32, q.position[1] as i32);
+            if !(x0 <= tx && tx <= x1 && y0 <= ty && ty <= y1) {
+                continue;
+            }
+            let Some(s) = v.seer(id) else { continue };
+            if s.kind != 70 || s.state != 2 || KEPT.contains(&q.class) {
+                continue;
+            }
+            if q.player == 0 && s.capture != 0 {
+                continue;
+            }
+            let o = q.player;
+            if players <= o {
+                return Err(Unsupported(
+                    "an owner search's unit of a player beyond the list",
+                ));
+            }
+            let strong = livestock && attribute_97.get(o).is_some_and(|&a| 0.0 < a);
+            if o == p.player {
+                if strong {
+                    return Ok(None);
+                }
+                own_seen = true;
+                counts[o] += 1;
+            } else {
+                counts[o] += 1;
+                if strong {
+                    taker = true;
+                    counts[o] += 100;
+                }
+            }
+            let gap =
+                crate::movement::footprint_gap_squared(q.position, q.radius, p.position, p.radius);
+            if gap < nearest[o] {
+                nearest[o] = gap;
+            }
+        }
+        if own_seen && !taker {
+            return Ok(None);
+        }
+        let takers: Vec<usize> = (0..players).filter(|&o| 0 < counts[o]).collect();
+        match takers[..] {
+            [] => Ok(None),
+            [one] => Ok(Some(one)),
+            _ if !taker => {
+                let mut best = (999.0f32, None);
+                for (o, &d) in nearest.iter().enumerate() {
+                    if d < best.0 {
+                        best = (d, Some(o));
+                    }
+                }
+                Ok(best.1.filter(|&o| 0 < o))
+            }
+            _ => {
+                let mut best = (0, None);
+                for (o, &n) in counts.iter().enumerate() {
+                    if best.0 < n {
+                        best = (n, Some(o));
+                    }
+                }
+                Ok(best.1)
+            }
+        }
+    }
+
+    /// An ownership change's world part (`FUN_14120f800`): the object's place and records take
+    /// the new owner, and its sight moves to the new owner's map ([`Visibility::owner_changed`]).
+    pub fn change_owner(&mut self, id: i32, new: usize, los: f32) -> Result<(), Unsupported> {
+        let Some(p) = self.objects.get_mut(&id) else {
+            return Err(Unsupported(
+                "an ownership change of an object the world does not hold",
+            ));
+        };
+        p.player = new;
+        let (position, radius) = (p.position, p.radius);
+        if let Some(v) = self.sight.as_mut() {
+            v.owner_changed(id, position, radius, new, los)?;
+        }
+        Ok(())
+    }
+
+    /// Whether player `player` sees tile (`x`, `y`) (`FUN_141663500` returning 0xf): its bit of
+    /// the unified map (its `+0x2a8` mask is its bit and bit 29, which no tile has; bit 61 neither).
+    pub fn sees_tile(&self, player: usize, x: i32, y: i32) -> bool {
+        let Some(v) = self.sight.as_ref() else {
+            return false;
+        };
+        if x < 0 || y < 0 || v.width <= x || v.height <= y {
+            return false;
+        }
+        v.unified[(y * v.width + x) as usize] & (1u64 << player) != 0
+    }
+
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its
     /// main building's place and UMV entry.
     pub fn combat_sight(&mut self, id: i32) -> Result<(), Unsupported> {

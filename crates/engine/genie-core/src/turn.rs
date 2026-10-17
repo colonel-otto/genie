@@ -210,6 +210,14 @@ struct Context<'a> {
     graphics: &'a std::collections::BTreeMap<i16, Graphic>,
     /// The owner's id.
     player: usize,
+    /// Every player's masters and attribute 97 (by player), for a capture.
+    every_masters: &'a [Masters],
+    attribute_97: &'a [f32],
+    /// The player whose turn this tick is (`world+0x188`), every player's accumulated time
+    /// (`world+0x18c`, as it stands when the object updates) and computer flag.
+    player_turn: usize,
+    player_time: &'a [u32],
+    computers: &'a [bool],
 }
 
 impl Context<'_> {
@@ -373,9 +381,27 @@ impl Unit {
             id: self.id,
             position: self.position,
         };
+        let mut captured = None;
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
             let dt = c.dt;
-            artifact.update(Some(c.walk(self.mover.as_mut(), me)), dt)?;
+            artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
+            // FUN_14107cc90: an object of the combat types whose +0x924 is 0 never changes hands
+            let capture = c
+                .spatial
+                .sight
+                .as_ref()
+                .and_then(|v| v.seer(self.id))
+                .map(|s| s.capture);
+            let searches = !(self.combat && capture == Some(0));
+            let spatial: &Spatial = c.spatial;
+            let attribute_97 = c.attribute_97;
+            let id = self.id;
+            let new = artifact.step(dt, searches, &mut || {
+                spatial.artifact_owner(id, attribute_97)
+            })?;
+            if let Some(new) = new {
+                captured = Some((new, self.capture(c, others, new)?));
+            }
         }
         if let Some(build) = self.build.as_mut() {
             let site = others
@@ -465,8 +491,19 @@ impl Unit {
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
         let master = c.masters.and_then(|ms| ms.get(self.life.master_id));
         let class = master.map(|ms| ms.class);
-        let player = c.player;
-        if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
+        // a captured unit's unit AI runs as its new owner's (RGE_Combat_Object::update reads the
+        // owner then): on that player's turn, with its time as it stands
+        let (turn, player, computer) = match &captured {
+            Some((new, _)) => (
+                (*new == c.player_turn)
+                    .then(|| c.player_time.get(*new).copied())
+                    .flatten(),
+                *new,
+                c.computers.get(*new).copied().unwrap_or(false),
+            ),
+            None => (c.turn, c.player, c.computer),
+        };
+        if let (Some(dt), Some(ai)) = (turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
             if busy && self.life.inside {
                 return Err(Unsupported("a busy unit inside another"));
             }
@@ -494,7 +531,7 @@ impl Unit {
             moved = ai.update(
                 dt,
                 c.world_time,
-                c.computer,
+                computer,
                 &at,
                 c.streams.get(Stream::Ai),
                 &mut closest,
@@ -506,7 +543,70 @@ impl Unit {
             ))?;
             self.ai_move(m, class)?;
         }
+        if let Some((new, also)) = captured {
+            return Ok(Step::Captured(new, also));
+        }
         Ok(leaves)
+    }
+
+    /// `FUN_140aab570`: player `new` takes the animal over. Its stop (slot 0x148,
+    /// `FUN_14108c050` -> `FUN_14106fa60`): its Artifact action's slot 0x38 (the unit AI of a
+    /// class other than livestock would stop too, which is not modelled), then the ownership
+    /// change (slot 0x70, [`Unit::change_owner`]); a livestock's new owner (not Gaia) then takes
+    /// Gaia's livestock in state 2 on the tiles it sees within 3 of the animal's tile, x then y,
+    /// each the same way. Returns the others taken; the lists' moves and the storage are the
+    /// caller's. The new owner's computer AI part (`FUN_140aab130`), the local player's sound and
+    /// statistics are not held.
+    fn capture(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Unit],
+        new: usize,
+    ) -> Result<Vec<i32>, Unsupported> {
+        let class = c
+            .spatial
+            .get(self.id)
+            .map(|p| p.class)
+            .ok_or(Unsupported("a captured object the world does not hold"))?;
+        if class != LIVESTOCK && self.ai.is_some() {
+            return Err(Unsupported("a captured unit's unit AI stop (slot 0xb0)"));
+        }
+        if let Some(a) = self.artifact.as_mut() {
+            a.stop()?;
+        }
+        self.change_owner(c, new)?;
+        let mut taken = Vec::new();
+        if class == LIVESTOCK && new != 0 {
+            scan_livestock(c, others, self.position, new, &mut taken)?;
+        }
+        Ok(taken)
+    }
+
+    /// The ownership change (slot 0x70, `FUN_14120f800`) of an object whose new owner has its
+    /// master: the world's part ([`Spatial::change_owner`], the new owner's master's line of sight
+    /// for livestock's own master copy, `FUN_141186d10`) and its Artifact's wait (the owner's).
+    /// Not held: `+0x6a8`, the names (`FUN_141189810`), the special-object list
+    /// (`FUN_141677380`, `+0x30c` bit 0), the class counters (`FUN_141226060`: none for
+    /// livestock), the own master copy itself (the slice keeps reading the new owner's master
+    /// by id), the unit AI's notify 523 and its notify time.
+    fn change_owner(&mut self, c: &mut Context<'_>, new: usize) -> Result<(), Unsupported> {
+        let master = c
+            .every_masters
+            .get(new)
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported(
+                "an ownership change to a player without the master",
+            ))?;
+        if self.life.inside {
+            return Err(Unsupported(
+                "an ownership change of an object inside another",
+            ));
+        }
+        c.spatial.change_owner(self.id, new, master.line_of_sight)?;
+        if let Some(a) = self.artifact.as_mut() {
+            a.gaia = new == 0;
+        }
+        Ok(())
     }
 
     /// The unit's slot 0x340 (`FUN_141216c50`) on its unit AI's move: a unit of class 51 or 54
@@ -547,14 +647,78 @@ impl Unit {
     }
 }
 
+/// The livestock class (`-0xe72` raw).
+const LIVESTOCK: i16 = 58;
+
+/// `FUN_140aab570`'s scan after a livestock's capture: Gaia's livestock in state 2 whose tile
+/// the new owner sees (`FUN_141663500`), within 3 tiles of `at` (x outer, y inner); each is taken
+/// in turn, with its own scan. Two on one tile would need the tile's object list order.
+fn scan_livestock(
+    c: &mut Context<'_>,
+    others: &mut [Unit],
+    at: [f32; 3],
+    new: usize,
+    taken: &mut Vec<i32>,
+) -> Result<(), Unsupported> {
+    let (tx, ty) = (at[0] as i32, at[1] as i32);
+    let [w, h] = c.spatial.map;
+    for x in (tx - 3).max(0)..=(tx + 3).min(w - 1) {
+        for y in (ty - 3).max(0)..=(ty + 3).min(h - 1) {
+            if !c.spatial.sees_tile(new, x, y) {
+                continue;
+            }
+            let on: Vec<usize> = others
+                .iter()
+                .enumerate()
+                .filter(|(_, u)| {
+                    u.life.state == 2
+                        && u.position[0] as i32 == x
+                        && u.position[1] as i32 == y
+                        && !taken.contains(&u.id)
+                        && c.spatial
+                            .get(u.id)
+                            .is_some_and(|p| p.class == LIVESTOCK && p.player == 0)
+                })
+                .map(|(i, _)| i)
+                .collect();
+            match on[..] {
+                [] => {}
+                [k] => {
+                    let mut unit = std::mem::take(&mut others[k]);
+                    let done = (|| {
+                        if let Some(a) = unit.artifact.as_mut() {
+                            a.stop()?;
+                        }
+                        unit.change_owner(c, new)
+                    })();
+                    let (id, position) = (unit.id, unit.position);
+                    others[k] = unit;
+                    done?;
+                    taken.push(id);
+                    scan_livestock(c, others, position, new, taken)?;
+                }
+                _ => {
+                    return Err(Unsupported(
+                        "two livestock to take on one tile (its object list's order)",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// What an object's update leaves of it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Step {
     Stay,
     /// It leaves its list for good (`RGE_Object_List::update` deletes it).
     Leave,
     /// It moves to its player's sleeping list.
     Sleep,
+    /// A player took it (and these other objects of its player) over: they move to the end of
+    /// that player's list.
+    Captured(usize, Vec<i32>),
 }
 
 /// One player's objects in live-list order.
@@ -942,6 +1106,7 @@ impl Turns {
                     building: Some(BuildingSight::default()),
                     umv: umv as u8,
                     capture: capture_kind(player, site.class, master),
+                    kind: 80,
                 },
             );
         }
@@ -1135,6 +1300,12 @@ impl Turns {
             // An object whose update is not modelled freezes, and so do all live objects of a
             // player a command stopped; dead objects still run their state steps, which draw
             // nothing and depend on nothing the stop changed.
+            let attribute_97: Vec<f32> = self
+                .players
+                .iter()
+                .map(|q| q.attributes.get(97).copied().unwrap_or(0.0))
+                .collect();
+            let computers: Vec<bool> = self.players.iter().map(|q| q.computer).collect();
             let mut i = 0;
             while i < self.players[p].objects.len() {
                 let player = &self.players[p];
@@ -1165,6 +1336,11 @@ impl Turns {
                     player: p,
                     attributes: &player.attributes,
                     graphics: &self.graphics,
+                    every_masters: &self.masters,
+                    attribute_97: &attribute_97,
+                    player_turn: self.player_turn,
+                    player_time: &self.player_time,
+                    computers: &computers,
                 };
                 let mut result = unit.update(&mut c, &mut player.objects);
                 if let Some(e) = self.spatial.take_sight_unsupported() {
@@ -1192,6 +1368,52 @@ impl Turns {
                         // that object's update waits for the next tick
                         let asleep = player.objects.swap_remove(i);
                         player.sleeping.push(asleep);
+                        i += 1;
+                    }
+                    Ok(Step::Captured(new, also)) => {
+                        // the old owner's list loses them (FUN_1411664a0, the last in each
+                        // place; the loop goes on past the first) and the new owner's gains them
+                        // (FUN_141616200); the storage: the old owner loses flags 2, 16 and 32
+                        // (FUN_1411a56c0 with 1), the new one gains flags 1, 2 and 32
+                        // (FUN_141193860)
+                        let mut moved = vec![player.objects.swap_remove(i)];
+                        for id in also {
+                            if let Some(k) = player.objects.iter().position(|u| u.id == id) {
+                                moved.push(player.objects.swap_remove(k));
+                            }
+                        }
+                        let mut transfer = Vec::new();
+                        for u in &moved {
+                            let storage = self
+                                .masters
+                                .get(p)
+                                .and_then(|m| m.get(u.life.master_id))
+                                .map(|m| m.storage.clone())
+                                .unwrap_or_default();
+                            transfer.extend(storage);
+                        }
+                        let mut failed = None;
+                        for &(kind, amount, flag) in &transfer {
+                            if kind < 0 {
+                                continue;
+                            }
+                            if matches!(flag, 2 | 16 | 32)
+                                && let Err(e) = self.players[p].add_attribute(kind, -amount)
+                            {
+                                failed.get_or_insert(e);
+                            }
+                            if matches!(flag, 1 | 2 | 32)
+                                && let Err(e) = self.players[new].add_attribute(kind, amount)
+                            {
+                                failed.get_or_insert(e);
+                            }
+                        }
+                        if let Some(e) = failed {
+                            self.players[p]
+                                .unsupported
+                                .get_or_insert((self.ticks, i, e));
+                        }
+                        self.players[new].objects.extend(moved);
                         i += 1;
                     }
                     Ok(Step::Stay) => i += 1,

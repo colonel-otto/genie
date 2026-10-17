@@ -1219,6 +1219,14 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
                     }),
                     umv: umv as u8,
                     capture: capture_kind(player, m.class, s.master_obj),
+                    // the object's type: the save's factory types 70 and 80, any other below
+                    kind: if o.tribe_combat_object.is_some() {
+                        70
+                    } else if building.is_some() {
+                        80
+                    } else {
+                        0
+                    },
                 },
             );
             let desolid = o
