@@ -766,6 +766,8 @@ impl Unit {
                 attack_powerup: self.attack_powerup,
                 mode_680: c.mode_680,
                 bonus_tasks: master.tasks.iter().any(|t| t.action_type == 0xa0),
+                player: c.player,
+                kill_bonus_tasks: master.tasks.iter().any(|t| t.action_type == 0x9a),
             };
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
@@ -1187,36 +1189,154 @@ impl Turns {
                 armor_removed: u.armor_removed,
                 hp_powerups: u.hp_powerups,
                 player: p,
+                kill_tasks: master
+                    .tasks
+                    .iter()
+                    .any(|t| t.action_type == 0xa1 && 1e-7 < t.work_val1),
             }),
             damaged: None,
+            killed: None,
         })
     }
 
     /// An attack's hit on its target, written back.
     fn set_victim(&mut self, v: &Victim) -> Result<(), Unsupported> {
-        let found = self
-            .players
-            .iter_mut()
-            .flat_map(|p| p.objects.iter_mut())
-            .find(|u| u.id == v.id);
-        if let Some(u) = found {
-            u.life.hp = v.hp;
-            u.life.amount = v.amount;
-            u.life.goto_sleep = v.goto_sleep;
-            if let Some(a) = v.armored.as_ref() {
-                u.hp_powerups = a.hp_powerups;
-            }
-            // the damage notify (500) to its unit AI
-            if let (Some((attacker, p)), Some(ai)) = (v.damaged, u.ai.as_mut()) {
-                let n = Notify {
-                    caller: attacker,
-                    recipient: v.id,
-                    kind: crate::unit_ai::DAMAGED,
-                    p,
-                };
-                return ai.post(n, u.life.state);
+        let Some((q, j)) = self.players.iter().enumerate().find_map(|(q, player)| {
+            player
+                .objects
+                .iter()
+                .position(|u| u.id == v.id)
+                .map(|j| (q, j))
+        }) else {
+            return Ok(());
+        };
+        let u = &mut self.players[q].objects[j];
+        u.life.hp = v.hp;
+        u.life.amount = v.amount;
+        u.life.goto_sleep = v.goto_sleep;
+        if let Some(a) = v.armored.as_ref() {
+            u.hp_powerups = a.hp_powerups;
+        }
+        // the damage notify (500) to its unit AI
+        if let (Some((attacker, p)), Some(ai)) = (v.damaged, u.ai.as_mut()) {
+            let n = Notify {
+                caller: attacker,
+                recipient: v.id,
+                kind: crate::unit_ai::DAMAGED,
+                p,
+            };
+            ai.post(n, u.life.state)?;
+        }
+        match v.killed {
+            Some(kill) => self.killed(q, j, kill),
+            None => Ok(()),
+        }
+    }
+
+    /// A combat object's death by a hit (`FUN_141082e80`, `FUN_1412108e0`): its owner's computer
+    /// AI is told (slot 0x2f0, not modelled); the killed handling (slot 0x8b0, `FUN_141205880` ->
+    /// `FUN_1412005b0`): unless its class is one of the non-military ones the attacker's player
+    /// counts a kill (attribute 20) and its owner a loss (154); the attacker's player counts it
+    /// against the owner (300 + the owner) and the owner against the attacker (325 + the
+    /// attacker's player); both count its paid cost (170 and 152, and 400 + the owner). A killed
+    /// villager's statistics (attributes 226 to 229 by the attacker's class and player type) are
+    /// not modelled. Gaia takes a player's livestock (slot 0x70): its place and sight, its Artifact's
+    /// wait, its unit AI's notifies (cleared, then 0x20b), its storage (the old owner loses flags 2,
+    /// 16 and 32, Gaia gains 1, 2 and 32) and its list (the old owner's last object takes its
+    /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
+    /// player and the particles (`FUN_141158bb0`).
+    fn killed(&mut self, q: usize, j: usize, kill: crate::attack::Kill) -> Result<(), Unsupported> {
+        if self.players[q].computer {
+            return Err(Unsupported(
+                "a computer player's killed object (its AI's slot 0x2f0)",
+            ));
+        }
+        let u = &self.players[q].objects[j];
+        let master = self
+            .masters
+            .get(q)
+            .and_then(|m| m.get(u.life.master_id))
+            .ok_or(Unsupported(
+                "a killed object of a master the slice does not have",
+            ))?
+            .clone();
+        if master.class == 4 {
+            return Err(Unsupported(
+                "a killed villager's statistics (attributes 226 to 229)",
+            ));
+        }
+        let ap = kill.attacker_player;
+        const PEACEFUL: [i16; 26] = [
+            1, 3, 5, 7, 8, 9, 10, 11, 14, 15, 16, 27, 29, 30, 31, 32, 33, 34, 38, 39, 40, 48, 52,
+            58, 60, 63,
+        ];
+        if !PEACEFUL.contains(&master.class) {
+            self.players[ap].add_attribute(20, 1.0)?;
+            self.players[q].add_attribute(154, 1.0)?;
+        }
+        self.players[ap].add_attribute(q as i16 + 300, 1.0)?;
+        self.players[q].add_attribute(ap as i16 + 325, 1.0)?;
+        let mut cost = 0.0f32;
+        for &(resource, amount, paid) in &master.cost {
+            if resource >= 0 && paid {
+                cost += f32::from(amount);
             }
         }
+        self.players[ap].add_attribute(170, cost)?;
+        self.players[q].add_attribute(152, cost)?;
+        self.players[ap].add_attribute(q as i16 + 400, cost)?;
+        if kill.to_gaia {
+            self.give_gaia(q, j)?;
+        }
+        Ok(())
+    }
+
+    /// Slot 0x70 (`FUN_14120f800`) to Gaia of the object at `j` of player `q`, from outside its
+    /// update ([`Unit::change_owner`]'s parts and the list and storage moves of a capture).
+    fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), Unsupported> {
+        let u = &self.players[q].objects[j];
+        let (id, master_id) = (u.id, u.life.master_id);
+        if u.life.inside {
+            return Err(Unsupported(
+                "an ownership change of an object inside another",
+            ));
+        }
+        let gaia_master =
+            self.masters
+                .first()
+                .and_then(|m| m.get(master_id))
+                .ok_or(Unsupported(
+                    "an ownership change to a player without the master",
+                ))?;
+        let los = gaia_master.line_of_sight;
+        let storage = self
+            .masters
+            .get(q)
+            .and_then(|m| m.get(master_id))
+            .map(|m| m.storage.clone())
+            .unwrap_or_default();
+        self.spatial.change_owner(id, 0, los)?;
+        let world_time = self.world_time;
+        let mut unit = self.players[q].objects.swap_remove(j);
+        if let Some(a) = unit.artifact.as_mut() {
+            a.gaia = true;
+        }
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.clear_notifies(world_time)?;
+        }
+        unit.post_own(OWNER_CHANGED, [0, 0, 0])?;
+        for &(kind, amount, flag) in &storage {
+            if kind < 0 {
+                continue;
+            }
+            if matches!(flag, 2 | 16 | 32) {
+                self.players[q].add_attribute(kind, -amount)?;
+            }
+            if matches!(flag, 1 | 2 | 32) {
+                self.players[0].add_attribute(kind, amount)?;
+            }
+        }
+        self.players[0].objects.push(unit);
         Ok(())
     }
 }
@@ -2776,6 +2896,79 @@ mod tests {
         let why = Unsupported("QUEUE at two buildings");
         t.tick_with(104, &[Command::Unmodelled { player: 0, why }]);
         assert_eq!(t.players[0].unsupported, Some((1, 0, why)));
+    }
+
+    /// MarvinBlue/426048731's update 1250: 10029's second hit kills its sheep 9520 (2 hit points,
+    /// 12 damage): it has none, Gaia takes it (its list, its storage, its unit AI's notifies),
+    /// and the players count the kill (300 + 1 and 325 + 1; a sheep costs nothing).
+    #[test]
+    fn a_killed_sheep_goes_to_gaia() {
+        let sheep = Unit {
+            id: 9520,
+            life: Lifecycle {
+                master_id: 705,
+                hp: 2.0,
+                ..Lifecycle::default()
+            },
+            ai: Some(crate::unit_ai::UnitAi::default()),
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0],
+            vec![
+                Player {
+                    attributes: vec![0.0; 500],
+                    ..Player::default()
+                },
+                Player {
+                    objects: vec![town_centre(10029), sheep],
+                    attributes: vec![0.0; 500],
+                    ..Player::default()
+                },
+            ],
+        );
+        let master = crate::masters::Master {
+            id: 705,
+            class: 58,
+            storage: vec![(16, 100.0, 1)],
+            ..crate::masters::Master::default()
+        };
+        t.masters = vec![Masters::new([master.clone()]), Masters::new([master])];
+        t.spatial.insert(
+            9520,
+            Placed {
+                position: [107.0, 48.0, 0.0],
+                radius: [0.35, 0.35],
+                class: 58,
+                player: 1,
+                master: 705,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        let mut v = t.victim(9520).unwrap();
+        v.hp = 0.0;
+        v.damaged = Some((10029, [10029, -10, 14]));
+        v.killed = Some(crate::attack::Kill {
+            attacker: 10029,
+            attacker_player: 1,
+            to_gaia: true,
+        });
+        t.set_victim(&v).unwrap();
+        assert_eq!(t.players[1].objects.len(), 1);
+        let gone = &t.players[0].objects[0];
+        assert_eq!((gone.id, gone.life.hp), (9520, 0.0));
+        assert_eq!(t.spatial.get(9520).map(|p| p.player), Some(0));
+        assert_eq!(t.players[1].attributes[301], 1.0);
+        assert_eq!(t.players[1].attributes[326], 1.0);
+        assert_eq!(t.players[0].attributes[16], 100.0);
     }
 
     /// MarvinBlue/426048731's 1086: SET GATHER POINT on TC 9149 at (107.2451, 46.075863) on the

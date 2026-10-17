@@ -736,6 +736,7 @@ mod tests {
             decay: 0.0,
             armored: None,
             damaged: None,
+            killed: None,
         }
     }
 

@@ -137,6 +137,17 @@ pub struct Victim {
     /// The damage notify (500, `FUN_141082e80`) a hit posts to its unit AI: the attacker, its hit
     /// points after (truncated) and its master's hit points.
     pub damaged: Option<(i32, [i32; 3])>,
+    /// A hit killed it: the attacker's player, whether Gaia takes it (livestock of a player,
+    /// `FUN_1412108e0`), for the caller's death handling.
+    pub killed: Option<Kill>,
+}
+
+/// What a killing hit leaves for the caller ([`crate::turn::Turns`]'s write-back).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Kill {
+    pub attacker: i32,
+    pub attacker_player: usize,
+    pub to_gaia: bool,
 }
 
 /// What a hit on a combat object reads of it (its master's and its own values) and changes.
@@ -161,6 +172,9 @@ pub struct Armored {
     pub armor_removed: [i16; 2],
     pub hp_powerups: [f32; 2],
     pub player: usize,
+    /// Its master has a task of action type 0xa1 with a work value (a kill reward,
+    /// `FUN_14120b5f0`).
+    pub kill_tasks: bool,
 }
 
 /// What the Attack's update reads of its unit besides its movement, and changes.
@@ -212,6 +226,10 @@ pub struct Attacker {
     pub attack_powerup: f32,
     pub mode_680: i32,
     pub bonus_tasks: bool,
+    /// Its player and whether its master has a task of action type 0x9a (a kill bonus,
+    /// `FUN_1415c6510`).
+    pub player: usize,
+    pub kill_bonus_tasks: bool,
 }
 
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
@@ -681,7 +699,7 @@ impl Attack {
     /// which stay above the master's `invulnerability_level` floor (slot 0xb0,
     /// `FUN_141205c80`); a hit takes at least one hit point (`FUN_1412108e0`). The target's unit
     /// AI gets notify 500 with the attacker, the hit points left and the master's. Not modelled:
-    /// the special attack and the retaliation (`special_attack_flag` 1 and 2), a hit that kills,
+    /// the special attack and the retaliation (`special_attack_flag` 1 and 2),
     /// damage reflection, the attacker's charge after a hit (slot 0x2f0, `+0x8a8`) and its
     /// combat ability's effects (bits 2 and 7, `FUN_141206250`, `FUN_14107bdf0`); the damaged
     /// flag (`+0x683`), the last damage time (`+0x648`), the alerts of another owner (slot
@@ -744,9 +762,6 @@ impl Attack {
                 } else {
                     floor
                 };
-                if v.hp < 1.0 {
-                    return Err(Unsupported("a hit that kills a combat object"));
-                }
             }
         }
         if 60 <= a.kind && a.ability & 4 != 0 && v.kind == 70 {
@@ -760,6 +775,20 @@ impl Attack {
             ));
         }
         v.damaged = Some((a.id, [a.id, v.hp as i32, i32::from(armored.master_hp)]));
+        // the kill (FUN_141082e80): no hit points; the killed handling (slot 0x8b0) is the
+        // caller's, a kill reward task is not modelled; Gaia takes a player's livestock
+        // (FUN_1412108e0, slot 0x70)
+        if v.hp < 1.0 {
+            v.hp = 0.0;
+            if armored.kill_tasks {
+                return Err(Unsupported("a kill reward task (action type 0xa1)"));
+            }
+            v.killed = Some(Kill {
+                attacker: a.id,
+                attacker_player: a.player,
+                to_gaia: v.class == LIVESTOCK && armored.player != 0,
+            });
+        }
         // FUN_1412108e0: a hit takes at least one hit point
         let lost = before - effective(v, powerups);
         let floor = hp_floor(&armored);
@@ -769,7 +798,12 @@ impl Attack {
         if 1e-7 < armored.reflection {
             return Err(Unsupported("a hit on a target that reflects damage"));
         }
-        if 50 <= a.kind && a.ability & 0x80 != 0 {
+        if v.killed.is_some() && a.kill_bonus_tasks {
+            return Err(Unsupported(
+                "an attacker's kill bonus task (action type 0x9a)",
+            ));
+        }
+        if v.killed.is_none() && 50 <= a.kind && a.ability & 0x80 != 0 {
             return Err(Unsupported(
                 "an attacker whose hits apply effects (FUN_14107bdf0)",
             ));
@@ -783,6 +817,8 @@ impl Attack {
 
 /// The class whose damage alerts its target's owner itself (`-0xe6c` raw).
 const ELEPHANT_ARCHER: i16 = 64;
+/// The livestock class, which goes to Gaia when killed.
+const LIVESTOCK: i16 = 58;
 
 /// Slot 0x1f0 (`FUN_14120d780`): a hit from higher up gains 25% and the attacker's attribute 211
 /// and the target's 272, one from lower down 75% and attributes 212 and 273.
@@ -1035,6 +1071,7 @@ mod tests {
             armor_removed: [0; 2],
             hp_powerups: [0.0; 2],
             player: 1,
+            kill_tasks: false,
         }
     }
 
