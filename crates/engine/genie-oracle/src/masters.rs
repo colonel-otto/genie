@@ -65,6 +65,7 @@ fn dat_task(t: &genie_dat::de::Task) -> work::Task {
         object_group: t.class_id,
         object_id: t.unit_id,
         work_val1: t.work_value1,
+        work_range: t.work_range,
     }
 }
 

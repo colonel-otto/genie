@@ -5,7 +5,7 @@
 //! `0x140aa29e0`. A MoveTo in state 3 asks for a path (`FUN_14114e410`) and turns to state 4; in
 //! state 4 each update runs the motion step (object slot 193, [`Mover::motion`]).
 
-use crate::movement::{Me, Motion, Mover};
+use crate::movement::{Me, Motion, Mover, footprint_gap};
 use crate::spatial::Spatial;
 use crate::unit_ai::Unsupported;
 
@@ -42,6 +42,44 @@ pub struct Walk<'a> {
     pub world: &'a Spatial,
 }
 
+/// Where a MoveTo goes: a target object or a point (`x, y, z` on the map).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Goal {
+    Target(i32),
+    Point([f32; 3]),
+}
+
+/// A starting MoveTo's update (state 3): unless the unit is within `range` of its goal already, it
+/// asks for a path (`FUN_14114e410`) and turns to state 4, whose set_state runs the update again at
+/// once ([`walk_on`]). A unit already in range (set_state 1) is not modelled.
+pub fn start_walk(walk: Walk<'_>, goal: Goal, range: f32) -> Result<(), Unsupported> {
+    let (point, target, radius) = match goal {
+        Goal::Target(id) => {
+            let t = walk
+                .world
+                .get_known(id)?
+                .ok_or(Unsupported("a MoveTo whose target is gone"))?;
+            (t.position, id, t.radius)
+        }
+        Goal::Point(p) => (p, -1, [0.0, 0.0]),
+    };
+    let mover = walk
+        .mover
+        .ok_or(Unsupported("a walker without movement state"))?;
+    let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+    let gap = footprint_gap(walk.me.position, ground, point, radius);
+    if gap * gap <= range * range {
+        return Err(Unsupported(
+            "a MoveTo in range when it starts (set_state 1)",
+        ));
+    }
+    mover.request_path(walk.me.position, point, range, target);
+    walk_on(Walk {
+        mover: Some(mover),
+        ..walk
+    })
+}
+
 /// A moving MoveTo's update (state 4): the motion step, which only the walk keeps going. An
 /// arrival, a unit that cannot go on and a MoveTo without its path are not modelled.
 pub fn walk_on(walk: Walk<'_>) -> Result<(), Unsupported> {
@@ -64,13 +102,21 @@ pub struct MoveToAction {
     pub state: MoveTo,
     /// The point it walks to (`+0x38`..`+0x40`), when it has no target object.
     pub goal: Option<[f32; 3]>,
+    /// `+0x68`.
+    pub range: f32,
 }
 
 impl MoveToAction {
     pub fn update(&mut self, walk: Walk<'_>) -> Result<(), Unsupported> {
         match self.state {
             MoveTo::Moving => walk_on(walk),
-            MoveTo::Start => Err(Unsupported("the path request (FUN_14114e410)")),
+            MoveTo::Start => {
+                let goal = self
+                    .goal
+                    .ok_or(Unsupported("a MoveTo of its own to a target object"))?;
+                self.state = MoveTo::Moving;
+                start_walk(walk, Goal::Point(goal), self.range)
+            }
             MoveTo::Arrived => Err(Unsupported("a MoveTo that arrived (its removal)")),
         }
     }

@@ -7,7 +7,7 @@
 //! standing on it walks to a free tile beside it (state 223) and comes back (state 4). The start
 //! of the construction, the arrivals and the path request are not modelled.
 
-use crate::move_to::walk_on;
+use crate::move_to::{Goal, start_walk, walk_on};
 pub use crate::move_to::{MoveTo, Walk};
 use crate::unit_ai::Unsupported;
 
@@ -26,6 +26,9 @@ pub struct BuildAction {
     pub move_to: Option<MoveTo>,
     /// The point the MoveTo walks to (its `+0x38`..`+0x40`), when not to the foundation.
     pub goal: Option<[f32; 3]>,
+    /// The builder's Build task's work range (task `+0x30`): its MoveTo to the foundation stops
+    /// this near.
+    pub range: f32,
 }
 
 /// The Build action's states the slice models.
@@ -38,7 +41,7 @@ const CLEAR: u8 = 223;
 impl BuildAction {
     /// The action's start (slot 5, `0x140aadd80`): state 4 for a target, whose set_state
     /// (`0x140aae200`) creates the MoveTo; the MoveTo starts arrived if the footprints touch.
-    pub fn start(target: i32, gap: f32) -> Self {
+    pub fn start(target: i32, gap: f32, range: f32) -> Self {
         BuildAction {
             target,
             state: MOVE,
@@ -48,6 +51,7 @@ impl BuildAction {
                 MoveTo::Arrived
             }),
             goal: None,
+            range,
         }
     }
 
@@ -62,7 +66,7 @@ impl BuildAction {
             }
             (4, Some(MoveTo::Start)) => {
                 self.move_to = Some(MoveTo::Moving);
-                Ok(())
+                start_walk(walk, Goal::Target(self.target), self.range)
             }
             (4, Some(MoveTo::Moving)) => walk_on(walk),
             (4, None) => Err(Unsupported("a Build action in state 4 without its MoveTo")),
@@ -79,8 +83,15 @@ impl BuildAction {
                 }
                 self.place(&walk)
             }
-            (CLEAR, Some(MoveTo::Start)) => Err(Unsupported("the path request (FUN_14114e410)")),
-            (CLEAR, _) => Err(Unsupported("a builder walking off its footprint")),
+            (CLEAR, Some(MoveTo::Start)) => {
+                self.move_to = Some(MoveTo::Moving);
+                let goal = self.goal.expect("set_state(223) sets the goal");
+                start_walk(walk, Goal::Point(goal), 0.0)
+            }
+            (CLEAR, Some(MoveTo::Moving)) => walk_on(walk),
+            (CLEAR, _) => Err(Unsupported(
+                "a builder off its footprint (its return, set_state 4)",
+            )),
             _ => Err(Unsupported("a Build state not modelled")),
         }
     }
@@ -206,6 +217,7 @@ mod tests {
             state: 6,
             move_to: None,
             goal: None,
+            range: 0.1,
         };
         build
             .update(Walk {
@@ -225,9 +237,9 @@ mod tests {
     }
 
     #[test]
-    fn a_builder_at_the_foundation_works_in_its_first_update_the_others_ask_for_a_path() {
-        let mut near = BuildAction::start(10028, 0.0);
-        let mut far = BuildAction::start(10028, 0.8);
+    fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it() {
+        let mut near = BuildAction::start(10028, 0.0, 0.1);
+        let mut far = BuildAction::start(10028, 0.8, 0.1);
         assert_eq!((near.state, near.move_to), (4, Some(MoveTo::Arrived)));
         assert_eq!((far.state, far.move_to), (4, Some(MoveTo::Start)));
         let world = Spatial::default();
@@ -241,12 +253,12 @@ mod tests {
             world: &world,
         };
         near.update(walk(1)).unwrap();
-        far.update(walk(2)).unwrap();
+        assert_eq!((near.state, near.move_to), (6, None));
+        // the far one asks for a path to its foundation, which must be on the map
         assert_eq!(
-            (near.state, far.state, far.move_to),
-            (6, 4, Some(MoveTo::Moving))
+            far.update(walk(2)),
+            Err(Unsupported("a MoveTo whose target is gone"))
         );
-        assert!(near.update(walk(1)).is_err());
-        assert!(far.update(walk(2)).is_err());
+        assert_eq!(far.move_to, Some(MoveTo::Moving));
     }
 }

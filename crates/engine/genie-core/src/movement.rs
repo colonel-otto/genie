@@ -242,9 +242,7 @@ impl Mover {
         match level.state {
             4 | 5 => return Err(Unsupported("a path level that arrived (states 4 and 5)")),
             2 => {
-                return Err(Unsupported(
-                    "a path level that wants a path (the path request)",
-                ));
+                return Err(Unsupported("the low-level pathfinder (FUN_140f7c530)"));
             }
             _ => {}
         }
@@ -309,6 +307,36 @@ impl Mover {
             .last()
             .map(|l| &l.points)
             .filter(|p| !p.is_empty())
+    }
+
+    /// The path request of a MoveTo (`FUN_14114e410`, without waypoints of its own): one level of
+    /// path data, the top (level 2), whose path runs from the unit to the goal (`x, y, z` on the
+    /// map) unless the two are less than 1e-7 apart on the ground, in state 2: the next motion step
+    /// plans the path to walk. A unit with future path data (`+0x860`) or waypoints of its own
+    /// (`+0x7fc`) goes another way, which the slice does not model (it holds neither).
+    pub fn request_path(&mut self, from: [f32; 3], goal: [f32; 3], range: f32, target: i32) {
+        let start = vector(from);
+        let end = vector(goal);
+        let mut points = vec![start];
+        let mut d = fmath::sub(end, start);
+        d[1] = 0.0;
+        if EPSILON < fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]) {
+            points.push(end);
+        }
+        // a new path's flags are 6 (FUN_140f8f5d0); the request clears bits 0 and 1
+        let path_flags = 6 & !1 & !2;
+        self.paths = vec![PathData {
+            level: 2,
+            linked_type: 0,
+            points,
+            path_flags,
+            waypoint: 1,
+            state: 2,
+            range,
+            target,
+            pause_time: 0.0,
+            flags: 0,
+        }];
     }
 
     /// The unit vector on the ground from `from` to `to` (slot 194, `0x14114f210`); the forward
@@ -613,6 +641,36 @@ mod tests {
         }
         deer.paths[1].points = vec![[28.0, 0.0, 89.0], [28.6, 0.0, 89.0]];
         assert!(deer.motion(&me, DT, &Spatial::new([120, 120])).is_err());
+    }
+
+    /// MarvinBlue/426048731's 9175 in update 682: the path request of its MoveTo off the house
+    /// footprint, which the game saves as the top level of its path data.
+    #[test]
+    fn a_path_request_makes_the_top_level_from_the_unit_to_its_goal() {
+        let mut m = builder_9177();
+        m.request_path([30.0, 89.0, 0.0], [29.5, 89.5, 0.0], 0.0, -1);
+        assert_eq!(m.paths.len(), 1);
+        let top = &m.paths[0];
+        assert_eq!(
+            (
+                top.level,
+                top.path_flags,
+                top.waypoint,
+                top.state,
+                top.target
+            ),
+            (2, 4, 1, 2, -1)
+        );
+        assert_eq!(top.points, vec![[30.0, 0.0, 89.0], [29.5, 0.0, 89.5]]);
+        // the motion step then plans the path to walk, which the slice does not model
+        let me = Me {
+            id: 9175,
+            position: [30.0, 89.0, 0.0],
+        };
+        assert_eq!(
+            m.motion(&me, DT, &Spatial::new([120, 120])),
+            Err(Unsupported("the low-level pathfinder (FUN_140f7c530)"))
+        );
     }
 
     #[test]

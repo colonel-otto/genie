@@ -428,7 +428,8 @@ impl Turns {
             }
             unit.life.master_id = with;
             let gap = footprint_gap(unit.position, builder.radius, position, site.radius);
-            unit.build = Some(BuildAction::start(foundation, gap));
+            let range = task.map_or(0.0, |t| t.work_range);
+            unit.build = Some(BuildAction::start(foundation, gap, range));
         }
         Ok(())
     }
@@ -783,6 +784,7 @@ mod tests {
             object_group,
             object_id: -1,
             work_val1: 0.0,
+            work_range: 0.0,
         };
         let villager = |id, group, tasks: Vec<Task>| Master {
             id,
@@ -862,7 +864,6 @@ mod tests {
             }],
         );
         let p = &t.players[1];
-        assert_eq!(p.unsupported, None);
         assert_eq!(p.resources, [200.0, 75.0, 200.0, 100.0]);
         let foundation = p.objects.last().unwrap();
         assert_eq!(
@@ -879,11 +880,13 @@ mod tests {
                 p.objects[i].build.map(|b| b.state),
             )
         };
-        // the builder at the foundation works in its first update; the other asks for a path
+        // the builder at the foundation works in its first update; the other asks for a path, for
+        // which these villagers lack their movement state
         assert_eq!((builder(0), builder(1)), ((118, Some(6)), (212, Some(4))));
-        // the next update moves the far builder: movement is not modelled
-        t.tick(50);
-        assert!(t.players[1].unsupported.is_some());
+        assert_eq!(
+            p.unsupported,
+            Some((1, 1, Unsupported("a walker without movement state")))
+        );
     }
 
     #[test]

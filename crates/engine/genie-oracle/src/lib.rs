@@ -200,7 +200,12 @@ fn unit(
         ..Unit::default()
     };
     let imported = if saved {
-        saved_actions(object, s, &mut unit)
+        saved_actions(
+            object,
+            s,
+            |m| build_range(objects, civ, masters, m),
+            &mut unit,
+        )
     } else {
         default_task(object, s, civ, masters).map(|artifact| unit.artifact = artifact)
     };
@@ -351,6 +356,7 @@ fn mover(
 fn saved_actions(
     object: &de::header::Object,
     s: &RgeStaticObject,
+    work: impl Fn(i16) -> Result<f32, Unsupported>,
     unit: &mut Unit,
 ) -> Result<(), Unsupported> {
     use genie_core::build::{BUILD, BuildAction, MoveTo};
@@ -387,6 +393,9 @@ fn saved_actions(
             unit.move_to = Some(MoveToAction {
                 state: move_to_state(base.state)?,
                 goal: point(base),
+                range: action
+                    .move_to_range()
+                    .ok_or(Unsupported("a saved MoveTo without its range"))?,
             });
             Ok(())
         }
@@ -422,11 +431,48 @@ fn saved_actions(
                 state: base.state,
                 move_to,
                 goal,
+                range: work(s.master_obj)?,
             });
             Ok(())
         }
         _ => Err(Unsupported("a saved action the slice does not import")),
     }
+}
+
+/// The work range of a builder's Build task (task `+0x30`): the game's Build action keeps a
+/// pointer to that task, which is in its master's saved task list or, for a master that saves
+/// none, in the `.dat`'s.
+fn build_range(
+    objects: &PlayerObjects,
+    civ: u8,
+    masters: Option<&MasterTable>,
+    master: i16,
+) -> Result<f32, Unsupported> {
+    let m = objects
+        .master(master)
+        .ok_or(Unsupported("a builder whose master is not saved"))?;
+    let saved = m.tribe_master_combat_object.as_ref().and_then(|c| {
+        c.rge_master_combat_object
+            .rge_master_action_object
+            .tasks
+            .as_ref()
+    });
+    let build = genie_core::build::BUILD;
+    if let Some(tasks) = saved {
+        return tasks
+            .list
+            .iter()
+            .find(|e| e.task.action_type == build)
+            .map(|e| e.task.work_range)
+            .ok_or(Unsupported("a builder whose master has no Build task"));
+    }
+    masters
+        .and_then(|t| t.work(civ, master))
+        .and_then(|w| w.tasks.iter().find(|t| t.action_type == build))
+        .map(|t| t.work_range)
+        .ok_or(Unsupported(
+            "a builder whose Build task is not in the data file",
+        ))
 }
 
 /// A saved building's production (`TRIBE_Building_Object`'s queue and its make action): each queued
@@ -679,6 +725,7 @@ fn work_masters(
         object_group: t.object_group,
         object_id: t.object_id,
         work_val1: t.work_val1,
+        work_range: t.work_range,
     };
     fn action_part(m: &Master) -> Option<&RgeMasterActionObject> {
         None.or(m

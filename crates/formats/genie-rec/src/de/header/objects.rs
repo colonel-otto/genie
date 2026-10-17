@@ -293,6 +293,14 @@ impl ActionList {
 }
 
 impl Action {
+    /// A MoveTo's range (`+0x68`), for an action of that class.
+    pub fn move_to_range(&self) -> Option<f32> {
+        self.rge_action_by_type
+            .as_ref()
+            .and_then(|b| b.rge_action_move_to.as_ref())
+            .map(|m| m.range)
+    }
+
     /// The base every action class starts with (`RGE_Action`: state, targets, timer, sub-actions),
     /// whatever class the action's type made.
     pub fn base(&self) -> Option<&RgeAction> {

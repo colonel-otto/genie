@@ -16,6 +16,8 @@ pub struct Task {
     pub object_id: i16,
     /// `+0x28`, the save's `work_val1`.
     pub work_val1: f32,
+    /// `+0x30`: how near the target the work is done.
+    pub work_range: f32,
 }
 
 /// The master values the task finder and the work command read.
@@ -160,6 +162,7 @@ mod tests {
             object_group,
             object_id,
             work_val1,
+            work_range: 0.0,
         }
     }
 
