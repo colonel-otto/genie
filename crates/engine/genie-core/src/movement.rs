@@ -159,6 +159,10 @@ const SHORT_REACH: f32 = 16.0;
 const TARGET_SHORT_REACH: f32 = 10.0;
 /// A waypoint or target nearer than this takes the close-in path (`DAT_14330eb8c`).
 const CLOSE: f32 = 1.0;
+/// How far level 0's look ahead reaches on its parent's path, squared (`DAT_14330ebcc`).
+const LOOK_AHEAD: f32 = 100.0;
+/// `FUN_141142750` grows the walk's query by the unit's radius times `DAT_142e7f384`.
+const STRAIGHT_GROW: f32 = 0.5;
 /// A path shorter than this is too short (`DAT_142eb99cc`).
 const SHORTEST: f32 = 0.01;
 /// A planned path shorter than this replaces no short path (`DAT_143cc2f28`), and a path is long
@@ -640,9 +644,9 @@ impl Mover {
     /// on to its next waypoint, dropping those too near the map's edge for the unit
     /// (`FUN_140f98d50`). Then (`LAB_14115192d`) a level with waypoints left waits for a path to
     /// the next (state 2, not level 0); at its last, a unit not yet in range of where it was going
-    /// steps back to the waypoint it left and asks again, else the level arrived (state 4). A
-    /// looping path, a waypoint some object stands on and level 0's look ahead on a level 1
-    /// parent (`FUN_141142750`) are not modelled.
+    /// steps back to the waypoint it left and asks again, else the level arrived (state 4). Level
+    /// 0 on a level 1 parent looks ahead first ([`Mover::look_ahead`]). A looping path and a
+    /// waypoint some object stands on are not modelled.
     fn reached(
         &mut self,
         me: &mut Me,
@@ -696,10 +700,8 @@ impl Mover {
             .paths
             .get(1)
             .is_some_and(|p| p.level == 1 && !p.points.is_empty());
-        if self.paths[0].level == 0 && parent_is_level_1 {
-            return Err(Unsupported(
-                "level 0's look ahead on its level 1 parent (FUN_141142750)",
-            ));
+        if self.paths[0].level == 0 && parent_is_level_1 && self.look_ahead(me, world)? {
+            return Ok(Next::Again);
         }
         // LAB_14115192d
         let level = &self.paths[0];
@@ -743,6 +745,72 @@ impl Mover {
         }
         level.state = 4;
         Ok(Next::Dispatch)
+    }
+
+    /// Level 0's look ahead on its level 1 parent, at a waypoint it reached (`LAB_14115136c`):
+    /// from the parent's fifth waypoint on (at most its last) back toward its current one, the
+    /// first within 10 tiles (squared, `DAT_14330ebcc`) that the unit can walk to straight
+    /// (`FUN_141142750`) becomes the parent's waypoint; level 0 goes, and the parent asks for a
+    /// path (state 2) as the motion step starts again. True when it did.
+    fn look_ahead(&mut self, me: &Me, world: &Spatial) -> Result<bool, Unsupported> {
+        let target = self.paths[0].target;
+        let parent = &self.paths[1];
+        let at = vector(me.position);
+        let last = parent.points.len() as i32 - 1;
+        let from = parent.waypoint;
+        let mut k = (from + 5).min(last);
+        while from < k {
+            let p = parent.points[k as usize];
+            let d = fmath::sub(p, at);
+            if d[0] * d[0] + 0.0 + d[2] * d[2] <= LOOK_AHEAD
+                && self.straight(me, p, target, world)?
+            {
+                break;
+            }
+            k -= 1;
+        }
+        if k == from {
+            return Ok(false);
+        }
+        self.paths.remove(0);
+        let parent = &mut self.paths[0];
+        parent.waypoint = k;
+        parent.state = 2;
+        Ok(true)
+    }
+
+    /// `FUN_141142750` with its last argument 1: whether the unit walks straight to `p`. The point
+    /// must lie within the map less the unit's radii (the game takes the height radius for the
+    /// low edge in y); then the walk's query (`FUN_14114cc60` with the tiles' records, flags
+    /// `0x190`, its radius times 0.5) must find nothing but the unit and its target: no tile its
+    /// terrain mask lacks, no static record (kinds 2, 11, 13) ([`Spatial::segment_blocked`]).
+    /// The game also writes the straight path into a scratch path, which it drops.
+    fn straight(
+        &self,
+        me: &Me,
+        p: Vec3,
+        target: i32,
+        world: &Spatial,
+    ) -> Result<bool, Unsupported> {
+        let [rx, ry, rz] = self.stats.radius;
+        let [w, h] = world.map;
+        let (x, y) = (p[0], p[2]);
+        if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
+            return Ok(false);
+        }
+        let mut ignore = vec![me.id];
+        if target != -1 {
+            ignore.push(target);
+        }
+        let (from, to) = self.query_ends(vector(me.position), p, world.map);
+        let grow = rx * STRAIGHT_GROW;
+        world.check_known_records([
+            from[0].min(to[0]) - grow,
+            from[1].min(to[1]) - grow,
+            from[0].max(to[0]) + grow,
+            from[1].max(to[1]) + grow,
+        ])?;
+        Ok(!world.segment_blocked(from, to, grow, self.stats.restriction_mask, &ignore))
     }
 
     /// An arrived level (states 4 and 5, `LAB_141151b6d`): the top level, or one in range of its
@@ -1675,6 +1743,62 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
         }
+    }
+
+    #[test]
+    fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
+        // a cow at its level 0 waypoint (21.8, 92.2), its level 1 parent's waypoint 1 of three
+        let mut m = builder_9177();
+        m.paths = vec![
+            level(0, &[[21.5, 91.5], [21.8, 92.2], [25.15, 92.85]], 3),
+            level(
+                1,
+                &[[21.5, 91.5], [28.5, 93.5], [28.9, 94.1], [40.0, 94.0]],
+                0,
+            ),
+        ];
+        m.paths[1].waypoint = 1;
+        let me = Me {
+            id: 9517,
+            position: [21.8, 92.2, 0.0],
+        };
+        // land of a terrain class the unit's mask (6) has
+        let mut w = Spatial::with_tiles(
+            [120, 120],
+            crate::spatial::Tiles::new(120, 120, vec![2; 14400]),
+        );
+        // on open ground: waypoint 3 is beyond 10 tiles, waypoint 2 within, so it takes 2
+        assert_eq!(m.look_ahead(&me, &w), Ok(true));
+        assert_eq!(m.paths.len(), 1);
+        assert_eq!(
+            (m.paths[0].level, m.paths[0].waypoint, m.paths[0].state),
+            (1, 2, 2)
+        );
+        // a tree in the way of both leaves the levels as they are
+        let mut m = builder_9177();
+        m.paths = vec![
+            level(0, &[[21.5, 91.5], [21.8, 92.2]], 3),
+            level(1, &[[21.5, 91.5], [28.5, 93.5], [28.9, 94.1]], 0),
+        ];
+        m.paths[1].waypoint = 1;
+        w.insert(
+            9357,
+            Placed {
+                position: [25.0, 93.0, 0.0],
+                radius: [0.5, 0.5],
+                class: 15,
+                player: 0,
+                master: 0,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(Obstruction { kind: 2, class: 1 }),
+            },
+        );
+        assert_eq!(m.look_ahead(&me, &w), Ok(false));
+        assert_eq!(m.paths.len(), 2);
     }
 
     fn world() -> Spatial {

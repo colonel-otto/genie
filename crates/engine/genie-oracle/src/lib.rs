@@ -751,6 +751,23 @@ fn lifecycle(
         .rge_object
         .as_ref()
         .is_some_and(|r| r.rge_static_object.is_some());
+    let death_sprite = match s.own_master() {
+        Some(own) => own.death_sprite_num,
+        None => objects
+            .master(s.master_obj)
+            .and_then(|m| m.static_part())
+            .map_or(-1, |m| m.death_sprite_id),
+    };
+    // the sprite after the death: the dying one, else the current one
+    let after = if death_sprite >= 0 {
+        death_sprite
+    } else {
+        s.sprite
+    };
+    let death_facets = masters
+        .and_then(|t| t.graphics.get(&after))
+        .filter(|g| pure_static && g.flags & 4 != 0 && 1 < g.facets)
+        .map(|g| g.facets);
     let (dying_sprite, death_spawn, master) = match s.own_master() {
         Some(own) => (
             own.death_sprite_num >= 0,
@@ -781,6 +798,7 @@ fn lifecycle(
         amount: s.attribute_amount_held,
         dying_sprite,
         death_spawn,
+        death_facets,
         inside: s.inside_obj != -1,
         goto_sleep: s.goto_sleep_flag != 0,
         master_id: s.master_obj,

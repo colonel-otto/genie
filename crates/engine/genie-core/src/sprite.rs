@@ -13,6 +13,8 @@ pub struct Graphic {
     pub id: i16,
     /// `+0x8`, `frame_count`.
     pub frames: i16,
+    /// `+0xa`, `angle_count`: the facets.
+    pub facets: i16,
     /// `+0xc`, `speed_multiplier`: at least 1e-7, it scales the frame duration.
     pub speed_multiplier: f32,
     /// `+0x10`, `frame_duration`.
@@ -228,6 +230,7 @@ mod tests {
     const CHOP: Graphic = Graphic {
         id: 1239,
         frames: 45,
+        facets: 8,
         speed_multiplier: 0.0,
         frame_duration: 0.044_444_446,
         replay_delay: 0.0,

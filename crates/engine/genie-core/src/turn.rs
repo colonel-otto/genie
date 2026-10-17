@@ -297,7 +297,20 @@ impl Unit {
                 }
             }
         }
-        let leaves = if self.life.update(c.dt_seconds)? {
+        if self.life.is_alive() && self.life.hp < 1.0 {
+            // set_state(3)'s storage (FUN_1411a56c0 with 0: kinds 2 and 16) leaves the player
+            let stores = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .is_some_and(|m| m.storage.iter().any(|&(_, _, kind)| matches!(kind, 2 | 16)));
+            if stores {
+                return Err(Unsupported("a dying object's storage leaves its player"));
+            }
+        }
+        let leaves = if self
+            .life
+            .update(c.dt_seconds, c.streams.get(Stream::Object))?
+        {
             Step::Leave
         } else {
             Step::Stay

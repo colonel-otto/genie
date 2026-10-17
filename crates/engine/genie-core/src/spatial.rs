@@ -870,7 +870,10 @@ mod tests {
         let (from, to) = ([29.5, 88.0], [29.5, 88.3]);
         let rect = [29.5, 88.0, 29.5, 88.3];
         // the box (29.8..30.2, 88.8..89.2) grown by 0.25 reaches 88.55, past the step's end
-        assert_eq!(s.walk_hits(from, to, rect, 0.25, 0.5, Some(2), &[]), Ok(vec![]));
+        assert_eq!(
+            s.walk_hits(from, to, rect, 0.25, 0.5, Some(2), &[]),
+            Ok(vec![])
+        );
         // grown by 0.4 it reaches x 29.4: the step crosses it once it gets to y 88.4
         let longer = ([29.5, 88.0], [29.5, 88.5]);
         let rect = [29.5, 88.0, 29.5, 88.5];

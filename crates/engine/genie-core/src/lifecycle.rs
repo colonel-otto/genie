@@ -7,6 +7,7 @@
 //! 8 gone. Only the path of an object without a death sprite, a death spawn or an undead state is
 //! modelled; anything else is [`Unsupported`].
 
+use crate::rng::Well512;
 use crate::unit_ai::Unsupported;
 
 /// What the dead-object steps read from an object's master that the header save does not hold;
@@ -44,8 +45,12 @@ pub struct Lifecycle {
     pub amount: f32,
     /// The master's death sprite: an animated object with one plays it in state 4.
     pub dying_sprite: bool,
-    /// The master spawns an object when this one dies.
+    /// The master spawns an object when this one is gone (its death spawn, state 7).
     pub death_spawn: bool,
+    /// A static object's sprite after its death (the master's dying sprite, else its current
+    /// one) starts on a random facet (sequence flag 4) of this many (more than one): its death
+    /// draws the facet from the Object stream.
+    pub death_facets: Option<i16>,
     /// `+0x2f0`: the object is inside another, whose update decides for it.
     pub inside: bool,
     /// `+0x643`: the next update moves the object to the sleeping list.
@@ -66,6 +71,7 @@ impl Default for Lifecycle {
             amount: 0.0,
             dying_sprite: false,
             death_spawn: false,
+            death_facets: None,
             inside: false,
             goto_sleep: false,
             master_id: -1,
@@ -94,8 +100,9 @@ impl Lifecycle {
         self.state <= 2
     }
 
-    /// One update of `dt_seconds` ([`seconds`]). True when the object leaves its list.
-    pub fn update(&mut self, dt_seconds: f32) -> Result<bool, Unsupported> {
+    /// One update of `dt_seconds` ([`seconds`]), with the tick's Object stream. True when the
+    /// object leaves its list.
+    pub fn update(&mut self, dt_seconds: f32, object: &mut Well512) -> Result<bool, Unsupported> {
         if self.goto_sleep {
             // the object's update moves it to the sleeping list first (`Unit::update`)
             return Err(Unsupported("the object goes to sleep"));
@@ -103,7 +110,7 @@ impl Lifecycle {
         match self.state {
             0 | 2 => {
                 if self.hp < 1.0 {
-                    self.die()?;
+                    self.die(object)?;
                 }
                 Ok(false)
             }
@@ -125,18 +132,25 @@ impl Lifecycle {
         }
     }
 
-    /// The static update's death (state 3), then the animated update's step to state 5.
-    fn die(&mut self) -> Result<(), Unsupported> {
+    /// The static update's death (state 3, set_state `FUN_14119d710`), then the animated update's
+    /// step to state 5. A static object takes its dying sprite (slot 0x68) and, starting on a
+    /// random facet, draws it (`rand15 × facets / 0x7fff`, at most the last; the facet, `+0xe`, is
+    /// not held). The storage the caller checks; the players' fog ghosts of a master whose fog
+    /// visibility is 2 (`FUN_14118e990`, for players that explored the tile but do not see it)
+    /// need the visibility map, which the slice does not hold: it assumes none, as for the
+    /// visible-resource lists (`FUN_141090430`), the statistics and the sounds.
+    fn die(&mut self, object: &mut Well512) -> Result<(), Unsupported> {
         if self.inside {
             return Err(Unsupported("an object inside another dies"));
-        }
-        if self.death_spawn {
-            return Err(Unsupported("a death spawn"));
         }
         if self.master_id == 61 {
             return Err(Unsupported("the static update's case for master 61"));
         }
         self.state = 3;
+        if let Some(facets) = self.death_facets.filter(|_| self.class == Class::Static) {
+            let facet = (object.rand15() as i32 * i32::from(facets)) / 0x7fff;
+            let _facet = facet.min(i32::from(facets) - 1);
+        }
         if self.class == Class::Animated {
             if self.dying_sprite {
                 return Err(Unsupported("a dying sprite (state 4)"));
@@ -155,6 +169,10 @@ impl Lifecycle {
         if self.attribute_type == -1 || self.amount <= 0.0 {
             if master.undead {
                 return Err(Unsupported("an undead object (state 6)"));
+            }
+            if self.death_spawn {
+                // slot 0x160 (FUN_1411a5090): the death spawn's master makes a new object
+                return Err(Unsupported("a death spawn (its new object)"));
             }
             self.state = 7;
         } else if master.decay > 0.0 {
@@ -175,7 +193,7 @@ mod tests {
     fn run(mut life: Lifecycle, dt: u32, limit: usize) -> (Vec<u8>, Option<usize>) {
         let mut states = Vec::new();
         for i in 1..=limit {
-            if life.update(seconds(dt)).unwrap() {
+            if life.update(seconds(dt), &mut Well512::default()).unwrap() {
                 return (states, Some(i));
             }
             states.push(life.state);
@@ -236,7 +254,7 @@ mod tests {
             }),
             ..dead(Class::Static)
         };
-        life.update(seconds(104)).unwrap();
+        life.update(seconds(104), &mut Well512::default()).unwrap();
         assert_eq!((life.state, life.amount), (3, 0.0));
     }
 
@@ -248,6 +266,7 @@ mod tests {
                 ..dead(Class::Animated)
             },
             Lifecycle {
+                state: 3,
                 death_spawn: true,
                 ..dead(Class::Static)
             },
@@ -287,15 +306,38 @@ mod tests {
             },
         ];
         for (i, mut life) in cases.into_iter().enumerate() {
-            assert!(life.update(0.104).is_err(), "case {i}");
+            assert!(
+                life.update(0.104, &mut Well512::default()).is_err(),
+                "case {i}"
+            );
         }
+    }
+
+    #[test]
+    fn a_felled_tree_draws_its_facet_and_keeps_its_wood() {
+        // MarvinBlue/426048731's tree 9357 in update 1128: its second hit left 0 hit points; it
+        // dies (state 3) and its falling sprite takes a random facet from the Object stream
+        let mut tree = Lifecycle {
+            attribute_type: 1,
+            amount: 100.0,
+            death_spawn: true,
+            death_facets: Some(8),
+            ..dead(Class::Static)
+        };
+        let mut object = Well512::default();
+        object.set_seed(1);
+        tree.update(0.02, &mut object).unwrap();
+        assert_eq!((tree.state, tree.amount, object.draws), (3, 100.0, 1));
+        // dead with its wood, it waits (no decay) and draws nothing more
+        tree.update(0.02, &mut object).unwrap();
+        assert_eq!((tree.state, object.draws), (3, 1));
     }
 
     #[test]
     fn the_unit_ai_runs_up_to_state_2() {
         let mut life = dead(Class::Animated);
         assert!(life.is_alive());
-        life.update(0.104).unwrap();
+        life.update(0.104, &mut Well512::default()).unwrap();
         assert!(!life.is_alive());
     }
 }

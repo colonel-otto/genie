@@ -277,6 +277,7 @@ impl MasterTable {
                     genie_core::sprite::Graphic {
                         id: id as i16,
                         frames: g.frame_count,
+                        facets: g.angle_count,
                         speed_multiplier: g.speed_multiplier,
                         frame_duration: g.frame_duration,
                         replay_delay: g.replay_delay,
