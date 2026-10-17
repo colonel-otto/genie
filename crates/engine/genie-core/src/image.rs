@@ -71,6 +71,15 @@ pub mod movement {
     pub const TARGET_SHORT_REACH: f32 = f32::from_bits(0x41200000);
 }
 
+pub mod order {
+    /// 10000.0
+    pub const BOX_START: f32 = f32::from_bits(0x461c4000);
+    /// 1.0
+    pub const EDGE: f32 = f32::from_bits(0x3f800000);
+    /// 8.0
+    pub const SPREAD: f32 = f32::from_bits(0x41000000);
+}
+
 pub mod registry {
     /// 7.0
     pub const MARGIN: f32 = f32::from_bits(0x40e00000);

@@ -64,6 +64,10 @@ pub const DAMAGED: i32 = crate::ai_kinds::NOTIFY_DAMAGED;
 /// `699`: a unit is no longer doing an action on this one.
 const NO_LONGER_ON_ME: i32 = crate::ai_kinds::NOTIFY_NO_LONGER_ON_ME;
 
+/// `0x2db`: the order an INTERACT queues on its target (slot 0x230 runs it as the unit's slot
+/// 0x128 on the target, case `0x2db`/`0x325` of `FUN_140c5c170`, which logs no line to name it).
+pub const ORDER_ON_TARGET: i32 = 0x2db;
+
 /// What a notify handler (unit-AI slot 0x238) returns: go on with the next notify.
 const GO_ON: u32 = 2;
 /// "Notify processing returned stop or new action, breaking."
@@ -75,13 +79,14 @@ const BREAK: u32 = 3;
 pub struct QueuedOrder {
     /// `+0x0`: the issuing player.
     pub issuer: i32,
-    /// `+0x4`: the order value (`0x2c6` a move).
+    /// `+0x4`: the order value (`0x2c6` a move, `0x2db` an order on a target).
     pub order: i32,
     /// `+0x8`: below 100 it waits while the unit AI has an action.
     pub priority: i32,
-    /// `+0xc`, `+0x10`: the target and a second id (−1 for none).
+    /// `+0xc`, `+0x10`: the target and its owner (−1 for none; "T", "TOwner" in the log line of
+    /// `FUN_140c55c90`).
     pub target: i32,
-    pub target2: i32,
+    pub target_owner: i32,
     /// `+0x14`..`+0x1c`: the point; `+0x20`: the range.
     pub point: [f32; 3],
     pub range: f32,
@@ -89,8 +94,8 @@ pub struct QueuedOrder {
     pub shown: [f32; 2],
     /// `+0x2c` (a byte): 0 leaves the order in the queue.
     pub ready: bool,
-    /// `+0x30`.
-    pub extra: i32,
+    /// `+0x30`: the target's type (its master id, −1 for none).
+    pub target_type: i32,
 }
 
 impl QueuedOrder {
@@ -103,12 +108,12 @@ impl QueuedOrder {
             order: w(4),
             priority: w(8),
             target: w(12),
-            target2: w(16),
+            target_owner: w(16),
             point: [f(20), f(24), f(28)],
             range: f(32),
             shown: [f(36), f(40)],
             ready: b[44] != 0,
-            extra: w(48),
+            target_type: w(48),
         }
     }
 }
@@ -1210,6 +1215,40 @@ impl UnitAi {
         Ok(fx)
     }
 
+    /// Slot 0x28 (`FUN_140c55c90`, every type's; slot 0x30 jumps to it), an order for the
+    /// queue: a unit in a state above 2 takes none (false), an order of kind −1 neither (true);
+    /// an order that is not immediate goes into the queue (`FUN_140c42640`: before the first
+    /// queued order when `in_front`, else after the last). An immediate one, which keeps or drops
+    /// the current order and runs the queue at once, is not modelled.
+    pub fn queue_order(
+        &mut self,
+        unit_state: u8,
+        order: QueuedOrder,
+        immediate: bool,
+        in_front: bool,
+    ) -> Result<bool, Unsupported> {
+        if 2 < unit_state {
+            return Ok(false);
+        }
+        if order.order == -1 {
+            return Ok(true);
+        }
+        if immediate {
+            return Err(Unsupported("an immediate order for the unit AI's queue"));
+        }
+        if in_front && !self.orders.is_empty() {
+            self.orders.insert(0, order);
+        } else {
+            self.orders.push(order);
+        }
+        Ok(true)
+    }
+
+    /// `FUN_140c4dfa0`: an order in the queue is not ready (its `+0x2c` is 0).
+    pub fn has_unready_order(&self) -> bool {
+        self.orders.iter().any(|o| !o.ready)
+    }
+
     /// The order queue (`FUN_140c5d790`): while the AI has an action, an order below priority
     /// 100 waits; each order runs through slot 0x230 ([`UnitAi::process_order`]): one that is not
     /// ready (0xe) stays and the next is tried, any other result removes it, and 1 (taken) ends
@@ -2111,12 +2150,12 @@ mod tests {
             order: MOVE_ORDER,
             priority: 100,
             target: -1,
-            target2: -1,
+            target_owner: -1,
             point: [x, y, 0.0],
             range: 0.0,
             shown: [x, y],
             ready: true,
-            extra: -1,
+            target_type: -1,
         };
         UnitAi {
             current_order: MOVE_ORDER,
@@ -2296,6 +2335,30 @@ mod tests {
         assert_eq!((u.notifies.len(), u.last_update_time), (0, 60));
     }
 
+    /// Slot 0x28: a unit past state 2 takes no order; one in front goes before the first queued
+    /// order, any other after the last; an order not ready is what `FUN_140c4dfa0` looks for.
+    #[test]
+    fn an_order_for_the_queue_goes_after_the_last_or_before_the_first() {
+        let order = |target, ready| QueuedOrder {
+            target,
+            order: ORDER_ON_TARGET,
+            ready,
+            ..QueuedOrder::default()
+        };
+        let mut ai = UnitAi::default();
+        assert_eq!(ai.queue_order(3, order(1, true), false, false), Ok(false));
+        assert!(ai.orders.is_empty());
+        for (target, front) in [(1, true), (2, false), (3, true)] {
+            assert_eq!(ai.queue_order(2, order(target, true), false, front), Ok(true));
+        }
+        let targets: Vec<i32> = ai.orders.iter().map(|o| o.target).collect();
+        assert_eq!(targets, [3, 1, 2]);
+        assert!(!ai.has_unready_order());
+        ai.queue_order(2, order(4, false), false, false).unwrap();
+        assert!(ai.has_unready_order());
+        assert!(ai.queue_order(2, order(5, true), true, false).is_err());
+    }
+
     #[test]
     fn a_saved_order_and_notify_read_as_the_game_wrote_them() {
         let mut order = [0u8; 52];
@@ -2313,7 +2376,13 @@ mod tests {
         let o = QueuedOrder::from_bytes(&order);
         assert_eq!(
             (
-                o.issuer, o.order, o.priority, o.point, o.range, o.ready, o.extra
+                o.issuer,
+                o.order,
+                o.priority,
+                o.point,
+                o.range,
+                o.ready,
+                o.target_type
             ),
             (1, 710, 100, [91.822914, 52.489582, 0.0], 0.0, true, -1)
         );

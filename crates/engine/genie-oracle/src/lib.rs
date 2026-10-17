@@ -483,6 +483,7 @@ fn mover(
         attack_moving: m.attack_moving != 0,
         last_move: m.last_move_time_value,
         substitute_count: m.consecutive_substitute_count,
+        ignore_units: s.temp_int.clone(),
     }))
 }
 
@@ -1094,6 +1095,7 @@ fn work_masters(
             work.cost = build_cost(&c.build_inventory);
             work.build_time = c.train_location.first().map_or(0, |t| t.train_time);
             work.charge_type = c.charge_type;
+            work.formation_category = c.temp_formation_category;
             let rc = &c.rge_master_combat_object;
             work.weapon_range = rc.weapon_range;
             work.min_range = rc.minimum_weapon_range;
@@ -2053,6 +2055,8 @@ pub struct MoveRow {
     pub attack_moving: bool,
     pub last_move: u32,
     pub substitute_count: i32,
+    /// The unit's ignore list (`+0x670`).
+    pub ignore_units: Vec<i32>,
 }
 
 impl ObjectRow {
@@ -2076,6 +2080,7 @@ impl ObjectRow {
                 attack_moving: m.attack_moving,
                 last_move: m.last_move,
                 substitute_count: m.substitute_count,
+                ignore_units: m.ignore_units.clone(),
             }),
             construction: unit
                 .construction
@@ -2090,6 +2095,7 @@ impl ObjectRow {
 /// A saved moving object's [`MoveRow`]; a level whose path the world's table lacks is left out.
 fn saved_movement(object: &genie_save::Object, paths: &[Path]) -> Option<MoveRow> {
     let m = object.moving_part()?;
+    let s = object.static_part()?;
     Some(MoveRow {
         forward: vec3(&m.orientation_forward_value),
         right: vec3(&m.orientation_right_value),
@@ -2110,6 +2116,7 @@ fn saved_movement(object: &genie_save::Object, paths: &[Path]) -> Option<MoveRow
         attack_moving: m.attack_moving != 0,
         last_move: m.last_move_time_value,
         substitute_count: m.consecutive_substitute_count,
+        ignore_units: s.temp_int.clone(),
     })
 }
 
@@ -2996,6 +3003,11 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
                     "last move",
                     a.last_move.to_string(),
                     b.last_move.to_string(),
+                );
+                field(
+                    "ignore units",
+                    format!("{:?}", a.ignore_units),
+                    format!("{:?}", b.ignore_units),
                 );
             }
             // a building's movement part without velocity data or paths is not modelled

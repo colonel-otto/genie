@@ -501,6 +501,7 @@ mod tests {
             attack_moving: false,
             last_move: 0,
             substitute_count: 0,
+            ignore_units: Vec::new(),
         }
     }
 

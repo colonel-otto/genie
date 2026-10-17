@@ -236,9 +236,12 @@ fn player_1_s_scout_and_sheep_from_a_save_match_the_game_object_by_object() {
     // between its owner's turns, its unit AI runs the next of its queued moves (FUN_140c68980):
     // the AI takes the order and its priority, the scout plans the new path and walks it; in 860
     // its step meets units of its own player and outranks none of them (by their last human
-    // order times, `+0x650`, which each human order sets); every object, its unit AI's queues
-    // and player 1's sight through the save after 920, before the INTERACT of two units in 927
-    let Some(found) = differences(680, 240, 1) else {
+    // order times, `+0x650`, which each human order sets); in 927 a queued INTERACT sends its
+    // two builders 9171 and 9173 to the sheep 9520: sorted by id, each lists the other in its
+    // ignore list and its unit AI queues order 0x2db at its offset from their centroid added to
+    // the order's point (108.700745 and 108.05117); every object, its unit AI's queues and player
+    // 1's sight through the save after 1113, before the house 10026 is finished (1115)
+    let Some(found) = differences(680, 433, 1) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

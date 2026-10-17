@@ -1,9 +1,10 @@
-//! INTERACT's order to a single unit (`0x140e68b90`, its loop over the units without a group) and
-//! the work command it gives (object slot 37, `FUN_14106ff70`, through slot 0x128 `FUN_141211b80`
-//! and slot 0x7e8 `FUN_141227190`): the unit takes the master and the task the task finder picks
-//! for the target ([`crate::tasks`]), and the task's action replaces its action list. The slice
-//! builds the Hunt action ([`crate::hunt`]); other actions, orders to points and orders to several
-//! units are not modelled yet.
+//! INTERACT's order (`0x140e68b90`) to its units without a group, each at once or through its
+//! unit AI's queue, several of them at their offsets around the order's point, and the work
+//! command it gives (object slot 37, `FUN_14106ff70`, through slot 0x128 `FUN_141211b80` and slot
+//! 0x7e8 `FUN_141227190`): the unit takes the master and the task the task finder picks for the
+//! target ([`crate::tasks`]), and the task's action replaces its action list. The slice builds
+//! the Hunt action ([`crate::hunt`]); other actions, orders to points and unit groups are not
+//! modelled yet.
 
 use crate::attack::{Arms, Engagement, gaps};
 use crate::hunt::{HUNT, HuntAction, HuntTask, Quarry};
@@ -123,21 +124,112 @@ impl Turns {
         })
     }
 
-    /// INTERACT (`0x140e68b90`) to its units, after their unit AIs reset: one unit takes the order
-    /// itself (the loop of `LAB_140e69a3c`); several units, which the handler gives places around
-    /// the target by their offsets, are not modelled.
+    /// INTERACT (`0x140e68b90`) to its units, after their unit AIs reset. The splitter
+    /// ([`Turns::loose_units`]) leaves the units out of any group; several of a human player
+    /// whose box ([`Turns::order_spread`]) is narrow enough take places around the order's point
+    /// at their offsets from their centroid (the loop of `LAB_140e6920a`), any other each the
+    /// point itself (the loop of `LAB_140e69a3c`), in the splitter's order
+    /// ([`Turns::interact_unit`]). A single unit the world does not hold takes nothing.
     pub(crate) fn interact(
         &mut self,
         player: usize,
         units: &[i32],
         order: &Interact,
     ) -> Result<(), Unsupported> {
-        let id = match units {
+        match units {
             [] => return Ok(()),
-            &[id] => id,
-            _ => return Err(Unsupported("an order to several units (their offsets)")),
+            &[id] if self.place(id).is_none() => return Ok(()),
+            _ => {}
+        }
+        let loose = self.loose_units(units)?;
+        // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
+        if 1 < loose.len() && self.players[player].computer {
+            return Err(Unsupported(
+                "an order to several units of a computer player (FUN_140d61870)",
+            ));
+        }
+        let centroid = if 1 < loose.len() {
+            self.order_spread(&loose, order.queued)?
+        } else {
+            None
         };
-        let Some(Place::Live(p, idx)) = self.place(id) else {
+        for (i, &id) in loose.iter().enumerate() {
+            let others: Vec<i32> = loose
+                .iter()
+                .enumerate()
+                .filter(|&(j, _)| j != i)
+                .map(|(_, &u)| u)
+                .collect();
+            self.interact_unit(player, id, &others, centroid, order)?;
+        }
+        Ok(())
+    }
+
+    /// The order splitter (`FUN_140fd9dc0` -> `FUN_140fd9ae0` -> `FUN_140fd76d0`) on units that
+    /// form no group: it sorts them by id (`FUN_140fd7280` with `LAB_140fd89b0`), takes at most
+    /// 60, drops an id the next one repeats, and leaves out of any group a unit above type 69 whose
+    /// master's formation category is 0 (villagers). A unit in a group (`+0x6d0`), one it may
+    /// group and an order to more than 60 units are not modelled.
+    fn loose_units(&self, units: &[i32]) -> Result<Vec<i32>, Unsupported> {
+        if 60 < units.len() {
+            return Err(Unsupported("an order to more than 60 units"));
+        }
+        let mut sorted = units.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        let mut loose = Vec::with_capacity(sorted.len());
+        for id in sorted {
+            let Some((p, u)) = self.object(id) else {
+                continue;
+            };
+            let master = self.master_of(p, u.life.master_id)?;
+            if master.kind <= 69 || master.formation_category != 0 {
+                return Err(Unsupported("a unit the order splitter may group"));
+            }
+            loose.push(id);
+        }
+        Ok(loose)
+    }
+
+    /// The centroid of an order's loose units ([`centroid`]) over those that move (above type 29
+    /// with speed), or all of a queued order.
+    fn order_spread(&self, loose: &[i32], queued: bool) -> Result<Option<[f32; 2]>, Unsupported> {
+        let mut points = Vec::with_capacity(loose.len());
+        for &id in loose {
+            let Some((p, u)) = self.object(id) else {
+                continue;
+            };
+            let master = self.master_of(p, u.life.master_id)?;
+            let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
+            if (MOVING <= master.kind && 0.0 < speed) || queued {
+                points.push([u.position[0], u.position[1]]);
+            }
+        }
+        Ok(centroid(&points))
+    }
+
+    /// One unit of INTERACT: a unit that does not move is not modelled. Its ignore list empties
+    /// (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the order's other units
+    /// (`FUN_14118c790`). With a centroid its point is its offset from it added to the order's,
+    /// kept `EDGE` inside the map. A unit without a unit AI, or of an order that is not queued and
+    /// either direct (`+0x14`) or to a unit AI with every queued order ready (`FUN_140c4dfa0`),
+    /// takes the order itself (slot 0x128); any other unit AI queues order `0x2db` on the target
+    /// (slot 0x28, priority 100, the order's point shown, ready when direct). An order to one unit
+    /// queued through slot 0x30, whose shown point and ready flag the game reads past the
+    /// arguments it passes, and the readiness pass after an order neither queued nor direct
+    /// (`FUN_140c42b60`) are not modelled.
+    fn interact_unit(
+        &mut self,
+        player: usize,
+        id: i32,
+        others: &[i32],
+        centroid: Option<[f32; 2]>,
+        order: &Interact,
+    ) -> Result<(), Unsupported> {
+        let Some(place) = self.place(id) else {
+            return Ok(());
+        };
+        let Place::Live(p, idx) = place else {
             return Err(Unsupported(
                 "an order to a unit the slice does not hold live",
             ));
@@ -150,24 +242,67 @@ impl Turns {
         if master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0) {
             return Err(Unsupported("an order to an object that does not move"));
         }
+        let target = self
+            .object(order.target)
+            .map(|(tp, t)| (t.life.master_id, tp));
+        let map = self.spatial.map;
         let unit = &mut self.players[player].objects[idx];
-        // FUN_141197da0 empties the unit's ignore list (`+0x678`), which the slice does not hold;
-        // slot 0x2a0 (`FUN_14115d450`) with 1: it waits to move
-        unit.mover
+        let mover = unit
+            .mover
             .as_mut()
-            .ok_or(Unsupported("an ordered unit without movement state"))?
-            .waiting = 1;
-        if unit.ai.is_some() && (order.queued || !order.direct) {
+            .ok_or(Unsupported("an ordered unit without movement state"))?;
+        mover.ignore_units.clear();
+        mover.waiting = 1;
+        mover.ignore_units.extend_from_slice(others);
+        let point = match centroid {
+            None => order.point,
+            Some(c) => offset_point([unit.position[0], unit.position[1]], c, order.point, map),
+        };
+        let takes_it = unit
+            .ai
+            .as_ref()
+            .is_none_or(|ai| !order.queued && (order.direct || !ai.has_unready_order()));
+        if takes_it {
+            // slot 0x128 with 1 (FUN_141211b80): `+0xa14` is 1 and a unit AI's order queue
+            // empties (FUN_140c5e010); FUN_14106c590 passes the order on unless the target is the
+            // unit itself (and counts `+0x888`, not held)
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.orders.clear();
+            }
+            if order.target == id {
+                return Ok(());
+            }
+            return self.order_work(player, idx, &Interact { point, ..*order });
+        }
+        if centroid.is_none() {
+            return Err(Unsupported("an order its unit AI queues through slot 0x30"));
+        }
+        let (target_type, target_owner) =
+            target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
+        let queued = crate::unit_ai::QueuedOrder {
+            issuer: player as i32,
+            order: crate::unit_ai::ORDER_ON_TARGET,
+            priority: 100,
+            target: if target.is_some() { order.target } else { -1 },
+            target_owner,
+            point: [point[0], point[1], 0.0],
+            range: 0.0,
+            shown: order.point,
+            ready: order.direct,
+            target_type,
+        };
+        let state = unit.life.state;
+        let ai = unit
+            .ai
+            .as_mut()
+            .ok_or(Unsupported("unreachable: no unit AI"))?;
+        ai.queue_order(state, queued, false, false)?;
+        if !order.queued && !order.direct {
             return Err(Unsupported(
-                "an order its unit AI takes (its slots 0x28, 0x30)",
+                "the readiness pass after an order neither queued nor direct (FUN_140c42b60)",
             ));
         }
-        // slot 0x128 (FUN_141211b80): `+0xa14` and the unit AI's `+0x18`, which the slice does not
-        // hold; FUN_14106c590 passes the order on unless the target is the unit itself
-        if order.target == id {
-            return Ok(());
-        }
-        self.order_work(player, idx, order)
+        Ok(())
     }
 
     /// MOVE (`FUN_140e67800`) to its units, after their unit AIs reset: one unit takes the order
@@ -784,5 +919,101 @@ impl Turns {
         let unit = &mut self.players[player].objects[idx];
         unit.work_rate_powerup = 0.0;
         Ok(())
+    }
+}
+
+/// The box of an order's units (`0x140e68b90`, the loop after the splitter): the least and the
+/// greatest x and y, where a value below the least so far moves only the least (the greatest
+/// starts at 0, the least at `BOX_START`), and the sums. A box at most `SPREAD` each way gives
+/// the centroid (the sums alone without a point); a wider one None.
+fn centroid(points: &[[f32; 2]]) -> Option<[f32; 2]> {
+    /// `DAT_142eea788`.
+    const BOX_START: f32 = crate::image::order::BOX_START;
+    /// `DAT_142eb9430`.
+    const SPREAD: f32 = crate::image::order::SPREAD;
+    let (mut least, mut most, mut sum) = ([BOX_START; 2], [0.0f32; 2], [0.0f32; 2]);
+    for p in points {
+        for k in 0..2 {
+            let v = p[k];
+            if least[k] <= v {
+                if most[k] < v {
+                    most[k] = v;
+                }
+            } else {
+                least[k] = v;
+            }
+            sum[k] += v;
+        }
+    }
+    if SPREAD < most[0] - least[0] || SPREAD < most[1] - least[1] {
+        return None;
+    }
+    if !points.is_empty() {
+        let n = points.len() as f32;
+        sum = [sum[0] / n, sum[1] / n];
+    }
+    Some(sum)
+}
+
+/// A unit's point in an order to several (`0x140e68b90`): its offset from their centroid added to
+/// the order's point, `EDGE` inside the map where it falls off it.
+fn offset_point(
+    position: [f32; 2],
+    centroid: [f32; 2],
+    point: [f32; 2],
+    map: [i32; 2],
+) -> [f32; 2] {
+    /// `DAT_14330eb8c`.
+    const EDGE: f32 = crate::image::order::EDGE;
+    let edge = |v: f32, size: i32| {
+        if v < 0.0 {
+            EDGE
+        } else if size as f32 <= v {
+            size as f32 - EDGE
+        } else {
+            v
+        }
+    };
+    [
+        edge(position[0] - centroid[0] + point[0], map[0]),
+        edge(position[1] - centroid[1] + point[1], map[1]),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// MarvinBlue/426048731's INTERACT of 927: player 1's builders 9171 and 9173 stand side by
+    /// side; the queued orders of the save after 927 hold their points around the order's.
+    #[test]
+    fn units_of_an_order_take_their_offsets_from_their_centroid() {
+        let (a, b) = ([104.32466, 39.299885], [103.67509, 39.299885]);
+        let c = centroid(&[a, b]).unwrap();
+        let point = [108.37596, 43.91338];
+        assert_eq!(
+            offset_point(a, c, point, [120, 120]),
+            [108.700745, 43.91338]
+        );
+        assert_eq!(offset_point(b, c, point, [120, 120]), [108.05117, 43.91338]);
+    }
+
+    /// A unit left of the first one counted moves only the least x, so the greatest stays 0 and
+    /// the box passes however far apart the units stand; a unit 9 tiles right of the first does
+    /// not.
+    #[test]
+    fn the_box_of_an_order_moves_only_its_least_value_for_a_lower_one() {
+        assert!(centroid(&[[50.0, 50.0], [30.0, 50.0]]).is_some());
+        assert_eq!(centroid(&[[30.0, 50.0], [39.0, 50.0]]), None);
+        assert_eq!(centroid(&[[30.0, 50.0], [38.0, 50.0]]), Some([34.0, 50.0]));
+    }
+
+    #[test]
+    fn a_point_off_the_map_stays_inside_its_edge() {
+        let c = [10.0, 10.0];
+        assert_eq!(
+            offset_point([5.0, 15.0], c, [2.0, 118.0], [120, 120]),
+            [1.0, 119.0]
+        );
     }
 }

@@ -115,6 +115,10 @@ pub struct Mover {
     pub last_move: u32,
     /// `+0x874`, `mConsecutiveSubstituteCount`: above 2 a walk counts its waypoint reached.
     pub substitute_count: i32,
+    /// The unit's ignore list (`+0x670`, count `+0x678`; the save's `numberUnits` and `tempInt`
+    /// of the static part): the other units of an order to several (`FUN_14118c790`), which the
+    /// short pather ignores for a top path made this update. A stop empties it.
+    pub ignore_units: Vec<i32>,
 }
 
 /// The moving unit, as the motion step needs it besides its [`Mover`].
@@ -912,6 +916,7 @@ impl Mover {
             v.acceleration[2] = 0.0;
         }
         self.waiting = 0;
+        self.ignore_units.clear();
         Ok(())
     }
 
@@ -1071,7 +1076,8 @@ impl Mover {
                         }
                         if way <= TARGET_SHORT_REACH {
                             let near = self.near_goal(way, gap, to_end);
-                            let ignore = self.ignore_list(me, world, target, target_id)?;
+                            let ignore =
+                                self.ignore_list(me, world, target, target_id, plan.now)?;
                             let r = self.short_path(
                                 me,
                                 world,
@@ -1139,7 +1145,7 @@ impl Mover {
                 if SHORT_PATHER && !failed && (way <= SHORT_REACH || near) {
                     planned = false;
                     path.points.clear();
-                    let ignore = self.ignore_list(me, world, target, target_id)?;
+                    let ignore = self.ignore_list(me, world, target, target_id, plan.now)?;
                     let r = self.short_path(
                         me,
                         world,
@@ -1391,16 +1397,17 @@ impl Mover {
         Step::Walk
     }
 
-    /// The objects the short pather ignores (`FUN_14114ece0`): the unit, its target, and with a
-    /// target the allied workers about to work on it near a standing unit, which the slice does
-    /// not model (it stops when any object is that near). The unit's own list (`+0x670`, for a
-    /// top path made this update) is empty in the slice.
+    /// The objects the short pather ignores (`FUN_14114ece0`): the unit, its target, the unit's
+    /// own list but itself when its top path was made this update (`+0x858`'s path at `+0x8`),
+    /// and with a target the allied workers about to work on it near a standing unit, which the
+    /// slice does not model (it stops when any object is that near).
     fn ignore_list(
         &self,
         me: &Me,
         world: &Spatial,
         target: Option<&Placed>,
         target_id: i32,
+        now: u32,
     ) -> Result<Vec<i32>, Unsupported> {
         let mut list = vec![me.id];
         if target.is_some() {
@@ -1416,6 +1423,9 @@ impl Mover {
                     ));
                 }
             }
+        }
+        if self.paths.last().is_some_and(|top| top.created == now) {
+            list.extend(self.ignore_units.iter().filter(|&&id| id != me.id));
         }
         Ok(list)
     }
@@ -1883,6 +1893,7 @@ mod tests {
             attack_moving: false,
             last_move: 0,
             substitute_count: 0,
+            ignore_units: Vec::new(),
         }
     }
 

@@ -118,6 +118,9 @@ pub struct Master {
     pub charge_type: i16,
     /// `+0x61c`, `attribute_max_amount`: how much an object of this master carries.
     pub capacity: i16,
+    /// `+0x8bc`, `mFormationCategory`: 0 (villagers) keeps a unit out of the groups an order's
+    /// splitter forms (`FUN_140fd76d0`).
+    pub formation_category: u8,
     /// The resource storage (`attribute_type_held`, `attribute_amount_held`, `attribute_flag`:
     /// `+0x60a`, `+0x610`, `+0x628`): what an object of this master adds to its player's
     /// attributes, by its flag.
