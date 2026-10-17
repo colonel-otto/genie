@@ -166,6 +166,24 @@ fn the_cow_s_move_from_a_save_matches_the_game_object_by_object() {
     assert_eq!(found, Vec::<String>::new());
 }
 
+#[test]
+fn the_felled_tree_s_wood_from_a_save_matches_the_game_for_its_villager() {
+    // updates 682 to 1180 for 9181: its second hit in 1127 fells the tree 9357 (dead in 1128, its
+    // falling sprite's facet drawn from the Object stream); in 1168 its Attack ends (code 5) and
+    // the Hunt walks to the tree (state 4, a quiet MoveTo to it, in range in 1169), faces it in
+    // 1170 (state 6, its moving sprite) and gathers from 1171 on (state 7: the work rate times the
+    // task's work value times dt, the wood moving from the tree to its load); the cow 9517 froze
+    // in 1165 (its walk meets the cow 9519), so only 9181 is checked
+    let Some(found) = differences(680, 500, 2) else {
+        return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
+    };
+    let found: Vec<_> = found
+        .into_iter()
+        .filter(|d| d.starts_with("9181:"))
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+}
+
 /// Not pinned: what the slice gets wrong some ticks after a save, for the tick FD-008 works on
 /// (`GENIE_SNAPSHOT_START`, default 679; `GENIE_SNAPSHOT_TICKS`, default 1), for player 2 or
 /// `GENIE_SNAPSHOT_PLAYER`.

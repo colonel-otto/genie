@@ -946,7 +946,9 @@ fn work_masters(
         owner_type: t.owner_type,
         holding_attr: t.holding_attr,
         attribute_type: t.attribute_type,
+        attribute_type2: t.attribute_type2,
         attribute_type3: t.attribute_type3,
+        attribute_type4: t.attribute_type4,
         work_val1: t.work_val1,
         work_range: t.work_range,
         enablement: t.enablement_resource_id,
@@ -981,6 +983,7 @@ fn work_masters(
         work.obstruction_class = s.obstruction_class;
         work.object_flags = s.object_flags;
         work.hit_points = s.read_temp_6;
+        work.capacity = s.attribute_max_amount;
         if let Some(a) = action_part(m) {
             work.work_rate = a.work_rate;
             if let Some(tasks) = a.tasks.as_ref() {

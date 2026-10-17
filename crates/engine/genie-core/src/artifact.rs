@@ -65,7 +65,12 @@ impl Artifact {
                     .goal
                     .ok_or(Unsupported("an Artifact MoveTo without its point"))?;
                 self.move_to = Some(MoveTo::Moving);
-                self.move_to = Some(start_walk(walk.ok_or_else(need)?, Goal::Point(goal), 0.0)?);
+                self.move_to = Some(start_walk(
+                    walk.ok_or_else(need)?,
+                    Goal::Point(goal),
+                    0.0,
+                    false,
+                )?);
             }
             Some(MoveTo::Moving) => self.move_to = Some(walk_on(walk.ok_or_else(need)?)?),
             Some(MoveTo::Arrived) => {

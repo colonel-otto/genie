@@ -67,9 +67,16 @@ pub enum Goal {
 
 /// A starting MoveTo's update (state 3): unless the unit is within `range` of its goal already, it
 /// asks for a path (`FUN_14114e410`) and turns to state 4, whose set_state runs the update again at
-/// once ([`walk_on`]); returns the MoveTo's state after it. A unit already in range (set_state 1)
-/// is not modelled.
-pub fn start_walk(walk: Walk<'_>, goal: Goal, range: f32) -> Result<MoveTo, Unsupported> {
+/// once ([`walk_on`]); returns the MoveTo's state after it. A unit already in range ends the
+/// MoveTo (set_state 1, code 0) when it has a unit AI not on order 711 or 733; `quiet` says the
+/// caller's MoveTo is quiet (its `+0x60` set, so set_state 1 keeps the sprite and `+0x7b8`) and
+/// the unit's AI qualifies. Any other unit in range is not modelled.
+pub fn start_walk(
+    walk: Walk<'_>,
+    goal: Goal,
+    range: f32,
+    quiet: bool,
+) -> Result<MoveTo, Unsupported> {
     let (point, target, radius) = match goal {
         Goal::Target(id) => {
             let t = walk
@@ -86,6 +93,9 @@ pub fn start_walk(walk: Walk<'_>, goal: Goal, range: f32) -> Result<MoveTo, Unsu
     let ground = [mover.stats.radius[0], mover.stats.radius[1]];
     let gap = footprint_gap(walk.me.position, ground, point, radius);
     if gap * gap <= range * range {
+        if quiet {
+            return Ok(MoveTo::Arrived);
+        }
         return Err(Unsupported(
             "a MoveTo in range when it starts (set_state 1)",
         ));
@@ -141,7 +151,7 @@ impl MoveToAction {
                     .goal
                     .ok_or(Unsupported("a MoveTo of its own to a target object"))?;
                 self.state = MoveTo::Moving;
-                self.state = start_walk(walk, Goal::Point(goal), self.range)?;
+                self.state = start_walk(walk, Goal::Point(goal), self.range, false)?;
                 Ok(())
             }
             MoveTo::Arrived => Err(Unsupported("a MoveTo that arrived (its removal)")),

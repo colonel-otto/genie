@@ -26,9 +26,13 @@ pub struct Task {
     pub owner_type: u8,
     /// `+0x19`, `holding_attr` (`carry_check`): 1 wants a target holding the task's resource.
     pub holding_attr: u8,
-    /// `+0x20` and `+0x24`, `attribute_type` and `attribute_type3` (`resource_in`, `resource_out`).
+    /// `+0x20` to `+0x26`, `attribute_type` to `attribute_type4` (`resource_in`,
+    /// `resource_multiplier`: the attribute that scales the gathering, `resource_out`,
+    /// `unused_resource`).
     pub attribute_type: i16,
+    pub attribute_type2: i16,
     pub attribute_type3: i16,
+    pub attribute_type4: i16,
     /// `+0x28`, the save's `work_val1`.
     pub work_val1: f32,
     /// `+0x30`: how near the target the work is done.
@@ -53,7 +57,9 @@ impl Default for Task {
             owner_type: 0,
             holding_attr: 0,
             attribute_type: -1,
+            attribute_type2: -1,
             attribute_type3: -1,
+            attribute_type4: -1,
             work_val1: 0.0,
             work_range: 0.0,
             enablement: -1,
@@ -101,6 +107,8 @@ pub struct Master {
     /// `charge_type` (`+0x922`): 6 and 7 add `charge_event` (`+0x920`) to the range against some
     /// targets (slot 0x2f8).
     pub charge_type: i16,
+    /// `+0x61c`, `attribute_max_amount`: how much an object of this master carries.
+    pub capacity: i16,
     /// The resource storage (`attribute_type_held`, `attribute_amount_held`, `attribute_flag`:
     /// `+0x60a`, `+0x610`, `+0x628`): what an object of this master adds to its player's
     /// attributes, by its flag.

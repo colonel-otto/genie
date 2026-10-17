@@ -126,6 +126,9 @@ pub struct Victim {
     pub goto_sleep: bool,
     /// Its player's attributes 272 and 273, which a higher or lower attacker's hits add.
     pub elevation: [f32; 2],
+    /// Its master's class and first storage amount (`+0x610`), which a gatherer reads.
+    pub class: i16,
+    pub storage: f32,
 }
 
 /// What the Attack's update reads of its unit besides its movement, and changes.
@@ -156,7 +159,7 @@ pub struct Strike<'a> {
 
 /// Slot 0x68 (`FUN_141217000`): the unit's sprite becomes `g` unless it is already; a new sprite
 /// starts a new instance (`FUN_1413b2ef0`).
-fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mut Well512) {
+pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mut Well512) {
     if sprite.is_some_and(|s| s.graphic.id == g.id) {
         return;
     }
@@ -435,7 +438,7 @@ impl Attack {
             Some(MoveTo::Start) => {
                 self.move_to = Some(MoveTo::Moving);
                 let goal = Goal::Target(self.target);
-                self.move_to = Some(start_walk(walk.reborrow(), goal, self.range)?);
+                self.move_to = Some(start_walk(walk.reborrow(), goal, self.range, false)?);
                 0
             }
             Some(MoveTo::Moving) => {

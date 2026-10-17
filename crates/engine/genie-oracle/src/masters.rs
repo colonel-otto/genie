@@ -74,7 +74,9 @@ fn dat_task(t: &genie_dat::de::Task) -> work::Task {
         owner_type: t.target_diplomacy,
         holding_attr: t.carry_check,
         attribute_type: t.resource_in,
+        attribute_type2: t.resource_multiplier,
         attribute_type3: t.resource_out,
+        attribute_type4: t.unused_resource,
         work_val1: t.work_value1,
         work_range: t.work_range,
         enablement: t.enabled.unwrap_or(-1),
@@ -115,6 +117,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         cost,
         work_rate: unit.bird.as_ref().map_or(0.0, |b| b.work_rate),
         hit_points: unit.hit_points,
+        capacity: unit.resource_capacity,
         build_time: unit
             .creatable
             .as_ref()

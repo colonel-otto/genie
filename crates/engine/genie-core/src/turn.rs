@@ -16,7 +16,7 @@ use crate::artifact::Artifact;
 use crate::attack::{Strike, Victim};
 use crate::build::{BUILD, BuildAction, BuildTask, Construction, Site, Walk};
 use crate::fly::Fly;
-use crate::hunt::HuntAction;
+use crate::hunt::{Gatherer, HuntAction, HuntSprites};
 use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::masters::Masters;
 use crate::move_to::MoveToAction;
@@ -195,6 +195,10 @@ struct Context<'a> {
     victim: Option<&'a mut Victim>,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
     mode_1: bool,
+    /// The owner's attributes, which a gatherer's productivity reads.
+    attributes: &'a [f32],
+    /// The graphics, for the sprites a hunter takes.
+    graphics: &'a std::collections::BTreeMap<i16, Graphic>,
     /// The owner's id.
     player: usize,
 }
@@ -244,9 +248,9 @@ impl Context<'_> {
 }
 
 impl Unit {
-    /// The target of its attack, if it attacks (a hunt's Attack sub-action).
+    /// The target of its hunt, which it attacks or gathers from.
     fn attack_target(&self) -> Option<i32> {
-        self.hunt.and_then(|h| h.attack).map(|a| a.target)
+        self.hunt.map(|h| h.target)
     }
 
     /// Its velocity is not 0 (object slot 0x5c8, `FUN_1411583d0`).
@@ -368,6 +372,30 @@ impl Unit {
             let victim = c.victim.take().ok_or(Unsupported(
                 "an attack's target the slice does not hold live",
             ))?;
+            // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
+            let productivity = usize::try_from(hunt.task.productivity)
+                .ok()
+                .and_then(|i| c.attributes.get(i))
+                .copied()
+                .filter(|&v| 0.0 < v)
+                .unwrap_or(1.0);
+            let g = |id: i16| (0 <= id).then(|| c.graphics.get(&id).copied()).flatten();
+            let sprites = HuntSprites {
+                moving: g(hunt.task.sprites[0]),
+                working: g(hunt.task.sprites[2]),
+                carrying: g(hunt.task.sprites[3]),
+                standing: g(master.standing_sprite),
+            };
+            let mut gather = Gatherer {
+                held_kind: &mut self.life.attribute_type,
+                held: &mut self.life.amount,
+                work_rate: self.work_rate_powerup + master.work_rate,
+                capacity: f32::from(master.capacity),
+                productivity,
+                target_class: victim.class,
+                target_storage: victim.storage,
+                sprites,
+            };
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
@@ -382,7 +410,7 @@ impl Unit {
                 victim,
                 sprite_rng,
             };
-            hunt.update(walk, computer, &mut strike)?;
+            hunt.update(walk, computer, &mut strike, &mut gather)?;
         }
         // the motion step may have put the unit onto a waypoint it reached
         if let Some(p) = c.spatial.get(self.id) {
@@ -506,7 +534,8 @@ impl Turns {
             self.players.iter().enumerate().find_map(|(p, player)| {
                 player.objects.iter().find(|u| u.id == id).map(|u| (p, u))
             })?;
-        let kind = self.masters.get(p)?.get(u.life.master_id)?.kind;
+        let master = self.masters.get(p)?.get(u.life.master_id)?;
+        let kind = master.kind;
         let attributes = &self.players[p].attributes;
         let at = |i: usize| attributes.get(i).copied().unwrap_or(0.0);
         Some(Victim {
@@ -518,6 +547,8 @@ impl Turns {
             kind,
             goto_sleep: u.life.goto_sleep,
             elevation: [at(272), at(273)],
+            class: master.class,
+            storage: master.storage.first().map_or(0.0, |s| s.1),
         })
     }
 
@@ -1052,6 +1083,8 @@ impl Turns {
                     victim: victim.as_mut(),
                     mode_1: self.mode_680 == 1,
                     player: p,
+                    attributes: &player.attributes,
+                    graphics: &self.graphics,
                 };
                 let result = unit.update(&mut c, &mut player.objects);
                 self.spatial.set_moving(unit.id, unit.moving());

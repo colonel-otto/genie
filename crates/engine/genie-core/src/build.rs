@@ -122,7 +122,7 @@ impl BuildAction {
             (4, Some(MoveTo::Start)) => {
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.task.range;
-                self.move_to = Some(start_walk(walk, Goal::Target(self.target), range)?);
+                self.move_to = Some(start_walk(walk, Goal::Target(self.target), range, false)?);
                 Ok(())
             }
             (4, Some(MoveTo::Moving)) => {
@@ -147,7 +147,7 @@ impl BuildAction {
             (CLEAR, Some(MoveTo::Start)) => {
                 self.move_to = Some(MoveTo::Moving);
                 let goal = self.goal.expect("set_state(223) sets the goal");
-                self.move_to = Some(start_walk(walk, Goal::Point(goal), 0.0)?);
+                self.move_to = Some(start_walk(walk, Goal::Point(goal), 0.0, false)?);
                 Ok(())
             }
             (CLEAR, Some(MoveTo::Moving)) => {

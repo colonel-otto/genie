@@ -1,21 +1,36 @@
-//! The Hunt action (`TRIBE_Action_Hunt`, type 110, vtable `0x142ed70f8`) up to the walk to its
-//! target: a villager sent to a tree (or an animal) with a gather task attacks it first (state 12,
-//! an [`Attack`] sub-action); a target that is dead already, the attack's end and the gathering
-//! after it are not modelled yet.
+//! The Hunt action (`TRIBE_Action_Hunt`, type 110, vtable `0x142ed70f8`): a villager sent to a
+//! tree (or an animal) with a gather task attacks it first (state 12, an [`Attack`] sub-action);
+//! once it is dead the villager walks to it (state 4, a MoveTo sub-action), faces it (6) and
+//! gathers (7). The drop-off (8 on) is not modelled yet.
 //!
 //! 158041: constructor `FUN_140ac2dd0`, start (slot 5) `0x140ac49b0`, update (slot 6)
 //! `0x140ac7a00`, set_state (slot 16) `0x140ac60e0`.
 
-use crate::attack::{Arms, Attack, Engagement, Strike};
-use crate::move_to::Walk;
-use crate::movement::Mover;
+use crate::attack::{Arms, Attack, Engagement, Strike, Victim, set_sprite};
+use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_on};
+use crate::movement::{Mover, footprint_gap};
+use crate::sprite::Graphic;
 use crate::unit_ai::Unsupported;
 
 /// The Hunt action's type, which word 9 adds.
 pub const HUNT: i16 = 110;
 
-/// The states the slice models: 12, attacking the target (`0xc`).
+/// The states the slice models: 4 walking to a dead target, 6 facing it, 7 gathering from it,
+/// 12 attacking it (`0xc`).
+pub const WALK: u8 = 4;
+pub const FACE: u8 = 6;
+pub const GATHER: u8 = 7;
 pub const ATTACK: u8 = 12;
+
+/// A MoveTo starts in place within this gap of its target (`0x140aa2100`).
+const ARRIVED: f32 = 0.01;
+/// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
+const REMAINDER: f32 = 0.1;
+/// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
+const LAST_BIT: f32 = 0.001;
+/// A task whose `attribute_type4` is this (`0x124`) is a farm's: its gathering and its
+/// `FUN_140ac44b0` read player attribute 292, which the slice does not model.
+const FARM_TASK: i16 = 0x124;
 
 /// A building's master type (`'P'`).
 const BUILDING: u8 = 80;
@@ -36,6 +51,9 @@ pub struct HuntAction {
     pub task: HuntTask,
     /// The sub-action of state 12.
     pub attack: Option<Attack>,
+    /// The sub-action of state 4: a MoveTo to the target within the task's range, quiet (its
+    /// `+0x60` and `+0x61` set: its end changes neither the sprite nor the unit's notifies).
+    pub move_to: Option<MoveTo>,
 }
 
 /// What the hunt reads of its task (`+0x48`): its id in the master's list (`+0xa`; the work command
@@ -48,6 +66,39 @@ pub struct HuntTask {
     pub resource: i16,
     /// Its moving, proceeding, working and carrying sprites (`+0x40`..`+0x58`).
     pub sprites: [i16; 4],
+    /// `+0x28`, `work_val1`: what one work gathers per second and work rate.
+    pub work_value: f32,
+    /// `+0x22`, `attribute_type2`: the player's attribute that scales the gathering, -1 none.
+    pub productivity: i16,
+    /// `+0x26`, `attribute_type4`.
+    pub kind4: i16,
+}
+
+/// The hunt's sprites as graphics: the task's moving, working and carrying sprites, and the
+/// master's standing sprite, which slot 0x68 takes for none.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct HuntSprites {
+    pub moving: Option<Graphic>,
+    pub working: Option<Graphic>,
+    pub carrying: Option<Graphic>,
+    pub standing: Option<Graphic>,
+}
+
+/// What the gathering reads of its unit and changes besides the attack's [`Strike`].
+pub struct Gatherer<'a> {
+    /// `+0x308`, `+0x310`: what the unit carries.
+    pub held_kind: &'a mut i16,
+    pub held: &'a mut f32,
+    /// The master's work rate (`+0x798`) plus the unit's powerup (slot 0x6e8, `+0xa30`).
+    pub work_rate: f32,
+    /// The master's `attribute_max_amount` (`+0x61c`): what the unit carries at most.
+    pub capacity: f32,
+    /// The player's attribute the task's `attribute_type2` names, when above 0; else 1.
+    pub productivity: f32,
+    /// The target's master's class and its first storage amount (`+0x610`).
+    pub target_class: i16,
+    pub target_storage: f32,
+    pub sprites: HuntSprites,
 }
 
 /// What the hunt reads of its target when it starts.
@@ -100,6 +151,7 @@ impl HuntAction {
             target_class: target.class,
             task,
             attack: None,
+            move_to: None,
         };
         if 0.0 < target.amount {
             let kind = task.resource;
@@ -185,39 +237,235 @@ impl HuntAction {
 
     /// The teardown (`FUN_140a73fc0`): the sub-actions go; the caller releases the target (slot
     /// 0x180).
-    pub fn tear_down(&mut self, mover: Option<&mut Mover>) -> Result<(), Unsupported> {
+    pub fn tear_down(&mut self, mut mover: Option<&mut Mover>) -> Result<(), Unsupported> {
         if let Some(mut a) = self.attack.take() {
-            a.tear_down(mover)?;
+            a.tear_down(mover.as_deref_mut())?;
+        }
+        if self.move_to.take().is_some()
+            && let Some(m) = mover
+        {
+            m.stop()?;
         }
         Ok(())
     }
 
-    /// One update (slot 6, `0x140ac7a00`) in state 12: a human player's hunter updates its Attack
-    /// (`FUN_140a992b0`); the attack still under way (code 0) keeps the state. A computer
-    /// player's hunt and the attack's end are not modelled.
+    /// One update (slot 6, `0x140ac7a00`): state 12 updates the Attack (`FUN_140a992b0`); its end
+    /// on the dead target (code 5) runs `FUN_140ac44b0` and set_state(4). State 4 updates the
+    /// MoveTo; its end (code 1) runs `FUN_140ac44b0` and set_state(6). State 6 faces the target
+    /// (`FUN_141162db0`) and, while it holds something, set_state(7); state 7 gathers. A computer
+    /// player's hunt and the other codes are not modelled.
     pub fn update(
         &mut self,
-        walk: Walk<'_>,
+        mut walk: Walk<'_>,
         computer: bool,
         strike: &mut Strike<'_>,
+        gather: &mut Gatherer<'_>,
     ) -> Result<(), Unsupported> {
-        if self.state != ATTACK {
-            return Err(Unsupported("a Hunt action in a state other than 12"));
-        }
         if computer {
             return Err(Unsupported("a computer player's hunt (FUN_140fde4f0)"));
         }
-        let attack = self
-            .attack
-            .as_mut()
-            .ok_or(Unsupported("a Hunt in state 12 without its Attack"))?;
-        match attack.update(walk, strike)? {
-            0 | 6.. => Ok(()),
-            5 => Err(Unsupported(
-                "a Hunt whose Attack ended on its dead target (FUN_140ac44b0, set_state 4)",
+        match self.state {
+            ATTACK => {
+                let attack = self
+                    .attack
+                    .as_mut()
+                    .ok_or(Unsupported("a Hunt in state 12 without its Attack"))?;
+                match attack.update(walk.reborrow(), strike)? {
+                    0 | 6.. => Ok(()),
+                    5 => {
+                        self.farm_check()?;
+                        self.set_walk(&mut walk, strike.victim)
+                    }
+                    _ => Err(Unsupported("a Hunt whose Attack ended")),
+                }
+            }
+            WALK => match self.move_to {
+                Some(MoveTo::Start) => {
+                    self.move_to = Some(MoveTo::Moving);
+                    let range = self.task.range;
+                    self.move_to = Some(start_walk(walk, Goal::Target(self.target), range, true)?);
+                    Ok(())
+                }
+                Some(MoveTo::Moving) => {
+                    self.move_to = Some(walk_on(walk)?);
+                    Ok(())
+                }
+                // its update in state 1 returns 1
+                Some(MoveTo::Arrived) => {
+                    self.farm_check()?;
+                    self.set_face(strike, gather)
+                }
+                None => Err(Unsupported("a Hunt in state 4 without its MoveTo")),
+            },
+            FACE => {
+                // case 5: FUN_141162db0 turns the unit to face its target; a unit without a turn
+                // time turns at once, by the facets between (its angle `+0x7e8`, which the slice
+                // does not hold)
+                let turns_at_once = walk
+                    .mover
+                    .as_deref()
+                    .ok_or(Unsupported("a hunter without movement state"))?
+                    .stats
+                    .turns_at_once;
+                if !turns_at_once {
+                    return Err(Unsupported(
+                        "a hunter that turns over time to face its target",
+                    ));
+                }
+                if 0.0 < strike.victim.amount {
+                    self.set_gather(strike, gather);
+                    Ok(())
+                } else {
+                    Err(Unsupported(
+                        "a hunt's target empty when faced (set_state 3)",
+                    ))
+                }
+            }
+            GATHER => self.gather(walk.dt, strike.victim, gather),
+            _ => Err(Unsupported(
+                "a Hunt action in a state the slice does not model",
             )),
-            _ => Err(Unsupported("a Hunt whose Attack ended")),
         }
+    }
+
+    /// `FUN_140ac44b0`: a farm's task (its `attribute_type4` 0x124) with player attribute 292 at 1
+    /// changes the farm's master; for any other task it does nothing.
+    fn farm_check(&self) -> Result<(), Unsupported> {
+        if self.task.kind4 == FARM_TASK {
+            return Err(Unsupported("a farm's hunt (FUN_140ac44b0, attribute 292)"));
+        }
+        Ok(())
+    }
+
+    /// set_state(4) (`0x140ac60e0` case 4) after the target died: the sub-actions go, the target's
+    /// place becomes the point, and a quiet MoveTo to the target within the task's range starts
+    /// (`FUN_140aa0df0`, its start `0x140aa2100`: a unit within 0.01 of the target's footprint is
+    /// there already, state 1; else state 3).
+    fn set_walk(&mut self, walk: &mut Walk<'_>, victim: &Victim) -> Result<(), Unsupported> {
+        self.tear_down(walk.mover.as_deref_mut())?;
+        self.state = WALK;
+        if victim.state <= 2 {
+            return Err(Unsupported(
+                "a hunt's set_state 4 on a live target after its attack",
+            ));
+        }
+        let t = walk
+            .world
+            .get_known(self.target)?
+            .ok_or(Unsupported("a hunt's target without a place"))?;
+        self.point = t.position;
+        let mover = walk
+            .mover
+            .as_deref()
+            .ok_or(Unsupported("a hunter without movement state"))?;
+        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let gap = footprint_gap(walk.me.position, ground, t.position, t.radius);
+        self.move_to = Some(if ARRIVED < gap {
+            if mover.stats.speed == 0.0 {
+                return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+            }
+            MoveTo::Start
+        } else {
+            MoveTo::Arrived
+        });
+        Ok(())
+    }
+
+    /// set_state(6) (case 6) on a target that is not livestock or of class 49: the unit takes the
+    /// hunt's sprite (`FUN_140ac51d0`: the carrying one for a load of the task's resource of 1 or
+    /// more, else the moving one; slot 0x68 takes the standing sprite for none).
+    fn set_face(
+        &mut self,
+        strike: &mut Strike<'_>,
+        gather: &Gatherer<'_>,
+    ) -> Result<(), Unsupported> {
+        if matches!(gather.target_class, LIVESTOCK | CLASS_49) {
+            return Err(Unsupported(
+                "a hunt facing livestock or class 49 (set_state 6)",
+            ));
+        }
+        self.move_to = None;
+        self.state = FACE;
+        let carrying = self.task.resource != -1
+            && *gather.held_kind == self.task.resource
+            && 1 <= *gather.held as i32;
+        let g = match (carrying, gather.sprites.carrying) {
+            (true, Some(g)) => Some(g),
+            _ => gather.sprites.moving,
+        }
+        .or(gather.sprites.standing);
+        if let Some(g) = g {
+            set_sprite(strike.sprite, g, strike.sprite_rng);
+        }
+        Ok(())
+    }
+
+    /// set_state(7) (case 7): a food task keeps a load of food (`FUN_14119d310` keeps the
+    /// amount), any other load is dropped; the unit takes the working sprite (slot 0x68; the
+    /// standing one for none); the gathering sound is not held.
+    fn set_gather(&mut self, strike: &mut Strike<'_>, gather: &mut Gatherer<'_>) {
+        self.state = GATHER;
+        let kind = self.task.resource;
+        let keeps = food(kind) && food(*gather.held_kind);
+        if *gather.held_kind != kind {
+            *gather.held = if keeps { *gather.held } else { 0.0 };
+            *gather.held_kind = kind;
+        }
+        if let Some(g) = gather.sprites.working.or(gather.sprites.standing) {
+            set_sprite(strike.sprite, g, strike.sprite_rng);
+        }
+    }
+
+    /// State 7 (case 6): the work, `(work rate) × work_val1 × dt`, at most what the target holds,
+    /// times the productivity, while the load stays within the capacity: the target loses the
+    /// work, its last bit below 0.1 going with a thousandth of its master's first storage amount;
+    /// the unit gains, a remainder below 0.1 of the capacity rounding the load up. A full load or
+    /// an empty target ends the gathering (set_state 8, not modelled). The game's `+0xc14`
+    /// (`FUN_140c884c0`), 0 as the tick oracle holds it, would take the whole target at once.
+    fn gather(
+        &mut self,
+        dt: f32,
+        victim: &mut Victim,
+        g: &mut Gatherer<'_>,
+    ) -> Result<(), Unsupported> {
+        let work = (g.work_rate * self.task.work_value) * dt;
+        let take = if work <= victim.amount {
+            work
+        } else {
+            victim.amount
+        };
+        let mut gain = g.productivity * take;
+        let capacity = g.capacity;
+        // `<=` in the game: a NaN goes to the drop-off too
+        let room = capacity - *g.held;
+        if !matches!(
+            gain.partial_cmp(&room),
+            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+        ) {
+            return Err(Unsupported("a full load (the drop-off, set_state 8)"));
+        }
+        victim.amount -= take;
+        if victim.amount < REMAINDER {
+            gain = gain + g.target_storage * LAST_BIT + victim.amount;
+            victim.amount = 0.0;
+        }
+        *g.held += gain;
+        let over = (*g.held - capacity).abs();
+        if *g.held < capacity && over < REMAINDER && over <= victim.amount {
+            victim.amount -= over;
+            *g.held += over;
+        }
+        if matches!(g.target_class, 9 | 10) && *g.held_kind == 3 && self.task.resource == 3 {
+            return Err(Unsupported(
+                "a gold load of class 9 or 10 (its player's attribute 3)",
+            ));
+        }
+        if REMAINDER <= over && 0.0 < victim.amount {
+            return Ok(());
+        }
+        Err(Unsupported(
+            "a full load or an empty target (the drop-off, set_state 8)",
+        ))
     }
 }
 
@@ -297,6 +545,9 @@ mod tests {
         range: 0.0,
         resource: 15,
         sprites: [-1, 1239, 1961, 1960],
+        work_value: 1.0,
+        productivity: -1,
+        kind4: -1,
     };
 
     #[test]
@@ -352,6 +603,66 @@ mod tests {
         assert_eq!(start((0, 7.0), false), (15, 7.0));
         assert_eq!(start((2, 7.0), false), (2, 7.0));
         assert_eq!(start((2, 7.0), true), (15, 0.0));
+    }
+
+    fn victim(amount: f32) -> Victim {
+        Victim {
+            id: 9357,
+            hp: 0.0,
+            amount,
+            state: 3,
+            z: 0.0,
+            kind: 10,
+            goto_sleep: false,
+            elevation: [0.0; 2],
+            class: 15,
+            storage: 100.0,
+        }
+    }
+
+    #[test]
+    fn a_villager_gathers_work_rate_times_work_value_times_dt_until_its_load_is_full() {
+        let mut hunt = HuntAction {
+            target: 9357,
+            state: GATHER,
+            point: [24.5, 94.5, 0.0],
+            target_class: 15,
+            task: HuntTask {
+                work_value: 0.39,
+                resource: 1,
+                ..CHOP
+            },
+            attack: None,
+            move_to: None,
+        };
+        let (mut kind, mut held) = (1, 0.0f32);
+        let mut gather = |held: &mut f32, kind: &mut i16, tree: &mut Victim| {
+            let mut g = Gatherer {
+                held_kind: kind,
+                held,
+                work_rate: 1.0,
+                capacity: 10.0,
+                productivity: 1.0,
+                target_class: 15,
+                target_storage: 100.0,
+                sprites: HuntSprites::default(),
+            };
+            hunt.gather(0.02, tree, &mut g)
+        };
+        let mut tree = victim(100.0);
+        assert_eq!(gather(&mut held, &mut kind, &mut tree), Ok(()));
+        let w = (1.0f32 * 0.39) * 0.02;
+        assert_eq!((held, tree.amount), (w, 100.0 - w));
+        // a load 0.1 short of the capacity rounds up, and the full load ends the gathering
+        held = 9.95 - w;
+        let mut tree = victim(50.0);
+        assert!(gather(&mut held, &mut kind, &mut tree).is_err());
+        assert_eq!(held, 10.0);
+        // a tree's last bit goes with a thousandth of its master's storage
+        held = 0.0;
+        let mut tree = victim(0.05);
+        assert!(gather(&mut held, &mut kind, &mut tree).is_err());
+        assert_eq!((held, tree.amount), (0.05 + 100.0 * 0.001, 0.0));
     }
 
     #[test]
