@@ -18,10 +18,10 @@ pub const MASK: u64 = 0x1ff_ffff_01ff_ffff;
 pub const SLOTS: usize = 9;
 
 /// The query's cap on the radius (`DAT_142f64e88`).
-const MOST_RADIUS: f32 = 1000.0;
+const MOST_RADIUS: f32 = 44.0;
 
 /// The query box's margin (`DAT_142ec9eb8`).
-const MARGIN: f32 = 0.001;
+const MARGIN: f32 = 7.0;
 
 /// The records a query keeps per relation (`0x1c00` bytes per output list).
 pub const MOST_FOUND: usize = 256;
@@ -206,7 +206,7 @@ impl Registry {
     }
 
     /// `GetVisibleUnits` (`FUN_141288c00`) for `player`: the records of its lists of `classes`
-    /// whose object is within `radius` (at most 1000) of (`x`, `y`) for a searcher of radii `rx`,
+    /// whose object is within `radius` (at most 44) of (`x`, `y`) for a searcher of radii `rx`,
     /// `ry` (`mode` 0: a rounded box, 1: a box), and whose owner's relation (`relations[owner]`:
     /// 0 Gaia, 1 self, 2 friend, 3 neutral, 4 enemy) is in `wanted`; by relation, each with its
     /// edge distance, at most 256 each. None when the query reads nothing (no classes, a player
@@ -356,5 +356,43 @@ mod tests {
                 .unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn a_query_caps_its_radius_at_44() {
+        let mut r = registry();
+        r.update_unit(1, 1, [53.5, 10.0], [0.2, 0.2], 4, 0, 1)
+            .unwrap();
+        r.update_unit(2, 1, [60.0, 10.0], [0.2, 0.2], 4, 0, 1)
+            .unwrap();
+        let found = r
+            .visible_units(
+                0,
+                [10.0, 10.0],
+                100.0,
+                1,
+                &[4],
+                &[1, 4, 4],
+                [0.2, 0.2],
+                0xff,
+            )
+            .unwrap()
+            .unwrap();
+        // the box reaches 44.2 along x: 1's edge is 43.3 off, 2's 49.8
+        assert_eq!(found[4].iter().map(|x| x.id).collect::<Vec<_>>(), [1]);
+    }
+
+    #[test]
+    fn a_query_keeps_a_wide_object_whose_centre_lies_beyond_the_radius() {
+        let mut r = registry();
+        r.update_unit(1, 1, [15.0, 10.0], [2.0, 2.0], 4, 0, 1)
+            .unwrap();
+        let found = r
+            .visible_units(0, [10.0, 10.0], 3.0, 0, &[4], &[1, 4, 4], [0.2, 0.2], 0xff)
+            .unwrap()
+            .unwrap();
+        // the centre is 5 off, beyond 3.2, but the edge is 3 off: the 7-tile margin keeps it in
+        // the box
+        assert_eq!(found[4].iter().map(|x| x.id).collect::<Vec<_>>(), [1]);
     }
 }

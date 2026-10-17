@@ -23,8 +23,9 @@ pub const ATTACK: i16 = 9;
 /// `-0.5` (`DAT_142eb6e58`) and the reach by `0.5` (`DAT_142e7f384`).
 const NO_RANGE: f32 = 0.1;
 const HALF: f32 = 0.5;
-/// The squared reach of an attack without a range (`DAT_142ed48e4`).
-const TOUCH: f32 = 0.01;
+/// The squared reach of an attack without a range (`DAT_142ed48e4`): `0x3c23d70b`, which is
+/// `0.1f * 0.1f`, one ULP above `0.01f`.
+const TOUCH: f32 = f32::from_bits(0x3c23_d70b);
 /// A MoveTo starts arrived within this gap (`DAT_142eb99cc`).
 const ARRIVED: f32 = 0.01;
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`).
@@ -459,11 +460,7 @@ impl Attack {
             .world
             .get(walk.me.id)
             .map_or(walk.me.position, |p| p.position);
-        let reach = if NO_RANGE < self.range {
-            self.range * self.range
-        } else {
-            TOUCH
-        };
+        let reach = squared_reach(self.range);
         if reach.abs() <= EPSILON || reach < footprint_gap_squared(at, ground, target, radius) {
             return Ok(code);
         }
@@ -579,4 +576,27 @@ impl Attack {
 pub fn gaps(a: [f32; 3], a_radius: [f32; 2], b: [f32; 3], b_radius: [f32; 2]) -> (f32, f32) {
     let squared = footprint_gap_squared(a, a_radius, b, b_radius);
     (squared, footprint_gap(a, a_radius, b, b_radius))
+}
+
+/// The squared reach of an attack of `range` (`FUN_140a82ae0` at `0x140a83950`): the range squared,
+/// or [`TOUCH`] for a range of at most [`NO_RANGE`].
+fn squared_reach(range: f32) -> f32 {
+    if NO_RANGE < range {
+        range * range
+    } else {
+        TOUCH
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_rangeless_attack_reaches_a_tenth_squared_in_f32() {
+        // the image holds 0x3c23d70b (0.1f * 0.1f), one ULP above 0.01f
+        assert_eq!(squared_reach(0.0).to_bits(), 0x3c23_d70b);
+        assert_eq!(squared_reach(NO_RANGE).to_bits(), 0x3c23_d70b);
+        assert_eq!(squared_reach(2.0), 4.0);
+    }
 }
