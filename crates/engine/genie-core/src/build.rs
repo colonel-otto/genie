@@ -71,6 +71,8 @@ pub struct Site<'a> {
     pub id: i32,
     pub life: &'a mut Lifecycle,
     pub construction: &'a mut Construction,
+    /// The foundation's movement state (its last move time), if the slice holds it.
+    pub mover: Option<&'a mut crate::movement::Mover>,
 }
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
@@ -276,7 +278,7 @@ impl BuildAction {
         if 1.0 < n {
             rate *= ((n - 1.0) * EXTRA_BUILDER + 1.0) / n;
         }
-        let done = Construction::work(site, rate, walk.world, plan.pathing)?;
+        let done = Construction::work(site, rate, walk.world, plan.pathing, plan.now)?;
         if done {
             return Err(Unsupported(
                 "a finished construction (Build set_state 0xe0)",
@@ -359,6 +361,7 @@ impl Construction {
         mut amount: f32,
         world: &mut Spatial,
         pathing: &mut Pathing,
+        now: u32,
     ) -> Result<bool, Unsupported> {
         if site.life.state != 0 || site.life.hp < 1.0 {
             return Ok(true);
@@ -366,6 +369,10 @@ impl Construction {
         let c = &mut *site.construction;
         if c.desolid {
             Construction::start(site.id, c, world, pathing)?;
+            // FUN_1411e5670's last line: the last move time is the world's time plus 1
+            if let Some(m) = site.mover {
+                m.last_move = now.wrapping_add(1);
+            }
         }
         let build_time = f32::from(c.build_time);
         let hit_points = f32::from(c.hit_points);
@@ -392,8 +399,9 @@ impl Construction {
     /// it overlaps would be removed (not modelled); it is no longer desolid, holds a sliver of
     /// progress, and gets its obstruction record (`FUN_141056460`: the tiles it marks, which the
     /// planners see, and its shape in the mesh); its footprint comes into its player's sight and
-    /// its tiles link to its anchor again (`FUN_140f73900`). Its damage sprites, `+0xa00`,
-    /// `+0xca4` and last move time are not held by the slice.
+    /// its tiles link to its anchor again (`FUN_140f73900`); its last move time becomes the
+    /// world's time plus 1 ([`Construction::work`]). Its damage sprites, `+0xa00` and `+0xca4` are
+    /// not held by the slice.
     fn start(
         id: i32,
         c: &mut Construction,
@@ -473,10 +481,11 @@ mod tests {
             id: 10028,
             life: &mut life,
             construction: &mut c,
+            mover: None,
         };
         let rate = 1.0f32 * 1.0 * 0.021;
         assert_eq!(
-            Construction::work(site, rate, &mut world, &mut pathing),
+            Construction::work(site, rate, &mut world, &mut pathing, 0),
             Ok(false)
         );
         assert_eq!(life.hp, 1.462);
@@ -556,6 +565,7 @@ mod tests {
             id: 10028,
             life: &mut life,
             construction: &mut construction,
+            mover: None,
         };
         build
             .update(

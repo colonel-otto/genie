@@ -412,6 +412,7 @@ impl Unit {
                         id: u.id,
                         life: &mut u.life,
                         construction: u.construction.as_mut()?,
+                        mover: u.mover.as_mut(),
                     })
                 });
             build.update(c.walk(self.mover.as_mut(), me), site)?;
