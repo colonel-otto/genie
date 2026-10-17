@@ -926,26 +926,49 @@ impl Unit {
 
     /// The unit's slot 0x340 (`FUN_141216c50`) on its unit AI's move: a unit of class 51 or 54
     /// (packing) is not modelled; any other runs `FUN_1410866e0`. Without `force`, a MoveTo to the
-    /// same point stands (not modelled); a current action's slot 0x40 may take the point, which a
-    /// MoveTo's (`FUN_140a78490`) never does (other actions are not modelled). Otherwise a MoveTo
-    /// to the point within the range (`FUN_140aa0d30`; its sprite, the master's walking or running
-    /// one, is not held) replaces the action list (`FUN_140a98620`: the old MoveTo stops the unit)
-    /// and starts (slot 0x808, `FUN_14106e990`; its start `0x140aa2100` gives a unit far from the
-    /// point state 3).
+    /// same point (its `+0x38`..`+0x40`) stands. Then the current action's slot 0x40 may take the
+    /// point: an Artifact's (`FUN_140aaca30`, [`Artifact::take_point`]; a MoveTo it walked goes and
+    /// stops the unit) does, a MoveTo's (`FUN_140a78490`) never (other actions are not modelled).
+    /// Otherwise a MoveTo to the point within the range (`FUN_140aa0d30`; its sprite, the master's
+    /// walking or running one, is not held) replaces the action list (`FUN_140a98620`: the old
+    /// MoveTo stops the unit) and starts (slot 0x808, `FUN_14106e990`; its start `0x140aa2100`
+    /// gives a unit far from the point state 3).
     fn ai_move(&mut self, m: AiMove, class: i16) -> Result<(), Unsupported> {
         if matches!(class, 51 | 54) {
             return Err(Unsupported("an AI move of a unit of class 51 or 54"));
         }
-        if !m.force && self.top_action_kind().is_some() {
-            return Err(Unsupported(
-                "an AI move without force of a unit with an action",
-            ));
-        }
         let top = self.top_action_kind();
-        if self.unmodelled_action.is_some() || top.is_some_and(|t| t != crate::move_to::MOVE_TO) {
+        if !m.force
+            && top == Some(crate::move_to::MOVE_TO)
+            && self.move_to.is_some_and(|mt| mt.goal == Some(m.point))
+        {
+            return Ok(());
+        }
+        if self.unmodelled_action.is_some() {
             return Err(Unsupported(
                 "an AI move of a unit with an action (its slot 0x40)",
             ));
+        }
+        match top {
+            Some(crate::artifact::ARTIFACT_TYPE) => {
+                let walked = self
+                    .artifact
+                    .as_mut()
+                    .is_some_and(|a| a.take_point(m.point));
+                if walked {
+                    self.mover
+                        .as_mut()
+                        .ok_or(Unsupported("a walker without movement state"))?
+                        .stop()?;
+                }
+                return Ok(());
+            }
+            Some(crate::move_to::MOVE_TO) | None => {}
+            Some(_) => {
+                return Err(Unsupported(
+                    "an AI move of a unit with an action (its slot 0x40)",
+                ));
+            }
         }
         if self.move_to.take().is_some() {
             self.mover
