@@ -59,6 +59,11 @@ pub struct MoveStats {
     pub turn_radius_speed: f32,
     /// Master `+0x5d8`, `+0x5dc`, `+0x5e0`.
     pub radius: [f32; 3],
+    /// The terrain classes the unit can stand on: its master's terrain restriction's mask.
+    pub restriction_mask: u8,
+    /// The master's stationary yaw revolution time (`+0x758`) is 0: the unit faces a target at
+    /// once (`FUN_141162db0`).
+    pub turns_at_once: bool,
 }
 
 /// A moving unit's movement state.
@@ -103,6 +108,8 @@ const UP: Vec3 = [0.0, 1.0, 0.0];
 /// below the edge a position stays (`DAT_142eb1e9c`).
 const EDGE_GAP: f32 = 0.01;
 const EDGE_POSITION_GAP: f32 = 0.001;
+/// A walk to a point checks its range only above this (`DAT_142eb5690`).
+const RANGE_FLOOR: f32 = 0.1;
 /// The class the motion step measures by its annexes (`-0xe85` encoded).
 const GATE: i16 = 39;
 
@@ -222,7 +229,7 @@ impl Mover {
             -1 => None,
             id => Some(
                 world
-                    .get(id)
+                    .get_known(id)?
                     .ok_or(Unsupported("a path target that is gone"))?,
             ),
         };
@@ -241,9 +248,6 @@ impl Mover {
             }
             _ => {}
         }
-        let Some(target) = target else {
-            return Err(Unsupported("a walk to a point"));
-        };
         let position = vector(me.position);
         let waypoint = level.point(level.waypoint)?;
         let mut to = fmath::sub(position, waypoint);
@@ -262,19 +266,49 @@ impl Mover {
         }
         if self.stats.radius.iter().all(|&r| 0.0 < r) {
             let rect = self.query_rect(position, projected, world.map);
-            let near = world.obstruction_candidates(rect, self.stats.radius[0], &[me.id]);
+            let grow = self.stats.radius[0];
+            world.check_known([
+                rect[0] - grow,
+                rect[1] - grow,
+                rect[2] + grow,
+                rect[3] + grow,
+            ])?;
+            let near = world.obstruction_candidates(rect, grow, &[me.id]);
             if !near.is_empty() {
                 return Err(Unsupported("a walker that may meet an obstruction"));
             }
         }
         let ground = [self.stats.radius[0], self.stats.radius[1]];
-        let gap = footprint_gap(me.position, ground, target.position, target.radius) - level.range;
-        if gap < EPSILON {
-            return Err(Unsupported("a walker that reached its target"));
+        match target {
+            Some(t) => {
+                let gap = footprint_gap(me.position, ground, t.position, t.radius) - level.range;
+                if gap < EPSILON {
+                    return Err(Unsupported("a walker that reached its target"));
+                }
+            }
+            // a walk to a point with a range ends where its top level's path ends
+            None if level.path_flags & 1 == 0 && RANGE_FLOOR < level.range => {
+                if let Some(&[x, _, y]) = self.top_path().and_then(|p| p.last()) {
+                    let gap = footprint_gap(me.position, ground, [x, y, 0.0], [0.0, 0.0]);
+                    if gap - level.range < EPSILON {
+                        return Err(Unsupported("a walk to a point reaches its range"));
+                    }
+                }
+            }
+            None => {}
         }
         self.steer(direction, dt);
         self.control_speed(position, waypoint);
         Ok(Motion::Moving)
+    }
+
+    /// The path of the top level (`FUN_140f960f0`): the last level's, or the walked level's when
+    /// it has no parent; None when that level holds no path.
+    fn top_path(&self) -> Option<&Vec<Vec3>> {
+        self.paths
+            .last()
+            .map(|l| &l.points)
+            .filter(|p| !p.is_empty())
     }
 
     /// The unit vector on the ground from `from` to `to` (slot 194, `0x14114f210`); the forward
@@ -423,6 +457,8 @@ mod tests {
             turn_radius: 0.0,
             turn_radius_speed: f32::MAX,
             radius: [0.2, 0.2, 0.5],
+            restriction_mask: 6,
+            turns_at_once: true,
         }
     }
 
@@ -471,6 +507,8 @@ mod tests {
             obstruction_type: 0,
             buildable_on: 0,
             tall: true,
+            speed: 0.0,
+            unknown: None,
             obstruction: Some(Obstruction { kind: 5, class: 2 }),
         };
         s.insert(9175, unit(30.0, 89.0));
@@ -486,6 +524,8 @@ mod tests {
                 obstruction_type: 0,
                 buildable_on: 0,
                 tall: true,
+                speed: 0.0,
+                unknown: None,
                 obstruction: None,
             },
         );
@@ -547,6 +587,32 @@ mod tests {
         assert_eq!(gap(30.0, 89.0), 0.0);
         assert_eq!(gap(28.0, 89.0), 2.0f32 - 1.2);
         assert_eq!(gap(29.0, 99.0), (11.0f32 - 1.2).hypot(0.0));
+    }
+
+    /// MarvinBlue/426048731's hawk 9926 after tick 679: a flight to a point, no range.
+    #[test]
+    fn a_walk_to_a_point_goes_on_until_its_range() {
+        let mut hawk = builder_9177();
+        for l in &mut hawk.paths {
+            l.target = -1;
+            l.range = 0.0;
+        }
+        let me = Me {
+            id: 9926,
+            position: [28.0, 89.0, 0.0],
+        };
+        assert_eq!(
+            hawk.motion(&me, DT, &Spatial::new([120, 120])),
+            Ok(Motion::Moving)
+        );
+        // a deer's walk with range 0.5 whose top path ends within it
+        let mut deer = builder_9177();
+        for l in &mut deer.paths {
+            l.target = -1;
+            l.range = 0.5;
+        }
+        deer.paths[1].points = vec![[28.0, 0.0, 89.0], [28.6, 0.0, 89.0]];
+        assert!(deer.motion(&me, DT, &Spatial::new([120, 120])).is_err());
     }
 
     #[test]

@@ -149,6 +149,12 @@ impl UnitAi {
             // then slot 72, which for these types draws nothing for an idle unit
             self.idle_timer = 0;
         }
+        self.look_around(computer, ai)
+    }
+
+    /// The look-around check at the end of the full update (`LAB_140c6809c`): a timer past its
+    /// timeout restarts with a timeout drawn around 5 s.
+    fn look_around(&mut self, computer: bool, ai: &mut Well512) -> Result<(), Unsupported> {
         if self.look_around_timer > self.look_around_timeout {
             // the human branch; `FUN_14152b470` sends players allied with a computer elsewhere
             if computer {
@@ -159,7 +165,35 @@ impl UnitAi {
         }
         Ok(())
     }
+
+    /// The full update (slot 4, `0x140c66b10`) of a villager on its build order: its order and
+    /// action stand, so it only runs the timers. With actions in its list the order is not
+    /// re-checked; its action keeps the idle timer at 0 (a player above Gaia); villagers do not
+    /// retarget; the look-around check follows. Its target, a building, never counts as dead
+    /// here. A unit in a group, inside another, with notifies or with other orders is not
+    /// modelled (the caller checks the first two).
+    pub fn update_working(
+        &mut self,
+        dt: u32,
+        computer: bool,
+        ai: &mut Well512,
+    ) -> Result<(), Unsupported> {
+        if (self.current_order, self.current_action) != (BUILD_ORDER, BUILD_ACTION) {
+            return Err(Unsupported("unit is not idle and not on a build order"));
+        }
+        if !matches!(retarget_kind(self.ai_type)?, Retarget::Never) {
+            return Err(Unsupported("a unit on a build order that retargets"));
+        }
+        self.secondary_timer = self.secondary_timer.saturating_sub(dt);
+        self.look_around_timer = self.look_around_timer.wrapping_add(dt);
+        self.idle_timer = 0;
+        self.look_around(computer, ai)
+    }
 }
+
+/// The build order (`0x2be`) and the build action value (`0x25a`) of a villager's unit AI.
+pub const BUILD_ORDER: i32 = 702;
+pub const BUILD_ACTION: i32 = 602;
 
 #[cfg(test)]
 mod tests {
@@ -182,6 +216,32 @@ mod tests {
         let mut r = Well512::default();
         r.set_seed(0);
         r
+    }
+
+    /// A builder on its build order (702, action 602): MarvinBlue/426048731's 9175 in update 681,
+    /// whose look-around timer runs out and is redrawn from the AI stream.
+    #[test]
+    fn a_builder_s_idle_timer_stays_0_and_its_look_around_is_redrawn() {
+        let mut u = UnitAi {
+            current_order: BUILD_ORDER,
+            current_action: BUILD_ACTION,
+            current_target: 10028,
+            idle_timer: 120,
+            secondary_timer: 10,
+            look_around_timer: 990,
+            ..idle(8)
+        };
+        let mut r = rng();
+        u.update_working(50, false, &mut r).unwrap();
+        assert_eq!(
+            (u.idle_timer, u.secondary_timer, u.look_around_timer),
+            (0, 0, 0)
+        );
+        assert_eq!(u.look_around_timeout, 4500 + 7241 % 1000);
+        assert_eq!(r.draws, 1);
+        // another order is not modelled
+        u.current_order = 700;
+        assert!(u.update_working(50, false, &mut r).is_err());
     }
 
     #[test]

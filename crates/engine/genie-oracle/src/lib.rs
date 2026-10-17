@@ -247,17 +247,18 @@ fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
 
 /// One saved level of path data, with its path's waypoints from the world's path table.
 fn path_level(d: &PathData, paths: &[Path]) -> Result<genie_core::movement::PathData, Unsupported> {
-    let path = paths
-        .iter()
-        .find(|p| p.idvalue == d.path_id)
-        .ok_or(Unsupported(
+    // a level without a path (id -1) holds none: a bird's top level
+    let path = match d.path_id {
+        -1 => None,
+        id => Some(paths.iter().find(|p| p.idvalue == id).ok_or(Unsupported(
             "path data whose path is not in the world's table",
-        ))?;
+        ))?),
+    };
     Ok(genie_core::movement::PathData {
         level: d.waypoint_level,
         linked_type: d.linked_path_type,
-        points: path.m_waypoints.iter().map(vec3).collect(),
-        path_flags: path.flags_m_bits,
+        points: path.map_or_else(Vec::new, |p| p.m_waypoints.iter().map(vec3).collect()),
+        path_flags: path.map_or(0, |p| p.flags_m_bits),
         waypoint: d.waypoint,
         state: d.state,
         range: d.range,
@@ -332,18 +333,40 @@ fn mover(
             turn_radius: turning.turn_radius,
             turn_radius_speed: turning.turn_radius_speed,
             radius: [placement.radius_x, placement.radius_y, placement.radius_z],
+            restriction_mask: usize::try_from(placement.terrain_restriction_mask_id)
+                .ok()
+                .and_then(|r| table.terrain.masks().get(r))
+                .copied()
+                .ok_or(Unsupported(
+                    "a terrain restriction the data file does not have",
+                ))?,
+            turns_at_once: turning.stationary_yaw_revolution_time == 0.0,
         },
     }))
 }
 
-/// The top action of a saved object as the slice models it: the Artifact action (107) and the
-/// Build action (101) with its MoveTo (type 1). Any other saved action stops the object's player.
+/// The top action of a saved object as the slice models it: the Artifact action (107), the
+/// Build action (101) with its MoveTo, a MoveTo of its own (type 1) and a bird's Fly action (10)
+/// with its MoveTo. Any other saved action stops the object's player.
 fn saved_actions(
     object: &de::header::Object,
     s: &RgeStaticObject,
     unit: &mut Unit,
 ) -> Result<(), Unsupported> {
     use genie_core::build::{BUILD, BuildAction, MoveTo};
+    use genie_core::fly::{FLY, Fly};
+    use genie_core::move_to::{MOVE_TO, MoveToAction};
+    let move_to_state = |state: u8| match state {
+        1 => Ok(MoveTo::Arrived),
+        3 => Ok(MoveTo::Start),
+        4 => Ok(MoveTo::Moving),
+        _ => Err(Unsupported(
+            "a saved MoveTo in a state the slice does not model",
+        )),
+    };
+    let point = |b: &genie_rec::de::header::generated::world::RgeAction| {
+        (b.target_id == -1).then_some([b.target_x, b.target_y, b.target_z])
+    };
     let (kind, action) = object
         .actions()
         .and_then(|a| a.entries().next())
@@ -360,25 +383,45 @@ fn saved_actions(
             });
             Ok(())
         }
+        MOVE_TO => {
+            unit.move_to = Some(MoveToAction {
+                state: move_to_state(base.state)?,
+                goal: point(base),
+            });
+            Ok(())
+        }
+        FLY => {
+            let move_to = match base.sub_actions.entries().next() {
+                None => None,
+                Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
+                Some(_) => return Err(Unsupported("a saved Fly action with another sub-action")),
+            };
+            unit.fly = Some(Fly {
+                state: base.state,
+                timer: base.timer,
+                move_to,
+            });
+            Ok(())
+        }
         BUILD => {
             let move_to = match base.sub_actions.entries().next() {
                 None => None,
-                Some((1, sub)) => match sub.base().map(|b| b.state) {
-                    Some(1) => Some(MoveTo::Arrived),
-                    Some(3) => Some(MoveTo::Start),
-                    Some(4) => Some(MoveTo::Moving),
-                    _ => {
-                        return Err(Unsupported(
-                            "a saved MoveTo in a state the slice does not model",
-                        ));
-                    }
-                },
+                Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
                 Some(_) => return Err(Unsupported("a saved Build action with another sub-action")),
             };
+            // a MoveTo to a point has no target; its point is the action's target point
+            let goal = base
+                .sub_actions
+                .entries()
+                .next()
+                .and_then(|(_, sub)| sub.base())
+                .filter(|b| b.target_id == -1)
+                .map(|b| [b.target_x, b.target_y, b.target_z]);
             unit.build = Some(BuildAction {
                 target: base.target_id,
                 state: base.state,
                 move_to,
+                goal,
             });
             Ok(())
         }
@@ -694,6 +737,22 @@ fn build_cost(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
 
 /// What movement reads of a saved object's master: radii, class and obstruction kind, from the
 /// object's own master or its player's.
+/// How fast an object may move, for the slice's bound on a frozen object's place: its player's
+/// master's speed, 0 for an object that does not move, and no bound for a moving object with its
+/// own master.
+fn moving_speed(o: &de::header::Object, s: &RgeStaticObject, objects: &PlayerObjects) -> f32 {
+    if o.moving_part().is_none() {
+        return 0.0;
+    }
+    if s.own_master().is_some() {
+        return f32::INFINITY;
+    }
+    objects
+        .master(s.master_obj)
+        .and_then(animated_master)
+        .map_or(f32::INFINITY, |a| a.max_speed)
+}
+
 /// What movement reads of an object's master (its own or its player's).
 struct Placement {
     radius: [f32; 3],
@@ -766,6 +825,8 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
                     obstruction_type: m.obstruction_type,
                     buildable_on: m.buildable_on,
                     tall: 0.0 < m.radius[2],
+                    speed: moving_speed(o, s, section.objects()),
+                    unknown: None,
                     obstruction,
                 },
             );
@@ -1139,23 +1200,26 @@ fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32;
             position: unit.position,
             retarget_timer: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
             // a producing building's action state is its make action's; its type stays -1
-            top_action: unit
-                .artifact
-                .map(|a| TopAction {
-                    kind: ARTIFACT_TYPE,
-                    state: a.state,
-                })
-                .or(unit.build.map(|b| TopAction {
-                    kind: genie_core::build::BUILD,
-                    state: b.state,
-                }))
-                .or(unit.production.as_ref().map(|_| TopAction {
-                    kind: -1,
-                    state: genie_core::production::Production::MAKING,
-                })),
+            top_action: top_action(unit).or(unit.production.as_ref().map(|_| TopAction {
+                kind: -1,
+                state: genie_core::production::Production::MAKING,
+            })),
         })
         .collect();
     player_block(&state)
+}
+
+/// A unit's top action as the slice models it, type and state.
+fn top_action(unit: &Unit) -> Option<TopAction> {
+    let action = |kind, state| TopAction { kind, state };
+    None.or(unit.artifact.map(|a| action(ARTIFACT_TYPE, a.state)))
+        .or(unit
+            .build
+            .map(|b| action(genie_core::build::BUILD, b.state)))
+        .or(unit
+            .move_to
+            .map(|m| action(genie_core::move_to::MOVE_TO, m.state.number())))
+        .or(unit.fly.map(|f| action(genie_core::fly::FLY, f.state)))
 }
 
 /// One live object's word-9 terms in the slice after a number of ticks: its id, the top action's
@@ -1258,10 +1322,7 @@ impl ObjectRow {
             hp: unit.life.hp,
             amount: unit.life.amount,
             position: unit.position,
-            action: unit
-                .artifact
-                .map(|a| (ARTIFACT_TYPE, a.state))
-                .or(unit.build.map(|b| (genie_core::build::BUILD, b.state))),
+            action: top_action(unit).map(|a| (a.kind, a.state)),
             retarget: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
         }
     }
@@ -1273,6 +1334,8 @@ impl ObjectRow {
 pub struct SliceRun {
     pub objects: Vec<ObjectRow>,
     pub unsupported: Option<(u32, usize, Unsupported)>,
+    /// Every player's first unsupported update, by player.
+    pub stopped: Vec<Option<(u32, usize, Unsupported)>>,
 }
 
 /// The live objects of player `id` in a save (a recording's header, or the tick oracle's
@@ -1336,6 +1399,7 @@ pub fn objects_from_save(
             .map(ObjectRow::of_unit)
             .collect(),
         unsupported: player.unsupported,
+        stopped: turns.players.iter().map(|p| p.unsupported).collect(),
     })
 }
 

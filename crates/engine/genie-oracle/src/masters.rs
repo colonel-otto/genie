@@ -54,6 +54,8 @@ pub struct Turning {
     pub turn_radius: f32,
     pub turn_radius_speed: f32,
     pub max_yaw_per_second_moving: f32,
+    /// Master `+0x758`; 0 turns a unit to face its work at once.
+    pub stationary_yaw_revolution_time: f32,
 }
 
 /// A `.dat` task as the task finder reads it (`genie_core::masters::Task`).
@@ -177,6 +179,7 @@ impl MasterTable {
                     turn_radius: d.turn_radius,
                     turn_radius_speed: d.turn_radius_speed,
                     max_yaw_per_second_moving: d.max_yaw_per_second_moving,
+                    stationary_yaw_revolution_time: d.stationary_yaw_revolution_time,
                 });
                 Some((
                     (c as u8, m as i16),

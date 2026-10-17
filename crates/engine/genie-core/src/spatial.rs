@@ -9,6 +9,7 @@
 //! [`Tiles`] holds what the game keeps per tile: the obstruction manager's word (terrain class,
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
+use crate::unit_ai::Unsupported;
 use std::collections::BTreeMap;
 
 /// Obstruction kinds the query tests (`FUN_141051e00`): boxes (2, 3, 11, 13) and circles (5).
@@ -34,6 +35,12 @@ pub struct Placed {
     pub buildable_on: u8,
     /// The master's height radius (`+0x5e0`) is above 0: the tile counts it as tall.
     pub tall: bool,
+    /// The top speed, tiles per second; 0 for an object that does not move.
+    pub speed: f32,
+    /// How far from `position` the object may be, when its player's update is not modelled: it
+    /// grows by its speed every tick ([`Spatial::grow_unknown`]). None for an object the slice
+    /// updates.
+    pub unknown: Option<f32>,
     /// The obstruction record, if the object has one: a foundation gets its record only when
     /// construction starts.
     pub obstruction: Option<Obstruction>,
@@ -213,6 +220,49 @@ impl Spatial {
         self.objects.get(&id)
     }
 
+    /// An object whose place the slice knows: an object of a player the slice stopped is known
+    /// while it cannot have moved.
+    pub fn get_known(&self, id: i32) -> Result<Option<&Placed>, Unsupported> {
+        match self.objects.get(&id) {
+            Some(p) if p.unknown.is_some_and(|u| 0.0 < u) => Err(Unsupported(
+                "an object of a stopped player (its place is unknown)",
+            )),
+            found => Ok(found),
+        }
+    }
+
+    /// The slice stops updating the object: from now on its place is known only within its speed
+    /// times the time since.
+    pub fn freeze(&mut self, id: i32) {
+        if let Some(p) = self.objects.get_mut(&id) {
+            p.unknown.get_or_insert(0.0);
+        }
+    }
+
+    /// A tick of `dt` seconds passed: every frozen object may have moved its speed times dt.
+    pub fn grow_unknown(&mut self, dt: f32) {
+        for p in self.objects.values_mut() {
+            if let Some(u) = p.unknown.as_mut() {
+                *u += p.speed * dt;
+            }
+        }
+    }
+
+    /// Fails when a frozen object may be within `rect` (`x0, y0, x1, y1`): the answer of a query
+    /// over it depends on where that object really is.
+    pub fn check_known(&self, rect: [f32; 4]) -> Result<(), Unsupported> {
+        let near = self.objects.values().any(|p| {
+            p.unknown.is_some_and(|u| {
+                let [x0, y0, x1, y1] = p.bounds();
+                rect[0] <= x1 + u && x0 - u <= rect[2] && rect[1] <= y1 + u && y0 - u <= rect[3]
+            })
+        });
+        if near {
+            return Err(Unsupported("an object of a stopped player may be near"));
+        }
+        Ok(())
+    }
+
     /// A new object, in the order the game adds them: a static record marks only the tiles no
     /// earlier record marked.
     pub fn insert(&mut self, id: i32, placed: Placed) {
@@ -256,6 +306,160 @@ impl Spatial {
         self.tiles.count(position, false, true);
     }
 
+    /// Whether a unit with terrain mask `mask` can stand on tile (`x`, `y`) (`FUN_14114d460`): the
+    /// tile is on the map, its class is in the mask and no static record blocks it. A tile with
+    /// two tall objects needs the game's point query, which the slice does not model.
+    pub fn passable(&self, x: i32, y: i32, mask: u8) -> Result<bool, Unsupported> {
+        let Some(word) = self.tiles.word(x, y) else {
+            return Ok(false);
+        };
+        if word & (u64::from(mask ^ 0xff) | BLOCKED) != 0 {
+            return Ok(false);
+        }
+        if 1 < self.tiles.tall(x, y).expect("a tile with a word") {
+            return Err(Unsupported(
+                "a tile with two tall objects (its point query)",
+            ));
+        }
+        Ok(true)
+    }
+
+    /// The tile beside `site`'s footprint a unit at `from` with terrain mask `mask` goes to
+    /// (`FUN_1411566b0`, closest): a flood over passable tiles from the footprint's own, at most
+    /// `(int)(rx + ry) + 1` tiles from its centre; of the tiles found outside the footprint, the
+    /// first empty one, else the closest to the unit, nearer ones replacing it in the flood's
+    /// order. Returns its centre.
+    pub fn spot_beside(
+        &self,
+        from: [f32; 3],
+        mask: u8,
+        site: &Placed,
+    ) -> Result<Option<[f32; 2]>, Unsupported> {
+        let [tx, ty, _] = site.position;
+        let [rx, ry] = site.radius;
+        let size = (((ry + rx) as i32) + 2).max(1) * 2;
+        let half = size / 2;
+        let (cx, cy) = (tx as i32, ty as i32);
+        let (fx, fy) = ((cx - half) as f32, (cy - half) as f32);
+        self.check_known([fx, fy, fx + size as f32, fy + size as f32])?;
+        let (ox, oy) = (half - cx, half - cy);
+        let (x0, y0) = ((tx - rx) as i32, (ty - ry) as i32);
+        let (x1, y1) = (((rx + tx) - 0.001) as i32, ((ry + ty) - 0.001) as i32);
+        let mut list: Vec<(i32, i32)> = (x0..=x1)
+            .flat_map(|x| (y0..=y1).map(move |y| (x, y)))
+            .collect();
+        let mut visited = vec![false; (size * size) as usize];
+        let reach = half - 1;
+        let mut i = 0;
+        while i < list.len() {
+            let (x, y) = list[i];
+            if (cx - x).abs() < reach && (cy - y).abs() < reach {
+                for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+                    let at = ((ox + nx) * size + ny + oy) as usize;
+                    if !visited[at] && self.passable(nx, ny, mask)? {
+                        visited[at] = true;
+                        list.push((nx, ny));
+                    }
+                }
+            }
+            i += 1;
+        }
+        let mut best = f32::MAX;
+        let mut spot = None;
+        let mut empty = false;
+        for &(x, y) in &list {
+            if x0 <= x && x <= x1 && y0 <= y && y <= y1 {
+                continue;
+            }
+            let was_empty = empty;
+            let count = self.tiles.objects(x, y);
+            if empty && count.is_some_and(|n| n != 0) {
+                continue;
+            }
+            if count == Some(0) {
+                empty = true;
+            }
+            let centre = [x as f32 + 0.5, from[2], y as f32 + 0.5];
+            let d = [
+                from[0] - centre[0],
+                from[2] - centre[1],
+                from[1] - centre[2],
+            ];
+            let distance = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+            if (empty && !was_empty) || distance < best {
+                spot = Some([centre[0], centre[2]]);
+                best = distance;
+            }
+        }
+        Ok(spot)
+    }
+
+    /// The objects whose centre is on `site`'s footprint, edges included, and that the game counts
+    /// as occupying it (`FUN_14123bb20` for a site whose master obstructs): objects with all three
+    /// radii, other than the site, unless the site may be built over them (`can_be_built_on` 1).
+    pub fn footprint_occupants(
+        &self,
+        site_id: i32,
+        site: &Placed,
+    ) -> Result<Vec<i32>, Unsupported> {
+        let [sx, sy, _] = site.position;
+        let [rx, ry] = site.radius;
+        self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
+        Ok(self
+            .objects
+            .iter()
+            .filter(|&(&id, o)| {
+                id != site_id
+                    && o.buildable_on != 1
+                    && o.tall
+                    && o.radius.iter().all(|&r| 0.0 < r)
+                    && (o.position[0] - sx).abs() <= rx
+                    && (o.position[1] - sy).abs() <= ry
+            })
+            .map(|(&id, _)| id)
+            .collect())
+    }
+
+    /// The objects a foundation clears off its footprint when its first builder arrives
+    /// (`FUN_1415c3620`): those whose footprint overlaps the site's, of another master, that may
+    /// be built over (`can_be_built_on`) or are trees (class 15, which it clears when their hit
+    /// points are at most 1).
+    pub fn footprint_clearing(&self, site_id: i32, site: &Placed) -> Result<Vec<i32>, Unsupported> {
+        let [sx, sy, _] = site.position;
+        let [rx, ry] = site.radius;
+        self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
+        Ok(self
+            .objects
+            .iter()
+            .filter(|&(&id, o)| {
+                id != site_id
+                    && o.master != site.master
+                    && (o.buildable_on != 0 || o.class == 15)
+                    && (o.position[0] - sx).abs() < o.radius[0] + rx
+                    && (o.position[1] - sy).abs() < o.radius[1] + ry
+            })
+            .map(|(&id, _)| id)
+            .collect())
+    }
+
+    /// Whether a static record of another player marks a tile of `site`'s footprint
+    /// (`FUN_1411d4b80`).
+    pub fn foreign_marks(&self, site: &Placed) -> bool {
+        let [sx, sy, _] = site.position;
+        let [rx, ry] = site.radius;
+        let (w, h) = (self.tiles.width, self.tiles.height);
+        let (x0, y0) = (((sx - rx) as i32).max(0), ((sy - ry) as i32).max(0));
+        let x1 = (((sx + rx) - 0.001) as i32).min(w - 1);
+        let y1 = (((sy + ry) - 0.001) as i32).min(h - 1);
+        let own = 1u64 << site.player;
+        (y0..=y1).any(|y| {
+            (x0..=x1).any(|x| {
+                let players = self.tiles.word(x, y).unwrap_or(0) >> 23;
+                players != 0 && players != own
+            })
+        })
+    }
+
     /// The records a move query could report (`FUN_14114cc60` -> `FUN_141051900`): those of a
     /// tested kind whose box, grown by `grow`, meets `rect` (`x0, y0, x1, y1`, edges included),
     /// except the `ignore`d objects'. The game then tests each candidate against the move's
@@ -293,6 +497,8 @@ mod tests {
             obstruction_type: 0,
             buildable_on: 0,
             tall: true,
+            speed: 0.0,
+            unknown: None,
             obstruction: Some(Obstruction { kind: 5, class: 2 }),
         }
     }
@@ -345,6 +551,8 @@ mod tests {
             obstruction_type: 0,
             buildable_on: 0,
             tall: true,
+            speed: 0.0,
+            unknown: None,
             obstruction: Some(Obstruction { kind: 2, class: 3 }),
         };
         s.insert(9157, centre);
@@ -357,6 +565,8 @@ mod tests {
             obstruction_type: 0,
             buildable_on: 0,
             tall: true,
+            speed: 0.0,
+            unknown: None,
             obstruction: Some(Obstruction { kind: 2, class: 1 }),
         };
         s.insert(48, tree);
@@ -383,5 +593,75 @@ mod tests {
             (Some(0), Some(1))
         );
         assert_eq!(s.tiles().tall(2, 1), Some(1));
+    }
+
+    /// The house foundation 10028 at (30, 88) of MarvinBlue/426048731 with its builder 9175 on its
+    /// footprint at (30, 89), on open land (class 4) and a villager's mask (restriction 7: 6).
+    fn site() -> (Spatial, Placed) {
+        let mut s = Spatial::with_tiles([40, 120], Tiles::new(40, 120, vec![4; 40 * 120]));
+        s.insert(9175, villager(30.0, 89.0));
+        let mut house = villager(30.0, 88.0);
+        house.radius = [1.0, 1.0];
+        house.class = 3;
+        house.master = 70;
+        house.obstruction_type = 2;
+        house.obstruction = None;
+        s.insert(10028, house.clone());
+        (s, house)
+    }
+
+    #[test]
+    fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
+        let (mut s, _) = site();
+        assert_eq!(s.passable(29, 89, 6), Ok(true));
+        assert_eq!(s.passable(29, 89, 1), Ok(false));
+        assert_eq!(s.passable(-1, 89, 6), Ok(false));
+        let mut tree = villager(29.5, 90.5);
+        tree.radius = [0.5, 0.5];
+        tree.obstruction = Some(Obstruction { kind: 2, class: 1 });
+        s.insert(48, tree);
+        assert_eq!(s.passable(29, 90, 6), Ok(false));
+    }
+
+    #[test]
+    fn the_free_spot_beside_a_footprint_is_the_closest_empty_tile_around_it() {
+        // the game sends 9175 to (29.5, 89.5): (30, 89) is as close but holds 9175 itself
+        let (s, house) = site();
+        assert_eq!(
+            s.spot_beside([30.0, 89.0, 0.0], 6, &house),
+            Ok(Some([29.5, 89.5]))
+        );
+    }
+
+    #[test]
+    fn the_footprint_s_occupants_are_the_objects_whose_centre_is_on_it() {
+        let (mut s, house) = site();
+        assert_eq!(s.footprint_occupants(10028, &house), Ok(vec![9175]));
+        s.insert(9177, villager(28.0, 89.0));
+        assert_eq!(s.footprint_occupants(10028, &house), Ok(vec![9175]));
+        assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![]));
+        let mut flower = villager(30.5, 87.5);
+        flower.buildable_on = 1;
+        s.insert(77, flower);
+        assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![77]));
+        assert!(!s.foreign_marks(&house));
+    }
+
+    #[test]
+    fn a_frozen_object_may_be_anywhere_its_speed_could_take_it() {
+        let (mut s, house) = site();
+        let mut deer = villager(34.0, 88.0);
+        deer.speed = 1.0;
+        s.insert(9656, deer);
+        s.freeze(9656);
+        // frozen at once, the deer is where the save has it
+        assert!(s.footprint_occupants(10028, &house).is_ok());
+        assert!(s.get_known(9656).is_ok());
+        // its box reaches x 33.8; 3 s later it may stand on the footprint, which ends at 31
+        s.grow_unknown(2.5);
+        assert!(s.footprint_occupants(10028, &house).is_ok());
+        s.grow_unknown(0.5);
+        assert!(s.footprint_occupants(10028, &house).is_err());
+        assert!(s.get_known(9656).is_err());
     }
 }

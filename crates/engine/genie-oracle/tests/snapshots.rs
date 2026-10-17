@@ -35,6 +35,14 @@ fn differences(start: usize, ticks: usize, player: u32) -> Option<Vec<String>> {
     if let Some(u) = run.unsupported {
         out.push(format!("unsupported: {u:?}"));
     }
+    let others = run
+        .stopped
+        .iter()
+        .enumerate()
+        .filter_map(|(p, stop)| stop.filter(|_| p != player as usize).map(|u| (p, u)));
+    for (p, u) in others {
+        eprintln!("player {p} stopped: {u:?}");
+    }
     Some(out)
 }
 
@@ -62,6 +70,16 @@ fn a_save_read_as_the_slice_s_start_is_the_save() {
 #[test]
 fn the_build_tick_from_the_save_before_it_matches_the_game_object_by_object() {
     let Some(found) = differences(678, 1, 2) else {
+        return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
+    };
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn the_walk_tick_from_the_save_before_it_matches_the_game_object_by_object() {
+    // update 681: 9177 and 9181 take their first steps, 9175 faces its foundation, finds itself
+    // on the footprint and turns to walk off it (Build state 223)
+    let Some(found) = differences(679, 1, 2) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

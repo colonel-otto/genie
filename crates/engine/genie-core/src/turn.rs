@@ -14,8 +14,10 @@
 
 use crate::artifact::Artifact;
 use crate::build::{BUILD, BuildAction, Walk};
+use crate::fly::Fly;
 use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::masters::{Masters, Target};
+use crate::move_to::MoveToAction;
 use crate::movement::{Me, Mover, footprint_gap};
 use crate::production::{Production, Queued};
 use crate::rng::{Stream, Streams};
@@ -43,6 +45,10 @@ pub struct Unit {
     pub build: Option<BuildAction>,
     /// A moving object's movement state (types 30 and up).
     pub mover: Option<Mover>,
+    /// A MoveTo as the object's own top action (a wandering animal).
+    pub move_to: Option<MoveToAction>,
+    /// A bird's Fly action, its top action.
+    pub fly: Option<Fly>,
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
@@ -128,6 +134,18 @@ struct Context<'a> {
     spatial: &'a mut Spatial,
 }
 
+impl Context<'_> {
+    /// What an object's walking action needs from the tick.
+    fn walk<'b>(&'b self, mover: Option<&'b mut Mover>, me: Me) -> Walk<'b> {
+        Walk {
+            mover,
+            me,
+            dt: self.dt_seconds,
+            world: self.spatial,
+        }
+    }
+}
+
 impl Unit {
     /// One update; true when the object leaves its list.
     fn update(&mut self, c: &mut Context<'_>) -> Result<bool, Unsupported> {
@@ -154,19 +172,27 @@ impl Unit {
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
             artifact.update(c.dt);
         }
+        let me = Me {
+            id: self.id,
+            position: self.position,
+        };
         if let Some(build) = self.build.as_mut() {
-            build.update(Walk {
-                mover: self.mover.as_mut(),
-                me: Me {
-                    id: self.id,
-                    position: self.position,
-                },
-                dt: c.dt_seconds,
-                world: c.spatial,
-            })?;
+            build.update(c.walk(self.mover.as_mut(), me))?;
+        }
+        if let Some(move_to) = self.move_to.as_mut() {
+            move_to.update(c.walk(self.mover.as_mut(), me))?;
+        }
+        if let Some(fly) = self.fly.as_mut() {
+            fly.update(c.walk(self.mover.as_mut(), me))?;
         }
         if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
-            ai.update_idle(dt, c.world_time, c.computer, c.ai)?;
+            if ai.current_order == -1 && ai.current_action == -1 && ai.current_target == -1 {
+                ai.update_idle(dt, c.world_time, c.computer, c.ai)?;
+            } else if self.build.is_some() && !self.life.inside {
+                ai.update_working(dt, c.computer, c.ai)?;
+            } else {
+                return Err(Unsupported("unit is not idle"));
+            }
         }
         Ok(leaves)
     }
@@ -268,6 +294,8 @@ impl Turns {
                     production: None,
                     build: None,
                     mover: None,
+                    move_to: None,
+                    fly: None,
                 });
                 if let Err(e) = self.task_builders(player, id, master, position, builders) {
                     let owner = &mut self.players[player];
@@ -361,6 +389,8 @@ impl Turns {
                 obstruction_type: site.obstruction_type,
                 buildable_on: site.buildable_on,
                 tall: site.tall,
+                speed: 0.0,
+                unknown: None,
                 obstruction: None,
             },
         );
@@ -376,7 +406,12 @@ impl Turns {
                 .iter_mut()
                 .find(|o| o.id == id)
                 .ok_or(Unsupported("a builder the slice does not have"))?;
-            if unit.artifact.is_some() || unit.production.is_some() || unit.build.is_some() {
+            if unit.artifact.is_some()
+                || unit.production.is_some()
+                || unit.build.is_some()
+                || unit.move_to.is_some()
+                || unit.fly.is_some()
+            {
                 return Err(Unsupported("a builder with an action (its replacement)"));
             }
             let with = masters
@@ -467,9 +502,6 @@ impl Turns {
         }
         for (p, player) in self.players.iter_mut().enumerate() {
             self.player_time[p] = self.player_time[p].wrapping_add(dt);
-            if player.unsupported.is_some() {
-                continue;
-            }
             let mut c = Context {
                 dt,
                 dt_seconds: seconds(dt),
@@ -480,8 +512,16 @@ impl Turns {
                 ai: self.streams.get(Stream::Ai),
                 spatial: &mut self.spatial,
             };
+            // Once a player's update is not modelled, its live objects freeze; its dead ones still
+            // run their state steps, which draw nothing and depend on nothing the stop changed.
             let mut i = 0;
             while i < player.objects.len() {
+                let stopped = player.unsupported.is_some();
+                if stopped && player.objects[i].life.is_alive() {
+                    c.spatial.freeze(player.objects[i].id);
+                    i += 1;
+                    continue;
+                }
                 match player.objects[i].update(&mut c) {
                     Ok(true) => {
                         let gone = player.objects.swap_remove(i);
@@ -490,11 +530,13 @@ impl Turns {
                     Ok(false) => i += 1,
                     Err(e) => {
                         player.unsupported = Some((self.ticks, i, e));
-                        break;
+                        c.spatial.freeze(player.objects[i].id);
+                        i += 1;
                     }
                 }
             }
         }
+        self.spatial.grow_unknown(seconds(dt));
         let s1 = self.streams.get(Stream::World).rand15();
         self.streams.seed_all(s1);
         self.player_time[self.player_turn] = 0;
