@@ -9,8 +9,128 @@
 //! `TribeHuntedAnimalUnitAIModule`: deer, foxes) looks for the closest object of the classes it
 //! cares about in its player's sight ([`Search`], answered by the caller) and otherwise wanders
 //! around its origin ([`Hunted`]).
+//!
+//! The unit's actions post notifies to its unit AI ([`UnitAi::post`]), which the full update
+//! processes ([`Notify`]); orders wait in a queue the AI runs once its unit can take one
+//! ([`QueuedOrder`]), on its owner's turn and between turns ([`UnitAi::off_turn`]). What the AI
+//! does to its unit comes back as [`Effect`]s, in order.
 
 use crate::rng::Well512;
+
+/// A notify to a unit AI (the save's `temp_notify`, 0x18 bytes): from `caller` to `recipient`, of
+/// `kind`, with three parameters.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Notify {
+    pub caller: i32,
+    pub recipient: i32,
+    pub kind: i32,
+    pub p: [i32; 3],
+}
+
+impl Notify {
+    /// The notify an object posts to itself.
+    pub fn own(id: i32, kind: i32, p: [i32; 3]) -> Self {
+        Notify {
+            caller: id,
+            recipient: id,
+            kind,
+            p,
+        }
+    }
+
+    /// The record as the save holds it.
+    pub fn from_bytes(b: &[u8; 24]) -> Self {
+        let w = |i: usize| i32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+        Notify {
+            caller: w(0),
+            recipient: w(4),
+            kind: w(8),
+            p: [w(12), w(16), w(20)],
+        }
+    }
+}
+
+/// The notify kinds the slice posts or processes (named by the game's log strings).
+/// `0x1fa`: "Action %d has completed" (p1 the action value).
+pub const ACTION_COMPLETED: i32 = 0x1fa;
+/// `0x1fb`: an action's invalidation (p1 the action value).
+pub const ACTION_INVALIDATED: i32 = 0x1fb;
+/// `0x200`: "ActionExecuted", an attack's swing (p1 600, p2 the target).
+pub const ACTION_EXECUTED: i32 = 0x200;
+/// `0x20b`: the unit changed hands (p1 the new owner).
+pub const OWNER_CHANGED: i32 = 0x20b;
+/// `500`: "I took some damage".
+pub const DAMAGED: i32 = 500;
+/// `699`: "Unit #%d is no longer doing an action on me".
+const NO_LONGER_ON_ME: i32 = 699;
+
+/// What a notify handler (unit-AI slot 0x238) returns: go on with the next notify.
+const GO_ON: u32 = 2;
+/// "Notify processing returned stop or new action, breaking."
+const BREAK: u32 = 3;
+
+/// A queued order (the save's `temp_order`, 0x34 bytes), which the order queue (`+0x18` count,
+/// `+0x20` array) runs once the unit can take it ([`UnitAi::run_orders`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct QueuedOrder {
+    /// `+0x0`: the issuing player.
+    pub issuer: i32,
+    /// `+0x4`: the order value (`0x2c6` a move).
+    pub order: i32,
+    /// `+0x8`: below 100 it waits while the unit AI has an action.
+    pub priority: i32,
+    /// `+0xc`, `+0x10`: the target and a second id (−1 for none).
+    pub target: i32,
+    pub target2: i32,
+    /// `+0x14`..`+0x1c`: the point; `+0x20`: the range.
+    pub point: [f32; 3],
+    pub range: f32,
+    /// `+0x24`, `+0x28`: the point the unit's slot 0x2d8 shows (not held).
+    pub shown: [f32; 2],
+    /// `+0x2c` (a byte): 0 leaves the order in the queue.
+    pub ready: bool,
+    /// `+0x30`.
+    pub extra: i32,
+}
+
+impl QueuedOrder {
+    /// The record as the save holds it (`+0x2d`..`+0x2f` are padding).
+    pub fn from_bytes(b: &[u8; 52]) -> Self {
+        let w = |i: usize| i32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+        let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+        QueuedOrder {
+            issuer: w(0),
+            order: w(4),
+            priority: w(8),
+            target: w(12),
+            target2: w(16),
+            point: [f(20), f(24), f(28)],
+            range: f(32),
+            shown: [f(36), f(40)],
+            ready: b[44] != 0,
+            extra: w(48),
+        }
+    }
+}
+
+/// What the unit AI does to its unit, in the order it does it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Effect {
+    /// stopAction (the unit's slot 0x3c0, `FUN_14108c160`): its action list goes
+    /// (`FUN_140a98620`, each action's teardown) and a unit in state 2 takes its standing sprite
+    /// (slot 0x68 with slot 0x798's).
+    Stop,
+    /// The AI's move (slot 0x130), which the unit takes (its slot 0x340).
+    Move(AiMove),
+}
+
+/// The first move among a full update's effects.
+pub fn first_move(effects: &[Effect]) -> Option<AiMove> {
+    effects.iter().find_map(|e| match e {
+        Effect::Move(m) => Some(*m),
+        Effect::Stop => None,
+    })
+}
 
 /// The unit-AI fields the idle update reads and writes, with their offsets in 158041.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -19,6 +139,8 @@ pub struct UnitAi {
     pub ai_type: u32,
     /// `+0x3c`, −1 for none.
     pub current_order: i32,
+    /// `+0x40`, the current order's priority (−1 for none): a queued order sets it.
+    pub order_priority: i32,
     /// `+0x44`, −1 for none.
     pub current_action: i32,
     /// `+0x48`, −1 for none.
@@ -62,6 +184,15 @@ pub struct UnitAi {
     pub home: Option<Home>,
     /// A hunted animal's own fields (factory type 2).
     pub hunted: Option<Hunted>,
+    /// `+0x15c`, `last_update_time_value`: what `FUN_140c5dc10` last cleared the notifies with
+    /// (the owner's time on its turn, the world time on a MOVE or an ownership change).
+    pub last_update_time: u32,
+    /// The order queue, oldest first.
+    pub orders: Vec<QueuedOrder>,
+    /// The notify queue (`+0x28` count, `+0x30` array), oldest first. Its capacity (`+0x2c`)
+    /// decides only where a notify posted while the queue is processed goes, which the slice
+    /// never does.
+    pub notifies: Vec<Notify>,
 }
 
 /// A hunted animal's part of its unit AI (`TribeHuntedAnimalUnitAIModule`, factory type 2), set
@@ -144,10 +275,23 @@ pub struct Surroundings {
     pub size: [f32; 2],
     pub los: f32,
     pub search_radius: f32,
+    /// The unit's slot 0x2d0 with 0 (`FUN_14106d170`): its top action may be interrupted, or it
+    /// has none.
+    pub interruptible: bool,
+    /// The master has a task of action type 0x99 (`FUN_1415c60b0`; the mule cart's): such a
+    /// unit with an action or a target takes no queued order (`FUN_140c4eea0`).
+    pub task_0x99: bool,
+    /// An object of type 70 or more inside another (`+0x2f0`): it runs no queued order.
+    pub garrisoned: bool,
 }
 
 /// The class whose busy units skip the idle check (`-0xe98` raw).
 const CLASS_20: i16 = 20;
+/// The class whose stop leaves the state position (`-0xe9a` raw, slot 0xb0).
+const CLASS_18: i16 = 18;
+/// The patrol orders (`0x2c7`, `0x2dd`), whose ends reset the idle and secondary timers.
+const PATROL: i32 = 0x2c7;
+const PATROL_2: i32 = 0x2dd;
 /// Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
 /// `-0xe78` raw).
 const CLASS_3: i16 = 3;
@@ -170,6 +314,7 @@ pub struct AiMove {
 pub struct Unsupported(pub &'static str);
 
 /// What slot 73 does for a factory type.
+#[derive(Clone, Copy)]
 enum Retarget {
     /// The base slot 73: the retarget check.
     Base,
@@ -204,8 +349,8 @@ const BOAR_STEP: u32 = 6;
 const BOAR_OFFSET: i32 = 3;
 const AI_MOVE_RANGE: f32 = 0.5;
 /// The move order and action values (`0x2c6`, `0x262`), which moves set.
-const MOVE_ORDER: i32 = 0x2c6;
-const MOVE_ACTION: i32 = 0x262;
+pub const MOVE_ORDER: i32 = 0x2c6;
+pub const MOVE_ACTION: i32 = 0x262;
 
 /// The hunted animal's idle check (`FUN_140c1eea0`): away from its origin by more than
 /// `DAT_142eb0f48` (4, squared) it goes home once in 7 checks; otherwise it wanders 1 to 3 tiles
@@ -250,6 +395,7 @@ impl UnitAi {
         Ok(UnitAi {
             ai_type,
             current_order: -1,
+            order_priority: -1,
             current_action: -1,
             current_target: -1,
             target_type: -1,
@@ -274,6 +420,9 @@ impl UnitAi {
             stop_after_kill: false,
             home: None,
             hunted: None,
+            last_update_time: 0,
+            orders: Vec::new(),
+            notifies: Vec::new(),
         })
     }
 
@@ -330,8 +479,10 @@ impl UnitAi {
     /// The work command's notify of its new action (`FUN_14106e4e0`, object slot 0x828): the unit
     /// AI takes the order and action values of the action's type, and the target with its class
     /// (None for a point) and the order's point (`FUN_140c64b60`, `FUN_140c64b50`,
-    /// `FUN_140c64be0`). The order history (`FUN_140c42080`) and the notifies (`FUN_140c5dc10`) are
-    /// not held.
+    /// `FUN_140c64be0`); then `FUN_140c64e50` clears the notifies with time 0 (`FUN_140c5dc10`;
+    /// for a unit of type 70 or more only with its `+0xa14`, which is 1 but inside slot 0x128's
+    /// work command, where INTERACT passes 1 too). The order history (`FUN_140c42080`) is not
+    /// held.
     pub fn notify_work(
         &mut self,
         order: i32,
@@ -339,11 +490,12 @@ impl UnitAi {
         target: Option<(i32, i32)>,
         point: [f32; 3],
         ai: &mut Well512,
-    ) {
+    ) -> Result<(), Unsupported> {
         self.set_order(order, ai);
         self.set_action(action);
         let (id, class) = target.unwrap_or((-1, -1));
         self.set_target(id, class, point);
+        self.clear_notifies(0)
     }
 
     /// MOVE's notify (`FUN_140e67800`): a unit that took the move as a MoveTo (`moved`) gets the
@@ -583,12 +735,16 @@ impl UnitAi {
         self.current_order == -1 && self.current_action == -1 && self.current_target == -1
     }
 
-    /// The full update (slot 4, `0x140c66b10`; the boar's `0x140c2c010`): `dt` is the time the
-    /// owner accumulated since its last turn (`world+0x18c[player]`), `computer` the owner's type
-    /// test (`player+0x10 == 3`). An idle unit ([`UnitAi::update_idle`]) and a busy one on an order
-    /// the slice models ([`UnitAi::update_busy`]); an action value whose action ended, which the
-    /// update resets, is not modelled. The idle check may give the unit a move, which the caller
-    /// hands to the unit (its slot 0x340).
+    /// The full update (slot 4, `0x140c66b10`; the boar's `0x140c2c010` adds its tail):
+    /// `dt` is the time the owner accumulated since its last turn (`world+0x18c[player]`),
+    /// `computer` the owner's type test (`player+0x10 == 3`). In the game's order: the state
+    /// position of a unit with an order, the timers, the notifies ([`UnitAi::post`]: each through
+    /// slot 0x238, then `FUN_140c5dc10`), the reset of an action value whose actions ended, the
+    /// order check of a unit no longer busy, the order queue ([`UnitAi::run_orders`]), slot 73's
+    /// retarget check, the idle part (slot 72 once the idle timer passes its timeout), the
+    /// look-around check. What it does to the unit comes back as [`Effect`]s, which the caller
+    /// applies in order. A unit in a group is not modelled (the slice holds none), nor are the
+    /// retarget entries and the attackers list (the save's, empty in every unit probed).
     pub fn update(
         &mut self,
         dt: u32,
@@ -597,31 +753,542 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         closest: &mut Closest<'_>,
-    ) -> Result<Option<AiMove>, Unsupported> {
-        if !at.busy
-            && self.current_order == -1
-            && self.current_target == -1
-            && ENDED_ACTIONS.contains(&self.current_action)
+    ) -> Result<Vec<Effect>, Unsupported> {
+        let retarget = retarget_kind(self.ai_type)?;
+        self.check_busy_order(at, retarget)?;
+        let mut fx = Vec::new();
+        if self.current_order != -1 {
+            self.state_position = [at.position[0], at.position[1]];
+        }
+        self.secondary_timer = self.secondary_timer.saturating_sub(dt);
+        self.look_around_timer = self.look_around_timer.wrapping_add(dt);
+        self.idle_timer = self.idle_timer.wrapping_add(dt);
+        let result = self.process_notifies(dt, at, computer, &mut fx)?;
+        self.end_notifies(dt, at, &mut fx)?;
+        // slot 0x430 again: a stop emptied the action list
+        let stopped = fx.contains(&Effect::Stop);
+        let busy = at.busy && !stopped;
+        if !busy {
+            self.reset_ended_action(at)?;
+            if self.current_order != -1 {
+                self.check_order(at)?;
+            }
+        }
+        let interruptible = at.interruptible || stopped;
+        if self.current_action == -1
+            && (!busy || interruptible)
+            && result != 0xd
+            && self.can_order(at)?
+            && !at.garrisoned
         {
-            // the unit's actions ended: the action value goes (0x2bf's stance-2 branch, which
-            // also sets the state position, is not modelled)
+            self.run_orders(&mut fx)?;
+        }
+        if let Retarget::Base = retarget {
+            self.retarget_check(world_time, ai)?;
+        }
+        self.idle_part(busy, at, ai, closest, &mut fx)?;
+        self.look_around(computer, ai)?;
+        // the boar's slot 4 (0x140c2c010) after the base: its second idle check runs only for a
+        // timer the base's left past the timeout (a unit with an action), and a boar without a
+        // target calms down
+        if let Some(home) = self.home
+            && !home.furious
+            && self.adjusted_idle_timeout < self.idle_timer
+        {
+            self.idle_timer = 0;
+            if let Some(m) = self.process_idle(at, ai, closest)? {
+                fx.push(Effect::Move(m));
+            }
+        }
+        self.calm_down();
+        Ok(fx)
+    }
+
+    /// The busy units the update models: a villager building or hunting (702/602, 713/613) or a
+    /// unit on MOVE's order without a target (710/610, or an animal's own wander). The target
+    /// block at the update's start (a target that died, the patrol range) is not modelled: a
+    /// building's or a hunted tree's target never counts as dead there (both actions are
+    /// exempt).
+    fn check_busy_order(&self, at: &Surroundings, retarget: Retarget) -> Result<(), Unsupported> {
+        let order = (self.current_order, self.current_action);
+        let working = matches!(
+            order,
+            (BUILD_ORDER, BUILD_ACTION) | (HUNT_ORDER, HUNT_ACTION)
+        );
+        let moving = matches!(order, (MOVE_ORDER | -1, MOVE_ACTION)) && self.current_target == -1;
+        if self.current_target != -1 && !working {
+            return Err(Unsupported("a unit AI's target the slice does not model"));
+        }
+        if self.current_target != -1 && !at.busy {
+            return Err(Unsupported(
+                "a unit AI's target once its actions ended (the target block)",
+            ));
+        }
+        if !at.busy || self.is_idle() {
+            return Ok(());
+        }
+        match retarget {
+            Retarget::Never if working || moving => Ok(()),
+            Retarget::Base if moving => Ok(()),
+            _ => Err(Unsupported(
+                "a busy unit AI on an order the slice does not model",
+            )),
+        }
+    }
+
+    /// The notify processing of the full update: while notifies are queued and the last handler
+    /// said go on, each runs through slot 0x238 ([`UnitAi::handle`]); a pass that went through
+    /// them all ends with `FUN_140c5dc10`; 3 and 0xd break off. Returns the last handler's
+    /// result (2 without notifies). Notifies posted during the pass (`FUN_140c55270`'s buffer)
+    /// do not occur in the slice.
+    fn process_notifies(
+        &mut self,
+        dt: u32,
+        at: &Surroundings,
+        computer: bool,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let mut result = GO_ON;
+        while !self.notifies.is_empty() && result == GO_ON {
+            let mut i = 0;
+            while i < self.notifies.len() {
+                let n = self.notifies[i];
+                result = self.handle(n, dt, at, computer, fx)?;
+                if result == BREAK || result == 0xd {
+                    break;
+                }
+                i += 1;
+            }
+            if result == GO_ON {
+                self.end_notifies(dt, at, fx)?;
+            }
+        }
+        Ok(result)
+    }
+
+    /// `FUN_140c5dc10`: a completion of the current action (with no order) stops it
+    /// (`FUN_140c5e1e0`, slot 0xb0 with 1); then the notifies go and `+0x15c` takes `time`.
+    pub fn end_notifies(
+        &mut self,
+        time: u32,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        let completed = self.notifies.iter().any(|n| {
+            n.kind == ACTION_COMPLETED && self.current_order == -1 && self.current_action == n.p[0]
+        });
+        if completed {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        self.last_update_time = time;
+        self.notifies.clear();
+        Ok(())
+    }
+
+    /// `FUN_140c5dc10` from outside the full update (a MOVE, an ownership change: `time` is the
+    /// world time), where a completion it would stop on is not modelled.
+    pub fn clear_notifies(&mut self, time: u32) -> Result<(), Unsupported> {
+        let mut fx = Vec::new();
+        self.end_notifies(time, &Surroundings::default(), &mut fx)?;
+        if !fx.is_empty() {
+            return Err(Unsupported(
+                "a completion stopping the action outside the full update",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The unit's notify (its slot 0x328, `FUN_141086a10`) to its unit AI: a unit in state 2
+    /// passes it to the AI's slot 0x38 (`FUN_140c556d0`), which queues it (`FUN_140c42470`) but
+    /// for an action's invalidation that is not the current action's and a movement completion
+    /// while the AI has an action other than a move (`0x262`, `0x268`, `0x2bf`, `0x2c0`).
+    /// A notify the AI does not take (any but 699) goes to the owner's slot 0x2e8
+    /// (`FUN_14162dab0`, the human player's alerts), which the slice does not hold; 699 needs the
+    /// attackers list, which it does not hold either.
+    pub fn post(&mut self, n: Notify, unit_state: u8) -> Result<(), Unsupported> {
+        if unit_state != 2 {
+            return Ok(());
+        }
+        let action = self.current_action;
+        let taken = match n.kind {
+            NO_LONGER_ON_ME => return Err(Unsupported("a notify 699 (the attackers list)")),
+            ACTION_INVALIDATED => n.p[0] == action,
+            ACTION_COMPLETED => {
+                // ignored (and handled) for a non-movement action
+                if n.p[0] == MOVE_ACTION && !matches!(action, 0x262 | 0x268 | 0x2bf | 0x2c0) {
+                    return Ok(());
+                }
+                true
+            }
+            _ => true,
+        };
+        if taken {
+            self.notifies.push(n);
+        }
+        Ok(())
+    }
+
+    /// Slot 0x238 per factory type: each type's handler, most of which pass the notify on to the
+    /// base handler ([`UnitAi::base_notify`]).
+    fn handle(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        match self.ai_type {
+            // TribeHuntedAnimalUnitAIModule (FUN_140c26420): its damage notify evades
+            2 => match n.kind {
+                DAMAGED => Err(Unsupported("a hunted animal's damage notify (its evade)")),
+                0x20f => Ok(GO_ON),
+                _ => self.base_notify(n, time, at, fx),
+            },
+            // the boar (FUN_140c25770): its damage notify attacks
+            4 => match n.kind {
+                DAMAGED => Err(Unsupported("a boar's damage notify (its attack)")),
+                ACTION_COMPLETED if self.current_action == 0x2bf => {
+                    Err(Unsupported("a boar's completion of action 0x2bf"))
+                }
+                0x20f => Ok(GO_ON),
+                _ => self.base_notify(n, time, at, fx),
+            },
+            // the lion (FUN_140c266f0)
+            5 => match n.kind {
+                ACTION_COMPLETED if n.p[0] == 600 => Err(Unsupported("a lion's completed attack")),
+                0x1fc => Err(Unsupported("a lion's moved target")),
+                _ => self.base_notify(n, time, at, fx),
+            },
+            // the villager (FUN_140c22bf0): a completion of its action stops it, and slot 0x48
+            // passes the notify to its owner's slot 0x2e8 (not held)
+            8 => match n.kind {
+                ACTION_COMPLETED => {
+                    if self.current_action == n.p[0] {
+                        self.remove_target();
+                        self.stop_current(true, at, fx)?;
+                    }
+                    Ok(GO_ON)
+                }
+                ACTION_EXECUTED if computer => {
+                    Err(Unsupported("a computer villager's executed action"))
+                }
+                ACTION_EXECUTED => self.base_notify(n, time, at, fx),
+                _ => Err(Unsupported("a villager's notify the slice does not model")),
+            },
+            // the soldier (FUN_140c28bb0): its own cases are the computer's, a backing-up and a
+            // healer's search
+            13 => match n.kind {
+                0x1fe => Err(Unsupported("a soldier's target under its least range")),
+                ACTION_EXECUTED | 0x20f if computer => {
+                    Err(Unsupported("a computer soldier's notify"))
+                }
+                0x202 if self.current_action == 0x25b => {
+                    Err(Unsupported("a healer's search notify"))
+                }
+                _ => self.base_notify(n, time, at, fx),
+            },
+            // the tower (FUN_140c299f0)
+            15 => match n.kind {
+                DAMAGED => Err(Unsupported("a tower's damage notify")),
+                ACTION_COMPLETED if n.p[0] == 600 && self.current_order == 700 => {
+                    Err(Unsupported("a tower's completed attack"))
+                }
+                _ => self.base_notify(n, time, at, fx),
+            },
+            // the building (FUN_140c22610): most notifies end there
+            17 => match n.kind {
+                DAMAGED | 600 | NO_LONGER_ON_ME => Err(Unsupported("a building's attack notify")),
+                0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, fx),
+                _ => Ok(GO_ON),
+            },
+            // livestock (FUN_140c26ac0): any notify but 0x202 and 0x216 drops the action value
+            // (FUN_140c64b50) and breaks off
+            19 => match n.kind {
+                0x202 | 0x216 => Err(Unsupported("a livestock's notify 0x202 or 0x216")),
+                _ => {
+                    self.set_action(-1);
+                    Ok(BREAK)
+                }
+            },
+            _ => Err(Unsupported(
+                "the notify handler of a unit-AI type not modelled",
+            )),
+        }
+    }
+
+    /// The base handler (`FUN_140c589c0`) for the kinds the slice posts: a completed action
+    /// ([`UnitAi::action_completed`]), an ownership change (stopAction, `FUN_140c5e1e0`, slot 0xb0
+    /// with 1, `FUN_140c5dc10` with the handler's time, the order queue emptied), the kinds it
+    /// ignores; anything else is not modelled.
+    fn base_notify(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        match n.kind {
+            ACTION_COMPLETED => self.action_completed(n, at, fx),
+            OWNER_CHANGED => {
+                fx.push(Effect::Stop);
+                self.remove_target();
+                self.stop_current(true, at, fx)?;
+                self.end_notifies(time, at, fx)?;
+                self.orders.clear();
+                Ok(GO_ON)
+            }
+            // "I'm ignoring that."
+            0x1f6 | 0x1f7 | 0x1f8 | 0x1ff | ACTION_EXECUTED | 0x203 => Ok(GO_ON),
+            0x259..=0x262 | 0x265..=0x269 | 0x2be => Ok(GO_ON),
+            _ => Err(Unsupported("a notify kind the base handler does not model")),
+        }
+    }
+
+    /// The base handler's case `0x1fa` (`FUN_140c589c0`): without an order, a completion of the
+    /// current action (or of an attack) stops it. With one, the state position takes the unit's
+    /// place; the completion of the order's own action (action + 100 = order) stops it, and so
+    /// do an attack's; order 724 and 701 end their move, 712 a heal's. The attack order 700's
+    /// own case (processIdle with 0) is not modelled.
+    fn action_completed(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let p1 = n.p[0];
+        let order = self.current_order;
+        let action = self.current_action;
+        if order == -1 {
+            if action == p1 || p1 == 600 {
+                self.remove_target();
+                self.stop_current(true, at, fx)?;
+            }
+            return Ok(GO_ON);
+        }
+        self.state_position = [at.position[0], at.position[1]];
+        if order == 700 && p1 == 600 {
+            return Err(Unsupported("a completed attack on the attack order"));
+        }
+        if action == p1 && action + 100 == order {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        match (order, p1) {
+            (0x2d4, MOVE_ACTION) => {
+                self.remove_target();
+                self.stop_current(false, at, fx)?;
+                return Ok(GO_ON);
+            }
+            (0x2bd, MOVE_ACTION) => {
+                self.set_action(-1);
+                return Ok(GO_ON);
+            }
+            (0x2c8, MOVE_ACTION) if action == 0x2bf => {
+                self.set_action(-1);
+                return Ok(GO_ON);
+            }
+            _ => {}
+        }
+        if p1 == 600 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// `FUN_140c5e1e0`: the target becomes the last one, and none (its point −1).
+    fn remove_target(&mut self) {
+        if self.current_target != -1 {
+            self.last_target = self.current_target;
+            self.last_target_type = self.target_type;
+            self.current_target = -1;
+            self.target_type = -1;
+            self.target_point = [-1.0; 3];
+        }
+    }
+
+    /// Slot 0xb0 (`FUN_140c64ed0`), stopping the current action: it becomes the last action; with
+    /// `keep_order` false or an action of the order (action + 100 = order) the order ends too
+    /// (its priority with it), the state position taking the unit's place but for class 18. Then
+    /// the unit's stopAction (slot 0x3c0), no action, and `+0x1a8` cleared. A patrol order (711,
+    /// 733) would end too, with its timers' reset, which is not modelled.
+    fn stop_current(
+        &mut self,
+        keep_order: bool,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        let action = self.current_action;
+        let order = self.current_order;
+        if matches!(order, PATROL | PATROL_2) {
+            return Err(Unsupported("a stop on a patrol order"));
+        }
+        self.last_action = action;
+        if !keep_order || action + 100 == order {
+            self.last_order = order;
+            self.current_order = -1;
+            self.order_priority = -1;
+            if at.class != CLASS_18 {
+                self.state_position = [at.position[0], at.position[1]];
+            }
+        }
+        fx.push(Effect::Stop);
+        self.current_action = -1;
+        self.stop_after_kill = false;
+        Ok(())
+    }
+
+    /// The reset at the full update once the unit's actions ended (the unit's slot 0x430 false):
+    /// an action value of [`ENDED_ACTIONS`] goes; `0x2bf` of stance 2 also sets the state
+    /// position.
+    fn reset_ended_action(&mut self, at: &Surroundings) -> Result<(), Unsupported> {
+        if ENDED_ACTIONS.contains(&self.current_action) {
             if self.current_action == 0x2bf && self.stance == 2 {
-                return Err(Unsupported("an ended action 0x2bf of stance 2"));
+                self.state_position = [at.position[0], at.position[1]];
             }
             self.current_action = -1;
         }
-        if self.is_idle() {
-            if at.busy && at.class == CLASS_20 {
-                return Err(Unsupported("a busy unit of class 20 (its idle part)"));
+        Ok(())
+    }
+
+    /// The order check of a unit that is not busy: an order of these values the unit can give up
+    /// (`FUN_140c4eea0` with 0) ends, its target removed (`FUN_140c5e1e0`); its priority stays.
+    fn check_order(&mut self, at: &Surroundings) -> Result<(), Unsupported> {
+        let ends = matches!(
+            self.current_order,
+            0x269 | 700 | 0x2c5 | 0x2c6 | 0x2c9 | 0x2cf | 0x2d0 | 0x2dd | 0x322
+        );
+        if ends && self.can_order(at)? {
+            if self.current_order == PATROL_2 {
+                return Err(Unsupported("the end of a patrol order 733"));
             }
-            return self.update_idle(dt, world_time, computer, at, ai, closest);
+            self.remove_target();
+            self.current_order = -1;
         }
-        if !at.busy {
-            return Err(Unsupported(
-                "a unit AI whose action ended (the reset of its action value)",
-            ));
+        Ok(())
+    }
+
+    /// `FUN_140c4eea0` with 0: a unit takes orders unless its master has a task of action type
+    /// 0x99 and it has a target or an action (not modelled).
+    fn can_order(&self, at: &Surroundings) -> Result<bool, Unsupported> {
+        if at.task_0x99 {
+            return Err(Unsupported("a unit with a task of action type 0x99"));
         }
-        self.update_busy(dt, world_time, computer, at, ai, closest)
+        Ok(true)
+    }
+
+    /// The unit AI between its owner's turns (`FUN_140c68980`, from `RGE_Combat_Object::update`
+    /// for a unit of a type below 70 or not inside another): with no notifies queued, a unit
+    /// without an action value or with an action it may interrupt (slot 0x2d0) runs its order
+    /// queue. Its effects, as the full update's.
+    pub fn off_turn(&mut self, at: &Surroundings) -> Result<Vec<Effect>, Unsupported> {
+        let mut fx = Vec::new();
+        if !self.notifies.is_empty() || self.orders.is_empty() {
+            return Ok(fx);
+        }
+        if (self.current_action != -1 || at.busy) && !at.interruptible {
+            return Ok(fx);
+        }
+        if self.can_order(at)? {
+            self.run_orders(&mut fx)?;
+        }
+        Ok(fx)
+    }
+
+    /// The order queue (`FUN_140c5d790`): while the AI has an action, an order below priority
+    /// 100 waits; each order runs through slot 0x230 ([`UnitAi::process_order`]): one that is not
+    /// ready (0xe) stays and the next is tried, any other result removes it, and 1 (taken) ends
+    /// the queue's turn.
+    pub fn run_orders(&mut self, fx: &mut Vec<Effect>) -> Result<(), Unsupported> {
+        let mut k = 0;
+        while k < self.orders.len() {
+            if self.current_action != -1 && self.orders[k].priority < 100 {
+                return Ok(());
+            }
+            let order = self.orders[k];
+            let r = self.process_order(&order, fx)?;
+            if r == 0xe {
+                k += 1;
+                continue;
+            }
+            self.orders.remove(k);
+            if r == 1 {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    /// Slot 0x230 (`FUN_140c5c170`, every type's): an order not ready returns 0xe. A move
+    /// (`0x2c6`) is the AI's move to its point within its range, forced and walking (slot 0x130),
+    /// and the unit's slot 0x2d8 shows its points (`+0x7c0`..`+0x7cc`, not held); once taken
+    /// (1) the order and its priority become the AI's (leaving a patrol order caps the secondary
+    /// timer). Other orders are not modelled.
+    fn process_order(&mut self, o: &QueuedOrder, fx: &mut Vec<Effect>) -> Result<u32, Unsupported> {
+        if !o.ready {
+            return Ok(0xe);
+        }
+        if o.order != MOVE_ORDER {
+            return Err(Unsupported("a queued order other than a move"));
+        }
+        let Some(m) = self.move_to(AiMove {
+            point: o.point,
+            range: o.range,
+            force: true,
+            walk: true,
+        }) else {
+            return Ok(0);
+        };
+        if matches!(self.current_order, PATROL | PATROL_2) {
+            return Err(Unsupported("a queued order after a patrol order"));
+        }
+        fx.push(Effect::Move(m));
+        self.current_order = o.order;
+        self.order_priority = o.priority;
+        Ok(1)
+    }
+
+    /// The idle part of the full update: a unit without an action value (and without a target
+    /// or not busy) runs slot 72 once its idle timer passes its timeout, unless it is a busy unit
+    /// of class 20; otherwise an action or a target keeps the idle timer of a player above Gaia
+    /// at 0. Patrol orders, class 3's and 52's actions `0x26b`/`0x26c` and action `0x2c0` take
+    /// branches the slice does not model.
+    fn idle_part(
+        &mut self,
+        busy: bool,
+        at: &Surroundings,
+        ai: &mut Well512,
+        closest: &mut Closest<'_>,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        let class_20 = busy && at.class == CLASS_20;
+        if !class_20
+            && self.adjusted_idle_timeout < self.idle_timer
+            && self.current_action == -1
+            && (self.current_target == -1 || !busy)
+        {
+            self.idle_timer = 0;
+            if let Some(m) = self.process_idle(at, ai, closest)? {
+                fx.push(Effect::Move(m));
+            }
+            return Ok(());
+        }
+        if matches!(self.current_order, PATROL | PATROL_2) {
+            return Err(Unsupported("a patrol order's idle part"));
+        }
+        if matches!(at.class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
+            return Err(Unsupported("a unit of class 3 or 52 on action 0x26b/0x26c"));
+        }
+        if self.current_action == 0x2c0 {
+            return Err(Unsupported("the idle part of action 0x2c0"));
+        }
+        if (self.current_action != -1 || self.current_target != -1) && 0 < at.player {
+            self.idle_timer = 0;
+        }
+        Ok(())
     }
 
     /// The retarget check of slot 73 (`0x140c567c0`) for a unit without a target, not on the
@@ -646,41 +1313,6 @@ impl UnitAi {
         Ok(())
     }
 
-    /// The full update of an idle unit (no order, action or target): the timers, slot 73's
-    /// retarget check, the idle check (slot 72) once the idle timer passes its timeout, the
-    /// look-around check.
-    pub fn update_idle(
-        &mut self,
-        dt: u32,
-        world_time: u32,
-        computer: bool,
-        at: &Surroundings,
-        ai: &mut Well512,
-        closest: &mut Closest<'_>,
-    ) -> Result<Option<AiMove>, Unsupported> {
-        if !self.is_idle() {
-            return Err(Unsupported("unit is not idle"));
-        }
-        let retarget = retarget_kind(self.ai_type)?;
-        self.secondary_timer = self.secondary_timer.saturating_sub(dt);
-        self.look_around_timer = self.look_around_timer.wrapping_add(dt);
-        self.idle_timer = self.idle_timer.wrapping_add(dt);
-        if let Retarget::Base = retarget {
-            self.retarget_check(world_time, ai)?;
-        }
-        let mut moved = None;
-        if self.idle_timer > self.adjusted_idle_timeout {
-            self.idle_timer = 0;
-            moved = self.process_idle(at, ai, closest)?;
-        }
-        self.look_around(computer, ai)?;
-        // the boar's slot 4 (0x140c2c010) after the base: its second idle check runs only for a
-        // timer the base's left past the timeout (a unit with an action), and a boar without a
-        // target calms down
-        self.calm_down();
-        Ok(moved)
-    }
-
     /// The boar's end of its full update: without a target it is no longer furious.
     fn calm_down(&mut self) {
         let calm = self.current_target == -1;
@@ -702,74 +1334,6 @@ impl UnitAi {
         }
         Ok(())
     }
-
-    /// The full update (slot 4, `0x140c66b10`) of a busy unit (an action in its list) on an order
-    /// the slice models: a villager building or hunting (702/602, 713/613) or a unit on MOVE's
-    /// order without a target (710/610). The state position follows a unit with an order; the
-    /// timers run; a busy unit's order is not re-checked; slot 73: villagers do not retarget,
-    /// others run the retarget check; the action keeps the idle timer at 0 for a player above
-    /// Gaia, while a Gaia unit's runs on, and a boar's slot 4 (`0x140c2c010`) then runs its idle
-    /// check once the timer passes the timeout; the look-around check follows. A building's or a
-    /// hunted tree's target never counts as dead here (both actions are exempt). A unit in a
-    /// group, inside another or with notifies is not modelled (the caller checks the first two).
-    pub fn update_busy(
-        &mut self,
-        dt: u32,
-        world_time: u32,
-        computer: bool,
-        at: &Surroundings,
-        ai: &mut Well512,
-        closest: &mut Closest<'_>,
-    ) -> Result<Option<AiMove>, Unsupported> {
-        let retarget = retarget_kind(self.ai_type)?;
-        let order = (self.current_order, self.current_action);
-        let working = matches!(
-            order,
-            (BUILD_ORDER, BUILD_ACTION) | (HUNT_ORDER, HUNT_ACTION)
-        );
-        // a move on MOVE's order, or one the unit AI gave itself (an animal's wander)
-        let moving = matches!(order, (MOVE_ORDER | -1, MOVE_ACTION)) && self.current_target == -1;
-        match retarget {
-            Retarget::Never if working || moving => {}
-            Retarget::Base if moving => {}
-            _ => {
-                return Err(Unsupported(
-                    "a busy unit AI on an order the slice does not model",
-                ));
-            }
-        }
-        if matches!(at.class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
-            return Err(Unsupported(
-                "a busy unit of class 3 or 52 on action 0x26b/0x26c",
-            ));
-        }
-        if at.class == CLASS_20 {
-            return Err(Unsupported("a busy unit of class 20 (its idle part)"));
-        }
-        if self.current_order != -1 {
-            self.state_position = [at.position[0], at.position[1]];
-        }
-        self.secondary_timer = self.secondary_timer.saturating_sub(dt);
-        self.look_around_timer = self.look_around_timer.wrapping_add(dt);
-        self.idle_timer = self.idle_timer.wrapping_add(dt);
-        if let Retarget::Base = retarget {
-            self.retarget_check(world_time, ai)?;
-        }
-        if 0 < at.player {
-            self.idle_timer = 0;
-        }
-        self.look_around(computer, ai)?;
-        let mut moved = None;
-        if let Some(home) = self.home
-            && !home.furious
-            && self.adjusted_idle_timeout < self.idle_timer
-        {
-            self.idle_timer = 0;
-            moved = self.process_idle(at, ai, closest)?;
-        }
-        self.calm_down();
-        Ok(moved)
-    }
 }
 
 /// The build order (`0x2be`) and the build action value (`0x25a`) of a villager's unit AI.
@@ -782,6 +1346,25 @@ pub const HUNT_ACTION: i32 = 613;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl UnitAi {
+        /// The full update of an idle unit (no order, action or target), with its move.
+        fn update_idle(
+            &mut self,
+            dt: u32,
+            world_time: u32,
+            computer: bool,
+            at: &Surroundings,
+            ai: &mut Well512,
+            closest: &mut Closest<'_>,
+        ) -> Result<Option<AiMove>, Unsupported> {
+            if !self.is_idle() {
+                return Err(Unsupported("unit is not idle"));
+            }
+            self.update(dt, world_time, computer, at, ai, closest)
+                .map(|fx| first_move(&fx))
+        }
+    }
 
     fn idle(ai_type: u32) -> UnitAi {
         UnitAi {
@@ -855,7 +1438,8 @@ mod tests {
             Some((9365, 15)),
             [24.5, 97.5, 0.0],
             &mut r,
-        );
+        )
+        .unwrap();
         assert_eq!(
             (u.current_order, u.current_action, u.current_target, r.draws),
             (HUNT_ORDER, HUNT_ACTION, 9365, 0)
@@ -867,7 +1451,8 @@ mod tests {
             Some((9365, 15)),
             [24.5, 97.5, 0.0],
             &mut r,
-        );
+        )
+        .unwrap();
         assert_eq!((r.draws, u.secondary_timer), (1, 750));
         assert_ne!(u.adjusted_idle_timeout, 750);
     }
@@ -1095,6 +1680,10 @@ mod tests {
                 stop_after_kill: false,
                 home: None,
                 hunted: None,
+                order_priority: -1,
+                last_update_time: 0,
+                orders: Vec::new(),
+                notifies: Vec::new(),
             }
         );
     }
@@ -1486,7 +2075,7 @@ mod tests {
         let moved = u
             .update(10, 0, false, &place, &mut r, &mut no_search)
             .unwrap();
-        assert_eq!((moved, u.current_action, u.idle_timer), (None, -1, 20));
+        assert_eq!((moved, u.current_action, u.idle_timer), (vec![], -1, 20));
         // while it walks, its timers run and nothing else happens
         let mut u = UnitAi {
             current_action: 0x262,
@@ -1501,6 +2090,230 @@ mod tests {
         assert_eq!(
             (u.current_action, u.idle_timer, u.state_position),
             (0x262, 5010, [0.0; 2])
+        );
+    }
+
+    /// MarvinBlue/426048731's scout 9183 (soldier AI, type 13) as saved after 821: on its MOVE
+    /// order with five queued moves, its MoveTo about to arrive.
+    fn scout() -> UnitAi {
+        let order = |x: f32, y: f32| QueuedOrder {
+            issuer: 1,
+            order: MOVE_ORDER,
+            priority: 100,
+            target: -1,
+            target2: -1,
+            point: [x, y, 0.0],
+            range: 0.0,
+            shown: [x, y],
+            ready: true,
+            extra: -1,
+        };
+        UnitAi {
+            current_order: MOVE_ORDER,
+            order_priority: -1,
+            current_action: MOVE_ACTION,
+            target_type: -1,
+            target_point: [93.583336, 57.791668, 0.0],
+            last_order: MOVE_ORDER,
+            last_action: MOVE_ACTION,
+            last_target: -1,
+            last_target_type: -1,
+            stance: 2,
+            orders: vec![order(89.09375, 60.677082), order(91.822914, 52.489582)],
+            ..idle(13)
+        }
+    }
+
+    fn scout_at(interruptible: bool, busy: bool) -> Surroundings {
+        Surroundings {
+            position: [93.5, 58.25, 0.0],
+            busy,
+            player: 1,
+            class: 12,
+            interruptible,
+            ..Surroundings::default()
+        }
+    }
+
+    #[test]
+    fn between_turns_an_arrived_move_runs_the_next_queued_order() {
+        // update 822: the MoveTo arrived (state 1, which slot 0x2d0 lets go), so FUN_140c68980
+        // runs the queue: the first move becomes the AI's (order 710 at priority 100, action 610,
+        // its point) and the unit's, forced and walking; the order leaves the queue
+        let mut u = scout();
+        let fx = u.off_turn(&scout_at(true, true)).unwrap();
+        assert_eq!(
+            fx,
+            vec![Effect::Move(AiMove {
+                point: [89.09375, 60.677082, 0.0],
+                range: 0.0,
+                force: true,
+                walk: true,
+            })]
+        );
+        assert_eq!(
+            (u.current_order, u.order_priority, u.current_action),
+            (MOVE_ORDER, 100, MOVE_ACTION)
+        );
+        assert_eq!(u.target_point, [89.09375, 60.677082, 0.0]);
+        assert_eq!(u.orders.len(), 1);
+        assert_eq!(u.orders[0].point, [91.822914, 52.489582, 0.0]);
+    }
+
+    #[test]
+    fn between_turns_a_walking_unit_or_one_with_notifies_keeps_its_queue() {
+        let mut walking = scout();
+        assert_eq!(walking.off_turn(&scout_at(false, true)), Ok(vec![]));
+        assert_eq!(walking.orders.len(), 2);
+        let mut told = UnitAi {
+            notifies: vec![Notify::own(9183, ACTION_COMPLETED, [MOVE_ACTION, 0, 0])],
+            ..scout()
+        };
+        assert_eq!(told.off_turn(&scout_at(true, true)), Ok(vec![]));
+        assert_eq!(told.orders.len(), 2);
+        // an order not ready stays and the next one runs
+        let mut u = scout();
+        u.orders[0].ready = false;
+        u.off_turn(&scout_at(true, true)).unwrap();
+        assert_eq!(u.orders.len(), 1);
+        assert_eq!(u.orders[0].point, [89.09375, 60.677082, 0.0]);
+    }
+
+    #[test]
+    fn a_completed_move_on_its_order_ends_the_order_and_stops_the_unit() {
+        // the base handler's 0x1fa: 610 + 100 = 710, so slot 0xb0 ends the order too; the
+        // notifies go with the owner's time; the queue then runs (the unit is no longer busy)
+        let mut u = UnitAi {
+            orders: vec![],
+            notifies: vec![Notify::own(9183, ACTION_COMPLETED, [MOVE_ACTION, 0, 0])],
+            ..scout()
+        };
+        let mut r = rng();
+        let fx = u
+            .update(
+                60,
+                900,
+                false,
+                &scout_at(true, false),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
+        assert_eq!(fx, vec![Effect::Stop]);
+        assert_eq!(
+            (u.current_order, u.order_priority, u.current_action),
+            (-1, -1, -1)
+        );
+        assert_eq!((u.last_order, u.last_action), (MOVE_ORDER, MOVE_ACTION));
+        assert_eq!(u.state_position, [93.5, 58.25]);
+        assert_eq!((u.notifies.len(), u.last_update_time), (0, 60));
+    }
+
+    #[test]
+    fn an_animal_s_completed_wander_becomes_its_last_action() {
+        // the fox 9851 in 718: its MoveTo's completion through the hunted animal's handler to
+        // the base: no order, its action completed
+        let mut u = UnitAi {
+            current_action: MOVE_ACTION,
+            idle_timer: 0,
+            notifies: vec![Notify::own(9851, ACTION_COMPLETED, [MOVE_ACTION, 0, 0])],
+            ..deer()
+        };
+        let mut r = wander_seed(false);
+        let fx = u
+            .update(
+                60,
+                0,
+                false,
+                &deer_at([31.5, 106.5, 0.0]),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
+        assert_eq!(fx, vec![Effect::Stop]);
+        assert_eq!((u.current_action, u.last_action), (-1, MOVE_ACTION));
+    }
+
+    #[test]
+    fn a_movement_completion_reaches_only_a_moving_unit_ai() {
+        let completed = Notify::own(9181, ACTION_COMPLETED, [MOVE_ACTION, 0, 0]);
+        let mut builder = UnitAi {
+            current_order: BUILD_ORDER,
+            current_action: BUILD_ACTION,
+            ..idle(8)
+        };
+        builder.post(completed, 2).unwrap();
+        assert!(builder.notifies.is_empty());
+        let mut wanderer = UnitAi {
+            current_action: MOVE_ACTION,
+            ..deer()
+        };
+        wanderer.post(completed, 2).unwrap();
+        assert_eq!(wanderer.notifies, vec![completed]);
+        // a unit not in state 2 tells its AI nothing
+        let mut dying = UnitAi {
+            current_action: MOVE_ACTION,
+            ..deer()
+        };
+        dying.post(completed, 3).unwrap();
+        assert!(dying.notifies.is_empty());
+    }
+
+    #[test]
+    fn a_livestock_s_ownership_notify_drops_its_action_value_and_breaks_off() {
+        // FUN_140c26ac0: the notify ends the pass; the update's FUN_140c5dc10 clears the queue
+        let mut u = UnitAi {
+            current_action: MOVE_ACTION,
+            notifies: vec![
+                Notify::own(9519, OWNER_CHANGED, [2, 0, 0]),
+                Notify::own(9519, ACTION_COMPLETED, [MOVE_ACTION, 0, 0]),
+            ],
+            ..idle(19)
+        };
+        let mut r = rng();
+        let fx = u
+            .update(
+                60,
+                0,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
+        assert_eq!(fx, vec![]);
+        assert_eq!((u.current_action, u.last_action), (-1, MOVE_ACTION));
+        assert_eq!((u.notifies.len(), u.last_update_time), (0, 60));
+    }
+
+    #[test]
+    fn a_saved_order_and_notify_read_as_the_game_wrote_them() {
+        let mut order = [0u8; 52];
+        for (i, w) in [1i32, 710, 100, -1, -1].iter().enumerate() {
+            order[4 * i..4 * i + 4].copy_from_slice(&w.to_le_bytes());
+        }
+        for (i, f) in [91.822914f32, 52.489582, 0.0, 0.0, 91.822914, 52.489582]
+            .iter()
+            .enumerate()
+        {
+            order[20 + 4 * i..24 + 4 * i].copy_from_slice(&f.to_le_bytes());
+        }
+        order[44] = 1;
+        order[48..52].copy_from_slice(&(-1i32).to_le_bytes());
+        let o = QueuedOrder::from_bytes(&order);
+        assert_eq!(
+            (
+                o.issuer, o.order, o.priority, o.point, o.range, o.ready, o.extra
+            ),
+            (1, 710, 100, [91.822914, 52.489582, 0.0], 0.0, true, -1)
+        );
+        let mut notify = [0u8; 24];
+        for (i, w) in [9851i32, 9851, 506, 610, 0, 0].iter().enumerate() {
+            notify[4 * i..4 * i + 4].copy_from_slice(&w.to_le_bytes());
+        }
+        assert_eq!(
+            Notify::from_bytes(&notify),
+            Notify::own(9851, ACTION_COMPLETED, [MOVE_ACTION, 0, 0])
         );
     }
 }

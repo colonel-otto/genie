@@ -15,6 +15,7 @@
 use crate::artifact::Artifact;
 use crate::attack::{Strike, Victim};
 use crate::build::{BUILD, BuildAction, BuildTask, Construction, Site, Walk};
+use crate::checkpoint::TopAction;
 use crate::fly::Fly;
 use crate::hunt::{Gatherer, HuntAction, HuntSprites};
 use crate::lifecycle::{Class, Lifecycle, seconds};
@@ -30,7 +31,8 @@ use crate::spatial::{Placed, Spatial};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::{
-    AiMove, BUILD_ACTION, BUILD_ORDER, Search, Surroundings, UnitAi, Unsupported,
+    ACTION_COMPLETED, AiMove, BUILD_ACTION, BUILD_ORDER, Effect, Notify, OWNER_CHANGED, Search,
+    Surroundings, UnitAi, Unsupported,
 };
 use crate::visibility::{BuildingSight, Seer, capture_kind};
 
@@ -285,11 +287,110 @@ impl Unit {
 
     /// The type of its top action, if it has one.
     pub fn top_action_kind(&self) -> Option<i16> {
-        None.or(self.artifact.map(|_| crate::artifact::ARTIFACT_TYPE))
-            .or(self.build.map(|_| crate::build::BUILD))
-            .or(self.move_to.map(|_| crate::move_to::MOVE_TO))
-            .or(self.fly.map(|_| crate::fly::FLY))
-            .or(self.hunt.map(|_| crate::hunt::HUNT))
+        self.top_action().map(|a| a.kind)
+    }
+
+    /// Its top action as the slice models it, type and state.
+    pub fn top_action(&self) -> Option<TopAction> {
+        let action = |kind, state| TopAction { kind, state };
+        None.or(self
+            .artifact
+            .map(|a| action(crate::artifact::ARTIFACT_TYPE, a.state)))
+            .or(self.build.map(|b| action(crate::build::BUILD, b.state)))
+            .or(self
+                .move_to
+                .map(|m| action(crate::move_to::MOVE_TO, m.state.number())))
+            .or(self.fly.map(|f| action(crate::fly::FLY, f.state)))
+            .or(self.hunt.map(|h| action(crate::hunt::HUNT, h.state)))
+    }
+
+    /// Slot 0x2d0 with 0 (`FUN_14106d170`): whether its top action may be interrupted (the group
+    /// test first; the slice holds no groups). None may; type `0x7e` never; by state, 0, 1, 3,
+    /// 0xd and 0xe may, 2 unless an Attack (9); in any other state only an Artifact (`0x6b`)
+    /// without a target or a point (`+0x30`, `+0x38` = −1). A trade (`0x6f`) in state 4 is not
+    /// modelled, nor is an action the slice does not hold.
+    fn interruptible(&self) -> Result<bool, Unsupported> {
+        if self.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "slot 0x2d0 of an action the slice does not model",
+            ));
+        }
+        let Some(TopAction { kind, state }) = self.top_action() else {
+            return Ok(true);
+        };
+        Ok(match (kind, state) {
+            (0x7e, _) => false,
+            (0x6f, 4) => return Err(Unsupported("slot 0x2d0 of a trade in state 4")),
+            (_, 0 | 1 | 3 | 0xd | 0xe) => true,
+            (_, 2) => kind != crate::attack::ATTACK,
+            (crate::artifact::ARTIFACT_TYPE, _) => self
+                .artifact
+                .is_some_and(|a| a.goal.is_none_or(|g| g[0] == -1.0)),
+            _ => false,
+        })
+    }
+
+    /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes (`FUN_140a98620`; a
+    /// MoveTo's teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
+    /// 0x68 with slot 0x798's, [`crate::attack::set_sprite`]) where the slice holds its sprite.
+    /// Other actions' teardowns are not modelled.
+    fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        if self.artifact.is_some()
+            || self.build.is_some()
+            || self.fly.is_some()
+            || self.hunt.is_some()
+            || self.unmodelled_action.is_some()
+        {
+            return Err(Unsupported(
+                "a unit AI's stop of an action list the slice does not model",
+            ));
+        }
+        if self.move_to.take().is_some() {
+            self.mover
+                .as_mut()
+                .ok_or(Unsupported("a walker without movement state"))?
+                .stop()?;
+        }
+        if self.life.state == 2 && self.sprite.is_some() {
+            let standing = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.standing_sprite)
+                .and_then(|id| c.graphics.get(&id).copied())
+                .ok_or(Unsupported("a stopped unit without its standing sprite"))?;
+            crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
+        }
+        Ok(())
+    }
+
+    /// Its unit AI's effects, in order.
+    fn apply(
+        &mut self,
+        effects: Vec<Effect>,
+        class: Option<i16>,
+        c: &mut Context<'_>,
+    ) -> Result<(), Unsupported> {
+        for e in effects {
+            match e {
+                Effect::Stop => self.stop_action(c)?,
+                Effect::Move(m) => {
+                    let class = class.ok_or(Unsupported(
+                        "an AI move of a master the slice does not have",
+                    ))?;
+                    self.ai_move(m, class)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// A notify the unit posts to its own unit AI (slot 0x328).
+    fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), Unsupported> {
+        let (id, state) = (self.id, self.life.state);
+        match self.ai.as_mut() {
+            Some(ai) => ai.post(Notify::own(id, kind, p), state),
+            None => Ok(()),
+        }
     }
 
     /// One update, and whether the object stays in its list, leaves it or goes to sleep. `others`
@@ -420,8 +521,10 @@ impl Unit {
         if let Some(move_to) = self.move_to.as_mut()
             && move_to.update(c.walk(self.mover.as_mut(), me))?
         {
-            // the action list removes it (FUN_140a98e20): its teardown (0x140aa1f30) stops the
-            // unit (slot 0x5d0)
+            // its update in state 1 posts its completion (0x1fa with the move action value; an
+            // own MoveTo is never quiet), then the action list removes it (FUN_140a98e20): its
+            // teardown (0x140aa1f30) stops the unit (slot 0x5d0)
+            self.post_own(ACTION_COMPLETED, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
             self.move_to = None;
             if let Some(m) = self.mover.as_mut() {
                 m.stop()?;
@@ -488,7 +591,6 @@ impl Unit {
         if self.combat {
             c.spatial.combat_sight(self.id)?;
         }
-        let mut moved = None;
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
         let master = c.masters.and_then(|ms| ms.get(self.life.master_id));
         let class = master.map(|ms| ms.class);
@@ -504,10 +606,24 @@ impl Unit {
             ),
             None => (c.turn, c.player, c.computer),
         };
-        if let (Some(dt), Some(ai)) = (turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
-            if busy && self.life.inside {
+        // RGE_Combat_Object::update: on the owner's turn the full update (slot 4), else
+        // FUN_140c68980 for a unit not inside another
+        let runs = turn.is_some() || !self.life.inside;
+        if let Some(orders) = self
+            .ai
+            .as_ref()
+            .filter(|_| self.life.is_alive() && runs)
+            .map(|ai| !ai.orders.is_empty())
+        {
+            if turn.is_some() && busy && self.life.inside {
                 return Err(Unsupported("a busy unit inside another"));
             }
+            // slot 0x2d0 matters only to a queue with orders
+            let interruptible = match self.interruptible() {
+                Ok(i) => i,
+                Err(e) if orders => return Err(e),
+                Err(_) => false,
+            };
             let at = Surroundings {
                 position: self.position,
                 mode_1: c.mode_1,
@@ -525,24 +641,28 @@ impl Unit {
                 size: master.map_or([0.0; 2], |m| m.radius),
                 los: master.map_or(0.0, |m| m.line_of_sight),
                 search_radius: master.map_or(0.0, |m| m.search_radius),
+                interruptible,
+                task_0x99: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x99)),
+                garrisoned: self.life.inside,
             };
             let me = self.id;
-            let spatial: &Spatial = c.spatial;
-            let mut closest = |s: &Search<'_>| spatial.closest_object(me, player, s);
-            moved = ai.update(
-                dt,
-                c.world_time,
-                computer,
-                &at,
-                c.streams.get(Stream::Ai),
-                &mut closest,
-            )?;
-        }
-        if let Some(m) = moved {
-            let class = class.ok_or(Unsupported(
-                "an AI move of a master the slice does not have",
-            ))?;
-            self.ai_move(m, class)?;
+            let ai = self.ai.as_mut().expect("filtered above");
+            let effects = match turn {
+                Some(dt) => {
+                    let spatial: &Spatial = c.spatial;
+                    let mut closest = |s: &Search<'_>| spatial.closest_object(me, player, s);
+                    ai.update(
+                        dt,
+                        c.world_time,
+                        computer,
+                        &at,
+                        c.streams.get(Stream::Ai),
+                        &mut closest,
+                    )?
+                }
+                None => ai.off_turn(&at)?,
+            };
+            self.apply(effects, class, c)?;
         }
         if let Some((new, also)) = captured {
             return Ok(Step::Captured(new, also));
@@ -589,7 +709,7 @@ impl Unit {
     /// Not held: `+0x6a8`, the names (`FUN_141189810`), the special-object list
     /// (`FUN_141677380`, `+0x30c` bit 0), the class counters (`FUN_141226060`: none for
     /// livestock), the own master copy itself (the slice keeps reading the new owner's master
-    /// by id), the unit AI's notify 523 and its notify time.
+    /// by id).
     fn change_owner(&mut self, c: &mut Context<'_>, new: usize) -> Result<(), Unsupported> {
         let master = c
             .every_masters
@@ -607,6 +727,12 @@ impl Unit {
         if let Some(a) = self.artifact.as_mut() {
             a.gaia = new == 0;
         }
+        // the unit AI's notifies go with the world time (FUN_140c5dc10), then the unit tells it
+        // it changed hands (0x20b with the new owner)
+        if let Some(ai) = self.ai.as_mut() {
+            ai.clear_notifies(c.world_time)?;
+        }
+        self.post_own(OWNER_CHANGED, [new as i32, 0, 0])?;
         Ok(())
     }
 
@@ -1201,7 +1327,7 @@ impl Turns {
                     Some((foundation, site_class)),
                     [position[0], position[1], 0.0],
                     self.streams.get(Stream::Ai),
-                );
+                )?;
             }
         }
         Ok(())

@@ -216,12 +216,16 @@ impl Turns {
         if order.target != -1 {
             return Err(Unsupported("a move that follows an object"));
         }
-        // a unit with a unit AI (FUN_140c5dc10 sets its notify time, not held) lets its current
-        // action's slot 8 take the point (FUN_140a97730) unless it stops after a kill
+        // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
+        // current action's slot 8 take the point (FUN_140a97730) unless it stops after a kill
         // (FUN_140c41c10): an Artifact action's does (FUN_140aaca30), a MoveTo's
         // (`FUN_140a78490`) never
         let point = [order.point[0], order.point[1], 0.0];
+        let world_time = self.world_time;
         let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.clear_notifies(world_time)?;
+        }
         let top = unit.top_action_kind();
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
         let taken = match (unit.ai.is_some() && !stop_after_kill, top) {
@@ -410,7 +414,7 @@ impl Turns {
                         Some((target, class)),
                         point,
                         self.streams.get(Stream::Ai),
-                    );
+                    )?;
                 }
                 true
             }
@@ -575,7 +579,7 @@ impl Turns {
                 Some((target, i32::from(quarry.class))),
                 point,
                 self.streams.get(Stream::Ai),
-            );
+            )?;
         }
         self.clear_actions(player, idx)?;
         let engagement = self.engagement(player, idx, target)?;

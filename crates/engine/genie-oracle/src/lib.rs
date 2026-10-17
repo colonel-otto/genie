@@ -850,6 +850,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
     Some(genie_core::unit_ai::UnitAi {
         ai_type: combat.need_unit_ai as u32,
         current_order: ai.current_order_value,
+        order_priority: ai.current_order_priority_value,
         current_action: ai.current_action_value,
         current_target: ai.current_target_value,
         target_type: ai.current_target_type_value,
@@ -883,6 +884,17 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
                 go_home: false,
             }),
         hunted: None,
+        last_update_time: ai.last_update_time_value,
+        orders: ai
+            .temp_order
+            .iter()
+            .map(genie_core::unit_ai::QueuedOrder::from_bytes)
+            .collect(),
+        notifies: ai
+            .temp_notify
+            .iter()
+            .map(genie_core::unit_ai::Notify::from_bytes)
+            .collect(),
     })
 }
 
@@ -1887,6 +1899,7 @@ impl AiRow {
         AiRow {
             fields: vec![
                 ("current_order", f(&ai.current_order)),
+                ("current_order_priority", f(&ai.order_priority)),
                 ("current_action", f(&ai.current_action)),
                 ("current_target", f(&ai.current_target)),
                 ("current_target_type", f(&ai.target_type)),
@@ -1902,6 +1915,9 @@ impl AiRow {
                 ("look_around_timeout", f(&ai.look_around_timeout)),
                 ("last_retarget_time", f(&ai.last_retarget_time)),
                 ("state_position", f(&ai.state_position)),
+                ("last_update_time", f(&ai.last_update_time)),
+                ("orders", f(&ai.orders)),
+                ("notifies", f(&ai.notifies)),
             ],
         }
     }
@@ -1911,6 +1927,10 @@ impl AiRow {
         AiRow {
             fields: vec![
                 ("current_order", f(&ai.current_order_value)),
+                (
+                    "current_order_priority",
+                    f(&ai.current_order_priority_value),
+                ),
                 ("current_action", f(&ai.current_action_value)),
                 ("current_target", f(&ai.current_target_value)),
                 ("current_target_type", f(&ai.current_target_type_value)),
@@ -1935,6 +1955,23 @@ impl AiRow {
                 (
                     "state_position",
                     f(&[ai.state_position_xvalue, ai.state_position_yvalue]),
+                ),
+                ("last_update_time", f(&ai.last_update_time_value)),
+                (
+                    "orders",
+                    f(&ai
+                        .temp_order
+                        .iter()
+                        .map(genie_core::unit_ai::QueuedOrder::from_bytes)
+                        .collect::<Vec<_>>()),
+                ),
+                (
+                    "notifies",
+                    f(&ai
+                        .temp_notify
+                        .iter()
+                        .map(genie_core::unit_ai::Notify::from_bytes)
+                        .collect::<Vec<_>>()),
                 ),
             ],
         }
