@@ -94,16 +94,18 @@ fn the_slice_follows_the_game_up_to_a_named_tick() {
     let first = first_difference(&trace, &std::fs::read(rec).unwrap(), 2, &masters);
     eprintln!("first difference (tick, [(word, slice, game)]): {first:?}");
     // the slice holds the whole block through player 1's BUILDs (ticks 135 and 281: their
-    // foundations' unit-AI constructors draw three AI values each) and player 2's three villager
+    // foundations' unit-AI constructors draw three AI values each), player 2's three villager
     // QUEUEs (ticks 553, 586, 591: the cost from the save's master, the Town Centre's make action in
-    // state 6), until player 2's own BUILD in tick 679, whose foundation, cost and builders the
-    // slice does not model for the builder's own lane
+    // state 6) and player 2's own BUILD in tick 679 (the house's cost, its foundation, three
+    // villagers turned builders through their task swap groups, Build actions in state 6 next to
+    // the foundation and 4 away from it), until tick 680: the builders walk (word 7), and the one
+    // standing in the foundation's footprint steps aside (Build state 7, word 9)
     let words: Option<Vec<usize>> = first
         .as_ref()
         .map(|(_, w)| w.iter().map(|&(w, ..)| w).collect());
     assert_eq!(
         (first.map(|(t, _)| t), words),
-        (Some(679), Some(vec![1, 2, 6, 7, 9, 10]))
+        (Some(680), Some(vec![7, 9]))
     );
 }
 

@@ -12,7 +12,9 @@
 //! slot and updates there in the same tick.
 
 use crate::artifact::Artifact;
+use crate::build::{BUILD, BuildAction, footprint_gap};
 use crate::lifecycle::{Class, Lifecycle, seconds};
+use crate::masters::{Masters, Target};
 use crate::production::{Production, Queued};
 use crate::rng::{Stream, Streams};
 use crate::unit_ai::{UnitAi, Unsupported};
@@ -22,6 +24,8 @@ use crate::unit_ai::{UnitAi, Unsupported};
 pub struct Unit {
     /// The object's id (`+0x8`), which names it across ticks.
     pub id: i32,
+    /// x, y, z (`+0x3c8`, `+0x4c8`, `+0x5a8`, obfuscated in the game's memory).
+    pub position: [f32; 3],
     pub life: Lifecycle,
     pub ai: Option<UnitAi>,
     /// The livestock default action, the object's top action.
@@ -32,6 +36,8 @@ pub struct Unit {
     pub unmodelled_default_task: Option<Unsupported>,
     /// A building's production queue and make action.
     pub production: Option<Production>,
+    /// A builder's Build action, its top action.
+    pub build: Option<BuildAction>,
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
@@ -39,14 +45,17 @@ pub struct Unit {
 /// players' lanes see of a command; the issuing player's lane stops.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
-    /// BUILD (0x66, `FUN_140e7a400`): the player places a foundation of `master` (state 0, hit
-    /// points 1), with a unit AI of the given type if its class gets one; `Err` when the slice
-    /// cannot tell. The slice takes the placement and the cost as given (the recording's game
-    /// accepted them) and does not task the builders.
+    /// BUILD (0x66, `FUN_140e7a400`): the player places a foundation of `master` at `position`
+    /// (state 0, hit points 1), with a unit AI of the given type if its class gets one; `Err` when
+    /// the slice cannot tell. The player pays the master's cost, and each builder, in packet order,
+    /// takes the master it builds with and starts a Build action (`Turns::masters`). The slice
+    /// takes the placement as given: the recording's game accepted it.
     Build {
         player: usize,
         master: i16,
         unit_ai: Result<Option<u32>, Unsupported>,
+        position: [f32; 3],
+        builders: Vec<i32>,
     },
     /// QUEUE (0x81, the player's queue `FUN_141614450`, the building's `FUN_1411cbc40`): `amount`
     /// units of master `unit` at one building. Each paid `cost` entry `(resource, amount, paid)`
@@ -134,6 +143,9 @@ impl Unit {
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
             artifact.update(c.dt);
         }
+        if let Some(build) = self.build.as_mut() {
+            build.update()?;
+        }
         if let (Some(dt), Some(ai)) = (c.turn, self.ai.as_mut().filter(|_| self.life.is_alive())) {
             ai.update_idle(dt, c.world_time, c.computer, c.ai)?;
         }
@@ -167,6 +179,8 @@ pub struct Turns {
     pub ticks: u32,
     /// `mNextObjectId`, the id the next new object gets.
     pub next_object_id: i32,
+    /// Each player's masters, which BUILD reads; a player without them stops at its own BUILD.
+    pub masters: Vec<Masters>,
     streams: Streams,
 }
 
@@ -186,18 +200,21 @@ impl Turns {
             players,
             ticks: 0,
             next_object_id: 0,
+            masters: Vec::new(),
             streams: Streams::default(),
         }
     }
 
-    /// Run a command in the command phase. The issuing player's lane stops: the slice does not
-    /// model what the command does to its own units.
+    /// Run a command in the command phase. Where the slice does not model what the command does to
+    /// the issuing player's units, that player's lane stops.
     fn run(&mut self, command: &Command) {
         match *command {
             Command::Build {
                 player,
                 master,
                 unit_ai,
+                position,
+                ref builders,
             } => {
                 let id = self.next_object_id;
                 self.next_object_id += 1;
@@ -215,6 +232,7 @@ impl Turns {
                 let owner = &mut self.players[player];
                 owner.objects.push(Unit {
                     id,
+                    position,
                     life: Lifecycle {
                         class: Class::Animated,
                         state: 0,
@@ -226,12 +244,12 @@ impl Turns {
                     artifact: None,
                     unmodelled_default_task: None,
                     production: None,
+                    build: None,
                 });
-                owner.unsupported.get_or_insert((
-                    self.ticks,
-                    owner.objects.len() - 1,
-                    Unsupported("BUILD tasks the builders"),
-                ));
+                if let Err(e) = self.task_builders(player, id, master, position, builders) {
+                    let owner = &mut self.players[player];
+                    owner.unsupported.get_or_insert((self.ticks, 0, e));
+                }
             }
             Command::Queue {
                 player,
@@ -278,6 +296,69 @@ impl Turns {
                 ));
             }
         }
+    }
+
+    /// BUILD's part for its own player: the cost, paid when the foundation is placed, and per
+    /// builder the work command on the foundation (slot 37, `FUN_14106ff70`): the master it builds
+    /// with ([`Masters::work_master`]), then the Build action from that master's task.
+    fn task_builders(
+        &mut self,
+        player: usize,
+        foundation: i32,
+        master: i16,
+        position: [f32; 3],
+        builders: &[i32],
+    ) -> Result<(), Unsupported> {
+        let masters = self
+            .masters
+            .get(player)
+            .ok_or(Unsupported("BUILD tasks the builders: no master table"))?;
+        let site = masters
+            .get(master)
+            .ok_or(Unsupported("BUILD of a master the player does not have"))?;
+        let owner = &mut self.players[player];
+        for &(resource, amount, paid) in &site.cost {
+            let slot = usize::try_from(resource)
+                .ok()
+                .and_then(|r| owner.resources.get_mut(r))
+                .ok_or(Unsupported("a cost in a resource other than the four"))?;
+            if paid {
+                *slot -= f32::from(amount);
+            }
+        }
+        let target = Target {
+            id: foundation,
+            owner: player,
+            state: 0,
+            master: site,
+        };
+        for &id in builders {
+            let unit = owner
+                .objects
+                .iter_mut()
+                .find(|o| o.id == id)
+                .ok_or(Unsupported("a builder the slice does not have"))?;
+            if unit.artifact.is_some() || unit.production.is_some() || unit.build.is_some() {
+                return Err(Unsupported("a builder with an action (its replacement)"));
+            }
+            let with = masters
+                .work_master(unit.life.master_id, player, &target)?
+                .ok_or(Unsupported("a builder with no task for its foundation"))?;
+            let builder = masters
+                .get(with)
+                .expect("work_master returns a master the player has");
+            let task = Masters::find_task(builder, player, &target)?;
+            if task.map(|t| t.action_type) != Some(BUILD) {
+                return Err(Unsupported(
+                    "a builder whose task for its foundation is not Build",
+                ));
+            }
+            unit.life.master_id = with;
+            let at = |p: [f32; 3]| [p[0], p[1]];
+            let gap = footprint_gap(at(unit.position), builder.radius, at(position), site.radius);
+            unit.build = Some(BuildAction::start(foundation, gap));
+        }
+        Ok(())
     }
 
     /// QUEUE at one building: per unit (the game recurses, so the last unit drawn is queued first)
@@ -612,6 +693,112 @@ mod tests {
         );
     }
 
+    /// The masters of MarvinBlue/426048731's player 2 that its BUILD at tick 679 uses, shortened
+    /// from build 158041's save and `.dat`.
+    fn builder_masters() -> crate::masters::Masters {
+        use crate::masters::{Master, Masters, Task};
+        let task = |action_type, object_group| Task {
+            action_type,
+            object_group,
+            object_id: -1,
+            work_val1: 0.0,
+        };
+        let villager = |id, group, tasks: Vec<Task>| Master {
+            id,
+            kind: 70,
+            class: 4,
+            task_by_group: group,
+            radius: [0.2, 0.2],
+            tasks,
+            cost: vec![],
+        };
+        let base = || vec![task(7, -1), task(3, 3)];
+        let builder = || vec![task(101, -1), task(3, 3)];
+        Masters::new([
+            villager(83, 1, base()),
+            villager(118, 1, builder()),
+            villager(212, 2, builder()),
+            villager(293, 2, base()),
+            Master {
+                id: 70,
+                kind: 80,
+                class: 3,
+                task_by_group: 0,
+                radius: [1.0, 1.0],
+                tasks: vec![],
+                cost: vec![(1, 25, true)],
+            },
+        ])
+    }
+
+    #[test]
+    fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
+        let villager = |id, master, x, y| Unit {
+            id,
+            position: [x, y, 0.0],
+            life: Lifecycle {
+                class: Class::Animated,
+                state: 2,
+                hp: 25.0,
+                master_id: master,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            29910,
+            1,
+            vec![0, 0],
+            vec![
+                Player::default(),
+                Player {
+                    objects: vec![
+                        villager(9175, 83, 30.0, 89.0),
+                        villager(9181, 293, 29.0, 99.0),
+                    ],
+                    resources: [200.0, 100.0, 200.0, 100.0],
+                    ..Player::default()
+                },
+            ],
+        );
+        t.next_object_id = 10028;
+        t.masters = vec![Default::default(), builder_masters()];
+        t.tick_with(
+            50,
+            &[Command::Build {
+                player: 1,
+                master: 70,
+                unit_ai: Ok(None),
+                position: [30.0, 88.0, 0.0],
+                builders: vec![9175, 9181],
+            }],
+        );
+        let p = &t.players[1];
+        assert_eq!(p.unsupported, None);
+        assert_eq!(p.resources, [200.0, 75.0, 200.0, 100.0]);
+        let foundation = p.objects.last().unwrap();
+        assert_eq!(
+            (
+                foundation.id,
+                foundation.life.master_id,
+                foundation.position
+            ),
+            (10028, 70, [30.0, 88.0, 0.0])
+        );
+        let builder = |i: usize| {
+            (
+                p.objects[i].life.master_id,
+                p.objects[i].build.map(|b| b.state),
+            )
+        };
+        // the builder at the foundation works in its first update; the other asks for a path
+        assert_eq!((builder(0), builder(1)), ((118, Some(6)), (212, Some(4))));
+        // the next update moves the far builder: movement is not modelled
+        t.tick(50);
+        assert!(t.players[1].unsupported.is_some());
+    }
+
     #[test]
     fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_units() {
         // MarvinBlue/426048731 tick 281: player 1's BUILD draws three AI values in the command
@@ -640,6 +827,8 @@ mod tests {
                 player: 0,
                 master: 70,
                 unit_ai: Ok(Some(17)),
+                position: [0.0; 3],
+                builders: vec![],
             }],
         );
         let foundation = &built.players[0].objects[0];

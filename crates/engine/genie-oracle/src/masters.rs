@@ -4,6 +4,7 @@
 //! from the `.dat` of the recording's game, never from constants.
 
 use genie_core::lifecycle::MasterData;
+use genie_core::masters as work;
 use genie_dat::de::DatFile;
 use std::collections::HashMap;
 
@@ -37,10 +38,45 @@ pub fn default_action(
 }
 
 /// One master's row.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct Row {
     data: MasterData,
     default_action: DefaultAction,
+    /// What the work command reads of the master, as the `.dat` has it ([`MasterTable::work`]).
+    work: Option<work::Master>,
+}
+
+/// A `.dat` task as the task finder reads it (`genie_core::masters::Task`).
+fn dat_task(t: &genie_dat::de::Task) -> work::Task {
+    work::Task {
+        action_type: t.action_type,
+        object_group: t.class_id,
+        object_id: t.unit_id,
+        work_val1: t.work_value1,
+    }
+}
+
+/// The work-command values of a `.dat` unit.
+fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
+    let cost = unit.creatable.as_ref().map_or_else(Vec::new, |c| {
+        c.resource_costs
+            .iter()
+            .filter(|r| r.kind >= 0)
+            .map(|r| (r.kind, r.amount, r.flag != 0))
+            .collect()
+    });
+    work::Master {
+        id,
+        kind: unit.unit_type,
+        class: unit.class,
+        task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),
+        radius: [unit.collision_size[0], unit.collision_size[1]],
+        tasks: unit
+            .bird
+            .as_ref()
+            .map_or_else(Vec::new, |b| b.tasks.iter().map(dat_task).collect()),
+        cost,
+    }
 }
 
 /// Every master of every civ of a data file.
@@ -66,10 +102,20 @@ impl MasterTable {
                         b.tasks.iter().map(|t| (t.id, t.action_type)),
                     )
                 });
-                Some(((c as u8, m as i16), data, action))
+                Some(((c as u8, m as i16), data, action, dat_work(m as i16, unit)))
             })
         });
-        Self::from_rows(rows)
+        let rows: Vec<_> = rows.collect();
+        let mut table = Self::from_rows(
+            rows.iter()
+                .map(|(key, data, action, _)| (*key, *data, *action)),
+        );
+        for (key, _, _, w) in rows {
+            if let Some(row) = table.rows.get_mut(&key) {
+                row.work = Some(w);
+            }
+        }
+        table
     }
 
     /// A table of the given `((civ, master), data, default action)` rows.
@@ -85,6 +131,7 @@ impl MasterTable {
                         Row {
                             data,
                             default_action,
+                            work: None,
                         },
                     )
                 })
@@ -100,6 +147,12 @@ impl MasterTable {
     /// The default action of `master` for `civ`; None if the data file has no such master.
     pub fn default_action(&self, civ: u8, master: i16) -> Option<DefaultAction> {
         self.rows.get(&(civ, master)).map(|r| r.default_action)
+    }
+
+    /// The `.dat`'s work-command values of a civ's master: the task swap group the save lacks, and
+    /// the tasks a master without saved ones has.
+    pub fn work(&self, civ: u8, master: i16) -> Option<&work::Master> {
+        self.rows.get(&(civ, master)).and_then(|r| r.work.as_ref())
     }
 }
 

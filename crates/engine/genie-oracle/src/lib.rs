@@ -189,11 +189,13 @@ fn unit(
     };
     Unit {
         id: s.id,
+        position: [s.t_x, s.t_y, s.t_z],
         life: lifecycle(object, s, objects, civ, masters),
         ai: unit_ai(object),
         artifact,
         unmodelled_default_task,
         production: None,
+        build: None,
     }
 }
 
@@ -364,7 +366,81 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         players,
     );
     turns.next_object_id = world.next_object_id;
+    if let Some(table) = masters {
+        turns.masters = header
+            .players()
+            .iter()
+            .map(|p| work_masters(p.objects(), p.world_player().base.civ_id, table))
+            .collect();
+    }
     turns
+}
+
+/// A player's masters as the work command reads them: each master the save holds, with its saved
+/// class, radii, cost and (where saved) tasks, and the `.dat`'s task swap group and type, which
+/// the save does not carry (the game copies them from the `.dat` master).
+fn work_masters(
+    objects: &PlayerObjects,
+    civ: u8,
+    table: &MasterTable,
+) -> genie_core::masters::Masters {
+    use genie_rec::de::header::generated::world::{RgeMasterActionObject, Task};
+    let task = |t: &Task| genie_core::masters::Task {
+        action_type: t.action_type,
+        object_group: t.object_group,
+        object_id: t.object_id,
+        work_val1: t.work_val1,
+    };
+    fn action_part(m: &Master) -> Option<&RgeMasterActionObject> {
+        None.or(m
+            .tribe_master_combat_object
+            .as_ref()
+            .map(|c| &c.rge_master_combat_object.rge_master_action_object))
+            .or(m.tribe_master_building_object.as_ref().map(|b| {
+                &b.tribe_master_combat_object
+                    .rge_master_combat_object
+                    .rge_master_action_object
+            }))
+            .or(m.rge_master.as_ref().and_then(|r| {
+                r.rge_master_action_object.as_ref().or(r
+                    .rge_master_combat_object
+                    .as_ref()
+                    .map(|c| &c.rge_master_action_object))
+            }))
+    }
+    let saved = objects.masters.iter().flatten().map(|m| &m.master);
+    genie_core::masters::Masters::new(saved.filter_map(|m| {
+        let s = m.static_part()?;
+        let mut work = table.work(civ, s.id())?.clone();
+        work.class = s.read_temp_5;
+        work.radius = [s.radius_x, s.radius_y];
+        if let Some(tasks) = action_part(m).and_then(|a| a.tasks.as_ref()) {
+            work.tasks = tasks.list.iter().map(|e| task(&e.task)).collect();
+        }
+        let combat = m.tribe_master_combat_object.as_ref().or(m
+            .tribe_master_building_object
+            .as_ref()
+            .map(|b| &b.tribe_master_combat_object));
+        if let Some(c) = combat {
+            work.cost = build_cost(&c.build_inventory);
+        }
+        Some(work)
+    }))
+}
+
+/// A combat master's `build_inventory` entries `(resource, amount, flag)`, three shorts each; the
+/// flag set means paid. Entries of resource -1 are empty.
+fn build_cost(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
+    inventory
+        .iter()
+        .map(|e| {
+            let kind = i16::from_le_bytes([e[0], e[1]]);
+            let amount = i16::from_le_bytes([e[2], e[3]]);
+            let flag = i16::from_le_bytes([e[4], e[5]]);
+            (kind, amount, flag != 0)
+        })
+        .filter(|&(kind, ..)| kind >= 0)
+        .collect()
 }
 
 /// One frame of the body (FD-007's per-frame record order): the op-2 record that starts a tick, its
@@ -558,17 +634,7 @@ fn queue_data(
             return Err(Unsupported("villager sexes that cost or train differently"));
         }
     }
-    let cost = unit
-        .build_inventory
-        .iter()
-        .map(|e| {
-            let kind = i16::from_le_bytes([e[0], e[1]]);
-            let amount = i16::from_le_bytes([e[2], e[3]]);
-            let flag = i16::from_le_bytes([e[4], e[5]]);
-            (kind, amount, flag != 0)
-        })
-        .filter(|&(kind, ..)| kind >= 0)
-        .collect();
+    let cost = build_cost(&unit.build_inventory);
     Ok(QueueData {
         train_time: f32::from(time),
         rate: powerup + work_rate,
@@ -577,7 +643,8 @@ fn queue_data(
 }
 
 /// BUILD (`FUN_140e7a400`): `num` builders put a foundation of master `o_id` at (`x`, `y`); the
-/// builder ids follow. The handler reads the master as an i16 (`+0x10`).
+/// builder ids follow. The handler reads the master as an i16 (`+0x10`). The slice takes z = 0:
+/// the game sets it from the terrain, so a foundation on raised terrain shows in word 7.
 fn build_command(
     packet: &genie_rec::de::command::Build,
     sections: &[PlayerSection<'_>],
@@ -588,10 +655,23 @@ fn build_command(
         Some(section) => new_unit_ai(section.objects(), master),
         None => Err(Unsupported("BUILD names a player the save does not have")),
     };
+    if packet.num == LAST_COMMANDED {
+        return Command::Unmodelled {
+            player,
+            why: Unsupported("BUILD by the last commanded units"),
+        };
+    }
     Command::Build {
         player,
         master,
         unit_ai,
+        position: [packet.x, packet.y, 0.0],
+        builders: packet
+            .ids
+            .iter()
+            .copied()
+            .take(packet.num as usize)
+            .collect(),
     }
 }
 
@@ -705,35 +785,38 @@ pub fn simulate_word9(
 }
 
 /// A player's block with the slice's objects in place of the save's: the save gives what the slice
-/// leaves alone (sleeping objects, each object's main id and position), the slice its resources,
-/// its live list and each object's state, held amount, top action and retarget timer. An object
-/// the save does not have (one the slice created) is left out.
+/// leaves alone (the sleeping objects), the slice its resources, its live list (the objects it
+/// created included) and each object's master, position, state, held amount, top action and
+/// retarget timer.
 fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32; 11] {
     let mut state = player_state(section, id);
     state.resources = simulated.resources;
-    let saved: std::collections::HashMap<i32, ObjectState> = live(section)
-        .map(|(_, s)| (s.id, object_state(s)))
-        .collect();
     state.live = simulated
         .objects
         .iter()
-        .filter_map(|unit| {
-            let mut object = saved.get(&unit.id)?.clone();
-            object.state = unit.life.state;
-            object.amount_held = unit.life.amount;
-            object.retarget_timer = unit.ai.as_ref().map(|ai| ai.retarget_timer as i32);
+        .filter(|unit| unit.id >= 0)
+        .map(|unit| ObjectState {
+            id: unit.id,
+            main_id: unit.life.master_id,
+            state: unit.life.state,
+            amount_held: unit.life.amount,
+            position: unit.position,
+            retarget_timer: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
             // a producing building's action state is its make action's; its type stays -1
-            object.top_action = unit
+            top_action: unit
                 .artifact
                 .map(|a| TopAction {
                     kind: ARTIFACT_TYPE,
                     state: a.state,
                 })
+                .or(unit.build.map(|b| TopAction {
+                    kind: genie_core::build::BUILD,
+                    state: b.state,
+                }))
                 .or(unit.production.as_ref().map(|_| TopAction {
                     kind: -1,
                     state: genie_core::production::Production::MAKING,
-                }));
-            Some(object)
+                })),
         })
         .collect();
     player_block(&state)
