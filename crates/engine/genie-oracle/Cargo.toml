@@ -13,3 +13,4 @@ genie-dat = { version = "0.1.0", path = "../../formats/genie-dat" }
 genie-rec = { version = "0.1.1", path = "../../formats/genie-rec" }
 genie-save = { version = "0.1.0", path = "../../formats/genie-save" }
 flate2.workspace = true
+serde_json.workspace = true

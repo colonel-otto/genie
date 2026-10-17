@@ -16,6 +16,7 @@ pub mod production;
 pub mod rng;
 pub mod short_path;
 pub mod spatial;
+pub mod tasks;
 pub mod tile_path;
 pub mod turn;
 pub mod unit_ai;

@@ -63,11 +63,19 @@ pub struct Turning {
 /// A `.dat` task as the task finder reads it (`genie_core::masters::Task`).
 fn dat_task(t: &genie_dat::de::Task) -> work::Task {
     work::Task {
+        id: t.id,
         action_type: t.action_type,
         object_group: t.class_id,
         object_id: t.unit_id,
+        combat_level: t.enable_targeting,
+        terrain: t.terrain_id,
+        owner_type: t.target_diplomacy,
+        holding_attr: t.carry_check,
+        attribute_type: t.resource_in,
+        attribute_type3: t.resource_out,
         work_val1: t.work_value1,
         work_range: t.work_range,
+        enablement: t.enabled.unwrap_or(-1),
     }
 }
 
@@ -90,6 +98,8 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         obstruction_type: unit.obstruction_type,
         buildable_on: unit.can_be_built_on,
         obstruction_class: unit.obstruction_class,
+        object_flags: 0,
+        combat_level: unit.combat_level,
         tasks: unit
             .bird
             .as_ref()
@@ -183,6 +193,9 @@ pub struct MasterTable {
     /// Each sprite's speed factor (the `.dat` graphic's `speed_multiplier`, sprite `+0xc`).
     sprite_speed: HashMap<i16, f32>,
     pub terrain: TerrainTable,
+    /// The drop-site table (`dropsites.json` beside the `.dat`, [`crate::drop_sites`]); empty
+    /// when not loaded.
+    pub drop_sites: Vec<genie_core::tasks::DropSite>,
 }
 
 impl MasterTable {
@@ -260,6 +273,7 @@ impl MasterTable {
                 .collect(),
             sprite_speed: HashMap::new(),
             terrain: TerrainTable::default(),
+            drop_sites: Vec::new(),
         }
     }
 

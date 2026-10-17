@@ -16,13 +16,14 @@ use crate::artifact::Artifact;
 use crate::build::{BUILD, BuildAction, BuildTask, Construction, Site, Walk};
 use crate::fly::Fly;
 use crate::lifecycle::{Class, Lifecycle, seconds};
-use crate::masters::{Masters, Target};
+use crate::masters::Masters;
 use crate::move_to::MoveToAction;
 use crate::movement::{Me, Mover, Planning, footprint_gap};
 use crate::pathing::Pathing;
 use crate::production::{Production, Queued};
 use crate::rng::{Stream, Streams};
 use crate::spatial::{Placed, Spatial};
+use crate::tasks::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::{UnitAi, Unsupported};
 
 /// What the slice tracks of one object.
@@ -54,6 +55,12 @@ pub struct Unit {
     pub construction: Option<Construction>,
     /// `+0xa30`, `mWorkRatePowerup`: what the unit adds to its master's work rate.
     pub work_rate_powerup: f32,
+    /// `+0x308`, `+0x310`: the kind and amount of the resource it holds (−1, 0 for none).
+    pub held: (i16, f32),
+    /// `+0x68a`, `unit_attackable_flag`.
+    pub attackable: bool,
+    /// `+0x790`, `parent_pasture_id`.
+    pub pasture: i32,
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
@@ -242,6 +249,13 @@ pub struct Player {
     pub resources: [f32; 4],
     /// Attribute 195, the construction rate modifier, which builders' work reads.
     pub construction_rate: f32,
+    /// Every attribute as saved (the first four are `resources`, which the slice keeps); the
+    /// task finder reads attribute 95, the work command a task's enabling resource.
+    pub attributes: Vec<f32>,
+    /// The civ (`player+0x738`), which drop sites read.
+    pub civ: u8,
+    /// `relation[i]` (`player+0x260`): how the player stands to player i.
+    pub relations: Vec<u8>,
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, Unsupported)>,
 }
@@ -266,7 +280,38 @@ pub struct Turns {
     pub spatial: Spatial,
     /// The planners and the mesh.
     pub pathing: Pathing,
+    /// The game's drop-site table (`dropsites.json`).
+    pub drop_sites: Vec<DropSite>,
     streams: Streams,
+}
+
+/// The players' relations and the drop sites, as the task finder reads them.
+struct World<'a> {
+    players: &'a [Player],
+    drop_sites: &'a [DropSite],
+}
+
+impl Diplomacy for World<'_> {
+    /// `FUN_141663dc0`: one's own player counts; Gaia never does; else relation 0 does, and 4
+    /// with the ally flag; relation 1 counts only under allied victory (`FUN_1415e8e10`), which
+    /// the slice does not model.
+    fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
+        if from == to {
+            return true;
+        }
+        if to == 0 {
+            return false;
+        }
+        match self.players.get(from).and_then(|p| p.relations.get(to)) {
+            Some(0) => true,
+            Some(4) => with_ally,
+            _ => false,
+        }
+    }
+
+    fn drops_at(&self, building: i16, actor: &Actor<'_>) -> bool {
+        crate::tasks::drops_at(self.drop_sites, building, actor)
+    }
 }
 
 impl Turns {
@@ -288,6 +333,7 @@ impl Turns {
             masters: Vec::new(),
             spatial: Spatial::default(),
             pathing: Pathing::default(),
+            drop_sites: Vec::new(),
             streams: Streams::default(),
         }
     }
@@ -351,6 +397,9 @@ impl Turns {
                             },
                         }),
                     work_rate_powerup: 0.0,
+                    held: (-1, 0.0),
+                    attackable: true,
+                    pasture: -1,
                 });
                 if let Err(e) = self.task_builders(player, id, master, position, builders) {
                     let owner = &mut self.players[player];
@@ -449,16 +498,28 @@ impl Turns {
                 obstruction: None,
             },
         );
-        let target = Target {
+        let target = TaskTarget {
             id: foundation,
-            owner: player,
-            state: 0,
             master: site,
+            player,
+            state: 0,
+            held: (-1, 0.0),
+            hp: 1.0,
+            max_hp: f32::from(site.hit_points),
+            attackable: true,
+            pasture: -1,
+            top_action: None,
         };
+        let world = World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let mut chosen = Vec::new();
         for &id in builders {
+            let owner = &world.players[player];
             let unit = owner
                 .objects
-                .iter_mut()
+                .iter()
                 .find(|o| o.id == id)
                 .ok_or(Unsupported("a builder the slice does not have"))?;
             if unit.artifact.is_some()
@@ -469,26 +530,47 @@ impl Turns {
             {
                 return Err(Unsupported("a builder with an action (its replacement)"));
             }
-            let with = masters
-                .work_master(unit.life.master_id, player, &target)?
+            let actor = Actor {
+                id,
+                master: masters
+                    .get(unit.life.master_id)
+                    .ok_or(Unsupported("a unit of a master the player does not have"))?,
+                player,
+                held: unit.held,
+                attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+                civ: owner.civ,
+            };
+            let (with, task) = masters
+                .work_master(&actor, &target, &target, -1, &world)?
                 .ok_or(Unsupported("a builder with no task for its foundation"))?;
-            let builder = masters
-                .get(with)
-                .expect("work_master returns a master the player has");
-            let task = Masters::find_task(builder, player, &target)?;
-            if task.map(|t| t.action_type) != Some(BUILD) {
+            if task.action_type != BUILD {
                 return Err(Unsupported(
                     "a builder whose task for its foundation is not Build",
                 ));
             }
-            unit.life.master_id = with;
+            if !crate::tasks::enabled(&owner.attributes, task.enablement) {
+                return Err(Unsupported("a builder whose Build task is not enabled"));
+            }
+            let builder = masters
+                .get(with)
+                .expect("work_master returns a master the player has");
             let gap = footprint_gap(unit.position, builder.radius, position, site.radius);
             let task = BuildTask {
-                range: task.map_or(0.0, |t| t.work_range),
-                work_value: task.map_or(0.0, |t| t.work_val1),
+                range: task.work_range,
+                work_value: task.work_val1,
                 work_rate: builder.work_rate + unit.work_rate_powerup,
             };
-            unit.build = Some(BuildAction::start(foundation, gap, task));
+            chosen.push((id, with, BuildAction::start(foundation, gap, task)));
+        }
+        let owner = &mut self.players[player];
+        for (id, with, build) in chosen {
+            let unit = owner
+                .objects
+                .iter_mut()
+                .find(|o| o.id == id)
+                .expect("found above");
+            unit.life.master_id = with;
+            unit.build = Some(build);
         }
         Ok(())
     }
@@ -850,9 +932,7 @@ mod tests {
         let task = |action_type, object_group| Task {
             action_type,
             object_group,
-            object_id: -1,
-            work_val1: 0.0,
-            work_range: 0.0,
+            ..Task::default()
         };
         let villager = |id, group, tasks: Vec<Task>| Master {
             id,
@@ -866,6 +946,8 @@ mod tests {
             tasks,
             cost: vec![],
             obstruction_class: 0,
+            object_flags: 0,
+            combat_level: 0,
             work_rate: 1.0,
             hit_points: 25,
             build_time: 0,
@@ -889,6 +971,8 @@ mod tests {
                 tasks: vec![],
                 cost: vec![(1, 25, true)],
                 obstruction_class: 2,
+                object_flags: 0,
+                combat_level: 0,
                 work_rate: 0.0,
                 hit_points: 550,
                 build_time: 25,

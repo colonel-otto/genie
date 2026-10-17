@@ -207,6 +207,9 @@ fn unit(
         ai: unit_ai(object),
         construction: construction(object, s, objects),
         work_rate_powerup: object.combat().map_or(0.0, |c| c.work_rate_powerup),
+        held: (s.attribute_type_held, s.attribute_amount_held),
+        attackable: s.unit_attackable_flag != 0,
+        pasture: s.parent_pasture_id,
         ..Unit::default()
     };
     let imported = if saved {
@@ -763,6 +766,9 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 computer: false,
                 resources: [resource(0), resource(1), resource(2), resource(3)],
                 construction_rate: resource(CONSTRUCTION_RATE),
+                attributes: attributes.clone(),
+                civ,
+                relations: p.world_player().base.relation.clone(),
                 unsupported: None,
             }
         })
@@ -790,6 +796,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         header.world.game_type,
     );
     if let Some(table) = masters {
+        turns.drop_sites = table.drop_sites.clone();
         turns.masters = header
             .players()
             .iter()
@@ -809,11 +816,19 @@ fn work_masters(
 ) -> genie_core::masters::Masters {
     use genie_save::generated::world::{RgeMasterActionObject, Task};
     let task = |t: &Task| genie_core::masters::Task {
+        id: t.id,
         action_type: t.action_type,
         object_group: t.object_group,
         object_id: t.object_id,
+        combat_level: t.combat_level,
+        terrain: t.terrain_id,
+        owner_type: t.owner_type,
+        holding_attr: t.holding_attr,
+        attribute_type: t.attribute_type,
+        attribute_type3: t.attribute_type3,
         work_val1: t.work_val1,
         work_range: t.work_range,
+        enablement: t.enablement_resource_id,
     };
     fn action_part(m: &Master) -> Option<&RgeMasterActionObject> {
         None.or(m
@@ -842,6 +857,7 @@ fn work_masters(
         work.obstruction_type = s.obstruction_type;
         work.buildable_on = s.can_be_built_on;
         work.obstruction_class = s.obstruction_class;
+        work.object_flags = s.object_flags;
         work.hit_points = s.read_temp_6;
         if let Some(a) = action_part(m) {
             work.work_rate = a.work_rate;
@@ -1699,6 +1715,216 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::mesh::Mesh> {
         }
     }
     mesh
+}
+
+/// What the task finder (`genie_core::tasks`) reads of a save: every player's masters as the work
+/// command reads them, every object's state, holding and flags, the players' relations and their
+/// attribute 95.
+pub struct FinderWorld {
+    pub masters: Vec<genie_core::masters::Masters>,
+    pub objects: std::collections::HashMap<i32, FinderObject>,
+    /// `relation[i]` of each player (`player+0x260`).
+    pub relations: Vec<Vec<u8>>,
+    pub attribute_95: Vec<f32>,
+    pub civs: Vec<u8>,
+    pub drop_sites: Vec<genie_core::tasks::DropSite>,
+}
+
+/// One object as the task finder reads it.
+#[derive(Clone, Copy, Debug)]
+pub struct FinderObject {
+    pub player: usize,
+    pub master: i16,
+    pub state: u8,
+    pub held: (i16, f32),
+    pub hp: f32,
+    pub max_hp: f32,
+    pub attackable: bool,
+    pub pasture: i32,
+    /// The main building of an annex (`+0xbb8`), if it is one.
+    pub annex_of: Option<i32>,
+    pub top_action: Option<i16>,
+    pub position: [f32; 3],
+}
+
+impl genie_core::tasks::Diplomacy for FinderWorld {
+    /// `FUN_141663dc0`: one's own player counts; Gaia never does; else the relation 0 does, and
+    /// 4 with the ally flag. Relation 1 counts only under allied victory (`FUN_1415e8e10`), which
+    /// the slice does not model.
+    fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
+        if from == to {
+            return true;
+        }
+        if to == 0 {
+            return false;
+        }
+        match self.relations.get(from).and_then(|r| r.get(to)) {
+            Some(0) => true,
+            Some(4) => with_ally,
+            _ => false,
+        }
+    }
+
+    fn drops_at(&self, building: i16, actor: &genie_core::tasks::Actor<'_>) -> bool {
+        genie_core::tasks::drops_at(&self.drop_sites, building, actor)
+    }
+}
+
+impl FinderWorld {
+    /// The finder's view of object `id`, with its master from its player's masters; an annex
+    /// stands for its main building (the finder's step, `+0xbb8`), `steps` times.
+    pub fn target_up(&self, id: i32, steps: usize) -> Option<genie_core::tasks::TaskTarget<'_>> {
+        let mut id = id;
+        for _ in 0..steps {
+            match self.objects.get(&id)?.annex_of {
+                Some(main) => id = main,
+                None => break,
+            }
+        }
+        let o = self.objects.get(&id)?;
+        Some(genie_core::tasks::TaskTarget {
+            id,
+            master: self.masters.get(o.player)?.get(o.master)?,
+            player: o.player,
+            state: o.state,
+            held: o.held,
+            hp: o.hp,
+            max_hp: o.max_hp,
+            attackable: o.attackable,
+            pasture: o.pasture,
+            top_action: o.top_action,
+        })
+    }
+
+    /// The finder's target: an annex stands for its main building.
+    pub fn target(&self, id: i32) -> Option<genie_core::tasks::TaskTarget<'_>> {
+        self.target_up(id, 1)
+    }
+
+    /// The finder's view of unit `id` as the actor.
+    pub fn actor(&self, id: i32) -> Option<genie_core::tasks::Actor<'_>> {
+        let o = self.objects.get(&id)?;
+        Some(genie_core::tasks::Actor {
+            id,
+            master: self.masters.get(o.player)?.get(o.master)?,
+            player: o.player,
+            held: o.held,
+            attribute_95: self.attribute_95.get(o.player).copied().unwrap_or(0.0),
+            civ: self.civs.get(o.player).copied().unwrap_or(0),
+        })
+    }
+}
+
+/// The task finder's inputs from a save, with the `.dat`'s values for what the save does not hold
+/// and the table's drop sites (`dropsites.json`, [`drop_sites`]).
+pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Error> {
+    let chapter = de::chapters(save)?[0];
+    let header = chapter.header()?;
+    let sections = header.players();
+    let masters = sections
+        .iter()
+        .map(|p| work_masters(p.objects(), p.world_player().base.civ_id, table))
+        .collect();
+    let mut objects = std::collections::HashMap::new();
+    for (player, section) in sections.iter().enumerate() {
+        for o in section.live_objects().chain(section.sleeping_objects()) {
+            let Some(s) = o.static_part() else { continue };
+            let combat = o.combat();
+            let powerup = |f: fn(&genie_save::generated::world::TribeCombatObject) -> f32| {
+                combat.map_or(0.0, f)
+            };
+            let master_hp = section
+                .objects()
+                .master(s.master_obj)
+                .and_then(|m| m.static_part())
+                .map_or(0.0, |m| f32::from(m.read_temp_6));
+            objects.insert(
+                s.id,
+                FinderObject {
+                    player,
+                    master: s.master_obj,
+                    state: s.object_state,
+                    held: (s.attribute_type_held, s.attribute_amount_held),
+                    hp: s.hp
+                        + (powerup(|c| c.hitpoints_max_powerup) - powerup(|c| c.hitpoints_powerup)),
+                    max_hp: master_hp + powerup(|c| c.hitpoints_max_powerup),
+                    attackable: s.unit_attackable_flag != 0,
+                    pasture: s.parent_pasture_id,
+                    annex_of: o
+                        .tribe_building_object
+                        .as_ref()
+                        .map(|b| b.mupt_linked_object_references_linked_owner_id)
+                        .filter(|&owner| owner != -1),
+                    top_action: o
+                        .actions()
+                        .and_then(|a| a.entries().next())
+                        .map(|(kind, _)| kind),
+                    position: [s.t_x, s.t_y, s.t_z],
+                },
+            );
+        }
+    }
+    Ok(FinderWorld {
+        masters,
+        objects,
+        relations: sections
+            .iter()
+            .map(|p| p.world_player().base.relation.clone())
+            .collect(),
+        attribute_95: sections
+            .iter()
+            .map(|p| {
+                p.world_player()
+                    .base
+                    .attributes
+                    .get(95)
+                    .copied()
+                    .unwrap_or(0.0)
+            })
+            .collect(),
+        civs: sections
+            .iter()
+            .map(|p| p.world_player().base.civ_id)
+            .collect(),
+        drop_sites: table.drop_sites.clone(),
+    })
+}
+
+/// The game's drop-site table (`resources/_common/dat/dropsites.json`): each entry's
+/// `building_id`, `worker_object_group` (−1 when absent), `worker_object_list`, `target_civs`
+/// and its targets' `attribute_type`s, in file order.
+pub fn drop_sites(json: &str) -> Result<Vec<genie_core::tasks::DropSite>, serde_json::Error> {
+    let v: serde_json::Value = serde_json::from_str(json)?;
+    let num = |v: &serde_json::Value| v.as_i64().unwrap_or(-1);
+    let list = |e: &serde_json::Value, key: &str| -> Vec<i64> {
+        e.get(key)
+            .and_then(|l| l.as_array())
+            .map_or_else(Vec::new, |l| l.iter().map(num).collect())
+    };
+    Ok(v["drop_site_list"]
+        .as_array()
+        .map_or_else(Vec::new, |entries| {
+            entries
+                .iter()
+                .map(|e| genie_core::tasks::DropSite {
+                    building: num(&e["building_id"]) as i16,
+                    worker_class: e.get("worker_object_group").map_or(-1, num) as i16,
+                    workers: list(e, "worker_object_list")
+                        .into_iter()
+                        .map(|w| w as i16)
+                        .collect(),
+                    civs: list(e, "target_civs")
+                        .into_iter()
+                        .map(|c| c as u8)
+                        .collect(),
+                    resources: e["target_list"].as_array().map_or_else(Vec::new, |ts| {
+                        ts.iter()
+                            .map(|t| t.get("attribute_type").map_or(-1, num) as i16)
+                            .collect()
+                    }),
+                })
+                .collect()
+        }))
 }
 
 /// The owner of each shape in a mesh dump (its `owner ID SHAPE` lines): the objects' `+0x64c`.

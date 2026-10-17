@@ -522,6 +522,7 @@ dependencies = [
  "genie-dat",
  "genie-rec",
  "genie-save",
+ "serde_json",
 ]
 
 [[package]]
