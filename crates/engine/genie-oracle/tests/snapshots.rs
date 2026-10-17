@@ -258,10 +258,12 @@ fn player_1_s_scout_and_sheep_from_a_save_match_the_game_object_by_object() {
     // 1170 10029's first hit takes its sheep 9520 from 14 to 2 hit points (its armor: 3 + 3 + 6
     // over the classes 11, 4 and 13) and notifies it (500). In 1141 the hunter 10029, standing,
     // gets its shape in the mesh at its update's end (FUN_141054fe0), which 9171's and 9173's new
-    // short paths to the sheep go round (1186). Every object, its unit AI's queues, player 1's
-    // sight and the map's terrain match through the save after 1199, before 10029's swing outlasts
-    // its reload (1201)
-    let Some(found) = differences(680, 519, 1) else {
+    // short paths to the sheep go round (1186). In 1201 10029's swing ends before its reload: it
+    // waits with its standing sprite. In 1213 the sheep has left 10029's reach: readyToAttack
+    // sends it after the sheep (set_state 4); in 1250 a hit kills the sheep, which goes to Gaia.
+    // Every object, its unit AI's queues, player 1's sight and the map's terrain match through
+    // the save after 1251, before the dead sheep's dying sprite (1253)
+    let Some(found) = differences(680, 571, 1) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

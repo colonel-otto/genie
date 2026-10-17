@@ -652,6 +652,7 @@ mod tests {
         sprite: None,
         second_sprite: None,
         idle_sprite: None,
+        idle_attack_sprite: None,
         missile: -1,
         fire_frame: 0,
         interrupt_frame: -1,

@@ -203,8 +203,10 @@ pub struct Master {
     /// (`+0x7f8`, `fight_sprite_id`), a second attack sprite
     /// (`+0x878`, the `.dat`'s `attack_graphic2`), `missile_id`, `fire_missile_at_frame`,
     /// `interrupt_frame`, `base_hit_chance`, `speed_of_attack` (the reload time) and its weapons
-    /// (class, amount).
+    /// (class, amount); and the sprite it waits with between swings (`+0x910`, the `.dat`'s
+    /// `idle_attack_graphic`, −1 for none).
     pub standing_sprite: i16,
+    pub idle_attack_sprite: i16,
     pub attack_sprite: i16,
     pub attack_sprite2: i16,
     pub missile: i16,

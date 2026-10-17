@@ -800,6 +800,12 @@ impl Unit {
                 None
             };
             let mut blasted = std::mem::take(&mut c.blasted);
+            // the unit AI's canMoveToAttack (FUN_140c48420) and stance
+            let can_move = self
+                .ai
+                .as_ref()
+                .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
+            let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
@@ -812,6 +818,8 @@ impl Unit {
                 sprite_rng,
                 own,
                 executed: None,
+                can_move,
+                stance,
             };
             hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));

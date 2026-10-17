@@ -48,10 +48,12 @@ pub const SWING: u8 = 7;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Arms {
     /// `+0x70`: the attack sprite (the hunt's task's proceeding sprite); `+0x78`, a second one
-    /// the unit picks from; `+0x80`, the sprite it stands with when done.
+    /// the unit picks from; `+0x80`, the sprite it stands with when done; `+0x88`, the sprite it
+    /// waits with between swings (the master's idle attack sprite).
     pub sprite: Option<Graphic>,
     pub second_sprite: Option<Graphic>,
     pub idle_sprite: Option<Graphic>,
+    pub idle_attack_sprite: Option<Graphic>,
     /// `+0x98`, the master's missile (`missile_id`, -1 for a melee unit); `+0x9a`, the frame that
     /// fires (`fire_missile_at_frame`); `+0x9c`, the frame that may interrupt
     /// (`interrupt_frame`), -1 for none.
@@ -133,6 +135,10 @@ pub struct Strike<'a> {
     /// The target of a swing this update, whose executed action (notify 0x200 with 600 and the
     /// target) the unit posts to its unit AI.
     pub executed: Option<i32>,
+    /// The unit AI's canMoveToAttack (slot 0x1d0, `FUN_140c48420`) and stance (`+0x1a9`), which
+    /// readyToAttack reads of a target out of reach.
+    pub can_move: bool,
+    pub stance: u8,
 }
 
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
@@ -147,11 +153,16 @@ pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mu
     *sprite = Some(ActiveSprite::start(g, rng));
 }
 
-/// What readyToAttack answers for a target in reach.
+/// What readyToAttack answers: ready to swing, waiting for the attack timer, or the target out of
+/// reach at this gap (the unit follows it).
 enum Readiness {
     Ready,
     Waiting,
+    Away(f32),
 }
+
+/// The gate class, whose parts' gaps readyToAttack measures.
+const GATE: i16 = 39;
 
 impl Attack {
     /// The constructor (`FUN_140a7c210`, from Hunt's set_state 12 with the master's weapon range,
@@ -238,9 +249,15 @@ impl Attack {
             mover.stop()?;
         }
         self.state = MOVE;
-        self.range = e.range;
+        self.moving(e.range, e.gap)
+    }
+
+    /// set_state(4)'s own part: the range (slot 0x238's), the timer, the MoveTo to the target
+    /// (arrived within 0.01 of a `gap` away is not modelled).
+    fn moving(&mut self, range: f32, gap: f32) -> Result<(), Unsupported> {
+        self.range = range;
         self.timer = 0.0;
-        if e.gap <= ARRIVED {
+        if gap <= ARRIVED {
             return Err(Unsupported("an Attack's MoveTo that starts arrived"));
         }
         self.move_to = Some(MoveTo::Start);
@@ -298,14 +315,34 @@ impl Attack {
         match self.ready_to_attack(walk, s)? {
             Readiness::Ready => self.set_swing(walk, s),
             Readiness::Waiting => Ok(()),
+            Readiness::Away(gap) => self.follow(walk, s, gap),
         }
     }
 
-    /// readyToAttack (`FUN_140a7f9d0`) on a target that does not move: in reach (the gap at most
-    /// the reach, at least the least range) the target's place becomes the attack's point, the
-    /// unit faces it (`FUN_141162db0`, at once for a unit without a turn time) and is ready when
-    /// its attack timer ran out (slot 0x100). A target out of reach or too close is not modelled
-    /// here.
+    /// readyToAttack's answer to a target out of reach: set_state(4), the MoveTo after it with
+    /// the range of slot 0x238 (the master's weapon range).
+    fn follow(
+        &mut self,
+        walk: &mut Walk<'_>,
+        s: &mut Strike<'_>,
+        gap: f32,
+    ) -> Result<(), Unsupported> {
+        self.enter(MOVE, walk, s)?;
+        self.moving(s.own.source.weapon_range, gap)
+    }
+
+    /// readyToAttack (`FUN_140a7f9d0`) on an object: a target of a player (not Gaia) out of the
+    /// unit's player's sight is not modelled. A unit that moves (a master of type 30 and up with a
+    /// speed, `FUN_140fdd080`; the slice reads the unit's top speed) whose target stands on the
+    /// attack's point (`FUN_140a7bbf0`) or within half a tile of it on each axis
+    /// (`FUN_140a7bd10`) is ready at once; else the reach decides: the target's gap
+    /// (`FUN_14118f680`) below the least range is not modelled; beyond the reach (the range, half
+    /// a tile more without one) the unit follows it (set_state 4, [`Readiness::Away`]) when it may
+    /// move (its speed and canMoveToAttack, slot 0x1d0; a stance-1 leash and set_state 13 are not
+    /// modelled; the Hunt's Attack, a sub-action (`+0x60`), posts no notify 0x1fd); within it the
+    /// target's place becomes the point. Ready, the unit faces the target (`FUN_141162db0`, at
+    /// once for a unit without a turn time) and swings once its attack timer ran out (slot 0x100).
+    /// A gate target (class 39, its parts' gaps) is not modelled.
     fn ready_to_attack(
         &mut self,
         walk: &Walk<'_>,
@@ -319,21 +356,58 @@ impl Attack {
             .world
             .get_known(self.target)?
             .ok_or(Unsupported("an Attack whose target is gone"))?;
+        if 0 < t.player
+            && !walk
+                .world
+                .sees_tile(s.own.player, t.position[0] as i32, t.position[1] as i32)
+        {
+            return Err(Unsupported(
+                "readyToAttack on a target out of its player's sight",
+            ));
+        }
         let at = walk
             .world
             .get(walk.me.id)
             .map_or(walk.me.position, |p| p.position);
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(at, ground, t.position, t.radius);
+        let moved = t.position != self.point;
+        let far = (0..3).any(|i| HALF < (t.position[i] - self.point[i]).abs());
+        let mobile = 0.0 < mover.stats.speed;
+        if !moved || (!far && mobile) {
+            return self.face(mover, s);
+        }
+        if !mobile {
+            return Err(Unsupported(
+                "readyToAttack of a unit that does not move (FUN_1412161a0)",
+            ));
+        }
         if gap < self.min_range {
             return Err(Unsupported(
                 "an attack on a target closer than the least range",
             ));
         }
+        if t.class == GATE {
+            return Err(Unsupported("an attack on a gate (its parts' gaps)"));
+        }
         if self.reach() < gap {
-            return Err(Unsupported("an attack whose target left its reach"));
+            if s.stance == 1 {
+                return Err(Unsupported("an attack's leash test (stance 1)"));
+            }
+            if mover.stats.speed == 0.0 || !s.can_move {
+                return Err(Unsupported(
+                    "an attack whose target left the reach of a unit that cannot follow",
+                ));
+            }
+            return Ok(Readiness::Away(gap));
         }
         self.point = t.position;
+        self.face(mover, s)
+    }
+
+    /// readyToAttack's ready end (`0x140a801f2`): the unit faces its target and swings once its
+    /// attack timer ran out.
+    fn face(&self, mover: &Mover, s: &Strike<'_>) -> Result<Readiness, Unsupported> {
         if !mover.stats.turns_at_once {
             return Err(Unsupported(
                 "an attacker that turns over time to face its target",
@@ -414,8 +488,10 @@ impl Attack {
         match self.state {
             MOVE => self.walk(walk, s, t.position, t.radius),
             READY => {
-                if let Readiness::Ready = self.ready_to_attack(&walk, s)? {
-                    self.set_swing(&mut walk, s)?;
+                match self.ready_to_attack(&walk, s)? {
+                    Readiness::Ready => self.set_swing(&mut walk, s)?,
+                    Readiness::Waiting => {}
+                    Readiness::Away(gap) => self.follow(&mut walk, s, gap)?,
                 }
                 Ok(0)
             }
@@ -541,10 +617,21 @@ impl Attack {
         if !sprite.looped && sprite.graphic.flags & 1 != 0 {
             return Ok(0);
         }
+        // a reload longer than the sprite: at its last frame the unit waits with its idle attack
+        // sprite (`+0x88`), else its standing one (slot 0x68), from its first frame when it
+        // changes (`FUN_1413b9f00`), at speed 1
         if 0.0 < self.swing && sprite.reached(sprite.graphic.frames) {
-            return Err(Unsupported(
-                "a swing longer than its reload (the sprite's reset)",
-            ));
+            let g = self
+                .arms
+                .idle_attack_sprite
+                .or(self.arms.idle_sprite)
+                .ok_or(Unsupported("a swing's end without a sprite to wait with"))?;
+            let changed = sprite.graphic.id != g.id;
+            set_sprite(s.sprite, g, s.sprite_rng);
+            if changed && let Some(sp) = s.sprite.as_mut() {
+                sp.reset_frame();
+            }
+            *s.anim_speed = Some(1.0);
         }
         self.ready(walk, s)?;
         Ok(0)
@@ -652,6 +739,7 @@ pub fn arms(
         sprite: g(sprites[1]).or(g(master.attack_sprite)),
         second_sprite: g(master.attack_sprite2),
         idle_sprite: g(master.standing_sprite),
+        idle_attack_sprite: g(master.idle_attack_sprite),
         missile: master.missile,
         fire_frame: master.fire_frame,
         interrupt_frame: master.interrupt_frame,
