@@ -208,6 +208,8 @@ const VILLAGER_ANY: i16 = 0x712;
 const VILLAGER_FEMALE: i16 = 0x125;
 /// A building's queue holds at most 15 units (`FUN_1411cbc40`).
 const QUEUE_LIMIT: usize = 15;
+/// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
+const SPEED_EPSILON: f32 = crate::image::turn::SPEED_EPSILON;
 
 /// A queued villager's master: male when the 64-bit Action draw times 100 (wrapping) is below 50
 /// modulo 100.
@@ -245,6 +247,11 @@ struct Context<'a> {
     blasted: Vec<Victim>,
     /// The unit was killed in its update (a retaliation), which the caller handles after it.
     own_killed: Option<crate::damage::Kill>,
+    /// What the unit's death leaves for the caller: the remains its dying sprite's end makes
+    /// (`FUN_1411a4e90`: the master and the place) and the paid cost its owner takes back
+    /// (attributes 98 and 164).
+    remains: Option<(i16, [f32; 3])>,
+    refund: Option<f32>,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
     mode_1: bool,
     /// The owner's attributes, which a gatherer's productivity reads.
@@ -473,6 +480,68 @@ impl Unit {
         Ok(())
     }
 
+    /// A stop since the last look cleared the animation speed (`+0x7b8`, [`Mover::speed_stopped`]).
+    fn take_stopped_speed(&mut self) {
+        if let Some(m) = self.mover.as_mut().filter(|m| m.speed_stopped) {
+            m.speed_stopped = false;
+            self.anim_speed = Some(0.0);
+        }
+    }
+
+    /// The death's set_state(3) of a combat object of type 70 (TRIBE_Combat_Object's,
+    /// `FUN_14121cc40`, then the base `FUN_14119d710`, whose storage and sight are the caller's)
+    /// and the static update's dying sprite after it (slot 0x7a0, then slot 0x68,
+    /// `FUN_141217000`): its mesh shape and its obstruction record go (`FUN_141055b40`), its own
+    /// master copy (`FUN_141186d10`) has no height (`+0x5e0` 0: no longer tall), and its owner
+    /// takes back its paid cost from attributes 98 and 164 (each at least 0; the caller's). Not
+    /// modelled: a pasture (`FUN_141189ca0`), the artifact class (1), the classes 43 and 13 with
+    /// their own cases, and a dying sprite of another type; not held: the damage sprites
+    /// (`FUN_1413b9e20`), the hero attachments (`FUN_141201930`), the particles and the sounds.
+    fn died(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+            if self.life.dying_sprite.is_some() {
+                return Err(Unsupported(
+                    "a dying object of a master the slice does not have",
+                ));
+            }
+            return Ok(());
+        };
+        if master.kind != 70 {
+            // a static object's dying sprite is the lifecycle's ([`Lifecycle::die`])
+            if self.life.class == Class::Animated && self.life.dying_sprite.is_some() {
+                return Err(Unsupported(
+                    "a dying sprite of an object of another type than 70",
+                ));
+            }
+            return Ok(());
+        }
+        if self.pasture != -1 || self.my_pasture != -1 {
+            return Err(Unsupported("a dying unit in a pasture (FUN_141189ca0)"));
+        }
+        if matches!(master.class, 1 | 13 | 43) {
+            return Err(Unsupported("a dying unit of class 1, 13 or 43"));
+        }
+        c.pathing.removed(self.id);
+        c.spatial.drop_record(self.id);
+        c.spatial.set_tall(self.id, false);
+        let cost: i32 = master
+            .cost
+            .iter()
+            .filter(|&&(resource, _, paid)| resource >= 0 && paid)
+            .map(|&(_, amount, _)| i32::from(amount))
+            .sum();
+        c.refund = Some(cost as f32);
+        if let Some(id) = self.life.dying_sprite {
+            let g = c
+                .graphics
+                .get(&id)
+                .copied()
+                .ok_or(Unsupported("a dying sprite the data file does not have"))?;
+            crate::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
+        }
+        Ok(())
+    }
+
     /// A notify the unit posts to its own unit AI (slot 0x328).
     fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), Unsupported> {
         let (id, state) = (self.id, self.life.state);
@@ -521,6 +590,7 @@ impl Unit {
             self.life.goto_sleep = false;
             return Ok(Step::Sleep);
         }
+        self.take_stopped_speed();
         // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
         // `+0x87c` (1.0 for every unit the slice has met; its writer is not ported)
         if 0.0 < self.attack_timer {
@@ -538,6 +608,14 @@ impl Unit {
                     c.pathing.moved(self.id, p, mover.is_moving());
                 }
             }
+            // RGE_Moving_Object::update: a unit that moves animates at its speed (+0x7b8)
+            if let Some(v) = mover.velocity.as_ref() {
+                let [x, y, z] = v.velocity;
+                let speed = crate::fmath::sqrt(x * x + y * y + z * z);
+                if SPEED_EPSILON < speed {
+                    self.anim_speed = Some(speed);
+                }
+            }
         }
         if self.life.is_alive() && self.life.hp < 1.0 {
             // set_state(3)'s storage (FUN_1411a56c0 with 0: kinds 2 and 16) leaves the player
@@ -550,9 +628,18 @@ impl Unit {
             }
         }
         let before = self.life.state;
+        if before == 4 && self.sprite.is_none() {
+            return Err(Unsupported(
+                "a dying object whose sprite the slice does not hold",
+            ));
+        }
+        // the sprite list's slot 0x20 on the current sprite (FUN_1413b38a0)
+        let animating = self
+            .sprite
+            .is_some_and(|s| s.animate != 0 && s.graphic.flags & 1 != 0);
         let leaves = if self
             .life
-            .update(c.dt_seconds, c.streams.get(Stream::Object))?
+            .update(c.dt_seconds, c.streams.get(Stream::Object), animating)?
         {
             Step::Leave
         } else {
@@ -560,12 +647,30 @@ impl Unit {
         };
         // the set_states of the steps (FUN_14119d710): a death goes through state 3
         let after = self.life.state;
+        if before <= 2 && 3 <= after {
+            self.died(c)?;
+        }
         if after != before {
             if before <= 2 && 3 <= after {
                 c.spatial.sight_state(self.id, 3);
             }
             if after != 3 {
                 c.spatial.sight_state(self.id, after);
+            }
+        }
+        // the dying sprite ended (RGE_Animated_Object::update): the animation stops and an object
+        // below type 80 leaves its remains (FUN_1411a4e90)
+        if before == 4 && after == 5 {
+            self.anim_speed = Some(0.0);
+            let kind = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.kind)
+                .ok_or(Unsupported(
+                    "a dead object of a master the slice does not have",
+                ))?;
+            if kind < 80 && 0 <= self.life.remains {
+                c.remains = Some((self.life.remains, self.position));
             }
         }
         // the animated object's update (0x141071880): its sprite's clock at its animation speed
@@ -576,8 +681,14 @@ impl Unit {
             return Err(e);
         }
         if !self.life.is_alive() {
-            // RGE_Action_Object::update deletes a dead object's action list
-            self.artifact = None;
+            // RGE_Action_Object::update deletes a dead object's action list: the Artifact's
+            // MoveTo's teardown (0x140aa1f30) stops the unit (slot 0x5d0)
+            if let Some(artifact) = self.artifact.take()
+                && artifact.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
         }
         // RGE_Action_Object::update with no action in state 2 starts the master's default task
         // (slot 0x7f0)
@@ -2161,6 +2272,8 @@ impl Turns {
                     victim: victim.as_mut(),
                     blasted,
                     own_killed: None,
+                    remains: None,
+                    refund: None,
                     mode_1: self.mode_680 == 1,
                     player: p,
                     attributes: &player.attributes,
@@ -2182,6 +2295,7 @@ impl Turns {
                     c.order_on_target.take(),
                 );
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
+                let (remains, refund) = (c.remains.take(), c.refund.take());
                 if let Some(e) = self.spatial.take_sight_unsupported() {
                     result = result.and(Err(e));
                 }
@@ -2191,6 +2305,24 @@ impl Turns {
                     if let Err(e) = self.players[p].add_attribute(kind, amount) {
                         result = result.and(Err(e));
                     }
+                }
+                // a dead unit's paid cost leaves attributes 98 and 164, each at least 0
+                // (FUN_14121cc40: slots 0xf8, then 0xf0 with 0)
+                if let Some(cost) = refund.filter(|&c| c != 0.0) {
+                    for kind in [98, 164] {
+                        let owner = &mut self.players[p];
+                        if let Err(e) = owner.add_attribute(kind, -cost) {
+                            result = result.and(Err(e));
+                        } else if owner.attributes[kind as usize] < 0.0 {
+                            owner.attributes[kind as usize] = 0.0;
+                        }
+                    }
+                }
+                // the remains of a dying sprite's end, a new object of the owner (FUN_1411a4e90)
+                if let Some((master, at)) = remains
+                    && let Err(e) = self.remains(p, master, at)
+                {
+                    result = result.and(Err(e));
                 }
                 // TRIBE_Building_Object::update: the production after the combat update
                 if matches!(result, Ok(Step::Stay))

@@ -238,6 +238,9 @@ fn unit(
             .combat()
             .map_or([0; 2], |c| [c.melee_armor_removed, c.pierce_armor_removed]),
         charge: object.combat().map_or(0.0, |c| c.charge),
+        anim_speed: object
+            .moving_part()
+            .map(|m| m.rge_animated_object.current_speed),
         charge_hit: object
             .combat()
             .is_some_and(|c| c.rge_combat_object.hit_something_valid_for_charge_attack != 0),
@@ -507,6 +510,7 @@ fn mover(
         substitute_count: m.consecutive_substitute_count,
         ignore_units: s.temp_int.clone(),
         move_to_point: saved_move_to_point(object),
+        speed_stopped: false,
     }))
 }
 
@@ -893,10 +897,10 @@ fn lifecycle(
         .and_then(|t| t.graphics.get(&after))
         .filter(|g| pure_static && g.flags & 4 != 0 && 1 < g.facets)
         .map(|g| g.facets);
-    let (dying_sprite, death_spawn, master) = match s.own_master() {
+    let (dying_sprite, [death_spawn, remains], master) = match s.own_master() {
         Some(own) => (
-            own.death_sprite_num >= 0,
-            own.death_spawn_obj_id >= 0 || own.death_spawn_obj_id2 >= 0,
+            (own.death_sprite_num >= 0).then_some(own.death_sprite_num),
+            [own.death_spawn_obj_id, own.death_spawn_obj_id2],
             Some(MasterData {
                 decay: own.attribute_rot,
                 undead: own.undead_flag != 0,
@@ -905,8 +909,8 @@ fn lifecycle(
         None => {
             let player = objects.master(s.master_obj).and_then(|m| m.static_part());
             (
-                player.is_some_and(|m| m.death_sprite_id >= 0),
-                player.is_some_and(|m| m.death_spawn_obj_id >= 0 || m.death_spawn_obj_id2 >= 0),
+                player.map(|m| m.death_sprite_id).filter(|&d| d >= 0),
+                player.map_or([-1, -1], |m| [m.death_spawn_obj_id, m.death_spawn_obj_id2]),
                 masters.and_then(|t| t.get(civ, s.master_obj)),
             )
         }
@@ -922,7 +926,8 @@ fn lifecycle(
         attribute_type: s.attribute_type_held,
         amount: s.attribute_amount_held,
         dying_sprite,
-        death_spawn,
+        death_spawn: death_spawn >= 0,
+        remains,
         death_facets,
         inside: s.inside_obj != -1,
         goto_sleep: s.goto_sleep_flag != 0,
@@ -1204,7 +1209,7 @@ fn work_masters(
         work.standing_sprite = s.idle_sprite_id;
         work.death_sprite = s.death_sprite_id;
         work.garrison = s.obj_max;
-        work.death_spawn = s.death_spawn_obj_id >= 0 || s.death_spawn_obj_id2 >= 0;
+        work.death_spawns = [s.death_spawn_obj_id, s.death_spawn_obj_id2];
         work.life = table.get(civ, s.id());
         work.moving = moving_stats(m, s, civ, table);
         Some(work)

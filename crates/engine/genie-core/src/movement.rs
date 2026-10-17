@@ -127,6 +127,9 @@ pub struct Mover {
     /// the target reads ([`crate::move_to::target_moved`]). A stop (the MoveTo's teardown)
     /// forgets it.
     pub move_to_point: Option<[f32; 3]>,
+    /// A stop (slot 0x5d0) cleared the object's animation speed (`+0x7b8`), which the unit
+    /// holds: [`crate::turn::Unit`] takes it.
+    pub speed_stopped: bool,
 }
 
 /// The moving unit, as the motion step needs it besides its [`Mover`].
@@ -938,7 +941,7 @@ impl Mover {
     /// Slot 0x5d0 (`FUN_14108c2f0` -> `FUN_141161730`): the unit stops: its speed and its
     /// acceleration along its forward vector go to 0 (slots 0x598 and 0x5a8, on velocity data it
     /// has), it stops waiting to move (`+0x7f9`, slot 0x2a0) and its own ignore list (`+0x678`)
-    /// empties. `+0x7b8` is cleared too, which the slice does not hold; a master whose move
+    /// empties. `+0x7b8` is cleared too ([`Mover::speed_stopped`]); a master whose move
     /// algorithm has bit 0 also resets the unit's sprite (`+0x78c`, `+0x958`), which is not
     /// modelled.
     pub(crate) fn stop(&mut self) -> Result<(), Unsupported> {
@@ -954,6 +957,7 @@ impl Mover {
         self.waiting = 0;
         self.ignore_units.clear();
         self.move_to_point = None;
+        self.speed_stopped = true;
         Ok(())
     }
 
@@ -1960,6 +1964,7 @@ mod tests {
             substitute_count: 0,
             ignore_units: Vec::new(),
             move_to_point: None,
+            speed_stopped: false,
         }
     }
 

@@ -3,9 +3,9 @@
 //! returns 1 and so takes the object off its player's list (`RGE_Object_List::update`,
 //! `0x141166550`).
 //!
-//! The states are the save's `object_state`: 2 alive, 3 dying, 5 dead, 7 its resource going back,
-//! 8 gone. Only the path of an object without a death sprite, a death spawn or an undead state is
-//! modelled; anything else is [`Unsupported`].
+//! The states are the save's `object_state`: 2 alive, 3 dying, 4 playing its dying sprite, 5
+//! dead, 7 its resource going back, 8 gone. An object's death spawn (state 7) and an undead state
+//! are [`Unsupported`].
 
 use crate::rng::Well512;
 use crate::unit_ai::Unsupported;
@@ -43,10 +43,15 @@ pub struct Lifecycle {
     pub attribute_type: i16,
     /// `+0x310`.
     pub amount: f32,
-    /// The master's death sprite: an animated object with one plays it in state 4.
-    pub dying_sprite: bool,
-    /// The master spawns an object when this one is gone (its death spawn, state 7).
+    /// The master's death sprite (`+0x480`, the slot 0x7a0's): an animated object with one plays
+    /// it in state 4.
+    pub dying_sprite: Option<i16>,
+    /// The master spawns an object when this one is gone (its death spawn `+0x5e4`, state 7).
     pub death_spawn: bool,
+    /// The master's `death_spawn_obj_id2` (`+0x5e6`, the `.dat`'s `blood_unit_id`, −1 for none):
+    /// what an object below type 80 leaves when its dying sprite ends (`FUN_1411a4e90`, the
+    /// caller's).
+    pub remains: i16,
     /// A static object's sprite after its death (the master's dying sprite, else its current
     /// one) starts on a random facet (sequence flag 4) of this many (more than one): its death
     /// draws the facet from the Object stream.
@@ -69,8 +74,9 @@ impl Default for Lifecycle {
             hp: 1.0,
             attribute_type: -1,
             amount: 0.0,
-            dying_sprite: false,
+            dying_sprite: None,
             death_spawn: false,
+            remains: -1,
             death_facets: None,
             inside: false,
             goto_sleep: false,
@@ -100,9 +106,16 @@ impl Lifecycle {
         self.state <= 2
     }
 
-    /// One update of `dt_seconds` ([`seconds`]), with the tick's Object stream. True when the
-    /// object leaves its list.
-    pub fn update(&mut self, dt_seconds: f32, object: &mut Well512) -> Result<bool, Unsupported> {
+    /// One update of `dt_seconds` ([`seconds`]), with the tick's Object stream and whether the
+    /// object's current sprite still animates (the sprite list's slot 0x20, `FUN_1413b8790` ->
+    /// `FUN_1413b38a0`: its animate flag on and the graphic animated). True when the object leaves
+    /// its list.
+    pub fn update(
+        &mut self,
+        dt_seconds: f32,
+        object: &mut Well512,
+        animating: bool,
+    ) -> Result<bool, Unsupported> {
         if self.goto_sleep {
             // the object's update moves it to the sleeping list first (`Unit::update`)
             return Err(Unsupported("the object goes to sleep"));
@@ -116,6 +129,14 @@ impl Lifecycle {
             }
             3 | 5 => {
                 self.dead(dt_seconds)?;
+                Ok(false)
+            }
+            // RGE_Animated_Object::update: the dying sprite plays; once it stops, state 5 (the
+            // caller clears the animation speed, `+0x7b8`, and leaves the remains)
+            4 => {
+                if !animating {
+                    self.state = 5;
+                }
                 Ok(false)
             }
             7 => {
@@ -151,11 +172,10 @@ impl Lifecycle {
             let facet = (object.rand15() as i32 * i32::from(facets)) / 0x7fff;
             let _facet = facet.min(i32::from(facets) - 1);
         }
+        // RGE_Animated_Object::update: state 4 with a dying sprite (which the static update gave
+        // the object, slot 0x68: the caller's), else 5
         if self.class == Class::Animated {
-            if self.dying_sprite {
-                return Err(Unsupported("a dying sprite (state 4)"));
-            }
-            self.state = 5;
+            self.state = if self.dying_sprite.is_some() { 4 } else { 5 };
         }
         Ok(())
     }
@@ -193,7 +213,10 @@ mod tests {
     fn run(mut life: Lifecycle, dt: u32, limit: usize) -> (Vec<u8>, Option<usize>) {
         let mut states = Vec::new();
         for i in 1..=limit {
-            if life.update(seconds(dt), &mut Well512::default()).unwrap() {
+            if life
+                .update(seconds(dt), &mut Well512::default(), false)
+                .unwrap()
+            {
                 return (states, Some(i));
             }
             states.push(life.state);
@@ -254,17 +277,31 @@ mod tests {
             }),
             ..dead(Class::Static)
         };
-        life.update(seconds(104), &mut Well512::default()).unwrap();
+        life.update(seconds(104), &mut Well512::default(), false)
+            .unwrap();
         assert_eq!((life.state, life.amount), (3, 0.0));
+    }
+
+    /// MarvinBlue/426048731's sheep 9520 (dying sprite 8220): killed, it dies into state 4, which
+    /// holds while its dying sprite animates (updates 1252 to 1333), then 5.
+    #[test]
+    fn a_dying_sprite_holds_state_4_while_it_animates() {
+        let mut sheep = Lifecycle {
+            dying_sprite: Some(8220),
+            ..dead(Class::Animated)
+        };
+        let mut rng = Well512::default();
+        sheep.update(0.025, &mut rng, true).unwrap();
+        assert_eq!(sheep.state, 4);
+        sheep.update(0.025, &mut rng, true).unwrap();
+        assert_eq!(sheep.state, 4);
+        sheep.update(0.025, &mut rng, false).unwrap();
+        assert_eq!(sheep.state, 5);
     }
 
     #[test]
     fn the_paths_not_modelled_are_unsupported() {
         let cases = [
-            Lifecycle {
-                dying_sprite: true,
-                ..dead(Class::Animated)
-            },
             Lifecycle {
                 state: 3,
                 death_spawn: true,
@@ -300,14 +337,10 @@ mod tests {
                 attribute_type: 0,
                 ..dead(Class::Animated)
             },
-            Lifecycle {
-                state: 4,
-                ..dead(Class::Animated)
-            },
         ];
         for (i, mut life) in cases.into_iter().enumerate() {
             assert!(
-                life.update(0.104, &mut Well512::default()).is_err(),
+                life.update(0.104, &mut Well512::default(), false).is_err(),
                 "case {i}"
             );
         }
@@ -326,10 +359,10 @@ mod tests {
         };
         let mut object = Well512::default();
         object.set_seed(1);
-        tree.update(0.02, &mut object).unwrap();
+        tree.update(0.02, &mut object, false).unwrap();
         assert_eq!((tree.state, tree.amount, object.draws), (3, 100.0, 1));
         // dead with its wood, it waits (no decay) and draws nothing more
-        tree.update(0.02, &mut object).unwrap();
+        tree.update(0.02, &mut object, false).unwrap();
         assert_eq!((tree.state, object.draws), (3, 1));
     }
 
@@ -337,7 +370,7 @@ mod tests {
     fn the_unit_ai_runs_up_to_state_2() {
         let mut life = dead(Class::Animated);
         assert!(life.is_alive());
-        life.update(0.104, &mut Well512::default()).unwrap();
+        life.update(0.104, &mut Well512::default(), false).unwrap();
         assert!(!life.is_alive());
     }
 }

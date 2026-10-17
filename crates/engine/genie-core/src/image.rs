@@ -194,6 +194,11 @@ pub mod tile_path {
     pub const TILE_SEARCH_LENGTH: f32 = f32::from_bits(0x420c0000);
 }
 
+pub mod turn {
+    /// 1.0000000116860974e-07
+    pub const SPEED_EPSILON: f32 = f32::from_bits(0x33d6bf95);
+}
+
 pub mod visibility {
     /// 0.009999999776482582
     pub const EDGE: f32 = f32::from_bits(0x3c23d70a);

@@ -295,6 +295,30 @@ impl Spatial {
             .map(|(&id, o)| (id, o))
     }
 
+    /// The object's obstruction record goes (`FUN_141055b40`'s record part): a static record's
+    /// tiles keep only their terrain class (`FUN_141055980`).
+    pub fn drop_record(&mut self, id: i32) {
+        let Some(p) = self.objects.get(&id).cloned() else {
+            return;
+        };
+        if p.obstruction.is_some_and(|o| o.marks_tiles()) {
+            self.tiles.unmark(&p);
+            self.changed.push(self.tiles.covered_rect(&p));
+        }
+        if let Some(o) = self.objects.get_mut(&id) {
+            o.obstruction = None;
+        }
+    }
+
+    /// The object's master's height radius changed: it counts as tall or not from now on (a
+    /// dying unit's own master copy has none, `FUN_14121cc40`); the tiles' counts are not
+    /// redone, as the game does not redo them.
+    pub fn set_tall(&mut self, id: i32, tall: bool) {
+        if let Some(o) = self.objects.get_mut(&id) {
+            o.tall = tall;
+        }
+    }
+
     /// The objects whose place lies within `x0`..`x1` and `y0`..`y1`, by id.
     pub fn objects_within(
         &self,

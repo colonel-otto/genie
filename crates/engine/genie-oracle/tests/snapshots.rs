@@ -262,8 +262,8 @@ fn player_1_s_scout_and_sheep_from_a_save_match_the_game_object_by_object() {
     // waits with its standing sprite. In 1213 the sheep has left 10029's reach: readyToAttack
     // sends it after the sheep (set_state 4); in 1250 a hit kills the sheep, which goes to Gaia.
     // Every object, its unit AI's queues, player 1's sight and the map's terrain match through
-    // the save after 1251, before the dead sheep's dying sprite (1253)
-    let Some(found) = differences(680, 571, 1) else {
+    // the save after 1307, before 10029's step slides along the dead sheep's place (1309)
+    let Some(found) = differences(680, 627, 1) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());
@@ -279,9 +279,11 @@ fn gaia_s_birds_and_animals_from_a_save_match_the_game_object_by_object() {
     // notify of 716, processed on Gaia's turn); in 1232 the boar 9731 turns toward its MoveTo's
     // point at its master's rate (a sixteen-facet walking sprite at 0.05 s a facet: 2π / 0.8 a
     // second, FUN_1410e3a70) and stands while its turn falls short; in 1250 the sheep 9520
-    // joins Gaia, killed. Every object and Gaia's sight through the save after 1251, before the
-    // sheep's dying sprite (1253)
-    let Some(found) = differences(680, 571, 0) else {
+    // joins Gaia, killed; in 1252 it dies: its record and mesh shape go and it plays its dying
+    // sprite (state 4) until 1334, when it leaves its remains, the blood 10030 (state 5 in its
+    // first update). Every object and Gaia's sight through the save after 1307, before player 1's
+    // hunter freezes (1309)
+    let Some(found) = differences(680, 627, 0) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

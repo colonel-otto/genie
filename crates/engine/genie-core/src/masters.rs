@@ -193,11 +193,11 @@ pub struct Master {
     /// The placement terrains (`+0x5f2`..`+0x5f8`, the `.dat`'s `placement_side_terrain` and
     /// `placement_terrain`) name a terrain: a placement test checks the tiles for them.
     pub placement_terrains: bool,
-    /// The death sprite (`+0x480`, −1 for none) and the death spawns (`+0x5e4`, `+0x5e6`), and what
-    /// a dead object's steps read of the master ([`crate::lifecycle::MasterData`]), for a new
-    /// object's [`crate::lifecycle::Lifecycle`].
+    /// The death sprite (`+0x480`, −1 for none) and the death spawns (`+0x5e4`, `+0x5e6`, −1 for
+    /// none), and what a dead object's steps read of the master
+    /// ([`crate::lifecycle::MasterData`]), for a new object's [`crate::lifecycle::Lifecycle`].
     pub death_sprite: i16,
-    pub death_spawn: bool,
+    pub death_spawns: [i16; 2],
     pub life: Option<crate::lifecycle::MasterData>,
     /// What a combat master's attack reads: its standing sprite (`+0x470`), its attack sprite
     /// (`+0x7f8`, `fight_sprite_id`), a second attack sprite

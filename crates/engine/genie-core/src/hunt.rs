@@ -619,6 +619,7 @@ mod tests {
             substitute_count: 0,
             ignore_units: Vec::new(),
             move_to_point: None,
+            speed_stopped: false,
         }
     }
 

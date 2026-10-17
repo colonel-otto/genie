@@ -835,8 +835,9 @@ impl Turns {
                 hp: f32::from(made.hit_points),
                 attribute_type: -1,
                 amount: 0.0,
-                dying_sprite: 0 <= made.death_sprite,
-                death_spawn: made.death_spawn,
+                dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
+                death_spawn: 0 <= made.death_spawns[0],
+                remains: made.death_spawns[1],
                 death_facets: None,
                 inside: false,
                 goto_sleep: false,
@@ -859,6 +860,7 @@ impl Turns {
                 substitute_count: 0,
                 ignore_units: Vec::new(),
                 move_to_point: None,
+                speed_stopped: false,
             }),
             attackable: true,
             pasture: -1,
@@ -886,6 +888,150 @@ impl Turns {
         {
             return Err(Unsupported("a new unit's task that spawns more units"));
         }
+        Ok(())
+    }
+
+    /// `FUN_1411a4e90`: the remains a dying sprite's end leaves for player `p`: the master's slot
+    /// 0x40 makes an object of `master` at the dead object's place `at`, with the setups' draws
+    /// (static `FUN_1411a45a0`: its standing sprite, [`ActiveSprite::start`] on the Sprite stream,
+    /// then its facet on the Object stream for a sprite with a random first frame and several
+    /// facets; moving `FUN_141161450`: its angle on the Object stream, sequence flag 2), its id
+    /// (`FUN_14152fd70`), its place, record and mesh shape (slot 0x58), its sight and its storage
+    /// (flags 1, 2 and 32 to its owner, `FUN_141193860`; the last entry of flag 0 held,
+    /// `FUN_141193710`); it takes the dead object's facet (`FUN_14119d490`, `FUN_14114d780`). It
+    /// joins the owner's list and updates later in the same tick. Only remains of types 20 to 39
+    /// without hit points are modelled (with hit points it would sleep); not held: its facet,
+    /// angle and sprite.
+    pub(crate) fn remains(
+        &mut self,
+        p: usize,
+        master: i16,
+        at: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        let made = self.master_of(p, master)?.clone();
+        if !(20..40).contains(&made.kind) {
+            return Err(Unsupported("remains of a type other than 20 to 39"));
+        }
+        if 0 < made.hit_points {
+            return Err(Unsupported("remains with hit points (the sleeping list)"));
+        }
+        if made.recyclable {
+            return Err(Unsupported(
+                "a new object of a recyclable master (a negative id)",
+            ));
+        }
+        let id = self.next_object_id;
+        self.next_object_id += 1;
+        let standing = (0 <= made.standing_sprite)
+            .then(|| self.graphics.get(&made.standing_sprite).copied())
+            .flatten();
+        if let Some(g) = standing {
+            ActiveSprite::start(g, self.streams.get(Stream::Sprite));
+            if g.flags & 4 != 0 && 1 < g.facets {
+                self.streams.get(Stream::Object).rand15();
+            }
+        }
+        let moving = if 30 <= made.kind {
+            if standing.is_some_and(|g| g.flags & 2 != 0 && 1 < g.facets) {
+                self.streams.get(Stream::Object).rand15();
+            }
+            Some(
+                made.moving
+                    .clone()
+                    .ok_or(Unsupported("moving remains without a moving master"))?,
+            )
+        } else {
+            None
+        };
+        let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
+        let placed = Placed {
+            position: at,
+            radius: made.radius,
+            class: made.class,
+            player: p,
+            master,
+            obstruction_type: made.obstruction_type,
+            buildable_on: made.buildable_on,
+            tall: made.tall,
+            speed: moving.as_ref().map_or(0.0, |m| m.speed),
+            unknown: None,
+            obstruction: (made.obstruction_type != 0 && solid).then_some(Obstruction {
+                kind: made.obstruction_type,
+                class: made.obstruction_class,
+            }),
+        };
+        self.spatial.insert(id, placed.clone());
+        self.pathing.moved(id, &placed, false);
+        self.pathing.tiles_changed(self.spatial.take_changes());
+        if let Some(v) = self.spatial.sight.as_mut() {
+            v.add_seer(
+                id,
+                Seer {
+                    player: p,
+                    master,
+                    los: made.line_of_sight,
+                    state: 2,
+                    explored: false,
+                    building: None,
+                    umv: 0,
+                    capture: capture_kind(p, made.class, master),
+                    kind: made.kind,
+                },
+            );
+            v.sight_on(id, at, made.radius, false, false);
+        }
+        if let Some(e) = self.spatial.take_sight_unsupported() {
+            return Err(e);
+        }
+        let owner = &mut self.players[p];
+        let mut held = (-1, 0.0);
+        for &(kind, amount, flag) in &made.storage {
+            if kind >= 0 && matches!(flag, 1 | 2 | 32) {
+                owner.add_attribute(kind, amount)?;
+            }
+            if kind != -1 && flag == 0 {
+                held = (kind, amount);
+            }
+        }
+        owner.objects.push(Unit {
+            id,
+            position: at,
+            life: Lifecycle {
+                class: Class::Animated,
+                state: 2,
+                hp: f32::from(made.hit_points),
+                attribute_type: held.0,
+                amount: held.1,
+                dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
+                death_spawn: 0 <= made.death_spawns[0],
+                remains: made.death_spawns[1],
+                death_facets: None,
+                inside: false,
+                goto_sleep: false,
+                master_id: master,
+                master: made.life,
+            },
+            mover: moving.map(|stats| Mover {
+                forward: [1.0, 0.0, 0.0],
+                right: [0.0, 0.0, START_RIGHT_Z],
+                velocity: None,
+                paths: Vec::new(),
+                factor: 1.0,
+                stats,
+                waiting: 0,
+                wait_delays: 0,
+                attack_moving: false,
+                last_move: self.world_time,
+                substitute_count: 0,
+                ignore_units: Vec::new(),
+                move_to_point: None,
+                speed_stopped: false,
+            }),
+            attackable: true,
+            pasture: -1,
+            my_pasture: -1,
+            ..Unit::default()
+        });
         Ok(())
     }
 
