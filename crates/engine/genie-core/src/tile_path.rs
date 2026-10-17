@@ -124,6 +124,101 @@ impl Path {
     }
 }
 
+/// The longest step between the points the smoothing puts on a straight stretch
+/// (`DAT_142f430e8`).
+const SMOOTH_STEP: f32 = 7.5;
+/// The level-0 search runs only for paths shorter than this (`DAT_142f430ec`).
+const TILE_SEARCH_LENGTH: f32 = 35.0;
+/// The squared distance from the start within which the planner looks for a shorter first
+/// stretch (`DAT_14330ebcc`).
+const SHORTCUT_REACH: f32 = 100.0;
+
+/// The obstruction manager's segment test the smoothing asks for a unit: whether its straight
+/// walk from one point to another (x, y) meets an obstruction.
+pub type SegmentTest<'a, E> = &'a mut dyn FnMut([f32; 2], [f32; 2]) -> Result<bool, E>;
+
+/// The point at `index`, or the zero point outside the path (`FUN_140f9bcd0`).
+fn point_at(path: &Path, index: i32) -> Vec3 {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| path.points.get(i))
+        .copied()
+        .unwrap_or([0.0; 3])
+}
+
+/// `FUN_140f761b0` and the stretch of `FUN_140f7dbb0`: the `between` points from `first` to
+/// `last` replaced by evenly spaced points at most 7.5 apart on the straight line (through the
+/// path's own insert, which keeps no two equal points together); returns how many fewer points
+/// lie between them now.
+fn straighten(path: &mut Path, first: i32, last: i32, between: i32) -> i32 {
+    let a = point_at(path, first);
+    let d = fmath::sub(point_at(path, last), a);
+    let length = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    let steps = (length / SMOOTH_STEP) as i32;
+    let fewer = between - steps;
+    let at = (first + 1) as usize;
+    if fewer < 0 {
+        for _ in 0..-fewer {
+            path.insert(at, [0.0; 3]);
+        }
+    } else {
+        for _ in 0..fewer {
+            if at < path.points.len() {
+                path.points.remove(at);
+            }
+        }
+    }
+    let direction = [d[0] / length, d[1] / length, d[2] / length];
+    for t in 1..=steps {
+        let step = fmath::scale(length / (steps + 1) as f32, direction);
+        let p = fmath::add(a, fmath::scale(t as f32, step));
+        if let Some(slot) = usize::try_from(first + t)
+            .ok()
+            .and_then(|i| path.points.get_mut(i))
+        {
+            *slot = p;
+        }
+    }
+    fewer
+}
+
+/// `FUN_140f7dbb0`: straighten a found path wherever the unit can walk straight: from each
+/// kept point, the line to two points on is tested (`blocked`, the obstruction manager's segment
+/// test); where it is blocked, the stretch up to the point before becomes straight, and the last
+/// stretch is straightened at the end.
+pub fn smooth<E>(
+    path: &mut Path,
+    blocked: &mut impl FnMut([f32; 2], [f32; 2]) -> Result<bool, E>,
+) -> Result<(), E> {
+    if path.points.len() <= 2 {
+        return Ok(());
+    }
+    let mut first: i32 = 0;
+    let mut probe: i32 = 2;
+    while (probe as usize) < path.points.len() {
+        let (a, b) = (point_at(path, first), point_at(path, probe));
+        let next;
+        if blocked([a[0], a[2]], [b[0], b[2]])? {
+            let between = (probe - first) - 2;
+            if between < 1 {
+                first = probe - 1;
+                next = probe + 1;
+            } else {
+                let fewer = straighten(path, first, probe - 1, between);
+                first = (probe - 1) - fewer;
+                next = first + 2;
+            }
+        } else {
+            next = probe + 1;
+            if next as usize == path.points.len() && 0 < (probe - first) - 1 {
+                straighten(path, first, probe, (probe - first) - 1);
+            }
+        }
+        probe = next;
+    }
+    Ok(())
+}
+
 /// A search node (`0x28` bytes, from the planner's pool `+0x428`, `FUN_140f79c90`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Node {
@@ -535,9 +630,10 @@ pub struct Request {
     /// x, y on the map.
     pub from: [f32; 2],
     pub to: [f32; 2],
-    /// How near the goal counts as there, and the target's own range.
+    /// The unit's and its target's radii, and how near the goal counts as there (the path
+    /// level's range).
+    pub radii: f32,
     pub range: f32,
-    pub target_range: f32,
     /// Rectangles of tiles closed for this search (x0, y0, x1, y1).
     pub closed: Vec<[i16; 4]>,
     /// A human player's search: no early stop near the goal.
@@ -549,8 +645,8 @@ pub struct Request {
 struct Goal {
     x: f32,
     y: f32,
+    radii: f32,
     range: f32,
-    target: f32,
 }
 
 impl Request {
@@ -558,8 +654,8 @@ impl Request {
         Goal {
             x: self.to[0],
             y: self.to[1],
+            radii: self.radii,
             range: self.range,
-            target: self.target_range,
         }
     }
 }
@@ -824,22 +920,17 @@ impl Planner {
     /// `FUN_140f7ba80`: whether a cell at `level` lies within the goal's ranges of (`x`, `y`): one
     /// of its passable (or lone) tiles, measured from the tile's corner.
     fn in_range(&self, level: u8, cx: i16, cy: i16, goal: Goal) -> bool {
-        let Goal {
-            x,
-            y,
-            range,
-            target,
-        } = goal;
+        let Goal { x, y, radii, range } = goal;
         let [rx0, ry0, rx1, ry1] = self.region;
         if !(rx0 >> level <= cx && ry0 >> level <= cy && cx <= rx1 >> level && cy <= ry1 >> level) {
             return false;
         }
-        let r = target + HALF;
+        let r = range + HALF;
         let step = 1i16 << level;
         let off = |v: f32, centre: f32| {
             let d = (v - (centre + -HALF)).abs();
-            let d = if d <= range { 0.0 } else { d - range };
-            if d == range {
+            let d = if d <= radii { 0.0 } else { d - radii };
+            if d == radii {
                 if 0.0 <= d - r { d - r } else { 0.0 }
             } else {
                 d
@@ -866,17 +957,11 @@ impl Planner {
     }
 
     /// The square of tiles the goal's ranges may reach (`FUN_140f7d540`, `FUN_140f7a990`): the
-    /// goal ± range + target range (+ 1 when the target's is below 1); the far sides grow by
-    /// `far`.
+    /// goal ± the radii and the range (+ 1 when the range is below 1); the far sides grow by `far`.
     fn goal_square(&mut self, goal: Goal, far: f32) {
-        let Goal {
-            x,
-            y,
-            range,
-            target,
-        } = goal;
-        let mut r = range + target;
-        if target < ONE {
+        let Goal { x, y, radii, range } = goal;
+        let mut r = radii + range;
+        if range < ONE {
             r += ONE;
         }
         let x0 = tile(x - r).max(0);
@@ -1024,8 +1109,8 @@ impl Planner {
         }
     }
 
-    /// `FUN_140f7b9e0`: the steps from a child cell to the target's tile at that level, counted
-    /// only where the target lies right of or below it; None for a cell off the map or without
+    /// `FUN_140f7b9e0`: the steps from a child cell to the goal's tile at that level, counted
+    /// only where the goal lies right of or below it; `0xffff` for a cell off the map or without
     /// edges.
     fn steps_to(&self, tx: i16, ty: i16, level: u8, cx: i16, cy: i16) -> u16 {
         let dy = (ty - cy).max(0);
@@ -1345,7 +1430,7 @@ impl Planner {
                     let dy = f32::from(gy) - f32::from(cy);
                     let dx = f32::from(gx) - f32::from(cx);
                     if result != Found::Goal
-                        || req.range + GOAL_GAP < fmath::sqrt(dy * dy + dx * dx)
+                        || req.radii + GOAL_GAP < fmath::sqrt(dy * dy + dx * dx)
                     {
                         end = Self::centre(cx, cy);
                     }
@@ -1365,6 +1450,116 @@ impl Planner {
             self.close_rect(r, false);
         }
         result
+    }
+
+    /// `FUN_140f7d160`: the tile or one of its four neighbours has an edge.
+    fn near_passable(&self, x: i16, y: i16) -> bool {
+        let [mx, my] = [self.size[0] - 1, self.size[1] - 1];
+        let edges =
+            |x: i16, y: i16| 0 <= x && x <= mx && 0 <= y && y <= my && self.cell(0, x, y)[0] != 0;
+        edges(x, y) || edges(x + 1, y) || edges(x, y + 1) || edges(x - 1, y) || edges(x, y - 1)
+    }
+
+    /// The planner's entry (`FUN_140f7c530`): the search over the levels; for a human player's
+    /// path to the goal under 35 tiles between passable tiles also the search on the tiles, else
+    /// a shorter first stretch to the last point within 10 tiles; both smoothed (`blocked`, the
+    /// obstruction manager's segment test for the unit, None without a unit); the shorter, or
+    /// the one with the better result, appended to `out`. `target_box` is the target's flag the
+    /// game reads at `+0x658` (a goal tile without edges then counts if a neighbour has some).
+    pub fn plan<E>(
+        &mut self,
+        req: &Request,
+        target_box: bool,
+        out: &mut Path,
+        mut blocked: Option<SegmentTest<'_, E>>,
+    ) -> Result<Found, E> {
+        let (w, h) = (f32::from(self.size[0]), f32::from(self.size[1]));
+        if req.to[0] < 0.0 || w <= req.to[0] || req.to[1] < 0.0 || h <= req.to[1] {
+            return Ok(Found::OffMap);
+        }
+        let mut levels = Path::default();
+        let mut tiles = Path::default();
+        let first = self.search_over_levels(req, &mut levels);
+        let mut second = None;
+        let start_edges = self.cell(0, tile(req.from[0]), tile(req.from[1]))[0];
+        let (gx, gy) = (tile(req.to[0]), tile(req.to[1]));
+        if req.range == 0.0
+            && req.full
+            && first == Found::Goal
+            && start_edges != 0
+            && (self.cell(0, gx, gy)[0] != 0 || (target_box && self.near_passable(gx, gy)))
+            && {
+                levels.measure();
+                levels.length < TILE_SEARCH_LENGTH
+            }
+        {
+            second = Some(self.search_on_tiles(req, &mut tiles));
+        }
+        if req.full && second != Some(Found::Goal) && !levels.points.is_empty() {
+            self.shorter_start(req, &mut levels);
+        }
+        if let Some(blocked) = blocked.as_mut() {
+            let smoothed = |r: Found| !matches!(r, Found::OffMap | Found::Nothing);
+            if smoothed(first) {
+                smooth(&mut levels, blocked)?;
+            }
+            if second.is_some_and(smoothed) {
+                smooth(&mut tiles, blocked)?;
+            }
+        }
+        levels.measure();
+        tiles.measure();
+        let second_code = second.map_or(0, Found::code);
+        let (chosen, result) = if second_code != first.code() || levels.length < tiles.length {
+            (&levels, first)
+        } else {
+            (&tiles, second.unwrap_or(first))
+        };
+        out.append(chosen);
+        Ok(result)
+    }
+
+    /// `FUN_140f7c530`'s shortcut: the last point of the path within 10 tiles of its start (past
+    /// the second, short of the end) is searched for on the tiles; when that reaches it, the path
+    /// becomes that search's path and the rest after the point.
+    fn shorter_start(&mut self, req: &Request, levels: &mut Path) {
+        let n = levels.points.len();
+        let p0 = levels.points[0];
+        let mut i = 1;
+        if n <= 1 {
+            return;
+        }
+        loop {
+            let pi = levels.points[i];
+            let d = (p0[1] - pi[1]) * (p0[1] - pi[1])
+                + (p0[0] - pi[0]) * (p0[0] - pi[0])
+                + (p0[2] - pi[2]) * (p0[2] - pi[2]);
+            if SHORTCUT_REACH < d {
+                i -= 1;
+                break;
+            }
+            i += 1;
+            if n <= i {
+                break;
+            }
+        }
+        if i <= 1 || i == n {
+            return;
+        }
+        let pt = levels.points[i];
+        let mut shortcut = Path::default();
+        let to_point = Request {
+            to: [pt[0], pt[2]],
+            ..req.clone()
+        };
+        if self.search_on_tiles(&to_point, &mut shortcut) == Found::Goal {
+            for &p in &levels.points[i + 1..] {
+                shortcut.push(p);
+            }
+            // the game empties the path before it appends the shortcut (0x140f7c940)
+            levels.points.clear();
+            levels.append(&shortcut);
+        }
     }
 
     /// `FUN_140f78ba0`: the search on level 0, tile by tile, toward the tiles within the goal's
@@ -1463,6 +1658,38 @@ mod tests {
         assert!(path.push([4.0, 0.0, 6.0]));
         path.measure();
         assert_eq!(path.length, 5.0);
+    }
+
+    /// MarvinBlue/426048731's 9520 in update 758 (the probe's log): the search's twelve tile
+    /// points become three where the walk is blocked at (103.5, 46.5) and beyond.
+    #[test]
+    fn the_smoothing_keeps_the_points_before_a_blocked_walk() {
+        let points = [
+            [109.5, 42.5],
+            [108.5, 42.5],
+            [108.5, 43.5],
+            [107.5, 43.5],
+            [107.5, 44.5],
+            [106.5, 44.5],
+            [105.5, 44.5],
+            [104.5, 44.5],
+            [103.5, 44.5],
+            [103.5, 45.5],
+            [103.5, 46.5],
+            [103.604_164, 46.854_168],
+        ];
+        let mut path = Path {
+            points: points.iter().map(|&[x, y]| [x, 0.0, y]).collect(),
+            length: 0.0,
+        };
+        // blocked: any walk from the start that ends beyond y = 44.5
+        let mut blocked = |a: [f32; 2], b: [f32; 2]| Ok::<_, ()>(a == [109.5, 42.5] && 44.5 < b[1]);
+        smooth(&mut path, &mut blocked).unwrap();
+        let ends: Vec<[f32; 2]> = path.points.iter().map(|p| [p[0], p[2]]).collect();
+        assert_eq!(
+            ends,
+            [[109.5, 42.5], [103.5, 44.5], [103.604_164, 46.854_168]]
+        );
     }
 
     #[test]

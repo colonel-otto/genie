@@ -283,6 +283,76 @@ impl Spatial {
         }
     }
 
+    /// Whether the straight walk from `a` to `b` (x, y) of a unit `grow` wide meets an obstruction,
+    /// as the path smoothing asks (`FUN_141052b90`, then `FUN_141052350` with flags `0x100`): the
+    /// tiles of the walk's box whose terrain class the unit's `mask` lacks (the temporary tile
+    /// records of `FUN_1410510c0`) and the static records (kinds 2, 11 and 13) of objects not in
+    /// `ignore`, each box grown by `grow`, against the walk's segment (`FUN_141052e10`). A walk
+    /// whose grown box leaves the map counts as blocked.
+    pub fn segment_blocked(
+        &self,
+        a: [f32; 2],
+        b: [f32; 2],
+        grow: f32,
+        mask: u8,
+        ignore: &[i32],
+    ) -> bool {
+        let (lo_x, hi_x) = (
+            if b[0] <= a[0] { b[0] } else { a[0] },
+            if a[0] <= b[0] { b[0] } else { a[0] },
+        );
+        let (lo_y, hi_y) = (
+            if b[1] <= a[1] { b[1] } else { a[1] },
+            if a[1] <= b[1] { b[1] } else { a[1] },
+        );
+        let [w, h] = self.map;
+        // FUN_141052b90: the tiles whose terrain the unit cannot cross become boxes
+        let tx0 = ((lo_x - grow) as i32).max(0);
+        let ty0 = ((lo_y - grow) as i32).max(0);
+        let tx1 = if ((hi_x + grow) as i32) < w {
+            (hi_x + grow) as i32
+        } else {
+            w - 1
+        };
+        let ty1 = if ((hi_y + grow) as i32) < h {
+            (hi_y + grow) as i32
+        } else {
+            h - 1
+        };
+        if lo_x - grow < 0.0
+            || lo_y - grow < 0.0
+            || (w as f32) < grow + hi_x
+            || (h as f32) < grow + hi_y
+        {
+            return true;
+        }
+        let walk = [a[0], a[1], b[0], b[1]];
+        let meets = |bx: [f32; 4]| {
+            let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
+            lo_x <= grown[2]
+                && grown[0] <= hi_x
+                && lo_y <= grown[3]
+                && grown[1] <= hi_y
+                && box_meets_segment(bx, grow, walk)
+        };
+        let impassable = u64::from(mask & 0x7f | 0x80);
+        for y in ty0..=ty1 {
+            for x in tx0..=tx1 {
+                let word = self.tiles.word(x, y).expect("a tile on the map");
+                if word & impassable == 0
+                    && meets([x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0])
+                {
+                    return true;
+                }
+            }
+        }
+        self.objects.iter().any(|(id, p)| {
+            // kind 10 is filed as 2
+            let kind = p.obstruction.map(|o| if o.kind == 10 { 2 } else { o.kind });
+            matches!(kind, Some(2 | 11 | 13)) && !ignore.contains(id) && meets(p.bounds())
+        })
+    }
+
     /// Each obstruction record: the object's id, the record's kind and box.
     pub fn records(&self) -> impl Iterator<Item = (i32, u8, [f32; 4])> + '_ {
         self.objects
@@ -483,6 +553,58 @@ impl Spatial {
     }
 }
 
+/// `FUN_1410576a0`, Sedgewick's ccw: 1 when `p0`, `p1`, `p2` turn counter-clockwise (or lie in
+/// a line with `p2` beyond `p1`), -1 clockwise (or `p0` between), 0 when `p2` lies on the segment.
+fn ccw(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2]) -> i32 {
+    let (dx1, dy1) = (p1[0] - p0[0], p1[1] - p0[1]);
+    let (dx2, dy2) = (p2[0] - p0[0], p2[1] - p0[1]);
+    // the game's `<=` is false for a NaN too
+    if matches!(
+        (dy2 * dx1).partial_cmp(&(dx2 * dy1)),
+        Some(std::cmp::Ordering::Greater) | None
+    ) {
+        return 1;
+    }
+    if dy2 * dx1 < dx2 * dy1 || dx2 * dx1 < 0.0 || dy2 * dy1 < 0.0 {
+        return -1;
+    }
+    if dy2 * dy2 + dx2 * dx2 <= dy1 * dy1 + dx1 * dx1 {
+        return 0;
+    }
+    1
+}
+
+/// `FUN_141054ec0`: whether segments `p1`–`p2` and `p3`–`p4` meet.
+fn segments_meet(p1: [f32; 2], p2: [f32; 2], p3: [f32; 2], p4: [f32; 2]) -> bool {
+    (ccw(p1, p2, p4) * ccw(p1, p2, p3)) as f32 <= 0.0
+        && (ccw(p3, p4, p2) * ccw(p3, p4, p1)) as f32 <= 0.0
+}
+
+/// `FUN_141052e10` with the box grown by `r`: the walk `[x0, y0, x1, y1]` crosses one of the grown
+/// box's edges or starts or ends inside it.
+fn box_meets_segment([bx0, by0, bx1, by1]: [f32; 4], r: f32, walk: [f32; 4]) -> bool {
+    let lo_x = if bx1 < bx0 { bx1 } else { bx0 };
+    let hi_x = if bx0 < bx1 { bx1 } else { bx0 };
+    let lo_y = if by1 < by0 { by1 } else { by0 };
+    let hi_y = if by0 < by1 { by1 } else { by0 };
+    let (start, end) = ([walk[0], walk[1]], [walk[2], walk[3]]);
+    let edges = [
+        ([bx0 - r, by0 - r], [r + bx1, by0 - r]),
+        ([r + bx1, by0 - r], [r + bx1, r + by1]),
+        ([r + bx1, r + by1], [bx0 - r, r + by1]),
+        ([bx0 - r, r + by1], [bx0 - r, by0 - r]),
+    ];
+    if edges
+        .iter()
+        .any(|&(e0, e1)| segments_meet(start, end, e0, e1))
+    {
+        return true;
+    }
+    let outside =
+        |p: [f32; 2]| p[0] < lo_x - r || r + hi_x < p[0] || p[1] < lo_y - r || r + hi_y < p[1];
+    !(outside(start) && outside(end))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -645,6 +767,35 @@ mod tests {
         s.insert(77, flower);
         assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![77]));
         assert!(!s.foreign_marks(&house));
+    }
+
+    #[test]
+    fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
+        // tiles of class 1 everywhere: a unit with mask 1 crosses them all
+        let mut s = Spatial::with_tiles([16, 16], Tiles::new(16, 16, vec![1; 256]));
+        let mut house = villager(8.0, 8.0);
+        house.radius = [1.0, 1.0];
+        house.obstruction = Some(Obstruction { kind: 2, class: 3 });
+        s.insert(7, house);
+        assert!(s.segment_blocked([4.0, 8.0], [12.0, 8.0], 0.2, 1, &[]));
+        assert!(!s.segment_blocked([4.0, 11.0], [12.0, 11.0], 0.2, 1, &[]));
+        // within its radius of the box, and the box ignored
+        assert!(s.segment_blocked([4.0, 9.1], [12.0, 9.1], 0.2, 1, &[]));
+        assert!(!s.segment_blocked([4.0, 8.0], [12.0, 8.0], 0.2, 1, &[7]));
+        // a moving unit's record never blocks the walk
+        s.insert(8, villager(6.0, 3.0));
+        assert!(!s.segment_blocked([4.0, 3.0], [12.0, 3.0], 0.2, 1, &[]));
+    }
+
+    #[test]
+    fn a_walk_meets_a_tile_whose_terrain_the_unit_cannot_cross() {
+        let mut classes = vec![1; 256];
+        classes[5 * 16 + 9] = 2;
+        let s = Spatial::with_tiles([16, 16], Tiles::new(16, 16, classes));
+        assert!(s.segment_blocked([2.0, 5.5], [14.0, 5.5], 0.2, 1, &[]));
+        assert!(!s.segment_blocked([2.0, 5.5], [14.0, 5.5], 0.2, 3, &[]));
+        // a walk whose grown box leaves the map
+        assert!(s.segment_blocked([0.1, 5.5], [14.0, 5.5], 0.2, 3, &[]));
     }
 
     #[test]

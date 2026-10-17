@@ -128,6 +128,9 @@ fn game_searches(text: &str) -> Vec<GameSearch> {
             continue;
         }
         let routine = call.split_whitespace().nth(2).unwrap().to_string();
+        if routine == "smooth" {
+            continue;
+        }
         let part = |from: &str, to: &str| {
             let rest = call.split(from).nth(1).unwrap();
             numbers(rest.split(to).next().unwrap())
@@ -149,8 +152,8 @@ fn game_searches(text: &str) -> Vec<GameSearch> {
             request: genie_core::tile_path::Request {
                 from: [from[0] as f32, from[1] as f32],
                 to: [to[0] as f32, to[1] as f32],
-                range: range[0] as f32,
-                target_range: range[1] as f32,
+                radii: range[0] as f32,
+                range: range[1] as f32,
                 closed: Vec::new(),
                 full: flag != "0",
             },
@@ -204,4 +207,133 @@ fn the_slice_s_searches_find_the_game_s_paths() {
         checked += 1;
     }
     assert_eq!(checked, 16);
+}
+
+/// The update a logged search ran in, as the tick oracle's snapshot before it: the probe labels
+/// the updates from the fork server's (680) on, its label `k` being update 680 + k, so the state
+/// before it is the save after update 679 + k, the snapshot `678 + k`.
+fn snapshot_before(dir: &std::ffi::OsStr, label: u32) -> Vec<u8> {
+    let path = std::path::Path::new(dir).join(format!("{}.aoe2record", 678 + label));
+    std::fs::read(path).unwrap()
+}
+
+fn label(line: &str) -> u32 {
+    line.split_whitespace().nth(1).unwrap().parse().unwrap()
+}
+
+fn points_of(text: &str) -> Vec<[f32; 3]> {
+    numbers(text)
+        .chunks(3)
+        .map(|c| [c[0] as f32, c[1] as f32, c[2] as f32])
+        .collect()
+}
+
+/// The unit's footprint for the segment test: its x radius and its restriction's class mask.
+fn footprint(save: &[u8], terrain: &genie_oracle::TerrainTable, unit: i32) -> (f32, u8) {
+    let (radius, restriction) = genie_oracle::unit_terrain(save, unit).unwrap().unwrap();
+    (radius, terrain.masks()[restriction])
+}
+
+/// The game's smoothings of the found paths (`FUN_140f7dbb0`, logged with the searches), each
+/// redone on the points the game smoothed with the slice's segment test on the snapshot before
+/// the update.
+#[test]
+fn the_slice_s_smoothing_straightens_paths_as_the_game_does() {
+    let (Some(log), Some(dir), Some(dat)) = (
+        std::env::var_os("GENIE_TILEPATH"),
+        std::env::var_os("GENIE_SNAPSHOTS"),
+        std::env::var_os("GENIE_DAT"),
+    ) else {
+        return eprintln!("GENIE_TILEPATH / GENIE_SNAPSHOTS / GENIE_DAT are not set; skipping");
+    };
+    let text = std::fs::read_to_string(log).unwrap();
+    let dat = genie_dat::de::DatFile::read_from(std::fs::File::open(dat).unwrap()).unwrap();
+    let terrain = genie_oracle::TerrainTable::from_dat(&dat);
+    let lines: Vec<&str> = text.lines().collect();
+    let mut checked = 0;
+    for pair in lines.windows(2) {
+        let (call, result) = (pair[0], pair[1]);
+        if !call.contains(" smooth unit ") {
+            continue;
+        }
+        let unit: i32 = call
+            .split(" unit ")
+            .nth(1)
+            .unwrap()
+            .split(' ')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let save = snapshot_before(&dir, label(call));
+        let spatial = genie_oracle::spatial_with_tiles(&save, &terrain).unwrap();
+        let (radius, mask) = footprint(&save, &terrain, unit);
+        let mut path = genie_core::tile_path::Path {
+            points: points_of(call.split(" before ").nth(1).unwrap()),
+            length: 0.0,
+        };
+        let mut blocked = |a: [f32; 2], b: [f32; 2]| {
+            Ok::<_, ()>(spatial.segment_blocked(a, b, radius, mask, &[unit]))
+        };
+        genie_core::tile_path::smooth(&mut path, &mut blocked).unwrap();
+        assert_eq!(
+            path.points,
+            points_of(result.split(" after ").nth(1).unwrap()),
+            "{call}"
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 16);
+}
+
+/// The game's plans (`FUN_140f7c530`), each planned again on the slice's planner and segment test
+/// of the snapshot before the update: the same result and path.
+#[test]
+fn the_slice_s_plans_are_the_game_s() {
+    let (Some(log), Some(dir), Some(dat)) = (
+        std::env::var_os("GENIE_TILEPATH"),
+        std::env::var_os("GENIE_SNAPSHOTS"),
+        std::env::var_os("GENIE_DAT"),
+    ) else {
+        return eprintln!("GENIE_TILEPATH / GENIE_SNAPSHOTS / GENIE_DAT are not set; skipping");
+    };
+    let searches = game_searches(&std::fs::read_to_string(log).unwrap());
+    let dat = genie_dat::de::DatFile::read_from(std::fs::File::open(dat).unwrap()).unwrap();
+    let terrain = genie_oracle::TerrainTable::from_dat(&dat);
+    let mut checked = 0;
+    for s in searches.iter().filter(|s| s.routine == "plan") {
+        let unit: i32 = s
+            .line
+            .split(" unit ")
+            .nth(1)
+            .unwrap()
+            .split(' ')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let save = snapshot_before(&dir, label(&s.line));
+        let spatial = genie_oracle::spatial_with_tiles(&save, &terrain).unwrap();
+        let (radius, restriction) = genie_oracle::unit_terrain(&save, unit).unwrap().unwrap();
+        let mask = terrain.masks()[restriction];
+        let passable = dat.terrain_restrictions[restriction]
+            .passable_buildable_dmg_multiplier
+            .clone();
+        let mut planner = genie_oracle::planner_from_save(&save, &terrain, passable).unwrap();
+        let mut blocked = |a: [f32; 2], b: [f32; 2]| {
+            Ok::<_, ()>(spatial.segment_blocked(a, b, radius, mask, &[unit]))
+        };
+        let mut path = genie_core::tile_path::Path::default();
+        let found = planner
+            .plan(&s.request, false, &mut path, Some(&mut blocked))
+            .unwrap();
+        assert_eq!(
+            (found.code(), &path.points),
+            (s.result, &s.points),
+            "{}",
+            s.line
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 8);
 }

@@ -1464,6 +1464,31 @@ pub fn spatial_with_tiles(
     Ok(spatial(&header, terrain))
 }
 
+/// What the tile pathfinder reads of object `id` in a save: its master's x radius and terrain
+/// restriction (master `+0x5d8`, `+0x606`). None for an object the save does not hold.
+pub fn unit_terrain(save: &[u8], id: i32) -> Result<Option<(f32, usize)>, Error> {
+    let chapter = de::chapters(save)?[0];
+    let header = chapter.header()?;
+    for section in header.players() {
+        for (_, s) in live(&section) {
+            if s.id != id {
+                continue;
+            }
+            let Some(m) = section
+                .objects()
+                .master(s.master_obj)
+                .and_then(|m| m.static_part())
+            else {
+                return Ok(None);
+            };
+            return Ok(usize::try_from(m.terrain_restriction_mask_id)
+                .ok()
+                .map(|r| (m.radius_x, r)));
+        }
+    }
+    Ok(None)
+}
+
 /// The tile pathfinder's planner for one terrain restriction (`passable`, its value per terrain),
 /// built from a save's map and the tiles its static obstructions block, as the game builds it at
 /// load (`FUN_140f7d310`). Checked against the game's grid in `tests/tile_path.rs`.
