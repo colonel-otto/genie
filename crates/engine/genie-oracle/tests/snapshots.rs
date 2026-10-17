@@ -158,8 +158,9 @@ fn the_cow_s_move_from_a_save_matches_the_game_object_by_object() {
     // update to Gaia's sleeping list, the last live object (the tree 9357, just woken) taking its
     // place without an update in that tick; in 1118 player 2's MOVE sends the cow 9517: its
     // Artifact action takes the point (slot 8) with a MoveTo sub-action, its unit AI only the
-    // point, and the cow walks; through 1160, before its walk may meet an obstruction (1164)
-    let Some(found) = differences(680, 480, 2) else {
+    // point, and the cow walks; in 1164 its step's obstruction query (FUN_14114cc60) finds no
+    // hit; through the save after 1164, before its waypoint's look ahead (1165)
+    let Some(found) = differences(680, 483, 2) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

@@ -249,6 +249,14 @@ impl Unit {
         self.hunt.and_then(|h| h.attack).map(|a| a.target)
     }
 
+    /// Its velocity is not 0 (object slot 0x5c8, `FUN_1411583d0`).
+    pub fn moving(&self) -> bool {
+        self.mover
+            .as_ref()
+            .and_then(|m| m.velocity.as_ref())
+            .is_some_and(|v| 0.0 < crate::fmath::length(v.velocity))
+    }
+
     /// The type of its top action, if it has one.
     pub fn top_action_kind(&self) -> Option<i16> {
         None.or(self.artifact.map(|_| crate::artifact::ARTIFACT_TYPE))
@@ -967,14 +975,29 @@ impl Turns {
         self.tick_with(dt, &[]);
     }
 
+    /// Tell the world which objects move now and how the players stand to each other, for the
+    /// walk's query ([`Spatial::walk_hits`]).
+    fn sync_moving(&mut self) {
+        for p in &self.players {
+            for u in &p.objects {
+                self.spatial.set_moving(u.id, u.moving());
+            }
+        }
+        if self.spatial.relations.is_empty() {
+            self.spatial.relations = self.players.iter().map(|p| p.relations.clone()).collect();
+        }
+    }
+
     /// One world update of `dt` game milliseconds, with the commands recorded in it.
     pub fn tick_with(&mut self, dt: u32, commands: &[Command]) {
         self.ticks += 1;
         self.world_time = self.world_time.wrapping_add(dt);
         self.streams.seed_all(self.frame_seed);
+        self.sync_moving();
         for command in commands {
             self.run(command);
         }
+        self.sync_moving();
         for p in 0..self.players.len() {
             self.player_time[p] = self.player_time[p].wrapping_add(dt);
             let turn = (p == self.player_turn).then_some(self.player_time[p]);
@@ -1018,6 +1041,7 @@ impl Turns {
                     player: p,
                 };
                 let result = unit.update(&mut c, &mut player.objects);
+                self.spatial.set_moving(unit.id, unit.moving());
                 player.objects[i] = unit;
                 if let Some(v) = victim {
                     self.set_victim(&v);

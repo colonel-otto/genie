@@ -3,8 +3,8 @@
 //! (`DAT_143f0a088`, queried by `FUN_141051900`).
 //!
 //! The game files its records in a five-level grid; the slice keeps them by object id. The grid
-//! only orders a query's hits, and the slice stops a walker at the first possible hit
-//! ([`Spatial::obstruction_candidates`]), so it needs no order yet.
+//! only orders a query's hits, and the slice stops a walker at its first hit
+//! ([`Spatial::walk_hits`]), so it needs no order yet.
 //!
 //! [`Tiles`] holds what the game keeps per tile: the obstruction manager's word (terrain class,
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
@@ -211,6 +211,11 @@ pub struct Spatial {
     /// range), for [`Spatial::check_known`]. 0 when not set.
     pub fastest: f32,
     pub reach: f32,
+    /// The objects moving now: their velocity (`+0x868`) is not 0 (object slot 0x5c8,
+    /// `FUN_1411583d0`), which the walk's query reads of allies.
+    moving: std::collections::BTreeSet<i32>,
+    /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
+    pub relations: Vec<Vec<u8>>,
 }
 
 impl Spatial {
@@ -229,6 +234,8 @@ impl Spatial {
             frozen_for: BTreeMap::new(),
             fastest: 0.0,
             reach: 0.0,
+            moving: Default::default(),
+            relations: Vec::new(),
         }
     }
 
@@ -470,6 +477,94 @@ impl Spatial {
 
     /// The object moved: its record moves with it, and it changes tiles when its centre crosses
     /// a tile's edge (`RGE_Static_Object::new_position`, `0x1411a58b0`).
+    /// Whether the object moves now (its velocity is not 0).
+    pub fn set_moving(&mut self, id: i32, moving: bool) {
+        if moving {
+            self.moving.insert(id);
+        } else {
+            self.moving.remove(&id);
+        }
+    }
+
+    /// `FUN_141663dc0` with the ally flag: `to` counts for `from` when it is `from`, or `from`
+    /// stands to it in relation 0 or 4; Gaia counts for no one else.
+    fn allied(&self, from: usize, to: usize) -> bool {
+        if from == to {
+            return true;
+        }
+        if to == 0 {
+            return false;
+        }
+        matches!(
+            self.relations.get(from).and_then(|r| r.get(to)),
+            Some(0 | 4)
+        )
+    }
+
+    /// The walk's obstruction query (`FUN_14114cc60` -> `FUN_141051900` with flags `0x90`, each
+    /// cell's records by `FUN_141051e00`): the records of a tested kind (kind 10 filed as 2),
+    /// except the `ignore`d objects', whose box, grown by `grow` (the walker's radius), meets the
+    /// step's rectangle `rect` and whose grown box meets the step `from` -> `to`
+    /// (`FUN_1410512f0`; a circle's, kind 5, `FUN_141051630`, alike). A moving object of
+    /// `player` or an ally grows by `grow × ally_factor` instead (`+0x84`, the walker's master's
+    /// `min_collision_size_multiplier`). The ids hit, in id order; the game's are in its grid's,
+    /// which no caller reads yet. A rectangle that, grown, leaves the map adds the map edge's
+    /// records (`FUN_141057290`), which is not modelled.
+    #[allow(clippy::too_many_arguments)]
+    pub fn walk_hits(
+        &self,
+        from: [f32; 2],
+        to: [f32; 2],
+        rect: [f32; 4],
+        grow: f32,
+        ally_factor: f32,
+        player: Option<usize>,
+        ignore: &[i32],
+    ) -> Result<Vec<i32>, Unsupported> {
+        let [w, h] = self.map;
+        if rect[0] - grow < 0.0
+            || rect[1] - grow < 0.0
+            || (w as f32) < grow + rect[2]
+            || (h as f32) < grow + rect[3]
+        {
+            return Err(Unsupported(
+                "a walk query beyond the map's edge (FUN_141057290)",
+            ));
+        }
+        let walk = [from[0], from[1], to[0], to[1]];
+        let mut hits = Vec::new();
+        for (&id, p) in &self.objects {
+            let Some(o) = p.obstruction else {
+                continue;
+            };
+            let kind = if o.kind == 10 { 2 } else { o.kind };
+            if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) {
+                continue;
+            }
+            let g = if self.moving.contains(&id) {
+                let player = player.ok_or(Unsupported("a walker without a place"))?;
+                if self.allied(p.player, player) {
+                    ally_factor * grow
+                } else {
+                    grow
+                }
+            } else {
+                grow
+            };
+            let [x0, y0, x1, y1] = p.bounds();
+            let grown = [x0 - g, y0 - g, g + x1, g + y1];
+            if rect[0] <= grown[2]
+                && grown[0] <= rect[2]
+                && rect[1] <= grown[3]
+                && grown[1] <= rect[3]
+                && box_meets_segment([x0, y0, x1, y1], g, walk)
+            {
+                hits.push(id);
+            }
+        }
+        Ok(hits)
+    }
+
     pub fn set_position(&mut self, id: i32, position: [f32; 3]) {
         if let Some(p) = self.objects.get_mut(&id) {
             self.tiles.count(p.position, p.tall, false);
@@ -764,6 +859,40 @@ mod tests {
         assert_eq!(
             s.obstruction_candidates([29.0, 89.0, 29.61, 89.0], 0.2, &[9177]),
             vec![9175]
+        );
+    }
+
+    #[test]
+    fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
+        let mut s = Spatial::new([120, 120]);
+        s.relations = vec![vec![1, 4, 4], vec![1, 0, 4], vec![1, 4, 0]];
+        s.insert(9175, villager(30.0, 89.0));
+        let (from, to) = ([29.5, 88.0], [29.5, 88.3]);
+        let rect = [29.5, 88.0, 29.5, 88.3];
+        // the box (29.8..30.2, 88.8..89.2) grown by 0.25 reaches 88.55, past the step's end
+        assert_eq!(s.walk_hits(from, to, rect, 0.25, 0.5, Some(2), &[]), Ok(vec![]));
+        // grown by 0.4 it reaches x 29.4: the step crosses it once it gets to y 88.4
+        let longer = ([29.5, 88.0], [29.5, 88.5]);
+        let rect = [29.5, 88.0, 29.5, 88.5];
+        assert_eq!(
+            s.walk_hits(longer.0, longer.1, rect, 0.4, 1.0, Some(2), &[]),
+            Ok(vec![9175])
+        );
+        assert_eq!(
+            s.walk_hits(longer.0, longer.1, rect, 0.4, 1.0, Some(2), &[9175]),
+            Ok(vec![])
+        );
+        // moving, of the walker's player, it grows by 0.4 × 0.5 only
+        s.set_moving(9175, true);
+        assert_eq!(
+            s.walk_hits(longer.0, longer.1, rect, 0.4, 0.5, Some(2), &[]),
+            Ok(vec![])
+        );
+        // an enemy's moving box grows in full
+        s.relations[2][1] = 3;
+        assert_eq!(
+            s.walk_hits(longer.0, longer.1, rect, 0.4, 0.5, Some(1), &[]),
+            Ok(vec![9175])
         );
     }
 

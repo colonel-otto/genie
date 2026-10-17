@@ -58,6 +58,8 @@ pub struct Turning {
     pub stationary_yaw_revolution_time: f32,
     /// Master `+0x768`, `old_move_algorithm`: bit 0 has a stop reset the unit's sprite.
     pub move_algorithm: u8,
+    /// Master `+0x780`.
+    pub min_collision_size_multiplier: f32,
 }
 
 /// A `.dat` task as the task finder reads it (`genie_core::masters::Task`).
@@ -235,6 +237,7 @@ impl MasterTable {
                     max_yaw_per_second_moving: d.max_yaw_per_second_moving,
                     stationary_yaw_revolution_time: d.stationary_yaw_revolution_time,
                     move_algorithm: d.old_move_algorithm,
+                    min_collision_size_multiplier: d.min_collision_size_multiplier,
                 });
                 Some((
                     (c as u8, m as i16),

@@ -83,6 +83,9 @@ pub struct MoveStats {
     /// The master's move algorithm (`+0x768`, the `.dat`'s `move_algorithm`): bit 0 has a stop
     /// reset the unit's sprite (slot 0x5d8).
     pub move_algorithm: u8,
+    /// Master `+0x780`, `min_collision_size_multiplier`: the walk's query grows moving allies by
+    /// the unit's radius times this.
+    pub min_collision: f32,
 }
 
 /// A moving unit's movement state.
@@ -569,7 +572,15 @@ impl Mover {
             Reach::Short => {}
         }
         if self.stats.radius.iter().all(|&r| 0.0 < r) {
-            let rect = self.query_rect(position, projected, world.map);
+            // FUN_14114e8a0 ignores the unit itself (and a building's annexes), then
+            // FUN_14114cc60 asks for the step's hits, grown by the unit's radius times 1
+            let (from, to) = self.query_ends(position, projected, world.map);
+            let rect = [
+                from[0].min(to[0]),
+                from[1].min(to[1]),
+                from[0].max(to[0]),
+                from[1].max(to[1]),
+            ];
             let grow = self.stats.radius[0];
             world.check_known_records([
                 rect[0] - grow,
@@ -577,9 +588,20 @@ impl Mover {
                 rect[2] + grow,
                 rect[3] + grow,
             ])?;
-            let near = world.obstruction_candidates(rect, grow, &[me.id]);
-            if !near.is_empty() {
-                return Err(Unsupported("a walker that may meet an obstruction"));
+            let player = world.get(me.id).map(|p| p.player);
+            let hits = world.walk_hits(
+                from,
+                to,
+                rect,
+                grow,
+                self.stats.min_collision,
+                player,
+                &[me.id],
+            )?;
+            if !hits.is_empty() {
+                return Err(Unsupported(
+                    "a walker that meets an obstruction (the avoidance)",
+                ));
             }
         }
         let level = &self.paths[0];
@@ -1484,14 +1506,15 @@ impl Mover {
         fmath::add(position, fmath::scale(dt * next[2], direction))
     }
 
-    /// The obstruction query's rectangle (`FUN_14114cc60`): the step's two ends, each held within
-    /// 0.1 of the map's far edges, then ordered (`FUN_141051900`).
-    fn query_rect(&self, from: Vec3, to: Vec3, map: [i32; 2]) -> [f32; 4] {
+    /// The obstruction query's ends (`FUN_14114cc60`): the step's two ends, each held within 0.1
+    /// of the map's far edges (`FUN_141051900` orders them into its rectangle).
+    fn query_ends(&self, from: Vec3, to: Vec3, map: [i32; 2]) -> ([f32; 2], [f32; 2]) {
         let far = |size: i32| size as f32 - 0.1;
         let hold = |v: f32, max: f32| if v < 0.0 { 0.0 } else { v.min(max) };
-        let (x0, y0) = (hold(from[0], far(map[0])), hold(from[2], far(map[1])));
-        let (x1, y1) = (hold(to[0], far(map[0])), hold(to[2], far(map[1])));
-        [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)]
+        (
+            [hold(from[0], far(map[0])), hold(from[2], far(map[1]))],
+            [hold(to[0], far(map[0])), hold(to[2], far(map[1]))],
+        )
     }
 
     /// Turn toward `direction` (slot 195, `0x14114f630`, then the yaw, slot 184, `0x141163140`):
@@ -1607,6 +1630,7 @@ mod tests {
             restriction_mask: 6,
             turns_at_once: true,
             move_algorithm: 0,
+            min_collision: 1.0,
         }
     }
 

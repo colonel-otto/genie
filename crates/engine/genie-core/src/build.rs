@@ -523,6 +523,7 @@ mod tests {
                 restriction_mask: 6,
                 turns_at_once: true,
                 move_algorithm: 0,
+                min_collision: 1.0,
             },
             waiting: 0,
             wait_delays: 0,

@@ -436,6 +436,7 @@ fn mover(
                 ))?,
             turns_at_once: turning.stationary_yaw_revolution_time == 0.0,
             move_algorithm: turning.move_algorithm,
+            min_collision: turning.min_collision_size_multiplier,
         },
         waiting: m.waiting_to_move_value,
         wait_delays: m.number_wait_delays,
@@ -1039,6 +1040,7 @@ fn moving_stats(
         restriction_mask: *table.terrain.masks().get(restriction)?,
         turns_at_once: turning.stationary_yaw_revolution_time == 0.0,
         move_algorithm: turning.move_algorithm,
+        min_collision: turning.min_collision_size_multiplier,
     })
 }
 
