@@ -50,19 +50,19 @@ impl Notify {
     }
 }
 
-/// The notify kinds the slice posts or processes (named by the game's log strings).
-/// `0x1fa`: "Action %d has completed" (p1 the action value).
-pub const ACTION_COMPLETED: i32 = 0x1fa;
+/// The notify kinds the slice posts or processes, the game's names where its log lines give one
+/// ([`crate::ai_kinds`], generated). `0x1fa`: an action completed (p1 the action value).
+pub const ACTION_COMPLETED: i32 = crate::ai_kinds::NOTIFY_ACTION_COMPLETED;
 /// `0x1fb`: an action's invalidation (p1 the action value).
-pub const ACTION_INVALIDATED: i32 = 0x1fb;
-/// `0x200`: "ActionExecuted", an attack's swing (p1 600, p2 the target).
+pub const ACTION_INVALIDATED: i32 = crate::ai_kinds::NOTIFY_ACTION_INVALIDATED;
+/// `0x200`: "ActionExecuted" (the soldier's log line), an attack's swing (p1 600, p2 the target).
 pub const ACTION_EXECUTED: i32 = 0x200;
 /// `0x20b`: the unit changed hands (p1 the new owner).
 pub const OWNER_CHANGED: i32 = 0x20b;
-/// `500`: "I took some damage".
-pub const DAMAGED: i32 = 500;
-/// `699`: "Unit #%d is no longer doing an action on me".
-const NO_LONGER_ON_ME: i32 = 699;
+/// `500`: the unit took damage.
+pub const DAMAGED: i32 = crate::ai_kinds::NOTIFY_DAMAGED;
+/// `699`: a unit is no longer doing an action on this one.
+const NO_LONGER_ON_ME: i32 = crate::ai_kinds::NOTIFY_NO_LONGER_ON_ME;
 
 /// What a notify handler (unit-AI slot 0x238) returns: go on with the next notify.
 const GO_ON: u32 = 2;
@@ -351,7 +351,7 @@ const BOAR_STEP: u32 = 6;
 const BOAR_OFFSET: i32 = 3;
 const AI_MOVE_RANGE: f32 = 0.5;
 /// The move order and action values (`0x2c6`, `0x262`), which moves set.
-pub const MOVE_ORDER: i32 = 0x2c6;
+pub const MOVE_ORDER: i32 = crate::ai_kinds::ORDER_MOVEMENT;
 pub const MOVE_ACTION: i32 = 0x262;
 
 /// The hunted animal's idle check (`FUN_140c1eea0`): away from its origin by more than

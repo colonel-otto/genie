@@ -137,21 +137,21 @@ pub enum Motion {
 }
 
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`).
-const EPSILON: f32 = 1e-7;
+const EPSILON: f32 = crate::image::DAT_142EB0C60;
 /// The world's up axis (`DAT_143cc2f30`), the yaw's axis.
 const UP: Vec3 = [0.0, 1.0, 0.0];
 /// How far inside the map's edge a moving unit's footprint stays (`DAT_142eb99cc`), and how far
 /// below the edge a position stays (`DAT_142eb1e9c`).
-const EDGE_GAP: f32 = 0.01;
-const EDGE_POSITION_GAP: f32 = 0.001;
+const EDGE_GAP: f32 = crate::image::DAT_142EB99CC;
+const EDGE_POSITION_GAP: f32 = crate::image::DAT_142EB1E9C;
 /// A walk to a point checks its range only above this (`DAT_142eb5690`).
-const RANGE_FLOOR: f32 = 0.1;
+const RANGE_FLOOR: f32 = crate::image::DAT_142EB5690;
 /// The class the motion step measures by its annexes (`-0xe85` encoded).
 const GATE: i16 = 39;
 /// The trade cart's class (19), whose path requests the owner's budget limits (`FUN_14165d6f0`).
 const TRADE_CART: i16 = 19;
 /// No distance (`DAT_14330ebf4`).
-const FAR: f32 = f32::MAX;
+const FAR: f32 = crate::image::DAT_14330EBF4;
 /// The motion step's switches (`DAT_1439e3cc0`, `DAT_1439e3cc4`, `DAT_1439e3cc8`): the short
 /// pather, the tile pathfinder and the long pather run; all three are 1 at run time.
 const SHORT_PATHER: bool = true;
@@ -159,12 +159,12 @@ const TILE_PATHER: bool = true;
 const LONG_PATHER: bool = true;
 /// The short pather serves a waypoint this near (`DAT_142ec9ec0`), and one this near a target
 /// before the tile pathfinder (`DAT_142eb0f4c`).
-const SHORT_REACH: f32 = 16.0;
-const TARGET_SHORT_REACH: f32 = 10.0;
+const SHORT_REACH: f32 = crate::image::DAT_142EC9EC0;
+const TARGET_SHORT_REACH: f32 = crate::image::DAT_142EB0F4C;
 /// A waypoint or target nearer than this takes the close-in path (`DAT_14330eb8c`).
-const CLOSE: f32 = 1.0;
+const CLOSE: f32 = crate::image::DAT_14330EB8C;
 /// A unit pushed into a met object counts beyond its radius times this (`DAT_142eb880c`).
-const PUSHED: f32 = 0.25;
+const PUSHED: f32 = crate::image::DAT_142EB880C;
 
 /// `FUN_1411615a0`: how deep two boxes (centre, radii on the ground) overlap, the lesser of the
 /// two axes; 0 when they do not.
@@ -183,17 +183,17 @@ fn overlap(a: Vec3, [ar, ad]: [f32; 2], b: Vec3, [br, bd]: [f32; 2]) -> f32 {
 }
 
 /// How far level 0's look ahead reaches on its parent's path, squared (`DAT_14330ebcc`).
-const LOOK_AHEAD: f32 = 100.0;
+const LOOK_AHEAD: f32 = crate::image::DAT_14330EBCC;
 /// `FUN_141142750` grows the walk's query by the unit's radius times `DAT_142e7f384`.
-const STRAIGHT_GROW: f32 = 0.5;
+const STRAIGHT_GROW: f32 = crate::image::DAT_142E7F384;
 /// A path shorter than this is too short (`DAT_142eb99cc`).
-const SHORTEST: f32 = 0.01;
+const SHORTEST: f32 = crate::image::DAT_142EB99CC;
 /// A planned path shorter than this replaces no short path (`DAT_143cc2f28`), and a path is long
 /// when it is longer than this and than 1.25 times the way (`DAT_14330ebb8`, `DAT_142eb56a8`).
 const LONG: f32 = 5.0;
 const DETOUR: f32 = 1.25;
 /// A new level's stretches longer than this squared get a midpoint (`DAT_142ed6f20`).
-const SPLIT: f32 = 25.0;
+const SPLIT: f32 = crate::image::DAT_142ED6F20;
 /// How many plans one motion step makes at most.
 const PLANS: u32 = 3;
 /// A level's plans before it gives up (`FUN_140f8f670`).

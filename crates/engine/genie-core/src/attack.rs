@@ -25,20 +25,20 @@ const NO_RANGE: f32 = 0.1;
 const HALF: f32 = 0.5;
 /// The squared reach of an attack without a range (`DAT_142ed48e4`): `0x3c23d70b`, which is
 /// `0.1f * 0.1f`, one ULP above `0.01f`.
-const TOUCH: f32 = f32::from_bits(0x3c23_d70b);
+const TOUCH: f32 = crate::image::DAT_142ED48E4;
 /// A MoveTo starts arrived within this gap (`DAT_142eb99cc`).
-const ARRIVED: f32 = 0.01;
+const ARRIVED: f32 = crate::image::DAT_142EB99CC;
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`).
-const EPSILON: f32 = 1e-7;
+const EPSILON: f32 = crate::image::DAT_142EB0C60;
 /// The point an attack on an object has none of (`DAT_14330ec20`).
-const NONE: f32 = -1.0;
+const NONE: f32 = crate::image::DAT_14330EC20;
 /// The hit chance's scale (`0x7fffffff`, the low word of a 64-bit Object-stream draw).
 const DRAW_SCALE: i64 = 0x7fff_ffff;
 /// Elevation: a higher attacker hits at 1.25 (`DAT_142eb56a8`), a lower one at 0.75
 /// (`DAT_142e7f388`), each plus its player's and the target's player's attributes (211/272,
 /// 212/273).
-const HIGHER: f32 = 1.25;
-const LOWER: f32 = 0.75;
+const HIGHER: f32 = crate::image::DAT_142EB56A8;
+const LOWER: f32 = crate::image::DAT_142E7F388;
 /// The villager class (4): its hits leave what a static target holds.
 const VILLAGER: i16 = 4;
 

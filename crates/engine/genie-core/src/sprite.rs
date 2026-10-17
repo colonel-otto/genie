@@ -41,9 +41,9 @@ impl Graphic {
 }
 
 /// The shortest frame interval (`0x3a83126f`, also `DAT_142eb1e9c`).
-const SHORTEST: f32 = 0.001;
+const SHORTEST: f32 = crate::image::DAT_142EB1E9C;
 /// The gap below which a speed multiplier counts as none (`DAT_142eb0c60`).
-const EPSILON: f32 = 1e-7;
+const EPSILON: f32 = crate::image::DAT_142EB0C60;
 
 /// The active sprite (the save's `RGE_Active_Animated_Sprite`, memory `+0x24`..`+0x3b`).
 #[derive(Clone, Copy, Debug, PartialEq)]

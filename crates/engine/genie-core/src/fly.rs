@@ -17,9 +17,9 @@ const CHOOSING: u8 = 3;
 const FLYING: u8 = 4;
 
 /// Below this (`DAT_142eb0c60`, 1e-7) a task value counts as none.
-const EPSILON: f32 = 1e-7;
+const EPSILON: f32 = crate::image::DAT_142EB0C60;
 /// Degrees to radians (`DAT_142eb568c`).
-const DEGREE: f32 = 0.017453292;
+const DEGREE: f32 = crate::image::DAT_142EB568C;
 /// The flight angle's step between tries, in degrees, and the tries (`FUN_140a84b40`, state 3).
 const ANGLE_STEP: i32 = 80;
 const TRIES: i32 = 12;

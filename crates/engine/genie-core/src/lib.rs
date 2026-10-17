@@ -1,5 +1,6 @@
 //! Deterministic simulation core of the genie engine reimplementation.
 
+pub mod ai_kinds;
 pub mod artifact;
 pub mod attack;
 pub mod build;
@@ -7,6 +8,7 @@ pub mod checkpoint;
 pub mod fly;
 pub mod fmath;
 pub mod hunt;
+pub mod image;
 pub mod lifecycle;
 pub mod los_tables;
 pub mod masters;

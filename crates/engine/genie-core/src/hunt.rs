@@ -25,9 +25,9 @@ pub const ATTACK: u8 = 12;
 /// A MoveTo starts in place within this gap of its target (`0x140aa2100`).
 const ARRIVED: f32 = 0.01;
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
-const REMAINDER: f32 = 0.1;
+const REMAINDER: f32 = crate::image::DAT_142EB5690;
 /// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
-const LAST_BIT: f32 = 0.001;
+const LAST_BIT: f32 = crate::image::DAT_142EB1E9C;
 /// A task whose `attribute_type4` is this (`0x124`) is a farm's: its gathering and its
 /// `FUN_140ac44b0` read player attribute 292, which the slice does not model.
 const FARM_TASK: i16 = 0x124;
