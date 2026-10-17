@@ -95,14 +95,14 @@ impl Turns {
         })
     }
 
-    fn object(&self, id: i32) -> Option<(usize, &Unit)> {
+    pub(crate) fn object(&self, id: i32) -> Option<(usize, &Unit)> {
         match self.place(id)? {
             Place::Live(p, i) => Some((p, &self.players[p].objects[i])),
             Place::Sleeping(p, i) => Some((p, &self.players[p].sleeping[i])),
         }
     }
 
-    fn master_of(&self, player: usize, master: i16) -> Result<&Master, Unsupported> {
+    pub(crate) fn master_of(&self, player: usize, master: i16) -> Result<&Master, Unsupported> {
         self.masters
             .get(player)
             .and_then(|m| m.get(master))
@@ -501,7 +501,12 @@ impl Turns {
     /// ignores it; against an unallied target the unit's least range must not exceed the gap
     /// (`FUN_1410862c0`); a villager drops its town-bell flag (`FUN_1412067f0`); then the work
     /// command; then it leaves the pasture it is in (`FUN_141189ca0`).
-    fn order_work(&mut self, player: usize, idx: usize, order: &Work) -> Result<(), Unsupported> {
+    pub(crate) fn order_work(
+        &mut self,
+        player: usize,
+        idx: usize,
+        order: &Work,
+    ) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         if master.class == CLASS_54 {
@@ -938,8 +943,8 @@ impl Turns {
     /// share of the new master's (whole, at least 1), its sight goes and the new master's comes
     /// (slots 0x1d8, 0x1d0), its place and obstruction record take the new master's
     /// (`FUN_141055b40`, `FUN_14118c540`) and it moves with the new master's values; its powerups
-    /// go (`FUN_1412066b0`). Its per-master counts, sprite, facet, class registry
-    /// (`DAT_143f69170`) and particles are not held.
+    /// go (`FUN_1412066b0`); it takes the new master's standing sprite (slot 0x68). Its
+    /// per-master counts, facet, class registry (`DAT_143f69170`) and particles are not held.
     fn change_master(&mut self, player: usize, idx: usize, new: i16) -> Result<(), Unsupported> {
         self.clear_actions(player, idx)?;
         let unit = &self.players[player].objects[idx];
@@ -997,6 +1002,25 @@ impl Turns {
                     .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
                 self.spatial.insert(id, placed.clone());
                 self.pathing.moved(id, &placed, moving);
+            }
+            // slot 0x68 with the new master's standing sprite (`+0x470`, FUN_141217000): a new
+            // instance unless the unit shows it already. The slice holds sprites from an attack
+            // on; a unit whose sprite it does not hold shows its old master's. Without the
+            // graphics (no data file) the Sprite stream is not modelled.
+            if !self.graphics.is_empty() && old.standing_sprite != next.standing_sprite {
+                let g = (0 <= next.standing_sprite)
+                    .then(|| self.graphics.get(&next.standing_sprite).copied())
+                    .flatten()
+                    .ok_or(Unsupported(
+                        "a new master's standing sprite the data file does not have",
+                    ))?;
+                let rng = self.streams.get(Stream::Sprite);
+                let unit = &mut self.players[player].objects[idx];
+                if unit.sprite.is_some() {
+                    crate::attack::set_sprite(&mut unit.sprite, g, rng);
+                } else {
+                    crate::sprite::ActiveSprite::start(g, rng);
+                }
             }
             let owner = &mut self.players[player];
             for &(kind, amount, flag) in &next.storage {

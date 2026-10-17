@@ -28,9 +28,9 @@ const ARRIVED: f32 = 0.01;
 const REMAINDER: f32 = crate::image::hunt::REMAINDER;
 /// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
 const LAST_BIT: f32 = crate::image::hunt::LAST_BIT;
-/// A task whose `attribute_type4` is this (`0x124`) is a farm's: its gathering and its
-/// `FUN_140ac44b0` read player attribute 292, which the slice does not model.
-const FARM_TASK: i16 = 0x124;
+/// A task whose `attribute_type4` is this (`0x124`) stops its target's decay under player
+/// attribute 292 (`FUN_140ac44b0`).
+const DECAY_TASK: i16 = 0x124;
 
 /// A building's master type (`'P'`).
 const BUILDING: u8 = 80;
@@ -103,6 +103,9 @@ pub struct Gatherer<'a> {
     /// The target's master's class and its first storage amount (`+0x610`).
     pub target_class: i16,
     pub target_storage: f32,
+    /// The player's attribute 292 is 1: a task whose `attribute_type4` is 0x124 stops the
+    /// target's decay (`FUN_140ac44b0`).
+    pub stops_decay: bool,
     pub sprites: HuntSprites,
 }
 
@@ -299,7 +302,7 @@ impl HuntAction {
                 match attack.update(walk.reborrow(), strike)? {
                     0 | 6.. => Ok(()),
                     5 => {
-                        self.farm_check()?;
+                        self.decay_check(gather, strike.victim)?;
                         self.set_walk(&mut walk, strike.victim)
                     }
                     _ => Err(Unsupported("a Hunt whose Attack ended")),
@@ -320,7 +323,7 @@ impl HuntAction {
                 }
                 // its update in state 1 returns 1
                 Some(MoveTo::Arrived) => {
-                    self.farm_check()?;
+                    self.decay_check(gather, strike.victim)?;
                     self.set_face(strike, gather)
                 }
                 None => Err(Unsupported("a Hunt in state 4 without its MoveTo")),
@@ -356,11 +359,15 @@ impl HuntAction {
         }
     }
 
-    /// `FUN_140ac44b0`: a farm's task (its `attribute_type4` 0x124) with player attribute 292 at 1
-    /// changes the farm's master; for any other task it does nothing.
-    fn farm_check(&self) -> Result<(), Unsupported> {
-        if self.task.kind4 == FARM_TASK {
-            return Err(Unsupported("a farm's hunt (FUN_140ac44b0, attribute 292)"));
+    /// `FUN_140ac44b0`: a task whose `attribute_type4` is 0x124, with its player's attribute 292
+    /// at 1, stops its target's decay: a target whose master decays (`+0x620` above 0) gets a
+    /// master of its own (`FUN_141186d10`) with the decay negated, which the slice does not
+    /// model. Otherwise it does nothing.
+    fn decay_check(&self, gather: &Gatherer<'_>, victim: &Victim) -> Result<(), Unsupported> {
+        if self.task.kind4 == DECAY_TASK && gather.stops_decay && 0.0 < victim.decay {
+            return Err(Unsupported(
+                "a hunt that stops its target's decay (its own master, FUN_141186d10)",
+            ));
         }
         Ok(())
     }
@@ -647,6 +654,7 @@ mod tests {
             elevation: [0.0; 2],
             class: 15,
             storage: 100.0,
+            decay: 0.0,
         }
     }
 
@@ -676,6 +684,7 @@ mod tests {
                 productivity: 1.0,
                 target_class: 15,
                 target_storage: 100.0,
+                stops_decay: false,
                 sprites: HuntSprites::default(),
             };
             hunt.gather(0.02, tree, &mut g)

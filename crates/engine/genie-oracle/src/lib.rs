@@ -230,6 +230,7 @@ fn unit(
             .map_or(0.0, |c| c.rge_combat_object.attack_timer),
         reload_stinger: object.combat().map_or(0.0, |c| c.reload_stinger),
         reload_powerup: object.combat().map_or(0.0, |c| c.reload_powerup),
+        gather_point: gather_point(object),
         ..Unit::default()
     };
     let imported = if saved {
@@ -693,20 +694,7 @@ fn production(
     let Some(building) = object.tribe_building_object.as_ref() else {
         return Ok(None);
     };
-    let mut actions = building.production_queue_actions.entries();
-    let Some((kind, action)) = actions.next() else {
-        return Ok(None);
-    };
-    let Some(make) = action
-        .tribe_action_make_obj
-        .as_ref()
-        .filter(|_| kind == 102)
-    else {
-        return Err(Unsupported(
-            "a saved production action other than making a unit",
-        ));
-    };
-    let queue = building
+    let queue: std::collections::VecDeque<_> = building
         .production_queue
         .iter()
         .take(building.production_queue_count.max(0) as usize)
@@ -718,6 +706,23 @@ fn production(
             std::iter::repeat_n(unit, e.production_queue_unit_count.max(0) as usize)
         })
         .collect();
+    // the make action, if the building made it yet (it comes in the building's next update)
+    let progress = match building.production_queue_actions.entries().next() {
+        None if queue.is_empty() => return Ok(None),
+        None => None,
+        Some((102, action)) => Some(
+            action
+                .tribe_action_make_obj
+                .as_ref()
+                .ok_or(Unsupported("a saved make action without its part"))?
+                .work_done,
+        ),
+        Some(_) => {
+            return Err(Unsupported(
+                "a saved production action other than making a unit",
+            ));
+        }
+    };
     let master = building
         .tribe_combat_object
         .rge_combat_object
@@ -733,9 +738,23 @@ fn production(
         .ok_or(Unsupported("a building master without an action part"))?;
     Ok(Some(genie_core::production::Production {
         queue,
-        progress: make.work_done,
+        action: progress.is_some(),
+        progress: progress.unwrap_or(0.0),
         rate: building.tribe_combat_object.work_rate_powerup + work_rate,
     }))
+}
+
+/// A building's gather point, if it has one (`gather_point_exists`).
+fn gather_point(object: &genie_save::Object) -> Option<genie_core::turn::GatherPoint> {
+    let b = object
+        .tribe_building_object
+        .as_ref()
+        .filter(|b| b.gather_point_exists != 0)?;
+    Some(genie_core::turn::GatherPoint {
+        point: [b.gather_point_x, b.gather_point_y, b.gather_point_z],
+        target: b.gather_point_target,
+        target_master: b.gather_point_target_master,
+    })
 }
 
 /// What an object's first update starts of its master's default task (`RGE_Action_Object::update`,
@@ -990,6 +1009,8 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         terrain.passable().to_vec(),
         header.world.game_type,
     );
+    // a statistics flag the tick oracle reads as 1 in MarvinBlue/426048731 (Turns::unit_cost_246)
+    turns.unit_cost_246 = true;
     if let Some(table) = masters {
         turns.drop_sites = table.drop_sites.clone();
         turns.graphics = table.graphics.clone();
@@ -1133,6 +1154,10 @@ fn work_masters(
         }
         work.damage_sprites = !s.damage_sprite.is_empty();
         work.standing_sprite = s.idle_sprite_id;
+        work.death_sprite = s.death_sprite_id;
+        work.garrison = s.obj_max;
+        work.death_spawn = s.death_spawn_obj_id >= 0 || s.death_spawn_obj_id2 >= 0;
+        work.life = table.get(civ, s.id());
         work.moving = moving_stats(m, s, civ, table);
         Some(work)
     }))
@@ -1614,7 +1639,7 @@ const MAX_UNITS: usize = 60;
 /// Decodes what the slice runs of the recorded commands, in their order (the packets through
 /// genie-rec's generated layouts). It remembers each comm player's last commanded units, as the
 /// game's unit-list reader (`FUN_140e6b290`) does for INTERACT, WORK, MOVE and RETREAT. BUILD,
-/// QUEUE and the orders run; every other command is left out (see [`GROUP_COMMANDS`] for what
+/// QUEUE, SET GATHER POINT and the orders run; every other command is left out (see [`GROUP_COMMANDS`] for what
 /// that may miss).
 ///
 /// The player byte is the comm player, which the handlers map to a world player through the lobby
@@ -1641,6 +1666,21 @@ impl Decoder {
         let (player, num, ids, order, interact) = match Packet::decode(packet) {
             Packet::Build(build) => return Some(build_command(&build, sections)),
             Packet::MultiQueue(queue) => return Some(queue_command(&queue, sections)),
+            Packet::SetGatherPoint(c) => {
+                return Some(Command::GatherPoint {
+                    player: c.commp_id as usize,
+                    ids: c
+                        .ids
+                        .iter()
+                        .copied()
+                        .take((c.num as usize).min(MAX_UNITS))
+                        .collect(),
+                    point: [c.x, c.y],
+                    target: c.t_id,
+                    target_master: c.tm_id as i16,
+                    own: c.field_0x18 != 0,
+                });
+            }
             Packet::Interact(c) => {
                 let order = genie_core::order::Interact {
                     target: c.t_id,
@@ -2089,6 +2129,8 @@ pub struct ObjectRow {
     pub ai: Option<AiRow>,
     /// `+0x650`, the last human order time.
     pub human_order: u32,
+    /// A building's gather point: x, y and its target.
+    pub gather: Option<([f32; 2], i32)>,
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
@@ -2229,6 +2271,9 @@ impl ObjectRow {
             build_added: unit.build.map(|b| b.added),
             ai: unit.ai.as_ref().map(AiRow::of),
             human_order: unit.last_human_order,
+            gather: unit
+                .gather_point
+                .map(|g| ([g.point[0], g.point[1]], g.target)),
         }
     }
 }
@@ -2325,6 +2370,7 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
                 .map(|b| b.added_to_num_builders != 0),
             ai: object.combat().and_then(|c| c.unit_ai()).map(AiRow::saved),
             human_order: s.last_human_order_time,
+            gather: gather_point(object).map(|g| ([g.point[0], g.point[1]], g.target)),
         })
         .collect())
 }
@@ -3105,6 +3151,11 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             "last human order time",
             s.human_order.to_string(),
             g.human_order.to_string(),
+        );
+        field(
+            "gather point",
+            format!("{:?}", s.gather),
+            format!("{:?}", g.gather),
         );
         match (&s.ai, &g.ai) {
             (Some(a), Some(b)) => {

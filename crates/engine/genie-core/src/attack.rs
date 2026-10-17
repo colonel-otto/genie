@@ -130,6 +130,8 @@ pub struct Victim {
     /// Its master's class and first storage amount (`+0x610`), which a gatherer reads.
     pub class: i16,
     pub storage: f32,
+    /// Its master's decay (`+0x620`), which a hunt's decay stop reads (`FUN_140ac44b0`).
+    pub decay: f32,
 }
 
 /// What the Attack's update reads of its unit besides its movement, and changes.

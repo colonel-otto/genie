@@ -102,6 +102,11 @@ impl Terrain {
             .then(|| (y * self.width + x) as usize)
     }
 
+    /// A tile's terrain (the map tile's `+0x9`), None off the map.
+    pub fn kind(&self, x: i32, y: i32) -> Option<u8> {
+        self.index(x, y).map(|i| self.kinds[i])
+    }
+
     /// The terrain a map read sees of `t` (`FUN_140f690e0`): `t` when its record exists and it is
     /// shown, else 0.
     fn seen(&self, t: u8) -> u8 {

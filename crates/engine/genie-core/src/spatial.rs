@@ -286,6 +286,15 @@ impl Spatial {
             .any(|o| o.position[0] as i32 == x && o.position[1] as i32 == y && pred(o))
     }
 
+    /// The objects whose centre is on tile (`x`, `y`): the map tile's object list (`+0x1b` count,
+    /// `+0x28` array), in id order; the slice does not hold the list's own order.
+    pub fn objects_on(&self, x: i32, y: i32) -> impl Iterator<Item = (i32, &Placed)> + '_ {
+        self.objects
+            .iter()
+            .filter(move |(_, o)| o.position[0] as i32 == x && o.position[1] as i32 == y)
+            .map(|(&id, o)| (id, o))
+    }
+
     /// Whether another foundation without its record (a master that obstructs, no record yet)
     /// overlaps `site`'s box (`FUN_1411cd0d0`'s test, without its players' visibility).
     pub fn foundations_overlapping(&self, site_id: i32, site: &Placed) -> bool {
@@ -918,6 +927,20 @@ impl Spatial {
             return false;
         }
         v.unified[(y * v.width + x) as usize] & (1u64 << player) != 0
+    }
+
+    /// `FUN_141663500` is not 0: player `player` sees tile (`x`, `y`) or saw it (its bit, or its
+    /// bit 32 up, of the unified map; the player's masks `+0x2a8` and `+0x2a0` add bits 29 and
+    /// 61, which no tile has). Unknown without the players' sight.
+    pub fn explored(&self, player: usize, x: i32, y: i32) -> Result<bool, Unsupported> {
+        let v = self.sight.as_ref().ok_or(Unsupported(
+            "a test of explored tiles without the players' sight",
+        ))?;
+        if x < 0 || y < 0 || v.width <= x || v.height <= y {
+            return Ok(false);
+        }
+        let bits = (1u64 << player) | (1u64 << (32 + player));
+        Ok(v.unified[(y * v.width + x) as usize] & bits != 0)
     }
 
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its

@@ -96,6 +96,25 @@ pub mod short_path {
     pub const TO_FLOAT: f32 = f32::from_bits(0x34800000);
 }
 
+pub mod spawn {
+    /// 0.10000000149011612
+    pub const GAP: f32 = f32::from_bits(0x3dcccccd);
+    /// 0.0010000000474974513
+    pub const INSIDE: f32 = f32::from_bits(0x3a83126f);
+    /// -1.0
+    pub const NONE: f32 = f32::from_bits(0xbf800000);
+    /// 0.05000000074505806
+    pub const PASSABLE: f32 = f32::from_bits(0x3d4ccccd);
+    /// 8.0
+    pub const REACH: f32 = f32::from_bits(0x41000000);
+    /// 0.25
+    pub const SIDE_SHARE: f32 = f32::from_bits(0x3e800000);
+    /// 0.44999998807907104
+    pub const SMALL: f32 = f32::from_bits(0x3ee66666);
+    /// -1.0
+    pub const START_RIGHT_Z: f32 = f32::from_bits(0xbf800000);
+}
+
 pub mod sprite {
     /// 1.0000000116860974e-07
     pub const EPSILON: f32 = f32::from_bits(0x33d6bf95);

@@ -53,6 +53,8 @@ pub struct Unit {
     pub unmodelled_action: Option<Unsupported>,
     /// A building's production queue and make action.
     pub production: Option<Production>,
+    /// A building's gather point, which its new units go to.
+    pub gather_point: Option<GatherPoint>,
     /// A builder's Build action, its top action.
     pub build: Option<BuildAction>,
     /// A moving object's movement state (types 30 and up).
@@ -103,6 +105,16 @@ pub struct Unit {
     pub stopped: bool,
 }
 
+/// A building's gather point (`+0xc30`..`+0xc44`: it exists, x, y, z, the target and the target's
+/// master; the save's `gather_point_*`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GatherPoint {
+    pub point: [f32; 3],
+    /// The object it is on, −1 for none.
+    pub target: i32,
+    pub target_master: i16,
+}
+
 /// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
 /// the players update (`TRIBE_Command::do_command`, `0x140e77b00`). The slice runs only what other
 /// players' lanes see of a command; the issuing player's lane stops.
@@ -119,6 +131,20 @@ pub enum Command {
         unit_ai: Result<Option<u32>, Unsupported>,
         position: [f32; 3],
         builders: Vec<i32>,
+    },
+    /// SET GATHER POINT (0x78, `FUN_140e7e9a0`): each of the player's objects of `ids` that takes
+    /// a gather point (its master garrisons, `+0x5d4`; the list of units it trains,
+    /// `FUN_141625a20`, is not modelled) takes `point` and `target` with its master, or with
+    /// `own` itself (`FUN_1411c7ff0`); a target of −1 at (−1, −1) clears it. The ids of other
+    /// players' objects are left out (the game setting `+0x1074` that lets them is not modelled),
+    /// and the unit AI's command queue (`+0x1f0`, which its slot 0x210 empties) is not held.
+    GatherPoint {
+        player: usize,
+        ids: Vec<i32>,
+        point: [f32; 2],
+        target: i32,
+        target_master: i16,
+        own: bool,
     },
     /// QUEUE (0x81, the player's queue `FUN_141614450`, the building's `FUN_1411cbc40`): `amount`
     /// units of master `unit` at one building. Each paid `cost` entry `(resource, amount, paid)`
@@ -509,9 +535,6 @@ impl Unit {
         if let Some(e) = self.unmodelled_action.filter(|_| self.life.state == 2) {
             return Err(e);
         }
-        if let Some(production) = self.production.as_mut().filter(|_| self.life.state == 2) {
-            production.update(c.dt_seconds)?;
-        }
         if !self.life.is_alive() {
             // RGE_Action_Object::update deletes a dead object's action list
             self.artifact = None;
@@ -658,6 +681,7 @@ impl Unit {
                 productivity,
                 target_class: victim.class,
                 target_storage: victim.storage,
+                stops_decay: c.attributes.get(292) == Some(&1.0),
                 sprites,
             };
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
@@ -1019,6 +1043,7 @@ impl Turns {
             elevation: [at(272), at(273)],
             class: master.class,
             storage: master.storage.first().map_or(0.0, |s| s.1),
+            decay: u.life.master.map_or(0.0, |m| m.decay),
         })
     }
 
@@ -1220,6 +1245,10 @@ pub struct Turns {
     /// does not wander when it is 1. The tick oracle reads 0 in MarvinBlue/426048731; where the
     /// save or the lobby holds it is not known yet (the save's `mGameMode` sits elsewhere).
     pub mode_680: i32,
+    /// The flag a new combat object's setup reads at `FUN_140982ff0()`'s `+0x921`: the unit's
+    /// cost also counts in attribute 246. The tick oracle reads 1 in MarvinBlue/426048731 (the
+    /// attribute grows by a villager's cost at its spawn); where the save holds it is not known.
+    pub unit_cost_246: bool,
     pub(crate) streams: Streams,
 }
 
@@ -1275,6 +1304,7 @@ impl Turns {
             drop_sites: Vec::new(),
             carry_rule: false,
             mode_680: 0,
+            unit_cost_246: false,
             streams: Streams::default(),
         }
     }
@@ -1319,6 +1349,7 @@ impl Turns {
                     artifact: None,
                     unmodelled_action: None,
                     production: None,
+                    gather_point: None,
                     build: None,
                     mover: None,
                     move_to: None,
@@ -1387,6 +1418,20 @@ impl Turns {
             Command::Unmodelled { player, why } => {
                 let owner = &mut self.players[player];
                 owner.stop(self.ticks, why);
+            }
+            Command::GatherPoint {
+                player,
+                ref ids,
+                point,
+                target,
+                target_master,
+                own,
+            } => {
+                if let Err(e) = self.gather_point(player, ids, point, (target, target_master), own)
+                {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
+                }
             }
             Command::Order {
                 player,
@@ -1598,6 +1643,54 @@ impl Turns {
         Ok(())
     }
 
+    /// SET GATHER POINT's handler ([`Command::GatherPoint`]).
+    fn gather_point(
+        &mut self,
+        player: usize,
+        ids: &[i32],
+        [x, y]: [f32; 2],
+        (target, target_master): (i32, i16),
+        own: bool,
+    ) -> Result<(), Unsupported> {
+        for &id in ids {
+            // another player's object (the game clears its id) or one that is gone
+            let Some(i) = self.players[player].objects.iter().position(|u| u.id == id) else {
+                continue;
+            };
+            let unit = &self.players[player].objects[i];
+            let master = self
+                .masters
+                .get(player)
+                .and_then(|m| m.get(unit.life.master_id))
+                .ok_or(Unsupported(
+                    "SET GATHER POINT on a master the slice does not have",
+                ))?;
+            if master.garrison == 0 {
+                return Err(Unsupported(
+                    "SET GATHER POINT on a building that does not garrison (its train list)",
+                ));
+            }
+            let z = unit.gather_point.map_or(0.0, |g| g.point[2]);
+            let gather = if own {
+                Some(GatherPoint {
+                    point: [unit.position[0], unit.position[1], z],
+                    target: unit.id,
+                    target_master: unit.life.master_id,
+                })
+            } else if target == -1 && x == -1.0 && y == -1.0 {
+                None
+            } else {
+                Some(GatherPoint {
+                    point: [x, y, z],
+                    target,
+                    target_master,
+                })
+            };
+            self.players[player].objects[i].gather_point = gather;
+        }
+        Ok(())
+    }
+
     /// QUEUE at one building: per unit (the game recurses, so the last unit drawn is queued first)
     /// the villager's male or female draw, then the cost and the queue entry.
     fn queue(
@@ -1641,6 +1734,7 @@ impl Turns {
                 .production
                 .get_or_insert_with(|| Production {
                     queue: Default::default(),
+                    action: false,
                     progress: 0.0,
                     rate: q.rate,
                 });
@@ -1758,6 +1852,12 @@ impl Turns {
                     if let Err(e) = self.players[p].add_attribute(kind, amount) {
                         result = result.and(Err(e));
                     }
+                }
+                // TRIBE_Building_Object::update: the production after the combat update
+                if matches!(result, Ok(Step::Stay))
+                    && let Err(e) = self.produce(p, i, seconds(dt))
+                {
+                    result = Err(e);
                 }
                 if let (Ok(Step::Stay), Some(order)) = (&result, ordered) {
                     if let Err(e) = self.order_on_target(p, i, order) {
@@ -2437,8 +2537,11 @@ mod tests {
         );
     }
 
+    /// A player with the villagers' masters (a population of one each) and room for more.
     fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> Turns {
-        Turns::new(
+        let mut attributes = vec![0.0; 250];
+        (attributes[4], attributes[11], attributes[32]) = (5.0, 4.0, 10.0);
+        let mut t = Turns::new(
             0,
             29910,
             0,
@@ -2446,9 +2549,18 @@ mod tests {
             vec![Player {
                 objects,
                 resources,
+                attributes,
                 ..Player::default()
             }],
-        )
+        );
+        let villager = |id| crate::masters::Master {
+            id,
+            class: 4,
+            storage: vec![(4, -1.0, 2), (11, 1.0, 2)],
+            ..crate::masters::Master::default()
+        };
+        t.masters = vec![Masters::new([villager(83), villager(293)])];
+        t
     }
 
     #[test]
@@ -2500,21 +2612,65 @@ mod tests {
         assert_eq!(t.players[0].unsupported, Some((1, 0, why)));
     }
 
+    /// MarvinBlue/426048731's 1086: SET GATHER POINT on TC 9149 at (107.2451, 46.075863) on the
+    /// sheep 9520 (master 705).
+    #[test]
+    fn set_gather_point_takes_the_point_and_target_or_clears_it() {
+        let mut tc = town_centre(9149);
+        tc.life.master_id = 109;
+        let mut t = one_player(vec![tc], [200.0; 4]);
+        t.masters = vec![Masters::new([crate::masters::Master {
+            id: 109,
+            garrison: 15,
+            ..crate::masters::Master::default()
+        }])];
+        let set = |target, point, own| Command::GatherPoint {
+            player: 0,
+            ids: vec![9149],
+            point,
+            target,
+            target_master: 705,
+            own,
+        };
+        t.tick_with(25, &[set(9520, [107.2451, 46.075863], false)]);
+        assert_eq!(t.players[0].unsupported, None);
+        assert_eq!(
+            t.players[0].objects[0].gather_point,
+            Some(GatherPoint {
+                point: [107.2451, 46.075863, 0.0],
+                target: 9520,
+                target_master: 705,
+            })
+        );
+        t.tick_with(25, &[set(-1, [-1.0, -1.0], false)]);
+        assert_eq!(t.players[0].objects[0].gather_point, None);
+        t.tick_with(25, &[set(-1, [-1.0, -1.0], true)]);
+        assert_eq!(
+            t.players[0].objects[0].gather_point.map(|g| g.target),
+            Some(9149)
+        );
+    }
+
     #[test]
     fn a_unit_due_to_spawn_stops_the_player() {
         let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
         let quick = Command::Queue {
             player: 0,
             building: 9,
-            unit: 4,
+            unit: 83,
             amount: 1,
             train_time: 2.0,
             rate: 1.0,
             cost: vec![],
         };
         t.tick_with(1000, &[quick]);
-        assert!(t.players[0].unsupported.is_none());
+        // the building makes the make action in its update: one unit in production
+        assert_eq!(t.players[0].unsupported, None);
+        assert_eq!(t.players[0].attributes[81], 1.0);
         t.tick(1000);
-        assert!(t.players[0].unsupported.is_some());
+        assert_eq!(
+            t.players[0].freezes.first().map(|f| f.2),
+            Some(Unsupported("a spawn without the players' sight"))
+        );
     }
 }

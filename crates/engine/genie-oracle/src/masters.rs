@@ -139,6 +139,17 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             foundation_terrain: b.foundation_terrain_id,
             tech: b.tech_id,
         }),
+        garrison: unit.garrison_capacity,
+        recyclable: unit.recyclable != 0,
+        auto_gather: unit.enable_auto_gather != 0,
+        hill_mode: unit.hill_mode,
+        placement_terrains: unit
+            .placement_side_terrain
+            .iter()
+            .chain(&unit.placement_terrain)
+            .any(|&t| 0 <= t),
+        death_sprite: unit.dying_graphic,
+        death_spawn: unit.dead_unit_id >= 0 || unit.blood_unit_id >= 0,
         ..work::Master::default()
     }
 }

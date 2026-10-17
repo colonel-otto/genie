@@ -387,18 +387,37 @@ fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
     ai.rand15() % (base >> 1) + ((base * 3) >> 2)
 }
 
+/// The unit-AI type the factory (`FUN_141215a90`) gives a new object of a master of `class`:
+/// none for classes 5, 7, 8, 11, 14, 15, 16, 30 to 34, 38, 42, 48 and 63, the civilian's (8)
+/// for class 4. Masters 1105, 1744 and 1746 have their own, and the other classes' types are
+/// not modelled.
+pub fn factory_type(class: i16, master: i16) -> Result<Option<u32>, Unsupported> {
+    if matches!(master, 1105 | 1744 | 1746) {
+        return Err(Unsupported("a new object of a master with its own unit AI"));
+    }
+    match class {
+        5 | 7 | 8 | 11 | 14 | 15 | 16 | 30..=34 | 38 | 42 | 48 | 63 => Ok(None),
+        4 => Ok(Some(8)),
+        _ => Err(Unsupported(
+            "a new object whose unit-AI type is not modelled",
+        )),
+    }
+}
+
 impl UnitAi {
     /// The unit AI a new object gets. `UnitAIModule`'s constructor (`0x140c2e080`) draws three
     /// AI-stream values, in this order: the last retarget time `r % 500`, the adjusted idle timeout
-    /// `r % 1500 + 2250` and the retarget timer `750 + r % 500`. Only the building class (17,
-    /// `TribeBuildingUnitAIModule` `0x140c11470`, which sets the stance to 0) is modelled; for any
-    /// other type nothing is drawn.
+    /// `r % 1500 + 2250` and the retarget timer `750 + r % 500`. The factory (`FUN_141215a90`)
+    /// picks the type's constructor; the building's (17, `TribeBuildingUnitAIModule`
+    /// `0x140c11470`) and the civilian's (8, `TribeCivilianUnitAIModule` `0x140c115d0`) are
+    /// modelled, both of which set the stance (`+0x1a9`) to 0 after the base's 3; for any other
+    /// type nothing is drawn.
     pub fn constructed(
         ai_type: u32,
         position: [f32; 3],
         ai: &mut Well512,
     ) -> Result<UnitAi, Unsupported> {
-        if ai_type != 17 {
+        if !matches!(ai_type, 8 | 17) {
             return Err(Unsupported("constructor of a unit-AI type not modelled"));
         }
         let last_retarget_time = ai.rand15() % 500;
@@ -424,8 +443,9 @@ impl UnitAi {
             look_around_timeout: 1000,
             last_retarget_time,
             retarget_timer,
-            // the constructor's two bytes at `+0x1a8`: 0x300
-            stance: 3,
+            // the base's two bytes at `+0x1a8` (0x300), whose stance byte the type's own
+            // constructor clears
+            stance: 0,
             // the object's place
             state_position: [position[0], position[1]],
             retarget_disabled: 0,
@@ -487,7 +507,7 @@ impl UnitAi {
     }
 
     /// `FUN_140c64b50`.
-    fn set_action(&mut self, action: i32) {
+    pub(crate) fn set_action(&mut self, action: i32) {
         self.last_action = self.current_action;
         self.current_action = action;
     }
@@ -1755,7 +1775,7 @@ mod tests {
                 look_around_timeout: 1000,
                 last_retarget_time: a % 500,
                 retarget_timer: 750 + c % 500,
-                stance: 3,
+                stance: 0,
                 state_position: [30.0, 88.0],
                 retarget_disabled: 0,
                 stop_after_kill: false,

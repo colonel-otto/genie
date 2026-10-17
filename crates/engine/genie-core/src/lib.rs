@@ -23,6 +23,7 @@ pub mod registry;
 pub mod rng;
 pub mod short_path;
 pub mod spatial;
+pub mod spawn;
 pub mod sprite;
 pub mod tasks;
 pub mod terrain;

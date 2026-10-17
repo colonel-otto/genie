@@ -247,10 +247,13 @@ fn player_1_s_scout_and_sheep_from_a_save_match_the_game_object_by_object() {
     // of sight and its foundation covers the snow under it with terrain 6 (layer 32); 9173's
     // Build ends its work (224); in 1116 9171's too, both end their Builds (their unit AIs hold
     // the queued orders) and take order 0x2db: the work command on the sheep (the hunter master,
-    // a Hunt walking to its own livestock within 1.5); every object, its unit AI's queues, player
-    // 1's sight and the map's terrain through the save after 1128, before the TC's villager
-    // spawns (1129)
-    let Some(found) = differences(680, 448, 1) else {
+    // a Hunt walking to its own livestock within 1.5); in 1086 SET GATHER POINT puts the TC's
+    // gather point on the sheep 9520; in 1129 the TC's villager spawns at (106.5, 46.5), the
+    // right side's third spot (the sheep blocks the first two and stays), with its draws, its
+    // place, sight and unit AI, and walks to hunt the sheep at the gather point; every object, its
+    // unit AI's queues, player 1's sight and the map's terrain through the save after 1129, before
+    // the new villager faces its live sheep (1130)
+    let Some(found) = differences(680, 449, 1) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

@@ -152,6 +152,26 @@ pub struct Master {
     /// The master has damage sprites (`+0x638`..`+0x640`): a master change checks them
     /// (`FUN_1411859a0`).
     pub damage_sprites: bool,
+    /// `+0x5d4`, `obj_max` (the `.dat`'s `garrison_capacity`): a building that garrisons takes a
+    /// gather point (`FUN_140e7e9a0`).
+    pub garrison: u8,
+    /// `+0x680`, the `.dat`'s `recyclable`: its objects take ids from the negative range
+    /// (`FUN_1415301b0`).
+    pub recyclable: bool,
+    /// `+0x681`, `enable_auto_gather`: an object of it blocking a spawn point stays
+    /// (`FUN_141194170`).
+    pub auto_gather: bool,
+    /// `+0x604`, `hill_mode`: how a placement test checks the elevation.
+    pub hill_mode: u8,
+    /// The placement terrains (`+0x5f2`..`+0x5f8`, the `.dat`'s `placement_side_terrain` and
+    /// `placement_terrain`) name a terrain: a placement test checks the tiles for them.
+    pub placement_terrains: bool,
+    /// The death sprite (`+0x480`, −1 for none) and the death spawns (`+0x5e4`, `+0x5e6`), and what
+    /// a dead object's steps read of the master ([`crate::lifecycle::MasterData`]), for a new
+    /// object's [`crate::lifecycle::Lifecycle`].
+    pub death_sprite: i16,
+    pub death_spawn: bool,
+    pub life: Option<crate::lifecycle::MasterData>,
     /// What a combat master's attack reads: its standing sprite (`+0x470`), its attack sprite
     /// (`+0x7f8`, `fight_sprite_id`), a second attack sprite
     /// (`+0x878`, the `.dat`'s `attack_graphic2`), `missile_id`, `fire_missile_at_frame`,
