@@ -583,7 +583,7 @@ mod tests {
         let mut w = world();
         let (at, motion) = tick(&mut m, [28.0, 89.0, 0.0], &mut w);
         // the tick oracle's positions after update 681 (snapshot 680)
-        assert_eq!(at, [28.014311, 88.992844, 0.0]);
+        assert_eq!(at, [28.01431, 88.99284, 0.0]);
         assert_eq!(motion, Motion::Moving);
         assert_eq!(m.velocity.as_ref().unwrap().velocity, [0.0, 0.0, 0.8]);
         assert_eq!(
