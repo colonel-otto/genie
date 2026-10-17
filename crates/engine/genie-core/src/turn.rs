@@ -253,12 +253,17 @@ impl Unit {
         self.hunt.map(|h| h.target)
     }
 
-    /// Its velocity is not 0 (object slot 0x5c8, `FUN_1411583d0`).
-    pub fn moving(&self) -> bool {
-        self.mover
-            .as_ref()
-            .and_then(|m| m.velocity.as_ref())
-            .is_some_and(|v| 0.0 < crate::fmath::length(v.velocity))
+    /// What the walk reads of it when it meets it ([`crate::spatial::Gait`]).
+    pub fn gait(&self) -> Option<crate::spatial::Gait> {
+        let m = self.mover.as_ref()?;
+        Some(crate::spatial::Gait {
+            moving: m
+                .velocity
+                .as_ref()
+                .is_some_and(|v| 0.0 < crate::fmath::length(v.velocity)),
+            last_move: m.last_move,
+            pause: m.paths.first().map(|l| l.pause_time),
+        })
     }
 
     /// The type of its top action, if it has one.
@@ -1023,8 +1028,9 @@ impl Turns {
     /// walk's query ([`Spatial::walk_hits`]).
     fn sync_moving(&mut self) {
         for p in &self.players {
-            for u in &p.objects {
-                self.spatial.set_moving(u.id, u.moving());
+            for u in p.objects.iter().chain(&p.sleeping) {
+                self.spatial.set_gait(u.id, u.gait());
+                self.spatial.set_annex(u.id, u.annex_of);
             }
         }
         if self.spatial.relations.is_empty() {
@@ -1087,7 +1093,7 @@ impl Turns {
                     graphics: &self.graphics,
                 };
                 let result = unit.update(&mut c, &mut player.objects);
-                self.spatial.set_moving(unit.id, unit.moving());
+                self.spatial.set_gait(unit.id, unit.gait());
                 player.objects[i] = unit;
                 if let Some(v) = victim {
                     self.set_victim(&v);

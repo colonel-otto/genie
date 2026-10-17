@@ -357,6 +357,13 @@ fn path_level(d: &PathData, paths: &[Path]) -> Result<genie_core::movement::Path
         created: path.map_or(0, |p| p.creation_time_value),
         continue_counter: d.continue_counter,
         repath_time: d.repath_time,
+        ignore: path.map_or_else(Vec::new, |p| {
+            p.data
+                .iter()
+                .take(p.number_ignore_units.max(0) as usize)
+                .map(|&id| id as i32)
+                .collect()
+        }),
     })
 }
 

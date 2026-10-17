@@ -15,6 +15,16 @@ use std::collections::BTreeMap;
 /// Obstruction kinds the query tests (`FUN_141051e00`): boxes (2, 3, 11, 13) and circles (5).
 const TESTED_KINDS: [u8; 5] = [2, 3, 5, 11, 13];
 
+/// What the walk reads of a moving object it meets: whether it moves (its velocity, `+0x868`, is
+/// not 0: slot 0x5c8, `FUN_1411583d0`), its last move time (`+0x870`, slot 0x5e8) and its current
+/// path level's pause time (`+0x858`'s `+0x34`, slot 0x528), none without a level.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Gait {
+    pub moving: bool,
+    pub last_move: u32,
+    pub pause: Option<f32>,
+}
+
 /// One object as movement sees it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Placed {
@@ -211,9 +221,10 @@ pub struct Spatial {
     /// range), for [`Spatial::check_known`]. 0 when not set.
     pub fastest: f32,
     pub reach: f32,
-    /// The objects moving now: their velocity (`+0x868`) is not 0 (object slot 0x5c8,
-    /// `FUN_1411583d0`), which the walk's query reads of allies.
-    moving: std::collections::BTreeSet<i32>,
+    /// What the walk reads of the moving objects it meets ([`Gait`]).
+    gaits: BTreeMap<i32, Gait>,
+    /// Each annex's main building (`+0xbb8`), which the walk's avoidance takes for the annex.
+    annexes: BTreeMap<i32, i32>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
     pub relations: Vec<Vec<u8>>,
 }
@@ -234,7 +245,8 @@ impl Spatial {
             frozen_for: BTreeMap::new(),
             fastest: 0.0,
             reach: 0.0,
-            moving: Default::default(),
+            gaits: BTreeMap::new(),
+            annexes: BTreeMap::new(),
             relations: Vec::new(),
         }
     }
@@ -477,13 +489,41 @@ impl Spatial {
 
     /// The object moved: its record moves with it, and it changes tiles when its centre crosses
     /// a tile's edge (`RGE_Static_Object::new_position`, `0x1411a58b0`).
-    /// Whether the object moves now (its velocity is not 0).
-    pub fn set_moving(&mut self, id: i32, moving: bool) {
-        if moving {
-            self.moving.insert(id);
-        } else {
-            self.moving.remove(&id);
+    /// What the walk reads of a moving object now, None for one without movement state.
+    pub fn set_gait(&mut self, id: i32, gait: Option<Gait>) {
+        match gait {
+            Some(g) => {
+                self.gaits.insert(id, g);
+            }
+            None => {
+                self.gaits.remove(&id);
+            }
         }
+    }
+
+    pub fn gait(&self, id: i32) -> Option<Gait> {
+        self.gaits.get(&id).copied()
+    }
+
+    /// An annex's main building, or none.
+    pub fn set_annex(&mut self, id: i32, main: Option<i32>) {
+        match main {
+            Some(m) => {
+                self.annexes.insert(id, m);
+            }
+            None => {
+                self.annexes.remove(&id);
+            }
+        }
+    }
+
+    pub fn annex_of(&self, id: i32) -> Option<i32> {
+        self.annexes.get(&id).copied()
+    }
+
+    /// `FUN_141663dc0` with the ally flag ([`Spatial::allied`]), for the walk's avoidance.
+    pub fn allied_with(&self, from: usize, to: usize) -> bool {
+        self.allied(from, to)
     }
 
     /// `FUN_141663dc0` with the ally flag: `to` counts for `from` when it is `from`, or `from`
@@ -541,7 +581,7 @@ impl Spatial {
             if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) {
                 continue;
             }
-            let g = if self.moving.contains(&id) {
+            let g = if self.gaits.get(&id).is_some_and(|g| g.moving) {
                 let player = player.ok_or(Unsupported("a walker without a place"))?;
                 if self.allied(p.player, player) {
                     ally_factor * grow
@@ -886,7 +926,13 @@ mod tests {
             Ok(vec![])
         );
         // moving, of the walker's player, it grows by 0.4 × 0.5 only
-        s.set_moving(9175, true);
+        s.set_gait(
+            9175,
+            Some(Gait {
+                moving: true,
+                ..Gait::default()
+            }),
+        );
         assert_eq!(
             s.walk_hits(longer.0, longer.1, rect, 0.4, 0.5, Some(2), &[]),
             Ok(vec![])

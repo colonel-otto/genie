@@ -58,6 +58,10 @@ pub struct PathData {
     pub continue_counter: i32,
     /// `+0x40`, `mRepathTime`.
     pub repath_time: f32,
+    /// The path's ignore units (its `+0x450`, `numberIgnoreUnits`, and the ids after it), which
+    /// the walk's avoidance reads (`FUN_140f98d20`). The game fills it for units ordered
+    /// together (MarvinBlue/426048731's 9171 and 9173); the slice's path requests make none.
+    pub ignore: Vec<i32>,
 }
 
 /// What movement reads of the unit's master.
@@ -159,6 +163,25 @@ const SHORT_REACH: f32 = 16.0;
 const TARGET_SHORT_REACH: f32 = 10.0;
 /// A waypoint or target nearer than this takes the close-in path (`DAT_14330eb8c`).
 const CLOSE: f32 = 1.0;
+/// A unit pushed into a met object counts beyond its radius times this (`DAT_142eb880c`).
+const PUSHED: f32 = 0.25;
+
+/// `FUN_1411615a0`: how deep two boxes (centre, radii on the ground) overlap, the lesser of the
+/// two axes; 0 when they do not.
+fn overlap(a: Vec3, [ar, ad]: [f32; 2], b: Vec3, [br, bd]: [f32; 2]) -> f32 {
+    let (ax1, ax0, ay0, ay1) = (a[0] + ar, a[0] - ar, a[2] - ad, a[2] + ad);
+    let (by0, by1, bx0, bx1) = (b[2] - bd, b[2] + bd, b[0] - br, b[0] + br);
+    if bx0 < ax1 && ax0 < bx1 && by0 < ay1 && ay0 < by1 {
+        let x1 = if bx1 <= ax1 { bx1 } else { ax1 };
+        let x0 = if ax0 <= bx0 { bx0 } else { ax0 };
+        let y1 = if by1 <= ay1 { by1 } else { ay1 };
+        let y0 = if ay0 <= by0 { by0 } else { ay0 };
+        if y1 - y0 <= x1 - x0 { y1 - y0 } else { x1 - x0 }
+    } else {
+        0.0
+    }
+}
+
 /// How far level 0's look ahead reaches on its parent's path, squared (`DAT_14330ebcc`).
 const LOOK_AHEAD: f32 = 100.0;
 /// `FUN_141142750` grows the walk's query by the unit's radius times `DAT_142e7f384`.
@@ -203,6 +226,7 @@ impl PathData {
             created: now,
             continue_counter: CONTINUE,
             repath_time: 0.0,
+            ignore: Vec::new(),
         }
     }
 
@@ -536,7 +560,8 @@ impl Mover {
                 }
                 _ => {}
             }
-            match self.walk(me, dt, world, goal)? {
+            let (now, computer) = plan.as_deref().map_or((0, false), |p| (p.now, p.computer));
+            match self.walk(me, dt, world, goal, now, computer)? {
                 Next::Done(m) => return Ok(m),
                 _ => continue,
             }
@@ -555,6 +580,8 @@ impl Mover {
         dt: f32,
         world: &Spatial,
         goal: Goal<'_>,
+        now: u32,
+        computer: bool,
     ) -> Result<Next, Unsupported> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let position = vector(me.position);
@@ -603,9 +630,7 @@ impl Mover {
                 &[me.id],
             )?;
             if !hits.is_empty() {
-                return Err(Unsupported(
-                    "a walker that meets an obstruction (the avoidance)",
-                ));
+                self.avoid(me, world, &hits, projected, dt, now, computer)?;
             }
         }
         let level = &self.paths[0];
@@ -1574,6 +1599,110 @@ impl Mover {
         fmath::add(position, fmath::scale(dt * next[2], direction))
     }
 
+    /// The walk's avoidance of what its step hits (`0x141150f00`, after `FUN_14114cc60`). The first
+    /// loop keeps a hit the unit must go round: none whose overlap with the unit's box the step
+    /// shrinks (`FUN_1411615a0`); else one in the walked path's ignore units (`FUN_140f98d20`)
+    /// that moved before the top path was made, or one that moved after the walked path was made
+    /// (or at the same time and outranks the unit: a higher player, or the same and a higher id).
+    /// A kept hit (its temporary shape `FUN_141054fe0` and the step's slide), a hit of no speed of
+    /// classes 3, 27, 39 or 52 (`FUN_141159220`'s slide) and a step that hits only its target are
+    /// not modelled. Then, on the walked level's first two waypoints (or the third of a path more
+    /// than 500 old), each hit the unit outranks pauses for `dt` when its own pause is shorter: a
+    /// met unit of the walker's own player or of another non-Gaia one ranks by the last human
+    /// order time (`+0x650`, not held: not modelled) or by id, Gaia's never, and a non-Gaia
+    /// walker always outranks Gaia's; the pause itself (slot 0x5f0) is not modelled. The paths'
+    /// hash sets (`+0x18`, `FUN_140f96120`) are empty in this game (the probe `_pathsets2.py`),
+    /// and the slice holds no unit groups (`+0x6d0`).
+    #[allow(clippy::too_many_arguments)]
+    fn avoid(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        hits: &[i32],
+        projected: Vec3,
+        dt: f32,
+        now: u32,
+        computer: bool,
+    ) -> Result<(), Unsupported> {
+        let level = &self.paths[0];
+        let top = self.paths.last().filter(|l| !l.points.is_empty());
+        let player = world
+            .get(me.id)
+            .ok_or(Unsupported("a walker without a place"))?
+            .player;
+        let [rx, ry, _] = self.stats.radius;
+        let at = vector(me.position);
+        let met = |id: i32| -> Result<(i32, &Placed), Unsupported> {
+            let id = world.annex_of(id).unwrap_or(id);
+            let p = world
+                .get_known(id)?
+                .ok_or(Unsupported("a met object without a place"))?;
+            Ok((id, p))
+        };
+        let mut target_hit = false;
+        for &hit in hits {
+            let (id, other) = met(hit)?;
+            if 0 <= level.target && id == level.target {
+                target_hit = true;
+            }
+            let o = vector(other.position);
+            let now_overlap = overlap(at, [rx, ry], o, other.radius);
+            let next_overlap = overlap(projected, [rx, ry], o, other.radius);
+            let gait = world.gait(id);
+            let last_move = gait.map_or(0, |g| g.last_move);
+            let mut pushed = false;
+            if let Some(top) = top.filter(|_| now_overlap <= next_overlap) {
+                if top.created == now && rx * PUSHED < next_overlap && level.ignore.contains(&id) {
+                    pushed = true;
+                }
+                if top.created < now && level.ignore.contains(&id) {
+                    pushed = last_move < top.created;
+                }
+            }
+            let outranks = player < other.player || (player == other.player && me.id < id);
+            let outranks = level.created < last_move || (outranks && level.created == last_move);
+            if next_overlap < now_overlap || (!pushed && !outranks) {
+                continue;
+            }
+            return Err(Unsupported(
+                "a walker that meets an object it goes round (its temporary shape)",
+            ));
+        }
+        for &hit in hits {
+            let (_, other) = met(hit)?;
+            if other.speed <= 0.0 && matches!(other.class, 3 | 27 | 39 | 52) {
+                return Err(Unsupported(
+                    "a walker whose step slides along a wall or building (FUN_141159220)",
+                ));
+            }
+        }
+        if hits.len() == 1 && target_hit {
+            return Err(Unsupported("a walker whose step hits only its target"));
+        }
+        if level.waypoint < 2 || (level.waypoint < 3 && level.created.wrapping_add(500) < now) {
+            for &hit in hits {
+                let (id, other) = met(hit)?;
+                if 0 <= level.target && id == level.target {
+                    continue;
+                }
+                if player == 0 || other.player != 0 {
+                    if !computer {
+                        return Err(Unsupported(
+                            "a met unit ranked by the last human order time (+0x650)",
+                        ));
+                    }
+                    if !(me.id < id) {
+                        continue;
+                    }
+                }
+                if world.gait(id).and_then(|g| g.pause).is_some_and(|p| p < dt) {
+                    return Err(Unsupported("a met unit paused for the walker (slot 0x5f0)"));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// The obstruction query's ends (`FUN_14114cc60`): the step's two ends, each held within 0.1
     /// of the map's far edges (`FUN_141051900` orders them into its rectangle).
     fn query_ends(&self, from: Vec3, to: Vec3, map: [i32; 2]) -> ([f32; 2], [f32; 2]) {
@@ -1718,6 +1847,7 @@ mod tests {
             created: 16360,
             continue_counter: 10,
             repath_time: 0.0,
+            ignore: Vec::new(),
         }
     }
 
@@ -1743,6 +1873,16 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
         }
+    }
+
+    #[test]
+    fn two_boxes_overlap_by_the_lesser_of_their_axes() {
+        // the cow 9517 at (21.8, 92.2) and Gaia's cow 9519 at (22.5, 91.5), radii 0.5 and 0.5
+        let a = [21.8, 0.0, 92.2];
+        let b = [22.5, 0.0, 91.5];
+        let d = overlap(a, [0.5, 0.5], b, [0.5, 0.5]);
+        assert_eq!(d, (21.8f32 + 0.5) - (22.5 - 0.5));
+        assert_eq!(overlap(a, [0.2, 0.2], b, [0.2, 0.2]), 0.0);
     }
 
     #[test]
