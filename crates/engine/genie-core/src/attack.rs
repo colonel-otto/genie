@@ -178,13 +178,14 @@ impl Attack {
     /// point and the unit faces it, a unit out of reach that may move turns to state 4; a unit that
     /// may move turns to state 4 again in the start, each time with a new MoveTo (whose teardown
     /// stops the unit). The unit's `+0x900` (attack count) is cleared and its sprites set; the
-    /// slice holds neither.
+    /// slice holds neither. True with it: the last MoveTo started arrived, and the caller shows
+    /// its idle sprite ([`Attack::arrived_sprite`]).
     pub fn start(
         target: i32,
         e: &Engagement,
         arms: Arms,
         mover: &mut Mover,
-    ) -> Result<Self, Unsupported> {
+    ) -> Result<(Self, bool), Unsupported> {
         let mut a = Attack {
             target,
             state: 0,
@@ -229,8 +230,22 @@ impl Attack {
             a.set_move(e, mover)?;
         }
         // the start's own test of the speed and the unit AI (slots 0x208 and 0x1d0): state 4
-        a.set_move(e, mover)?;
-        Ok(a)
+        let arrived = a.set_move(e, mover)?;
+        Ok((a, arrived))
+    }
+
+    /// A MoveTo of the attack that starts arrived (its set_state 1, not quiet): the unit shows
+    /// its idle sprite (slot 0x68) and its `+0x7b8` clears.
+    pub(crate) fn arrived_sprite(&self, s: &mut Strike<'_>) -> Result<(), Unsupported> {
+        let g = self
+            .arms
+            .idle_sprite
+            .ok_or(Unsupported("an attacker without its standing sprite"))?;
+        set_sprite(s.sprite, g, s.sprite_rng);
+        if let Some(a) = s.anim_speed.as_mut() {
+            *a = 0.0;
+        }
+        Ok(())
     }
 
     /// How far the unit reaches: the range, half a tile more without one.
@@ -245,25 +260,27 @@ impl Attack {
     /// set_state(4) (`0x140a820c0` case 4): the sub-actions go (a MoveTo's teardown stops the unit,
     /// slot 0x5d0), the range is slot 0x238's again, and a MoveTo to the target with that range
     /// starts (`FUN_140aa0df0`, start `FUN_140aa2100`): arrived within 0.01, else in state 3 for a
-    /// unit with speed.
-    fn set_move(&mut self, e: &Engagement, mover: &mut Mover) -> Result<(), Unsupported> {
+    /// unit with speed. True when it arrived.
+    fn set_move(&mut self, e: &Engagement, mover: &mut Mover) -> Result<bool, Unsupported> {
         if self.move_to.take().is_some() {
             mover.stop()?;
         }
         self.state = MOVE;
-        self.moving(e.range, e.gap)
+        Ok(self.moving(e.range, e.gap))
     }
 
-    /// set_state(4)'s own part: the range (slot 0x238's), the timer, the MoveTo to the target
-    /// (arrived within 0.01 of a `gap` away is not modelled).
-    fn moving(&mut self, range: f32, gap: f32) -> Result<(), Unsupported> {
+    /// set_state(4)'s own part: the range (slot 0x238's), the timer, the MoveTo to the target,
+    /// which starts arrived (state 1, true) within 0.01 of a `gap` away.
+    fn moving(&mut self, range: f32, gap: f32) -> bool {
         self.range = range;
         self.timer = 0.0;
-        if gap <= ARRIVED {
-            return Err(Unsupported("an Attack's MoveTo that starts arrived"));
-        }
-        self.move_to = Some(MoveTo::Start);
-        Ok(())
+        let arrived = gap <= ARRIVED;
+        self.move_to = Some(if arrived {
+            MoveTo::Arrived
+        } else {
+            MoveTo::Start
+        });
+        arrived
     }
 
     /// The teardown of the sub-actions (`FUN_140a73fc0` on the action list): a MoveTo stops the
@@ -330,7 +347,10 @@ impl Attack {
         gap: f32,
     ) -> Result<(), Unsupported> {
         self.enter(MOVE, walk, s)?;
-        self.moving(s.own.source.weapon_range, gap)
+        if self.moving(s.own.source.weapon_range, gap) {
+            self.arrived_sprite(s)?;
+        }
+        Ok(())
     }
 
     /// readyToAttack (`FUN_140a7f9d0`) on an object: a target of a player (not Gaia) out of the
@@ -534,7 +554,8 @@ impl Attack {
 
     /// State 4 (cases 3, 4, 10): the MoveTo walks (`FUN_140a992b0`); a unit still farther than its
     /// reach goes on (code 0), one within it turns ready (set_state 6). The squared reach of a unit
-    /// without a range is 0.01.
+    /// without a range is 0.01. A MoveTo that arrived returns 1: the list deletes it (its
+    /// destructor, `0x140aa1f30`, stops the unit) and the unit turns ready (set_state 6).
     fn walk(
         &mut self,
         mut walk: Walk<'_>,
@@ -573,7 +594,13 @@ impl Attack {
                 0
             }
             Some(MoveTo::Arrived) => {
-                return Err(Unsupported("an Attack whose MoveTo arrived"));
+                self.move_to = None;
+                walk.mover
+                    .as_deref_mut()
+                    .ok_or(Unsupported("an attacker without movement state"))?
+                    .stop()?;
+                self.ready(&mut walk, s)?;
+                return Ok(0);
             }
             None => return Err(Unsupported("an Attack in state 4 without its MoveTo")),
             Some(MoveTo::Waiting | MoveTo::Failed) => {

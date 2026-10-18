@@ -17,6 +17,10 @@ use std::collections::BTreeMap;
 /// The range of ClosestObject's reachability check (`FUN_140c488b0`, `DAT_142eb5690`).
 const CLOSEST_RANGE: f32 = crate::image::spatial::CLOSEST_RANGE;
 
+/// How near (squared) a unit AI's search comes to the last one's place to skip its query
+/// (`FUN_140c63e20`).
+const SEARCH_REUSE_SQUARED: f32 = crate::image::spatial::SEARCH_REUSE_SQUARED;
+
 /// The pasture and livestock classes ClosestObject treats apart.
 const PASTURE_CLASS: i32 = 49;
 const LIVESTOCK_CLASS: i32 = 58;
@@ -264,6 +268,22 @@ pub struct Spatial {
     pub sight: Option<Visibility>,
     /// The map's terrain, when the slice holds it.
     pub terrain: Option<crate::terrain::Terrain>,
+    /// The unit AIs' search cache ([`SearchCache`]).
+    search_cache: std::cell::RefCell<SearchCache>,
+}
+
+/// The unit AIs' search cache (`FUN_140c63e20`): a search within [`SEARCH_REUSE_SQUARED`] (squared)
+/// of the last one's place while the cache holds skips its query ("Already searched this update,
+/// skipping second time.") and reads the registry's last answer, whichever unit's search made it;
+/// a search that queries sets the place and holds the cache. Each unit AI's full update
+/// (`0x140c66b10`, at its start) lets it go ([`Spatial::forget_search`]). Not saved: a slice
+/// loaded from a save starts without one, as the game's load does.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct SearchCache {
+    holds: bool,
+    at: [f32; 2],
+    /// The registry's five output lists as the last query left them.
+    last: Option<[Vec<Record>; 5]>,
 }
 
 impl Spatial {
@@ -287,7 +307,13 @@ impl Spatial {
             relations: Vec::new(),
             sight: None,
             terrain: None,
+            search_cache: Default::default(),
         }
+    }
+
+    /// A unit AI's full update starts (`0x140c66b10`): the search cache lets go.
+    pub fn forget_search(&self) {
+        self.search_cache.borrow_mut().holds = false;
     }
 
     pub fn tiles(&self) -> &Tiles {
@@ -794,10 +820,12 @@ impl Spatial {
         Ok(())
     }
 
-    /// A unit AI's search ([`Search`]) for object `me` of `player`: the query over the player's
-    /// registry ([`Registry::visible_units`], `FUN_140c63e20`), then its [`Pick`], an attack by
-    /// the unit AI's attack check `can_attack` of an object, its master and its owner. A query
-    /// near a frozen object, or that reads nothing (which leaves the game's last answer), fails.
+    /// A unit AI's search ([`Search`]) for object `me` of `player` (`FUN_140c63e20`): the query
+    /// over the player's registry ([`Registry::visible_units`]) unless the [`SearchCache`] holds
+    /// near the place (`fresh` false: the last answer stands); then its [`Pick`], an attack by the
+    /// unit AI's attack check `can_attack` of an object, its master and its owner. A query that
+    /// reads nothing leaves the last answer too (and so is not fresh). A query near a frozen
+    /// object, or a last answer the slice has not got, fails.
     pub fn search(
         &self,
         me: i32,
@@ -805,6 +833,7 @@ impl Spatial {
         search: &Search<'_>,
         can_attack: &dyn Fn(&Placed, u8) -> Result<bool, Unsupported>,
         reach: &mut Reach<'_>,
+        moving: &dyn Fn(i32) -> bool,
     ) -> Result<Found, Unsupported> {
         let v = self
             .sight
@@ -820,31 +849,43 @@ impl Spatial {
         let relations = (0..r.players.min(own.len()))
             .map(|o| relation_kind(player, o, own[o]))
             .collect::<Result<Vec<u32>, _>>()?;
-        let radius = search.radius.min(1000.0);
         let [x, y] = search.at;
-        let [rx, ry] = search.size;
-        let rect = [
-            (x - (radius + rx)) - 0.001,
-            (y - (radius + ry)) - 0.001,
-            x + (radius + rx) + 0.001,
-            y + (radius + ry) + 0.001,
-        ];
-        self.check_known_classes(rect, search.classes)?;
-        self.check_sight(player, rect)?;
-        let found = r
-            .visible_units(
-                player,
-                search.at,
-                search.radius,
-                0,
-                search.classes,
-                &relations,
-                search.size,
-                0xff,
-            )?
-            .ok_or(Unsupported(
-                "a search that reads nothing (the last answer stands)",
-            ))?;
+        let mut fresh = false;
+        {
+            let mut cache = self.search_cache.borrow_mut();
+            let (dx, dy) = (x - cache.at[0], y - cache.at[1]);
+            if SEARCH_REUSE_SQUARED < dy * dy + dx * dx || !cache.holds {
+                cache.holds = true;
+                cache.at = search.at;
+                let radius = search.radius.min(1000.0);
+                let [rx, ry] = search.size;
+                let rect = [
+                    (x - (radius + rx)) - 0.001,
+                    (y - (radius + ry)) - 0.001,
+                    x + (radius + rx) + 0.001,
+                    y + (radius + ry) + 0.001,
+                ];
+                self.check_known_classes(rect, search.classes)?;
+                self.check_sight(player, rect)?;
+                if let Some(lists) = r.visible_units(
+                    player,
+                    search.at,
+                    search.radius,
+                    0,
+                    search.classes,
+                    &relations,
+                    search.size,
+                    0xff,
+                )? {
+                    cache.last = Some(lists);
+                    fresh = true;
+                }
+            }
+        }
+        let cache = self.search_cache.borrow();
+        let found = cache.last.as_ref().ok_or(Unsupported(
+            "a search that reads the registry's last answer (before any query)",
+        ))?;
         match search.pick {
             Pick::Closest {
                 group,
@@ -860,24 +901,27 @@ impl Spatial {
                     master,
                     workers,
                 };
-                let id = self.closest_object(v, me, &found, filter, reach)?;
+                let id = self.closest_object(v, me, player, found, filter, reach, moving)?;
                 Ok(Found {
                     id,
                     enemies: !found[4].is_empty(),
                     position: self.objects.get(&id).map(|p| p.position),
+                    fresh,
                 })
             }
             Pick::Look => Ok(Found {
                 id: -1,
                 enemies: !found[4].is_empty(),
                 position: None,
+                fresh,
             }),
             Pick::Attack { lowest } => {
-                let id = self.best_unit_to_attack(v, own, player, &found, lowest, can_attack)?;
+                let id = self.best_unit_to_attack(v, own, player, found, lowest, can_attack)?;
                 Ok(Found {
                     id,
                     enemies: false,
                     position: self.objects.get(&id).map(|p| p.position),
+                    fresh,
                 })
             }
         }
@@ -888,17 +932,22 @@ impl Spatial {
     /// itself, an object that is gone and one dying (state 7 and up) are passed, so is one the
     /// [`Filter`] leaves out; then one the unit reaches within `CLOSEST_RANGE` (slot 0x3d0,
     /// `reach`) and nearer than the nearest so far (by the search's distance; a tie goes to the
-    /// lower id) is the nearest. Not modelled: a workers cap (argument 6; the objects' `+0x644`),
-    /// the unbuilt farm test of a search for state 0, the pastures (class 49) and livestock
-    /// (class 58), a searcher of class 10 (with its test of master 440 and the object flag 0x10)
-    /// and the game's `+0x6b4`. Nothing found answers −1.
+    /// lower id) is the nearest. Livestock (class 58) counts when the searcher's player owns it or
+    /// it is not in state 2, and not while its top action is the Artifact with a point
+    /// (`moving`: slot 0x288 not −1 and slot 0x530 107, "Sheep is moving"). Not modelled: a
+    /// workers cap (argument 6; the objects' `+0x644`), the unbuilt farm test of a search for
+    /// state 0, the pastures and farms (class 49), a searcher of class 10 (with its test of
+    /// master 440 and the object flag 0x10) and the game's `+0x6b4`. Nothing found answers −1.
+    #[allow(clippy::too_many_arguments)]
     fn closest_object(
         &self,
         v: &Visibility,
         me: i32,
+        player: usize,
         found: &[Vec<Record>; 5],
         filter: Filter,
         reach: &mut Reach<'_>,
+        moving: &dyn Fn(i32) -> bool,
     ) -> Result<i32, Unsupported> {
         let mut best: Option<(i32, f32)> = None;
         for (kind, records) in found.iter().enumerate() {
@@ -937,8 +986,13 @@ impl Spatial {
                 if filter.state == 0 {
                     return Err(Unsupported("ClosestObject's unbuilt farm test"));
                 }
-                if matches!(filter.group, PASTURE_CLASS | LIVESTOCK_CLASS) {
-                    return Err(Unsupported("ClosestObject over pastures or livestock"));
+                if filter.group == PASTURE_CLASS {
+                    return Err(Unsupported("ClosestObject over pastures or farms"));
+                }
+                if filter.group == LIVESTOCK_CLASS
+                    && ((p.player != player && seer.state == 2) || moving(record.id))
+                {
+                    continue;
                 }
                 if self.objects.get(&me).is_some_and(|m| m.class == 10) {
                     return Err(Unsupported("ClosestObject of a class-10 searcher"));
@@ -1528,6 +1582,46 @@ mod tests {
             unknown: None,
             obstruction: Some(Obstruction { kind: 5, class: 2 }),
         }
+    }
+
+    #[test]
+    fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
+        use crate::registry::Registry;
+        use crate::unit_ai::{Pick, Search};
+        let mut s = Spatial::new([120, 120]);
+        // player 2 counts player 1 its enemy (3)
+        s.relations = vec![vec![0, 3, 3], vec![0, 0, 3], vec![0, 3, 0]];
+        let mut r = Registry::new(3, 65);
+        // a villager of player 1 at (12, 10), which player 2 sees
+        r.update_unit(1, 1, [12.0, 10.0], [0.2, 0.2], 4, 0, 1 << 2)
+            .unwrap();
+        let mut v = Visibility::new(120, 120, Vec::new(), Vec::new(), Vec::new(), 0, Vec::new());
+        v.registry = Some(r);
+        s.sight = Some(v);
+        let look = |at| Search {
+            at,
+            radius: 3.0,
+            classes: &[4],
+            size: [0.2, 0.2],
+            pick: Pick::Look,
+        };
+        let never = |_: &Placed, _: u8| Ok(false);
+        let mut reach = |_: i32, _: f32| Ok(true);
+        let still = |_: i32| false;
+        let mut search = |s: &Spatial, at| {
+            let f = s
+                .search(9, 2, &look(at), &never, &mut reach, &still)
+                .unwrap();
+            (f.enemies, f.fresh)
+        };
+        assert_eq!(search(&s, [10.0, 10.0]), (true, true));
+        // 4 tiles on (16 squared, within 25) the query is skipped: the enemy stays found
+        assert_eq!(search(&s, [10.0, 14.0]), (true, false));
+        // a unit AI's full update lets the cache go: the query runs, and finds nothing there
+        s.forget_search();
+        assert_eq!(search(&s, [10.0, 14.0]), (false, true));
+        // 6 tiles from the last query (36 squared) it runs again
+        assert_eq!(search(&s, [10.0, 8.0]), (true, true));
     }
 
     #[test]

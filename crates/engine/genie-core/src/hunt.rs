@@ -303,7 +303,13 @@ impl HuntAction {
             return Ok(());
         }
         self.state = ATTACK;
-        self.attack = Some(Attack::start(target.id, attack, arms, mover)?);
+        let (a, arrived) = Attack::start(target.id, attack, arms, mover)?;
+        if arrived {
+            return Err(Unsupported(
+                "a hunt's Attack whose MoveTo starts arrived on a new target",
+            ));
+        }
+        self.attack = Some(a);
         Ok(())
     }
 
@@ -719,12 +725,11 @@ impl HuntAction {
                     .ok_or(Unsupported("a hunter without movement state"))?;
                 self.move_to = None;
                 self.state = ATTACK;
-                self.attack = Some(Attack::start(
-                    self.target,
-                    &herd.engagement,
-                    herd.arms,
-                    mover,
-                )?);
+                let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover)?;
+                if arrived {
+                    a.arrived_sprite(strike)?;
+                }
+                self.attack = Some(a);
                 return Ok(());
             }
             let t = walk

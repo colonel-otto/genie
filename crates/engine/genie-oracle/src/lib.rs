@@ -2823,6 +2823,8 @@ pub struct ObjectRow {
     pub amount: f32,
     pub position: [f32; 3],
     pub action: Option<(i16, u8)>,
+    /// The top action's target (`+0x30`), where the slice holds the action.
+    pub action_target: Option<i32>,
     pub retarget: Option<i32>,
     /// A moving object's orientation, velocity data and path data (the level it walks first).
     pub movement: Option<MoveRow>,
@@ -2976,6 +2978,7 @@ impl ObjectRow {
             amount: unit.life.amount,
             position: unit.position,
             action: top_action(unit).map(|a| (a.kind, a.state)),
+            action_target: unit.top_target(),
             retarget: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
             movement: unit.mover.as_ref().map(|m| MoveRow {
                 forward: m.forward,
@@ -3088,6 +3091,10 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
                 .actions()
                 .and_then(|a| a.entries().next())
                 .map(|(kind, action)| (kind, action.base().map_or(0, |b| b.state))),
+            action_target: object
+                .actions()
+                .and_then(|a| a.entries().next())
+                .map(|(_, action)| action.base().map_or(-1, |b| b.target_id)),
             retarget: object
                 .combat()
                 .and_then(|c| c.unit_ai())
@@ -3880,6 +3887,13 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             format!("{:?}", s.action),
             format!("{:?}", g.action),
         );
+        if s.action_target.is_some() && s.action == g.action {
+            field(
+                "action target",
+                format!("{:?}", s.action_target),
+                format!("{:?}", g.action_target),
+            );
+        }
         field(
             "retarget",
             format!("{:?}", s.retarget),

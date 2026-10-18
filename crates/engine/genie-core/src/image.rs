@@ -225,6 +225,8 @@ pub mod short_path {
 pub mod spatial {
     /// 0.10000000149011612
     pub const CLOSEST_RANGE: f32 = f32::from_bits(0x3dcccccd);
+    /// 25.0
+    pub const SEARCH_REUSE_SQUARED: f32 = f32::from_bits(0x41c80000);
 }
 
 pub mod spawn {

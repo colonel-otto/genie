@@ -411,14 +411,16 @@ pub fn can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
 /// The caller's answer to a [`Search`].
 pub type Closest<'a> = dyn FnMut(&Search<'_>) -> Result<Found, Unsupported> + 'a;
 
-/// What a [`Search`] answers: the object picked (−1 for none) and whether the query found enemies
-/// (its fifth relation list), which sets the alert mode.
+/// What a [`Search`] answers: the object picked (−1 for none) and whether the lists it read hold
+/// enemies (the fifth relation list), which sets the alert mode when its query ran (`fresh`; a
+/// search that read the last answer leaves the alert mode as it is).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Found {
     pub id: i32,
     pub enemies: bool,
     /// The object's place (x, y, z), for the caller's use.
     pub position: Option<[f32; 3]>,
+    pub fresh: bool,
 }
 
 impl Found {
@@ -427,6 +429,7 @@ impl Found {
         id: -1,
         enemies: false,
         position: None,
+        fresh: true,
     };
 }
 
@@ -921,10 +924,14 @@ impl UnitAi {
     /// `FUN_140c63e20`'s alert after a search with its argument 4 set (ClosestObject's, 1 at every
     /// call probed): enemies found set the alert mode and start the time since the last sighting
     /// again (past 10 seconds it would tell the owner first, slot 0x2e8 with notify 0x210, which
-    /// the slice does not hold); none clear the alert mode.
-    fn alert(&mut self, enemies: bool, _dt: f32) {
-        self.alert_mode = enemies;
-        if enemies {
+    /// the slice does not hold); none clear the alert mode. A search that read the last answer
+    /// leaves it.
+    fn alert(&mut self, found: Found, _dt: f32) {
+        if !found.fresh {
+            return;
+        }
+        self.alert_mode = found.enemies;
+        if found.enemies {
             self.time_since_enemy = 0.0;
         }
     }
@@ -1014,7 +1021,7 @@ impl UnitAi {
                 workers: -1,
             },
         })?;
-        self.alert(found.enemies, at.dt_seconds);
+        self.alert(found, at.dt_seconds);
         if found.id != -1 {
             let other = found
                 .position
@@ -1083,7 +1090,7 @@ impl UnitAi {
         if found.id < 0 {
             found = closest(&search(-1))?;
         }
-        self.alert(found.enemies, at.dt_seconds);
+        self.alert(found, at.dt_seconds);
         if found.id != -1 {
             return Err(Unsupported(
                 "a lion attacking an object it sees (slot 0xb8)",
@@ -1183,7 +1190,9 @@ impl UnitAi {
                 "a soldier attacking what its idle search found (slot 0xb8)",
             ));
         }
-        self.alert_mode = false;
+        if found.fresh {
+            self.alert_mode = false;
+        }
         if matches!(self.current_order, PATROL | PATROL_2) {
             return Ok(());
         }
@@ -1244,7 +1253,9 @@ impl UnitAi {
                 "a NoAttack soldier's search that finds enemies",
             ));
         }
-        self.alert_mode = false;
+        if found.fresh {
+            self.alert_mode = false;
+        }
         if !matches!(self.current_order, PATROL | PATROL_2) {
             let gap = |d: f32, r: f32| {
                 let g = d.abs() - r;
@@ -1294,7 +1305,9 @@ impl UnitAi {
                 "a tower attacking what its idle search found (slot 0xb8)",
             ));
         }
-        self.alert_mode = false;
+        if found.fresh {
+            self.alert_mode = false;
+        }
         Ok(())
     }
 
@@ -3006,6 +3019,7 @@ mod tests {
                 id: 9183,
                 enemies: true,
                 position: Some([33.5, 106.5, 0.0]),
+                fresh: true,
             })
         };
         let moved = u
@@ -3535,6 +3549,7 @@ mod tests {
                 id: 9731,
                 enemies: false,
                 position: Some([0.0; 3]),
+                fresh: true,
             })
         };
         assert!(u.update(28, 0, false, &at, &mut rng(), &mut found).is_err());

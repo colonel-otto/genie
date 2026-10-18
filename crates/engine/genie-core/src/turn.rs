@@ -360,6 +360,32 @@ struct Context<'a> {
     order_on_target: Option<crate::unit_ai::QueuedOrder>,
     /// The map's zone maps, which an auto scout's search reads.
     zones: &'a mut crate::zones::Zones,
+    /// The other players' lists, as they stand before the unit's update.
+    foreign: Foreign<'a>,
+}
+
+/// The players but the owner of the unit that updates, read-only: the players before it and
+/// after it.
+#[derive(Clone, Copy)]
+struct Foreign<'a> {
+    before: &'a [Player],
+    after: &'a [Player],
+}
+
+impl<'a> Foreign<'a> {
+    /// The object `id` in another player's live or sleeping list, with that player.
+    fn find(&self, id: i32) -> Option<(usize, &'a Unit)> {
+        let skip = self.before.len() + 1;
+        let before = self.before.iter().enumerate();
+        let after = self.after.iter().enumerate().map(|(q, p)| (q + skip, p));
+        before.chain(after).find_map(|(q, p)| {
+            p.objects
+                .iter()
+                .chain(&p.sleeping)
+                .find(|u| u.id == id)
+                .map(|u| (q, u))
+        })
+    }
 }
 
 impl Context<'_> {
@@ -565,6 +591,24 @@ impl Unit {
                 .as_ref()
                 .and_then(|m| m.action.as_ref())
                 .map(|a| action(crate::missile::MISSILE, a.state)))
+    }
+
+    /// The target of its top action ([`Unit::top_action`]), −1 for an action without one (an
+    /// Artifact, a Fly, an Explore); None without an action the slice holds.
+    pub fn top_target(&self) -> Option<i32> {
+        if self.artifact.is_some() {
+            return Some(-1);
+        }
+        None.or(self.build.map(|b| b.target))
+            .or(self.move_to.map(|m| m.target))
+            .or(self.fly.map(|_| -1))
+            .or(self.hunt.map(|h| h.target))
+            .or(self.explore.map(|_| -1))
+            .or(self
+                .missile
+                .as_ref()
+                .and_then(|m| m.action.as_ref())
+                .map(|a| a.target))
     }
 
     /// Slot 0x2d0 with 0 (`FUN_14106d170`): whether its top action may be interrupted (the group
@@ -837,27 +881,40 @@ impl Unit {
         let no_attack = |_: &Placed, _: u8| -> Result<bool, Unsupported> {
             Err(Unsupported("an attack check in a closest search"))
         };
-        let result = spatial.search(self.id, c.player, &search, &no_attack, &mut reach)?;
-        if result.enemies {
-            return Err(Unsupported(
-                "a hunt's search after its drop-off finding enemies",
-            ));
+        let foreign = c.foreign;
+        let moving = |id: i32| herded(others, foreign, id);
+        let result = spatial.search(self.id, c.player, &search, &no_attack, &mut reach, &moving)?;
+        if result.fresh {
+            if result.enemies {
+                return Err(Unsupported(
+                    "a hunt's search after its drop-off finding enemies",
+                ));
+            }
+            ai.alert_mode = false;
         }
-        ai.alert_mode = false;
         let found = result.id;
         if found == -1 {
             return Err(Unsupported("a hunt that found nothing after its drop-off"));
         }
-        let t = others
-            .iter()
-            .find(|u| u.id == found)
-            .ok_or(Unsupported("a hunt's new target of another player"))?;
+        let foreign = c.foreign;
+        let (owner, t) = match others.iter().find(|u| u.id == found) {
+            Some(t) => (c.player, t),
+            None => foreign
+                .find(found)
+                .ok_or(Unsupported("a hunt's new target the slice does not hold"))?,
+        };
         let t_master = c
-            .masters
+            .every_masters
+            .get(owner)
             .and_then(|m| m.get(t.life.master_id))
             .ok_or(Unsupported(
                 "a hunt's target of a master the slice does not have",
             ))?;
+        let relations = c
+            .spatial
+            .relations
+            .get(c.player)
+            .map_or(&[][..], |r| &r[..]);
         if matches!(t.life.master_id, 1893 | 1897) {
             return Err(Unsupported("a hunt finding a farm (FUN_1411c7670)"));
         }
@@ -867,9 +924,9 @@ impl Unit {
             class: t_master.class,
             kind: t_master.kind,
             state: t.life.state,
-            player: c.player,
+            player: owner,
             amount: t.life.amount,
-            allied: true,
+            allied: crate::tasks::allied(relations, c.player, owner, true),
             top_action: t.top_action_kind(),
         };
         let (me_at, them) = (
@@ -898,14 +955,18 @@ impl Unit {
             arms,
             mover,
         )? {
-            let u = others
-                .iter_mut()
-                .find(|u| u.id == found)
-                .expect("found above");
-            if u.workers < 550 {
-                u.workers += 1;
+            if owner == c.player {
+                let u = others
+                    .iter_mut()
+                    .find(|u| u.id == found)
+                    .expect("found above");
+                if u.workers < 550 {
+                    u.workers += 1;
+                }
+                u.life.goto_sleep = false;
+            } else {
+                c.takes.push(found);
             }
-            u.life.goto_sleep = false;
         }
         if hunt.state == crate::hunt::FAILED
             && let Some(m) = self.mover.as_mut()
@@ -2594,6 +2655,10 @@ impl Unit {
         // RGE_Combat_Object::update: on the owner's turn the full update (slot 4), else
         // FUN_140c68980 for a unit not inside another; a dead unit's full update only adds the
         // world's dt to its time since the last enemy sighting (`+0x1b4`) before it returns
+        if turn.is_some() && self.ai.is_some() {
+            // the full update's start lets the unit AIs' search cache go
+            c.spatial.forget_search();
+        }
         if turn.is_some()
             && !self.life.is_alive()
             && let Some(ai) = self.ai.as_mut()
@@ -2720,8 +2785,11 @@ impl Unit {
                             .ok_or(Unsupported("a reach test of a unit that does not move"))?;
                         m.reaches_object(&walker, spatial, &mut plan, id, range, master_id)
                     };
-                    let mut closest =
-                        |s: &Search<'_>| spatial.search(me, player, s, &can_attack, &mut reach);
+                    let foreign = c.foreign;
+                    let moving = |id: i32| herded(others, foreign, id);
+                    let mut closest = |s: &Search<'_>| {
+                        spatial.search(me, player, s, &can_attack, &mut reach, &moving)
+                    };
                     ai.update(dt, c.world_time, computer, &at, ai_stream, &mut closest)?
                 }
                 None => ai.off_turn(&at)?,
@@ -3103,6 +3171,22 @@ struct Aimed {
 /// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
 /// update: its worker count falls, and a static object no one works on any more that is alive is
 /// flagged to sleep.
+/// ClosestObject's "Sheep is moving" (`FUN_140c488b0`): the object's top action is the Artifact
+/// (slot 0x530 107) with a point (slot 0x288, the action's `+0x38`, not −1).
+fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
+    let foreign = || foreign.find(id).map(|(_, u)| u);
+    others
+        .iter()
+        .find(|u| u.id == id)
+        .or_else(foreign)
+        .is_some_and(|u| {
+            u.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE)
+                && u.artifact
+                    .as_ref()
+                    .is_some_and(|a| a.goal.is_some_and(|g| g[0] != -1.0))
+        })
+}
+
 fn release_own(others: &mut [Unit], masters: Option<&Masters>, id: i32) -> Result<(), Unsupported> {
     let u = others.iter_mut().find(|u| u.id == id).ok_or(Unsupported(
         "a release of an object not in the unit's live list",
@@ -4271,7 +4355,8 @@ impl Turns {
                 let blasted = victim
                     .as_ref()
                     .map_or_else(Vec::new, |v| self.blasted(&unit, p, v.id));
-                let player = &mut self.players[p];
+                let (before, rest) = self.players.split_at_mut(p);
+                let (player, after) = rest.split_first_mut().expect("the player updating");
                 let mut c = Context {
                     dt,
                     dt_seconds: seconds(dt),
@@ -4312,6 +4397,7 @@ impl Turns {
                     attribute_adds: Vec::new(),
                     order_on_target: None,
                     zones: &mut self.zones,
+                    foreign: Foreign { before, after },
                 };
                 let mut result = unit.update(&mut c, &mut player.objects);
                 let (adds, ordered) = (
