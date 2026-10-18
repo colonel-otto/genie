@@ -58,10 +58,15 @@ pub struct PathData {
     pub continue_counter: i32,
     /// `+0x40`, `mRepathTime`.
     pub repath_time: f32,
-    /// The path's ignore units (its `+0x450`, `numberIgnoreUnits`, and the ids after it), which
-    /// the walk's avoidance reads (`FUN_140f98d20`). The game fills it for units ordered
-    /// together (MarvinBlue/426048731's 9171 and 9173); the slice's path requests make none.
+    /// The path's hash set of ignored units (`+0x18`, `FUN_140f96120`), which the save writes as
+    /// `numberIgnoreUnits` and the ids after it (`0x140f98f00`); empty in this game (the probe
+    /// `path_sets.py`).
     pub ignore: Vec<i32>,
+    /// The path's ignore units (`+0x450`, the ids from `+0x454`), which the walk's avoidance reads
+    /// (`FUN_140f98d20`): a short path made in the tick its top path was made takes the unit's
+    /// own (`+0x670`, `FUN_140f9b7a0`). The save does not hold them: a loaded path takes them
+    /// back by that rule (the oracle's import).
+    pub ignored: Vec<i32>,
 }
 
 /// What movement reads of the unit's master.
@@ -275,6 +280,7 @@ impl PathData {
             continue_counter: CONTINUE,
             repath_time: 0.0,
             ignore: Vec::new(),
+            ignored: Vec::new(),
         }
     }
 
@@ -1274,6 +1280,7 @@ impl Mover {
                             )?;
                             path.measure();
                             new.created = plan.now;
+                            self.give_ignored(&mut new, plan.now);
                             if r != 1 || path.length <= EPSILON {
                                 failed = true;
                                 path.points.clear();
@@ -1342,6 +1349,7 @@ impl Mover {
                     )?;
                     path.measure();
                     new.created = plan.now;
+                    self.give_ignored(&mut new, plan.now);
                     let blocked = r == 3
                         || r == 4
                         || path.length <= EPSILON
@@ -1653,6 +1661,15 @@ impl Mover {
             list.extend(self.ignore_units.iter().filter(|&&id| id != me.id));
         }
         Ok(list)
+    }
+
+    /// After a short path (`FUN_140f9e540`) for the new level: when the top path (`FUN_140f960f0`
+    /// of the walked level) was made this tick, the new path takes the unit's ignore units
+    /// (`FUN_140f9b7a0`).
+    fn give_ignored(&self, new: &mut PathData, now: u32) {
+        if self.paths.last().is_some_and(|t| t.created == now) {
+            new.ignored.clone_from(&self.ignore_units);
+        }
     }
 
     /// The short pather (`FUN_140f9e540`) from the unit to `to`, its points appended to `out`;
@@ -2132,10 +2149,10 @@ impl Mover {
             let last_move = gait.map_or(0, |g| g.last_move);
             let mut pushed = false;
             if let Some(top) = top.filter(|_| now_overlap <= next_overlap) {
-                if top.created == now && rx * PUSHED < next_overlap && level.ignore.contains(&id) {
+                if top.created == now && rx * PUSHED < next_overlap && level.ignored.contains(&id) {
                     pushed = true;
                 }
-                if top.created < now && level.ignore.contains(&id) {
+                if top.created < now && level.ignored.contains(&id) {
                     pushed = last_move < top.created;
                 }
             }
@@ -2483,6 +2500,7 @@ mod tests {
             continue_counter: 10,
             repath_time: 0.0,
             ignore: Vec::new(),
+            ignored: Vec::new(),
         }
     }
 

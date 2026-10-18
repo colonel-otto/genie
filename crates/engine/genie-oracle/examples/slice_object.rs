@@ -1,6 +1,6 @@
 //! The slice's row of one object after TICKS updates from the save after START (args: DIR START
-//! TICKS PLAYER ID; env GENIE_TICK_REC, GENIE_DAT): every field the oracle compares, for reading a
-//! difference in full.
+//! TICKS PLAYER ID; env GENIE_TICK_REC, GENIE_DAT; the mesh dump `START.mesh` or `.mesh.gz`):
+//! every field the oracle compares, for reading a difference in full.
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let dir = std::path::PathBuf::from(&a[1]);
@@ -16,7 +16,15 @@ fn main() {
         masters.drop_sites = genie_oracle::drop_sites(&json).unwrap();
     }
     let save = std::fs::read(dir.join(format!("{start}.aoe2record"))).unwrap();
-    let mesh = std::fs::read_to_string(dir.join(format!("{start}.mesh"))).ok();
+    let mesh = std::fs::read_to_string(dir.join(format!("{start}.mesh")))
+        .ok()
+        .or_else(|| {
+            let raw = std::fs::read(dir.join(format!("{start}.mesh.gz"))).ok()?;
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&raw[..]), &mut text)
+                .ok()?;
+            Some(text)
+        });
     let registry = std::fs::read_to_string(dir.join(format!("{start}.registry"))).ok();
     let run = genie_oracle::objects_from_save(
         &save,

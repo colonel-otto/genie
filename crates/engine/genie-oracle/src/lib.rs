@@ -435,6 +435,7 @@ fn path_level(d: &PathData, paths: &[Path]) -> Result<genie_core::movement::Path
                 .map(|&id| id as i32)
                 .collect()
         }),
+        ignored: Vec::new(),
     })
 }
 
@@ -531,12 +532,13 @@ fn mover(
         velocity: m.velocity.as_ref().map_or([0.0; 3], vec3),
         acceleration: m.acceleration.as_ref().map_or([0.0; 3], vec3),
     });
-    let levels = m
+    let mut levels = m
         .temp_path_data
         .iter()
         .rev()
         .map(|d| path_level(d, paths))
         .collect::<Result<Vec<_>, _>>()?;
+    loaded_ignored(&mut levels, &s.temp_int);
     Ok(Some(Mover {
         forward: vec3(&m.orientation_forward_value),
         right: vec3(&m.orientation_right_value),
@@ -578,6 +580,21 @@ fn mover(
         speed_stopped: false,
         pauses: Vec::new(),
     }))
+}
+
+/// A loaded unit's paths' ignore units (`+0x450`), which the save does not hold: a level below
+/// the top whose path was made in the top path's tick took the unit's own (`+0x670`,
+/// `FUN_140f9b7a0` after the short pather).
+fn loaded_ignored(levels: &mut [genie_core::movement::PathData], units: &[i32]) {
+    let Some((top, below)) = levels.split_last_mut() else {
+        return;
+    };
+    if top.points.is_empty() {
+        return;
+    }
+    for level in below.iter_mut().filter(|l| l.created == top.created) {
+        level.ignored = units.to_vec();
+    }
 }
 
 /// The point of the MoveTo a saved unit walks with to a target object: its top action when that
@@ -2946,7 +2963,15 @@ impl ObjectRow {
                 forward: m.forward,
                 right: m.right,
                 velocity: m.velocity.as_ref().map(|v| (v.velocity, v.acceleration)),
-                paths: m.paths.clone(),
+                // the paths' ignore units, which the save does not hold, are left out
+                paths: m
+                    .paths
+                    .iter()
+                    .map(|l| genie_core::movement::PathData {
+                        ignored: Vec::new(),
+                        ..l.clone()
+                    })
+                    .collect(),
                 waiting: m.waiting,
                 wait_delays: m.wait_delays,
                 attack_moving: m.attack_moving,
