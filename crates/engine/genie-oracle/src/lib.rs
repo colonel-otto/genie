@@ -2185,6 +2185,20 @@ impl Decoder {
                     id: c.u_id,
                 });
             }
+            // UNIT_ORDER: the units listed (at most a human player's 60), the count at +4
+            Packet::UnitOrder(c) if c.num != LAST_COMMANDED => {
+                return Some(Command::UnitOrder {
+                    player: c.commp_id as usize,
+                    ids: c
+                        .ids
+                        .iter()
+                        .copied()
+                        .take((c.num as usize).min(MAX_UNITS))
+                        .collect(),
+                    action: c.action,
+                    human: c.field_0x20 == 1,
+                });
+            }
             // AUTO_SCOUT: the units listed (at most a human player's 60), the count at +4
             Packet::AutoScout(c) => {
                 return Some(Command::AutoScout {

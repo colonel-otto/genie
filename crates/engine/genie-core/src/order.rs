@@ -518,6 +518,78 @@ impl Turns {
         Ok(())
     }
 
+    /// UNIT_ORDER's order `action` to the units `ids` (`FUN_14161e370`). Action 8, the drop-off
+    /// (as 6 and 7): each unit the world holds in state 2 of a type above 39 that carries
+    /// something (`+0x310` above 0) and whose top action is a Hunt (110) with a target or a
+    /// point gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`], then set_state(8),
+    /// [`Unit::drop_off_in`]). A Gather's or a Build's (5, 101), a top action without a target
+    /// (`FUN_141206a20`, `FUN_141205ac0` around it) and a unit without one of these actions (the
+    /// drop-site search from the unit, `FUN_1411671e0`, and the work command on it, slot 0x7e8)
+    /// are not modelled, nor are the other actions and another player's unit.
+    pub(crate) fn unit_order(
+        &mut self,
+        player: usize,
+        ids: &[i32],
+        action: u8,
+    ) -> Result<(), Unsupported> {
+        if action != 8 {
+            return Err(Unsupported("a UNIT_ORDER other than the drop-off (8)"));
+        }
+        for &id in ids {
+            let Some(place) = self.place(id) else {
+                continue;
+            };
+            let Place::Live(p, idx) = place else {
+                return Err(Unsupported("a UNIT_ORDER to a sleeping object"));
+            };
+            if p != player {
+                return Err(Unsupported("a UNIT_ORDER to another player's unit"));
+            }
+            let unit = &self.players[p].objects[idx];
+            let kind = self.master_of(p, unit.life.master_id)?.kind;
+            if unit.life.state != 2 || kind < 40 || unit.life.amount <= 0.0 {
+                continue;
+            }
+            if unit.unmodelled_action.is_some() {
+                return Err(Unsupported("a UNIT_ORDER drop-off of an action not held"));
+            }
+            let Some(hunt) = unit
+                .hunt
+                .as_ref()
+                .filter(|_| unit.top_action_kind() == Some(HUNT))
+            else {
+                return Err(Unsupported(
+                    "a UNIT_ORDER drop-off of a unit without a Hunt (its drop-site search)",
+                ));
+            };
+            if hunt.target == -1 && hunt.point[0] == -1.0 && hunt.point[1] == -1.0 {
+                return Err(Unsupported(
+                    "a UNIT_ORDER drop-off of a Hunt without a target (FUN_141206a20)",
+                ));
+            }
+            let attributes = self.players[p].attributes.len();
+            if !hunt.drop_off_asked(unit.life.attribute_type, attributes)? {
+                continue;
+            }
+            let mut unit = std::mem::take(&mut self.players[p].objects[idx]);
+            let player = &self.players[p];
+            let world = crate::turn::DropWorld {
+                masters: self.masters.get(p),
+                spatial: &self.spatial,
+                zones: &mut self.zones,
+                pathing: &mut self.pathing,
+                object: self.streams.get(Stream::Object),
+                world_time: self.world_time,
+                computer: player.computer,
+                construction_rate: player.construction_rate,
+            };
+            let result = unit.drop_off_in(world, &player.objects);
+            self.players[p].objects[idx] = unit;
+            result?;
+        }
+        Ok(())
+    }
+
     /// GATE (`do_command` case 0x72): the object `id` (any player's: a missing one does nothing)
     /// of a master of type 80 toggles its gate lock (slot 0x670 with slot 0x668's value
     /// negated, `FUN_1411dba30`): a lock sets its last move time to the world time plus 1. The

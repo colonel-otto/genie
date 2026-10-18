@@ -123,6 +123,22 @@ pub struct HuntTask {
     pub kind4: i16,
 }
 
+/// The player's resource of what a unit carries (`FUN_140fdd4f0`): the kinds 0 to 3, 9 and 56
+/// themselves, the foods 15 to 17 food (0), any other none (−1); then 0 for a kind beyond the
+/// player's `attributes` (`FUN_140efe5b0`).
+pub(crate) fn resource_kind(kind: i16, attributes: usize) -> i16 {
+    let kind = match kind {
+        0..=3 | 9 | 56 => kind,
+        15..=17 => 0,
+        _ => -1,
+    };
+    if (0..attributes as i16).contains(&kind) {
+        kind
+    } else {
+        0
+    }
+}
+
 /// The hunt's sprites as graphics: the task's moving, working and carrying sprites, and the
 /// master's standing sprite, which slot 0x68 takes for none.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -418,20 +434,23 @@ impl HuntAction {
                 "a drop-off out of a tile of its drop site (its wait)",
             ));
         }
-        let kind = match *held_kind {
-            0..=3 | 9 | 56 => *held_kind,
-            15..=17 => 0,
-            _ => -1,
-        };
-        let kind = if (0..attributes as i16).contains(&kind) {
-            kind
-        } else {
-            0
-        };
+        let kind = resource_kind(*held_kind, attributes);
         let amount = *held;
         *held_kind = -1;
         *held = 0.0;
         Ok(Some((kind, amount)))
+    }
+
+    /// Slot 0x78 (`FUN_140a78060`, the base action's; UNIT_ORDER's drop-off) of a unit carrying
+    /// some of `held_kind` (`+0x310` above 0, which the caller checked): a load of the task's resource (`+0x20`, of any with −1; compared by
+    /// [`resource_kind`]) asks the caller for set_state(8) (true). A load of another resource
+    /// would post notify 0x21c to the unit AI, which is not modelled.
+    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, Unsupported> {
+        let kind = self.task.resource;
+        if kind != -1 && resource_kind(held_kind, attributes) != resource_kind(kind, attributes) {
+            return Err(Unsupported("a drop-off of another resource (notify 0x21c)"));
+        }
+        Ok(true)
     }
 
     /// The teardown (`FUN_140a73fc0`): the sub-actions go; the caller releases the target (slot

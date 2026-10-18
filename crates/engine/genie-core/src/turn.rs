@@ -194,6 +194,16 @@ pub enum Command {
     /// AUTO_SCOUT (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
     /// auto scout order, or the stop order when it scouts already ([`Turns::auto_scout`]).
     AutoScout { player: usize, ids: Vec<i32> },
+    /// UNIT_ORDER (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
+    /// decoder's) take the order `action` ([`Turns::unit_order`]); `human` (`+0x20`) sets their
+    /// last human order time first. Its target (`tId`, which action 5 reads), point, `qId`,
+    /// `param` and the flags `+0x1d`, `+0x1e` are not read by the actions modelled.
+    UnitOrder {
+        player: usize,
+        ids: Vec<i32>,
+        action: u8,
+        human: bool,
+    },
     /// INTERACT (0x00), MOVE (0x03) or RETREAT (0x23): before the order runs, each listed unit's AI
     /// resets its idle timeout ([`UnitAi::reset_for_order`]), in list order, wherever the unit is.
     /// INTERACT's order then runs ([`Interact`]), and MOVE's ([`MoveOrder`]); RETREAT is not
@@ -248,6 +258,20 @@ fn villager(draw: u64) -> i16 {
 }
 
 /// What a tick's update of one object needs from the world.
+/// What a hunt's drop-off ([`Unit::drop_off_in`]) reads besides its unit: the owner's masters,
+/// the world with its zone maps and planners, the world's time, the Object stream (the drop-site
+/// search's plans), the owner's type and construction rate.
+pub(crate) struct DropWorld<'a> {
+    pub masters: Option<&'a Masters>,
+    pub spatial: &'a Spatial,
+    pub zones: &'a mut crate::zones::Zones,
+    pub pathing: &'a mut Pathing,
+    pub object: &'a mut Well512,
+    pub world_time: u32,
+    pub computer: bool,
+    pub construction_rate: f32,
+}
+
 struct Context<'a> {
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
     dt: u32,
@@ -870,6 +894,25 @@ impl Unit {
     /// it); none found is not modelled (notify 0x203, set_state 2). The drop site found is the
     /// second target (`FUN_140a7a190`) and a quiet MoveTo to it starts ([`HuntAction::set_drop`]).
     fn hunt_drop_off(&mut self, c: &mut Context<'_>, others: &[Unit]) -> Result<(), Unsupported> {
+        let w = DropWorld {
+            masters: c.masters,
+            spatial: c.spatial,
+            zones: c.zones,
+            pathing: c.pathing,
+            object: c.streams.get(Stream::Object),
+            world_time: c.world_time,
+            computer: c.computer,
+            construction_rate: c.construction_rate,
+        };
+        self.drop_off_in(w, others)
+    }
+
+    /// [`Unit::hunt_drop_off`] in `w`, from the update or a command.
+    pub(crate) fn drop_off_in(
+        &mut self,
+        c: DropWorld<'_>,
+        others: &[Unit],
+    ) -> Result<(), Unsupported> {
         if self.life.amount <= 0.0 {
             return Err(Unsupported(
                 "a hunt's drop-off carrying nothing (set_state 3)",
@@ -909,7 +952,7 @@ impl Unit {
                 pathing: c.pathing,
                 now: c.world_time,
                 computer: c.computer,
-                object: c.streams.get(Stream::Object),
+                object: c.object,
                 construction_rate: c.construction_rate,
             };
             let seeker = Seeker {
@@ -2079,6 +2122,10 @@ impl Unit {
     }
 }
 
+/// The population's resource, which a cost check skips (`FUN_141618db0` with its fifth argument
+/// 1).
+const POPULATION: i16 = 4;
+
 /// The livestock class (`-0xe72` raw).
 const LIVESTOCK: i16 = 58;
 
@@ -2952,6 +2999,20 @@ impl Turns {
                     owner.stop(self.ticks, e);
                 }
             }
+            Command::UnitOrder {
+                player,
+                ref ids,
+                action,
+                human,
+            } => {
+                if human {
+                    self.human_order(ids);
+                }
+                if let Err(e) = self.unit_order(player, ids, action) {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
+                }
+            }
             Command::AutoScout { player, ref ids } => {
                 if let Err(e) = self.auto_scout(player, ids) {
                     let owner = &mut self.players[player];
@@ -3006,18 +3067,7 @@ impl Turns {
                     }
                 }
                 if human {
-                    for &id in units {
-                        let unit = self
-                            .players
-                            .iter_mut()
-                            .flat_map(|p| p.objects.iter_mut())
-                            .find(|o| o.id == id)
-                            .filter(|o| o.ai.is_some());
-                        if let Some(u) = unit {
-                            u.last_human_order = self.world_time;
-                            self.spatial.set_gait(u.id, u.gait());
-                        }
-                    }
+                    self.human_order(units);
                 }
                 let result = match order {
                     Some(Order::Interact(o)) => self.interact(player, units, &o),
@@ -3029,6 +3079,23 @@ impl Turns {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }
+            }
+        }
+    }
+
+    /// `FUN_140e5e780`: each unit of `ids` with a unit AI takes the world time as its last human
+    /// order time (`+0x650`).
+    fn human_order(&mut self, ids: &[i32]) {
+        for &id in ids {
+            let unit = self
+                .players
+                .iter_mut()
+                .flat_map(|p| p.objects.iter_mut())
+                .find(|o| o.id == id)
+                .filter(|o| o.ai.is_some());
+            if let Some(u) = unit {
+                u.last_human_order = self.world_time;
+                self.spatial.set_gait(u.id, u.gait());
             }
         }
     }
@@ -3243,7 +3310,9 @@ impl Turns {
     }
 
     /// QUEUE at one building: per unit (the game recurses, so the last unit drawn is queued first)
-    /// the villager's male or female draw, then the cost and the queue entry.
+    /// the villager's male or female draw, then the cost and the queue entry. A unit the player
+    /// cannot pay for (`FUN_14162fb60` -> `FUN_141618db0`: each cost entry but the population's,
+    /// paid or not, needs its amount) is not queued; its draw stays.
     fn queue(
         &mut self,
         player: usize,
@@ -3271,14 +3340,22 @@ impl Turns {
             return Err(Unsupported("QUEUE beyond a building's 15 units"));
         }
         for master in masters.into_iter().rev() {
+            let mut can_pay = true;
+            for &(resource, amount, _) in cost.iter().filter(|c| 0 <= c.0 && c.0 != POPULATION) {
+                let held = owner
+                    .resources
+                    .get(resource as usize)
+                    .ok_or(Unsupported("a cost in a resource the slice does not track"))?;
+                can_pay &= f32::from(amount) <= *held;
+            }
+            if !can_pay {
+                continue;
+            }
             for &(resource, amount, _) in cost.iter().filter(|c| c.2) {
                 let slot = owner
                     .resources
                     .get_mut(resource as usize)
                     .ok_or(Unsupported("a cost in a resource the slice does not track"))?;
-                if *slot < f32::from(amount) {
-                    return Err(Unsupported("QUEUE the player cannot pay"));
-                }
                 *slot -= f32::from(amount);
             }
             let production = owner.objects[index]
@@ -4315,10 +4392,23 @@ mod tests {
     }
 
     #[test]
-    fn a_queue_the_player_cannot_pay_or_a_missing_building_stops_the_player() {
+    fn a_queue_the_player_cannot_pay_queues_nothing_and_a_missing_building_stops_the_player() {
+        // as at 2730: too little food for the villager (46 here): no entry, no cost, the draw
+        // stays
         let mut poor = one_player(vec![town_centre(9)], [40.0, 0.0, 0.0, 0.0]);
         poor.tick_with(104, &[queue(9, 83, 1)]);
-        assert!(poor.players[0].unsupported.is_some());
+        assert!(poor.players[0].unsupported.is_none());
+        assert_eq!(poor.players[0].resources[0], 40.0);
+        let tc = &poor.players[0].objects[0];
+        assert!(tc.production.as_ref().is_none_or(|p| p.queue.is_empty()));
+        // the male or female draw as a paid queue's
+        let mut paid = one_player(vec![town_centre(9)], [46.0, 0.0, 0.0, 0.0]);
+        paid.tick_with(104, &[queue(9, 83, 1)]);
+        assert_eq!(paid.players[0].resources[0], 0.0);
+        assert_eq!(
+            poor.streams.get(Stream::Action).draws,
+            paid.streams.get(Stream::Action).draws
+        );
         let mut missing = one_player(vec![town_centre(9)], [200.0; 4]);
         missing.tick_with(104, &[queue(8, 83, 1)]);
         assert!(missing.players[0].unsupported.is_some());
