@@ -2352,7 +2352,8 @@ impl Turns {
                     hp_powerups: [0.0; 2],
                     hunt: None,
                     explore: None,
-                    gate: None,
+                    // every building holds a gate's lock, open
+                    gate: Some(Gate::default()),
                     workers: 0,
                     combat: true,
                     default_task: None,
