@@ -252,6 +252,8 @@ struct Context<'a> {
     /// (attributes 98 and 164).
     remains: Option<(i16, [f32; 3])>,
     refund: Option<f32>,
+    /// The pauses the unit's walk gave units it met ([`Mover::pauses`]).
+    pauses: Vec<(i32, f32)>,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
     mode_1: bool,
     /// The owner's attributes, which a gatherer's productivity reads.
@@ -944,6 +946,9 @@ impl Unit {
         if let Some(p) = c.spatial.get(self.id) {
             self.position = p.position;
         }
+        if let Some(m) = self.mover.as_mut() {
+            c.pauses.append(&mut m.pauses);
+        }
         // RGE_Action_Object::update's end (FUN_141163080): an action object's shape
         if let Some(m) = c
             .masters
@@ -1361,6 +1366,24 @@ impl Turns {
                 })
             })
             .collect()
+    }
+
+    /// Slot 0x5f0 (`FUN_141158b90`): the unit's walked level, if it has one, pauses for `pause`
+    /// seconds; the world's view of it follows.
+    fn pause(&mut self, id: i32, pause: f32) {
+        let Some(u) = self
+            .players
+            .iter_mut()
+            .flat_map(|p| p.objects.iter_mut())
+            .find(|u| u.id == id)
+        else {
+            return;
+        };
+        if let Some(level) = u.mover.as_mut().and_then(|m| m.paths.first_mut()) {
+            level.pause_time = pause;
+            let gait = u.gait();
+            self.spatial.set_gait(id, gait);
+        }
     }
 
     /// An attack's hit on its target, written back.
@@ -2274,6 +2297,7 @@ impl Turns {
                     own_killed: None,
                     remains: None,
                     refund: None,
+                    pauses: Vec::new(),
                     mode_1: self.mode_680 == 1,
                     player: p,
                     attributes: &player.attributes,
@@ -2296,6 +2320,7 @@ impl Turns {
                 );
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
                 let (remains, refund) = (c.remains.take(), c.refund.take());
+                let pauses = std::mem::take(&mut c.pauses);
                 if let Some(e) = self.spatial.take_sight_unsupported() {
                     result = result.and(Err(e));
                 }
@@ -2305,6 +2330,10 @@ impl Turns {
                     if let Err(e) = self.players[p].add_attribute(kind, amount) {
                         result = result.and(Err(e));
                     }
+                }
+                // slot 0x5f0 on each unit the walk paused: its walked level's pause
+                for (id, pause) in pauses {
+                    self.pause(id, pause);
                 }
                 // a dead unit's paid cost leaves attributes 98 and 164, each at least 0
                 // (FUN_14121cc40: slots 0xf8, then 0xf0 with 0)

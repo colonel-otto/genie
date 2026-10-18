@@ -87,6 +87,8 @@ pub mod move_to {
 }
 
 pub mod movement {
+    /// 0.10000000149011612
+    pub const ALLY_PAUSE: f32 = f32::from_bits(0x3dcccccd);
     /// 1.0
     pub const CLOSE: f32 = f32::from_bits(0x3f800000);
     /// 0.009999999776482582
@@ -101,6 +103,8 @@ pub mod movement {
     pub const FAST_TURN: f32 = f32::from_bits(0x42c80000);
     /// 100.0
     pub const LOOK_AHEAD: f32 = f32::from_bits(0x42c80000);
+    /// 0.5
+    pub const OTHER_PAUSE: f32 = f32::from_bits(0x3f000000);
     /// 0.25
     pub const PUSHED: f32 = f32::from_bits(0x3e800000);
     /// 0.10000000149011612

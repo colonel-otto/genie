@@ -511,6 +511,7 @@ fn mover(
         ignore_units: s.temp_int.clone(),
         move_to_point: saved_move_to_point(object),
         speed_stopped: false,
+        pauses: Vec::new(),
     }))
 }
 

@@ -130,6 +130,9 @@ pub struct Mover {
     /// A stop (slot 0x5d0) cleared the object's animation speed (`+0x7b8`), which the unit
     /// holds: [`crate::turn::Unit`] takes it.
     pub speed_stopped: bool,
+    /// The pauses its walk gave units it met (slot 0x5f0 on each: the met unit's walked level's
+    /// `+0x34`), for the caller to hand on.
+    pub pauses: Vec<(i32, f32)>,
 }
 
 /// The moving unit, as the motion step needs it besides its [`Mover`].
@@ -310,6 +313,15 @@ fn short_range(near: bool, range: f32) -> f32 {
 /// A master whose object flags have bit 1 turns as if dt were this many times longer
 /// (`DAT_14330ebcc`).
 const FAST_TURN: f32 = crate::image::movement::FAST_TURN;
+/// The pause a kept hit's ranking gives a unit the walker outranks: 0.1 for an ally
+/// (`DAT_142eb5690`), 0.5 for another (`DAT_142e7f384`).
+const ALLY_PAUSE: f32 = crate::image::movement::ALLY_PAUSE;
+const OTHER_PAUSE: f32 = crate::image::movement::OTHER_PAUSE;
+/// What [`Mover::avoid`] makes of the walk's hits: the hits it keeps and the pauses it gives.
+struct Avoided {
+    kept: Vec<i32>,
+    pauses: Vec<(i32, f32)>,
+}
 /// 2π (`DAT_142eb56ac`): over a revolution's time, the most a unit turns per second.
 const TWO_PI: f32 = crate::image::movement::TWO_PI;
 
@@ -550,10 +562,12 @@ impl Mover {
         let Some(level) = self.paths.first_mut() else {
             return Ok(Motion::Done);
         };
+        // a paused walk stands (slot 0x5d0) until its pause ran out
         if 0.0 < level.pause_time {
             level.pause_time -= dt;
             if 0.0 < level.pause_time {
-                return Err(Unsupported("a paused path (stopMoving)"));
+                self.stop()?;
+                return Ok(Motion::Moving);
             }
             level.pause_time = 0.0;
         }
@@ -692,9 +706,10 @@ impl Mover {
                 &[me.id],
             )?;
             if !hits.is_empty() {
-                let kept = self.avoid(me, world, &hits, projected, dt, now, computer)?;
-                if !kept.is_empty() {
-                    return self.go_round(me, world, pathing, &hits, &kept, computer);
+                let avoided = self.avoid(me, world, &hits, projected, dt, now, computer)?;
+                self.pauses.extend(avoided.pauses);
+                if !avoided.kept.is_empty() {
+                    return self.go_round(me, world, pathing, &hits, &avoided.kept, computer);
                 }
             }
         }
@@ -1702,7 +1717,7 @@ impl Mover {
         dt: f32,
         now: u32,
         computer: bool,
-    ) -> Result<Vec<i32>, Unsupported> {
+    ) -> Result<Avoided, Unsupported> {
         let level = &self.paths[0];
         let top = self.paths.last().filter(|l| !l.points.is_empty());
         let player = world
@@ -1753,8 +1768,12 @@ impl Mover {
             return Err(Unsupported("a walker whose step hits only its target"));
         }
         if !kept.is_empty() {
-            return Ok(kept);
+            return Ok(Avoided {
+                kept,
+                pauses: Vec::new(),
+            });
         }
+        let mut pauses = Vec::new();
         if level.waypoint < 2 || (level.waypoint < 3 && level.created.wrapping_add(500) < now) {
             for &hit in hits {
                 let (id, other) = met(hit)?;
@@ -1776,12 +1795,13 @@ impl Mover {
                         continue;
                     }
                 }
-                if world.gait(id).and_then(|g| g.pause).is_some_and(|p| p < dt) {
-                    return Err(Unsupported("a met unit paused for the walker (slot 0x5f0)"));
+                // slot 0x528's walked level, paused for dt more when its pause is shorter
+                if let Some(p) = world.gait(id).and_then(|g| g.pause).filter(|&p| p < dt) {
+                    pauses.push((id, p + dt));
                 }
             }
         }
-        Ok(kept)
+        Ok(Avoided { kept, pauses })
     }
 
     /// The walk's kept hits (`0x141150f00` after its first hit loop): each kept hit without a
@@ -1840,13 +1860,25 @@ impl Mover {
             } else {
                 true
             };
-            if outranks {
-                return Err(Unsupported("a met unit paused for the walker (slot 0x5f0)"));
-            }
-            if other.player != player {
+            if other.player != player && other.player != 0 {
                 return Err(Unsupported(
                     "a kept hit of another player (its alliance, the notify 0x215)",
                 ));
+            }
+            // own units count as allies (a pause of 0.1), Gaia never does (0.5)
+            let allied = other.player == player;
+            if outranks && world.gait(id).is_some_and(|g| g.pause.is_some()) {
+                let pause = if allied { ALLY_PAUSE } else { OTHER_PAUSE };
+                self.pauses.push((id, pause));
+            }
+            // a Gaia hit of the target's master would notify the walker's unit AI (0x215)
+            if !allied && 0 <= level.target {
+                let target = world.get(level.target).map(|t| t.master);
+                if target.is_some_and(|m| m == other.master) {
+                    return Err(Unsupported(
+                        "a kept hit of the target's master (the notify 0x215)",
+                    ));
+                }
             }
         }
         if self.paths.len() < 2 {
@@ -2058,6 +2090,7 @@ mod tests {
             ignore_units: Vec::new(),
             move_to_point: None,
             speed_stopped: false,
+            pauses: Vec::new(),
         }
     }
 
@@ -2351,8 +2384,8 @@ mod tests {
     #[test]
     fn a_human_walker_pauses_a_met_unit_of_an_older_human_order() {
         // 9177 meets 9175 of its own player: ordered at the same time, the lower id outranks
-        // and 9177 walks on; once 9175's last human order is the older, 9177 would pause it
-        // (slot 0x5f0, not modelled)
+        // and 9177 walks on; once 9175's last human order is the older, 9177 pauses it for dt
+        // more than its pause (slot 0x5f0)
         let mut w = world();
         let mut close = w.get(9175).unwrap().clone();
         close.position = [28.3, 88.9, 0.0];
@@ -2374,11 +2407,13 @@ mod tests {
                 ..walker(17000)
             }),
         );
+        let mut walker_9177 = builder_9177();
         assert!(
-            builder_9177()
+            walker_9177
                 .motion(&mut me.clone(), DT, &mut w, None)
                 .is_ok()
         );
+        assert!(walker_9177.pauses.is_empty());
         w.set_gait(
             9175,
             Some(Gait {
@@ -2386,9 +2421,12 @@ mod tests {
                 ..walker(16000)
             }),
         );
-        assert_eq!(
-            builder_9177().motion(&mut me.clone(), DT, &mut w, None),
-            Err(Unsupported("a met unit paused for the walker (slot 0x5f0)"))
+        let mut walker_9177 = builder_9177();
+        assert!(
+            walker_9177
+                .motion(&mut me.clone(), DT, &mut w, None)
+                .is_ok()
         );
+        assert_eq!(walker_9177.pauses, [(9175, 0.0 + DT)]);
     }
 }
