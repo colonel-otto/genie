@@ -883,6 +883,7 @@ mod tests {
                 stack_unit: -1,
                 foundation_terrain: 27,
                 tech: -1,
+                garrison_type: 0,
             }),
             ..Master::default()
         };

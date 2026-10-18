@@ -854,11 +854,12 @@ impl HuntAction {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::movement::{MoveStats, Velocity};
 
-    fn walker() -> Mover {
+    /// A villager walking at 0.8 tiles a second, radius 0.2.
+    pub(crate) fn walker() -> Mover {
         Mover {
             forward: [-1.0, 0.0, 0.0],
             right: [0.0, 0.0, 1.0],

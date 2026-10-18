@@ -305,12 +305,14 @@ impl MoveToAction {
     /// the target's place, which the slice reads when it asks for the path), showing the master's
     /// running sprite (`run`) or its walking one, as its start (slot 0x808 -> `0x140aa2100`)
     /// leaves it: a unit more than [`ARRIVED`] from the target's footprint (`FUN_14118f680`) in
-    /// state 3 with speed (slot 0x208), 13 without. A unit at the target already (`set_state` 1:
-    /// the standing sprite, `+0x7b8` cleared) is not modelled. `me` is the unit's place.
+    /// state 3 with speed (slot 0x208), 13 without; a unit at the target already in state 1
+    /// (`0x140aa29e0`: not quiet, it shows the master's standing sprite, [`Mover::shows_standing`];
+    /// the sprite itself and `+0x7b8`, cleared, are the caller's, [`MoveToAction::arrived`]),
+    /// which its next update ends. `me` is the unit's place.
     pub fn to_target(
         world: &Spatial,
         me: [f32; 3],
-        mover: &Mover,
+        mover: &mut Mover,
         target: i32,
         range: f32,
         run: bool,
@@ -319,20 +321,27 @@ impl MoveToAction {
             .get_known(target)?
             .ok_or(Unsupported("a MoveTo to an object the world lacks"))?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-        if footprint_gap(me, ground, t.position, t.radius) <= ARRIVED {
-            return Err(Unsupported("a MoveTo to an object that starts arrived"));
-        }
+        let state = if footprint_gap(me, ground, t.position, t.radius) <= ARRIVED {
+            mover.shows_standing();
+            MoveTo::Arrived
+        } else if mover.stats.speed == 0.0 {
+            MoveTo::Failed
+        } else {
+            MoveTo::Start
+        };
         Ok(Self {
-            state: if mover.stats.speed == 0.0 {
-                MoveTo::Failed
-            } else {
-                MoveTo::Start
-            },
+            state,
             goal: None,
             target,
             range,
             run,
         })
+    }
+
+    /// It ended at its start, the unit at its target (state 1).
+    #[must_use]
+    pub fn arrived(&self) -> bool {
+        self.state == MoveTo::Arrived
     }
 
     /// A `MoveTo` of its own is not quiet: its `set_state` 1 or 13 shows the standing sprite
@@ -402,5 +411,46 @@ impl MoveToAction {
             MoveTo::Waiting => Err(Unsupported("a waiting MoveTo of its own (state 2)")),
             MoveTo::Failed => Err(Unsupported("a failed MoveTo of its own (state 13)")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::spatial::Placed;
+
+    fn sheep(x: f32, y: f32) -> Placed {
+        Placed {
+            position: [x, y, 0.0],
+            radius: [0.2, 0.2],
+            class: 10,
+            player: 1,
+            master: 594,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        }
+    }
+
+    #[test]
+    fn a_move_to_an_object_at_hand_starts_arrived_and_shows_the_standing_sprite() {
+        let mut world = Spatial::new([120, 120]);
+        world.insert(9185, sheep(30.4, 40.0));
+        world.insert(9186, sheep(35.0, 40.0));
+        let mut walker = crate::hunt::tests::walker();
+        walker.stats.stand_speed = 0.5;
+        // footprints 0 apart: within ARRIVED, state 1 with the standing sprite's speed
+        let me = [30.0, 40.0, 0.0];
+        let at_hand = MoveToAction::to_target(&world, me, &mut walker, 9185, 0.0, false).unwrap();
+        assert!(at_hand.arrived());
+        assert_eq!(walker.stats.speed, 0.5);
+        // 4.6 tiles on it starts walking (state 3)
+        let mut walker = crate::hunt::tests::walker();
+        let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, false).unwrap();
+        assert!(!far.arrived());
+        assert_eq!(walker.stats.speed, 0.8);
     }
 }

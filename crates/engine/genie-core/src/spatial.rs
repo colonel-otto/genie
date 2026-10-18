@@ -1582,8 +1582,8 @@ impl Spatial {
     /// tile's word, `DAT_143f0a088 + 0x98`; a static record's own bits do not count here), and no
     /// obstruction record but the unit's own holds the point within its box grown by `grow` (the
     /// unit's radius): `FUN_141051900` with flags 0x20, whose point test `FUN_141052160` takes
-    /// records of every kind, edges included. A grown point beyond the map's edge would add the
-    /// edge's records (`FUN_141057290`), which is not modelled.
+    /// records of every kind, edges included. A grown point beyond the map's edge meets the edge's
+    /// records ([`Spatial::edge_records`]) and is never clear.
     pub fn point_clear(
         &self,
         me: i32,
@@ -1601,10 +1601,10 @@ impl Spatial {
         }
         let [w, h] = self.map;
         let rect = [x - grow, y - grow, grow + x, grow + y];
-        if rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3] {
-            return Err(Unsupported(
-                "a point test beyond the map's edge (FUN_141057290)",
-            ));
+        if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
+            && !self.edge_records(rect).is_empty()
+        {
+            return Ok(false);
         }
         self.check_known_records(rect)?;
         let hit = self.objects.iter().any(|(&id, p)| {
@@ -1670,7 +1670,7 @@ impl Spatial {
     /// first hit (`FUN_141052350`); else at the 25th (`FUN_141051900`). The hits are in the
     /// tiles' row order, then by id; the game's are in its grid's order, which its callers do not
     /// read. A walk whose grown box leaves the map is blocked (`FUN_141052350`) or meets the
-    /// map's edge records (`FUN_141057290`, not modelled).
+    /// map's edge records first ([`Spatial::edge_records`]).
     #[allow(clippy::too_many_arguments)]
     fn pather_query(
         &self,
@@ -1680,7 +1680,7 @@ impl Spatial {
         mask: u8,
         ignore: &[i32],
         first: bool,
-    ) -> Result<Option<Vec<Hit>>, Unsupported> {
+    ) -> Result<Vec<Hit>, Unsupported> {
         const MOST_HITS: usize = 25;
         let lo_x = if b[0] <= a[0] { b[0] } else { a[0] };
         let hi_x = if a[0] <= b[0] { b[0] } else { a[0] };
@@ -1689,8 +1689,12 @@ impl Spatial {
         let g = buffer.unwrap_or(0.0);
         let [w, h] = self.map;
         let grown = [lo_x - g, lo_y - g, g + hi_x, g + hi_y];
+        let mut hits = Vec::new();
         if grown[0] < 0.0 || grown[1] < 0.0 || (w as f32) < grown[2] || (h as f32) < grown[3] {
-            return Ok(None);
+            hits = self.edge_records(grown);
+            if first {
+                return Ok(hits);
+            }
         }
         self.check_known_records(grown)?;
         let walk = [a[0], a[1], b[0], b[1]];
@@ -1702,7 +1706,6 @@ impl Spatial {
                 && r[1] <= hi_y
                 && box_meets_segment(bx, g, walk)
         };
-        let mut hits = Vec::new();
         let impassable = u64::from(mask & 0x7f | 0x80);
         let tx1 = if (grown[2] as i32) < w {
             grown[2] as i32
@@ -1724,7 +1727,7 @@ impl Spatial {
                 if word & impassable == 0 && !ignore.contains(&id) && meets(bx) {
                     hits.push(Hit { id, bounds: bx });
                     if first || MOST_HITS <= hits.len() {
-                        return Ok(Some(hits));
+                        return Ok(hits);
                     }
                 }
             }
@@ -1759,7 +1762,7 @@ impl Spatial {
                 break;
             }
         }
-        Ok(Some(hits))
+        Ok(hits)
     }
 
     /// Whether the old short pather's walk `a` -> `b` meets a record ([`Spatial::pather_query`]:
@@ -1772,9 +1775,9 @@ impl Spatial {
         mask: u8,
         ignore: &[i32],
     ) -> Result<bool, Unsupported> {
-        Ok(self
+        Ok(!self
             .pather_query(a, b, buffer, mask, ignore, true)?
-            .is_none_or(|hits| !hits.is_empty()))
+            .is_empty())
     }
 
     /// The records the old short pather's walk `a` -> `b` meets, at most 25
@@ -1787,10 +1790,57 @@ impl Spatial {
         mask: u8,
         ignore: &[i32],
     ) -> Result<Vec<Hit>, Unsupported> {
-        self.pather_query(a, b, buffer, mask, ignore, false)?
-            .ok_or(Unsupported(
-                "a pather query beyond the map's edge (FUN_141057290)",
-            ))
+        self.pather_query(a, b, buffer, mask, ignore, false)
+    }
+}
+
+impl Spatial {
+    /// The map edge's records a query rectangle `rect` (`x0, y0, x1, y1`) that leaves the map meets
+    /// (`FUN_141057290`, which `FUN_141051900` lists first, before any test of kind, flags or
+    /// ignore list): for each edge it crosses (left, top, right, bottom), the manager's record for
+    /// that edge (`+0xb0`, `+0xb8`, `+0xc0`, `+0xc8`), set to the tile box where the rectangle's
+    /// diagonal `(x0, y0)` -> `(x1, y1)` crosses the edge's line, id `x << 12 | y | 0xff000000`.
+    #[must_use]
+    pub fn edge_records(&self, rect: [f32; 4]) -> Vec<Hit> {
+        let [x0, y0, x1, y1] = rect;
+        // the manager's map size as floats (+0xa8, +0xac)
+        let (w, h) = (self.map[0] as f32, self.map[1] as f32);
+        let (dx, dy) = (x1 - x0, y1 - y0);
+        let (dy0, dx0) = (y0 - 0.0, x0 - 0.0);
+        // each edge line through the diagonal (the game's terms with a zero side, 0 × d and
+        // (w − w) × d, drop out: they add or take a zero)
+        let at = |t: f32| {
+            let x = (dx * t + x0) as i32;
+            // (uint): a truncation through 64 bits
+            let y = (dy * t + y0) as i64 as u32;
+            Hit {
+                id: ((x << 12) as u32 | y | 0xff00_0000) as i32,
+                bounds: [
+                    x as f32,
+                    y as i32 as f32,
+                    x as f32 + 1.0,
+                    y as i32 as f32 + 1.0,
+                ],
+            }
+        };
+        let mut hits = Vec::new();
+        if x0 < 0.0 {
+            let hh = h - 0.0;
+            hits.push(at(-(hh * dx0) / (dx * hh)));
+        }
+        if y0 < 0.0 {
+            let hh = h - 0.0;
+            hits.push(at((hh * dy0) / -(hh * dy)));
+        }
+        if w < x1 {
+            let hh = h - 0.0;
+            hits.push(at(-((x0 - w) * hh) / (hh * dx)));
+        }
+        if h < y1 {
+            let ww = w - 0.0;
+            hits.push(at(((y0 - h) * ww) / -(ww * dy)));
+        }
+        hits
     }
 }
 
@@ -1907,6 +1957,25 @@ mod tests {
         assert_eq!(search(&s, [10.0, 14.0]), (false, true));
         // 6 tiles from the last query (36 squared) it runs again
         assert_eq!(search(&s, [10.0, 8.0]), (true, true));
+    }
+
+    #[test]
+    fn a_rectangle_leaving_the_map_meets_the_edge_records_where_its_diagonal_crosses() {
+        let s = Spatial::new([120, 120]);
+        assert_eq!(s.edge_records([0.0, 0.0, 120.0, 120.0]), Vec::<Hit>::new());
+        // the diagonal (-0.3, 50) -> (0.3, 50.6) crosses x 0 at y 50.3: the left edge's tile (0, 50)
+        let left = s.edge_records([-0.3, 50.0, 0.3, 50.6]);
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].id as u32, 0xff00_0000 | 0x32);
+        assert_eq!(left[0].bounds, [0.0, 50.0, 1.0, 51.0]);
+        // past the bottom right corner: (119.5, 119.7) -> (120.5, 120.7) crosses x 120 at y 120.2
+        // and y 120 at x 119.8
+        let corner = s.edge_records([119.5, 119.7, 120.5, 120.7]);
+        let ids: Vec<u32> = corner.iter().map(|h| h.id as u32).collect();
+        assert_eq!(ids, [0xff07_8078, 0xff07_7078]);
+        // a unit of radius 0.3 cannot stand 0.2 from the edge
+        assert!(!s.point_clear(1, [0.2, 50.0], 0.3, 0xff).unwrap());
+        assert!(s.point_clear(1, [0.4, 50.0], 0.3, 0xff).unwrap());
     }
 
     #[test]

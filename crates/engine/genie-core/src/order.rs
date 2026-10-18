@@ -599,16 +599,24 @@ impl Turns {
             let unit = &mut self.players[player].objects[idx];
             let mover = unit
                 .mover
-                .as_ref()
+                .as_mut()
                 .ok_or(Unsupported("a followed unit without movement state"))?;
-            unit.move_to = Some(crate::move_to::MoveToAction::to_target(
+            let move_to = crate::move_to::MoveToAction::to_target(
                 &self.spatial,
                 unit.position,
                 mover,
                 target,
                 0.0,
                 false,
-            )?);
+            )?;
+            if move_to.arrived() {
+                unit.shows_standing_sprite(
+                    self.masters.get(player),
+                    &self.graphics,
+                    self.streams.get(Stream::Sprite),
+                )?;
+            }
+            unit.move_to = Some(move_to);
         }
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
@@ -632,8 +640,10 @@ impl Turns {
         &mut self,
         player: usize,
         ids: &[i32],
+        target: i32,
         action: u8,
     ) -> Result<(), Unsupported> {
+        let _ = target;
         if action != 8 {
             return Err(Unsupported("a UNIT_ORDER other than the drop-off (8)"));
         }
@@ -1126,12 +1136,7 @@ impl Turns {
         if master.class == LIVESTOCK {
             return Err(Unsupported("an order to livestock"));
         }
-        if (master.class == VILLAGER || master.id == MASTER_1808) && order.filter == GARRISON {
-            return Err(Unsupported(
-                "a villager's order to garrison (its town-bell record)",
-            ));
-        }
-        // FUN_141206a20's town-bell record (`+0x9ac`..) and the flag `+0x9dc` are not held
+        self.town_bell_order(player, idx, order.target, order.filter)?;
         self.work_command(player, idx, order)?;
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
@@ -1146,6 +1151,108 @@ impl Turns {
         if unit.my_pasture != -1 {
             return Err(Unsupported("a unit that leaves its pasture"));
         }
+        Ok(())
+    }
+
+    /// `FUN_1412067f0` before slot 0x7e8's work command, for a villager or master 1808 and a
+    /// target the world holds: the town-bell record ([`Turns::record_town_bell`]); then, with the
+    /// garrison filter (3), the flag goes on for a building in state 2 of the player or an ally
+    /// whose master takes villagers (`garrison_type` bit 0), with any other filter it goes off.
+    /// The UI's flag for the viewing player's building (`+0x1874`) is not held.
+    pub(crate) fn town_bell_order(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        filter: i16,
+    ) -> Result<(), Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let master = self.master_of(player, unit.life.master_id)?;
+        if !(master.class == VILLAGER || master.id == MASTER_1808) {
+            return Ok(());
+        }
+        let Some((tp, t)) = self.object(target) else {
+            return Ok(());
+        };
+        let takes = if filter == GARRISON {
+            let tm = self.master_of(tp, t.life.master_id)?;
+            let world = World {
+                players: &self.players,
+                drop_sites: &self.drop_sites,
+            };
+            (tm.kind == BUILDING
+                && t.life.state == 2
+                && world.allied(player, tp, true)
+                && tm.building.is_some_and(|b| b.garrison_type & 1 != 0))
+            .then_some(true)
+        } else {
+            Some(false)
+        };
+        self.record_town_bell(player, idx)?;
+        if let Some(flag) = takes {
+            self.players[player].objects[idx].town_bell.flag = flag;
+        }
+        Ok(())
+    }
+
+    /// `FUN_141206a20`: the unit's present work as its town-bell record
+    /// ([`crate::town_bell::TownBell::record`]): its top action's target (slot 400), or, for one
+    /// in a pasture the world holds, the pasture; without one the target of its unit AI's first
+    /// own queued order (`FUN_140c4da50`: issued by the unit, with a target), else none at its own
+    /// place. Then a Gather's or Hunt's target class (`+0x68`), its unit AI's current action
+    /// (`+0x44`) and the top action's second target (`FUN_140a78430`). The targets count only
+    /// where the world holds them.
+    pub(crate) fn record_town_bell(
+        &mut self,
+        player: usize,
+        idx: usize,
+    ) -> Result<(), Unsupported> {
+        use crate::town_bell::BackToWork;
+        let unit = &self.players[player].objects[idx];
+        if unit.town_bell.flag {
+            return Ok(());
+        }
+        if unit.unmodelled_action.is_some() {
+            return Err(Unsupported("a town-bell record of an action not held"));
+        }
+        let held = |id: i32| (0 <= id).then(|| self.object(id)).flatten();
+        let mut found = unit.top_target().and_then(held).map(|(_, t)| t);
+        if let Some(t) = found
+            && t.pasture != -1
+        {
+            found = held(t.pasture).map(|(_, p)| p);
+        }
+        if found.is_none() {
+            let own = unit.ai.as_ref().and_then(|ai| {
+                ai.orders
+                    .iter()
+                    .find(|o| 0 <= o.target && o.issuer == unit.id)
+                    .map(|o| o.target)
+            });
+            found = own.and_then(held).map(|(_, t)| t);
+        }
+        let (target, point) = found.map_or((-1, [unit.position[0], unit.position[1]]), |t| {
+            (t.id, [t.position[0], t.position[1]])
+        });
+        let target_type = match unit.top_action_kind() {
+            Some(HUNT) => unit.hunt.map_or(-1, |h| i32::from(h.target_class)),
+            _ => -1,
+        };
+        let ai = unit.ai.as_ref().ok_or(Unsupported(
+            "a town-bell record of a unit without a unit AI",
+        ))?;
+        let target2 = unit
+            .top_second_target()
+            .and_then(held)
+            .map_or(-1, |(_, t)| t.id);
+        let now = BackToWork {
+            target,
+            target_type,
+            action: ai.current_action,
+            target2,
+            point,
+        };
+        self.players[player].objects[idx].town_bell.record(now);
         Ok(())
     }
 

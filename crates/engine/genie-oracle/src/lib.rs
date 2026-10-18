@@ -279,6 +279,7 @@ fn unit(
             .map_or([0.0; 2], |c| [c.hitpoints_powerup, c.hitpoints_max_powerup]),
         workers: s.worker_num,
         last_human_order: s.last_human_order_time,
+        town_bell: object.combat().map(town_bell).unwrap_or_default(),
         combat: object.combat().is_some(),
         attack_timer: object
             .combat()
@@ -343,6 +344,36 @@ fn unit(
     let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.mover = m);
     unit.unmodelled_action = imported.and(production).and(moving).err();
     unit
+}
+
+/// A combat object's town-bell flag and back-to-work records.
+const fn town_bell(
+    c: &genie_save::generated::world::TribeCombatObject,
+) -> genie_core::town_bell::TownBell {
+    use genie_core::town_bell::{BackToWork, TownBell};
+    TownBell {
+        flag: c.town_bell_flag != 0,
+        work: BackToWork {
+            target: c.back_to_work1_town_bell_target_id,
+            target_type: c.back_to_work1_town_bell_target_type,
+            action: c.back_to_work1_town_bell_action,
+            target2: c.back_to_work1_town_bell_target_id2,
+            point: [
+                c.back_to_work1_town_bell_target_x,
+                c.back_to_work1_town_bell_target_y,
+            ],
+        },
+        before_building: BackToWork {
+            target: c.back_to_work2_town_bell_target_id,
+            target_type: c.back_to_work2_town_bell_target_type,
+            action: c.back_to_work2_town_bell_action,
+            target2: c.back_to_work2_town_bell_target_id2,
+            point: [
+                c.back_to_work2_town_bell_target_x,
+                c.back_to_work2_town_bell_target_y,
+            ],
+        },
+    }
 }
 
 /// A saved building's gate lock ([`genie_core::turn::Gate`]).
@@ -728,6 +759,13 @@ fn saved_actions(
     let base = action
         .base()
         .ok_or(Unsupported("a saved action without its base"))?;
+    // the second target (+0x34): only the Hunt (its drop site) and the missile (its shooter)
+    // hold one in the slice
+    if base.target2_id != -1
+        && !matches!(kind, genie_core::hunt::HUNT | genie_core::missile::MISSILE)
+    {
+        return Err(Unsupported("a saved action with a second target"));
+    }
     match kind {
         ARTIFACT_TYPE => {
             let move_to = match base.sub_actions.entries().next() {
@@ -2528,6 +2566,7 @@ impl Decoder {
                         .copied()
                         .take((c.num as usize).min(MAX_UNITS))
                         .collect(),
+                    target: c.t_id,
                     action: c.action,
                     human: c.field_0x20 == 1,
                 });
@@ -3023,6 +3062,8 @@ pub struct ObjectRow {
     pub combat: Option<(f32, bool, [f32; 2])>,
     /// A building's gate lock.
     pub gate: Option<genie_core::turn::Gate>,
+    /// A combat object's town-bell flag and back-to-work records.
+    pub town_bell: Option<genie_core::town_bell::TownBell>,
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
@@ -3206,6 +3247,24 @@ impl<A: Same, B: Same, C: Same> Same for (A, B, C) {
     }
 }
 
+impl Same for genie_core::town_bell::BackToWork {
+    fn same(&self, other: &Self) -> bool {
+        self.target == other.target
+            && self.target_type == other.target_type
+            && self.action == other.action
+            && self.target2 == other.target2
+            && self.point.same(&other.point)
+    }
+}
+
+impl Same for genie_core::town_bell::TownBell {
+    fn same(&self, other: &Self) -> bool {
+        self.flag == other.flag
+            && self.work.same(&other.work)
+            && self.before_building.same(&other.before_building)
+    }
+}
+
 impl Same for genie_core::movement::PathData {
     fn same(&self, other: &Self) -> bool {
         self.level == other.level
@@ -3268,6 +3327,7 @@ impl Same for ObjectRow {
             && self.gather.same(&other.gather)
             && self.combat.same(&other.combat)
             && self.gate == other.gate
+            && self.town_bell.same(&other.town_bell)
     }
 }
 
@@ -3344,6 +3404,7 @@ impl ObjectRow {
                 .combat
                 .then_some((unit.charge, unit.charge_hit, unit.hp_powerups)),
             gate: unit.gate,
+            town_bell: unit.combat.then_some(unit.town_bell),
         }
     }
 }
@@ -3460,6 +3521,7 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
                 )
             }),
             gate: saved_gate(object),
+            town_bell: object.combat().map(town_bell),
         })
         .collect())
 }
@@ -4628,6 +4690,11 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             format!("{:?}", g.combat),
         );
         field("gate", format!("{:?}", s.gate), format!("{:?}", g.gate));
+        field(
+            "town bell",
+            format!("{:?}", s.town_bell),
+            format!("{:?}", g.town_bell),
+        );
         match (&s.ai, &g.ai) {
             (Some(a), Some(b)) => {
                 for ((name, x), (_, y)) in a.fields.iter().zip(&b.fields) {

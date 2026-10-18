@@ -91,6 +91,8 @@ pub struct BuildingMaster {
     pub foundation_terrain: i16,
     /// `+0x98c`, `tech_id`: the technology its completion researches (−1 for none).
     pub tech: i16,
+    /// `+0x9bc`, `garrison_type`: the kinds of units it takes in (bit 0 villagers, `FUN_14120eb10`).
+    pub garrison_type: u8,
 }
 
 /// The master values the task finder and the work command read.

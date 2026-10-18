@@ -149,6 +149,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             stack_unit: b.stack_unit_id,
             foundation_terrain: b.foundation_terrain_id,
             tech: b.tech_id,
+            garrison_type: b.garrison_type,
         }),
         garrison: unit.garrison_capacity,
         recyclable: unit.recyclable != 0,

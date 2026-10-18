@@ -130,6 +130,8 @@ pub struct Unit {
     /// `+0x650`, `mLastHumanOrderTime`: the world time of the last order a human gave it
     /// (`FUN_140e5e780`, for a unit with a unit AI); an animal's idle check lowers it to 5000.
     pub last_human_order: u32,
+    /// A combat object's town-bell flag and back-to-work records ([`crate::town_bell`]).
+    pub town_bell: crate::town_bell::TownBell,
     /// The object is a combat object (types 50 and up): its update keeps its sight mask and its
     /// records in the objects-in-sight registry.
     pub combat: bool,
@@ -284,14 +286,17 @@ pub enum Command {
         state: u8,
     },
     /// `UNIT_ORDER` (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
-    /// decoder's) take the order `action` ([`Turns::unit_order`]); `human` (`+0x20`) sets their
-    /// last human order time first. Its target (`tId`, which action 5 reads), point, `qId`,
-    /// `param` and the flags `+0x1d`, `+0x1e` are not read by the actions modelled.
+    /// decoder's) take the order `action` ([`Turns::unit_order`]) with the object `target`
+    /// (`tId`, `+8`, which action 5 reads); `human` (`+0x20`) sets their last human order time
+    /// first. Its point, `qId`, `param` and the flags `+0x1d`, `+0x1e` are not read by the actions
+    /// modelled.
     UnitOrder {
         /// The player whose units take it.
         player: usize,
         /// The units.
         ids: Vec<i32>,
+        /// `tId`: the target object's id.
+        target: i32,
         /// The order's action (8: the drop-off).
         action: u8,
         /// `+0x20`: it sets their last human order time.
@@ -986,6 +991,22 @@ impl Unit {
                     .and_then(|m| m.action.as_ref())
                     .map(|a| a.target)
             })
+    }
+
+    /// The second target of its top action (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's
+    /// drop site, a missile's shooter; the slice's other actions hold none (an import checks the
+    /// save's). None without an action the slice holds.
+    #[must_use]
+    pub fn top_second_target(&self) -> Option<i32> {
+        match self.top_action_kind()? {
+            crate::hunt::HUNT => self.hunt.map(|h| h.carry_to),
+            crate::missile::MISSILE => self
+                .missile
+                .as_ref()
+                .and_then(|m| m.action.as_ref())
+                .map(|a| a.fired_from),
+            _ => Some(-1),
+        }
     }
 
     /// Slot 0x2d0 with 0 (`FUN_14106d170`): whether its top action may be interrupted (the group
@@ -3542,7 +3563,7 @@ impl Unit {
         &mut self,
         target: i32,
         range: f32,
-        c: &Context<'_>,
+        c: &mut Context<'_>,
     ) -> Result<(), Unsupported> {
         let top = self.top_action_kind();
         if self.unmodelled_action.is_some() || !matches!(top, Some(crate::move_to::MOVE_TO) | None)
@@ -3557,14 +3578,35 @@ impl Unit {
         if self.move_to.take().is_some() {
             mover.stop()?;
         }
-        self.move_to = Some(MoveToAction::to_target(
-            c.spatial,
-            self.position,
-            mover,
-            target,
-            range,
-            true,
-        )?);
+        let move_to =
+            MoveToAction::to_target(c.spatial, self.position, mover, target, range, true)?;
+        if move_to.arrived() {
+            self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+        }
+        self.move_to = Some(move_to);
+        Ok(())
+    }
+
+    /// A `MoveTo`'s `set_state` 1, not quiet, on the unit (`0x140aa29e0`): the master's standing
+    /// sprite where the slice holds the unit's sprite (slot 0x68 with slot 0x798's, a draw of the
+    /// Sprite stream), and its animation speed (`+0x7b8`) cleared where known.
+    pub(crate) fn shows_standing_sprite(
+        &mut self,
+        masters: Option<&Masters>,
+        graphics: &std::collections::BTreeMap<i16, Graphic>,
+        sprite_rng: &mut Well512,
+    ) -> Result<(), Unsupported> {
+        if self.sprite.is_some() {
+            let standing = masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.standing_sprite)
+                .and_then(|id| graphics.get(&id).copied())
+                .ok_or(Unsupported("an arrived walker without its standing sprite"))?;
+            crate::attack::set_sprite(&mut self.sprite, standing, sprite_rng);
+        }
+        if let Some(a) = self.anim_speed.as_mut() {
+            *a = 0.0;
+        }
         Ok(())
     }
 }
@@ -4567,6 +4609,7 @@ impl Turns {
                     untargetable: false,
                     under_attack: false,
                     last_human_order: 0,
+                    town_bell: crate::town_bell::TownBell::default(),
                     pasture: -1,
                     my_pasture: -1,
                     annex_of: None,
@@ -4663,13 +4706,14 @@ impl Turns {
             Command::UnitOrder {
                 player,
                 ref ids,
+                target,
                 action,
                 human,
             } => {
                 if human {
                     self.human_order(ids);
                 }
-                if let Err(e) = self.unit_order(player, ids, action) {
+                if let Err(e) = self.unit_order(player, ids, target, action) {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }
@@ -4872,8 +4916,10 @@ impl Turns {
     }
 
     /// BUILD's part for its own player: the cost, paid when the foundation is placed, and per
-    /// builder the work command on the foundation (slot 37, `FUN_14106ff70`): the master it builds
-    /// with ([`Masters::work_master`]), then the Build action from that master's task.
+    /// builder slot 0x128 on the foundation (its slot 0x7e8 with task filter −1: the town-bell
+    /// record, [`Turns::town_bell_order`]), then the work command (slot 37, `FUN_14106ff70`): the
+    /// master it builds with ([`Masters::work_master`]), then the Build action from that master's
+    /// task.
     fn task_builders(
         &mut self,
         player: usize,
@@ -5012,6 +5058,9 @@ impl Turns {
                 .iter()
                 .position(|o| o.id == id)
                 .expect("found above");
+            // slot 0x128 -> slot 0x7e8 (task filter -1): the villager's town-bell record, its
+            // flag cleared (FUN_1412067f0)
+            self.town_bell_order(player, idx, foundation, -1)?;
             // the work command (FUN_14106ff70): the master changes (slot 0x90, its action list
             // cleared); the Build action takes its foundation (FUN_140a7a230, slot 0x178)
             if self.players[player].objects[idx].life.master_id != with {
@@ -6080,6 +6129,14 @@ mod tests {
                 master_id: master,
                 ..Lifecycle::default()
             },
+            // a villager's unit AI (type 8) without an order or action
+            ai: Some(UnitAi {
+                ai_type: 8,
+                current_order: -1,
+                current_action: -1,
+                current_target: -1,
+                ..UnitAi::default()
+            }),
             ..Unit::default()
         };
         let mut t = Turns::new(
@@ -6131,6 +6188,14 @@ mod tests {
         // the builder at the foundation works in its first update; the other asks for a path, for
         // which these villagers lack their movement state
         assert_eq!((builder(0), builder(1)), ((118, Some(6)), (212, Some(4))));
+        // each idle villager's town-bell record: no work, at its own place
+        assert_eq!(
+            p.objects[1].town_bell.work,
+            crate::town_bell::BackToWork {
+                point: [29.0, 99.0],
+                ..crate::town_bell::BackToWork::NONE
+            }
+        );
         assert_eq!(
             p.unsupported,
             Some((1, 1, Unsupported("a walker without movement state")))
