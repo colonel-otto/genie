@@ -253,6 +253,8 @@ fn unit(
             s,
             |m| build_task(objects, civ, masters, m),
             |m| fly_task(objects, civ, masters, m),
+            |m, i| task_at(objects, civ, masters, m, i),
+            masters.map(|t| &t.graphics),
             &mut unit,
         )
     } else {
@@ -516,23 +518,31 @@ fn mover(
 }
 
 /// The point of the MoveTo a saved unit walks with to a target object: its top action's first
-/// sub-action when that is a MoveTo with a target (its `target_x`..`target_z`).
+/// sub-action (or that Attack's own first one) when that is a MoveTo with a target (its
+/// `target_x`..`target_z`).
 fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
     let (_, top) = object.actions()?.entries().next()?;
-    let (kind, sub) = top.base()?.sub_actions.entries().next()?;
+    let (mut kind, mut sub) = top.base()?.sub_actions.entries().next()?;
+    // a Hunt's Attack walks with a MoveTo of its own
+    if kind == genie_core::attack::ATTACK {
+        (kind, sub) = sub.base()?.sub_actions.entries().next()?;
+    }
     let b = sub.base()?;
     (kind == genie_core::move_to::MOVE_TO && b.target_id != -1)
         .then_some([b.target_x, b.target_y, b.target_z])
 }
 
 /// The top action of a saved object as the slice models it: the Artifact action (107), the
-/// Build action (101) with its MoveTo, a MoveTo of its own (type 1) and a bird's Fly action (10)
-/// with its MoveTo. Any other saved action stops the object's player.
+/// Build action (101) with its MoveTo, a MoveTo of its own (type 1), a bird's Fly action (10)
+/// with its MoveTo and the Hunt (110) with its Attack or MoveTo. Any other saved action stops the
+/// object's player.
 fn saved_actions(
     object: &genie_save::Object,
     s: &RgeStaticObject,
     work: impl Fn(i16) -> Result<genie_core::build::BuildTask, Unsupported>,
     fly_task: impl Fn(i16) -> Result<genie_core::masters::Task, Unsupported>,
+    task_at: impl Fn(i16, i16) -> Result<genie_core::masters::Task, Unsupported>,
+    graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
     unit: &mut Unit,
 ) -> Result<(), Unsupported> {
     use genie_core::build::{BUILD, BuildAction, MoveTo};
@@ -632,8 +642,113 @@ fn saved_actions(
             });
             Ok(())
         }
+        genie_core::hunt::HUNT => {
+            use genie_core::hunt::{ATTACK, FACE, GATHER, HuntAction, HuntTask, WALK};
+            let part = action
+                .tribe_action_hunt
+                .as_ref()
+                .ok_or(Unsupported("a saved Hunt without its own part"))?;
+            if !matches!(base.state, WALK | FACE | GATHER | ATTACK) {
+                return Err(Unsupported(
+                    "a saved Hunt in a state the slice does not model",
+                ));
+            }
+            let t = task_at(s.master_obj, base.short_val)?;
+            let task = HuntTask {
+                id: t.id,
+                range: t.work_range,
+                resource: t.attribute_type,
+                sprites: t.sprites,
+                work_value: t.work_val1,
+                productivity: t.attribute_type2,
+                kind4: t.attribute_type4,
+            };
+            let mut hunt = HuntAction {
+                target: base.target_id,
+                state: base.state,
+                point: [base.target_x, base.target_y, base.target_z],
+                target_class: part.target_type as i16,
+                task,
+                attack: None,
+                move_to: None,
+                walk_range: task.range,
+                drop_site: part.sheep_drop_site_id as i32,
+            };
+            match base.sub_actions.entries().next() {
+                None => {}
+                Some((genie_core::attack::ATTACK, sub)) => {
+                    hunt.attack = Some(saved_attack(sub, graphics, &move_to_state)?);
+                }
+                Some((MOVE_TO, sub)) => {
+                    hunt.move_to = Some(move_to_state(sub.base().map_or(0, |b| b.state))?);
+                    hunt.walk_range = sub
+                        .move_to_range()
+                        .ok_or(Unsupported("a saved MoveTo without its range"))?;
+                }
+                Some(_) => return Err(Unsupported("a saved Hunt with another sub-action")),
+            }
+            unit.hunt = Some(hunt);
+            Ok(())
+        }
         _ => Err(Unsupported("a saved action the slice does not import")),
     }
+}
+
+/// A saved Attack sub-action (type 9, `FUN_140a7c880`): its target, state, timer, ranges, point,
+/// the target's last place (`+0xa4`..), a hit still to land (`+0x9e`), its MoveTo, and its sprites
+/// and frames. The load restores the sprites at `+0x70`, `+0x80` and `+0x88` from the second to
+/// fourth saved ids (the first goes to `+0x68`); the second attack sprite (`+0x78`) and the
+/// swing's times (`+0xb0`, `+0xb4`) are not saved, and a loaded Attack starts without them.
+fn saved_attack(
+    sub: &genie_save::generated::world::Action,
+    graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
+    move_to_state: &dyn Fn(u8) -> Result<genie_core::move_to::MoveTo, Unsupported>,
+) -> Result<genie_core::attack::Attack, Unsupported> {
+    use genie_core::move_to::MOVE_TO;
+    let b = sub
+        .base()
+        .ok_or(Unsupported("a saved Attack without its base"))?;
+    let a = sub
+        .rge_action_by_type
+        .as_ref()
+        .and_then(|t| t.rge_action_attack.as_ref())
+        .ok_or(Unsupported("a saved Attack without its own part"))?;
+    let graphics = graphics.ok_or(Unsupported("a saved Attack without the sprites' table"))?;
+    let g = |id: u16| {
+        let id = id as i16;
+        (0 <= id).then(|| graphics.get(&id).copied()).flatten()
+    };
+    let move_to = match b.sub_actions.entries().next() {
+        None => None,
+        Some((MOVE_TO, s2)) => Some(move_to_state(s2.base().map_or(0, |b| b.state))?),
+        Some(_) => return Err(Unsupported("a saved Attack with another sub-action")),
+    };
+    Ok(genie_core::attack::Attack {
+        target: b.target_id,
+        state: b.state,
+        timer: b.timer,
+        range: a.range,
+        min_range: a.min_range,
+        point: [b.target_x, b.target_y, b.target_z],
+        seen: [
+            a.last_target_position_x,
+            a.last_target_position_y,
+            a.last_target_position_z,
+        ],
+        move_to,
+        pending: a.need_to_attack != 0,
+        swing: 0.0,
+        rest: 0.0,
+        arms: genie_core::attack::Arms {
+            sprite: g(a.short_val_2),
+            second_sprite: None,
+            idle_sprite: g(a.short_val_3),
+            idle_attack_sprite: g(a.short_val_4),
+            missile: a.missile_id,
+            fire_frame: a.frame_delay,
+            interrupt_frame: a.interrupt_animation_at_frame,
+        },
+    })
 }
 
 /// A builder's Build task (the game's Build action keeps a pointer to it, in its master's saved
@@ -1078,6 +1193,59 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
 }
 
 /// A saved task as the engine reads it.
+/// A master's action part, whatever class it is: what holds its work rate, search radius and
+/// task list.
+fn action_part(m: &Master) -> Option<&genie_save::generated::world::RgeMasterActionObject> {
+    None.or(m
+        .tribe_master_combat_object
+        .as_ref()
+        .map(|c| &c.rge_master_combat_object.rge_master_action_object))
+        .or(m.tribe_master_building_object.as_ref().map(|b| {
+            &b.tribe_master_combat_object
+                .rge_master_combat_object
+                .rge_master_action_object
+        }))
+        .or(m.rge_master.as_ref().and_then(|r| {
+            r.rge_master_action_object.as_ref().or(r
+                .rge_master_combat_object
+                .as_ref()
+                .map(|c| &c.rge_master_action_object))
+        }))
+}
+
+/// The task at `index` in a master's task list (its saved list, else the `.dat`'s): the task a
+/// saved action's base `short_val` names (the base load `FUN_140a7a2f0` resolves it to `+0x48`
+/// at `0x140a7b5e8`).
+fn task_at(
+    objects: &PlayerObjects,
+    civ: u8,
+    masters: Option<&MasterTable>,
+    master: i16,
+    index: i16,
+) -> Result<genie_core::masters::Task, Unsupported> {
+    let i = usize::try_from(index).map_err(|_| Unsupported("a saved action without its task"))?;
+    let saved = objects
+        .master(master)
+        .and_then(action_part)
+        .and_then(|a| a.tasks.as_ref());
+    if let Some(tasks) = saved {
+        return tasks
+            .list
+            .get(i)
+            .map(|e| core_task(&e.task))
+            .ok_or(Unsupported(
+                "a saved action's task beyond its master's list",
+            ));
+    }
+    masters
+        .and_then(|t| t.work(civ, master))
+        .and_then(|w| w.tasks.get(i))
+        .copied()
+        .ok_or(Unsupported(
+            "a saved action's task the data file does not have",
+        ))
+}
+
 fn core_task(t: &genie_save::generated::world::Task) -> genie_core::masters::Task {
     genie_core::masters::Task {
         id: t.id,
@@ -1109,25 +1277,7 @@ fn work_masters(
     civ: u8,
     table: &MasterTable,
 ) -> genie_core::masters::Masters {
-    use genie_save::generated::world::RgeMasterActionObject;
     let task = core_task;
-    fn action_part(m: &Master) -> Option<&RgeMasterActionObject> {
-        None.or(m
-            .tribe_master_combat_object
-            .as_ref()
-            .map(|c| &c.rge_master_combat_object.rge_master_action_object))
-            .or(m.tribe_master_building_object.as_ref().map(|b| {
-                &b.tribe_master_combat_object
-                    .rge_master_combat_object
-                    .rge_master_action_object
-            }))
-            .or(m.rge_master.as_ref().and_then(|r| {
-                r.rge_master_action_object.as_ref().or(r
-                    .rge_master_combat_object
-                    .as_ref()
-                    .map(|c| &c.rge_master_action_object))
-            }))
-    }
     let saved = objects.masters.iter().flatten().map(|m| &m.master);
     genie_core::masters::Masters::new(saved.filter_map(|m| {
         let s = m.static_part()?;
