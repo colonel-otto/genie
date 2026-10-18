@@ -74,10 +74,10 @@ const MASTER_1808: i16 = 1808;
 const MASTER_1893: i16 = 1893;
 const MASTER_1897: i16 = 1897;
 /// A building's master type (`'P'`); types below 30 do not move.
-const BUILDING: u8 = 80;
+pub(crate) const BUILDING: u8 = 80;
 const MOVING: u8 = 30;
 /// The task filter of garrisoning (3).
-const GARRISON: i16 = 3;
+pub(crate) const GARRISON: i16 = 3;
 
 /// Where an object is: its player and its index in the live or the sleeping list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -246,7 +246,17 @@ impl Turns {
     /// 60, drops an id the next one repeats, and leaves out of any group a unit above type 69 whose
     /// master's formation category is 0 (villagers). A unit in a group (`+0x6d0`), one it may
     /// group and an order to more than 60 units are not modelled.
-    fn loose_units(&self, units: &[i32]) -> Result<Vec<i32>, Unsupported> {
+    pub(crate) fn loose_units(&self, units: &[i32]) -> Result<Vec<i32>, Unsupported> {
+        self.loose_units_kept(units, &|_| Ok(true))
+    }
+
+    /// [`Turns::loose_units`] where, after the sort, `kept` drops units (the garrison command's
+    /// test, `FUN_140fd9ae0` for command `0x2713`).
+    pub(crate) fn loose_units_kept(
+        &self,
+        units: &[i32],
+        kept: &dyn Fn(i32) -> Result<bool, Unsupported>,
+    ) -> Result<Vec<i32>, Unsupported> {
         if 60 < units.len() {
             return Err(Unsupported("an order to more than 60 units"));
         }
@@ -263,6 +273,9 @@ impl Turns {
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
+            if !kept(id)? {
+                continue;
+            }
             let master = self.master_of(p, u.life.master_id)?;
             left.push(Splittable {
                 id,
@@ -640,12 +653,12 @@ impl Turns {
         &mut self,
         player: usize,
         ids: &[i32],
-        target: i32,
         action: u8,
     ) -> Result<(), Unsupported> {
-        let _ = target;
         if action != 8 {
-            return Err(Unsupported("a UNIT_ORDER other than the drop-off (8)"));
+            return Err(Unsupported(
+                "a UNIT_ORDER other than the garrison (5) and the drop-off (8)",
+            ));
         }
         for &id in ids {
             let Some(place) = self.place(id) else {
@@ -1355,6 +1368,7 @@ impl Turns {
             return Ok(());
         }
         match task.action_type {
+            crate::garrison::ENTER => self.start_enter(player, idx, target, &task, point, clears),
             HUNT => self.start_hunt(
                 player,
                 idx,
@@ -1588,7 +1602,11 @@ impl Turns {
         let by = self.releaser(player, idx);
         let objects = &mut self.players[player].objects;
         let unit = &mut objects[idx];
-        if unit.artifact.is_some() || unit.fly.is_some() || unit.production.is_some() {
+        if unit.artifact.is_some()
+            || unit.fly.is_some()
+            || unit.production.is_some()
+            || unit.enter.is_some()
+        {
             return Err(Unsupported(
                 "clearing an action list the slice does not model",
             ));
@@ -1663,7 +1681,7 @@ impl Turns {
         let old = self.master_of(player, unit.life.master_id)?.clone();
         let next = self.master_of(player, new)?.clone();
         if unit.life.state < 3 {
-            if unit.life.inside {
+            if unit.life.inside.is_some() {
                 return Err(Unsupported("a master change of an object inside another"));
             }
             if old.damage_sprites || next.damage_sprites {

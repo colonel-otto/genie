@@ -102,6 +102,9 @@ pub struct Master {
     pub id: i16,
     /// The master's type (`+0x8`): 70 for a combat unit, 80 (`'P'`) for a building.
     pub kind: u8,
+    /// `+0x158`, the `.dat`'s `copy_id`: the master a garrison order asks a building about
+    /// (`FUN_141621220`).
+    pub copy_id: i16,
     /// `+0x410`.
     pub class: i16,
     /// `+0x7b8`, the `.dat`'s `TaskSwapGroup` (the save does not carry it); 0 for none.

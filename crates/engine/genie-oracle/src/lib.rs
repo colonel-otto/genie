@@ -978,6 +978,36 @@ fn saved_actions(
             unit.hunt = Some(hunt);
             Ok(())
         }
+        genie_core::garrison::ENTER => {
+            use genie_core::garrison::{ENTERED, EnterAction};
+            let first_time = action
+                .rge_action_enter
+                .as_deref()
+                .ok_or(Unsupported("a saved Enter without its own part"))?
+                .first_time_enter;
+            let move_to = match base.sub_actions.entries().next() {
+                None => None,
+                Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
+                Some(_) => return Err(Unsupported("a saved Enter with another sub-action")),
+            };
+            if !matches!(base.state, ENTERED | 2 | 4) {
+                return Err(Unsupported(
+                    "a saved Enter in a state the slice does not model",
+                ));
+            }
+            let task = task_at(s.master_obj, base.short_val)?;
+            unit.enter = Some(EnterAction {
+                target: base.target_id,
+                state: base.state,
+                move_to,
+                point: [base.target_x, base.target_y, base.target_z],
+                range: task.work_range,
+                timer: base.timer,
+                retry: first_time != 0,
+                task_class: task.object_group,
+            });
+            Ok(())
+        }
         genie_core::explore::EXPLORE => {
             let move_to = match base.sub_actions.entries().next() {
                 None => None,
@@ -1448,7 +1478,7 @@ fn lifecycle(
         death_spawn: death_spawn >= 0,
         remains,
         death_facets,
-        inside: s.inside_obj != -1,
+        inside: (s.inside_obj != -1).then_some(s.inside_obj),
         goto_sleep: s.goto_sleep_flag != 0,
         master_id: s.master_obj,
         master,
@@ -2567,6 +2597,8 @@ impl Decoder {
                         .take((c.num as usize).min(MAX_UNITS))
                         .collect(),
                     target: c.t_id,
+                    through_ai: c.field_0x1d != 0,
+                    nearby: c.field_0x1e != 0,
                     action: c.action,
                     human: c.field_0x20 == 1,
                 });

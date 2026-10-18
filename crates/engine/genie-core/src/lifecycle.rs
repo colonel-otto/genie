@@ -57,8 +57,8 @@ pub struct Lifecycle {
     /// one) starts on a random facet (sequence flag 4) of this many (more than one): its death
     /// draws the facet from the Object stream.
     pub death_facets: Option<i16>,
-    /// `+0x2f0`: the object is inside another, whose update decides for it.
-    pub inside: bool,
+    /// `+0x2f0`: the object it is inside (its `inside_obj`), whose update decides for it.
+    pub inside: Option<i32>,
     /// `+0x643`: the next update moves the object to the sleeping list.
     pub goto_sleep: bool,
     /// The master's id: the static update has a special case for 61.
@@ -80,7 +80,7 @@ impl Default for Lifecycle {
             death_spawn: false,
             remains: -1,
             death_facets: None,
-            inside: false,
+            inside: None,
             goto_sleep: false,
             master_id: -1,
             master: None,
@@ -154,7 +154,7 @@ impl Lifecycle {
     /// need the visibility map, which the slice does not hold: it assumes none, as for the
     /// visible-resource lists (`FUN_141090430`), the statistics and the sounds.
     fn die(&mut self, object: &mut Well512) -> Result<(), Unsupported> {
-        if self.inside {
+        if self.inside.is_some() {
             return Err(Unsupported("an object inside another dies"));
         }
         if self.master_id == 61 {
@@ -294,7 +294,7 @@ mod tests {
     fn the_paths_not_modelled_are_unsupported() {
         let cases = [
             Lifecycle {
-                inside: true,
+                inside: Some(1),
                 ..dead(Class::Static)
             },
             Lifecycle {

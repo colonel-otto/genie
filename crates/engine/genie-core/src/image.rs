@@ -104,6 +104,14 @@ pub mod fly {
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
 }
 
+/// The values `crate::garrison`'s port reads.
+pub mod garrison {
+    /// 3.4028234663852886e+38
+    pub const FAR: f32 = f32::from_bits(0x7f7f_ffff);
+    /// 0.2
+    pub const LEAST_HP_SHARE: f64 = f64::from_bits(0x3fc9_9999_9999_999a);
+}
+
 /// The values `crate::gather_search`'s port reads.
 pub mod gather_search {
     /// 20.0

@@ -251,7 +251,7 @@ impl Turns {
             ));
         }
         let owner = &self.players[p];
-        if owner.objects.iter().any(|u| u.life.inside) {
+        if owner.objects.iter().any(|u| u.life.inside.is_some()) {
             return Err(Unsupported(
                 "an effect while units are garrisoned (FUN_141217ac0)",
             ));
@@ -367,7 +367,7 @@ mod tests {
         let m = t.masters[0].get(83).unwrap();
         assert_eq!((m.hit_points, m.armors.clone()), (40, vec![(4, 1), (3, 2)]));
         // a garrisoned unit's building would change its garrison bonus: not modelled
-        t.players[0].objects[1].life.inside = true;
+        t.players[0].objects[1].life.inside = Some(1);
         assert!(t.do_effect(0, &loom).is_err());
     }
 }

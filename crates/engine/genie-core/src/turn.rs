@@ -93,6 +93,8 @@ pub struct Unit {
     pub attack: Option<crate::attack::Attack>,
     /// An auto scout's Explore action, its top action.
     pub explore: Option<crate::explore::ExploreAction>,
+    /// A unit's Enter action (a garrison), its top action.
+    pub enter: Option<crate::garrison::EnterAction>,
     /// A missile's own part with its action ([`crate::missile`]).
     pub missile: Option<crate::missile::Missile>,
     /// `+0x900`, `attack_count`: the swings that fired a missile (`FUN_141081020`).
@@ -287,9 +289,9 @@ pub enum Command {
     },
     /// `UNIT_ORDER` (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
     /// decoder's) take the order `action` ([`Turns::unit_order`]) with the object `target`
-    /// (`tId`, `+8`, which action 5 reads); `human` (`+0x20`) sets their last human order time
-    /// first. Its point, `qId`, `param` and the flags `+0x1d`, `+0x1e` are not read by the actions
-    /// modelled.
+    /// (`tId`, `+8`, which action 5 reads) and the flags `+0x1d`, `+0x1e`; `human` (`+0x20`) sets
+    /// their last human order time first. Its point, `qId` and `param` are not read by the
+    /// actions modelled.
     UnitOrder {
         /// The player whose units take it.
         player: usize,
@@ -297,6 +299,10 @@ pub enum Command {
         ids: Vec<i32>,
         /// `tId`: the target object's id.
         target: i32,
+        /// `+0x1d`: a garrison goes through the units' unit AIs (their slot 0x30).
+        through_ai: bool,
+        /// `+0x1e`: a garrison takes the buildings of the target's master near it.
+        nearby: bool,
         /// The order's action (8: the drop-off).
         action: u8,
         /// `+0x20`: it sets their last human order time.
@@ -964,6 +970,7 @@ impl Unit {
             self.explore
                 .map(|e| action(crate::explore::EXPLORE, e.state))
         })
+        .or_else(|| self.enter.map(|e| action(crate::garrison::ENTER, e.state)))
         .or_else(|| {
             self.missile
                 .as_ref()
@@ -985,6 +992,7 @@ impl Unit {
             .or_else(|| self.hunt.map(|h| h.target))
             .or_else(|| self.attack.map(|a| a.target))
             .or_else(|| self.explore.map(|_| -1))
+            .or_else(|| self.enter.map(|e| e.target))
             .or_else(|| {
                 self.missile
                     .as_ref()
@@ -1035,6 +1043,71 @@ impl Unit {
         })
     }
 
+    /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads of its
+    /// building, one of its own player's (another player's is not modelled): its state, room
+    /// for the unit (its count, the units of the player inside it, plus 1 within its master's
+    /// capacity) and whether the unit is in reach of it. The enter itself (`FUN_140a867b0`) is
+    /// not modelled.
+    fn enter_update(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        me: Me,
+    ) -> Result<(), Unsupported> {
+        let enter = self.enter.expect("checked by the caller");
+        let target = others.iter().find(|u| u.id == enter.target);
+        let building = match target {
+            Some(t) => {
+                let master = c
+                    .masters
+                    .and_then(|m| m.get(t.life.master_id))
+                    .ok_or(Unsupported(
+                        "an Enter's building of a master the slice lacks",
+                    ))?;
+                let inside = others
+                    .iter()
+                    .filter(|u| u.life.inside == Some(t.id))
+                    .count();
+                let room = inside < usize::from(master.garrison);
+                let (me_at, me_r) = c
+                    .spatial
+                    .get_known(self.id)?
+                    .map(|p| (p.position, p.radius))
+                    .ok_or(Unsupported("an entering unit without a place"))?;
+                let (t_at, t_r) = c
+                    .spatial
+                    .get_known(t.id)?
+                    .map(|p| (p.position, p.radius))
+                    .ok_or(Unsupported("an Enter's building without a place"))?;
+                let gap = footprint_gap_squared(me_at, me_r, t_at, t_r);
+                Some(crate::garrison::EnterTarget {
+                    state: t.life.state,
+                    allied: true,
+                    room,
+                    position: t.position,
+                    in_reach: crate::garrison::EnterAction::in_reach(enter.range, gap, 0.0)?,
+                })
+            }
+            None if c.foreign.find(enter.target).is_some() => {
+                return Err(Unsupported("an Enter into another player's building"));
+            }
+            None => None,
+        };
+        let walk = c.walk(self.mover.as_mut(), me);
+        let step = self
+            .enter
+            .as_mut()
+            .expect("checked above")
+            .update(walk, building)?;
+        if step.enter {
+            return Err(Unsupported("the enter into a building (FUN_140a867b0)"));
+        }
+        if step.done {
+            return Err(Unsupported("a done Enter outside its building"));
+        }
+        Ok(())
+    }
+
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes (`FUN_140a98620`; a
     /// `MoveTo`'s teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
     /// 0x68 with slot 0x798's, [`crate::attack::set_sprite`]) where the slice holds its sprite.
@@ -1075,6 +1148,7 @@ impl Unit {
             || self.fly.is_some()
             || self.hunt.is_some()
             || self.attack.is_some()
+            || self.enter.is_some()
             || self.unmodelled_action.is_some()
         {
             return Err(Unsupported(
@@ -2096,7 +2170,7 @@ impl Unit {
                 death_spawn: 0 <= made.death_spawns[0],
                 remains,
                 death_facets: None,
-                inside: false,
+                inside: None,
                 goto_sleep: false,
                 master_id: made.id,
                 master: made.life,
@@ -2505,7 +2579,7 @@ impl Unit {
                 );
             }
             if self.life.state < 7 {
-                if self.life.inside {
+                if self.life.inside.is_some() {
                     return Err(Unsupported(
                         "a destroyed object inside another (slot 0x1a8)",
                     ));
@@ -2795,6 +2869,9 @@ impl Unit {
                     self.post_own(BUILD_IDLE, [BUILD_ACTION, 0, 0])?;
                 }
             }
+        }
+        if self.enter.is_some() {
+            self.enter_update(c, others, me)?;
         }
         if self.missile.as_ref().is_some_and(|m| m.action.is_some()) {
             self.fly(c, others)?;
@@ -3304,14 +3381,14 @@ impl Unit {
         {
             ai.time_since_enemy += c.dt_seconds;
         }
-        let runs = turn.is_some() || !self.life.inside;
+        let runs = turn.is_some() || self.life.inside.is_none();
         if let Some(orders) = self
             .ai
             .as_ref()
             .filter(|_| self.life.is_alive() && runs)
             .map(|ai| !ai.orders.is_empty())
         {
-            if turn.is_some() && busy && self.life.inside {
+            if turn.is_some() && busy && self.life.inside.is_some() {
                 return Err(Unsupported("a busy unit inside another"));
             }
             // slot 0x2d0 matters only to a queue with orders
@@ -3342,7 +3419,7 @@ impl Unit {
                 search_radius: master.map_or(0.0, |m| m.search_radius),
                 interruptible,
                 task_0x99: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x99)),
-                garrisoned: self.life.inside,
+                garrisoned: self.life.inside.is_some(),
                 foundations: master.is_some_and(|m| {
                     let reach = m.search_radius.max(m.line_of_sight) as i32;
                     let (x, y) = (self.position[0] as i32, self.position[1] as i32);
@@ -3475,7 +3552,7 @@ impl Unit {
             .ok_or(Unsupported(
                 "an ownership change to a player without the master",
             ))?;
-        if self.life.inside {
+        if self.life.inside.is_some() {
             return Err(Unsupported(
                 "an ownership change of an object inside another",
             ));
@@ -3741,7 +3818,7 @@ fn drop_site_search(
         }
         let at_work =
             40 <= master.kind && o.top_action_kind().is_some_and(|k| AT_WORK.contains(&k));
-        if at_work || o.life.inside {
+        if at_work || o.life.inside.is_some() {
             continue;
         }
         let d = if let Some(s) = seeker.as_mut() {
@@ -4160,7 +4237,7 @@ impl Turns {
     fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), Unsupported> {
         let u = &self.players[q].objects[j];
         let (id, master_id) = (u.id, u.life.master_id);
-        if u.life.inside {
+        if u.life.inside.is_some() {
             return Err(Unsupported(
                 "an ownership change of an object inside another",
             ));
@@ -4617,6 +4694,7 @@ impl Turns {
                     hunt: None,
                     attack: None,
                     explore: None,
+                    enter: None,
                     missile: None,
                     attack_count: 0,
                     // every building holds a gate's lock, open
@@ -4707,13 +4785,20 @@ impl Turns {
                 player,
                 ref ids,
                 target,
+                through_ai,
+                nearby,
                 action,
                 human,
             } => {
                 if human {
                     self.human_order(ids);
                 }
-                if let Err(e) = self.unit_order(player, ids, target, action) {
+                let result = if action == 5 {
+                    self.garrison_order(player, ids, target, through_ai, nearby)
+                } else {
+                    self.unit_order(player, ids, action)
+                };
+                if let Err(e) = result {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }
@@ -4895,7 +4980,7 @@ impl Turns {
                     "a footprint clearing of a flag master (FUN_140fde270)",
                 ));
             }
-            if u.life.inside
+            if u.life.inside.is_some()
                 || self
                     .spatial
                     .get(id)
@@ -5736,7 +5821,7 @@ pub(crate) fn victim_of(
     } else {
         [0.0; 2]
     };
-    let defense = if master.terrain_bonus < 0 || u.life.inside {
+    let defense = if master.terrain_bonus < 0 || u.life.inside.is_some() {
         Some(1.0)
     } else {
         terrain.and_then(|t| {

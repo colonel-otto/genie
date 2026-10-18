@@ -48,6 +48,7 @@ mod id {
     pub const ID_448: i16 = 448; // 0x625c
     pub const ID_546: i16 = 546; // 0x62be
     pub const ID_1105: i16 = 1105; // 0x64ed
+    pub const ID_1808: i16 = 1808; // 0x67ac
 }
 
 /// The task types the general search leaves out (`FUN_14109f8c0`: 151, 152, 154, 155, 157, 160).
@@ -318,6 +319,51 @@ fn general<'m>(
     })
 }
 
+/// The task finder with filter 3 (`FUN_1412784d0`'s first part, which mode 1 runs too): on its
+/// player's or a mutually allied player's building in state 2 that garrisons, for a unit master
+/// of type 70 or master 1808, the first garrison task on buildings
+/// ([`crate::garrison::is_garrison_task`]) when the building's `garrison_type` takes the master
+/// ([`crate::garrison::garrison_type_takes`], class 42 left out); none on a building whose top
+/// action is `0x7c` or `0x7d` (`FUN_1411e8630`; a computer player's production comes first,
+/// `FUN_1411d5520`), which is not modelled. Then none, unless the target's master has object flag
+/// 0 (the garrison into a transport, not modelled).
+fn garrison_task<'m>(
+    list: &'m Master,
+    actor: &Actor<'_>,
+    target: Option<&TaskTarget<'_>>,
+    dip: &impl Diplomacy,
+) -> Result<Option<&'m Task>, Unsupported> {
+    let Some(t) = target else {
+        return Ok(None);
+    };
+    let mutual =
+        dip.allied(actor.player, t.player, true) && dip.allied(t.player, actor.player, true);
+    if (t.player == actor.player || mutual)
+        && t.player != 0
+        && t.state == 2
+        && t.master.kind == BUILDING
+        && (list.kind == 70 || list.id == id::ID_1808)
+        && t.master.garrison != 0
+    {
+        let garrison_type = t.master.building.map_or(0, |b| b.garrison_type);
+        let takes = crate::garrison::garrison_type_takes(garrison_type, list.class, list.id, false);
+        if let Some(task) = first(list, crate::garrison::is_garrison_task).filter(|_| takes) {
+            if matches!(t.top_action, Some(0x7c | 0x7d)) {
+                return Err(Unsupported(
+                    "a garrison task on a building at work 0x7c or 0x7d (FUN_1411e8630)",
+                ));
+            }
+            return Ok(Some(task));
+        }
+    }
+    if t.master.object_flags & 1 == 0 {
+        return Ok(None);
+    }
+    Err(Unsupported(
+        "the task finder's garrison into a target with object flag 0",
+    ))
+}
+
 /// The task of `list` (a master's task list) for `actor` on `target` (`FUN_1412784d0` with the
 /// work command's arguments: the target's point, the filter (−1 any, else an action type) and mode
 /// 0). `target` is an annex's main building already (the finder's first step, `+0xbb8`); `general`
@@ -333,10 +379,10 @@ pub fn find_task<'m>(
     filter: i16,
     dip: &impl Diplomacy,
 ) -> Result<Option<&'m Task>, Unsupported> {
-    if filter == 3 {
-        return Err(Unsupported("the task finder for garrisoning (filter 3)"));
-    }
     let own = actor.master;
+    if filter == 3 {
+        return garrison_task(list, actor, target, dip);
+    }
     if let Some(t) = target
         && own.object_flags & 0x10 != 0
         && t.master.class == class::PREY

@@ -103,6 +103,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
     work::Master {
         id,
         kind: unit.unit_type,
+        copy_id: unit.copy_id,
         class: unit.class,
         task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),
         radius: [unit.collision_size[0], unit.collision_size[1]],

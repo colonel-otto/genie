@@ -1599,7 +1599,8 @@ impl UnitAi {
     }
 
     /// The units the update models after its target block ([`UnitAi::target_block`]): a target
-    /// only on a villager's build or hunt (702/602, 713/613), on the follow order (712 with its
+    /// only on a villager's build, hunt or garrison (702/602, 713/613, 717/617), on the follow
+    /// order (712 with its
     /// action 612, the move's 610 or none) or without an order and an action (a hunt ended by
     /// its queued orders); busy (`busy`, the actions left), only those or a unit
     /// on MOVE's order without a target (710/610, or an animal's own wander), and for the types
@@ -1610,6 +1611,7 @@ impl UnitAi {
             order,
             (BUILD_ORDER, BUILD_ACTION)
                 | (HUNT_ORDER, HUNT_ACTION)
+                | (crate::garrison::ENTER_ORDER, crate::garrison::ENTER_ACTION)
                 | (FOLLOW_ORDER, FOLLOW_ACTION | MOVE_ACTION | -1)
         );
         let moving = matches!(order, (MOVE_ORDER | -1, MOVE_ACTION)) && self.current_target == -1;
