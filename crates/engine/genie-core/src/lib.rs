@@ -17,6 +17,7 @@ pub mod long_path;
 pub mod los_tables;
 pub mod masters;
 pub mod mesh;
+pub mod missile;
 pub mod move_to;
 pub mod movement;
 pub mod msvc;

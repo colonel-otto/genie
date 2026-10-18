@@ -221,6 +221,13 @@ pub struct Master {
     pub hit_chance: i16,
     pub reload: f32,
     pub weapons: Vec<(i16, i16)>,
+    /// Where its missile starts from its place, turned by its facing (`+0x844`..`+0x84c`,
+    /// `weapon_offset`), and how far a missed missile strays per tile of the way
+    /// (`missed_missile_spread`, `+0x860`).
+    pub weapon_offset: [f32; 3],
+    pub missed_spread: f32,
+    /// A missile master's flight (type 60, [`crate::missile::MissileStats`]).
+    pub missile_stats: Option<crate::missile::MissileStats>,
     /// What a unit of this master moves with, its speed with the master's walking sprite (the
     /// run sprite `+0x750` if it has one, else the move sprite `+0x748`); None for a master that
     /// does not move.

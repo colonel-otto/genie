@@ -120,6 +120,21 @@ pub mod long_path {
     pub const REACHED: f32 = f32::from_bits(0x3f800000);
 }
 
+pub mod missile {
+    /// -2.0
+    pub const BEYOND: f32 = f32::from_bits(0xc0000000);
+    /// 32767.0
+    pub const DRAW_SCALE: f32 = f32::from_bits(0x46fffe00);
+    /// 0.5
+    pub const HALF: f32 = f32::from_bits(0x3f000000);
+    /// 3.0
+    pub const HEIGHT_SHARE: f32 = f32::from_bits(0x40400000);
+    /// 0.10000000149011612
+    pub const LANDING: f32 = f32::from_bits(0x3dcccccd);
+    /// 2.0
+    pub const REACH_MARGIN: f32 = f32::from_bits(0x40000000);
+}
+
 pub mod move_to {
     /// 0.009999999776482582
     pub const ARRIVED: f32 = f32::from_bits(0x3c23d70a);
