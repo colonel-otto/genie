@@ -4209,6 +4209,16 @@ pub fn forced_run(
                         ),
                     ));
                 }
+                // the next frame seed: a free run draws the game's
+                if turns.frame_seed != after.game.frame_seed {
+                    report.differences.push((
+                        0,
+                        format!(
+                            "frame seed slice {} game {}",
+                            turns.frame_seed, after.game.frame_seed
+                        ),
+                    ));
+                }
                 times.compare += clock.elapsed();
                 let clock = std::time::Instant::now();
                 let SavedStep {
