@@ -48,13 +48,13 @@ impl ColorTable {
     /// Write this colour table to an output stream.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i32::<LE>(self.id)?;
-        output.write_i32::<LE>(self.base.try_into().unwrap())?;
-        output.write_i32::<LE>(self.unit_outline_color.try_into().unwrap())?;
-        output.write_i32::<LE>(self.unit_selection_colors.0.try_into().unwrap())?;
-        output.write_i32::<LE>(self.unit_selection_colors.1.try_into().unwrap())?;
-        output.write_i32::<LE>(self.minimap_colors.0.try_into().unwrap())?;
-        output.write_i32::<LE>(self.minimap_colors.1.try_into().unwrap())?;
-        output.write_i32::<LE>(self.minimap_colors.2.try_into().unwrap())?;
+        output.write_i32::<LE>(self.base.into())?;
+        output.write_i32::<LE>(self.unit_outline_color.into())?;
+        output.write_i32::<LE>(self.unit_selection_colors.0.into())?;
+        output.write_i32::<LE>(self.unit_selection_colors.1.into())?;
+        output.write_i32::<LE>(self.minimap_colors.0.into())?;
+        output.write_i32::<LE>(self.minimap_colors.1.into())?;
+        output.write_i32::<LE>(self.minimap_colors.2.into())?;
         output.write_i32::<LE>(self.statistics_text_color)?;
         Ok(())
     }

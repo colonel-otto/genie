@@ -21,7 +21,7 @@ pub struct AICommand {
 
 impl ReadableHeaderElement for AICommand {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut cmd = AICommand {
+        let mut cmd = Self {
             command_type: input.read_i32::<LE>()?,
             id: input.read_u16::<LE>()?,
             ..Default::default()
@@ -46,7 +46,7 @@ pub struct AIListRule {
 
 impl ReadableHeaderElement for AIListRule {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut rule = AIListRule {
+        let mut rule = Self {
             in_use: input.read_u32::<LE>()? != 0,
             enable: input.read_u32::<LE>()? != 0,
             rule_id: input.read_u16::<LE>()?,
@@ -79,7 +79,7 @@ pub struct AIList {
 
 impl ReadableHeaderElement for AIList {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut list = AIList {
+        let mut list = Self {
             in_use: input.read_u32::<LE>()? != 0,
             id: input.read_i32::<LE>()?,
             max_rules: input.read_u16::<LE>()?,
@@ -103,7 +103,7 @@ pub struct AIGroupTable {
 
 impl ReadableHeaderElement for AIGroupTable {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut table = AIGroupTable {
+        let mut table = Self {
             max_groups: input.read_u16::<LE>()?,
             ..Default::default()
         };
@@ -175,13 +175,13 @@ impl ReadableHeaderElement for AIFactState {
         let mut signals = [0; 256];
         let mut triggers = [0; 256];
         let mut taunts = [[0; 256]; 8];
-        for timer_values in timers.iter_mut() {
+        for timer_values in &mut timers {
             input.read_i32_into::<LE>(&mut timer_values[..])?;
         }
         input.read_u32_into::<LE>(&mut shared_goals)?;
         input.read_u32_into::<LE>(&mut signals)?;
         input.read_u32_into::<LE>(&mut triggers)?;
-        for taunts in taunts.iter_mut() {
+        for taunts in &mut taunts {
             input.read_i8_into(&mut taunts[..])?;
         }
 
@@ -232,7 +232,7 @@ impl ReadableHeaderElement for AIScripts {
 
         let fact_state = AIFactState::read_from(input)?;
 
-        Ok(AIScripts {
+        Ok(Self {
             string_table,
             lists,
             groups,
@@ -260,7 +260,7 @@ impl Header {
 
 impl ReadableHeaderElement for Header {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut header = Header {
+        let mut header = Self {
             game_version: GameVersion::read_from(input)?,
             save_version: input.read_f32::<LE>()?,
             ..Default::default()
@@ -316,7 +316,7 @@ impl ReadableHeaderElement for Header {
             let _identifier = input.read_u32::<LE>()?;
         }
 
-        header.players.reserve(num_players.try_into().unwrap());
+        header.players.reserve(num_players.into());
         for _ in 0..num_players {
             header.players.push(Player::read_from(input)?);
         }
@@ -392,7 +392,7 @@ struct Particle {
 
 impl ReadableHeaderElement for Particle {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(Particle {
+        Ok(Self {
             start: input.read_u32::<LE>()?,
             facet: input.read_u32::<LE>()?,
             update: input.read_u32::<LE>()?,

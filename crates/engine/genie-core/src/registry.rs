@@ -45,7 +45,7 @@ pub struct Record {
 
 /// An object's part in the registry: its mask (`+0x8f8`) and, per player, its record's index in
 /// that player's list of its class (`+0x8b0`).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Entry {
     pub mask: u64,
     pub slots: [Option<usize>; SLOTS],
@@ -64,7 +64,7 @@ pub struct Registry {
 /// the diplomacy `relation` (`player+0x260`): an ally (0) 2, a neutral (1) 3, an enemy (3) 4. The
 /// mapping reproduces the game's lists of this recording's players (Gaia `[1, 4, 4]`, player 1
 /// `[0, 1, 4]`, player 2 `[0, 4, 1]`); its writer is not ported.
-pub fn relation_kind(viewer: usize, owner: usize, relation: u8) -> Result<u32, Unsupported> {
+pub const fn relation_kind(viewer: usize, owner: usize, relation: u8) -> Result<u32, Unsupported> {
     if viewer == owner {
         return Ok(1);
     }
@@ -80,8 +80,9 @@ pub fn relation_kind(viewer: usize, owner: usize, relation: u8) -> Result<u32, U
 }
 
 impl Registry {
+    #[must_use]
     pub fn new(players: usize, classes: usize) -> Self {
-        Registry {
+        Self {
             players,
             classes,
             lists: vec![vec![Vec::new(); classes]; players],
@@ -89,6 +90,7 @@ impl Registry {
         }
     }
 
+    #[must_use]
     pub fn entry(&self, id: i32) -> Option<&Entry> {
         self.entries.get(&id)
     }
@@ -185,7 +187,7 @@ impl Registry {
             let Some(i) = *slot else { continue };
             let record = self.lists[p]
                 .iter_mut()
-                .flat_map(|list| list.get_mut(i))
+                .filter_map(|list| list.get_mut(i))
                 .find(|r| r.id == id)
                 .ok_or(Unsupported("an object's registry slot without its record"))?;
             record.owner = owner as u8;
@@ -239,7 +241,7 @@ impl Registry {
         let tall = radius + ry;
         let (x0, x1) = ((x - wide) - MARGIN, x + wide + MARGIN);
         let (y0, y1) = ((y - tall) - MARGIN, y + tall + MARGIN);
-        let round = ((wide - rx) + (tall - ry)) * 0.5;
+        let round = f32::midpoint(wide - rx, tall - ry);
         let mut found: [Vec<Record>; 5] = Default::default();
         for &class in classes {
             let list = usize::try_from(class)

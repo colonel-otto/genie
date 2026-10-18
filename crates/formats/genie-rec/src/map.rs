@@ -14,7 +14,7 @@ pub struct Tile {
     /// The elevation level of this tile.
     pub elevation: u8,
     /// The original terrain type of this tile, if it was later replaced, for example by placing a
-    /// Farm. UserPatch 1.5 only.
+    /// Farm. `UserPatch` 1.5 only.
     pub original_terrain: Option<u8>,
 }
 
@@ -27,7 +27,7 @@ impl ReadableHeaderElement for Tile {
         } else {
             (terrain, input.read_u8()?, None)
         };
-        Ok(Tile {
+        Ok(Self {
             terrain,
             elevation,
             original_terrain,
@@ -38,17 +38,14 @@ impl ReadableHeaderElement for Tile {
 impl WritableHeaderElement for Tile {
     /// Write a tile to an output stream.
     fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        match self.original_terrain {
-            Some(t) => {
-                output.write_u8(0xFF)?;
-                output.write_u8(self.terrain)?;
-                output.write_u8(self.elevation)?;
-                output.write_u8(t)?;
-            }
-            None => {
-                output.write_u8(self.terrain)?;
-                output.write_u8(self.elevation)?;
-            }
+        if let Some(t) = self.original_terrain {
+            output.write_u8(0xFF)?;
+            output.write_u8(self.terrain)?;
+            output.write_u8(self.elevation)?;
+            output.write_u8(t)?;
+        } else {
+            output.write_u8(self.terrain)?;
+            output.write_u8(self.elevation)?;
         }
         Ok(())
     }
@@ -78,6 +75,7 @@ impl Default for MapZone {
 }
 
 impl MapZone {
+    #[must_use]
     pub fn info(&self) -> &[i8] {
         assert_eq!(self.info.len(), 255);
         &self.info
@@ -88,6 +86,7 @@ impl MapZone {
         &mut self.info
     }
 
+    #[must_use]
     pub fn tiles(&self) -> &[i32] {
         assert_eq!(self.tiles.len(), 255);
         &self.tiles
@@ -194,7 +193,7 @@ pub struct Map {
 impl ReadableHeaderElement for Map {
     /// Read map data from an input stream.
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut map = Map {
+        let mut map = Self {
             width: input.read_u32::<LE>()?,
             height: input.read_u32::<LE>()?,
             ..Default::default()

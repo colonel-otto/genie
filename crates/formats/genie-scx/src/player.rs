@@ -102,8 +102,9 @@ pub struct ScenarioPlayerData {
 
 impl ScenarioPlayerData {
     /// Get the default player name.
+    #[must_use]
     pub fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(|string| string.as_ref())
+        self.name.as_ref().map(AsRef::as_ref)
     }
 
     /// Set the default player name.
@@ -155,7 +156,7 @@ impl ScenarioPlayerData {
 
         let victory = VictoryConditions::read_from(&mut input, version >= 1.09)?;
 
-        Ok(ScenarioPlayerData {
+        Ok(Self {
             name,
             view,
             location,
@@ -184,7 +185,7 @@ impl ScenarioPlayerData {
 
         if version > 1.0 {
             output.write_u8(u8::from(self.allied_victory))?;
-        };
+        }
 
         output.write_i16::<LE>(self.relations.len() as i16)?;
         for rel in &self.relations {

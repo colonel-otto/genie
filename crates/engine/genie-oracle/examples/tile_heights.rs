@@ -1,7 +1,7 @@
 //! Print the map's tile elevations in a window of a recording's header save, both axis orders
 //! (rows[y][x] and rows[x][y]): to check positions' z against the terrain.
 //!
-//! cargo run --release -p genie-oracle --example tile_heights -- REC X0 X1 Y0 Y1
+//! cargo run --release -p genie-oracle --example `tile_heights` -- REC X0 X1 Y0 Y1
 use genie_rec::de;
 
 fn main() {

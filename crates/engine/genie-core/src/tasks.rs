@@ -51,7 +51,7 @@ mod id {
 }
 
 /// The task types the general search leaves out (`FUN_14109f8c0`: 151, 152, 154, 155, 157, 160).
-fn special_type(t: i16) -> bool {
+const fn special_type(t: i16) -> bool {
     let d = t.wrapping_sub(0x97) as u16;
     d < 10 && (0x25bu32 >> d) & 1 != 0
 }
@@ -98,6 +98,7 @@ pub struct TaskTarget<'a> {
 /// `FUN_141663dc0` for a player of diplomacy `relations` (`player+0x260`): one's own player
 /// counts; Gaia never does; else relation 0 does, and 4 with the ally flag; relation 1 counts only
 /// under allied victory (`FUN_1415e8e10`), which the slice does not model.
+#[must_use]
 pub fn allied(relations: &[u8], from: usize, to: usize, with_ally: bool) -> bool {
     if from == to {
         return true;
@@ -121,7 +122,7 @@ pub trait Diplomacy {
 /// One entry of the drop-site table (`DAT_143cc2948`, the game's `dropsites.json`): the building,
 /// the workers it serves (their class, −1 any, or else a list of their masters), the civs it is
 /// for (empty: all) and the resource kinds it takes.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DropSite {
     pub building: i16,
     pub worker_class: i16,
@@ -135,6 +136,7 @@ pub struct DropSite {
 
 /// `FUN_140fdd190` over the table: the first entry for the actor's civ and kind of worker whose
 /// building is `building` decides, by whether it takes the kind the actor carries.
+#[must_use]
 pub fn drops_at(table: &[DropSite], building: i16, actor: &Actor<'_>) -> bool {
     for e in table {
         if !e.civs.is_empty() && !e.civs.contains(&actor.civ) {
@@ -154,6 +156,7 @@ pub fn drops_at(table: &[DropSite], building: i16, actor: &Actor<'_>) -> bool {
 
 /// A task's requirement (`FUN_1410622c0`): no enabling resource (−1), or the player's attribute of
 /// that index above 0.
+#[must_use]
 pub fn enabled(attributes: &[f32], resource: i16) -> bool {
     resource == -1
         || usize::try_from(resource)
@@ -168,7 +171,7 @@ fn first(list: &Master, pred: impl Fn(&Task) -> bool) -> Option<&Task> {
 }
 
 /// The filter: any task (−1), or one of this type.
-fn wanted(filter: i16, t: &Task) -> bool {
+const fn wanted(filter: i16, t: &Task) -> bool {
     filter == -1 || filter == t.action_type
 }
 

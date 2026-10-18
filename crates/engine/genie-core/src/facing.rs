@@ -52,10 +52,11 @@ fn wrapped(a: f32) -> f32 {
 }
 
 /// `FUN_141158f20`: `x` modulo `m` into 0 to `m`.
+#[must_use]
 pub fn modulo(x: f32, m: f32) -> f32 {
     if x < 0.0 {
         let r = libm::fmodf(-x, m);
-        if r != 0.0 { m - r } else { r }
+        if r == 0.0 { r } else { m - r }
     } else {
         libm::fmodf(x, m)
     }
@@ -64,6 +65,7 @@ pub fn modulo(x: f32, m: f32) -> f32 {
 /// `FUN_14119d0c0`: the facet of a forward vector on the ground: its angle to the diagonal
 /// (1, 0, 1) (`acosf`), in facets of 2π over the count, rounded half up, counted the other way
 /// when the cross product's height is below 0.
+#[must_use]
 pub fn facet_of_forward(forward: Vec3, s: SpriteFacets) -> u8 {
     let [f0, f1, f2] = forward;
     let length = fmath::sqrt(f0 * f0 + 0.0 + f2 * f2);
@@ -99,6 +101,7 @@ pub fn facet_of_forward(forward: Vec3, s: SpriteFacets) -> u8 {
 
 /// `FUN_14114d780`: the angle of a facet: its share of a turn plus a quarter of π, held in 0 to
 /// 2π.
+#[must_use]
 pub fn angle_of_facet(facet: u8, s: SpriteFacets) -> f32 {
     let n = at_least_eight(s);
     wrapped((TWO_PI / n as f32) * f32::from(facet) + QUARTER_PI)
@@ -106,6 +109,7 @@ pub fn angle_of_facet(facet: u8, s: SpriteFacets) -> f32 {
 
 /// `FUN_14114d6c0`: the facet of an angle and its unrounded share (`+0x804`), for a sprite with
 /// facets (at least 8 counted); none without (0, 0).
+#[must_use]
 pub fn facet_of_angle(angle: f32, s: Option<SpriteFacets>) -> (u8, f32) {
     let Some(s) = s.filter(|s| 0 < s.count) else {
         return (0, 0.0);
@@ -123,6 +127,7 @@ pub fn facet_of_angle(angle: f32, s: Option<SpriteFacets>) -> (u8, f32) {
 /// `FUN_14114eaa0`: how far `to` lies from where an object at `at` facing `angle` faces, in
 /// facets (at least 8): the angle to it (`atan2f`, 0 to 2π) less the facing angle, wrapped into
 /// −π to π, times the facets over 2π; 0 on the same point (within 1e-7) or without facets.
+#[must_use]
 pub fn facets_to(at: [f32; 2], angle: f32, to: [f32; 2], s: Option<SpriteFacets>) -> f32 {
     let Some(s) = s.filter(|s| 0 < s.count) else {
         return 0.0;
@@ -150,6 +155,7 @@ pub fn facets_to(at: [f32; 2], angle: f32, to: [f32; 2], s: Option<SpriteFacets>
 /// `FUN_141162db0` for a unit without a turn time (its master's `+0x758` 0): facing `to` from `at`
 /// within half a facet it faces; else its angle turns by the facets between at once (held in 0
 /// to 2π) and it faces. Returns the angle.
+#[must_use]
 pub fn face(at: [f32; 2], angle: f32, to: [f32; 2], s: Option<SpriteFacets>) -> f32 {
     let n = s.map_or(8, |s| if s.count < 8 { 8 } else { i32::from(s.count) });
     let off = facets_to(at, angle, to, s);
@@ -162,6 +168,7 @@ pub fn face(at: [f32; 2], angle: f32, to: [f32; 2], s: Option<SpriteFacets>) -> 
 /// `FUN_141161450`'s draw: a new object whose sprite turns (sequence flag 1) with more than one
 /// facet faces a facet drawn from the Object stream (`r`, 0 to 0x7fff): `(r × facets) / 0x7fff`
 /// facets of 2π over the facets.
+#[must_use]
 pub fn drawn_angle(r: u32, s: SpriteFacets) -> f32 {
     let n = i32::from(s.count);
     let k = ((r as i32).wrapping_mul(n)) / 0x7fff;
@@ -169,6 +176,7 @@ pub fn drawn_angle(r: u32, s: SpriteFacets) -> f32 {
 }
 
 /// A new object's sprite turns and has more than one facet: [`drawn_angle`] draws.
+#[must_use]
 pub fn draws_angle(s: Option<SpriteFacets>) -> bool {
     s.is_some_and(|s| s.flag_1 && 1 < s.count)
 }

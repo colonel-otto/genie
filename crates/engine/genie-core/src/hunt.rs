@@ -1,10 +1,10 @@
 //! The Hunt action (`TRIBE_Action_Hunt`, type 110, vtable `0x142ed70f8`): a villager sent to a
 //! tree (or an animal) with a gather task attacks it first (state 12, an [`Attack`] sub-action);
-//! once it is dead the villager walks to it (state 4, a MoveTo sub-action), faces it (6) and
+//! once it is dead the villager walks to it (state 4, a `MoveTo` sub-action), faces it (6) and
 //! gathers (7). The drop-off (8 on) is not modelled yet.
 //!
 //! 158041: constructor `FUN_140ac2dd0`, start (slot 5) `0x140ac49b0`, update (slot 6)
-//! `0x140ac7a00`, set_state (slot 16) `0x140ac60e0`.
+//! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.
 
 use crate::attack::{Arms, Attack, Engagement, Strike, set_sprite};
 use crate::damage::Victim;
@@ -27,10 +27,10 @@ pub const DROP: u8 = 8;
 pub const ATTACK: u8 = 12;
 /// State 13: the hunt failed; its next update tells its unit AI (notify 0x1f9) and ends it.
 pub const FAILED: u8 = 13;
-/// A building whose top action is this (a farm at work) takes a hunt sent to it to set_state 15.
+/// A building whose top action is this (a farm at work) takes a hunt sent to it to `set_state` 15.
 const FARM_AT_WORK: i16 = 0x7d;
 
-/// A MoveTo starts in place within this gap of its target (`0x140aa2100`).
+/// A `MoveTo` starts in place within this gap of its target (`0x140aa2100`).
 const ARRIVED: f32 = 0.01;
 /// Own livestock farther than this squared from its drop site is led there first
 /// (`DAT_142ecccc4`).
@@ -49,7 +49,7 @@ const DECAY_TASK: i16 = 0x124;
 const BUILDING: u8 = 80;
 /// The range of the walk to the hunter's own player's livestock (`DAT_142eb4838`).
 const OWN_LIVESTOCK_RANGE: f32 = crate::image::hunt::OWN_LIVESTOCK_RANGE;
-/// The villagers' class, whose MoveTo waits once when the motion step gives up.
+/// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
 const VILLAGER_CLASS: i16 = 4;
 /// Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
 pub const LIVESTOCK: i16 = 58;
@@ -68,10 +68,10 @@ pub struct HuntAction {
     pub task: HuntTask,
     /// The sub-action of state 12.
     pub attack: Option<Attack>,
-    /// The sub-action of state 4: a MoveTo to the target within `walk_range`, quiet (its
+    /// The sub-action of state 4: a `MoveTo` to the target within `walk_range`, quiet (its
     /// `+0x60` and `+0x61` set: its end changes neither the sprite nor the unit's notifies).
     pub move_to: Option<MoveTo>,
-    /// The MoveTo's range: the task's (`+0x30`) to a dead target, `OWN_LIVESTOCK_RANGE` to its
+    /// The `MoveTo`'s range: the task's (`+0x30`) to a dead target, `OWN_LIVESTOCK_RANGE` to its
     /// own player's livestock.
     pub walk_range: f32,
     /// `+0x70`: the drop site its own livestock is led to, −1 for none yet.
@@ -81,7 +81,7 @@ pub struct HuntAction {
     pub carry_to: i32,
     /// `+0x44`: the state's timer (state 8 waits with it below 0 before it tries again).
     pub timer: f32,
-    /// Its MoveTo's wait after the motion step gave up.
+    /// Its `MoveTo`'s wait after the motion step gave up.
     pub move_wait: MoveWait,
 }
 
@@ -93,14 +93,14 @@ pub struct DropOff {
     pub gap_squared: f32,
 }
 
-/// What set_state(6) reads of a live livestock target (`0x140ac60e0` case 6).
+/// What `set_state(6)` reads of a live livestock target (`0x140ac60e0` case 6).
 pub struct Herd {
     /// The target's player is the hunter's.
     pub own: bool,
     /// For its own livestock, the drop site (the hunt's, else the nearest that takes livestock,
     /// `FUN_1411671e0`) and the gap between it and the target squared (`FUN_14118f8c0`).
     pub drop_site: Option<(i32, f32)>,
-    /// The Attack set_state(12) starts.
+    /// The Attack `set_state(12)` starts.
     pub engagement: Engagement,
     pub arms: Arms,
 }
@@ -199,9 +199,9 @@ fn food(kind: i16) -> bool {
 impl HuntAction {
     /// The factory's constructor (`FUN_140ac2dd0`; its target's add, slot 0x178, is the caller's)
     /// and the install's start (slot 5 with 1, `0x140ac49b0`): a hunter carrying another food
-    /// keeps the amount as the task's kind (`FUN_14119d310` on `held`); then set_state(4). A
+    /// keeps the amount as the task's kind (`FUN_14119d310` on `held`); then `set_state(4)`. A
     /// target of another, unallied player (or of class 49) that is not dead yet is attacked first
-    /// (set_state 12). `computer` is the owner's type test (`FUN_141659cf0`); `carry_rule` the
+    /// (`set_state` 12). `computer` is the owner's type test (`FUN_141659cf0`); `carry_rule` the
     /// game settings' test `FUN_141302150`, with which a hunter drops another resource it carries
     /// (a computer player's does when it carries none).
     #[allow(clippy::too_many_arguments)]
@@ -216,7 +216,7 @@ impl HuntAction {
         arms: Arms,
         mover: &mut Mover,
     ) -> Result<Self, Unsupported> {
-        let mut hunt = HuntAction {
+        let mut hunt = Self {
             target: target.id,
             state: 0,
             point: target.position,
@@ -258,13 +258,13 @@ impl HuntAction {
         Ok(hunt)
     }
 
-    /// set_state(4) (`0x140ac60e0` case 4): the sub-actions go (an Attack's MoveTo stops the
+    /// `set_state(4)` (`0x140ac60e0` case 4): the sub-actions go (an Attack's `MoveTo` stops the
     /// unit), the timer clears and the target's place becomes the point. A dead target, or the hunter's own
-    /// player's livestock, is walked to: a quiet MoveTo within the task's range, or
+    /// player's livestock, is walked to: a quiet `MoveTo` within the task's range, or
     /// `OWN_LIVESTOCK_RANGE` to the livestock (`FUN_140aa0df0`; its start `0x140aa2100`: a unit
     /// within 0.01 of the target's footprint is there already). A target not dead yet of another,
-    /// unallied player (or of class 49) is attacked first: set_state(12) (case 0xc) with an
-    /// Attack of the master's ranges. A live allied one fails the hunt (set_state 13).
+    /// unallied player (or of class 49) is attacked first: `set_state(12)` (case 0xc) with an
+    /// Attack of the master's ranges. A live allied one fails the hunt (`set_state` 13).
     pub(crate) fn chase(
         &mut self,
         target: &Quarry,
@@ -314,13 +314,13 @@ impl HuntAction {
     }
 
     /// Slot 9 (`0x140ac97c0`), the work command's new target for the hunt it keeps: true when the
-    /// hunt takes it. A building at work as a farm (top action `0x7d`) takes it to set_state 15,
+    /// hunt takes it. A building at work as a farm (top action `0x7d`) takes it to `set_state` 15,
     /// not modelled. Its own player's drop site (one of its master's, `drops_here`,
     /// `FUN_14109d4f0`) while it carries something (`held`) takes the load there: the target goes
     /// (slot 0x68 with none; the caller releases it), the timer and the point clear, the drop site
-    /// becomes the second target (`FUN_140a7a190`) with its class, and set_state(8). Another target
+    /// becomes the second target (`FUN_140a7a190`) with its class, and `set_state(8)`. Another target
     /// becomes the hunt's (slot 0x68, `FUN_140ac7980`; the caller releases the old target and takes
-    /// the new) and the hunt starts over at set_state(4). Its own target changes nothing.
+    /// the new) and the hunt starts over at `set_state(4)`. Its own target changes nothing.
     #[allow(clippy::too_many_arguments)]
     pub fn retarget(
         &mut self,
@@ -354,9 +354,9 @@ impl HuntAction {
         Ok(true)
     }
 
-    /// set_state(8) (`0x140ac60e0` case 8) with a load and its drop site (`carry_to`; without one
+    /// `set_state(8)` (`0x140ac60e0` case 8) with a load and its drop site (`carry_to`; without one
     /// the drop site search `FUN_1411671e0` would find it, not modelled): the sub-actions go and a
-    /// quiet MoveTo to the drop site within the task's range starts (`FUN_140aa0df0`, as
+    /// quiet `MoveTo` to the drop site within the task's range starts (`FUN_140aa0df0`, as
     /// [`HuntAction::set_walk`]'s: within 0.01 of its footprint (`gap`) the unit is there already).
     pub(crate) fn set_drop(&mut self, gap: f32, mover: &mut Mover) -> Result<(), Unsupported> {
         self.tear_down(Some(mover))?;
@@ -377,15 +377,15 @@ impl HuntAction {
         Ok(())
     }
 
-    /// State 8's update (`0x140ac7a00` case 7): the MoveTo to the drop site walks (a MoveTo that
+    /// State 8's update (`0x140ac7a00` case 7): the `MoveTo` to the drop site walks (a `MoveTo` that
     /// cannot go on, codes 3 to 5, would wait 3 seconds, not modelled; the timer's wait neither).
     /// Once it ended (its update in state 1 returns 1: the list deletes it and its destructor stops
     /// the unit) the load goes to the player at a drop site that takes it within a tile
-    /// (`site`; one that does not, set_state 2, or a farther one are not modelled): the resource
+    /// (`site`; one that does not, `set_state` 2, or a farther one are not modelled): the resource
     /// of what the unit carries (`FUN_140fdd4f0`: food for 15 to 17, nothing outside 0 to 3, 9 and
     /// 56, then 0 beyond the player's attributes, `FUN_140efe5b0`), which the caller adds; the unit
     /// carries nothing after (`FUN_14119d310` with -1). Returns the resource and the amount. A
-    /// hunt with a target walks back to it (set_state 4), one without searches for a new one
+    /// hunt with a target walks back to it (`set_state` 4), one without searches for a new one
     /// (the unit AI's slots 0x1b0 and 0x80, `FUN_140c488b0`): neither is modelled, after the load.
     pub fn update_drop(
         &mut self,
@@ -447,9 +447,9 @@ impl HuntAction {
         Ok(Some((kind, amount)))
     }
 
-    /// Slot 0x78 (`FUN_140a78060`, the base action's; UNIT_ORDER's drop-off) of a unit carrying
+    /// Slot 0x78 (`FUN_140a78060`, the base action's; `UNIT_ORDER`'s drop-off) of a unit carrying
     /// some of `held_kind` (`+0x310` above 0, which the caller checked): a load of the task's resource (`+0x20`, of any with −1; compared by
-    /// [`resource_kind`]) asks the caller for set_state(8) (true). A load of another resource
+    /// [`resource_kind`]) asks the caller for `set_state(8)` (true). A load of another resource
     /// would post notify 0x21c to the unit AI, which is not modelled.
     pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, Unsupported> {
         let kind = self.task.resource;
@@ -474,9 +474,9 @@ impl HuntAction {
     }
 
     /// One update (slot 6, `0x140ac7a00`): state 12 updates the Attack (`FUN_140a992b0`); its end
-    /// on the dead target (code 5) runs `FUN_140ac44b0` and set_state(4). State 4 updates the
-    /// MoveTo; its end (code 1) runs `FUN_140ac44b0` and set_state(6). State 6 faces the target
-    /// (`FUN_141162db0`) and, while it holds something, set_state(7); state 7 gathers. A computer
+    /// on the dead target (code 5) runs `FUN_140ac44b0` and `set_state(4)`. State 4 updates the
+    /// `MoveTo`; its end (code 1) runs `FUN_140ac44b0` and `set_state(6)`. State 6 faces the target
+    /// (`FUN_141162db0`) and, while it holds something, `set_state(7)`; state 7 gathers. A computer
     /// player's hunt and the other codes are not modelled.
     pub fn update(
         &mut self,
@@ -638,11 +638,11 @@ impl HuntAction {
         Ok(())
     }
 
-    /// The MoveTo's answer to the motion step giving up (it returns 1, `0x140aa2a70` in state 4): a
-    /// human player's villager that has not waited yet waits (set_state 2, `+0x6c` 1) a second
-    /// with a stance below 2 (or without a unit AI), else two, then asks again; any other MoveTo
-    /// fails (set_state 13, quiet).
-    fn give_up(&mut self, strike: &Strike<'_>) -> Result<(), Unsupported> {
+    /// The `MoveTo`'s answer to the motion step giving up (it returns 1, `0x140aa2a70` in state 4): a
+    /// human player's villager that has not waited yet waits (`set_state` 2, `+0x6c` 1) a second
+    /// with a stance below 2 (or without a unit AI), else two, then asks again; any other `MoveTo`
+    /// fails (`set_state` 13, quiet).
+    const fn give_up(&mut self, strike: &Strike<'_>) -> Result<(), Unsupported> {
         if self.move_wait.state != 0 || strike.own.class != VILLAGER_CLASS {
             self.move_to = Some(MoveTo::Failed);
             return Ok(());
@@ -653,8 +653,8 @@ impl HuntAction {
         Ok(())
     }
 
-    /// set_state(4) (`0x140ac60e0` case 4) after the target died: the sub-actions go, the target's
-    /// place becomes the point, and a quiet MoveTo to the target within the task's range starts
+    /// `set_state(4)` (`0x140ac60e0` case 4) after the target died: the sub-actions go, the target's
+    /// place becomes the point, and a quiet `MoveTo` to the target within the task's range starts
     /// (`FUN_140aa0df0`, its start `0x140aa2100`: a unit within 0.01 of the target's footprint is
     /// there already, state 1; else state 3).
     fn set_walk(&mut self, walk: &mut Walk<'_>, victim: &Victim) -> Result<(), Unsupported> {
@@ -689,11 +689,11 @@ impl HuntAction {
         Ok(())
     }
 
-    /// set_state(6) (case 6): the hunt faces its target. Live livestock of its own player is led
+    /// `set_state(6)` (case 6): the hunt faces its target. Live livestock of its own player is led
     /// to its drop site first when it stands more than 3 tiles from it (`HERD_REACH` squared,
-    /// set_state 10, not modelled); then live livestock is attacked (set_state 12, with an Attack
+    /// `set_state` 10, not modelled); then live livestock is attacked (`set_state` 12, with an Attack
     /// of the master's ranges: [`Herd`]). Dead livestock out of the task's range plus `GAP` is
-    /// walked to again (set_state 4, [`HuntAction::set_walk`]). Otherwise the unit takes the hunt's sprite
+    /// walked to again (`set_state` 4, [`HuntAction::set_walk`]). Otherwise the unit takes the hunt's sprite
     /// (`FUN_140ac51d0`: the carrying one for a load of the task's resource of 1 or more, else the
     /// moving one; slot 0x68 takes the standing sprite for none). A target of class 49 (its
     /// owner's change, `FUN_141185360`) is not modelled.
@@ -763,7 +763,7 @@ impl HuntAction {
         Ok(())
     }
 
-    /// set_state(7) (case 7): a food task keeps a load of food (`FUN_14119d310` keeps the
+    /// `set_state(7)` (case 7): a food task keeps a load of food (`FUN_14119d310` keeps the
     /// amount), any other load is dropped; the unit takes the working sprite (slot 0x68; the
     /// standing one for none); the gathering sound is not held.
     fn set_gather(&mut self, strike: &mut Strike<'_>, gather: &mut Gatherer<'_>) {
@@ -783,7 +783,7 @@ impl HuntAction {
     /// times the productivity, while the load stays within the capacity: the target loses the
     /// work, its last bit below 0.1 going with a thousandth of its master's first storage amount;
     /// the unit gains, a remainder below 0.1 of the capacity rounding the load up. A full load or
-    /// an empty target ends the gathering: true asks the caller for set_state(8) (its drop site
+    /// an empty target ends the gathering: true asks the caller for `set_state(8)` (its drop site
     /// search, [`HuntAction::set_drop`]). The game's `+0xc14`
     /// (`FUN_140c884c0`), 0 as the tick oracle holds it, would take the whole target at once.
     fn gather(

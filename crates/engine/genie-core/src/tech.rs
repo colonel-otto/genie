@@ -8,6 +8,7 @@ use crate::unit_ai::Unsupported;
 
 /// The age technologies (`FUN_1413cc3c0`: 101 to 103), whose costs the research cost modifier
 /// leaves alone.
+#[must_use]
 pub fn is_age(tech: i16) -> bool {
     (101..104).contains(&tech)
 }
@@ -26,7 +27,7 @@ const GOLD: i16 = 3;
 pub const SHARED_KIND: i16 = 0x20;
 
 /// One cost entry of a technology in the `.dat`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cost {
     /// The attribute it takes (−1 none).
     pub attribute: i16,
@@ -73,11 +74,13 @@ const MARKS_UPGRADE: [u8; 5] = [3, 0x0d, 0x17, 0x21, 0x2b];
 impl TechDef {
     /// Its effect upgrades a unit (a command of kind 3), which keeps RESEARCH's queue to one at
     /// a time (`FUN_1411d70f0`).
+    #[must_use]
     pub fn upgrades(&self) -> bool {
         self.effect.iter().any(|c| c.kind == 3)
     }
 
     /// Its effect marks a master with an upgrade when its research starts ([`MARKS_UPGRADE`]).
+    #[must_use]
     pub fn marks_upgrade(&self) -> bool {
         self.effect.iter().any(|c| MARKS_UPGRADE.contains(&c.kind))
     }
@@ -150,6 +153,7 @@ pub fn factors(
 
 impl TechState {
     /// `FUN_1413cbd20`: the location at the building's master `building`, else the first.
+    #[must_use]
     pub fn location(&self, building: i16) -> Option<&Location> {
         self.locations
             .iter()
@@ -162,6 +166,7 @@ impl TechState {
     /// under −2) gives its attribute and amount, else the `.dat`'s entry; the adjustment times
     /// the scale adds to the amount (in 32 bits), which the modifier above 0 then scales (not
     /// truncated). An entry without either is (−1, 0).
+    #[must_use]
     pub fn entry_costs(&self, def: &TechDef, (modifier, scale): (f32, i16)) -> [(i32, f32); 3] {
         let mut out = [(-1, 0.0); 3];
         if !matches!(self.state, 2 | 4) {
@@ -212,7 +217,7 @@ impl TechState {
                 (i32::from(self.cost_adj[j]) * i32::from(scale)) as f32 + f32::from(c.amount)
             };
             if 0.0 < modifier {
-                v = (v * modifier) as i32 as i16 as f32;
+                v = f32::from((v * modifier) as i32 as i16);
             }
             let before: f32 = paid
                 .iter()
@@ -241,6 +246,7 @@ impl TechState {
     /// gives its attribute and amount, else the `.dat`'s entry does; the adjustment times the
     /// scale adds to the amount, in 16 bits, which the modifier then scales (truncated). An
     /// override of 0 gives none; an amount below 1 leaves no attribute.
+    #[must_use]
     pub fn listed_costs(&self, def: &TechDef, (modifier, scale): (f32, i16)) -> [(i16, i16); 3] {
         let mut out = [(-1, 0); 3];
         for (j, slot) in out.iter_mut().enumerate() {
@@ -291,7 +297,7 @@ impl TechState {
             (i32::from(self.cost_adj[j]) * i32::from(scale)) as f32 + f32::from(c.amount)
         };
         if 0.0 < modifier {
-            v = (v * modifier) as i32 as i16 as f32;
+            v = f32::from((v * modifier) as i32 as i16);
         }
         Some((attribute, v, c.paid))
     }
@@ -378,6 +384,7 @@ impl TechState {
     /// `FUN_1413d1050`: the technology may be queued again (not of the shared kind, multiple
     /// researches allowed, and its researches queued and done below its cap with `stack`, or
     /// below 0x100 under the player's `+0x648`, `many`).
+    #[must_use]
     pub fn repeatable(&self, def: &TechDef, many: bool) -> bool {
         if def.kind == SHARED_KIND || !self.allow_multiple {
             return false;

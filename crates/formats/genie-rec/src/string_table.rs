@@ -11,24 +11,28 @@ pub struct StringTable {
 }
 
 impl StringTable {
-    pub fn new(max_strings: u16) -> Self {
-        StringTable {
+    #[must_use]
+    pub const fn new(max_strings: u16) -> Self {
+        Self {
             max_strings,
             strings: vec![],
         }
     }
 
-    pub fn max_strings(&self) -> u16 {
+    #[must_use]
+    pub const fn max_strings(&self) -> u16 {
         self.max_strings
     }
 
+    #[must_use]
     pub fn num_strings(&self) -> u16 {
         let len = self.strings.len();
         assert!(len < u16::max_value() as usize);
         len as u16
     }
 
-    pub fn strings(&self) -> &Vec<String> {
+    #[must_use]
+    pub const fn strings(&self) -> &Vec<String> {
         &self.strings
     }
 }
@@ -47,7 +51,7 @@ impl ReadableHeaderElement for StringTable {
             strings.push(String::from_utf8(bytes).unwrap());
         }
 
-        Ok(StringTable {
+        Ok(Self {
             max_strings,
             strings,
         })

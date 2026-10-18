@@ -149,7 +149,12 @@ impl Tally {
     }
 
     fn row(&self, what: &str) -> String {
-        let objects: Vec<String> = self.objects.iter().take(6).map(|o| o.to_string()).collect();
+        let objects: Vec<String> = self
+            .objects
+            .iter()
+            .take(6)
+            .map(std::string::ToString::to_string)
+            .collect();
         let more = if 6 < self.objects.len() { " …" } else { "" };
         let clean = self.first_clean.map_or("-".to_string(), |f| f.to_string());
         format!(
@@ -189,7 +194,7 @@ fn the_forced_replay_report() {
         || PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("forced_report.md"),
         PathBuf::from,
     );
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
     let mut reports: Vec<TickReport> = if restart {
         let starts: Vec<usize> = (first..=last).collect();
         let chunk = starts.len().div_ceil(threads).max(1);

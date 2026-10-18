@@ -1,7 +1,7 @@
 //! A builder's Build action (`TRIBE_Action_Build`, type 101, vtable `0x142ed6628`) up to the
-//! builder's walk: the action starts in state 4 with a MoveTo sub-action (`RGE_Action_Move_To`,
+//! builder's walk: the action starts in state 4 with a `MoveTo` sub-action (`RGE_Action_Move_To`,
 //! type 1) toward the foundation; a builder already at the foundation works in its first update
-//! (state 6). A walking builder's MoveTo runs the motion step ([`crate::movement`]).
+//! (state 6). A walking builder's `MoveTo` runs the motion step ([`crate::movement`]).
 //!
 //! A builder at a foundation faces it and joins its work (state 7): at a foundation no one started
 //! it first checks the footprint, and a builder standing on it walks to a free tile beside it
@@ -23,7 +23,7 @@ use crate::unit_ai::{UnitAi, Unsupported};
 /// The Build action's type, which word 9 adds.
 pub const BUILD: i16 = 101;
 
-/// The gap below which a MoveTo has arrived (`DAT_142eb99cc`).
+/// The gap below which a `MoveTo` has arrived (`DAT_142eb99cc`).
 const ARRIVED: f32 = crate::image::build::ARRIVED;
 /// The villager's class (4, `-0xea8` encoded): Build's walk off the footprint returns at once.
 const VILLAGER: i16 = 4;
@@ -35,14 +35,14 @@ pub struct BuildAction {
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
     pub move_to: Option<MoveTo>,
-    /// The point the MoveTo walks to (its `+0x38`..`+0x40`), when not to the foundation.
+    /// The point the `MoveTo` walks to (its `+0x38`..`+0x40`), when not to the foundation.
     pub goal: Option<[f32; 3]>,
     pub task: BuildTask,
     /// `+0x68`, `added_to_num_builders`: the builder counts among the foundation's builders.
     pub added: bool,
 }
 
-/// What a builder's Build task gives its work: the task's work range (`+0x30`; its MoveTo to the
+/// What a builder's Build task gives its work: the task's work range (`+0x30`; its `MoveTo` to the
 /// foundation stops this near) and work value (`+0x28`, `work_val1`), and the builder's work rate:
 /// its master's `work_rate` (`+0x798`) plus its own `mWorkRatePowerup` (`+0xa30`, slot 0x6e8).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -131,7 +131,7 @@ pub struct BuildStep {
     pub completed: Option<Vec<(i16, f32)>>,
     /// The work ended without more work: the action let its foundation go (slot 0x68 with none,
     /// `FUN_140ab0300` -> `FUN_140a7a230`: the foundation's slot 0x180) and stays in state 3,
-    /// whose set_state posted notify 0x202 (602) to the builder's unit AI: the caller's.
+    /// whose `set_state` posted notify 0x202 (602) to the builder's unit AI: the caller's.
     pub released: bool,
 }
 
@@ -171,10 +171,11 @@ const FARM: i16 = 49;
 const BUILD_ORDER: i32 = crate::ai_kinds::ORDER_BUILD;
 
 impl BuildAction {
-    /// The action's start (slot 5, `0x140aadd80`): state 4 for a target, whose set_state
-    /// (`0x140aae200`) creates the MoveTo; the MoveTo starts arrived if the footprints touch.
+    /// The action's start (slot 5, `0x140aadd80`): state 4 for a target, whose `set_state`
+    /// (`0x140aae200`) creates the `MoveTo`; the `MoveTo` starts arrived if the footprints touch.
+    #[must_use]
     pub fn start(target: i32, gap: f32, task: BuildTask) -> Self {
-        BuildAction {
+        Self {
             target,
             state: MOVE,
             move_to: Some(if gap > ARRIVED {
@@ -188,10 +189,10 @@ impl BuildAction {
         }
     }
 
-    /// One update (slot 6, `0x140ab0370`), which first updates the MoveTo (`0x140aa2a70`); a
-    /// moving MoveTo calls the motion step (object slot 193). `site` is the foundation, when it
+    /// One update (slot 6, `0x140ab0370`), which first updates the `MoveTo` (`0x140aa2a70`); a
+    /// moving `MoveTo` calls the motion step (object slot 193). `site` is the foundation, when it
     /// is the builder's player's. Before its state's case it checks its foundation: one that is
-    /// no longer under construction (a state above 0) ends the work (set_state(224)) unless the
+    /// no longer under construction (a state above 0) ends the work (`set_state(224)`) unless the
     /// Build already ended (224, 4, 8); one that is gone, a dead one, master 621, a builder of
     /// class 39 and master 1889 of a human player are not modelled.
     pub fn update(
@@ -294,8 +295,8 @@ impl BuildAction {
         r.map(|()| step)
     }
 
-    /// The prelude of every set_state (`0x140aae200`): a builder counted among the foundation's
-    /// builders leaves them, and the sub-actions go (`FUN_140a98620`: a MoveTo's teardown stops
+    /// The prelude of every `set_state` (`0x140aae200`): a builder counted among the foundation's
+    /// builders leaves them, and the sub-actions go (`FUN_140a98620`: a `MoveTo`'s teardown stops
     /// the unit, slot 0x5d0).
     fn leave(
         &mut self,
@@ -317,7 +318,7 @@ impl BuildAction {
         Ok(())
     }
 
-    /// set_state(224) (`0x140aae200` case 0xe0): the work ended. A builder carrying a resource
+    /// `set_state(224)` (`0x140aae200` case 0xe0): the work ended. A builder carrying a resource
     /// the finished building takes (`FUN_140fde180`, then `FUN_140aadc50`'s drop) is not
     /// modelled.
     fn finish(
@@ -344,7 +345,7 @@ impl BuildAction {
     /// Case 0xdf of the update, the work ended (224): a farm, the fish trap and masters 1893 and
     /// 1897 are not modelled; the builder's unit AI drops its build orders on foundations gone or
     /// built (`FUN_140c5dcd0`); with orders left in its queue (`FUN_140c564a0`) it has no order
-    /// and no action (`FUN_140c64b60`, `FUN_140c64b50` with −1) and the Build ends (set_state(1),
+    /// and no action (`FUN_140c64b60`, `FUN_140c64b50` with −1) and the Build ends (`set_state(1)`,
     /// then the update returns 1: Some(true)). A builder without queued orders looks for more
     /// work around the building, within its master's line of sight held to 4 to 20 tiles
     /// (`FUN_1415cc4e0`): only the drop sites of the builder's class have a list to search
@@ -395,7 +396,7 @@ impl BuildAction {
         Ok(Some(true))
     }
 
-    /// set_state(1) (`0x140aae200` case 1): the builder takes its standing sprite (slot 0x68,
+    /// `set_state(1)` (`0x140aae200` case 1): the builder takes its standing sprite (slot 0x68,
     /// not held for builders) and its owner's slot 0x380 hears of it (`FUN_141618d30`: only a
     /// computer player's AI listens).
     fn done(&mut self, walk: &Walk<'_>) -> Result<(), Unsupported> {
@@ -406,7 +407,7 @@ impl BuildAction {
         Ok(())
     }
 
-    /// set_state(7) (`0x140aae200` case 7) on a foundation no builder started: clear the
+    /// `set_state(7)` (`0x140aae200` case 7) on a foundation no builder started: clear the
     /// footprint of what may be built over, find who stands on it, and send this builder off it
     /// if it stands there itself.
     fn place(&mut self, walk: &Walk<'_>, site: Option<Site<'_>>) -> Result<(), Unsupported> {
@@ -458,7 +459,7 @@ impl BuildAction {
     }
 
     /// `LAB_140aaf9f4`: the builder joins the work: unless walls of other players stand on both
-    /// tiles beside it on the footprint's diagonal (set_state 2, not modelled), it counts among
+    /// tiles beside it on the footprint's diagonal (`set_state` 2, not modelled), it counts among
     /// the foundation's builders. Its work sprite and sound are not held by the slice.
     fn join(&mut self, walk: &Walk<'_>, site: &mut Site<'_>) -> Result<(), Unsupported> {
         let placed = walk
@@ -542,8 +543,8 @@ impl BuildAction {
         Ok(completed)
     }
 
-    /// set_state(4) after the walk off the footprint (`0x140aae200` case 4): the goal is the
-    /// foundation again and a new MoveTo to it (`FUN_140aa0df0`) starts arrived if the footprints
+    /// `set_state(4)` after the walk off the footprint (`0x140aae200` case 4): the goal is the
+    /// foundation again and a new `MoveTo` to it (`FUN_140aa0df0`) starts arrived if the footprints
     /// touch, as [`BuildAction::start`]'s. Only a villager returns at once (`0x140ab0370` case
     /// 0xde; any other builder in range would work, state 6).
     fn back(&mut self, walk: &Walk<'_>) -> Result<(), Unsupported> {
@@ -560,12 +561,12 @@ impl BuildAction {
             .ok_or(Unsupported("a foundation that is gone"))?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(walk.me.position, ground, site.position, site.radius);
-        *self = BuildAction::start(self.target, gap, self.task);
+        *self = Self::start(self.target, gap, self.task);
         Ok(())
     }
 
-    /// set_state(223): a MoveTo to the free tile beside the footprint (`FUN_1411566b0`); it starts
-    /// in state 3, as a MoveTo to a point is far from it (`FUN_140aa2100`).
+    /// `set_state(223)`: a `MoveTo` to the free tile beside the footprint (`FUN_1411566b0`); it starts
+    /// in state 3, as a `MoveTo` to a point is far from it (`FUN_140aa2100`).
     fn clear(&mut self, walk: &Walk<'_>) -> Result<(), Unsupported> {
         let mover = walk
             .mover
@@ -589,7 +590,7 @@ impl BuildAction {
 }
 
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments).
-fn beside_diagonal(bx: i32, by: i32, dx: i32, dy: i32) -> ([i32; 2], [i32; 2]) {
+const fn beside_diagonal(bx: i32, by: i32, dx: i32, dy: i32) -> ([i32; 2], [i32; 2]) {
     if dx < 1 {
         if dx < 0 && dy < 0 {
             ([bx + 1, by], [bx, by + 1])
@@ -623,7 +624,7 @@ impl Construction {
         }
         let c = &mut *site.construction;
         if c.desolid {
-            Construction::start(site.id, c, world, pathing)?;
+            Self::start(site.id, c, world, pathing)?;
             // FUN_1411e5670's last line: the last move time is the world's time plus 1
             if let Some(m) = site.mover.as_deref_mut() {
                 m.last_move = now.wrapping_add(1);
@@ -645,10 +646,10 @@ impl Construction {
         if amount + before < build_time {
             return Ok(Worked::Going);
         }
-        Construction::complete(site, world).map(Worked::Completed)
+        Self::complete(site, world).map(Worked::Completed)
     }
 
-    /// The construction completes: `FUN_1411cc430`'s set_state(2) (`FUN_1411dbb70`), then
+    /// The construction completes: `FUN_1411cc430`'s `set_state(2)` (`FUN_1411dbb70`), then
     /// `FUN_14152bcb0`, whose part for players with attribute 204 is not modelled. The building
     /// (`FUN_1411c6bd0` first: its player's object index `+0x18` and its count `+0x6c` are not
     /// held; a computer player's, a farm's, an overridden sprite's and a master with a task of
@@ -658,7 +659,7 @@ impl Construction {
     /// standing sprite (not held); on snow it gets its snow flag; its foundation terrain covers
     /// its clearance ([`crate::terrain::Terrain::cover`]; the tile it stands on, `+0x2e8`, keeps
     /// no terrain to restore in the slice); its owner's attributes 98 and 165 grow by 1; then the
-    /// base set_state (`FUN_14121cc40`, `FUN_14119d710`) puts it in state 2. The local player's
+    /// base `set_state` (`FUN_14121cc40`, `FUN_14119d710`) puts it in state 2. The local player's
     /// sound (slot 0x4c0), the event 0x69 (`FUN_140c898a0`) and the owner's AI (slot 0x388) are
     /// not held. Walls and gates (`adjacent_mode`), a stack unit, a technology, a building that
     /// disappears when built, own stores (mode 16), the castle (82), the monastery (104), the
@@ -762,7 +763,7 @@ impl Construction {
     /// not held by the slice.
     fn start(
         id: i32,
-        c: &mut Construction,
+        c: &mut Self,
         world: &mut Spatial,
         pathing: &mut Pathing,
     ) -> Result<(), Unsupported> {

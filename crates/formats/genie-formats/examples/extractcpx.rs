@@ -40,7 +40,7 @@ fn list(args: List) {
 
     let names = campaign
         .entries()
-        .map(|entry| entry.filename.to_string())
+        .map(|entry| entry.filename.clone())
         .collect::<Vec<String>>();
 
     (0..campaign.len()).for_each(|i| {
@@ -59,7 +59,7 @@ fn extract(args: Extract) {
 
     let names = campaign
         .entries()
-        .map(|entry| entry.filename.to_string())
+        .map(|entry| entry.filename.clone())
         .collect::<Vec<String>>();
 
     (0..campaign.len()).for_each(|i| {
@@ -69,7 +69,7 @@ fn extract(args: Extract) {
     });
 }
 
-/// Derived from https://github.com/banyan/rust-pretty-bytes/blob/master/src/converter.rs
+/// Derived from <https://github.com/banyan/rust-pretty-bytes/blob/master/src/converter.rs>
 fn format_bytes(num: u32) -> String {
     let units = ["B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
     if num < 1 {
@@ -77,12 +77,12 @@ fn format_bytes(num: u32) -> String {
     }
     let delimiter = 1000u32;
     let exponent = cmp::min(
-        (f64::from(num).ln() / f64::from(delimiter).ln()).floor() as u32,
+        f64::from(num).log(f64::from(delimiter)).floor() as u32,
         (units.len() - 1) as u32,
     );
     let pretty_bytes = num / delimiter.pow(exponent);
     let unit = units[exponent as usize];
-    format!("{:.2} {}", pretty_bytes, unit)
+    format!("{pretty_bytes:.2} {unit}")
 }
 
 fn main() {

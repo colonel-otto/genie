@@ -9,3 +9,6 @@ repository.workspace = true
 [dependencies]
 # The game's acosf, cosf and sinf are FreeBSD msun's, as libm's are (crates/engine/genie-core/tests/crt_math.rs)
 libm = "0.2"
+
+[lints]
+workspace = true

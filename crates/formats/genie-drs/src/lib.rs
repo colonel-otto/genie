@@ -170,7 +170,7 @@ impl Default for DRSHeader {
 impl DRSHeader {
     #[inline]
     /// Read a DRS archive header from a `Read`able handle.
-    fn from<R: Read>(source: &mut R) -> Result<DRSHeader, Error> {
+    fn from<R: Read>(source: &mut R) -> Result<Self, Error> {
         let mut banner_msg = [0_u8; 40];
         let mut version = [0_u8; 4];
         let mut password = [0_u8; 12];
@@ -179,7 +179,7 @@ impl DRSHeader {
         source.read_exact(&mut password)?;
         let num_resource_types = source.read_u32::<LE>()?;
         let directory_size = source.read_u32::<LE>()?;
-        Ok(DRSHeader {
+        Ok(Self {
             banner_msg,
             version,
             password,
@@ -240,12 +240,12 @@ impl DRSTable {
 
     /// Read a DRS table header from a `Read`able handle.
     #[inline]
-    fn from<R: Read>(source: &mut R) -> Result<DRSTable, Error> {
+    fn from<R: Read>(source: &mut R) -> Result<Self, Error> {
         let mut resource_type = [0_u8; 4];
         source.read_exact(&mut resource_type)?;
         let offset = source.read_u32::<LE>()?;
         let num_resources = source.read_u32::<LE>()?;
-        Ok(DRSTable::new(resource_type.into(), offset, num_resources))
+        Ok(Self::new(resource_type.into(), offset, num_resources))
     }
 
     #[inline]
@@ -269,13 +269,15 @@ impl DRSTable {
 
     /// Get the number of resources in this table.
     #[inline]
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.num_resources as usize
     }
 
     /// Check if the table contains no resources.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.num_resources == 0
     }
 
@@ -287,6 +289,7 @@ impl DRSTable {
 
     /// Find a resource by ID.
     #[inline]
+    #[must_use]
     pub fn get_resource(&self, id: u32) -> Option<&DRSResource> {
         self.resource_ids
             .binary_search(&id)
@@ -296,12 +299,14 @@ impl DRSTable {
 
     /// Get the resource type this table contains.
     #[inline]
-    pub fn resource_type(&self) -> ResourceType {
+    #[must_use]
+    pub const fn resource_type(&self) -> ResourceType {
         self.resource_type
     }
 
     /// Deprecated, use `resource_type()` instead.
     #[inline]
+    #[must_use]
     pub fn resource_ext(&self) -> String {
         self.resource_type.to_string()
     }
@@ -341,11 +346,11 @@ pub struct DRSResource {
 impl DRSResource {
     /// Read DRS resource metadata from a `Read`able handle.
     #[inline]
-    fn from<R: Read>(source: &mut R) -> Result<DRSResource, Error> {
+    fn from<R: Read>(source: &mut R) -> Result<Self, Error> {
         let id = source.read_u32::<LE>()?;
         let offset = source.read_u32::<LE>()?;
         let size = source.read_u32::<LE>()?;
-        Ok(DRSResource { id, offset, size })
+        Ok(Self { id, offset, size })
     }
 
     #[inline]

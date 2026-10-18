@@ -2,7 +2,7 @@
 //! path data with the waypoints of each path (from the world's path table), speed fields. For the
 //! tick oracle's snapshots (`load_oracle.playback --snapshot TICK`), the game's own saves.
 //!
-//! cargo run --release -p genie-oracle --example moving_objects -- SAVE PLAYER ID...
+//! cargo run --release -p genie-oracle --example `moving_objects` -- SAVE PLAYER ID...
 
 use genie_rec::de;
 

@@ -14,7 +14,7 @@ struct Cli {
     output: PathBuf,
     /// Scenario version to output: 'aoe', 'ror', 'aoc', 'hd', 'wk'
     ///
-    /// When setting the version to 'wk', HD edition and AoC scenarios will automatically be
+    /// When setting the version to 'wk', HD edition and `AoC` scenarios will automatically be
     /// converted (swapping out unit types and terrains).
     version: Option<String>,
 }
@@ -32,7 +32,7 @@ fn main() -> anyhow::Result<()> {
         Some("aoc") => VersionBundle::aoc(),
         Some("hd") => VersionBundle::hd_edition(),
         Some("wk") => VersionBundle::userpatch_15(),
-        Some(name) => panic!("unknown version {}", name),
+        Some(name) => panic!("unknown version {name}"),
         _ => VersionBundle::aoc(),
     };
 

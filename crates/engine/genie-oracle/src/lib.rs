@@ -6,6 +6,31 @@
 //! it sums each object's top action and unit-AI retarget timer, which the engine redraws while the
 //! game runs, so reproducing it needs the simulation.
 
+// The port's exceptions to the workspace's lints: the engine reproduces build 158041 bit for bit,
+// so it keeps the game's arithmetic and conversions as they are.
+#![allow(
+    // the game's f32 sums and products, each rounded on its own (no fused multiply-add)
+    clippy::suboptimal_flops,
+    clippy::imprecise_flops,
+    // the game compares floats exactly, in conditions and loops
+    clippy::float_cmp,
+    clippy::while_float,
+    // the game's conversions (cvttss2si, movsx, movzx, truncating stores), written as `as`
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    // the decompiled routines' math names (dx, dy, x0, y1 …) and their flag fields
+    clippy::many_single_char_names,
+    clippy::similar_names,
+    clippy::struct_excessive_bools,
+    // a routine is ported whole, its documentation opens with the routine and its addresses
+    clippy::too_many_lines,
+    clippy::too_long_first_doc_paragraph,
+    // every error is `Unsupported`, which names the part the slice does not model
+    clippy::missing_errors_doc
+)]
+
 pub mod masters;
 pub mod tick_trace;
 
@@ -53,19 +78,19 @@ pub enum Error {
 
 impl From<de::Error> for Error {
     fn from(e: de::Error) -> Self {
-        Error::Rec(e)
+        Self::Rec(e)
     }
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Rec(e) => write!(f, "{e}"),
-            Error::NoCheckpoint => write!(f, "the recording has no checkpoint"),
-            Error::NoSuchPlayer(id) => write!(f, "a checkpoint names player {id}, not in the save"),
-            Error::CommandBeforeFirstSync => write!(f, "a command comes before the first sync"),
-            Error::BadMeshDump => write!(f, "the mesh dump has no mesh line"),
-            Error::BadRegistryDump => write!(f, "the registry dump is out of shape"),
+            Self::Rec(e) => write!(f, "{e}"),
+            Self::NoCheckpoint => write!(f, "the recording has no checkpoint"),
+            Self::NoSuchPlayer(id) => write!(f, "a checkpoint names player {id}, not in the save"),
+            Self::CommandBeforeFirstSync => write!(f, "a command comes before the first sync"),
+            Self::BadMeshDump => write!(f, "the mesh dump has no mesh line"),
+            Self::BadRegistryDump => write!(f, "the registry dump is out of shape"),
         }
     }
 }
@@ -83,7 +108,7 @@ fn live<'a>(
 
 /// An object of a player's live list: not the stand-in for a saved object without a static part
 /// ([`unit`]). A missile's id is below 0 (the world's reusable ids, `next_reusable_object_id`).
-fn listed(u: &Unit) -> bool {
+const fn listed(u: &Unit) -> bool {
     u.id >= 0 || u.life.master_id >= 0
 }
 
@@ -95,7 +120,7 @@ fn dies_at_start(s: &RgeStaticObject) -> bool {
 }
 
 /// What the block reads of a saved object, before the slice changes any of it.
-fn object_state(s: &RgeStaticObject) -> ObjectState {
+const fn object_state(s: &RgeStaticObject) -> ObjectState {
     ObjectState {
         id: s.id,
         main_id: s.master_obj,
@@ -156,12 +181,12 @@ pub fn compare_first_checkpoint(recording: &[u8]) -> Result<Vec<PlayerComparison
 }
 
 /// Commands whose handlers can create a unit group (158041 `FUN_14152efc0`): INTERACT, WORK,
-/// MOVE, FORM_FORMATION, GROUP_MULTI_WAYPOINTS, BUILD, REPAIR. More player-side callers exist and
+/// MOVE, `FORM_FORMATION`, `GROUP_MULTI_WAYPOINTS`, BUILD, REPAIR. More player-side callers exist and
 /// are not mapped yet. A group draws from the World stream every tick while active and every 3 s
 /// while idle (`FUN_14103d910` → `FUN_14102d370`), which the slice does not model. Whether a command
 /// creates one depends on its units: the splitter (`FUN_140fd76d0`) groups only clusters of two or
 /// more formation-capable units, and villagers never join a formation (as openage's
-/// `doc/reverse_engineering/game_mechanics/formations.md` describes for AoC).
+/// `doc/reverse_engineering/game_mechanics/formations.md` describes for `AoC`).
 pub const GROUP_COMMANDS: [u8; 7] = [0x00, 0x02, 0x03, 0x17, 0x1f, 0x66, 0x6e];
 
 /// The player attribute of the construction rate modifier (195; the work reads it at player
@@ -186,7 +211,7 @@ pub struct Word9 {
     /// The first command before the checkpoint, by any player, that may create a unit group.
     pub group_command: Option<GroupCommand>,
     /// The first unit update of this player the slice could not model.
-    pub unsupported: Option<(u32, usize, genie_core::unit_ai::Unsupported)>,
+    pub unsupported: Option<(u32, usize, Unsupported)>,
 }
 
 /// The slice's view of one saved object: its lifecycle, its unit AI and its actions. A save from
@@ -601,9 +626,9 @@ fn loaded_ignored(levels: &mut [genie_core::movement::PathData], units: &[i32]) 
     }
 }
 
-/// The point of the MoveTo a saved unit walks with to a target object: its top action when that
-/// is a MoveTo, else the top action's first sub-action (or that Attack's own first one), when
-/// that MoveTo has a target (its `target_x`..`target_z`).
+/// The point of the `MoveTo` a saved unit walks with to a target object: its top action when that
+/// is a `MoveTo`, else the top action's first sub-action (or that Attack's own first one), when
+/// that `MoveTo` has a target (its `target_x`..`target_z`).
 fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
     let (top_kind, top) = object.actions()?.entries().next()?;
     if top_kind == genie_core::move_to::MOVE_TO {
@@ -621,8 +646,8 @@ fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
 }
 
 /// The top action of a saved object as the slice models it: the Artifact action (107), the
-/// Build action (101) with its MoveTo, a MoveTo of its own (type 1), a bird's Fly action (10)
-/// with its MoveTo and the Hunt (110) with its Attack or MoveTo (and in state 8 its second
+/// Build action (101) with its `MoveTo`, a `MoveTo` of its own (type 1), a bird's Fly action (10)
+/// with its `MoveTo` and the Hunt (110) with its Attack or `MoveTo` (and in state 8 its second
 /// target, the drop site). Any other saved action stops the object's player.
 #[allow(clippy::too_many_arguments)]
 fn saved_actions(
@@ -945,7 +970,7 @@ fn saved_sprite(
 }
 
 /// A saved Attack sub-action (type 9, `FUN_140a7c880`): its target, state, timer, ranges, point,
-/// the target's last place (`+0xa4`..), a hit still to land (`+0x9e`), its MoveTo, and its sprites
+/// the target's last place (`+0xa4`..), a hit still to land (`+0x9e`), its `MoveTo`, and its sprites
 /// and frames. The load restores the sprites at `+0x70`, `+0x80` and `+0x88` from the second to
 /// fourth saved ids (the first goes to `+0x68`); the second attack sprite (`+0x78`) and the
 /// swing's times (`+0xb0`, `+0xb4`) are not saved, and a loaded Attack starts without them.
@@ -1286,23 +1311,22 @@ fn lifecycle(
         .and_then(|t| t.graphics.get(&after))
         .filter(|g| pure_static && g.flags & 4 != 0 && 1 < g.facets)
         .map(|g| g.facets);
-    let (dying_sprite, [death_spawn, remains], master) = match s.own_master() {
-        Some(own) => (
+    let (dying_sprite, [death_spawn, remains], master) = if let Some(own) = s.own_master() {
+        (
             (own.death_sprite_num >= 0).then_some(own.death_sprite_num),
             [own.death_spawn_obj_id, own.death_spawn_obj_id2],
             Some(MasterData {
                 decay: own.attribute_rot,
                 undead: own.undead_flag != 0,
             }),
-        ),
-        None => {
-            let player = objects.master(s.master_obj).and_then(|m| m.static_part());
-            (
-                player.map(|m| m.death_sprite_id).filter(|&d| d >= 0),
-                player.map_or([-1, -1], |m| [m.death_spawn_obj_id, m.death_spawn_obj_id2]),
-                masters.and_then(|t| t.get(civ, s.master_obj)),
-            )
-        }
+        )
+    } else {
+        let player = objects.master(s.master_obj).and_then(|m| m.static_part());
+        (
+            player.map(|m| m.death_sprite_id).filter(|&d| d >= 0),
+            player.map_or([-1, -1], |m| [m.death_spawn_obj_id, m.death_spawn_obj_id2]),
+            masters.and_then(|t| t.get(civ, s.master_obj)),
+        )
     };
     Lifecycle {
         class: if pure_static {
@@ -1422,7 +1446,7 @@ fn tech_state(t: &genie_save::generated::world::TechPlayerTree) -> genie_core::t
 }
 
 /// Why the slice stops on a command it does not decode, by the command's name.
-fn unmodelled_command(p: &genie_rec::de::command::Command) -> &'static str {
+const fn unmodelled_command(p: &de::command::Command) -> &'static str {
     use genie_rec::de::command::Command as Packet;
     macro_rules! named {
         ($($v:ident),* $(,)?) => {
@@ -1509,7 +1533,7 @@ fn unmodelled_command(p: &genie_rec::de::command::Command) -> &'static str {
 }
 
 /// The slice set up from the header save: every player's live objects in their saved order, and
-/// BaseWorld's fields before the map, the frame seed (`mCurrentFrameRandomSeed`, world+0x7d0) and
+/// `BaseWorld`'s fields before the map, the frame seed (`mCurrentFrameRandomSeed`, world+0x7d0) and
 /// the turn order (`player_turn`, `player_time_delta[i]`).
 fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     let players = header
@@ -1596,7 +1620,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 .masters
                 .iter()
                 .skip(1)
-                .flat_map(|m| m.iter())
+                .flat_map(genie_core::masters::Masters::iter)
                 .filter(|m| m.kind == 70)
         };
         turns.spatial.fastest = all()
@@ -1696,7 +1720,7 @@ fn task_at(
         ))
 }
 
-fn core_task(t: &genie_save::generated::world::Task) -> genie_core::masters::Task {
+const fn core_task(t: &genie_save::generated::world::Task) -> genie_core::masters::Task {
     genie_core::masters::Task {
         id: t.id,
         action_type: t.action_type,
@@ -1844,7 +1868,7 @@ fn work_masters(
 
 /// What a unit of a saved master moves with ([`genie_core::movement::MoveStats`]): the master's
 /// top speed times its walking sprite's speed factor when above 0 (the run sprite if it has one,
-/// else the move sprite: the MoveTo's, slots 2000 and 0x7c8), the `.dat`'s turning, the radii and
+/// else the move sprite: the `MoveTo`'s, slots 2000 and 0x7c8), the `.dat`'s turning, the radii and
 /// the terrain restriction with its mask.
 fn moving_stats(
     m: &Master,
@@ -2069,7 +2093,7 @@ impl SavedStep {
             .map(|id| header_objects(&header, id))
             .collect::<Result<_, _>>()?;
         let (width, terrain) = saved_terrain(&header);
-        Ok(SavedStep {
+        Ok(Self {
             objects,
             seen: saved_sight(&header),
             width,
@@ -2269,6 +2293,7 @@ pub fn saved_visibility(save: &[u8]) -> Result<Visibility, Error> {
 
 /// Where player `player`'s sight in `slice` differs from `game`'s: its explored count, each tile's
 /// count and its two bits of the unified map.
+#[must_use]
 pub fn visibility_differences(slice: &Visibility, game: &Visibility, player: usize) -> Vec<String> {
     let mut out = Vec::new();
     let (Some(a), Some(b)) = (slice.maps.get(player), game.maps.get(player)) else {
@@ -2300,7 +2325,7 @@ pub fn visibility_differences(slice: &Visibility, game: &Visibility, player: usi
 }
 
 /// One frame of the body (FD-007's per-frame record order): the op-2 record that starts a tick, its
-/// dt and, every interval, a checkpoint, then the op-1 commands the tick runs after its SeedAll.
+/// dt and, every interval, a checkpoint, then the op-1 commands the tick runs after its `SeedAll`.
 struct Frame<'a> {
     dt: u32,
     checkpoint: Option<Box<de::Checkpoint>>,
@@ -2512,14 +2537,11 @@ impl Decoder {
     }
 }
 
-/// QUEUE (`do_command` case 0x81, MULTI_QUEUE): `num` buildings, the unit `t_id`, `count` of it and
+/// QUEUE (`do_command` case 0x81, `MULTI_QUEUE)`: `num` buildings, the unit `t_id`, `count` of it and
 /// the train button (`button_location_id`, -1 for none); the building ids follow. The cost, the
 /// train time and the building's work rate come from the save (the player's masters and the
 /// building).
-fn queue_command(
-    packet: &genie_rec::de::command::MultiQueue,
-    sections: &[PlayerSection<'_>],
-) -> Command {
+fn queue_command(packet: &de::command::MultiQueue, sections: &[PlayerSection<'_>]) -> Command {
     let player = packet.commp_id as usize;
     let unmodelled = |why| Command::Unmodelled {
         player,
@@ -2625,10 +2647,7 @@ fn queue_data(
 /// BUILD (`FUN_140e7a400`): `num` builders put a foundation of master `o_id` at (`x`, `y`); the
 /// builder ids follow. The handler reads the master as an i16 (`+0x10`). The slice takes z = 0:
 /// the game sets it from the terrain, so a foundation on raised terrain shows in word 7.
-fn build_command(
-    packet: &genie_rec::de::command::Build,
-    sections: &[PlayerSection<'_>],
-) -> Command {
+fn build_command(packet: &de::command::Build, sections: &[PlayerSection<'_>]) -> Command {
     let player = packet.commp_id as usize;
     let master = packet.o_id as i16;
     let unit_ai = match sections.get(player) {
@@ -2843,7 +2862,7 @@ pub fn word9_terms(
         .iter()
         .map(|unit| Word9Terms {
             id: unit.id as u32,
-            action: unit.artifact.map_or(-1, |_| ARTIFACT_TYPE as i32),
+            action: unit.artifact.map_or(-1, |_| i32::from(ARTIFACT_TYPE)),
             state: unit.artifact.map_or(0, |a| a.state),
             retarget: unit.ai.as_ref().map_or(0, |ai| ai.retarget_timer as i32),
         })
@@ -2926,7 +2945,7 @@ pub struct ObjectRow {
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AiRow {
     pub fields: Vec<(&'static str, String)>,
 }
@@ -2934,7 +2953,7 @@ pub struct AiRow {
 impl AiRow {
     fn of(ai: &genie_core::unit_ai::UnitAi) -> Self {
         let f = |v: &dyn std::fmt::Debug| format!("{v:?}");
-        AiRow {
+        Self {
             fields: vec![
                 ("current_order", f(&ai.current_order)),
                 ("current_order_priority", f(&ai.order_priority)),
@@ -2965,7 +2984,7 @@ impl AiRow {
 
     fn saved(ai: &genie_save::generated::world::UnitAiModule) -> Self {
         let f = |v: &dyn std::fmt::Debug| format!("{v:?}");
-        AiRow {
+        Self {
             fields: vec![
                 ("current_order", f(&ai.current_order_value)),
                 (
@@ -3050,7 +3069,7 @@ pub struct MoveRow {
 
 impl ObjectRow {
     fn of_unit(unit: &Unit) -> Self {
-        ObjectRow {
+        Self {
             id: unit.id,
             master: unit.life.master_id,
             state: unit.life.state,
@@ -3323,7 +3342,7 @@ pub fn objects_from_save(
 
 /// What one forced replay step found ([`forced_ticks`]): the slice started from the game's save
 /// after `start`, run `ticks` updates, against the game's save after `start + ticks`.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TickReport {
     pub start: usize,
     pub ticks: usize,
@@ -3398,7 +3417,7 @@ pub fn forced_run(
     decoder.prime(&all[..updates.min(all.len())], &sections);
     let mut reports = Vec::new();
     // the game's saves after each update, parsed ahead on every core a batch at a time
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
     let mut ahead = std::collections::VecDeque::new();
     for k in 0..ticks {
         let Some(frame) = all.get(updates + k) else {
@@ -3665,6 +3684,7 @@ pub fn spatial_with_tiles(
 /// a header line `mesh width W shapes N free F`, a `shape ID X0 Y0 X1 Y1` line per slot with its
 /// sides' contacts (`  side S` and seven hex words), then `tile X Y IDS...` for every tile that
 /// holds shapes. The save does not hold the mesh: its ids and orders follow the game's history.
+#[must_use]
 pub fn mesh_from_dump(text: &str) -> Option<genie_core::mesh::Mesh> {
     use genie_core::mesh::{Contact, Mesh};
     let mut mesh: Option<Mesh> = None;
@@ -3769,6 +3789,7 @@ impl genie_core::tasks::Diplomacy for FinderWorld {
 impl FinderWorld {
     /// The finder's view of object `id`, with its master from its player's masters; an annex
     /// stands for its main building (the finder's step, `+0xbb8`), `steps` times.
+    #[must_use]
     pub fn target_up(&self, id: i32, steps: usize) -> Option<genie_core::tasks::TaskTarget<'_>> {
         let mut id = id;
         for _ in 0..steps {
@@ -3793,11 +3814,13 @@ impl FinderWorld {
     }
 
     /// The finder's target: an annex stands for its main building.
+    #[must_use]
     pub fn target(&self, id: i32) -> Option<genie_core::tasks::TaskTarget<'_>> {
         self.target_up(id, 1)
     }
 
     /// The finder's view of unit `id` as the actor.
+    #[must_use]
     pub fn actor(&self, id: i32) -> Option<genie_core::tasks::Actor<'_>> {
         let o = self.objects.get(&id)?;
         Some(genie_core::tasks::Actor {
@@ -3925,6 +3948,7 @@ pub fn drop_sites(json: &str) -> Result<Vec<genie_core::tasks::DropSite>, serde_
 }
 
 /// The owner of each shape in a mesh dump (its `owner ID SHAPE` lines): the objects' `+0x64c`.
+#[must_use]
 pub fn mesh_owners_from_dump(text: &str) -> Vec<(i32, u32)> {
     text.lines()
         .filter_map(|line| {
@@ -3990,6 +4014,7 @@ pub fn planner_from_save(
 
 /// Where two object lists differ, one line per object and field: `slice` from the slice, `game`
 /// from the game's save, matched by id. Equal lists give none.
+#[must_use]
 pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String> {
     let mut out = Vec::new();
     for g in game {

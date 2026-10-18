@@ -110,7 +110,7 @@ pub struct Victim {
 }
 
 /// What a killing hit leaves for the caller ([`crate::turn::Turns`]'s write-back).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Kill {
     pub attacker: i32,
     pub attacker_player: usize,
@@ -208,6 +208,7 @@ pub struct Attacker {
 /// Slot 0x1f0 of a combat object (`FUN_14120d780`) at height `z` whose player has `up_down` as
 /// attributes 211 and 212: a hit from higher up gains 25% and attributes 211 and the target's
 /// 272, one from lower down 75% and attributes 212 and 273.
+#[must_use]
 pub fn elevation_factor(z: f32, up_down: [f32; 2], to: &Victim) -> f32 {
     let tz = to.position[2];
     if tz < z {
@@ -222,6 +223,7 @@ pub fn elevation_factor(z: f32, up_down: [f32; 2], to: &Victim) -> f32 {
 /// `FUN_14114eaa0` toward another object: how far `other` lies from where an object at `at`
 /// faces, in facets (at least 8): the angle to it (`atan2f`, 0 to 2π) less the facing angle,
 /// wrapped into −π to π, times the facets over 2π; 0 on the same point or without facets.
+#[must_use]
 pub fn facing_offset(at: [f32; 3], facing: Facing, other: [f32; 3]) -> f32 {
     if facing.facets <= 0 {
         return 0.0;
@@ -250,7 +252,8 @@ pub fn facing_offset(at: [f32; 3], facing: Facing, other: [f32; 3]) -> f32 {
 /// classes) works on an object of `class` and `kind`: on every object for −1 or charge type −4;
 /// for 0, on every object but buildings (type 80) other than classes 51 and 54; else by the bit
 /// of the class's group, none for a class in no group.
-pub fn charge_works(charge_target: i16, charge_type: i16, class: i16, kind: u8) -> bool {
+#[must_use]
+pub const fn charge_works(charge_target: i16, charge_type: i16, class: i16, kind: u8) -> bool {
     let targets = charge_target as u16;
     if targets == 0xffff
         || charge_type == -4
@@ -275,6 +278,7 @@ pub fn charge_works(charge_target: i16, charge_type: i16, class: i16, kind: u8) 
 
 /// Slot 0x300 (`FUN_141203e30`): the charge is ready, at least `max_charge` for charge types 1
 /// and 3, else at least 1.
+#[must_use]
 pub fn charged(a: &Attacker) -> bool {
     if matches!(a.charge_type, 1 | 3) {
         a.max_charge <= a.charge
@@ -285,6 +289,7 @@ pub fn charged(a: &Attacker) -> bool {
 
 /// Slot 0x2f0 of a combat object of type 70 or 80 (`FUN_14120e920`): a charge of type 1 or 3
 /// that works on `v` ([`charge_works`]) and is ready.
+#[must_use]
 pub fn charge_hit(a: &Attacker, v: &Victim) -> bool {
     matches!(a.charge_type, 1 | 3)
         && charge_works(a.charge_target, a.charge_type, v.class, v.kind)
@@ -293,7 +298,7 @@ pub fn charge_hit(a: &Attacker, v: &Victim) -> bool {
 
 /// `FUN_1412161b0`: a master of special attack 3 whose charge is ready on its unit AI's (or
 /// group's) target in reach; false for other masters. Special attack 3 is not modelled.
-fn special_charge_ready(a: &Attacker) -> Result<bool, Unsupported> {
+const fn special_charge_ready(a: &Attacker) -> Result<bool, Unsupported> {
     if a.special_attack == 3 {
         return Err(Unsupported("a charge of special attack 3 (FUN_1412161b0)"));
     }

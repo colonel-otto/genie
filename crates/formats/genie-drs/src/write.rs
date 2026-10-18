@@ -73,12 +73,12 @@ where
         // Assign table offsets
         let mut table_offset = 64 + 12 * (drs.tables.len() as u32);
         let mut file_offset = drs.header.directory_size;
-        for table in drs.tables.iter_mut() {
+        for table in &mut drs.tables {
             table.offset = table_offset;
             table_offset += 12 * (table.len() as u32);
 
             // Assign file offsets
-            for res in table.resources.iter_mut() {
+            for res in &mut table.resources {
                 res.offset = file_offset;
                 file_offset += res.size;
             }
@@ -119,7 +119,8 @@ impl ReserveDirectoryStrategy {
     /// The total size of the reserved metadata block will be `12 * (reserved_tables +
     /// reserved_files)` bytes.
     #[inline]
-    pub fn new(reserved_tables: u32, reserved_files: u32) -> Self {
+    #[must_use]
+    pub const fn new(reserved_tables: u32, reserved_files: u32) -> Self {
         Self {
             reserved_tables,
             file_space_left: reserved_files,
@@ -152,7 +153,7 @@ where
         assert!(self.file_space_left > 0, "too many files");
         self.file_space_left -= 1;
 
-        let len = std::io::copy(data, &mut drs.output)?;
+        let len = io::copy(data, &mut drs.output)?;
         assert!(len < u64::from(u32::max_value()), "file too large");
         resource.offset = self.write_offset;
         resource.size = len as u32;
@@ -173,7 +174,7 @@ where
 
         // Assign table offsets
         let mut table_offset = 64 + 12 * (drs.tables.len() as u32);
-        for table in drs.tables.iter_mut() {
+        for table in &mut drs.tables {
             table.offset = table_offset;
             table_offset += 12 * (table.len() as u32);
         }
@@ -292,20 +293,17 @@ where
             .strategy
             .add_resource(&mut self.inner, t, res, &mut data)?;
 
-        match self
+        if let Some(table) = self
             .inner
             .tables
             .iter_mut()
             .find(|table| table.resource_type == t)
         {
-            Some(table) => {
-                table.add(res);
-            }
-            None => {
-                let mut table = DRSTable::new(t, 0, 0);
-                table.add(res);
-                self.inner.tables.push(table);
-            }
+            table.add(res);
+        } else {
+            let mut table = DRSTable::new(t, 0, 0);
+            table.add(res);
+            self.inner.tables.push(table);
         }
 
         Ok(())

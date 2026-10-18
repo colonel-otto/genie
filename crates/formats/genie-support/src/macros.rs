@@ -1,5 +1,5 @@
 #[macro_export]
-/// Create an infallible TryInto implementation for an ID container type that returns its contained number as the given target type.
+/// Create an infallible `TryInto` implementation for an ID container type that returns its contained number as the given target type.
 ///
 ///
 /// ## Example
@@ -25,7 +25,7 @@ macro_rules! infallible_try_into {
 }
 
 #[macro_export]
-/// Create a TryInto implementation for an ID container type that tries to returns its contained number as the given target type.
+/// Create a `TryInto` implementation for an ID container type that tries to returns its contained number as the given target type.
 ///
 /// ## Example
 ///
@@ -52,7 +52,7 @@ macro_rules! fallible_try_into {
 }
 
 #[macro_export]
-/// Create a TryFrom implementation for an ID container type that tries to wrap the given number
+/// Create a `TryFrom` implementation for an ID container type that tries to wrap the given number
 /// type into the container.
 ///
 /// ## Example

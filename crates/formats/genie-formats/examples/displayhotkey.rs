@@ -35,6 +35,6 @@ fn main() -> anyhow::Result<()> {
     let info = HotkeyInfo::from(&mut f)?;
     let group = info.group(cli_input.group_index).unwrap();
     let hotkey = group.hotkey(cli_input.hotkey_index).unwrap();
-    println!("{}", hotkey);
+    println!("{hotkey}");
     Ok(())
 }

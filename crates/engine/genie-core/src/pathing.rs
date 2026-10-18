@@ -42,6 +42,7 @@ pub struct Pathing {
 
 /// A shape's rectangle for an object (`FUN_141056460`): its box grown by half a tile, in fixed
 /// point by truncation.
+#[must_use]
 pub fn shape_rect(p: &Placed) -> Rect {
     let [x, y, _] = p.position;
     let [rx, ry] = p.radius;
@@ -56,6 +57,7 @@ pub fn shape_rect(p: &Placed) -> Rect {
 
 /// A shape's rectangle at the end of an action object's update (`FUN_141054fe0`): the place and
 /// the radii each in fixed point by truncation, the box grown by half a tile (`0x200000`).
+#[must_use]
 pub fn refreshed_rect(position: [f32; 3], radius: [f32; 2]) -> Rect {
     let fixed = |v: f32| (v * ONE as f32) as i64 as i32;
     let [x, y, _] = position;
@@ -70,18 +72,19 @@ pub fn refreshed_rect(position: [f32; 3], radius: [f32; 2]) -> Rect {
 }
 
 impl Pathing {
+    #[must_use]
     pub fn new(
         size: [i32; 2],
         terrain: Vec<u8>,
         restrictions: Vec<Vec<f32>>,
         game_type: u8,
     ) -> Self {
-        Pathing {
+        Self {
             size,
             terrain,
             restrictions,
             game_type,
-            ..Pathing::default()
+            ..Self::default()
         }
     }
 
@@ -91,7 +94,8 @@ impl Pathing {
         self.shapes = shapes.into_iter().collect();
     }
 
-    pub fn mesh(&self) -> Option<&Mesh> {
+    #[must_use]
+    pub const fn mesh(&self) -> Option<&Mesh> {
         self.mesh.as_ref()
     }
 
@@ -101,6 +105,7 @@ impl Pathing {
     }
 
     /// An object's shape in the mesh.
+    #[must_use]
     pub fn shape(&self, id: i32) -> Option<u32> {
         self.shapes.get(&id).copied()
     }

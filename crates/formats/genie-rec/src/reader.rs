@@ -18,7 +18,7 @@ impl<R> SmallBufReader<R>
 where
     R: Read,
 {
-    pub(crate) fn new(reader: R) -> Self {
+    pub(crate) const fn new(reader: R) -> Self {
         Self {
             buffer: [0; 256],
             pointer: 0,
@@ -70,7 +70,7 @@ impl<R> InflatableReader<R> {
     }
 
     pub fn new_with_capacity(inner: R, capacity: usize) -> Self {
-        InflatableReader {
+        Self {
             inner,
             inflatable_buffer: Vec::with_capacity(capacity),
             position_in_buffer: 0,
@@ -89,7 +89,7 @@ impl<R: Read> Peek for &mut InflatableReader<R> {
 }
 
 impl<R: Read> Peek for InflatableReader<R> {
-    /// Peek into inner reader, returns a slice owned by the [InflatableReader],
+    /// Peek into inner reader, returns a slice owned by the [`InflatableReader`],
     /// if data isn't available in the buffer yet, it will read it into the inner buffer
     /// and inflate the buffer if needed.
     fn peek(&mut self, amount: usize) -> io::Result<&[u8]> {
@@ -151,7 +151,9 @@ impl<R: Read> Read for InflatableReader<R> {
             return Ok(0);
         }
 
-        let fulfilled: usize = if self.inflatable_buffer.len() != self.position_in_buffer {
+        let fulfilled: usize = if self.inflatable_buffer.len() == self.position_in_buffer {
+            0
+        } else {
             let to_consume = min(
                 buf.len(),
                 self.inflatable_buffer.len() - self.position_in_buffer,
@@ -161,8 +163,6 @@ impl<R: Read> Read for InflatableReader<R> {
                     [self.position_in_buffer..to_consume + self.position_in_buffer],
             );
             to_consume
-        } else {
-            0
         };
 
         if buf.len() - fulfilled == 0 {
@@ -197,31 +197,31 @@ impl<R> RecordingHeaderReader<R> {
         }
     }
 
-    pub fn version(&self) -> f32 {
+    pub const fn version(&self) -> f32 {
         self.state.version
     }
 
-    pub fn game_version(&self) -> GameVersion {
+    pub const fn game_version(&self) -> GameVersion {
         self.state.game_version
     }
 
-    pub fn variant(&self) -> GameVariant {
+    pub const fn variant(&self) -> GameVariant {
         self.state.variant
     }
 
-    pub fn tile_count(&self) -> usize {
+    pub const fn tile_count(&self) -> usize {
         self.state.tile_count
     }
 
-    pub fn map_width(&self) -> u32 {
+    pub const fn map_width(&self) -> u32 {
         self.state.map_width
     }
 
-    pub fn map_height(&self) -> u32 {
+    pub const fn map_height(&self) -> u32 {
         self.state.map_height
     }
 
-    pub fn num_players(&self) -> u16 {
+    pub const fn num_players(&self) -> u16 {
         self.state.num_players
     }
 
@@ -236,14 +236,14 @@ impl<R> RecordingHeaderReader<R> {
         self.state.game_version = game_version;
     }
 
-    pub fn set_map_size(&mut self, width: u32, height: u32) {
+    pub const fn set_map_size(&mut self, width: u32, height: u32) {
         self.state.map_width = width;
         self.state.map_height = height;
         self.state.tile_count = width as usize * height as usize;
     }
 
-    pub fn set_num_players(&mut self, num_players: u16) {
-        self.state.num_players = num_players
+    pub const fn set_num_players(&mut self, num_players: u16) {
+        self.state.num_players = num_players;
     }
 }
 
@@ -273,7 +273,7 @@ struct RecordingState {
 
 impl Default for RecordingState {
     fn default() -> Self {
-        RecordingState {
+        Self {
             version: 0.0,
             game_version: Default::default(),
             variant: GameVariant::Trial,

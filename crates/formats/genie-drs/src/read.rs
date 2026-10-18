@@ -11,11 +11,11 @@ pub struct DRSReader {
 impl DRSReader {
     /// Create a new DRS archive reader for the given handle.
     /// The handle must be `Read`able and `Seek`able.
-    pub fn new<R>(handle: &mut R) -> Result<DRSReader, Error>
+    pub fn new<R>(handle: &mut R) -> Result<Self, Error>
     where
         R: Read + Seek,
     {
-        let mut drs = DRSReader {
+        let mut drs = Self {
             header: None,
             tables: vec![],
         };
@@ -41,7 +41,7 @@ impl DRSReader {
                 }
             }
             None => panic!("must read header first"),
-        };
+        }
         Ok(())
     }
 
@@ -54,6 +54,7 @@ impl DRSReader {
     }
 
     /// Get the table for the given resource type.
+    #[must_use]
     pub fn get_table(&self, resource_type: ResourceType) -> Option<&DRSTable> {
         self.tables
             .iter()
@@ -61,12 +62,14 @@ impl DRSReader {
     }
 
     /// Get a resource of a given type and ID.
+    #[must_use]
     pub fn get_resource(&self, resource_type: ResourceType, id: u32) -> Option<&DRSResource> {
         self.get_table(resource_type)
             .and_then(|table| table.get_resource(id))
     }
 
     /// Get the type of a resource with the given ID.
+    #[must_use]
     pub fn get_resource_type(&self, id: u32) -> Option<ResourceType> {
         self.tables
             .iter()

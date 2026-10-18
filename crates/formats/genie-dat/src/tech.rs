@@ -63,7 +63,7 @@ impl EffectCommand {
             input.read_i16::<LE>()?,
             input.read_f32::<LE>()?,
         );
-        Ok(EffectCommand {
+        Ok(Self {
             command_type,
             params,
         })
@@ -81,6 +81,7 @@ impl EffectCommand {
 
 impl TechEffect {
     /// Get the name of this effect.
+    #[must_use]
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
@@ -141,7 +142,8 @@ impl TechEffectRef {
 
 impl Tech {
     /// Get the name of this tech.
-    pub fn name(&self) -> &str {
+    #[must_use]
+    pub const fn name(&self) -> &str {
         self.name.as_str()
     }
 

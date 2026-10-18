@@ -89,7 +89,7 @@ pub struct StaticUnitAttributes {
 
 impl ReadableHeaderElement for StaticUnitAttributes {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut attrs = StaticUnitAttributes {
+        let mut attrs = Self {
             id: input.read_u16::<LE>()?.into(),
             copy_id: input.read_u16::<LE>()?.into(),
             base_id: input.read_u16::<LE>()?.into(),
@@ -222,7 +222,7 @@ pub struct BaseCombatUnitAttributes {
 
 impl ReadableHeaderElement for BaseCombatUnitAttributes {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut attrs = BaseCombatUnitAttributes {
+        let mut attrs = Self {
             base_armor: if input.version() >= 11.52 {
                 input.read_u16::<LE>()?
             } else {
@@ -321,7 +321,7 @@ impl ReadableHeaderElement for CombatUnitAttributes {
             attrs.create_time = input.read_u16::<LE>()?;
         } else {
             attrs.create_time = create_time;
-        };
+        }
         attrs.volley_fire_amount = input.read_f32::<LE>()?;
         attrs.max_attacks_in_volley = input.read_u8()?;
         Ok(attrs)

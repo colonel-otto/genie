@@ -5,9 +5,9 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::convert::TryFrom;
 use std::io::{Read, Write};
 
-/// AoE1's victory info.
+/// `AoE1`'s victory info.
 ///
-/// This was replaced by VictoryConditions in AoE2.
+/// This was replaced by `VictoryConditions` in `AoE2`.
 #[derive(Debug, Clone, Default)]
 pub struct LegacyVictoryInfo {
     pub object_type: i32,
@@ -220,8 +220,10 @@ impl VictoryPointEntry {
 /// Current achieved-ness state of a victory condition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
+#[derive(Default)]
 pub enum VictoryState {
     /// The condition is not yet achieved, but may be achieved in the future.
+    #[default]
     NotAchieved = 0,
     /// The condition can no longer be achieved.
     ///
@@ -234,12 +236,6 @@ pub enum VictoryState {
     ///
     /// This appears to happen for invalid condition data?
     Disabled = 3,
-}
-
-impl Default for VictoryState {
-    fn default() -> Self {
-        Self::NotAchieved
-    }
 }
 
 /// Tracks victory conditions for the scenario, used in single player.
@@ -354,7 +350,7 @@ pub struct VictoryInfo {
     pub(crate) ruins: i32,
     /// How many relics need to be captured? (attribute 7)
     pub(crate) relics: i32,
-    /// How many "RemarkableDiscoveries" need to be done? (attribute 13)
+    /// How many "`RemarkableDiscoveries`" need to be done? (attribute 13)
     pub(crate) discoveries: i32,
     pub(crate) exploration: i32,
     /// How much gold needs to be collected?

@@ -1,4 +1,4 @@
-//! GenieSwissKnife Abscissa Application
+//! `GenieSwissKnife` Abscissa Application
 
 use crate::{commands::EntryPoint, config::GenieSwissKnifeConfig};
 use abscissa_core::{
@@ -11,7 +11,7 @@ use abscissa_core::{
 /// Application state
 pub static APP: AppCell<GenieSwissKnifeApp> = AppCell::new();
 
-/// GenieSwissKnife Application
+/// `GenieSwissKnife` Application
 #[derive(Debug)]
 pub struct GenieSwissKnifeApp {
     /// Application configuration.

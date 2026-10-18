@@ -1,7 +1,7 @@
 //! A reader for Age of Empires game data files.
 //!
-//! This crate aims to support every data file that exists, but is for now being tested with AoE1,
-//! AoE2, and AoE2: HD Edition.
+//! This crate aims to support every data file that exists, but is for now being tested with `AoE1`,
+//! `AoE2`, and `AoE2`: HD Edition.
 
 #![deny(future_incompatible)]
 #![deny(nonstandard_style)]
@@ -46,14 +46,14 @@ pub enum GameVersion {
     AoK,
     /// Age of Empires 2 with the The Conquerors expansion.
     AoC,
-    /// Age of EMpires 2: HD Edition.
+    /// Age of `EMpires` 2: HD Edition.
     HD,
 }
 
 impl GameVersion {
     /// Get the most likely internal game data version number for a given game version.
-    fn as_f32(self) -> f32 {
-        use GameVersion::*;
+    const fn as_f32(self) -> f32 {
+        use GameVersion::{AoC, AoK, HD};
         match self {
             AoK => 11.5,
             AoC => 11.97,
@@ -89,7 +89,7 @@ impl From<&str> for FileVersion {
 impl fmt::Display for FileVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match std::str::from_utf8(&self.0[0..7]) {
-            Ok(s) => write!(f, "{}", s),
+            Ok(s) => write!(f, "{s}"),
             Err(_) => write!(f, "{:?}", self.0),
         }
     }
@@ -108,28 +108,31 @@ impl PartialOrd for FileVersion {
 
 impl FileVersion {
     /// Get the major version component, eg the 5 in "VER 5.8".
-    fn major_version(self) -> u8 {
+    const fn major_version(self) -> u8 {
         self.0[4] - b'0'
     }
     /// Get the minor version component, eg the 8 in "VER 5.8".
-    fn minor_version(self) -> u8 {
+    const fn minor_version(self) -> u8 {
         self.0[6] - b'0'
     }
 
     /// Is this file built for Star Wars: Galactic Battlegrounds?
-    pub fn is_swgb(self) -> bool {
+    #[must_use]
+    pub const fn is_swgb(self) -> bool {
         false
     }
 
     /// Is this file built for Age of Empires II: The Conquerors?
+    #[must_use]
     pub fn is_aoc(self) -> bool {
         let data_version = self.into_data_version();
         f32_eq!(data_version, 11.97)
     }
 
     /// Is this file built for Age of Empires II: Definitive Edition?
+    #[must_use]
     pub fn is_de2(self) -> bool {
-        self >= FileVersion(*b"VER 5.8\0")
+        self >= Self(*b"VER 5.8\0")
     }
 
     /// Get the data version associated with this file version.
@@ -154,7 +157,7 @@ pub struct DatFile {
     pub terrains: Vec<Terrain>,
     /// Terrain border data, specifying how different terrains blend.
     pub terrain_borders: Vec<TerrainBorder>,
-    /// Random map data from AoE1.
+    /// Random map data from `AoE1`.
     random_maps: Vec<RandomMapInfo>,
     /// Data about player colours.
     pub color_tables: Vec<ColorTable>,
@@ -254,7 +257,7 @@ impl DatFile {
         let _world_height = input.read_i32::<LE>()?;
 
         let mut tile_sizes = vec![TileSize::default(); 19];
-        for val in tile_sizes.iter_mut() {
+        for val in &mut tile_sizes {
             *val = TileSize::read_from(&mut input)?;
         }
 
@@ -301,7 +304,7 @@ impl DatFile {
         let _random_maps_pointer = input.read_u32::<LE>()?;
 
         let mut random_maps = read_array(num_random_maps, || RandomMapInfo::read_from(&mut input))?;
-        for map in random_maps.iter_mut() {
+        for map in &mut random_maps {
             map.finish(&mut input)?;
         }
 
@@ -520,6 +523,7 @@ impl DatFile {
     }
 
     /// Get the GAIA civilization.
+    #[must_use]
     pub fn get_gaia(&self) -> Option<&Civilization> {
         self.get_civilization(0)
     }
@@ -598,8 +602,8 @@ mod tests {
 
         let mut orig_hasher = DefaultHasher::new();
         let mut new_hasher = DefaultHasher::new();
-        format!("{:?}", dat).hash(&mut orig_hasher);
-        format!("{:?}", dat2).hash(&mut new_hasher);
+        format!("{dat:?}").hash(&mut orig_hasher);
+        format!("{dat2:?}").hash(&mut new_hasher);
         assert_eq!(orig_hasher.finish(), new_hasher.finish());
 
         Ok(())

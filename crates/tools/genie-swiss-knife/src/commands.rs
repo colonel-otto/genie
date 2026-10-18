@@ -1,4 +1,4 @@
-//! GenieSwissKnife Subcommands
+//! `GenieSwissKnife` Subcommands
 //!
 //! This is where you specify the subcommands of your application.
 //!
@@ -12,10 +12,10 @@ use crate::config::GenieSwissKnifeConfig;
 use abscissa_core::{Command, Configurable, FrameworkError, Runnable};
 use std::path::PathBuf;
 
-/// GenieSwissKnife Configuration Filename
+/// `GenieSwissKnife` Configuration Filename
 pub const CONFIG_FILE: &str = "genie_swiss_knife.toml";
 
-/// GenieSwissKnife Subcommands
+/// `GenieSwissKnife` Subcommands
 /// Subcommands need to be listed in an enum.
 #[derive(clap::Parser, Command, Debug, Runnable)]
 pub enum GenieSwissKnifeCmd {}
@@ -38,7 +38,7 @@ pub struct EntryPoint {
 
 impl Runnable for EntryPoint {
     fn run(&self) {
-        self.cmd.run()
+        self.cmd.run();
     }
 }
 
@@ -52,8 +52,7 @@ impl Configurable<GenieSwissKnifeConfig> for EntryPoint {
         let filename = self
             .config
             .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| CONFIG_FILE.into());
+            .map_or_else(|| CONFIG_FILE.into(), PathBuf::from);
 
         if filename.exists() {
             Some(filename)

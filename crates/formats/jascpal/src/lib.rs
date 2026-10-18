@@ -64,7 +64,7 @@ pub struct PaletteIndex(u8);
 impl From<u8> for PaletteIndex {
     #[inline]
     fn from(n: u8) -> Self {
-        PaletteIndex(n)
+        Self(n)
     }
 }
 
@@ -110,7 +110,7 @@ fn whitespace(input: &[u8]) -> IResult<&[u8], ()> {
     map(many1(one_of(&b" \t"[..])), |_| ())(input)
 }
 
-/// Parse an UTF-8 byte slice using FromStr.
+/// Parse an UTF-8 byte slice using `FromStr`.
 fn parse_bytes<Parsed: FromStr>(string: &[u8]) -> Result<Parsed, ()> {
     str::from_utf8(string)
         .map_err(|_| ())
@@ -125,9 +125,9 @@ fn parse_number<Parsed: FromStr>(input: &[u8]) -> IResult<&[u8], Parsed> {
 /// Eat and return an RGB value (three `u8` components).
 fn parse_rgb(input: &[u8]) -> IResult<&[u8], Color> {
     let (input, r) = parse_number(input)?;
-    let (input, _) = whitespace(input)?;
+    let (input, ()) = whitespace(input)?;
     let (input, g) = parse_number(input)?;
-    let (input, _) = whitespace(input)?;
+    let (input, ()) = whitespace(input)?;
     let (input, b) = parse_number(input)?;
 
     Ok((input, RGB { r, g, b }))
@@ -173,7 +173,7 @@ impl From<Vec<Color>> for Palette {
     /// Create a palette from a vector of colours.
     #[inline]
     fn from(colors: Vec<Color>) -> Self {
-        Palette { colors }
+        Self { colors }
     }
 }
 
@@ -188,6 +188,7 @@ impl Default for Palette {
 impl Palette {
     /// Create an empty palette.
     #[inline]
+    #[must_use]
     pub fn new() -> Self {
         Self::from(vec![])
     }
@@ -216,31 +217,35 @@ impl Palette {
     ///
     /// It can later be wrapped back into a Palette instance using `Palette::from(vec)`.
     #[inline]
+    #[must_use]
     pub fn into_inner(self) -> Vec<Color> {
         self.colors
     }
 
     /// Return the colours as a slice.
     #[inline]
+    #[must_use]
     pub fn colors(&self) -> &[Color] {
         &self.colors
     }
 
     /// Return the colours as a mutable vector.
     #[inline]
-    pub fn colors_mut(&mut self) -> &mut Vec<Color> {
+    pub const fn colors_mut(&mut self) -> &mut Vec<Color> {
         &mut self.colors
     }
 
     /// Returns the number of colours in this palette.
     #[inline]
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.colors.len()
     }
 
     /// Returns `true` if this palette contains 0 colours.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.colors.is_empty()
     }
 
@@ -252,6 +257,7 @@ impl Palette {
 
     /// Serialize the palette to a byte vector.
     #[inline]
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
         self.write_to(&mut bytes)
@@ -279,7 +285,7 @@ impl std::ops::IndexMut<PaletteIndex> for Palette {
     }
 }
 
-impl std::str::FromStr for Palette {
+impl FromStr for Palette {
     type Err = ReadPaletteError;
     /// Parse a palette from a UTF-8 string.
     #[inline]

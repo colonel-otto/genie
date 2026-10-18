@@ -6,10 +6,12 @@ use crate::ai::AIInfo;
 use crate::bitmap::Bitmap;
 use crate::header::SCXHeader;
 use crate::map::Map;
-use crate::player::*;
+use crate::player::{
+    PlayerBaseProperties, PlayerFiles, PlayerStartResources, ScenarioPlayerData, WorldPlayerData,
+};
 use crate::triggers::TriggerSystem;
-use crate::types::*;
-use crate::victory::*;
+use crate::types::{DiplomaticStance, SCXVersion, StartingAge};
+use crate::victory::{LegacyVictoryInfo, VictoryInfo};
 use crate::{Error, Result, VersionBundle};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use flate2::{Compression, read::DeflateDecoder, write::DeflateEncoder};
@@ -148,24 +150,24 @@ pub(crate) struct RGEScen {
 impl RGEScen {
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let version = input.read_f32::<LE>()?;
-        log::debug!("RGEScen version {}", version);
+        log::debug!("RGEScen version {version}");
         let mut player_names = vec![None; 16];
         if version > 1.13 {
-            for name in player_names.iter_mut() {
+            for name in &mut player_names {
                 *name = input.read_str(256)?;
             }
         }
 
         let mut player_string_table = vec![None; 16];
         if version > 1.16 {
-            for string_id in player_string_table.iter_mut() {
+            for string_id in &mut player_string_table {
                 *string_id = read_opt_u32(&mut input)?;
             }
         }
 
         let mut player_base_properties = vec![PlayerBaseProperties::default(); 16];
         if version > 1.13 {
-            for properties in player_base_properties.iter_mut() {
+            for properties in &mut player_base_properties {
                 properties.active = input.read_i32::<LE>()?;
                 properties.player_type = input.read_i32::<LE>()?;
                 properties.civilization = input.read_i32::<LE>()?;
@@ -261,24 +263,24 @@ impl RGEScen {
         };
 
         let mut player_build_lists = vec![None; 16];
-        for build_list in player_build_lists.iter_mut() {
+        for build_list in &mut player_build_lists {
             *build_list = input.read_u16_length_prefixed_str()?;
         }
 
         let mut player_city_plans = vec![None; 16];
-        for city_plan in player_city_plans.iter_mut() {
+        for city_plan in &mut player_city_plans {
             *city_plan = input.read_u16_length_prefixed_str()?;
         }
 
         let mut player_ai_rules = vec![None; 16];
         if version >= 1.08 {
-            for ai_rules in player_ai_rules.iter_mut() {
+            for ai_rules in &mut player_ai_rules {
                 *ai_rules = input.read_u16_length_prefixed_str()?;
             }
         }
 
         let mut player_files = vec![PlayerFiles::default(); 16];
-        for files in player_files.iter_mut() {
+        for files in &mut player_files {
             let build_list_length = input.read_i32::<LE>()? as usize;
             let city_plan_length = input.read_i32::<LE>()? as usize;
             let ai_rules_length = if version >= 1.08 {
@@ -294,7 +296,7 @@ impl RGEScen {
 
         let mut ai_rules_types = vec![0; 16];
         if version >= 1.20 {
-            for rule_type in ai_rules_types.iter_mut() {
+            for rule_type in &mut ai_rules_types {
                 *rule_type = input.read_i8()?;
             }
         }
@@ -304,7 +306,7 @@ impl RGEScen {
             debug_assert_eq!(sep, -99);
         }
 
-        Ok(RGEScen {
+        Ok(Self {
             version,
             player_names,
             player_string_table,
@@ -466,10 +468,10 @@ impl RGEScen {
             if let Some(city_plan) = &files.city_plan {
                 output.write_all(city_plan.as_bytes())?;
             }
-            if version >= 1.08 {
-                if let Some(ai_rules) = &files.ai_rules {
-                    output.write_all(ai_rules.as_bytes())?;
-                }
+            if version >= 1.08
+                && let Some(ai_rules) = &files.ai_rules
+            {
+                output.write_all(ai_rules.as_bytes())?;
             }
         }
 
@@ -495,7 +497,7 @@ pub struct TribeScen {
     /// "Engine" data.
     ///
     /// This distinction doesn't make much sense as a user of this library, but
-    /// it exists internally in AoC and affects the storage format (eg.  some
+    /// it exists internally in `AoC` and affects the storage format (eg.  some
     /// things are duplicate).
     pub(crate) base: RGEScen,
     /// Starting resources for players.
@@ -539,14 +541,14 @@ pub struct TribeScen {
     disabled_buildings: Vec<Vec<i32>>,
     /// (What exactly?)
     ///
-    /// According to [AoE2ScenarioParser][].
-    /// [AoE2ScenarioParser]: https://github.com/KSneijders/AoE2ScenarioParser/blob/8e3abd422164961aa5c7857350475088790804f8/AoE2ScenarioParser/pieces/options.py
+    /// According to [`AoE2ScenarioParser`][].
+    /// [`AoE2ScenarioParser`]: <https://github.com/KSneijders/AoE2ScenarioParser/blob/8e3abd422164961aa5c7857350475088790804f8/AoE2ScenarioParser/pieces/options.py>
     #[allow(dead_code)]
     combat_mode: i32,
     /// (What exactly?)
     ///
-    /// According to [AoE2ScenarioParser][].
-    /// [AoE2ScenarioParser]: https://github.com/KSneijders/AoE2ScenarioParser/blob/8e3abd422164961aa5c7857350475088790804f8/AoE2ScenarioParser/pieces/options.py
+    /// According to [`AoE2ScenarioParser`][].
+    /// [`AoE2ScenarioParser`]: <https://github.com/KSneijders/AoE2ScenarioParser/blob/8e3abd422164961aa5c7857350475088790804f8/AoE2ScenarioParser/pieces/options.py>
     #[allow(dead_code)]
     naval_mode: i32,
     /// Whether "All Techs" is enabled.
@@ -588,7 +590,7 @@ impl TribeScen {
 
         // Moved to RGEScen in 1.13
         if version <= 1.13 {
-            for name in base.player_names.iter_mut() {
+            for name in &mut base.player_names {
                 *name = input.read_str(256)?;
             }
 
@@ -604,7 +606,7 @@ impl TribeScen {
                 properties.posture = input.read_i32::<LE>()?;
             }
         } else {
-            for resources in player_start_resources.iter_mut() {
+            for resources in &mut player_start_resources {
                 *resources = PlayerStartResources::read_from(&mut input, version)?;
             }
         }
@@ -633,22 +635,17 @@ impl TribeScen {
             9000
         };
 
-        log::debug!(
-            "Victory values: {} {} {}",
-            mp_victory_type,
-            victory_score,
-            victory_time
-        );
+        log::debug!("Victory values: {mp_victory_type} {victory_score} {victory_time}");
 
         let mut diplomacy = vec![vec![DiplomaticStance::Neutral; 16]; 16];
-        for player_diplomacy in diplomacy.iter_mut() {
+        for player_diplomacy in &mut diplomacy {
             for stance in player_diplomacy.iter_mut() {
                 *stance = DiplomaticStance::try_from(input.read_i32::<LE>()?)?;
             }
         }
 
         let mut legacy_victory_info = vec![vec![LegacyVictoryInfo::default(); 12]; 16];
-        for list in legacy_victory_info.iter_mut() {
+        for list in &mut legacy_victory_info {
             for victory_info in list.iter_mut() {
                 *victory_info = LegacyVictoryInfo::read_from(&mut input)?;
             }
@@ -660,7 +657,7 @@ impl TribeScen {
         }
 
         let mut allied_victory = vec![0i32; 16];
-        for setting in allied_victory.iter_mut() {
+        for setting in &mut allied_victory {
             *setting = input.read_i32::<LE>()?;
         }
 
@@ -714,20 +711,20 @@ impl TribeScen {
         } else if version >= 1.18 {
             // AoC and friends store up to 20 or 30 of each.
             input.read_i32_into::<LE>(&mut num_disabled_techs)?;
-            for player_disabled_techs in disabled_techs.iter_mut() {
+            for player_disabled_techs in &mut disabled_techs {
                 *player_disabled_techs = vec![0; 30];
                 input.read_i32_into::<LE>(player_disabled_techs)?;
             }
 
             input.read_i32_into::<LE>(&mut num_disabled_units)?;
-            for player_disabled_units in disabled_units.iter_mut() {
+            for player_disabled_units in &mut disabled_units {
                 *player_disabled_units = vec![0; 30];
                 input.read_i32_into::<LE>(player_disabled_units)?;
             }
 
             input.read_i32_into::<LE>(&mut num_disabled_buildings)?;
             let max_disabled_buildings = if version >= 1.25 { 30 } else { 20 };
-            for player_disabled_buildings in disabled_buildings.iter_mut() {
+            for player_disabled_buildings in &mut disabled_buildings {
                 *player_disabled_buildings = vec![0; max_disabled_buildings];
                 input.read_i32_into::<LE>(player_disabled_buildings)?;
             }
@@ -741,8 +738,7 @@ impl TribeScen {
                 num_disabled_techs[i] = player_disabled_techs
                     .iter()
                     .position(|val| *val <= 0)
-                    .map(|index| (index as i32) + 1)
-                    .unwrap_or(0);
+                    .map_or(0, |index| (index as i32) + 1);
             }
         } else {
             // <= 1.03 did not support disabling anything
@@ -761,12 +757,12 @@ impl TribeScen {
 
         let mut player_start_ages = vec![StartingAge::Default; 16];
         if version > 1.05 {
-            for start_age in player_start_ages.iter_mut() {
+            for start_age in &mut player_start_ages {
                 *start_age = StartingAge::try_from(input.read_i32::<LE>()?, version)?;
             }
         }
 
-        log::debug!("starting ages: {:?}", player_start_ages);
+        log::debug!("starting ages: {player_start_ages:?}");
 
         if version >= 1.02 {
             let sep = input.read_i32::<LE>()?;
@@ -820,7 +816,7 @@ impl TribeScen {
             villager_force_drop = input.read_u8()? != 0;
         }
 
-        Ok(TribeScen {
+        Ok(Self {
             base,
             player_start_resources,
             victory,
@@ -1093,10 +1089,12 @@ impl TribeScen {
         Ok(())
     }
 
-    pub fn version(&self) -> f32 {
+    #[must_use]
+    pub const fn version(&self) -> f32 {
         self.base.version
     }
 
+    #[must_use]
     pub fn description(&self) -> Option<&str> {
         self.base.description.as_deref()
     }
@@ -1120,9 +1118,9 @@ pub struct SCXFormat {
     pub(crate) player_objects: Vec<Vec<ScenarioObject>>,
     /// Player data.
     pub(crate) scenario_players: Vec<ScenarioPlayerData>,
-    /// Triggers (only in AoK and up).
+    /// Triggers (only in `AoK` and up).
     pub(crate) triggers: Option<TriggerSystem>,
-    /// AI information (AoK and up).
+    /// AI information (`AoK` and up).
     ai_info: Option<AIInfo>,
 }
 
@@ -1133,7 +1131,7 @@ impl SCXFormat {
             format: self.version,
             header: self.header.version,
             data: self.tribe_scen.version(),
-            triggers: self.triggers.as_ref().map(|triggers| triggers.version()),
+            triggers: self.triggers.as_ref().map(TriggerSystem::version),
             map: self.map.version(),
             ..VersionBundle::aoc()
         }
@@ -1150,7 +1148,7 @@ impl SCXFormat {
         let map = Map::read_from(&mut input)?;
 
         let num_players = input.read_u32::<LE>()?;
-        log::debug!("number of players: {}", num_players);
+        log::debug!("number of players: {num_players}");
         let mut world_players = Vec::with_capacity(num_players as usize);
         for _ in 1..num_players {
             world_players.push(WorldPlayerData::read_from(&mut input, player_version)?);
@@ -1162,7 +1160,7 @@ impl SCXFormat {
         ) -> Result<Vec<ScenarioPlayerData>> {
             let num = input.read_u32::<LE>()?;
             let mut players = Vec::with_capacity(num as usize);
-            log::debug!("number of scenario players: {}", num);
+            log::debug!("number of scenario players: {num}");
             for _ in 1..num {
                 players.push(ScenarioPlayerData::read_from(&mut input, player_version)?);
             }
@@ -1178,7 +1176,7 @@ impl SCXFormat {
             for _ in 0..num_players {
                 let num_objects = input.read_u32::<LE>()?;
                 let mut objects = Vec::with_capacity(num_objects as usize);
-                log::debug!("number of objects: {}", num_objects);
+                log::debug!("number of objects: {num_objects}");
                 for _ in 0..num_objects {
                     objects.push(ScenarioObject::read_from(&mut input, version)?);
                 }
@@ -1210,7 +1208,7 @@ impl SCXFormat {
             None
         };
 
-        Ok(SCXFormat {
+        Ok(Self {
             version,
             header,
             next_object_id,
@@ -1278,8 +1276,7 @@ impl SCXFormat {
         let num_triggers = self
             .triggers
             .as_ref()
-            .map(|trigger_system| trigger_system.num_triggers())
-            .unwrap_or(0);
+            .map_or(0, TriggerSystem::num_triggers);
         self.tribe_scen
             .write_to(&mut output, version.data, num_triggers)?;
         self.map.write_to(&mut output, version.map)?;
@@ -1320,7 +1317,7 @@ impl SCXFormat {
         Ok(())
     }
 
-    /// Get the name of the UserPatch mod that was used to create this scenario, if applicable.
+    /// Get the name of the `UserPatch` mod that was used to create this scenario, if applicable.
     ///
     /// Returns None if no mod was used.
     pub fn mod_name(&self) -> Option<&str> {
@@ -1337,7 +1334,7 @@ impl SCXFormat {
             hash::{Hash, Hasher},
         };
         let mut hasher = DefaultHasher::new();
-        format!("{:#?}", self).hash(&mut hasher);
+        format!("{self:#?}").hash(&mut hasher);
         hasher.finish()
     }
 }
@@ -1374,7 +1371,7 @@ mod tests {
         match input.read_exact(byte) {
             Err(err) if err.kind() == ErrorKind::UnexpectedEof => (),
             Err(err) => panic!("{}", err),
-            Ok(_) => {
+            Ok(()) => {
                 let mut trailing_data = vec![byte[0]];
                 input.read_to_end(&mut trailing_data).unwrap();
                 panic!("data left in buffer ({}): {:?}", trailing_data.len(), {
@@ -1385,7 +1382,7 @@ mod tests {
         }
     }
 
-    /// Source: http://aoe.heavengames.com/dl-php/showfile.php?fileid=42
+    /// Source: <http://aoe.heavengames.com/dl-php/showfile.php?fileid=42>
     #[test]
     fn oldest_aoe1_scn_on_aoeheaven() {
         let mut f = File::open("test/scenarios/ The Destruction of Rome.scn").unwrap();
@@ -1425,7 +1422,7 @@ mod tests {
         );
     }
 
-    /// Source: http://aoe.heavengames.com/dl-php/showfile.php?fileid=1678
+    /// Source: <http://aoe.heavengames.com/dl-php/showfile.php?fileid=1678>
     #[test]
     fn aoe1_trial_scn() {
         let mut f = File::open("test/scenarios/Bronze Age Art of War.scn").unwrap();
@@ -1437,7 +1434,7 @@ mod tests {
             .expect("failed to write");
     }
 
-    /// Source: http://aoe.heavengames.com/dl-php/showfile.php?fileid=2409
+    /// Source: <http://aoe.heavengames.com/dl-php/showfile.php?fileid=2409>
     #[test]
     fn aoe1_ppc_trial_scn() {
         let mut f = File::open("test/scenarios/CEASAR.scn").unwrap();
@@ -1449,7 +1446,7 @@ mod tests {
             .expect("failed to write");
     }
 
-    /// Source: http://aoe.heavengames.com/dl-php/showfile.php?fileid=1651
+    /// Source: <http://aoe.heavengames.com/dl-php/showfile.php?fileid=1651>
     #[test]
     fn aoe1_scn() {
         let mut f = File::open("test/scenarios/A New Emporer.scn").unwrap();
@@ -1461,7 +1458,7 @@ mod tests {
             .expect("failed to write");
     }
 
-    /// Source: http://aoe.heavengames.com/dl-php/showfile.php?fileid=880
+    /// Source: <http://aoe.heavengames.com/dl-php/showfile.php?fileid=880>
     #[test]
     fn aoe1_ror_scx() {
         let mut f = File::open("test/scenarios/Jeremiah Johnson (Update).scx").unwrap();
@@ -1489,7 +1486,7 @@ mod tests {
         Ok(())
     }
 
-    /// Source: http://aok.heavengames.com/blacksmith/showfile.php?fileid=1271
+    /// Source: <http://aok.heavengames.com/blacksmith/showfile.php?fileid=1271>
     #[test]
     fn oldest_aok_scn_on_aokheaven() {
         let mut f = File::open("test/scenarios/CAMELOT.SCN").unwrap();
@@ -1540,7 +1537,7 @@ mod tests {
     /// A Definitive Edition scenario.
     ///
     /// (Ignored because it doesn't work yet.)
-    /// Source: http://aoe.heavengames.com/dl-php/showfile.php?fileid=2708
+    /// Source: <http://aoe.heavengames.com/dl-php/showfile.php?fileid=2708>
     #[test]
     #[ignore]
     fn aoe_de_scn() {
@@ -1555,7 +1552,7 @@ mod tests {
 
     /// A Definitive Edition 2 scenario, SCX format version 1.36.
     ///
-    /// Source: https://www.ageofempires.com/mods/details/2015/
+    /// Source: <https://www.ageofempires.com/mods/details/2015>/
     #[test]
     fn aoe_de2_1_36() {
         let mut f = File::open("test/scenarios/Hotkey Trainer Buildings.aoe2scenario").unwrap();
@@ -1569,7 +1566,7 @@ mod tests {
         );
     }
 
-    /// A Definitive Edition 2 scenario, based on the included AIImprovementsBucket10Test file,
+    /// A Definitive Edition 2 scenario, based on the included `AIImprovementsBucket10Test` file,
     /// saved as a 1.37 format version with some layered terrain in the corners.
     #[test]
     fn aoe_de2_1_37() {

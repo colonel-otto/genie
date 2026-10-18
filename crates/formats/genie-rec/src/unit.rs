@@ -112,7 +112,7 @@ pub struct SpriteNodeAnimation {
 
 impl ReadableHeaderElement for SpriteNodeAnimation {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(SpriteNodeAnimation {
+        Ok(Self {
             animate_interval: input.read_u32::<LE>()?,
             animate_last: input.read_u32::<LE>()?,
             last_frame: input.read_u16::<LE>()?,
@@ -157,7 +157,7 @@ impl OptionalReadableElement for SpriteNode {
             return Ok(None);
         }
 
-        Ok(Some(SpriteNode {
+        Ok(Some(Self {
             id: input.read_u16::<LE>()?.into(),
             x: input.read_u32::<LE>()?,
             y: input.read_u32::<LE>()?,
@@ -250,7 +250,7 @@ pub struct StaticUnitAttributes {
 
 impl ReadableHeaderElement for StaticUnitAttributes {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut attrs = StaticUnitAttributes {
+        let mut attrs = Self {
             owner_id: input.read_u8()?.into(),
             unit_type_id: input.read_u16::<LE>()?.into(),
             sprite_id: input.read_u16::<LE>()?.into(),
@@ -286,7 +286,7 @@ impl ReadableHeaderElement for StaticUnitAttributes {
         attrs.pathing_group_members = {
             let num_members = input.read_u32::<LE>()?;
             let mut members = vec![ObjectID(0); num_members.try_into().unwrap()];
-            for m in members.iter_mut() {
+            for m in &mut members {
                 *m = input.read_u32::<LE>()?.into();
             }
             members
@@ -347,7 +347,7 @@ pub struct PathData {
 
 impl ReadableHeaderElement for PathData {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut path = PathData {
+        let mut path = Self {
             id: input.read_u32::<LE>()?,
             linked_path_type: input.read_u32::<LE>()?,
             waypoint_level: input.read_u32::<LE>()?,
@@ -432,7 +432,7 @@ pub struct MovingUnitAttributes {
 
 impl ReadableHeaderElement for MovingUnitAttributes {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut attrs = MovingUnitAttributes {
+        let mut attrs = Self {
             trail_remainder: input.read_u32::<LE>()?,
             velocity: (
                 input.read_f32::<LE>()?,
@@ -515,7 +515,7 @@ pub struct ActionUnitAttributes {
 
 impl ReadableHeaderElement for ActionUnitAttributes {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut attrs = ActionUnitAttributes {
+        let mut attrs = Self {
             waiting: input.read_u8()? != 0,
             ..Default::default()
         };
@@ -579,7 +579,7 @@ pub struct MissileUnitAttributes {
 
 impl ReadableHeaderElement for MissileUnitAttributes {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(MissileUnitAttributes {
+        Ok(Self {
             max_range: input.read_f32::<LE>()?,
             fired_from_id: input.read_u32::<LE>()?.into(),
             own_base: {
@@ -610,7 +610,7 @@ pub struct UnitAIOrder {
 
 impl ReadableHeaderElement for UnitAIOrder {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(UnitAIOrder {
+        Ok(Self {
             issuer: input.read_u32::<LE>()?,
             order_type: input.read_u32::<LE>()?,
             priority: input.read_u32::<LE>()?,
@@ -636,7 +636,7 @@ pub struct UnitAINotification {
 
 impl ReadableHeaderElement for UnitAINotification {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(UnitAINotification {
+        Ok(Self {
             caller: input.read_u32::<LE>()?,
             recipient: input.read_u32::<LE>()?,
             notification_type: input.read_u32::<LE>()?,
@@ -663,7 +663,7 @@ pub struct UnitAIOrderHistory {
 
 impl ReadableHeaderElement for UnitAIOrderHistory {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(UnitAIOrderHistory {
+        Ok(Self {
             order: input.read_u32::<LE>()?,
             action: input.read_u32::<LE>()?,
             time: input.read_u32::<LE>()?,
@@ -712,7 +712,7 @@ pub struct Waypoint {
 
 impl ReadableHeaderElement for Waypoint {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let waypoint = Waypoint {
+        let waypoint = Self {
             location: (
                 input.read_f32::<LE>()?,
                 input.read_f32::<LE>()?,
@@ -782,7 +782,7 @@ pub struct UnitAI {
 
 impl ReadableHeaderElement for UnitAI {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut ai = UnitAI {
+        let mut ai = Self {
             mood: read_opt_u32(input)?,
             current_order: read_opt_u32(input)?,
             current_order_priority: read_opt_u32(input)?,
@@ -790,7 +790,7 @@ impl ReadableHeaderElement for UnitAI {
             current_target: read_opt_u32(input)?,
             current_target_type: match input.read_u16::<LE>()? {
                 0xFFFF => None,
-                id => Some(id.try_into().unwrap()),
+                id => Some(id.into()),
             },
             ..Default::default()
         };
@@ -914,7 +914,7 @@ pub struct CombatUnitAttributes {
 
 impl ReadableHeaderElement for CombatUnitAttributes {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut attrs = CombatUnitAttributes {
+        let mut attrs = Self {
             next_volley: input.read_u8()?,
             using_special_attack_animation: input.read_u8()?,
             own_base: {
@@ -927,7 +927,7 @@ impl ReadableHeaderElement for CombatUnitAttributes {
             },
             ..Default::default()
         };
-        for amount in attrs.attribute_amounts.iter_mut() {
+        for amount in &mut attrs.attribute_amounts {
             *amount = input.read_u16::<LE>()?;
         }
         if input.version() >= 9.16 {
@@ -1059,7 +1059,7 @@ pub struct BuildingUnitAttributes {
 
 impl ReadableHeaderElement for BuildingUnitAttributes {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut attrs = BuildingUnitAttributes {
+        let mut attrs = Self {
             built: input.read_u8()? != 0,
             build_points: input.read_f32::<LE>()?,
             unique_build_id: read_opt_u32(input)?,
@@ -1110,7 +1110,7 @@ impl ReadableHeaderElement for BuildingUnitAttributes {
         attrs.production_queue = {
             let capacity = input.read_u16::<LE>()?;
             let mut queue = vec![ProductionQueueEntry::default(); capacity as usize];
-            for entry in queue.iter_mut() {
+            for entry in &mut queue {
                 *entry = ProductionQueueEntry::read_from(input)?;
             }
             let _size = input.read_u16::<LE>()?;

@@ -1,5 +1,5 @@
 //! The slice's row of one object after TICKS updates from the save after START (args: DIR START
-//! TICKS PLAYER ID; env GENIE_TICK_REC, GENIE_DAT; the mesh dump `START.mesh` or `.mesh.gz`):
+//! TICKS PLAYER ID; env `GENIE_TICK_REC`, `GENIE_DAT`; the mesh dump `START.mesh` or `.mesh.gz`):
 //! every field the oracle compares, for reading a difference in full.
 fn main() {
     let a: Vec<String> = std::env::args().collect();

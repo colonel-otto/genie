@@ -527,7 +527,7 @@ impl Turns {
     /// AI's order queue empties, `+0xa14` being 1; then `FUN_14106d340`). Unless the unit is its
     /// own target, its unit AI's notifies go with the world time (`FUN_140c5dc10`) and, but after
     /// a kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target
-    /// (an Artifact's, `FUN_140aaca30`, would: not modelled; a MoveTo's never); else a MoveTo to
+    /// (an Artifact's, `FUN_140aaca30`, would: not modelled; a `MoveTo`'s never); else a `MoveTo` to
     /// the target (`FUN_140aa0df0`: range 0 from slot 0x268, which a combat object's gives, the
     /// walking sprite) replaces its actions (slot 0x808, [`MoveToAction::to_target`]). With slot
     /// 0x138's 0 the unit AI takes the follow order and action (`FUN_140c64b60` with 1,
@@ -621,10 +621,10 @@ impl Turns {
         Ok(())
     }
 
-    /// UNIT_ORDER's order `action` to the units `ids` (`FUN_14161e370`). Action 8, the drop-off
+    /// `UNIT_ORDER`'s order `action` to the units `ids` (`FUN_14161e370`). Action 8, the drop-off
     /// (as 6 and 7): each unit the world holds in state 2 of a type above 39 that carries
     /// something (`+0x310` above 0) and whose top action is a Hunt (110) with a target or a
-    /// point gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`], then set_state(8),
+    /// point gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`], then `set_state(8)`,
     /// [`Unit::drop_off_in`]). A Gather's or a Build's (5, 101), a top action without a target
     /// (`FUN_141206a20`, `FUN_141205ac0` around it) and a unit without one of these actions (the
     /// drop-site search from the unit, `FUN_1411671e0`, and the work command on it, slot 0x7e8)
@@ -693,12 +693,12 @@ impl Turns {
         Ok(())
     }
 
-    /// UNIT_AI_STATE (`do_command` case 0x12: the check `FUN_140e55d30`, then `FUN_140e6a7c0`):
+    /// `UNIT_AI_STATE` (`do_command` case 0x12: the check `FUN_140e55d30`, then `FUN_140e6a7c0`):
     /// each of `ids` the world holds, of the player's, with a unit AI takes the stance `state`
     /// (slot 0x1c0, `FUN_140c64d50`: `+0x1a9`, its place as the stance's, `+0x1ac`), but not
     /// stances 1 and 2 for classes 54 and 51 (and, the siege AI's slot, masters 42 and 331). An id
     /// gone or another player's counts for nothing (a game setting, `FUN_1412ffe00`, or the
-    /// world's `+0xb12` may let another player's through, not modelled). NoAttack (3) on a unit
+    /// world's `+0xb12` may let another player's through, not modelled). `NoAttack` (3) on a unit
     /// that attacks (order 700 or action 600: slot 0xb0 with 1, `FUN_140c5e1e0`) and the UI's
     /// flag are not modelled.
     pub(crate) fn unit_ai_state(
@@ -781,7 +781,7 @@ impl Turns {
         Ok(())
     }
 
-    /// AUTO_SCOUT (0x26, `FUN_140e666f0`): each unit of `ids` with a unit AI that may scout
+    /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each unit of `ids` with a unit AI that may scout
     /// (`FUN_140c89760`: its master's object flags `+0x654` have bit 4; class 58's rule behind a
     /// game setting, `FUN_140eca780`, is not modelled) takes an order at once (slot 0x30 ->
     /// slot 0x28 with Immediate, [`crate::unit_ai::UnitAi::take_order_now`]): the stop order
@@ -849,7 +849,7 @@ impl Turns {
 
     /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: a unit without actions
     /// (others are not modelled here) in state 2 takes its standing sprite where the slice holds
-    /// its sprite; an Explore goes, its MoveTo stopping the unit.
+    /// its sprite; an Explore goes, its `MoveTo` stopping the unit.
     fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
         let unit = &mut self.players[p].objects[idx];
         if let Some(e) = unit.explore.take()
@@ -872,7 +872,7 @@ impl Turns {
     }
 
     /// The unit's explore (slot 0x398) in the command phase: a unit without an Explore takes a
-    /// new one ([`crate::explore::ExploreAction::new`]) at its height; its set_state's notify and
+    /// new one ([`crate::explore::ExploreAction::new`]) at its height; its `set_state`'s notify and
     /// standing sprite follow.
     fn command_explore(
         &mut self,
@@ -1462,7 +1462,7 @@ impl Turns {
     }
 
     /// The action list's clearing (`FUN_140a98620`): each action's teardown. A Build action takes
-    /// its builder out of the foundation's builders (`FUN_140aadbf0`); a MoveTo's teardown stops
+    /// its builder out of the foundation's builders (`FUN_140aadbf0`); a `MoveTo`'s teardown stops
     /// the unit (slot 0x5d0); the Build and the Hunt release their targets (slot 0x180,
     /// [`Turns::release`]).
     pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
@@ -1561,7 +1561,10 @@ impl Turns {
             };
             unit.life.hp = f32::from(hp as i32 as i16);
             unit.life.master_id = new;
-            let moving = unit.mover.as_ref().is_some_and(|m| m.is_moving());
+            let moving = unit
+                .mover
+                .as_ref()
+                .is_some_and(super::movement::Mover::is_moving);
             if let Some(m) = unit.mover.as_mut() {
                 m.stats = next
                     .moving

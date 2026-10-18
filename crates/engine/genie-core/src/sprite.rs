@@ -26,11 +26,11 @@ pub struct Graphic {
 }
 
 impl Graphic {
-    fn animated(&self) -> bool {
+    const fn animated(&self) -> bool {
         self.flags & 1 != 0
     }
 
-    fn backwards(&self) -> bool {
+    const fn backwards(&self) -> bool {
         self.flags & 0x10 != 0
     }
 
@@ -75,7 +75,7 @@ impl ActiveSprite {
             // FUN_1413b3490's draw, which the second one overrides
             sprite_rng.rand15();
         }
-        let mut s = ActiveSprite {
+        let mut s = Self {
             graphic,
             frame: graphic.first_frame(),
             interval: graphic.frame_duration,
@@ -120,7 +120,8 @@ impl ActiveSprite {
     }
 
     /// Slot 11 (`FUN_1413b2d70`): the last advance passed `frame` or looped.
-    pub fn reached(&self, frame: i16) -> bool {
+    #[must_use]
+    pub const fn reached(&self, frame: i16) -> bool {
         self.changed && (self.looped || (frame <= self.frame && self.last_frame < frame))
     }
 

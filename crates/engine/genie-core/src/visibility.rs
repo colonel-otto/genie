@@ -45,7 +45,7 @@ const MARKET: i16 = 84;
 const EDGE: f32 = crate::image::visibility::EDGE;
 
 /// One player's `RGE_Visible_Map` (player `+0x70`).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VisibleMap {
     /// Per tile, row by row (`+0x18`).
     pub counts: Vec<i16>,
@@ -55,7 +55,7 @@ pub struct VisibleMap {
 
 /// A building's sight state (`TRIBE_Building_Object`: its slots 0x1d0 `FUN_1411d0190` and 0x1d8
 /// `FUN_1411e6f60`).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BuildingSight {
     /// `built` (`+0xca1`): the construction completed, and the sight is the line of sight.
     pub built: bool,
@@ -91,7 +91,7 @@ pub struct Seer {
 /// An entry of the map's UMV data list (map `+0x5e08`, `+0x5e10`): a building's extent around
 /// its anchor, packed as bytes (anchor less low x, anchor less low y, high x less anchor, high y
 /// less anchor), and the offsets of the tiles the visible-object updator checks for it.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Extent {
     pub guid: u32,
     pub offsets: Vec<[i32; 2]>,
@@ -129,6 +129,7 @@ pub struct Visibility {
 /// than its animals, buildings and a few classes (those of 40, 42, 58, 14, 11, 1, 60, 38, 41, 9
 /// and 10, and master 826), and for masters 854 and Gaia's 814, which another player takes over
 /// by seeing them; 3 for classes 58 and 1 (livestock).
+#[must_use]
 pub fn capture_kind(player: usize, class: i16, master: i16) -> u8 {
     const KEPT: [i16; 11] = [40, 42, 58, 14, 11, 1, 60, 38, 41, 9, 10];
     let mut kind = 0;
@@ -158,6 +159,7 @@ fn tile_of(v: f32, size: i32) -> i32 {
 
 impl Visibility {
     /// The saved maps of a `width` × `height` map, with the saved UMV list.
+    #[must_use]
     pub fn new(
         width: i32,
         height: i32,
@@ -168,7 +170,7 @@ impl Visibility {
         computer: Vec<bool>,
     ) -> Self {
         let n = (width.max(0) * height.max(0)) as usize;
-        Visibility {
+        Self {
             width,
             height,
             maps,
@@ -183,12 +185,12 @@ impl Visibility {
         }
     }
 
-    fn index(&self, x: i32, y: i32) -> usize {
+    const fn index(&self, x: i32, y: i32) -> usize {
         (y * self.width + x) as usize
     }
 
     /// The first unmodelled case met since the last call.
-    pub fn take_unsupported(&mut self) -> Option<Unsupported> {
+    pub const fn take_unsupported(&mut self) -> Option<Unsupported> {
         self.unsupported.take()
     }
 
@@ -204,6 +206,7 @@ impl Visibility {
         self.seers.remove(&id);
     }
 
+    #[must_use]
     pub fn seer(&self, id: i32) -> Option<&Seer> {
         self.seers.get(&id)
     }
@@ -213,6 +216,7 @@ impl Visibility {
     }
 
     /// The link bits and byte of tile (`x`, `y`).
+    #[must_use]
     pub fn link(&self, x: i32, y: i32) -> (u8, u8) {
         self.links[self.index(x, y)]
     }
@@ -385,6 +389,7 @@ impl Visibility {
 
     /// `FUN_140f68f50`: from a tile, step back along the directions to the first tile that is not
     /// a building's non-anchor tile.
+    #[must_use]
     pub fn anchor_of(&self, mut x: i32, mut y: i32) -> Option<[i32; 2]> {
         while 0 <= x && x < self.width && 0 <= y && y < self.height {
             let (bits, byte) = self.links[self.index(x, y)];
@@ -406,6 +411,7 @@ impl Visibility {
 
     /// `FUN_140f68e30`: the building's tile rectangle (x0, y0, x1, y1) from one of its tiles,
     /// through its anchor's UMV entry.
+    #[must_use]
     pub fn extent_of(&self, mut x: i32, mut y: i32) -> Option<[i32; 4]> {
         loop {
             if x < 0 || self.width <= x || y < 0 || self.height <= y {
@@ -677,9 +683,7 @@ impl Visibility {
             return 0;
         }
         let [x, y, _] = position;
-        let newly = if !square {
-            self.explore(s.player, x as i32, y as i32, los, offset)
-        } else {
+        let newly = if square {
             let [rx, ry] = radius;
             if rx <= 0.0 || ry <= 0.0 {
                 return 0;
@@ -691,6 +695,8 @@ impl Visibility {
                 ((x + rx) - EDGE) as i32,
                 ((y + ry) - EDGE) as i32,
             )
+        } else {
+            self.explore(s.player, x as i32, y as i32, los, offset)
         };
         if let Some(s) = self.seers.get_mut(&id) {
             s.explored = true;
@@ -728,9 +734,7 @@ impl Visibility {
             return;
         }
         let [x, y, _] = position;
-        if !square {
-            self.unexplore(s.player, x as i32, y as i32, los, offset);
-        } else {
+        if square {
             let [rx, ry] = radius;
             if rx <= 0.0 || ry <= 0.0 {
                 return;
@@ -742,6 +746,8 @@ impl Visibility {
                 ((x + rx) - EDGE) as i32,
                 ((y + ry) - EDGE) as i32,
             );
+        } else {
+            self.unexplore(s.player, x as i32, y as i32, los, offset);
         }
     }
 
@@ -758,7 +764,7 @@ impl Visibility {
         }
     }
 
-    /// set_state's sight (`FUN_14119d710`): leaving state 2 for a higher one (or 0), the
+    /// `set_state`'s sight (`FUN_14119d710`): leaving state 2 for a higher one (or 0), the
     /// object's sight shrinks to its footprint, which goes with state 7.
     pub fn state_changed(&mut self, id: i32, position: [f32; 3], radius: [f32; 2], new: u8) {
         let Some(old) = self.seers.get(&id).map(|s| s.state) else {

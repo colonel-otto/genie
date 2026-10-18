@@ -19,7 +19,7 @@ pub(crate) const TO_FIXED: f32 = crate::image::short_path::TO_FIXED;
 const T_START: i32 = 0x46_6666;
 
 /// `(v + 0x3fffff) >> 22` for a negative `v`: the tile of a coordinate, truncated toward zero.
-fn tile_of(v: i32) -> i32 {
+const fn tile_of(v: i32) -> i32 {
     if v < 0 {
         v.wrapping_add(0x3f_ffff) >> 22
     } else {
@@ -28,7 +28,8 @@ fn tile_of(v: i32) -> i32 {
 }
 
 /// `FUN_14087c720`: the integer square root of a 64-bit value, bit by bit (its low 32 bits).
-pub fn isqrt(mut v: u64) -> u32 {
+#[must_use]
+pub const fn isqrt(mut v: u64) -> u32 {
     let mut root: u64 = 0;
     let mut bit: u64 = 1 << 62;
     if v <= 0x3fff_ffff_ffff_ffff {
@@ -63,17 +64,17 @@ fn float_distance(a: Point, b: Point) -> i32 {
 }
 
 /// `FUN_14087c610`: `p` strictly inside `r` shrunk by `k`.
-fn strictly_inside(r: Rect, [x, y]: Point, k: i32) -> bool {
+const fn strictly_inside(r: Rect, [x, y]: Point, k: i32) -> bool {
     r[0] + k < x && r[1] + k < y && x < r[2] - k && y < r[3] - k
 }
 
 /// `FUN_14087c650`: `p` inside `r` shrunk by `k`, edges included.
-fn inside(r: Rect, [x, y]: Point, k: i32) -> bool {
+const fn inside(r: Rect, [x, y]: Point, k: i32) -> bool {
     r[0] + k <= x && r[1] + k <= y && x <= r[2] - k && y <= r[3] - k
 }
 
 /// `FUN_140fa8460`: corner `k` of `r` shrunk by `d`.
-fn shrunk_corner(r: Rect, k: u32, d: i32) -> Point {
+const fn shrunk_corner(r: Rect, k: u32, d: i32) -> Point {
     match k {
         0 => [r[0] + d, r[1] + d],
         1 => [r[2] - d, r[1] + d],
@@ -84,7 +85,7 @@ fn shrunk_corner(r: Rect, k: u32, d: i32) -> Point {
 }
 
 /// `FUN_140fa8350`: a contact's junction moved by `d` into the free space beside its side.
-fn contact_point([x, y]: Point, side: u32, d: i32, flag: u8) -> Point {
+const fn contact_point([x, y]: Point, side: u32, d: i32, flag: u8) -> Point {
     let f = flag == 1;
     match side {
         1 => {
@@ -845,12 +846,12 @@ fn clip(mut a: Point, mut b: Point, bx: [i32; 4]) -> Option<(Point, Point)> {
     Some((a, b))
 }
 
-fn in_box(p: Point, b: [i32; 4]) -> bool {
+const fn in_box(p: Point, b: [i32; 4]) -> bool {
     b[0] <= p[0] && b[1] <= p[1] && p[0] <= b[2] && p[1] <= b[3]
 }
 
 /// Chebyshev distance (`max(|dx|, |dy|)`), the polygon walks' cost.
-fn cheb(a: Point, b: Point) -> i32 {
+const fn cheb(a: Point, b: Point) -> i32 {
     let dy = (a[1].wrapping_sub(b[1])).wrapping_abs();
     let dx = (a[0].wrapping_sub(b[0])).wrapping_abs();
     if dy < dx { dx } else { dy }
@@ -1028,7 +1029,7 @@ impl Search<'_> {
     }
 
     /// The coordinate of `p` along a side's axis (x for sides 0 and 2, y for 1 and 3).
-    fn along(p: Point, side: u32) -> i32 {
+    const fn along(p: Point, side: u32) -> i32 {
         if side & 1 == 1 { p[1] } else { p[0] }
     }
 
@@ -1109,7 +1110,7 @@ impl Search<'_> {
             if !contacts.is_empty() {
                 let mut best_key = 0x7fc0_0000_i32;
                 for (k, c) in contacts.iter().enumerate() {
-                    if !(d < c.half) || self.ctx.ignored(c.other) {
+                    if (d >= c.half) || self.ctx.ignored(c.other) {
                         continue;
                     }
                     let q = contact_point(c.at, c.side, d, c.flag);
@@ -1453,7 +1454,7 @@ impl Search<'_> {
     /// only the cheapest kept open.
     fn start(&mut self, p: Point) -> i32 {
         let g = &self.goal;
-        if !(g.range2 < g.rect_distance2(p)) {
+        if (g.range2 >= g.rect_distance2(p)) {
             return 3;
         }
         let fx = (g.at[0].wrapping_sub(p[0])) as f32 * TO_FLOAT;
@@ -1524,7 +1525,7 @@ impl Search<'_> {
                         let dx = i64::from(px - a[0]);
                         (t, ((perp * perp) >> 22) + ((dx * dx) >> 22), e[1] - a[1])
                     };
-                    if !(dist2 <= rr2) {
+                    if (dist2 > rr2) {
                         continue;
                     }
                     let h = (fmath::sqrt((rr2 - dist2) as f32 * TO_FLOAT) * TO_FIXED) as i32;
@@ -1566,7 +1567,7 @@ impl Search<'_> {
                     // the side's contacts
                     for ci in 0..mesh.sides[id as usize][k as usize].len() {
                         let c = mesh.sides[id as usize][k as usize][ci];
-                        if !(d < c.half) || self.ctx.ignored(c.other) {
+                        if (d >= c.half) || self.ctx.ignored(c.other) {
                             continue;
                         }
                         let q = contact_point(c.at, c.side, d, c.flag);
@@ -1764,43 +1765,7 @@ impl Search<'_> {
             }
             let forward = (gf <= gb && alive_f) || !alive_b;
             let poly = self.polys[pi as usize].clone();
-            if !forward {
-                let v = poly.vertices[bv as usize];
-                let sp = poly.sides[((bv + m - 1) % m) as usize];
-                let sn = poly.sides[bv as usize];
-                let sh = poly.shapes[bv as usize];
-                if poly.costs[bv as usize] != UNSET
-                    && !self.goal_test(gb, n.idx, 1, bv, next0, pi, v)
-                    && sp != sn
-                    && sh != NONE
-                    && let Some(token) = corner_emits(sp, sn, v, self.goal.at)
-                {
-                    let kind = Kind::Corner {
-                        dir: 1,
-                        lo: bv,
-                        hi: next0,
-                        poly: pi,
-                        token: u32::from(token),
-                        prev: sp,
-                        next: sn,
-                    };
-                    let node = self.add(gb, n.idx, v, kind);
-                    self.push(node);
-                    self.polys[pi as usize].costs[bv as usize] = gb;
-                }
-                let costs = &self.polys[pi as usize].costs;
-                let mut at = v;
-                loop {
-                    bv = (m - 1 + bv) % m;
-                    let w = poly.vertices[bv as usize];
-                    gb = gb.wrapping_add(cheb(at, w));
-                    alive_b = gb < costs[bv as usize];
-                    at = w;
-                    if costs[bv as usize] != UNSET {
-                        break;
-                    }
-                }
-            } else {
+            if forward {
                 let v = poly.vertices[fv as usize];
                 let sp = poly.sides[((fv + m - 1) % m) as usize];
                 let sn = poly.sides[fv as usize];
@@ -1836,6 +1801,42 @@ impl Search<'_> {
                         break;
                     }
                 }
+            } else {
+                let v = poly.vertices[bv as usize];
+                let sp = poly.sides[((bv + m - 1) % m) as usize];
+                let sn = poly.sides[bv as usize];
+                let sh = poly.shapes[bv as usize];
+                if poly.costs[bv as usize] != UNSET
+                    && !self.goal_test(gb, n.idx, 1, bv, next0, pi, v)
+                    && sp != sn
+                    && sh != NONE
+                    && let Some(token) = corner_emits(sp, sn, v, self.goal.at)
+                {
+                    let kind = Kind::Corner {
+                        dir: 1,
+                        lo: bv,
+                        hi: next0,
+                        poly: pi,
+                        token: u32::from(token),
+                        prev: sp,
+                        next: sn,
+                    };
+                    let node = self.add(gb, n.idx, v, kind);
+                    self.push(node);
+                    self.polys[pi as usize].costs[bv as usize] = gb;
+                }
+                let costs = &self.polys[pi as usize].costs;
+                let mut at = v;
+                loop {
+                    bv = (m - 1 + bv) % m;
+                    let w = poly.vertices[bv as usize];
+                    gb = gb.wrapping_add(cheb(at, w));
+                    alive_b = gb < costs[bv as usize];
+                    at = w;
+                    if costs[bv as usize] != UNSET {
+                        break;
+                    }
+                }
             }
         }
     }
@@ -1855,7 +1856,7 @@ impl Search<'_> {
         let mut t = range_point(self.goal.range, p, self.goal.at)?;
         let mut frac = T_START;
         let reach = n.g.wrapping_add(float_distance(t, p));
-        if self.goal_node != NONE && !(reach < self.arena[self.goal_node as usize].g) {
+        if self.goal_node != NONE && (reach >= self.arena[self.goal_node as usize].g) {
             return Ok(());
         }
         let mut hit = Hit {
@@ -1976,7 +1977,7 @@ impl Search<'_> {
 /// The short pather's inputs in fixed point: the start and the goal, the unit's radius, the
 /// target's half sizes (when the goal is the target's own position), the range, and the terrain
 /// classes the unit cannot cross (`mask ^ 0xff`).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Query {
     pub from: Point,
     pub to: Point,
@@ -1988,7 +1989,7 @@ pub struct Query {
 
 /// What a search returns (`FUN_140fa53d0`'s result) with the path's points from the start on, in
 /// fixed point (the game appends them as floats, `{x, 0, y}`, through the path's own dedup).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShortPath {
     /// 0 already in range, 1 reached, 2 a partial path, 3 the start blocked, 4 invalid.
     pub result: u8,
@@ -2044,6 +2045,7 @@ impl Call {
     /// `FUN_140f9e540` up to the search: the target's range test, the map test, fixed point by
     /// truncation (`(int)(longlong)(f * 2^22)`); the listed objects' shapes are ignored, except the
     /// target's when the goal is the target's own position, whose half sizes then count.
+    #[must_use]
     pub fn entry(&self) -> Entry {
         if let Some(t) = self.target {
             let fx = (self.from[0] - t.position[0]).abs() - t.half_size[0];
@@ -2088,6 +2090,7 @@ impl Call {
 
 /// A path's fixed-point points as the game appends them (`{x * 2^-22, 0, y * 2^-22}` through the
 /// path's dedup, `FUN_140f95a10`).
+#[must_use]
 pub fn to_path(points: &[Point]) -> crate::tile_path::Path {
     let mut path = crate::tile_path::Path::default();
     for &[x, y] in points {
@@ -2098,7 +2101,7 @@ pub fn to_path(points: &[Point]) -> crate::tile_path::Path {
 
 /// The pather's state between searches: its temporary shapes (`pather + 0x98`, removed at the end
 /// of each call by `FUN_140f9d2b0`) and the flag per ignored shape (`+0xd8`).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Pather {
     temp: Vec<u32>,
     ignore: Vec<bool>,

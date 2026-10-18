@@ -29,8 +29,9 @@ pub struct Notify {
 
 impl Notify {
     /// The notify an object posts to itself.
-    pub fn own(id: i32, kind: i32, p: [i32; 3]) -> Self {
-        Notify {
+    #[must_use]
+    pub const fn own(id: i32, kind: i32, p: [i32; 3]) -> Self {
+        Self {
             caller: id,
             recipient: id,
             kind,
@@ -39,9 +40,10 @@ impl Notify {
     }
 
     /// The record as the save holds it.
+    #[must_use]
     pub fn from_bytes(b: &[u8; 24]) -> Self {
         let w = |i: usize| i32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
-        Notify {
+        Self {
             caller: w(0),
             recipient: w(4),
             kind: w(8),
@@ -57,9 +59,9 @@ pub const ACTION_COMPLETED: i32 = crate::ai_kinds::NOTIFY_ACTION_COMPLETED;
 pub const ACTION_INVALIDATED: i32 = crate::ai_kinds::NOTIFY_ACTION_INVALIDATED;
 /// `0x1f9`: an action failed (p1 its action value).
 pub const ACTION_FAILED: i32 = crate::ai_kinds::NOTIFY_ACTION_FAILED;
-/// `0x1fc`: a MoveTo's target left its point and its path's end did not follow (p1..p3 0).
+/// `0x1fc`: a `MoveTo`'s target left its point and its path's end did not follow (p1..p3 0).
 pub const TARGET_MOVED: i32 = 0x1fc;
-/// `0x200`: "ActionExecuted" (the soldier's log line), an attack's swing (p1 600, p2 the target).
+/// `0x200`: "`ActionExecuted`" (the soldier's log line), an attack's swing (p1 600, p2 the target).
 pub const ACTION_EXECUTED: i32 = 0x200;
 /// `0x20b`: the unit changed hands (p1 the new owner).
 pub const OWNER_CHANGED: i32 = 0x20b;
@@ -87,7 +89,7 @@ pub struct QueuedOrder {
     pub order: i32,
     /// `+0x8`: below 100 it waits while the unit AI has an action.
     pub priority: i32,
-    /// `+0xc`, `+0x10`: the target and its owner (−1 for none; "T", "TOwner" in the log line of
+    /// `+0xc`, `+0x10`: the target and its owner (−1 for none; "T", "`TOwner`" in the log line of
     /// `FUN_140c55c90`).
     pub target: i32,
     pub target_owner: i32,
@@ -104,10 +106,11 @@ pub struct QueuedOrder {
 
 impl QueuedOrder {
     /// The record as the save holds it (`+0x2d`..`+0x2f` are padding).
+    #[must_use]
     pub fn from_bytes(b: &[u8; 52]) -> Self {
         let w = |i: usize| i32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
         let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
-        QueuedOrder {
+        Self {
             issuer: w(0),
             order: w(4),
             priority: w(8),
@@ -147,12 +150,13 @@ pub enum Effect {
     SeekUnexplored,
     /// The AI's move to an object (slot 0x138, `FUN_140c55490`, with its fourth argument 1): the
     /// unit's slot 0x348 (`FUN_141086440`, forced) replaces its actions (`FUN_140a98620`) with a
-    /// MoveTo to the target within `range` showing the master's running sprite (the walking one
+    /// `MoveTo` to the target within `range` showing the master's running sprite (the walking one
     /// without it) and starts it (slot 0x808).
     MoveToObject { target: i32, range: f32 },
 }
 
 /// The first move among a full update's effects.
+#[must_use]
 pub fn first_move(effects: &[Effect]) -> Option<AiMove> {
     effects.iter().find_map(|e| match e {
         Effect::Move(m) => Some(*m),
@@ -278,7 +282,8 @@ pub const CIVILIAN_SEARCH_GROWTH: f32 = 7.0;
 
 /// The civilian's slot 0x1b0 (`FUN_140c1c4f0`): the kind of a target class (0 for 15, 1 for 7, 2
 /// for 5, 31 and 33, 3 for 8, 4 for 32 and 63), −1 for any other.
-pub fn civilian_kind(class: i32) -> i8 {
+#[must_use]
+pub const fn civilian_kind(class: i32) -> i8 {
     match class {
         5 | 0x1f | 0x21 => 2,
         7 => 1,
@@ -337,7 +342,7 @@ pub enum Pick {
     /// (`+0x1b8`) when it finds enemies, and holds a second search from within 5 tiles in the same
     /// update to the first's answer, which the idle checks never ask.
     Attack { lowest: usize },
-    /// The search alone (slot 0x50 as a NoAttack soldier's idle check calls it): no object, and
+    /// The search alone (slot 0x50 as a `NoAttack` soldier's idle check calls it): no object, and
     /// whether it found enemies (the alert mode).
     Look,
 }
@@ -425,7 +430,7 @@ pub struct Found {
 
 impl Found {
     /// Nothing found, no enemies.
-    pub const NONE: Found = Found {
+    pub const NONE: Self = Self {
         id: -1,
         enemies: false,
         position: None,
@@ -434,7 +439,7 @@ impl Found {
 }
 
 /// A search that never runs (units without a search).
-pub fn no_search(_: &Search<'_>) -> Result<Found, Unsupported> {
+pub const fn no_search(_: &Search<'_>) -> Result<Found, Unsupported> {
     Err(Unsupported("a unit AI's search the caller does not answer"))
 }
 
@@ -531,12 +536,12 @@ const CLASS_3: i16 = 3;
 const CLASS_52: i16 = 52;
 
 /// A move the unit AI gives its unit (unit-AI slot 0x130, `FUN_140c55620`, to the unit's slot
-/// 0x340): a MoveTo to `point` within `range`.
+/// 0x340): a `MoveTo` to `point` within `range`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AiMove {
     pub point: [f32; 3],
     pub range: f32,
-    /// The sixth argument: the move replaces even a MoveTo to the same point.
+    /// The sixth argument: the move replaces even a `MoveTo` to the same point.
     pub force: bool,
     /// The seventh: the unit walks (its master's walking sprite, `+0x748`), not runs.
     pub walk: bool,
@@ -555,7 +560,7 @@ enum Retarget {
     Never,
 }
 
-fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
+const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
     match ai_type {
         // villagers (0x140c21da0) and livestock (0x140c21f20) return 9 from slot 73
         8 | 19 => Ok(Retarget::Never),
@@ -585,9 +590,9 @@ const BOAR_OFFSET: i32 = 3;
 const AI_MOVE_RANGE: f32 = 0.5;
 /// The move order and action values (`0x2c6`, `0x262`), which moves set.
 pub const MOVE_ORDER: i32 = crate::ai_kinds::ORDER_MOVEMENT;
-/// `0x321`: AUTO_SCOUT's order.
+/// `0x321`: `AUTO_SCOUT`'s order.
 pub const AUTO_SCOUT_ORDER: i32 = crate::ai_kinds::ORDER_AUTO_SCOUT;
-/// `0x2c2`: the stop order ("I have a stop order.", after "SO Call 6"), which AUTO_SCOUT gives a
+/// `0x2c2`: the stop order ("I have a stop order.", after "SO Call 6"), which `AUTO_SCOUT` gives a
 /// unit already scouting.
 pub const STOP_ORDER: i32 = 0x2c2;
 /// `0x2bd`: the auto scout's action value, which the order's case sets after the explore's.
@@ -657,7 +662,7 @@ fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
 /// none for classes 5, 7, 8, 11, 14, 15, 16, 30 to 34, 38, 42, 48 and 63, the civilian's (8)
 /// for class 4. Masters 1105, 1744 and 1746 have their own, and the other classes' types are
 /// not modelled.
-pub fn factory_type(class: i16, master: i16) -> Result<Option<u32>, Unsupported> {
+pub const fn factory_type(class: i16, master: i16) -> Result<Option<u32>, Unsupported> {
     if matches!(master, 1105 | 1744 | 1746) {
         return Err(Unsupported("a new object of a master with its own unit AI"));
     }
@@ -682,14 +687,14 @@ impl UnitAi {
         ai_type: u32,
         position: [f32; 3],
         ai: &mut Well512,
-    ) -> Result<UnitAi, Unsupported> {
+    ) -> Result<Self, Unsupported> {
         if !matches!(ai_type, 8 | 17) {
             return Err(Unsupported("constructor of a unit-AI type not modelled"));
         }
         let last_retarget_time = ai.rand15() % 500;
         let adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
         let retarget_timer = 750 + ai.rand15() % 500;
-        Ok(UnitAi {
+        Ok(Self {
             ai_type,
             current_order: -1,
             order_priority: -1,
@@ -777,13 +782,13 @@ impl UnitAi {
     }
 
     /// `FUN_140c64b50`.
-    pub(crate) fn set_action(&mut self, action: i32) {
+    pub(crate) const fn set_action(&mut self, action: i32) {
         self.last_action = self.current_action;
         self.current_action = action;
     }
 
     /// `FUN_140c64be0`: the target, its class and its point.
-    pub(crate) fn set_target(&mut self, target: i32, class: i32, point: [f32; 3]) {
+    pub(crate) const fn set_target(&mut self, target: i32, class: i32, point: [f32; 3]) {
         self.last_target = self.current_target;
         self.last_target_type = self.target_type;
         self.target_type = class;
@@ -817,7 +822,7 @@ impl UnitAi {
         Ok(())
     }
 
-    /// MOVE's notify (`FUN_140e67800`): a unit that took the move as a MoveTo (`moved`) gets the
+    /// MOVE's notify (`FUN_140e67800`): a unit that took the move as a `MoveTo` (`moved`) gets the
     /// move order and action and forgets its target (`FUN_140c4dcb0`); every unit then takes the
     /// target (None for a point) and the order's point on the ground (`FUN_140c64be0`).
     pub fn notify_move(
@@ -921,12 +926,12 @@ impl UnitAi {
     /// goes home from more than 2 tiles away, else once in 7 (the same draw) it wanders, two more
     /// draws; mode 1's herd is not modelled. A found object it would evade (slot 0x150), which is
     /// not modelled. Its moves keep its height and come within 0.5, forced and walking.
-    /// `FUN_140c63e20`'s alert after a search with its argument 4 set (ClosestObject's, 1 at every
+    /// `FUN_140c63e20`'s alert after a search with its argument 4 set (`ClosestObject`'s, 1 at every
     /// call probed): enemies found set the alert mode and start the time since the last sighting
     /// again (past 10 seconds it would tell the owner first, slot 0x2e8 with notify 0x210, which
     /// the slice does not hold); none clear the alert mode. A search that read the last answer
     /// leaves it.
-    fn alert(&mut self, found: Found, _dt: f32) {
+    const fn alert(&mut self, found: Found, _dt: f32) {
         if !found.fresh {
             return;
         }
@@ -1138,13 +1143,13 @@ impl UnitAi {
     /// player that is out (`+0x89` 2; not held, 0 in every player probed) would stop, and slot
     /// 0x250 (`FUN_140c5d9a0`) retries no order, the soldier's slot 0x60 taking none as
     /// retryable. A Gaia unit stops unless it is of the combat type with `+0x924` 0 outside the
-    /// scenario modes (`FUN_141302540`); one in NoAttack (stance 3) searches and returns to its
+    /// scenario modes (`FUN_141302540`); one in `NoAttack` (stance 3) searches and returns to its
     /// state position ([`UnitAi::no_attack_idle`]); master 706 stops. Its target is the target of its top action
     /// within its range (slot 400, slot 0x1e8) with retargeting on (`+0x1d6` 0), else its current
     /// target; neither is modelled, nor a computer's branches (patrol data, priorities, evasion).
     /// Without one, `bestUnitToAttack` from its place ([`Pick::Attack`]): an object found would be
     /// attacked (slot 0xb8), which is not modelled. A patrol order then stops. The search leaves the alert mode clear, so `+0x1bc`
-    /// stays. In Defend or StandGround (stance 1, 2) a unit more than a tile from its state
+    /// stays. In Defend or `StandGround` (stance 1, 2) a unit more than a tile from its state
     /// position (the squared footprint gap, `FUN_140a847c0`) would walk back (`FUN_140c5e7d0`,
     /// not modelled); a patrol path (`+0x1c0`) and the healer's ally search (`FUN_140c16f00`, for
     /// a master with a task of action type 0x69) are not modelled.
@@ -1218,7 +1223,7 @@ impl UnitAi {
         Ok(())
     }
 
-    /// The soldier's idle check in NoAttack (stance 3, `FUN_140c20db0`: "searching and returning
+    /// The soldier's idle check in `NoAttack` (stance 3, `FUN_140c20db0`: "searching and returning
     /// to state pos."): the search alone from its place (slot 0x50, `FUN_140c63e20` with mode 1,
     /// [`Pick::Look`]) leaves the alert mode clear when it finds no enemies; then, but on the
     /// patrol orders, a unit more than a tile from its state position (the squared footprint gap,
@@ -1277,7 +1282,7 @@ impl UnitAi {
 
     /// The base unit AI's idle check (slot 72, `FUN_140c564c0`), the tower's (factory type 15),
     /// as the idle part calls it, after the cap of [`UnitAi::process_idle`] (slot 0x250 first
-    /// retries no order, the tower's slot 0x60 taking none as retryable). In NoAttack (stance 3)
+    /// retries no order, the tower's slot 0x60 taking none as retryable). In `NoAttack` (stance 3)
     /// it only searches, which is not modelled; else `bestUnitToAttack` from its place
     /// ([`Pick::Attack`], as [`UnitAi::soldier_idle`]'s): an object found would be attacked
     /// (slot 0xb8, which sets `+0x1d5`), which is not modelled. The search leaves the alert mode
@@ -1311,7 +1316,7 @@ impl UnitAi {
         Ok(())
     }
 
-    fn is_idle(&self) -> bool {
+    const fn is_idle(&self) -> bool {
         self.current_order == -1 && self.current_action == -1 && self.current_target == -1
     }
 
@@ -1366,7 +1371,7 @@ impl UnitAi {
         {
             self.run_orders(&mut fx)?;
         }
-        if let Retarget::Base = retarget {
+        if matches!(retarget, Retarget::Base) {
             self.retarget_check(world_time, at, ai, &mut fx)?;
         }
         self.idle_part(busy, at, computer, ai, closest, &mut fx)?;
@@ -1717,7 +1722,7 @@ impl UnitAi {
 
     /// The action values of an explorer (the base handler's case 0x202): 605, 623 and 630, and
     /// the auto scout's `0x2bd`.
-    fn explorer(&self) -> bool {
+    const fn explorer(&self) -> bool {
         let a = self.current_action;
         let k = a.wrapping_sub(EXPLORE_ACTION) as u32;
         (k < 0x1a && (0x204_0001u32 >> (k & 0x1f)) & 1 != 0) || a == AUTO_SCOUT_ACTION
@@ -1800,7 +1805,7 @@ impl UnitAi {
     }
 
     /// `FUN_140c5e1e0`: the target becomes the last one, and none (its point −1).
-    fn remove_target(&mut self) {
+    const fn remove_target(&mut self) {
         if self.current_target != -1 {
             self.last_target = self.current_target;
             self.last_target_type = self.target_type;
@@ -1891,7 +1896,7 @@ impl UnitAi {
 
     /// `FUN_140c4eea0` with 0: a unit takes orders unless its master has a task of action type
     /// 0x99 and it has a target or an action (not modelled).
-    fn can_order(&self, at: &Surroundings) -> Result<bool, Unsupported> {
+    const fn can_order(&self, at: &Surroundings) -> Result<bool, Unsupported> {
         if at.task_0x99 {
             return Err(Unsupported("a unit with a task of action type 0x99"));
         }
@@ -1946,6 +1951,7 @@ impl UnitAi {
     }
 
     /// `FUN_140c4dfa0`: an order in the queue is not ready (its `+0x2c` is 0).
+    #[must_use]
     pub fn has_unready_order(&self) -> bool {
         self.orders.iter().any(|o| !o.ready)
     }
@@ -2035,7 +2041,7 @@ impl UnitAi {
 
     /// The order's tail (`LAB_140c5d611`): the order and its priority become the AI's; leaving a
     /// patrol order (which caps the secondary timer) is not modelled.
-    fn take_order(&mut self, o: &QueuedOrder) -> Result<u32, Unsupported> {
+    const fn take_order(&mut self, o: &QueuedOrder) -> Result<u32, Unsupported> {
         if matches!(self.current_order, PATROL | PATROL_2) {
             return Err(Unsupported("a queued order after a patrol order"));
         }
@@ -2064,7 +2070,7 @@ impl UnitAi {
 
     /// The explorer's point (the base notify's case 0x202 after [`Effect::SeekUnexplored`]): the
     /// AI's target point.
-    pub fn explore_point(&mut self, x: i32, y: i32) {
+    pub const fn explore_point(&mut self, x: i32, y: i32) {
         self.target_point = [x as f32, y as f32, EXPLORE_Z];
     }
 

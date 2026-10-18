@@ -13,6 +13,7 @@ use super::generated::world::{
 
 impl Player {
     /// The player load of its class (`WorldPlayer.cpp`); None for a type no creator handles.
+    #[must_use]
     pub fn world_player(&self) -> Option<&WorldPlayer> {
         None.or(self
             .scenario_editor_phantom_player
@@ -32,7 +33,8 @@ impl Player {
                 .map(|p| &p.world_player_computer))
     }
 
-    /// The masters, maps and objects (WorldPlayer vtable slot 29).
+    /// The masters, maps and objects (`WorldPlayer` vtable slot 29).
+    #[must_use]
     pub fn objects(&self) -> Option<&PlayerObjects> {
         None.or(self
             .scenario_editor_phantom_player
@@ -50,6 +52,7 @@ impl Player {
 impl PlayerObjects {
     /// The player's master of type `id`; None if the save holds none (a master the player never
     /// enabled).
+    #[must_use]
     pub fn master(&self, id: i16) -> Option<&Master> {
         self.masters
             .iter()
@@ -96,16 +99,17 @@ impl Master {
 
 impl RgeMasterStaticObject {
     /// The master's type id: the save writes it first (a `readTemp` local).
-    pub fn id(&self) -> i16 {
+    #[must_use]
+    pub const fn id(&self) -> i16 {
         self.read_temp
     }
 }
 
-fn moving_master(m: &RgeMasterMovingObject) -> &RgeMasterStaticObject {
+const fn moving_master(m: &RgeMasterMovingObject) -> &RgeMasterStaticObject {
     &m.rge_master_animated_object.rge_master_static_object
 }
 
-fn action_master(a: &RgeMasterActionObject) -> &RgeMasterStaticObject {
+const fn action_master(a: &RgeMasterActionObject) -> &RgeMasterStaticObject {
     moving_master(&a.rge_master_moving_object)
 }
 
@@ -192,26 +196,26 @@ impl RgeStaticObject {
     }
 }
 
-fn own_action_moving(a: &OwnRgeMasterActionObject) -> &OwnRgeMasterMovingObject {
+const fn own_action_moving(a: &OwnRgeMasterActionObject) -> &OwnRgeMasterMovingObject {
     &a.own_rge_master_moving_object
 }
 
-fn own_action_animated(a: &OwnRgeMasterActionObject) -> &OwnRgeMasterAnimatedObject {
+const fn own_action_animated(a: &OwnRgeMasterActionObject) -> &OwnRgeMasterAnimatedObject {
     &a.own_rge_master_moving_object
         .own_rge_master_animated_object
 }
 
-fn own_combat_animated(c: &OwnTribeMasterCombatObject) -> &OwnRgeMasterAnimatedObject {
+const fn own_combat_animated(c: &OwnTribeMasterCombatObject) -> &OwnRgeMasterAnimatedObject {
     own_action_animated(&c.own_rge_master_combat_object.own_rge_master_action_object)
 }
 
-fn own_action_master(a: &OwnRgeMasterActionObject) -> &OwnRgeMasterStaticObject {
+const fn own_action_master(a: &OwnRgeMasterActionObject) -> &OwnRgeMasterStaticObject {
     &a.own_rge_master_moving_object
         .own_rge_master_animated_object
         .own_rge_master_static_object
 }
 
-fn own_tribe_combat_master(c: &OwnTribeMasterCombatObject) -> &OwnRgeMasterStaticObject {
+const fn own_tribe_combat_master(c: &OwnTribeMasterCombatObject) -> &OwnRgeMasterStaticObject {
     own_action_master(&c.own_rge_master_combat_object.own_rge_master_action_object)
 }
 
@@ -234,6 +238,7 @@ impl Object {
     }
 
     /// The moving object of the types 30 and up: its velocity, orientation and path data.
+    #[must_use]
     pub fn moving_part(&self) -> Option<&RgeMovingObject> {
         if let Some(c) = self.combat() {
             return Some(&c.rge_combat_object.rge_action_object.rge_moving_object);
@@ -252,6 +257,7 @@ impl Object {
     }
 
     /// The tribe combat object of a combat object (type 70) or a building (type 80).
+    #[must_use]
     pub fn combat(&self) -> Option<&TribeCombatObject> {
         self.tribe_combat_object.as_ref().or_else(|| {
             self.tribe_building_object
@@ -263,6 +269,7 @@ impl Object {
 
 impl RgeObject {
     /// The static object of the base factory's types (10 to 60).
+    #[must_use]
     pub fn static_part(&self) -> Option<&RgeStaticObject> {
         self.rge_static_object
             .as_ref()
@@ -291,11 +298,11 @@ impl RgeObject {
     }
 }
 
-fn moving(m: &RgeMovingObject) -> &RgeStaticObject {
+const fn moving(m: &RgeMovingObject) -> &RgeStaticObject {
     &m.rge_animated_object.rge_static_object
 }
 
-fn action(a: &RgeActionObject) -> &RgeStaticObject {
+const fn action(a: &RgeActionObject) -> &RgeStaticObject {
     moving(&a.rge_moving_object)
 }
 
@@ -306,6 +313,7 @@ fn combat_static(c: &TribeCombatObject) -> &RgeStaticObject {
 impl TribeCombatObject {
     /// The unit AI, whatever class its type made: the base module, or the elephant, tower or
     /// building module, which start with it.
+    #[must_use]
     pub fn unit_ai(&self) -> Option<&UnitAiModule> {
         self.unit_ai_module
             .as_ref()
@@ -330,6 +338,7 @@ impl TribeCombatObject {
 
 impl Object {
     /// The action list of an action object (types 40 to 80): its actions, the top one first.
+    #[must_use]
     pub fn actions(&self) -> Option<&ActionList> {
         if let Some(c) = self.combat() {
             return Some(&c.rge_combat_object.rge_action_object.actions);
@@ -355,7 +364,8 @@ impl ActionList {
 }
 
 impl Action {
-    /// A MoveTo's range (`+0x68`), for an action of that class.
+    /// A `MoveTo`'s range (`+0x68`), for an action of that class.
+    #[must_use]
     pub fn move_to_range(&self) -> Option<f32> {
         self.rge_action_by_type
             .as_ref()
@@ -365,6 +375,7 @@ impl Action {
 
     /// The base every action class starts with (`RGE_Action`: state, targets, timer, sub-actions),
     /// whatever class the action's type made.
+    #[must_use]
     pub fn base(&self) -> Option<&RgeAction> {
         macro_rules! first {
             ($($own:ident).+ ; $($field:ident),* ; $($plain:ident),*) => {

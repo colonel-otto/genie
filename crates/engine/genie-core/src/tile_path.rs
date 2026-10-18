@@ -63,12 +63,13 @@ pub enum Found {
 }
 
 impl Found {
-    pub fn code(self) -> u8 {
+    #[must_use]
+    pub const fn code(self) -> u8 {
         match self {
-            Found::OffMap => 0,
-            Found::Goal => 1,
-            Found::Nearest => 2,
-            Found::Nothing => 3,
+            Self::OffMap => 0,
+            Self::Goal => 1,
+            Self::Nearest => 2,
+            Self::Nothing => 3,
         }
     }
 }
@@ -112,7 +113,7 @@ impl Path {
 
     /// Append `other`'s points to these (`FUN_140f95c00`); the length is `other`'s, or measured
     /// anew when `other`'s is at most 1e-7.
-    pub fn append(&mut self, other: &Path) {
+    pub fn append(&mut self, other: &Self) {
         for &p in &other.points {
             self.push(p);
         }
@@ -262,7 +263,7 @@ impl OpenList {
         self.max = None;
     }
 
-    fn is_empty(&self) -> bool {
+    const fn is_empty(&self) -> bool {
         self.min.is_none()
     }
 
@@ -302,17 +303,14 @@ impl OpenList {
         let node = bucket.pop()?;
         if bucket.is_empty() {
             let max = self.max.unwrap_or(m);
-            match (m + 1..=max).find(|&i| !self.buckets[i as usize].is_empty()) {
-                Some(i) => {
-                    self.min = Some(i);
-                    msvc::sort(&mut self.buckets[i as usize], &|a: usize, b: usize| {
-                        nodes[a].f > nodes[b].f
-                    });
-                }
-                None => {
-                    self.min = None;
-                    self.max = None;
-                }
+            if let Some(i) = (m + 1..=max).find(|&i| !self.buckets[i as usize].is_empty()) {
+                self.min = Some(i);
+                msvc::sort(&mut self.buckets[i as usize], &|a: usize, b: usize| {
+                    nodes[a].f > nodes[b].f
+                });
+            } else {
+                self.min = None;
+                self.max = None;
             }
         }
         Some(node)
@@ -376,7 +374,7 @@ impl Planner {
         let area = |l: usize| i32::from(widths[l]) * i32::from(heights[l]);
         let offsets = [0, area(0), area(0) + area(1), area(0) + area(1) + area(2)];
         let total = (offsets[3] + area(3)).max(0) as usize;
-        let mut planner = Planner {
+        let mut planner = Self {
             size: [w, h],
             widths,
             heights,
@@ -404,11 +402,13 @@ impl Planner {
     }
 
     /// The restriction's passability per terrain the planner was made for.
+    #[must_use]
     pub fn passable(&self) -> &[f32] {
         &self.passable
     }
 
     /// The grid of `level`, row by row, both bytes of each cell.
+    #[must_use]
     pub fn level(&self, level: usize) -> &[[u8; 2]] {
         let start = self.offsets[level] as usize;
         let n = (i32::from(self.widths[level]) * i32::from(self.heights[level])) as usize;
@@ -416,7 +416,8 @@ impl Planner {
     }
 
     /// The level sizes: widths, then heights.
-    pub fn level_sizes(&self) -> ([i16; 4], [i16; 4]) {
+    #[must_use]
+    pub const fn level_sizes(&self) -> ([i16; 4], [i16; 4]) {
         (self.widths, self.heights)
     }
 
@@ -650,7 +651,7 @@ struct Goal {
 }
 
 impl Request {
-    fn goal(&self) -> Goal {
+    const fn goal(&self) -> Goal {
         Goal {
             x: self.to[0],
             y: self.to[1],
@@ -661,7 +662,7 @@ impl Request {
 }
 
 /// `(short)(int)v`: the game's tile of a coordinate.
-fn tile(v: f32) -> i16 {
+const fn tile(v: f32) -> i16 {
     v as i32 as i16
 }
 
@@ -1033,11 +1034,7 @@ impl Planner {
                 .map(|(a, b)| self.mark_cells(l, a, b, goal, set))
                 .sum();
         }
-        if self.in_range(level, cx, cy, goal) && self.toggle_goal(i, set) {
-            1
-        } else {
-            0
-        }
+        i32::from(self.in_range(level, cx, cy, goal) && self.toggle_goal(i, set))
     }
 
     /// `FUN_140f7a990`: mark (or clear) the tiles within the goal's ranges; when none is, the
@@ -1351,7 +1348,7 @@ impl Planner {
         })
     }
 
-    fn on_map(&self, x: i16, y: i16) -> bool {
+    const fn on_map(&self, x: i16, y: i16) -> bool {
         0 <= x && x < self.size[0] && 0 <= y && y < self.size[1]
     }
 

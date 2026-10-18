@@ -80,7 +80,7 @@ pub enum Error {
     /// The given ID is not a known HD Edition DLC.
     #[error(transparent)]
     ParseDLCPackageError(#[from] ParseDLCPackageError),
-    /// The given ID is not a known starting age in AoE1 or AoE2.
+    /// The given ID is not a known starting age in `AoE1` or `AoE2`.
     #[error(transparent)]
     ParseStartingAgeError(#[from] ParseStartingAgeError),
     /// The given ID is not a known error code.
@@ -88,26 +88,26 @@ pub enum Error {
     ParseAIErrorCodeError(#[from] num_enum::TryFromPrimitiveError<ai::AIErrorCode>),
     /// The given ID is not a known victory condition state.
     #[error(transparent)]
-    ParseVictoryConditionStateError(#[from] num_enum::TryFromPrimitiveError<victory::VictoryState>),
+    ParseVictoryConditionStateError(#[from] num_enum::TryFromPrimitiveError<VictoryState>),
     /// An error occurred while reading or writing.
     #[error(transparent)]
     IoError(#[from] io::Error),
 }
 
 impl From<ReadStringError> for Error {
-    fn from(err: ReadStringError) -> Error {
+    fn from(err: ReadStringError) -> Self {
         match err {
-            ReadStringError::IoError(err) => Error::IoError(err),
-            ReadStringError::DecodeStringError(err) => Error::DecodeStringError(err),
+            ReadStringError::IoError(err) => Self::IoError(err),
+            ReadStringError::DecodeStringError(err) => Self::DecodeStringError(err),
         }
     }
 }
 
 impl From<WriteStringError> for Error {
-    fn from(err: WriteStringError) -> Error {
+    fn from(err: WriteStringError) -> Self {
         match err {
-            WriteStringError::IoError(err) => Error::IoError(err),
-            WriteStringError::EncodeStringError(err) => Error::EncodeStringError(err),
+            WriteStringError::IoError(err) => Self::IoError(err),
+            WriteStringError::EncodeStringError(err) => Self::EncodeStringError(err),
         }
     }
 }
@@ -151,59 +151,68 @@ impl Scenario {
 
     /// Get the format version of this SCX file.
     #[inline]
-    pub fn format_version(&self) -> SCXVersion {
+    #[must_use]
+    pub const fn format_version(&self) -> SCXVersion {
         self.version().format
     }
 
     /// Get the header version for this SCX file.
     #[inline]
-    pub fn header_version(&self) -> u32 {
+    #[must_use]
+    pub const fn header_version(&self) -> u32 {
         self.version().header
     }
 
     /// Get the data version for this SCX file.
     #[inline]
-    pub fn data_version(&self) -> f32 {
+    #[must_use]
+    pub const fn data_version(&self) -> f32 {
         self.version().data
     }
 
     /// Get the header.
     #[inline]
-    pub fn header(&self) -> &SCXHeader {
+    #[must_use]
+    pub const fn header(&self) -> &SCXHeader {
         &self.format.header
     }
 
     /// Get the scenario description.
     #[inline]
+    #[must_use]
     pub fn description(&self) -> Option<&str> {
         self.format.tribe_scen.description()
     }
 
     /// Get the scenario filename.
     #[inline]
+    #[must_use]
     pub fn filename(&self) -> &str {
         &self.format.tribe_scen.base.name
     }
 
     /// Get data about the game versions this scenario file was made for.
     #[inline]
-    pub fn version(&self) -> &VersionBundle {
+    #[must_use]
+    pub const fn version(&self) -> &VersionBundle {
         &self.version
     }
 
     /// Check if this scenario requires the given DLC (for HD Edition scenarios only).
     #[inline]
+    #[must_use]
     pub fn requires_dlc(&self, dlc: DLCPackage) -> bool {
         match &self.header().dlc_options {
-            Some(options) => options.dependencies.iter().any(|dep| *dep == dlc),
+            Some(options) => options.dependencies.contains(&dlc),
             None => false,
         }
     }
 
-    /// Get the UserPatch mod name of the mod that was used to create this scenario.
+    /// Get the `UserPatch` mod name of the mod that was used to create this scenario.
     ///
-    /// This returns the short name, like "WK" for WololoKingdoms or "aoc" for Age of Chivalry.
+    /// This returns the short name, like "WK" for `WololoKingdoms` or "aoc" for Age of Chivalry.
     #[inline]
+    #[must_use]
     pub fn mod_name(&self) -> Option<&str> {
         self.format.mod_name()
     }
@@ -226,35 +235,39 @@ impl Scenario {
             .flat_map(|list| list.iter_mut())
     }
 
+    #[must_use]
     pub fn world_players(&self) -> &[WorldPlayerData] {
         &self.format.world_players
     }
 
+    #[must_use]
     pub fn scenario_players(&self) -> &[ScenarioPlayerData] {
         &self.format.scenario_players
     }
 
     /// Get the map/terrain data for this scenario.
     #[inline]
-    pub fn map(&self) -> &Map {
+    #[must_use]
+    pub const fn map(&self) -> &Map {
         &self.format.map
     }
 
     /// Get the (mutable) map/terrain data for this scenario.
     #[inline]
-    pub fn map_mut(&mut self) -> &mut Map {
+    pub const fn map_mut(&mut self) -> &mut Map {
         &mut self.format.map
     }
 
     /// Get trigger data for this scenario if it exists.
     #[inline]
-    pub fn triggers(&self) -> Option<&TriggerSystem> {
+    #[must_use]
+    pub const fn triggers(&self) -> Option<&TriggerSystem> {
         self.format.triggers.as_ref()
     }
 
     /// Get (mutable) trigger data for this scenario if it exists.
     #[inline]
-    pub fn triggers_mut(&mut self) -> Option<&mut TriggerSystem> {
+    pub const fn triggers_mut(&mut self) -> Option<&mut TriggerSystem> {
         self.format.triggers.as_mut()
     }
 }

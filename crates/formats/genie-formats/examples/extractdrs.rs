@@ -116,10 +116,10 @@ fn extract(args: Extract) -> anyhow::Result<()> {
 
     for table in drs.tables() {
         let table_ext = table.resource_ext();
-        if let Some(ref filter_ext) = args.table {
-            if &table_ext != filter_ext {
-                continue;
-            }
+        if let Some(ref filter_ext) = args.table
+            && &table_ext != filter_ext
+        {
+            continue;
         }
 
         for resource in table.resources() {

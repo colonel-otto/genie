@@ -10,7 +10,7 @@
 use crate::unit_ai::Unsupported;
 
 /// What the `.dat` says of a terrain (its record at map `+0x6238`, 0x1f0 bytes each).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TerrainKind {
     /// The record's first byte (`enabled`) or its `terrain_to_draw` (`+0xf8`) of 0 or more: the
     /// map's terrain reads (`FUN_140f690e0`, `FUN_140f69000`) see the terrain, else terrain 0.
@@ -32,13 +32,14 @@ const UNCOVERED: [u8; 2] = [47, 69];
 
 /// The terrains foundation 27 covers, and the layers it covers them under (the bits of
 /// `0x500001209`; the layer test lists their complement, `0x2ffffedf6` and above 34).
-fn plain(t: i16) -> bool {
+const fn plain(t: i16) -> bool {
     matches!(t, 0 | 3 | 9 | 12 | 32 | 34)
 }
 
 /// `FUN_1413fc120`: the terrain table entry's first byte, the terrain's id, is a farm's: 7, 8,
 /// 29 to 31, 63 to 67 and 117 to 121.
-pub fn is_farm_terrain(t: u8) -> bool {
+#[must_use]
+pub const fn is_farm_terrain(t: u8) -> bool {
     matches!(t, 7 | 8 | 29..=31 | 63..=67 | 117..=121)
 }
 
@@ -81,6 +82,7 @@ pub struct Foundation {
 }
 
 impl Terrain {
+    #[must_use]
     pub fn new(
         width: i32,
         height: i32,
@@ -88,7 +90,7 @@ impl Terrain {
         terrains: Vec<TerrainKind>,
         restrictions: Vec<Vec<f32>>,
     ) -> Self {
-        Terrain {
+        Self {
             width,
             height,
             kinds: tiles.iter().map(|t| t.0).collect(),
@@ -106,11 +108,12 @@ impl Terrain {
     }
 
     /// A tile's terrain (the map tile's `+0x9`), None off the map.
+    #[must_use]
     pub fn kind(&self, x: i32, y: i32) -> Option<u8> {
         self.index(x, y).map(|i| self.kinds[i])
     }
 
-    /// The ground's height under (`x`, `y`) on the map (the static new_position's,
+    /// The ground's height under (`x`, `y`) on the map (the static `new_position`'s,
     /// `0x1411a58b0`, which slot 0x60 takes): the tile's elevation plus its slope's share by the
     /// tile's shape (`+0x8`, made at the map's load from the elevations about it). A tile whose
     /// eight neighbours on the map share its elevation is flat; a slope's share is not modelled.
@@ -141,6 +144,7 @@ impl Terrain {
     /// `bonus` (`FUN_141082530`): the restriction's value (`world+0x788`) for the tile's terrain
     /// to restore, else its terrain (the tile's `+0xa`, else `+0x9`); 0 counts as 1, and an
     /// object off the tiles has 1. None for a restriction or terrain the data has not got.
+    #[must_use]
     pub fn defense(&self, bonus: i16, x: i32, y: i32) -> Option<f32> {
         let Some(i) = self.index(x, y) else {
             return Some(1.0);

@@ -17,10 +17,10 @@ pub enum ConvertError {
     InvalidVersion,
 }
 
-/// Convert an AoC or HD Edition scenario file to a WololoKingdoms one.
+/// Convert an `AoC` or HD Edition scenario file to a `WololoKingdoms` one.
 ///
 /// It will auto-detect the version of the file, and output a WK compatible scenario.
-/// AoC scenarios will have their unit and terrain IDs switched around so they have the correct
+/// `AoC` scenarios will have their unit and terrain IDs switched around so they have the correct
 /// look in WK.
 /// HD Edition scenarios will have all the new unit and terrain IDs mapped to WK IDs.
 ///
@@ -34,8 +34,8 @@ pub enum ConvertError {
 #[derive(Debug, Default)]
 pub struct AutoToWK {}
 
-/// Check if a scenario object is likely a WololoKingdoms one.
-fn is_wk_object(object: &ScenarioObject) -> bool {
+/// Check if a scenario object is likely a `WololoKingdoms` one.
+const fn is_wk_object(object: &ScenarioObject) -> bool {
     // Stormy Dog is the highest ID in AoC 1.0c.
     const STORMY_DOG: i32 = 862;
     object.id > STORMY_DOG

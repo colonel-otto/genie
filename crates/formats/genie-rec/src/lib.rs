@@ -205,7 +205,7 @@ where
             }
             Ok(0x03) => Some(actions::ViewLock::read_from(&mut self.input).map(Action::ViewLock)),
             Ok(0x04) => Some(actions::Chat::read_from(&mut self.input).map(Action::Chat)),
-            Ok(id) => panic!("unsupported action type {:#x}", id),
+            Ok(id) => panic!("unsupported action type {id:#x}"),
             Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => None,
             Err(err) => Some(Err(err.into())),
         }
@@ -393,7 +393,7 @@ mod tests {
         r.header()?;
         for act in r.actions()? {
             match act {
-                Ok(act) => println!("{:?}", act),
+                Ok(act) => println!("{act:?}"),
                 Err(Error::DecodeStringError(_)) => {
                     // Skip invalid utf8 chat for now
                 }

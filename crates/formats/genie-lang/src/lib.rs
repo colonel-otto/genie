@@ -4,7 +4,7 @@
 //!
 //! DLLs are used by the original games.
 //! INI files are used for Voobly mods, and can be used with a standard
-//! AoC installation through the aoc-language-ini mod.
+//! `AoC` installation through the aoc-language-ini mod.
 //!
 //! ## DLLs
 //! ```rust
@@ -127,8 +127,8 @@ use std::str::FromStr;
 
 /// Errors that may occur when loading a language file.
 ///
-/// For DLL files, PeError and IoError can occur.
-/// For INI and HD Edition files, ParseIntError and IoError can occur.
+/// For DLL files, `PeError` and `IoError` can occur.
+/// For INI and HD Edition files, `ParseIntError` and `IoError` can occur.
 /// Both the INI and HD Edition parsers silently ignore invalid lines.
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
@@ -215,10 +215,10 @@ impl LangFile {
     /// TODO specify
     fn load_pe_file(&mut self, pe: PeFile<'_>) -> Result<(), LoadError> {
         for root_dir_entry in pe.resources()?.root()?.entries() {
-            if let Ok(Name::Id(6)) = root_dir_entry.name() {
-                if let Some(directory) = root_dir_entry.entry()?.dir() {
-                    self.load_pe_directory(directory)?;
-                }
+            if root_dir_entry.name() == Ok(Name::Id(6))
+                && let Some(directory) = root_dir_entry.entry()?.dir()
+            {
+                self.load_pe_directory(directory)?;
             }
         }
         Ok(())
@@ -348,7 +348,7 @@ impl LangFile {
 
         // TODO unquoting and un-escaping
         let mut iter = iter.skip_while(|&c| char::is_whitespace(c));
-        let value = if let Some('"') = iter.next() {
+        let value = if iter.next() == Some('"') {
             unescape(iter, true)
         } else {
             return Ok(());
@@ -369,7 +369,7 @@ impl LangFile {
     /// Writes this language file to an output writer using the key-value
     /// format.
     pub fn write_to_keyval<W: Write>(&self, output: &mut W) -> io::Result<()> {
-        for (id, string) in self.iter() {
+        for (id, string) in self {
             output.write_all(format!("{} \"{}\"\n", id, escape(string, true)).as_bytes())?;
         }
         Ok(())
@@ -384,8 +384,9 @@ impl LangFile {
     ///
     /// let lang_file = LangFile::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
-        LangFile(HashMap::new())
+        Self(HashMap::new())
     }
 
     /// Returns `true` if this language file contains no key-value pairs,
@@ -402,6 +403,7 @@ impl LangFile {
     /// lang_file.insert(StringKey::try_from(0).unwrap(), String::from(""));
     /// assert!(!lang_file.is_empty());
     /// ```
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -419,6 +421,7 @@ impl LangFile {
     /// lang_file.insert(StringKey::try_from(0).unwrap(), String::from(""));
     /// assert_eq!(1, lang_file.len());
     /// ```
+    #[must_use]
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -437,7 +440,7 @@ impl LangFile {
     /// assert!(lang_file.is_empty());
     /// ```
     pub fn clear(&mut self) {
-        self.0.clear()
+        self.0.clear();
     }
 
     /// Clears this Language file, returning all key-value pairs as an iterator.
@@ -475,6 +478,7 @@ impl LangFile {
     /// assert!(lang_file.contains_key(&StringKey::try_from(0).unwrap()));
     /// assert!(!lang_file.contains_key(&StringKey::try_from(1).unwrap()));
     /// ```
+    #[must_use]
     pub fn contains_key(&self, k: &StringKey) -> bool {
         self.0.contains_key(k)
     }
@@ -492,6 +496,7 @@ impl LangFile {
     /// assert_eq!(Some(&String::from("")), lang_file.get(&StringKey::try_from(0).unwrap()));
     /// assert_eq!(None, lang_file.get(&StringKey::try_from(1).unwrap()));
     /// ```
+    #[must_use]
     pub fn get(&self, k: &StringKey) -> Option<&String> {
         self.0.get(k)
     }
@@ -604,7 +609,7 @@ impl LangFile {
     /// assert_eq!(3, lang_file.len());
     /// ```
     pub fn retain<F: FnMut(&StringKey, &mut String) -> bool>(&mut self, f: F) {
-        self.0.retain(f)
+        self.0.retain(f);
     }
 
     /// An iterator visiting all key-value pairs in an arbitrary order.
@@ -624,6 +629,7 @@ impl LangFile {
     ///
     /// for (k, v) in lang_file.iter() { println!("key: {}, val: {}", k, v); }
     /// ```
+    #[must_use]
     pub fn iter(&self) -> Iter<'_, StringKey, String> {
         self.0.iter()
     }
@@ -668,6 +674,7 @@ impl LangFile {
     ///
     /// for k in lang_file.keys() { println!("key: {}", k); }
     /// ```
+    #[must_use]
     pub fn keys(&self) -> Keys<'_, StringKey, String> {
         self.0.keys()
     }
@@ -689,6 +696,7 @@ impl LangFile {
     ///
     /// for v in lang_file.values() { println!("value: {}", v); }
     /// ```
+    #[must_use]
     pub fn values(&self) -> Values<'_, StringKey, String> {
         self.0.values()
     }
@@ -742,11 +750,7 @@ impl<'a> IntoIterator for &'a mut LangFile {
 
 impl fmt::Display for LangFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let strs: Vec<String> = self
-            .0
-            .iter()
-            .map(|(k, v)| format!("{}: {}", k, v))
-            .collect();
+        let strs: Vec<String> = self.0.iter().map(|(k, v)| format!("{k}: {v}")).collect();
         write!(f, "{}", strs.join("\n"))
     }
 }
@@ -758,8 +762,8 @@ impl Extend<(StringKey, String)> for LangFile {
 }
 
 impl FromIterator<(StringKey, String)> for LangFile {
-    fn from_iter<T: IntoIterator<Item = (StringKey, String)>>(iter: T) -> LangFile {
-        let mut lang_file = LangFile::default();
+    fn from_iter<T: IntoIterator<Item = (StringKey, String)>>(iter: T) -> Self {
+        let mut lang_file = Self::default();
         lang_file.extend(iter);
         lang_file
     }

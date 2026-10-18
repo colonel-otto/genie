@@ -1,12 +1,12 @@
 //! The Attack action (`RGE_Action_Attack`, type 9, vtable `0x142ed47a8`) of a melee unit: a
 //! hunting villager's sub-action on a tree or on its livestock ([`crate::hunt`]).
-//! Built away from its target, it walks there with a MoveTo sub-action ([`crate::move_to`]); in
+//! Built away from its target, it walks there with a `MoveTo` sub-action ([`crate::move_to`]); in
 //! reach it swings (state 7): the hit lands on the attack sprite's frame ([`crate::sprite`]), and
 //! the unit waits out its reload between swings (state 6). A target that dies ends the swing
-//! (state 2) and the action (set_state 1, code 5 to the hunt).
+//! (state 2) and the action (`set_state` 1, code 5 to the hunt).
 //!
 //! 158041: constructor `FUN_140a7c210`, start (slot 5) `0x140a7f8c0`, update (slot 6)
-//! `0x140a82ae0`, set_state (slot 16) `0x140a820c0`; the range test `FUN_140a7f9d0`
+//! `0x140a82ae0`, `set_state` (slot 16) `0x140a820c0`; the range test `FUN_140a7f9d0`
 //! (`readyToAttack`); the hit (object slot 0x858, `FUN_14120c0a0` -> `FUN_141081020` -> slot 0x860
 //! `FUN_1412115e0` -> `FUN_141084230` -> the target's slot 0xe8, whose damage is
 //! [`crate::damage`]'s).
@@ -28,7 +28,7 @@ const HALF: f32 = 0.5;
 /// The squared reach of an attack without a range (`DAT_142ed48e4`): `0x3c23d70b`, which is
 /// `0.1f * 0.1f`, one ULP above `0.01f`.
 const TOUCH: f32 = crate::image::attack::TOUCH;
-/// A MoveTo starts arrived within this gap (`DAT_142eb99cc`).
+/// A `MoveTo` starts arrived within this gap (`DAT_142eb99cc`).
 const ARRIVED: f32 = crate::image::attack::ARRIVED;
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`).
 const EPSILON: f32 = crate::image::attack::EPSILON;
@@ -77,7 +77,7 @@ pub struct Attack {
     pub point: [f32; 3],
     /// `+0xa4`..`+0xac`: where it last saw its target.
     pub seen: [f32; 3],
-    /// The MoveTo sub-action to the target, its range the attack's.
+    /// The `MoveTo` sub-action to the target, its range the attack's.
     pub move_to: Option<MoveTo>,
     /// `+0x9e`: a hit is still to land in this swing.
     pub pending: bool,
@@ -171,14 +171,14 @@ const GATE: i16 = 39;
 const VILLAGER: i16 = 4;
 
 impl Attack {
-    /// The constructor (`FUN_140a7c210`, from Hunt's set_state 12 with the master's weapon range,
+    /// The constructor (`FUN_140a7c210`, from Hunt's `set_state` 12 with the master's weapon range,
     /// least range, missile and frame) and the start (slot 5 with 1, `0x140a7f8c0`): the target is
     /// the object itself (the area-effect and gate cases are not reached by a villager); a range of
     /// 0 becomes slot 0x238's. The start runs the range test: a target in reach becomes the
     /// point and the unit faces it, a unit out of reach that may move turns to state 4; a unit that
-    /// may move turns to state 4 again in the start, each time with a new MoveTo (whose teardown
+    /// may move turns to state 4 again in the start, each time with a new `MoveTo` (whose teardown
     /// stops the unit). The unit's `+0x900` (attack count) is cleared and its sprites set; the
-    /// slice holds neither. True with it: the last MoveTo started arrived, and the caller shows
+    /// slice holds neither. True with it: the last `MoveTo` started arrived, and the caller shows
     /// its idle sprite ([`Attack::arrived_sprite`]).
     pub fn start(
         target: i32,
@@ -186,7 +186,7 @@ impl Attack {
         arms: Arms,
         mover: &mut Mover,
     ) -> Result<(Self, bool), Unsupported> {
-        let mut a = Attack {
+        let mut a = Self {
             target,
             state: 0,
             timer: 0.0,
@@ -234,7 +234,7 @@ impl Attack {
         Ok((a, arrived))
     }
 
-    /// A MoveTo of the attack that starts arrived (its set_state 1, not quiet): the unit shows
+    /// A `MoveTo` of the attack that starts arrived (its `set_state` 1, not quiet): the unit shows
     /// its idle sprite (slot 0x68) and its `+0x7b8` clears.
     pub(crate) fn arrived_sprite(&self, s: &mut Strike<'_>) -> Result<(), Unsupported> {
         let g = self
@@ -257,8 +257,8 @@ impl Attack {
         }
     }
 
-    /// set_state(4) (`0x140a820c0` case 4): the sub-actions go (a MoveTo's teardown stops the unit,
-    /// slot 0x5d0), the range is slot 0x238's again, and a MoveTo to the target with that range
+    /// `set_state(4)` (`0x140a820c0` case 4): the sub-actions go (a `MoveTo`'s teardown stops the unit,
+    /// slot 0x5d0), the range is slot 0x238's again, and a `MoveTo` to the target with that range
     /// starts (`FUN_140aa0df0`, start `FUN_140aa2100`): arrived within 0.01, else in state 3 for a
     /// unit with speed. True when it arrived.
     fn set_move(&mut self, e: &Engagement, mover: &mut Mover) -> Result<bool, Unsupported> {
@@ -269,7 +269,7 @@ impl Attack {
         Ok(self.moving(e.range, e.gap))
     }
 
-    /// set_state(4)'s own part: the range (slot 0x238's), the timer, the MoveTo to the target,
+    /// `set_state(4)`'s own part: the range (slot 0x238's), the timer, the `MoveTo` to the target,
     /// which starts arrived (state 1, true) within 0.01 of a `gap` away.
     fn moving(&mut self, range: f32, gap: f32) -> bool {
         self.range = range;
@@ -283,7 +283,7 @@ impl Attack {
         arrived
     }
 
-    /// The teardown of the sub-actions (`FUN_140a73fc0` on the action list): a MoveTo stops the
+    /// The teardown of the sub-actions (`FUN_140a73fc0` on the action list): a `MoveTo` stops the
     /// unit.
     pub fn tear_down(&mut self, mover: Option<&mut Mover>) -> Result<(), Unsupported> {
         if self.move_to.take().is_some()
@@ -294,7 +294,7 @@ impl Attack {
         Ok(())
     }
 
-    /// The start of every set_state (`0x140a820c0`): the sub-actions go (a MoveTo's teardown stops
+    /// The start of every `set_state` (`0x140a820c0`): the sub-actions go (a `MoveTo`'s teardown stops
     /// the unit and its animation, `+0x7b8`), then the state.
     fn enter(
         &mut self,
@@ -315,7 +315,7 @@ impl Attack {
         Ok(())
     }
 
-    /// set_state(1) (case 1): the unit's animation runs at speed 1 and it takes the sprite it
+    /// `set_state(1)` (case 1): the unit's animation runs at speed 1 and it takes the sprite it
     /// stands with.
     fn finish(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
         self.enter(DONE, walk, s)?;
@@ -328,7 +328,7 @@ impl Attack {
         Ok(())
     }
 
-    /// set_state(6) (case 6): the range test; in reach and ready, the swing (set_state 7).
+    /// `set_state(6)` (case 6): the range test; in reach and ready, the swing (`set_state` 7).
     fn ready(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
         self.enter(READY, walk, s)?;
         match self.ready_to_attack(&mut walk.reborrow(), s)? {
@@ -338,7 +338,7 @@ impl Attack {
         }
     }
 
-    /// readyToAttack's answer to a target out of reach: set_state(4), the MoveTo after it with
+    /// readyToAttack's answer to a target out of reach: `set_state(4)`, the `MoveTo` after it with
     /// the range of slot 0x238 (the master's weapon range).
     fn follow(
         &mut self,
@@ -359,8 +359,8 @@ impl Attack {
     /// attack's point (`FUN_140a7bbf0`) or within half a tile of it on each axis
     /// (`FUN_140a7bd10`) is ready at once; else the reach decides: the target's gap
     /// (`FUN_14118f680`) below the least range is not modelled; beyond the reach (the range, half
-    /// a tile more without one) the unit follows it (set_state 4, [`Readiness::Away`]) when it may
-    /// move (its speed and canMoveToAttack, slot 0x1d0; a stance-1 leash and set_state 13 are not
+    /// a tile more without one) the unit follows it (`set_state` 4, [`Readiness::Away`]) when it may
+    /// move (its speed and canMoveToAttack, slot 0x1d0; a stance-1 leash and `set_state` 13 are not
     /// modelled; the Hunt's Attack, a sub-action (`+0x60`), posts no notify 0x1fd); within it the
     /// target's place becomes the point. Ready, the unit faces the target (`FUN_141162db0`, at
     /// once for a unit without a turn time) and swings once its attack timer ran out (slot 0x100).
@@ -444,7 +444,7 @@ impl Attack {
         })
     }
 
-    /// set_state(7) (case 7): the swing. The unit takes the attack sprite (a second attack sprite,
+    /// `set_state(7)` (case 7): the swing. The unit takes the attack sprite (a second attack sprite,
     /// picked by an Object-stream draw, is not modelled) from its first frame (`FUN_1413b9f00`); a
     /// hit is pending; a reload shorter than the sprite speeds the animation up to fit it.
     fn set_swing(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
@@ -552,10 +552,10 @@ impl Attack {
         }
     }
 
-    /// State 4 (cases 3, 4, 10): the MoveTo walks (`FUN_140a992b0`); a unit still farther than its
-    /// reach goes on (code 0), one within it turns ready (set_state 6). The squared reach of a unit
-    /// without a range is 0.01. A MoveTo that arrived returns 1: the list deletes it (its
-    /// destructor, `0x140aa1f30`, stops the unit) and the unit turns ready (set_state 6).
+    /// State 4 (cases 3, 4, 10): the `MoveTo` walks (`FUN_140a992b0`); a unit still farther than its
+    /// reach goes on (code 0), one within it turns ready (`set_state` 6). The squared reach of a unit
+    /// without a range is 0.01. A `MoveTo` that arrived returns 1: the list deletes it (its
+    /// destructor, `0x140aa1f30`, stops the unit) and the unit turns ready (`set_state` 6).
     fn walk(
         &mut self,
         mut walk: Walk<'_>,
@@ -629,9 +629,9 @@ impl Attack {
     /// State 7 (case 6). A melee swing counts down and lands its hit when its sprite reaches the
     /// firing frame (half its frames without one): the attack timer becomes the reload less the
     /// time to that frame (`FUN_141089820`) and the target takes the hit; a dead target ends the
-    /// swing (set_state 2). A ranged unit's swing does not count down and fires at its firing
+    /// swing (`set_state` 2). A ranged unit's swing does not count down and fires at its firing
     /// frame (at once with frame 0): its missile ([`Strike::fire`]). After the hit, the swing's
-    /// sprite looping makes the unit ready again (set_state 6).
+    /// sprite looping makes the unit ready again (`set_state` 6).
     fn swing(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
         let ranged = self.arms.missile != -1;
         let Some(sprite) = *s.sprite else {
@@ -846,9 +846,10 @@ pub(crate) fn strike(
     Ok(struck)
 }
 
-/// The Attack constructor's sprites and frames (`FUN_140a7c210` from Hunt's set_state 12): the
+/// The Attack constructor's sprites and frames (`FUN_140a7c210` from Hunt's `set_state` 12): the
 /// task's proceeding sprite (else the master's attack sprite), the master's second attack sprite
 /// and standing sprite, missile, firing and interrupting frames.
+#[must_use]
 pub fn arms(
     master: &crate::masters::Master,
     graphics: &std::collections::BTreeMap<i16, Graphic>,
@@ -895,6 +896,7 @@ pub fn engagement(
 }
 
 /// The gap between two footprints, for an [`Engagement`].
+#[must_use]
 pub fn gaps(a: [f32; 3], a_radius: [f32; 2], b: [f32; 3], b_radius: [f32; 2]) -> (f32, f32) {
     let squared = footprint_gap_squared(a, a_radius, b, b_radius);
     (squared, footprint_gap(a, a_radius, b, b_radius))

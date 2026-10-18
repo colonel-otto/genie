@@ -1,4 +1,4 @@
-//! The DE header reader against ImHex's offsets for aoe2rec's pattern on one recording, and
+//! The DE header reader against `ImHex`'s offsets for aoe2rec's pattern on one recording, and
 //! against every tier-1 recording of the corpus. Needs `GENIE_REC_CORPUS`; skips without it.
 
 use genie_rec::de;
@@ -130,7 +130,10 @@ fn marvinblue_player_masters_are_found_by_id() {
         (332, 1751, -1)
     );
     // the empty town-centre annex, a building
-    assert_eq!(static_part(890).map(|s| s.id()), Some(890));
+    assert_eq!(
+        static_part(890).map(genie_save::generated::world::RgeMasterStaticObject::id),
+        Some(890)
+    );
     assert!(objects.master(i16::MAX).is_none());
 }
 

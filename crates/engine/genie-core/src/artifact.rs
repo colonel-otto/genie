@@ -2,7 +2,7 @@
 //! unit of another player is close enough to take the animal over (the search is the caller's,
 //! [`crate::spatial::Spatial::artifact_owner`]).
 //!
-//! 158041: `TRIBE_Action_Artifact`, vtable `0x142ed6520`; update `0x140aad250` (slot 6), set_state
+//! 158041: `TRIBE_Action_Artifact`, vtable `0x142ed6520`; update `0x140aad250` (slot 6), `set_state`
 //! `0x140aace30` (slot 16). The .dat gives Goat, Goose, Cow and Sheep the default task 0, a task with
 //! action type 107. An idle animal holds this action as its top action, so checkpoint word 9 counts
 //! `107 + state` for it.
@@ -19,7 +19,7 @@ pub struct Artifact {
     pub timer: f32,
     /// Gaia waits half as long between checks.
     pub gaia: bool,
-    /// The MoveTo sub-action of a move its player gave the animal, and the action's point
+    /// The `MoveTo` sub-action of a move its player gave the animal, and the action's point
     /// (`+0x38`..`+0x40`) it walks to.
     pub move_to: Option<MoveTo>,
     pub goal: Option<[f32; 3]>,
@@ -33,8 +33,9 @@ const WAIT: u8 = 10;
 
 impl Artifact {
     /// A new action, about to check for a new owner.
-    pub fn new(gaia: bool) -> Self {
-        Artifact {
+    #[must_use]
+    pub const fn new(gaia: bool) -> Self {
+        Self {
             state: CHECK,
             timer: 0.0,
             gaia,
@@ -44,12 +45,12 @@ impl Artifact {
     }
 
     /// Slot 8 (`FUN_140aaca30`) on a move to a point, which the action takes: the point, then
-    /// set_state(4) (`0x140aace30`): its sub-actions go (`FUN_140a98620`), a MoveTo to the point
+    /// `set_state(4)` (`0x140aace30`): its sub-actions go (`FUN_140a98620`), a `MoveTo` to the point
     /// within 0 (`FUN_140aa0d30` with its task's sprite, walking; the sprite is not held) is added
     /// and starts (state 3 for an animal away from the point), and the action checks again
-    /// (set_state 6). A move to an object (set_state 5) is not modelled. Returns whether a MoveTo
+    /// (`set_state` 6). A move to an object (`set_state` 5) is not modelled. Returns whether a `MoveTo`
     /// went, whose teardown (`0x140aa1f30`) stops the unit (slot 0x5d0, the caller's).
-    pub fn take_point(&mut self, point: [f32; 3]) -> bool {
+    pub const fn take_point(&mut self, point: [f32; 3]) -> bool {
         self.goal = Some(point);
         let walked = self.move_to.replace(MoveTo::Start).is_some();
         self.state = CHECK;
@@ -57,10 +58,10 @@ impl Artifact {
     }
 
     /// Slot 0x38 (`FUN_140aad1a0`), as the unit's stop (`FUN_14106fa60`) calls it before a new
-    /// owner takes the animal: its sub-actions go (a MoveTo's teardown would stop the unit, which
-    /// is not modelled), with the point and the target, and it checks again (set_state 6). The
+    /// owner takes the animal: its sub-actions go (a `MoveTo`'s teardown would stop the unit, which
+    /// is not modelled), with the point and the target, and it checks again (`set_state` 6). The
     /// unit's standing sprite (slot 0x68) is not held.
-    pub fn stop(&mut self) -> Result<(), Unsupported> {
+    pub const fn stop(&mut self) -> Result<(), Unsupported> {
         if self.move_to.is_some() {
             return Err(Unsupported(
                 "a captured animal walking its MoveTo (its teardown)",
@@ -71,13 +72,13 @@ impl Artifact {
         Ok(())
     }
 
-    /// One update (`0x140aad250`) with the tick's `dt_ms`. Its MoveTo goes first: it starts its
+    /// One update (`0x140aad250`) with the tick's `dt_ms`. Its `MoveTo` goes first: it starts its
     /// walk, walks on, and once it ended (its update in state 1 returns 1) the sub-actions go, with
     /// the point and the target (slot 0x68 with none). Then the check (state 6): an animal of the
     /// combat type whose `+0x924` is 0 (`FUN_14107cc90`, `searches` false) never changes hands; any
     /// other asks `owner` (`FUN_140aabc40`) and returns the player that takes it, after its
     /// sub-actions went (`FUN_140a98620`), for the caller's conversion (`FUN_140aab570`). With no
-    /// new owner it waits (set_state 10).
+    /// new owner it waits (`set_state` 10).
     pub fn update(
         &mut self,
         walk: Option<Walk<'_>>,
@@ -89,13 +90,13 @@ impl Artifact {
         self.step(dt_ms, searches, owner)
     }
 
-    /// The update's first part: its MoveTo sub-action (`FUN_140a992b0`). Some notify kind when the
-    /// MoveTo ended, which the caller sends to the unit AI with the move action value (the
-    /// Artifact's MoveTo is not quiet): its completion (0x1fa) from its update in state 1, or its
-    /// failure (0x1f9) from state 13. A MoveTo whose motion step gave up fails (set_state 13: an
+    /// The update's first part: its `MoveTo` sub-action (`FUN_140a992b0`). Some notify kind when the
+    /// `MoveTo` ended, which the caller sends to the unit AI with the move action value (the
+    /// Artifact's `MoveTo` is not quiet): its completion (0x1fa) from its update in state 1, or its
+    /// failure (0x1f9) from state 13. A `MoveTo` whose motion step gave up fails (`set_state` 13: an
     /// animal never waits as a villager may); the failed one's update returns 3, the Artifact
     /// drops it (`FUN_140a98620`: its teardown stops the unit, slot 0x5d0, the caller's) and its
-    /// point (−1). A waiting MoveTo is not modelled.
+    /// point (−1). A waiting `MoveTo` is not modelled.
     pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<Option<i32>, Unsupported> {
         let need = || Unsupported("a walking animal without its walk");
         match self.move_to {

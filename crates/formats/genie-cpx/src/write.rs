@@ -17,7 +17,7 @@ pub enum WriteCampaignError {
 
 fn write_variable_str<W: Write>(output: &mut W, value: &str) -> io::Result<()> {
     output.write_u16::<LE>(0x0A60)?;
-    let len = value.as_bytes().len();
+    let len = value.len();
     assert!(len < std::u16::MAX as usize);
     output.write_u16::<LE>(len as u16)?;
     output.write_all(value.as_bytes())?;
@@ -82,7 +82,7 @@ fn write_scenario_meta<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Res
     Ok(())
 }
 
-/// Write metadata for a single scenario into the `output` stream, in the AoE1: DE format.
+/// Write metadata for a single scenario into the `output` stream, in the `AoE1`: DE format.
 fn write_scenario_meta_de<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Result<()> {
     assert!(meta.size < std::u64::MAX as usize);
     assert!(meta.offset < std::u64::MAX as usize);
@@ -94,7 +94,7 @@ fn write_scenario_meta_de<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::
     Ok(())
 }
 
-/// Write metadata for a single scenario into the `output` stream, in the AoE2: DE format.
+/// Write metadata for a single scenario into the `output` stream, in the `AoE2`: DE format.
 fn write_scenario_meta_de2<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Result<()> {
     assert!(meta.size < std::u32::MAX as usize);
     assert!(meta.offset < std::u32::MAX as usize);
@@ -125,7 +125,7 @@ impl CampaignEntry {
     }
 
     /// Get the size in bytes of this entry.
-    fn size(&self) -> usize {
+    const fn size(&self) -> usize {
         self.bytes.len()
     }
 
@@ -200,40 +200,40 @@ impl<W: Write> CampaignWriter<W> {
     }
 
     /// Get the size in bytes of all metadata.
-    fn get_meta_size(&self) -> usize {
+    const fn get_meta_size(&self) -> usize {
         // version + number of scenarios + campaign name
-        let header_size = std::mem::size_of::<CPXVersion>()
-            + std::mem::size_of::<i32>() // number of scenarios
+        let header_size = size_of::<CPXVersion>()
+            + size_of::<i32>() // number of scenarios
             + 256; // campaign name
-        header_size + self.scenarios.len() * (2 * std::mem::size_of::<i32>() + 255 + 255)
+        header_size + self.scenarios.len() * (2 * size_of::<i32>() + 255 + 255)
     }
 
-    /// Get the size in bytes of all metadata for a AoE1: DE campaign file.
+    /// Get the size in bytes of all metadata for a `AoE1`: DE campaign file.
     fn get_meta_size_de(&self) -> usize {
         // Length of a single variable string is (4 + byte length)
-        fn strlen(s: &str) -> usize {
-            s.as_bytes().len() + 4
+        const fn strlen(s: &str) -> usize {
+            s.len() + 4
         }
-        let header_size = std::mem::size_of::<CPXVersion>()
-            + std::mem::size_of::<u32>() // number of scenarios
+        let header_size = size_of::<CPXVersion>()
+            + size_of::<u32>() // number of scenarios
             + strlen(&self.header.name);
         self.scenarios.iter().fold(header_size, |acc, scen| {
-            acc + 2 * std::mem::size_of::<u64>() + strlen(&scen.name) + strlen(&scen.filename)
+            acc + 2 * size_of::<u64>() + strlen(&scen.name) + strlen(&scen.filename)
         })
     }
 
-    /// Get the size in bytes of all metadata for a AoE2: DE campaign file.
+    /// Get the size in bytes of all metadata for a `AoE2`: DE campaign file.
     fn get_meta_size_de2(&self) -> usize {
         // Length of a single variable string is (4 + byte length)
-        fn strlen(s: &str) -> usize {
-            s.as_bytes().len() + 4
+        const fn strlen(s: &str) -> usize {
+            s.len() + 4
         }
-        let header_size = std::mem::size_of::<CPXVersion>()
-            + 7 * std::mem::size_of::<i32>() // DLC dependencies
-            + std::mem::size_of::<u32>() // number of scenarios
+        let header_size = size_of::<CPXVersion>()
+            + 7 * size_of::<i32>() // DLC dependencies
+            + size_of::<u32>() // number of scenarios
             + 256; // campaign name
         self.scenarios.iter().fold(header_size, |acc, scen| {
-            acc + 2 * std::mem::size_of::<u32>() + strlen(&scen.name) + strlen(&scen.filename)
+            acc + 2 * size_of::<u32>() + strlen(&scen.name) + strlen(&scen.filename)
         })
     }
 
@@ -278,7 +278,7 @@ impl<W: Write> CampaignWriter<W> {
         Ok(())
     }
 
-    /// Write the scenarios to the output stream, consuming the CampaignWriter object.
+    /// Write the scenarios to the output stream, consuming the `CampaignWriter` object.
     ///
     /// Returns the inner `Write`.
     pub fn flush(mut self) -> io::Result<W> {

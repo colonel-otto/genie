@@ -10,7 +10,7 @@ pub struct UnitTypeID(u16);
 impl From<u16> for UnitTypeID {
     #[inline]
     fn from(n: u16) -> Self {
-        UnitTypeID(n)
+        Self(n)
     }
 }
 
@@ -53,7 +53,7 @@ pub struct TechID(u16);
 
 impl From<u16> for TechID {
     fn from(n: u16) -> Self {
-        TechID(n)
+        Self(n)
     }
 }
 
@@ -79,7 +79,7 @@ fallible_try_from!(TechID, u32);
 pub struct SpriteID(u16);
 impl From<u16> for SpriteID {
     fn from(n: u16) -> Self {
-        SpriteID(n)
+        Self(n)
     }
 }
 
@@ -148,7 +148,8 @@ impl StringKey {
     /// assert!(!StringKey::from("").is_numeric());
     /// ```
     #[inline]
-    pub fn is_numeric(&self) -> bool {
+    #[must_use]
+    pub const fn is_numeric(&self) -> bool {
         match self {
             Self::Num(_) => true,
             Self::Name(_) => false,
@@ -166,7 +167,8 @@ impl StringKey {
     /// assert!(StringKey::from("").is_named());
     /// ```
     #[inline]
-    pub fn is_named(&self) -> bool {
+    #[must_use]
+    pub const fn is_named(&self) -> bool {
         match self {
             Self::Num(_) => false,
             Self::Name(_) => true,
@@ -177,8 +179,8 @@ impl StringKey {
 impl fmt::Display for StringKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Num(n) => write!(f, "{}", n),
-            Self::Name(s) => write!(f, "{}", s),
+            Self::Num(n) => write!(f, "{n}"),
+            Self::Name(s) => write!(f, "{s}"),
         }
     }
 }
@@ -231,10 +233,10 @@ impl From<String> for StringKey {
     }
 }
 
-/// Error that may occur when converting a StringKey to some other Rust value, such as an integer
+/// Error that may occur when converting a `StringKey` to some other Rust value, such as an integer
 /// or a string.
 ///
-/// When converting to an integer, this means that the StringKey is a named key, or it has a
+/// When converting to an integer, this means that the `StringKey` is a named key, or it has a
 /// numeric value that is out of range for the target type.
 ///
 /// When converting to a string, this does not happen, as numeric keys will be converted to

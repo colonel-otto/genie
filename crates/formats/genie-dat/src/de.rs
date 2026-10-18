@@ -3,8 +3,8 @@
 //! Ported from genieutils (github.com/Tapsa/genieutils, LGPL-3.0; the library the game ships with
 //! Advanced Genie Editor in `Tools_Builds/docs/Source.7z`): every struct follows its class's
 //! `serializeObject`, and every version gate compares genieutils' `GameVersion` ordinals, of
-//! which the DE files take GV_C14 (VER 7.1) to GV_C32 (VER 8.9). Gates that are constant over that
-//! range (the AoE, AoK and SWGB ones) are folded.
+//! which the DE files take `GV_C14` (VER 7.1) to `GV_C32` (VER 8.9). Gates that are constant over that
+//! range (the `AoE`, `AoK` and SWGB ones) are folded.
 //!
 //! Counts are kept as the file stores them, so a file reads and writes back byte for byte; a
 //! caller that changes a list's length updates its count. The file on disk is raw-deflate
@@ -20,7 +20,8 @@ pub struct Version(pub u8);
 
 impl Version {
     /// The version of a file version string (`VER 7.1` to `VER 8.9`).
-    pub fn of(file_version: &[u8; 8]) -> Option<Version> {
+    #[must_use]
+    pub fn of(file_version: &[u8; 8]) -> Option<Self> {
         const VERSIONS: [&[u8; 7]; 19] = [
             b"VER 7.1", b"VER 7.2", b"VER 7.3", b"VER 7.4", b"VER 7.5", b"VER 7.6", b"VER 7.7",
             b"VER 7.8", b"VER 7.9", b"VER 8.0", b"VER 8.1", b"VER 8.2", b"VER 8.3", b"VER 8.4",
@@ -29,11 +30,12 @@ impl Version {
         VERSIONS
             .iter()
             .position(|v| file_version[..7] == v[..])
-            .map(|i| Version(14 + i as u8))
+            .map(|i| Self(14 + i as u8))
     }
 
-    /// Whether the file is at least genieutils' GV_C`n`.
-    pub fn at_least(self, n: u8) -> bool {
+    /// Whether the file is at least genieutils' `GV_C``n`.
+    #[must_use]
+    pub const fn at_least(self, n: u8) -> bool {
         self.0 >= n
     }
 }
@@ -50,15 +52,15 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "{e}"),
-            Error::UnsupportedVersion(v) => {
+            Self::Io(e) => write!(f, "{e}"),
+            Self::UnsupportedVersion(v) => {
                 write!(
                     f,
                     "unsupported file version {:?}",
                     String::from_utf8_lossy(v)
                 )
             }
-            Error::Parse(e) => write!(f, "{e}"),
+            Self::Parse(e) => write!(f, "{e}"),
         }
     }
 }
@@ -67,13 +69,13 @@ impl std::error::Error for Error {}
 
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
-        Error::Io(e)
+        Self::Io(e)
     }
 }
 
 impl From<binrw::Error> for Error {
     fn from(e: binrw::Error) -> Self {
-        Error::Parse(e)
+        Self::Parse(e)
     }
 }
 
@@ -88,6 +90,7 @@ pub struct DebugString {
 }
 
 impl DebugString {
+    #[must_use]
     pub fn as_str(&self) -> std::borrow::Cow<'_, str> {
         String::from_utf8_lossy(&self.bytes)
     }
@@ -151,8 +154,8 @@ pub struct DatFile {
     pub graphic_count: i16,
     #[br(count = graphic_count)]
     pub graphic_pointers: Vec<i32>,
-    #[br(parse_with = |r, e, _: ()| read_present(r, e, &graphic_pointers, ()))]
-    #[bw(write_with = |l, w, e, _: ()| write_present(l, w, e))]
+    #[br(parse_with = |r, e, (): ()| read_present(r, e, &graphic_pointers, ()))]
+    #[bw(write_with = |l, w, e, (): ()| write_present(l, w, e))]
     pub graphics: Vec<Option<Graphic>>,
     #[br(args(v))]
     pub terrain_block: TerrainBlock,
@@ -193,7 +196,7 @@ impl DatFile {
         let mut version = [0u8; 8];
         version.copy_from_slice(data.get(..8).ok_or(Error::UnsupportedVersion([0; 8]))?);
         let v = Version::of(&version).ok_or(Error::UnsupportedVersion(version))?;
-        Ok(DatFile::read_le_args(&mut Cursor::new(data), (v,))?)
+        Ok(Self::read_le_args(&mut Cursor::new(data), (v,))?)
     }
 
     /// The inflated bytes the file writes.
@@ -204,6 +207,7 @@ impl DatFile {
     }
 
     /// The file's version.
+    #[must_use]
     pub fn version(&self) -> Version {
         Version::of(&self.file_version).expect("checked when read")
     }
@@ -222,7 +226,7 @@ pub struct TerrainRestriction {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerrainPassGraphic {
     pub exit_tile_sprite_id: i32,
     pub enter_tile_sprite_id: i32,
@@ -232,7 +236,7 @@ pub struct TerrainPassGraphic {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlayerColour {
     pub id: i32,
     pub player_color_base: i32,
@@ -247,7 +251,7 @@ pub struct PlayerColour {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Sound {
     pub id: i16,
     pub play_delay: i16,
@@ -260,7 +264,7 @@ pub struct Sound {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SoundItem {
     pub file_name: DebugString,
     pub resource_id: i32,
@@ -304,7 +308,7 @@ pub struct Graphic {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GraphicDelta {
     pub graphic_id: i16,
     pub padding1: i16,
@@ -317,7 +321,7 @@ pub struct GraphicDelta {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GraphicAngleSound {
     pub frame_num: i16,
     pub sound_id: i16,
@@ -332,7 +336,7 @@ pub struct GraphicAngleSound {
 
 /// genieutils' `SharedTerrain::TILE_TYPE_COUNT`.
 const TILE_TYPES: usize = 19;
-/// genieutils' `Terrain::getTerrainCount` for GV_C8 and later.
+/// genieutils' `Terrain::getTerrainCount` for `GV_C8` and later.
 const TERRAINS: usize = 200;
 /// genieutils' `Terrain::TERRAIN_UNITS_SIZE`.
 const TERRAIN_UNITS: usize = 30;
@@ -381,7 +385,7 @@ pub struct TerrainBlock {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TileSize {
     pub width: i16,
     pub height: i16,
@@ -390,7 +394,7 @@ pub struct TileSize {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct FrameData {
     pub frame_count: i16,
     pub angle_count: i16,
@@ -444,7 +448,7 @@ pub struct Terrain {
 /// The random maps: their heads, then each map again with its lists (genieutils' `io_all_`).
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RandomMaps {
     pub map_count: u32,
     pub random_maps_ptr: i32,
@@ -456,7 +460,7 @@ pub struct RandomMaps {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapInfoHead {
     pub map_id: i32,
     pub borders: [i32; 4],
@@ -477,7 +481,7 @@ pub struct MapInfoHead {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapInfo {
     pub borders: [i32; 4],
     pub border_usage: i32,
@@ -505,7 +509,7 @@ pub struct MapInfo {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapLand {
     pub land_id: i32,
     pub terrain: u32,
@@ -526,7 +530,7 @@ pub struct MapLand {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapTerrain {
     pub proportion: i32,
     pub terrain: i32,
@@ -538,7 +542,7 @@ pub struct MapTerrain {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapUnit {
     pub unit: i32,
     pub host_terrain: i32,
@@ -557,7 +561,7 @@ pub struct MapUnit {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapElevation {
     pub proportion: i32,
     pub terrain: i32,
@@ -658,8 +662,8 @@ pub struct Civ {
     pub unit_count: i16,
     #[br(count = unit_count)]
     pub unit_pointers: Vec<i32>,
-    #[br(parse_with = |r, e, _: ()| read_present(r, e, &unit_pointers, (v,)))]
-    #[bw(write_with = |l, w, e, _: ()| write_present(l, w, e))]
+    #[br(parse_with = |r, e, (): ()| read_present(r, e, &unit_pointers, (v,)))]
+    #[bw(write_with = |l, w, e, (): ()| write_present(l, w, e))]
     pub units: Vec<Option<Unit>>,
 }
 
@@ -728,7 +732,7 @@ pub struct Unit {
     pub minimap_color: u8,
     pub language_dll_help: i32,
     pub language_dll_hot_key_text: i32,
-    /// Before VER 8.7 (GV_C30) the hotkey of the (single) train location sits here.
+    /// Before VER 8.7 (`GV_C30`) the hotkey of the (single) train location sits here.
     #[br(if(!v.at_least(30)))]
     pub hot_key_id: Option<i32>,
     pub recyclable: u8,
@@ -744,7 +748,7 @@ pub struct Unit {
     pub selection_effect: u8,
     pub editor_selection_colour: u8,
     pub outline_size: [f32; 3],
-    /// Two words genieutils writes as -2 and 0 and drops on read (GV_CK and later).
+    /// Two words genieutils writes as -2 and 0 and drops on read (`GV_CK` and later).
     pub unknown: [i32; 2],
     pub resource_storages: [ResourceStorage; 3],
     pub damage_graphic_count: u8,
@@ -788,7 +792,7 @@ pub struct ResourceStorage {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DamageGraphic {
     pub graphic_id: i16,
     pub damage_percent: i16,
@@ -824,7 +828,7 @@ pub struct Bird {
     pub default_task_id: i16,
     pub search_radius: f32,
     pub work_rate: f32,
-    /// From VER 7.8 (GV_C21) the drop sites are counted; before, there are three.
+    /// From VER 7.8 (`GV_C21`) the drop sites are counted; before, there are three.
     #[br(if(v.at_least(21)))]
     pub drop_site_count: Option<i16>,
     #[br(count = drop_site_count.map_or(3, |n| n.max(0) as usize))]
@@ -843,6 +847,7 @@ pub struct Bird {
 
 impl Bird {
     /// The unit's default task, from its own task list.
+    #[must_use]
     pub fn default_task(&self) -> Option<&Task> {
         self.tasks.iter().find(|t| t.id == self.default_task_id)
     }
@@ -896,7 +901,7 @@ pub struct Type50 {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttackOrArmor {
     pub class: i16,
     pub amount: i16,
@@ -916,7 +921,7 @@ pub struct Projectile {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ResourceCost {
     pub kind: i16,
     pub amount: i16,
@@ -926,7 +931,7 @@ pub struct ResourceCost {
 #[binrw]
 #[brw(little)]
 #[br(import(v: Version))]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrainLocation {
     pub queue_time: i16,
     pub location_id: i16,
@@ -941,7 +946,7 @@ pub struct TrainLocation {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Creatable {
     pub resource_costs: [ResourceCost; 3],
-    /// From VER 8.6 (GV_C29) the train locations are counted; before, there is one.
+    /// From VER 8.6 (`GV_C29`) the train locations are counted; before, there is one.
     #[br(if(v.at_least(29)))]
     pub train_location_count: Option<i16>,
     #[br(count = train_location_count.map_or(1, |n| n.max(0) as usize), args { inner: (v,) })]
@@ -1038,7 +1043,7 @@ pub struct Building {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ResearchResourceCost {
     pub kind: i16,
     pub amount: i16,
@@ -1047,7 +1052,7 @@ pub struct ResearchResourceCost {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResearchLocation {
     pub location_id: i16,
     pub queue_time: i16,
@@ -1059,14 +1064,14 @@ pub struct ResearchLocation {
 #[binrw]
 #[brw(little)]
 #[br(import(v: Version))]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Tech {
     pub required_techs: [i16; 6],
     pub resource_costs: [ResearchResourceCost; 3],
     pub required_tech_count: i16,
     pub civ: i16,
     pub full_tech_mode: i16,
-    /// Before VER 8.8 (GV_C31) one research location's fields are spread over the tech.
+    /// Before VER 8.8 (`GV_C31`) one research location's fields are spread over the tech.
     #[br(if(!v.at_least(31)))]
     pub location_id: Option<i16>,
     #[br(if(v.at_least(18)))]
@@ -1097,7 +1102,7 @@ pub struct Tech {
     pub research_locations: Vec<ResearchLocation>,
 }
 
-/// genieutils' `TechTreeAge::getZoneCount` and `Common::getSlots` for AoK and later.
+/// genieutils' `TechTreeAge::getZoneCount` and `Common::getSlots` for `AoK` and later.
 const ZONES: usize = 10;
 /// genieutils' `BuildingConnection::AGES`.
 const AGES: usize = 5;
@@ -1105,11 +1110,11 @@ const AGES: usize = 5;
 #[binrw]
 #[brw(little)]
 #[br(import(v: Version))]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TechTree {
     pub age_count: u8,
     pub building_count: u8,
-    /// From VER 8.9 (GV_C32) the unit connections are counted in an i16.
+    /// From VER 8.9 (`GV_C32`) the unit connections are counted in an i16.
     #[br(if(v.at_least(32)))]
     pub unit_count_wide: Option<i16>,
     #[br(if(!v.at_least(32)))]
@@ -1128,7 +1133,7 @@ pub struct TechTree {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TechTreeCommon {
     pub slots_used: i32,
     pub unit_research: [i32; ZONES],
@@ -1138,7 +1143,7 @@ pub struct TechTreeCommon {
 /// Three counted id lists: buildings, units, techs.
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Connections {
     pub building_count: u8,
     #[br(count = building_count)]
@@ -1153,7 +1158,7 @@ pub struct Connections {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TechTreeAge {
     pub id: i32,
     pub status: u8,
@@ -1168,7 +1173,7 @@ pub struct TechTreeAge {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuildingConnection {
     pub id: i32,
     pub status: u8,
@@ -1183,7 +1188,7 @@ pub struct BuildingConnection {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnitConnection {
     pub id: i32,
     pub status: u8,
@@ -1201,7 +1206,7 @@ pub struct UnitConnection {
 
 #[binrw]
 #[brw(little)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResearchConnection {
     pub id: i32,
     pub status: u8,

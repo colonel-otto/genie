@@ -15,7 +15,6 @@ mod read;
 mod strings;
 
 pub use ids::*;
-pub use macros::*;
 pub use map_into::*;
 pub use read::*;
 #[cfg(feature = "strings")]

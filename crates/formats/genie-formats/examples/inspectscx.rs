@@ -31,10 +31,10 @@ fn main() {
     println!("  Header: {}", scen.version().header);
     match scen.version().dlc_options {
         None => println!("  DLC: absent"),
-        Some(x) => println!("  DLC: {}", x),
-    };
+        Some(x) => println!("  DLC: {x}"),
+    }
     if let Some(mod_name) = scen.mod_name() {
-        println!("  UP Mod: {}", mod_name);
+        println!("  UP Mod: {mod_name}");
     }
     println!("  Data: {}", scen.version().data);
     println!("  Victory: {}", scen.version().victory);
@@ -42,7 +42,7 @@ fn main() {
     match scen.triggers() {
         Some(_) => println!("  Triggers: {}", scen.version().triggers.unwrap()),
         None => println!("  Triggers: absent"),
-    };
+    }
     println!();
 
     println!("Map:");

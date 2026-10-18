@@ -82,7 +82,7 @@ fn tier1_lanes_with_matching_save_words() {
                 off.push(format!(
                     "{name} p{}: {}",
                     w.id,
-                    w.checkpoint as i64 - w.simulated as i64
+                    i64::from(w.checkpoint) - i64::from(w.simulated)
                 ));
             }
         }

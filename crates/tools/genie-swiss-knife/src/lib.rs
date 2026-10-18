@@ -1,4 +1,4 @@
-//! GenieSwissKnife
+//! `GenieSwissKnife`
 //!
 //! Application based on the [Abscissa] framework.
 //!

@@ -68,7 +68,7 @@ pub struct Lifecycle {
 impl Default for Lifecycle {
     /// A live object that holds nothing.
     fn default() -> Self {
-        Lifecycle {
+        Self {
             class: Class::Static,
             state: 2,
             hp: 1.0,
@@ -87,13 +87,15 @@ impl Default for Lifecycle {
 }
 
 /// `world+0x164`, the tick's dt in seconds: `cvtsi2ss` then `divss` by 1000 in f32.
+#[must_use]
 pub fn seconds(dt: u32) -> f32 {
     dt as f32 / 1000.0
 }
 
 impl Lifecycle {
     /// Whether the unit AI still runs: slot 4 (`0x140c66b10`) returns at once above state 2.
-    pub fn is_alive(&self) -> bool {
+    #[must_use]
+    pub const fn is_alive(&self) -> bool {
         self.state <= 2
     }
 
@@ -142,7 +144,7 @@ impl Lifecycle {
         }
     }
 
-    /// The static update's death (state 3, set_state `FUN_14119d710`), then the animated update's
+    /// The static update's death (state 3, `set_state` `FUN_14119d710`), then the animated update's
     /// step to state 5. A static object takes its dying sprite (slot 0x68) and, starting on a
     /// random facet, draws it (`rand15 × facets / 0x7fff`, at most the last; the facet, `+0xe`, is
     /// not held). The storage the caller checks; the players' fog ghosts of a master whose fog

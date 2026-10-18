@@ -1,6 +1,6 @@
 //! Reader/writer for Age of Empires 2 Hotkey info files.
 //!
-//! Hotkey files in AoE2 contain groups, each of which contain some number of
+//! Hotkey files in `AoE2` contain groups, each of which contain some number of
 //! hotkeys. Hotkeys have a string ID, a keycode, and flags
 //! for Ctrl/Alt/Shift modifiers. The index of the hotkey in its
 //! group determines the action that will be taken when it is activated.
@@ -25,7 +25,8 @@ use std::vec;
 /// Returns `Ok(id)`, where `id` is the id number of the string giving the text
 /// representation of `keycode` in a language file.
 /// Returns `None` if `keycode` is not represented in a language file.
-pub fn keycode_id(keycode: i32) -> Option<i32> {
+#[must_use]
+pub const fn keycode_id(keycode: i32) -> Option<i32> {
     match keycode {
         112 => Some(19545),
         113 => Some(19546),
@@ -59,6 +60,7 @@ pub fn keycode_id(keycode: i32) -> Option<i32> {
 }
 
 /// A list of information about hotkey groups in a hotkey file.
+///
 /// The length is the number of groups in the file.
 /// Each `StringKey` in the list is the key of the string that names the group.
 /// The key is stored at the group's offset index in the hotkey file.
@@ -75,6 +77,7 @@ impl HotkeyInfoMetadata {
     ///
     /// let him = HotkeyInfoMetadata::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Default::default()
     }
@@ -91,7 +94,7 @@ impl HotkeyInfoMetadata {
     /// him.add(StringKey::from(0u32));
     /// ```
     pub fn add(&mut self, sk: StringKey) {
-        self.0.push(sk)
+        self.0.push(sk);
     }
 
     /// Returns the number of groups described by this metadata.
@@ -107,7 +110,8 @@ impl HotkeyInfoMetadata {
     /// him.add(StringKey::from(0u32));
     /// assert_eq!(1, him.len());
     /// ```
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.0.len()
     }
 
@@ -124,7 +128,8 @@ impl HotkeyInfoMetadata {
     /// him.add(StringKey::from(0u32));
     /// assert!(!him.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
@@ -144,6 +149,7 @@ impl HotkeyInfoMetadata {
     /// him.add(StringKey::from(0u32));
     /// assert_eq!(Some(&StringKey::from(0u32)), him.get(0));
     /// ```
+    #[must_use]
     pub fn get(&self, index: usize) -> Option<&StringKey> {
         self.0.get(index)
     }
@@ -197,7 +203,8 @@ impl<'a> IntoIterator for &'a HotkeyInfoMetadata {
 // groups should use
 // and the group names can be overwritten in the string files
 /// Returns a `HotkeyInfoMetadata` struct that represents the info metadata for
-/// the default Aoe2 hotkeys (both UserPatch and HD).
+/// the default Aoe2 hotkeys (both `UserPatch` and HD).
+#[must_use]
 pub fn default_him() -> HotkeyInfoMetadata {
     let mut hgm = HotkeyInfoMetadata::new();
     hgm.add(StringKey::from(20000_u32)); // UnitCommands
@@ -546,18 +553,21 @@ impl GroupIndexError {
     /// Returns a `GroupIndexError` with group index `index` and a number of
     /// groups equal to `num_groups`.
     /// Panics if `index < num_groups`.
+    #[must_use]
     pub fn new(index: usize, num_groups: usize) -> Self {
         assert!(num_groups <= index);
         Self { index, num_groups }
     }
 
     /// Returns the index of the group that was accessed.
-    pub fn index(&self) -> usize {
+    #[must_use]
+    pub const fn index(&self) -> usize {
         self.index
     }
 
     /// Returns the number of valid groups.
-    pub fn num_groups(&self) -> usize {
+    #[must_use]
+    pub const fn num_groups(&self) -> usize {
         self.num_groups
     }
 }
@@ -577,18 +587,21 @@ impl HotkeyIndexError {
     /// Returns a `HotkeyIndexError` with hotkey index `index` and a number of
     /// hotkeys equal to `num_hotkeys`.
     /// Panics if `index < num_hotkeys`.
+    #[must_use]
     pub fn new(index: usize, num_hotkeys: usize) -> Self {
         assert!(num_hotkeys <= index);
         Self { index, num_hotkeys }
     }
 
     /// Returns the index of the hotkey that was accessed.
-    pub fn index(&self) -> usize {
+    #[must_use]
+    pub const fn index(&self) -> usize {
         self.index
     }
 
     /// Returns the number of valid hotkeys.
-    pub fn num_hotkeys(&self) -> usize {
+    #[must_use]
+    pub const fn num_hotkeys(&self) -> usize {
         self.num_hotkeys
     }
 }
@@ -660,7 +673,8 @@ impl Hotkey {
     /// assert_eq!(0, hki.key);
     /// assert_eq!(5, hki2.key);
     /// ```
-    pub fn key(self, key: i32) -> Self {
+    #[must_use]
+    pub const fn key(self, key: i32) -> Self {
         Self { key, ..self }
     }
 
@@ -683,7 +697,8 @@ impl Hotkey {
     /// assert_eq!(5, hki3.key);
     /// assert_eq!(0, hki4.key);
     /// ```
-    pub fn string_id(self, string_id: i32) -> Self {
+    #[must_use]
+    pub const fn string_id(self, string_id: i32) -> Self {
         if string_id == -1 {
             Self {
                 string_id,
@@ -708,7 +723,8 @@ impl Hotkey {
     /// assert!(!hki.ctrl);
     /// assert!(hki2.ctrl);
     /// ```
-    pub fn ctrl(self, ctrl: bool) -> Self {
+    #[must_use]
+    pub const fn ctrl(self, ctrl: bool) -> Self {
         Self { ctrl, ..self }
     }
 
@@ -725,7 +741,8 @@ impl Hotkey {
     /// assert!(!hki.alt);
     /// assert!(hki2.alt);
     /// ```
-    pub fn alt(self, alt: bool) -> Self {
+    #[must_use]
+    pub const fn alt(self, alt: bool) -> Self {
         Self { alt, ..self }
     }
 
@@ -742,7 +759,8 @@ impl Hotkey {
     /// assert!(!hki.shift);
     /// assert!(hki2.shift);
     /// ```
-    pub fn shift(self, shift: bool) -> Self {
+    #[must_use]
+    pub const fn shift(self, shift: bool) -> Self {
         Self { shift, ..self }
     }
 
@@ -793,7 +811,8 @@ impl Hotkey {
     /// let default = Hotkey::default();
     /// assert_eq!("-1: 0", default.get_string_from_lang(&lang_file));
     /// ```
-    pub fn get_string_from_lang(&self, lang_file: &genie_lang::LangFile) -> String {
+    #[must_use]
+    pub fn get_string_from_lang(&self, lang_file: &LangFile) -> String {
         let ctrl = if self.ctrl { "ctrl-" } else { "" };
         let alt = if self.alt { "ctrl-" } else { "" };
         let shift = if self.shift { "ctrl-" } else { "" };
@@ -848,6 +867,7 @@ impl HotkeyGroup {
 
     /// Returns an immutable reference to a single hotkey, if that hotkey is
     /// present in this `HotkeyGroup`.
+    #[must_use]
     pub fn hotkey(&self, index: usize) -> Option<&Hotkey> {
         self.hotkeys.get(index)
     }
@@ -906,7 +926,8 @@ impl HotkeyGroup {
     /// assert_eq!(28, group.num_hotkeys());
     /// # Ok(()) }
     /// ```
-    pub fn num_hotkeys(&self) -> usize {
+    #[must_use]
+    pub const fn num_hotkeys(&self) -> usize {
         self.hotkeys.len()
     }
 
@@ -917,11 +938,12 @@ impl HotkeyGroup {
 
     /// Returns a string representation of this hotkey group, using the strings
     /// from `lang_file` and the group name string key `sk`.
+    #[must_use]
     pub fn get_string_from_lang(&self, lang_file: &LangFile, sk: &StringKey) -> String {
         let group_name = if let Some(name) = lang_file.get(sk) {
-            format!("{} ({}):\n  ", name, sk)
+            format!("{name} ({sk}):\n  ")
         } else {
-            String::from("")
+            String::new()
         };
         let hotkeys: Vec<String> = self
             .hotkeys
@@ -937,10 +959,10 @@ impl fmt::Display for HotkeyGroup {
         let group_string = if self.hotkeys.is_empty() {
             String::from(" no hotkeys")
         } else {
-            let hotkeys: Vec<String> = self.hotkeys.iter().map(|hk| hk.to_string()).collect();
+            let hotkeys: Vec<String> = self.hotkeys.iter().map(ToString::to_string).collect();
             format!("\n  {}", hotkeys.join("\n  "))
         };
-        write!(f, "Group:{}", group_string)
+        write!(f, "Group:{group_string}")
     }
 }
 
@@ -1028,7 +1050,8 @@ impl HotkeyInfo {
     /// assert_eq!(info.version(), 3.0);
     /// # Ok(()) }
     /// ```
-    pub fn version(&self) -> f32 {
+    #[must_use]
+    pub const fn version(&self) -> f32 {
         self.version
     }
 
@@ -1044,6 +1067,7 @@ impl HotkeyInfo {
     /// assert!(info.group(HotkeyGroupId::Mill as usize).is_none());
     /// # Ok(()) }
     /// ```
+    #[must_use]
     pub fn group(&self, group_id: usize) -> Option<&HotkeyGroup> {
         self.groups.get(group_id)
     }
@@ -1068,7 +1092,8 @@ impl HotkeyInfo {
     /// assert_eq!(15, info.num_groups());
     /// # Ok(()) }
     /// ```
-    pub fn num_groups(&self) -> usize {
+    #[must_use]
+    pub const fn num_groups(&self) -> usize {
         self.groups.len()
     }
 
@@ -1142,6 +1167,7 @@ impl HotkeyInfo {
     ///
     /// Panics if the number of hotkeys in any group of this file differs from
     /// the number of hotkeys given to that group in `him`.
+    #[must_use]
     pub fn get_string_from_lang(&self, lang_file: &LangFile, him: &HotkeyInfoMetadata) -> String {
         let groups: Vec<String> = self
             .groups
@@ -1156,9 +1182,9 @@ impl HotkeyInfo {
 impl fmt::Display for HotkeyInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let group_string = if self.groups.is_empty() {
-            String::from("")
+            String::new()
         } else {
-            let groups: Vec<String> = self.groups.iter().map(|grp| grp.to_string()).collect();
+            let groups: Vec<String> = self.groups.iter().map(ToString::to_string).collect();
             format!("\n{}", groups.join("\n"))
         };
         write!(f, "Version: {}{}", self.version, group_string)

@@ -1,6 +1,6 @@
 //! Campaign files store multiple scenario files in one easily distributable chunk.
 //!
-//! genie-cpx can read and write campaign files using the Campaign and CampaignWriter structs,
+//! genie-cpx can read and write campaign files using the Campaign and `CampaignWriter` structs,
 //! respectively.
 
 #![deny(future_incompatible)]
@@ -20,14 +20,14 @@ pub use write::{CampaignWriter, WriteCampaignError};
 
 /// Version identifier for the campaign file format.
 ///
-/// Use one of the AOE_AOK or AOE1_DE constants rather than writing them out manually.
+/// Use one of the `AOE_AOK` or `AOE1_DE` constants rather than writing them out manually.
 pub type CPXVersion = [u8; 4];
 
-/// Version identifier for AoE1, AoE2, and AoE2: HD campaign files.
+/// Version identifier for `AoE1`, `AoE2`, and `AoE2`: HD campaign files.
 pub const AOE_AOK: CPXVersion = *b"1.00";
-/// Version identifier for AoE1: Definitive Edition campaign files.
+/// Version identifier for `AoE1`: Definitive Edition campaign files.
 pub const AOE1_DE: CPXVersion = *b"1.10";
-/// Version identifier for AoE2: Definitive Edition campaign files.
+/// Version identifier for `AoE2`: Definitive Edition campaign files.
 pub const AOE2_DE: CPXVersion = *b"2.00";
 
 /// Campaign header.

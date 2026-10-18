@@ -24,7 +24,7 @@ where
 {
     #[inline]
     fn map_into(self) -> Result<Target, Error> {
-        self.map(|v| v.into())
+        self.map(Into::into)
     }
 }
 
@@ -34,6 +34,6 @@ where
 {
     #[inline]
     fn map_into(self) -> Option<Target> {
-        self.map(|v| v.into())
+        self.map(Into::into)
     }
 }

@@ -2,9 +2,9 @@
 //! search for a point to explore (`FUN_140c65490`, the unit AI's "unexploredArea").
 //!
 //! 158041: first (slot 0x28) `0x140a87e10`, update (slot 0x30) `0x140a880c0`, the point (slot
-//! 0x48) `0x140a881a0`, set_state (slot 0x80) `0x140a87e30`. An Explore without a point waits in
+//! 0x48) `0x140a881a0`, `set_state` (slot 0x80) `0x140a87e30`. An Explore without a point waits in
 //! state 3 for its unit AI to pick one (notify 0x202 with action 605, which the AI handles on its
-//! player's turn); with a point it walks there in state 11 with a quiet MoveTo, and when the MoveTo
+//! player's turn); with a point it walks there in state 11 with a quiet `MoveTo`, and when the `MoveTo`
 //! is done it goes back to state 3.
 
 use crate::move_to::MoveTo;
@@ -28,7 +28,7 @@ const NO_POINT: f32 = crate::image::explore::NO_POINT;
 pub const WANTS_POINT: i32 = 0x202;
 pub const EXPLORE_ACTION: i32 = 0x25d;
 
-/// What an Explore's set_state asks of its owner besides its own fields.
+/// What an Explore's `set_state` asks of its owner besides its own fields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Owner {
     /// Nothing.
@@ -49,7 +49,7 @@ pub struct ExploreAction {
     pub state: u8,
     /// The point it walks to (`+0x38`..`+0x40`), x −1 for none.
     pub point: [f32; 3],
-    /// Its MoveTo to the point (state 11's sub-action, quiet: `+0x60` set, range 0, the master's
+    /// Its `MoveTo` to the point (state 11's sub-action, quiet: `+0x60` set, range 0, the master's
     /// moving sprite `+0x748` as no task names one).
     pub move_to: Option<MoveTo>,
 }
@@ -57,22 +57,23 @@ pub struct ExploreAction {
 impl ExploreAction {
     /// `FUN_140a87d30`, then its first (slot 0x28, `0x140a87e10`) as the action list adds it:
     /// state 3 without a point, else 11.
+    #[must_use]
     pub fn new(point: [f32; 3]) -> (Self, Owner) {
-        let mut a = ExploreAction {
+        let mut a = Self {
             state: 0,
             point,
             move_to: None,
         };
-        let state = if a.point[0] != NO_POINT { WALK } else { WAIT };
+        let state = if a.point[0] == NO_POINT { WAIT } else { WALK };
         let owner = a.set_state(state);
         (a, owner)
     }
 
-    /// Set_state (slot 0x80, `0x140a87e30`): its sub-actions go (`FUN_140a98620`), then by state:
-    /// 3 asks its unit AI for a point, 11 makes the MoveTo to the point (`FUN_140aa0d30` with
+    /// `Set_state` (slot 0x80, `0x140a87e30`): its sub-actions go (`FUN_140a98620`), then by state:
+    /// 3 asks its unit AI for a point, 11 makes the `MoveTo` to the point (`FUN_140aa0d30` with
     /// range 0, made quiet by `FUN_140a7a170`; the action list starts it, `FUN_140a977e0`: state
     /// 3 for a unit with a speed).
-    pub fn set_state(&mut self, state: u8) -> Owner {
+    pub const fn set_state(&mut self, state: u8) -> Owner {
         self.move_to = None;
         self.state = state;
         match state {
@@ -91,8 +92,8 @@ impl ExploreAction {
     }
 
     /// The point (slot 0x48, `0x140a881a0`): one on the map's quarter (both coordinates at least
-    /// 0) becomes its point and it walks there (set_state 11); any other makes it wait for one
-    /// (set_state 3).
+    /// 0) becomes its point and it walks there (`set_state` 11); any other makes it wait for one
+    /// (`set_state` 3).
     pub fn take_point(&mut self, point: [f32; 3]) -> Owner {
         if 0.0 <= point[0] && 0.0 <= point[1] {
             self.point = point;
@@ -101,9 +102,9 @@ impl ExploreAction {
         self.set_state(WAIT)
     }
 
-    /// What the update does after its MoveTo's update returned `code` (`0x140a880c0` in state 11,
-    /// `FUN_140a992b0`): 0 goes on; 1, 2, 3 and 5 make it wait for a new point (set_state 3); 4
-    /// runs the action's slot 0x68 and walks again (set_state 11), which is not modelled.
+    /// What the update does after its `MoveTo`'s update returned `code` (`0x140a880c0` in state 11,
+    /// `FUN_140a992b0`): 0 goes on; 1, 2, 3 and 5 make it wait for a new point (`set_state` 3); 4
+    /// runs the action's slot 0x68 and walks again (`set_state` 11), which is not modelled.
     pub fn after_walk(&mut self, code: u8) -> Result<Owner, Unsupported> {
         match code {
             0 => Ok(Owner::Nothing),

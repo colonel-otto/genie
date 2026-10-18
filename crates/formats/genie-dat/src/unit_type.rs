@@ -54,7 +54,7 @@ pub enum UnitBaseClass {
 }
 
 impl PartialOrd for UnitBaseClass {
-    fn partial_cmp(&self, other: &UnitBaseClass) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self == other {
             return Some(Ordering::Equal);
         }
@@ -117,24 +117,24 @@ impl TryFrom<u8> for UnitBaseClass {
 
     fn try_from(n: u8) -> std::result::Result<Self, Self::Error> {
         match n {
-            10 => Ok(UnitBaseClass::Static),
-            20 => Ok(UnitBaseClass::Animated),
-            25 => Ok(UnitBaseClass::Doppelganger),
-            30 => Ok(UnitBaseClass::Moving),
-            40 => Ok(UnitBaseClass::Action),
-            50 => Ok(UnitBaseClass::BaseCombat),
-            60 => Ok(UnitBaseClass::Missile),
-            70 => Ok(UnitBaseClass::Combat),
-            80 => Ok(UnitBaseClass::Building),
-            90 => Ok(UnitBaseClass::Tree),
+            10 => Ok(Self::Static),
+            20 => Ok(Self::Animated),
+            25 => Ok(Self::Doppelganger),
+            30 => Ok(Self::Moving),
+            40 => Ok(Self::Action),
+            50 => Ok(Self::BaseCombat),
+            60 => Ok(Self::Missile),
+            70 => Ok(Self::Combat),
+            80 => Ok(Self::Building),
+            90 => Ok(Self::Tree),
             n => Err(ParseUnitBaseClassError(n)),
         }
     }
 }
 
 impl From<UnitBaseClass> for u8 {
-    fn from(class: UnitBaseClass) -> u8 {
-        class as u8
+    fn from(class: UnitBaseClass) -> Self {
+        class as Self
     }
 }
 
@@ -163,7 +163,7 @@ pub struct UnitType {
     pub moving: Option<MovingUnitTypeAttributes>,
     /// Action unit type attributes, available if `self.unit_base_class >= UnitBaseClass::Action`.
     pub action: Option<ActionUnitTypeAttributes>,
-    /// BaseCombat unit type attributes, available if `self.unit_base_class >=
+    /// `BaseCombat` unit type attributes, available if `self.unit_base_class >=
     /// UnitBaseClass::BaseCombat`.
     pub base_combat: Option<BaseCombatUnitTypeAttributes>,
     /// Missile unit type attributes, available if `self.unit_base_class >= UnitBaseClass::Missile`.
@@ -528,7 +528,7 @@ impl StaticUnitTypeAttributes {
             // TODO use not-UTF8 for the name
             let mut bytes = vec![0; usize::from(name_len)];
             input.read_exact(&mut bytes)?;
-            String::from_utf8(bytes.iter().cloned().take_while(|b| *b != 0).collect()).unwrap()
+            String::from_utf8(bytes.iter().copied().take_while(|b| *b != 0).collect()).unwrap()
         };
         unit_type.copy_id = input.read_u16::<LE>()?;
         unit_type.unit_group = input.read_u16::<LE>()?;
@@ -545,24 +545,14 @@ impl StaticUnitTypeAttributes {
         output.write_u16::<LE>(self.unit_class)?;
         output.write_i16::<LE>(
             self.standing_sprite_1
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
+                .map_or(-1, |id| id.try_into().unwrap()),
         )?;
         output.write_i16::<LE>(
             self.standing_sprite_2
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
+                .map_or(-1, |id| id.try_into().unwrap()),
         )?;
-        output.write_i16::<LE>(
-            self.dying_sprite
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.undead_sprite
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.dying_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.undead_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u8(self.undead_flag)?;
         output.write_u16::<LE>(self.hp)?;
         output.write_f32::<LE>(self.los)?;
@@ -570,33 +560,16 @@ impl StaticUnitTypeAttributes {
         output.write_f32::<LE>(self.radius.0)?;
         output.write_f32::<LE>(self.radius.1)?;
         output.write_f32::<LE>(self.radius.2)?;
-        output.write_i16::<LE>(
-            self.train_sound
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.damage_sound
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.death_spawn
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.train_sound.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.damage_sound.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.death_spawn.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u8(self.sort_number)?;
         output.write_u8(u8::from(self.can_be_built_on))?;
-        output.write_i16::<LE>(
-            self.button_picture
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.button_picture.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u8(u8::from(self.hide_in_scenario_editor))?;
         output.write_i16::<LE>(
             self.portrait_picture
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
+                .map_or(-1, |id| id.try_into().unwrap()),
         )?;
         output.write_u8(u8::from(self.enabled))?;
         output.write_u8(u8::from(self.disabled))?;
@@ -645,16 +618,8 @@ impl StaticUnitTypeAttributes {
         for sprite in &self.damage_sprites {
             sprite.write_to(&mut output)?;
         }
-        output.write_i16::<LE>(
-            self.selected_sound
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.death_sound
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.selected_sound.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.death_sound.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u8(self.attack_reaction)?;
         output.write_u8(self.convert_terrain_flag)?;
         output.write_all(self.name.as_bytes())?;
@@ -702,7 +667,7 @@ pub struct MovingUnitTypeAttributes {
 
 impl MovingUnitTypeAttributes {
     pub fn read_from(mut input: impl Read, _version: f32) -> Result<Self> {
-        Ok(MovingUnitTypeAttributes {
+        Ok(Self {
             move_sprite: read_opt_u16(&mut input)?,
             run_sprite: read_opt_u16(&mut input)?,
             turn_speed: input.read_f32::<LE>()?,
@@ -721,23 +686,11 @@ impl MovingUnitTypeAttributes {
 
     /// Write this unit type to an output stream.
     pub fn write_to(&self, mut output: impl Write, _version: f32) -> Result<()> {
-        output.write_i16::<LE>(
-            self.move_sprite
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.run_sprite
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.move_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.run_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_f32::<LE>(self.turn_speed)?;
         output.write_u8(self.size_class)?;
-        output.write_i16::<LE>(
-            self.trailing_unit
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.trailing_unit.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u8(self.trailing_options)?;
         output.write_f32::<LE>(self.trailing_spacing)?;
         output.write_u8(self.move_algorithm)?;
@@ -768,7 +721,7 @@ pub struct ActionUnitTypeAttributes {
 
 impl ActionUnitTypeAttributes {
     pub fn read_from(mut input: impl Read, _version: f32) -> Result<Self> {
-        Ok(ActionUnitTypeAttributes {
+        Ok(Self {
             default_task: read_opt_u16(&mut input)?,
             search_radius: input.read_f32::<LE>()?,
             work_rate: input.read_f32::<LE>()?,
@@ -784,34 +737,17 @@ impl ActionUnitTypeAttributes {
 
     /// Write this unit type to an output stream.
     pub fn write_to(&self, mut output: impl Write, _version: f32) -> Result<()> {
-        output.write_i16::<LE>(
-            self.default_task
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.default_task.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_f32::<LE>(self.search_radius)?;
         output.write_f32::<LE>(self.work_rate)?;
-        output.write_i16::<LE>(
-            self.drop_site
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.drop_site.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_i16::<LE>(
             self.backup_drop_site
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
+                .map_or(-1, |id| id.try_into().unwrap()),
         )?;
         output.write_u8(self.task_by_group)?;
-        output.write_i16::<LE>(
-            self.command_sound
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.move_sound
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.command_sound.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.move_sound.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u8(self.run_pattern)?;
         Ok(())
     }
@@ -863,7 +799,7 @@ pub struct BaseCombatUnitTypeAttributes {
 
 impl BaseCombatUnitTypeAttributes {
     pub fn read_from(mut input: impl Read, version: f32) -> Result<Self> {
-        let mut attrs = BaseCombatUnitTypeAttributes {
+        let mut attrs = Self {
             base_armor: if version < 11.52 {
                 input.read_u8()?.into()
             } else {
@@ -909,7 +845,7 @@ impl BaseCombatUnitTypeAttributes {
             output.write_u8(self.base_armor.try_into().unwrap())?;
         } else {
             output.write_u16::<LE>(self.base_armor)?;
-        };
+        }
         output.write_u16::<LE>(self.weapons.len() as u16)?;
         for weapon in &self.weapons {
             weapon.write_to(&mut output)?;
@@ -954,7 +890,7 @@ pub struct MissileUnitTypeAttributes {
 impl MissileUnitTypeAttributes {
     /// Read this unit type from an input stream.
     pub fn read_from(mut input: impl Read, _version: f32) -> Result<Self> {
-        Ok(MissileUnitTypeAttributes {
+        Ok(Self {
             missile_type: input.read_u8()?,
             targetting_type: input.read_u8()?,
             missile_hit_info: input.read_u8()?,
@@ -1180,7 +1116,7 @@ pub struct BuildingUnitTypeAttributes {
 impl BuildingUnitTypeAttributes {
     /// Read this unit type from an input stream.
     pub fn read_from(mut input: impl Read, version: f32) -> Result<Self> {
-        let mut attrs = BuildingUnitTypeAttributes {
+        let mut attrs = Self {
             construction_sprite: read_opt_u16(&mut input)?,
             snow_sprite: if version < 11.53 {
                 None
@@ -1256,8 +1192,7 @@ impl BuildingUnitTypeAttributes {
 
 fn write_opt_string_key(mut output: impl Write, opt_key: &Option<StringKey>) -> Result<()> {
     output.write_i16::<LE>(if let Some(key) = opt_key {
-        key.try_into()
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?
+        key.try_into().map_err(io::Error::other)?
     } else {
         -1
     })?;

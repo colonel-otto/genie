@@ -31,7 +31,7 @@ type Result<T> = std::result::Result<T, ReadCampaignError>;
 /// Decode a string with unknown encoding.
 fn decode_str(bytes: &[u8]) -> Result<String> {
     if bytes.is_empty() {
-        return Ok("".to_string());
+        return Ok(String::new());
     }
 
     let (encoding_name, _confidence, _language) = detect_encoding(bytes);
@@ -88,7 +88,7 @@ fn read_campaign_header<R: Read>(input: &mut R) -> Result<CampaignHeader> {
         if version == AOE2_DE {
             let num_dependencies = input.read_u32::<LE>()?;
             let mut dependencies = vec![DLCPackage::AgeOfKings; num_dependencies as usize];
-            for dependency in dependencies.iter_mut() {
+            for dependency in &mut dependencies {
                 *dependency =
                     DLCPackage::try_from(input.read_i32::<LE>()?).map_err(scx::Error::from)?;
             }
@@ -195,7 +195,7 @@ where
     }
 
     /// Get the campaign file version.
-    pub fn version(&self) -> CPXVersion {
+    pub const fn version(&self) -> CPXVersion {
         self.header.version
     }
 
@@ -210,12 +210,12 @@ where
     }
 
     /// Get the number of scenarios in this campaign.
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.entries.len()
     }
 
     /// Returns true if this campaign contains no scenario files.
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
@@ -284,7 +284,7 @@ mod tests {
     use std::fs::File;
 
     /// Try to parse a file with an encoding that is not compatible with UTF-8.
-    /// Source: http://aok.heavengames.com/blacksmith/showfile.php?fileid=884
+    /// Source: <http://aok.heavengames.com/blacksmith/showfile.php?fileid=884>
     #[test]
     fn detect_encoding() -> anyhow::Result<()> {
         let f = File::open("./test/campaigns/DER FALL VON SACSAHUAMAN - TEIL I.cpx")?;
@@ -300,7 +300,7 @@ mod tests {
         Ok(())
     }
 
-    /// Source: http://aoe.heavengames.com/dl-php/showfile.php?fileid=1678
+    /// Source: <http://aoe.heavengames.com/dl-php/showfile.php?fileid=1678>
     #[test]
     fn aoe1_trial_cpn() -> anyhow::Result<()> {
         let f = File::open("test/campaigns/Armies at War A Combat Showcase.cpn")?;

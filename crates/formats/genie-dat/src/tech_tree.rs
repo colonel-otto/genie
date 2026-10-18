@@ -8,8 +8,9 @@ use genie_support::{TechID, read_opt_u32};
 use std::convert::{TryFrom, TryInto};
 use std::io::{self, Read, Result, Write};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TechTreeStatus {
+    #[default]
     None,
     /// This building/unit/technology is available to the player.
     AvailablePlayer,
@@ -21,15 +22,7 @@ pub enum TechTreeStatus {
     ResearchedCompleted,
     /// This building/unit/technology is available to the player if someone on their team is this
     /// civilization.
-    AvailableTeam {
-        civilization_id: CivilizationID,
-    },
-}
-
-impl std::default::Default for TechTreeStatus {
-    fn default() -> Self {
-        Self::None
-    }
+    AvailableTeam { civilization_id: CivilizationID },
 }
 
 #[derive(Debug, Clone, Copy, thiserror::Error)]
@@ -49,7 +42,7 @@ impl TryFrom<u8> for TechTreeStatus {
             10..=255 => Ok(Self::AvailableTeam {
                 civilization_id: (n - 10).into(),
             }),
-            n => Err(ParseTechTreeStatusError(n as u8)),
+            n => Err(ParseTechTreeStatusError(n)),
         }
     }
 }
@@ -62,14 +55,15 @@ impl From<TechTreeStatus> for u8 {
             TechTreeStatus::NotAvailablePlayer => 3,
             TechTreeStatus::Researching => 4,
             TechTreeStatus::ResearchedCompleted => 5,
-            TechTreeStatus::AvailableTeam { civilization_id } => u8::from(civilization_id) + 10,
+            TechTreeStatus::AvailableTeam { civilization_id } => Self::from(civilization_id) + 10,
         }
     }
 }
 
 /// Kinds of tech tree nodes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TechTreeType {
+    #[default]
     None = 0,
     Age = 1,
     Unit = 2,
@@ -78,12 +72,6 @@ pub enum TechTreeType {
     BuildingTech = 5,
     BuildingNonTech = 6,
     UniqueUnit = 7,
-}
-
-impl std::default::Default for TechTreeType {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 #[derive(Debug, Clone, Copy, thiserror::Error)]
@@ -110,13 +98,13 @@ impl TryFrom<i32> for TechTreeType {
 
 impl From<TechTreeType> for u32 {
     fn from(ty: TechTreeType) -> Self {
-        ty as u32
+        ty as Self
     }
 }
 
 impl From<TechTreeType> for i32 {
     fn from(ty: TechTreeType) -> Self {
-        ty as i32
+        ty as Self
     }
 }
 
@@ -146,7 +134,7 @@ pub enum TechTreeDependency {
 }
 
 impl TechTreeDependency {
-    fn dependency_type(&self) -> TechTreeDependencyType {
+    const fn dependency_type(&self) -> TechTreeDependencyType {
         match self {
             Self::Age(_) => TechTreeDependencyType::Age,
             Self::Building(_) => TechTreeDependencyType::Building,
@@ -162,7 +150,7 @@ impl TechTreeDependency {
             Self::Unit(id) => id.into(),
             Self::Research(id) => {
                 let id: u16 = id.into();
-                id as i32
+                i32::from(id)
             }
         }
     }
@@ -195,8 +183,8 @@ impl TryFrom<i32> for TechTreeDependencyType {
 }
 
 impl From<TechTreeDependencyType> for i32 {
-    fn from(tech_tree_dependency_type: TechTreeDependencyType) -> i32 {
-        tech_tree_dependency_type as i32
+    fn from(tech_tree_dependency_type: TechTreeDependencyType) -> Self {
+        tech_tree_dependency_type as Self
     }
 }
 
@@ -344,11 +332,11 @@ impl TechTreeDependencies {
         let _padding = input.read_u8()?;
 
         let mut ids = [-1i32; 10];
-        for id in ids.iter_mut() {
+        for id in &mut ids {
             *id = input.read_i32::<LE>()?;
         }
         let mut types = [-1i32; 10];
-        for ty in types.iter_mut() {
+        for ty in &mut types {
             *ty = input.read_i32::<LE>()?;
         }
 
@@ -376,25 +364,26 @@ impl TechTreeDependencies {
         output.write_u8(self.len() as u8)?;
         output.write_all(&[0, 0, 0])?;
         for i in 0..10 {
-            output.write_i32::<LE>(self.0.get(i).map(TechTreeDependency::raw_id).unwrap_or(0))?;
+            output.write_i32::<LE>(self.0.get(i).map_or(0, TechTreeDependency::raw_id))?;
         }
         for i in 0..10 {
             output.write_i32::<LE>(
                 self.0
                     .get(i)
                     .map(TechTreeDependency::dependency_type)
-                    .map(Into::into)
-                    .unwrap_or(0),
+                    .map_or(0, Into::into),
             )?;
         }
         Ok(())
     }
 
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
@@ -422,7 +411,7 @@ where
 
 impl TechTreeAge {
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        let mut age = TechTreeAge {
+        let mut age = Self {
             age_id: input.read_i32::<LE>()?,
             status: input.read_u8()?.try_into().map_err(invalid_data)?,
             dependent_buildings: read_dependents(input)?,
@@ -433,10 +422,10 @@ impl TechTreeAge {
             ..Default::default()
         };
         assert!(age.building_levels <= 10);
-        for building in age.buildings_per_zone.iter_mut() {
+        for building in &mut age.buildings_per_zone {
             *building = input.read_u8()?;
         }
-        for group_length in age.group_length_per_zone.iter_mut() {
+        for group_length in &mut age.group_length_per_zone {
             *group_length = input.read_u8()?;
         }
         age.max_age_length = input.read_u8()?;
@@ -458,7 +447,7 @@ impl TechTreeAge {
         }
         output.write_u8(self.dependent_techs.len() as u8)?;
         for dependent in &self.dependent_techs {
-            output.write_u32::<LE>(u16::from(*dependent) as u32)?;
+            output.write_u32::<LE>(u32::from(u16::from(*dependent)))?;
         }
         self.prerequisites.write_to(&mut output)?;
         output.write_u8(self.building_levels)?;
@@ -472,7 +461,7 @@ impl TechTreeAge {
 
 impl TechTreeBuilding {
     pub fn read_from(mut input: impl Read) -> Result<Self> {
-        let mut building = TechTreeBuilding {
+        let mut building = Self {
             building_id: input.read_i32::<LE>()?.try_into().map_err(invalid_data)?,
             status: input.read_u8()?.try_into().map_err(invalid_data)?,
             dependent_buildings: read_dependents(&mut input)?,
@@ -482,10 +471,10 @@ impl TechTreeBuilding {
             level_no: input.read_u8()?,
             ..Default::default()
         };
-        for children in building.total_children_by_age.iter_mut() {
+        for children in &mut building.total_children_by_age {
             *children = input.read_u8()?;
         }
-        for children in building.initial_children_by_age.iter_mut() {
+        for children in &mut building.initial_children_by_age {
             *children = input.read_u8()?;
         }
         building.node_type = input.read_i32::<LE>()?.try_into().map_err(invalid_data)?;
@@ -506,7 +495,7 @@ impl TechTreeBuilding {
         }
         output.write_u8(self.dependent_techs.len() as u8)?;
         for dependent in &self.dependent_techs {
-            output.write_u32::<LE>(u16::from(*dependent) as u32)?;
+            output.write_u32::<LE>(u32::from(u16::from(*dependent)))?;
         }
         self.prerequisites.write_to(&mut output)?;
         output.write_u8(self.level_no)?;
@@ -515,8 +504,7 @@ impl TechTreeBuilding {
         output.write_u32::<LE>(self.node_type.into())?;
         output.write_u32::<LE>(
             self.depends_tech_id
-                .map(|tech_id| u16::from(tech_id) as u32)
-                .unwrap_or(0xFFFF_FFFF),
+                .map_or(0xFFFF_FFFF, |tech_id| u32::from(u16::from(tech_id))),
         )?;
         Ok(())
     }
@@ -524,7 +512,7 @@ impl TechTreeBuilding {
 
 impl TechTreeUnit {
     pub fn read_from(mut input: impl Read) -> Result<Self> {
-        Ok(TechTreeUnit {
+        Ok(Self {
             unit_id: input.read_i32::<LE>()?.try_into().map_err(invalid_data)?,
             status: input.read_u8()?.try_into().map_err(invalid_data)?,
             building: input.read_i32::<LE>()?.try_into().map_err(invalid_data)?,
@@ -551,14 +539,12 @@ impl TechTreeUnit {
         output.write_i32::<LE>(self.level_no)?;
         output.write_u32::<LE>(
             self.requires_tech_id
-                .map(|tech_id| u16::from(tech_id) as u32)
-                .unwrap_or(0xFFFF_FFFF),
+                .map_or(0xFFFF_FFFF, |tech_id| u32::from(u16::from(tech_id))),
         )?;
         output.write_u32::<LE>(self.node_type.into())?;
         output.write_u32::<LE>(
             self.depends_tech_id
-                .map(|tech_id| u16::from(tech_id) as u32)
-                .unwrap_or(0xFFFF_FFFF),
+                .map_or(0xFFFF_FFFF, |tech_id| u32::from(u16::from(tech_id))),
         )?;
         Ok(())
     }
@@ -566,7 +552,7 @@ impl TechTreeUnit {
 
 impl TechTreeTech {
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        Ok(TechTreeTech {
+        Ok(Self {
             tech_id: input.read_i32::<LE>()?.try_into().map_err(invalid_data)?,
             status: input.read_u8()?.try_into().map_err(invalid_data)?,
             building: input.read_i32::<LE>()?.try_into().map_err(invalid_data)?,
@@ -594,7 +580,7 @@ impl TechTreeTech {
         }
         output.write_u8(self.dependent_techs.len() as u8)?;
         for dependent in &self.dependent_techs {
-            output.write_u32::<LE>(u16::from(*dependent) as u32)?;
+            output.write_u32::<LE>(u32::from(u16::from(*dependent)))?;
         }
         self.prerequisites.write_to(&mut output)?;
         output.write_i32::<LE>(self.group_id)?;

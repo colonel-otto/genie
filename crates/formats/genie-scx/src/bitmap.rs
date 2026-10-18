@@ -25,7 +25,7 @@ pub struct BitmapInfo {
 impl BitmapInfo {
     /// Read a bitmap header info structure from a byte stream.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
-        let mut bitmap = BitmapInfo {
+        let mut bitmap = Self {
             size: input.read_u32::<LE>()?,
             width: input.read_i32::<LE>()?,
             height: input.read_i32::<LE>()?,
@@ -100,7 +100,7 @@ impl Bitmap {
             let aligned_width = height * ((width + 3) & !3);
             let mut pixels = vec![0u8; aligned_width as usize];
             input.read_exact(&mut pixels)?;
-            Ok(Some(Bitmap {
+            Ok(Some(Self {
                 own_memory,
                 width,
                 height,

@@ -15,7 +15,7 @@ pub struct CivilizationID(u8);
 
 impl From<u8> for CivilizationID {
     fn from(n: u8) -> Self {
-        CivilizationID(n)
+        Self(n)
     }
 }
 
@@ -66,6 +66,7 @@ pub struct Civilization {
 
 impl Civilization {
     /// Get the name of this civilization.
+    #[must_use]
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
@@ -117,7 +118,7 @@ impl Civilization {
         output.write_u16::<LE>(self.attributes.len().try_into().unwrap())?;
         output.write_u16::<LE>(self.civ_effect)?;
         output.write_u16::<LE>(self.bonus_effect.unwrap_or(0xFFFF))?;
-        for v in self.attributes.iter() {
+        for v in &self.attributes {
             output.write_f32::<LE>(*v)?;
         }
         output.write_u8(self.culture)?;

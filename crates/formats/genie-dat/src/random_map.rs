@@ -23,7 +23,7 @@ pub struct RandomMapInfo {
 
 impl RandomMapInfo {
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        let mut info = RandomMapInfo {
+        let mut info = Self {
             id: input.read_i32::<LE>()?,
             borders: (
                 input.read_i32::<LE>()?,
@@ -59,25 +59,25 @@ impl RandomMapInfo {
     pub fn finish<R: Read>(&mut self, input: &mut R) -> Result<()> {
         // duplicate data
         std::io::copy(&mut input.by_ref().take(44), &mut std::io::sink())?;
-        for land in self.lands.iter_mut() {
+        for land in &mut self.lands {
             *land = RandomMapLand::read_from(input)?;
         }
 
         // duplicate data
         std::io::copy(&mut input.by_ref().take(8), &mut std::io::sink())?;
-        for terrain in self.terrains.iter_mut() {
+        for terrain in &mut self.terrains {
             *terrain = RandomMapTerrain::read_from(input)?;
         }
 
         // duplicate data
         std::io::copy(&mut input.by_ref().take(8), &mut std::io::sink())?;
-        for object in self.objects.iter_mut() {
+        for object in &mut self.objects {
             *object = RandomMapObject::read_from(input)?;
         }
 
         // duplicate data
         std::io::copy(&mut input.by_ref().take(8), &mut std::io::sink())?;
-        for elevation in self.elevations.iter_mut() {
+        for elevation in &mut self.elevations {
             *elevation = RandomMapElevation::read_from(input)?;
         }
         Ok(())
@@ -161,7 +161,7 @@ pub struct RandomMapLand {
 
 impl RandomMapLand {
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        let mut land = RandomMapLand {
+        let mut land = Self {
             id: input.read_i32::<LE>()?,
             terrain_type: input.read_u8()?,
             ..Default::default()
@@ -218,7 +218,7 @@ pub struct RandomMapTerrain {
 
 impl RandomMapTerrain {
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        Ok(RandomMapTerrain {
+        Ok(Self {
             percent: input.read_i32::<LE>()?,
             terrain_type: input.read_i32::<LE>()?,
             clumps: input.read_i32::<LE>()?,
@@ -257,7 +257,7 @@ pub struct RandomMapObject {
 
 impl RandomMapObject {
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        let mut object = RandomMapObject {
+        let mut object = Self {
             unit_type: input.read_u32::<LE>()?.try_into().unwrap(),
             terrain_type: input.read_i32::<LE>()?,
             group_flag: input.read_i8()?,
@@ -277,7 +277,7 @@ impl RandomMapObject {
     }
 
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_u32::<LE>(self.unit_type.try_into().unwrap())?;
+        output.write_u32::<LE>(self.unit_type.into())?;
         output.write_i32::<LE>(self.terrain_type)?;
         output.write_i8(self.group_flag)?;
         output.write_i8(self.scale_flag)?;
@@ -306,7 +306,7 @@ pub struct RandomMapElevation {
 
 impl RandomMapElevation {
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        Ok(RandomMapElevation {
+        Ok(Self {
             percent: input.read_u32::<LE>()?.try_into().unwrap(),
             height: input.read_i32::<LE>()?,
             clumps: input.read_i32::<LE>()?,

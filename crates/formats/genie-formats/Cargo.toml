@@ -31,3 +31,6 @@ flate2.workspace = true
 structopt.workspace = true
 anyhow.workspace = true
 simplelog.workspace = true
+
+[lints]
+workspace = true

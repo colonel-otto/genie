@@ -1,11 +1,11 @@
 //! The missile (`RGE_Missile_Object`, type 60) and its action (`RGE_Action_Missile`, type 8): a
 //! ranged attacker's swing makes one at its weapon offset (`FUN_141081020`, [`spawn_point`]), its
-//! action aims at the target (`FUN_140a9c600`, [`aim`]; set_state 3, `FUN_140a9de70`,
+//! action aims at the target (`FUN_140a9c600`, [`aim`]; `set_state` 3, `FUN_140a9de70`,
 //! [`MissileAction::launch`]) and flies it each update (`FUN_140a9e6e0`,
 //! [`MissileAction::fly`]) until it hits the target (the shooter's hit, slot 0x860) or the ground.
 //!
 //! 158041: `RGE_Action_Missile` vtable `0x142ed5d68` (start slot 5 `0x140a9c5b0`, update slot 6
-//! `0x140a9e6e0`, set_state slot 16 `0x140a9de70`); `RGE_Missile_Object` vtable `0x142f57fe8`
+//! `0x140a9e6e0`, `set_state` slot 16 `0x140a9de70`); `RGE_Missile_Object` vtable `0x142f57fe8`
 //! (update `0x14113e520`).
 
 use crate::fmath;
@@ -14,7 +14,7 @@ use crate::unit_ai::Unsupported;
 /// The missile action's type, which word 9 adds when it is the top action.
 pub const MISSILE: i16 = 8;
 
-/// A missile's states: 4 flies, 1 ends (set_state 1: the object's slot 0xd8, its hit points to 0).
+/// A missile's states: 4 flies, 1 ends (`set_state` 1: the object's slot 0xd8, its hit points to 0).
 pub const FLYING: u8 = 4;
 pub const DONE: u8 = 1;
 
@@ -66,7 +66,7 @@ pub struct Origin {
 
 impl Origin {
     /// `FUN_140aa8720`: no origin.
-    pub const NONE: Origin = Origin {
+    pub const NONE: Self = Self {
         position: [0.0; 3],
         radius: [0.0; 2],
         master: -1,
@@ -74,10 +74,11 @@ impl Origin {
     };
 
     /// The save's 28 bytes: seven 32-bit words.
+    #[must_use]
     pub fn from_bytes(b: &[u8; 28]) -> Self {
         let w = |i: usize| u32::from_le_bytes([b[4 * i], b[4 * i + 1], b[4 * i + 2], b[4 * i + 3]]);
         let f = |i: usize| f32::from_bits(w(i));
-        Origin {
+        Self {
             position: [f(0), f(1), f(2)],
             radius: [f(3), f(4)],
             master: w(5) as i32,
@@ -137,6 +138,7 @@ pub struct Missile {
 /// `FUN_141081020`'s place for a new missile: the firing object's place plus its master's weapon
 /// offset (`+0x844`..`+0x84c`) turned by its facing (`+0x7e8`): x by cos·oy − sin·ox, y by
 /// cos·ox + sin·oy, the height by oz.
+#[must_use]
 pub fn spawn_point(at: [f32; 3], angle: f32, offset: [f32; 3]) -> [f32; 3] {
     let (c, s) = (fmath::cos(angle), fmath::sin(angle));
     let [ox, oy, oz] = offset;
@@ -146,6 +148,7 @@ pub fn spawn_point(at: [f32; 3], angle: f32, offset: [f32; 3]) -> [f32; 3] {
 }
 
 /// `FUN_141081020`'s reach: the firing master's radii's length plus its range plus 2.
+#[must_use]
 pub fn reach(radius: [f32; 2], range: f32) -> f32 {
     fmath::sqrt(radius[0] * radius[0] + radius[1] * radius[1]) + range + REACH_MARGIN
 }
@@ -210,12 +213,12 @@ pub fn aim(
 }
 
 impl MissileAction {
-    /// set_state(3) (`FUN_140a9de70` case 3) from `from` toward the aimed point: the way left
+    /// `set_state(3)` (`FUN_140a9de70` case 3) from `from` toward the aimed point: the way left
     /// (its length), a straight missile's unit direction (projectile type 0; type 3 keeps the
     /// way itself) with the object's angle on it (slot 0x158: `atan2f` of y over x, returned),
     /// the timer back to 0, the arc's acceleration and vertical speed (`arc` not 0: twice the
     /// arc's rise, `−arc × way × way` or `−arc × way` above 0, over the half flight time squared;
-    /// the speed the opposite of the acceleration times that time); then set_state(4). A smart
+    /// the speed the opposite of the acceleration times that time); then `set_state(4)`. A smart
     /// missile leading a moving target and the projectile types 1 and 2 are not modelled; the
     /// sprite's pitch facet is not held.
     pub fn launch(
@@ -274,7 +277,7 @@ impl MissileAction {
 
     /// One update's flight in state 4 (`FUN_140a9e6e0`), before the step's hits: a straight
     /// missile steps its speed times the world's dt along its direction, its timer counting the
-    /// way and its distance shrinking; past its reach and 2 beyond its point it ends (set_state
+    /// way and its distance shrinking; past its reach and 2 beyond its point it ends (`set_state`
     /// 1). An arc rises by `(dt × acceleration × 0.5 + vertical speed) × dt`, its vertical speed
     /// gaining `dt × acceleration`. Returns the step and whether the missile flies on (farther
     /// than 0.1 from its point, `+0x994`).
@@ -316,6 +319,7 @@ impl MissileAction {
 /// `FUN_14113f740`'s height test: an object at height `z` whose master's height radius is
 /// `height` meets a missile at `missile_z` whose master's is `missile_height` when it lies at
 /// most `height` below the missile and at most `missile_height` above.
+#[must_use]
 pub fn meets_height(z: f32, height: f32, missile_z: f32, missile_height: f32) -> bool {
     let d = z - missile_z;
     -height <= d && d <= missile_height
@@ -324,6 +328,7 @@ pub fn meets_height(z: f32, height: f32, missile_z: f32, missile_height: f32) ->
 /// The ground hit's box test (`FUN_140a9e6e0`): a missile at `at` with radii `radius` lies on
 /// the target at `target` with radii `target_radius` when it is nearer on each axis than the
 /// two radii together.
+#[must_use]
 pub fn on_target(
     at: [f32; 3],
     radius: [f32; 3],
@@ -336,9 +341,10 @@ pub fn on_target(
 }
 
 /// The height a missile's place takes on the ground (slot 0x60, `FUN_14113eb60`, with the
-/// ground's height, from the static new_position): a missile still flying (`+0x994`) keeps its
+/// ground's height, from the static `new_position)`: a missile still flying (`+0x994`) keeps its
 /// height; else `FUN_141193a10` by its master's fly mode: 0 puts it on the ground, 1 lifts it to
 /// the ground when it is below, others keep it.
+#[must_use]
 pub fn grounded(z: f32, ground: f32, flying: bool, fly_mode: u8) -> f32 {
     match fly_mode {
         _ if flying => z,

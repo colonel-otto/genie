@@ -11,11 +11,12 @@ pub struct SCXVersion(pub(crate) [u8; 4]);
 
 impl SCXVersion {
     /// Get the raw bytes representing this scx format version.
-    pub fn as_bytes(&self) -> &[u8] {
+    #[must_use]
+    pub const fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
-    pub(crate) fn to_player_version(self) -> Option<f32> {
+    pub(crate) const fn to_player_version(self) -> Option<f32> {
         match self.as_bytes() {
             b"1.07" => Some(1.07),
             b"1.09" | b"1.10" | b"1.11" => Some(1.11),
@@ -58,7 +59,7 @@ impl PartialEq<SCXVersion> for [u8; 4] {
 }
 
 impl Ord for SCXVersion {
-    fn cmp(&self, other: &SCXVersion) -> Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         match self.0[0].cmp(&other.0[0]) {
             Ordering::Equal => {}
             ord => return ord,
@@ -72,7 +73,7 @@ impl Ord for SCXVersion {
 }
 
 impl PartialOrd for SCXVersion {
-    fn partial_cmp(&self, other: &SCXVersion) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -98,16 +99,16 @@ impl TryFrom<i32> for DiplomaticStance {
 
     fn try_from(n: i32) -> Result<Self, Self::Error> {
         match n {
-            0 => Ok(DiplomaticStance::Ally),
-            1 => Ok(DiplomaticStance::Neutral),
-            3 => Ok(DiplomaticStance::Enemy),
+            0 => Ok(Self::Ally),
+            1 => Ok(Self::Neutral),
+            3 => Ok(Self::Enemy),
             n => Err(ParseDiplomaticStanceError(n)),
         }
     }
 }
 
 impl From<DiplomaticStance> for i32 {
-    fn from(stance: DiplomaticStance) -> i32 {
+    fn from(stance: DiplomaticStance) -> Self {
         match stance {
             DiplomaticStance::Ally => 0,
             DiplomaticStance::Neutral => 1,
@@ -134,15 +135,15 @@ impl TryFrom<i32> for DataSet {
     type Error = ParseDataSetError;
     fn try_from(n: i32) -> Result<Self, Self::Error> {
         match n {
-            0 => Ok(DataSet::BaseGame),
-            1 => Ok(DataSet::Expansions),
+            0 => Ok(Self::BaseGame),
+            1 => Ok(Self::Expansions),
             n => Err(ParseDataSetError(n)),
         }
     }
 }
 
 impl From<DataSet> for i32 {
-    fn from(id: DataSet) -> i32 {
+    fn from(id: DataSet) -> Self {
         match id {
             DataSet::BaseGame => 0,
             DataSet::Expansions => 1,
@@ -176,19 +177,19 @@ impl TryFrom<i32> for DLCPackage {
     type Error = ParseDLCPackageError;
     fn try_from(n: i32) -> Result<Self, Self::Error> {
         match n {
-            2 => Ok(DLCPackage::AgeOfKings),
-            3 => Ok(DLCPackage::AgeOfConquerors),
-            4 => Ok(DLCPackage::TheForgotten),
-            5 => Ok(DLCPackage::AfricanKingdoms),
-            6 => Ok(DLCPackage::RiseOfTheRajas),
-            7 => Ok(DLCPackage::LastKhans),
+            2 => Ok(Self::AgeOfKings),
+            3 => Ok(Self::AgeOfConquerors),
+            4 => Ok(Self::TheForgotten),
+            5 => Ok(Self::AfricanKingdoms),
+            6 => Ok(Self::RiseOfTheRajas),
+            7 => Ok(Self::LastKhans),
             n => Err(ParseDLCPackageError(n)),
         }
     }
 }
 
 impl From<DLCPackage> for i32 {
-    fn from(dlc_id: DLCPackage) -> i32 {
+    fn from(dlc_id: DLCPackage) -> Self {
         match dlc_id {
             DLCPackage::AgeOfKings => 2,
             DLCPackage::AgeOfConquerors => 3,
@@ -237,48 +238,49 @@ impl StartingAge {
     pub fn try_from(n: i32, version: f32) -> Result<Self, ParseStartingAgeError> {
         if version < 1.25 {
             match n {
-                -1 => Ok(StartingAge::Default),
-                0 => Ok(StartingAge::DarkAge),
-                1 => Ok(StartingAge::FeudalAge),
-                2 => Ok(StartingAge::CastleAge),
-                3 => Ok(StartingAge::ImperialAge),
-                4 => Ok(StartingAge::PostImperialAge),
+                -1 => Ok(Self::Default),
+                0 => Ok(Self::DarkAge),
+                1 => Ok(Self::FeudalAge),
+                2 => Ok(Self::CastleAge),
+                3 => Ok(Self::ImperialAge),
+                4 => Ok(Self::PostImperialAge),
                 _ => Err(ParseStartingAgeError { version, found: n }),
             }
         } else {
             match n {
-                -1 | 0 => Ok(StartingAge::Default),
-                1 => Ok(StartingAge::Nomad),
-                2 => Ok(StartingAge::DarkAge),
-                3 => Ok(StartingAge::FeudalAge),
-                4 => Ok(StartingAge::CastleAge),
-                5 => Ok(StartingAge::ImperialAge),
-                6 => Ok(StartingAge::PostImperialAge),
+                -1 | 0 => Ok(Self::Default),
+                1 => Ok(Self::Nomad),
+                2 => Ok(Self::DarkAge),
+                3 => Ok(Self::FeudalAge),
+                4 => Ok(Self::CastleAge),
+                5 => Ok(Self::ImperialAge),
+                6 => Ok(Self::PostImperialAge),
                 _ => Err(ParseStartingAgeError { version, found: n }),
             }
         }
     }
 
     /// Serialize the age identifier to an integer that is understood by the given game version.
+    #[must_use]
     pub fn to_i32(self, version: f32) -> i32 {
         if version < 1.25 {
             match self {
-                StartingAge::Default => -1,
-                StartingAge::Nomad | StartingAge::DarkAge => 0,
-                StartingAge::FeudalAge => 1,
-                StartingAge::CastleAge => 2,
-                StartingAge::ImperialAge => 3,
-                StartingAge::PostImperialAge => 4,
+                Self::Default => -1,
+                Self::Nomad | Self::DarkAge => 0,
+                Self::FeudalAge => 1,
+                Self::CastleAge => 2,
+                Self::ImperialAge => 3,
+                Self::PostImperialAge => 4,
             }
         } else {
             match self {
-                StartingAge::Default => 0,
-                StartingAge::Nomad => 1,
-                StartingAge::DarkAge => 2,
-                StartingAge::FeudalAge => 3,
-                StartingAge::CastleAge => 4,
-                StartingAge::ImperialAge => 5,
-                StartingAge::PostImperialAge => 6,
+                Self::Default => 0,
+                Self::Nomad => 1,
+                Self::DarkAge => 2,
+                Self::FeudalAge => 3,
+                Self::CastleAge => 4,
+                Self::ImperialAge => 5,
+                Self::PostImperialAge => 6,
             }
         }
     }
@@ -319,19 +321,19 @@ pub enum VictoryCondition {
 impl From<u8> for VictoryCondition {
     fn from(n: u8) -> Self {
         match n {
-            0 => VictoryCondition::Capture,
-            1 => VictoryCondition::Create,
-            2 => VictoryCondition::Destroy,
-            3 => VictoryCondition::DestroyMultiple,
-            4 => VictoryCondition::BringToArea,
-            5 => VictoryCondition::BringToObject,
-            6 => VictoryCondition::Attribute,
-            7 => VictoryCondition::Explore,
-            8 => VictoryCondition::CreateInArea,
-            9 => VictoryCondition::DestroyAll,
-            10 => VictoryCondition::DestroyPlayer,
-            11 => VictoryCondition::Points,
-            n => VictoryCondition::Other(n),
+            0 => Self::Capture,
+            1 => Self::Create,
+            2 => Self::Destroy,
+            3 => Self::DestroyMultiple,
+            4 => Self::BringToArea,
+            5 => Self::BringToObject,
+            6 => Self::Attribute,
+            7 => Self::Explore,
+            8 => Self::CreateInArea,
+            9 => Self::DestroyAll,
+            10 => Self::DestroyPlayer,
+            11 => Self::Points,
+            n => Self::Other(n),
         }
     }
 }
@@ -378,13 +380,15 @@ pub struct VersionBundle {
 }
 
 impl VersionBundle {
-    /// A version bundle with the parameters AoE1 uses by default.
+    /// A version bundle with the parameters `AoE1` uses by default.
+    #[must_use]
     pub fn aoe() -> Self {
         unimplemented!()
     }
 
-    /// A version bundle with the parameters AoE1: Rise of Rome uses by default.
-    pub fn ror() -> Self {
+    /// A version bundle with the parameters `AoE1`: Rise of Rome uses by default.
+    #[must_use]
+    pub const fn ror() -> Self {
         Self {
             format: SCXVersion(*b"1.11"),
             header: 2,
@@ -397,8 +401,9 @@ impl VersionBundle {
         }
     }
 
-    /// A version bundle with the parameters AoK uses by default.
-    pub fn aok() -> Self {
+    /// A version bundle with the parameters `AoK` uses by default.
+    #[must_use]
+    pub const fn aok() -> Self {
         Self {
             format: SCXVersion(*b"1.18"),
             header: 2,
@@ -411,8 +416,9 @@ impl VersionBundle {
         }
     }
 
-    /// A version bundle with the parameters AoC uses by default
-    pub fn aoc() -> Self {
+    /// A version bundle with the parameters `AoC` uses by default
+    #[must_use]
+    pub const fn aoc() -> Self {
         Self {
             format: SCXVersion(*b"1.21"),
             header: 2,
@@ -425,18 +431,21 @@ impl VersionBundle {
         }
     }
 
-    /// A version bundle with the parameters UserPatch 1.4 uses by default.
-    pub fn userpatch_14() -> Self {
+    /// A version bundle with the parameters `UserPatch` 1.4 uses by default.
+    #[must_use]
+    pub const fn userpatch_14() -> Self {
         Self::aoc()
     }
 
-    /// A version bundle with the parameters UserPatch 1.5 uses by default.
+    /// A version bundle with the parameters `UserPatch` 1.5 uses by default.
+    #[must_use]
     pub fn userpatch_15() -> Self {
         Self::userpatch_14()
     }
 
     /// A version bundle with the parameters HD Edition uses by default.
-    pub fn hd_edition() -> Self {
+    #[must_use]
+    pub const fn hd_edition() -> Self {
         Self {
             format: SCXVersion(*b"1.21"),
             header: 3,
@@ -452,7 +461,8 @@ impl VersionBundle {
     /// A version bundle with parameters Age of Empires 2: Definitive Edition uses by default.
     ///
     /// This will be updated along with DE2 patches.
-    pub fn aoe2_de() -> Self {
+    #[must_use]
+    pub const fn aoe2_de() -> Self {
         Self {
             format: SCXVersion(*b"1.37"),
             header: 5,
@@ -465,22 +475,26 @@ impl VersionBundle {
         }
     }
 
-    /// Returns whether this version is (likely) for an AoK scenario.
-    pub fn is_aok(&self) -> bool {
+    /// Returns whether this version is (likely) for an `AoK` scenario.
+    #[must_use]
+    pub const fn is_aok(&self) -> bool {
         matches!(self.format.as_bytes(), b"1.18" | b"1.19" | b"1.20")
     }
 
-    /// Returns whether this version is (likely) for an AoC scenario.
+    /// Returns whether this version is (likely) for an `AoC` scenario.
+    #[must_use]
     pub fn is_aoc(&self) -> bool {
         self.format == *b"1.21" && self.data <= 1.22
     }
 
     /// Returns whether this version is (likely) for an HD Edition scenario.
+    #[must_use]
     pub fn is_hd_edition(&self) -> bool {
         self.format == *b"1.21" || self.format == *b"1.22" && self.data > 1.22
     }
 
-    /// Returns whether this version is (likely) for an AoE2: Definitive Edition scenario.
+    /// Returns whether this version is (likely) for an `AoE2`: Definitive Edition scenario.
+    #[must_use]
     pub fn is_age2_de(&self) -> bool {
         self.data >= 1.28
     }

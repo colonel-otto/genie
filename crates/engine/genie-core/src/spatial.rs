@@ -14,21 +14,21 @@ use crate::unit_ai::{Found, Pick, Search, Unsupported};
 use crate::visibility::Visibility;
 use std::collections::BTreeMap;
 
-/// The range of ClosestObject's reachability check (`FUN_140c488b0`, `DAT_142eb5690`).
+/// The range of `ClosestObject`'s reachability check (`FUN_140c488b0`, `DAT_142eb5690`).
 const CLOSEST_RANGE: f32 = crate::image::spatial::CLOSEST_RANGE;
 
 /// How near (squared) a unit AI's search comes to the last one's place to skip its query
 /// (`FUN_140c63e20`).
 const SEARCH_REUSE_SQUARED: f32 = crate::image::spatial::SEARCH_REUSE_SQUARED;
 
-/// The pasture and livestock classes ClosestObject treats apart.
+/// The pasture and livestock classes `ClosestObject` treats apart.
 const PASTURE_CLASS: i32 = 49;
 const LIVESTOCK_CLASS: i32 = 58;
 
 /// The caller's reachability check of a found object (slot 0x3d0 within a range).
 pub type Reach<'a> = dyn FnMut(i32, f32) -> Result<bool, Unsupported> + 'a;
 
-/// What ClosestObject keeps of the objects found (its arguments 2 to 6; each −1 for any): the
+/// What `ClosestObject` keeps of the objects found (its arguments 2 to 6; each −1 for any): the
 /// master class, the relation (0 itself or friends, 1 neutrals, 2 enemies, 3 itself), the state,
 /// the master and the cap of workers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,13 +97,14 @@ pub struct Obstruction {
 impl Obstruction {
     /// The kinds that mark the tiles under them (`FUN_141056460`: 0, 1, 2, 11, 13 and 10, which the
     /// game files as 2).
-    fn marks_tiles(self) -> bool {
+    const fn marks_tiles(self) -> bool {
         self.kind == 10 || (self.kind < 14 && (0x2807u32 >> self.kind) & 1 != 0)
     }
 }
 
 impl Placed {
     /// The record's box `x0, y0, x1, y1` (`+0x20`..`+0x2c`): the position plus and minus the radii.
+    #[must_use]
     pub fn bounds(&self) -> [f32; 4] {
         let [x, y, _] = self.position;
         let [rx, ry] = self.radius;
@@ -115,7 +116,7 @@ impl Placed {
 pub const BLOCKED: u64 = 0x4000;
 
 /// What the game keeps per tile, row by row.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Tiles {
     width: i32,
     height: i32,
@@ -140,7 +141,7 @@ impl Tiles {
             (width.max(0) * height.max(0)) as usize,
             "one class per tile"
         );
-        Tiles {
+        Self {
             width,
             height,
             words: classes.into_iter().map(u64::from).collect(),
@@ -154,14 +155,17 @@ impl Tiles {
             .then(|| (y * self.width + x) as usize)
     }
 
+    #[must_use]
     pub fn word(&self, x: i32, y: i32) -> Option<u64> {
         self.index(x, y).map(|i| self.words[i])
     }
 
+    #[must_use]
     pub fn tall(&self, x: i32, y: i32) -> Option<u8> {
         self.index(x, y).map(|i| self.tall[i])
     }
 
+    #[must_use]
     pub fn objects(&self, x: i32, y: i32) -> Option<u8> {
         self.index(x, y).map(|i| self.objects[i])
     }
@@ -288,13 +292,15 @@ struct SearchCache {
 
 impl Spatial {
     /// A map without terrain: every tile's class is 0.
+    #[must_use]
     pub fn new(map: [i32; 2]) -> Self {
         let n = (map[0].max(0) * map[1].max(0)) as usize;
         Self::with_tiles(map, Tiles::new(map[0], map[1], vec![0; n]))
     }
 
+    #[must_use]
     pub fn with_tiles(map: [i32; 2], tiles: Tiles) -> Self {
-        Spatial {
+        Self {
             map,
             objects: BTreeMap::new(),
             tiles,
@@ -316,7 +322,7 @@ impl Spatial {
         self.search_cache.borrow_mut().holds = false;
     }
 
-    pub fn tiles(&self) -> &Tiles {
+    pub const fn tiles(&self) -> &Tiles {
         &self.tiles
     }
 
@@ -355,7 +361,7 @@ impl Spatial {
         let Some(p) = self.objects.get(&id).cloned() else {
             return;
         };
-        if p.obstruction.is_some_and(|o| o.marks_tiles()) {
+        if p.obstruction.is_some_and(Obstruction::marks_tiles) {
             self.tiles.unmark(&p);
             self.changed.push(self.tiles.covered_rect(&p));
         }
@@ -551,7 +557,7 @@ impl Spatial {
     pub fn remove(&mut self, id: i32) {
         if let Some(gone) = self.objects.remove(&id) {
             self.tiles.count(gone.position, gone.tall, false);
-            if gone.obstruction.is_some_and(|o| o.marks_tiles()) {
+            if gone.obstruction.is_some_and(Obstruction::marks_tiles) {
                 self.tiles.unmark(&gone);
                 self.changed.push(self.tiles.covered_rect(&gone));
             }
@@ -1252,7 +1258,7 @@ impl Spatial {
         v.combat_sight(id, p.player, p.position, p.radius, p.class, main)
     }
 
-    /// The object's set_state to `state` ([`Visibility::state_changed`]).
+    /// The object's `set_state` to `state` ([`Visibility::state_changed`]).
     pub fn sight_state(&mut self, id: i32, state: u8) {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
             v.state_changed(id, p.position, p.radius, state);

@@ -18,13 +18,13 @@ pub struct TerrainID(u16);
 
 impl From<u8> for TerrainID {
     fn from(n: u8) -> Self {
-        TerrainID(n.into())
+        Self(n.into())
     }
 }
 
 impl From<u16> for TerrainID {
     fn from(n: u16) -> Self {
-        TerrainID(n)
+        Self(n)
     }
 }
 
@@ -154,7 +154,7 @@ pub struct TerrainBorder {
 
 impl TerrainPassGraphic {
     pub fn read_from(mut input: impl Read, version: FileVersion) -> Result<Self> {
-        let mut pass = TerrainPassGraphic {
+        let mut pass = Self {
             exit_tile_sprite: read_opt_u32(&mut input)?,
             enter_tile_sprite: read_opt_u32(&mut input)?,
             walk_tile_sprite: read_opt_u32(&mut input)?,
@@ -190,7 +190,7 @@ impl TerrainRestriction {
         num_terrains: u16,
     ) -> Result<Self> {
         let mut passability = vec![0.0; num_terrains as usize];
-        for value in passability.iter_mut() {
+        for value in &mut passability {
             *value = input.read_f32::<LE>()?;
         }
 
@@ -248,7 +248,7 @@ impl TileSize {
 
 impl TerrainAnimation {
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        Ok(TerrainAnimation {
+        Ok(Self {
             enabled: input.read_u8()? != 0,
             num_frames: input.read_i16::<LE>()?,
             num_pause_frames: input.read_i16::<LE>()?,
@@ -301,6 +301,7 @@ impl TerrainSpriteFrame {
 
 impl Terrain {
     /// Get the internal name of this terrain.
+    #[must_use]
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
@@ -311,7 +312,7 @@ impl Terrain {
         version: FileVersion,
         num_terrains: u16,
     ) -> Result<Self> {
-        let mut terrain = Terrain {
+        let mut terrain = Self {
             enabled: input.read_u8()? != 0,
             random: input.read_u8()?,
             ..Default::default()
@@ -356,13 +357,13 @@ impl Terrain {
         }
 
         let mut terrain_objects = vec![TerrainObject::default(); 30];
-        for object in terrain_objects.iter_mut() {
+        for object in &mut terrain_objects {
             object.object_id = input.read_u16::<LE>()?.into();
         }
-        for object in terrain_objects.iter_mut() {
+        for object in &mut terrain_objects {
             object.density = input.read_i16::<LE>()?;
         }
-        for object in terrain_objects.iter_mut() {
+        for object in &mut terrain_objects {
             object.placement_flag = input.read_i8()?;
         }
 
@@ -388,9 +389,9 @@ impl Terrain {
         output.write_u8(self.random)?;
         write_terrain_name(output, &self.name)?;
         write_terrain_name(output, &self.slp_name)?;
-        output.write_i32::<LE>(self.slp_id.map(|id| id.try_into().unwrap()).unwrap_or(-1))?;
+        output.write_i32::<LE>(self.slp_id.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_i32::<LE>(0)?; // slp pointer
-        output.write_i32::<LE>(self.sound_id.map(|id| id.try_into().unwrap()).unwrap_or(-1))?;
+        output.write_i32::<LE>(self.sound_id.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_i32::<LE>(self.blend_priority.unwrap_or(-1))?;
         output.write_i32::<LE>(self.blend_mode.unwrap_or(-1))?;
         output.write_u8(self.minimap_color_high)?;
@@ -406,8 +407,7 @@ impl Terrain {
         }
         output.write_i16::<LE>(
             self.terrain_id_to_draw
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
+                .map_or(-1, |id| id.try_into().unwrap()),
         )?;
         output.write_i16::<LE>(self.rows)?;
         output.write_i16::<LE>(self.cols)?;
@@ -446,7 +446,7 @@ impl Terrain {
 
 impl TerrainBorder {
     pub fn read_from(mut input: impl Read) -> Result<Self> {
-        let mut border = TerrainBorder {
+        let mut border = Self {
             enabled: input.read_u8()? != 0,
             random: input.read_u8()?,
             ..Default::default()
@@ -460,7 +460,7 @@ impl TerrainBorder {
         border.animation = TerrainAnimation::read_from(&mut input)?;
         for _ in 0..19 {
             let mut frames_list = vec![TerrainSpriteFrame::default(); 12];
-            for frame in frames_list.iter_mut() {
+            for frame in &mut frames_list {
                 *frame = TerrainSpriteFrame::read_from(&mut input)?;
             }
             border.frames.push(frames_list);
@@ -481,9 +481,9 @@ impl TerrainBorder {
         output.write_u8(self.random)?;
         write_terrain_name(output, &self.name)?;
         write_terrain_name(output, &self.slp_name)?;
-        output.write_i32::<LE>(self.slp_id.map(|id| id.try_into().unwrap()).unwrap_or(-1))?;
+        output.write_i32::<LE>(self.slp_id.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_i32::<LE>(0)?; // slp pointer
-        output.write_i32::<LE>(self.sound_id.map(|id| id.try_into().unwrap()).unwrap_or(-1))?;
+        output.write_i32::<LE>(self.sound_id.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u8(self.color.0)?;
         output.write_u8(self.color.1)?;
         output.write_u8(self.color.2)?;
@@ -506,7 +506,7 @@ fn read_terrain_name<R: Read>(input: &mut R, output: &mut TerrainName) -> Result
     input.read_exact(bytes)?;
     bytes
         .iter()
-        .cloned()
+        .copied()
         .take_while(|b| *b != 0)
         .map(char::from)
         .for_each(|c| output.push(c));

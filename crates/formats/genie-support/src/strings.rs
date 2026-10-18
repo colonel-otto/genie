@@ -36,7 +36,7 @@ pub enum WriteStringError {
     EncodeStringError(#[from] EncodeStringError),
     /// Failed to write a string because the underlying I/O failed.
     #[error(transparent)]
-    IoError(#[from] std::io::Error),
+    IoError(#[from] io::Error),
 }
 
 /// Write a string to an output stream, using code page 1252, using a `u16` for the length prefix.
@@ -104,7 +104,7 @@ pub fn write_opt_i32_str<W: Write>(
 /// Decode a string using the WINDOWS-1252 code page.
 fn decode_str(bytes: &[u8]) -> Result<String, DecodeStringError> {
     if bytes.is_empty() {
-        return Ok("".to_string());
+        return Ok(String::new());
     }
 
     let (decoded, _enc, failed) = WINDOWS_1252.decode(bytes);
@@ -116,12 +116,12 @@ fn decode_str(bytes: &[u8]) -> Result<String, DecodeStringError> {
 }
 
 /// Functions to read various kinds of strings from input streams.
-/// Extension trait for reading strings in several common formats used by AoE2.
+/// Extension trait for reading strings in several common formats used by `AoE2`.
 pub trait ReadStringsExt: Read {
     /// Read an optionally null-terminated WINDOWS-1252-encoded string with the given `length` in bytes.
     fn read_str(&mut self, length: usize) -> Result<Option<String>, ReadStringError> {
         if length > 0 {
-            let mut bytes = vec![0; length as usize];
+            let mut bytes = vec![0; length];
             self.read_exact(&mut bytes)?;
             if let Some(end) = bytes.iter().position(|&byte| byte == 0) {
                 bytes.truncate(end);

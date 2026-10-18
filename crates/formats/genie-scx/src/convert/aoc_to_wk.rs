@@ -37,7 +37,7 @@ impl Default for AoCToWK {
 }
 
 impl AoCToWK {
-    /// Convert an object from AoC to WK.
+    /// Convert an object from `AoC` to WK.
     ///
     /// This updates the object type IDs.
     fn convert_object(&self, object: &mut ScenarioObject) {
@@ -46,7 +46,7 @@ impl AoCToWK {
         }
     }
 
-    /// Convert a trigger from AoC to WK.
+    /// Convert a trigger from `AoC` to WK.
     ///
     /// This updates the object type IDs in trigger conditions and effects.
     fn convert_trigger(&self, trigger: &mut Trigger) {
@@ -68,14 +68,14 @@ impl AoCToWK {
         });
     }
 
-    /// Convert a terrain tile from AoC to WK.
+    /// Convert a terrain tile from `AoC` to WK.
     fn convert_terrain(&self, tile: &mut Tile) {
         if let Some(new_type) = self.terrain_ids_map.get(&tile.terrain) {
             tile.terrain = *new_type;
         }
     }
 
-    /// Convert a scenario from AoC to WK in-place.
+    /// Convert a scenario from `AoC` to WK in-place.
     pub fn convert(&self, scen: &mut Scenario) -> Result<(), ConvertError> {
         for object in scen.objects_mut() {
             self.convert_object(object);

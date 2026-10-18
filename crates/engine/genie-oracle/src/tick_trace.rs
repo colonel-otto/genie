@@ -20,9 +20,9 @@ pub enum TraceError {
 impl std::fmt::Display for TraceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TraceError::NotATrace => write!(f, "not a GRTICK1 trace"),
-            TraceError::Inflate(e) => write!(f, "the rows do not inflate: {e}"),
-            TraceError::Truncated => write!(f, "the rows end before the last tick"),
+            Self::NotATrace => write!(f, "not a GRTICK1 trace"),
+            Self::Inflate(e) => write!(f, "the rows do not inflate: {e}"),
+            Self::Truncated => write!(f, "the rows end before the last tick"),
         }
     }
 }
@@ -66,26 +66,31 @@ impl TickTrace {
         Ok(Self { times, lanes })
     }
 
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.times.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.times.is_empty()
     }
 
     /// The world time after tick `tick` (0-based), in milliseconds.
+    #[must_use]
     pub fn world_time(&self, tick: usize) -> u32 {
         self.times[tick]
     }
 
     /// The lanes after tick `tick`, in lobby order.
+    #[must_use]
     pub fn lanes(&self, tick: usize) -> &[[u32; 11]] {
         &self.lanes[tick]
     }
 
     /// The first (tick, lane, word) where two traces differ, over the ticks both hold.
-    pub fn first_difference(&self, other: &TickTrace) -> Option<(usize, usize, usize)> {
+    #[must_use]
+    pub fn first_difference(&self, other: &Self) -> Option<(usize, usize, usize)> {
         self.lanes
             .iter()
             .zip(&other.lanes)

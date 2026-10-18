@@ -267,21 +267,20 @@ impl Turns {
             if m.kind != COMBAT {
                 return Err(Unsupported("an effect on a master of another type"));
             }
-            match attribute {
-                HIT_POINTS => m.hit_points = m.hit_points.wrapping_add(amount as i32 as i16),
-                _ => {
-                    let (code, delta) = if amount < 0.0 {
-                        let u = (-amount) as i32 as u16;
-                        (u, (u & 0xff).wrapping_neg())
-                    } else {
-                        let u = amount as i32 as u16;
-                        (u, u & 0xff)
-                    };
-                    let armor_class = (code as i16) >> 8;
-                    // the master's armor list (+0x808) may be missing: then nothing changes
-                    if let Some(a) = m.armors.iter_mut().find(|a| a.0 == armor_class) {
-                        a.1 = a.1.wrapping_add(delta as i16);
-                    }
+            if attribute == HIT_POINTS {
+                m.hit_points = m.hit_points.wrapping_add(amount as i32 as i16)
+            } else {
+                let (code, delta) = if amount < 0.0 {
+                    let u = (-amount) as i32 as u16;
+                    (u, (u & 0xff).wrapping_neg())
+                } else {
+                    let u = amount as i32 as u16;
+                    (u, u & 0xff)
+                };
+                let armor_class = (code as i16) >> 8;
+                // the master's armor list (+0x808) may be missing: then nothing changes
+                if let Some(a) = m.armors.iter_mut().find(|a| a.0 == armor_class) {
+                    a.1 = a.1.wrapping_add(delta as i16);
                 }
             }
         }

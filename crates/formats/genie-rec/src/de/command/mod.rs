@@ -13,6 +13,7 @@
 //! tail: the object ids most commands carry, or raw bytes. Bytes that no code reads stay as `gap_*`
 //! arrays, so a decoded packet writes back byte for byte.
 
+#[allow(missing_docs, clippy::all, clippy::pedantic, clippy::nursery)] // generated
 mod generated;
 
 pub use generated::*;

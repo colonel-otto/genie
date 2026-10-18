@@ -60,7 +60,7 @@ pub enum ObjectsList {
 
 impl Default for ObjectsList {
     fn default() -> Self {
-        ObjectsList::List(vec![])
+        Self::List(vec![])
     }
 }
 
@@ -72,16 +72,16 @@ impl ObjectsList {
             for _ in 0..count {
                 list.push(input.read_i32::<LE>()?.try_into().unwrap());
             }
-            Ok(ObjectsList::List(list))
+            Ok(Self::List(list))
         } else {
-            Ok(ObjectsList::SameAsLast)
+            Ok(Self::SameAsLast)
         }
     }
 
     /// Write a list of objects to an output stream.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        if let ObjectsList::List(list) = self {
-            for entry in list.iter().cloned() {
+        if let Self::List(list) = self {
+            for entry in list.iter().copied() {
                 output.write_u32::<LE>(entry.into())?;
             }
         }
@@ -91,15 +91,17 @@ impl ObjectsList {
     /// The amount of objects contained in this list.
     ///
     /// For `ObjectsList::SameAsLast` this returns 0.
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         match self {
-            ObjectsList::SameAsLast => 0,
-            ObjectsList::List(list) => list.len(),
+            Self::SameAsLast => 0,
+            Self::List(list) => list.len(),
         }
     }
 
     /// Does this list contain 0 objects?
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }
@@ -120,7 +122,7 @@ pub struct OrderCommand {
 impl OrderCommand {
     /// Read an Order command from an input stream.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
-        let mut command = OrderCommand {
+        let mut command = Self {
             player_id: input.read_u8()?.into(),
             ..Default::default()
         };
@@ -136,11 +138,7 @@ impl OrderCommand {
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.player_id.into())?;
         output.write_all(&[0, 0])?;
-        output.write_i32::<LE>(
-            self.target_id
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u32::<LE>(self.objects.len().try_into().unwrap())?;
         output.write_f32::<LE>(self.location.0)?;
         output.write_f32::<LE>(self.location.1)?;
@@ -161,7 +159,7 @@ impl StopCommand {
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = input.read_i8()?;
-        command.objects = ObjectsList::read_from(input, selected_count as i32)?;
+        command.objects = ObjectsList::read_from(input, i32::from(selected_count))?;
         Ok(command)
     }
 
@@ -193,14 +191,14 @@ impl WorkCommand {
         let selected_count = input.read_i8()?;
         input.skip(3)?;
         command.location = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
-        command.objects = ObjectsList::read_from(input, selected_count as i32)?;
+        command.objects = ObjectsList::read_from(input, i32::from(selected_count))?;
         Ok(command)
     }
 
     /// Write this Work command to an output stream.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
-        output.write_i32::<LE>(self.target_id.map(|u| u32::from(u) as i32).unwrap_or(-1))?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |u| u32::from(u) as i32))?;
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0, 0])?;
         output.write_f32::<LE>(self.location.0)?;
@@ -226,7 +224,7 @@ pub struct MoveCommand {
 impl MoveCommand {
     /// Read a Move command from an input stream.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
-        let mut command = MoveCommand {
+        let mut command = Self {
             player_id: input.read_u8()?.into(),
             ..Default::default()
         };
@@ -235,14 +233,14 @@ impl MoveCommand {
         let selected_count = input.read_i8()?;
         input.skip(3)?;
         command.location = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
-        command.objects = ObjectsList::read_from(input, selected_count as i32)?;
+        command.objects = ObjectsList::read_from(input, i32::from(selected_count))?;
         Ok(command)
     }
 
     /// Write this Move command to an output stream.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
-        output.write_i32::<LE>(self.target_id.map(|u| u32::from(u) as i32).unwrap_or(-1))?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |u| u32::from(u) as i32))?;
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0, 0])?;
         output.write_f32::<LE>(self.location.0)?;
@@ -307,7 +305,7 @@ pub struct AddResourceCommand {
 }
 
 impl AddResourceCommand {
-    /// Read an AddResource command from an input stream.
+    /// Read an `AddResource` command from an input stream.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let player_id = input.read_u8()?.into();
         let resource = input.read_u8()?;
@@ -320,7 +318,7 @@ impl AddResourceCommand {
         })
     }
 
-    /// Write this AddResource command to an output stream.
+    /// Write this `AddResource` command to an output stream.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.player_id.into())?;
         output.write_u8(self.resource)?;
@@ -485,7 +483,7 @@ pub struct UnitAIStateCommand {
 }
 
 impl UnitAIStateCommand {
-    /// Read a UnitAIState command from an input stream.
+    /// Read a `UnitAIState` command from an input stream.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let selected_count = input.read_u8()?;
         let state = input.read_i8()?;
@@ -493,7 +491,7 @@ impl UnitAIStateCommand {
         Ok(Self { state, objects })
     }
 
-    /// Write this UnitAIState command to an output stream.
+    /// Write this `UnitAIState` command to an output stream.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.objects.len().try_into().unwrap())?;
         output.write_i8(self.state)?;
@@ -526,11 +524,7 @@ impl GuardCommand {
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
-        output.write_i32::<LE>(
-            self.target_id
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
         self.objects.write_to(output)?;
         Ok(())
     }
@@ -560,11 +554,7 @@ impl FollowCommand {
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
-        output.write_i32::<LE>(
-            self.target_id
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
         self.objects.write_to(output)?;
         Ok(())
     }
@@ -586,10 +576,10 @@ impl PatrolCommand {
         let waypoint_count = input.read_u8()?;
         let _padding = input.read_u8()?;
         let mut raw_waypoints = [(0.0, 0.0); 10];
-        for w in raw_waypoints.iter_mut() {
+        for w in &mut raw_waypoints {
             w.0 = input.read_f32::<LE>()?;
         }
-        for w in raw_waypoints.iter_mut() {
+        for w in &mut raw_waypoints {
             w.1 = input.read_f32::<LE>()?;
         }
         command
@@ -605,10 +595,10 @@ impl PatrolCommand {
         output.write_u8(self.waypoints.len().try_into().unwrap())?;
         output.write_u8(0)?;
         for i in 0..10 {
-            output.write_f32::<LE>(self.waypoints.get(i).cloned().unwrap_or_default().0)?;
+            output.write_f32::<LE>(self.waypoints.get(i).copied().unwrap_or_default().0)?;
         }
         for i in 0..10 {
-            output.write_f32::<LE>(self.waypoints.get(i).cloned().unwrap_or_default().1)?;
+            output.write_f32::<LE>(self.waypoints.get(i).copied().unwrap_or_default().1)?;
         }
         self.objects.write_to(output)?;
         Ok(())
@@ -647,7 +637,7 @@ impl FormFormationCommand {
     }
 }
 
-/// Meta-command for UserPatch's new AI commands.
+/// Meta-command for `UserPatch`'s new AI commands.
 #[derive(Debug, Default, Clone)]
 pub struct UserPatchAICommand {
     pub player_id: PlayerID,
@@ -676,8 +666,7 @@ impl UserPatchAICommand {
         let num_params = (size - 4) / 4;
         assert!(
             num_params < 4,
-            "UserPatchAICommand needs more room for {} params",
-            num_params
+            "UserPatchAICommand needs more room for {num_params} params"
         );
         let ai_action = input.read_u8()?;
         let player_id = input.read_u8()?.into();
@@ -916,7 +905,11 @@ impl GameCommand {
             var4,
         } = RawGameCommand::read_from(input)?;
 
-        use GameCommand::*;
+        use GameCommand::{
+            AddFarmReseedQueue, AlliedVictory, Cheat, FarmReseedAutoQueue, Inventory, QuickBuild,
+            RemoveFarmReseedQueue, SetGameSpeed, SetStrategicNumber, SharedLos, Spies, Unknown0x0c,
+            UpgradeTown,
+        };
         match game_command {
             0x01 => Ok(SetGameSpeed {
                 player_id: var1.try_into().unwrap(),
@@ -966,7 +959,7 @@ impl GameCommand {
             0x10 => Ok(FarmReseedAutoQueue {
                 player_id: var1.try_into().unwrap(),
             }),
-            _ => panic!("unimplemented game command {:#x}", game_command),
+            _ => panic!("unimplemented game command {game_command:#x}"),
         }
     }
 }
@@ -1053,17 +1046,17 @@ pub struct AttackGroundCommand {
 }
 
 impl AttackGroundCommand {
-    /// Read a AttackGround command from an input stream.
+    /// Read a `AttackGround` command from an input stream.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = i32::from(input.read_i8()?);
         input.skip(2)?;
         command.location = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
-        command.objects = ObjectsList::read_from(input, selected_count as i32)?;
+        command.objects = ObjectsList::read_from(input, selected_count)?;
         Ok(command)
     }
 
-    /// Write this AttackGround command to an output stream.
+    /// Write this `AttackGround` command to an output stream.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
@@ -1098,11 +1091,7 @@ impl RepairCommand {
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.repairers.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
-        output.write_i32::<LE>(
-            self.target_id
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
         self.repairers.write_to(output)?;
         Ok(())
     }
@@ -1155,7 +1144,7 @@ impl FlareCommand {
             -1,
             "found flare with unexpected unit id"
         );
-        for receive in command.recipients.iter_mut() {
+        for receive in &mut command.recipients {
             *receive = input.read_u8()? != 0;
         }
         input.skip(3)?;
@@ -1254,7 +1243,7 @@ impl SetGatherPointCommand {
         command.target_id = read_opt_u32(&mut input)?;
         command.target_type_id = match input.read_u16::<LE>()? {
             0xFFFF => None,
-            id => Some(id.try_into().unwrap()),
+            id => Some(id.into()),
         };
         input.skip(2)?;
         command.location = Some((input.read_f32::<LE>()?, input.read_f32::<LE>()?));
@@ -1265,18 +1254,15 @@ impl SetGatherPointCommand {
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.buildings.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
-        output.write_u32::<LE>(self.target_id.map(|id| id.into()).unwrap_or(0xFFFF_FFFF))?;
-        output.write_u16::<LE>(self.target_type_id.map(|id| id.into()).unwrap_or(0xFFFF))?;
+        output.write_u32::<LE>(self.target_id.map_or(0xFFFF_FFFF, Into::into))?;
+        output.write_u16::<LE>(self.target_type_id.map_or(0xFFFF, Into::into))?;
         output.write_all(&[0, 0])?;
-        match self.location {
-            Some((x, y)) => {
-                output.write_f32::<LE>(x)?;
-                output.write_f32::<LE>(y)?;
-            }
-            None => {
-                output.write_f32::<LE>(0.0)?;
-                output.write_f32::<LE>(0.0)?;
-            }
+        if let Some((x, y)) = self.location {
+            output.write_f32::<LE>(x)?;
+            output.write_f32::<LE>(y)?;
+        } else {
+            output.write_f32::<LE>(0.0)?;
+            output.write_f32::<LE>(0.0)?;
         }
         self.buildings.write_to(output)?;
         Ok(())
@@ -1444,7 +1430,7 @@ impl Command {
             0x7b => BuyResourceCommand::read_from(&mut cursor).map(Command::BuyResource),
             0x7f => Unknown7FCommand::read_from(&mut cursor).map(Command::Unknown7F),
             0x80 => BackToWorkCommand::read_from(&mut cursor).map(Command::BackToWork),
-            id => panic!("unsupported command type {:#x}", id),
+            id => panic!("unsupported command type {id:#x}"),
         };
         // Consume any excess bytes.
         std::io::copy(&mut cursor, &mut std::io::sink())?;
@@ -1463,7 +1449,7 @@ pub struct Time {
 
 impl Time {
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
-        let mut time = Time {
+        let mut time = Self {
             time: input.read_u32::<LE>()?,
             ..Default::default()
         };
@@ -1510,7 +1496,7 @@ impl Sync {
 #[derive(Debug, Default, Clone)]
 pub struct Meta {
     /// The version of the action log format.
-    /// `3` for AoC 1.0, `4` for AoC 1.0c and UserPatch.
+    /// `3` for `AoC` 1.0, `4` for `AoC` 1.0c and `UserPatch`.
     pub log_version: Option<u32>,
     pub checksum_interval: u32,
     pub is_multiplayer: bool,
@@ -1558,7 +1544,7 @@ impl Meta {
     /// Conquerors and all subsequent versions.
     pub fn read_from_mgx(mut input: impl Read) -> Result<Self> {
         let log_version = input.read_u32::<LE>()?;
-        assert!(matches!(log_version, 3 | 4 | 5));
+        assert!(matches!(log_version, 3..=5));
         let mut meta = Self::read_from_inner(&mut input)?;
         meta.log_version = Some(log_version);
         if log_version == 5 {

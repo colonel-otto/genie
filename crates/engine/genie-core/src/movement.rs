@@ -4,7 +4,7 @@
 //! Per tick, `RGE_Moving_Object::update` (`0x14114dbb0`) runs first: it brings the forward speed
 //! toward the acceleration's target and moves the unit `dt × speed` along the forward vector it had
 //! after the last tick ([`Mover::step_velocity`]). The actions run later in the same update; a
-//! MoveTo calls the motion step (object slot 193, `0x141150f00`, [`Mover::motion`]), which turns the
+//! `MoveTo` calls the motion step (object slot 193, `0x141150f00`, [`Mover::motion`]), which turns the
 //! unit toward its waypoint and sets the acceleration for the next tick.
 //!
 //! Vectors are the game's `BVector`s ([`fmath::Vec3`]: x, height, y).
@@ -76,12 +76,12 @@ pub struct MoveStats {
     /// (`+0x740`), times the current sprite's speed factor when that is above 0.
     pub speed: f32,
     /// The top speed with the master's walking sprite (`+0x748`) and with its running one
-    /// (`+0x750`, the walking one without it): a MoveTo that runs or walks shows one, and the
+    /// (`+0x750`, the walking one without it): a `MoveTo` that runs or walks shows one, and the
     /// unit moves at its speed.
     pub walk_speed: f32,
     pub run_speed: f32,
-    /// The top speed with the master's standing sprite (`+0x470`), which a non-quiet MoveTo's end
-    /// (set_state 1 or 13, slot 0x68 with slot 0x798's) and a stop in state 2 show.
+    /// The top speed with the master's standing sprite (`+0x470`), which a non-quiet `MoveTo`'s end
+    /// (`set_state` 1 or 13, slot 0x68 with slot 0x798's) and a stop in state 2 show.
     pub stand_speed: f32,
     /// Master `+0x774`: the most the unit turns per second ([`turn_rate`]).
     pub turn_rate: f32,
@@ -143,10 +143,10 @@ pub struct Mover {
     pub ignore_units: Vec<i32>,
     /// `+0x7e8`: where the unit faces, radians 0 to 2π ([`crate::facing`]).
     pub angle: f32,
-    /// The point of the MoveTo the unit walks with (`+0x38`..`+0x40`), when it walks to a target
-    /// object: where the target stood when the MoveTo last asked for a path, which its check of
+    /// The point of the `MoveTo` the unit walks with (`+0x38`..`+0x40`), when it walks to a target
+    /// object: where the target stood when the `MoveTo` last asked for a path, which its check of
     /// the target reads ([`crate::move_to::target_moved`]). A stop leaves it (the motion step's
-    /// pause stops a unit whose MoveTo goes on); a new MoveTo sets it.
+    /// pause stops a unit whose `MoveTo` goes on); a new `MoveTo` sets it.
     pub move_to_point: Option<[f32; 3]>,
     /// A stop (slot 0x5d0) cleared the object's animation speed (`+0x7b8`), which the unit
     /// holds: [`crate::turn::Unit`] takes it.
@@ -168,7 +168,7 @@ pub struct Me {
     pub action_state: u8,
 }
 
-/// What the motion step returns to the MoveTo action.
+/// What the motion step returns to the `MoveTo` action.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Motion {
     /// 0: still on the way.
@@ -256,18 +256,18 @@ const PLANS: u32 = 3;
 const CONTINUE: i32 = 10;
 
 /// A position on the map as the game's vector (x, height, y), and back.
-fn vector([x, y, z]: [f32; 3]) -> Vec3 {
+const fn vector([x, y, z]: [f32; 3]) -> Vec3 {
     [x, z, y]
 }
 
-fn map_position([x, z, y]: Vec3) -> [f32; 3] {
+const fn map_position([x, z, y]: Vec3) -> [f32; 3] {
     [x, y, z]
 }
 
 impl PathData {
     /// A new level (`FUN_140f8f670`) with a new path (`FUN_14152eea0`, flags 6, made `now`).
-    fn new(now: u32) -> Self {
-        PathData {
+    const fn new(now: u32) -> Self {
+        Self {
             level: 0,
             linked_type: 0,
             points: Vec::new(),
@@ -298,7 +298,7 @@ impl PathData {
     }
 
     /// The level has waypoints after the current one (`FUN_140f96050` on a top level).
-    fn has_more(&self) -> bool {
+    const fn has_more(&self) -> bool {
         !self.points.is_empty() && self.waypoint < self.points.len() as i32 - 1
     }
 }
@@ -371,6 +371,7 @@ const TWO_PI: f32 = crate::image::movement::TWO_PI;
 /// facets times the turn speed are the time of a revolution (`+0x778`, slot 0x98
 /// `FUN_1410e39e0`), and 2π over that is the rate (`+0x77c`, copied to `+0x774`); without either
 /// the largest float. The `.dat`'s own turning values do not survive the copy.
+#[must_use]
 pub fn turn_rate(turn_speed: f32, walking_facets: Option<i16>) -> f32 {
     let Some(facets) = walking_facets.filter(|_| turn_speed != 0.0) else {
         return f32::MAX;
@@ -440,7 +441,7 @@ pub struct Planning<'a> {
 
 impl Planning<'_> {
     /// The same planning for a call that ends before this one is used again.
-    pub fn reborrow(&mut self) -> Planning<'_> {
+    pub const fn reborrow(&mut self) -> Planning<'_> {
         Planning {
             pathing: &mut *self.pathing,
             now: self.now,
@@ -475,6 +476,7 @@ enum Step {
 
 /// The squared distance between two footprints on the ground (`FUN_14118f8c0`): per axis the
 /// centre distance minus both radii, at least 0, squared and summed.
+#[must_use]
 pub fn footprint_gap_squared(
     a: [f32; 3],
     a_radius: [f32; 2],
@@ -488,6 +490,7 @@ pub fn footprint_gap_squared(
 
 /// The distance between two footprints on the ground (`FUN_14118f680`): per axis the centre
 /// distance minus both radii, at least 0, then the length of the two.
+#[must_use]
 pub fn footprint_gap(a: [f32; 3], a_radius: [f32; 2], b: [f32; 3], b_radius: [f32; 2]) -> f32 {
     let x = ((b[0] - a[0]).abs() - (b_radius[0] + a_radius[0])).max(0.0);
     let y = ((b[1] - a[1]).abs() - (b_radius[1] + a_radius[1])).max(0.0);
@@ -1073,7 +1076,7 @@ impl Mover {
     /// The unit shows its master's standing sprite (slot 0x68 with slot 0x798's): its top speed
     /// (slot 0x208, the master's speed times the current sprite's factor) is the standing
     /// sprite's.
-    pub(crate) fn shows_standing(&mut self) {
+    pub(crate) const fn shows_standing(&mut self) {
         self.stats.speed = self.stats.stand_speed;
     }
 
@@ -1129,6 +1132,7 @@ impl Mover {
     }
 
     /// Object slot 185 (`0x1411583d0`): the unit has velocity data whose velocity is longer than 0.
+    #[must_use]
     pub fn is_moving(&self) -> bool {
         self.velocity.as_ref().is_some_and(|v| {
             let [x, y, z] = v.velocity;
@@ -1236,18 +1240,7 @@ impl Mover {
         let mut partial = false;
         let mut planned = false;
         let mut failed = false;
-        if !solid {
-            let level = &self.paths[0];
-            path.insert(0, position);
-            let to = if level.waypoint < level.points.len() as i32 {
-                level.point(level.waypoint)?
-            } else {
-                position
-            };
-            path.push(to);
-            path.measure();
-            found = true;
-        } else {
+        if solid {
             let way = ground(waypoint, position);
             // FUN_141158210 is 1 only on an `E` tile in game type 12
             if plan.pathing.game_type == 12 {
@@ -1469,6 +1462,17 @@ impl Mover {
             if !(path.length <= way * DETOUR || path.length <= LONG) {
                 new.repath_time = (plan.object.rand15() as f32 * 0.5) / 32767.0 + 2.0;
             }
+        } else {
+            let level = &self.paths[0];
+            path.insert(0, position);
+            let to = if level.waypoint < level.points.len() as i32 {
+                level.point(level.waypoint)?
+            } else {
+                position
+            };
+            path.push(to);
+            path.measure();
+            found = true;
         }
         if path.points.len() < 2 || path.length < EPSILON {
             return self.no_path(found, target, to_end);
@@ -1662,13 +1666,12 @@ impl Mover {
                             "a worker near a drop-off's walker whose path is this update's",
                         ));
                     }
-                    let start_blocked = match blocked {
-                        Some(b) => b,
-                        None => {
-                            let b = self.start_blocked(me, world, plan, t, to)?;
-                            blocked = Some(b);
-                            b
-                        }
+                    let start_blocked = if let Some(b) = blocked {
+                        b
+                    } else {
+                        let b = self.start_blocked(me, world, plan, t, to)?;
+                        blocked = Some(b);
+                        b
                     };
                     if !start_blocked {
                         continue;
@@ -2006,28 +2009,25 @@ impl Mover {
                 return Ok(true);
             }
         }
-        let long_target = match target {
-            Some((_, t)) => {
-                let gap2 = footprint_gap_squared(me.position, ground, t.position, t.radius);
-                if gap2 < REACH_NEAR {
-                    return Ok(false);
-                }
-                let gap = footprint_gap(me.position, ground, t.position, t.radius);
-                Some(crate::long_path::LongTarget::new(
-                    t.position, t.radius, gap, gap2,
-                ))
+        let long_target = if let Some((_, t)) = target {
+            let gap2 = footprint_gap_squared(me.position, ground, t.position, t.radius);
+            if gap2 < REACH_NEAR {
+                return Ok(false);
             }
-            None => {
-                let gap = |d: f32, r: f32| {
-                    let g = d.abs() - r;
-                    if 0.0 <= g { g } else { 0.0 }
-                };
-                let (gx, gy) = (gap(dx, radius[0]), gap(dy, radius[1]));
-                if gx * gx + gy * gy < REACH_NEAR {
-                    return Ok(false);
-                }
-                None
+            let gap = footprint_gap(me.position, ground, t.position, t.radius);
+            Some(crate::long_path::LongTarget::new(
+                t.position, t.radius, gap, gap2,
+            ))
+        } else {
+            let gap = |d: f32, r: f32| {
+                let g = d.abs() - r;
+                if 0.0 <= g { g } else { 0.0 }
+            };
+            let (gx, gy) = (gap(dx, radius[0]), gap(dy, radius[1]));
+            if gx * gx + gy * gy < REACH_NEAR {
+                return Ok(false);
             }
+            None
         };
         if !self.ignore_units.is_empty() {
             return Err(Unsupported(
@@ -2057,7 +2057,7 @@ impl Mover {
         crate::long_path::reaches(world.tiles(), world.map, &req)
     }
 
-    /// The test before a non-quiet MoveTo's path end follows its moved target (`0x140aa2a70` in
+    /// The test before a non-quiet `MoveTo`'s path end follows its moved target (`0x140aa2a70` in
     /// state 4): the top path (`FUN_140f960f0`) and the walked level's own path, that level being
     /// level 0, are both held, and the level's current waypoint (`FUN_140f9bcd0`) is the top
     /// path's last point (`FUN_140f95fb0`, compared x, y, z). A top path of one point, where the
@@ -2088,7 +2088,7 @@ impl Mover {
             .filter(|p| !p.is_empty())
     }
 
-    /// The path request of a MoveTo (`FUN_14114e410`, without waypoints of its own): one level of
+    /// The path request of a `MoveTo` (`FUN_14114e410`, without waypoints of its own): one level of
     /// path data, the top (level 2), whose path runs from the unit to the goal (`x, y, z` on the
     /// map) unless the two are less than 1e-7 apart on the ground, in state 2: the next motion step
     /// plans the path to walk. A unit with future path data (`+0x860`) or waypoints of its own

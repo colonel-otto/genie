@@ -2,7 +2,7 @@
 //! values, the target's class and point, the timers, a boar's origin, the actions. For the tick
 //! oracle's snapshots (`load_oracle.playback --snapshot TICK`), the game's own saves.
 //!
-//! cargo run --release -p genie-oracle --example unit_ais -- SAVE PLAYER ID...
+//! cargo run --release -p genie-oracle --example `unit_ais` -- SAVE PLAYER ID...
 
 use genie_rec::de;
 

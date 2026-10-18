@@ -57,7 +57,8 @@ pub struct Mesh {
 
 /// Corner `k` of a rectangle (`FUN_14087c6b0`): 0 = (x0, y0), 1 = (x1, y0), 2 = (x1, y1),
 /// 3 = (x0, y1).
-pub fn corner(r: Rect, k: u32) -> [i32; 2] {
+#[must_use]
+pub const fn corner(r: Rect, k: u32) -> [i32; 2] {
     match k {
         0 => [r[0], r[1]],
         1 => [r[2], r[1]],
@@ -173,7 +174,7 @@ fn tile_range(r: Rect, width: u32) -> (u32, u32, u32, u32) {
 }
 
 /// The overlap of two rectangles (`FUN_14087c550` of the larger lows and smaller highs).
-fn overlap(a: Rect, b: Rect) -> Rect {
+const fn overlap(a: Rect, b: Rect) -> Rect {
     [
         if a[0] < b[0] { b[0] } else { a[0] },
         if a[1] < b[1] { b[1] } else { a[1] },
@@ -190,8 +191,9 @@ fn half(v: i32) -> i32 {
 }
 
 impl Mesh {
+    #[must_use]
     pub fn new(width: u32) -> Self {
-        Mesh {
+        Self {
             shapes: Vec::new(),
             sides: Vec::new(),
             tiles: vec![Vec::new(); (width * width) as usize],
@@ -201,6 +203,7 @@ impl Mesh {
     }
 
     /// Whether slot `id` holds a shape (a free slot is all zero past its link).
+    #[must_use]
     pub fn is_shape(&self, id: u32) -> bool {
         self.shapes
             .get(id as usize)

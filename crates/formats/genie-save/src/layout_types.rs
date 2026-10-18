@@ -141,6 +141,7 @@ impl std::fmt::Display for UnsupportedFeature {
 impl std::error::Error for UnsupportedFeature {}
 
 /// The part named by an [`UnsupportedFeature`] anywhere in a read error, with its position.
+#[must_use]
 pub fn unsupported_in(e: &binrw::Error) -> Option<(&'static str, usize)> {
     let root = e.root_cause();
     let what = root.custom_err::<UnsupportedFeature>()?.0;
@@ -186,7 +187,7 @@ impl BinWrite for Unsupported {
 /// A value with the stream position it was read at: the reader reports where the save's sections
 /// start (aoe2de-exe-re `layout`, overlay `positioned`). Writes the value only. binrw's own
 /// `PosValue` compares only with the bare value, so a struct holding it cannot derive `PartialEq`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Positioned<T> {
     pub pos: u64,
     pub val: T,
@@ -209,7 +210,7 @@ impl<T: BinRead> BinRead for Positioned<T> {
         args: Self::Args<'_>,
     ) -> BinResult<Self> {
         let pos = reader.stream_position()?;
-        Ok(Positioned {
+        Ok(Self {
             pos,
             val: T::read_options(reader, endian, args)?,
         })
@@ -276,11 +277,11 @@ mod tests {
     /// Read, then write: the same bytes.
     fn round_trip<T>(bytes: &[u8]) -> T
     where
-        T: for<'a> BinRead<Args<'a> = ()> + for<'a> binrw::BinWrite<Args<'a> = ()>,
+        T: for<'a> BinRead<Args<'a> = ()> + for<'a> BinWrite<Args<'a> = ()>,
     {
         let value = T::read_le(&mut Cursor::new(bytes)).unwrap();
         let mut out = Cursor::new(Vec::new());
-        binrw::BinWrite::write_le(&value, &mut out).unwrap();
+        BinWrite::write_le(&value, &mut out).unwrap();
         assert_eq!(out.into_inner(), bytes);
         value
     }

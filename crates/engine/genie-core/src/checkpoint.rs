@@ -17,7 +17,7 @@ pub struct ObjectState {
 }
 
 /// The type (virtual slot 166) and state (virtual slot 86) of an object's top action.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TopAction {
     pub kind: i16,
     pub state: u8,
@@ -33,6 +33,7 @@ pub struct PlayerState {
 }
 
 /// The player's 11-word block, in the order the recording stores it.
+#[must_use]
 pub fn player_block(player: &PlayerState) -> [u32; 11] {
     let mut w = [0u32; 11];
     w[0] = player.sleeping_count;
@@ -67,6 +68,7 @@ fn action_checksum(o: &ObjectState) -> u32 {
 
 /// `CVTTSS2SI`: f32 to i32, truncating toward zero. NaN and values outside the i32 range give
 /// `i32::MIN` (the "integer indefinite" value), where Rust's `as` would saturate.
+#[must_use]
 pub fn cvttss2si(value: f32) -> i32 {
     if value.is_nan() || !(-2_147_483_648.0..2_147_483_648.0).contains(&value) {
         i32::MIN

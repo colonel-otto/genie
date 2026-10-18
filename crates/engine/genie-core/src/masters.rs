@@ -50,7 +50,7 @@ pub struct Task {
 /// A task for any target, with no resource, terrain or requirement.
 impl Default for Task {
     fn default() -> Self {
-        Task {
+        Self {
             id: 0,
             action_type: 0,
             object_group: -1,
@@ -75,7 +75,7 @@ impl Default for Task {
 
 /// What a building's completion (`FUN_1411dbb70` with 2) reads of its master, the `.dat`'s type
 /// 80 values.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BuildingMaster {
     /// `+0x980`, `adjacent_mode`: walls and gates join their neighbours (`FUN_1411ce890`).
     pub adjacent_mode: u8,
@@ -97,7 +97,7 @@ pub struct Master {
     pub kind: u8,
     /// `+0x410`.
     pub class: i16,
-    /// `+0x7b8`, the `.dat`'s TaskSwapGroup (the save does not carry it); 0 for none.
+    /// `+0x7b8`, the `.dat`'s `TaskSwapGroup` (the save does not carry it); 0 for none.
     pub task_by_group: u8,
     /// `radius_x`, `radius_y` (`+0x5d8`, `+0x5dc`).
     pub radius: [f32; 2],
@@ -253,9 +253,10 @@ impl Masters {
             }
             by_id[i] = Some(m);
         }
-        Masters { by_id }
+        Self { by_id }
     }
 
+    #[must_use]
     pub fn get(&self, id: i16) -> Option<&Master> {
         self.by_id.get(usize::try_from(id).ok()?)?.as_ref()
     }

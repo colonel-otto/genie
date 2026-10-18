@@ -11,7 +11,7 @@ pub struct PlayerEnds {
 
 /// One player's section: the player list's load of one player (`WorldPlayerFactory.cpp`): the
 /// class byte, the class's load (`WorldPlayer.cpp` and the class's own fields), then the masters,
-/// maps and objects (WorldPlayer vtable slot 29).
+/// maps and objects (`WorldPlayer` vtable slot 29).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlayerSection<'a> {
     pub ends: PlayerEnds,
@@ -20,6 +20,7 @@ pub struct PlayerSection<'a> {
 
 impl<'a> PlayerSection<'a> {
     /// The player load of the section's class.
+    #[must_use]
     pub fn world_player(&self) -> &'a WorldPlayer {
         self.player
             .world_player()
@@ -27,6 +28,7 @@ impl<'a> PlayerSection<'a> {
     }
 
     /// The masters, maps and objects.
+    #[must_use]
     pub fn objects(&self) -> &'a PlayerObjects {
         self.player
             .objects()

@@ -10,7 +10,7 @@ use std::io::{Read, Result, Write};
 pub struct SoundID(u16);
 impl From<u16> for SoundID {
     fn from(n: u16) -> Self {
-        SoundID(n)
+        Self(n)
     }
 }
 
@@ -67,7 +67,7 @@ pub struct SoundItem {
 impl SoundItem {
     /// Read this sound item from an input stream.
     pub fn read_from<R: Read>(input: &mut R, _version: FileVersion) -> Result<Self> {
-        let mut item = SoundItem::default();
+        let mut item = Self::default();
         // TODO actually use this
         let mut filename = [0u8; 13];
         input.read_exact(&mut filename)?;
@@ -97,7 +97,7 @@ impl SoundItem {
 impl Sound {
     /// Read this sound from an input stream.
     pub fn read_from<R: Read>(input: &mut R, version: FileVersion) -> Result<Self> {
-        let mut sound = Sound {
+        let mut sound = Self {
             id: input.read_u16::<LE>()?.into(),
             play_delay: input.read_i16::<LE>()?,
             ..Default::default()
@@ -126,12 +126,14 @@ impl Sound {
     }
 
     /// Get the number of sound files that are part of this "conceptual" sound.
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.items.len()
     }
 
     /// Returns true if there are no sound files.
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
 }

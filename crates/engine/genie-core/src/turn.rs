@@ -60,7 +60,7 @@ pub struct Unit {
     pub build: Option<BuildAction>,
     /// A moving object's movement state (types 30 and up).
     pub mover: Option<Mover>,
-    /// A MoveTo as the object's own top action (a wandering animal).
+    /// A `MoveTo` as the object's own top action (a wandering animal).
     pub move_to: Option<MoveToAction>,
     /// A bird's Fly action, its top action.
     pub fly: Option<Fly>,
@@ -141,7 +141,7 @@ pub struct GatherPoint {
     pub target_master: i16,
 }
 
-/// A recorded command, run in the command phase of its tick: after the frame seed's SeedAll, before
+/// A recorded command, run in the command phase of its tick: after the frame seed's `SeedAll`, before
 /// the players update (`TRIBE_Command::do_command`, `0x140e77b00`). The slice runs only what other
 /// players' lanes see of a command; the issuing player's lane stops.
 #[derive(Clone, Debug, PartialEq)]
@@ -206,17 +206,17 @@ pub enum Command {
     /// GATE (0x72, `do_command` case 0x72): the player's building `id` toggles its gate lock
     /// ([`Turns::gate`]).
     Gate { player: usize, id: i32 },
-    /// AUTO_SCOUT (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
+    /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
     /// auto scout order, or the stop order when it scouts already ([`Turns::auto_scout`]).
     AutoScout { player: usize, ids: Vec<i32> },
-    /// UNIT_AI_STATE (0x12, `FUN_140e6a7c0`): the unit AIs of `ids` (at most 60, the decoder's)
+    /// `UNIT_AI_STATE` (0x12, `FUN_140e6a7c0`): the unit AIs of `ids` (at most 60, the decoder's)
     /// take the stance `state` ([`Turns::unit_ai_state`]).
     UnitAiState {
         player: usize,
         ids: Vec<i32>,
         state: u8,
     },
-    /// UNIT_ORDER (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
+    /// `UNIT_ORDER` (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
     /// decoder's) take the order `action` ([`Turns::unit_order`]); `human` (`+0x20`) sets their
     /// last human order time first. Its target (`tId`, which action 5 reads), point, `qId`,
     /// `param` and the flags `+0x1d`, `+0x1e` are not read by the actions modelled.
@@ -287,7 +287,7 @@ const SPEED_EPSILON: f32 = crate::image::turn::SPEED_EPSILON;
 
 /// A queued villager's master: male when the 64-bit Action draw times 100 (wrapping) is below 50
 /// modulo 100.
-fn villager(draw: u64) -> i16 {
+const fn villager(draw: u64) -> i16 {
     if draw.wrapping_mul(100) % 100 < 50 {
         VILLAGER
     } else {
@@ -580,6 +580,7 @@ impl Unit {
     }
 
     /// What the walk reads of it when it meets it ([`crate::spatial::Gait`]).
+    #[must_use]
     pub fn gait(&self) -> Option<crate::spatial::Gait> {
         let m = self.mover.as_ref()?;
         Some(crate::spatial::Gait {
@@ -594,17 +595,19 @@ impl Unit {
     }
 
     /// The type of its top action, if it has one.
+    #[must_use]
     pub fn top_action_kind(&self) -> Option<i16> {
         self.top_action().map(|a| a.kind)
     }
 
     /// Its top action as the slice models it, type and state.
+    #[must_use]
     pub fn top_action(&self) -> Option<TopAction> {
         let action = |kind, state| TopAction { kind, state };
         None.or(self
             .artifact
             .map(|a| action(crate::artifact::ARTIFACT_TYPE, a.state)))
-            .or(self.build.map(|b| action(crate::build::BUILD, b.state)))
+            .or(self.build.map(|b| action(BUILD, b.state)))
             .or(self
                 .move_to
                 .map(|m| action(crate::move_to::MOVE_TO, m.state.number())))
@@ -622,6 +625,7 @@ impl Unit {
 
     /// The target of its top action ([`Unit::top_action`]), −1 for an action without one (an
     /// Artifact, a Fly, an Explore); None without an action the slice holds.
+    #[must_use]
     pub fn top_target(&self) -> Option<i32> {
         if self.artifact.is_some() {
             return Some(-1);
@@ -665,7 +669,7 @@ impl Unit {
     }
 
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes (`FUN_140a98620`; a
-    /// MoveTo's teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
+    /// `MoveTo`'s teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
     /// 0x68 with slot 0x798's, [`crate::attack::set_sprite`]) where the slice holds its sprite.
     /// A Build waiting without its foundation (state 3) goes with nothing to release
     /// (`FUN_140aadbf0`); other actions' teardowns are not modelled.
@@ -723,7 +727,7 @@ impl Unit {
         effects: Vec<Effect>,
         class: Option<i16>,
         c: &mut Context<'_>,
-        others: &[Unit],
+        others: &[Self],
     ) -> Result<(), Unsupported> {
         for e in effects {
             match e {
@@ -758,9 +762,9 @@ impl Unit {
     }
 
     /// The hunt's state 8 after its load went (`0x140ac7a00` case 7, after `FUN_14119d310`): a
-    /// hunt with a target walks back to it (set_state 4), not modelled. One without asks its unit
+    /// hunt with a target walks back to it (`set_state` 4), not modelled. One without asks its unit
     /// AI: the queued orders (gather, hunt, on a target) whose target is gone or dead go
-    /// (`FUN_140c5de60`); orders left end the hunt (the AI's order and action clear, set_state
+    /// (`FUN_140c5de60`); orders left end the hunt (the AI's order and action clear, `set_state`
     /// 1, the action list removes it; its teardown's release of the drop site is not held, as its
     /// take is not). The target class (the AI's target's, else the hunt's `+0x68`) the
     /// civilian's slot 0x1b0 knows (`FUN_140c1c4f0`) takes the search by kind (slot 0x80), not
@@ -775,7 +779,7 @@ impl Unit {
     fn hunt_after_drop(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Unit],
+        others: &mut [Self],
     ) -> Result<(), Unsupported> {
         let hunt = self.hunt.as_ref().expect("the caller's hunt");
         let master = c
@@ -847,10 +851,10 @@ impl Unit {
             hunt.tear_down(self.mover.as_mut())?;
             return Ok(());
         }
-        let class = if ai.target_type != -1 {
-            ai.target_type
-        } else {
+        let class = if ai.target_type == -1 {
             i32::from(hunt.target_class)
+        } else {
+            ai.target_type
         };
         if ai.ai_type != crate::unit_ai::CIVILIAN {
             return Err(Unsupported(
@@ -1011,13 +1015,13 @@ impl Unit {
         Ok(())
     }
 
-    /// The hunt's set_state(8) after its gathering (`0x140ac60e0` case 8): a unit that carries
+    /// The hunt's `set_state(8)` after its gathering (`0x140ac60e0` case 8): a unit that carries
     /// nothing goes back to state 3 (not modelled). Without a drop site, its master's drop sites
     /// (`+0x7a0`; none when the first is −1) are searched among its player's objects, from the
     /// unit by path ([`drop_site_search`] with the unit), else by distance from its place (without
-    /// it); none found is not modelled (notify 0x203, set_state 2). The drop site found is the
-    /// second target (`FUN_140a7a190`) and a quiet MoveTo to it starts ([`HuntAction::set_drop`]).
-    fn hunt_drop_off(&mut self, c: &mut Context<'_>, others: &[Unit]) -> Result<(), Unsupported> {
+    /// it); none found is not modelled (notify 0x203, `set_state` 2). The drop site found is the
+    /// second target (`FUN_140a7a190`) and a quiet `MoveTo` to it starts ([`HuntAction::set_drop`]).
+    fn hunt_drop_off(&mut self, c: &mut Context<'_>, others: &[Self]) -> Result<(), Unsupported> {
         let w = DropWorld {
             masters: c.masters,
             spatial: c.spatial,
@@ -1035,7 +1039,7 @@ impl Unit {
     pub(crate) fn drop_off_in(
         &mut self,
         c: DropWorld<'_>,
-        others: &[Unit],
+        others: &[Self],
     ) -> Result<(), Unsupported> {
         if self.life.amount <= 0.0 {
             return Err(Unsupported(
@@ -1118,36 +1122,33 @@ impl Unit {
 
     /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at
     /// its own height: its top Explore takes the point (slot 0x48), else a new Explore
-    /// (`FUN_140a87d30`) becomes its only action (set_only_action, `FUN_14106e990`: the actions
-    /// it had go, `FUN_140a98620`, and the new one starts, `FUN_140a977e0`). A MoveTo of the
+    /// (`FUN_140a87d30`) becomes its only action (`set_only_action`, `FUN_14106e990`: the actions
+    /// it had go, `FUN_140a98620`, and the new one starts, `FUN_140a977e0`). A `MoveTo` of the
     /// Explore that goes stops the unit (its teardown, slot 0x5d0); other actions it would
     /// replace are not modelled.
     fn explore_to(&mut self, point: [f32; 2], c: &mut Context<'_>) -> Result<(), Unsupported> {
         let at = [point[0], point[1], self.position[2]];
-        let owner = match self.explore.as_mut() {
-            Some(e) => {
-                let walked = e.move_to.is_some();
-                let owner = e.take_point(at);
-                if walked {
-                    self.stop_mover()?;
-                }
-                owner
+        let owner = if let Some(e) = self.explore.as_mut() {
+            let walked = e.move_to.is_some();
+            let owner = e.take_point(at);
+            if walked {
+                self.stop_mover()?;
             }
-            None => {
-                if self.top_action().is_some() || self.unmodelled_action.is_some() {
-                    return Err(Unsupported("an Explore replacing another action"));
-                }
-                let (e, owner) = crate::explore::ExploreAction::new(at);
-                self.explore = Some(e);
-                owner
+            owner
+        } else {
+            if self.top_action().is_some() || self.unmodelled_action.is_some() {
+                return Err(Unsupported("an Explore replacing another action"));
             }
+            let (e, owner) = crate::explore::ExploreAction::new(at);
+            self.explore = Some(e);
+            owner
         };
         self.explore_owner(owner, c)
     }
 
-    /// What an Explore's set_state asks of its unit ([`crate::explore::Owner`]): its notify 0x202
+    /// What an Explore's `set_state` asks of its unit ([`crate::explore::Owner`]): its notify 0x202
     /// with the explore's action value to the unit AI, and the standing sprite (slot 0x68 with
-    /// the master's `+0x470`) where the slice holds the unit's sprite. Set_state 2's slots are
+    /// the master's `+0x470`) where the slice holds the unit's sprite. `Set_state` 2's slots are
     /// not modelled.
     fn explore_owner(
         &mut self,
@@ -1179,7 +1180,7 @@ impl Unit {
         Ok(())
     }
 
-    /// Slot 0x5d0 of a unit whose MoveTo went.
+    /// Slot 0x5d0 of a unit whose `MoveTo` went.
     fn stop_mover(&mut self) -> Result<(), Unsupported> {
         self.mover
             .as_mut()
@@ -1195,7 +1196,7 @@ impl Unit {
     fn seek_unexplored(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Unit],
+        others: &[Self],
     ) -> Result<[i32; 2], Unsupported> {
         let master = c
             .masters
@@ -1254,7 +1255,7 @@ impl Unit {
         }
     }
 
-    /// The death's set_state(3) of a combat object of type 70 (TRIBE_Combat_Object's,
+    /// The death's `set_state(3)` of a combat object of type 70 (`TRIBE_Combat_Object`'s,
     /// `FUN_14121cc40`, then the base `FUN_14119d710`, whose storage and sight are the caller's)
     /// and the static update's dying sprite after it (slot 0x7a0, then slot 0x68,
     /// `FUN_141217000`): its mesh shape and its obstruction record go (`FUN_141055b40`), its own
@@ -1357,7 +1358,7 @@ impl Unit {
     /// attack count, its reach ([`crate::missile::reach`]), the target's place as its point, the
     /// master's hit mode, the target and the shooter taken (slot 0x178 each), the shooter's place,
     /// master and owner with the missile's radii as its origin; the list's add starts it
-    /// (`FUN_140a9c5b0`): set_state 3 aims ([`crate::missile::aim`], Action stream) and launches
+    /// (`FUN_140a9c5b0`): `set_state` 3 aims ([`crate::missile::aim`], Action stream) and launches
     /// ([`crate::missile::MissileAction::launch`], its angle). Last the shooter tells its unit AI
     /// the action executed (0x200 with 600, but for masters 73 and 559). Not modelled: a target of
     /// a computer player, which a shooter whose blast does not spare friends notifies (0x20f).
@@ -1397,13 +1398,12 @@ impl Unit {
             .moving
             .clone()
             .ok_or(Unsupported("a missile master that does not move"))?;
-        let (id, flying) = match c.recycling.missiles.pop() {
-            Some(pooled) => pooled,
-            None => {
-                let id = c.recycling.next_id;
-                c.recycling.next_id -= 1;
-                (id, true)
-            }
+        let (id, flying) = if let Some(pooled) = c.recycling.missiles.pop() {
+            pooled
+        } else {
+            let id = c.recycling.next_id;
+            c.recycling.next_id -= 1;
+            (id, true)
         };
         // the setups' draws: static (its sprite, its facet), then moving (its angle)
         let standing = (0 <= made.standing_sprite)
@@ -1547,7 +1547,7 @@ impl Unit {
             mover.angle = a;
         }
         let remains = made.death_spawns[1];
-        c.made.push(Unit {
+        c.made.push(Self {
             id,
             position,
             life: Lifecycle {
@@ -1578,7 +1578,7 @@ impl Unit {
             attackable: true,
             pasture: -1,
             my_pasture: -1,
-            ..Unit::default()
+            ..Self::default()
         });
         if !matches!(self.life.master_id, 73 | 559) {
             self.post_own(ACTION_EXECUTED, [600, aimed.target, 0])?;
@@ -1605,7 +1605,7 @@ impl Unit {
     /// ([`Unit::missile_lands`]). A dead shooter's weapons going to the missile
     /// (`FUN_14113e170`), the sprite's pitch facet and the projectile types 1 and 2 are not
     /// modelled.
-    fn fly(&mut self, c: &mut Context<'_>, others: &mut [Unit]) -> Result<(), Unsupported> {
+    fn fly(&mut self, c: &mut Context<'_>, others: &mut [Self]) -> Result<(), Unsupported> {
         let Some(mut missile) = self.missile.take() else {
             return Ok(());
         };
@@ -1618,7 +1618,7 @@ impl Unit {
         &mut self,
         missile: &mut crate::missile::Missile,
         c: &mut Context<'_>,
-        others: &mut [Unit],
+        others: &mut [Self],
     ) -> Result<(), Unsupported> {
         let master = c
             .masters
@@ -1711,7 +1711,7 @@ impl Unit {
     /// target alone; hit mode 1 (a miss) an object of another player that is no ally's and no
     /// missile, but not one of Gaia's above type 15 or one below the missile's blast level unless
     /// it is the target. A hit is the shooter's ([`Unit::missile_strike`]); unless the master's
-    /// vanish mode has bit 0 or a shield blocked it, the missile ends (set_state 1: slot 0xd8,
+    /// vanish mode has bit 0 or a shield blocked it, the missile ends (`set_state` 1: slot 0xd8,
     /// its hit points 0). The step's objects become the met ones (`+0x88`) when there are any. A
     /// missed missile's hit on another object than its target, hit mode 2 and the Hussite
     /// wagon's case (`+0x90`) are not modelled.
@@ -1722,7 +1722,7 @@ impl Unit {
         charge: bool,
         old: [f32; 3],
         c: &mut Context<'_>,
-        others: &mut [Unit],
+        others: &mut [Self],
     ) -> Result<(), Unsupported> {
         if !(0.0 < stats.radius[0] && 0.0 < stats.radius[1]) {
             return Ok(());
@@ -1827,9 +1827,9 @@ impl Unit {
         Ok(())
     }
 
-    /// The missile action's set_state(1) (`FUN_140a9de70`): the missile's slot 0xd8
+    /// The missile action's `set_state(1)` (`FUN_140a9de70`): the missile's slot 0xd8
     /// (`FUN_14118f580`), its hit points to 0.
-    fn end_missile(&mut self, action: &mut crate::missile::MissileAction) {
+    const fn end_missile(&mut self, action: &mut crate::missile::MissileAction) {
         action.state = crate::missile::DONE;
         self.life.hp = 0.0;
     }
@@ -1846,7 +1846,7 @@ impl Unit {
         action: &crate::missile::MissileAction,
         charge: bool,
         c: &mut Context<'_>,
-        others: &mut [Unit],
+        others: &mut [Self],
     ) -> Result<u8, Unsupported> {
         if charge || action.fired_from == -1 {
             return Err(Unsupported(
@@ -1898,7 +1898,7 @@ impl Unit {
     /// ([`Unit::missile_strike`]), which ends it unless a shield blocked it. A missile that still
     /// flies after that hits the ground: unless its last hit was blocked, the blast of the object
     /// it was fired from there (slot 0x848, `FUN_14107f690`: nothing without an area effect; one
-    /// is not modelled); it ends (set_state 1) and, unless its master's vanish mode has bit 1, is
+    /// is not modelled); it ends (`set_state` 1) and, unless its master's vanish mode has bit 1, is
     /// destroyed (slot 0xd0, `FUN_14106c420`: its action list goes, which lets its target and
     /// shooter go; `FUN_14118f1e0`: its hit points 0 and state 7).
     fn missile_lands(
@@ -1906,7 +1906,7 @@ impl Unit {
         missile: &mut crate::missile::Missile,
         stats: &crate::missile::MissileStats,
         c: &mut Context<'_>,
-        others: &mut [Unit],
+        others: &mut [Self],
     ) -> Result<(), Unsupported> {
         let charge = missile.charge;
         let Some(action) = missile.action.as_mut() else {
@@ -1980,7 +1980,7 @@ impl Unit {
 
     /// One update, and whether the object stays in its list, leaves it or goes to sleep. `others`
     /// are the rest of the owner's objects, whose foundations a builder works on.
-    fn update(&mut self, c: &mut Context<'_>, others: &mut [Unit]) -> Result<Step, Unsupported> {
+    fn update(&mut self, c: &mut Context<'_>, others: &mut [Self]) -> Result<Step, Unsupported> {
         // RGE_Static_Object::update (0x14118ad50): an object flagged to sleep (`+0x643`) drops
         // the flag, is marked asleep (`+0x641`) and moves to its player's sleeping list (player
         // slots 0x2d8 and 0x2d0), and its update ends; only static objects (type 10) are flagged
@@ -2397,7 +2397,7 @@ impl Unit {
             let (me_position, me_radius) = (me_at.position, me_at.radius);
             let site = match c.spatial.get_known(hunt.carry_to)? {
                 Some(s) => {
-                    let actor = crate::tasks::Actor {
+                    let actor = Actor {
                         id: self.id,
                         master,
                         player: c.player,
@@ -2536,7 +2536,7 @@ impl Unit {
             };
             // what set_state(6) on live livestock reads (0x140ac60e0 case 6)
             let herd = if hunt.state == crate::hunt::WALK
-                && hunt.move_to == Some(crate::move_to::MoveTo::Arrived)
+                && hunt.move_to == Some(MoveTo::Arrived)
                 && victim.class == crate::hunt::LIVESTOCK
                 && victim.state <= 2
             {
@@ -2840,7 +2840,7 @@ impl Unit {
     fn capture(
         &mut self,
         c: &mut Context<'_>,
-        others: &mut [Unit],
+        others: &mut [Self],
         new: usize,
     ) -> Result<Vec<i32>, Unsupported> {
         let class = c
@@ -2896,13 +2896,13 @@ impl Unit {
     }
 
     /// The unit's slot 0x340 (`FUN_141216c50`) on its unit AI's move: a unit of class 51 or 54
-    /// (packing) is not modelled; any other runs `FUN_1410866e0`. Without `force`, a MoveTo to the
+    /// (packing) is not modelled; any other runs `FUN_1410866e0`. Without `force`, a `MoveTo` to the
     /// same point (its `+0x38`..`+0x40`) stands. Then the current action's slot 0x40 may take the
-    /// point: an Artifact's (`FUN_140aaca30`, [`Artifact::take_point`]; a MoveTo it walked goes and
-    /// stops the unit) does, a MoveTo's (`FUN_140a78490`) never (other actions are not modelled).
-    /// Otherwise a MoveTo to the point within the range (`FUN_140aa0d30`; its sprite, the master's
+    /// point: an Artifact's (`FUN_140aaca30`, [`Artifact::take_point`]; a `MoveTo` it walked goes and
+    /// stops the unit) does, a `MoveTo`'s (`FUN_140a78490`) never (other actions are not modelled).
+    /// Otherwise a `MoveTo` to the point within the range (`FUN_140aa0d30`; its sprite, the master's
     /// walking or running one, is not held) replaces the action list (`FUN_140a98620`: the old
-    /// MoveTo stops the unit) and starts (slot 0x808, `FUN_14106e990`; its start `0x140aa2100`
+    /// `MoveTo` stops the unit) and starts (slot 0x808, `FUN_14106e990`; its start `0x140aa2100`
     /// gives a unit far from the point state 3).
     fn ai_move(&mut self, m: AiMove, class: i16) -> Result<(), Unsupported> {
         if matches!(class, 51 | 54) {
@@ -2948,7 +2948,7 @@ impl Unit {
                 .stop()?;
         }
         self.move_to = Some(MoveToAction {
-            state: crate::move_to::MoveTo::Start,
+            state: MoveTo::Start,
             goal: Some(m.point),
             target: -1,
             range: m.range,
@@ -2958,8 +2958,8 @@ impl Unit {
     }
 
     /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object: a
-    /// MoveTo to the target within `range`, showing the master's running sprite (the walking one
-    /// without it), replaces its action list (`FUN_140a98620`: an old MoveTo stops the unit) and
+    /// `MoveTo` to the target within `range`, showing the master's running sprite (the walking one
+    /// without it), replaces its action list (`FUN_140a98620`: an old `MoveTo` stops the unit) and
     /// starts ([`MoveToAction::to_target`]). A unit with another action is not modelled.
     fn move_to_object(
         &mut self,
@@ -3081,7 +3081,7 @@ struct Seeker<'a, 'b> {
     class: i16,
 }
 
-/// A search for drop sites (`FUN_1411671e0` as set_state(8) calls it: in state 2, not at work
+/// A search for drop sites (`FUN_1411671e0` as `set_state(8)` calls it: in state 2, not at work
 /// on task `0x7d` or `0x7c` (an object of type 40 up whose top action is one), not inside
 /// another): of the player's live objects (`units`, in list order) of a master in `sites`, the
 /// nearest to `at`. With the `seeker`, only objects in its zone count (its restriction's zone of
@@ -3125,30 +3125,27 @@ fn drop_site_search(
         if at_work || o.life.inside {
             continue;
         }
-        let d = match seeker.as_mut() {
-            Some(s) => {
-                let radii = s.mover.stats.radius[0] + master.radius[0];
-                let to = [o.position[0], o.position[1]];
-                match s.mover.plan_length(&s.me, s.spatial, s.plan, to, radii)? {
-                    Some((code, length)) if code < 2 => {
-                        last = length;
-                        if length <= SHORT_DROP_REACH
-                            && let Some(short) =
-                                s.mover.short_reach(&s.me, s.spatial, o.id, DROP_REACH)?
-                            && short < length
-                        {
-                            last = short;
-                        }
-                        last
+        let d = if let Some(s) = seeker.as_mut() {
+            let radii = s.mover.stats.radius[0] + master.radius[0];
+            let to = [o.position[0], o.position[1]];
+            match s.mover.plan_length(&s.me, s.spatial, s.plan, to, radii)? {
+                Some((code, length)) if code < 2 => {
+                    last = length;
+                    if length <= SHORT_DROP_REACH
+                        && let Some(short) =
+                            s.mover.short_reach(&s.me, s.spatial, o.id, DROP_REACH)?
+                        && short < length
+                    {
+                        last = short;
                     }
-                    Some((code, _)) if 3 <= code => last,
-                    _ => last,
+                    last
                 }
+                Some((code, _)) if 3 <= code => last,
+                _ => last,
             }
-            None => {
-                let (dx, dy) = (x - o.position[0], y - o.position[1]);
-                dy * dy + dx * dx
-            }
+        } else {
+            let (dx, dy) = (x - o.position[0], y - o.position[1]);
+            dy * dy + dx * dx
         };
         if d < best_d {
             best = Some(o.id);
@@ -3198,7 +3195,7 @@ struct Aimed {
 /// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
 /// update: its worker count falls, and a static object no one works on any more that is alive is
 /// flagged to sleep.
-/// ClosestObject's "Sheep is moving" (`FUN_140c488b0`): the object's top action is the Artifact
+/// `ClosestObject`'s "Sheep is moving" (`FUN_140c488b0`): the object's top action is the Artifact
 /// (slot 0x530 107) with a point (slot 0x288, the action's `+0x38`, not −1).
 fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
     let foreign = || foreign.find(id).map(|(_, u)| u);
@@ -3649,7 +3646,10 @@ impl Turns {
                 self.spatial.unfreeze(id);
                 self.spatial.set_gait(id, forced.gait());
                 if let Some(placed) = self.spatial.get(id).cloned() {
-                    let moving = forced.mover.as_ref().is_some_and(|m| m.is_moving());
+                    let moving = forced
+                        .mover
+                        .as_ref()
+                        .is_some_and(super::movement::Mover::is_moving);
                     self.pathing.moved(id, &placed, moving);
                 }
                 forced.stopped = false;
@@ -3697,7 +3697,7 @@ impl crate::tech::Attributes for Player {
                 *self
                     .attributes
                     .get_mut(k)
-                    .ok_or(Unsupported("an attribute the player does not have"))? = v
+                    .ok_or(Unsupported("an attribute the player does not have"))? = v;
             }
             Err(_) => return Err(Unsupported("a negative attribute")),
         }
@@ -3789,7 +3789,7 @@ pub struct Turns {
 /// `FUN_141546960`), from which the next of that type comes back, the last in first
 /// (`FUN_141546870`), keeping its id (`recycle_in_to_game` gives none). The pools are not saved:
 /// a game loaded from a save starts them empty.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Recycling {
     /// `next_reusable_object_id`.
     pub next_id: i32,
@@ -3817,6 +3817,7 @@ impl Diplomacy for World<'_> {
 }
 
 impl Turns {
+    #[must_use]
     pub fn new(
         world_time: u32,
         frame_seed: u32,
@@ -3824,7 +3825,7 @@ impl Turns {
         player_time: Vec<u32>,
         players: Vec<Player>,
     ) -> Self {
-        Turns {
+        Self {
             world_time,
             frame_seed,
             player_turn,
@@ -4122,7 +4123,7 @@ impl Turns {
     /// master, whose master can be built on (`+0x5e9`) and whose box overlaps its master's radii
     /// (on each axis the gap below the two radii summed), are deleted (slot 0xd0,
     /// `FUN_14118f1e0`: hit points 0, a sleeping one wakes to the end of its player's live list,
-    /// `FUN_14119deb0`, and set_state 7; the updates take it to 8 and out of the list). Nothing
+    /// `FUN_14119deb0`, and `set_state` 7; the updates take it to 8 and out of the list). Nothing
     /// for a master without radii. Not modelled: a wall under one of the player's gates (class
     /// 27, `FUN_1411ccbb0`), the flag masters without height (`FUN_140fde270`), an object other
     /// than a static one, with an obstruction record or inside another, and two on one tile (the
@@ -4983,7 +4984,8 @@ impl Turns {
 /// caller's. The slice holds neither its unit AI's alert mode and attackers nor its facing.
 /// `FUN_141302540`: the game mode (options `+0x34`) is Scenario (3), Campaign (4), King of the
 /// Hill (5) or Co-op Campaign (15), by aoc-mgz's game types.
-pub fn scenario_mode(game_mode: i32) -> bool {
+#[must_use]
+pub const fn scenario_mode(game_mode: i32) -> bool {
     matches!(game_mode, 3 | 4 | 5 | 15)
 }
 

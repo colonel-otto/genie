@@ -46,7 +46,7 @@ pub struct BuildItem {
 
 impl ReadableHeaderElement for BuildItem {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut item = BuildItem {
+        let mut item = Self {
             name: input.read_u32_length_prefixed_str()?,
             type_id: input.read_u32::<LE>()?,
             ..Default::default()
@@ -141,7 +141,7 @@ pub struct ConstructionItem {
 
 impl ReadableHeaderElement for ConstructionItem {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut item = ConstructionItem {
+        let mut item = Self {
             name: input.read_u32_length_prefixed_str()?,
             type_id: input.read_u32::<LE>()?,
             ..Default::default()
@@ -249,7 +249,7 @@ pub struct ImportantObjectMemory {
 
 impl ReadableHeaderElement for ImportantObjectMemory {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(ImportantObjectMemory {
+        Ok(Self {
             id: read_opt_u32(input)?,
             unit_type_id: read_opt_u16(input)?,
             unit_class: read_opt_u16(input)?,
@@ -340,7 +340,7 @@ pub struct PerimeterWall {
 
 impl ReadableHeaderElement for PerimeterWall {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut wall = PerimeterWall {
+        let mut wall = Self {
             enabled: if input.version() >= 11.22 {
                 input.read_u32::<LE>()? != 0
             } else {
@@ -393,7 +393,7 @@ pub struct AttackMemory {
 
 impl ReadableHeaderElement for AttackMemory {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut mem = AttackMemory {
+        let mut mem = Self {
             id: read_opt_u32(input)?,
             typ: input.read_u8()?,
             min_x: input.read_u8()?,
@@ -436,7 +436,7 @@ pub struct ResourceMemory {
 
 impl ReadableHeaderElement for ResourceMemory {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut mem = ResourceMemory {
+        let mut mem = Self {
             id: input.read_u32::<LE>()?.into(),
             location: (input.read_u8()?, input.read_u8()?),
             gather_attempts: input.read_u8()?,
@@ -729,7 +729,7 @@ impl ReadableHeaderElement for InformationAI {
 
         let player_unit_counts_size = if input.version() >= 11.51 { 120 } else { 102 };
         let mut player_unit_counts = vec![vec![0; player_unit_counts_size as usize]; 8];
-        for unit_counts in player_unit_counts.iter_mut() {
+        for unit_counts in &mut player_unit_counts {
             input.read_u32_into::<LE>(unit_counts)?;
         }
 
@@ -746,10 +746,7 @@ impl ReadableHeaderElement for InformationAI {
             input.read_u32_into::<LE>(&mut player_total_unit_counts)?;
 
             println!(
-                "{:x?} {:x?} {:x?}",
-                player_total_building_counts,
-                player_real_total_building_counts,
-                player_total_unit_counts
+                "{player_total_building_counts:x?} {player_real_total_building_counts:x?} {player_total_unit_counts:x?}"
             );
         }
 
@@ -796,7 +793,7 @@ pub struct StrategyAI {
 
 impl ReadableHeaderElement for StrategyAI {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(StrategyAI {
+        Ok(Self {
             current_victory_condition: input.read_u32::<LE>()?,
             target_id: input.read_u32::<LE>()?,
             second_target_id: input.read_u32::<LE>()?,
@@ -846,7 +843,7 @@ pub struct TacticalAI {
 
 impl ReadableHeaderElement for TacticalAI {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut ai = TacticalAI {
+        let mut ai = Self {
             civilians: read_id_list(input)?,
             civilian_explorers: read_id_list(input)?,
             ..Default::default()

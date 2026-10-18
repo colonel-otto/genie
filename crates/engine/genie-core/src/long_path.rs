@@ -91,9 +91,10 @@ pub struct LongTarget {
 
 impl LongTarget {
     /// The target at `position` with radii `radius`, `gap` and `gap_squared` from the unit.
+    #[must_use]
     pub fn new(position: [f32; 3], radius: [f32; 2], gap: f32, gap_squared: f32) -> Self {
         let [x, y, _] = position;
-        LongTarget {
+        Self {
             tile: [x as i32, y as i32],
             rect: [
                 (x - radius[0]) as i32,
@@ -138,7 +139,7 @@ struct Heap {
 }
 
 impl Heap {
-    fn count(&self) -> i32 {
+    const fn count(&self) -> i32 {
         self.slots.len() as i32 - 1
     }
 
@@ -340,10 +341,10 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
                 continue;
             }
             let cur_dir = came.unwrap_or(0xff);
-            let mut c = if dir != cur_dir {
-                new_cost.wrapping_add(1)
-            } else {
+            let mut c = if dir == cur_dir {
                 new_cost
+            } else {
+                new_cost.wrapping_add(1)
             };
             if at_goal {
                 c = 0;

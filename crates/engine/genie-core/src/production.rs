@@ -57,6 +57,7 @@ impl Production {
 
 /// The population a master's unit takes (`FUN_14163b0b0`): minus its storage of attribute 4,
 /// the population headroom, over the master's three storage entries.
+#[must_use]
 pub fn population(storage: &[(i16, f32, u8)]) -> f32 {
     storage
         .iter()

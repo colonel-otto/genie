@@ -100,7 +100,8 @@ pub struct OpReader<'a> {
 impl<'a> OpReader<'a> {
     /// `base` is the body's file offset, used in error offsets. Only the first chapter's first record
     /// may be a [`Pregame`].
-    pub fn new(body: &'a [u8], base: usize, first_chapter: bool) -> Self {
+    #[must_use]
+    pub const fn new(body: &'a [u8], base: usize, first_chapter: bool) -> Self {
         Self {
             data: body,
             base,
@@ -112,7 +113,7 @@ impl<'a> OpReader<'a> {
 }
 
 impl<'a> OpReader<'a> {
-    fn remaining(&self) -> usize {
+    const fn remaining(&self) -> usize {
         self.data.len() - self.pos
     }
 

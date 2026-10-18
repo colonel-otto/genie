@@ -1,8 +1,8 @@
 //! Recorded games of Age of Empires II: Definitive Edition (save 66.x and later).
 //!
-//! The rest of this crate reads the older formats (AoK, AoC, HD). This module reads the current
+//! The rest of this crate reads the older formats (`AoK`, `AoC`, HD). This module reads the current
 //! one. Its layouts follow the workspace's reverse engineering of the 158041 engine and the
-//! [aoe2rec](https://github.com/aoe2ct/aoe2rec) crate and ImHex patterns (MIT, see `NOTICE`).
+//! [aoe2rec](https://github.com/aoe2ct/aoe2rec) crate and `ImHex` patterns (MIT, see `NOTICE`).
 //!
 //! A recording is a list of chapters. Each chapter is a compressed world save (the "header", read
 //! by genie-save) and the ops recorded after it, up to the next chapter or the end of the file.
@@ -79,7 +79,8 @@ pub fn chapters(data: &[u8]) -> Result<Vec<Chapter<'_>>, Error> {
 
 impl<'a> Chapter<'a> {
     /// The ops of this chapter.
-    pub fn ops(&self) -> OpReader<'a> {
+    #[must_use]
+    pub const fn ops(&self) -> OpReader<'a> {
         OpReader::new(self.body, self.body_offset, self.index == 0)
     }
 

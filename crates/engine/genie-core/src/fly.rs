@@ -1,7 +1,7 @@
-//! A bird's Fly action (type 10, vtable `0x142ed4c88`; update `0x140a84b40`, set_state
+//! A bird's Fly action (type 10, vtable `0x142ed4c88`; update `0x140a84b40`, `set_state`
 //! `0x140a84a50`): the bird rests (state 2), picks a point to fly to from the Action stream
-//! (state 3) and flies there with a MoveTo sub-action (state 4) until its flight time runs out or
-//! the MoveTo ends; then it rests for its task's wait time, or picks the next flight at once.
+//! (state 3) and flies there with a `MoveTo` sub-action (state 4) until its flight time runs out or
+//! the `MoveTo` ends; then it rests for its task's wait time, or picks the next flight at once.
 
 use crate::fmath::{cos, sin};
 use crate::masters::Task;
@@ -30,7 +30,7 @@ pub struct Fly {
     pub state: u8,
     /// `+0x44`, in seconds: the flight's time left, or the rest's.
     pub timer: f32,
-    /// The MoveTo sub-action's state and its point.
+    /// The `MoveTo` sub-action's state and its point.
     pub move_to: Option<MoveTo>,
     pub goal: Option<[f32; 3]>,
     /// `+0x38`, `+0x3c`: the point the bird keeps within its task's leash.
@@ -55,7 +55,7 @@ pub struct Sky<'a> {
 }
 
 impl Fly {
-    /// set_state (`0x140a84a50`): 2 and 3 drop the MoveTo (its teardown stops the bird, the
+    /// `set_state` (`0x140a84a50`): 2 and 3 drop the `MoveTo` (its teardown stops the bird, the
     /// caller's: the returned flag); 2 gives the bird its master's sprite (slot 0x68, not held
     /// for a bird); 3 draws the flight's time, `r * 10 / 0x7fff + 5` seconds, from the Action
     /// stream.
@@ -74,10 +74,10 @@ impl Fly {
     }
 
     /// One update (`0x140a84b40`): the timer counts down by dt; resting, a bird whose timer ran
-    /// out chooses (set_state 3); choosing, it picks its flight ([`Fly::choose`]); flying, a timer
-    /// run out rests it (set_state 2, the rest time set), and once the MoveTo is done or gone
+    /// out chooses (`set_state` 3); choosing, it picks its flight ([`Fly::choose`]); flying, a timer
+    /// run out rests it (`set_state` 2, the rest time set), and once the `MoveTo` is done or gone
     /// (its list's update returns 1) it rests for the rest time more, or chooses at once.
-    /// Returns whether the bird stopped (a dropped MoveTo's teardown, slot 0x5d0).
+    /// Returns whether the bird stopped (a dropped `MoveTo`'s teardown, slot 0x5d0).
     pub fn update(&mut self, mut walk: Walk<'_>, sky: Sky<'_>) -> Result<bool, Unsupported> {
         if 0.0 < self.timer {
             self.timer -= walk.dt;
@@ -142,8 +142,8 @@ impl Fly {
     /// it must lie inside the map and, with a leash, the bird must be within it of its centre or
     /// the point nearer the centre than the bird. A terrain the point must have and objects of a
     /// class to keep away from are not modelled. A task with sprites draws which one the flight
-    /// takes (`r % 3`, not held). The MoveTo to the point at the bird's height within 0 starts
-    /// (state 3) and the bird flies (set_state 4); with no distance or no point it rests.
+    /// takes (`r % 3`, not held). The `MoveTo` to the point at the bird's height within 0 starts
+    /// (state 3) and the bird flies (`set_state` 4); with no distance or no point it rests.
     fn choose(&mut self, sky: Sky<'_>) -> Result<bool, Unsupported> {
         let t = self.task;
         let leash = f32::from(t.holding_attr) * f32::from(t.holding_attr);

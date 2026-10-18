@@ -2,7 +2,7 @@
 //! points, position, the top action (type and state) and the unit AI's retarget timer. For the
 //! tick oracle's snapshots (`load_oracle.playback --snapshot TICK`), the game's own saves.
 //!
-//! cargo run --release -p genie-oracle --example lane_objects -- REC PLAYER
+//! cargo run --release -p genie-oracle --example `lane_objects` -- REC PLAYER
 
 use genie_rec::de;
 

@@ -44,6 +44,7 @@ pub struct Player {
 
 impl Player {
     /// Return the name of this player.
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -57,7 +58,7 @@ impl Player {
 impl ReadableHeaderElement for Player {
     #[allow(clippy::cognitive_complexity)]
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut player = Player {
+        let mut player = Self {
             player_type: input.read_u8()?,
             ..Default::default()
         };
@@ -88,7 +89,7 @@ impl ReadableHeaderElement for Player {
             let num_saved_views = input.read_i32::<LE>()?;
             // saved view count can be negative
             player.saved_views = vec![(0.0, 0.0); num_saved_views.try_into().unwrap_or(0)];
-            for sv in player.saved_views.iter_mut() {
+            for sv in &mut player.saved_views {
                 *sv = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
             }
         }
@@ -186,7 +187,7 @@ impl ReadableHeaderElement for Player {
                 let object_id: ObjectID = input.read_u32::<LE>()?.into();
                 let object_properties = input.read_u32::<LE>()?;
                 let mut selected_ids = vec![ObjectID(0); num_selections.try_into().unwrap()];
-                for id in selected_ids.iter_mut() {
+                for id in &mut selected_ids {
                     *id = input.read_u32::<LE>()?.into();
                 }
                 Some((object_id, object_properties, selected_ids))
@@ -366,7 +367,7 @@ impl ReadableHeaderElement for Player {
 
         let num_unit_types = input.read_u32::<LE>()?;
         let mut available_unit_types = vec![false; num_unit_types.try_into().unwrap()];
-        for available in available_unit_types.iter_mut() {
+        for available in &mut available_unit_types {
             *available = input.read_u32::<LE>()? != 0;
         }
 
@@ -376,9 +377,7 @@ impl ReadableHeaderElement for Player {
 
         player.unit_types.reserve(available_unit_types.len());
         for available in available_unit_types {
-            player.unit_types.push(if !available {
-                None
-            } else {
+            player.unit_types.push(if available {
                 if input.version() >= 10.55 {
                     assert_eq!(input.read_u8()?, 22);
                 }
@@ -387,6 +386,8 @@ impl ReadableHeaderElement for Player {
                     assert_eq!(input.read_u8()?, 33);
                 }
                 Some(ty)
+            } else {
+                None
             });
         }
 
@@ -458,7 +459,7 @@ pub struct VisibleMap {
 
 impl ReadableHeaderElement for VisibleMap {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut map = VisibleMap {
+        let mut map = Self {
             width: input.read_u32::<LE>()?,
             height: input.read_u32::<LE>()?,
             ..Default::default()
@@ -483,7 +484,7 @@ pub struct VisibleResource {
 
 impl ReadableHeaderElement for VisibleResource {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(VisibleResource {
+        Ok(Self {
             object_id: input.read_u32::<LE>()?.into(),
             distance: input.read_u8()?,
             zone: input.read_i8()?,
@@ -541,31 +542,31 @@ pub struct GaiaData {
 
 impl ReadableHeaderElement for GaiaData {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut gaia = GaiaData {
+        let mut gaia = Self {
             update_time: input.read_u32::<LE>()?,
             update_nature: input.read_u32::<LE>()?,
             ..Default::default()
         };
-        for creature in gaia.creatures.iter_mut() {
+        for creature in &mut gaia.creatures {
             *creature = GaiaCreature::read_from(input)?;
         }
         gaia.next_wolf_attack_update_time = input.read_u32::<LE>()?;
         gaia.wolf_attack_update_interval = input.read_u32::<LE>()?;
         gaia.wolf_attack_stop_time = input.read_u32::<LE>()?;
         gaia.min_villager_distance = input.read_f32::<LE>()?;
-        for pos in gaia.tc_positions.iter_mut() {
+        for pos in &mut gaia.tc_positions {
             pos.0 = input.read_f32::<LE>()?;
         }
-        for pos in gaia.tc_positions.iter_mut() {
+        for pos in &mut gaia.tc_positions {
             pos.1 = input.read_f32::<LE>()?;
         }
         gaia.wolf_current_player = input.read_u32::<LE>()?;
-        for v in gaia.wolf_current_villagers.iter_mut() {
+        for v in &mut gaia.wolf_current_villagers {
             *v = input.read_u32::<LE>()?;
         }
         gaia.wolf_current_villager = read_opt_u32(input)?;
         gaia.wolf_villager_count = input.read_u32::<LE>()?;
-        for wolf in gaia.wolves.iter_mut() {
+        for wolf in &mut gaia.wolves {
             *wolf = GaiaWolfInfo::read_from(input)?;
         }
         gaia.current_wolf = read_opt_u32(input)?;
@@ -583,7 +584,7 @@ pub struct GaiaCreature {
 
 impl ReadableHeaderElement for GaiaCreature {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(GaiaCreature {
+        Ok(Self {
             growth_rate: input.read_f32::<LE>()?,
             remainder: input.read_f32::<LE>()?,
             max: input.read_u32::<LE>()?,
@@ -608,7 +609,7 @@ pub struct GaiaWolfInfo {
 
 impl ReadableHeaderElement for GaiaWolfInfo {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(GaiaWolfInfo {
+        Ok(Self {
             id: input.read_u32::<LE>()?,
             distance: input.read_f32::<LE>()?,
         })
@@ -645,7 +646,7 @@ struct DiplomacyOffer {
 
 impl ReadableHeaderElement for DiplomacyOffer {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut offer = DiplomacyOffer {
+        let mut offer = Self {
             sequence: input.read_u8()?,
             started_by: input.read_u8()?,
             actual_time: 0,
@@ -740,7 +741,7 @@ pub struct HistoryEvent {
 
 impl ReadableHeaderElement for HistoryEvent {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(HistoryEvent {
+        Ok(Self {
             event_type: input.read_i8()?,
             time_slice: input.read_u32::<LE>()?,
             world_time: input.read_u32::<LE>()?,
@@ -763,7 +764,7 @@ impl ReadableHeaderElement for HistoryEntry {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let civilian_population = input.read_u16::<LE>()?;
         let military_population = input.read_u16::<LE>()?;
-        Ok(HistoryEntry {
+        Ok(Self {
             civilian_population,
             military_population,
         })
@@ -780,7 +781,7 @@ pub struct TechState {
 
 impl ReadableHeaderElement for TechState {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(TechState {
+        Ok(Self {
             progress: input.read_f32::<LE>()?,
             state: input.read_i16::<LE>()?,
             modifiers: (

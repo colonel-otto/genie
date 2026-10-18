@@ -319,7 +319,8 @@ impl Near {
     /// (`FUN_141195660`), the relic (`FUN_141194e80`), and `FUN_141194170`'s master with
     /// `enable_auto_gather` or of a class that stays from state 2 on (5, 9, 10, 29, 31, 33, 38,
     /// 40, 41, 58, 61) or from state 3 on (7, 8, 15, 32, 48, 63).
-    pub fn stays(&self) -> bool {
+    #[must_use]
+    pub const fn stays(&self) -> bool {
         if self.kind == BUILDING || (self.class == TREE && 2 < self.state) || self.master == RELIC {
             return true;
         }
@@ -763,7 +764,7 @@ impl Turns {
     /// technology in state 2 (or with `repeat`) whose work done reaches the `.dat`'s time at the
     /// building (−1 without), times the research time modifier (attribute 86, above 0, not an
     /// age), plus the location's adjustment, is done ([`Turns::complete_research`]); else, or
-    /// without `repeat`, it is left. Then the action ends (set_state 1; the event 100 and the
+    /// without `repeat`, it is left. Then the action ends (`set_state` 1; the event 100 and the
     /// computer players' slot 0x3a8 are not held), the building's unit AI is told 0x1fa with the
     /// action value 0x26c, and the production step lets the research go from the queue (the
     /// action list deletes it, the entry's count lowers). Attribute 269 above 0 (the world's
@@ -1229,10 +1230,10 @@ impl Turns {
     /// 0x2a0 with 1) and takes slot 0x128 with no target at the point (z 0; its `+0xa14` 1: the
     /// unit AI's order queue empties, `FUN_140c5e010`); slot 0x7e8 (`FUN_141227190`) runs the work
     /// command (`FUN_14106ff70`), which finds no task: a unit with speed in state 2 notifies its
-    /// unit AI with the MoveTo's order and action, no target and the point, its notifies cleared
+    /// unit AI with the `MoveTo`'s order and action, no target and the point, its notifies cleared
     /// ([`UnitAi::notify_work`], slot 0x828), and moves (slot 0x138, `FUN_141216f10`: the order
     /// queue empties again; `FUN_14106d340`: the notifies cleared with the world time, then, the
-    /// unit holding no action, the MoveTo to the point, range 0, installed). A villager's
+    /// unit holding no action, the `MoveTo` to the point, range 0, installed). A villager's
     /// town-bell flag (`+0x9dc`, `FUN_1412067f0`) is not held.
     fn gather_move(&mut self, p: usize, new: usize, point: [f32; 3]) -> Result<(), Unsupported> {
         let world_time = self.world_time;

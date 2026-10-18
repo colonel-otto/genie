@@ -24,14 +24,14 @@ pub fn to_string<T: Serialize>(table: &T) -> serde_json::Result<String> {
 }
 
 /// `linkedTechs.json`: groups of techs that exclude, cycle or toggle each other.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LinkedTechs {
     #[serde(rename = "LinkedTechs")]
     pub linked_techs: Vec<LinkedTechGroup>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "PascalCase")]
 pub struct LinkedTechGroup {
     pub name_id: i32,
@@ -55,7 +55,7 @@ pub struct DropSites {
     pub drop_site_list: Vec<DropSite>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DropSite {
     pub name: String,
@@ -75,7 +75,7 @@ pub struct DropSite {
     pub target_civs: Option<Vec<i32>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DropSiteTarget {
     pub name: String,
@@ -92,7 +92,7 @@ pub struct DropSiteTarget {
     pub allow_resource_distance_update: Option<bool>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AiResourceType {
     pub resource_type: i32,
@@ -109,7 +109,7 @@ pub struct CivFutureUnits {
     pub buildings: Vec<FutureBuilding>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "PascalCase")]
 pub struct FutureBuilding {
     #[serde(rename = "ID")]
@@ -137,7 +137,7 @@ pub struct FutureBuilding {
     pub prereq_string_id: Option<i32>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "PascalCase")]
 pub struct FutureTech {
     #[serde(rename = "ID")]
@@ -154,7 +154,7 @@ pub struct FutureTech {
 
 /// The prerequisite fields repeat in [`FutureBuilding`]: serde cannot refuse unknown keys through
 /// a flattened struct.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "PascalCase")]
 pub struct FutureUnit {
     #[serde(rename = "ID")]
@@ -185,7 +185,7 @@ pub struct FutureUnit {
 }
 
 /// `maps.json`: the map list of the lobby.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Maps {
     pub default_map_type: i32,
@@ -202,7 +202,7 @@ pub enum StringId {
     Name(String),
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -259,13 +259,13 @@ pub struct MapEntry {
 }
 
 /// `buttons.json`: the command buttons of the unit panel.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Buttons {
     pub command_button_list: Vec<CommandButton>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommandButton {
     pub name: String,

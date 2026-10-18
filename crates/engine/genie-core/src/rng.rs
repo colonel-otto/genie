@@ -1,4 +1,4 @@
-//! The engine's random number generators: a WELL512a variant in eleven streams, all reseeded at
+//! The engine's random number generators: a `WELL512a` variant in eleven streams, all reseeded at
 //! the top of every tick from one frame seed.
 //!
 //! 158041: setSeed `0x140811ae0`, the step `0x140811070`, `rand15` (`debug_rand`) `0x1408117b0`,
@@ -19,7 +19,7 @@ pub struct Well512 {
 
 impl Default for Well512 {
     fn default() -> Self {
-        Well512 {
+        Self {
             state: [0; 16],
             index: 0,
             draws: 0,
@@ -44,9 +44,9 @@ impl Well512 {
         self.index = 0;
     }
 
-    /// One step. The engine's variant of WELL512a: taps at index − 3 and index − 7, the mask
+    /// One step. The engine's variant of `WELL512a`: taps at index − 3 and index − 7, the mask
     /// `0xfed22169`, and an extra `^ z1` in the new word.
-    pub fn raw(&mut self) -> u32 {
+    pub const fn raw(&mut self) -> u32 {
         self.draws = self.draws.wrapping_add(1);
         let i = self.index as usize;
         let s = &mut self.state;
@@ -86,7 +86,7 @@ impl Well512 {
 }
 
 /// Bob Jenkins' 32-bit integer hash, as the compiler folded it in setSeed.
-fn jenkins(a: u32) -> u32 {
+const fn jenkins(a: u32) -> u32 {
     let a = a.wrapping_mul(0x1001).wrapping_add(0x7ed5_5d16);
     let a = ((a >> 19) ^ a ^ 0xc761_c23c).wrapping_mul(0x21);
     let a = (a.wrapping_add(0xe9f8_cc1d) ^ a.wrapping_add(0x1656_67b1).wrapping_mul(0x200))
@@ -128,7 +128,7 @@ impl Streams {
         }
     }
 
-    pub fn get(&mut self, stream: Stream) -> &mut Well512 {
+    pub const fn get(&mut self, stream: Stream) -> &mut Well512 {
         &mut self.rngs[stream as usize]
     }
 

@@ -3,10 +3,10 @@ use std::fmt;
 use std::fmt::{Debug, Display};
 use std::io::Read;
 
-/// the variant of AoE2 game
+/// the variant of `AoE2` game
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum GameVariant {
-    /// A trial version, either AoC or AoE
+    /// A trial version, either `AoC` or `AoE`
     Trial,
     /// Age of Kings
     AgeOfKings,
@@ -34,10 +34,14 @@ pub const HD_SAVE_VERSION: f32 = 11.77;
 
 pub const DE_SAVE_VERSION: f32 = 12.97;
 
-use GameVariant::*;
+use GameVariant::{
+    AgeOfConquerors, AgeOfKings, DefinitiveEdition, ForgottenEmpires, HighDefinition, Trial,
+    UserPatch,
+};
 
 impl GameVariant {
-    pub fn resolve_variant(version: &GameVersion, sub_version: f32) -> Option<GameVariant> {
+    #[must_use]
+    pub fn resolve_variant(version: &GameVersion, sub_version: f32) -> Option<Self> {
         // taken from https://github.com/goto-bus-stop/recanalyst/blob/master/src/Analyzers/VersionAnalyzer.php
 
         Some(match *version {
@@ -54,15 +58,18 @@ impl GameVariant {
         })
     }
 
-    pub fn is_original(&self) -> bool {
+    #[must_use]
+    pub const fn is_original(&self) -> bool {
         matches!(self, Trial | AgeOfKings | AgeOfConquerors)
     }
 
-    pub fn is_mod(&self) -> bool {
+    #[must_use]
+    pub const fn is_mod(&self) -> bool {
         matches!(self, ForgottenEmpires | UserPatch)
     }
 
-    pub fn is_update(&self) -> bool {
+    #[must_use]
+    pub const fn is_update(&self) -> bool {
         matches!(self, HighDefinition | DefinitiveEdition)
     }
 }
@@ -70,10 +77,10 @@ impl GameVariant {
 /// A bit of a weird comparing check
 /// It follows the hierarchy of what game is based on what
 ///
-/// Thus AgeOfConquerors is bigger than AgeOfKings and HighDefinition is bigger than AgeOfConquers etc.
+/// Thus `AgeOfConquerors` is bigger than `AgeOfKings` and `HighDefinition` is bigger than `AgeOfConquers` etc.
 ///
-/// The confusing part is around HighDefinition and UserPatch
-/// UserPatch is neither bigger, smaller or equal to the -new- editions created by MSFT and vice versa
+/// The confusing part is around `HighDefinition` and `UserPatch`
+/// `UserPatch` is neither bigger, smaller or equal to the -new- editions created by MSFT and vice versa
 impl PartialOrd for GameVariant {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         // quick return for equal stuff :)
@@ -126,7 +133,7 @@ pub struct GameVersion([u8; 8]);
 
 impl From<&[u8; 8]> for GameVersion {
     fn from(val: &[u8; 8]) -> Self {
-        GameVersion(*val)
+        Self(*val)
     }
 }
 
@@ -135,7 +142,7 @@ impl From<&[u8; 7]> for GameVersion {
     fn from(val: &[u8; 7]) -> Self {
         let mut whole = [0; 8];
         whole[..7].copy_from_slice(val);
-        GameVersion(whole)
+        Self(whole)
     }
 }
 

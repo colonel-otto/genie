@@ -18,7 +18,7 @@ pub struct UnitAction {
     pub target_moved_state: u8,
     pub task_id: Option<u16>,
     pub sub_action_value: u8,
-    pub sub_actions: Vec<UnitAction>,
+    pub sub_actions: Vec<Self>,
     pub sprite_id: Option<SpriteID>,
     pub params: ActionType,
 }
@@ -39,7 +39,7 @@ impl UnitAction {
         // and may not actually be when it changed. May have to become more specific in the
         // future!
         let state = if input.version() <= 11.76 {
-            input.read_u8()? as u32
+            u32::from(input.read_u8()?)
         } else {
             input.read_u32::<LE>()?
         };
@@ -56,11 +56,11 @@ impl UnitAction {
         let target_moved_state = input.read_u8()?;
         let task_id = read_opt_u16(input)?;
         let sub_action_value = input.read_u8()?;
-        let sub_actions = UnitAction::read_list_from(input)?;
+        let sub_actions = Self::read_list_from(input)?;
         let sprite_id = read_opt_u16(input)?;
         let params = ActionType::read_from(input, action_type)?;
 
-        Ok(UnitAction {
+        Ok(Self {
             state,
             target_object_id,
             target_object_id_2,
@@ -178,7 +178,7 @@ pub struct ActionAttack {
 
 impl ReadableHeaderElement for ActionAttack {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        Ok(ActionAttack {
+        Ok(Self {
             range: input.read_f32::<LE>()?,
             min_range: input.read_f32::<LE>()?,
             missile_id: input.read_u16::<LE>()?.into(),

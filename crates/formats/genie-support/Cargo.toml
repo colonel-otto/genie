@@ -21,3 +21,6 @@ strings = ["encoding_rs"]
 
 [dev-dependencies]
 anyhow.workspace = true
+
+[lints]
+workspace = true

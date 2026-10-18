@@ -99,7 +99,7 @@ impl AIErrorInfo {
         let filename = parse_bytes(&filename_bytes)?;
         let description = parse_bytes(&description_bytes)?;
 
-        Ok(AIErrorInfo {
+        Ok(Self {
             filename,
             line_number,
             description,

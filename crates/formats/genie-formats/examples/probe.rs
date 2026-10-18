@@ -180,7 +180,9 @@ fn main() {
                     "panic: {}",
                     p.downcast_ref::<String>()
                         .cloned()
-                        .or(p.downcast_ref::<&str>().map(|s| s.to_string()))
+                        .or(p
+                            .downcast_ref::<&str>()
+                            .map(std::string::ToString::to_string))
                         .unwrap_or_default()
                 ))
             }),

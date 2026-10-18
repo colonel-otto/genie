@@ -46,11 +46,11 @@ impl DLCOptions {
 
         let num_dependencies = input.read_u32::<LE>()?;
         let mut dependencies = vec![DLCPackage::AgeOfKings; num_dependencies as usize];
-        for dependency in dependencies.iter_mut() {
+        for dependency in &mut dependencies {
             *dependency = DLCPackage::try_from(input.read_i32::<LE>()?)?;
         }
 
-        Ok(DLCOptions {
+        Ok(Self {
             version,
             game_data_set,
             dependencies,
@@ -91,10 +91,10 @@ pub struct SCXHeader {
 
 impl SCXHeader {
     /// Parse an SCX header from a byte stream.
-    pub fn read_from(mut input: impl Read, format_version: SCXVersion) -> Result<SCXHeader> {
+    pub fn read_from(mut input: impl Read, format_version: SCXVersion) -> Result<Self> {
         let _header_size = input.read_u32::<LE>()?;
         let version = input.read_u32::<LE>()?;
-        log::debug!("Header version {}", version);
+        log::debug!("Header version {version}");
         let timestamp = if version >= 2 {
             input.read_u32::<LE>()?
         } else {
@@ -123,7 +123,7 @@ impl SCXHeader {
             author_name = None;
         }
 
-        Ok(SCXHeader {
+        Ok(Self {
             version,
             timestamp,
             description,

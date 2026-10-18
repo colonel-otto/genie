@@ -2,7 +2,7 @@
 //! to its last byte.
 //!
 //! The game saves its world in one format: the save-game file header ([`SaveGameFileHeader`]: the
-//! version, the build, the lobby's GameOptions, the save's name and seed), then the world
+//! version, the build, the lobby's `GameOptions`, the save's name and seed), then the world
 //! (`World::save`, read back by `World::load_world`), the map and every player's objects included.
 //! Three containers hold it:
 //!
@@ -16,6 +16,7 @@
 //! `tests/de_roundtrip.rs`, over the recordings' chapters). The generated version gates compare
 //! the raw 16.16 save version ([`Header::raw_version`]).
 
+#[allow(missing_docs, clippy::all, clippy::pedantic, clippy::nursery)] // generated
 pub mod generated;
 mod layout_types;
 mod objects;
@@ -60,6 +61,7 @@ pub struct SaveVersion {
 
 impl SaveVersion {
     /// The save version in hundredths, e.g. 6660 for 66.6.
+    #[must_use]
     pub fn hundredths(&self) -> u32 {
         // the engine rounds the fraction to two decimals (66.6 -> 6660)
         u32::from(self.major) * 100 + (u32::from(self.minor) * 100 + 32768) / 65536
@@ -72,7 +74,7 @@ pub struct SectionEnds {
     /// The save-game file header ends (aoe2rec's lobby settings); the world starts (aoe2rec's
     /// `ai_config` is the world's first field, `loadAIRules`, and the AI scripts it announces).
     pub lobby: usize,
-    /// BaseWorld's fields before the map (aoe2rec's `Replay`).
+    /// `BaseWorld`'s fields before the map (aoe2rec's `Replay`).
     pub replay: usize,
     pub map: usize,
     /// The first player section starts here.
@@ -90,7 +92,8 @@ pub struct Header {
 
 impl Header {
     /// The save version and build: 66.6 and 158041 for the corpus's tier 1.
-    pub fn save_version(&self) -> SaveVersion {
+    #[must_use]
+    pub const fn save_version(&self) -> SaveVersion {
         let raw = self.raw_version();
         SaveVersion {
             major: (raw >> 16) as u16,
@@ -102,11 +105,13 @@ impl Header {
     /// The version as the game compares it: 16.16 fixed point, e.g. `0x429999` for 66.6 (158041
     /// `DAT_143cd8948`, which the playback entry sets from this field). The generated readers'
     /// version gates take this value.
-    pub fn raw_version(&self) -> u32 {
+    #[must_use]
+    pub const fn raw_version(&self) -> u32 {
         self.file_header.new_save_game_version
     }
 
     /// The player sections, Gaia first, with where each starts and ends.
+    #[must_use]
     pub fn players(&self) -> Vec<PlayerSection<'_>> {
         self.world
             .base_world
@@ -208,7 +213,7 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
 }
 
 /// Write a save as `parse` read it, in read order. Read, then write gives back the save byte for
-/// byte (genie-rec's tests/de_roundtrip.rs).
+/// byte (genie-rec's `tests/de_roundtrip.rs`).
 pub fn write<W: binrw::io::Write + Seek>(h: &Header, w: &mut W) -> Result<(), Error> {
     use binrw::BinWrite;
     (|| {

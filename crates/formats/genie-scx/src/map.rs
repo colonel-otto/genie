@@ -67,6 +67,7 @@ pub struct Map {
 
 impl Map {
     /// Create a new, empty map.
+    #[must_use]
     pub fn new(width: u32, height: u32) -> Self {
         Self {
             version: 0,
@@ -79,7 +80,7 @@ impl Map {
 
     /// Fill the map with the given terrain type.
     pub fn fill(&mut self, terrain_type: u8) {
-        for tile in self.tiles.iter_mut() {
+        for tile in &mut self.tiles {
             tile.terrain = terrain_type;
         }
     }
@@ -100,7 +101,7 @@ impl Map {
                 let width = input.read_u32::<LE>()?;
                 let height = input.read_u32::<LE>()?;
 
-                Map {
+                Self {
                     version,
                     width,
                     height,
@@ -111,7 +112,7 @@ impl Map {
             width => {
                 let height = input.read_u32::<LE>()?;
 
-                Map {
+                Self {
                     version: 0,
                     width,
                     height,
@@ -124,13 +125,10 @@ impl Map {
         log::debug!("Map size: {}×{}", map.width, map.height);
 
         if map.width > 500 || map.height > 500 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "Unexpected map size {}×{}, this is likely a genie-scx bug.",
-                    map.width, map.height
-                ),
-            )
+            return Err(io::Error::other(format!(
+                "Unexpected map size {}×{}, this is likely a genie-scx bug.",
+                map.width, map.height
+            ))
             .into());
         }
 
@@ -167,23 +165,27 @@ impl Map {
     }
 
     /// Get the version of the map data.
-    pub fn version(&self) -> u32 {
+    #[must_use]
+    pub const fn version(&self) -> u32 {
         self.version
     }
 
     /// Get the width of the map.
-    pub fn width(&self) -> u32 {
+    #[must_use]
+    pub const fn width(&self) -> u32 {
         self.width
     }
 
     /// Get the height of the map.
-    pub fn height(&self) -> u32 {
+    #[must_use]
+    pub const fn height(&self) -> u32 {
         self.height
     }
 
     /// Get a tile at the given coordinates.
     ///
     /// If the coordinates are out of bounds, returns None.
+    #[must_use]
     pub fn tile(&self, x: u32, y: u32) -> Option<&Tile> {
         self.tiles.get((y * self.width + x) as usize)
     }

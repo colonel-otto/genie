@@ -184,7 +184,7 @@ pub struct TerrainTable {
 }
 
 /// The class bit of a terrain's flags.
-fn terrain_class(flags: u8) -> u8 {
+const fn terrain_class(flags: u8) -> u8 {
     if flags == 0 {
         0
     } else if flags & 7 != 0 {
@@ -197,6 +197,7 @@ fn terrain_class(flags: u8) -> u8 {
 }
 
 impl TerrainTable {
+    #[must_use]
     pub fn from_dat(dat: &DatFile) -> Self {
         let classes: Vec<u8> = dat
             .terrain_block
@@ -228,7 +229,7 @@ impl TerrainTable {
                 flags: t.is_water,
             })
             .collect();
-        TerrainTable {
+        Self {
             classes,
             kinds,
             masks,
@@ -237,21 +238,25 @@ impl TerrainTable {
     }
 
     /// The class bit of terrain `id`; 0 for a terrain the data file does not have.
+    #[must_use]
     pub fn class(&self, id: u8) -> u8 {
         self.classes.get(usize::from(id)).copied().unwrap_or(0)
     }
 
     /// Each terrain restriction's mask, by restriction id.
+    #[must_use]
     pub fn masks(&self) -> &[u8] {
         &self.masks
     }
 
     /// Each terrain restriction's value per terrain, by restriction id.
+    #[must_use]
     pub fn passable(&self) -> &[Vec<f32>] {
         &self.passable
     }
 
     /// Each terrain's record as the map's terrain reads see it.
+    #[must_use]
     pub fn kinds(&self) -> &[genie_core::terrain::TerrainKind] {
         &self.kinds
     }
@@ -315,6 +320,7 @@ fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef
 impl MasterTable {
     /// The rows of every unit every civ of `dat` has: decay (`resource_decay`), the undead flag
     /// (`undead_mode`) and the default action (the action part's default task).
+    #[must_use]
     pub fn from_dat(dat: &DatFile) -> Self {
         let rows = dat.civs.iter().enumerate().flat_map(|(c, civ)| {
             civ.units.iter().enumerate().filter_map(move |(m, unit)| {
@@ -395,7 +401,7 @@ impl MasterTable {
     pub fn from_rows(
         rows: impl IntoIterator<Item = ((u8, i16), MasterData, DefaultAction)>,
     ) -> Self {
-        MasterTable {
+        Self {
             rows: rows
                 .into_iter()
                 .map(|(key, data, default_action)| {
@@ -421,27 +427,32 @@ impl MasterTable {
     }
 
     /// The dead-object values of `master` for `civ`; None if the data file has no such master.
+    #[must_use]
     pub fn get(&self, civ: u8, master: i16) -> Option<MasterData> {
         self.rows.get(&(civ, master)).map(|r| r.data)
     }
 
     /// The default action of `master` for `civ`; None if the data file has no such master.
+    #[must_use]
     pub fn default_action(&self, civ: u8, master: i16) -> Option<DefaultAction> {
         self.rows.get(&(civ, master)).map(|r| r.default_action)
     }
 
     /// The `.dat`'s work-command values of a civ's master: the task swap group the save lacks, and
     /// the tasks a master without saved ones has.
+    #[must_use]
     pub fn work(&self, civ: u8, master: i16) -> Option<&work::Master> {
         self.rows.get(&(civ, master)).and_then(|r| r.work.as_ref())
     }
 
     /// How a civ's moving master turns; None for a master without a moving part.
+    #[must_use]
     pub fn turning(&self, civ: u8, master: i16) -> Option<Turning> {
         self.rows.get(&(civ, master)).and_then(|r| r.turning)
     }
 
     /// A missile master's `projectile_type` (`+0x880`).
+    #[must_use]
     pub fn projectile_type(&self, civ: u8, master: i16) -> Option<u8> {
         self.rows
             .get(&(civ, master))
@@ -449,11 +460,13 @@ impl MasterTable {
     }
 
     /// A master's `fly_mode` (`+0x608`): 0 keeps its objects on the ground, 1 above it.
+    #[must_use]
     pub fn fly_mode(&self, civ: u8, master: i16) -> Option<u8> {
         self.rows.get(&(civ, master)).map(|r| r.fly_mode)
     }
 
     /// A sprite's speed factor; None for a sprite the data file does not have.
+    #[must_use]
     pub fn sprite_speed(&self, sprite: i16) -> Option<f32> {
         self.sprite_speed.get(&sprite).copied()
     }

@@ -1,4 +1,4 @@
-//! Prints out all AoC hotkey groups and hotkeys, using a language file.
+//! Prints out all `AoC` hotkey groups and hotkeys, using a language file.
 
 // Example hotkey file path:
 // D:\SteamLibrary\steamapps\common\Age2HD\profiles

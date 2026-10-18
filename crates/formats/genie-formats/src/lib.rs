@@ -29,7 +29,7 @@
 //! genie-scx can read and write scenario files for almost all Age of Empires versions. When
 //! reading a file, the version is detected automatically. When writing a file, you can choose the
 //! version to save it as. For example, you can read an HD Edition scenario file, but save it for
-//! AoC 1.0c. Note that scenarios that are converted like this may crash the game, because they may
+//! `AoC` 1.0c. Note that scenarios that are converted like this may crash the game, because they may
 //! refer to terrains or units that do not exist in the different version.
 //!
 //! ```rust
@@ -52,7 +52,7 @@
 //! ### Implementation Status
 //!
 //! There aren't many ways to edit a scenario file yet. Initially, we'll work towards the necessary
-//! features for proper conversion between AoE versions, especially HD → WololoKingdoms. When that
+//! features for proper conversion between `AoE` versions, especially HD → `WololoKingdoms`. When that
 //! is fairly robust, we'll work on adding methods to edit scenarios and create them from scratch.
 //!
 //! ## Campaign Files

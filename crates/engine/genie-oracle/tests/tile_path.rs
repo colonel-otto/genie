@@ -22,7 +22,7 @@ fn game_planners(text: &str) -> Vec<GamePlanner> {
                 levels: Default::default(),
             }),
             Some("passable") => {
-                out.last_mut().unwrap().passable = words.map(|v| v.parse().unwrap()).collect()
+                out.last_mut().unwrap().passable = words.map(|v| v.parse().unwrap()).collect();
             }
             Some(level) if level.starts_with('L') => {
                 let l: usize = level[1..].parse().unwrap();

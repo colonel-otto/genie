@@ -25,6 +25,6 @@ fn main() -> anyhow::Result<()> {
     let cli_input = DisplayLang::from_args();
     let mut f = File::open(&cli_input.file_name)?;
     let lang_file = cli_input.file_type.read_from(&mut f)?;
-    println!("{}", lang_file);
+    println!("{lang_file}");
     Ok(())
 }

@@ -19,7 +19,7 @@ const PATCHES: u16 = 0x200;
 const OFF_MAP: u16 = 0;
 
 /// The zones of one passability pattern.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZoneMap {
     width: i32,
     height: i32,
@@ -33,6 +33,7 @@ impl ZoneMap {
     /// terrain is `values`: `FUN_141413190`'s scan row by row, each tile not yet reached
     /// starting a patch (`FUN_141413340`'s flood over the four neighbours of each tile it takes).
     /// A terrain the restriction has no value for counts as impassable.
+    #[must_use]
     pub fn new(width: i32, height: i32, kinds: &[u8], values: &[f32]) -> Self {
         let passable: Vec<bool> = values.iter().map(|&v| 0.0 < v).collect();
         let open = |i: usize| {
@@ -68,7 +69,7 @@ impl ZoneMap {
                 }
             }
         }
-        ZoneMap {
+        Self {
             width,
             height,
             passable,
@@ -77,6 +78,7 @@ impl ZoneMap {
     }
 
     /// A tile's zone (`FUN_141413890`): 0 off the map.
+    #[must_use]
     pub fn zone(&self, x: i32, y: i32) -> u16 {
         if x < 0 || y < 0 || self.width <= x || self.height <= y {
             return OFF_MAP;
@@ -96,12 +98,11 @@ impl Zones {
     /// map of the same pattern, else a new one of the terrain `kinds`.
     pub fn of(&mut self, width: i32, height: i32, kinds: &[u8], values: &[f32]) -> &ZoneMap {
         let pattern: Vec<bool> = values.iter().map(|&v| 0.0 < v).collect();
-        let at = match self.maps.iter().position(|m| m.passable == pattern) {
-            Some(i) => i,
-            None => {
-                self.maps.push(ZoneMap::new(width, height, kinds, values));
-                self.maps.len() - 1
-            }
+        let at = if let Some(i) = self.maps.iter().position(|m| m.passable == pattern) {
+            i
+        } else {
+            self.maps.push(ZoneMap::new(width, height, kinds, values));
+            self.maps.len() - 1
         };
         &self.maps[at]
     }

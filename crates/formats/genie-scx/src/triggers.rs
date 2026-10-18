@@ -54,6 +54,7 @@ impl TriggerCondition {
     }
 
     /// Get the "amount" value for this trigger condition.
+    #[must_use]
     pub fn amount(&self) -> i32 {
         self.properties[0]
     }
@@ -64,6 +65,7 @@ impl TriggerCondition {
     }
 
     /// Get the "resource" value for this trigger condition.
+    #[must_use]
     pub fn resource(&self) -> i32 {
         self.properties[1]
     }
@@ -74,6 +76,7 @@ impl TriggerCondition {
     }
 
     /// Get the "primary object" value for this trigger condition.
+    #[must_use]
     pub fn primary_object(&self) -> i32 {
         self.properties[2]
     }
@@ -84,6 +87,7 @@ impl TriggerCondition {
     }
 
     /// Get the "secondary object" value for this trigger condition.
+    #[must_use]
     pub fn secondary_object(&self) -> i32 {
         self.properties[3]
     }
@@ -94,6 +98,7 @@ impl TriggerCondition {
     }
 
     /// Get the raw "unit type" value for this trigger condition.
+    #[must_use]
     pub fn raw_unit_type(&self) -> i32 {
         self.properties[4]
     }
@@ -104,16 +109,18 @@ impl TriggerCondition {
     }
 
     /// Get the "unit type" value for this trigger condition.
+    #[must_use]
     pub fn unit_type(&self) -> UnitTypeID {
         self.properties[4].try_into().unwrap()
     }
 
     /// Set the "unit type" value for this trigger condition.
     pub fn set_unit_type(&mut self, unit_type: UnitTypeID) {
-        self.properties[4] = unit_type.try_into().unwrap();
+        self.properties[4] = unit_type.into();
     }
 
     /// Get the "player ID" value for this trigger condition.
+    #[must_use]
     pub fn player_id(&self) -> i32 {
         self.properties[5]
     }
@@ -124,6 +131,7 @@ impl TriggerCondition {
     }
 
     /// Get the "Tech ID" value for this trigger condition.
+    #[must_use]
     pub fn technology_id(&self) -> i32 {
         self.properties[6]
     }
@@ -134,6 +142,7 @@ impl TriggerCondition {
     }
 
     /// Get the "Timer" value for this trigger condition.
+    #[must_use]
     pub fn timer(&self) -> i32 {
         self.properties[7]
     }
@@ -144,6 +153,7 @@ impl TriggerCondition {
     }
 
     /// Get the "Trigger ID" value for this trigger condition.
+    #[must_use]
     pub fn trigger_id(&self) -> i32 {
         self.properties[8]
     }
@@ -156,6 +166,7 @@ impl TriggerCondition {
     /// Get the area this trigger condition applies to.
     ///
     /// -1 values indicate no area is set.
+    #[must_use]
     pub fn area(&self) -> (i32, i32, i32, i32) {
         (
             self.properties[9],
@@ -176,6 +187,7 @@ impl TriggerCondition {
     }
 
     /// Get the "unit group" value for this trigger condition.
+    #[must_use]
     pub fn unit_group(&self) -> i32 {
         self.properties[13]
     }
@@ -186,6 +198,7 @@ impl TriggerCondition {
     }
 
     /// Get the "Object Type" value for this trigger condition.
+    #[must_use]
     pub fn object_type(&self) -> UnitTypeID {
         self.properties[14].try_into().unwrap()
     }
@@ -196,6 +209,7 @@ impl TriggerCondition {
     }
 
     /// Get the "AI Signal" value for this trigger condition.
+    #[must_use]
     pub fn ai_signal(&self) -> i32 {
         self.properties[15]
     }
@@ -206,6 +220,7 @@ impl TriggerCondition {
     }
 
     /// Get the "Inverted" value for this trigger condition.
+    #[must_use]
     pub fn inverted(&self) -> bool {
         self.properties[16] == 1
     }
@@ -287,6 +302,7 @@ impl TriggerEffect {
     }
 
     /// Get the "AI Goal" value for this trigger effect.
+    #[must_use]
     pub fn ai_goal(&self) -> i32 {
         self.properties[0]
     }
@@ -297,6 +313,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Amount" value for this trigger effect.
+    #[must_use]
     pub fn amount(&self) -> i32 {
         self.properties[1]
     }
@@ -307,6 +324,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Resource" value for this trigger effect.
+    #[must_use]
     pub fn resource(&self) -> i32 {
         self.properties[2]
     }
@@ -317,6 +335,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Diplomacy" value for this trigger effect.
+    #[must_use]
     pub fn diplomacy(&self) -> i32 {
         self.properties[3]
     }
@@ -327,6 +346,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Number of Objects" value for this trigger effect.
+    #[must_use]
     pub fn num_objects(&self) -> i32 {
         self.properties[4]
     }
@@ -337,6 +357,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Object ID" value for this trigger effect.
+    #[must_use]
     pub fn object_id(&self) -> i32 {
         self.properties[5]
     }
@@ -347,6 +368,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Unit Type" value for this trigger effect.
+    #[must_use]
     pub fn unit_type(&self) -> UnitTypeID {
         self.properties[6].try_into().unwrap()
     }
@@ -357,6 +379,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Source Player" value for this trigger effect.
+    #[must_use]
     pub fn source_player_id(&self) -> i32 {
         self.properties[7]
     }
@@ -367,6 +390,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Target Player" value for this trigger effect.
+    #[must_use]
     pub fn target_player_id(&self) -> i32 {
         self.properties[8]
     }
@@ -377,6 +401,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Tech ID" value for this trigger effect.
+    #[must_use]
     pub fn technology_id(&self) -> i32 {
         self.properties[9]
     }
@@ -387,6 +412,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Text ID" value for this trigger effect.
+    #[must_use]
     pub fn text_id(&self) -> i32 {
         self.properties[10]
     }
@@ -397,6 +423,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Sound ID" value for this trigger effect.
+    #[must_use]
     pub fn sound_id(&self) -> i32 {
         self.properties[11]
     }
@@ -407,6 +434,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Timer" value for this trigger effect.
+    #[must_use]
     pub fn timer(&self) -> i32 {
         self.properties[12]
     }
@@ -417,6 +445,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Trigger ID" value for this trigger effect.
+    #[must_use]
     pub fn trigger_id(&self) -> i32 {
         self.properties[13]
     }
@@ -427,6 +456,7 @@ impl TriggerEffect {
     }
 
     /// Get the location this trigger effect applies to.
+    #[must_use]
     pub fn location(&self) -> (i32, i32) {
         (self.properties[14], self.properties[15])
     }
@@ -438,6 +468,7 @@ impl TriggerEffect {
     }
 
     /// Get the area this trigger effect applies to.
+    #[must_use]
     pub fn area(&self) -> (i32, i32, i32, i32) {
         (
             self.properties[16],
@@ -456,6 +487,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Object Group" value for this trigger effect.
+    #[must_use]
     pub fn object_group(&self) -> i32 {
         self.properties[20]
     }
@@ -466,6 +498,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Object Type" value for this trigger effect.
+    #[must_use]
     pub fn object_type(&self) -> UnitTypeID {
         self.properties[21].try_into().unwrap()
     }
@@ -476,6 +509,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Line ID" value for this trigger effect.
+    #[must_use]
     pub fn line_id(&self) -> i32 {
         self.properties[22]
     }
@@ -486,6 +520,7 @@ impl TriggerEffect {
     }
 
     /// Get the "Stance" value for this trigger effect.
+    #[must_use]
     pub fn stance(&self) -> i32 {
         self.properties[23]
     }
@@ -573,7 +608,7 @@ impl Trigger {
             condition_order.push(input.read_i32::<LE>()?);
         }
 
-        Ok(Trigger {
+        Ok(Self {
             enabled,
             looping,
             name_id,
@@ -693,11 +728,11 @@ impl TriggerSystem {
     /// Read a trigger system from an input stream.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let version = input.read_f64::<LE>()?;
-        log::debug!("Trigger system version {}", version);
+        log::debug!("Trigger system version {version}");
         let objectives_state = if version >= 1.5 { input.read_i8()? } else { 0 };
 
         let num_triggers = input.read_i32::<LE>()?;
-        log::debug!("{} triggers", num_triggers);
+        log::debug!("{num_triggers} triggers");
 
         let mut triggers = vec![];
         let mut trigger_order = vec![];
@@ -773,7 +808,7 @@ impl TriggerSystem {
             let padded_values = self
                 .variable_values
                 .iter()
-                .cloned()
+                .copied()
                 .chain(std::iter::repeat(0))
                 .take(256);
             for value in padded_values {
@@ -800,12 +835,14 @@ impl TriggerSystem {
     }
 
     /// Get the version of the trigger system data.
-    pub fn version(&self) -> f64 {
+    #[must_use]
+    pub const fn version(&self) -> f64 {
         self.version
     }
 
     /// Get the number of triggers in the trigger system.
-    pub fn num_triggers(&self) -> u32 {
+    #[must_use]
+    pub const fn num_triggers(&self) -> u32 {
         self.triggers.len() as u32
     }
 

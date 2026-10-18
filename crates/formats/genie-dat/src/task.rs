@@ -69,7 +69,7 @@ impl TaskList {
 
 impl Task {
     pub fn read_from(mut input: impl Read) -> Result<Self> {
-        Ok(Task {
+        Ok(Self {
             id: input.read_u16::<LE>()?,
             is_default: input.read_u8()? != 0,
             action_type: input.read_u16::<LE>()?,
@@ -106,11 +106,7 @@ impl Task {
         output.write_u8(u8::from(self.is_default))?;
         output.write_u16::<LE>(self.action_type)?;
         output.write_i16::<LE>(self.object_class)?;
-        output.write_i16::<LE>(
-            self.object_id
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.object_id.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_i16::<LE>(self.terrain_id)?;
         output.write_i16::<LE>(self.attribute_types.0)?;
         output.write_i16::<LE>(self.attribute_types.1)?;
@@ -128,36 +124,12 @@ impl Task {
         output.write_u8(self.owner_type)?;
         output.write_u8(self.holding_attribute)?;
         output.write_u8(self.state_building)?;
-        output.write_i16::<LE>(
-            self.move_sprite
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.work_sprite
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.work_sprite2
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.carry_sprite
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.work_sound
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
-        output.write_i16::<LE>(
-            self.work_sound2
-                .map(|id| id.try_into().unwrap())
-                .unwrap_or(-1),
-        )?;
+        output.write_i16::<LE>(self.move_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.work_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.work_sprite2.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.carry_sprite.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.work_sound.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i16::<LE>(self.work_sound2.map_or(-1, |id| id.try_into().unwrap()))?;
         Ok(())
     }
 }
