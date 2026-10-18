@@ -443,7 +443,7 @@ impl HuntAction {
     /// to its drop site first when it stands more than 3 tiles from it (`HERD_REACH` squared,
     /// set_state 10, not modelled); then live livestock is attacked (set_state 12, with an Attack
     /// of the master's ranges: [`Herd`]). Dead livestock out of the task's range plus `GAP` is
-    /// walked to again (set_state 4, not modelled). Otherwise the unit takes the hunt's sprite
+    /// walked to again (set_state 4, [`HuntAction::set_walk`]). Otherwise the unit takes the hunt's sprite
     /// (`FUN_140ac51d0`: the carrying one for a load of the task's resource of 1 or more, else the
     /// moving one; slot 0x68 takes the standing sprite for none). A target of class 49 (its
     /// owner's change, `FUN_141185360`) is not modelled.
@@ -494,9 +494,8 @@ impl HuntAction {
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
                 .ok_or(Unsupported("a hunter without movement state"))?;
             if self.task.range + GAP < footprint_gap(me, ground, t.position, t.radius) {
-                return Err(Unsupported(
-                    "a hunt facing dead livestock out of its range (set_state 4)",
-                ));
+                let mut walk = walk;
+                return self.set_walk(&mut walk, strike.victim);
             }
         }
         self.move_to = None;
