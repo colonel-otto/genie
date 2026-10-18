@@ -337,6 +337,9 @@ pub enum Pick {
     /// (`+0x1b8`) when it finds enemies, and holds a second search from within 5 tiles in the same
     /// update to the first's answer, which the idle checks never ask.
     Attack { lowest: usize },
+    /// The search alone (slot 0x50 as a NoAttack soldier's idle check calls it): no object, and
+    /// whether it found enemies (the alert mode).
+    Look,
 }
 
 /// What a unit AI's attack check (its slot 0xa0) reads of itself: its owner's id, its state
@@ -1128,8 +1131,8 @@ impl UnitAi {
     /// player that is out (`+0x89` 2; not held, 0 in every player probed) would stop, and slot
     /// 0x250 (`FUN_140c5d9a0`) retries no order, the soldier's slot 0x60 taking none as
     /// retryable. A Gaia unit stops unless it is of the combat type with `+0x924` 0 outside the
-    /// scenario modes (`FUN_141302540`); one in NoAttack (stance 3) would search and return to its
-    /// state position (not modelled); master 706 stops. Its target is the target of its top action
+    /// scenario modes (`FUN_141302540`); one in NoAttack (stance 3) searches and returns to its
+    /// state position ([`UnitAi::no_attack_idle`]); master 706 stops. Its target is the target of its top action
     /// within its range (slot 400, slot 0x1e8) with retargeting on (`+0x1d6` 0), else its current
     /// target; neither is modelled, nor a computer's branches (patrol data, priorities, evasion).
     /// Without one, `bestUnitToAttack` from its place ([`Pick::Attack`]): an object found would be
@@ -1149,7 +1152,7 @@ impl UnitAi {
             return Ok(());
         }
         if self.stance == 3 {
-            return Err(Unsupported("a soldier's idle check in NoAttack (stance 3)"));
+            return self.no_attack_idle(at, computer, closest);
         }
         if at.master == SOLDIER_IDLE_MASTER {
             return Ok(());
@@ -1199,6 +1202,61 @@ impl UnitAi {
         }
         if self.patrol_path {
             return Err(Unsupported("a soldier's patrol path in its idle check"));
+        }
+        if at.task_0x69 {
+            return Err(Unsupported("a healer's search for an ally to heal"));
+        }
+        Ok(())
+    }
+
+    /// The soldier's idle check in NoAttack (stance 3, `FUN_140c20db0`: "searching and returning
+    /// to state pos."): the search alone from its place (slot 0x50, `FUN_140c63e20` with mode 1,
+    /// [`Pick::Look`]) leaves the alert mode clear when it finds no enemies; then, but on the
+    /// patrol orders, a unit more than a tile from its state position (the squared footprint gap,
+    /// `FUN_140c5e7d0`) would walk back; last the healer's ally search (`FUN_140c16f00`). Not
+    /// modelled: enemies found (the alert mode on, its object `+0x1bc` from slot 0x1d8, and
+    /// after 10 s without a sighting the player's notify 0x210, slot 0x2e8), a defend order's
+    /// search (from its target's objects), a computer's cared classes (`+0x190` with 10), the
+    /// walk back and the healer's search.
+    fn no_attack_idle(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        closest: &mut Closest<'_>,
+    ) -> Result<(), Unsupported> {
+        if self.current_order == DEFEND_ORDER {
+            return Err(Unsupported(
+                "a defend order's search (its target's objects)",
+            ));
+        }
+        if computer {
+            return Err(Unsupported("a computer player's soldier's NoAttack search"));
+        }
+        let found = closest(&Search {
+            at: [at.position[0], at.position[1]],
+            radius: attack_search_radius(at),
+            classes: &SOLDIER_CARED,
+            size: at.size,
+            pick: Pick::Look,
+        })?;
+        if found.enemies {
+            return Err(Unsupported(
+                "a NoAttack soldier's search that finds enemies",
+            ));
+        }
+        self.alert_mode = false;
+        if !matches!(self.current_order, PATROL | PATROL_2) {
+            let gap = |d: f32, r: f32| {
+                let g = d.abs() - r;
+                if 0.0 <= g { g } else { 0.0 }
+            };
+            let dx = gap(self.state_position[0] - at.position[0], at.size[0]);
+            let dy = gap(self.state_position[1] - at.position[1], at.size[1]);
+            if 1.0 < dy * dy + dx * dx {
+                return Err(Unsupported(
+                    "a soldier walking back to its state position (FUN_140c5e7d0)",
+                ));
+            }
         }
         if at.task_0x69 {
             return Err(Unsupported("a healer's search for an ally to heal"));

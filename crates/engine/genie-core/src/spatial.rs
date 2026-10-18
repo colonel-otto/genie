@@ -867,6 +867,11 @@ impl Spatial {
                     position: self.objects.get(&id).map(|p| p.position),
                 })
             }
+            Pick::Look => Ok(Found {
+                id: -1,
+                enemies: !found[4].is_empty(),
+                position: None,
+            }),
             Pick::Attack { lowest } => {
                 let id = self.best_unit_to_attack(v, own, player, &found, lowest, can_attack)?;
                 Ok(Found {
