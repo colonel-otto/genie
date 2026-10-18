@@ -72,6 +72,9 @@ pub struct Unit {
     pub work_rate_powerup: f32,
     /// `+0x68a`, `unit_attackable_flag`.
     pub attackable: bool,
+    /// `+0x689`, `mUnitTargetingFlag`, is 0 (a new object's is 1): a gatherer's search takes the
+    /// object only through a pasture (`ClosestResourceObject`).
+    pub untargetable: bool,
     /// `+0x790`, `parent_pasture_id`: the pasture it is in; `+0x794`, `my_pasture_id`: the one it
     /// tends. -1 for none.
     pub pasture: i32,
@@ -451,6 +454,12 @@ struct Context<'a> {
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.
     attribute_adds: Vec<(i16, f32)>,
+    /// The technologies the owner researches from the object's update (a completed building's),
+    /// which the caller completes after the attributes ([`Turns::complete_research`]).
+    techs_done: Vec<i16>,
+    /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
+    /// which the caller gives after the update ([`Turns::order_work`]).
+    work_order: Option<crate::order::Work>,
     /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
     /// runs after the update ([`Turns::order_on_target`]).
     order_on_target: Option<crate::unit_ai::QueuedOrder>,
@@ -1385,6 +1394,170 @@ impl Unit {
     }
 
     /// A notify the unit posts to its own unit AI (slot 0x328).
+    /// The Build's case 0xdf once its work ended without queued orders (`0x140ab0b43`): the
+    /// builder looks for more work around building `building` of master `built`
+    /// ([`crate::gather_search::more_work`] with the drop site's entry for the building, the
+    /// builder's class and civ, the reach the building's line of sight held to 4 to 20, and the
+    /// planner of the builder's restriction). Nothing found: None, the caller lets the foundation
+    /// go. A farm found is not modelled; else the unit AI's `ClosestResourceObject` for the found
+    /// object's gather group and workers cap ([`crate::gather_search::gather_group`],
+    /// [`crate::gather_search::closest_resource`]) names the target, the found object when it
+    /// names none, and slot 0x7e8 works it at its place (the work flag 1 only logged, any task,
+    /// no carried-resource test, `+0xa14` as it stands outside slot 0x128: 1; the caller's).
+    fn more_work(
+        &self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        building: i32,
+        built: i16,
+    ) -> Result<Option<crate::order::Work>, Unsupported> {
+        use crate::gather_search::{self, Candidate};
+        use crate::image::gather_search::{REACH_CAP, REACH_FLOOR};
+        /// The reach a line of sight below the floor takes (the Build's immediate 4.0).
+        const REACH_LOW: f32 = 4.0;
+        let masters = c
+            .masters
+            .ok_or(Unsupported("a builder without its player's masters"))?;
+        let master = masters
+            .get(self.life.master_id)
+            .ok_or(Unsupported("a builder of a master the slice does not have"))?;
+        let site = masters.get(built).ok_or(Unsupported(
+            "a building of a master the slice does not have",
+        ))?;
+        let at = *c
+            .spatial
+            .get(building)
+            .ok_or(Unsupported("a builder's building without a place"))?;
+        let entry = crate::tasks::drop_site(c.drop_sites, built, master.class, c.civ);
+        let los = site.line_of_sight;
+        let held = if REACH_FLOOR <= los { los } else { REACH_LOW };
+        let reach = if held <= REACH_CAP { held } else { REACH_CAP };
+        let builder = gather_search::Builder {
+            position: self.position,
+            radius: master.radius[0],
+            building: at.position,
+            range: reach as i32 as i16,
+        };
+        let mover = self
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("a builder without movement state"))?;
+        let (restriction, mask) = (mover.stats.restriction, mover.stats.restriction_mask);
+        let (player, me_id, foreign, every) = (c.player, self.id, c.foreign, c.every_masters);
+        let candidate = |id: i32, owner: usize, u: &Self, position: [f32; 3]| {
+            let m = every
+                .get(owner)
+                .and_then(|m| m.get(u.life.master_id))
+                .ok_or(Unsupported("an object of a master the slice does not have"))?;
+            Ok(Candidate {
+                id,
+                player: owner,
+                class: m.class,
+                master: m.id,
+                state: u.life.state,
+                workers: u.workers,
+                position,
+                pasture: u.pasture,
+                untargetable: u.untargetable,
+                attribute: u.life.attribute_type,
+                amount: u.life.amount,
+                auto_gather: m.auto_gather,
+                gather_group: m.gather_group,
+            })
+        };
+        let me = candidate(me_id, player, self, self.position)?;
+        let spatial: &Spatial = c.spatial;
+        let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, Unsupported> {
+            spatial
+                .objects_on(x, y)
+                .map(|(id, p)| {
+                    if id == me_id {
+                        return Ok(me);
+                    }
+                    let (owner, u) = others
+                        .iter()
+                        .find(|u| u.id == id)
+                        .map(|u| (player, u))
+                        .or_else(|| foreign.find(id))
+                        .ok_or(Unsupported("an object on a tile the slice does not hold"))?;
+                    candidate(id, owner, u, p.position)
+                })
+                .collect()
+        };
+        let found = {
+            let planner = c
+                .pathing
+                .planner(restriction, spatial.tiles())
+                .ok_or(Unsupported("a builder's restriction without a planner"))?;
+            let width = i64::from(planner.level_sizes().0[0]);
+            let cells = planner.level(0);
+            let blocked =
+                move |x: i32, y: i32| cells[(width * i64::from(y) + i64::from(x)) as usize][0] == 0;
+            gather_search::more_work(entry, &builder, spatial.map, Some(&blocked), &objects)?
+        };
+        let Some(found) = found else {
+            return Ok(None);
+        };
+        if found.class == gather_search::FARM {
+            return Err(Unsupported(
+                "a builder's search for more work finding a farm",
+            ));
+        }
+        let (kind, cap) = gather_search::gather_group(found.attribute);
+        let ai = self
+            .ai
+            .as_ref()
+            .ok_or(Unsupported("a builder without a unit AI"))?;
+        let seeker = gather_search::Seeker {
+            player,
+            position: self.position,
+            line_of_sight: master.line_of_sight,
+            state: self.life.state,
+            current_target: ai.current_target,
+            my_pasture: self.my_pasture,
+        };
+        let me_walk = Me {
+            id: self.id,
+            position: self.position,
+            action_state: self.top_action().map_or(0, |a| a.state),
+        };
+        let master_id = self.life.master_id;
+        let mut plan = Planning {
+            pathing: c.pathing,
+            now: c.world_time,
+            computer: c.computer,
+            object: c.streams.get(Stream::Object),
+            construction_rate: c.construction_rate,
+        };
+        let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
+        let target = gather_search::closest_resource(
+            &seeker,
+            kind,
+            cap,
+            spatial.map,
+            &|x, y| spatial.explored(player, x, y),
+            &|x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
+            &objects,
+            &mut |id| mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id),
+        )?;
+        let target = if target != -1 && spatial.get(target).is_some() {
+            target
+        } else {
+            found.id
+        };
+        let point = spatial
+            .get(target)
+            .ok_or(Unsupported("a builder's new work without a place"))?
+            .position;
+        Ok(Some(crate::order::Work {
+            target,
+            point,
+            carry_test: false,
+            filter: -1,
+            notified: true,
+        }))
+    }
+
     fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), Unsupported> {
         let (id, state) = (self.id, self.life.state);
         self.ai
@@ -2288,23 +2461,15 @@ impl Unit {
             let class = masters
                 .and_then(|m| m.get(self.life.master_id))
                 .map_or(-1, |m| m.class);
-            let civ = c.civ;
-            let more_work = built.is_some_and(|b| {
-                c.drop_sites.iter().any(|e| {
-                    e.building == b
-                        && e.worker_class == class
-                        && (e.civs.is_empty() || e.civs.contains(&civ))
-                })
-            });
             let builder = Builder {
                 class,
                 held: self.life.amount,
                 ai: self.ai.as_mut(),
-                more_work,
             };
             let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
-            if let Some(adds) = step.completed {
-                c.attribute_adds.extend(adds);
+            if let Some(built) = step.completed {
+                c.attribute_adds.extend(built.attributes);
+                c.techs_done.extend(built.tech);
             }
             if step.done {
                 // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
@@ -2315,6 +2480,19 @@ impl Unit {
             if step.released {
                 release_own(others, masters, target)?;
                 self.post_own(BUILD_IDLE, [BUILD_ACTION, 0, 0])?;
+            }
+            if step.search {
+                let built =
+                    built.ok_or(Unsupported("a builder's building the slice does not hold"))?;
+                if let Some(work) = self.more_work(c, others, target, built)? {
+                    c.work_order = Some(work);
+                } else {
+                    if let Some(b) = self.build.as_mut() {
+                        b.no_more_work()?;
+                    }
+                    release_own(others, masters, target)?;
+                    self.post_own(BUILD_IDLE, [BUILD_ACTION, 0, 0])?;
+                }
             }
         }
         if self.missile.as_ref().is_some_and(|m| m.action.is_some()) {
@@ -3990,6 +4168,7 @@ impl Turns {
                         }),
                     work_rate_powerup: 0.0,
                     attackable: true,
+                    untargetable: false,
                     last_human_order: 0,
                     pasture: -1,
                     my_pasture: -1,
@@ -4877,6 +5056,8 @@ impl Turns {
                     mode_680: self.mode_680,
                     scenario: scenario_mode(self.game_mode),
                     attribute_adds: Vec::new(),
+                    techs_done: Vec::new(),
+                    work_order: None,
                     order_on_target: None,
                     zones: &mut self.zones,
                     foreign: Foreign { before, after },
@@ -4886,6 +5067,8 @@ impl Turns {
                     std::mem::take(&mut c.attribute_adds),
                     c.order_on_target.take(),
                 );
+                let techs_done = std::mem::take(&mut c.techs_done);
+                let work_order = c.work_order.take();
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
                 let (remains, refund) = (c.remains.take(), c.refund.take());
                 let pauses = std::mem::take(&mut c.pauses);
@@ -4899,6 +5082,11 @@ impl Turns {
                 player.objects.extend(made);
                 for (kind, amount) in adds {
                     if let Err(e) = self.players[p].add_attribute(kind, amount) {
+                        result = result.and(Err(e));
+                    }
+                }
+                for t in techs_done {
+                    if let Err(e) = self.research_built(p, t) {
                         result = result.and(Err(e));
                     }
                 }
@@ -4929,6 +5117,15 @@ impl Turns {
                     && let Err(e) = self.produce(p, i, seconds(dt))
                 {
                     result = Err(e);
+                }
+                if let Some(work) = work_order {
+                    if !matches!(result, Ok(Step::Stay)) {
+                        result = result.and(Err(Unsupported(
+                            "a builder's work order of a unit that leaves its list",
+                        )));
+                    } else if let Err(e) = self.order_work(p, i, &work) {
+                        result = Err(e);
+                    }
                 }
                 if let (Ok(Step::Stay), Some(order)) = (&result, ordered) {
                     if let Err(e) = self.order_on_target(p, i, order) {

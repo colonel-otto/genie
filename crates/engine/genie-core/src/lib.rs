@@ -43,6 +43,7 @@ pub mod explore;
 pub mod facing;
 pub mod fly;
 pub mod fmath;
+pub mod gather_search;
 pub mod hunt;
 pub mod image;
 pub mod lifecycle;

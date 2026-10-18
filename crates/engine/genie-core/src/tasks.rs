@@ -139,11 +139,53 @@ pub struct DropSite {
     pub workers: Vec<i16>,
     /// The civs it is for (empty: all).
     pub civs: Vec<u8>,
-    /// The resource kinds it takes.
-    pub resources: Vec<i16>,
+    /// `+8`, `auto_work` (1 when the key is missing): a builder whose building completes looks
+    /// for more work around it (`FUN_1415cc4e0`).
+    pub auto_work: bool,
+    /// `+0x50`, `target_list`: the objects whose resources it takes, in the file's order.
+    pub targets: Vec<DropTarget>,
     /// The entry has `accepts_livestock` (`FUN_140fdf480` keeps the key's presence): its building
     /// is one of the drop sites a hunted livestock is led to (`DAT_143f157f0`, in table order).
     pub livestock: bool,
+}
+
+/// A drop site's target (`FUN_140fdf480`'s record of 0x14 bytes; each −1 when its key is missing).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DropTarget {
+    /// `object_group`: the class of the objects.
+    pub class: i16,
+    /// `worker_num`: the most workers such an object may have.
+    pub workers: i32,
+    /// `object_state`: the state such an object must be in.
+    pub state: i32,
+    /// `attribute_type`: the resource it gives.
+    pub attribute: i16,
+}
+
+impl DropSite {
+    /// `FUN_140fdd7b0`: the resource the drop site takes from an object of class `class` in
+    /// state `state` with `workers` workers: its first target of that class decides, unless it
+    /// caps the workers below the object's or wants another state (None).
+    #[must_use]
+    pub fn resource_of(&self, class: i16, state: u8, workers: i32) -> Option<i16> {
+        let t = self.targets.iter().find(|t| t.class == class)?;
+        if (0 <= t.workers && t.workers < workers) || (0 <= t.state && t.state != i32::from(state))
+        {
+            return None;
+        }
+        (0 <= t.attribute).then_some(t.attribute)
+    }
+}
+
+/// `FUN_140fdd8a0`: the table's first entry for building `building`, the worker class `class`
+/// and civ `civ` (an entry with civs is for those alone).
+#[must_use]
+pub fn drop_site(table: &[DropSite], building: i16, class: i16, civ: u8) -> Option<&DropSite> {
+    table.iter().find(|e| {
+        (e.civs.is_empty() || e.civs.contains(&civ))
+            && e.building == building
+            && e.worker_class == class
+    })
 }
 
 /// `FUN_140fdd190` over the table: the first entry for the actor's civ and kind of worker whose
@@ -160,7 +202,7 @@ pub fn drops_at(table: &[DropSite], building: i16, actor: &Actor<'_>) -> bool {
             e.workers.contains(&actor.master.id)
         };
         if worker && e.building == building {
-            return e.resources.contains(&actor.held.0);
+            return e.targets.iter().any(|t| t.attribute == actor.held.0);
         }
     }
     false

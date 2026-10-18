@@ -259,6 +259,7 @@ fn unit(
         construction: construction(object, s, objects),
         work_rate_powerup: object.combat().map_or(0.0, |c| c.work_rate_powerup),
         attackable: s.unit_attackable_flag != 0,
+        untargetable: s.unit_targeting_flag == 0,
         pasture: s.parent_pasture_id,
         my_pasture: s.my_pasture_id,
         annex_of: object
@@ -4032,9 +4033,19 @@ pub fn drop_sites(json: &str) -> Result<Vec<genie_core::tasks::DropSite>, serde_
                         .into_iter()
                         .map(|c| c as u8)
                         .collect(),
-                    resources: e["target_list"].as_array().map_or_else(Vec::new, |ts| {
+                    auto_work: e.get("auto_work").and_then(serde_json::Value::as_bool)
+                        != Some(false),
+                    targets: e["target_list"].as_array().map_or_else(Vec::new, |ts| {
                         ts.iter()
-                            .map(|t| t.get("attribute_type").map_or(-1, num) as i16)
+                            .map(|t| {
+                                let field = |key: &str| t.get(key).map_or(-1, num);
+                                genie_core::tasks::DropTarget {
+                                    class: field("object_group") as i16,
+                                    workers: field("worker_num") as i32,
+                                    state: field("object_state") as i32,
+                                    attribute: field("attribute_type") as i16,
+                                }
+                            })
                             .collect()
                     }),
                     livestock: e.get("accepts_livestock").is_some(),

@@ -116,8 +116,18 @@ pub enum Worked {
     Going,
     /// The foundation was no longer under construction (state not 0, or no hit points).
     Done,
-    /// This work completed it: the attributes its owner gains, (attribute, amount).
-    Completed(Vec<(i16, f32)>),
+    /// This work completed it.
+    Completed(Built),
+}
+
+/// What a completion gives its owner ([`Construction::complete`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Built {
+    /// The attributes it gains, (attribute, amount), in the order the game adds them.
+    pub attributes: Vec<(i16, f32)>,
+    /// The master's technology (`+0x98c`, the building's `tech`), which the completion researches
+    /// last (`FUN_1413cdcd0` without a building): the caller's.
+    pub tech: Option<i16>,
 }
 
 /// What a builder brings to its Build action's update besides its walk.
@@ -129,9 +139,6 @@ pub struct Builder<'a> {
     pub held: f32,
     /// Its unit AI, which a finished Build hands its queued orders to.
     pub ai: Option<&'a mut UnitAi>,
-    /// The drop-site table has an entry for the building and the builder's class and civ
-    /// (`FUN_140fdd8a0`): the end of the work searches for more work near it.
-    pub more_work: bool,
 }
 
 /// What a Build action's update leaves to its unit and player.
@@ -140,12 +147,16 @@ pub struct BuildStep {
     /// The update returned 1: the action list removes the action, whose destructor
     /// (`FUN_140aadbf0`) releases the foundation (slot 0x180).
     pub done: bool,
-    /// The work completed the building: the attributes its owner gains.
-    pub completed: Option<Vec<(i16, f32)>>,
+    /// The work completed the building: what its owner gains.
+    pub completed: Option<Built>,
     /// The work ended without more work: the action let its foundation go (slot 0x68 with none,
     /// `FUN_140ab0300` -> `FUN_140a7a230`: the foundation's slot 0x180) and stays in state 3,
     /// whose `set_state` posted notify 0x202 (602) to the builder's unit AI: the caller's.
     pub released: bool,
+    /// The work ended and the builder looks for more work around the building (`FUN_1415cc4e0`,
+    /// [`crate::gather_search::more_work`]): the caller's, which works what it finds, else lets
+    /// the foundation go ([`BuildAction::no_more_work`], then as [`BuildStep::released`]).
+    pub search: bool,
 }
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
@@ -249,7 +260,7 @@ impl BuildAction {
         if self.state == FINISHED {
             match self.after_work(&walk, site.as_ref(), computer, builder)? {
                 Some(true) => step.done = true,
-                Some(false) => {}
+                Some(false) => step.search = true,
                 None => step.released = true,
             }
             return Ok(step);
@@ -361,11 +372,8 @@ impl BuildAction {
     /// built (`FUN_140c5dcd0`); with orders left in its queue (`FUN_140c564a0`) it has no order
     /// and no action (`FUN_140c64b60`, `FUN_140c64b50` with −1) and the Build ends (`set_state(1)`,
     /// then the update returns 1: Some(true)). A builder without queued orders looks for more
-    /// work around the building, within its master's line of sight held to 4 to 20 tiles
-    /// (`FUN_1415cc4e0`): only the drop sites of the builder's class have a list to search
-    /// ([`Builder::more_work`], a search not modelled); with nothing found the action lets its
-    /// foundation go and waits in state 3 (None, [`BuildStep::released`]). A computer player's
-    /// builder is not modelled.
+    /// work around the building (`FUN_1415cc4e0`, Some(false): [`BuildStep::search`], the
+    /// caller's). A computer player's builder is not modelled.
     fn after_work(
         &mut self,
         walk: &Walk<'_>,
@@ -393,21 +401,26 @@ impl BuildAction {
             ));
         }
         if ai.orders.is_empty() {
-            if builder.more_work {
-                return Err(Unsupported(
-                    "a builder's search for more work at a drop site (FUN_1415cc4e0)",
-                ));
-            }
-            if self.move_to.is_some() {
-                return Err(Unsupported("a Build waiting with its MoveTo"));
-            }
-            self.target = -1;
-            self.state = IDLE;
-            return Ok(None);
+            return Ok(Some(false));
         }
         ai.end_order_and_action()?;
         self.done(walk)?;
         Ok(Some(true))
+    }
+
+    /// The search for more work found nothing (`0x140ab0f00`): slot 0x68 with none lets the
+    /// foundation go (the caller's) and `set_state(3)` waits.
+    ///
+    /// # Errors
+    ///
+    /// A Build with its `MoveTo` (`set_state`'s teardown is not modelled for it).
+    pub const fn no_more_work(&mut self) -> Result<(), Unsupported> {
+        if self.move_to.is_some() {
+            return Err(Unsupported("a Build waiting with its MoveTo"));
+        }
+        self.target = -1;
+        self.state = IDLE;
+        Ok(())
     }
 
     /// `set_state(1)` (`0x140aae200` case 1): the builder takes its standing sprite (slot 0x68,
@@ -521,7 +534,7 @@ impl BuildAction {
         mut walk: Walk<'_>,
         site: Option<Site<'_>>,
         held: f32,
-    ) -> Result<Option<Vec<(i16, f32)>>, Unsupported> {
+    ) -> Result<Option<Built>, Unsupported> {
         let mut site = site.ok_or(Unsupported("a foundation of another player"))?;
         let plan = walk
             .plan
@@ -544,7 +557,7 @@ impl BuildAction {
         let completed = match worked {
             Worked::Going => return Ok(None),
             Worked::Done => None,
-            Worked::Completed(attributes) => Some(attributes),
+            Worked::Completed(built) => Some(built),
         };
         // a finished foundation with hit points ends the work (its `+0x278`, decoded)
         if 0.0 < site.life.hp {
@@ -675,13 +688,11 @@ impl Construction {
     /// no terrain to restore in the slice); its owner's attributes 98 and 165 grow by 1; then the
     /// base `set_state` (`FUN_14121cc40`, `FUN_14119d710`) puts it in state 2. The local player's
     /// sound (slot 0x4c0), the event 0x69 (`FUN_140c898a0`) and the owner's AI (slot 0x388) are
-    /// not held. Walls and gates (`adjacent_mode`), a stack unit, a technology, a building that
-    /// disappears when built, own stores (mode 16), the castle (82), the monastery (104), the
-    /// wonder (276) and masters with object flag 0x40 are not modelled.
-    pub fn complete(
-        site: &mut Site<'_>,
-        world: &mut Spatial,
-    ) -> Result<Vec<(i16, f32)>, Unsupported> {
+    /// not held. Last, the master's technology is researched (`FUN_1413cdcd0` with `param_3` 0
+    /// and no building; [`Built::tech`], the caller's). Walls and gates (`adjacent_mode`), a stack
+    /// unit, a building that disappears when built, own stores (mode 16), the castle (82), the
+    /// monastery (104), the wonder (276) and masters with object flag 0x40 are not modelled.
+    pub fn complete(site: &mut Site<'_>, world: &mut Spatial) -> Result<Built, Unsupported> {
         let id = site.id;
         let done = &site.completion;
         let master = done.master.ok_or(Unsupported(
@@ -706,13 +717,10 @@ impl Construction {
                 "a completion of a farm, an overridden sprite or a task of action type 0x99",
             ));
         }
-        if building.adjacent_mode != 0
-            || building.stack_unit >= 0
-            || building.tech >= 0
-            || building.disappears_when_built
+        if building.adjacent_mode != 0 || building.stack_unit >= 0 || building.disappears_when_built
         {
             return Err(Unsupported(
-                "a completion of walls, a stack unit, a technology or a vanishing building",
+                "a completion of walls, a stack unit or a vanishing building",
             ));
         }
         if matches!(master.id, 82 | 104 | 276) || master.object_flags & 0x40 != 0 {
@@ -764,7 +772,10 @@ impl Construction {
         attributes.push((165, 1.0));
         site.life.state = 2;
         world.sight_state(id, 2);
-        Ok(attributes)
+        Ok(Built {
+            attributes,
+            tech: (0 <= building.tech).then_some(building.tech),
+        })
     }
 
     /// The construction starts (`FUN_1411cd0d0`, then `FUN_1411e5670`): other players' foundations
@@ -906,7 +917,10 @@ mod tests {
         let worked = Construction::work(&mut site, 0.02, &mut world, &mut Pathing::default(), 0);
         assert_eq!(
             worked,
-            Ok(Worked::Completed(vec![(4, 5.0), (98, 1.0), (165, 1.0)]))
+            Ok(Worked::Completed(Built {
+                attributes: vec![(4, 5.0), (98, 1.0), (165, 1.0)],
+                tech: None
+            }))
         );
         assert_eq!((life.state, c.progress, c.snow), (2, 25.0, true));
         let t = world.terrain.as_ref().unwrap();
@@ -1076,7 +1090,6 @@ mod tests {
                     class: VILLAGER,
                     held: 0.0,
                     ai: None,
-                    more_work: false,
                 },
             )
             .unwrap();
@@ -1110,7 +1123,6 @@ mod tests {
             class: VILLAGER,
             held: 0.0,
             ai: None,
-            more_work: false,
         };
         world.insert(10028, house());
         let _ = near.update(walk(1, &mut world), None, builder()).unwrap();

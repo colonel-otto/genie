@@ -153,6 +153,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         garrison: unit.garrison_capacity,
         recyclable: unit.recyclable != 0,
         auto_gather: unit.enable_auto_gather != 0,
+        gather_group: unit.resource_gather_group,
         hill_mode: unit.hill_mode,
         placement_terrains: unit
             .placement_side_terrain

@@ -77,6 +77,23 @@ impl Turns {
         Ok(true)
     }
 
+    /// A completed building's technology `t` for player `p` (the end of `FUN_1411dbb70`'s
+    /// `set_state(2)`): [`Turns::complete_research`] with `param_3` 0 and no building, so the
+    /// technology's first location decides its statistics; a technology beyond the player's tree
+    /// is not researched.
+    pub(crate) fn research_built(&mut self, p: usize, t: i16) -> Result<(), Unsupported> {
+        let tree = self.players[p].techs.len();
+        if tree == 0 || self.techs.len() != tree {
+            return Err(Unsupported(
+                "a completion's technology without the player's tech tree",
+            ));
+        }
+        if let Some(t) = usize::try_from(t).ok().filter(|&t| t < tree) {
+            let _ = self.complete_research(p, t, None)?;
+        }
+        Ok(())
+    }
+
     /// `FUN_1413cce70` for player `p`'s technology `t`: each technology that requires it, by id
     /// (`+0x38`'s lists), not of the shared kind: one in state 0 or 1 and not held by
     /// `+0x60` turns to −1 when it is another civ's (or its civ's under the game's option

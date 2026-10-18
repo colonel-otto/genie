@@ -220,6 +220,9 @@ pub struct Master {
     /// `+0x681`, `enable_auto_gather`: an object of it blocking a spawn point stays
     /// (`FUN_141194170`).
     pub auto_gather: bool,
+    /// `+0x683`, `resource_gather_group`: the resource kind a gatherer's search
+    /// (`ClosestResourceObject`) takes it for (0 wood, 1 food, 3 stone, 4 gold, 2 the rest).
+    pub gather_group: u8,
     /// `+0x604`, `hill_mode`: how a placement test checks the elevation.
     pub hill_mode: u8,
     /// The placement terrains (`+0x5f2`..`+0x5f8`, the `.dat`'s `placement_side_terrain` and

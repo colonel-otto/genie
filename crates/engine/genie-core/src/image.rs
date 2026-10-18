@@ -104,6 +104,14 @@ pub mod fly {
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
 }
 
+/// The values `crate::gather_search`'s port reads.
+pub mod gather_search {
+    /// 20.0
+    pub const REACH_CAP: f32 = f32::from_bits(0x41a0_0000);
+    /// 4.0
+    pub const REACH_FLOOR: f32 = f32::from_bits(0x4080_0000);
+}
+
 /// The values `crate::hunt`'s port reads.
 pub mod hunt {
     /// 0.10000000149011612
