@@ -269,6 +269,26 @@ pub struct MasterTable {
     /// The drop-site table (`dropsites.json` beside the `.dat`, [`crate::drop_sites`]); empty
     /// when not loaded.
     pub drop_sites: Vec<genie_core::tasks::DropSite>,
+    /// The technologies, by id.
+    pub techs: Vec<genie_core::tech::TechDef>,
+}
+
+/// A technology of the `.dat` as the tech tree holds it: its costs, its type, and whether its
+/// effect upgrades a unit (a command of type 3).
+fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef {
+    let upgrades = usize::try_from(t.effect_id)
+        .ok()
+        .and_then(|e| dat.effects.get(e))
+        .is_some_and(|e| e.commands.iter().any(|c| c.kind == 3));
+    genie_core::tech::TechDef {
+        costs: t.resource_costs.each_ref().map(|c| genie_core::tech::Cost {
+            attribute: c.kind,
+            amount: c.amount,
+            paid: c.flag,
+        }),
+        kind: t.kind,
+        upgrades,
+    }
 }
 
 impl MasterTable {
@@ -346,6 +366,7 @@ impl MasterTable {
                 ))
             })
             .collect();
+        table.techs = dat.techs.iter().map(|t| tech_def(dat, t)).collect();
         table
     }
 
@@ -374,6 +395,7 @@ impl MasterTable {
             graphics: Default::default(),
             terrain: TerrainTable::default(),
             drop_sites: Vec::new(),
+            techs: Vec::new(),
         }
     }
 

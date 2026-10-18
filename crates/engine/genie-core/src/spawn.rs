@@ -595,7 +595,7 @@ impl Turns {
     /// unit that is due spawns ([`Turns::spawn`]); its action ends (state 1, its destructor
     /// `FUN_140ace3f0` notifies the building's unit AI 506 with 619 again) and the queue lets it
     /// go (attribute 80 lowers by its population). A building whose population test fails
-    /// (housed) is not modelled, nor is the computer players' list, a technology in the queue or
+    /// (housed) is not modelled, nor is the computer players' list, a research in the queue or
     /// the work-rate bonuses of `0x140ad0490` (`FUN_140c884c0`'s game mode, the AI difficulty
     /// under `FUN_141659cf0`).
     pub(crate) fn produce(
@@ -616,6 +616,9 @@ impl Turns {
         let Some(front) = production.queue.front() else {
             return Ok(());
         };
+        if front.tech != -1 {
+            return Err(Unsupported("a research's make action (type 103)"));
+        }
         let master = front.master;
         let pop = population(&self.master_of(p, master)?.storage);
         if !production.action {

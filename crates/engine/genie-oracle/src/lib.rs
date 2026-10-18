@@ -1101,6 +1101,7 @@ fn production(
         .flat_map(|e| {
             let unit = genie_core::production::Queued {
                 master: e.production_queue_master_unit_id,
+                tech: e.production_queue_tech_id,
                 train_time: f32::from(e.production_queue_train_time),
             };
             std::iter::repeat_n(unit, e.production_queue_unit_count.max(0) as usize)
@@ -1360,6 +1361,41 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
     })
 }
 
+/// A player's saved state of one technology (`Tech_Player_Tree`).
+fn tech_state(t: &genie_save::generated::world::TechPlayerTree) -> genie_core::tech::TechState {
+    let o = |j: usize| {
+        t.cost_override.get(j).map_or((-1, -1, -2), |e| {
+            (
+                e.tech_player_tree_cost_amount_override as i16,
+                e.tech_player_tree_cost_attribute_type_override as i16,
+                e.tech_player_tree_cost_attribute_used_override as i16,
+            )
+        })
+    };
+    genie_core::tech::TechState {
+        research_done: t.research_done,
+        state: t.state,
+        cost_adj: [0, 1, 2].map(|j| t.cost_adj.get(j).copied().unwrap_or(0)),
+        times_researched: t.tech_player_tree_times_researched as i16,
+        allow_multiple: t.tech_player_tree_allow_multiple_research != 0,
+        stack: t.tech_player_tree_stack_tech != 0,
+        overrides: [o(0), o(1), o(2)],
+        research_cap: t.tech_player_tree_research_cap as i16,
+        pending: t.tech_player_tree_pending_count as i16,
+        building_master: t.tech_player_tree_research_building_master_id as i16,
+        locations: t
+            .location
+            .iter()
+            .flatten()
+            .map(|l| genie_core::tech::Location {
+                building: l.location_research_location_id as i16,
+                time: l.location_research_time,
+                button: l.location_button_location_id,
+            })
+            .collect(),
+    }
+}
+
 /// Why the slice stops on a command it does not decode, by the command's name.
 fn unmodelled_command(p: &genie_rec::de::command::Command) -> &'static str {
     use genie_rec::de::command::Command as Packet;
@@ -1409,7 +1445,6 @@ fn unmodelled_command(p: &genie_rec::de::command::Command) -> &'static str {
         FireActiveAbility,
         RgeGiveAttributes,
         Make,
-        Research,
         Game,
         Explore,
         BuildWall,
@@ -1481,6 +1516,14 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                     influence: p.world_player().base.formation_influence_distance,
                     by_speed: p.world_player().base.break_auto_formations_by_speed == 1,
                 },
+                pending_debit: p.world_player().base.pending_debit,
+                techs: p
+                    .world_player()
+                    .tech_tree
+                    .tech_player_tree
+                    .iter()
+                    .map(tech_state)
+                    .collect(),
                 unsupported: None,
                 freezes: Vec::new(),
                 stopped: false,
@@ -1516,6 +1559,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     if let Some(table) = masters {
         turns.drop_sites = table.drop_sites.clone();
         turns.graphics = table.graphics.clone();
+        turns.techs = table.techs.clone();
         turns.masters = header
             .players()
             .iter()
@@ -2303,6 +2347,17 @@ impl Decoder {
         let (player, num, ids, order, interact) = match Packet::decode(packet) {
             Packet::Build(build) => return Some(build_command(&build, sections)),
             Packet::MultiQueue(queue) => return Some(queue_command(&queue, sections)),
+            // RESEARCH (0x65): the handler reads the building count at +0x8 as a short
+            Packet::Research(c) => {
+                return Some(Command::Research {
+                    player: c.commp_id as usize,
+                    building: c.u_id,
+                    count: c.field_0x08 as i16,
+                    tech: c.t_id,
+                    target: c.q_id,
+                    shift: c.field_0x10 != 0,
+                });
+            }
             Packet::SetGatherPoint(c) => {
                 return Some(Command::GatherPoint {
                     player: c.commp_id as usize,
@@ -3388,6 +3443,9 @@ fn game_state(header: &Header, masters: Option<&MasterTable>) -> genie_core::tur
         let attributes = &p.world_player().base.attributes;
         let r = |i: usize| attributes.get(i).copied().unwrap_or_default();
         game.resources.push([r(0), r(1), r(2), r(3)]);
+        game.pending_debit.push(p.world_player().base.pending_debit);
+        let techs = &p.world_player().tech_tree.tech_player_tree;
+        game.techs.push(techs.iter().map(tech_state).collect());
     }
     game
 }
@@ -3430,6 +3488,18 @@ fn compare_players(
             .map(ObjectRow::of_unit)
             .collect();
         let game = after.objects.get(p).ok_or(Error::NoSuchPlayer(id))?;
+        if !player.stopped
+            && let Some(r) = after.game.resources.get(p)
+            && *r != player.resources
+        {
+            let d = format!("resources slice {:?} game {:?}", player.resources, r);
+            report.differences.push((id, d));
+        }
+        if !player.stopped {
+            for d in tech_differences(player, &after.game, p) {
+                report.differences.push((id, d));
+            }
+        }
         if !player.stopped {
             for d in object_differences(&rows, game) {
                 let object = d.split(':').next().and_then(|o| o.parse::<i32>().ok());
@@ -3446,6 +3516,44 @@ fn compare_players(
         }
     }
     Ok(())
+}
+
+/// A player's pending debit and technology states against the game's: per technology its state,
+/// researches queued and done, work done and building.
+fn tech_differences(player: &Player, game: &genie_core::turn::GameState, p: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(d) = game
+        .pending_debit
+        .get(p)
+        .filter(|&&d| d != player.pending_debit)
+    {
+        out.push(format!(
+            "pending debit slice {:?} game {:?}",
+            player.pending_debit, d
+        ));
+    }
+    let Some(theirs) = game.techs.get(p) else {
+        return out;
+    };
+    let key = |t: &genie_core::tech::TechState| {
+        (
+            t.state,
+            t.pending,
+            t.times_researched,
+            t.research_done,
+            t.building_master,
+        )
+    };
+    for (i, (a, b)) in player.techs.iter().zip(theirs).enumerate() {
+        if key(a) != key(b) {
+            out.push(format!(
+                "tech {i}: slice {:?} game {:?} (state, queued, done, work, building)",
+                key(a),
+                key(b)
+            ));
+        }
+    }
+    out
 }
 
 /// The slice from a save: [`objects_from_save`]'s run, every player's state after it.

@@ -31,6 +31,7 @@ pub mod spatial;
 pub mod spawn;
 pub mod sprite;
 pub mod tasks;
+pub mod tech;
 pub mod terrain;
 pub mod tile_path;
 pub mod turn;

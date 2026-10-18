@@ -6,11 +6,14 @@
 use crate::unit_ai::Unsupported;
 use std::collections::VecDeque;
 
-/// One unit in a building's queue.
+/// One unit or research in a building's queue.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Queued {
-    /// The master that spawns (a villager's male or female master is drawn when it is queued).
+    /// The master that spawns (a villager's male or female master is drawn when it is queued),
+    /// −1 for a research.
     pub master: i16,
+    /// The technology researched, −1 for a unit.
+    pub tech: i16,
     /// The seconds of work it takes (the master's train time at this building).
     pub train_time: f32,
 }
@@ -89,6 +92,7 @@ mod tests {
         Production {
             queue: VecDeque::from([Queued {
                 master: 83,
+                tech: -1,
                 train_time,
             }]),
             action: true,

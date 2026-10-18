@@ -185,6 +185,17 @@ pub enum Command {
         rate: f32,
         cost: Vec<(i16, i16, bool)>,
     },
+    /// RESEARCH (0x65, `0x140e7e270`): the technology `tech` at the building `building`
+    /// ([`Turns::research`]). `count` (`+0x8`) counts the buildings the packet lists, `target`
+    /// (`+0xc`) is −1 for a research to run, and `shift` (`+0x10`) asks for five at once.
+    Research {
+        player: usize,
+        building: i32,
+        count: i16,
+        tech: i16,
+        target: i32,
+        shift: bool,
+    },
     /// A command the slice runs part of or none, for a reason the decoder names: it stops the
     /// issuing player's lane.
     Unmodelled { player: usize, why: Unsupported },
@@ -234,6 +245,22 @@ pub enum Order {
     /// FOLLOW's target (`+0x8`).
     Follow(i32),
 }
+
+/// RESEARCH's fields ([`Command::Research`] but the player).
+struct ResearchAt {
+    building: i32,
+    count: i16,
+    tech: i16,
+    target: i32,
+    shift: bool,
+}
+
+/// The building unit AI's action value a research it queued sets (`FUN_140c64b50` with 0x26c).
+const RESEARCH_ACTION: i32 = 0x26c;
+/// The building top actions that keep RESEARCH from a building (`FUN_141227a00`: 0x7b to 0x7d).
+const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
+/// The building master type RESEARCH asks for (`'P'`, 80).
+const BUILDING_KIND: u8 = 80;
 
 /// QUEUE's unit and building (the fields of [`Command::Queue`] but the cost).
 struct QueueAt {
@@ -3245,6 +3272,11 @@ pub struct Player {
     /// The order splitter's settings (`+0x6c0` `mAutoFormations`, `+0x6c4`
     /// `mFormationInfluenceDistance`, `+0x6c8` `mBreakAutoFormationsBySpeed`).
     pub formations: Formations,
+    /// `mPendingDebit` (`+0x6cc`): what the player's BUILD and RESEARCH commands listed as their
+    /// costs, food, wood, stone and gold, taken off (`FUN_141630d10`); nothing modelled reads it.
+    pub pending_debit: [f32; 4],
+    /// The player's state of each technology (`player+0x760`'s, saved).
+    pub techs: Vec<crate::tech::TechState>,
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, Unsupported)>,
     /// Every object the slice stopped updating, with the tick and why.
@@ -3515,6 +3547,9 @@ pub struct GameState {
     pub frame_seed: u32,
     pub players: Vec<Vec<Unit>>,
     pub resources: Vec<[f32; 4]>,
+    /// The players' pending debits and technology states.
+    pub pending_debit: Vec<[f32; 4]>,
+    pub techs: Vec<Vec<crate::tech::TechState>>,
     /// Objects the slice modelled but got wrong this tick: they take the game's state too.
     pub resync: Vec<i32>,
     /// The players' visible maps and the unified map, when the slice's differ.
@@ -3531,7 +3566,8 @@ impl Turns {
     /// placed where the game has it, and it runs again from the next tick; a frozen object the
     /// game no longer holds goes. A stopped player takes the game's resources and runs again.
     /// The world's next reusable id is the game's (the fog ghosts that take them are not
-    /// modelled). Returns what could not be forced (an object that changed hands or masters, or
+    /// modelled). A stopped player's pending debit and technologies are the game's too. Returns
+    /// what could not be forced (an object that changed hands or masters, or
     /// that the game made and the slice did not). Not part of a replay: a dev hook to see past a
     /// freeze.
     pub fn force(&mut self, game: &GameState) -> Vec<(usize, i32, Unsupported)> {
@@ -3552,6 +3588,12 @@ impl Turns {
             if stopped {
                 if let Some(r) = game.resources.get(p) {
                     self.players[p].resources = *r;
+                }
+                if let Some(d) = game.pending_debit.get(p) {
+                    self.players[p].pending_debit = *d;
+                }
+                if let Some(t) = game.techs.get(p) {
+                    self.players[p].techs.clone_from(t);
                 }
                 self.players[p].stopped = false;
             }
@@ -3633,6 +3675,36 @@ impl Turns {
     }
 }
 
+impl crate::tech::Attributes for Player {
+    /// An attribute's value (the resources' from [`Player::resources`]).
+    fn get(&self, i: i16) -> Result<f32, Unsupported> {
+        match usize::try_from(i) {
+            Ok(r @ 0..=3) => Ok(self.resources[r]),
+            Ok(k) => self
+                .attributes
+                .get(k)
+                .copied()
+                .ok_or(Unsupported("an attribute the player does not have")),
+            Err(_) => Err(Unsupported("a negative attribute")),
+        }
+    }
+
+    /// An attribute set to `v`, as a technology's payment writes it (no side effects).
+    fn set(&mut self, i: i16, v: f32) -> Result<(), Unsupported> {
+        match usize::try_from(i) {
+            Ok(r @ 0..=3) => self.resources[r] = v,
+            Ok(k) => {
+                *self
+                    .attributes
+                    .get_mut(k)
+                    .ok_or(Unsupported("an attribute the player does not have"))? = v
+            }
+            Err(_) => return Err(Unsupported("a negative attribute")),
+        }
+        Ok(())
+    }
+}
+
 impl Player {
     /// A command the slice does not model for this player: the player stops.
     fn stop(&mut self, tick: u32, why: Unsupported) {
@@ -3707,6 +3779,8 @@ pub struct Turns {
     /// The world's ids and pools for the objects of recyclable masters ([`Recycling`]).
     pub recycling: Recycling,
     pub(crate) streams: Streams,
+    /// The `.dat`'s technologies, by id.
+    pub techs: Vec<crate::tech::TechDef>,
 }
 
 /// The objects of recyclable masters (`+0x680`, the `.dat`'s `recyclable`): a new one takes the
@@ -3770,6 +3844,7 @@ impl Turns {
             zones: Default::default(),
             recycling: Recycling::default(),
             streams: Streams::default(),
+            techs: Vec::new(),
         }
     }
 
@@ -3885,6 +3960,26 @@ impl Turns {
                     rate,
                 };
                 if let Err(e) = self.queue(player, &queue, cost) {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
+                }
+            }
+            Command::Research {
+                player,
+                building,
+                count,
+                tech,
+                target,
+                shift,
+            } => {
+                let r = ResearchAt {
+                    building,
+                    count,
+                    tech,
+                    target,
+                    shift,
+                };
+                if let Err(e) = self.research(player, &r) {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }
@@ -4038,6 +4133,16 @@ impl Turns {
             .ok_or(Unsupported("BUILD of a master the player does not have"))?;
         let site_class = i32::from(site.class);
         let owner = &mut self.players[player];
+        // FUN_141630d10 with 0: every cost entry of the master, paid or not, by resource
+        let mut listed = [0i16; 4];
+        for &(resource, amount, _) in &site.cost {
+            if let Some(r) = usize::try_from(resource).ok().filter(|&r| r < 4) {
+                listed[r] = listed[r].wrapping_add(amount);
+            }
+        }
+        for (debit, amount) in owner.pending_debit.iter_mut().zip(listed) {
+            *debit -= f32::from(amount);
+        }
         for &(resource, amount, paid) in &site.cost {
             let slot = usize::try_from(resource)
                 .ok()
@@ -4224,6 +4329,193 @@ impl Turns {
         Ok(())
     }
 
+    /// RESEARCH (`0x140e7e270`) for `player`: a target other than −1, or a technology the tree
+    /// has not got, does nothing. The costs it lists (`FUN_1413d4a00`) come off the pending
+    /// debit (`FUN_141630d10`). The building is the packet's (the least loaded of several,
+    /// `FUN_1411d0e90`, and the shared kind's every building, `FUN_1411c3fd0`, are not modelled);
+    /// a building of master type 80 alive (state 2) whose master is among the technology's
+    /// locations, with the technology in state 1 or repeatable, and without a top action of
+    /// 0x7b to 0x7d (`FUN_141227a00`), queues it ([`Turns::queue_research`]); queued, its unit AI
+    /// takes the action value 0x26c. Not held: the interface's view and selection
+    /// (`FUN_140e6de20`), the game's per-technology overrides (`FUN_140f39f40`,
+    /// `FUN_140f39e80`: none, probed for Loom), the local player's statistics flag. Not
+    /// modelled: the computer players' parts (`player+0x7a8`, `FUN_1411d5520`), the player's
+    /// `+0x648` (0 for every player probed), Castle Age's flag (tech 0x66, game type 0x10).
+    fn research(&mut self, player: usize, r: &ResearchAt) -> Result<(), Unsupported> {
+        let owner = &self.players[player];
+        if r.target != -1 || r.tech < 0 || owner.techs.len() <= r.tech as usize {
+            return Ok(());
+        }
+        let tech = r.tech as usize;
+        let def = self
+            .techs
+            .get(tech)
+            .ok_or(Unsupported("a technology the data file has not got"))?;
+        let get = |i: i16| crate::tech::Attributes::get(owner, i);
+        let factors = crate::tech::factors(r.tech, &get)?;
+        let listed = owner.techs[tech].listed_costs(def, factors);
+        let mut sums = [0i16; 4];
+        for (attribute, amount) in listed {
+            if let Some(k) = usize::try_from(attribute).ok().filter(|&k| k < 4) {
+                sums[k] = sums[k].wrapping_add(amount);
+            }
+        }
+        for (debit, amount) in self.players[player].pending_debit.iter_mut().zip(sums) {
+            *debit -= f32::from(amount);
+        }
+        let owner = &self.players[player];
+        let state = &owner.techs[tech];
+        let repeatable = state.repeatable(def, false);
+        if def.kind == crate::tech::SHARED_KIND {
+            return Err(Unsupported(
+                "RESEARCH of the shared kind (FUN_1411c3fd0 over the packet's buildings)",
+            ));
+        }
+        if 1 < r.count {
+            return Err(Unsupported(
+                "RESEARCH at the least loaded of several buildings (FUN_1411d0e90)",
+            ));
+        }
+        if state.state != 1 && !repeatable {
+            return Err(Unsupported(
+                "RESEARCH of a technology not in state 1 (FUN_140f39e80)",
+            ));
+        }
+        let Some(i) = owner.objects.iter().position(|u| u.id == r.building) else {
+            let elsewhere = self.players.iter().any(|q| {
+                q.objects
+                    .iter()
+                    .chain(&q.sleeping)
+                    .any(|u| u.id == r.building)
+            });
+            return if elsewhere {
+                Err(Unsupported("RESEARCH at another player's object"))
+            } else {
+                Ok(())
+            };
+        };
+        let building = &owner.objects[i];
+        let master = self.master_of(player, building.life.master_id)?;
+        let at = state
+            .locations
+            .iter()
+            .any(|l| l.building == building.life.master_id);
+        if master.kind != BUILDING_KIND || building.life.state != 2 || !at {
+            return Ok(());
+        }
+        if owner.computer {
+            return Err(Unsupported(
+                "a computer player's RESEARCH (FUN_1411d5520, player+0x7a8)",
+            ));
+        }
+        let top = building.top_action_kind().unwrap_or(0);
+        if building.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "RESEARCH at a building with an unmodelled action",
+            ));
+        }
+        if BLOCKS_RESEARCH.contains(&top) {
+            return Ok(());
+        }
+        if r.tech == 0x66 {
+            return Err(Unsupported(
+                "RESEARCH of Castle Age (the game's +0x820 flag)",
+            ));
+        }
+        if self.queue_research(player, i, r.tech, r.shift)? {
+            let building = &mut self.players[player].objects[i];
+            if let Some(ai) = building.ai.as_mut() {
+                ai.set_action(RESEARCH_ACTION);
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_1411d70f0` and the technology's part of `FUN_1411cbc40` for the building at `i` of
+    /// `player`: one research, five with `shift` unless the technology allows only one at a time
+    /// or its effect upgrades a unit. A building with 15 queued already refuses (the game's
+    /// event 0x84 is not held); the count is held to the queue's room, and to the cap of the
+    /// technology's researches queued and done (0x100 unless its cap is at least 0) for a
+    /// stacked technology. Each research is paid ([`crate::tech::TechState::pay`]) until one
+    /// cannot be; those paid join the queue, as one entry, each with the research time of the
+    /// building's location, and count in the technology's pending researches. True when any
+    /// did. Not held: the building's queue entries as the game groups them (the slice's queue
+    /// holds one item per research), their costs (`FUN_1411c81a0`, `FUN_1411c3190`) and serials
+    /// (`+0xcd8`).
+    fn queue_research(
+        &mut self,
+        player: usize,
+        i: usize,
+        tech: i16,
+        shift: bool,
+    ) -> Result<bool, Unsupported> {
+        let t = tech as usize;
+        let def = &self.techs[t];
+        let owner = &mut self.players[player];
+        let building = &owner.objects[i];
+        let master = building.life.master_id;
+        let state = &owner.techs[t];
+        let one = !state.allow_multiple || def.upgrades;
+        let count: i16 = if !shift || one { 1 } else { 5 };
+        let queued = building.production.as_ref().map_or(0, |p| p.queue.len()) as i16;
+        if 14 < queued {
+            return Ok(false);
+        }
+        let mut n = if count + queued < 16 {
+            count
+        } else {
+            15 - queued
+        };
+        let done = state.pending.wrapping_add(state.times_researched);
+        let cap = if state.research_cap < 0 {
+            0x100
+        } else {
+            state.research_cap
+        };
+        if state.stack && cap - done < n {
+            n = cap - done;
+        }
+        let time = state
+            .locations
+            .iter()
+            .find(|l| l.building == master)
+            .map(|l| f32::from(l.time))
+            .ok_or(Unsupported(
+                "a research at a building not among its locations",
+            ))?;
+        // FUN_14162fd90's repeat flag: the player's +0x648 (not held) or FUN_1413d1050
+        let repeat = state.repeatable(def, false);
+        let mut paid = 0;
+        while paid < n {
+            let get = |k: i16| crate::tech::Attributes::get(&*owner, k);
+            let factors = crate::tech::factors(tech, &get)?;
+            let mut state = std::mem::take(&mut owner.techs[t]);
+            let ok = state.pay(def, factors, repeat, master, owner);
+            owner.techs[t] = state;
+            if !ok? {
+                break;
+            }
+            paid += 1;
+        }
+        if paid <= 0 {
+            return Ok(false);
+        }
+        let building = &mut owner.objects[i];
+        let production = building
+            .production
+            .as_mut()
+            .ok_or(Unsupported("RESEARCH at a building without its production"))?;
+        for _ in 0..paid {
+            production.queue.push_back(Queued {
+                master: -1,
+                tech,
+                train_time: time,
+            });
+        }
+        owner.techs[t].pending += paid;
+        Ok(true)
+    }
+
     /// QUEUE at one building: per unit (the game recurses, so the last unit drawn is queued first)
     /// the villager's male or female draw, then the cost and the queue entry. A unit the player
     /// cannot pay for (`FUN_14162fb60` -> `FUN_141618db0`: each cost entry but the population's,
@@ -4283,6 +4575,7 @@ impl Turns {
                 });
             production.queue.push_back(Queued {
                 master,
+                tech: -1,
                 train_time: q.train_time,
             });
         }
