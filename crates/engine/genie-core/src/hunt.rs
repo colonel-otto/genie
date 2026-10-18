@@ -578,19 +578,16 @@ impl HuntAction {
             },
             FACE => {
                 // case 5: FUN_141162db0 turns the unit to face its target; a unit without a turn
-                // time turns at once, by the facets between (its angle `+0x7e8`, which the slice
-                // does not hold)
-                let turns_at_once = walk
+                // time turns at once, by the facets between
+                let at = walk
+                    .world
+                    .get(walk.me.id)
+                    .map_or(walk.me.position, |p| p.position);
+                let mover = walk
                     .mover
-                    .as_deref()
-                    .ok_or(Unsupported("a hunter without movement state"))?
-                    .stats
-                    .turns_at_once;
-                if !turns_at_once {
-                    return Err(Unsupported(
-                        "a hunter that turns over time to face its target",
-                    ));
-                }
+                    .as_deref_mut()
+                    .ok_or(Unsupported("a hunter without movement state"))?;
+                crate::attack::face_target(mover, at, strike.victim.position)?;
                 if 0.0 < strike.victim.amount {
                     self.set_gather(strike, gather);
                     Ok(())
@@ -845,6 +842,10 @@ mod tests {
                 walk_speed: 1.0,
                 stand_speed: 1.0,
                 run_speed: 1.0,
+                facets: Some(crate::facing::SpriteFacets {
+                    count: 16,
+                    flag_1: true,
+                }),
             },
             waiting: 1,
             wait_delays: 0,
@@ -852,6 +853,7 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            angle: 0.0,
             move_to_point: None,
             speed_stopped: false,
             pauses: Vec::new(),
@@ -877,6 +879,7 @@ mod tests {
         Engagement {
             gap_squared: 3.726 * 3.726,
             gap: 3.726,
+            position: [20.774, 97.5, 0.0],
             target_position: [24.5, 97.5, 0.0],
             speed: 0.8,
             range: 0.0,

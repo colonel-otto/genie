@@ -436,7 +436,7 @@ fn mover(
         return Err(Unsupported("saved future path data"));
     }
     // an object with its own master (a copy, say a captured animal's) moves by its own values
-    let (radius, restriction, base, turn, flags, standing) =
+    let (radius, restriction, base, turn, flags, standing, sprite_facets) =
         match (s.own_master(), s.own_animated_master()) {
             (Some(own), Some(animated)) => (
                 [own.radius_x, own.radius_y, own.radius_z],
@@ -446,6 +446,11 @@ fn mover(
                     .map(|m| (m.turn_speed, m.temp_move_sprite, m.temp_run_sprite)),
                 own.object_flags,
                 own.sprite_num,
+                // an own master copy (a captured animal's) shows its master's sprites
+                masters.and_then(|t| {
+                    let master = objects.master(s.master_obj)?;
+                    master_facets(master, master.static_part()?, t)
+                }),
             ),
             (Some(_), None) => {
                 return Err(Unsupported(
@@ -470,6 +475,7 @@ fn mover(
                         .map(|m| (m.turn_speed, m.move_sprite_id, m.run_sprite_id)),
                     placement.object_flags,
                     placement.idle_sprite_id,
+                    masters.and_then(|t| master_facets(master, placement, t)),
                 )
             }
         };
@@ -533,6 +539,7 @@ fn mover(
             walk_speed,
             run_speed,
             stand_speed: with(standing),
+            facets: sprite_facets,
         },
         waiting: m.waiting_to_move_value,
         wait_delays: m.number_wait_delays,
@@ -540,6 +547,7 @@ fn mover(
         last_move: m.last_move_time_value,
         substitute_count: m.consecutive_substitute_count,
         ignore_units: s.temp_int.clone(),
+        angle: m.angle,
         move_to_point: saved_move_to_point(object),
         speed_stopped: false,
         pauses: Vec::new(),
@@ -1437,7 +1445,40 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     turns
 }
 
-/// A saved task as the engine reads it.
+/// The facets every sprite a live object of a saved master shows ([`genie_core::facing::SpriteFacets`]):
+/// its standing, second standing, walking, running and attack sprites and its tasks' four, those
+/// the data file has, all of one count and bit 1 of the sequence flags; None when they differ or
+/// it has none. The dying sprite shows once the object is dead, where nothing turns it.
+fn master_facets(
+    m: &Master,
+    s: &genie_save::generated::world::RgeMasterStaticObject,
+    table: &MasterTable,
+) -> Option<genie_core::facing::SpriteFacets> {
+    let mut sprites = vec![s.idle_sprite_id, s.idle2_sprite_id];
+    if let Some(mv) = moving_master(m) {
+        sprites.extend([mv.move_sprite_id, mv.run_sprite_id]);
+    }
+    if let Some(c) = combat_master(m) {
+        sprites.push(c.fight_sprite_id);
+    }
+    if let Some(tasks) = action_part(m).and_then(|a| a.tasks.as_ref()) {
+        for e in &tasks.list {
+            let t = &e.task;
+            sprites.extend([t.short_val, t.short_val_2, t.short_val_3, t.short_val_4]);
+        }
+    }
+    let mut seen = sprites
+        .into_iter()
+        .filter(|&id| 0 <= id)
+        .filter_map(|id| table.graphics.get(&id))
+        .map(|g| genie_core::facing::SpriteFacets {
+            count: g.facets,
+            flag_1: g.flags & 2 != 0,
+        });
+    let first = seen.next()?;
+    seen.all(|f| f == first).then_some(first)
+}
+
 /// A master's action part, whatever class it is: what holds its work rate, search radius and
 /// task list.
 fn action_part(m: &Master) -> Option<&genie_save::generated::world::RgeMasterActionObject> {
@@ -1666,6 +1707,7 @@ fn moving_stats(
             let f = table.sprite_speed(s.idle_sprite_id).unwrap_or(0.0);
             if 0.0 < f { base * f } else { base }
         },
+        facets: master_facets(m, s, table),
     })
 }
 
@@ -2779,6 +2821,8 @@ pub struct MoveRow {
     pub substitute_count: i32,
     /// The unit's ignore list (`+0x670`).
     pub ignore_units: Vec<i32>,
+    /// `+0x7e8`, where it faces.
+    pub angle: f32,
 }
 
 impl ObjectRow {
@@ -2803,6 +2847,7 @@ impl ObjectRow {
                 last_move: m.last_move,
                 substitute_count: m.substitute_count,
                 ignore_units: m.ignore_units.clone(),
+                angle: m.angle,
             }),
             construction: unit
                 .construction
@@ -2846,6 +2891,7 @@ fn saved_movement(object: &genie_save::Object, paths: &[Path]) -> Option<MoveRow
         last_move: m.last_move_time_value,
         substitute_count: m.consecutive_substitute_count,
         ignore_units: s.temp_int.clone(),
+        angle: m.angle,
     })
 }
 
@@ -3735,6 +3781,7 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
                     format!("{:?}", b.forward),
                 );
                 field("right", format!("{:?}", a.right), format!("{:?}", b.right));
+                field("angle", format!("{:?}", a.angle), format!("{:?}", b.angle));
                 field(
                     "velocity",
                     format!("{:?}", a.velocity),

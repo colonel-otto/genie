@@ -300,9 +300,9 @@ struct Context<'a> {
     /// The unit was killed in its update (a retaliation), which the caller handles after it.
     own_killed: Option<crate::damage::Kill>,
     /// What the unit's death leaves for the caller: the remains its dying sprite's end makes
-    /// (`FUN_1411a4e90`: the master and the place) and the paid cost its owner takes back
-    /// (attributes 98 and 164).
-    remains: Option<(i16, [f32; 3])>,
+    /// (`FUN_1411a4e90`: the master, the place and the dead object's facet) and the paid cost its
+    /// owner takes back (attributes 98 and 164).
+    remains: Option<(i16, [f32; 3], Option<u8>)>,
     refund: Option<f32>,
     /// The pauses the unit's walk gave units it met ([`Mover::pauses`]).
     pauses: Vec<(i32, f32)>,
@@ -1317,7 +1317,12 @@ impl Unit {
                     "a dead object of a master the slice does not have",
                 ))?;
             if kind < 80 && 0 <= self.life.remains {
-                c.remains = Some((self.life.remains, self.position));
+                // its facet (`+0xe`) as its angle left it ([`crate::facing::facet_of_angle`])
+                let facet = self
+                    .mover
+                    .as_ref()
+                    .map(|m| crate::facing::facet_of_angle(m.angle, m.stats.facets).0);
+                c.remains = Some((self.life.remains, self.position, facet));
             }
         }
         // the animated object's update (0x141071880): its sprite's clock at its animation speed
@@ -3527,8 +3532,8 @@ impl Turns {
                     }
                 }
                 // the remains of a dying sprite's end, a new object of the owner (FUN_1411a4e90)
-                if let Some((master, at)) = remains
-                    && let Err(e) = self.remains(p, master, at)
+                if let Some((master, at, facet)) = remains
+                    && let Err(e) = self.remains(p, master, at, facet)
                 {
                     result = result.and(Err(e));
                 }

@@ -101,6 +101,9 @@ pub struct MoveStats {
     pub min_collision: f32,
     /// The master's object flags (`+0x654`) have bit 1: the unit turns a hundred times faster.
     pub fast_turn: bool,
+    /// The facets the facing routines read of the unit's current sprite: the master's, when
+    /// every sprite it shows has the same count and bit 1 (None otherwise, or without sprites).
+    pub facets: Option<crate::facing::SpriteFacets>,
 }
 
 /// A moving unit's movement state.
@@ -130,6 +133,8 @@ pub struct Mover {
     /// of the static part): the other units of an order to several (`FUN_14118c790`), which the
     /// short pather ignores for a top path made this update. A stop empties it.
     pub ignore_units: Vec<i32>,
+    /// `+0x7e8`: where the unit faces, radians 0 to 2π ([`crate::facing`]).
+    pub angle: f32,
     /// The point of the MoveTo the unit walks with (`+0x38`..`+0x40`), when it walks to a target
     /// object: where the target stood when the MoveTo last asked for a path, which its check of
     /// the target reads ([`crate::move_to::target_moved`]). A stop leaves it (the motion step's
@@ -781,7 +786,7 @@ impl Mover {
             }
             None => {}
         }
-        let clipped = self.steer(direction, dt);
+        let clipped = self.steer(direction, dt)?;
         self.control_speed(position, waypoint, clipped);
         Ok(Next::Done(Motion::Moving))
     }
@@ -2307,9 +2312,11 @@ impl Mover {
     /// by the angle between the flat forward vector and the direction, at most the turn rate times
     /// dt (a hundred times dt for a master whose object flags have bit 1), about the up axis; then
     /// the forward vector and its right are renormalised (slot 173, `0x14115d150`, which rebuilds
-    /// the right vector from up and forward). Returns whether the turn fell short (the angle was
-    /// above the most), which brakes the unit ([`Mover::control_speed`]).
-    fn steer(&mut self, direction: Vec3, dt: f32) -> bool {
+    /// the right vector from up and forward, and takes the forward vector's facet,
+    /// `FUN_14119d0c0`); the angle becomes the facet's (`FUN_14114d780`, [`crate::facing`]).
+    /// Returns whether the turn fell short (the angle was above the most), which brakes the unit
+    /// ([`Mover::control_speed`]). A unit whose sprites differ in their facets is not modelled.
+    fn steer(&mut self, direction: Vec3, dt: f32) -> Result<bool, Unsupported> {
         let mut flat = self.forward;
         flat[1] = 0.0;
         let flat = fmath::normalize(flat);
@@ -2326,13 +2333,18 @@ impl Mover {
             turn = -turn;
         }
         if self.paths[0].flags & 1 != 0 && turn == 0.0 {
-            return clipped;
+            return Ok(clipped);
         }
         let m = fmath::rotation(turn, UP);
         let forward = fmath::normalize(fmath::rotate(&m, self.forward));
         self.forward = forward;
         self.right = fmath::normalize(fmath::cross(UP, forward));
-        clipped
+        let facets = self.stats.facets.ok_or(Unsupported(
+            "the yaw of a unit whose sprites differ in their facets",
+        ))?;
+        let facet = crate::facing::facet_of_forward(forward, facets);
+        self.angle = crate::facing::angle_of_facet(facet, facets);
+        Ok(clipped)
     }
 
     /// The speed control toward the waypoint (slot 198, `0x141150a80`): a unit whose turn fell
@@ -2447,6 +2459,10 @@ mod tests {
             walk_speed: 1.0,
             stand_speed: 1.0,
             run_speed: 1.0,
+            facets: Some(crate::facing::SpriteFacets {
+                count: 16,
+                flag_1: true,
+            }),
         }
     }
 
@@ -2492,6 +2508,7 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            angle: 0.0,
             move_to_point: None,
             speed_stopped: false,
             pauses: Vec::new(),

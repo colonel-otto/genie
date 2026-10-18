@@ -235,7 +235,7 @@ impl BuildAction {
             }
             return Ok(step);
         }
-        let walk = walk;
+        let mut walk = walk;
         let held = builder.held;
         let r = match (self.state, self.move_to) {
             (4, Some(MoveTo::Arrived)) => {
@@ -256,15 +256,20 @@ impl BuildAction {
             (4, None) => Err(Unsupported("a Build action in state 4 without its MoveTo")),
             (WORK, _) => {
                 // case 5: FUN_141162db0 turns the builder to face its foundation
+                let at = walk
+                    .world
+                    .get(walk.me.id)
+                    .map_or(walk.me.position, |p| p.position);
+                let to = walk
+                    .world
+                    .get_known(self.target)?
+                    .ok_or(Unsupported("a builder's foundation without a place"))?
+                    .position;
                 let mover = walk
                     .mover
-                    .as_deref()
+                    .as_deref_mut()
                     .ok_or(Unsupported("a builder without movement state"))?;
-                if !mover.stats.turns_at_once {
-                    return Err(Unsupported(
-                        "a builder that turns over time to face its work",
-                    ));
-                }
+                crate::attack::face_target(mover, at, to)?;
                 self.place(&walk, site)
             }
             (PLACE, _) => self.work(walk, site, held).map(|c| step.completed = c),
@@ -989,6 +994,10 @@ mod tests {
                 walk_speed: 1.0,
                 stand_speed: 1.0,
                 run_speed: 1.0,
+                facets: Some(crate::facing::SpriteFacets {
+                    count: 16,
+                    flag_1: true,
+                }),
             },
             waiting: 0,
             wait_delays: 0,
@@ -996,6 +1005,7 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            angle: 0.0,
             move_to_point: None,
             speed_stopped: false,
             pauses: Vec::new(),

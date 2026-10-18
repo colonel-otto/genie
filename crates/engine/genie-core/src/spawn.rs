@@ -760,9 +760,16 @@ impl Turns {
             self.streams.get(Stream::Object).rand15();
         }
         ActiveSprite::start(standing, self.streams.get(Stream::Sprite));
-        if standing.flags & 2 != 0 && 1 < standing.facets {
-            self.streams.get(Stream::Object).rand15();
-        }
+        let facets = crate::facing::SpriteFacets {
+            count: standing.facets,
+            flag_1: standing.flags & 2 != 0,
+        };
+        let angle = if crate::facing::draws_angle(Some(facets)) {
+            let r = self.streams.get(Stream::Object).rand15();
+            crate::facing::drawn_angle(r, facets)
+        } else {
+            0.0
+        };
         let ai = UnitAi::constructed(ai_type, position, self.streams.get(Stream::Ai))?;
         self.streams.get(Stream::Object).rand15();
         // its place, record, mesh shape and sight (new_position, slot 0x58, and FUN_141054fe0)
@@ -859,6 +866,7 @@ impl Turns {
                 last_move: self.world_time,
                 substitute_count: 0,
                 ignore_units: Vec::new(),
+                angle,
                 move_to_point: None,
                 speed_stopped: false,
                 pauses: Vec::new(),
@@ -908,6 +916,7 @@ impl Turns {
         p: usize,
         master: i16,
         at: [f32; 3],
+        facet: Option<u8>,
     ) -> Result<(), Unsupported> {
         let made = self.master_of(p, master)?.clone();
         if !(20..40).contains(&made.kind) {
@@ -932,10 +941,28 @@ impl Turns {
                 self.streams.get(Stream::Object).rand15();
             }
         }
+        let mut angle = 0.0;
         let moving = if 30 <= made.kind {
+            // the moving setup's angle draw (FUN_141161450), whose angle the dead object's facet
+            // replaces: that facet's angle (FUN_14119d490, FUN_14114d780, with the remains' own
+            // sprite's facets)
             if standing.is_some_and(|g| g.flags & 2 != 0 && 1 < g.facets) {
                 self.streams.get(Stream::Object).rand15();
             }
+            let facet = facet.ok_or(Unsupported(
+                "moving remains of an object without a facet the slice holds",
+            ))?;
+            let own = standing.map_or(
+                crate::facing::SpriteFacets {
+                    count: 0,
+                    flag_1: false,
+                },
+                |g| crate::facing::SpriteFacets {
+                    count: g.facets,
+                    flag_1: g.flags & 2 != 0,
+                },
+            );
+            angle = crate::facing::angle_of_facet(facet, own);
             Some(
                 made.moving
                     .clone()
@@ -1025,6 +1052,7 @@ impl Turns {
                 last_move: self.world_time,
                 substitute_count: 0,
                 ignore_units: Vec::new(),
+                angle,
                 move_to_point: None,
                 speed_stopped: false,
                 pauses: Vec::new(),

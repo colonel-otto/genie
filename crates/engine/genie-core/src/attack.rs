@@ -93,7 +93,8 @@ pub struct Engagement {
     /// The gap between the two footprints squared (`FUN_14118f8c0`) and its root (`FUN_14118f680`).
     pub gap_squared: f32,
     pub gap: f32,
-    /// The target's position.
+    /// The unit's and the target's positions.
+    pub position: [f32; 3],
     pub target_position: [f32; 3],
     /// The unit's top speed (slot 0x208), its master's weapon range with any bonus against the
     /// target (slot 0x238) and its least range.
@@ -205,13 +206,9 @@ impl Attack {
         let movable = e.speed != 0.0 && e.can_move;
         if a.reach() >= e.gap {
             // in reach: the target's place becomes the point and the unit faces it
-            // (FUN_141162db0, at once for a unit without a turn time; its angle is not held)
+            // (FUN_141162db0)
             a.point = e.target_position;
-            if !mover.stats.turns_at_once {
-                return Err(Unsupported(
-                    "an attacker that turns over time to face its target",
-                ));
-            }
+            face_target(mover, e.position, e.target_position)?;
             if !movable {
                 return Err(Unsupported(
                     "an attack that starts in reach and cannot move (set_state 6)",
@@ -314,7 +311,7 @@ impl Attack {
     /// set_state(6) (case 6): the range test; in reach and ready, the swing (set_state 7).
     fn ready(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
         self.enter(READY, walk, s)?;
-        match self.ready_to_attack(walk, s)? {
+        match self.ready_to_attack(&mut walk.reborrow(), s)? {
             Readiness::Ready => self.set_swing(walk, s),
             Readiness::Waiting => Ok(()),
             Readiness::Away(gap) => self.follow(walk, s, gap),
@@ -347,12 +344,12 @@ impl Attack {
     /// A gate target (class 39, its parts' gaps) is not modelled.
     fn ready_to_attack(
         &mut self,
-        walk: &Walk<'_>,
+        walk: &mut Walk<'_>,
         s: &Strike<'_>,
     ) -> Result<Readiness, Unsupported> {
         let mover = walk
             .mover
-            .as_deref()
+            .as_deref_mut()
             .ok_or(Unsupported("an attacker without movement state"))?;
         let t = walk
             .world
@@ -377,7 +374,7 @@ impl Attack {
         let far = (0..3).any(|i| HALF < (t.position[i] - self.point[i]).abs());
         let mobile = 0.0 < mover.stats.speed;
         if !moved || (!far && mobile) {
-            return self.face(mover, s);
+            return self.face(mover, at, t.position, s);
         }
         if !mobile {
             return Err(Unsupported(
@@ -404,17 +401,19 @@ impl Attack {
             return Ok(Readiness::Away(gap));
         }
         self.point = t.position;
-        self.face(mover, s)
+        self.face(mover, at, t.position, s)
     }
 
-    /// readyToAttack's ready end (`0x140a801f2`): the unit faces its target and swings once its
-    /// attack timer ran out.
-    fn face(&self, mover: &Mover, s: &Strike<'_>) -> Result<Readiness, Unsupported> {
-        if !mover.stats.turns_at_once {
-            return Err(Unsupported(
-                "an attacker that turns over time to face its target",
-            ));
-        }
+    /// readyToAttack's ready end (`0x140a801f2`): the unit at `at` faces its target at `to`
+    /// (`FUN_141162db0`, [`crate::facing::face`]) and swings once its attack timer ran out.
+    fn face(
+        &self,
+        mover: &mut Mover,
+        at: [f32; 3],
+        to: [f32; 3],
+        s: &Strike<'_>,
+    ) -> Result<Readiness, Unsupported> {
+        face_target(mover, at, to)?;
         Ok(if *s.attack_timer <= 0.0 {
             Readiness::Ready
         } else {
@@ -506,7 +505,7 @@ impl Attack {
         match self.state {
             MOVE => self.walk(walk, s, t.position, t.radius),
             READY => {
-                match self.ready_to_attack(&walk, s)? {
+                match self.ready_to_attack(&mut walk.reborrow(), s)? {
                     Readiness::Ready => self.set_swing(&mut walk, s)?,
                     Readiness::Waiting => {}
                     Readiness::Away(gap) => self.follow(&mut walk, s, gap)?,
@@ -800,6 +799,7 @@ pub fn engagement(
     Ok(Engagement {
         gap_squared,
         gap,
+        position: me.position,
         target_position: them.position,
         speed,
         range: master.weapon_range,
@@ -813,6 +813,26 @@ pub fn engagement(
 pub fn gaps(a: [f32; 3], a_radius: [f32; 2], b: [f32; 3], b_radius: [f32; 2]) -> (f32, f32) {
     let squared = footprint_gap_squared(a, a_radius, b, b_radius);
     (squared, footprint_gap(a, a_radius, b, b_radius))
+}
+
+/// `FUN_141162db0`: the unit at `at` turns to face `to`, at once for a unit without a turn time
+/// ([`crate::facing::face`] with its sprites' facets); a unit that turns over time, or whose
+/// sprites differ in their facets, is not modelled.
+pub(crate) fn face_target(
+    mover: &mut Mover,
+    at: [f32; 3],
+    to: [f32; 3],
+) -> Result<(), Unsupported> {
+    if !mover.stats.turns_at_once {
+        return Err(Unsupported(
+            "a unit that turns over time to face its target",
+        ));
+    }
+    let facets = mover.stats.facets.ok_or(Unsupported(
+        "a unit facing a target whose sprites differ in their facets",
+    ))?;
+    mover.angle = crate::facing::face([at[0], at[1]], mover.angle, [to[0], to[1]], Some(facets));
+    Ok(())
 }
 
 /// The squared reach of an attack of `range` (`FUN_140a82ae0` at `0x140a83950`): the range squared,

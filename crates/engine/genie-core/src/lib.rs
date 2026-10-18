@@ -7,6 +7,7 @@ pub mod build;
 pub mod checkpoint;
 pub mod damage;
 pub mod explore;
+pub mod facing;
 pub mod fly;
 pub mod fmath;
 pub mod hunt;

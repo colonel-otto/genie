@@ -66,6 +66,31 @@ pub mod explore {
     pub const NO_POINT: f32 = f32::from_bits(0xbf800000);
 }
 
+pub mod facing {
+    /// 1.0000000116860974e-07
+    pub const EPSILON: f32 = f32::from_bits(0x33d6bf95);
+    /// 0.5
+    pub const HALF: f32 = f32::from_bits(0x3f000000);
+    /// -0.5
+    pub const MINUS_HALF: f32 = f32::from_bits(0xbf000000);
+    /// -1.0
+    pub const MINUS_ONE: f32 = f32::from_bits(0xbf800000);
+    /// -3.1415927410125732
+    pub const MINUS_PI: f32 = f32::from_bits(0xc0490fdb);
+    /// -6.2831854820251465
+    pub const MINUS_TWO_PI: f32 = f32::from_bits(0xc0c90fdb);
+    /// 1.0
+    pub const ONE: f32 = f32::from_bits(0x3f800000);
+    /// 3.1415927410125732
+    pub const PI: f32 = f32::from_bits(0x40490fdb);
+    /// 0.7853981852531433
+    pub const QUARTER_PI: f32 = f32::from_bits(0x3f490fdb);
+    /// 2.0
+    pub const TWO: f32 = f32::from_bits(0x40000000);
+    /// 6.2831854820251465
+    pub const TWO_PI: f32 = f32::from_bits(0x40c90fdb);
+}
+
 pub mod fly {
     /// 0.01745329238474369
     pub const DEGREE: f32 = f32::from_bits(0x3c8efa35);
