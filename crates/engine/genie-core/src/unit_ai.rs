@@ -187,6 +187,10 @@ pub struct UnitAi {
     pub state_position: [f32; 2],
     /// `+0x1d6`: non-zero skips the retarget check.
     pub retarget_disabled: u8,
+    /// `+0x1b8`, `alertModeValue`: the last search found enemies.
+    pub alert_mode: bool,
+    /// `+0x1c0` holds a patrol path (the save's `hasPatrolPath`).
+    pub patrol_path: bool,
     /// `+0x1a8`, `stop_after_target_killed_value`: a move does not let the current action take its
     /// point (`FUN_140c41c10`).
     pub stop_after_kill: bool,
@@ -229,21 +233,117 @@ pub const LION_CARED: [i32; 18] = [
     4, 0, 26, 24, 6, 25, 12, 35, 23, 36, 28, 44, 46, 45, 50, 56, 57, 9,
 ];
 
-/// A unit AI's `ClosestObject` (`FUN_140c488b0`) as the animals' idle checks call it: its search
-/// (`FUN_140c63e20`) queries its player's objects in sight of `classes` within `radius` of `at`
-/// for a searcher of radii `size` (`GetVisibleUnits`, mode 0, every relation); then the objects of
-/// master class `group`, of relation `relation` (0 itself or friends, 1 neutrals, 2 enemies, 3
-/// itself) and in state `state` (each −1 for any), reachable ones only. The caller answers with
-/// the closest object's id, −1 for none.
+/// The classes a soldier cares about (`+0x190`, `TribeSoldierUnitAIModule`'s constructor
+/// `FUN_140c12300`; a computer player's adds 10).
+pub const SOLDIER_CARED: [i32; 39] = [
+    0, 3, 4, 26, 24, 6, 35, 25, 17, 12, 23, 36, 28, 18, 13, 27, 22, 20, 2, 21, 44, 46, 43, 45, 47,
+    50, 51, 52, 53, 54, 55, 39, 56, 57, 19, 59, 49, 42, 61,
+];
+
+/// The classes a tower cares about (`+0x190`, `TribeTowerUnitAIModule`'s constructor
+/// `FUN_140c12960`): the soldier's and 10.
+pub const TOWER_CARED: [i32; 40] = [
+    0, 3, 4, 26, 24, 6, 35, 25, 17, 12, 23, 36, 28, 18, 13, 27, 22, 20, 2, 21, 44, 46, 43, 45, 47,
+    50, 51, 52, 53, 54, 55, 39, 56, 57, 19, 59, 49, 10, 42, 61,
+];
+
+/// A unit AI's search (`FUN_140c63e20`) as the idle checks run it: it queries its player's
+/// objects in sight of `classes` within `radius` of `at` for a searcher of radii `size`
+/// (`GetVisibleUnits`, mode 0, every relation), and `pick` chooses among them. The caller answers
+/// with the object's id, −1 for none.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Search<'a> {
     pub at: [f32; 2],
     pub radius: f32,
     pub classes: &'a [i32],
     pub size: [f32; 2],
-    pub group: i32,
-    pub relation: i32,
-    pub state: i32,
+    pub pick: Pick,
+}
+
+/// What a [`Search`] picks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pick {
+    /// `ClosestObject` (`FUN_140c488b0`), as the animals call it: the closest object of master
+    /// class `group`, of relation `relation` (0 itself or friends, 1 neutrals, 2 enemies, 3
+    /// itself) and in state `state` (each −1 for any), reachable ones only.
+    Closest {
+        group: i32,
+        relation: i32,
+        state: i32,
+    },
+    /// `bestUnitToAttack` (`FUN_140c44680`) with no current target and no extra objects, as the
+    /// idle checks call it: of the relations from enemies down to `lowest` (2 in the scenario
+    /// modes for a human player, else 0, Gaia), the object to attack, by the unit AI's attack
+    /// check ([`can_attack`]). The search sets the alert mode
+    /// (`+0x1b8`) when it finds enemies, and holds a second search from within 5 tiles in the same
+    /// update to the first's answer, which the idle checks never ask.
+    Attack { lowest: usize },
+}
+
+/// What a unit AI's attack check (its slot 0xa0) reads of itself: its owner's id, its state
+/// (`+0x640`) and its master's class, `attack_priority` (`+0x92c`) and `missile_id` (`+0x83c`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Attacker {
+    pub ai_type: u32,
+    pub player: usize,
+    pub state: u8,
+    pub class: i16,
+    pub attack_priority: u8,
+    pub missile: i16,
+    pub scenario: bool,
+}
+
+/// What a unit AI's attack check reads of an object it found: the owner's id, the master's class,
+/// type, id and `combat_level` (`+0x62c`), and the object's `+0x924`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Target {
+    pub owner: usize,
+    pub class: i16,
+    pub kind: u8,
+    pub master: i16,
+    pub combat_level: u8,
+    pub capture: u8,
+}
+
+/// The classes an attacker of `attack_priority` 3 may attack (`FUN_140fddf10`).
+const PRIORITY_3_CLASSES: [i16; 6] = [3, 27, 39, 49, 52, 60];
+
+/// The masters a tower never attacks (`FUN_140c1a760`, raw `0x60ce`, `0x653f`).
+const TOWER_SPARED: [i16; 2] = [50, 1187];
+
+/// Slot 0xa0 of `me`'s unit AI, `CanAttack`: whether it may attack `t`. The tower's
+/// (`FUN_140c1a760`): never for Gaia's own tower nor the classes 1 and 42; Gaia's objects only of
+/// the classes 9 and 10, unless they are of the combat type with `+0x924` 0 outside the scenario
+/// modes; a building's `desolid_flag` (`+0xc60`) is not held; never masters 50 and 1187, nor
+/// from a tower in a state below 2. Class 10 with an attack priority below 3 only of combat
+/// level 4 (`FUN_140fde120`); else when the tower is armed (`FUN_14120ea30`: classes 51 and 54,
+/// or a missile; without one the object's `+0xa00` decides, not held) and its attack priority
+/// is not 3 or the class one of [`PRIORITY_3_CLASSES`]. The soldier's (`FUN_140c19a20`) is not
+/// modelled.
+pub fn can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
+    if me.ai_type != 15 {
+        return Err(Unsupported("a soldier's attack check (slot 0xa0)"));
+    }
+    if me.player == 0 || matches!(t.class, 1 | 42) {
+        return Ok(false);
+    }
+    let gaia_combat = !me.scenario && 70 <= t.kind && t.capture == 0;
+    if !gaia_combat && t.owner == 0 && !matches!(t.class, 9 | 10) {
+        return Ok(false);
+    }
+    if t.kind == 80 {
+        return Err(Unsupported("a tower's attack check of a building (+0xc60)"));
+    }
+    if TOWER_SPARED.contains(&t.master) || me.state <= 1 {
+        return Ok(false);
+    }
+    if t.class == 10 && me.attack_priority < 3 {
+        return Ok(t.combat_level == 4);
+    }
+    if !matches!(me.class, 51 | 54) && me.missile == -1 {
+        return Err(Unsupported("an unarmed attacker's +0xa00 (FUN_14120ea30)"));
+    }
+    Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
 }
 
 /// The caller's answer to a [`Search`].
@@ -298,6 +398,27 @@ pub struct Surroundings {
     /// truncated, each way from the unit's tile), whose search the slice does not run: without one
     /// it finds nothing.
     pub foundations: bool,
+    /// The unit's state (`+0x640`), type (`+0xf`), `+0x924` and master id.
+    pub state: u8,
+    pub kind: u8,
+    pub capture: u8,
+    pub master: i16,
+    /// The game mode (the save's `mGameMode`, options `+0x34`) is one of `FUN_141302540`'s:
+    /// Scenario (3), Campaign (4), King of the Hill (5), Co-op Campaign (15).
+    pub scenario: bool,
+    /// The master has a task of action type 0x69 (`FUN_1415c60b0`; the healers'), whose idle
+    /// soldier looks for an ally to heal (`FUN_140c16f00`).
+    pub task_0x69: bool,
+    /// The unit AI's current target as the world's object table holds it (`FUN_1415417a0`),
+    /// `None` when it does not exist or the unit AI has none.
+    pub target: Option<Seen>,
+}
+
+/// An object as a unit AI's target block reads it: its state (`+0x640`) and type (`+0xf`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Seen {
+    pub state: u8,
+    pub kind: u8,
 }
 
 /// The class whose busy units skip the idle check (`-0xe98` raw).
@@ -342,9 +463,9 @@ fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
         // villagers (0x140c21da0) and livestock (0x140c21f20) return 9 from slot 73
         8 | 19 => Ok(Retarget::Never),
         // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), lion (5,
-        // slot 72 FUN_140c1fb70), transport ship (11, slot 72 0x140c21d20), soldier (13), tower
-        // (15), building (17); the slot 72 of the ship, the soldier, the tower and the building
-        // draws nothing for an idle unit
+        // slot 72 FUN_140c1fb70), transport ship (11, slot 72 0x140c21d20), soldier (13, slot 72
+        // FUN_140c20db0), tower (15, the base's slot 72 FUN_140c564c0), building (17, slot 72
+        // 0x140c1e600, which does nothing)
         2 | 4 | 5 | 11 | 13 | 15 | 17 => Ok(Retarget::Base),
         _ => Err(Unsupported("unit-AI type not modelled")),
     }
@@ -375,8 +496,11 @@ pub const MOVE_ACTION: i32 = 0x262;
 const HUNTED_HOME: f32 = 4.0;
 const HUNTED_STEP: i32 = 3;
 const HUNTED_SIGHT_GROWTH: f32 = 1.0;
-/// What an animal's idle check lowers its last human order time to (`FUN_140fe0d10`).
-const HUMAN_ORDER_CAP: u32 = 5000;
+/// What an idle check lowers the unit's last human order time to (`FUN_140fe0d10`), and below
+/// which the moving object's update counts it down.
+pub const HUMAN_ORDER_CAP: u32 = 5000;
+/// The master whose idle soldier does nothing (`FUN_140c20db0`, raw `0x635e`).
+const SOLDIER_IDLE_MASTER: i16 = 706;
 /// The lion's idle timeout (`FUN_140c1fb70`, as its constructor `FUN_140c11bd0`).
 const LION_IDLE_TIMEOUT: u32 = 6000;
 /// The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
@@ -386,6 +510,23 @@ const CLASS_KING: i16 = 59;
 /// unit's slot 0x430 false): attack, `0x261`, move, hunt, `0x269`, `0x26b`, `0x26c`, build and
 /// `0x2bf`.
 const ENDED_ACTIONS: [i32; 9] = [600, 0x261, 0x262, 0x265, 0x269, 0x26b, 0x26c, 0x2be, 0x2bf];
+/// The attack action value.
+const ATTACK_ACTION: i32 = 600;
+/// The action values that need a live target (the target block's mask `0x4002080d` over the
+/// value − `0x259`).
+const LIVE_TARGET_ACTIONS: [i32; 6] = [0x259, 0x25b, 0x25c, 0x264, 0x26a, 0x277];
+
+/// The radius of the search `bestUnitToAttack` runs (`FUN_140c63e20`): the larger of the unit's
+/// search radius (slot 0x2c8) and its line of sight plus 1, plus `+0x1e8`, which no save holds (0
+/// in every unit probed).
+fn attack_search_radius(at: &Surroundings) -> f32 {
+    let sight = at.los + HUNTED_SIGHT_GROWTH;
+    if sight <= at.search_radius {
+        at.search_radius
+    } else {
+        sight
+    }
+}
 
 /// `UpdateAdjustedIdleTimeout` (`0x140c41e00`): `r % (base / 2) + 3 * base / 4`, one AI draw.
 fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
@@ -454,6 +595,8 @@ impl UnitAi {
             // the object's place
             state_position: [position[0], position[1]],
             retarget_disabled: 0,
+            alert_mode: false,
+            patrol_path: false,
             stop_after_kill: false,
             home: None,
             hunted: None,
@@ -694,9 +837,11 @@ impl UnitAi {
             radius,
             classes: &HUNTED_CARED,
             size: at.size,
-            group: -1,
-            relation: -1,
-            state: -1,
+            pick: Pick::Closest {
+                group: -1,
+                relation: -1,
+                state: -1,
+            },
         })?;
         if found != -1 {
             return Err(Unsupported(
@@ -753,9 +898,11 @@ impl UnitAi {
             radius,
             classes: &LION_CARED,
             size: at.size,
-            group,
-            relation: 2,
-            state: 2,
+            pick: Pick::Closest {
+                group,
+                relation: 2,
+                state: 2,
+            },
         };
         let mut found = closest(&search(4))?;
         if found < 0 {
@@ -769,21 +916,29 @@ impl UnitAi {
         Ok(None)
     }
 
-    /// Slot 72 for the factory types modelled: the boar's, the hunted animal's and the lion's do
-    /// something for an idle unit; each first lowers the unit's last human order time to
-    /// `FUN_140fe0d10`'s 5000 (`FUN_140c41e50`; not on orders 701, 711, 712 and 733, and a
-    /// group's would decide, the slice holds none).
+    /// Slot 72 for the factory types modelled: the boar's, the hunted animal's, the lion's and
+    /// the soldier's ([`UnitAi::soldier_idle`]) do something for an idle unit; each, and the
+    /// transport ship's, first lowers the unit's last human order time to `FUN_140fe0d10`'s 5000
+    /// (`FUN_140c41e50`; not on orders 701, 711, 712 and 733, and a group's would decide, the
+    /// slice holds none), as does the tower's ([`UnitAi::tower_idle`]). The building's does
+    /// nothing.
     fn process_idle(
         &mut self,
         at: &Surroundings,
+        computer: bool,
         ai: &mut Well512,
         closest: &mut Closest<'_>,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
-        if matches!(self.ai_type, 2 | 4 | 5)
+        if matches!(self.ai_type, 2 | 4 | 5 | 11 | 13 | 15)
             && !matches!(self.current_order, 0x2bd | 0x2c7 | 0x2c8 | 0x2dd)
         {
             fx.push(Effect::CapHumanOrder(HUMAN_ORDER_CAP));
+        }
+        match self.ai_type {
+            13 => return self.soldier_idle(at, computer, closest),
+            15 => return self.tower_idle(at, computer, closest),
+            _ => {}
         }
         let moved = match self.ai_type {
             2 => self.hunted_idle(at, ai, closest)?,
@@ -795,14 +950,131 @@ impl UnitAi {
         Ok(())
     }
 
+    /// The soldier's idle check (slot 72, `FUN_140c20db0`, factory type 13) as the idle part calls
+    /// it (its second argument 1), after the cap of [`UnitAi::process_idle`]. Before the cap, a
+    /// player that is out (`+0x89` 2; not held, 0 in every player probed) would stop, and slot
+    /// 0x250 (`FUN_140c5d9a0`) retries no order, the soldier's slot 0x60 taking none as
+    /// retryable. A Gaia unit stops unless it is of the combat type with `+0x924` 0 outside the
+    /// scenario modes (`FUN_141302540`); one in NoAttack (stance 3) would search and return to its
+    /// state position (not modelled); master 706 stops. Its target is the target of its top action
+    /// within its range (slot 400, slot 0x1e8) with retargeting on (`+0x1d6` 0), else its current
+    /// target; neither is modelled, nor a computer's branches (patrol data, priorities, evasion).
+    /// Without one, `bestUnitToAttack` from its place ([`Pick::Attack`]): an object found would be
+    /// attacked (slot 0xb8), which is not modelled. A patrol order then stops. The search leaves the alert mode clear, so `+0x1bc`
+    /// stays. In Defend or StandGround (stance 1, 2) a unit more than a tile from its state
+    /// position (the squared footprint gap, `FUN_140a847c0`) would walk back (`FUN_140c5e7d0`,
+    /// not modelled); a patrol path (`+0x1c0`) and the healer's ally search (`FUN_140c16f00`, for
+    /// a master with a task of action type 0x69) are not modelled.
+    fn soldier_idle(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        closest: &mut Closest<'_>,
+    ) -> Result<(), Unsupported> {
+        let searches = !at.scenario && 70 <= at.kind && at.capture == 0;
+        if at.player == 0 && !searches {
+            return Ok(());
+        }
+        if self.stance == 3 {
+            return Err(Unsupported("a soldier's idle check in NoAttack (stance 3)"));
+        }
+        if at.master == SOLDIER_IDLE_MASTER {
+            return Ok(());
+        }
+        if self.retarget_disabled == 0 {
+            if at.busy {
+                return Err(Unsupported(
+                    "the top action's target of a soldier's idle check (slot 400)",
+                ));
+            }
+        } else if self.current_target != -1 && at.target.is_some() {
+            return Err(Unsupported("the current target of a soldier's idle check"));
+        }
+        if computer {
+            return Err(Unsupported("a computer player's soldier's idle check"));
+        }
+        let found = closest(&Search {
+            at: [at.position[0], at.position[1]],
+            radius: attack_search_radius(at),
+            classes: &SOLDIER_CARED,
+            size: at.size,
+            pick: Pick::Attack {
+                lowest: if at.scenario { 2 } else { 0 },
+            },
+        })?;
+        if found != -1 {
+            return Err(Unsupported(
+                "a soldier attacking what its idle search found (slot 0xb8)",
+            ));
+        }
+        self.alert_mode = false;
+        if matches!(self.current_order, PATROL | PATROL_2) {
+            return Ok(());
+        }
+        if matches!(self.stance, 1 | 2) {
+            let gap = |d: f32, r: f32| {
+                let g = d.abs() - r;
+                if 0.0 <= g { g } else { 0.0 }
+            };
+            let dx = gap(self.state_position[0] - at.position[0], at.size[0]);
+            let dy = gap(self.state_position[1] - at.position[1], at.size[1]);
+            if 1.0 < dy * dy + dx * dx {
+                return Err(Unsupported(
+                    "a soldier walking back to its state position (FUN_140c5e7d0)",
+                ));
+            }
+        }
+        if self.patrol_path {
+            return Err(Unsupported("a soldier's patrol path in its idle check"));
+        }
+        if at.task_0x69 {
+            return Err(Unsupported("a healer's search for an ally to heal"));
+        }
+        Ok(())
+    }
+
+    /// The base unit AI's idle check (slot 72, `FUN_140c564c0`), the tower's (factory type 15),
+    /// as the idle part calls it, after the cap of [`UnitAi::process_idle`] (slot 0x250 first
+    /// retries no order, the tower's slot 0x60 taking none as retryable). In NoAttack (stance 3)
+    /// it only searches, which is not modelled; else `bestUnitToAttack` from its place
+    /// ([`Pick::Attack`], as [`UnitAi::soldier_idle`]'s): an object found would be attacked
+    /// (slot 0xb8, which sets `+0x1d5`), which is not modelled. The search leaves the alert mode
+    /// clear.
+    fn tower_idle(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        closest: &mut Closest<'_>,
+    ) -> Result<(), Unsupported> {
+        if self.stance == 3 {
+            return Err(Unsupported("a tower's idle search in NoAttack (stance 3)"));
+        }
+        let found = closest(&Search {
+            at: [at.position[0], at.position[1]],
+            radius: attack_search_radius(at),
+            classes: &TOWER_CARED,
+            size: at.size,
+            pick: Pick::Attack {
+                lowest: if at.scenario && !computer { 2 } else { 0 },
+            },
+        })?;
+        if found != -1 {
+            return Err(Unsupported(
+                "a tower attacking what its idle search found (slot 0xb8)",
+            ));
+        }
+        self.alert_mode = false;
+        Ok(())
+    }
+
     fn is_idle(&self) -> bool {
         self.current_order == -1 && self.current_action == -1 && self.current_target == -1
     }
 
     /// The full update (slot 4, `0x140c66b10`; the boar's `0x140c2c010` adds its tail):
     /// `dt` is the time the owner accumulated since its last turn (`world+0x18c[player]`),
-    /// `computer` the owner's type test (`player+0x10 == 3`). In the game's order: the state
-    /// position of a unit with an order, the timers, the notifies ([`UnitAi::post`]: each through
+    /// `computer` the owner's type test (`player+0x10 == 3`). In the game's order: the target
+    /// block ([`UnitAi::target_block`]), the state position of a unit with an order, the timers, the notifies ([`UnitAi::post`]: each through
     /// slot 0x238, then `FUN_140c5dc10`), the reset of an action value whose actions ended, the
     /// order check of a unit no longer busy, the order queue ([`UnitAi::run_orders`]), slot 73's
     /// retarget check, the idle part (slot 72 once the idle timer passes its timeout), the
@@ -819,8 +1091,9 @@ impl UnitAi {
         closest: &mut Closest<'_>,
     ) -> Result<Vec<Effect>, Unsupported> {
         let retarget = retarget_kind(self.ai_type)?;
-        self.check_busy_order(at, retarget)?;
         let mut fx = Vec::new();
+        self.target_block(at, computer, &mut fx)?;
+        self.check_busy_order(retarget, at.busy && fx.is_empty())?;
         if self.current_order != -1 {
             self.state_position = [at.position[0], at.position[1]];
         }
@@ -850,7 +1123,7 @@ impl UnitAi {
         if let Retarget::Base = retarget {
             self.retarget_check(world_time, ai)?;
         }
-        self.idle_part(busy, at, ai, closest, &mut fx)?;
+        self.idle_part(busy, at, computer, ai, closest, &mut fx)?;
         self.look_around(computer, ai)?;
         // the boar's slot 4 (0x140c2c010) after the base: its second idle check runs only for a
         // timer the base's left past the timeout (a unit with an action), and a boar without a
@@ -860,18 +1133,78 @@ impl UnitAi {
             && self.adjusted_idle_timeout < self.idle_timer
         {
             self.idle_timer = 0;
-            self.process_idle(at, ai, closest, &mut fx)?;
+            self.process_idle(at, computer, ai, closest, &mut fx)?;
         }
         self.calm_down();
         Ok(fx)
     }
 
-    /// The busy units the update models: a villager building or hunting (702/602, 713/613) or a
-    /// unit on MOVE's order without a target (710/610, or an animal's own wander). The target
-    /// block at the update's start (a target that died, the patrol range) is not modelled: a
-    /// building's or a hunted tree's target never counts as dead there (both actions are
-    /// exempt).
-    fn check_busy_order(&self, at: &Surroundings, retarget: Retarget) -> Result<(), Unsupported> {
+    /// The target block at the full update's start (`0x140c66b10`): a unit inside another
+    /// (`+0x2f0`) drops its target, as does one whose target no longer exists (an attack action's
+    /// idle timer then takes its timeout; `FUN_140c5e1e0` finds no target left). A dead target (a
+    /// state above 2, not a building) of a live unit ends an action that needs a live one
+    /// ([`LIVE_TARGET_ACTIONS`]) or any action with `+0x1a8` set: `+0x1a8` clears and, but for a
+    /// hunt or `0x2be`, the target goes and the action stops (slot 0xb0 with 1). An attack's next
+    /// target (slots 0x2b0, 0x240), the patrol range (`FUN_140c41690`), a computer's priority by
+    /// the target's distance and action `0x2be`'s check (`FUN_140c40f10`) are not modelled; the
+    /// slice holds no unit groups (`+0x6d0`).
+    fn target_block(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        if self.current_target != -1 && at.garrisoned {
+            self.current_target = -1;
+        }
+        if self.current_target == -1 {
+            return Ok(());
+        }
+        let action = self.current_action;
+        match at.target {
+            None => {
+                self.current_target = -1;
+                if action == ATTACK_ACTION {
+                    self.idle_timer = self.idle_timeout;
+                }
+            }
+            Some(t) => {
+                if at.state == 2 && 2 < t.state && t.kind != 80 {
+                    if action == ATTACK_ACTION {
+                        return Err(Unsupported("an attack action whose target died"));
+                    }
+                    if self.stop_after_kill || LIVE_TARGET_ACTIONS.contains(&action) {
+                        self.stop_after_kill = false;
+                        if action != HUNT_ACTION && action != BUILD_ORDER {
+                            self.remove_target();
+                            self.stop_current(true, at, fx)?;
+                        }
+                    }
+                }
+                if matches!(self.current_order, PATROL | PATROL_2) {
+                    return Err(Unsupported("the patrol range of a unit AI's target"));
+                }
+                // order 0x262, which is MOVE's action value
+                if computer
+                    && (0..100).contains(&self.order_priority)
+                    && self.current_order == 0x262
+                {
+                    return Err(Unsupported(
+                        "a computer's order priority by its target's distance",
+                    ));
+                }
+            }
+        }
+        if self.current_action == BUILD_ORDER {
+            return Err(Unsupported("action 0x2be's target check"));
+        }
+        Ok(())
+    }
+
+    /// The units the update models after its target block ([`UnitAi::target_block`]): a target
+    /// only on a villager's build or hunt (702/602, 713/613); busy (`busy`, the actions left), only
+    /// those or a unit on MOVE's order without a target (710/610, or an animal's own wander).
+    fn check_busy_order(&self, retarget: Retarget, busy: bool) -> Result<(), Unsupported> {
         let order = (self.current_order, self.current_action);
         let working = matches!(
             order,
@@ -881,12 +1214,7 @@ impl UnitAi {
         if self.current_target != -1 && !working {
             return Err(Unsupported("a unit AI's target the slice does not model"));
         }
-        if self.current_target != -1 && !at.busy {
-            return Err(Unsupported(
-                "a unit AI's target once its actions ended (the target block)",
-            ));
-        }
-        if !at.busy || self.is_idle() {
+        if !busy || self.is_idle() {
             return Ok(());
         }
         match retarget {
@@ -1381,6 +1709,7 @@ impl UnitAi {
         &mut self,
         busy: bool,
         at: &Surroundings,
+        computer: bool,
         ai: &mut Well512,
         closest: &mut Closest<'_>,
         fx: &mut Vec<Effect>,
@@ -1392,7 +1721,7 @@ impl UnitAi {
             && (self.current_target == -1 || !busy)
         {
             self.idle_timer = 0;
-            self.process_idle(at, ai, closest, fx)?;
+            self.process_idle(at, computer, ai, closest, fx)?;
             return Ok(());
         }
         if matches!(self.current_order, PATROL | PATROL_2) {
@@ -1798,6 +2127,8 @@ mod tests {
                 stance: 0,
                 state_position: [30.0, 88.0],
                 retarget_disabled: 0,
+                alert_mode: false,
+                patrol_path: false,
                 stop_after_kill: false,
                 home: None,
                 hunted: None,
@@ -2469,5 +2800,221 @@ mod tests {
             Notify::from_bytes(&notify),
             Notify::own(9851, ACTION_COMPLETED, [MOVE_ACTION, 0, 0])
         );
+    }
+
+    /// MarvinBlue/426048731's builders 9175 and 9177 in update 1497: their Builds ended (no
+    /// actions left) on their build order (702/602) with the house 10028 as their target.
+    fn builder_done() -> UnitAi {
+        UnitAi {
+            current_order: BUILD_ORDER,
+            current_action: BUILD_ACTION,
+            current_target: 10028,
+            target_type: 3,
+            target_point: [30.0, 88.0, 0.0],
+            idle_timeout: 3000,
+            ..idle(8)
+        }
+    }
+
+    #[test]
+    fn the_target_block_keeps_a_standing_target_and_drops_a_gone_one() {
+        // 1497: the house exists in state 2, which keeps it
+        let standing = Surroundings {
+            state: 2,
+            target: Some(Seen { state: 2, kind: 80 }),
+            ..Surroundings::default()
+        };
+        let mut u = builder_done();
+        let mut fx = Vec::new();
+        u.target_block(&standing, false, &mut fx).unwrap();
+        assert_eq!((u.current_target, &fx[..]), (10028, &[][..]));
+        // a target no longer in the world goes (its class and point stay); an attack action's
+        // idle timer then takes its timeout
+        let gone = Surroundings {
+            state: 2,
+            ..Surroundings::default()
+        };
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            ..builder_done()
+        };
+        u.target_block(&gone, false, &mut fx).unwrap();
+        assert_eq!((u.current_target, u.target_type), (-1, 3));
+        assert_eq!(u.idle_timer, 3000);
+        // inside another, a unit drops its target before the lookup
+        let inside = Surroundings {
+            garrisoned: true,
+            ..standing
+        };
+        let mut u = builder_done();
+        u.target_block(&inside, false, &mut fx).unwrap();
+        assert_eq!(u.current_target, -1);
+    }
+
+    #[test]
+    fn a_dead_target_stops_an_action_that_needs_a_live_one() {
+        let dead = Surroundings {
+            state: 2,
+            target: Some(Seen { state: 3, kind: 70 }),
+            ..Surroundings::default()
+        };
+        // 0x25b needs a live target: the target goes and the action stops
+        let mut u = UnitAi {
+            current_order: -1,
+            current_action: 0x25b,
+            ..builder_done()
+        };
+        let mut fx = Vec::new();
+        u.target_block(&dead, false, &mut fx).unwrap();
+        assert_eq!(fx, vec![Effect::Stop]);
+        assert_eq!((u.current_target, u.last_target), (-1, 10028));
+        assert_eq!((u.current_action, u.last_action), (-1, 0x25b));
+        // a hunt goes on at its carcass
+        let mut u = UnitAi {
+            current_order: HUNT_ORDER,
+            current_action: HUNT_ACTION,
+            ..builder_done()
+        };
+        let mut fx = Vec::new();
+        u.target_block(&dead, false, &mut fx).unwrap();
+        assert_eq!((u.current_target, fx), (10028, vec![]));
+        // an attack whose target died retargets, which is not modelled
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            ..builder_done()
+        };
+        assert!(u.target_block(&dead, false, &mut Vec::new()).is_err());
+    }
+
+    /// The scout 9185 in update 1518: idle (its MOVE done), stance 2 at its state position.
+    fn idle_scout() -> (UnitAi, Surroundings) {
+        let u = UnitAi {
+            idle_timer: 504,
+            adjusted_idle_timeout: 503,
+            stance: 2,
+            state_position: [21.947916, 92.489586],
+            ..idle(13)
+        };
+        let at = Surroundings {
+            position: [21.947916, 92.489586, 0.0],
+            player: 2,
+            class: 12,
+            size: [0.2, 0.2],
+            los: 4.0,
+            search_radius: 4.0,
+            state: 2,
+            kind: 70,
+            master: 448,
+            ..Surroundings::default()
+        };
+        (u, at)
+    }
+
+    #[test]
+    fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attack() {
+        let (mut u, at) = idle_scout();
+        let mut searched = Vec::new();
+        let mut closest = |s: &Search<'_>| {
+            searched.push((s.radius, s.classes.len(), s.pick));
+            Ok(-1)
+        };
+        let fx = u
+            .update(28, 0, false, &at, &mut rng(), &mut closest)
+            .unwrap();
+        assert_eq!(fx, vec![Effect::CapHumanOrder(5000)]);
+        // the search radius: its line of sight plus 1; Gaia's objects too (not a scenario)
+        assert_eq!(searched, vec![(5.0, 39, Pick::Attack { lowest: 0 })]);
+        assert_eq!(u.idle_timer, 0);
+        // something found would be attacked, which is not modelled
+        let (mut u, at) = idle_scout();
+        let mut found = |_: &Search<'_>| Ok(9731);
+        assert!(u.update(28, 0, false, &at, &mut rng(), &mut found).is_err());
+        // away from its state position, a stance-2 soldier would walk back
+        let (mut u, at) = idle_scout();
+        u.state_position = [25.0, 92.5];
+        let mut none = |_: &Search<'_>| Ok(-1);
+        assert!(u.update(28, 0, false, &at, &mut rng(), &mut none).is_err());
+    }
+
+    #[test]
+    fn a_gaia_soldier_that_takes_owners_by_sight_does_not_search() {
+        let (mut u, at) = idle_scout();
+        let gaia = Surroundings {
+            player: 0,
+            capture: 1,
+            ..at
+        };
+        let fx = u
+            .update(28, 0, false, &gaia, &mut rng(), &mut no_search)
+            .unwrap();
+        assert_eq!(fx, vec![Effect::CapHumanOrder(5000)]);
+    }
+
+    #[test]
+    fn a_tower_passes_a_boar_but_not_a_wolf() {
+        // player 2's TC 9156 in update 1506 and Gaia's boar 9731 (master 48, class 10)
+        let tc = Attacker {
+            ai_type: 15,
+            player: 2,
+            state: 2,
+            class: 3,
+            attack_priority: 0,
+            missile: 54,
+            scenario: false,
+        };
+        let boar = Target {
+            owner: 0,
+            class: 10,
+            kind: 70,
+            master: 48,
+            combat_level: 0,
+            capture: 0,
+        };
+        assert_eq!(can_attack(&tc, &boar), Ok(false));
+        let wolf = Target {
+            combat_level: 4,
+            ..boar
+        };
+        assert_eq!(can_attack(&tc, &wolf), Ok(true));
+        // Gaia's tower attacks nothing; a Gaia object outside classes 9 and 10 that takes owners
+        // by sight neither
+        assert_eq!(can_attack(&Attacker { player: 0, ..tc }, &wolf), Ok(false));
+        let sheep = Target {
+            class: 58,
+            capture: 3,
+            ..boar
+        };
+        assert_eq!(can_attack(&tc, &sheep), Ok(false));
+        // the soldier's check is not modelled
+        assert!(can_attack(&Attacker { ai_type: 13, ..tc }, &boar).is_err());
+    }
+
+    #[test]
+    fn an_idle_tower_searches_with_its_classes() {
+        let mut u = UnitAi {
+            idle_timer: 504,
+            adjusted_idle_timeout: 503,
+            ..idle(15)
+        };
+        let at = Surroundings {
+            position: [29.0, 94.0, 0.0],
+            player: 2,
+            size: [2.0, 2.0],
+            los: 8.0,
+            search_radius: 0.0,
+            state: 2,
+            kind: 80,
+            ..Surroundings::default()
+        };
+        let mut searched = Vec::new();
+        let mut closest = |s: &Search<'_>| {
+            searched.push((s.radius, s.classes.to_vec()));
+            Ok(-1)
+        };
+        let fx = u
+            .update(28, 0, false, &at, &mut rng(), &mut closest)
+            .unwrap();
+        assert_eq!(fx, vec![Effect::CapHumanOrder(5000)]);
+        assert_eq!(searched, vec![(9.0, TOWER_CARED.to_vec())]);
     }
 }

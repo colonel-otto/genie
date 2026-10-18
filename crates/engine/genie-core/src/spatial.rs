@@ -9,8 +9,8 @@
 //! [`Tiles`] holds what the game keeps per tile: the obstruction manager's word (terrain class,
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
-use crate::registry::relation_kind;
-use crate::unit_ai::{Search, Unsupported};
+use crate::registry::{Record, relation_kind};
+use crate::unit_ai::{Pick, Search, Unsupported};
 use crate::visibility::Visibility;
 use std::collections::BTreeMap;
 
@@ -404,18 +404,32 @@ impl Spatial {
     /// within what it may have moved, or a unit a stopped player's building may have made since,
     /// at the fastest speed of the players' units, each plus the farthest reach.
     pub fn check_known(&self, rect: [f32; 4]) -> Result<(), Unsupported> {
-        self.check_known_of(rect, false)
+        self.check_known_of(rect, false, None)
     }
 
     /// [`Spatial::check_known`] for a query over obstruction records and the mesh (the motion
     /// step's and the short pather's): a frozen object without a record (a bird) has no say.
     pub fn check_known_records(&self, rect: [f32; 4]) -> Result<(), Unsupported> {
-        self.check_known_of(rect, true)
+        self.check_known_of(rect, true, None)
     }
 
-    fn check_known_of(&self, rect: [f32; 4], records: bool) -> Result<(), Unsupported> {
+    /// [`Spatial::check_known`] for a query over the registry's lists of `classes`: a frozen
+    /// object of another class has no say.
+    pub fn check_known_classes(&self, rect: [f32; 4], classes: &[i32]) -> Result<(), Unsupported> {
+        self.check_known_of(rect, false, Some(classes))
+    }
+
+    fn check_known_of(
+        &self,
+        rect: [f32; 4],
+        records: bool,
+        classes: Option<&[i32]>,
+    ) -> Result<(), Unsupported> {
         let near = self.objects.iter().any(|(&id, p)| {
             if records && p.obstruction.is_none() {
+                return false;
+            }
+            if classes.is_some_and(|c| !c.contains(&i32::from(p.class))) {
                 return false;
             }
             p.unknown.is_some_and(|u| {
@@ -728,17 +742,16 @@ impl Spatial {
         Ok(())
     }
 
-    /// `ClosestObject` (`FUN_140c488b0`) for object `me` of `player` as a hunted animal calls it
-    /// ([`Search`]): the query over the player's registry ([`Registry::visible_units`]), then each
-    /// record by relation and order: itself, an object that is gone and one dying (state 7 and up)
-    /// are passed; any other would need the reachability check (the unit's slot 0x3d0,
-    /// `FUN_140fa0370`, the pathfinders), which is not modelled. Nothing found answers −1. A query
+    /// A unit AI's search ([`Search`]) for object `me` of `player`: the query over the player's
+    /// registry ([`Registry::visible_units`], `FUN_140c63e20`), then its [`Pick`], an attack by
+    /// the unit AI's attack check `can_attack` of an object, its master and its owner. A query
     /// near a frozen object, or that reads nothing (which leaves the game's last answer), fails.
-    pub fn closest_object(
+    pub fn search(
         &self,
         me: i32,
         player: usize,
         search: &Search<'_>,
+        can_attack: &dyn Fn(&Placed, u8) -> Result<bool, Unsupported>,
     ) -> Result<i32, Unsupported> {
         let v = self
             .sight
@@ -763,7 +776,7 @@ impl Spatial {
             x + (radius + rx) + 0.001,
             y + (radius + ry) + 0.001,
         ];
-        self.check_known(rect)?;
+        self.check_known_classes(rect, search.classes)?;
         self.check_sight(player, rect)?;
         let found = r
             .visible_units(
@@ -779,10 +792,36 @@ impl Spatial {
             .ok_or(Unsupported(
                 "a search that reads nothing (the last answer stands)",
             ))?;
+        match search.pick {
+            Pick::Closest {
+                group,
+                relation,
+                state,
+            } => self.closest_object(v, me, &found, group, relation, state),
+            Pick::Attack { lowest } => {
+                self.best_unit_to_attack(v, own, player, &found, lowest, can_attack)
+            }
+        }
+    }
+
+    /// `ClosestObject` (`FUN_140c488b0`) for object `me` as a hunted animal calls it, over what
+    /// its search `found`: each record by relation and order: itself, an object that is gone and
+    /// one dying (state 7 and up) are passed; any other would need the reachability check (the
+    /// unit's slot 0x3d0, `FUN_140fa0370`, the pathfinders), which is not modelled. Nothing found
+    /// answers −1.
+    fn closest_object(
+        &self,
+        v: &Visibility,
+        me: i32,
+        found: &[Vec<Record>; 5],
+        group: i32,
+        relation: i32,
+        state: i32,
+    ) -> Result<i32, Unsupported> {
         for (kind, records) in found.iter().enumerate() {
             // the relation filter (`param_3`): 0 friends and itself, 1 neutrals, 2 enemies, 3
             // itself, else any
-            let related = match search.relation {
+            let related = match relation {
                 0 => matches!(kind, 1 | 2),
                 1 => kind == 3,
                 2 => kind == 4,
@@ -800,14 +839,57 @@ impl Spatial {
                 if 7 <= seer.state || !related {
                     continue;
                 }
-                if search.group != -1 && i32::from(p.class) != search.group {
+                if group != -1 && i32::from(p.class) != group {
                     continue;
                 }
-                if search.state != -1 && i32::from(seer.state) != search.state {
+                if state != -1 && i32::from(seer.state) != state {
                     continue;
                 }
                 return Err(Unsupported(
                     "ClosestObject's reachability check (slot 0x3d0) of a found object",
+                ));
+            }
+        }
+        Ok(-1)
+    }
+
+    /// `bestUnitToAttack` (`FUN_140c44680`) for a unit of `player` (diplomacy `own`, its
+    /// `player+0x260`) without a current target or extra objects, over what its search `found`
+    /// (which sets the alert mode on enemies found: not modelled, nor any enemy record). The
+    /// relations from enemies down to `lowest`, each record in order: an object that is gone, dead
+    /// (state 3 and up), allied (`FUN_141663d90` with the ally flag) or one the unit AI may not
+    /// attack (slot 0xa0, `can_attack` with the object's `+0x924`) is passed; so would be one
+    /// without a unit AI (`+0x6b0`) or inside another (`+0x2f0`), or in the unit AI's retarget
+    /// entries (not held, the save's: empty in every unit probed). The checks after those (the
+    /// classes, the distances, the statistics, the paths) are not modelled. Nothing found answers
+    /// −1 (no wall to fall back on).
+    fn best_unit_to_attack(
+        &self,
+        v: &Visibility,
+        own: &[u8],
+        player: usize,
+        found: &[Vec<Record>; 5],
+        lowest: usize,
+        can_attack: &dyn Fn(&Placed, u8) -> Result<bool, Unsupported>,
+    ) -> Result<i32, Unsupported> {
+        if !found[4].is_empty() {
+            return Err(Unsupported("a search that finds enemies (the alert mode)"));
+        }
+        for records in found[lowest.min(4)..].iter().rev() {
+            for record in records {
+                let (Some(seer), Some(p)) = (v.seer(record.id), self.objects.get(&record.id))
+                else {
+                    continue;
+                };
+                let owner = usize::from(record.owner);
+                if 3 <= seer.state || crate::tasks::allied(own, player, owner, true) {
+                    continue;
+                }
+                if !can_attack(p, seer.capture)? {
+                    continue;
+                }
+                return Err(Unsupported(
+                    "bestUnitToAttack's checks of an object it may attack",
                 ));
             }
         }

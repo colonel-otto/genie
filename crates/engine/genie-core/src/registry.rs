@@ -26,6 +26,10 @@ const MARGIN: f32 = crate::image::registry::MARGIN;
 /// The records a query keeps per relation (`0x1c00` bytes per output list).
 pub const MOST_FOUND: usize = 256;
 
+/// The class lists per player: the map's setup (`FUN_140f6ce50`) makes the registry with 0x40 + 1
+/// (`FUN_141287d20`), empty; a load or a new game starts there, and the objects' updates fill it.
+pub const CLASSES: usize = 65;
+
 /// One record (0x1c bytes): the object, a distance (`FLT_MAX` in the lists; a query's copy holds
 /// its own), the owner's id (`player+0x718`), the place and the master's radii.
 #[derive(Clone, Copy, Debug, PartialEq)]

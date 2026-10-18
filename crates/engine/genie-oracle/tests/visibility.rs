@@ -58,9 +58,11 @@ fn a_foundation_s_tiles_link_when_its_construction_starts() {
     let rec = std::fs::read(rec).unwrap();
     let save = std::fs::read(dir.join("680.aoe2record")).unwrap();
     let mesh = std::fs::read_to_string(dir.join("680.mesh")).unwrap();
+    // the TC's idle checks search the objects in sight (690)
+    let registry = std::fs::read_to_string(dir.join("680.registry")).unwrap();
     let dumps = genie_oracle::Dumps {
         mesh: Some(&mesh),
-        registry: None,
+        registry: Some(&registry),
     };
     let run =
         genie_oracle::objects_from_save(&save, &rec, 680, 60, 2, Some(&masters), dumps).unwrap();

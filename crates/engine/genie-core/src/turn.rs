@@ -247,6 +247,8 @@ struct Context<'a> {
     /// The target of the unit's attack, read before its update and written back after it, and
     /// the objects about a unit with an area effect, which its blast may reach.
     victim: Option<&'a mut Victim>,
+    /// The unit AI's current target as its target block reads it ([`Turns::seen`]).
+    ai_target: Result<Option<crate::unit_ai::Seen>, Unsupported>,
     blasted: Vec<Victim>,
     /// The unit was killed in its update (a retaliation), which the caller handles after it.
     own_killed: Option<crate::damage::Kill>,
@@ -280,6 +282,8 @@ struct Context<'a> {
     attribute_204: bool,
     /// [`Turns::mode_680`].
     mode_680: i32,
+    /// The game mode is one of `FUN_141302540`'s ([`scenario_mode`]).
+    scenario: bool,
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.
     attribute_adds: Vec<(i16, f32)>,
@@ -621,6 +625,11 @@ impl Unit {
                 if let Some(p) = c.spatial.get(self.id) {
                     c.pathing.moved(self.id, p, mover.is_moving());
                 }
+            }
+            // RGE_Moving_Object::update: a last human order time (+0x650) at most FUN_140fe0d10's
+            // counts down by the world's dt (+0x7c), not below 0
+            if self.last_human_order <= crate::unit_ai::HUMAN_ORDER_CAP {
+                self.last_human_order = self.last_human_order.saturating_sub(c.dt);
             }
             // RGE_Moving_Object::update: a unit that moves animates at its speed (+0x7b8)
             if let Some(v) = mover.velocity.as_ref() {
@@ -1061,13 +1070,51 @@ impl Unit {
                             && uy < y + reach
                     })
                 }),
+                state: self.life.state,
+                kind: master.map_or(0, |m| m.kind),
+                capture: c
+                    .spatial
+                    .sight
+                    .as_ref()
+                    .and_then(|v| v.seer(self.id))
+                    .map_or(0, |s| s.capture),
+                master: self.life.master_id,
+                scenario: c.scenario,
+                task_0x69: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x69)),
+                target: c.ai_target?,
             };
             let me = self.id;
             let ai = self.ai.as_mut().expect("filtered above");
             let effects = match turn {
                 Some(dt) => {
                     let spatial: &Spatial = c.spatial;
-                    let mut closest = |s: &Search<'_>| spatial.closest_object(me, player, s);
+                    let attacker = crate::unit_ai::Attacker {
+                        ai_type: ai.ai_type,
+                        player,
+                        state: self.life.state,
+                        class: master.map_or(-1, |m| m.class),
+                        attack_priority: master.map_or(0, |m| m.attack_priority),
+                        missile: master.map_or(-1, |m| m.missile),
+                        scenario: c.scenario,
+                    };
+                    let every = c.every_masters;
+                    let can_attack = |p: &Placed, capture: u8| {
+                        let m = every.get(p.player).and_then(|ms| ms.get(p.master)).ok_or(
+                            Unsupported("a found object of a master the slice does not have"),
+                        )?;
+                        crate::unit_ai::can_attack(
+                            &attacker,
+                            &crate::unit_ai::Target {
+                                owner: p.player,
+                                class: m.class,
+                                kind: m.kind,
+                                master: p.master,
+                                combat_level: m.combat_level,
+                                capture,
+                            },
+                        )
+                    };
+                    let mut closest = |s: &Search<'_>| spatial.search(me, player, s, &can_attack);
                     ai.update(
                         dt,
                         c.world_time,
@@ -1381,6 +1428,37 @@ impl Turns {
         ];
         v.uncertain = self.spatial.get(id).is_none_or(|o| o.unknown.is_some());
         Some(v)
+    }
+
+    /// The object `id` as a unit AI's target block finds it in the world's object table
+    /// (`FUN_1415417a0`): its state and type, `None` when no list holds it. An object the slice
+    /// holds as a place alone cannot be read.
+    fn seen(&self, id: i32) -> Result<Option<crate::unit_ai::Seen>, Unsupported> {
+        for (p, player) in self.players.iter().enumerate() {
+            if let Some(u) = player
+                .objects
+                .iter()
+                .chain(&player.sleeping)
+                .find(|u| u.id == id)
+            {
+                let kind = self
+                    .masters
+                    .get(p)
+                    .and_then(|m| m.get(u.life.master_id))
+                    .ok_or(Unsupported(
+                        "a unit AI's target of a master the slice does not have",
+                    ))?
+                    .kind;
+                return Ok(Some(crate::unit_ai::Seen {
+                    state: u.life.state,
+                    kind,
+                }));
+            }
+        }
+        match self.spatial.get(id) {
+            Some(_) => Err(Unsupported("a unit AI's target the slice cannot read")),
+            None => Ok(None),
+        }
     }
 
     /// The objects a blast of `unit` (player `p`) may reach while it hits `target`: for a master
@@ -1758,6 +1836,8 @@ pub struct Turns {
     /// does not wander when it is 1. The tick oracle reads 0 in MarvinBlue/426048731; where the
     /// save or the lobby holds it is not known yet (the save's `mGameMode` sits elsewhere).
     pub mode_680: i32,
+    /// The game mode (the save's `mGameMode`, options `+0x34`).
+    pub game_mode: i32,
     /// The flag a new combat object's setup reads at `FUN_140982ff0()`'s `+0x921`: the unit's
     /// cost also counts in attribute 246. The tick oracle reads 1 in MarvinBlue/426048731 (the
     /// attribute grows by a villager's cost at its spawn); where the save holds it is not known.
@@ -1772,21 +1852,10 @@ pub(crate) struct World<'a> {
 }
 
 impl Diplomacy for World<'_> {
-    /// `FUN_141663dc0`: one's own player counts; Gaia never does; else relation 0 does, and 4
-    /// with the ally flag; relation 1 counts only under allied victory (`FUN_1415e8e10`), which
-    /// the slice does not model.
+    /// [`crate::tasks::allied`] with `from`'s diplomacy.
     fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
-        if from == to {
-            return true;
-        }
-        if to == 0 {
-            return false;
-        }
-        match self.players.get(from).and_then(|p| p.relations.get(to)) {
-            Some(0) => true,
-            Some(4) => with_ally,
-            _ => false,
-        }
+        let relations = self.players.get(from).map_or(&[][..], |p| &p.relations[..]);
+        crate::tasks::allied(relations, from, to, with_ally)
     }
 
     fn drops_at(&self, building: i16, actor: &Actor<'_>) -> bool {
@@ -1817,6 +1886,7 @@ impl Turns {
             drop_sites: Vec::new(),
             carry_rule: false,
             mode_680: 0,
+            game_mode: 0,
             unit_cost_246: false,
             streams: Streams::default(),
         }
@@ -2321,6 +2391,12 @@ impl Turns {
                 }
                 let mut unit = std::mem::take(&mut self.players[p].objects[i]);
                 let mut victim = unit.attack_target().and_then(|t| self.victim(t, p));
+                let ai_target = unit
+                    .ai
+                    .as_ref()
+                    .map(|ai| ai.current_target)
+                    .filter(|&t| t != -1)
+                    .map_or(Ok(None), |t| self.seen(t));
                 let blasted = victim
                     .as_ref()
                     .map_or_else(Vec::new, |v| self.blasted(&unit, p, v.id));
@@ -2338,6 +2414,7 @@ impl Turns {
                     construction_rate: player.construction_rate,
                     masters: self.masters.get(p),
                     victim: victim.as_mut(),
+                    ai_target,
                     blasted,
                     own_killed: None,
                     remains: None,
@@ -2356,6 +2433,7 @@ impl Turns {
                     computers: &computers,
                     attribute_204,
                     mode_680: self.mode_680,
+                    scenario: scenario_mode(self.game_mode),
                     attribute_adds: Vec::new(),
                     order_on_target: None,
                 };
@@ -2521,6 +2599,12 @@ impl Turns {
 /// 1 for an object inside another, which has no tile) and the game's setting `mode_680`. Its
 /// relations to an attacker (`allied`) and whether its place is a guess (`uncertain`) are the
 /// caller's. The slice holds neither its unit AI's alert mode and attackers nor its facing.
+/// `FUN_141302540`: the game mode (options `+0x34`) is Scenario (3), Campaign (4), King of the
+/// Hill (5) or Co-op Campaign (15), by aoc-mgz's game types.
+pub fn scenario_mode(game_mode: i32) -> bool {
+    matches!(game_mode, 3 | 4 | 5 | 15)
+}
+
 pub(crate) fn victim_of(
     u: &Unit,
     master: &crate::masters::Master,

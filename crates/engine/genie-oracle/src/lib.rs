@@ -967,6 +967,8 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         stance: ai.state_value,
         state_position: [ai.state_position_xvalue, ai.state_position_yvalue],
         retarget_disabled: ai.disable_retargeting,
+        alert_mode: ai.alert_mode_value != 0,
+        patrol_path: ai.has_patrol_path == 1,
         stop_after_kill: ai.stop_after_target_killed_value != 0,
         home: combat
             .tribe_elephant_unit_ai_module
@@ -1047,6 +1049,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     );
     // a statistics flag the tick oracle reads as 1 in MarvinBlue/426048731 (Turns::unit_cost_246)
     turns.unit_cost_246 = true;
+    turns.game_mode = header.file_header.game_options_read.game_options.game_mode;
     if let Some(table) = masters {
         turns.drop_sites = table.drop_sites.clone();
         turns.graphics = table.graphics.clone();
@@ -1184,6 +1187,7 @@ fn work_masters(
             work.blast_level = rc.area_effect_level;
             work.area_damage = rc.area_damage;
             work.invulnerability = c.invulnerability_level;
+            work.attack_priority = c.attack_priority;
             work.special_attack = c.special_attack_flag;
             work.max_charge = c.max_charge;
             work.charge_target = c.charge_target;
@@ -2144,6 +2148,13 @@ pub fn blocks_per_tick(
         return Err(Error::NoSuchPlayer(id));
     }
     let mut turns = slice(&header, masters);
+    // the header's load makes the registry empty, with every object's mask 0
+    if let Some(sight) = turns.spatial.sight.as_mut() {
+        sight.registry = Some(genie_core::registry::Registry::new(
+            sections.len(),
+            genie_core::registry::CLASSES,
+        ));
+    }
     let mut out = Vec::with_capacity(ticks);
     let mut decoder = Decoder::default();
     for frame in frames(&chapter, ticks)? {

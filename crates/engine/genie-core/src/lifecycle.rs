@@ -91,15 +91,6 @@ pub fn seconds(dt: u32) -> f32 {
     dt as f32 / 1000.0
 }
 
-/// The resource a held attribute returns to its player (`FUN_140fdd470`), if any.
-fn resource(attribute_type: i16) -> Option<i16> {
-    match attribute_type {
-        0..=3 | 9 | 56 => Some(attribute_type),
-        15..=17 => Some(0),
-        _ => None,
-    }
-}
-
 impl Lifecycle {
     /// Whether the unit AI still runs: slot 4 (`0x140c66b10`) returns at once above state 2.
     pub fn is_alive(&self) -> bool {
@@ -139,12 +130,10 @@ impl Lifecycle {
                 }
                 Ok(false)
             }
+            // RGE_Static_Object::update: an object of a resource (FUN_140fdd470) leaves Gaia's
+            // list of that resource (FUN_14165b910: player +0x50, +0x48, +0x60, +0x58 for kinds
+            // 0 to 3, for Gaia's objects only), which the slice does not hold; then state 8
             7 => {
-                if resource(self.attribute_type).is_some() {
-                    return Err(Unsupported(
-                        "a dead object's resource goes back to its player",
-                    ));
-                }
                 self.state = 8;
                 Ok(false)
             }
@@ -332,11 +321,6 @@ mod tests {
                 master: None,
                 ..dead(Class::Animated)
             },
-            Lifecycle {
-                state: 7,
-                attribute_type: 0,
-                ..dead(Class::Animated)
-            },
         ];
         for (i, mut life) in cases.into_iter().enumerate() {
             assert!(
@@ -344,6 +328,20 @@ mod tests {
                 "case {i}"
             );
         }
+    }
+
+    #[test]
+    fn an_object_of_a_resource_in_state_7_goes_to_state_8_and_then_leaves() {
+        // MarvinBlue/426048731's Gaia objects 0, 1, 43, 44 and 47 in the header's state 7
+        let mut life = Lifecycle {
+            state: 7,
+            attribute_type: 0,
+            ..dead(Class::Animated)
+        };
+        let mut object = Well512::default();
+        assert_eq!(life.update(0.104, &mut object, false), Ok(false));
+        assert_eq!(life.state, 8);
+        assert_eq!(life.update(0.104, &mut object, false), Ok(true));
     }
 
     #[test]

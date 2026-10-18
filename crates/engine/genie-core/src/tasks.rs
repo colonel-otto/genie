@@ -95,6 +95,23 @@ pub struct TaskTarget<'a> {
 
 /// What the finder reads of the world: the players' relations (`FUN_141663dc0`: whether `from`
 /// counts `to` as its own or allied, the game's `with_ally` flag set or not) and the drop sites.
+/// `FUN_141663dc0` for a player of diplomacy `relations` (`player+0x260`): one's own player
+/// counts; Gaia never does; else relation 0 does, and 4 with the ally flag; relation 1 counts only
+/// under allied victory (`FUN_1415e8e10`), which the slice does not model.
+pub fn allied(relations: &[u8], from: usize, to: usize, with_ally: bool) -> bool {
+    if from == to {
+        return true;
+    }
+    if to == 0 {
+        return false;
+    }
+    match relations.get(to) {
+        Some(0) => true,
+        Some(4) => with_ally,
+        _ => false,
+    }
+}
+
 pub trait Diplomacy {
     fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool;
     /// `FUN_140fdd190`: a building of master `building` takes what `actor` carries.

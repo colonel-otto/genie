@@ -170,6 +170,9 @@ pub struct Master {
     pub combat_ability: u8,
     pub reflection: f32,
     pub invulnerability: f32,
+    /// `attack_priority` (`+0x92c`, `FUN_141202220`): 3 attacks only the classes of
+    /// `FUN_140fddf10`.
+    pub attack_priority: u8,
     pub special_attack: u8,
     pub friendly_fire: f32,
     pub special_graphic: bool,
