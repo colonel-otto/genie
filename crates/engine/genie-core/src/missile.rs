@@ -402,4 +402,37 @@ mod tests {
         assert_eq!(p, [10.5, 20.0, 1.5]);
         assert_eq!(reach([0.2, 0.2], 3.0), 0.28284273 + 3.0 + 2.0);
     }
+
+    /// MarvinBlue/426048731's spears (fly mode 1) in the update that made the save after 3148:
+    /// -30, 0.27 past its point, keeps its height 0.3496 above the flat ground; -29 would sink to
+    /// −0.3602 and is lifted onto it (the ground hit: its height is the ground's).
+    #[test]
+    fn a_spear_past_its_point_takes_the_ground_by_its_fly_mode() {
+        assert_eq!(grounded(0.349_624_8, 0.0, false, 1), 0.349_624_8);
+        assert_eq!(grounded(-0.360_166_4, 0.0, false, 1), 0.0);
+        // still flying it keeps any height; fly mode 0 always takes the ground
+        assert_eq!(grounded(-0.360_166_4, 0.0, true, 1), -0.360_166_4);
+        assert_eq!(grounded(0.349_624_8, 0.0, false, 0), 0.0);
+    }
+
+    #[test]
+    fn a_missile_meets_an_object_at_its_height_and_lands_on_its_box() {
+        // an object half a tile high meets a missile of no height from its foot to its top
+        assert!(meets_height(0.0, 0.5, 0.3, 0.0));
+        assert!(!meets_height(0.0, 0.5, 0.6, 0.0));
+        assert!(!meets_height(0.2, 0.5, 0.0, 0.0));
+        // the box test: nearer than the radii together on both axes
+        assert!(on_target(
+            [10.0, 10.0, 0.0],
+            [0.1, 0.1, 0.0],
+            [10.25, 9.8, 0.0],
+            [0.2, 0.2]
+        ));
+        assert!(!on_target(
+            [10.0, 10.0, 0.0],
+            [0.1, 0.1, 0.0],
+            [10.3, 9.8, 0.0],
+            [0.2, 0.2]
+        ));
+    }
 }

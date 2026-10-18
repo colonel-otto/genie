@@ -1090,7 +1090,9 @@ impl Turns {
             return Ok(());
         }
         if unit.life.state != 2 {
-            return Err(Unsupported("a gather point's move of a unit not in state 2"));
+            return Err(Unsupported(
+                "a gather point's move of a unit not in state 2",
+            ));
         }
         if let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();

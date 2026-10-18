@@ -299,6 +299,14 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_ground_is_a_flat_tile_s_elevation_and_a_slope_is_not_modelled() {
+        let mut t = map(vec![0; 8], vec![-1; 8]);
+        t.elevations = vec![1, 1, 1, 1, 1, 1, 2, 1];
+        assert_eq!(t.ground(0.5, 0.5), Ok(1.0));
+        assert!(t.ground(1.5, 2.5).is_err());
+    }
+
     /// MarvinBlue/426048731's house 10026 at (104, 38): its tiles 103..104 x 37..38 were snow (32)
     /// and grass 9 with a snow layer; the save after 1115 holds terrain 6 with layer 32 on each.
     #[test]
