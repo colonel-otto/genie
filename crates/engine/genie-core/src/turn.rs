@@ -256,7 +256,7 @@ struct ResearchAt {
 }
 
 /// The building unit AI's action value a research it queued sets (`FUN_140c64b50` with 0x26c).
-const RESEARCH_ACTION: i32 = 0x26c;
+pub(crate) const RESEARCH_ACTION: i32 = 0x26c;
 /// The building top actions that keep RESEARCH from a building (`FUN_141227a00`: 0x7b to 0x7d).
 const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
 /// The building master type RESEARCH asks for (`'P'`, 80).

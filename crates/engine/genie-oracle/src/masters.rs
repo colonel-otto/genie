@@ -298,7 +298,17 @@ fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef
             paid: c.flag,
         }),
         kind: t.kind,
+        effect_id: t.effect_id,
         effect,
+        required: t.required_techs,
+        required_count: t.required_tech_count,
+        civ: t.civ,
+        mode: t.full_tech_mode,
+        locations: t
+            .research_locations
+            .iter()
+            .map(|l| (l.location_id, l.queue_time))
+            .collect(),
     }
 }
 

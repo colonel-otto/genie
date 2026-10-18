@@ -265,6 +265,11 @@ impl Masters {
         self.by_id.iter().flatten()
     }
 
+    /// Every master, by id, to change (a technology's effect).
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Master> {
+        self.by_id.iter_mut().flatten()
+    }
+
     /// The work command's choice of master and task (`FUN_14106ff70` up to the task's
     /// requirement): the unit's own master's task for the target ([`find_task`]) unless it has
     /// none or only an attack (7); then, with a task swap group, the first master by id of the

@@ -42,8 +42,18 @@ pub struct TechDef {
     pub costs: [Cost; 3],
     /// `+0x3c`, the technology's type ([`SHARED_KIND`]).
     pub kind: i16,
-    /// The commands of its effect (`+0x3a`, the world's effect table `+0x128`).
+    /// Its effect (`+0x3a`) and the effect's commands (the world's effect table `+0x128`).
+    pub effect_id: i16,
     pub effect: Vec<EffectCommand>,
+    /// `+0x18`, `+0x24`: the technologies it requires and how many of them.
+    pub required: [i16; 6],
+    pub required_count: i16,
+    /// `+0x26`: the civ it belongs to (below 1 every civ's); `+0x28`: the game modes it is for
+    /// (0 every one, `FUN_1413cf2f0`).
+    pub civ: i16,
+    pub mode: i16,
+    /// `+0x70`: where it is researched, the building's master and the seconds it takes.
+    pub locations: Vec<(i16, i16)>,
 }
 
 /// One command of an effect (12 bytes): its kind and arguments.
@@ -105,6 +115,10 @@ pub struct TechState {
     pub research_cap: i16,
     /// `+0x58`: its researches queued.
     pub pending: i16,
+    /// `+0x60` (`mEnabledTech`): the dependents' update leaves it alone.
+    pub enabled: bool,
+    /// `+0x62`: the effect it gives instead of its own (−1 none).
+    pub effect_override: i16,
     /// `+0x64`: the master of the building it was last queued at.
     pub building_master: i16,
     /// `+0x68`.

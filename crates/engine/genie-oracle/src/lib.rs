@@ -1404,6 +1404,8 @@ fn tech_state(t: &genie_save::generated::world::TechPlayerTree) -> genie_core::t
         overrides: [o(0), o(1), o(2)],
         research_cap: t.tech_player_tree_research_cap as i16,
         pending: t.tech_player_tree_pending_count as i16,
+        enabled: t.tech_player_tree_enabled_tech != 0,
+        effect_override: t.tech_player_tree_effect_override as i16,
         building_master: t.tech_player_tree_research_building_master_id as i16,
         locations: t
             .location

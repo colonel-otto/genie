@@ -588,6 +588,8 @@ impl PlaceMap for WorldMap<'_> {
 
 /// The attribute that scales research times above 0 (`+0x2b0`: 86).
 const RESEARCH_TIME_MODIFIER: i16 = 86;
+/// The attribute whose value above 0 gives the world's effect after a research (`+0x868`: 269).
+const WORLD_EFFECT: i16 = 269;
 
 impl Turns {
     /// The building update's production step (`FUN_1411e7dc0`, after its combat update) for the
@@ -748,9 +750,66 @@ impl Turns {
             time *= time_modifier;
         }
         if location.adjustment + time <= production.progress {
-            return Err(Unsupported(
-                "a research's completion (FUN_1413d1740, FUN_1413cdcd0)",
-            ));
+            if 0xff < times {
+                return Err(Unsupported("a research done 0x100 times (set_state 1)"));
+            }
+            return self.research_done(p, i, t, master, repeatable);
+        }
+        Ok(())
+    }
+
+    /// The research's end in its update (`0x140ad2a20`) once its progress reaches its time:
+    /// `FUN_1413d1740` (with `repeat`, the player's `+0x648` or [`TechState::repeatable`]): a
+    /// technology in state 2 (or with `repeat`) whose work done reaches the `.dat`'s time at the
+    /// building (−1 without), times the research time modifier (attribute 86, above 0, not an
+    /// age), plus the location's adjustment, is done ([`Turns::complete_research`]); else, or
+    /// without `repeat`, it is left. Then the action ends (set_state 1; the event 100 and the
+    /// computer players' slot 0x3a8 are not held), the building's unit AI is told 0x1fa with the
+    /// action value 0x26c, and the production step lets the research go from the queue (the
+    /// action list deletes it, the entry's count lowers). Attribute 269 above 0 (the world's
+    /// effect `+0x128` slot 0x10) is not modelled.
+    ///
+    /// [`TechState::repeatable`]: crate::tech::TechState::repeatable
+    fn research_done(
+        &mut self,
+        p: usize,
+        i: usize,
+        t: usize,
+        master: i16,
+        repeat: bool,
+    ) -> Result<(), Unsupported> {
+        use crate::tech::Attributes;
+        let owner = &self.players[p];
+        let state = &owner.techs[t];
+        let def = &self.techs[t];
+        if state.state == 2 || repeat {
+            let mut time = def
+                .locations
+                .iter()
+                .find(|l| l.0 == master)
+                .map_or(-1.0, |l| f32::from(l.1));
+            let modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
+            if !crate::tech::is_age(t as i16) && 0.0 < modifier {
+                time *= modifier;
+            }
+            let adjustment = state.location(master).map_or(0.0, |l| l.adjustment);
+            if repeat || time + adjustment <= state.research_done {
+                self.complete_research(p, t, Some(master))?;
+            }
+        }
+        if 0.0 < self.players[p].get(WORLD_EFFECT)? {
+            return Err(Unsupported("attribute 269's world effect after a research"));
+        }
+        let building = &mut self.players[p].objects[i];
+        let (id, state) = (building.id, building.life.state);
+        if let Some(ai) = building.ai.as_mut() {
+            ai.post(
+                Notify::own(id, ACTION_COMPLETED, [crate::turn::RESEARCH_ACTION, 0, 0]),
+                state,
+            )?;
+        }
+        if let Some(production) = building.production.as_mut() {
+            production.spawned();
         }
         Ok(())
     }
