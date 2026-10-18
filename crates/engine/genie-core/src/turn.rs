@@ -643,15 +643,51 @@ impl Unit {
         others: &mut [Unit],
     ) -> Result<(), Unsupported> {
         let hunt = self.hunt.as_ref().expect("the caller's hunt");
-        if hunt.target != -1 {
-            return Err(Unsupported(
-                "a hunt walking back to its target after its drop-off (set_state 4)",
-            ));
-        }
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+        if hunt.target != -1 {
+            // back to the target: the drop site goes (FUN_140a7a190 with none), set_state(4)
+            let v = c
+                .victim
+                .as_deref()
+                .ok_or(Unsupported("a hunt's target the slice does not hold live"))?;
+            let quarry = crate::hunt::Quarry {
+                id: v.id,
+                position: v.position,
+                class: v.class,
+                kind: v.kind,
+                state: v.state,
+                player: v.player,
+                amount: v.amount,
+                allied: v.allied[0],
+                top_action: None,
+            };
+            let (me_at, them) = (
+                c.spatial
+                    .get_known(self.id)?
+                    .ok_or(Unsupported("a hunter without a place"))?,
+                c.spatial
+                    .get_known(v.id)?
+                    .ok_or(Unsupported("a hunt's target without a place"))?,
+            );
+            let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+            let engagement =
+                crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them)?;
+            let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites);
+            let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+                return Err(Unsupported("a hunter without its hunt or movement state"));
+            };
+            hunt.carry_to = -1;
+            hunt.chase(&quarry, c.player, &engagement, arms, mover)?;
+            if hunt.state == crate::hunt::FAILED {
+                return Err(Unsupported(
+                    "a hunt failing on its target after its drop-off",
+                ));
+            }
+            return Ok(());
+        }
         let ai = self
             .ai
             .as_mut()

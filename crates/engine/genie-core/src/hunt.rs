@@ -243,13 +243,13 @@ impl HuntAction {
     }
 
     /// set_state(4) (`0x140ac60e0` case 4): the sub-actions go (an Attack's MoveTo stops the
-    /// unit) and the target's place becomes the point. A dead target, or the hunter's own
+    /// unit), the timer clears and the target's place becomes the point. A dead target, or the hunter's own
     /// player's livestock, is walked to: a quiet MoveTo within the task's range, or
     /// `OWN_LIVESTOCK_RANGE` to the livestock (`FUN_140aa0df0`; its start `0x140aa2100`: a unit
     /// within 0.01 of the target's footprint is there already). A target not dead yet of another,
     /// unallied player (or of class 49) is attacked first: set_state(12) (case 0xc) with an
     /// Attack of the master's ranges. A live allied one fails the hunt (set_state 13).
-    fn chase(
+    pub(crate) fn chase(
         &mut self,
         target: &Quarry,
         player: usize,
@@ -259,6 +259,7 @@ impl HuntAction {
     ) -> Result<(), Unsupported> {
         self.tear_down(Some(mover))?;
         self.state = 4;
+        self.timer = 0.0;
         self.point = target.position;
         let own_livestock = target.class == LIVESTOCK && target.player == player;
         if 2 < target.state || own_livestock {
