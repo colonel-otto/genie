@@ -1187,9 +1187,11 @@ impl Mover {
                 return Err(Unsupported("a trade cart's path budget (FUN_14165d6f0)"));
             }
             if PLANS <= *plans {
-                return Err(Unsupported(
-                    "a fourth plan in one motion step stops the unit",
-                ));
+                // a fourth plan in one step: the unit stops (slot 0x5d0), counts a wait delay
+                // (`+0x7fa`) and the step returns 0
+                self.stop()?;
+                self.wait_delays = self.wait_delays.wrapping_add(1);
+                return Ok(Step::Paused);
             }
             // the owner's count of plans (player +0x67c) only limits trade carts
             *plans += 1;

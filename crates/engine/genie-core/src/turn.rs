@@ -1991,6 +1991,24 @@ impl Unit {
                 c.remains = Some((self.life.remains, self.position, facet));
             }
         }
+        // a dead object that holds nothing goes to state 7 and its death spawn comes (slot 0x160,
+        // FUN_1411a5090: the master's `death_spawn_obj_id` makes an object at its place; a moving
+        // object's override gives it the dead object's facet and that facet's angle); the
+        // spawn's sprite from slot 0x7a8 (the master's undead sprite) is not held
+        if matches!(before, 3 | 5) && after == 7 && self.life.death_spawn {
+            let spawn = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.death_spawns[0])
+                .ok_or(Unsupported(
+                    "a dead object of a master the slice does not have",
+                ))?;
+            let facet = self
+                .mover
+                .as_ref()
+                .map(|m| crate::facing::facet_of_angle(m.angle, m.stats.facets).0);
+            c.remains = Some((spawn, self.position, facet));
+        }
         // the animated object's update (0x141071880): its sprite's clock at its animation speed
         if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.anim_speed) {
             sprite.update(c.dt_seconds, speed);

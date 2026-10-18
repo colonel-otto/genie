@@ -179,10 +179,7 @@ impl Lifecycle {
             if master.undead {
                 return Err(Unsupported("an undead object (state 6)"));
             }
-            if self.death_spawn {
-                // slot 0x160 (FUN_1411a5090): the death spawn's master makes a new object
-                return Err(Unsupported("a death spawn (its new object)"));
-            }
+            // set_state(7), then its death spawn (slot 0x160, the caller's)
             self.state = 7;
         } else if master.decay > 0.0 {
             self.amount -= master.decay * dt_seconds;
@@ -291,11 +288,6 @@ mod tests {
     #[test]
     fn the_paths_not_modelled_are_unsupported() {
         let cases = [
-            Lifecycle {
-                state: 3,
-                death_spawn: true,
-                ..dead(Class::Static)
-            },
             Lifecycle {
                 inside: true,
                 ..dead(Class::Static)
