@@ -714,6 +714,11 @@ fn saved_actions(
         .actions()
         .and_then(|a| a.entries().next())
         .expect("saved_actions is called for an object with actions");
+    // the master's running sprite, which an Attack's MoveTo may show
+    let run_sprite = objects
+        .master(s.master_obj)
+        .and_then(moving_master)
+        .map_or(-1, |m| m.run_sprite_id);
     let base = action
         .base()
         .ok_or(Unsupported("a saved action without its base"))?;
@@ -888,7 +893,7 @@ fn saved_actions(
             match base.sub_actions.entries().next() {
                 None => {}
                 Some((genie_core::attack::ATTACK, sub)) => {
-                    let mut attack = saved_attack(sub, graphics, &move_to_state)?;
+                    let mut attack = saved_attack(sub, graphics, &move_to_state, run_sprite)?;
                     // a swing past its hit: the swing's times (`+0xb0`, `+0xb4`, unsaved) are what
                     // the hit left, the reload less the attack sprite's length
                     if attack.state == genie_core::attack::SWING && !attack.pending {
@@ -953,7 +958,7 @@ fn saved_actions(
             Ok(())
         }
         genie_core::attack::ATTACK => {
-            unit.attack = Some(saved_attack(action, graphics, &move_to_state)?);
+            unit.attack = Some(saved_attack(action, graphics, &move_to_state, run_sprite)?);
             // the attack reads and changes the unit's sprite from here on
             unit.sprite = graphics.and_then(|g| saved_sprite(s, g));
             Ok(())
@@ -1018,6 +1023,7 @@ fn saved_attack(
     sub: &genie_save::generated::world::Action,
     graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
     move_to_state: &dyn Fn(u8) -> Result<genie_core::move_to::MoveTo, Unsupported>,
+    run_sprite: i16,
 ) -> Result<genie_core::attack::Attack, Unsupported> {
     use genie_core::move_to::MOVE_TO;
     let b = sub
@@ -1065,6 +1071,8 @@ fn saved_attack(
         },
         sub_action: b.sub_action_value != 0,
         repaths: b.target_moved_state != 0,
+        // `+0x68`, its MoveTo's sprite
+        runs: 0 <= run_sprite && a.short_val as i16 == run_sprite,
     })
 }
 

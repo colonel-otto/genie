@@ -12,7 +12,9 @@
 //! [`crate::damage`]'s).
 
 use crate::damage::{self, Victim};
-use crate::move_to::{Goal, MoveTo, Walk, start_walk, target_moved, walk_on};
+use crate::move_to::{
+    Follow, Goal, MoveTo, Walk, follow_path_end, start_walk, target_moved, walk_on,
+};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::rng::Well512;
 use crate::sprite::{ActiveSprite, Graphic};
@@ -105,6 +107,10 @@ pub struct Attack {
     /// `+0x61`, `mTargetMovedState`, which its `MoveTo` takes: a target that leaves the
     /// `MoveTo`'s point makes it ask for a path at once (the Hunt's `set_state` 12 sets it).
     pub repaths: bool,
+    /// `+0x68`, the sprite its `MoveTo` shows, is the master's running one (a unit's own
+    /// Attack's, slot 0x7d0): the `MoveTo`'s start sets the unit's running speed. The Hunt's
+    /// (its task's sprite) leaves the speed.
+    pub runs: bool,
 }
 
 /// A unit's own Attack as the attack command made it ([`Attack::command`]).
@@ -243,6 +249,7 @@ impl Attack {
             arms,
             sub_action: true,
             repaths: true,
+            runs: false,
         };
         // readyToAttack (`FUN_140a7f9d0`): the target has moved from the attack's point (none,
         // FUN_140a7bbf0 and FUN_140a7bd10), so the reach decides
@@ -280,7 +287,8 @@ impl Attack {
 
     /// A unit's own Attack (the attack command, `FUN_141081a80`): the constructor
     /// (`FUN_140a7c210` with sub-action 0: the master's weapon range and least range, its
-    /// sprites, missile and frames; `+0x61` clear) and the start's range test (slot 5,
+    /// sprites, missile and frames, its `MoveTo`'s the running one, slot 0x7d0, or the walking
+    /// one: the running speed either way; `+0x61` clear) and the start's range test (slot 5,
     /// `0x140a7f8c0`, readyToAttack): a player's target the unit's player neither sees nor
     /// explored with its master's fog flag (`visible` false) makes a unit of stance 0 that may
     /// move follow where it was seen (`set_state` 5: a `MoveTo` to that point, which starts
@@ -316,6 +324,7 @@ impl Attack {
             arms,
             sub_action: false,
             repaths: false,
+            runs: true,
         };
         let movable = e.speed != 0.0 && e.can_move;
         let mut posted = Vec::new();
@@ -712,6 +721,12 @@ impl Attack {
     ) -> Result<u8, Unsupported> {
         let code = match self.move_to {
             Some(MoveTo::Start) => {
+                // the MoveTo's sprite sets the unit's speed: a running one the running speed
+                if self.runs
+                    && let Some(m) = walk.mover.as_deref_mut()
+                {
+                    m.stats.speed = m.stats.run_speed;
+                }
                 self.move_to = Some(MoveTo::Moving);
                 let goal = Goal::Target(self.target);
                 let state = start_walk(walk.reborrow(), goal, self.range, false)?;
@@ -733,7 +748,15 @@ impl Attack {
             Some(MoveTo::Moving) => {
                 // the MoveTo takes the Attack's `+0x61` (`0x140a824ac`), which the Hunt's
                 // set_state(12) sets: a target that left its point asks for a path again
-                if target_moved(&walk, self.target, self.repaths)? {
+                let follow = target_moved(&walk, self.target, self.repaths)?;
+                if let Follow::PathEnd(p) = follow {
+                    follow_path_end(&mut walk, p)?;
+                }
+                if follow.again() {
+                    // without `+0x61` the MoveTo tells the unit first (notify 0x1fc)
+                    if !self.repaths {
+                        s.posted.push((0x1fc, [0; 3]));
+                    }
                     self.move_to = Some(MoveTo::Start);
                 } else {
                     self.move_to = Some(walk_on(walk.reborrow())?);

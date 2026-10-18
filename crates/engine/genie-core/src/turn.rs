@@ -423,7 +423,7 @@ struct Context<'a> {
     /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.
-    releases: Vec<i32>,
+    releases: Vec<(i32, Releaser)>,
     takes: Vec<i32>,
     /// The objects the unit made (a ranged unit's missiles), which join the end of its owner's
     /// list after it and update later in the same tick.
@@ -1759,6 +1759,18 @@ impl Unit {
         }))
     }
 
+    /// The unit as the releaser of its actions' targets (slot 0x180's argument).
+    fn releaser(&self, c: &Context<'_>) -> Releaser {
+        Releaser {
+            id: self.id,
+            class: c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map_or(-1, |m| m.class),
+            player: c.player,
+        }
+    }
+
     /// The objects its unit AI names besides its target, as the world's table holds them
     /// ([`crate::unit_ai::Surroundings::units`]): its attackers and the callers of its damage
     /// notifies, from its own list or another player's, each with its master's class, state, its
@@ -2152,7 +2164,7 @@ impl Unit {
             action.fired_from = -1;
         }
         if action.target != -1 && target_state.is_some_and(dead) {
-            c.releases.push(action.target);
+            c.releases.push((action.target, self.releaser(c)));
             action.target = -1;
         }
         if action.fired_from != -1 && shooter_state.is_some_and(dead) {
@@ -2460,8 +2472,13 @@ impl Unit {
         self.end_missile(action);
         if stats.vanish_mode & 2 == 0 {
             if let Some(a) = missile.action.take() {
-                c.releases
-                    .extend([a.target, a.fired_from].into_iter().filter(|&t| t != -1));
+                let by = self.releaser(c);
+                c.releases.extend(
+                    [a.target, a.fired_from]
+                        .into_iter()
+                        .filter(|&t| t != -1)
+                        .map(|t| (t, by)),
+                );
             }
             if self.life.state < 7 {
                 if self.life.inside {
@@ -2631,14 +2648,19 @@ impl Unit {
                     m.stop()?;
                 }
                 if move_to.target != -1 {
-                    c.releases.push(move_to.target);
+                    c.releases.push((move_to.target, self.releaser(c)));
                 }
             }
             // the missile action's teardown (FUN_140a73fc0) lets its target and the object it was
             // fired from go (slot 0x180)
             if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
-                c.releases
-                    .extend([a.target, a.fired_from].into_iter().filter(|&t| t != -1));
+                let by = self.releaser(c);
+                c.releases.extend(
+                    [a.target, a.fired_from]
+                        .into_iter()
+                        .filter(|&t| t != -1)
+                        .map(|t| (t, by)),
+                );
             }
         }
         // RGE_Action_Object::update with no action in state 2 starts the master's default task
@@ -2688,6 +2710,7 @@ impl Unit {
                 captured = Some((new, self.capture(c, others, new)?));
             }
         }
+        let by = self.releaser(c);
         if let Some(build) = self.build.as_mut() {
             let target = build.target;
             let annexed = others.iter().any(|u| u.annex_of == Some(target));
@@ -2729,10 +2752,10 @@ impl Unit {
                 // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
                 // builders (set_state left them) and releases the foundation (slot 0x180)
                 self.build = None;
-                release_own(others, masters, target)?;
+                release_own(others, masters, target, by)?;
             }
             if step.released {
-                release_own(others, masters, target)?;
+                release_own(others, masters, target, by)?;
                 self.post_own(BUILD_IDLE, [BUILD_ACTION, 0, 0])?;
             }
             if step.search {
@@ -2744,7 +2767,7 @@ impl Unit {
                     if let Some(b) = self.build.as_mut() {
                         b.no_more_work()?;
                     }
-                    release_own(others, masters, target)?;
+                    release_own(others, masters, target, by)?;
                     self.post_own(BUILD_IDLE, [BUILD_ACTION, 0, 0])?;
                 }
             }
@@ -2856,7 +2879,7 @@ impl Unit {
             };
             if gone {
                 if state.is_some() {
-                    c.releases.push(target);
+                    c.releases.push((target, self.releaser(c)));
                 }
                 if let Some(h) = self.hunt.as_mut() {
                     h.target = -1;
@@ -2979,21 +3002,11 @@ impl Unit {
             )?;
             self.hunt = None;
             if target != -1 {
-                let u = others
-                    .iter_mut()
-                    .find(|u| u.id == target)
-                    .ok_or(Unsupported("a failed hunt's target of another player"))?;
-                let kind = c
-                    .masters
-                    .and_then(|m| m.get(u.life.master_id))
-                    .map(|m| m.kind)
-                    .ok_or(Unsupported(
-                        "a hunt's target of a master the slice does not have",
-                    ))?;
-                u.workers = u.workers.saturating_sub(1).max(0);
-                if kind < 70 && u.workers == 0 && u.life.state == 2 {
-                    return Err(Unsupported("a released target going to sleep"));
+                if !others.iter().any(|u| u.id == target) {
+                    return Err(Unsupported("a failed hunt's target of another player"));
                 }
+                let by = self.releaser(c);
+                release_own(others, c.masters, target, by)?;
             }
         } else if let Some(hunt) = self
             .hunt
@@ -3771,7 +3784,12 @@ fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
         })
 }
 
-fn release_own(others: &mut [Unit], masters: Option<&Masters>, id: i32) -> Result<(), Unsupported> {
+fn release_own(
+    others: &mut [Unit],
+    masters: Option<&Masters>,
+    id: i32,
+    by: Releaser,
+) -> Result<(), Unsupported> {
     let u = others.iter_mut().find(|u| u.id == id).ok_or(Unsupported(
         "a release of an object not in the unit's live list",
     ))?;
@@ -3781,12 +3799,58 @@ fn release_own(others: &mut [Unit], masters: Option<&Masters>, id: i32) -> Resul
             "a released object of a master the slice does not have",
         ))?
         .kind;
+    // one of the releaser's own player: allied
+    released(u, kind, by, true)
+}
+
+/// The object whose action lets its target go (the target's slot 0x180 takes it): its id, its
+/// master's class and its owner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Releaser {
+    pub(crate) id: i32,
+    pub(crate) class: i16,
+    pub(crate) player: usize,
+}
+
+/// Slot 0x180 on object `u` of master type `kind`, let go by `by` (`allied` to its owner):
+/// the static object's (`FUN_141197d00`) counts a worker less and a static one without workers
+/// left, alive (state 2 with hit points, or 6), goes to sleep. A combat object's
+/// (`FUN_141086e60`) counts the worker less (`FUN_141071ea0`) and tells its unit AI that the
+/// releaser no longer acts on it (notify 699, the releaser's master class as its first
+/// parameter; none from an object of a negative id). A building's (`FUN_1411d6020`) first drops
+/// an unallied releaser from a list of its own while it stands in state 0 or 1, which is not
+/// modelled.
+pub(crate) fn released(
+    u: &mut Unit,
+    kind: u8,
+    by: Releaser,
+    allied: bool,
+) -> Result<(), Unsupported> {
     if 0 < u.workers {
         u.workers -= 1;
     }
     let alive = (u.life.state == 2 && 0.0 <= u.life.hp) || u.life.state == 6;
     if kind < 30 && u.workers == 0 && alive {
         u.life.goto_sleep = true;
+    }
+    if !u.combat {
+        return Ok(());
+    }
+    if kind == 80 && u.life.state < 2 && !allied {
+        return Err(Unsupported(
+            "an enemy's release of a building in state 0 or 1 (FUN_1411d6020)",
+        ));
+    }
+    if 0 <= by.id
+        && let Some(ai) = u.ai.as_mut()
+    {
+        let n = Notify {
+            caller: by.id,
+            recipient: u.id,
+            kind: crate::unit_ai::NO_LONGER_ON_ME,
+            p: [i32::from(by.class), 0, 0],
+        };
+        ai.post(n, u.life.state)?;
     }
     Ok(())
 }
@@ -5467,8 +5531,8 @@ impl Turns {
                 for id in takes {
                     self.take(id);
                 }
-                for id in releases {
-                    if let Err(e) = self.release(id) {
+                for (id, by) in releases {
+                    if let Err(e) = self.release(id, by) {
                         result = result.and(Err(e));
                     }
                 }

@@ -11,7 +11,7 @@ use crate::hunt::{HUNT, HuntAction, HuntTask, Quarry};
 use crate::masters::Master;
 use crate::rng::Stream;
 use crate::tasks::{Actor, Diplomacy, TaskTarget, enabled};
-use crate::turn::{Turns, Unit, World};
+use crate::turn::{Releaser, Turns, Unit, World};
 use crate::unit_ai::{HUNT_ACTION, HUNT_ORDER, MOVE_ORDER, Unsupported};
 
 /// INTERACT's fields past its units (`+0x4`..`+0x16`).
@@ -1042,6 +1042,9 @@ impl Turns {
                 }
                 true
             }
+            // the Hunt's (0x140ac52c0) to a point: a task with a work range (`+0x48`'s `+0x30`)
+            // does not take it
+            (true, Some(HUNT)) if unit.hunt.is_some_and(|h| h.task.range != 0.0) => false,
             // an Explore's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's
             (true, Some(t)) if t != crate::move_to::MOVE_TO && t != crate::explore::EXPLORE => {
                 return Err(Unsupported("a move of a unit with an action (its slot 8)"));
@@ -1301,7 +1304,8 @@ impl Turns {
             mover,
         )? {
             if let Some(old) = old {
-                self.release(old)?;
+                let by = self.releaser(player, idx);
+                self.release(old, by)?;
             }
             self.take(target);
         }
@@ -1441,7 +1445,7 @@ impl Turns {
     /// below 30, `FUN_141197d00`) that no one works on any more and is alive (state 2 with hit
     /// points at least 0) or in state 6 is flagged to sleep (`+0x641`, `+0x643`). A building's
     /// repairer list (`FUN_1411d6020`) and a unit's notify (`FUN_141086e60`, 699) are not held.
-    pub(crate) fn release(&mut self, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), Unsupported> {
         let Some(Place::Live(p, i)) = self.place(id) else {
             return Ok(());
         };
@@ -1449,15 +1453,24 @@ impl Turns {
             let u = &self.players[p].objects[i];
             self.master_of(p, u.life.master_id)?.kind
         };
-        let u = &mut self.players[p].objects[i];
-        if 0 < u.workers {
-            u.workers -= 1;
+        let world = World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let allied = world.allied(by.player, p, true);
+        crate::turn::released(&mut self.players[p].objects[i], kind, by, allied)
+    }
+
+    /// Object `idx` of player `player` as the releaser of its actions' targets.
+    pub(crate) fn releaser(&self, player: usize, idx: usize) -> Releaser {
+        let u = &self.players[player].objects[idx];
+        Releaser {
+            id: u.id,
+            class: self
+                .master_of(player, u.life.master_id)
+                .map_or(-1, |m| m.class),
+            player,
         }
-        let alive = (u.life.state == 2 && 0.0 <= u.life.hp) || u.life.state == 6;
-        if kind < MOVING && u.workers == 0 && alive {
-            u.life.goto_sleep = true;
-        }
-        Ok(())
     }
 
     /// The action list's clearing (`FUN_140a98620`): each action's teardown. A Build action takes
@@ -1465,6 +1478,7 @@ impl Turns {
     /// the unit (slot 0x5d0); the Build and the Hunt release their targets (slot 0x180,
     /// [`Turns::release`]).
     pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
+        let by = self.releaser(player, idx);
         let objects = &mut self.players[player].objects;
         let unit = &mut objects[idx];
         if unit.artifact.is_some() || unit.fly.is_some() || unit.production.is_some() {
@@ -1512,13 +1526,13 @@ impl Turns {
                     ))?;
                 site.builders = site.builders.saturating_sub(1);
             }
-            self.release(b.target)?;
+            self.release(b.target, by)?;
         }
         if let Some(h) = hunt {
-            self.release(h.target)?;
+            self.release(h.target, by)?;
         }
         if let Some(a) = attack.filter(|a| a.target != -1) {
-            self.release(a.target)?;
+            self.release(a.target, by)?;
         }
         Ok(())
     }

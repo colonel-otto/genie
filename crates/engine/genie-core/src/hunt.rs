@@ -433,7 +433,7 @@ impl HuntAction {
                 return Ok(None);
             }
             Some(MoveTo::Moving) => {
-                if target_moved(&walk, self.carry_to, true)? {
+                if target_moved(&walk, self.carry_to, true)?.again() {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(None);
                 }
@@ -553,7 +553,7 @@ impl HuntAction {
                     Ok(())
                 }
                 Some(MoveTo::Moving) => {
-                    if target_moved(&walk, self.target, true)? {
+                    if target_moved(&walk, self.target, true)?.again() {
                         self.move_to = Some(MoveTo::Start);
                         return Ok(false);
                     }

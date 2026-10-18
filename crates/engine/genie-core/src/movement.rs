@@ -2086,6 +2086,26 @@ impl Mover {
         Ok(point_or_zero_of(level, level.waypoint) == *last)
     }
 
+    /// A non-quiet `MoveTo`'s path end follows its target to `point` (`0x140aa2a70` after the line
+    /// test): the walked level's current waypoint (`FUN_140f9b890` at its index) and the top
+    /// path's last point take it (the paths' layout, [`vector`]); bits 1 and 0 go off the walked
+    /// level (`FUN_140f9b4d0` twice).
+    pub fn follow_path_end(&mut self, point: [f32; 3]) {
+        let point = vector(point);
+        if let Some(level) = self.paths.first_mut() {
+            if let Some(w) = usize::try_from(level.waypoint)
+                .ok()
+                .and_then(|i| level.points.get_mut(i))
+            {
+                *w = point;
+            }
+            level.flags &= !3;
+        }
+        if let Some(last) = self.paths.last_mut().and_then(|l| l.points.last_mut()) {
+            *last = point;
+        }
+    }
+
     /// The path of the top level (`FUN_140f960f0`): the last level's, or the walked level's when
     /// it has no parent; None when that level holds no path.
     fn top_path(&self) -> Option<&Vec<Vec3>> {
@@ -2571,6 +2591,21 @@ mod tests {
             ignore: Vec::new(),
             ignored: Vec::new(),
         }
+    }
+
+    /// MarvinBlue/426048731's boar 9729 in update 4193: its Attack's `MoveTo` (`+0x61` clear)
+    /// walks to its path's end when its target, the hunter 10049, walks off; the walked level's
+    /// waypoint and the top path's end follow the hunter, in the paths' layout (x, z, y).
+    #[test]
+    fn a_path_s_end_follows_a_moved_target_in_the_paths_layout() {
+        let mut m = builder_9177();
+        m.paths[0].flags = 3;
+        assert!(m.walks_to_path_end().unwrap());
+        m.follow_path_end([99.515_114, 41.147_972, 0.0]);
+        assert_eq!(m.paths[0].points[1], [99.515_114, 0.0, 41.147_972]);
+        assert_eq!(m.paths[1].points[1], [99.515_114, 0.0, 41.147_972]);
+        assert_eq!(m.paths[0].flags, 0);
+        assert!(m.walks_to_path_end().unwrap());
     }
 
     /// MarvinBlue/426048731's builder 9177 as the game saved it after tick 679 (update 680): its

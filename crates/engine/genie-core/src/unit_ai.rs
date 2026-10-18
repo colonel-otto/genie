@@ -73,7 +73,8 @@ pub const OWNER_CHANGED: i32 = 0x20b;
 /// `500`: the unit took damage.
 pub const DAMAGED: i32 = crate::ai_kinds::NOTIFY_DAMAGED;
 /// `699`: a unit is no longer doing an action on this one.
-const NO_LONGER_ON_ME: i32 = crate::ai_kinds::NOTIFY_NO_LONGER_ON_ME;
+/// Notify 699: an object no longer acts on the unit (its action let the unit go, `FUN_141086e60`).
+pub const NO_LONGER_ON_ME: i32 = crate::ai_kinds::NOTIFY_NO_LONGER_ON_ME;
 
 /// `0x2db`: the order an INTERACT queues on its target (slot 0x230 runs it as the unit's slot
 /// 0x128 on the target, case `0x2db`/`0x325` of `FUN_140c5c170`, which logs no line to name it).
@@ -1696,16 +1697,17 @@ impl UnitAi {
     /// passes it to the AI's slot 0x38 (`FUN_140c556d0`), which queues it (`FUN_140c42470`) but
     /// for an action's invalidation that is not the current action's and a movement completion
     /// while the AI has an action other than a move (`0x262`, `0x268`, `0x2bf`, `0x2c0`).
-    /// A notify the AI does not take (any but 699) goes to the owner's slot 0x2e8
-    /// (`FUN_14162dab0`, the human player's alerts), which the slice does not hold; 699 needs the
-    /// attackers list, which it does not hold either.
+    /// A notify 699 is taken only from one of its attackers. A notify the AI does not take (any
+    /// but 699) goes to the owner's slot 0x2e8 (`FUN_14162dab0`, the human player's alerts),
+    /// which the slice does not hold.
     pub fn post(&mut self, n: Notify, unit_state: u8) -> Result<(), Unsupported> {
         if unit_state != 2 {
             return Ok(());
         }
         let action = self.current_action;
         let taken = match n.kind {
-            NO_LONGER_ON_ME => return Err(Unsupported("a notify 699 (the attackers list)")),
+            // "That unit is not attacking me, so I'm ignoring it."
+            NO_LONGER_ON_ME => self.attackers.binary_search(&n.caller).is_ok(),
             ACTION_INVALIDATED => n.p[0] == action,
             ACTION_COMPLETED => {
                 // ignored (and handled) for a non-movement action
@@ -1991,6 +1993,13 @@ impl UnitAi {
             | 0x259..=0x262
             | 0x265..=0x269
             | 0x2be => Ok(GO_ON),
+            // "Unit #%d is no longer doing an action on me.": an attacker leaves the set
+            NO_LONGER_ON_ME => {
+                if let Ok(i) = self.attackers.binary_search(&n.caller) {
+                    let _ = self.attackers.remove(i);
+                }
+                Ok(GO_ON)
+            }
             _ => Err(Unsupported("a notify kind the base handler does not model")),
         }
     }
@@ -2425,7 +2434,10 @@ impl UnitAi {
     /// update set, never has, and an idle unit has no action to stop. Then the retarget check,
     /// not on the attack order 700: with retargeting on (`+0x1d6` 0), a timer used up is redrawn
     /// (`750 + r % 500`); a unit with a target of Gaia's ("I have a GAIA target, so I can't
-    /// retarget.") or without a target stops there. A target of a player's is not modelled.
+    /// retarget.") or without a target stops there, as does one with a player's target off the
+    /// attack order but for a building or wall target (classes 3, 27, 39, 49, 52) or a trebuchet's
+    /// (51, 54), whose search for a better target (slot 0x538 with 9, then slot 0x520) is not
+    /// modelled.
     fn retarget_check(
         &mut self,
         world_time: u32,
@@ -2461,7 +2473,12 @@ impl UnitAi {
         if self.current_target != -1 {
             match at.target {
                 Some(t) if t.owner == 0 => {}
-                Some(_) => return Err(Unsupported("a retarget with a player's target")),
+                Some(t) if matches!(t.class, 3 | 27 | 39 | 49 | 52 | 51 | 54) => {
+                    return Err(Unsupported(
+                        "a retarget from a building, wall or trebuchet target",
+                    ));
+                }
+                Some(_) => {}
                 None => return Err(Unsupported("a retarget with a target the world lacks")),
             }
         }
@@ -2724,6 +2741,33 @@ mod tests {
         assert_eq!(side.under_attack, None);
         u.keep_attackers(&at, &mut side);
         assert_eq!(side.under_attack, Some(false));
+    }
+
+    /// MarvinBlue/426048731's boar 9729 in updates 4157 to 4159: the hunter 10049 moves off, its
+    /// Hunt's teardown lets the boar go (notify 699 with the hunter's class); the boar's AI takes
+    /// it, as 10049 is one of its attackers, and its base handler drops the attacker. A 699 from
+    /// a unit that is not attacking it is ignored.
+    #[test]
+    fn a_released_attacker_leaves_the_set_through_notify_699() {
+        let mut u = hit_boar();
+        u.attackers = vec![10049];
+        let released = |caller| Notify {
+            caller,
+            recipient: 9729,
+            kind: NO_LONGER_ON_ME,
+            p: [4, 0, 0],
+        };
+        u.post(released(10050), 2).unwrap();
+        assert_eq!(u.notifies, Vec::new());
+        u.post(released(10049), 2).unwrap();
+        assert_eq!(u.notifies, vec![released(10049)]);
+        let r = u.base_notify(
+            released(10049),
+            0,
+            &Surroundings::default(),
+            &mut Vec::new(),
+        );
+        assert_eq!((r, u.attackers.clone()), (Ok(GO_ON), Vec::new()));
     }
 
     /// A builder on its build order (702, action 602): MarvinBlue/426048731's 9175 in update 681,

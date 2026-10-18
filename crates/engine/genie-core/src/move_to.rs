@@ -177,16 +177,53 @@ pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, Unsupported> {
 const OFF_LOW: f32 = crate::image::move_to::OFF_LOW;
 const OFF_HIGH: f32 = crate::image::move_to::OFF_HIGH;
 
+/// What [`target_moved`] found.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Follow {
+    /// The target stayed on the `MoveTo`'s point.
+    Stays,
+    /// The `MoveTo` turns to state 3: it asks for a path again.
+    Again,
+    /// The path's end follows the target to this point ([`follow_path_end`]); the walk goes on.
+    PathEnd([f32; 3]),
+}
+
+impl Follow {
+    /// The `MoveTo` turns to state 3.
+    #[must_use]
+    pub const fn again(self) -> bool {
+        matches!(self, Self::Again)
+    }
+}
+
+/// [`Follow::PathEnd`]: the unit's paths end at `point` ([`Mover::follow_path_end`]) and the
+/// `MoveTo`'s point becomes it.
+///
+/// # Errors
+///
+/// A walker without movement state.
+pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Unsupported> {
+    let mover = walk
+        .mover
+        .as_deref_mut()
+        .ok_or(Unsupported("a walker without movement state"))?;
+    mover.follow_path_end(point);
+    mover.move_to_point = Some(point);
+    Ok(())
+}
+
 /// The moving `MoveTo`'s check of its target object (`0x140aa2a70` in state 4, before the motion
 /// step): a target that left the `MoveTo`'s point (more than half a tile off on either axis) makes
 /// a `MoveTo` with `+0x61` at 1 (`quiet`: a hunt's and its Attack's) ask for a path again: it turns
 /// to state 3 (the slice's [`MoveTo::Start`]) and its update ends there. With `+0x61` at 0 (a
-/// `MoveTo` of its own, FOLLOW's) the `MoveTo` moves its path's end to the target when the unit walks
-/// to that end ([`Mover::walks_to_path_end`]) and the straight line to the target is clear
-/// (`FUN_141052b90`, `FUN_141052350`; then `FUN_140f9b890` on both paths), which is not modelled;
+/// `MoveTo` of its own, FOLLOW's, a unit's own Attack's) the `MoveTo` moves its path's end to the
+/// target ([`Mover::follow_path_end`], its point the target's place) when the unit walks to that
+/// end ([`Mover::walks_to_path_end`]) and the straight line from the unit to the target is clear
+/// (`FUN_141052b90`, then `FUN_141052350` with flags `0x100`, [`Spatial::segment_blocked`]: the
+/// obstruction manager's buffer radius and ignore list, which nothing set, none), and walks on;
 /// else it tells the unit (notify 0x1fc), turns to state 3 and the motion step runs on. True when
 /// the `MoveTo` turns to state 3.
-pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<bool, Unsupported> {
+pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow, Unsupported> {
     let t = walk
         .world
         .get_known(target)?
@@ -201,20 +238,35 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<bool, U
         ))?;
     let (dx, dy) = (point[0] - t.position[0], point[1] - t.position[1]);
     if !(dx < OFF_LOW || OFF_HIGH < dx || dy < OFF_LOW || OFF_HIGH < dy) {
-        return Ok(false);
+        return Ok(Follow::Stays);
     }
-    if !quiet
-        && walk
-            .mover
-            .as_deref()
-            .ok_or(Unsupported("a walker without movement state"))?
-            .walks_to_path_end()?
-    {
-        return Err(Unsupported(
-            "a MoveTo whose path's end follows its target (FUN_140f9b890 after the line test)",
-        ));
+    if quiet {
+        return Ok(Follow::Again);
     }
-    Ok(true)
+    let mover = walk
+        .mover
+        .as_deref()
+        .ok_or(Unsupported("a walker without movement state"))?;
+    if mover.walks_to_path_end()? {
+        let me = walk
+            .world
+            .get(walk.me.id)
+            .map_or(walk.me.position, |p| p.position);
+        let (a, b) = ([me[0], me[1]], [t.position[0], t.position[1]]);
+        walk.world.check_known_records([
+            a[0].min(b[0]),
+            a[1].min(b[1]),
+            a[0].max(b[0]),
+            a[1].max(b[1]),
+        ])?;
+        if !walk
+            .world
+            .segment_blocked(a, b, 0.0, mover.stats.restriction_mask, &[])
+        {
+            return Ok(Follow::PathEnd(t.position));
+        }
+    }
+    Ok(Follow::Again)
 }
 
 /// A `MoveTo` as a unit's own top action (a wandering animal's, a moved or following unit's). Its
@@ -302,7 +354,15 @@ impl MoveToAction {
         }
         match self.state {
             MoveTo::Moving => {
-                if self.target != -1 && target_moved(&walk, self.target, false)? {
+                let follow = if self.target == -1 {
+                    Follow::Stays
+                } else {
+                    target_moved(&walk, self.target, false)?
+                };
+                if let Follow::PathEnd(p) = follow {
+                    follow_path_end(&mut walk, p)?;
+                }
+                if follow.again() {
                     // set_state 3, then the motion step (`LAB_140aa320c`): moving on, the MoveTo
                     // stays in state 3
                     step.target_moved = true;
