@@ -707,6 +707,29 @@ fn saved_actions(
             unit.hunt = Some(hunt);
             Ok(())
         }
+        genie_core::explore::EXPLORE => {
+            let move_to = match base.sub_actions.entries().next() {
+                None => None,
+                Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
+                Some(_) => {
+                    return Err(Unsupported("a saved Explore with another sub-action"));
+                }
+            };
+            if !matches!(
+                base.state,
+                genie_core::explore::WAIT | genie_core::explore::WALK
+            ) {
+                return Err(Unsupported(
+                    "a saved Explore in a state the slice does not model",
+                ));
+            }
+            unit.explore = Some(genie_core::explore::ExploreAction {
+                state: base.state,
+                point: [base.target_x, base.target_y, base.target_z],
+                move_to,
+            });
+            Ok(())
+        }
         _ => Err(Unsupported("a saved action the slice does not import")),
     }
 }
@@ -2025,6 +2048,18 @@ impl Decoder {
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true, None),
+            // AUTO_SCOUT: the units listed (at most a human player's 60), the count at +4
+            Packet::AutoScout(c) => {
+                return Some(Command::AutoScout {
+                    player: c.commp_id as usize,
+                    ids: c
+                        .ids
+                        .iter()
+                        .copied()
+                        .take(usize::from(c.field_0x04).min(MAX_UNITS))
+                        .collect(),
+                });
+            }
             // GAME's toggles of the automatic farm and fish trap queues; the player is at +8
             Packet::Game(g) if matches!(g.field_0x04, 0x10 | 0x13) => {
                 return Some(Command::AutoQueue {
@@ -2351,16 +2386,7 @@ fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32;
 
 /// A unit's top action as the slice models it, type and state.
 fn top_action(unit: &Unit) -> Option<TopAction> {
-    let action = |kind, state| TopAction { kind, state };
-    None.or(unit.artifact.map(|a| action(ARTIFACT_TYPE, a.state)))
-        .or(unit
-            .build
-            .map(|b| action(genie_core::build::BUILD, b.state)))
-        .or(unit
-            .move_to
-            .map(|m| action(genie_core::move_to::MOVE_TO, m.state.number())))
-        .or(unit.fly.map(|f| action(genie_core::fly::FLY, f.state)))
-        .or(unit.hunt.map(|h| action(genie_core::hunt::HUNT, h.state)))
+    unit.top_action()
 }
 
 /// One live object's word-9 terms in the slice after a number of ticks: its id, the top action's

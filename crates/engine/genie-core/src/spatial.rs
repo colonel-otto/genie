@@ -158,6 +158,12 @@ impl Tiles {
         }
     }
 
+    /// A tall object on tile (`x`, `y`), for a test's map.
+    #[cfg(test)]
+    pub(crate) fn add_tall_for_test(&mut self, x: i32, y: i32) {
+        self.count([x as f32 + 0.5, y as f32 + 0.5, 0.0], true, true);
+    }
+
     /// The tiles a static record covers (`FUN_141056460`): from the box's low edge to its high
     /// edge less 0.001, held on the map.
     fn covered(
@@ -1298,6 +1304,46 @@ impl Spatial {
                 players != 0 && players != own
             })
         })
+    }
+
+    /// Slot 0x278 of unit `me` (`FUN_141158720`): whether it could stand at `point`. The point's
+    /// tile is on the obstruction manager's map and its terrain class in the unit's `mask` (the
+    /// tile's word, `DAT_143f0a088 + 0x98`; a static record's own bits do not count here), and no
+    /// obstruction record but the unit's own holds the point within its box grown by `grow` (the
+    /// unit's radius): `FUN_141051900` with flags 0x20, whose point test `FUN_141052160` takes
+    /// records of every kind, edges included. A grown point beyond the map's edge would add the
+    /// edge's records (`FUN_141057290`), which is not modelled.
+    pub fn point_clear(
+        &self,
+        me: i32,
+        point: [f32; 2],
+        grow: f32,
+        mask: u8,
+    ) -> Result<bool, Unsupported> {
+        let [x, y] = point;
+        let (tx, ty) = (x as i32, y as i32);
+        let Some(word) = self.tiles.word(tx, ty) else {
+            return Ok(false);
+        };
+        if word & u64::from(mask ^ 0xff) != 0 {
+            return Ok(false);
+        }
+        let [w, h] = self.map;
+        let rect = [x - grow, y - grow, grow + x, grow + y];
+        if rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3] {
+            return Err(Unsupported(
+                "a point test beyond the map's edge (FUN_141057290)",
+            ));
+        }
+        self.check_known_records(rect)?;
+        let hit = self.objects.iter().any(|(&id, p)| {
+            if id == me || p.obstruction.is_none() {
+                return false;
+            }
+            let [x0, y0, x1, y1] = p.bounds();
+            x <= x1 + grow && x0 - grow <= x && y <= grow + y1 && y0 - grow <= y
+        });
+        Ok(!hit)
     }
 
     /// The records a move query could report (`FUN_14114cc60` -> `FUN_141051900`): those of a

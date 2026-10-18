@@ -84,6 +84,10 @@ enum Place {
     Sleeping(usize, usize),
 }
 
+/// The class `FUN_140c89760` lets scout without the master's flag when a game setting allows it
+/// (raw `0x3a`).
+const AUTO_SCOUT_CLASS: i16 = 58;
+
 impl Turns {
     fn place(&self, id: i32) -> Option<Place> {
         self.players.iter().enumerate().find_map(|(p, player)| {
@@ -393,6 +397,144 @@ impl Turns {
             let cell = narrow.then(|| grid_point(i, loose.len(), order.point, map));
             self.move_unit(player, id, &others, cell, order)?;
         }
+        Ok(())
+    }
+
+    /// AUTO_SCOUT (0x26, `FUN_140e666f0`): each unit of `ids` with a unit AI that may scout
+    /// (`FUN_140c89760`: its master's object flags `+0x654` have bit 4; class 58's rule behind a
+    /// game setting, `FUN_140eca780`, is not modelled) takes an order at once (slot 0x30 ->
+    /// slot 0x28 with Immediate, [`crate::unit_ai::UnitAi::take_order_now`]): the stop order
+    /// when its action is the auto scout's already, else the auto scout order, from the player,
+    /// without a target, at the point (−1, −1) at the unit's height, range 1, priority 100, shown
+    /// at (−1, −1) and ready. The handler looks ids up in every player's objects; another
+    /// player's unit is not modelled. Its sound and the UI's flags are not held.
+    pub(crate) fn auto_scout(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
+        use crate::unit_ai::{
+            AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER, Effect, QueuedOrder, STOP_ORDER,
+        };
+        for &id in ids {
+            let Some(place) = self.place(id) else {
+                continue;
+            };
+            let Place::Live(p, idx) = place else {
+                return Err(Unsupported("an AUTO_SCOUT of a sleeping object"));
+            };
+            if p != player {
+                return Err(Unsupported("an AUTO_SCOUT of another player's unit"));
+            }
+            let unit = &self.players[p].objects[idx];
+            if unit.ai.is_none() {
+                continue;
+            }
+            let master = self.master_of(p, unit.life.master_id)?;
+            if master.object_flags & 0x10 == 0 {
+                if master.class == AUTO_SCOUT_CLASS {
+                    return Err(Unsupported("AUTO_SCOUT's class 58 rule (FUN_140eca780)"));
+                }
+                continue;
+            }
+            let class = master.class;
+            let unit = &mut self.players[p].objects[idx];
+            let (state, position) = (unit.life.state, unit.position);
+            let ai = unit.ai.as_mut().expect("checked above");
+            let order = QueuedOrder {
+                issuer: player as i32,
+                order: if ai.current_action == AUTO_SCOUT_ACTION {
+                    STOP_ORDER
+                } else {
+                    AUTO_SCOUT_ORDER
+                },
+                priority: 100,
+                target: -1,
+                target_owner: -1,
+                point: [-1.0, -1.0, position[2]],
+                range: 1.0,
+                shown: [-1.0, -1.0],
+                ready: true,
+                target_type: -1,
+            };
+            let mut fx = Vec::new();
+            ai.take_order_now(state, order, ([position[0], position[1]], class), &mut fx)?;
+            for e in fx {
+                match e {
+                    Effect::Stop => self.command_stop(p, idx)?,
+                    Effect::Explore(point) => self.command_explore(p, idx, point)?,
+                    _ => return Err(Unsupported("an order effect of AUTO_SCOUT not modelled")),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: a unit without actions
+    /// (others are not modelled here) in state 2 takes its standing sprite where the slice holds
+    /// its sprite; an Explore goes, its MoveTo stopping the unit.
+    fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+        let unit = &mut self.players[p].objects[idx];
+        if let Some(e) = unit.explore.take()
+            && e.move_to.is_some()
+        {
+            unit.mover
+                .as_mut()
+                .ok_or(Unsupported("a walker without movement state"))?
+                .stop()?;
+        }
+        if unit.top_action().is_some() || unit.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "a command's stop of an action in the command phase",
+            ));
+        }
+        if unit.life.state == 2 && unit.sprite.is_some() {
+            self.standing_sprite(p, idx)?;
+        }
+        Ok(())
+    }
+
+    /// The unit's explore (slot 0x398) in the command phase: a unit without an Explore takes a
+    /// new one ([`crate::explore::ExploreAction::new`]) at its height; its set_state's notify and
+    /// standing sprite follow.
+    fn command_explore(
+        &mut self,
+        p: usize,
+        idx: usize,
+        point: [f32; 2],
+    ) -> Result<(), Unsupported> {
+        use crate::explore::{EXPLORE_ACTION, ExploreAction, Owner, WANTS_POINT};
+        let unit = &mut self.players[p].objects[idx];
+        if unit.explore.is_some() || unit.top_action().is_some() {
+            return Err(Unsupported("a command's explore of a unit with an action"));
+        }
+        let (e, owner) = ExploreAction::new([point[0], point[1], unit.position[2]]);
+        unit.explore = Some(e);
+        match owner {
+            Owner::Nothing => return Ok(()),
+            Owner::WantsPoint => {
+                let (id, state) = (unit.id, unit.life.state);
+                if let Some(ai) = unit.ai.as_mut() {
+                    let n = crate::unit_ai::Notify::own(id, WANTS_POINT, [EXPLORE_ACTION, 0, 0]);
+                    ai.post(n, state)?;
+                }
+            }
+            Owner::Standing => {}
+            Owner::Stopped => return Err(Unsupported("an Explore's set_state 2 (slots 0x68)")),
+        }
+        if self.players[p].objects[idx].sprite.is_some() {
+            self.standing_sprite(p, idx)?;
+        }
+        Ok(())
+    }
+
+    /// Slot 0x68 with the master's standing sprite (`+0x470`).
+    fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+        let master = self.players[p].objects[idx].life.master_id;
+        let standing = self.master_of(p, master)?.standing_sprite;
+        let g = self
+            .graphics
+            .get(&standing)
+            .copied()
+            .ok_or(Unsupported("a unit without its standing sprite"))?;
+        let rng = self.streams.get(Stream::Sprite);
+        crate::attack::set_sprite(&mut self.players[p].objects[idx].sprite, g, rng);
         Ok(())
     }
 

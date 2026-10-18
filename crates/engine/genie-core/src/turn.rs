@@ -21,7 +21,7 @@ use crate::fly::Fly;
 use crate::hunt::{Gatherer, HuntAction, HuntSprites};
 use crate::lifecycle::{Class, Lifecycle, seconds};
 use crate::masters::Masters;
-use crate::move_to::MoveToAction;
+use crate::move_to::{MoveTo, MoveToAction};
 use crate::movement::{Me, Mover, Planning, footprint_gap, footprint_gap_squared};
 use crate::order::{Interact, MoveOrder};
 use crate::pathing::Pathing;
@@ -81,6 +81,8 @@ pub struct Unit {
     pub hp_powerups: [f32; 2],
     /// A villager's Hunt action, its top action.
     pub hunt: Option<HuntAction>,
+    /// An auto scout's Explore action, its top action.
+    pub explore: Option<crate::explore::ExploreAction>,
     /// Its active sprite and animation speed (`+0x7b8`, the save's `current_speed`), held from
     /// an attack's swing on; None while the slice does not know them.
     pub sprite: Option<ActiveSprite>,
@@ -177,6 +179,9 @@ pub enum Command {
     /// (`+0x1424`) or `autoFishTrapQueue` (`+0x1425`) flips (`fishtrap` true for 0x13). The other
     /// sub-commands are the decoder's [`Command::Unmodelled`].
     AutoQueue { player: usize, fishtrap: bool },
+    /// AUTO_SCOUT (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
+    /// auto scout order, or the stop order when it scouts already ([`Turns::auto_scout`]).
+    AutoScout { player: usize, ids: Vec<i32> },
     /// INTERACT (0x00), MOVE (0x03) or RETREAT (0x23): before the order runs, each listed unit's AI
     /// resets its idle timeout ([`UnitAi::reset_for_order`]), in list order, wherever the unit is.
     /// INTERACT's order then runs ([`Interact`]), and MOVE's ([`MoveOrder`]); RETREAT is not
@@ -294,6 +299,8 @@ struct Context<'a> {
     /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
     /// runs after the update ([`Turns::order_on_target`]).
     order_on_target: Option<crate::unit_ai::QueuedOrder>,
+    /// The map's zone maps, which an auto scout's search reads.
+    zones: &'a mut crate::zones::Zones,
 }
 
 impl Context<'_> {
@@ -366,6 +373,89 @@ impl Context<'_> {
     }
 }
 
+/// The auto scout's search reaches within its line of sight less this (`FUN_140c65490`,
+/// `DAT_14330eb8c`).
+const LOS_MARGIN: f32 = crate::image::explore::LOS_MARGIN;
+
+/// The masters of a town centre (`FUN_1416597e0`: 109, then 444).
+const TOWN_CENTRES: [i16; 2] = [109, 444];
+
+/// `FUN_1416597e0` with 0: the player's first town centre, by the player's index of objects by
+/// master (`player+0x18`, `FUN_14104f560`: those of master 109, then 444), as its tile. The
+/// index's order within a master is not held: two objects of the first master found are not
+/// modelled.
+fn town_centre(units: &[Unit]) -> Result<Option<[i32; 2]>, Unsupported> {
+    for master in TOWN_CENTRES {
+        let mut found = units.iter().filter(|u| u.life.master_id == master);
+        let Some(first) = found.next() else { continue };
+        if found.next().is_some() {
+            return Err(Unsupported(
+                "two town centres (the order of the player's index)",
+            ));
+        }
+        return Ok(Some([first.position[0] as i32, first.position[1] as i32]));
+    }
+    Ok(None)
+}
+
+/// What the auto scout's search asks of the world for one unit ([`crate::explore::Area`]).
+struct ScoutArea<'a> {
+    spatial: &'a Spatial,
+    zones: &'a crate::zones::ZoneMap,
+    plan: Planning<'a>,
+    mover: &'a Mover,
+    me: Me,
+    player: usize,
+    master: i16,
+    radius: [f32; 2],
+    /// The reach of slot 0x3d8: the line of sight less a tile.
+    reach: f32,
+}
+
+impl crate::explore::Area for ScoutArea<'_> {
+    fn explored(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        self.spatial.explored(self.player, x, y)
+    }
+
+    fn zone(&mut self, x: i32, y: i32) -> u16 {
+        self.zones.zone(x, y)
+    }
+
+    fn own_zone(&mut self) -> u16 {
+        let [x, y, _] = self.me.position;
+        self.zones.zone(x as i32, y as i32)
+    }
+
+    fn clear(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        let mask = self.mover.stats.restriction_mask;
+        self.spatial
+            .point_clear(self.me.id, [x as f32, y as f32], self.radius[0], mask)
+    }
+
+    fn reaches(&mut self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        let to = [x as f32, y as f32];
+        self.mover.reaches(
+            &self.me,
+            self.spatial,
+            &mut self.plan,
+            to,
+            self.reach,
+            self.master,
+        )
+    }
+
+    /// `FUN_14118faf0`: the gap from the footprint on each axis (at least 0), then its length.
+    fn distance(&self, x: i32, y: i32) -> f32 {
+        let gap = |d: f32, r: f32| {
+            let g = d.abs() - r;
+            if g <= 0.0 { 0.0 } else { g }
+        };
+        let gx = gap(x as f32 - self.me.position[0], self.radius[0]);
+        let gy = gap(y as f32 - self.me.position[1], self.radius[1]);
+        crate::fmath::sqrt(gy * gy + gx * gx)
+    }
+}
+
 impl Unit {
     /// The target of its hunt, which it attacks or gathers from.
     fn attack_target(&self) -> Option<i32> {
@@ -403,6 +493,9 @@ impl Unit {
                 .map(|m| action(crate::move_to::MOVE_TO, m.state.number())))
             .or(self.fly.map(|f| action(crate::fly::FLY, f.state)))
             .or(self.hunt.map(|h| action(crate::hunt::HUNT, h.state)))
+            .or(self
+                .explore
+                .map(|e| action(crate::explore::EXPLORE, e.state)))
     }
 
     /// Slot 0x2d0 with 0 (`FUN_14106d170`): whether its top action may be interrupted (the group
@@ -454,6 +547,13 @@ impl Unit {
                 "a unit AI's stop of an action list the slice does not model",
             ));
         }
+        // the Explore's teardown (0x140a87dd0): its MoveTo's stops the unit (slot 0x5d0)
+        if self.explore.take().is_some_and(|e| e.move_to.is_some()) {
+            self.mover
+                .as_mut()
+                .ok_or(Unsupported("a walker without movement state"))?
+                .stop()?;
+        }
         if self.move_to.take().is_some() {
             self.mover
                 .as_mut()
@@ -478,6 +578,7 @@ impl Unit {
         effects: Vec<Effect>,
         class: Option<i16>,
         c: &mut Context<'_>,
+        others: &[Unit],
     ) -> Result<(), Unsupported> {
         for e in effects {
             match e {
@@ -497,9 +598,144 @@ impl Unit {
                         return Err(Unsupported("two orders on targets in one update"));
                     }
                 }
+                Effect::Explore(point) => self.explore_to(point, c)?,
+                Effect::SeekUnexplored => {
+                    let [x, y] = self.seek_unexplored(c, others)?;
+                    if let Some(ai) = self.ai.as_mut() {
+                        ai.explore_point(x, y);
+                    }
+                    self.explore_to([x as f32, y as f32], c)?;
+                }
             }
         }
         Ok(())
+    }
+
+    /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at
+    /// its own height: its top Explore takes the point (slot 0x48), else a new Explore
+    /// (`FUN_140a87d30`) becomes its only action (set_only_action, `FUN_14106e990`: the actions
+    /// it had go, `FUN_140a98620`, and the new one starts, `FUN_140a977e0`). A MoveTo of the
+    /// Explore that goes stops the unit (its teardown, slot 0x5d0); other actions it would
+    /// replace are not modelled.
+    fn explore_to(&mut self, point: [f32; 2], c: &mut Context<'_>) -> Result<(), Unsupported> {
+        let at = [point[0], point[1], self.position[2]];
+        let owner = match self.explore.as_mut() {
+            Some(e) => {
+                let walked = e.move_to.is_some();
+                let owner = e.take_point(at);
+                if walked {
+                    self.stop_mover()?;
+                }
+                owner
+            }
+            None => {
+                if self.top_action().is_some() || self.unmodelled_action.is_some() {
+                    return Err(Unsupported("an Explore replacing another action"));
+                }
+                let (e, owner) = crate::explore::ExploreAction::new(at);
+                self.explore = Some(e);
+                owner
+            }
+        };
+        self.explore_owner(owner, c)
+    }
+
+    /// What an Explore's set_state asks of its unit ([`crate::explore::Owner`]): its notify 0x202
+    /// with the explore's action value to the unit AI, and the standing sprite (slot 0x68 with
+    /// the master's `+0x470`) where the slice holds the unit's sprite. Set_state 2's slots are
+    /// not modelled.
+    fn explore_owner(
+        &mut self,
+        owner: crate::explore::Owner,
+        c: &mut Context<'_>,
+    ) -> Result<(), Unsupported> {
+        use crate::explore::Owner;
+        match owner {
+            Owner::Nothing => return Ok(()),
+            Owner::Stopped => return Err(Unsupported("an Explore's set_state 2 (slots 0x68)")),
+            Owner::WantsPoint => self.post_own(
+                crate::explore::WANTS_POINT,
+                [crate::explore::EXPLORE_ACTION, 0, 0],
+            )?,
+            Owner::Standing => {}
+        }
+        if self.sprite.is_some() {
+            let standing = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.standing_sprite)
+                .and_then(|id| c.graphics.get(&id).copied())
+                .ok_or(Unsupported("an explorer without its standing sprite"))?;
+            crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
+        }
+        Ok(())
+    }
+
+    /// Slot 0x5d0 of a unit whose MoveTo went.
+    fn stop_mover(&mut self) -> Result<(), Unsupported> {
+        self.mover
+            .as_mut()
+            .ok_or(Unsupported("a walker without movement state"))?
+            .stop()
+    }
+
+    /// The auto scout's search ([`crate::explore::unexplored_area`]) for this unit: around its
+    /// player's town centre ([`town_centre`] among `others`), on the map's terrain zones for its
+    /// restriction ([`crate::zones::Zones`]), its point test (slot 0x278) and reach (slot 0x3d8,
+    /// within its line of sight less a tile, `DAT_14330eb8c`), by the gap from its footprint
+    /// (`FUN_14118faf0`). No point is not modelled (slot 0x90, `FUN_140c4b130`).
+    fn seek_unexplored(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Unit],
+    ) -> Result<[i32; 2], Unsupported> {
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported(
+                "an auto scout of a master the slice does not have",
+            ))?;
+        let mover = self
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("an auto scout without movement state"))?;
+        let tc = town_centre(others)?;
+        let [w, h] = c.spatial.map;
+        let terrain = c
+            .spatial
+            .terrain
+            .as_ref()
+            .ok_or(Unsupported("the map's zones without its terrain"))?;
+        let values = terrain
+            .restrictions
+            .get(mover.stats.restriction)
+            .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+        let zones = c.zones.of(w, h, &terrain.kinds, values);
+        let me = Me {
+            id: self.id,
+            position: self.position,
+            action_state: self.top_action().map_or(0, |a| a.state),
+        };
+        let mut area = ScoutArea {
+            spatial: c.spatial,
+            zones,
+            plan: Planning {
+                pathing: c.pathing,
+                now: c.world_time,
+                computer: c.computer,
+                object: c.streams.get(Stream::Object),
+                construction_rate: c.construction_rate,
+            },
+            mover,
+            me,
+            player: c.player,
+            master: master.id,
+            radius: master.radius,
+            reach: master.line_of_sight - LOS_MARGIN,
+        };
+        crate::explore::unexplored_area(tc, [w, h], &mut area)?.ok_or(Unsupported(
+            "an auto scout without an unexplored point around its town centre (slot 0x90)",
+        ))
     }
 
     /// A stop since the last look cleared the animation speed (`+0x7b8`, [`Mover::speed_stopped`]).
@@ -716,6 +952,12 @@ impl Unit {
             {
                 m.stop()?;
             }
+            if let Some(explore) = self.explore.take()
+                && explore.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
         }
         // RGE_Action_Object::update with no action in state 2 starts the master's default task
         // (slot 0x7f0)
@@ -824,6 +1066,53 @@ impl Unit {
             self.move_to = None;
             if let Some(m) = self.mover.as_mut() {
                 m.stop()?;
+            }
+        }
+        if let Some(explore) = self.explore.as_mut() {
+            // 0x140a880c0: state 1 is done (the action list removes it, the default task's
+            // restart is not modelled), 11 walks, 13 fails; the others wait
+            match explore.state {
+                crate::explore::DONE => {
+                    return Err(Unsupported("a done Explore (the action list after it)"));
+                }
+                crate::explore::FAILED => {
+                    return Err(Unsupported("a failed Explore (notify 0x1f9, set_state 2)"));
+                }
+                crate::explore::WALK => {
+                    // the MoveTo's update code (FUN_140a992b0): 1 once it arrived, 1 without it
+                    let quiet = self
+                        .ai
+                        .as_ref()
+                        .is_some_and(|ai| !matches!(ai.current_order, 711 | 733));
+                    let code = match explore.move_to {
+                        Some(MoveTo::Start) => {
+                            explore.move_to = Some(MoveTo::Moving);
+                            let goal = crate::move_to::Goal::Point(explore.point);
+                            let walk = c.walk(self.mover.as_mut(), me);
+                            explore.move_to =
+                                Some(crate::move_to::start_walk(walk, goal, 0.0, quiet)?);
+                            0
+                        }
+                        Some(MoveTo::Moving) => {
+                            let walk = c.walk(self.mover.as_mut(), me);
+                            explore.move_to = Some(crate::move_to::walk_on(walk)?);
+                            0
+                        }
+                        Some(MoveTo::Arrived) | None => 1,
+                        Some(MoveTo::Waiting | MoveTo::Failed) => {
+                            return Err(Unsupported(
+                                "an Explore's waiting or failed MoveTo (states 2, 13)",
+                            ));
+                        }
+                    };
+                    let walked = explore.move_to.is_some();
+                    let owner = explore.after_walk(code)?;
+                    if walked && self.explore.is_some_and(|e| e.move_to.is_none()) {
+                        self.stop_mover()?;
+                    }
+                    self.explore_owner(owner, c)?;
+                }
+                _ => {}
             }
         }
         if let Some(fly) = self.fly.as_mut() {
@@ -1206,7 +1495,7 @@ impl Unit {
                 }
                 None => ai.off_turn(&at)?,
             };
-            self.apply(effects, class, c)?;
+            self.apply(effects, class, c, others)?;
         }
         if let Some((new, also)) = captured {
             return Ok(Step::Captured(new, also));
@@ -1927,6 +2216,8 @@ pub struct Turns {
     /// cost also counts in attribute 246. The tick oracle reads 1 in MarvinBlue/426048731 (the
     /// attribute grows by a villager's cost at its spawn); where the save holds it is not known.
     pub unit_cost_246: bool,
+    /// The map's zone maps (`map+0x5e28`), made when first asked for.
+    pub zones: crate::zones::Zones,
     pub(crate) streams: Streams,
 }
 
@@ -1973,6 +2264,7 @@ impl Turns {
             mode_680: 0,
             game_mode: 0,
             unit_cost_246: false,
+            zones: Default::default(),
             streams: Streams::default(),
         }
     }
@@ -2047,6 +2339,7 @@ impl Turns {
                     annex_of: None,
                     hp_powerups: [0.0; 2],
                     hunt: None,
+                    explore: None,
                     workers: 0,
                     combat: true,
                     default_task: None,
@@ -2098,6 +2391,12 @@ impl Turns {
                     owner.auto_fishtrap_queue = !owner.auto_fishtrap_queue;
                 } else {
                     owner.auto_farm_queue = !owner.auto_farm_queue;
+                }
+            }
+            Command::AutoScout { player, ref ids } => {
+                if let Err(e) = self.auto_scout(player, ids) {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
                 }
             }
             Command::GatherPoint {
@@ -2529,6 +2828,7 @@ impl Turns {
                     scenario: scenario_mode(self.game_mode),
                     attribute_adds: Vec::new(),
                     order_on_target: None,
+                    zones: &mut self.zones,
                 };
                 let mut result = unit.update(&mut c, &mut player.objects);
                 let (adds, ordered) = (

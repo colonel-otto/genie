@@ -170,6 +170,14 @@ const EDGE_POSITION_GAP: f32 = crate::image::movement::EDGE_POSITION_GAP;
 const RANGE_FLOOR: f32 = crate::image::movement::RANGE_FLOOR;
 /// The class the motion step measures by its annexes (`-0xe85` encoded).
 const GATE: i16 = 39;
+/// A point within this many tiles is the short pather's to reach (`FUN_140fa0370`,
+/// `DAT_142eb0f4c`).
+const REACH_SHORT: f32 = crate::image::movement::REACH_SHORT;
+/// A point whose squared gap to the unit's footprint is below this is not reached when the
+/// short pather did not reach it (`FUN_140fa0370`, `DAT_14330eb8c`).
+const REACH_NEAR: f32 = crate::image::movement::REACH_NEAR;
+/// The master the long pather lets move without a speed (`FUN_140f9eb70`, raw id `0x2a`).
+const LONG_PATH_MOVER: i16 = 42;
 /// The trade cart's class (19), whose path requests the owner's budget limits (`FUN_14165d6f0`).
 const TRADE_CART: i16 = 19;
 /// No distance (`DAT_14330ebf4`).
@@ -1720,6 +1728,90 @@ impl Mover {
             |a: [f32; 2], b: [f32; 2]| Ok(world.segment_blocked(a, b, radius, mask, &ignore));
         let found = planner.plan(&req, false, out, Some(&mut blocked))?;
         Ok(Some(found.code()))
+    }
+
+    /// Slot 0x3d8 of the unit (`FUN_14114ffc0` -> `FUN_140fa0370`, without a target object):
+    /// whether it can walk to within `range` of the point `to` (x, y on the map). Both ends lie on
+    /// the map. With a planner for its restriction, the tile planner (`FUN_140f7c530` without the
+    /// tile search, closed tiles or smoothing) must reach the goal or its range (result 0 or 1).
+    /// Then a unit with a footprint and a height (`FUN_141194060` with 1) no more than 10 tiles
+    /// from the point asks the short pather (`FUN_140f9e540` with its ignore list,
+    /// `FUN_14114ece0`), whose path to the goal or into the range (a result below 2) answers yes.
+    /// Otherwise a point at least a tile from the unit's footprint (its squared gap at least 1)
+    /// is the long pather's to answer ([`crate::long_path::reaches`], from the unit's tile to the
+    /// point's, the planner's other arguments unset: no path, the reach within a tile, no
+    /// player's objects); a nearer one is not reached. `master` is the unit's master's id (42
+    /// moves for the long pather without a speed).
+    pub fn reaches(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        to: [f32; 2],
+        range: f32,
+        master: i16,
+    ) -> Result<bool, Unsupported> {
+        let [x, y, _] = me.position;
+        let [w, h] = world.map;
+        let on_map = |px: f32, py: f32| 0.0 <= px && 0.0 <= py && px < w as f32 && py < h as f32;
+        if !on_map(x, y) || !on_map(to[0], to[1]) {
+            return Ok(false);
+        }
+        let radius = self.stats.radius;
+        let mut path = Path::default();
+        if let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) {
+            let req = Request {
+                from: [x, y],
+                to,
+                radii: radius[0],
+                range,
+                closed: Vec::new(),
+                full: false,
+            };
+            let found = planner.plan::<Unsupported>(&req, false, &mut path, None)?;
+            if 1 < found.code() {
+                return Ok(false);
+            }
+        }
+        let solid = 0.0 < radius[2] && 0.0 < radius[0] && 0.0 < radius[1];
+        let (dx, dy) = (to[0] - x, to[1] - y);
+        if solid && fmath::sqrt(dx * dx + 0.0 + dy * dy) <= REACH_SHORT {
+            let ignore = self.ignore_list(me, world, None, -1, plan.now)?;
+            let goal = [to[0], 0.0, to[1]];
+            if self.short_path(me, world, plan, goal, range, -1, &ignore, &mut path)? < 2 {
+                return Ok(true);
+            }
+        }
+        let gap = |d: f32, r: f32| {
+            let g = d.abs() - r;
+            if 0.0 <= g { g } else { 0.0 }
+        };
+        let (gx, gy) = (gap(dx, radius[0]), gap(dy, radius[1]));
+        if gx * gx + gy * gy < REACH_NEAR {
+            return Ok(false);
+        }
+        if !self.ignore_units.is_empty() {
+            return Err(Unsupported(
+                "the long pather's ignored units (slots 0x2a8, 0x5c8)",
+            ));
+        }
+        let lowered = world
+            .get(me.id)
+            .filter(|p| p.tall)
+            .map(|p| vec![[p.position[0] as i32, p.position[1] as i32]])
+            .unwrap_or_default();
+        let req = crate::long_path::LongRequest {
+            from: [x as i32, y as i32],
+            to: [to[0] as i32, to[1] as i32],
+            range,
+            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            mask: self.stats.restriction_mask,
+            computer: plan.computer,
+            lowered,
+            within_range: false,
+            near_player: false,
+        };
+        crate::long_path::reaches(world.tiles(), world.map, &req)
     }
 
     /// The path of the top level (`FUN_140f960f0`): the last level's, or the walked level's when

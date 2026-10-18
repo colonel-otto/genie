@@ -132,6 +132,15 @@ pub enum Effect {
     /// The queued order on a target (`0x2db`) the AI took: the unit's slot 0x128 on the target,
     /// then the order's priority becomes the AI's (the caller's, `Turns::order_on_target`).
     OrderOnTarget(QueuedOrder),
+    /// The unit's explore (slot 0x398, `FUN_141084db0`, with its argument 4 set) to the point
+    /// (x, y): its Explore takes the point (slot 0x48), else a new Explore to it (`FUN_140a87d30`
+    /// at the unit's height) replaces its actions (`FUN_140a98620`, slot 0x808).
+    Explore([f32; 2]),
+    /// The explorer's search (the base notify's case 0x202 on the auto scout's action `0x2bd`,
+    /// `FUN_140c65490`): the caller finds the point ([`crate::explore::unexplored_area`]), gives
+    /// the AI its target point and the unit [`Effect::Explore`] to it. No point found is not
+    /// modelled (slot 0x90's search, then `FUN_140c4b130`).
+    SeekUnexplored,
 }
 
 /// The first move among a full update's effects.
@@ -486,6 +495,17 @@ const BOAR_OFFSET: i32 = 3;
 const AI_MOVE_RANGE: f32 = 0.5;
 /// The move order and action values (`0x2c6`, `0x262`), which moves set.
 pub const MOVE_ORDER: i32 = crate::ai_kinds::ORDER_MOVEMENT;
+/// `0x321`: AUTO_SCOUT's order.
+pub const AUTO_SCOUT_ORDER: i32 = crate::ai_kinds::ORDER_AUTO_SCOUT;
+/// `0x2c2`: the stop order ("I have a stop order.", after "SO Call 6"), which AUTO_SCOUT gives a
+/// unit already scouting.
+pub const STOP_ORDER: i32 = 0x2c2;
+/// `0x2bd`: the auto scout's action value, which the order's case sets after the explore's.
+pub const AUTO_SCOUT_ACTION: i32 = 0x2bd;
+/// `0x25d`: the explore's action value (slot 0x100).
+pub const EXPLORE_ACTION: i32 = crate::explore::EXPLORE_ACTION;
+/// The height of the explore's target point (`FUN_140c4d910`, `DAT_14330eb8c`).
+const EXPLORE_Z: f32 = crate::image::unit_ai::EXPLORE_Z;
 pub const MOVE_ACTION: i32 = 0x262;
 
 /// The hunted animal's idle check (`FUN_140c1eea0`): away from its origin by more than
@@ -1223,6 +1243,7 @@ impl UnitAi {
         let moving = matches!(order, (MOVE_ORDER | -1, MOVE_ACTION)) && self.current_target == -1;
         // a move whose action ended (the action value reset) while the default action runs
         let moved = order == (MOVE_ORDER, -1) && self.current_target == -1;
+        let scouting = order == (AUTO_SCOUT_ORDER, AUTO_SCOUT_ACTION) && self.current_target == -1;
         if self.current_target != -1 && !working {
             return Err(Unsupported("a unit AI's target the slice does not model"));
         }
@@ -1231,7 +1252,7 @@ impl UnitAi {
         }
         match retarget {
             Retarget::Never if working || moving || moved => Ok(()),
-            Retarget::Base if moving => Ok(()),
+            Retarget::Base if moving || scouting => Ok(()),
             _ => Err(Unsupported(
                 "a busy unit AI on an order the slice does not model",
             )),
@@ -1448,6 +1469,7 @@ impl UnitAi {
     ) -> Result<u32, Unsupported> {
         match n.kind {
             ACTION_COMPLETED => self.action_completed(n, at, fx),
+            crate::explore::WANTS_POINT if self.explorer() => self.seek_unexplored(fx),
             OWNER_CHANGED => {
                 fx.push(Effect::Stop);
                 self.remove_target();
@@ -1461,6 +1483,37 @@ impl UnitAi {
             0x259..=0x262 | 0x265..=0x269 | 0x2be => Ok(GO_ON),
             _ => Err(Unsupported("a notify kind the base handler does not model")),
         }
+    }
+
+    /// The action values of an explorer (the base handler's case 0x202): 605, 623 and 630, and
+    /// the auto scout's `0x2bd`.
+    fn explorer(&self) -> bool {
+        let a = self.current_action;
+        let k = a.wrapping_sub(EXPLORE_ACTION) as u32;
+        (k < 0x1a && (0x204_0001u32 >> (k & 0x1f)) & 1 != 0) || a == AUTO_SCOUT_ACTION
+    }
+
+    /// The base handler's case 0x202 for an explorer ("I'm an explorer, looking for the closest
+    /// undiscovered tile."): on the auto scout's action, with the player's explored-points grid
+    /// never made (`player+0x1370`), the search around the town centre (`FUN_140c65490`,
+    /// [`Effect::SeekUnexplored`]; the caller finds the point, its absence is not modelled), then
+    /// slot 0x100 with 1 to it ([`UnitAi::explore_at`]: the explore's action value becomes the
+    /// last) and the action value back; processing breaks. The other explorers' search (slot
+    /// 0x90) is not modelled.
+    fn seek_unexplored(&mut self, fx: &mut Vec<Effect>) -> Result<u32, Unsupported> {
+        let action = self.current_action;
+        if action != AUTO_SCOUT_ACTION {
+            return Err(Unsupported(
+                "an explorer's search for the closest undiscovered tile (slot 0x90)",
+            ));
+        }
+        fx.push(Effect::SeekUnexplored);
+        self.last_action = std::mem::replace(&mut self.current_action, EXPLORE_ACTION);
+        self.last_target = self.current_target;
+        self.last_target_type = self.target_type;
+        self.current_target = -1;
+        self.last_action = std::mem::replace(&mut self.current_action, action);
+        Ok(BREAK)
     }
 
     /// The base handler's case `0x1fa` (`FUN_140c589c0`): without an order, a completion of the
@@ -1538,6 +1591,21 @@ impl UnitAi {
         at: &Surroundings,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
+        self.stop_with(
+            keep_order,
+            Some(([at.position[0], at.position[1]], at.class)),
+            fx,
+        )
+    }
+
+    /// [`UnitAi::stop_current`] with the unit's position and master's class (`place`), which only
+    /// an order the stop ends reads (None: the caller knows it does not end one).
+    fn stop_with(
+        &mut self,
+        keep_order: bool,
+        place: Option<([f32; 2], i16)>,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
         let action = self.current_action;
         let order = self.current_order;
         if matches!(order, PATROL | PATROL_2) {
@@ -1548,8 +1616,11 @@ impl UnitAi {
             self.last_order = order;
             self.current_order = -1;
             self.order_priority = -1;
-            if at.class != CLASS_18 {
-                self.state_position = [at.position[0], at.position[1]];
+            let (position, class) = place.ok_or(Unsupported(
+                "a stop ending an order without the unit's place",
+            ))?;
+            if class != CLASS_18 {
+                self.state_position = position;
             }
         }
         fx.push(Effect::Stop);
@@ -1683,6 +1754,28 @@ impl UnitAi {
         if !o.ready {
             return Ok(0xe);
         }
+        if o.order == AUTO_SCOUT_ORDER {
+            // case 0x321: slot 0x100 with 1 to the order's point, then the auto scout's action
+            // value, the explore's the last; the tail takes the order
+            let taken = self.explore_at(o.point[0] as i32, o.point[1] as i32, true, fx);
+            self.last_action = std::mem::replace(&mut self.current_action, AUTO_SCOUT_ACTION);
+            if !taken {
+                return Ok(0);
+            }
+            return self.take_order(o);
+        }
+        if o.order == STOP_ORDER {
+            // case 0x2c2: the target goes and the action stops (slot 0xb0 with 1); the order and
+            // its priority end
+            self.remove_target();
+            self.stop_with(true, None, fx)?;
+            if matches!(self.current_order, PATROL | PATROL_2) {
+                return Err(Unsupported("a stop order after a patrol order"));
+            }
+            self.current_order = -1;
+            self.order_priority = -1;
+            return Ok(1);
+        }
         if o.order == ORDER_ON_TARGET {
             // case 0x2db: the unit's slot 0x128 on the target, then the tail keeps the order the
             // work gave the AI and takes the order's priority (the caller runs both); a patrol
@@ -1707,9 +1800,72 @@ impl UnitAi {
             return Err(Unsupported("a queued order after a patrol order"));
         }
         fx.push(Effect::Move(m));
+        self.take_order(o)
+    }
+
+    /// The order's tail (`LAB_140c5d611`): the order and its priority become the AI's; leaving a
+    /// patrol order (which caps the secondary timer) is not modelled.
+    fn take_order(&mut self, o: &QueuedOrder) -> Result<u32, Unsupported> {
+        if matches!(self.current_order, PATROL | PATROL_2) {
+            return Err(Unsupported("a queued order after a patrol order"));
+        }
         self.current_order = o.order;
         self.order_priority = o.priority;
         Ok(1)
+    }
+
+    /// Slot 0x100 (`FUN_140c4d910`), with `again` (its argument 4) or without an action value:
+    /// the unit's explore to the point (slot 0x398, [`Effect::Explore`], which takes it); the AI
+    /// then holds the explore's action value and the point without a target (`FUN_140c64c10`
+    /// with −1, which leaves the target class), at height [`EXPLORE_Z`].
+    fn explore_at(&mut self, x: i32, y: i32, again: bool, fx: &mut Vec<Effect>) -> bool {
+        if !again && self.current_action != -1 {
+            return false;
+        }
+        let point = [x as f32, y as f32];
+        fx.push(Effect::Explore(point));
+        self.last_action = std::mem::replace(&mut self.current_action, EXPLORE_ACTION);
+        self.last_target = self.current_target;
+        self.last_target_type = self.target_type;
+        self.current_target = -1;
+        self.target_point = [point[0], point[1], EXPLORE_Z];
+        true
+    }
+
+    /// The explorer's point (the base notify's case 0x202 after [`Effect::SeekUnexplored`]): the
+    /// AI's target point.
+    pub fn explore_point(&mut self, x: i32, y: i32) {
+        self.target_point = [x as f32, y as f32, EXPLORE_Z];
+    }
+
+    /// Slot 0x28 (`FUN_140c55c90`) with Immediate set and inFront clear: for a unit in state 2 or
+    /// below and an order (not −1), the order goes to the front of the queue (`FUN_140c42640`
+    /// with inFront 1); then, but for an attack roundup (0x2d9, not modelled), the target goes
+    /// and the action stops (`FUN_140c5e1e0`, slot 0xb0 with 1), the notifies go
+    /// (`FUN_140c5dc10` with 0) and the order runs at once (slot 0x230), leaving the queue unless
+    /// it was not ready (`FUN_140c5e280`). `place` is the unit's position (x, y) and master's
+    /// class, for the stop.
+    pub fn take_order_now(
+        &mut self,
+        unit_state: u8,
+        order: QueuedOrder,
+        place: ([f32; 2], i16),
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        if 2 < unit_state || order.order == -1 {
+            return Ok(());
+        }
+        if order.order == 0x2d9 {
+            return Err(Unsupported("an immediate attack roundup order"));
+        }
+        self.orders.insert(0, order);
+        self.remove_target();
+        self.stop_with(true, Some(place), fx)?;
+        self.clear_notifies(0)?;
+        if self.process_order(&order, fx)? != 0xe {
+            self.orders.remove(0);
+        }
+        Ok(())
     }
 
     /// The idle part of the full update: a unit without an action value (and without a target

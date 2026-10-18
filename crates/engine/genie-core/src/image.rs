@@ -59,6 +59,13 @@ pub mod damage {
     pub const WIDE_CONE: f32 = f32::from_bits(0x3fd5c28f);
 }
 
+pub mod explore {
+    /// 1.0
+    pub const LOS_MARGIN: f32 = f32::from_bits(0x3f800000);
+    /// -1.0
+    pub const NO_POINT: f32 = f32::from_bits(0xbf800000);
+}
+
 pub mod fly {
     /// 0.01745329238474369
     pub const DEGREE: f32 = f32::from_bits(0x3c8efa35);
@@ -77,6 +84,13 @@ pub mod hunt {
     pub const OWN_LIVESTOCK_RANGE: f32 = f32::from_bits(0x3fc00000);
     /// 0.10000000149011612
     pub const REMAINDER: f32 = f32::from_bits(0x3dcccccd);
+}
+
+pub mod long_path {
+    /// 1.0000000116860974e-07
+    pub const EPSILON: f32 = f32::from_bits(0x33d6bf95);
+    /// 1.0
+    pub const REACHED: f32 = f32::from_bits(0x3f800000);
 }
 
 pub mod move_to {
@@ -109,6 +123,10 @@ pub mod movement {
     pub const PUSHED: f32 = f32::from_bits(0x3e800000);
     /// 0.10000000149011612
     pub const RANGE_FLOOR: f32 = f32::from_bits(0x3dcccccd);
+    /// 1.0
+    pub const REACH_NEAR: f32 = f32::from_bits(0x3f800000);
+    /// 10.0
+    pub const REACH_SHORT: f32 = f32::from_bits(0x41200000);
     /// 0.009999999776482582
     pub const SHORTEST: f32 = f32::from_bits(0x3c23d70a);
     /// 16.0
@@ -207,6 +225,11 @@ pub mod tile_path {
 pub mod turn {
     /// 1.0000000116860974e-07
     pub const SPEED_EPSILON: f32 = f32::from_bits(0x33d6bf95);
+}
+
+pub mod unit_ai {
+    /// 1.0
+    pub const EXPLORE_Z: f32 = f32::from_bits(0x3f800000);
 }
 
 pub mod visibility {
