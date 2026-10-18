@@ -21,6 +21,21 @@ pub enum MoveTo {
     Start,
     /// 4: its first update asked for a path; the unit moves from the next update on.
     Moving,
+    /// 2: the motion step gave up and the MoveTo waits before it asks again (its timer `+0x70`
+    /// up to `+0x74`, the owner's [`MoveWait`]).
+    Waiting,
+    /// 13: it failed; its update returns 3 (with notify 0x1f9 unless it is quiet).
+    Failed,
+}
+
+/// A MoveTo's wait after the motion step gave up (`+0x6c` `movement_wait_state`: 0 never, 1
+/// waiting, 2 asked again; the timer `+0x70` and its end `+0x74`), held by the action that owns
+/// the MoveTo; a new MoveTo starts without one.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MoveWait {
+    pub state: u8,
+    pub timer: f32,
+    pub delay: f32,
 }
 
 impl MoveTo {
@@ -30,6 +45,8 @@ impl MoveTo {
             MoveTo::Arrived => 1,
             MoveTo::Start => 3,
             MoveTo::Moving => 4,
+            MoveTo::Waiting => 2,
+            MoveTo::Failed => 13,
         }
     }
 }
@@ -116,6 +133,11 @@ pub fn start_walk(
 /// and `FUN_14114d810` its facet; the slice holds neither). A unit that cannot go on (set_state 2
 /// or 13) and a MoveTo without its path are not modelled.
 pub fn walk_on(walk: Walk<'_>) -> Result<MoveTo, Unsupported> {
+    walk_or_give_up(walk)?.ok_or(Unsupported("a MoveTo whose unit cannot move on"))
+}
+
+/// [`walk_on`] for a MoveTo that handles the motion step giving up (it returns 1): None then.
+pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, Unsupported> {
     let mover = walk
         .mover
         .ok_or(Unsupported("a walker without movement state"))?;
@@ -124,11 +146,13 @@ pub fn walk_on(walk: Walk<'_>) -> Result<MoveTo, Unsupported> {
     }
     let mut plan = walk.plan;
     let mut me = walk.me;
-    match mover.motion(&mut me, walk.dt, walk.world, plan.as_mut())? {
-        Motion::Moving => Ok(MoveTo::Moving),
-        Motion::Arrived => Ok(MoveTo::Arrived),
-        Motion::Done => Err(Unsupported("a MoveTo whose unit cannot move on")),
-    }
+    Ok(
+        match mover.motion(&mut me, walk.dt, walk.world, plan.as_mut())? {
+            Motion::Moving => Some(MoveTo::Moving),
+            Motion::Arrived => Some(MoveTo::Arrived),
+            Motion::Done => None,
+        },
+    )
 }
 
 /// A target leaves the MoveTo's point when it is more than this off it on either axis
@@ -195,6 +219,8 @@ impl MoveToAction {
                 Ok(false)
             }
             MoveTo::Arrived => Ok(true),
+            MoveTo::Waiting => Err(Unsupported("a waiting MoveTo of its own (state 2)")),
+            MoveTo::Failed => Err(Unsupported("a failed MoveTo of its own (state 13)")),
         }
     }
 }

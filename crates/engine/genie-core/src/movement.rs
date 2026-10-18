@@ -124,8 +124,8 @@ pub struct Mover {
     pub ignore_units: Vec<i32>,
     /// The point of the MoveTo the unit walks with (`+0x38`..`+0x40`), when it walks to a target
     /// object: where the target stood when the MoveTo last asked for a path, which its check of
-    /// the target reads ([`crate::move_to::target_moved`]). A stop (the MoveTo's teardown)
-    /// forgets it.
+    /// the target reads ([`crate::move_to::target_moved`]). A stop leaves it (the motion step's
+    /// pause stops a unit whose MoveTo goes on); a new MoveTo sets it.
     pub move_to_point: Option<[f32; 3]>,
     /// A stop (slot 0x5d0) cleared the object's animation speed (`+0x7b8`), which the unit
     /// holds: [`crate::turn::Unit`] takes it.
@@ -316,6 +316,9 @@ const FAST_TURN: f32 = crate::image::movement::FAST_TURN;
 /// The pause a kept hit's ranking gives a unit the walker outranks: 0.1 for an ally
 /// (`DAT_142eb5690`), 0.5 for another (`DAT_142e7f384`).
 const ALLY_PAUSE: f32 = crate::image::movement::ALLY_PAUSE;
+/// The pause a level at its last waypoint without a path gives its own unit while it may still
+/// try (`DAT_142eb5690`).
+const STUCK_PAUSE: f32 = crate::image::movement::STUCK_PAUSE;
 const OTHER_PAUSE: f32 = crate::image::movement::OTHER_PAUSE;
 /// What [`Mover::avoid`] makes of the walk's hits: the hits it keeps and the pauses it gives.
 struct Avoided {
@@ -427,6 +430,10 @@ enum Step {
     Again,
     /// On to the walk (`LAB_141153bd1`).
     Walk,
+    /// The unit paused itself and stopped: the step returns 0.
+    Paused,
+    /// The level gave up and the unit stopped: the step returns 1.
+    GaveUp,
 }
 
 /// The squared distance between two footprints on the ground (`FUN_14118f8c0`): per axis the
@@ -629,6 +636,8 @@ impl Mover {
                     match self.request(me, world, plan, goal, &mut plans)? {
                         Step::Again => continue,
                         Step::Walk => {}
+                        Step::Paused => return Ok(Motion::Moving),
+                        Step::GaveUp => return Ok(Motion::Done),
                     }
                 }
                 _ => {}
@@ -918,6 +927,53 @@ impl Mover {
         Ok(!world.segment_blocked(from, to, grow, self.stats.restriction_mask, &ignore))
     }
 
+    /// `FUN_141142750` with its last argument 0, the close-in path to a waypoint or target nearer
+    /// than a tile: the point must lie within the map less the unit's radii (as
+    /// [`Mover::straight`]); then the walk's query from the unit to the point (`FUN_14114cc60`
+    /// with the tiles' records, flags `0x90`, its radius) must find nothing but the unit and its
+    /// target: no tile its terrain mask lacks ([`Spatial::tiles_block`]) and no record the walk
+    /// hits ([`Spatial::walk_hits`]). The game writes the straight path into the new level.
+    fn close_in(
+        &self,
+        me: &Me,
+        p: Vec3,
+        target: i32,
+        world: &Spatial,
+    ) -> Result<bool, Unsupported> {
+        let [rx, ry, rz] = self.stats.radius;
+        let [w, h] = world.map;
+        let (x, y) = (p[0], p[2]);
+        if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
+            return Ok(false);
+        }
+        let mut ignore = vec![me.id];
+        if target != -1 {
+            ignore.push(target);
+        }
+        let (from, to) = self.query_ends(vector(me.position), p, world.map);
+        let rect = [
+            from[0].min(to[0]),
+            from[1].min(to[1]),
+            from[0].max(to[0]),
+            from[1].max(to[1]),
+        ];
+        world.check_known_records([rect[0] - rx, rect[1] - rx, rect[2] + rx, rect[3] + rx])?;
+        if world.tiles_block(from, to, rx, self.stats.restriction_mask) {
+            return Ok(false);
+        }
+        let player = world.get(me.id).map(|q| q.player);
+        let hits = world.walk_hits(
+            from,
+            to,
+            rect,
+            rx,
+            self.stats.min_collision,
+            player,
+            &ignore,
+        )?;
+        Ok(hits.is_empty())
+    }
+
     /// An arrived level (states 4 and 5, `LAB_141151b6d`): the top level, or one in range of its
     /// target, is reset (`FUN_140f98e80`) and the unit stops (slot 0x5d0): the step returns 2. Any
     /// other hands over to its parent by its link (`mLinkedPathType`): 1 marks the parent's
@@ -993,7 +1049,6 @@ impl Mover {
         }
         self.waiting = 0;
         self.ignore_units.clear();
-        self.move_to_point = None;
         self.speed_stopped = true;
         Ok(())
     }
@@ -1033,8 +1088,9 @@ impl Mover {
     /// the short pather's (`FUN_140f9e540`) for a near waypoint, else or when that fails the tile
     /// pathfinder's (`FUN_140f7c530`; a top level's plan becomes a level of its own, whose
     /// stretches the next pass serves). The new level goes under the walked one, which waits
-    /// (state 0). The long pather (`FUN_140f9eb70`), the close-in path (`FUN_141142750`), the
-    /// escape from a game type 12 tile, a trade cart's budget and the exits that stop the unit
+    /// (state 0). A waypoint or target nearer than a tile takes the close-in path when the short
+    /// pather found none ([`Mover::close_in`]). The long pather (`FUN_140f9eb70`), the escape from
+    /// a game type 12 tile, a trade cart's budget and the exits that stop the unit
     /// (slot 0x5d0) are not modelled.
     fn request(
         &mut self,
@@ -1104,7 +1160,12 @@ impl Mover {
                         level.continue_counter = CONTINUE;
                         return Ok(Step::Again);
                     }
-                    return Err(Unsupported("a level out of tries stops the unit"));
+                    // FUN_140f9b4b0: the level resets (FUN_140f98e80) and takes state 6; the unit
+                    // stops (slot 0x5d0)
+                    self.reset_level();
+                    self.paths[0].state = 6;
+                    self.stop()?;
+                    return Ok(Step::GaveUp);
                 }
                 level.state = 5;
                 return Ok(Step::Again);
@@ -1274,10 +1335,19 @@ impl Mover {
                 }
                 if found {
                     too_short(&path)
+                } else if (way < CLOSE || gap < CLOSE)
+                    && self.close_in(me, waypoint, target_id, world)?
+                {
+                    // the close-in path: the straight way to the waypoint
+                    path.points.clear();
+                    path.push(position);
+                    path.push(waypoint);
+                    path.measure();
+                    new.created = plan.now;
+                    found = true;
+                    false
                 } else {
-                    if way < CLOSE || gap < CLOSE {
-                        return Err(Unsupported("the close-in path (FUN_141142750)"));
-                    }
+                    // no path, or a blocked close-in one (LAB_141152ec1)
                     true
                 }
             } else {
@@ -1373,7 +1443,9 @@ impl Mover {
 
     /// The new level's path is no path (`0x141150f00` after the plans, fewer than two points or
     /// no length): the level marks its waypoint reached and the step starts again, or it waits at
-    /// the end of its path (state 5); the exits that stop or pause the unit are not modelled.
+    /// the end of its path (state 5); at its last waypoint while it may still try (its continue
+    /// counter, `FUN_140f95bf0` with 0) the unit pauses for `STUCK_PAUSE` and stops; the exits
+    /// that stop the unit otherwise are not modelled.
     fn no_path(
         &mut self,
         found: bool,
@@ -1392,9 +1464,11 @@ impl Mover {
         if !found || level.range < to_end {
             if level.points.len() as i32 - 1 <= level.waypoint {
                 if 0 < level.continue_counter {
-                    return Err(Unsupported(
-                        "a level at its last waypoint without a path pauses the unit",
-                    ));
+                    // the unit pauses itself (slot 0x5f0, the walked level's `+0x34`) and stops
+                    // (slot 0x5d0); the step returns 0
+                    level.pause_time = STUCK_PAUSE;
+                    self.stop()?;
+                    return Ok(Step::Paused);
                 }
                 if level.path_flags & 1 != 0 || self.attack_moving {
                     return Err(Unsupported(

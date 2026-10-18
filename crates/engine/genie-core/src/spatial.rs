@@ -506,10 +506,9 @@ impl Spatial {
 
     /// Whether the straight walk from `a` to `b` (x, y) of a unit `grow` wide meets an obstruction,
     /// as the path smoothing asks (`FUN_141052b90`, then `FUN_141052350` with flags `0x100`): the
-    /// tiles of the walk's box whose terrain class the unit's `mask` lacks (the temporary tile
-    /// records of `FUN_1410510c0`) and the static records (kinds 2, 11 and 13) of objects not in
-    /// `ignore`, each box grown by `grow`, against the walk's segment (`FUN_141052e10`). A walk
-    /// whose grown box leaves the map counts as blocked.
+    /// tiles its terrain mask lacks ([`Spatial::tiles_block`]) and the static records (kinds 2, 11
+    /// and 13) of objects not in `ignore`, each box grown by `grow`, against the walk's segment
+    /// (`FUN_141052e10`).
     pub fn segment_blocked(
         &self,
         a: [f32; 2],
@@ -518,6 +517,36 @@ impl Spatial {
         mask: u8,
         ignore: &[i32],
     ) -> bool {
+        if self.tiles_block(a, b, grow, mask) {
+            return true;
+        }
+        let walk = [a[0], a[1], b[0], b[1]];
+        let [lo_x, lo_y, hi_x, hi_y] = [
+            a[0].min(b[0]),
+            a[1].min(b[1]),
+            a[0].max(b[0]),
+            a[1].max(b[1]),
+        ];
+        self.objects.iter().any(|(id, p)| {
+            // kind 10 is filed as 2
+            let kind = p.obstruction.map(|o| if o.kind == 10 { 2 } else { o.kind });
+            let bx = p.bounds();
+            let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
+            matches!(kind, Some(2 | 11 | 13))
+                && !ignore.contains(id)
+                && lo_x <= grown[2]
+                && grown[0] <= hi_x
+                && lo_y <= grown[3]
+                && grown[1] <= hi_y
+                && box_meets_segment(bx, grow, walk)
+        })
+    }
+
+    /// The tiles of a straight walk from `a` to `b` of a unit `grow` wide (`FUN_141052b90`, the
+    /// temporary tile records of `FUN_1410510c0`): whether a tile of the walk's box whose terrain
+    /// class the unit's `mask` lacks, grown by `grow`, meets the walk's segment. A walk whose grown
+    /// box leaves the map counts as blocked.
+    pub fn tiles_block(&self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) -> bool {
         let (lo_x, hi_x) = (
             if b[0] <= a[0] { b[0] } else { a[0] },
             if a[0] <= b[0] { b[0] } else { a[0] },
@@ -527,7 +556,6 @@ impl Spatial {
             if a[1] <= b[1] { b[1] } else { a[1] },
         );
         let [w, h] = self.map;
-        // FUN_141052b90: the tiles whose terrain the unit cannot cross become boxes
         let tx0 = ((lo_x - grow) as i32).max(0);
         let ty0 = ((lo_y - grow) as i32).max(0);
         let tx1 = if ((hi_x + grow) as i32) < w {
@@ -567,11 +595,7 @@ impl Spatial {
                 }
             }
         }
-        self.objects.iter().any(|(id, p)| {
-            // kind 10 is filed as 2
-            let kind = p.obstruction.map(|o| if o.kind == 10 { 2 } else { o.kind });
-            matches!(kind, Some(2 | 11 | 13)) && !ignore.contains(id) && meets(p.bounds())
-        })
+        false
     }
 
     /// Each obstruction record: the object's id, the record's kind and box.

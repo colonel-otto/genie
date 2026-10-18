@@ -113,6 +113,11 @@ impl Fly {
                         self.move_to = Some(walk_on(walk)?);
                         false
                     }
+                    Some(MoveTo::Waiting | MoveTo::Failed) => {
+                        return Err(Unsupported(
+                            "a Fly's waiting or failed MoveTo (states 2, 13)",
+                        ));
+                    }
                 };
                 if !done {
                     return Ok(stopped);

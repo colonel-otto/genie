@@ -8,7 +8,9 @@
 
 use crate::attack::{Arms, Attack, Engagement, Strike, set_sprite};
 use crate::damage::Victim;
-use crate::move_to::{Goal, MoveTo, Walk, start_walk, target_moved, walk_on};
+use crate::move_to::{
+    Goal, MoveTo, MoveWait, Walk, start_walk, target_moved, walk_on, walk_or_give_up,
+};
 use crate::movement::{Mover, footprint_gap};
 use crate::sprite::Graphic;
 use crate::unit_ai::Unsupported;
@@ -45,6 +47,8 @@ const DECAY_TASK: i16 = 0x124;
 const BUILDING: u8 = 80;
 /// The range of the walk to the hunter's own player's livestock (`DAT_142eb4838`).
 const OWN_LIVESTOCK_RANGE: f32 = crate::image::hunt::OWN_LIVESTOCK_RANGE;
+/// The villagers' class, whose MoveTo waits once when the motion step gives up.
+const VILLAGER_CLASS: i16 = 4;
 /// Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
 pub const LIVESTOCK: i16 = 58;
 const CLASS_49: i16 = 49;
@@ -75,6 +79,8 @@ pub struct HuntAction {
     pub carry_to: i32,
     /// `+0x44`: the state's timer (state 8 waits with it below 0 before it tries again).
     pub timer: f32,
+    /// Its MoveTo's wait after the motion step gave up.
+    pub move_wait: MoveWait,
 }
 
 /// What the drop-off reads of its drop site on arrival: that the site takes what the unit carries
@@ -142,6 +148,8 @@ pub struct Gatherer<'a> {
     /// The player's attribute 292 is 1: a task whose `attribute_type4` is 0x124 stops the
     /// target's decay (`FUN_140ac44b0`).
     pub stops_decay: bool,
+    /// The unit AI's target class (`+0x4c`, `FUN_140c4cc50`), None for a unit without one.
+    pub ai_class: Option<i32>,
     pub sprites: HuntSprites,
 }
 
@@ -202,6 +210,7 @@ impl HuntAction {
             drop_site: -1,
             carry_to: -1,
             timer: 0.0,
+            move_wait: MoveWait::default(),
         };
         if 0.0 < target.amount {
             let kind = task.resource;
@@ -251,6 +260,7 @@ impl HuntAction {
         self.point = target.position;
         let own_livestock = target.class == LIVESTOCK && target.player == player;
         if 2 < target.state || own_livestock {
+            self.move_wait = MoveWait::default();
             self.walk_range = if 2 < target.state {
                 self.task.range
             } else {
@@ -335,6 +345,7 @@ impl HuntAction {
             return Err(Unsupported("a drop-off without its drop site (its search)"));
         }
         self.walk_range = self.task.range;
+        self.move_wait = MoveWait::default();
         self.move_to = Some(if ARRIVED < gap {
             if mover.stats.speed == 0.0 {
                 return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
@@ -390,6 +401,11 @@ impl HuntAction {
                     .as_deref_mut()
                     .ok_or(Unsupported("a hunter without movement state"))?
                     .stop()?;
+            }
+            Some(MoveTo::Waiting | MoveTo::Failed) => {
+                return Err(Unsupported(
+                    "a drop-off's waiting or failed MoveTo (states 2, 13)",
+                ));
             }
             None => return Err(Unsupported("a Hunt in state 8 without its MoveTo")),
         }
@@ -465,8 +481,21 @@ impl HuntAction {
                     _ => Err(Unsupported("a Hunt whose Attack ended")),
                 }
             }
+            // case 3: a hunt that gave up on its MoveTo waits (its timer below 0), then set_state 11
+            WALK if self.timer < 0.0 => {
+                self.timer += walk.dt;
+                if self.timer < 0.0 {
+                    return Ok(());
+                }
+                self.timer = 0.0;
+                Err(Unsupported("a hunt's set_state 11 after its wait"))
+            }
             WALK => match self.move_to {
                 Some(MoveTo::Start) => {
+                    // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
+                    if self.move_wait.state == 1 {
+                        self.move_wait.state = 2;
+                    }
                     self.move_to = Some(MoveTo::Moving);
                     let range = self.walk_range;
                     walk.me.action_state = self.state;
@@ -479,7 +508,41 @@ impl HuntAction {
                         return Ok(());
                     }
                     walk.me.action_state = self.state;
-                    self.move_to = Some(walk_on(walk)?);
+                    match walk_or_give_up(walk)? {
+                        Some(m) => self.move_to = Some(m),
+                        None => self.give_up(strike)?,
+                    }
+                    Ok(())
+                }
+                // the failed MoveTo's update returns 3 (quiet: no notify): `FUN_140ac4670` with 8
+                // and -1 looks for another target only for a class the unit AI's slot 0x1b0 gives
+                // 0 (`FUN_140c1c4f0`: 15, trees; the class its unit AI targets, else the hunt's),
+                // which is not modelled; otherwise the hunt waits 3 seconds and the unit's
+                // animation stops (`FUN_141161850`)
+                Some(MoveTo::Failed) => {
+                    if let Some(class) = gather.ai_class {
+                        let class = if class == -1 {
+                            i32::from(self.target_class)
+                        } else {
+                            class
+                        };
+                        if class == 15 {
+                            return Err(Unsupported(
+                                "a hunt's search for another tree (FUN_140ac4670)",
+                            ));
+                        }
+                    }
+                    self.timer = -3.0;
+                    *strike.anim_speed = Some(0.0);
+                    Ok(())
+                }
+                // case 2: the timer runs by dt; at its end the MoveTo asks again (set_state 3)
+                Some(MoveTo::Waiting) => {
+                    self.move_wait.timer += walk.dt;
+                    if self.move_wait.delay <= self.move_wait.timer {
+                        self.move_wait.timer = 0.0;
+                        self.move_to = Some(MoveTo::Start);
+                    }
                     Ok(())
                 }
                 // its update in state 1 returns 1: the list deletes it, and its destructor
@@ -539,6 +602,21 @@ impl HuntAction {
         Ok(())
     }
 
+    /// The MoveTo's answer to the motion step giving up (it returns 1, `0x140aa2a70` in state 4): a
+    /// human player's villager that has not waited yet waits (set_state 2, `+0x6c` 1) a second
+    /// with a stance below 2 (or without a unit AI), else two, then asks again; any other MoveTo
+    /// fails (set_state 13, quiet).
+    fn give_up(&mut self, strike: &Strike<'_>) -> Result<(), Unsupported> {
+        if self.move_wait.state != 0 || strike.own.class != VILLAGER_CLASS {
+            self.move_to = Some(MoveTo::Failed);
+            return Ok(());
+        }
+        self.move_wait.delay = if strike.stance < 2 { 1.0 } else { 2.0 };
+        self.move_wait.state = 1;
+        self.move_to = Some(MoveTo::Waiting);
+        Ok(())
+    }
+
     /// set_state(4) (`0x140ac60e0` case 4) after the target died: the sub-actions go, the target's
     /// place becomes the point, and a quiet MoveTo to the target within the task's range starts
     /// (`FUN_140aa0df0`, its start `0x140aa2100`: a unit within 0.01 of the target's footprint is
@@ -557,6 +635,7 @@ impl HuntAction {
             .ok_or(Unsupported("a hunt's target without a place"))?;
         self.point = t.position;
         self.walk_range = self.task.range;
+        self.move_wait = MoveWait::default();
         let mover = walk
             .mover
             .as_deref()
@@ -891,6 +970,7 @@ mod tests {
             drop_site: -1,
             carry_to: -1,
             timer: 0.0,
+            move_wait: MoveWait::default(),
         };
         let (mut kind, mut held) = (1, 0.0f32);
         let mut gather = |held: &mut f32, kind: &mut i16, tree: &mut Victim| {
@@ -903,6 +983,7 @@ mod tests {
                 target_class: 15,
                 target_storage: 100.0,
                 stops_decay: false,
+                ai_class: None,
                 sprites: HuntSprites::default(),
             };
             hunt.gather(0.02, tree, &mut g)
@@ -993,6 +1074,7 @@ mod tests {
             drop_site: -1,
             carry_to: 9156,
             timer: 0.0,
+            move_wait: MoveWait::default(),
         };
         let mut mover = walker();
         let mut world = crate::spatial::Spatial::default();

@@ -962,6 +962,7 @@ impl Unit {
                 target_class: victim.class,
                 target_storage: victim.storage,
                 stops_decay: c.attributes.get(292) == Some(&1.0),
+                ai_class: self.ai.as_ref().map(|ai| ai.target_type),
                 sprites,
             };
             // what set_state(6) on live livestock reads (0x140ac60e0 case 6)

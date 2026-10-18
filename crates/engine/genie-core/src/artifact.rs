@@ -113,6 +113,11 @@ impl Artifact {
                 self.goal = None;
                 return Ok(true);
             }
+            Some(MoveTo::Waiting | MoveTo::Failed) => {
+                return Err(Unsupported(
+                    "an Artifact's waiting or failed MoveTo (states 2, 13)",
+                ));
+            }
             None => {}
         }
         Ok(false)

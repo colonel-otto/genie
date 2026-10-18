@@ -117,6 +117,8 @@ pub mod movement {
     pub const SPLIT: f32 = f32::from_bits(0x41c80000);
     /// 0.5
     pub const STRAIGHT_GROW: f32 = f32::from_bits(0x3f000000);
+    /// 0.10000000149011612
+    pub const STUCK_PAUSE: f32 = f32::from_bits(0x3dcccccd);
     /// 10.0
     pub const TARGET_SHORT_REACH: f32 = f32::from_bits(0x41200000);
     /// 6.2831854820251465

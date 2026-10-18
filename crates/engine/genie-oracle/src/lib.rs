@@ -550,8 +550,10 @@ fn saved_actions(
     use genie_core::move_to::{MOVE_TO, MoveToAction};
     let move_to_state = |state: u8| match state {
         1 => Ok(MoveTo::Arrived),
+        2 => Ok(MoveTo::Waiting),
         3 => Ok(MoveTo::Start),
         4 => Ok(MoveTo::Moving),
+        13 => Ok(MoveTo::Failed),
         _ => Err(Unsupported(
             "a saved MoveTo in a state the slice does not model",
         )),
@@ -675,6 +677,7 @@ fn saved_actions(
                 drop_site: part.sheep_drop_site_id as i32,
                 carry_to: base.target2_id,
                 timer: base.timer,
+                move_wait: genie_core::move_to::MoveWait::default(),
             };
             match base.sub_actions.entries().next() {
                 None => {}
@@ -686,6 +689,18 @@ fn saved_actions(
                     hunt.walk_range = sub
                         .move_to_range()
                         .ok_or(Unsupported("a saved MoveTo without its range"))?;
+                    // its wait (`+0x6c`, `+0x70`, `+0x74`)
+                    if let Some(m) = sub
+                        .rge_action_by_type
+                        .as_ref()
+                        .and_then(|b| b.rge_action_move_to.as_ref())
+                    {
+                        hunt.move_wait = genie_core::move_to::MoveWait {
+                            state: m.movement_wait_state,
+                            timer: m.timer,
+                            delay: f32::from_bits(m.k_default_wait_time),
+                        };
+                    }
                 }
                 Some(_) => return Err(Unsupported("a saved Hunt with another sub-action")),
             }

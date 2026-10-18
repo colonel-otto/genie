@@ -561,6 +561,11 @@ impl Attack {
                 return Err(Unsupported("an Attack whose MoveTo arrived"));
             }
             None => return Err(Unsupported("an Attack in state 4 without its MoveTo")),
+            Some(MoveTo::Waiting | MoveTo::Failed) => {
+                return Err(Unsupported(
+                    "an Attack's waiting or failed MoveTo (states 2, 13)",
+                ));
+            }
         };
         let ground = walk
             .mover
