@@ -1771,8 +1771,9 @@ impl Turns {
                     self.players[p].resources = *r;
                 }
                 self.players[p].stopped = false;
-                self.players[p].unsupported = None;
             }
+            // each update's first unmodelled part is its own: a freeze's would hide a later stop
+            self.players[p].unsupported = None;
             let mut i = 0;
             while i < self.players[p].objects.len() {
                 let unit = &self.players[p].objects[i];

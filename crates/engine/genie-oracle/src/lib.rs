@@ -1125,6 +1125,95 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
     })
 }
 
+/// Why the slice stops on a command it does not decode, by the command's name.
+fn unmodelled_command(p: &genie_rec::de::command::Command) -> &'static str {
+    use genie_rec::de::command::Command as Packet;
+    macro_rules! named {
+        ($($v:ident),* $(,)?) => {
+            match p {
+                $(Packet::$v(_) => concat!("a command the slice does not model: ", stringify!($v)),)*
+                _ => "a command the slice does not model",
+            }
+        };
+    }
+    named!(
+        Stop,
+        Create,
+        AddAttribute,
+        RgeGiveAttribute,
+        AiOrder,
+        Resign,
+        AddWaypoint,
+        Pause,
+        GroupWaypoint,
+        GroupAiOrder,
+        UnitAiState,
+        Guard,
+        Follow,
+        Patrol,
+        Scout,
+        FormFormation,
+        BreakFormation,
+        WheelFormation,
+        AboutFaceFormation,
+        Save,
+        FormationParameters,
+        AutoFormations,
+        LockFormation,
+        GroupMultiWaypoints,
+        Chapter,
+        AttackMove,
+        AttackMoveTarget,
+        UnitTypeAiState,
+        AutoScout,
+        StopAll,
+        TransformObject,
+        Trigger,
+        TransformObjects,
+        SeekShelter,
+        BuildingCommandQueue,
+        FireActiveAbility,
+        RgeGiveAttributes,
+        Make,
+        Research,
+        Game,
+        Explore,
+        BuildWall,
+        CancelBuild,
+        AttackGround,
+        TribeGiveAttribute,
+        TradeAttribute,
+        Repair,
+        Unload,
+        Gate,
+        Flare,
+        Special,
+        UnitOrder,
+        Diplomacy,
+        Queue,
+        SetRetreatPoint,
+        SellCommodity,
+        BuyCommodity,
+        OffboardTrade,
+        UnitTransform,
+        DropRelic,
+        TownBell,
+        GoBackToWork,
+        SetGatherState,
+        DeleteObjects,
+        ResetBuildings,
+        MultiGate,
+        GoBackToWork2,
+        ChangePlayerName,
+        SendAiSignal,
+        AiEffectAmount,
+        AiEffectPercent,
+        AllBackToWork,
+        TribeGiveAttributes,
+        Unknown,
+    )
+}
+
 /// The slice set up from the header save: every player's live objects in their saved order, and
 /// BaseWorld's fields before the map, the frame seed (`mCurrentFrameRandomSeed`, world+0x7d0) and
 /// the turn order (`player_turn`, `player_time_delta[i]`).
@@ -1934,7 +2023,15 @@ impl Decoder {
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true, None),
-            _ => return None,
+            other => {
+                // a command the decoder does not turn into the slice's stops its player (byte 1
+                // is the issuing comm player)
+                let player = *packet.get(1)? as usize;
+                return Some(Command::Unmodelled {
+                    player,
+                    why: Unsupported(unmodelled_command(&other)),
+                });
+            }
         };
         let units = if num == LAST_COMMANDED {
             self.last_commanded
