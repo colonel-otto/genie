@@ -1700,11 +1700,11 @@ impl Turns {
             let mut i = 0;
             while i < self.players[p].objects.len() {
                 let unit = &self.players[p].objects[i];
-                let (id, frozen) = (
-                    unit.id,
-                    stopped || unit.stopped || game.resync.contains(&unit.id),
-                );
-                if !frozen || !unit.life.is_alive() {
+                let resync = game.resync.contains(&unit.id);
+                let (id, frozen) = (unit.id, stopped || unit.stopped || resync);
+                // a dead object never freezes, but one that differs takes the game's state too
+                // (a felled tree's wood that a frozen gatherer did not take)
+                if !frozen || (!unit.life.is_alive() && !resync) {
                     i += 1;
                     continue;
                 }
