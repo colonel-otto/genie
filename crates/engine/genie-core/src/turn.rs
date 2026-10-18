@@ -3953,12 +3953,7 @@ impl Turns {
                 .iter()
                 .find(|o| o.id == id)
                 .ok_or(Unsupported("a builder the slice does not have"))?;
-            if unit.artifact.is_some()
-                || unit.production.is_some()
-                || unit.build.is_some()
-                || unit.move_to.is_some()
-                || unit.fly.is_some()
-            {
+            if unit.artifact.is_some() || unit.production.is_some() || unit.fly.is_some() {
                 return Err(Unsupported("a builder with an action (its replacement)"));
             }
             let actor = Actor {
@@ -3991,25 +3986,23 @@ impl Turns {
                 work_value: task.work_val1,
                 work_rate: builder.work_rate + unit.work_rate_powerup,
             };
-            let sight = (builder.radius, builder.class, builder.line_of_sight);
-            chosen.push((id, with, BuildAction::start(foundation, gap, task), sight));
+            chosen.push((id, with, BuildAction::start(foundation, gap, task)));
         }
-        for _ in &chosen {
-            // the Build action takes its foundation (FUN_140a7a230, slot 0x178)
-            self.take(foundation);
-        }
-        let owner = &mut self.players[player];
-        for (id, with, build, (radius, class, los)) in chosen {
-            let unit = owner
+        for (id, with, build) in chosen {
+            let idx = self.players[player]
                 .objects
-                .iter_mut()
-                .find(|o| o.id == id)
+                .iter()
+                .position(|o| o.id == id)
                 .expect("found above");
-            unit.life.master_id = with;
-            self.spatial.sight_master(id, radius, class, with, los)?;
-            unit.build = Some(build);
+            // the work command (FUN_14106ff70): the master changes (slot 0x90, its action list
+            // cleared); the Build action takes its foundation (FUN_140a7a230, slot 0x178)
+            if self.players[player].objects[idx].life.master_id != with {
+                self.change_master(player, idx, with)?;
+            }
+            self.take(foundation);
             // the work command's notify (slot 0x828): the build order and the foundation, with
             // the point slot 0x128 passes (BUILD's x and y, on the ground)
+            let unit = &mut self.players[player].objects[idx];
             if let Some(ai) = unit.ai.as_mut() {
                 ai.notify_work(
                     BUILD_ORDER,
@@ -4020,6 +4013,10 @@ impl Turns {
                     self.streams.get(Stream::Ai),
                 )?;
             }
+            // the install (slot 0x808): the action list clears (its actions' teardowns), then
+            // holds the Build
+            self.clear_actions(player, idx)?;
+            self.players[player].objects[idx].build = Some(build);
         }
         Ok(())
     }

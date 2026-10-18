@@ -1065,6 +1065,56 @@ impl Turns {
         Ok(())
     }
 
+    /// `FUN_140ace9c0` with a gather point without a target: the new unit waits to move (slot
+    /// 0x2a0 with 1) and takes slot 0x128 with no target at the point (z 0; its `+0xa14` 1: the
+    /// unit AI's order queue empties, `FUN_140c5e010`); slot 0x7e8 (`FUN_141227190`) runs the work
+    /// command (`FUN_14106ff70`), which finds no task: a unit with speed in state 2 notifies its
+    /// unit AI with the MoveTo's order and action, no target and the point, its notifies cleared
+    /// ([`UnitAi::notify_work`], slot 0x828), and moves (slot 0x138, `FUN_141216f10`: the order
+    /// queue empties again; `FUN_14106d340`: the notifies cleared with the world time, then, the
+    /// unit holding no action, the MoveTo to the point, range 0, installed). A villager's
+    /// town-bell flag (`+0x9dc`, `FUN_1412067f0`) is not held.
+    fn gather_move(&mut self, p: usize, new: usize, point: [f32; 3]) -> Result<(), Unsupported> {
+        let world_time = self.world_time;
+        let unit = &mut self.players[p].objects[new];
+        if let Some(m) = unit.mover.as_mut() {
+            m.waiting = 1;
+        }
+        if unit.top_action_kind().is_some() {
+            return Err(Unsupported(
+                "a gather point's move of a unit with an action",
+            ));
+        }
+        // a unit without speed takes nothing; one not in state 2 would notify without moving
+        if unit.mover.as_ref().map_or(0.0, |m| m.stats.speed) <= 0.0 {
+            return Ok(());
+        }
+        if unit.life.state != 2 {
+            return Err(Unsupported("a gather point's move of a unit not in state 2"));
+        }
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.orders.clear();
+            ai.notify_work(
+                crate::unit_ai::MOVE_ORDER,
+                crate::unit_ai::MOVE_ACTION,
+                None,
+                point,
+                true,
+                self.streams.get(Stream::Ai),
+            )?;
+            ai.orders.clear();
+            ai.clear_notifies(world_time)?;
+        }
+        unit.move_to = Some(crate::move_to::MoveToAction {
+            run: false,
+            state: crate::move_to::MoveTo::Start,
+            goal: Some(point),
+            target: -1,
+            range: 0.0,
+        });
+        Ok(())
+    }
+
     /// `FUN_140ace9c0` with a gather point (`+0xc30` 1) and a building whose unit AI holds no
     /// command queue location (its slot 0x218): the new unit waits to move (slot 0x2a0 with 1,
     /// `+0x7f9`) and takes the work command on the target at the point (slot 0x128: z 0, its
@@ -1079,9 +1129,7 @@ impl Turns {
         building: i32,
     ) -> Result<(), Unsupported> {
         if g.target == -1 {
-            return Err(Unsupported(
-                "a gather point without a target (a move to the point)",
-            ));
+            return self.gather_move(p, new, [g.point[0], g.point[1], 0.0]);
         }
         if g.target == building {
             return Err(Unsupported(

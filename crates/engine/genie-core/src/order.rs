@@ -1524,7 +1524,12 @@ impl Turns {
     /// (`FUN_141055b40`, `FUN_14118c540`) and it moves with the new master's values; its powerups
     /// go (`FUN_1412066b0`); it takes the new master's standing sprite (slot 0x68). Its
     /// per-master counts, facet, class registry (`DAT_143f69170`) and particles are not held.
-    fn change_master(&mut self, player: usize, idx: usize, new: i16) -> Result<(), Unsupported> {
+    pub(crate) fn change_master(
+        &mut self,
+        player: usize,
+        idx: usize,
+        new: i16,
+    ) -> Result<(), Unsupported> {
         self.clear_actions(player, idx)?;
         let unit = &self.players[player].objects[idx];
         let old = self.master_of(player, unit.life.master_id)?.clone();
