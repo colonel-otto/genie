@@ -4455,7 +4455,7 @@ impl Turns {
         let building = &owner.objects[i];
         let master = building.life.master_id;
         let state = &owner.techs[t];
-        let one = !state.allow_multiple || def.upgrades;
+        let one = !state.allow_multiple || def.upgrades();
         let count: i16 = if !shift || one { 1 } else { 5 };
         let queued = building.production.as_ref().map_or(0, |p| p.queue.len()) as i16;
         if 14 < queued {
@@ -4500,6 +4500,8 @@ impl Turns {
         if paid <= 0 {
             return Ok(false);
         }
+        let get = |k: i16| crate::tech::Attributes::get(&*owner, k);
+        let costs = owner.techs[t].entry_costs(def, crate::tech::factors(tech, &get)?);
         let building = &mut owner.objects[i];
         let production = building
             .production
@@ -4510,6 +4512,7 @@ impl Turns {
                 master: -1,
                 tech,
                 train_time: time,
+                costs,
             });
         }
         owner.techs[t].pending += paid;
@@ -4577,6 +4580,7 @@ impl Turns {
                 master,
                 tech: -1,
                 train_time: q.train_time,
+                costs: [(-1, 0.0); 3],
             });
         }
         Ok(())

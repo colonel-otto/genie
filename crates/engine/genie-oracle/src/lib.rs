@@ -1099,10 +1099,19 @@ fn production(
         .iter()
         .take(building.production_queue_count.max(0) as usize)
         .flat_map(|e| {
+            let c = &e.production_queue_costs;
+            let word = |k: usize| [c[k], c[k + 1], c[k + 2], c[k + 3]];
+            let cost = |j: usize| {
+                (
+                    i32::from_le_bytes(word(8 * j)),
+                    f32::from_le_bytes(word(8 * j + 4)),
+                )
+            };
             let unit = genie_core::production::Queued {
                 master: e.production_queue_master_unit_id,
                 tech: e.production_queue_tech_id,
                 train_time: f32::from(e.production_queue_train_time),
+                costs: [cost(0), cost(1), cost(2)],
             };
             std::iter::repeat_n(unit, e.production_queue_unit_count.max(0) as usize)
         })
@@ -1118,6 +1127,19 @@ fn production(
                 .ok_or(Unsupported("a saved make action without its part"))?
                 .work_done,
         ),
+        // a research's make action: its progress (its state, 6, and start time are not held)
+        Some((103, action)) => {
+            let tech = action
+                .tribe_action_make_tech
+                .as_ref()
+                .ok_or(Unsupported("a saved research action without its part"))?;
+            if action.base().is_some_and(|b| b.state != 6) {
+                return Err(Unsupported(
+                    "a saved research action in a state other than 6",
+                ));
+            }
+            Some(tech.m_research_progress)
+        }
         Some(_) => {
             return Err(Unsupported(
                 "a saved production action other than making a unit",
@@ -1391,6 +1413,7 @@ fn tech_state(t: &genie_save::generated::world::TechPlayerTree) -> genie_core::t
                 building: l.location_research_location_id as i16,
                 time: l.location_research_time,
                 button: l.location_button_location_id,
+                adjustment: f32::from_bits(l.location_research_adjustment),
             })
             .collect(),
     }

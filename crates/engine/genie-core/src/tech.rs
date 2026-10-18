@@ -42,18 +42,45 @@ pub struct TechDef {
     pub costs: [Cost; 3],
     /// `+0x3c`, the technology's type ([`SHARED_KIND`]).
     pub kind: i16,
-    /// Its effect (`+0x3a`) upgrades a unit (it holds a command of type 3), which keeps
-    /// RESEARCH's queue to one at a time (`FUN_1411d70f0`).
-    pub upgrades: bool,
+    /// The commands of its effect (`+0x3a`, the world's effect table `+0x128`).
+    pub effect: Vec<EffectCommand>,
+}
+
+/// One command of an effect (12 bytes): its kind and arguments.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct EffectCommand {
+    pub kind: u8,
+    pub a: i16,
+    pub b: i16,
+    pub c: i16,
+    pub d: f32,
+}
+
+/// The effect command kinds whose first preparation (`FUN_140ec4540` from the research's start,
+/// `FUN_1413d1530`) marks a master with the unit it turns into (`+0x330`).
+const MARKS_UPGRADE: [u8; 5] = [3, 0x0d, 0x17, 0x21, 0x2b];
+
+impl TechDef {
+    /// Its effect upgrades a unit (a command of kind 3), which keeps RESEARCH's queue to one at
+    /// a time (`FUN_1411d70f0`).
+    pub fn upgrades(&self) -> bool {
+        self.effect.iter().any(|c| c.kind == 3)
+    }
+
+    /// Its effect marks a master with an upgrade when its research starts ([`MARKS_UPGRADE`]).
+    pub fn marks_upgrade(&self) -> bool {
+        self.effect.iter().any(|c| MARKS_UPGRADE.contains(&c.kind))
+    }
 }
 
 /// Where a technology is researched (an entry of `+0x68`, 16 bytes): the building's master,
-/// the seconds it takes there and its button.
+/// the seconds it takes there, its button and the seconds added (`+0xc`, `FUN_1413cec90`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Location {
     pub building: i16,
     pub time: u16,
     pub button: u8,
+    pub adjustment: f32,
 }
 
 /// A player's state of one technology (`Tech_Player_Tree`, 0x80 bytes, saved).
@@ -108,6 +135,93 @@ pub fn factors(
 }
 
 impl TechState {
+    /// `FUN_1413cbd20`: the location at the building's master `building`, else the first.
+    pub fn location(&self, building: i16) -> Option<&Location> {
+        self.locations
+            .iter()
+            .find(|l| l.building == building)
+            .or(self.locations.first())
+    }
+
+    /// `FUN_1411c3190` for a research in state 2 or 4 (else none): the costs its queue entry
+    /// records, attribute and amount: an override in use (or a `.dat` entry without an attribute,
+    /// under −2) gives its attribute and amount, else the `.dat`'s entry; the adjustment times
+    /// the scale adds to the amount (in 32 bits), which the modifier above 0 then scales (not
+    /// truncated). An entry without either is (−1, 0).
+    pub fn entry_costs(&self, def: &TechDef, (modifier, scale): (f32, i16)) -> [(i32, f32); 3] {
+        let mut out = [(-1, 0.0); 3];
+        if !matches!(self.state, 2 | 4) {
+            return out;
+        }
+        for (j, slot) in out.iter_mut().enumerate() {
+            let (amount, attribute, used) = self.overrides[j];
+            let c = def.costs[j];
+            let (attribute, base) = match used {
+                0 => continue,
+                -2 if 0 <= c.attribute => (c.attribute, c.amount),
+                _ => (attribute, amount),
+            };
+            if attribute < 0 {
+                continue;
+            }
+            let mut v = (i32::from(self.cost_adj[j]) * i32::from(scale) + i32::from(base)) as f32;
+            if 0.0 < modifier {
+                v *= modifier;
+            }
+            *slot = (i32::from(attribute), v);
+        }
+        out
+    }
+
+    /// The research's start test (`FUN_1413cbef0`) against what its queue entry `paid`: each
+    /// cost with a paid `.dat` entry needs the player's attribute and what the entry paid of that
+    /// attribute to cover its amount; false when one does not. A difference left to pay
+    /// (`FUN_1411c68b0`) and a cost the building holds are not modelled.
+    pub fn start_test(
+        &self,
+        def: &TechDef,
+        factors: (f32, i16),
+        paid: &[(i32, f32); 3],
+        attribute: &dyn Fn(i16) -> Result<f32, Unsupported>,
+    ) -> Result<bool, Unsupported> {
+        let (modifier, scale) = factors;
+        for j in 0..3 {
+            let (amount, attr, used) = self.overrides[j];
+            let c = def.costs[j];
+            let attr = if used == 1 { attr } else { c.attribute };
+            if attr < 0 || c.paid == 0 {
+                continue;
+            }
+            let mut v = if used == 1 {
+                f32::from(amount)
+            } else {
+                (i32::from(self.cost_adj[j]) * i32::from(scale)) as f32 + f32::from(c.amount)
+            };
+            if 0.0 < modifier {
+                v = (v * modifier) as i32 as i16 as f32;
+            }
+            let before: f32 = paid
+                .iter()
+                .filter(|&&(k, _)| k != -1 && k == i32::from(attr))
+                .map(|&(_, a)| a)
+                .fold(0.0, |s, a| s + a);
+            if c.paid == 2 {
+                return Err(Unsupported(
+                    "a research cost the building holds (FUN_141204310)",
+                ));
+            }
+            if attribute(attr)? + before < v {
+                return Ok(false);
+            }
+            if 0.0 < v - before {
+                return Err(Unsupported(
+                    "a research's start that pays a difference (FUN_1411c68b0)",
+                ));
+            }
+        }
+        Ok(true)
+    }
+
     /// `FUN_1413d4a00`: the three costs, attribute and amount, as the pending debit and the
     /// building's queue read them. An override in use (or a `.dat` entry not paid, under −2)
     /// gives its attribute and amount, else the `.dat`'s entry does; the adjustment times the
@@ -286,6 +400,7 @@ mod tests {
                 building: 109,
                 time: 25,
                 button: 6,
+                adjustment: 0.0,
             }],
             ..TechState::default()
         };
@@ -330,6 +445,15 @@ mod tests {
         assert_eq!((s.state, s.building_master), (4, 109));
         // queued, it may not be researched again
         assert_eq!(s.pay(&d, (0.0, 1), false, 109, &mut held), Ok(false));
+        // its queue entry records the 50 gold, which its start finds paid
+        let paid = s.entry_costs(&d, (0.0, 1));
+        assert_eq!(paid, [(3, 50.0), (-1, 0.0), (-1, 0.0)]);
+        let get = |i: i16| held.get(i);
+        assert_eq!(s.start_test(&d, (0.0, 1), &paid, &get), Ok(true));
+        // without the entry's payment the 50 gold left would do too, but that difference is
+        // the game's FUN_1411c68b0
+        assert!(s.start_test(&d, (0.0, 1), &[(-1, 0.0); 3], &get).is_err());
+        assert_eq!(s.location(109).map(|l| l.time), Some(25));
     }
 
     #[test]

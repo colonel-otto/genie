@@ -586,6 +586,9 @@ impl PlaceMap for WorldMap<'_> {
     }
 }
 
+/// The attribute that scales research times above 0 (`+0x2b0`: 86).
+const RESEARCH_TIME_MODIFIER: i16 = 86;
+
 impl Turns {
     /// The building update's production step (`FUN_1411e7dc0`, after its combat update) for the
     /// building at `i` of player `p`: with a queue and no make action, a unit's make action comes
@@ -617,7 +620,7 @@ impl Turns {
             return Ok(());
         };
         if front.tech != -1 {
-            return Err(Unsupported("a research's make action (type 103)"));
+            return self.research_step(p, i, dt_seconds);
         }
         let master = front.master;
         let pop = population(&self.master_of(p, master)?.storage);
@@ -655,6 +658,101 @@ impl Turns {
             production.spawned();
         }
         self.players[p].add_attribute(QUEUED, -pop)
+    }
+
+    /// The production step for a research at the front of the queue of the building at `i` of
+    /// player `p` (`FUN_1411e7dc0`). Without a make action the research's comes
+    /// (`TRIBE_Action_Make_Tech`, constructor `FUN_140ad0700`; its effect's first preparation,
+    /// `FUN_1413d1530`, loads graphics, and an effect that marks an upgrade is not modelled) and
+    /// starts (slot 0x28, `0x140ad1d80`): its start test
+    /// ([`crate::tech::TechState::start_test`] against
+    /// what the queue entry paid) puts the technology in state 2 at the building's master, the
+    /// action in state 6; a failed test (its refund, `FUN_1413d15e0`) is not modelled. Then its
+    /// update (slot 0x30, `0x140ad2a20`) in state 6: the building's work rate (its powerup and
+    /// its master's rate) times dt adds to the progress, 32767 once the technology was
+    /// researched 0x100 times, which the technology's work done takes; a repeatable technology
+    /// or one of the shared kind turns to state 2 first. The research is done once the progress
+    /// reaches the location's time, times the research time modifier (attribute 86, above 0 and
+    /// not an age), plus its adjustment, which is not modelled (`FUN_1413d1740`). Not held: the
+    /// start time (`+0x74`), the human player's sound; not modelled: a computer player's
+    /// handicaps and the game mode `FUN_140c884c0`'s instant research (0 for this recording, as
+    /// for the make action of a unit).
+    fn research_step(&mut self, p: usize, i: usize, dt_seconds: f32) -> Result<(), Unsupported> {
+        use crate::tech::Attributes;
+        if self.players[p].computer {
+            return Err(Unsupported("a computer player's research (its handicaps)"));
+        }
+        let owner = &self.players[p];
+        let building = &owner.objects[i];
+        let production = building
+            .production
+            .as_ref()
+            .expect("the caller's production");
+        let front = production.queue.front().expect("the caller's front");
+        let t = usize::try_from(front.tech)
+            .ok()
+            .filter(|&t| t < owner.techs.len())
+            .ok_or(Unsupported(
+                "a research of a technology the tree has not got",
+            ))?;
+        let def = self
+            .techs
+            .get(t)
+            .ok_or(Unsupported("a technology the data file has not got"))?;
+        let master = building.life.master_id;
+        let tech = front.tech;
+        let get = |k: i16| owner.get(k);
+        let factors = crate::tech::factors(tech, &get)?;
+        if !production.action {
+            if def.marks_upgrade() {
+                return Err(Unsupported(
+                    "a research whose effect marks an upgrade (FUN_140ec4540, +0x330)",
+                ));
+            }
+            if !owner.techs[t].start_test(def, factors, &front.costs, &get)? {
+                return Err(Unsupported(
+                    "a research whose start test fails (its refund)",
+                ));
+            }
+            let owner = &mut self.players[p];
+            owner.techs[t].state = 2;
+            owner.techs[t].building_master = master;
+            let production = owner.objects[i].production.as_mut().expect("above");
+            production.action = true;
+            production.progress = 0.0;
+        }
+        let owner = &self.players[p];
+        let state = &owner.techs[t];
+        let repeatable = state.repeatable(def, false);
+        let shared = def.kind == crate::tech::SHARED_KIND;
+        let time_modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
+        let location = state
+            .location(master)
+            .copied()
+            .ok_or(Unsupported("a research at a technology without locations"))?;
+        let times = state.times_researched;
+        let owner = &mut self.players[p];
+        let production = owner.objects[i].production.as_mut().expect("above");
+        let gain = production.rate * dt_seconds;
+        let state = &mut owner.techs[t];
+        if state.state != 2 && (repeatable || shared) {
+            state.state = 2;
+        }
+        production.progress += gain;
+        if 0xff < times {
+            production.progress = 32767.0;
+        }
+        state.research_done = production.progress;
+        let mut time = f32::from(location.time as i16);
+        if !crate::tech::is_age(tech) && 0.0 < time_modifier {
+            time *= time_modifier;
+        }
+        if location.adjustment + time <= production.progress {
+            return Err(Unsupported(
+                "a research's completion (FUN_1413d1740, FUN_1413cdcd0)",
+            ));
+        }
+        Ok(())
     }
 
     /// `FUN_140ad0240`: the unit of `master` spawns beside the building at `i`. The spawn point

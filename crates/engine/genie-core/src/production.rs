@@ -14,6 +14,9 @@ pub struct Queued {
     pub master: i16,
     /// The technology researched, −1 for a unit.
     pub tech: i16,
+    /// What its queue entry paid (`+0x8`: three attributes and amounts), which a research's start
+    /// reads; for a unit QUEUE queues, not held ((−1, 0) each).
+    pub costs: [(i32, f32); 3],
     /// The seconds of work it takes (the master's train time at this building).
     pub train_time: f32,
 }
@@ -94,6 +97,7 @@ mod tests {
                 master: 83,
                 tech: -1,
                 train_time,
+                costs: [(-1, 0.0); 3],
             }]),
             action: true,
             progress: 0.0,

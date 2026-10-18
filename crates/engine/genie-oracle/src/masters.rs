@@ -273,13 +273,24 @@ pub struct MasterTable {
     pub techs: Vec<genie_core::tech::TechDef>,
 }
 
-/// A technology of the `.dat` as the tech tree holds it: its costs, its type, and whether its
-/// effect upgrades a unit (a command of type 3).
+/// A technology of the `.dat` as the tech tree holds it: its costs, its type and its effect's
+/// commands.
 fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef {
-    let upgrades = usize::try_from(t.effect_id)
+    let effect = usize::try_from(t.effect_id)
         .ok()
         .and_then(|e| dat.effects.get(e))
-        .is_some_and(|e| e.commands.iter().any(|c| c.kind == 3));
+        .map_or_else(Vec::new, |e| {
+            e.commands
+                .iter()
+                .map(|c| genie_core::tech::EffectCommand {
+                    kind: c.kind,
+                    a: c.a,
+                    b: c.b,
+                    c: c.c,
+                    d: c.d,
+                })
+                .collect()
+        });
     genie_core::tech::TechDef {
         costs: t.resource_costs.each_ref().map(|c| genie_core::tech::Cost {
             attribute: c.kind,
@@ -287,7 +298,7 @@ fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef
             paid: c.flag,
         }),
         kind: t.kind,
-        upgrades,
+        effect,
     }
 }
 
