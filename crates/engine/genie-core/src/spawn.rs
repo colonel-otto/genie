@@ -54,7 +54,7 @@ const VILLAGER: i16 = 4;
 const MAKE_ACTION: i32 = 0x26b;
 
 /// A new moving object's right vector's z (`FUN_1411580a0` reads `DAT_14330ec20`).
-const START_RIGHT_Z: f32 = crate::image::spawn::START_RIGHT_Z;
+pub(crate) const START_RIGHT_Z: f32 = crate::image::spawn::START_RIGHT_Z;
 
 /// The building a unit spawns from, as the search reads it.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -131,6 +131,8 @@ pub mod missile {
     pub const HEIGHT_SHARE: f32 = f32::from_bits(0x40400000);
     /// 0.10000000149011612
     pub const LANDING: f32 = f32::from_bits(0x3dcccccd);
+    /// 0.10000000149011612
+    pub const QUERY_EDGE: f32 = f32::from_bits(0x3dcccccd);
     /// 2.0
     pub const REACH_MARGIN: f32 = f32::from_bits(0x40000000);
 }

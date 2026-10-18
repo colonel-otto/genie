@@ -45,6 +45,10 @@ struct Row {
     /// What the work command reads of the master, as the `.dat` has it ([`MasterTable::work`]).
     work: Option<work::Master>,
     turning: Option<Turning>,
+    /// A missile master's `projectile_type` (`+0x880`) and every master's `fly_mode` (`+0x608`),
+    /// which the save does not hold.
+    projectile_type: Option<u8>,
+    fly_mode: u8,
 }
 
 /// What the save does not hold of a moving master's movement (the `.dat` unit's moving part).
@@ -103,6 +107,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),
         radius: [unit.collision_size[0], unit.collision_size[1]],
         tall: 0.0 < unit.collision_size[2],
+        height: unit.collision_size[2],
         obstruction_type: unit.obstruction_type,
         buildable_on: unit.can_be_built_on,
         obstruction_class: unit.obstruction_class,
@@ -287,24 +292,31 @@ impl MasterTable {
                     move_algorithm: d.old_move_algorithm,
                     min_collision_size_multiplier: d.min_collision_size_multiplier,
                 });
+                let flight = (
+                    unit.projectile.as_ref().map(|p| p.projectile_type),
+                    unit.fly_mode,
+                );
                 Some((
                     (c as u8, m as i16),
                     data,
                     action,
                     dat_work(m as i16, unit),
                     turning,
+                    flight,
                 ))
             })
         });
         let rows: Vec<_> = rows.collect();
         let mut table = Self::from_rows(
             rows.iter()
-                .map(|(key, data, action, _, _)| (*key, *data, *action)),
+                .map(|(key, data, action, _, _, _)| (*key, *data, *action)),
         );
-        for (key, _, _, w, turning) in rows {
+        for (key, _, _, w, turning, (projectile_type, fly_mode)) in rows {
             if let Some(row) = table.rows.get_mut(&key) {
                 row.work = Some(w);
                 row.turning = turning;
+                row.projectile_type = projectile_type;
+                row.fly_mode = fly_mode;
             }
         }
         table.terrain = TerrainTable::from_dat(dat);
@@ -352,6 +364,8 @@ impl MasterTable {
                             default_action,
                             work: None,
                             turning: None,
+                            projectile_type: None,
+                            fly_mode: 0,
                         },
                     )
                 })
@@ -382,6 +396,18 @@ impl MasterTable {
     /// How a civ's moving master turns; None for a master without a moving part.
     pub fn turning(&self, civ: u8, master: i16) -> Option<Turning> {
         self.rows.get(&(civ, master)).and_then(|r| r.turning)
+    }
+
+    /// A missile master's `projectile_type` (`+0x880`).
+    pub fn projectile_type(&self, civ: u8, master: i16) -> Option<u8> {
+        self.rows
+            .get(&(civ, master))
+            .and_then(|r| r.projectile_type)
+    }
+
+    /// A master's `fly_mode` (`+0x608`): 0 keeps its objects on the ground, 1 above it.
+    pub fn fly_mode(&self, civ: u8, master: i16) -> Option<u8> {
+        self.rows.get(&(civ, master)).map(|r| r.fly_mode)
     }
 
     /// A sprite's speed factor; None for a sprite the data file does not have.

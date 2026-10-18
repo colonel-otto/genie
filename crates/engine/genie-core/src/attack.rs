@@ -136,6 +136,9 @@ pub struct Strike<'a> {
     /// The target of a swing this update, whose executed action (notify 0x200 with 600 and the
     /// target) the unit posts to its unit AI.
     pub executed: Option<i32>,
+    /// The target a ranged unit's swing fires at this update (slot 0x858, `FUN_141081020`): the
+    /// missile is the caller's.
+    pub fire: Option<i32>,
     /// The unit AI's canMoveToAttack (slot 0x1d0, `FUN_140c48420`) and stance (`+0x1a9`), which
     /// readyToAttack reads of a target out of reach.
     pub can_move: bool,
@@ -599,40 +602,50 @@ impl Attack {
     /// State 7 (case 6). A melee swing counts down and lands its hit when its sprite reaches the
     /// firing frame (half its frames without one): the attack timer becomes the reload less the
     /// time to that frame (`FUN_141089820`) and the target takes the hit; a dead target ends the
-    /// swing (set_state 2). After the hit, the swing's sprite looping makes the unit ready again
-    /// (set_state 6).
+    /// swing (set_state 2). A ranged unit's swing does not count down and fires at its firing
+    /// frame (at once with frame 0): its missile ([`Strike::fire`]). After the hit, the swing's
+    /// sprite looping makes the unit ready again (set_state 6).
     fn swing(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
-        if self.arms.missile != -1 {
-            return Err(Unsupported("a ranged unit's swing (its missile)"));
-        }
+        let ranged = self.arms.missile != -1;
         let Some(sprite) = *s.sprite else {
             return Err(Unsupported("a swing without the unit's sprite"));
         };
         if self.pending {
-            if matches!(s.own.class, 35 | 51 | 64) {
+            if s.own.class == 51 || (!ranged && matches!(s.own.class, 35 | 64)) {
                 return Err(Unsupported("a swing of class 35, 51 or 64"));
             }
-            let fire = if self.arms.fire_frame < 1 {
+            if ranged && self.arms.fire_frame < 0 {
+                return Err(Unsupported("a ranged swing without a firing frame"));
+            }
+            let fire = if ranged {
+                self.arms.fire_frame
+            } else if self.arms.fire_frame < 1 {
                 (f32::from(sprite.graphic.frames) * HALF) as u32 as i16
             } else {
                 self.arms.fire_frame
             };
-            self.swing -= walk.dt;
+            if !ranged {
+                self.swing -= walk.dt;
+            }
             if fire != 0 && !sprite.reached(fire) {
                 return Ok(0);
             }
-            let frame = if self.arms.fire_frame == 0 {
+            let frame = if self.arms.fire_frame == 0 && !ranged {
                 sprite.graphic.frames / 2
             } else {
                 self.arms.fire_frame
             };
             *s.attack_timer = s.reload - f32::from(frame) * sprite.graphic.frame_duration;
-            let object = walk
-                .plan
-                .as_mut()
-                .map(|p| &mut *p.object)
-                .ok_or(Unsupported("a hit without the Object stream"))?;
-            self.hit(s, object)?;
+            if ranged {
+                s.fire = Some(self.target);
+            } else {
+                let object = walk
+                    .plan
+                    .as_mut()
+                    .map(|p| &mut *p.object)
+                    .ok_or(Unsupported("a hit without the Object stream"))?;
+                self.hit(s, object)?;
+            }
             self.pending = false;
             if s.victim.hp <= 0.0 {
                 self.enter(KILLED, walk, s)?;
@@ -690,47 +703,17 @@ impl Attack {
         self.strike(s, object_rng)
     }
 
-    /// `FUN_141084230`: a shield of the target (type 70, [`damage::shield`]) blocks the hit: the
-    /// target's unit AI gets notify 500 with the attacker, its hit points and its master's, and
-    /// nothing else happens. A unit of type 60 and up with an area effect blasts about itself
-    /// with its target as the blast's main object ([`damage::blast`]) unless its charge of type 3
-    /// is not its hit's, then empties that charge (slot 0x318 with 0). Else the unit tells its
-    /// unit AI the action executed (0x200, but for masters 73 and 559), then the 64-bit
-    /// Object-stream draw against the hit chance; a hit is the target's slot 0xe8
-    /// ([`damage::take`]) at the elevation factor (slot 0x1f0) times the hit's 1. Not held: the
-    /// last attack time (`+0x648`), the alerts of another owner (slot 0x2e8) and the sounds.
+    /// `FUN_141084230` with the unit's own place as the hit's origin ([`strike`]).
     fn strike(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
-        if s.victim.kind == 70 && damage::shield(s.victim, false) {
-            let own = &s.own;
-            let master_hp = own.armored.as_ref().map_or(0, |a| i32::from(a.master_hp));
-            s.victim.damaged = Some((own.id, [own.id, own.hp as i32, master_hp]));
-            return Ok(());
-        }
-        let a = s.own.source;
-        if 60 <= a.kind
-            && 0.0 < a.area_effect
-            && (a.charge_type != 3 || damage::charge_hit(&a, s.victim))
-        {
-            let (center, main) = (s.own.position, s.victim.id);
-            let mut targets: Vec<&mut Victim> = s.blasted.iter_mut().collect();
-            targets.push(&mut *s.victim);
-            damage::blast(&mut s.own, center, None, Some(main), &mut targets, 1.0)?;
-            if a.charge_type == 3 {
-                s.own.source.charge = 0.0;
-            }
-            return Ok(());
-        }
-        if !QUIET_SWINGS.contains(&s.own.master_id) {
-            s.executed = Some(s.victim.id);
-        }
-        let draw = object_rng.raw64();
-        let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
-        if i64::from(s.hit_chance) < r && a.missile < 0 {
-            return Ok(());
-        }
-        let factor = damage::elevation_factor(s.own.position[2], s.own.attack_elevation, s.victim);
-        let weapons = s.own.weapons.clone();
-        damage::take(s.victim, &mut s.own, &weapons, factor, 0.0)
+        let hit = Hit {
+            at: s.own.position,
+            from_z: s.own.position[2],
+            missile: false,
+            hit_chance: s.hit_chance,
+        };
+        let struck = strike(&mut s.own, s.victim, s.blasted, hit, object_rng)?;
+        s.executed = struck.executed;
+        Ok(())
     }
 
     /// `FUN_1412115e0`'s trample: the blast about the unit, past its target ([`damage::blast`]);
@@ -759,6 +742,81 @@ impl Attack {
         }
         Ok(())
     }
+}
+
+/// Where a hit comes from: the place it lands (`FUN_141084230`'s x, y, z: the attacker's for a
+/// melee hit, the missile's for a missile's), the height of its origin record (`+0x8`, which the
+/// elevation factor reads), whether a missile lands it (a shield of charge type 4 blocks it
+/// instead of 5) and the attacker's hit chance (`+0x83e`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Hit {
+    pub at: [f32; 3],
+    pub from_z: f32,
+    pub missile: bool,
+    pub hit_chance: i16,
+}
+
+/// What a hit did: its result (`+0x98` of a missile: 2 when a shield blocked it, else 1) and the
+/// target of the executed action the attacker posts to its unit AI (notify 0x200 with 600).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Struck {
+    pub result: u8,
+    pub executed: Option<i32>,
+}
+
+/// `FUN_141084230`: a shield of the target (type 70, [`damage::shield`]) blocks the hit: the
+/// target's unit AI gets notify 500 with the attacker, its hit points and its master's, and
+/// nothing else happens (result 2). A unit of type 60 and up with an area effect blasts about the
+/// hit's place with its target as the blast's main object ([`damage::blast`]) unless its charge
+/// of type 3 is not its hit's, then empties that charge (slot 0x318 with 0). Else the unit tells
+/// its unit AI the action executed (0x200, but for masters 73 and 559), then the 64-bit
+/// Object-stream draw against the hit chance (a missile's master always hits: its missile,
+/// `+0x83c`, is set); a hit is the target's slot 0xe8 ([`damage::take`]) at the elevation factor
+/// (slot 0x1f0, from the origin's height) times the hit's 1. Not held: the last attack time
+/// (`+0x648`), the alerts of another owner (slot 0x2e8) and the sounds.
+pub(crate) fn strike(
+    own: &mut Victim,
+    victim: &mut Victim,
+    blasted: &mut [Victim],
+    hit: Hit,
+    object_rng: &mut Well512,
+) -> Result<Struck, Unsupported> {
+    if victim.kind == 70 && damage::shield(victim, hit.missile) {
+        let master_hp = own.armored.as_ref().map_or(0, |a| i32::from(a.master_hp));
+        victim.damaged = Some((own.id, [own.id, own.hp as i32, master_hp]));
+        return Ok(Struck {
+            result: 2,
+            executed: None,
+        });
+    }
+    let a = own.source;
+    let mut struck = Struck {
+        result: 1,
+        executed: None,
+    };
+    if 60 <= a.kind && 0.0 < a.area_effect && (a.charge_type != 3 || damage::charge_hit(&a, victim))
+    {
+        let main = victim.id;
+        let mut targets: Vec<&mut Victim> = blasted.iter_mut().collect();
+        targets.push(victim);
+        damage::blast(own, hit.at, None, Some(main), &mut targets, 1.0)?;
+        if a.charge_type == 3 {
+            own.source.charge = 0.0;
+        }
+        return Ok(struck);
+    }
+    if !QUIET_SWINGS.contains(&own.master_id) {
+        struck.executed = Some(victim.id);
+    }
+    let draw = object_rng.raw64();
+    let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
+    if i64::from(hit.hit_chance) < r && a.missile < 0 {
+        return Ok(struck);
+    }
+    let factor = damage::elevation_factor(hit.from_z, own.attack_elevation, victim);
+    let weapons = own.weapons.clone();
+    damage::take(victim, own, &weapons, factor, 0.0)?;
+    Ok(struck)
 }
 
 /// The Attack constructor's sprites and frames (`FUN_140a7c210` from Hunt's set_state 12): the

@@ -28,15 +28,19 @@ const HALF: f32 = crate::image::missile::HALF;
 /// A missile past its reach ends this far beyond its point (`DAT_142eb5be8`).
 const BEYOND: f32 = crate::image::missile::BEYOND;
 /// A missile within this of its point may touch the ground (`DAT_142eb5690`, `+0x994`).
-const LANDING: f32 = crate::image::missile::LANDING;
+pub const LANDING: f32 = crate::image::missile::LANDING;
+/// The hit query holds its ends this far inside the map's far edges (`FUN_1411570c0`,
+/// `DAT_142eb5690`).
+pub const QUERY_EDGE: f32 = crate::image::missile::QUERY_EDGE;
 /// The reach adds this to the shooter's radius and range (`FUN_141081020`, `DAT_142e8c150`).
 const REACH_MARGIN: f32 = crate::image::missile::REACH_MARGIN;
 
 /// What a missile's master holds for the flight: the `.dat`'s `projectile_type` (`+0x880`, not
 /// saved), `smart_mode` (`+0x881`, the save's `targetting_type`), `hit_mode` (`+0x882`,
 /// `missile_hit_info`), `vanish_mode` (`+0x883`, `missile_die_info`) and `projectile_arc`
-/// (`+0x888`, `ballistics_ratio`); its master's speed (slot 0xe8, `+0x740`) and radii
-/// (`+0x5d8`..`+0x5e0`).
+/// (`+0x888`, `ballistics_ratio`); its master's speed (slot 0xe8, `+0x740`), radii
+/// (`+0x5d8`..`+0x5e0`) and the `.dat`'s `fly_mode` (`+0x608`: 0 holds it on the ground, 1 above
+/// it, `FUN_141193a10`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MissileStats {
     pub projectile_type: u8,
@@ -46,6 +50,7 @@ pub struct MissileStats {
     pub arc: f32,
     pub speed: f32,
     pub radius: [f32; 3],
+    pub fly_mode: u8,
 }
 
 /// Where a missile came from (`+0x9c`, `mProjectileData`, `FUN_140aa86e0`): the firing object's
@@ -125,7 +130,8 @@ pub struct Missile {
     pub step: [f32; 3],
     /// `+0x900`: the firing object's attack count when fired.
     pub attack_count: i32,
-    pub action: MissileAction,
+    /// Its action, until the action list goes (a dead missile's, or its destruction's).
+    pub action: Option<MissileAction>,
 }
 
 /// `FUN_141081020`'s place for a new missile: the firing object's place plus its master's weapon
@@ -304,6 +310,41 @@ impl MissileAction {
             self.ballistic_velocity += dt * self.ballistic_acceleration;
         }
         Ok((step, LANDING < self.distance))
+    }
+}
+
+/// `FUN_14113f740`'s height test: an object at height `z` whose master's height radius is
+/// `height` meets a missile at `missile_z` whose master's is `missile_height` when it lies at
+/// most `height` below the missile and at most `missile_height` above.
+pub fn meets_height(z: f32, height: f32, missile_z: f32, missile_height: f32) -> bool {
+    let d = z - missile_z;
+    -height <= d && d <= missile_height
+}
+
+/// The ground hit's box test (`FUN_140a9e6e0`): a missile at `at` with radii `radius` lies on
+/// the target at `target` with radii `target_radius` when it is nearer on each axis than the
+/// two radii together.
+pub fn on_target(
+    at: [f32; 3],
+    radius: [f32; 3],
+    target: [f32; 3],
+    target_radius: [f32; 2],
+) -> bool {
+    let dx = (at[0] - target[0]).abs();
+    let dy = (at[1] - target[1]).abs();
+    dx < target_radius[0] + radius[0] && dy < target_radius[1] + radius[1]
+}
+
+/// The height a missile's place takes on the ground (slot 0x60, `FUN_14113eb60`, with the
+/// ground's height, from the static new_position): a missile still flying (`+0x994`) keeps its
+/// height; else `FUN_141193a10` by its master's fly mode: 0 puts it on the ground, 1 lifts it to
+/// the ground when it is below, others keep it.
+pub fn grounded(z: f32, ground: f32, flying: bool, fly_mode: u8) -> f32 {
+    match fly_mode {
+        _ if flying => z,
+        0 => ground,
+        1 if z < ground => ground,
+        _ => z,
     }
 }
 

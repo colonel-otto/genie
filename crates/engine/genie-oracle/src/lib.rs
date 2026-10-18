@@ -81,6 +81,12 @@ fn live<'a>(
         .filter_map(|o| o.static_part().map(|s| (o, s)))
 }
 
+/// An object of a player's live list: not the stand-in for a saved object without a static part
+/// ([`unit`]). A missile's id is below 0 (the world's reusable ids, `next_reusable_object_id`).
+fn listed(u: &Unit) -> bool {
+    u.id >= 0 || u.life.master_id >= 0
+}
+
 /// An object saved alive without hit points: its first update kills it, and it leaves the live
 /// list within a few ticks (genie-core's lifecycle; a flare's 1 s corpse timer takes 14). The
 /// save's PLACEHOLDER2s, FLARE3s and empty town-centre annexes are such objects.
@@ -246,6 +252,15 @@ fn unit(
             .is_some_and(|c| c.rge_combat_object.hit_something_valid_for_charge_attack != 0),
         gather_point: gather_point(object),
         gate: saved_gate(object),
+        attack_count: object
+            .combat()
+            .map(|c| &c.rge_combat_object)
+            .or(object
+                .rge_object
+                .as_ref()
+                .and_then(|r| r.rge_missile_object.as_ref())
+                .map(|m| &m.rge_combat_object))
+            .map_or(0, |c| c.attack_count),
         ..Unit::default()
     };
     let imported = if saved {
@@ -351,6 +366,12 @@ fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
                 .rge_master_moving_object
                 .rge_master_animated_object
         }))
+        .or(r.rge_master_missile_object.as_ref().map(|m| {
+            &m.rge_master_combat_object
+                .rge_master_action_object
+                .rge_master_moving_object
+                .rge_master_animated_object
+        }))
 }
 
 /// The moving part of a saved master, when its class has one.
@@ -376,6 +397,11 @@ fn moving_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterM
             .rge_master_combat_object
             .as_ref()
             .map(|c| &c.rge_master_action_object.rge_master_moving_object))
+        .or(r.rge_master_missile_object.as_ref().map(|m| {
+            &m.rge_master_combat_object
+                .rge_master_action_object
+                .rge_master_moving_object
+        }))
 }
 
 /// One saved level of path data, with its path's waypoints from the world's path table.
@@ -648,6 +674,53 @@ fn saved_actions(
                             && m.run_sprite_id != m.move_sprite_id
                             && base.short_val_2 == m.run_sprite_id
                     }),
+            });
+            Ok(())
+        }
+        genie_core::missile::MISSILE => {
+            let ma = action
+                .rge_action_by_type
+                .as_ref()
+                .and_then(|t| t.rge_action_missile.as_ref())
+                .ok_or(Unsupported("a saved missile action without its part"))?;
+            let mo = object
+                .rge_object
+                .as_ref()
+                .and_then(|r| r.rge_missile_object.as_ref())
+                .ok_or(Unsupported(
+                    "a missile action of an object that is not a missile",
+                ))?;
+            let moving = object
+                .moving_part()
+                .ok_or(Unsupported("a missile without its moving part"))?;
+            // the hit mode copies the master's (`+0x80`, a miss's 1 is not saved)
+            let hit_mode = objects
+                .master(s.master_obj)
+                .and_then(|m| m.rge_master.as_ref())
+                .and_then(|r| r.rge_master_missile_object.as_ref())
+                .map_or(0, |m| m.missile_hit_info);
+            unit.missile = Some(genie_core::missile::Missile {
+                max_range: mo.max_range,
+                fired_from: mo.fired_from_id,
+                charge: mo.is_charge_projectile != 0,
+                flying: genie_core::missile::LANDING < ma.distance,
+                step: [moving.velocity_x, moving.velocity_y, moving.velocity_z],
+                attack_count: mo.rge_combat_object.attack_count,
+                action: Some(genie_core::missile::MissileAction {
+                    state: base.state,
+                    target: base.target_id,
+                    fired_from: base.target2_id,
+                    point: [base.target_x, base.target_y, base.target_z],
+                    timer: base.timer,
+                    direction: [ma.velocity_x, ma.velocity_y, ma.velocity_z],
+                    ballistic_velocity: ma.ballistic_velocity,
+                    ballistic_acceleration: ma.ballistic_acceleration,
+                    distance: ma.distance,
+                    hit_mode,
+                    result: ma.interacted_with_agility,
+                    origin: genie_core::missile::Origin::from_bytes(&ma.projectile_data),
+                    met: Vec::new(),
+                }),
             });
             Ok(())
         }
@@ -1402,6 +1475,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         players,
     );
     turns.next_object_id = world.next_object_id;
+    turns.recycling.next_id = world.next_reusable_object_id;
     let none = TerrainTable::default();
     let terrain = masters.map_or(&none, |t| &t.terrain);
     turns.spatial = spatial(header, terrain);
@@ -1571,6 +1645,7 @@ fn work_masters(
         work.class = s.read_temp_5;
         work.radius = [s.radius_x, s.radius_y];
         work.tall = 0.0 < s.radius_z;
+        work.height = s.radius_z;
         work.obstruction_type = s.obstruction_type;
         work.buildable_on = s.can_be_built_on;
         work.obstruction_class = s.obstruction_class;
@@ -1599,6 +1674,8 @@ fn work_masters(
             work.weapon_range = rc.weapon_range;
             work.min_range = rc.minimum_weapon_range;
             work.missile = rc.missile_id;
+            work.weapon_offset = [rc.weapon_offset_x, rc.weapon_offset_y, rc.weapon_offset_z];
+            work.missed_spread = rc.missed_missile_spread;
             work.attack_sprite = rc.fight_sprite_id;
             work.fire_frame = rc.fire_missile_at_frame;
             work.interrupt_frame = rc.interrupt_frame;
@@ -1645,6 +1722,24 @@ fn work_masters(
             m.tribe_master_building_object.as_ref(),
         ) {
             b.foundation_terrain = saved.on_build_make_tile;
+        }
+        // a missile master's flight: the save's three bytes and arc, the data file's projectile
+        // type
+        if let Some(mm) = m
+            .rge_master
+            .as_ref()
+            .and_then(|r| r.rge_master_missile_object.as_ref())
+        {
+            work.missile_stats = Some(genie_core::missile::MissileStats {
+                projectile_type: table.projectile_type(civ, s.id()).unwrap_or(0),
+                smart_mode: mm.targetting_type,
+                hit_mode: mm.missile_hit_info,
+                vanish_mode: mm.missile_die_info,
+                arc: mm.ballistics_ratio,
+                speed: animated_master(m).map_or(0.0, |a| a.max_speed),
+                radius: [s.radius_x, s.radius_y, s.radius_z],
+                fly_mode: table.fly_mode(civ, s.id()).unwrap_or(0),
+            });
         }
         work.damage_sprites = !s.damage_sprite.is_empty();
         work.standing_sprite = s.idle_sprite_id;
@@ -1796,13 +1891,19 @@ fn map_terrain(header: &Header, terrain: &TerrainTable) -> genie_core::terrain::
                 .map(|t| (t.terrain_type, t.restore_terrain_type, t.layer))
         })
         .collect();
-    genie_core::terrain::Terrain::new(
+    let mut t = genie_core::terrain::Terrain::new(
         map.map_width,
         map.map_height,
         tiles,
         terrain.kinds().to_vec(),
         terrain.passable().to_vec(),
-    )
+    );
+    t.elevations = map
+        .rows
+        .iter()
+        .flat_map(|r| r.tiles.iter().map(|t| t.t_m_elevation))
+        .collect();
+    t
 }
 
 /// The differences between the slice's map terrain and a save's, tile by tile.
@@ -2474,6 +2575,11 @@ fn combat_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterC
             .rge_master
             .as_ref()
             .and_then(|r| r.rge_master_combat_object.as_ref()))
+        .or(m.rge_master.as_ref().and_then(|r| {
+            r.rge_master_missile_object
+                .as_ref()
+                .map(|m| &m.rge_master_combat_object)
+        }))
 }
 
 /// Run the slice over `frames`, each tick with its commands.
@@ -2564,7 +2670,7 @@ fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32;
     state.live = simulated
         .objects
         .iter()
-        .filter(|unit| unit.id >= 0)
+        .filter(|unit| listed(unit))
         .map(|unit| ObjectState {
             id: unit.id,
             main_id: unit.life.master_id,
@@ -3065,7 +3171,7 @@ pub fn objects_from_save(
         objects: player
             .objects
             .iter()
-            .filter(|u| u.id >= 0)
+            .filter(|u| listed(u))
             .map(ObjectRow::of_unit)
             .collect(),
         unsupported: player.unsupported,
@@ -3219,6 +3325,7 @@ fn game_state(header: &Header, masters: Option<&MasterTable>) -> genie_core::tur
     let world = &header.world.base_world;
     let mut game = genie_core::turn::GameState {
         frame_seed: world.current_frame_random_seed,
+        next_reusable_id: world.next_reusable_object_id,
         ..Default::default()
     };
     for p in header.players() {
@@ -3269,7 +3376,7 @@ fn compare_players(
         let rows: Vec<ObjectRow> = player
             .objects
             .iter()
-            .filter(|u| u.id >= 0)
+            .filter(|u| listed(u))
             .map(ObjectRow::of_unit)
             .collect();
         let game = after.objects.get(p).ok_or(Error::NoSuchPlayer(id))?;

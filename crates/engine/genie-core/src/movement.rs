@@ -315,7 +315,7 @@ fn point_or_zero_of(level: &PathData, index: i32) -> Vec3 {
 
 /// The position setter's test for a move (`FUN_141161950`): a coordinate changed by more than
 /// 1e-7.
-fn moved_far(a: [f32; 3], b: [f32; 3]) -> bool {
+pub(crate) fn moved_far(a: [f32; 3], b: [f32; 3]) -> bool {
     (0..3).any(|i| EPSILON < (b[i] - a[i]).abs())
 }
 
@@ -529,7 +529,7 @@ impl Mover {
 
     /// The position setter (slot 11 -> `FUN_141161950` -> `0x1411a58b0`): a unit that can move
     /// keeps its footprint 0.01 inside the map, then any position stays 0.001 below the map's size.
-    fn set_position(&self, [x, y, z]: [f32; 3], map: [i32; 2]) -> [f32; 3] {
+    pub(crate) fn set_position(&self, [x, y, z]: [f32; 3], map: [i32; 2]) -> [f32; 3] {
         let inside = |v: f32, radius: f32, size: i32| {
             let low = radius + EDGE_GAP;
             if v < low {

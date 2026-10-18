@@ -103,6 +103,9 @@ pub struct Master {
     pub radius: [f32; 2],
     /// `radius_z` (`+0x5e0`) is above 0: its objects count as tall on their tiles.
     pub tall: bool,
+    /// `radius_z` (`+0x5e0`): how high a missile may pass over its objects and hit them
+    /// (`FUN_14113f740`).
+    pub height: f32,
     /// `line_of_sight` (`+0x5d0`).
     pub line_of_sight: f32,
     /// `obstruction_type` (`+0x651`) and `can_be_built_on` (`+0x5e9`).

@@ -57,6 +57,8 @@ pub struct Terrain {
     /// Each terrain restriction's value per terrain (`world+0x788`, the `.dat`'s
     /// `passable_buildable_dmg_multiplier`).
     pub restrictions: Vec<Vec<f32>>,
+    /// Per tile, its elevation (`+0x14`, the save's `t->m_elevation`); empty when not known.
+    pub elevations: Vec<u8>,
 }
 
 /// What a completed building's foundation reads of it (`FUN_1411ddd90`).
@@ -94,6 +96,7 @@ impl Terrain {
             layers: tiles.iter().map(|t| t.2).collect(),
             terrains,
             restrictions,
+            elevations: Vec::new(),
         }
     }
 
@@ -105,6 +108,33 @@ impl Terrain {
     /// A tile's terrain (the map tile's `+0x9`), None off the map.
     pub fn kind(&self, x: i32, y: i32) -> Option<u8> {
         self.index(x, y).map(|i| self.kinds[i])
+    }
+
+    /// The ground's height under (`x`, `y`) on the map (the static new_position's,
+    /// `0x1411a58b0`, which slot 0x60 takes): the tile's elevation plus its slope's share by the
+    /// tile's shape (`+0x8`, made at the map's load from the elevations about it). A tile whose
+    /// eight neighbours on the map share its elevation is flat; a slope's share is not modelled.
+    pub fn ground(&self, x: f32, y: f32) -> Result<f32, Unsupported> {
+        let (tx, ty) = (x as i32, y as i32);
+        let i = self
+            .index(tx, ty)
+            .filter(|_| !self.elevations.is_empty())
+            .ok_or(Unsupported(
+                "the ground's height where the elevations are not known",
+            ))?;
+        let e = self.elevations[i];
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                if let Some(j) = self.index(tx + dx, ty + dy)
+                    && self.elevations[j] != e
+                {
+                    return Err(Unsupported(
+                        "the ground's height on a slope (the tile's shape)",
+                    ));
+                }
+            }
+        }
+        Ok(f32::from(e))
     }
 
     /// The terrain defense of an object on tile (`x`, `y`) whose master has `defense_terrain_bonus`
@@ -265,6 +295,7 @@ mod tests {
             layers,
             terrains,
             restrictions: vec![vec![0.0; 40]; 5],
+            elevations: vec![0; n],
         }
     }
 

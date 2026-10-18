@@ -75,6 +75,9 @@ pub struct Victim {
     pub class: i16,
     pub master_id: i16,
     pub radius: [f32; 2],
+    /// Its master's `radius_z` (`+0x5e0`): a missile meets it within that height above it
+    /// (`FUN_14113f740`).
+    pub height: f32,
     pub storage: f32,
     pub capacity: i16,
     pub blast_defense: u8,
