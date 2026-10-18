@@ -272,6 +272,16 @@ impl MoveToAction {
         })
     }
 
+    /// A MoveTo of its own is not quiet: its set_state 1 or 13 shows the standing sprite
+    /// ([`Mover::shows_standing`]).
+    fn ended(&self, walk: &mut Walk<'_>) {
+        if matches!(self.state, MoveTo::Arrived | MoveTo::Failed)
+            && let Some(m) = walk.mover.as_deref_mut()
+        {
+            m.shows_standing();
+        }
+    }
+
     /// One update (`0x140aa2240`). A target that is gone (the update's first check: notify 0x1fb,
     /// code 4) is not modelled.
     pub fn update(&mut self, mut walk: Walk<'_>) -> Result<MoveStep, Unsupported> {
@@ -285,13 +295,14 @@ impl MoveToAction {
                     // set_state 3, then the motion step (`LAB_140aa320c`): moving on, the MoveTo
                     // stays in state 3
                     step.target_moved = true;
-                    self.state = match walk_on(walk)? {
+                    self.state = match walk_on(walk.reborrow())? {
                         MoveTo::Moving => MoveTo::Start,
                         other => other,
                     };
                 } else {
-                    self.state = walk_on(walk)?;
+                    self.state = walk_on(walk.reborrow())?;
                 }
+                self.ended(&mut walk);
                 Ok(step)
             }
             MoveTo::Start => {
@@ -309,7 +320,8 @@ impl MoveToAction {
                     };
                 }
                 self.state = MoveTo::Moving;
-                self.state = start_walk(walk, goal, self.range, false)?;
+                self.state = start_walk(walk.reborrow(), goal, self.range, false)?;
+                self.ended(&mut walk);
                 Ok(step)
             }
             MoveTo::Arrived => {

@@ -574,6 +574,11 @@ impl Unit {
                 .ok_or(Unsupported("a walker without movement state"))?
                 .stop()?;
         }
+        if self.life.state == 2
+            && let Some(m) = self.mover.as_mut()
+        {
+            m.shows_standing();
+        }
         if self.life.state == 2 && self.sprite.is_some() {
             let standing = c
                 .masters
@@ -842,6 +847,11 @@ impl Unit {
             }
             u.life.goto_sleep = false;
         }
+        if hunt.state == crate::hunt::FAILED
+            && let Some(m) = self.mover.as_mut()
+        {
+            m.shows_standing();
+        }
         if hunt.state == crate::hunt::FAILED && self.sprite.is_some() {
             let standing = c
                 .graphics
@@ -986,6 +996,9 @@ impl Unit {
                 [crate::explore::EXPLORE_ACTION, 0, 0],
             )?,
             Owner::Standing => {}
+        }
+        if let Some(m) = self.mover.as_mut() {
+            m.shows_standing();
         }
         if self.sprite.is_some() {
             let standing = c

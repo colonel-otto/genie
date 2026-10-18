@@ -436,39 +436,43 @@ fn mover(
         return Err(Unsupported("saved future path data"));
     }
     // an object with its own master (a copy, say a captured animal's) moves by its own values
-    let (radius, restriction, base, turn, flags) = match (s.own_master(), s.own_animated_master()) {
-        (Some(own), Some(animated)) => (
-            [own.radius_x, own.radius_y, own.radius_z],
-            own.terrain_restriction_mask_id,
-            animated.max_speed,
-            s.own_moving_master()
-                .map(|m| (m.turn_speed, m.temp_move_sprite, m.temp_run_sprite)),
-            own.object_flags,
-        ),
-        (Some(_), None) => {
-            return Err(Unsupported(
-                "a moving object's own master without an animated part",
-            ));
-        }
-        (None, _) => {
-            let master = objects
-                .master(s.master_obj)
-                .ok_or(Unsupported("a moving object whose master is not saved"))?;
-            let placement = master
-                .static_part()
-                .ok_or(Unsupported("a moving master without a static part"))?;
-            let base = animated_master(master)
-                .ok_or(Unsupported("a moving master without an animated part"))?
-                .max_speed;
-            (
-                [placement.radius_x, placement.radius_y, placement.radius_z],
-                placement.terrain_restriction_mask_id,
-                base,
-                moving_master(master).map(|m| (m.turn_speed, m.move_sprite_id, m.run_sprite_id)),
-                placement.object_flags,
-            )
-        }
-    };
+    let (radius, restriction, base, turn, flags, standing) =
+        match (s.own_master(), s.own_animated_master()) {
+            (Some(own), Some(animated)) => (
+                [own.radius_x, own.radius_y, own.radius_z],
+                own.terrain_restriction_mask_id,
+                animated.max_speed,
+                s.own_moving_master()
+                    .map(|m| (m.turn_speed, m.temp_move_sprite, m.temp_run_sprite)),
+                own.object_flags,
+                own.sprite_num,
+            ),
+            (Some(_), None) => {
+                return Err(Unsupported(
+                    "a moving object's own master without an animated part",
+                ));
+            }
+            (None, _) => {
+                let master = objects
+                    .master(s.master_obj)
+                    .ok_or(Unsupported("a moving object whose master is not saved"))?;
+                let placement = master
+                    .static_part()
+                    .ok_or(Unsupported("a moving master without a static part"))?;
+                let base = animated_master(master)
+                    .ok_or(Unsupported("a moving master without an animated part"))?
+                    .max_speed;
+                (
+                    [placement.radius_x, placement.radius_y, placement.radius_z],
+                    placement.terrain_restriction_mask_id,
+                    base,
+                    moving_master(master)
+                        .map(|m| (m.turn_speed, m.move_sprite_id, m.run_sprite_id)),
+                    placement.object_flags,
+                    placement.idle_sprite_id,
+                )
+            }
+        };
     let table = masters.ok_or(Unsupported("no master table: turning is unknown"))?;
     let factor = table
         .sprite_speed(s.sprite)
@@ -528,6 +532,7 @@ fn mover(
             fast_turn: flags & 2 != 0,
             walk_speed,
             run_speed,
+            stand_speed: with(standing),
         },
         waiting: m.waiting_to_move_value,
         wait_delays: m.number_wait_delays,
@@ -1650,6 +1655,10 @@ fn moving_stats(
                 moving.move_sprite_id
             };
             let f = table.sprite_speed(id).unwrap_or(0.0);
+            if 0.0 < f { base * f } else { base }
+        },
+        stand_speed: {
+            let f = table.sprite_speed(s.idle_sprite_id).unwrap_or(0.0);
             if 0.0 < f { base * f } else { base }
         },
     })

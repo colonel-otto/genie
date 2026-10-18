@@ -639,7 +639,7 @@ impl Turns {
                 "a command's stop of an action in the command phase",
             ));
         }
-        if unit.life.state == 2 && unit.sprite.is_some() {
+        if unit.life.state == 2 {
             self.standing_sprite(p, idx)?;
         }
         Ok(())
@@ -673,14 +673,23 @@ impl Turns {
             Owner::Standing => {}
             Owner::Stopped => return Err(Unsupported("an Explore's set_state 2 (slots 0x68)")),
         }
-        if self.players[p].objects[idx].sprite.is_some() {
+        {
             self.standing_sprite(p, idx)?;
         }
         Ok(())
     }
 
-    /// Slot 0x68 with the master's standing sprite (`+0x470`).
+    /// Slot 0x68 with the master's standing sprite (`+0x470`): the unit's top speed is the
+    /// sprite's ([`crate::movement::Mover::shows_standing`]), and the sprite itself where the
+    /// slice holds it.
     fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+        let unit = &mut self.players[p].objects[idx];
+        if let Some(m) = unit.mover.as_mut() {
+            m.shows_standing();
+        }
+        if unit.sprite.is_none() {
+            return Ok(());
+        }
         let master = self.players[p].objects[idx].life.master_id;
         let standing = self.master_of(p, master)?.standing_sprite;
         let g = self

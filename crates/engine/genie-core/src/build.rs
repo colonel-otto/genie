@@ -987,6 +987,7 @@ mod tests {
                 min_collision: 1.0,
                 fast_turn: false,
                 walk_speed: 1.0,
+                stand_speed: 1.0,
                 run_speed: 1.0,
             },
             waiting: 0,

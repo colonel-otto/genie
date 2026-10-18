@@ -75,6 +75,9 @@ pub struct MoveStats {
     /// unit moves at its speed.
     pub walk_speed: f32,
     pub run_speed: f32,
+    /// The top speed with the master's standing sprite (`+0x470`), which a non-quiet MoveTo's end
+    /// (set_state 1 or 13, slot 0x68 with slot 0x798's) and a stop in state 2 show.
+    pub stand_speed: f32,
     /// Master `+0x774`: the most the unit turns per second ([`turn_rate`]).
     pub turn_rate: f32,
     /// Master `+0x76c` and `+0x770`: the turn radius is `turn_radius × speed / turn_radius_speed`
@@ -342,6 +345,8 @@ const STUCK_PAUSE: f32 = crate::image::movement::STUCK_PAUSE;
 struct Avoided {
     kept: Vec<i32>,
     pauses: Vec<(i32, f32)>,
+    /// The step hit only the walked level's target: the waypoint counts as reached.
+    at_target: bool,
 }
 /// 2π (`DAT_142eb56ac`): over a revolution's time, the most a unit turns per second.
 const TWO_PI: f32 = crate::image::movement::TWO_PI;
@@ -734,6 +739,16 @@ impl Mover {
             )?;
             if !hits.is_empty() {
                 let avoided = self.avoid(me, world, &hits, projected, dt, now, computer)?;
+                if avoided.at_target {
+                    // FUN_140f9b4d0 three times: bit 0 on and bit 1 off on the walked level, bit 2
+                    // on for it and its parents; then back to the top of the step
+                    let level = &mut self.paths[0];
+                    level.flags = (level.flags | 1) & !2;
+                    for l in &mut self.paths {
+                        l.flags |= 4;
+                    }
+                    return Ok(Next::Again);
+                }
                 self.pauses.extend(avoided.pauses);
                 if !avoided.kept.is_empty() {
                     return self.go_round(me, world, pathing, &hits, &avoided.kept, computer);
@@ -1039,6 +1054,13 @@ impl Mover {
             path_flags: 0,
             ..PathData::new(0)
         };
+    }
+
+    /// The unit shows its master's standing sprite (slot 0x68 with slot 0x798's): its top speed
+    /// (slot 0x208, the master's speed times the current sprite's factor) is the standing
+    /// sprite's.
+    pub(crate) fn shows_standing(&mut self) {
+        self.stats.speed = self.stats.stand_speed;
     }
 
     /// `FUN_140f9b4d0(level, 2, 0)`: bit 2 goes off the walked level and on for its parents.
@@ -2054,8 +2076,10 @@ impl Mover {
     /// shrinks (`FUN_1411615a0`); else one in the walked path's ignore units (`FUN_140f98d20`)
     /// that moved before the top path was made, or one that moved after the walked path was made
     /// (or at the same time and outranks the unit: a higher player, or the same and a higher id).
-    /// A kept hit (its temporary shape `FUN_141054fe0`, the step's slide `FUN_141159220` and the
-    /// re-plan) and a step that hits only its target are not modelled. Then, on the walked level's first two waypoints (or the third of a path more
+    /// A step whose one hit is the walked level's target counts its waypoint reached (the
+    /// caller's, [`Avoided::at_target`]). A kept hit (its temporary shape `FUN_141054fe0`, the
+    /// step's slide `FUN_141159220` and the re-plan) is the caller's ([`Mover::go_round`]).
+    /// Then, on the walked level's first two waypoints (or the third of a path more
     /// than 500 old), each hit the unit outranks pauses for `dt` when its own pause is shorter: a
     /// human walker outranks another player's unit, or one of its own ordered at another time,
     /// whose last human order (`+0x650`) is older; else the lower id outranks (a group's order
@@ -2121,12 +2145,17 @@ impl Mover {
         // 39 and 52 (buildings, walls, gates): only the kept hits' re-plan reads the slid point,
         // and with no kept hit the slide changes nothing
         if hits.len() == 1 && target_hit {
-            return Err(Unsupported("a walker whose step hits only its target"));
+            return Ok(Avoided {
+                kept: Vec::new(),
+                pauses: Vec::new(),
+                at_target: true,
+            });
         }
         if !kept.is_empty() {
             return Ok(Avoided {
                 kept,
                 pauses: Vec::new(),
+                at_target: false,
             });
         }
         let mut pauses = Vec::new();
@@ -2157,7 +2186,11 @@ impl Mover {
                 }
             }
         }
-        Ok(Avoided { kept, pauses })
+        Ok(Avoided {
+            kept,
+            pauses,
+            at_target: false,
+        })
     }
 
     /// The pause of unit `id`'s walked level as slot 0x5f0 leaves it: the last this walk gave it
@@ -2412,6 +2445,7 @@ mod tests {
             min_collision: 1.0,
             fast_turn: false,
             walk_speed: 1.0,
+            stand_speed: 1.0,
             run_speed: 1.0,
         }
     }
