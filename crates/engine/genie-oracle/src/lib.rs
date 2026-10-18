@@ -656,7 +656,7 @@ fn mover(
                 .ok_or(Unsupported(
                     "a terrain restriction the data file does not have",
                 ))?,
-            turns_at_once: turn_speed == 0.0,
+            turn_time: turn_speed,
             move_algorithm: turning.move_algorithm,
             min_collision: turning.min_collision_size_multiplier,
             fast_turn: flags & 2 != 0,
@@ -675,6 +675,7 @@ fn mover(
         last_move: m.last_move_time_value,
         substitute_count: m.consecutive_substitute_count,
         ignore_units: s.temp_int.clone(),
+        last_turn: m.turn_towards_time,
         angle: m.angle,
         move_to_point: saved_move_to_point(object),
         speed_stopped: false,
@@ -2039,7 +2040,7 @@ fn moving_stats(
         radius: [s.radius_x, s.radius_y, s.radius_z],
         restriction,
         restriction_mask: *table.terrain.masks().get(restriction)?,
-        turns_at_once: moving.turn_speed == 0.0,
+        turn_time: moving.turn_speed,
         move_algorithm: turning.move_algorithm,
         min_collision: turning.min_collision_size_multiplier,
         fast_turn: s.object_flags & 2 != 0,
@@ -3336,6 +3337,7 @@ impl Same for MoveRow {
             && self.substitute_count == other.substitute_count
             && self.ignore_units == other.ignore_units
             && self.angle.same(&other.angle)
+            && self.last_turn.same(&other.last_turn)
     }
 }
 
@@ -3393,6 +3395,8 @@ pub struct MoveRow {
     pub ignore_units: Vec<i32>,
     /// `+0x7e8`, where it faces.
     pub angle: f32,
+    /// `+0x7ec`, `turn_towards_time`: its last facet step toward a target.
+    pub last_turn: f32,
 }
 
 impl ObjectRow {
@@ -3427,6 +3431,7 @@ impl ObjectRow {
                 substitute_count: m.substitute_count,
                 ignore_units: m.ignore_units.clone(),
                 angle: m.angle,
+                last_turn: m.last_turn,
             }),
             construction: unit
                 .construction
@@ -3472,6 +3477,7 @@ fn saved_movement(object: &genie_save::Object, paths: &[Path]) -> Option<MoveRow
         substitute_count: m.consecutive_substitute_count,
         ignore_units: s.temp_int.clone(),
         angle: m.angle,
+        last_turn: m.turn_towards_time,
     })
 }
 
@@ -4753,6 +4759,11 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
                 );
                 field("right", format!("{:?}", a.right), format!("{:?}", b.right));
                 field("angle", format!("{:?}", a.angle), format!("{:?}", b.angle));
+                field(
+                    "last turn",
+                    format!("{:?}", a.last_turn),
+                    format!("{:?}", b.last_turn),
+                );
                 field(
                     "velocity",
                     format!("{:?}", a.velocity),

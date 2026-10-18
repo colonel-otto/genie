@@ -101,9 +101,9 @@ pub struct MoveStats {
     pub restriction: usize,
     /// The terrain classes the restriction lets it stand on (its mask).
     pub restriction_mask: u8,
-    /// The master's turn speed (`+0x758`, the `.dat`'s `rotation_speed`) is 0: the unit faces a
-    /// target at once (`FUN_141162db0`).
-    pub turns_at_once: bool,
+    /// The master's turn time (`+0x758`, the `.dat`'s `rotation_speed`): the seconds between the
+    /// facet steps of a unit facing a target; 0 faces at once (`FUN_141162db0`).
+    pub turn_time: f32,
     /// The master's move algorithm (`+0x768`, the `.dat`'s `move_algorithm`): bit 0 has a stop
     /// reset the unit's sprite (slot 0x5d8).
     pub move_algorithm: u8,
@@ -149,6 +149,9 @@ pub struct Mover {
     /// of the static part): the other units of an order to several (`FUN_14118c790`), which the
     /// short pather ignores for a top path made this update. A stop empties it.
     pub ignore_units: Vec<i32>,
+    /// `+0x7ec`, `turn_towards_time`: the world time in seconds of its last facet step toward a
+    /// target (`FUN_141162db0`).
+    pub last_turn: f32,
     /// `+0x7e8`: where the unit faces, radians 0 to 2π ([`crate::facing`]).
     pub angle: f32,
     /// The point of the `MoveTo` the unit walks with (`+0x38`..`+0x40`), when it walks to a target
@@ -2534,7 +2537,7 @@ mod tests {
             radius: [0.2, 0.2, 0.5],
             restriction: 7,
             restriction_mask: 6,
-            turns_at_once: true,
+            turn_time: 0.0,
             move_algorithm: 0,
             min_collision: 1.0,
             fast_turn: false,
@@ -2607,6 +2610,7 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            last_turn: 0.0,
             angle: 0.0,
             move_to_point: None,
             speed_stopped: false,

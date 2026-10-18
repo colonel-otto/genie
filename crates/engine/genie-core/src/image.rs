@@ -84,6 +84,8 @@ pub mod facing {
     pub const MINUS_PI: f32 = f32::from_bits(0xc049_0fdb);
     /// -6.2831854820251465
     pub const MINUS_TWO_PI: f32 = f32::from_bits(0xc0c9_0fdb);
+    /// 1000.0
+    pub const MS_PER_SECOND: f32 = f32::from_bits(0x447a_0000);
     /// 1.0
     pub const ONE: f32 = f32::from_bits(0x3f80_0000);
     /// 3.1415927410125732

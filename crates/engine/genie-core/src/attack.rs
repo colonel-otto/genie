@@ -147,6 +147,8 @@ pub struct Engagement {
     pub can_move: bool,
     /// The unit AI's stance (`+0x1a9`), whose 1 adds a leash test.
     pub stance: u8,
+    /// The world's time (`FUN_1415300d0`), which a facing over time reads.
+    pub world_time: u32,
 }
 
 /// What the Attack's update reads of its unit besides its movement, and changes.
@@ -193,7 +195,13 @@ pub struct Strike<'a> {
     pub posted: Vec<(i32, [i32; 3])>,
     /// The unit has a unit AI whose order queue is empty (`FUN_140c564a0` is 0).
     pub queue_empty: bool,
+    /// The world's time (`FUN_1415300d0`), which a facing over time reads.
+    pub world_time: u32,
 }
+
+/// The masters readyToAttack does not turn to face their target (`0x6744`, `0x6746` raw).
+const MASTER_1704: i16 = 1704;
+const MASTER_1706: i16 = 1706;
 
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
 const QUIET_SWINGS: [i16; 2] = [73, 559];
@@ -265,7 +273,7 @@ impl Attack {
             // in reach: the target's place becomes the point and the unit faces it
             // (FUN_141162db0)
             a.point = e.target_position;
-            face_target(mover, e.position, e.target_position)?;
+            let _ = face_target(mover, e.position, e.target_position, e.world_time)?;
             if !movable {
                 return Err(Unsupported(
                     "an attack that starts in reach and cannot move (set_state 6)",
@@ -355,7 +363,7 @@ impl Attack {
             }
             if a.reach() >= e.gap {
                 a.point = e.target_position;
-                face_target(mover, e.position, e.target_position)?;
+                let _ = face_target(mover, e.position, e.target_position, e.world_time)?;
             } else {
                 if e.stance == 1 {
                     return Err(Unsupported("an attack's leash test (stance 1)"));
@@ -578,7 +586,8 @@ impl Attack {
     }
 
     /// readyToAttack's ready end (`0x140a801f2`): the unit at `at` faces its target at `to`
-    /// (`FUN_141162db0`, [`crate::facing::face`]) and swings once its attack timer ran out.
+    /// (`FUN_141162db0`, [`face_target`]; masters 1704 and 1706 skip it); one not facing it yet
+    /// waits; one facing it swings once its attack timer ran out.
     fn face(
         &self,
         mover: &mut Mover,
@@ -586,7 +595,11 @@ impl Attack {
         to: [f32; 3],
         s: &Strike<'_>,
     ) -> Result<Readiness, Unsupported> {
-        face_target(mover, at, to)?;
+        if !matches!(s.own.master_id, MASTER_1704 | MASTER_1706)
+            && !face_target(mover, at, to, s.world_time)?
+        {
+            return Ok(Readiness::Waiting);
+        }
         Ok(if *s.attack_timer <= 0.0 {
             Readiness::Ready
         } else {
@@ -1057,6 +1070,7 @@ pub fn engagement(
     master: &crate::masters::Master,
     me: &crate::spatial::Placed,
     them: &crate::spatial::Placed,
+    world_time: u32,
 ) -> Result<Engagement, Unsupported> {
     if matches!(master.charge_type, 6 | 7) {
         return Err(Unsupported(
@@ -1074,6 +1088,7 @@ pub fn engagement(
         min_range: master.min_range,
         can_move: ai.is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1),
         stance: ai.map_or(0, |ai| ai.stance),
+        world_time,
     })
 }
 
@@ -1084,24 +1099,35 @@ pub fn gaps(a: [f32; 3], a_radius: [f32; 2], b: [f32; 3], b_radius: [f32; 2]) ->
     (squared, footprint_gap(a, a_radius, b, b_radius))
 }
 
-/// `FUN_141162db0`: the unit at `at` turns to face `to`, at once for a unit without a turn time
-/// ([`crate::facing::face`] with its sprites' facets); a unit that turns over time, or whose
-/// sprites differ in their facets, is not modelled.
+/// `FUN_141162db0`: the unit at `at` turns to face `to` with its sprites' facets, at once for a
+/// unit without a turn time ([`crate::facing::face`]), else a facet a turn time
+/// ([`crate::facing::turn_toward`] by the world time); returns whether it faces. A unit whose
+/// sprites differ in their facets is not modelled.
 pub(crate) fn face_target(
     mover: &mut Mover,
     at: [f32; 3],
     to: [f32; 3],
-) -> Result<(), Unsupported> {
-    if !mover.stats.turns_at_once {
-        return Err(Unsupported(
-            "a unit that turns over time to face its target",
-        ));
-    }
+    world_time: u32,
+) -> Result<bool, Unsupported> {
     let facets = mover.stats.facets.ok_or(Unsupported(
         "a unit facing a target whose sprites differ in their facets",
     ))?;
-    mover.angle = crate::facing::face([at[0], at[1]], mover.angle, [to[0], to[1]], Some(facets));
-    Ok(())
+    let (at, to) = ([at[0], at[1]], [to[0], to[1]]);
+    if mover.stats.turn_time == 0.0 {
+        mover.angle = crate::facing::face(at, mover.angle, to, Some(facets));
+        return Ok(true);
+    }
+    let (angle, last, faces) = crate::facing::turn_toward(
+        at,
+        mover.angle,
+        to,
+        Some(facets),
+        mover.stats.turn_time,
+        mover.last_turn,
+        world_time,
+    );
+    (mover.angle, mover.last_turn) = (angle, last);
+    Ok(faces)
 }
 
 /// The squared reach of an attack of `range` (`FUN_140a82ae0` at `0x140a83950`): the range squared,

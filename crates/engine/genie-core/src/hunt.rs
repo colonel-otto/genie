@@ -619,7 +619,16 @@ impl HuntAction {
                     .mover
                     .as_deref_mut()
                     .ok_or(Unsupported("a hunter without movement state"))?;
-                crate::attack::face_target(mover, at, strike.victim.position)?;
+                if !crate::attack::face_target(
+                    mover,
+                    at,
+                    strike.victim.position,
+                    strike.world_time,
+                )? {
+                    return Err(Unsupported(
+                        "a hunter that turns over time to face its target",
+                    ));
+                }
                 if 0.0 < strike.victim.amount {
                     self.set_gather(strike, gather);
                     Ok(())
@@ -877,7 +886,7 @@ pub(crate) mod tests {
                 radius: [0.2, 0.2, 0.5],
                 restriction: 7,
                 restriction_mask: 6,
-                turns_at_once: true,
+                turn_time: 0.0,
                 move_algorithm: 0,
                 min_collision: 1.0,
                 fast_turn: false,
@@ -896,6 +905,7 @@ pub(crate) mod tests {
             last_move: 0,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            last_turn: 0.0,
             angle: 0.0,
             move_to_point: None,
             speed_stopped: false,
@@ -929,6 +939,7 @@ pub(crate) mod tests {
             min_range: 0.0,
             can_move: true,
             stance: 0,
+            world_time: 0,
         }
     }
 

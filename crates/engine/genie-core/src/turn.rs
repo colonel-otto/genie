@@ -669,7 +669,14 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .mover
             .as_mut()
             .ok_or(Unsupported("an attacker without movement state"))?;
-        let e = crate::attack::engagement(Some(ai), mover.stats.speed, master, &me_at, &t)?;
+        let e = crate::attack::engagement(
+            Some(ai),
+            mover.stats.speed,
+            master,
+            &me_at,
+            &t,
+            self.world_time,
+        )?;
         let crate::attack::Commanded {
             attack,
             arrived,
@@ -1447,8 +1454,14 @@ impl Unit {
                     .ok_or(Unsupported("a hunt's target without a place"))?,
             );
             let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-            let engagement =
-                crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them)?;
+            let engagement = crate::attack::engagement(
+                self.ai.as_ref(),
+                speed,
+                master,
+                me_at,
+                them,
+                c.world_time,
+            )?;
             let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites);
             let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
                 return Err(Unsupported("a hunter without its hunt or movement state"));
@@ -1604,7 +1617,8 @@ impl Unit {
                 .ok_or(Unsupported("a hunt's target without a place"))?,
         );
         let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-        let engagement = crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them)?;
+        let engagement =
+            crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them, c.world_time)?;
         let sprites = self.hunt.as_ref().map_or([-1; 4], |h| h.task.sprites);
         let arms = crate::attack::arms(master, c.graphics, sprites);
         let drops_here = master.drop_sites.contains(&t.life.master_id);
@@ -2240,6 +2254,7 @@ impl Unit {
             last_move: c.world_time,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            last_turn: 0.0,
             angle,
             move_to_point: None,
             speed_stopped: false,
@@ -3360,8 +3375,14 @@ impl Unit {
                 };
                 let (me_at, them) = (at(self.id)?, at(hunt.target)?);
                 let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-                let engagement =
-                    crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them)?;
+                let engagement = crate::attack::engagement(
+                    self.ai.as_ref(),
+                    speed,
+                    master,
+                    me_at,
+                    them,
+                    c.world_time,
+                )?;
                 let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites);
                 let own = them.player == c.player;
                 let drop_site = if !own {
@@ -3416,6 +3437,7 @@ impl Unit {
                 .as_ref()
                 .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
+            let world_time = c.world_time;
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
@@ -3433,6 +3455,7 @@ impl Unit {
                 stance,
                 posted: Vec::new(),
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
+                world_time,
             };
             let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let fired = strike.fire.map(|target| {
@@ -3478,6 +3501,7 @@ impl Unit {
                 .as_ref()
                 .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
+            let world_time = c.world_time;
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
@@ -3495,6 +3519,7 @@ impl Unit {
                 stance,
                 posted: Vec::new(),
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
+                world_time,
             };
             let code = attack.update(walk, &mut strike)?;
             let fired = strike.fire.map(|target| {

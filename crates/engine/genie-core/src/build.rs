@@ -299,7 +299,12 @@ impl BuildAction {
                     .mover
                     .as_deref_mut()
                     .ok_or(Unsupported("a builder without movement state"))?;
-                crate::attack::face_target(mover, at, to)?;
+                let now = walk.plan.as_ref().map_or(0, |p| p.now);
+                if !crate::attack::face_target(mover, at, to, now)? {
+                    return Err(Unsupported(
+                        "a builder that turns over time to face its foundation",
+                    ));
+                }
                 self.place(&walk, site)
             }
             (PLACE, _) => self.work(walk, site, held).map(|c| step.completed = c),
@@ -1015,7 +1020,7 @@ mod tests {
                 radius: [0.2, 0.2, 0.5],
                 restriction: 7,
                 restriction_mask: 6,
-                turns_at_once: true,
+                turn_time: 0.0,
                 move_algorithm: 0,
                 min_collision: 1.0,
                 fast_turn: false,
@@ -1034,6 +1039,7 @@ mod tests {
             last_move: 0,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            last_turn: 0.0,
             angle: 0.0,
             move_to_point: None,
             speed_stopped: false,

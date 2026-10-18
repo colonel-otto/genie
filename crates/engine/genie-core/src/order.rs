@@ -1481,7 +1481,7 @@ impl Turns {
             .get_known(target)?
             .ok_or(Unsupported("an attack's target without a place"))?;
         let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-        crate::attack::engagement(unit.ai.as_ref(), speed, master, me, them)
+        crate::attack::engagement(unit.ai.as_ref(), speed, master, me, them, self.world_time)
     }
 
     /// The Hunt from the factory (`FUN_140aca4b0` case 0x6e): the action takes its target (slot
