@@ -1607,7 +1607,7 @@ impl Turns {
                 self.pathing.removed(id);
                 self.spatial
                     .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
-                self.spatial.insert(id, placed);
+                self.spatial.change_master(id, placed);
                 self.pathing.moved(id, &placed, moving);
             }
             // slot 0x68 with the new master's standing sprite (`+0x470`, FUN_141217000): a new

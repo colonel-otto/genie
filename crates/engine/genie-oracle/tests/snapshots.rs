@@ -42,6 +42,9 @@ fn differences(start: usize, ticks: usize, player: u32) -> Option<Vec<String>> {
         genie_oracle::Dumps {
             mesh: mesh(&dir, start).as_deref(),
             registry: registry(&dir, start).as_deref(),
+            tiles: std::fs::read_to_string(dir.join(format!("{start}.tiles")))
+                .ok()
+                .as_deref(),
         },
     )
     .unwrap();

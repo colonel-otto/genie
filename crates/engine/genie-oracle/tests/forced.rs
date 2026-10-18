@@ -65,6 +65,7 @@ fn segment(
     };
     let mesh = mesh(dir, start);
     let registry = std::fs::read_to_string(dir.join(format!("{start}.registry"))).ok();
+    let tiles = std::fs::read_to_string(dir.join(format!("{start}.tiles"))).ok();
     let after = |t: usize| std::fs::read(dir.join(format!("{t}.aoe2record"))).ok();
     genie_oracle::forced_run(
         &save,
@@ -75,8 +76,10 @@ fn segment(
         genie_oracle::Dumps {
             mesh: mesh.as_deref(),
             registry: registry.as_deref(),
+            tiles: tiles.as_deref(),
         },
         &after,
+        &|t: usize| std::fs::read_to_string(dir.join(format!("{t}.tiles"))).ok(),
     )
     .unwrap()
 }
@@ -93,6 +96,7 @@ fn step(
     let after = std::fs::read(dir.join(format!("{}.aoe2record", start + ticks))).ok()?;
     let mesh = mesh(dir, start);
     let registry = std::fs::read_to_string(dir.join(format!("{start}.registry"))).ok();
+    let tiles = std::fs::read_to_string(dir.join(format!("{start}.tiles"))).ok();
     Some(
         genie_oracle::forced_ticks(
             &save,
@@ -104,6 +108,7 @@ fn step(
             genie_oracle::Dumps {
                 mesh: mesh.as_deref(),
                 registry: registry.as_deref(),
+                tiles: tiles.as_deref(),
             },
         )
         .unwrap(),

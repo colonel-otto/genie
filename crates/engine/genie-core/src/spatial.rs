@@ -132,8 +132,10 @@ pub struct Tiles {
     /// Tall objects (a height radius above 0) whose centre is on the tile (the map's bytes at
     /// `+0x10`, `FUN_140f5f0a0`); the passability test queries the obstructions of a tile with two.
     tall: Vec<u8>,
-    /// Objects whose centre is on the tile (the tile's count at `+0x1b`).
-    objects: Vec<u8>,
+    /// The objects whose centre is on the tile, in the tile's order (its list `+0x28`, count
+    /// `+0x1b`): an object entering the tile goes last (`FUN_140f5f0a0`), one leaving it gives
+    /// its slot to the last (`FUN_140f5f560`).
+    lists: Vec<Vec<i32>>,
 }
 
 impl Tiles {
@@ -155,7 +157,7 @@ impl Tiles {
             height,
             words: classes.into_iter().map(u64::from).collect(),
             tall: vec![0; n],
-            objects: vec![0; n],
+            lists: vec![Vec::new(); n],
         }
     }
 
@@ -179,31 +181,38 @@ impl Tiles {
     /// How many objects stand on tile (`x`, `y`).
     #[must_use]
     pub fn objects(&self, x: i32, y: i32) -> Option<u8> {
-        self.index(x, y).map(|i| self.objects[i])
+        self.index(x, y).map(|i| self.lists[i].len() as u8)
     }
 
-    /// Count an object in or out of the tile its centre is on.
-    fn count(&mut self, position: [f32; 3], tall: bool, add: bool) {
-        let Some(i) = self.index(position[0] as i32, position[1] as i32) else {
-            return;
-        };
-        let step = |c: &mut u8| {
-            *c = if add {
-                c.wrapping_add(1)
-            } else {
-                c.wrapping_sub(1)
-            }
-        };
-        step(&mut self.objects[i]);
-        if tall {
-            step(&mut self.tall[i]);
+    /// The objects on tile (`x`, `y`) in the tile's order; none off the map.
+    #[must_use]
+    pub fn list(&self, x: i32, y: i32) -> &[i32] {
+        self.index(x, y).map_or(&[], |i| &self.lists[i])
+    }
+
+    /// The tile of a centre, if it is on the map.
+    fn tile_of(&self, position: [f32; 3]) -> Option<usize> {
+        self.index(position[0] as i32, position[1] as i32)
+    }
+
+    /// The object goes last on tile `i` (`FUN_140f5f0a0`).
+    fn append(&mut self, i: usize, id: i32) {
+        self.lists[i].push(id);
+    }
+
+    /// The object leaves tile `i`: the last object takes its slot (`FUN_140f5f560`).
+    fn take_off(&mut self, i: usize, id: i32) {
+        if let Some(k) = self.lists[i].iter().position(|&o| o == id) {
+            let _ = self.lists[i].swap_remove(k);
         }
     }
 
     /// A tall object on tile (`x`, `y`), for a test's map.
     #[cfg(test)]
     pub(crate) fn add_tall_for_test(&mut self, x: i32, y: i32) {
-        self.count([x as f32 + 0.5, y as f32 + 0.5, 0.0], true, true);
+        let i = self.index(x, y).expect("a tile on the map");
+        self.lists[i].push(i32::MIN);
+        self.tall[i] += 1;
     }
 
     /// The tiles a static record covers (`FUN_141056460`): from the box's low edge to its high
@@ -363,12 +372,12 @@ impl Spatial {
     }
 
     /// The objects whose centre is on tile (`x`, `y`): the map tile's object list (`+0x1b` count,
-    /// `+0x28` array), in id order; the slice does not hold the list's own order.
+    /// `+0x28` array), in its order, without the ghosts.
     pub fn objects_on(&self, x: i32, y: i32) -> impl Iterator<Item = (i32, &Placed)> + '_ {
-        self.objects
+        self.tiles
+            .list(x, y)
             .iter()
-            .filter(move |(_, o)| o.position[0] as i32 == x && o.position[1] as i32 == y)
-            .map(|(&id, o)| (id, o))
+            .filter_map(|id| self.objects.get(id).map(|o| (*id, o)))
     }
 
     /// The object's obstruction record goes (`FUN_141055b40`'s record part): a static record's
@@ -552,7 +561,42 @@ impl Spatial {
     /// earlier record marked.
     pub fn insert(&mut self, id: i32, placed: Placed) {
         self.remove(id);
-        self.tiles.count(placed.position, placed.tall, true);
+        if let Some(o) = placed.obstruction.filter(|o| o.marks_tiles()) {
+            self.tiles.mark(&placed, o);
+            self.changed.push(self.tiles.covered_rect(&placed));
+        }
+        let _ = self.objects.insert(id, placed);
+        if let Some(i) = self.tiles.tile_of(placed.position) {
+            self.tiles.append(i, id);
+            self.recount(i);
+        }
+    }
+
+    /// Tile `i`'s tall count after its list changed: the tall objects on it (`FUN_140f5f0a0` and
+    /// `FUN_140f5f560` count them over the list, each by its master's height radius now; a
+    /// ghost is not tall).
+    fn recount(&mut self, i: usize) {
+        let tall = self.tiles.lists[i]
+            .iter()
+            .filter(|id| self.objects.get(id).is_some_and(|p| p.tall))
+            .count();
+        self.tiles.tall[i] = tall as u8;
+    }
+
+    /// The object's master changed (`FUN_1411a6a70`): it takes the new master's radii, class,
+    /// obstruction and speed (`placed`, at its place), its static record's marks follow, and it
+    /// keeps its slot in its tile's list and the tile's tall count, which the game does not redo.
+    pub fn change_master(&mut self, id: i32, placed: Placed) {
+        let Some(old) = self.objects.get(&id).copied() else {
+            return self.insert(id, placed);
+        };
+        if self.tiles.tile_of(old.position) != self.tiles.tile_of(placed.position) {
+            return self.insert(id, placed);
+        }
+        if old.obstruction.is_some_and(Obstruction::marks_tiles) {
+            self.tiles.unmark(&old);
+            self.changed.push(self.tiles.covered_rect(&old));
+        }
         if let Some(o) = placed.obstruction.filter(|o| o.marks_tiles()) {
             self.tiles.mark(&placed, o);
             self.changed.push(self.tiles.covered_rect(&placed));
@@ -574,7 +618,10 @@ impl Spatial {
     /// The object `id` leaves the world.
     pub fn remove(&mut self, id: i32) {
         if let Some(gone) = self.objects.remove(&id) {
-            self.tiles.count(gone.position, gone.tall, false);
+            if let Some(i) = self.tiles.tile_of(gone.position) {
+                self.tiles.take_off(i, id);
+                self.recount(i);
+            }
             if gone.obstruction.is_some_and(Obstruction::marks_tiles) {
                 self.tiles.unmark(&gone);
                 self.changed.push(self.tiles.covered_rect(&gone));
@@ -811,10 +858,22 @@ impl Spatial {
     /// tile, its sight follow.
     pub fn set_position(&mut self, id: i32, position: [f32; 3]) {
         if let Some(p) = self.objects.get_mut(&id) {
-            self.tiles.count(p.position, p.tall, false);
             let from = p.position;
             p.position = position;
-            self.tiles.count(p.position, p.tall, true);
+            let (old, new) = (self.tiles.tile_of(from), self.tiles.tile_of(position));
+            if old != new {
+                if let Some(i) = old {
+                    self.tiles.take_off(i, id);
+                    self.recount(i);
+                }
+                if let Some(i) = new {
+                    self.tiles.append(i, id);
+                    self.recount(i);
+                }
+            }
+            let Some(p) = self.objects.get(&id) else {
+                return;
+            };
             if let Some(v) = self.sight.as_mut() {
                 v.moved(id, from, position, p.radius);
                 v.registry_moved(id, p.class, from, position);
@@ -1319,10 +1378,40 @@ impl Spatial {
         self.sight.as_mut().and_then(Visibility::take_unsupported)
     }
 
-    /// A player's ghost of an object it saw (a doppelganger, type 25): it counts on its tile, and
-    /// movement sees nothing else of it. The slice keeps the ghosts of the save and makes none.
-    pub fn insert_ghost(&mut self, position: [f32; 3]) {
-        self.tiles.count(position, false, true);
+    /// A player's ghost `id` of an object it saw (a doppelganger, type 25): it is on its tile's
+    /// list, and movement sees nothing else of it. The slice keeps the ghosts of the save and
+    /// makes none.
+    pub fn insert_ghost(&mut self, id: i32, position: [f32; 3]) {
+        if let Some(i) = self.tiles.tile_of(position) {
+            self.tiles.append(i, id);
+        }
+    }
+
+    /// The tiles' lists in the game's order (`x`, `y`, ids), each a tile of two objects or more
+    /// (a single object's tile follows from the positions); the order is the game's history,
+    /// which no save holds. Returns the tiles whose objects the slice does not hold as the game
+    /// does (the same ids, in any order), with the slice's list; those keep the slice's.
+    pub fn force_tile_lists(
+        &mut self,
+        lists: &[(i32, i32, Vec<i32>)],
+    ) -> Vec<(i32, i32, Vec<i32>)> {
+        let mut differ = Vec::new();
+        for (x, y, ids) in lists {
+            let Some(i) = self.tiles.index(*x, *y) else {
+                differ.push((*x, *y, Vec::new()));
+                continue;
+            };
+            let mut mine = self.tiles.lists[i].clone();
+            let mut theirs = ids.clone();
+            mine.sort_unstable();
+            theirs.sort_unstable();
+            if mine == theirs {
+                self.tiles.lists[i].clone_from(ids);
+            } else {
+                differ.push((*x, *y, self.tiles.lists[i].clone()));
+            }
+        }
+        differ
     }
 
     /// Whether a unit with terrain mask `mask` can stand on tile (`x`, `y`) (`FUN_14114d460`): the
@@ -1791,6 +1880,27 @@ mod tests {
             (Some(0), Some(1))
         );
         assert_eq!(s.tiles().tall(2, 1), Some(1));
+    }
+
+    #[test]
+    fn a_tile_s_list_keeps_the_game_s_order() {
+        let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
+        for (id, x) in [(9171, 1.1), (10029, 1.5), (9173, 1.9)] {
+            s.insert(id, villager(x, 1.0));
+        }
+        assert_eq!(s.tiles().list(1, 1), [9171, 10029, 9173]);
+        // the leaving object's slot goes to the last
+        s.set_position(9171, [2.1, 1.0, 0.0]);
+        assert_eq!(s.tiles().list(1, 1), [9173, 10029]);
+        // a move within the tile and a master change keep the slot
+        s.set_position(9173, [1.2, 1.0, 0.0]);
+        s.change_master(9173, villager(1.2, 1.0));
+        assert_eq!(s.tiles().list(1, 1), [9173, 10029]);
+        s.set_position(9171, [1.0, 1.0, 0.0]);
+        assert_eq!(s.tiles().list(1, 1), [9173, 10029, 9171]);
+        assert_eq!((s.tiles().objects(1, 1), s.tiles().tall(1, 1)), (Some(3), Some(3)));
+        assert!(s.force_tile_lists(&[(1, 1, vec![9171, 9173, 10029])]).is_empty());
+        assert_eq!(s.tiles().list(1, 1), [9171, 9173, 10029]);
     }
 
     /// The house foundation 10028 at (30, 88) of MarvinBlue/426048731 with its builder 9175 on its

@@ -4180,6 +4180,9 @@ pub struct GameState {
     pub sight: Option<(Vec<crate::visibility::VisibleMap>, Vec<u64>)>,
     /// `next_reusable_object_id`: the fog ghosts that take reusable ids are not modelled.
     pub next_reusable_id: i32,
+    /// The map tiles' object lists in the game's order (`x`, `y`, ids; each tile of two objects
+    /// or more), when the oracle dumped them: the order is the game's history, no save holds it.
+    pub tile_lists: Option<Vec<(i32, i32, Vec<i32>)>>,
 }
 
 impl Turns {
@@ -4190,7 +4193,8 @@ impl Turns {
     /// placed where the game has it, and it runs again from the next tick; a frozen object the
     /// game no longer holds goes. A stopped player takes the game's resources and runs again.
     /// The world's next reusable id is the game's (the fog ghosts that take them are not
-    /// modelled). A stopped player's pending debit and technologies are the game's too. Returns
+    /// modelled). A stopped player's pending debit and technologies are the game's too, and so
+    /// is the tiles' objects' order where the game's dump has it. Returns
     /// what could not be forced (an object that changed hands or masters, or
     /// that the game made and the slice did not). Not part of a replay: a dev hook to see past a
     /// freeze.
@@ -4293,6 +4297,11 @@ impl Turns {
                     ));
                 }
             }
+        }
+        if let Some(lists) = game.tile_lists.as_ref() {
+            // the tiles whose objects differ keep the slice's order: their objects' places
+            // differ, and that is reported
+            let _ = self.spatial.force_tile_lists(lists);
         }
         self.pathing.tiles_changed(self.spatial.take_changes());
         notes

@@ -69,9 +69,11 @@ fn a_foundation_s_tiles_link_when_its_construction_starts() {
     let mesh = std::fs::read_to_string(dir.join("680.mesh")).unwrap();
     // the TC's idle checks search the objects in sight (690)
     let registry = std::fs::read_to_string(dir.join("680.registry")).unwrap();
+    let tiles = std::fs::read_to_string(dir.join("680.tiles")).ok();
     let dumps = genie_oracle::Dumps {
         mesh: Some(&mesh),
         registry: Some(&registry),
+        tiles: tiles.as_deref(),
     };
     let run =
         genie_oracle::objects_from_save(&save, &rec, 680, 60, 2, Some(&masters), dumps).unwrap();
@@ -155,9 +157,11 @@ fn player_2_s_registry_from_a_save_matches_the_game_s_through_1180() {
     let save = std::fs::read(dir.join("680.aoe2record")).unwrap();
     let mesh = std::fs::read_to_string(dir.join("680.mesh")).unwrap();
     let start = std::fs::read_to_string(dir.join("680.registry")).unwrap();
+    let tiles = std::fs::read_to_string(dir.join("680.tiles")).ok();
     let dumps = genie_oracle::Dumps {
         mesh: Some(&mesh),
         registry: Some(&start),
+        tiles: tiles.as_deref(),
     };
     let run =
         genie_oracle::objects_from_save(&save, &rec, 680, 500, 2, Some(&masters), dumps).unwrap();

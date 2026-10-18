@@ -85,6 +85,8 @@ pub enum Error {
     BadMeshDump,
     /// A registry dump without its header line, or a line out of shape.
     BadRegistryDump,
+    /// A tile list dump's line out of shape.
+    BadTileDump,
 }
 
 impl From<de::Error> for Error {
@@ -102,6 +104,7 @@ impl std::fmt::Display for Error {
             Self::CommandBeforeFirstSync => write!(f, "a command comes before the first sync"),
             Self::BadMeshDump => write!(f, "the mesh dump has no mesh line"),
             Self::BadRegistryDump => write!(f, "the registry dump is out of shape"),
+            Self::BadTileDump => write!(f, "the tile list dump is out of shape"),
         }
     }
 }
@@ -2290,7 +2293,7 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
         }
         for ghost in section.objects().doppleganger_objects.objects() {
             if let Some(s) = ghost.static_part() {
-                out.insert_ghost([s.t_x, s.t_y, s.t_z]);
+                out.insert_ghost(s.id, [s.t_x, s.t_y, s.t_z]);
             }
         }
     }
@@ -3345,6 +3348,54 @@ pub struct Dumps<'a> {
     /// The objects-in-sight registry and the objects' masks (`load_oracle/probes/registry.py`);
     /// without it the slice keeps no registry, and a unit AI's search stops it.
     pub registry: Option<&'a str>,
+    /// The map tiles' object lists in the game's order ([`tile_lists_from_dump`]); without it
+    /// the slice keeps the order of its load.
+    pub tiles: Option<&'a str>,
+}
+
+/// The map tiles' object lists as the tick oracle dumps them (`state_dumps.tile_lists_text`):
+/// `x y id...` per tile of two objects or more, in the tile's order (an id signed, or its 32
+/// bits unsigned as the first dumps wrote a missile's).
+pub fn tile_lists_from_dump(text: &str) -> Result<Vec<(i32, i32, Vec<i32>)>, Error> {
+    let word = |v: &str| {
+        v.parse::<i64>()
+            .ok()
+            .filter(|&n| i64::from(i32::MIN) <= n && n <= i64::from(u32::MAX))
+            .map(|n| n as u32 as i32)
+            .ok_or(Error::BadTileDump)
+    };
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let words = l
+                .split_whitespace()
+                .map(word)
+                .collect::<Result<Vec<_>, _>>()?;
+            match words[..] {
+                [x, y, ..] => Ok((x, y, words[2..].to_vec())),
+                _ => Err(Error::BadTileDump),
+            }
+        })
+        .collect()
+}
+
+/// The tiles whose objects the slice holds as the game does (the dump's `game`) but in another
+/// order, as differences: `tile (x, y) order slice [...], the game [...]`. Tiles whose objects
+/// differ are left out: their objects' places differ.
+fn tile_order_differences(
+    spatial: &genie_core::spatial::Spatial,
+    game: &[(i32, i32, Vec<i32>)],
+) -> Vec<String> {
+    game.iter()
+        .filter_map(|(x, y, ids)| {
+            let mine = spatial.tiles().list(*x, *y);
+            let (mut a, mut b) = (mine.to_vec(), ids.clone());
+            a.sort_unstable();
+            b.sort_unstable();
+            (a == b && mine != &ids[..])
+                .then(|| format!("tile ({x}, {y}) order slice {mine:?}, the game {ids:?}"))
+        })
+        .collect()
 }
 
 /// The objects-in-sight registry as the tick oracle dumps it (`load_oracle/probes/registry.py`):
@@ -3495,9 +3546,12 @@ pub fn forced_ticks(
 /// after `start` (with its dumps), then `ticks` updates, each compared with the game's save after
 /// it (`save_after(update)`, which may end the run early with None) and then forced to the game's
 /// state where the slice did not model it or got it wrong ([`genie_core::turn::Turns::force`]: the
-/// frame seed, the frozen and the differing objects, a stopped player, the sight). The objects the
-/// slice gets right keep their own state, the saved and the unsaved, from tick to tick. One
-/// report per update, each with that update's own differences. Dev only.
+/// frame seed, the frozen and the differing objects, a stopped player, the sight, and the tiles'
+/// object lists of the game's dump after the update, `tiles_after(update)`, whose order the slice
+/// got wrong is a difference of Gaia's). The objects the slice gets right keep their own state,
+/// the saved and the unsaved, from tick to tick. One report per update, each with that update's
+/// own differences. Dev only.
+#[allow(clippy::too_many_arguments)]
 pub fn forced_run(
     start_save: &[u8],
     recording: &[u8],
@@ -3506,6 +3560,7 @@ pub fn forced_run(
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
     save_after: &(dyn Fn(usize) -> Option<Vec<u8>> + Sync),
+    tiles_after: &dyn Fn(usize) -> Option<String>,
 ) -> Result<Vec<TickReport>, Error> {
     let chapter = de::chapters(start_save)?[0];
     let header = chapter.header()?;
@@ -3517,6 +3572,9 @@ pub fn forced_run(
     }
     if let (Some(text), Some(sight)) = (dumps.registry, turns.spatial.sight.as_mut()) {
         sight.registry = Some(registry_from_dump(text)?);
+    }
+    if let Some(text) = dumps.tiles {
+        let _ = turns.spatial.force_tile_lists(&tile_lists_from_dump(text)?);
     }
     let played = de::chapters(recording)?[0];
     let start_header = played.header()?;
@@ -3557,7 +3615,16 @@ pub fn forced_run(
         };
         let tick = turns.ticks;
         compare_players(&turns, &after, Some(tick), &mut report)?;
+        let tiles = tiles_after(start + k + 1)
+            .map(|text| tile_lists_from_dump(&text))
+            .transpose()?;
+        if let Some(t) = tiles.as_ref() {
+            for d in tile_order_differences(&turns.spatial, t) {
+                report.differences.push((0, d));
+            }
+        }
         let mut game = after.game;
+        game.tile_lists = tiles;
         // what the slice got wrong takes the game's state too: each update's differences are
         // its own, not an earlier update's carried on
         game.resync = report
@@ -3730,6 +3797,9 @@ fn run_from_save(
     }
     if let (Some(text), Some(sight)) = (dumps.registry, turns.spatial.sight.as_mut()) {
         sight.registry = Some(registry_from_dump(text)?);
+    }
+    if let Some(text) = dumps.tiles {
+        let _ = turns.spatial.force_tile_lists(&tile_lists_from_dump(text)?);
     }
     let played = de::chapters(recording)?[0];
     hunted_origins(&mut turns, &played.header()?);
