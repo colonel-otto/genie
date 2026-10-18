@@ -1167,6 +1167,19 @@ impl Spatial {
         Ok(v.unified[(y * v.width + x) as usize] & bits != 0)
     }
 
+    /// `FUN_140c68a00` gives 0xf: player `player` sees tile (`x`, `y`) now (its bit of the
+    /// unified map; the player's mask `+0x2a8` adds bit 29, which no tile has). False off the map
+    /// and without the players' sight.
+    pub fn visible(&self, player: usize, x: i32, y: i32) -> bool {
+        let Some(v) = self.sight.as_ref() else {
+            return false;
+        };
+        if x < 0 || y < 0 || v.width <= x || v.height <= y {
+            return false;
+        }
+        v.unified[(y * v.width + x) as usize] & (1u64 << player) != 0
+    }
+
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its
     /// main building's place and UMV entry.
     pub fn combat_sight(&mut self, id: i32) -> Result<(), Unsupported> {

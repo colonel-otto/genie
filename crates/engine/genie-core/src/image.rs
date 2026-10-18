@@ -96,6 +96,8 @@ pub mod long_path {
 }
 
 pub mod move_to {
+    /// 0.009999999776482582
+    pub const ARRIVED: f32 = f32::from_bits(0x3c23d70a);
     /// 0.5
     pub const OFF_HIGH: f32 = f32::from_bits(0x3f000000);
     /// -0.5
@@ -249,6 +251,10 @@ pub mod unit_ai {
     pub const EVADE_REACH: f32 = f32::from_bits(0x40400000);
     /// 1.0
     pub const EXPLORE_Z: f32 = f32::from_bits(0x3f800000);
+    /// 1.0
+    pub const FOLLOW_SLACK_HIGH: f32 = f32::from_bits(0x3f800000);
+    /// -1.0
+    pub const FOLLOW_SLACK_LOW: f32 = f32::from_bits(0xbf800000);
 }
 
 pub mod visibility {

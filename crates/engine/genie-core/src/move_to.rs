@@ -5,7 +5,7 @@
 //! `0x140aa29e0`. A MoveTo in state 3 asks for a path (`FUN_14114e410`) and turns to state 4; in
 //! state 4 each update runs the motion step (object slot 193, [`Mover::motion`]).
 
-use crate::movement::{Me, Motion, Mover, Planning, footprint_gap};
+use crate::movement::{Me, Motion, Mover, Planning, footprint_gap, footprint_gap_squared};
 use crate::spatial::Spatial;
 use crate::unit_ai::Unsupported;
 
@@ -84,10 +84,12 @@ pub enum Goal {
 
 /// A starting MoveTo's update (state 3): unless the unit is within `range` of its goal already, it
 /// asks for a path (`FUN_14114e410`) and turns to state 4, whose set_state runs the update again at
-/// once ([`walk_on`]); returns the MoveTo's state after it. A unit already in range ends the
-/// MoveTo (set_state 1, code 0) when it has a unit AI not on order 711 or 733; `quiet` says the
-/// caller's MoveTo is quiet (its `+0x60` set, so set_state 1 keeps the sprite and `+0x7b8`) and
-/// the unit's AI qualifies. Any other unit in range is not modelled.
+/// once ([`walk_on`]); returns the MoveTo's state after it. In range is the footprints' squared
+/// gap (`FUN_14118f8c0`) to a target object, the gap from the unit's footprint to a point, at most
+/// `range` squared. A unit already in range ends the MoveTo (set_state 1, code 0) when it has a
+/// unit AI not on order 711 or 733; `quiet` says the caller's MoveTo is quiet (its `+0x60` set, so
+/// set_state 1 keeps the sprite and `+0x7b8`) and the unit's AI qualifies. Any other unit in range
+/// is not modelled.
 pub fn start_walk(
     walk: Walk<'_>,
     goal: Goal,
@@ -108,8 +110,13 @@ pub fn start_walk(
         .mover
         .ok_or(Unsupported("a walker without movement state"))?;
     let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-    let gap = footprint_gap(walk.me.position, ground, point, radius);
-    if gap * gap <= range * range {
+    let squared = if target == -1 {
+        let gap = footprint_gap(walk.me.position, ground, point, radius);
+        gap * gap
+    } else {
+        footprint_gap_squared(walk.me.position, ground, point, radius)
+    };
+    if squared <= range * range {
         if quiet {
             return Ok(MoveTo::Arrived);
         }
@@ -163,9 +170,12 @@ const OFF_HIGH: f32 = crate::image::move_to::OFF_HIGH;
 /// The moving MoveTo's check of its target object (`0x140aa2a70` in state 4, before the motion
 /// step): a target that left the MoveTo's point (more than half a tile off on either axis) makes
 /// a MoveTo with `+0x61` at 1 (`quiet`: a hunt's and its Attack's) ask for a path again: it turns
-/// to state 3 (the slice's [`MoveTo::Start`]) and its update ends there. With `+0x61` at 0 the
-/// MoveTo first tries to move its path's end to the target (`FUN_140f9b890` after a line test,
-/// else notify 0x1fc), which is not modelled. True when the MoveTo turns to state 3.
+/// to state 3 (the slice's [`MoveTo::Start`]) and its update ends there. With `+0x61` at 0 (a
+/// MoveTo of its own, FOLLOW's) the MoveTo moves its path's end to the target when the unit walks
+/// to that end ([`Mover::walks_to_path_end`]) and the straight line to the target is clear
+/// (`FUN_141052b90`, `FUN_141052350`; then `FUN_140f9b890` on both paths), which is not modelled;
+/// else it tells the unit (notify 0x1fc), turns to state 3 and the motion step runs on. True when
+/// the MoveTo turns to state 3.
 pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<bool, Unsupported> {
     let t = walk
         .world
@@ -183,20 +193,30 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<bool, U
     if !(dx < OFF_LOW || OFF_HIGH < dx || dy < OFF_LOW || OFF_HIGH < dy) {
         return Ok(false);
     }
-    if !quiet {
+    if !quiet
+        && walk
+            .mover
+            .as_deref()
+            .ok_or(Unsupported("a walker without movement state"))?
+            .walks_to_path_end()?
+    {
         return Err(Unsupported(
-            "a MoveTo whose target moved (its path's end follows, FUN_140f9b890)",
+            "a MoveTo whose path's end follows its target (FUN_140f9b890 after the line test)",
         ));
     }
     Ok(true)
 }
 
-/// A MoveTo as a unit's own top action (a wandering animal's).
+/// A MoveTo as a unit's own top action (a wandering animal's, a moved or following unit's). Its
+/// `+0x60` and `+0x61` are 0: it is not quiet.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MoveToAction {
     pub state: MoveTo,
     /// The point it walks to (`+0x38`..`+0x40`), when it has no target object.
     pub goal: Option<[f32; 3]>,
+    /// The target object it walks to (`+0x20`, its id at `+0x30`), −1 for a point; its point is
+    /// the mover's [`Mover::move_to_point`].
+    pub target: i32,
     /// `+0x68`.
     pub range: f32,
     /// It shows the master's running sprite (an AI move that does not walk, slot 0x340 with
@@ -204,19 +224,82 @@ pub struct MoveToAction {
     pub run: bool,
 }
 
+/// A MoveTo's start counts the unit at its target within this gap (`0x140aa2100`,
+/// `DAT_142eb99cc`).
+const ARRIVED: f32 = crate::image::move_to::ARRIVED;
+
+/// What one update of a [`MoveToAction`] did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MoveStep {
+    /// It is done (its update in state 1 returns 1): the action list removes it.
+    pub done: bool,
+    /// Its target left its point: it told the unit (notify 0x1fc) and turned to state 3.
+    pub target_moved: bool,
+}
+
 impl MoveToAction {
-    /// One update (`0x140aa2240`): true once it is done (its update in state 1 returns 1), for
-    /// the action list to remove it.
-    pub fn update(&mut self, mut walk: Walk<'_>) -> Result<bool, Unsupported> {
+    /// A new MoveTo of its own to the object `target` within `range` (`FUN_140aa0df0`; its point
+    /// the target's place, which the slice reads when it asks for the path), showing the master's
+    /// running sprite (`run`) or its walking one, as its start (slot 0x808 -> `0x140aa2100`)
+    /// leaves it: a unit more than [`ARRIVED`] from the target's footprint (`FUN_14118f680`) in
+    /// state 3 with speed (slot 0x208), 13 without. A unit at the target already (set_state 1:
+    /// the standing sprite, `+0x7b8` cleared) is not modelled. `me` is the unit's place.
+    pub fn to_target(
+        world: &Spatial,
+        me: [f32; 3],
+        mover: &Mover,
+        target: i32,
+        range: f32,
+        run: bool,
+    ) -> Result<Self, Unsupported> {
+        let t = world
+            .get_known(target)?
+            .ok_or(Unsupported("a MoveTo to an object the world lacks"))?;
+        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        if footprint_gap(me, ground, t.position, t.radius) <= ARRIVED {
+            return Err(Unsupported("a MoveTo to an object that starts arrived"));
+        }
+        Ok(MoveToAction {
+            state: if mover.stats.speed != 0.0 {
+                MoveTo::Start
+            } else {
+                MoveTo::Failed
+            },
+            goal: None,
+            target,
+            range,
+            run,
+        })
+    }
+
+    /// One update (`0x140aa2240`). A target that is gone (the update's first check: notify 0x1fb,
+    /// code 4) is not modelled.
+    pub fn update(&mut self, mut walk: Walk<'_>) -> Result<MoveStep, Unsupported> {
+        let mut step = MoveStep::default();
+        if self.target != -1 && walk.world.get_known(self.target)?.is_none() {
+            return Err(Unsupported("a MoveTo of its own whose target is gone"));
+        }
         match self.state {
             MoveTo::Moving => {
-                self.state = walk_on(walk)?;
-                Ok(false)
+                if self.target != -1 && target_moved(&walk, self.target, false)? {
+                    // set_state 3, then the motion step (`LAB_140aa320c`): moving on, the MoveTo
+                    // stays in state 3
+                    step.target_moved = true;
+                    self.state = match walk_on(walk)? {
+                        MoveTo::Moving => MoveTo::Start,
+                        other => other,
+                    };
+                } else {
+                    self.state = walk_on(walk)?;
+                }
+                Ok(step)
             }
             MoveTo::Start => {
-                let goal = self
-                    .goal
-                    .ok_or(Unsupported("a MoveTo of its own to a target object"))?;
+                let goal = match (self.target, self.goal) {
+                    (-1, Some(point)) => Goal::Point(point),
+                    (-1, None) => return Err(Unsupported("a MoveTo of its own without a goal")),
+                    (id, _) => Goal::Target(id),
+                };
                 // its sprite, the running or the walking one, sets the unit's speed
                 if let Some(m) = walk.mover.as_deref_mut() {
                     m.stats.speed = if self.run {
@@ -226,10 +309,13 @@ impl MoveToAction {
                     };
                 }
                 self.state = MoveTo::Moving;
-                self.state = start_walk(walk, Goal::Point(goal), self.range, false)?;
-                Ok(false)
+                self.state = start_walk(walk, goal, self.range, false)?;
+                Ok(step)
             }
-            MoveTo::Arrived => Ok(true),
+            MoveTo::Arrived => {
+                step.done = true;
+                Ok(step)
+            }
             MoveTo::Waiting => Err(Unsupported("a waiting MoveTo of its own (state 2)")),
             MoveTo::Failed => Err(Unsupported("a failed MoveTo of its own (state 13)")),
         }

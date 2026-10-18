@@ -33,7 +33,7 @@ use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, AiMove, BUILD_ACTION, BUILD_ORDER, Effect, Notify,
-    OWNER_CHANGED, Search, Surroundings, UnitAi, Unsupported,
+    OWNER_CHANGED, Search, Surroundings, TARGET_MOVED, UnitAi, Unsupported,
 };
 use crate::visibility::{BuildingSight, Seer, capture_kind};
 
@@ -210,6 +210,8 @@ pub enum Command {
 pub enum Order {
     Interact(Interact),
     Move(MoveOrder),
+    /// FOLLOW's target (`+0x8`).
+    Follow(i32),
 }
 
 /// QUEUE's unit and building (the fields of [`Command::Queue`] but the cost).
@@ -611,6 +613,7 @@ impl Unit {
                     }
                 }
                 Effect::Explore(point) => self.explore_to(point, c)?,
+                Effect::MoveToObject { target, range } => self.move_to_object(target, range, c)?,
                 Effect::SeekUnexplored => {
                     let [x, y] = self.seek_unexplored(c, others)?;
                     if let Some(ai) = self.ai.as_mut() {
@@ -1387,9 +1390,14 @@ impl Unit {
                 self.post_own(BUILD_IDLE, [BUILD_ACTION, 0, 0])?;
             }
         }
-        if let Some(move_to) = self.move_to.as_mut()
-            && move_to.update(c.walk(self.mover.as_mut(), me))?
-        {
+        let step = match self.move_to.as_mut() {
+            Some(move_to) => move_to.update(c.walk(self.mover.as_mut(), me))?,
+            None => crate::move_to::MoveStep::default(),
+        };
+        if step.target_moved {
+            self.post_own(TARGET_MOVED, [0, 0, 0])?;
+        }
+        if step.done {
             // its update in state 1 posts its completion (0x1fa with the move action value; an
             // own MoveTo is never quiet), then the action list removes it (FUN_140a98e20): its
             // teardown (0x140aa1f30) stops the unit (slot 0x5d0)
@@ -2016,9 +2024,44 @@ impl Unit {
         self.move_to = Some(MoveToAction {
             state: crate::move_to::MoveTo::Start,
             goal: Some(m.point),
+            target: -1,
             range: m.range,
             run: !m.walk,
         });
+        Ok(())
+    }
+
+    /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object: a
+    /// MoveTo to the target within `range`, showing the master's running sprite (the walking one
+    /// without it), replaces its action list (`FUN_140a98620`: an old MoveTo stops the unit) and
+    /// starts ([`MoveToAction::to_target`]). A unit with another action is not modelled.
+    fn move_to_object(
+        &mut self,
+        target: i32,
+        range: f32,
+        c: &mut Context<'_>,
+    ) -> Result<(), Unsupported> {
+        let top = self.top_action_kind();
+        if self.unmodelled_action.is_some() || !matches!(top, Some(crate::move_to::MOVE_TO) | None)
+        {
+            return Err(Unsupported(
+                "an AI move to an object of a unit with an action",
+            ));
+        }
+        let mover = self.mover.as_mut().ok_or(Unsupported(
+            "an AI move to an object of a unit that does not move",
+        ))?;
+        if self.move_to.take().is_some() {
+            mover.stop()?;
+        }
+        self.move_to = Some(MoveToAction::to_target(
+            c.spatial,
+            self.position,
+            mover,
+            target,
+            range,
+            true,
+        )?);
         Ok(())
     }
 }
@@ -2186,11 +2229,12 @@ fn drop_site_search(
 }
 
 /// A drop site within this path length is measured by the short path too (`FUN_1411671e0`,
-/// `DAT_142eb0f4c`), within this range (`DAT_142eb5690`).
+/// `DAT_142eb0f4c`).
 const SHORT_DROP_REACH: f32 = crate::image::turn::SHORT_DROP_REACH;
+/// The range the short path measures a drop site within (`DAT_142eb5690`).
+const DROP_REACH: f32 = crate::image::turn::DROP_REACH;
 /// The distance a drop-site search starts from (`DAT_14330ebf4`, the largest float).
 const NO_DROP_DISTANCE: f32 = crate::image::turn::NO_DROP_DISTANCE;
-const DROP_REACH: f32 = crate::image::turn::DROP_REACH;
 
 /// `FUN_1411671e0` with a point and no unit: of the player's live objects (`others`, in list
 /// order) of a master in `sites` and in state 2, the one nearest `at` (its centre's squared
@@ -2291,10 +2335,11 @@ impl Turns {
         Some(v)
     }
 
-    /// The object `id` as a unit AI's target block finds it in the world's object table
-    /// (`FUN_1415417a0`): its state and type, `None` when no list holds it. An object the slice
-    /// holds as a place alone cannot be read.
-    fn seen(&self, id: i32) -> Result<Option<crate::unit_ai::Seen>, Unsupported> {
+    /// The object `id` as the unit AI of a unit of player `viewer` finds it in the world's object
+    /// table (`FUN_1415417a0`, [`crate::unit_ai::Seen`]), `None` when no list holds it. An object
+    /// the slice holds as a place alone cannot be read. Without the players' sight its tile
+    /// counts as unseen.
+    fn seen(&self, id: i32, viewer: usize) -> Result<Option<crate::unit_ai::Seen>, Unsupported> {
         for (p, player) in self.players.iter().enumerate() {
             if let Some(u) = player
                 .objects
@@ -2302,17 +2347,22 @@ impl Turns {
                 .chain(&player.sleeping)
                 .find(|u| u.id == id)
             {
-                let kind = self
+                let master = self
                     .masters
                     .get(p)
                     .and_then(|m| m.get(u.life.master_id))
                     .ok_or(Unsupported(
                         "a unit AI's target of a master the slice does not have",
-                    ))?
-                    .kind;
+                    ))?;
+                let [x, y, _] = u.position;
                 return Ok(Some(crate::unit_ai::Seen {
                     state: u.life.state,
-                    kind,
+                    kind: master.kind,
+                    owner: p,
+                    class: master.class,
+                    position: u.position,
+                    radius: master.radius,
+                    visible: self.spatial.visible(viewer, x as i32, y as i32),
                 }));
             }
         }
@@ -2914,11 +2964,22 @@ impl Turns {
                 ref units,
                 order,
             } => {
+                // FOLLOW (FUN_140e66a60) of a target the world lacks does nothing
+                if let Some(Order::Follow(target)) = order
+                    && self.object(target).is_none()
+                {
+                    return;
+                }
                 // +0x15: each unit with a unit AI takes the world time as its last human order
-                // time (FUN_140e5e780), after the resets
+                // time (FUN_140e5e780), after the resets; FOLLOW sets it when a unit the world
+                // holds belongs to a player who is not a computer (FUN_141659cf0)
                 let human = match order {
                     Some(Order::Interact(o)) => o.human,
                     Some(Order::Move(o)) => o.human,
+                    Some(Order::Follow(_)) => units.iter().any(|&id| {
+                        self.object(id)
+                            .is_some_and(|(p, _)| !self.players[p].computer)
+                    }),
                     None => false,
                 };
                 for &id in units {
@@ -2948,6 +3009,7 @@ impl Turns {
                 let result = match order {
                     Some(Order::Interact(o)) => self.interact(player, units, &o),
                     Some(Order::Move(o)) => self.move_order(player, units, &o),
+                    Some(Order::Follow(target)) => self.follow(player, units, target),
                     None => Err(Unsupported("an order moves its units")),
                 };
                 if let Err(e) = result {
@@ -3284,7 +3346,7 @@ impl Turns {
                     .as_ref()
                     .map(|ai| ai.current_target)
                     .filter(|&t| t != -1)
-                    .map_or(Ok(None), |t| self.seen(t));
+                    .map_or(Ok(None), |t| self.seen(t, p));
                 let blasted = victim
                     .as_ref()
                     .map_or_else(Vec::new, |v| self.blasted(&unit, p, v.id));

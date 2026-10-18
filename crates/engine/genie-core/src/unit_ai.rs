@@ -57,6 +57,8 @@ pub const ACTION_COMPLETED: i32 = crate::ai_kinds::NOTIFY_ACTION_COMPLETED;
 pub const ACTION_INVALIDATED: i32 = crate::ai_kinds::NOTIFY_ACTION_INVALIDATED;
 /// `0x1f9`: an action failed (p1 its action value).
 pub const ACTION_FAILED: i32 = crate::ai_kinds::NOTIFY_ACTION_FAILED;
+/// `0x1fc`: a MoveTo's target left its point and its path's end did not follow (p1..p3 0).
+pub const TARGET_MOVED: i32 = 0x1fc;
 /// `0x200`: "ActionExecuted" (the soldier's log line), an attack's swing (p1 600, p2 the target).
 pub const ACTION_EXECUTED: i32 = 0x200;
 /// `0x20b`: the unit changed hands (p1 the new owner).
@@ -143,6 +145,11 @@ pub enum Effect {
     /// the AI its target point and the unit [`Effect::Explore`] to it. No point found is not
     /// modelled (slot 0x90's search, then `FUN_140c4b130`).
     SeekUnexplored,
+    /// The AI's move to an object (slot 0x138, `FUN_140c55490`, with its fourth argument 1): the
+    /// unit's slot 0x348 (`FUN_141086440`, forced) replaces its actions (`FUN_140a98620`) with a
+    /// MoveTo to the target within `range` showing the master's running sprite (the walking one
+    /// without it) and starts it (slot 0x808).
+    MoveToObject { target: i32, range: f32 },
 }
 
 /// The first move among a full update's effects.
@@ -169,6 +176,9 @@ pub struct UnitAi {
     /// `+0x4c`, the target's class (−1 for none), and `+0x50`..`+0x58`, its point.
     pub target_type: i32,
     pub target_point: [f32; 3],
+    /// `+0x5c`, `desiredTargetDistance`: how near the follow order keeps the unit to its target
+    /// (the constructor's 2).
+    pub desired_distance: f32,
     /// `+0x64`, `+0x68`, `+0x6c`, `+0x70`: the order, action, target and target class before the
     /// current ones.
     pub last_order: i32,
@@ -487,11 +497,19 @@ pub struct Surroundings {
     pub target: Option<Seen>,
 }
 
-/// An object as a unit AI's target block reads it: its state (`+0x640`) and type (`+0xf`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// An object as a unit AI's target block reads it: its state (`+0x640`) and type (`+0xf`); as
+/// the follow order reads it (slot 73): its owner, master's class, place (x, y, z), its master's
+/// radii on the ground (`+0x5d8`, `+0x5dc`) and whether the unit's player sees its tile now
+/// (`FUN_140c68a00` gives 0xf: the tile's bit of the unified map and the player's mask `+0x2a8`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Seen {
     pub state: u8,
     pub kind: u8,
+    pub owner: usize,
+    pub class: i16,
+    pub position: [f32; 3],
+    pub radius: [f32; 2],
+    pub visible: bool,
 }
 
 /// The class whose busy units skip the idle check (`-0xe98` raw).
@@ -546,6 +564,8 @@ fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
 
 /// The base idle timeout (`+0x168`) the constructor sets; the adjusted one is drawn around it.
 const IDLE_TIMEOUT: u32 = 3000;
+/// The desired target distance (`+0x5c`) the constructor sets.
+const DESIRED_DISTANCE: f32 = 2.0;
 
 /// The boar's idle check (`FUN_140c1e630`): it stays within a draw of `0..81` plus `DAT_142eb5bbc`
 /// (144) of its origin, squared; within `DAT_142eb0f48` (4) it wanders `-3..=2` tiles each way
@@ -571,6 +591,16 @@ pub const EXPLORE_ACTION: i32 = crate::explore::EXPLORE_ACTION;
 /// The height of the explore's target point (`FUN_140c4d910`, `DAT_14330eb8c`).
 const EXPLORE_Z: f32 = crate::image::unit_ai::EXPLORE_Z;
 pub const MOVE_ACTION: i32 = 0x262;
+/// The follow order (`0x2c8`, "I have a follow order for Unit #%d" in slot 73) and its action
+/// value (`0x264`), which FOLLOW gives.
+pub const FOLLOW_ORDER: i32 = 0x2c8;
+pub const FOLLOW_ACTION: i32 = 0x264;
+/// The defend order (`0x2bd`, "I have a defend order for Unit #%d" in slot 73).
+const DEFEND_ORDER: i32 = 0x2bd;
+/// The follow order's target counts as moved when it is more than a tile off the AI's target
+/// point on either axis (`0x140c567c0`: `DAT_14330ec20`, `DAT_14330eb8c`).
+const FOLLOW_SLACK_LOW: f32 = crate::image::unit_ai::FOLLOW_SLACK_LOW;
+const FOLLOW_SLACK_HIGH: f32 = crate::image::unit_ai::FOLLOW_SLACK_HIGH;
 
 /// The hunted animal's idle check (`FUN_140c1eea0`): away from its origin by more than
 /// `DAT_142eb0f48` (4, squared) it goes home once in 7 checks; otherwise it wanders 1 to 3 tiles
@@ -661,6 +691,7 @@ impl UnitAi {
             current_target: -1,
             target_type: -1,
             target_point: [-1.0; 3],
+            desired_distance: DESIRED_DISTANCE,
             last_order: -1,
             last_action: -1,
             last_target: -1,
@@ -714,7 +745,7 @@ impl UnitAi {
 
     /// The order setter with its history (`FUN_140c64b60` with 1): leaving order 711 or 733
     /// redraws an adjusted idle timeout of exactly 750 and caps the secondary timer at 750.
-    fn set_order(&mut self, order: i32, ai: &mut Well512) {
+    pub(crate) fn set_order(&mut self, order: i32, ai: &mut Well512) {
         let leaving = |o| self.current_order == o && order != o;
         if leaving(711) || leaving(733) {
             if self.adjusted_idle_timeout == 750 {
@@ -746,7 +777,7 @@ impl UnitAi {
     }
 
     /// `FUN_140c64be0`: the target, its class and its point.
-    fn set_target(&mut self, target: i32, class: i32, point: [f32; 3]) {
+    pub(crate) fn set_target(&mut self, target: i32, class: i32, point: [f32; 3]) {
         self.last_target = self.current_target;
         self.last_target_type = self.target_type;
         self.target_type = class;
@@ -1265,7 +1296,7 @@ impl UnitAi {
             self.run_orders(&mut fx)?;
         }
         if let Retarget::Base = retarget {
-            self.retarget_check(world_time, ai)?;
+            self.retarget_check(world_time, at, ai, &mut fx)?;
         }
         self.idle_part(busy, at, computer, ai, closest, &mut fx)?;
         self.look_around(computer, ai)?;
@@ -1346,19 +1377,23 @@ impl UnitAi {
     }
 
     /// The units the update models after its target block ([`UnitAi::target_block`]): a target
-    /// only on a villager's build or hunt (702/602, 713/613); busy (`busy`, the actions left), only
-    /// those or a unit on MOVE's order without a target (710/610, or an animal's own wander), and
-    /// for the types that never retarget also one whose move ended (710 with no action value).
+    /// only on a villager's build or hunt (702/602, 713/613) or on the follow order (712 with its
+    /// action 612, the move's 610 or none); busy (`busy`, the actions left), only those or a unit
+    /// on MOVE's order without a target (710/610, or an animal's own wander), and for the types
+    /// that never retarget also one whose move ended (710 with no action value).
     fn check_busy_order(&self, retarget: Retarget, busy: bool) -> Result<(), Unsupported> {
         let order = (self.current_order, self.current_action);
         let working = matches!(
             order,
-            (BUILD_ORDER, BUILD_ACTION) | (HUNT_ORDER, HUNT_ACTION)
+            (BUILD_ORDER, BUILD_ACTION)
+                | (HUNT_ORDER, HUNT_ACTION)
+                | (FOLLOW_ORDER, FOLLOW_ACTION | MOVE_ACTION | -1)
         );
         let moving = matches!(order, (MOVE_ORDER | -1, MOVE_ACTION)) && self.current_target == -1;
         // a move whose action ended (the action value reset) while the default action runs
         let moved = order == (MOVE_ORDER, -1) && self.current_target == -1;
         let scouting = order == (AUTO_SCOUT_ORDER, AUTO_SCOUT_ACTION) && self.current_target == -1;
+        let following = order.0 == FOLLOW_ORDER;
         if self.current_target != -1 && !working {
             return Err(Unsupported("a unit AI's target the slice does not model"));
         }
@@ -1367,7 +1402,7 @@ impl UnitAi {
         }
         match retarget {
             Retarget::Never if working || moving || moved => Ok(()),
-            Retarget::Base if moving || scouting => Ok(()),
+            Retarget::Base if moving || scouting || following => Ok(()),
             _ => Err(Unsupported(
                 "a busy unit AI on an order the slice does not model",
             )),
@@ -1594,6 +1629,11 @@ impl UnitAi {
                 self.orders.clear();
                 Ok(GO_ON)
             }
+            // a MoveTo's moved target: a patrol path's processIdle (slot 0x240 with 1)
+            TARGET_MOVED if self.patrol_path => {
+                Err(Unsupported("a moved target's processIdle on a patrol path"))
+            }
+            TARGET_MOVED => Ok(GO_ON),
             // "I'm ignoring that."
             0x1f6 | 0x1f7 | 0x1f8 | 0x1ff | ACTION_EXECUTED | 0x203 => Ok(GO_ON),
             0x259..=0x262 | 0x265..=0x269 | 0x2be => Ok(GO_ON),
@@ -2023,26 +2063,117 @@ impl UnitAi {
         Ok(())
     }
 
-    /// The retarget check of slot 73 (`0x140c567c0`) for a unit without a target, not on the
-    /// attack order 700: a timer used up is redrawn (`750 + r % 500`) and slot 73 returns. Its
-    /// leash checks come first: stance 1's is not modelled; stance 2's (stand ground) stops a
-    /// unit with an action that strayed from its state position by more than its range plus
-    /// `DAT_142eb880c` (0.25), which a unit on an order, whose state position this update set,
-    /// never has, and an idle unit has no action to stop.
-    fn retarget_check(&mut self, world_time: u32, ai: &mut Well512) -> Result<(), Unsupported> {
+    /// Slot 73 (`0x140c567c0`, processMisc). Its order part first, by the order (an action's
+    /// value plus 100 without one): the follow order's ([`UnitAi::follow`]); the defend order's
+    /// is not modelled. Then the leash checks: stance 1's is not modelled; stance 2's (stand
+    /// ground) stops a unit with an action that strayed from its state position by more than its
+    /// range plus `DAT_142eb880c` (0.25), which a unit on an order, whose state position this
+    /// update set, never has, and an idle unit has no action to stop. Then the retarget check,
+    /// not on the attack order 700: with retargeting on (`+0x1d6` 0), a timer used up is redrawn
+    /// (`750 + r % 500`); a unit with a target of Gaia's ("I have a GAIA target, so I can't
+    /// retarget.") or without a target stops there. A target of a player's is not modelled.
+    fn retarget_check(
+        &mut self,
+        world_time: u32,
+        at: &Surroundings,
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        let order = match (self.current_order, self.current_action) {
+            (-1, -1) => -1,
+            (-1, action) => action + 100,
+            (order, _) => order,
+        };
+        if order == DEFEND_ORDER {
+            return Err(Unsupported("a defend order's processMisc"));
+        }
+        if order == FOLLOW_ORDER && self.follow(at, fx)? {
+            return Ok(());
+        }
         if self.stance == 1 {
             return Err(Unsupported("stance 1 leash check"));
         }
-        if self.current_order == 700 || self.current_target != -1 {
-            return Err(Unsupported("a retarget on order 700 or with a target"));
+        if self.current_order == 700 {
+            return Err(Unsupported("a retarget on order 700"));
         }
-        if self.retarget_disabled == 0
-            && world_time.wrapping_sub(self.last_retarget_time) >= self.retarget_timer
-        {
-            self.last_retarget_time = world_time;
-            self.retarget_timer = 750 + ai.rand15() % 500;
+        if self.retarget_disabled != 0 {
+            return Ok(());
+        }
+        if world_time.wrapping_sub(self.last_retarget_time) < self.retarget_timer {
+            return Ok(());
+        }
+        self.last_retarget_time = world_time;
+        self.retarget_timer = 750 + ai.rand15() % 500;
+        if self.current_target != -1 {
+            match at.target {
+                Some(t) if t.owner == 0 => {}
+                Some(_) => return Err(Unsupported("a retarget with a player's target")),
+                None => return Err(Unsupported("a retarget with a target the world lacks")),
+            }
         }
         Ok(())
+    }
+
+    /// processMisc's follow order (`0x140c567c0`, "I have a follow order for Unit #%d"): a
+    /// target gone or dying (above state 2) or on a tile the unit's player does not see now ends
+    /// it ("Target is gone or dying, stopping.", "He's NOT on a visible tile, stopping."): the
+    /// defend target `+0x60` (not held) and the target go (`FUN_140c5e1e0`), the current action
+    /// stops (slot 0xb0 with 1) and the order is −1. On action `0x2bf` or `0x2c0` the target
+    /// point becomes (−1, −1). Otherwise a target more than a tile off the AI's target point on
+    /// either axis gives the point its place (x, y, z); when the footprints' squared gap
+    /// (`FUN_14118f8c0`) then exceeds the desired distance squared, the AI moves to it
+    /// ([`UnitAi::move_to_object`] within the desired distance). True when the check ends there.
+    fn follow(&mut self, at: &Surroundings, fx: &mut Vec<Effect>) -> Result<bool, Unsupported> {
+        let target = match at.target {
+            Some(t) if t.state <= 2 && t.visible => t,
+            _ => {
+                self.remove_target();
+                self.stop_current(true, at, fx)?;
+                self.current_order = -1;
+                return Ok(true);
+            }
+        };
+        if matches!(self.current_action, 0x2bf | 0x2c0) {
+            self.target_point[0] = -1.0;
+            self.target_point[1] = -1.0;
+            return Ok(false);
+        }
+        let dx = target.position[0] - self.target_point[0];
+        let dy = target.position[1] - self.target_point[1];
+        let moved = dx < FOLLOW_SLACK_LOW
+            || FOLLOW_SLACK_HIGH < dx
+            || dy < FOLLOW_SLACK_LOW
+            || FOLLOW_SLACK_HIGH < dy;
+        if !moved {
+            return Ok(false);
+        }
+        self.target_point = target.position;
+        let gap = crate::movement::footprint_gap_squared(
+            at.position,
+            at.size,
+            target.position,
+            target.radius,
+        );
+        let range = self.desired_distance;
+        if range * range < gap {
+            self.move_to_object(self.current_target, target, range, fx);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// The AI's move to an object (slot 0x138, `FUN_140c55490`, its fourth argument 1): the
+    /// unit's slot 0x348 ([`Effect::MoveToObject`]) takes a target the world holds, and the AI
+    /// the move action and the target with its class and point (`FUN_140c64c10`; the target and
+    /// class it had become the last).
+    fn move_to_object(&mut self, id: i32, target: Seen, range: f32, fx: &mut Vec<Effect>) {
+        fx.push(Effect::MoveToObject { target: id, range });
+        self.set_action(MOVE_ACTION);
+        self.last_target = self.current_target;
+        self.last_target_type = self.target_type;
+        self.current_target = id;
+        self.target_type = i32::from(target.class);
+        self.target_point = target.position;
     }
 
     /// The boar's end of its full update: without a target it is no longer furious.
@@ -2396,6 +2527,7 @@ mod tests {
                 current_target: -1,
                 target_type: -1,
                 target_point: [-1.0; 3],
+                desired_distance: 2.0,
                 last_order: -1,
                 last_action: -1,
                 last_target: -1,
@@ -3136,7 +3268,11 @@ mod tests {
         // 1497: the house exists in state 2, which keeps it
         let standing = Surroundings {
             state: 2,
-            target: Some(Seen { state: 2, kind: 80 }),
+            target: Some(Seen {
+                state: 2,
+                kind: 80,
+                ..Seen::default()
+            }),
             ..Surroundings::default()
         };
         let mut u = builder_done();
@@ -3170,7 +3306,11 @@ mod tests {
     fn a_dead_target_stops_an_action_that_needs_a_live_one() {
         let dead = Surroundings {
             state: 2,
-            target: Some(Seen { state: 3, kind: 70 }),
+            target: Some(Seen {
+                state: 3,
+                kind: 70,
+                ..Seen::default()
+            }),
             ..Surroundings::default()
         };
         // 0x25b needs a live target: the target goes and the action stops
@@ -3199,6 +3339,93 @@ mod tests {
             ..builder_done()
         };
         assert!(u.target_block(&dead, false, &mut Vec::new()).is_err());
+    }
+
+    /// Player 1's scout 9183 following the deer 9655 (FOLLOW at 2604): order 712, action 612,
+    /// the target and its place when FOLLOW ran, the constructor's desired distance.
+    fn follower(deer: [f32; 3], visible: bool) -> (UnitAi, Surroundings) {
+        let u = UnitAi {
+            ai_type: 13,
+            current_order: FOLLOW_ORDER,
+            current_action: FOLLOW_ACTION,
+            current_target: 9655,
+            target_type: 9,
+            target_point: [115.6998, 39.299213, 0.0],
+            desired_distance: 2.0,
+            stance: 2,
+            ..UnitAi::default()
+        };
+        let at = Surroundings {
+            position: [110.0, 40.0, 0.0],
+            size: [0.2, 0.2],
+            state: 2,
+            busy: true,
+            class: 12,
+            target: Some(Seen {
+                state: 2,
+                kind: 70,
+                class: 9,
+                position: deer,
+                radius: [0.2, 0.2],
+                visible,
+                ..Seen::default()
+            }),
+            ..Surroundings::default()
+        };
+        (u, at)
+    }
+
+    #[test]
+    fn the_follow_order_moves_to_a_target_that_left_its_point() {
+        // 2652: the deer is more than a tile off the point in y; beyond 2 the AI moves to it
+        let deer = [114.75516, 40.34795, 0.0];
+        let (mut u, at) = follower(deer, true);
+        let mut fx = Vec::new();
+        assert!(u.follow(&at, &mut fx).unwrap());
+        assert_eq!(
+            fx,
+            vec![Effect::MoveToObject {
+                target: 9655,
+                range: 2.0
+            }]
+        );
+        assert_eq!(
+            (u.current_action, u.last_action),
+            (MOVE_ACTION, FOLLOW_ACTION)
+        );
+        assert_eq!(
+            (u.current_target, u.last_target, u.target_type),
+            (9655, 9655, 9)
+        );
+        assert_eq!(u.target_point, deer);
+        // less than a tile off on both axes it stays
+        let (mut u, at) = follower([115.0, 40.2, 0.0], true);
+        let mut fx = Vec::new();
+        assert!(!u.follow(&at, &mut fx).unwrap());
+        assert!(fx.is_empty());
+        assert_eq!(u.target_point, [115.6998, 39.299213, 0.0]);
+    }
+
+    #[test]
+    fn the_follow_order_ends_on_a_target_out_of_sight() {
+        let (mut u, at) = follower([114.75516, 40.34795, 0.0], false);
+        let mut fx = Vec::new();
+        assert!(u.follow(&at, &mut fx).unwrap());
+        assert_eq!(fx, vec![Effect::Stop]);
+        assert_eq!(
+            (u.current_order, u.current_action, u.current_target),
+            (-1, -1, -1)
+        );
+        assert_eq!((u.last_target, u.last_action), (9655, FOLLOW_ACTION));
+    }
+
+    #[test]
+    fn a_moved_target_notify_is_ignored_without_a_patrol_path() {
+        let (mut u, at) = follower([115.0, 40.2, 0.0], true);
+        let n = Notify::own(9183, TARGET_MOVED, [0, 0, 0]);
+        assert_eq!(u.base_notify(n, 0, &at, &mut Vec::new()), Ok(GO_ON));
+        u.patrol_path = true;
+        assert!(u.base_notify(n, 0, &at, &mut Vec::new()).is_err());
     }
 
     /// The scout 9185 in update 1518: idle (its MOVE done), stance 2 at its state position.

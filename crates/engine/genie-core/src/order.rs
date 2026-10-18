@@ -400,6 +400,124 @@ impl Turns {
         Ok(())
     }
 
+    /// FOLLOW (0x14, `FUN_140e66a60` -> `FUN_14161c920`) of `target`, which the caller found in
+    /// the world (else the command does nothing), after the resets: one unit forms no group
+    /// (`FUN_140fd9ae0`) and takes the order ([`Turns::follow_unit`]); several units, which the
+    /// splitter may group and which follow at their offsets, are not modelled.
+    pub(crate) fn follow(
+        &mut self,
+        player: usize,
+        units: &[i32],
+        target: i32,
+    ) -> Result<(), Unsupported> {
+        match units {
+            [] => Ok(()),
+            &[id] => self.follow_unit(player, id, target),
+            _ => Err(Unsupported("a FOLLOW of several units")),
+        }
+    }
+
+    /// FOLLOW's one unit (`FUN_14161c920`'s loop for an order without groups): a unit the world
+    /// does not hold takes nothing, nor does one of a type below 30 or without speed. Its ignore
+    /// list empties (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and takes the move to
+    /// the target (slot 0x138, `FUN_141216f10`: a villager's town-bell flag, not held, and its unit
+    /// AI's order queue empties, `+0xa14` being 1; then `FUN_14106d340`). Unless the unit is its
+    /// own target, its unit AI's notifies go with the world time (`FUN_140c5dc10`) and, but after
+    /// a kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target
+    /// (an Artifact's, `FUN_140aaca30`, would: not modelled; a MoveTo's never); else a MoveTo to
+    /// the target (`FUN_140aa0df0`: range 0 from slot 0x268, which a combat object's gives, the
+    /// walking sprite) replaces its actions (slot 0x808, [`MoveToAction::to_target`]). With slot
+    /// 0x138's 0 the unit AI takes the follow order and action (`FUN_140c64b60` with 1,
+    /// `FUN_140c64b50`); then the target with its class, for a target master with a footprint
+    /// (`+0x5d8` or `+0x5dc` above 0; else none), and its place on the ground (`FUN_140c64be0`).
+    /// Slot 0x2d8's walk and show targets and `+0x888` are not held; another player's unit is not
+    /// modelled.
+    fn follow_unit(&mut self, player: usize, id: i32, target: i32) -> Result<(), Unsupported> {
+        use crate::unit_ai::{FOLLOW_ACTION, FOLLOW_ORDER};
+        let Some(place) = self.place(id) else {
+            return Ok(());
+        };
+        let Place::Live(p, idx) = place else {
+            return Err(Unsupported(
+                "a FOLLOW of a unit the slice does not hold live",
+            ));
+        };
+        if p != player {
+            return Err(Unsupported("a FOLLOW of another player's unit"));
+        }
+        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
+        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
+        if master.kind < MOVING || speed <= 0.0 {
+            return Ok(());
+        }
+        let (target_class, target_place) = {
+            let (tp, t) = self
+                .object(target)
+                .ok_or(Unsupported("a FOLLOW whose target the slice does not hold"))?;
+            let tm = self.master_of(tp, t.life.master_id)?;
+            let footprint = 0.0 < tm.radius[0] || 0.0 < tm.radius[1];
+            (footprint.then_some(i32::from(tm.class)), t.position)
+        };
+        let world_time = self.world_time;
+        let unit = &mut self.players[player].objects[idx];
+        let mover = unit
+            .mover
+            .as_mut()
+            .ok_or(Unsupported("a followed unit without movement state"))?;
+        mover.ignore_units.clear();
+        mover.waiting = 1;
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.orders.clear();
+        }
+        if target != id {
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.clear_notifies(world_time)?;
+            }
+            let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
+            if unit.ai.is_some() && !stop_after_kill {
+                match unit.top_action_kind() {
+                    None | Some(crate::move_to::MOVE_TO) => {}
+                    Some(crate::artifact::ARTIFACT_TYPE) => {
+                        return Err(Unsupported("an Artifact taking a FOLLOW's target"));
+                    }
+                    Some(_) => {
+                        return Err(Unsupported(
+                            "a FOLLOW of a unit with an action (its slot 0x40)",
+                        ));
+                    }
+                }
+            }
+            if unit.unmodelled_action.is_some() {
+                return Err(Unsupported("a FOLLOW of a unit with an action"));
+            }
+            self.clear_actions(player, idx)?;
+            let unit = &mut self.players[player].objects[idx];
+            let mover = unit
+                .mover
+                .as_ref()
+                .ok_or(Unsupported("a followed unit without movement state"))?;
+            unit.move_to = Some(crate::move_to::MoveToAction::to_target(
+                &self.spatial,
+                unit.position,
+                mover,
+                target,
+                0.0,
+                false,
+            )?);
+        }
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.set_order(FOLLOW_ORDER, self.streams.get(Stream::Ai));
+            ai.set_action(FOLLOW_ACTION);
+            let (t, class) = match target_class {
+                Some(class) => (target, class),
+                None => (-1, -1),
+            };
+            ai.set_target(t, class, [target_place[0], target_place[1], 0.0]);
+        }
+        Ok(())
+    }
+
     /// GATE (`do_command` case 0x72): the object `id` (any player's: a missing one does nothing)
     /// of a master of type 80 toggles its gate lock (slot 0x670 with slot 0x668's value
     /// negated, `FUN_1411dba30`): a lock sets its last move time to the world time plus 1. The
@@ -704,6 +822,7 @@ impl Turns {
                 // FUN_140aa2100: no target, so far from it: state 3 for a unit with speed
                 state: crate::move_to::MoveTo::Start,
                 goal: Some(point),
+                target: -1,
                 range: 0.0,
             });
         }

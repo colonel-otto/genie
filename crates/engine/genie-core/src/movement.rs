@@ -1955,6 +1955,28 @@ impl Mover {
         crate::long_path::reaches(world.tiles(), world.map, &req)
     }
 
+    /// The test before a non-quiet MoveTo's path end follows its moved target (`0x140aa2a70` in
+    /// state 4): the top path (`FUN_140f960f0`) and the walked level's own path, that level being
+    /// level 0, are both held, and the level's current waypoint (`FUN_140f9bcd0`) is the top
+    /// path's last point (`FUN_140f95fb0`, compared x, y, z). A top path of one point, where the
+    /// game compares with its static point, is not modelled.
+    pub fn walks_to_path_end(&self) -> Result<bool, Unsupported> {
+        let Some(level) = self
+            .paths
+            .first()
+            .filter(|l| l.level == 0 && !l.points.is_empty())
+        else {
+            return Ok(false);
+        };
+        let Some(top) = self.top_path() else {
+            return Ok(false);
+        };
+        let [.., _, last] = top.as_slice() else {
+            return Err(Unsupported("a top path of one point (FUN_140f95fb0)"));
+        };
+        Ok(point_or_zero_of(level, level.waypoint) == *last)
+    }
+
     /// The path of the top level (`FUN_140f960f0`): the last level's, or the walked level's when
     /// it has no parent; None when that level holds no path.
     fn top_path(&self) -> Option<&Vec<Vec3>> {

@@ -541,11 +541,15 @@ fn mover(
     }))
 }
 
-/// The point of the MoveTo a saved unit walks with to a target object: its top action's first
-/// sub-action (or that Attack's own first one) when that is a MoveTo with a target (its
-/// `target_x`..`target_z`).
+/// The point of the MoveTo a saved unit walks with to a target object: its top action when that
+/// is a MoveTo, else the top action's first sub-action (or that Attack's own first one), when
+/// that MoveTo has a target (its `target_x`..`target_z`).
 fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
-    let (_, top) = object.actions()?.entries().next()?;
+    let (top_kind, top) = object.actions()?.entries().next()?;
+    if top_kind == genie_core::move_to::MOVE_TO {
+        let b = top.base()?;
+        return (b.target_id != -1).then_some([b.target_x, b.target_y, b.target_z]);
+    }
     let (mut kind, mut sub) = top.base()?.sub_actions.entries().next()?;
     // a Hunt's Attack walks with a MoveTo of its own
     if kind == genie_core::attack::ATTACK {
@@ -618,6 +622,7 @@ fn saved_actions(
             unit.move_to = Some(MoveToAction {
                 state: move_to_state(base.state)?,
                 goal: point(base),
+                target: base.target_id,
                 range: action
                     .move_to_range()
                     .ok_or(Unsupported("a saved MoveTo without its range"))?,
@@ -1205,6 +1210,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
             ai.current_target_yvalue,
             ai.current_target_zvalue,
         ],
+        desired_distance: ai.desired_target_distance_value,
         last_order: ai.last_order_value,
         last_action: ai.last_action_value,
         last_target: ai.last_target_value,
@@ -1271,7 +1277,6 @@ fn unmodelled_command(p: &genie_rec::de::command::Command) -> &'static str {
         GroupAiOrder,
         UnitAiState,
         Guard,
-        Follow,
         Patrol,
         Scout,
         FormFormation,
@@ -2160,6 +2165,11 @@ impl Decoder {
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true, None),
+            // FOLLOW: its units as MOVE's, the target at +8
+            Packet::Follow(c) => {
+                let order = genie_core::turn::Order::Follow(c.target);
+                (c.commp_id, c.num, c.ids, true, Some(order))
+            }
             Packet::Gate(c) => {
                 return Some(Command::Gate {
                     player: c.commp_id as usize,
@@ -2639,6 +2649,7 @@ impl AiRow {
                 ("current_target", f(&ai.current_target)),
                 ("current_target_type", f(&ai.target_type)),
                 ("current_target_point", f(&ai.target_point)),
+                ("desired_target_distance", f(&ai.desired_distance)),
                 ("last_order", f(&ai.last_order)),
                 ("last_action", f(&ai.last_action)),
                 ("last_target", f(&ai.last_target)),
@@ -2678,6 +2689,10 @@ impl AiRow {
                         ai.current_target_yvalue,
                         ai.current_target_zvalue,
                     ]),
+                ),
+                (
+                    "desired_target_distance",
+                    f(&ai.desired_target_distance_value),
                 ),
                 ("last_order", f(&ai.last_order_value)),
                 ("last_action", f(&ai.last_action_value)),
