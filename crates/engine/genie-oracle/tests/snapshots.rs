@@ -232,8 +232,11 @@ fn the_deer_s_idle_checks_from_a_save_match_the_game_object_by_object() {
     // (the tower's, bestUnitToAttack over its search) pass its own objects and, in 1506, the boar
     // 9731 (class 10 below combat level 4); in 1518 the scout 9185's idle check (the soldier's)
     // finds nothing to attack and caps its last human order time at 5000, which its moving
-    // update then counts down by dt; through the save after 1520, the last snapshot
-    let Some(found) = differences(680, 840, 2) else {
+    // update then counts down by dt. Free-running on through the second and third windows: in
+    // 3141 UNIT_AI_STATE puts 9185 in NoAttack, whose idle check searches and keeps its place
+    // (3150); in 3249 the TC's villager walks to a gather point without a target; every object,
+    // player 2's sight and the map's terrain through the save after 3300
+    let Some(found) = differences(680, 2620, 2) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());
@@ -275,8 +278,11 @@ fn player_1_s_scout_and_sheep_from_a_save_match_the_game_object_by_object() {
     // 9173 keeps the unit it meets, gives it a temporary mesh shape and plans around it; from
     // 1329 walkers pause the units they meet; in 1433 9171 walks again to the carcass it faced
     // out of its range); the TC 9149's idle checks (the tower's, from 722) find nothing to
-    // attack; through the save after 1520, the last snapshot
-    let Some(found) = differences(680, 840, 1) else {
+    // attack. Free-running on through the second and third windows: from 3129 six hunters shoot
+    // spears at the deer 9655 (the missiles' fire, flight, hits and landings), 10036 goes round
+    // its fellow hunter 9179 (its path's ignore units, 3130), and in 3277 10038, sent to build,
+    // drops its hunt; every object and player 1's sight through the save after 3300
+    let Some(found) = differences(680, 2620, 1) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());
@@ -294,9 +300,10 @@ fn gaia_s_birds_and_animals_from_a_save_match_the_game_object_by_object() {
     // second, FUN_1410e3a70) and stands while its turn falls short; in 1250 the sheep 9520
     // joins Gaia, killed; in 1252 it dies: its record and mesh shape go and it plays its dying
     // sprite (state 4) until 1334, when it leaves its remains, the blood 10030 (state 5 in its
-    // first update). Every object and Gaia's sight through the save after 1520, the last
-    // snapshot
-    let Some(found) = differences(680, 840, 0) else {
+    // first update). Free-running on through the second and third windows: in 3147 the deer
+    // 9655 dies of the spears (its own MoveTo torn down, its dying sprite, its remains). Every
+    // object and Gaia's sight through the save after 3300
+    let Some(found) = differences(680, 2620, 0) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());
