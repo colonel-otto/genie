@@ -576,13 +576,7 @@ impl Turns {
     /// FOLLOW's one unit (`FUN_14161c920`'s loop for an order without groups): a unit the world
     /// does not hold takes nothing, nor does one of a type below 30 or without speed. Its ignore
     /// list empties (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and takes the move to
-    /// the target (slot 0x138, `FUN_141216f10`: a villager's town-bell flag, not held, and its unit
-    /// AI's order queue empties, `+0xa14` being 1; then `FUN_14106d340`). Unless the unit is its
-    /// own target, its unit AI's notifies go with the world time (`FUN_140c5dc10`) and, but after
-    /// a kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target
-    /// (an Artifact's, `FUN_140aaca30`, would: not modelled; a `MoveTo`'s never); else a `MoveTo` to
-    /// the target (`FUN_140aa0df0`: range 0 from slot 0x268, which a combat object's gives, the
-    /// walking sprite) replaces its actions (slot 0x808, [`MoveToAction::to_target`]). With slot
+    /// the target (slot 0x138, [`Turns::move_to_object`]). With slot
     /// 0x138's 0 the unit AI takes the follow order and action (`FUN_140c64b60` with 1,
     /// `FUN_140c64b50`); then the target with its class, for a target master with a footprint
     /// (`+0x5d8` or `+0x5dc` above 0; else none), and its place on the ground (`FUN_140c64be0`).
@@ -614,7 +608,6 @@ impl Turns {
             let footprint = 0.0 < tm.radius[0] || 0.0 < tm.radius[1];
             (footprint.then_some(i32::from(tm.class)), t.position)
         };
-        let world_time = self.world_time;
         let unit = &mut self.players[player].objects[idx];
         let mover = unit
             .mover
@@ -622,53 +615,7 @@ impl Turns {
             .ok_or(Unsupported("a followed unit without movement state"))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
-        if let Some(ai) = unit.ai.as_mut() {
-            ai.orders.clear();
-        }
-        if target != id {
-            if let Some(ai) = unit.ai.as_mut() {
-                ai.clear_notifies(world_time)?;
-            }
-            let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
-            if unit.ai.is_some() && !stop_after_kill {
-                match unit.top_action_kind() {
-                    None | Some(crate::move_to::MOVE_TO | crate::explore::EXPLORE) => {}
-                    Some(crate::artifact::ARTIFACT_TYPE) => {
-                        return Err(Unsupported("an Artifact taking a FOLLOW's target"));
-                    }
-                    Some(_) => {
-                        return Err(Unsupported(
-                            "a FOLLOW of a unit with an action (its slot 0x40)",
-                        ));
-                    }
-                }
-            }
-            if unit.unmodelled_action.is_some() {
-                return Err(Unsupported("a FOLLOW of a unit with an action"));
-            }
-            self.clear_actions(player, idx)?;
-            let unit = &mut self.players[player].objects[idx];
-            let mover = unit
-                .mover
-                .as_mut()
-                .ok_or(Unsupported("a followed unit without movement state"))?;
-            let move_to = crate::move_to::MoveToAction::to_target(
-                &self.spatial,
-                unit.position,
-                mover,
-                target,
-                0.0,
-                false,
-            )?;
-            if move_to.arrived() {
-                unit.shows_standing_sprite(
-                    self.masters.get(player),
-                    &self.graphics,
-                    self.streams.get(Stream::Sprite),
-                )?;
-            }
-            unit.move_to = Some(move_to);
-        }
+        self.move_to_object(player, idx, target, [target_place[0], target_place[1], 0.0])?;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.set_order(FOLLOW_ORDER, self.streams.get(Stream::Ai));
@@ -676,6 +623,94 @@ impl Turns {
             let (t, class) = target_class.map_or((-1, -1), |class| (target, class));
             ai.set_target(t, class, [target_place[0], target_place[1], 0.0]);
         }
+        Ok(())
+    }
+
+    /// Slot 0x138 to `target` (`FUN_141216f10`): a villager is no longer under the town bell
+    /// (`+0x9dc`); with `+0xa14` (1 but inside slot 0x128's work command with 0) its unit AI's
+    /// order queue empties (`FUN_140c5e010`); then `FUN_14106d340`: unless the unit is its own
+    /// target, its unit AI's notifies go with the world time (`FUN_140c5dc10`) and, but after a
+    /// kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target and
+    /// `point` (a Hunt's, [`Turns::hunt_take_move`]; an Artifact's, `FUN_140aaca30`, would: not
+    /// modelled; a `MoveTo`'s or an Explore's never); else a `MoveTo` to the target
+    /// (`FUN_140aa0df0`: range 0 from slot 0x268, the walking sprite) replaces its actions (slot
+    /// 0x808, [`MoveToAction::to_target`]). Its `command_flag` (`+0x888`) is not held.
+    ///
+    /// [`MoveToAction::to_target`]: crate::move_to::MoveToAction::to_target
+    fn move_to_object(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        point: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        let world_time = self.world_time;
+        let villager = self
+            .master_of(player, self.players[player].objects[idx].life.master_id)?
+            .class
+            == VILLAGER;
+        let unit = &mut self.players[player].objects[idx];
+        if villager {
+            unit.town_bell.flag = false;
+        }
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.orders.clear();
+        }
+        if target == unit.id {
+            return Ok(());
+        }
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.clear_notifies(world_time)?;
+        }
+        let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
+        let top = unit.top_action_kind();
+        if unit.ai.is_some() && !stop_after_kill {
+            match top {
+                // a Build's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's
+                None
+                | Some(crate::move_to::MOVE_TO | crate::explore::EXPLORE | crate::build::BUILD) => {
+                }
+                Some(HUNT) => {
+                    if self.hunt_take_move(player, idx, Some(target), point)? {
+                        return Ok(());
+                    }
+                }
+                Some(crate::artifact::ARTIFACT_TYPE) => {
+                    return Err(Unsupported("an Artifact taking a move's target"));
+                }
+                Some(_) => {
+                    return Err(Unsupported(
+                        "a move to an object of a unit with an action (its slot 0x40)",
+                    ));
+                }
+            }
+        }
+        let unit = &self.players[player].objects[idx];
+        if unit.unmodelled_action.is_some() {
+            return Err(Unsupported("a move to an object of a unit with an action"));
+        }
+        self.clear_actions(player, idx)?;
+        let unit = &mut self.players[player].objects[idx];
+        let mover = unit
+            .mover
+            .as_mut()
+            .ok_or(Unsupported("a moved unit without movement state"))?;
+        let move_to = crate::move_to::MoveToAction::to_target(
+            &self.spatial,
+            unit.position,
+            mover,
+            target,
+            0.0,
+            false,
+        )?;
+        if move_to.arrived() {
+            unit.shows_standing_sprite(
+                self.masters.get(player),
+                &self.graphics,
+                self.streams.get(Stream::Sprite),
+            )?;
+        }
+        unit.move_to = Some(move_to);
         Ok(())
     }
 
@@ -1407,10 +1442,35 @@ impl Turns {
             }
             let unit = &self.players[player].objects[idx];
             let master = self.master_of(player, unit.life.master_id)?;
-            if master.moving.is_some_and(|m| 0.0 < m.speed) {
-                return Err(Unsupported(
-                    "a work command without a task (the unit's move)",
-                ));
+            if !master.moving.is_some_and(|m| 0.0 < m.speed) {
+                return Ok(());
+            }
+            // slot 0x828 with 1 (the move's order and action) for a unit in state 2, -1 for
+            // another; then the move to the target (slot 0x138) for a unit in state 2 or of
+            // class 51
+            let (alive, class) = (unit.life.state == 2, master.class);
+            let (tp, t) = self.object(target).ok_or(Unsupported(
+                "a work command's target the slice does not hold",
+            ))?;
+            let target_class = i32::from(self.master_of(tp, t.life.master_id)?.class);
+            let (order, action) = if alive {
+                (MOVE_ORDER, crate::unit_ai::MOVE_ACTION)
+            } else {
+                (-1, -1)
+            };
+            let unit = &mut self.players[player].objects[idx];
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.notify_work(
+                    order,
+                    action,
+                    Some((target, target_class)),
+                    point,
+                    clears,
+                    self.streams.get(Stream::Ai),
+                )?;
+            }
+            if alive || class == 51 {
+                self.move_to_object(player, idx, target, point)?;
             }
             return Ok(());
         };
@@ -1729,6 +1789,86 @@ impl Turns {
         Ok(())
     }
 
+    /// `FUN_14109d4f0` of the unit at `idx` on `target`, or on a building annex's main building
+    /// (`+0xbb8`): the unit's master has that master among its drop sites.
+    fn drops_at_main(&self, player: usize, idx: usize, target: i32) -> Result<bool, Unsupported> {
+        let (tp, t) = self
+            .object(target)
+            .ok_or(Unsupported("a hunt's target the slice does not hold"))?;
+        let tm = self.master_of(tp, t.life.master_id)?;
+        let main = if tm.kind == BUILDING {
+            t.annex_of.unwrap_or(target)
+        } else {
+            target
+        };
+        let main_master = match self.object(main) {
+            Some((mp, m)) => self.master_of(mp, m.life.master_id)?.id,
+            None => tm.id,
+        };
+        let unit = &self.players[player].objects[idx];
+        Ok(self
+            .master_of(player, unit.life.master_id)?
+            .drop_sites
+            .contains(&main_master))
+    }
+
+    /// The Hunt's slot 0x40 from a move ([`HuntAction::take_move`]) with `target` (None for a
+    /// point) and `point`: true when it takes it. The target it had goes (slot 0x68 with none:
+    /// [`Turns::release`]), and a drop site it carries its load to becomes its second target
+    /// (`FUN_140a7a190`: [`Turns::take`]).
+    ///
+    /// [`HuntAction::take_move`]: crate::hunt::HuntAction::take_move
+    pub(crate) fn hunt_take_move(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: Option<i32>,
+        point: [f32; 3],
+    ) -> Result<bool, Unsupported> {
+        let quarry = match target {
+            Some(t) => {
+                let mut q = self.quarry(player, t)?;
+                q.drop_site = self.drops_at_main(player, idx, t)?;
+                Some(q)
+            }
+            None => None,
+        };
+        let gap = match target {
+            Some(t) => self.engagement(player, idx, t)?.gap,
+            None => 0.0,
+        };
+        let by = self.releaser(player, idx);
+        let unit = &mut self.players[player].objects[idx];
+        let (held, my_pasture) = (unit.life.amount, unit.my_pasture);
+        let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.mover.as_mut()) else {
+            return Err(Unsupported("a hunter without its hunt or movement state"));
+        };
+        let (old_target, old_second) = (hunt.target, hunt.carry_to);
+        if !hunt.take_move(
+            quarry.as_ref(),
+            point,
+            player,
+            held,
+            quarry.as_ref().is_some_and(|q| q.drop_site),
+            my_pasture,
+            gap,
+            mover,
+        )? {
+            return Ok(false);
+        }
+        let new_second = hunt.carry_to;
+        if old_target != -1 && hunt.target == -1 {
+            self.release(old_target, by)?;
+        }
+        if new_second != old_second && new_second != -1 {
+            if old_second != -1 {
+                self.release(old_second, by)?;
+            }
+            self.take(new_second);
+        }
+        Ok(true)
+    }
+
     /// What a hunt reads of its target.
     fn quarry(&self, player: usize, target: i32) -> Result<Quarry, Unsupported> {
         let (tp, t) = self
@@ -1794,26 +1934,7 @@ impl Turns {
         clears: bool,
     ) -> Result<(), Unsupported> {
         let mut quarry = self.quarry(player, target)?;
-        // the start's drop-site test (FUN_14109d4f0) of the target, or of a building annex's
-        // main building (`+0xbb8`)
-        quarry.drop_site = {
-            let (tp, t) = self
-                .object(target)
-                .ok_or(Unsupported("a hunt's target the slice does not hold"))?;
-            let main = if quarry.kind == BUILDING {
-                t.annex_of.unwrap_or(target)
-            } else {
-                target
-            };
-            let main_master = match self.object(main) {
-                Some((mp, m)) => self.master_of(mp, m.life.master_id)?.id,
-                None => self.master_of(tp, t.life.master_id)?.id,
-            };
-            let unit = &self.players[player].objects[idx];
-            self.master_of(player, unit.life.master_id)?
-                .drop_sites
-                .contains(&main_master)
-        };
+        quarry.drop_site = self.drops_at_main(player, idx, target)?;
         self.take(target);
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {

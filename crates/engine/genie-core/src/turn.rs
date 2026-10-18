@@ -3671,6 +3671,51 @@ impl Unit {
         } else if let Some(hunt) = self
             .hunt
             .as_mut()
+            .filter(|h| h.state == crate::hunt::WALK_POINT)
+        {
+            // state 15: the walk to a move's point; its end is set_state(2): the unit takes the
+            // hunt's sprite to stand with (slot 0x68 with FUN_140ac5210's), the target and the
+            // second target go
+            let computer = c.computer;
+            let walk = c.walk(self.mover.as_mut(), me);
+            if hunt.update_point_walk(walk, computer)? {
+                let task = hunt.task;
+                let second = std::mem::replace(&mut hunt.carry_to, -1);
+                let master = c
+                    .masters
+                    .and_then(|m| m.get(self.life.master_id))
+                    .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+                let g = |id: i16| (0 <= id).then(|| c.graphics.get(&id).copied()).flatten();
+                let carrying = task.sprites[3];
+                let stand = if task.resource != -1
+                    && task.resource == self.life.attribute_type
+                    && 1 <= self.life.amount as i32
+                    && g(carrying).is_some()
+                {
+                    g(carrying)
+                } else {
+                    g(master.standing_sprite)
+                };
+                if let Some(s) = stand {
+                    crate::attack::set_sprite(&mut self.sprite, s, c.streams.get(Stream::Sprite));
+                }
+                if second != -1 {
+                    c.releases.push((second, self.releaser(c)));
+                }
+            }
+        } else if self
+            .hunt
+            .as_ref()
+            .is_some_and(|h| h.state == crate::hunt::IDLE)
+        {
+            // state 2 (case 1): a done hunt waits; one of a tree's target class would search
+            // again (set_state 3)
+            if self.hunt.as_ref().is_some_and(|h| h.target_class == 15) {
+                return Err(Unsupported("a done hunt of a tree's class (set_state 3)"));
+            }
+        } else if let Some(hunt) = self
+            .hunt
+            .as_mut()
             .filter(|h| h.target == -1 && h.state == crate::hunt::WALK && h.timer < 0.0)
         {
             // case 3 waiting after a given-up MoveTo, its target gone: the timer runs by dt

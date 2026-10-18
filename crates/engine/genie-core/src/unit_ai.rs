@@ -1693,16 +1693,18 @@ impl UnitAi {
         // attack (the attack order and action, notify kind 9)
         let attacking = (self.ai_type == 4 && order == (-1, ATTACK_ACTION))
             || order == (ATTACK_ORDER, ATTACK_ACTION);
+        // a move to an object (the work command's without a task, slot 0x138)
+        let moving_to = order == (MOVE_ORDER, MOVE_ACTION);
         // without an order and an action the target is a stale one: the order queue's next order
         // takes over
-        if self.current_target != -1 && !working && !attacking && order != (-1, -1) {
+        if self.current_target != -1 && !working && !attacking && !moving_to && order != (-1, -1) {
             return Err(Unsupported("a unit AI's target the slice does not model"));
         }
         if !busy || self.is_idle() {
             return Ok(());
         }
         match retarget {
-            Retarget::Never if working || moving || moved => Ok(()),
+            Retarget::Never if working || moving || moving_to || moved => Ok(()),
             Retarget::Base if moving || scouting || following || attacking => Ok(()),
             _ => Err(Unsupported(
                 "a busy unit AI on an order the slice does not model",

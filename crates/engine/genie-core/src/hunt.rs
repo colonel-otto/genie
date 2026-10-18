@@ -31,6 +31,11 @@ pub const DROP: u8 = 8;
 pub const ATTACK: u8 = 12;
 /// State 13: the hunt failed; its next update tells its unit AI (notify 0x1f9) and ends it.
 pub const FAILED: u8 = 13;
+/// State 2: the hunt is done with its target; it waits (a tree's target class would search
+/// again, `set_state` 3).
+pub const IDLE: u8 = 2;
+/// State 15 (`0xf`): walking to a point a move gave it (its slot 0x40).
+pub const WALK_POINT: u8 = 15;
 /// A building whose top action is this (a farm at work) takes a hunt sent to it to `set_state` 15.
 const FARM_AT_WORK: i16 = 0x7d;
 
@@ -383,6 +388,106 @@ impl HuntAction {
         self.carry_to = -1;
         self.chase(target, player, attack, arms, mover)?;
         Ok(true)
+    }
+
+    /// Slot 0x40 (`FUN_140ac52c0`): the hunt takes a move's `target` (None for a point) and
+    /// `point`; true when it does. A point with a task of a work range it does not take. A unit
+    /// on a pasture (`mMyPastureId` +0x794) of another target would leave it (`FUN_141189ca0`),
+    /// not modelled. Its own player's drop site (`drops_here`) while it carries something
+    /// (`held`) takes the load there: unless it walks there already (state 8), the target goes
+    /// (slot 0x68 with none; the caller releases it), the point clears, `+0x68` takes the drop
+    /// site's class, which becomes the second target (`FUN_140a7a190`; the caller takes it) and
+    /// `set_state(8)`. Any other target, or a point: the point is the move's, `+0x68` −1, the
+    /// target goes and `set_state(15)`: a quiet `MoveTo` to the point within the task's range
+    /// (`FUN_140aa0d30`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn take_move(
+        &mut self,
+        target: Option<&Quarry>,
+        point: [f32; 3],
+        player: usize,
+        held: f32,
+        drops_here: bool,
+        my_pasture: i32,
+        gap: f32,
+        mover: &mut Mover,
+    ) -> Result<bool, Unsupported> {
+        if target.is_none() && self.task.range != 0.0 {
+            return Ok(false);
+        }
+        if my_pasture != -1 && target.is_none_or(|t| t.id != my_pasture) {
+            return Err(Unsupported("a hunter leaving its pasture (FUN_141189ca0)"));
+        }
+        if let Some(t) = target.filter(|t| t.player == player && drops_here && 0.0 < held) {
+            if t.id == self.carry_to && self.state == DROP {
+                return Ok(true);
+            }
+            self.target = -1;
+            self.point = [-1.0; 3];
+            self.target_class = t.class;
+            self.carry_to = t.id;
+            self.set_drop(gap, mover)?;
+            return Ok(true);
+        }
+        self.point = point;
+        self.target_class = -1;
+        self.target = -1;
+        self.tear_down(Some(mover))?;
+        self.state = WALK_POINT;
+        self.timer = 0.0;
+        self.walk_range = self.task.range;
+        self.move_wait = MoveWait::default();
+        if mover.stats.speed == 0.0 {
+            return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+        }
+        self.move_to = Some(MoveTo::Start);
+        Ok(true)
+    }
+
+    /// State 15's update (`0x140ac7a00` case 0xe): the `MoveTo` to the point walks; once it
+    /// ended (its update returns 1, 2 or 5: the list deletes it, its destructor stops the unit)
+    /// a human player's hunt is done (`set_state(2)`: the unit takes its standing sprite, the
+    /// caller's; a computer player's would end it, `set_state` 1). A `MoveTo` that failed or
+    /// waits (codes 3 and 4) is not modelled. True when the walk ended.
+    pub fn update_point_walk(
+        &mut self,
+        mut walk: Walk<'_>,
+        computer: bool,
+    ) -> Result<bool, Unsupported> {
+        match self.move_to {
+            Some(MoveTo::Start) => {
+                self.move_to = Some(MoveTo::Moving);
+                let range = self.walk_range;
+                walk.me.action_state = self.state;
+                self.move_to = Some(start_walk(walk, Goal::Point(self.point), range, true)?);
+                Ok(false)
+            }
+            Some(MoveTo::Moving) => {
+                walk.me.action_state = self.state;
+                self.move_to = Some(walk_on(walk)?);
+                Ok(false)
+            }
+            Some(MoveTo::Arrived) => {
+                self.move_to = None;
+                walk.mover
+                    .as_deref_mut()
+                    .ok_or(Unsupported("a hunter without movement state"))?
+                    .stop()?;
+                if computer {
+                    return Err(Unsupported(
+                        "a computer player's hunt after its walk (set_state 1)",
+                    ));
+                }
+                self.state = IDLE;
+                self.point = [-1.0; 3];
+                self.timer = 0.0;
+                Ok(true)
+            }
+            Some(MoveTo::Waiting | MoveTo::Failed) => Err(Unsupported(
+                "a hunt's walk to a point that waits or failed (codes 3, 4)",
+            )),
+            None => Err(Unsupported("a Hunt in state 15 without its MoveTo")),
+        }
     }
 
     /// `set_state(8)` (`0x140ac60e0` case 8) with a load and its drop site (`carry_to`; without one
