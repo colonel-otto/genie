@@ -400,6 +400,43 @@ impl Turns {
         Ok(())
     }
 
+    /// GATE (`do_command` case 0x72): the object `id` (any player's: a missing one does nothing)
+    /// of a master of type 80 toggles its gate lock (slot 0x670 with slot 0x668's value
+    /// negated, `FUN_1411dba30`): a lock sets its last move time to the world time plus 1. The
+    /// player must own it (another player's object, which a game setting, `FUN_1412ffe00`, or
+    /// the world's `+0xb12` may let through, is not modelled). Its sound (slot 0x4c0) and the
+    /// UI's flag are not held.
+    pub(crate) fn gate(&mut self, player: usize, id: i32) -> Result<(), Unsupported> {
+        let Some(place) = self.place(id) else {
+            return Ok(());
+        };
+        let (p, idx) = match place {
+            Place::Live(p, i) => (p, i),
+            Place::Sleeping(..) => return Err(Unsupported("a GATE of a sleeping object")),
+        };
+        if p != player {
+            return Err(Unsupported("a GATE of another player's object"));
+        }
+        let master = self.players[p].objects[idx].life.master_id;
+        if self.master_of(p, master)?.kind != 80 {
+            return Ok(());
+        }
+        let now = self.world_time;
+        let unit = &mut self.players[p].objects[idx];
+        let gate = unit
+            .gate
+            .as_mut()
+            .ok_or(Unsupported("a GATE of a building without its gate state"))?;
+        gate.locked = !gate.locked;
+        if gate.locked {
+            unit.mover
+                .as_mut()
+                .ok_or(Unsupported("a locked gate without its moving part"))?
+                .last_move = now.wrapping_add(1);
+        }
+        Ok(())
+    }
+
     /// AUTO_SCOUT (0x26, `FUN_140e666f0`): each unit of `ids` with a unit AI that may scout
     /// (`FUN_140c89760`: its master's object flags `+0x654` have bit 4; class 58's rule behind a
     /// game setting, `FUN_140eca780`, is not modelled) takes an order at once (slot 0x30 ->

@@ -245,6 +245,7 @@ fn unit(
             .combat()
             .is_some_and(|c| c.rge_combat_object.hit_something_valid_for_charge_attack != 0),
         gather_point: gather_point(object),
+        gate: saved_gate(object),
         ..Unit::default()
     };
     let imported = if saved {
@@ -273,6 +274,14 @@ fn unit(
     let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.mover = m);
     unit.unmodelled_action = imported.and(production).and(moving).err();
     unit
+}
+
+/// A saved building's gate lock ([`genie_core::turn::Gate`]).
+fn saved_gate(object: &genie_save::Object) -> Option<genie_core::turn::Gate> {
+    let b = object.tribe_building_object.as_ref()?;
+    Some(genie_core::turn::Gate {
+        locked: b.gate_locked != 0,
+    })
 }
 
 /// A saved building's construction: its `build_pts`, `desolid_flag` and `num_builders`, its
@@ -2048,6 +2057,12 @@ impl Decoder {
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true, None),
+            Packet::Gate(c) => {
+                return Some(Command::Gate {
+                    player: c.commp_id as usize,
+                    id: c.u_id,
+                });
+            }
             // AUTO_SCOUT: the units listed (at most a human player's 60), the count at +4
             Packet::AutoScout(c) => {
                 return Some(Command::AutoScout {
@@ -2500,6 +2515,8 @@ pub struct ObjectRow {
     /// A combat object's charge, `mHitSomethingValidForChargeAttack` and hit point powerups,
     /// which its hits and the hits on it change.
     pub combat: Option<(f32, bool, [f32; 2])>,
+    /// A building's gate lock.
+    pub gate: Option<genie_core::turn::Gate>,
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
@@ -2646,6 +2663,7 @@ impl ObjectRow {
             combat: unit
                 .combat
                 .then_some((unit.charge, unit.charge_hit, unit.hp_powerups)),
+            gate: unit.gate,
         }
     }
 }
@@ -2750,6 +2768,7 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
                     [c.hitpoints_powerup, c.hitpoints_max_powerup],
                 )
             }),
+            gate: saved_gate(object),
         })
         .collect())
 }
@@ -3542,6 +3561,7 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             format!("{:?}", s.combat),
             format!("{:?}", g.combat),
         );
+        field("gate", format!("{:?}", s.gate), format!("{:?}", g.gate));
         match (&s.ai, &g.ai) {
             (Some(a), Some(b)) => {
                 for ((name, x), (_, y)) in a.fields.iter().zip(&b.fields) {

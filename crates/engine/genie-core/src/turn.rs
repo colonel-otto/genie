@@ -83,6 +83,8 @@ pub struct Unit {
     pub hunt: Option<HuntAction>,
     /// An auto scout's Explore action, its top action.
     pub explore: Option<crate::explore::ExploreAction>,
+    /// A building's gate lock ([`Gate`]).
+    pub gate: Option<Gate>,
     /// Its active sprite and animation speed (`+0x7b8`, the save's `current_speed`), held from
     /// an attack's swing on; None while the slice does not know them.
     pub sprite: Option<ActiveSprite>,
@@ -116,6 +118,13 @@ pub struct Unit {
     /// The slice could not model one of its updates: it freezes (its place is known only within
     /// its speed since) while the rest of its player's objects go on.
     pub stopped: bool,
+}
+
+/// What every building holds of a gate: `mGateLocked` (`+0xc7c`; a lock also sets the
+/// building's last move time, [`Mover::last_move`], slot 0x670, `FUN_1411dba30`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Gate {
+    pub locked: bool,
 }
 
 /// A building's gather point (`+0xc30`..`+0xc44`: it exists, x, y, z, the target and the target's
@@ -179,6 +188,9 @@ pub enum Command {
     /// (`+0x1424`) or `autoFishTrapQueue` (`+0x1425`) flips (`fishtrap` true for 0x13). The other
     /// sub-commands are the decoder's [`Command::Unmodelled`].
     AutoQueue { player: usize, fishtrap: bool },
+    /// GATE (0x72, `do_command` case 0x72): the player's building `id` toggles its gate lock
+    /// ([`Turns::gate`]).
+    Gate { player: usize, id: i32 },
     /// AUTO_SCOUT (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
     /// auto scout order, or the stop order when it scouts already ([`Turns::auto_scout`]).
     AutoScout { player: usize, ids: Vec<i32> },
@@ -2340,6 +2352,7 @@ impl Turns {
                     hp_powerups: [0.0; 2],
                     hunt: None,
                     explore: None,
+                    gate: None,
                     workers: 0,
                     combat: true,
                     default_task: None,
@@ -2391,6 +2404,12 @@ impl Turns {
                     owner.auto_fishtrap_queue = !owner.auto_fishtrap_queue;
                 } else {
                     owner.auto_farm_queue = !owner.auto_farm_queue;
+                }
+            }
+            Command::Gate { player, id } => {
+                if let Err(e) = self.gate(player, id) {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
                 }
             }
             Command::AutoScout { player, ref ids } => {
