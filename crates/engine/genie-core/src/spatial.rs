@@ -45,7 +45,8 @@ const TESTED_KINDS: [u8; 5] = [2, 3, 5, 11, 13];
 
 /// What the walk reads of a moving object it meets: whether it moves (its velocity, `+0x868`, is
 /// not 0: slot 0x5c8, `FUN_1411583d0`), its last move time (`+0x870`, slot 0x5e8) and its current
-/// path level's pause time (`+0x858`'s `+0x34`, slot 0x528), none without a level.
+/// path level's pause time (`+0x858`'s `+0x34`, slot 0x528), none without a level, and when that
+/// level's path was made.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Gait {
     /// It moves: its velocity (`+0x868`) is not 0 (slot 0x5c8).
@@ -56,6 +57,10 @@ pub struct Gait {
     pub pause: Option<f32>,
     /// `+0x650`, `mLastHumanOrderTime`: a met unit's rank against a human walker.
     pub human_order: u32,
+    /// When its current path level's path was made (slot 0x528's `+0x18`, the path's `+8`), none
+    /// without a level or a path: a drop-off walker's ignore list passes a worker whose path is
+    /// this update's.
+    pub path_made: Option<u32>,
 }
 
 /// One object as movement sees it.

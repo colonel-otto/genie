@@ -1623,7 +1623,8 @@ impl Mover {
     /// unit, its target, the unit's own list but itself when its top path was made this update
     /// (`+0x858`'s path at `+0x8`), and, for a standing unit with a target whose action is in
     /// state 8 (a drop-off), the workers standing within its radius and a tenth (the records
-    /// `FUN_141051900` finds; one whose path was made this update is passed) of the classes 2, 4,
+    /// `FUN_141051900` finds; one whose current path level's path was made this update is
+    /// passed, [`crate::spatial::Gait::path_made`]) of the classes 2, 4,
     /// 19 and 21 (or whose slot 0x4f0 says so: 0 for a combat object, the mule cart's task 0x99
     /// for a building, not modelled for the building classes 3, 27, 39, 49 and 52), when the
     /// unit's start is blocked (`FUN_140fa0110`: [`short_path::Pather::start_blocked`] from its
@@ -1654,7 +1655,12 @@ impl Mover {
                 let mut blocked: Option<bool> = None;
                 for id in world.obstruction_candidates(rect, grow, &list) {
                     let Some(p) = world.get(id) else { continue };
-                    if world.gait(id).is_some_and(|g| g.moving) {
+                    let gait = world.gait(id);
+                    if gait.is_some_and(|g| g.moving) {
+                        continue;
+                    }
+                    // a worker whose path is this update's walks: it is passed
+                    if gait.and_then(|g| g.path_made) == Some(now) {
                         continue;
                     }
                     if !matches!(p.class, 2 | 4 | 19 | 21) {
@@ -1664,15 +1670,6 @@ impl Mover {
                             ));
                         }
                         continue;
-                    }
-                    if self
-                        .paths
-                        .first()
-                        .is_some_and(|l| l.created == now && !l.points.is_empty())
-                    {
-                        return Err(Unsupported(
-                            "a worker near a drop-off's walker whose path is this update's",
-                        ));
                     }
                     let start_blocked = if let Some(b) = blocked {
                         b

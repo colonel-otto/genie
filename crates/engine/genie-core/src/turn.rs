@@ -860,6 +860,11 @@ impl Unit {
             last_move: m.last_move,
             pause: m.paths.first().map(|l| l.pause_time),
             human_order: self.last_human_order,
+            path_made: m
+                .paths
+                .first()
+                .filter(|l| !l.points.is_empty())
+                .map(|l| l.created),
         })
     }
 
