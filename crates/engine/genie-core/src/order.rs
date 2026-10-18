@@ -375,7 +375,15 @@ impl Turns {
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0) {
-            return Err(Unsupported("an order to an object that does not move"));
+            // an object that does not move takes slot 0x128 at once with 1 (no carried-resource
+            // test, any task) at the order's point, z 0; a queued order then goes on as a mover's
+            self.order_at_once(player, idx, order.target, order.point)?;
+            if !order.queued {
+                return Ok(());
+            }
+            return Err(Unsupported(
+                "a queued order to an object that does not move",
+            ));
         }
         let target = self
             .object(order.target)
@@ -443,6 +451,34 @@ impl Turns {
             ));
         }
         Ok(())
+    }
+
+    /// Slot 0x128 with 1 (`FUN_141211b80`) on `target` at `point` (z 0), no carried-resource test
+    /// and any task: `+0xa14` is 1 and a unit AI's order queue empties (`FUN_140c5e010`);
+    /// `FUN_14106c590` passes the order on to slot 0x7e8 unless the target is the unit itself
+    /// (its `+0x888` count is not held).
+    fn order_at_once(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        point: [f32; 2],
+    ) -> Result<(), Unsupported> {
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.orders.clear();
+        }
+        if target == unit.id {
+            return Ok(());
+        }
+        let work = Work {
+            target,
+            point: [point[0], point[1], 0.0],
+            carry_test: false,
+            filter: -1,
+            notified: true,
+        };
+        self.order_work(player, idx, &work)
     }
 
     /// The unit AI's order on a target (`FUN_140c5c170` case `0x2db`, from its queue): the unit's
