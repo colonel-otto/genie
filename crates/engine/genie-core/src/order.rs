@@ -358,25 +358,60 @@ impl Turns {
         Ok(())
     }
 
-    /// MOVE (`FUN_140e67800`) to its units, after their unit AIs reset: one unit takes the order
-    /// (the loop of `LAB_140e6838c`); several units, which the handler sets out in a grid around
-    /// the point, are not modelled. An object that does not move ignores an order not queued. The
-    /// unit's ignore list empties and it waits to move; an order that is queued, or neither
-    /// direct nor to a unit AI with every queued order ready (`FUN_140c4dfa0`), goes to its unit
-    /// AI's queue as order `0x2c6` at the point (slot 0x30 -> 0x28: range 0, priority 100, the
-    /// point shown, ready when direct); a unit without a unit AI then does nothing. Otherwise the
-    /// unit takes the move itself (slot 0x138).
+    /// MOVE (`FUN_140e67800`) to its units, after their unit AIs reset. One unit takes the order
+    /// at the point (the loop of `LAB_140e6838c`). Several go through the splitter
+    /// ([`Turns::loose_units`]); those of a human player whose box ([`centroid`]'s) is narrow
+    /// enough each take a cell of a grid around the point ([`grid_point`], the loop after the
+    /// box), any others the point itself, in the splitter's order, each listing the others in its
+    /// ignore list ([`Turns::move_unit`]).
     pub(crate) fn move_order(
         &mut self,
         player: usize,
         units: &[i32],
         order: &MoveOrder,
     ) -> Result<(), Unsupported> {
-        let id = match units {
+        let loose = match units {
             [] => return Ok(()),
-            &[id] => id,
-            _ => return Err(Unsupported("a move of several units (their grid)")),
+            &[id] => return self.move_unit(player, id, &[], None, order),
+            _ => self.loose_units(units)?,
         };
+        // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
+        if 1 < loose.len() && self.players[player].computer {
+            return Err(Unsupported(
+                "a move of several units of a computer player (FUN_140d61870)",
+            ));
+        }
+        let narrow = 1 < loose.len() && self.order_spread(&loose, order.queued)?.is_some();
+        let map = self.spatial.map;
+        for (i, &id) in loose.iter().enumerate() {
+            let others: Vec<i32> = loose
+                .iter()
+                .enumerate()
+                .filter(|&(j, _)| j != i)
+                .map(|(_, &u)| u)
+                .collect();
+            let cell = narrow.then(|| grid_point(i, loose.len(), order.point, map));
+            self.move_unit(player, id, &others, cell, order)?;
+        }
+        Ok(())
+    }
+
+    /// One unit of MOVE: an object that does not move ignores an order not queued. The unit's
+    /// ignore list empties (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the
+    /// order's `others` (`FUN_14118c790`). An order that is queued, or neither direct nor to a
+    /// unit AI with every queued order ready (`FUN_140c4dfa0`), goes to its unit AI's queue as
+    /// order `0x2c6` at its point (slot 0x30, or in a grid slot 0x28: range 0, priority 100, the
+    /// order's point shown, ready when direct); a unit without a unit AI then does nothing.
+    /// Otherwise the unit takes the move itself (slot 0x138) to the point, or to its grid `cell`.
+    fn move_unit(
+        &mut self,
+        player: usize,
+        id: i32,
+        others: &[i32],
+        cell: Option<[f32; 2]>,
+        order: &MoveOrder,
+    ) -> Result<(), Unsupported> {
+        let point2 = cell.unwrap_or(order.point);
         let Some(place) = self.place(id) else {
             return Ok(());
         };
@@ -405,6 +440,7 @@ impl Turns {
             .ok_or(Unsupported("a moved unit without movement state"))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
+        mover.ignore_units.extend_from_slice(others);
         let takes_it = !order.queued
             && unit
                 .ai
@@ -423,7 +459,7 @@ impl Turns {
                 priority: 100,
                 target: if target.is_some() { order.target } else { -1 },
                 target_owner,
-                point: [order.point[0], order.point[1], 0.0],
+                point: [point2[0], point2[1], 0.0],
                 range: 0.0,
                 shown: order.point,
                 ready: order.direct,
@@ -448,6 +484,10 @@ impl Turns {
         if order.target != -1 {
             return Err(Unsupported("a move that follows an object"));
         }
+        let order = &MoveOrder {
+            point: point2,
+            ..*order
+        };
         // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
         // current action's slot 8 take the point (FUN_140a97730) unless it stops after a kill
         // (FUN_140c41c10): an Artifact action's does (FUN_140aaca30), a MoveTo's
@@ -489,10 +529,15 @@ impl Turns {
         }
         // the order handler's notify: a unit that took the move as a MoveTo gets the move order
         // and action, its target forgotten (FUN_140c4dcb0); every unit then the point
-        // (FUN_140c64be0); slot 0x2d8's walk and show targets are not held
+        // (FUN_140c64be0); in a grid every unit gets the order, the action and its cell, its
+        // target kept; slot 0x2d8's walk and show targets are not held
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
-            ai.notify_move(!taken, None, order.point, self.streams.get(Stream::Ai));
+            let ai_stream = self.streams.get(Stream::Ai);
+            match cell {
+                None => ai.notify_move(!taken, None, order.point, ai_stream),
+                Some(c) => ai.notify_grid_move(c, ai_stream),
+            }
         }
         Ok(())
     }
@@ -1051,26 +1096,59 @@ fn offset_point(
     point: [f32; 2],
     map: [i32; 2],
 ) -> [f32; 2] {
+    [
+        inside_map(position[0] - centroid[0] + point[0], map[0]),
+        inside_map(position[1] - centroid[1] + point[1], map[1]),
+    ]
+}
+
+/// An order's point on one axis kept on a map of `size` tiles: below 0 it becomes `EDGE`, at
+/// the size or beyond the size less `EDGE`.
+fn inside_map(v: f32, size: i32) -> f32 {
     /// `DAT_14330eb8c`.
     const EDGE: f32 = crate::image::order::EDGE;
-    let edge = |v: f32, size: i32| {
-        if v < 0.0 {
-            EDGE
-        } else if size as f32 <= v {
-            size as f32 - EDGE
-        } else {
-            v
-        }
-    };
-    [
-        edge(position[0] - centroid[0] + point[0], map[0]),
-        edge(position[1] - centroid[1] + point[1], map[1]),
-    ]
+    if v < 0.0 {
+        EDGE
+    } else if size as f32 <= v {
+        size as f32 - EDGE
+    } else {
+        v
+    }
+}
+
+/// The cell of the `i`th of `n` units in MOVE's grid (`FUN_140e67800`): `side` cells a row, the
+/// root of `n` times `GRID_AREA` truncated; the unit's column and row, less half the side, a
+/// `GRID_STEP` each from the order's point, kept on the map ([`inside_map`]).
+fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
+    /// `DAT_142eb4838`.
+    const GRID_AREA: f32 = crate::image::order::GRID_AREA;
+    /// `DAT_142e7f384`.
+    const GRID_STEP: f32 = crate::image::order::GRID_STEP;
+    let side = crate::fmath::sqrt(n as i32 as f32 * GRID_AREA) as i32;
+    let (i, half) = (i as i32, side / 2);
+    let x = (i % side - half) as f32 * GRID_STEP + point[0];
+    let y = (i / side - half) as f32 * GRID_STEP + point[1];
+    [inside_map(x, map[0]), inside_map(y, map[1])]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// MarvinBlue/426048731's MOVE of 1569: player 2's villagers 9175 and 9177 (by id) take a
+    /// grid of one cell a row, half a tile apart, from the order's point (their MoveTos' points in
+    /// the save after 1568).
+    #[test]
+    fn units_of_a_move_take_the_cells_of_a_grid() {
+        let point = [29.78125, 92.489586];
+        assert_eq!(grid_point(0, 2, point, [120, 120]), [29.78125, 92.489586]);
+        assert_eq!(grid_point(1, 2, point, [120, 120]), [29.78125, 92.989586]);
+        // nine units: three a row around the point; off the map an axis keeps a tile inside
+        assert_eq!(grid_point(0, 9, [10.0, 10.0], [120, 120]), [9.5, 9.5]);
+        assert_eq!(grid_point(4, 9, [10.0, 10.0], [120, 120]), [10.0, 10.0]);
+        assert_eq!(grid_point(8, 9, [119.75, 0.25], [120, 120]), [119.0, 0.75]);
+        assert_eq!(grid_point(0, 9, [0.25, 0.25], [120, 120]), [1.0, 1.0]);
+    }
 
     /// MarvinBlue/426048731's INTERACT of 927: player 1's builders 9171 and 9173 stand side by
     /// side; the queued orders of the save after 927 hold their points around the order's.

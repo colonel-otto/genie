@@ -718,6 +718,15 @@ impl UnitAi {
         self.set_target(id, class, [point[0], point[1], 0.0]);
     }
 
+    /// MOVE's notify to a unit that took its cell of the grid (`FUN_140e67800`): the move order
+    /// (`FUN_140c64b60`) and action (`FUN_140c64b50`), then no target and the cell on the ground
+    /// (`FUN_140c64be0`); the target it had becomes its last as [`UnitAi::set_target`] does.
+    pub fn notify_grid_move(&mut self, cell: [f32; 2], ai: &mut Well512) {
+        self.set_order(MOVE_ORDER, ai);
+        self.set_action(MOVE_ACTION);
+        self.set_target(-1, -1, [cell[0], cell[1], 0.0]);
+    }
+
     /// The AI's move (slot 0x130, `FUN_140c55620`): with `force` or no action value, the unit takes
     /// it (its slot 0x340, which the caller runs), and the AI holds the move action and the point
     /// without a target (`FUN_140c64c10` with −1, which leaves the target class).

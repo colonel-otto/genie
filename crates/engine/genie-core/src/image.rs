@@ -128,6 +128,10 @@ pub mod order {
     pub const BOX_START: f32 = f32::from_bits(0x461c4000);
     /// 1.0
     pub const EDGE: f32 = f32::from_bits(0x3f800000);
+    /// 1.5
+    pub const GRID_AREA: f32 = f32::from_bits(0x3fc00000);
+    /// 0.5
+    pub const GRID_STEP: f32 = f32::from_bits(0x3f000000);
     /// 8.0
     pub const SPREAD: f32 = f32::from_bits(0x41000000);
 }

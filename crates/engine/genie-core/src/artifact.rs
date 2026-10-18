@@ -89,8 +89,10 @@ impl Artifact {
         self.step(dt_ms, searches, owner)
     }
 
-    /// The update's first part: its MoveTo sub-action.
-    pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<(), Unsupported> {
+    /// The update's first part: its MoveTo sub-action. True when the MoveTo ended: its update in
+    /// state 1 posts its completion (0x1fa with the move action value; the Artifact's MoveTo is
+    /// not quiet), which the caller sends to the unit AI.
+    pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<bool, Unsupported> {
         let need = || Unsupported("a walking animal without its walk");
         match self.move_to {
             Some(MoveTo::Start) => {
@@ -109,10 +111,11 @@ impl Artifact {
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
                 self.goal = None;
+                return Ok(true);
             }
             None => {}
         }
-        Ok(())
+        Ok(false)
     }
 
     /// The update's second part: the state's step.

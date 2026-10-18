@@ -732,7 +732,7 @@ impl Unit {
         let mut captured = None;
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
             let dt = c.dt;
-            artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
+            let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
             // FUN_14107cc90: an object of the combat types whose +0x924 is 0 never changes hands
             let capture = c
                 .spatial
@@ -747,6 +747,9 @@ impl Unit {
             let new = artifact.step(dt, searches, &mut || {
                 spatial.artifact_owner(id, attribute_97)
             })?;
+            if ended {
+                self.post_own(ACTION_COMPLETED, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
+            }
             if let Some(new) = new {
                 captured = Some((new, self.capture(c, others, new)?));
             }
