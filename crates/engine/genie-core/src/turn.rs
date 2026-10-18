@@ -104,6 +104,9 @@ pub struct Unit {
     pub firepower: f32,
     /// `next_volley` (`+0xa04`): the missiles of the volley under way already fired.
     pub next_volley: u8,
+    /// `mReloadWorldtime` (`+0x920`, slots 0x248 and 0x250): the world time its attack timer
+    /// runs out at (`FUN_141089820`), 0 for none; once past, the volley under way is over.
+    pub reload_worldtime: u32,
     /// A building's gate lock ([`Gate`]).
     pub gate: Option<Gate>,
     /// Its active sprite and animation speed (`+0x7b8`, the save's `current_speed`), held from
@@ -376,6 +379,8 @@ const QUEUE_LIMIT: usize = 15;
 const BUILD_IDLE: i32 = 0x202;
 /// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
 const SPEED_EPSILON: f32 = crate::image::turn::SPEED_EPSILON;
+/// A building attacks with a firepower above this (`FUN_14120ea30`).
+const ARMED_FIREPOWER: f32 = crate::image::turn::ARMED_FIREPOWER;
 
 /// A queued villager's master: male when the 64-bit Action draw times 100 (wrapping) is below 50
 /// modulo 100.
@@ -2187,6 +2192,23 @@ impl Unit {
         Ok(own.killed)
     }
 
+    /// The action list's deletion of the unit's own Attack (`FUN_140a98e20`): its teardown (a
+    /// `MoveTo`'s stops the unit) and the base teardown (`FUN_140a73fc0`), which lets its target,
+    /// then its second target go (slot 0x180).
+    fn delete_attack(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        let Some(mut a) = self.attack.take() else {
+            return Ok(());
+        };
+        a.tear_down(self.mover.as_mut())?;
+        let by = self.releaser(c);
+        for t in [a.target, a.target2] {
+            if t != -1 {
+                c.releases.push((t, by));
+            }
+        }
+        Ok(())
+    }
+
     /// Slot 0x858 (`FUN_14120c0a0`), a combat object's hit at its target from the Attack's swing
     /// when it has a missile, a volley missile or a charge projectile
     /// ([`crate::attack::volleys`]; the others' melee hit is the Attack's). A master without
@@ -3111,6 +3133,11 @@ impl Unit {
                 self.attack_timer = 0.0;
             }
         }
+        // then a reload world time past ends the volley under way (`+0xa04`) and is none
+        if self.reload_worldtime != 0 && self.reload_worldtime < c.world_time {
+            self.next_volley = 0;
+            self.reload_worldtime = 0;
+        }
         if let Some(mover) = self.mover.as_mut() {
             let at = mover.step_velocity(self.position, c.dt_seconds, c.spatial.map, c.world_time);
             if at != self.position {
@@ -3735,6 +3762,7 @@ impl Unit {
                 standing,
                 volleys,
                 attack_timer: &mut self.attack_timer,
+                reload_worldtime: &mut self.reload_worldtime,
                 reload: self.reload_stinger + (master.reload - self.reload_powerup),
                 hit_chance: master.hit_chance,
                 victim,
@@ -3748,6 +3776,11 @@ impl Unit {
                 posted: Vec::new(),
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
                 world_time,
+                ai_order: self.ai.as_ref().map(|ai| ai.current_order),
+                computer,
+                armed: true,
+                let_go: None,
+                forgets: false,
             };
             let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let fired = strike.fire.map(|target| {
@@ -3772,15 +3805,30 @@ impl Unit {
             if full {
                 self.hunt_drop_off(c, others)?;
             }
-        } else if let Some(attack) = self.attack.as_mut() {
-            // the unit's own Attack (slot 6, 0x140a82ae0), its notifies posted to its unit AI
-            // (slot 0x328); an update that ends it (a code to the action list) is not modelled
+        } else if let Some(attack) = self.attack.as_mut().filter(|a| a.target == -1) {
+            // the unit's own Attack after its target went ([`Attack::lost`])
             let master = c
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
                 .ok_or(Unsupported(
                     "an attacker of a master the slice does not have",
                 ))?;
+            let armed = armed(master, self.firepower);
+            let code = attack.update_targetless(c.dt_seconds, armed, &mut self.anim_speed)?;
+            if matches!(code, 1 | 3) {
+                self.delete_attack(c)?;
+            }
+        } else if let Some(attack) = self.attack.as_mut() {
+            // the unit's own Attack (slot 6, 0x140a82ae0), its notifies posted to its unit AI
+            // (slot 0x328); codes 1 and 3 delete it (RGE_Action_Object::update)
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(Unsupported(
+                    "an attacker of a master the slice does not have",
+                ))?;
+            let armed = armed(master, self.firepower);
+            let computer = c.computers.get(c.player).copied().unwrap_or(false);
             let victim = c.victim.take().ok_or(Unsupported(
                 "an attack's target the slice does not hold live",
             ))?;
@@ -3803,6 +3851,7 @@ impl Unit {
                 standing,
                 volleys,
                 attack_timer: &mut self.attack_timer,
+                reload_worldtime: &mut self.reload_worldtime,
                 reload: self.reload_stinger + (master.reload - self.reload_powerup),
                 hit_chance: master.hit_chance,
                 victim,
@@ -3816,6 +3865,11 @@ impl Unit {
                 posted: Vec::new(),
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
                 world_time,
+                ai_order: self.ai.as_ref().map(|ai| ai.current_order),
+                computer,
+                armed,
+                let_go: None,
+                forgets: false,
             };
             let code = attack.update(walk, &mut strike)?;
             let fired = strike.fire.map(|target| {
@@ -3830,7 +3884,14 @@ impl Unit {
             });
             let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
             let posted = std::mem::take(&mut strike.posted);
+            let (let_go, forgets) = (strike.let_go, strike.forgets);
             c.blasted = blasted;
+            if let Some(t) = let_go {
+                c.releases.push((t, self.releaser(c)));
+            }
+            if forgets && let Some(ai) = self.ai.as_mut() {
+                ai.remove_target();
+            }
             for (kind, p) in posted {
                 self.post_own(kind, p)?;
             }
@@ -3841,11 +3902,8 @@ impl Unit {
                 self.post_own(ACTION_EXECUTED, [600, target, 0])?;
             }
             c.own_killed = self.hit_back(own)?;
-            // codes 1 and 3 delete the action (RGE_Action_Object::update)
             if matches!(code, 1 | 3) {
-                return Err(Unsupported(
-                    "a unit's own Attack that ends (its code to the action list)",
-                ));
+                self.delete_attack(c)?;
             }
         }
         // the motion step may have put the unit onto a waypoint it reached
@@ -4462,6 +4520,15 @@ struct Aimed {
     radius: [f32; 3],
     class: i16,
     player: usize,
+}
+
+/// `FUN_14120ea30` of an attacker of `master` with `firepower` (`+0xa00`): a building can attack
+/// when of class 51 or 54, with a missile, or with a firepower above 1; any other attacker can.
+fn armed(master: &Master, firepower: f32) -> bool {
+    master.kind != crate::order::BUILDING
+        || matches!(master.class, 51 | 54)
+        || master.missile != -1
+        || ARMED_FIREPOWER < firepower
 }
 
 /// What a missile was fired as, which its hits read while its own part is out of the unit: a
@@ -5301,6 +5368,7 @@ impl Turns {
                         .and_then(|m| m.get(master))
                         .map_or(0.0, |m| m.volley_fire),
                     next_volley: 0,
+                    reload_worldtime: 0,
                     // every building holds a gate's lock, open
                     gate: Some(Gate::default()),
                     workers: 0,

@@ -1307,6 +1307,52 @@ impl Turns {
         Ok(())
     }
 
+    /// The work command's check of the unit's top Attack (`FUN_14106ff70`): one on this very
+    /// target, the filter none or 9, keeps it when its slot 9 (`FUN_140a841d0`, [`Attack::keeps`])
+    /// does, and the unit AI hears of it as of a new one (slot 0x828: the attack order and
+    /// action, the target, the retarget time). True when kept.
+    ///
+    /// [`Attack::keeps`]: crate::attack::Attack::keeps
+    fn keep_attack(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        filter: i16,
+        point: [f32; 3],
+        clears: bool,
+    ) -> Result<bool, Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let top = unit.top_action_kind();
+        let attacking = unit
+            .attack
+            .filter(|a| top == Some(crate::attack::ATTACK) && a.target == target);
+        let Some(a) = attacking.filter(|_| matches!(filter, -1 | 9)) else {
+            return Ok(false);
+        };
+        if !a.keeps(target)? {
+            return Ok(false);
+        }
+        let (tp, t) = self
+            .object(target)
+            .ok_or(Unsupported("an attack's target the slice does not hold"))?;
+        let class = i32::from(self.master_of(tp, t.life.master_id)?.class);
+        let world_time = self.world_time;
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.last_retarget_time = world_time;
+            ai.notify_work(
+                700,
+                600,
+                Some((target, class)),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+        }
+        Ok(true)
+    }
+
     /// The work command (slot 37, `FUN_14106ff70`) of a unit on a target object: the master and
     /// task of [`crate::masters::Masters::work_master`] (the master changes, slot 0x90), the task's
     /// requirement, then the task's action from the action list's factory (slot 0x10), the unit
@@ -1353,9 +1399,20 @@ impl Turns {
             if filter != -1 {
                 return Ok(());
             }
-            return Err(Unsupported(
-                "a work command without a task (the unit's move)",
-            ));
+            // LAB_1410706a8 without a task: the top Attack on the target keeps it; else a unit
+            // whose master moves (slot 0xe8, its speed `+0x740`) is told of a move (slot 0x828)
+            // and moves there (slot 0x138), which is not modelled; one that does not, nothing
+            if self.keep_attack(player, idx, target, filter, point, clears)? {
+                return Ok(());
+            }
+            let unit = &self.players[player].objects[idx];
+            let master = self.master_of(player, unit.life.master_id)?;
+            if master.moving.is_some_and(|m| 0.0 < m.speed) {
+                return Err(Unsupported(
+                    "a work command without a task (the unit's move)",
+                ));
+            }
+            return Ok(());
         };
         if with != self.players[player].objects[idx].life.master_id {
             self.change_master(player, idx, with)?;
@@ -1397,31 +1454,7 @@ impl Turns {
                 "a work command with the carried-resource test (+0x12)",
             ));
         }
-        // the top Attack on this very target, the filter none or 9: its slot 9
-        // (`FUN_140a841d0`) keeps it, and the unit AI hears of it as of a new one (slot 0x828)
-        let attacking = self.players[player].objects[idx]
-            .attack
-            .filter(|a| top == Some(crate::attack::ATTACK) && a.target == target);
-        if let Some(a) = attacking.filter(|_| matches!(filter, -1 | 9))
-            && a.keeps(target)?
-        {
-            let (tp, t) = self
-                .object(target)
-                .ok_or(Unsupported("an attack's target the slice does not hold"))?;
-            let class = i32::from(self.master_of(tp, t.life.master_id)?.class);
-            let world_time = self.world_time;
-            let unit = &mut self.players[player].objects[idx];
-            if let Some(ai) = unit.ai.as_mut() {
-                ai.last_retarget_time = world_time;
-                ai.notify_work(
-                    700,
-                    600,
-                    Some((target, class)),
-                    point,
-                    clears,
-                    self.streams.get(Stream::Ai),
-                )?;
-            }
+        if self.keep_attack(player, idx, target, filter, point, clears)? {
             return Ok(());
         }
         if matches!(top, Some(9 | 0x7e)) || (top == Some(0x6b) && task.action_type == 3) {
@@ -1538,6 +1571,7 @@ impl Turns {
             u.reload_stinger + (master.reload - u.reload_powerup)
         };
         let hit_chance = master.hit_chance;
+        let computer = self.players[player].computer;
         let volleys = self
             .masters
             .get(player)
@@ -1622,6 +1656,7 @@ impl Turns {
                 standing: Some(standing),
                 volleys,
                 attack_timer: &mut unit.attack_timer,
+                reload_worldtime: &mut unit.reload_worldtime,
                 reload,
                 hit_chance,
                 victim: &mut victim,
@@ -1635,6 +1670,11 @@ impl Turns {
                 posted: Vec::new(),
                 queue_empty,
                 world_time,
+                ai_order: unit.ai.as_ref().map(|ai| ai.current_order),
+                computer,
+                armed: true,
+                let_go: None,
+                forgets: false,
             };
             attack.enter_ready(walk, &mut strike)?;
             if strike.executed.is_some() || strike.fire.is_some() || !strike.posted.is_empty() {

@@ -282,6 +282,10 @@ fn unit(
         town_bell: object.combat().map(town_bell).unwrap_or_default(),
         combat: object.combat().is_some(),
         next_volley: object.combat().map_or(0, |c| c.next_volley),
+        reload_worldtime: object
+            .combat()
+            .and_then(|c| c.rge_combat_object.reload_worldtime)
+            .unwrap_or(0),
         // the load's (FUN_14121ec90): the master's volley fire; the shares of the units inside
         // follow in `garrison_firepower`
         firepower: objects
@@ -3191,8 +3195,9 @@ pub struct ObjectRow {
     pub gate: Option<genie_core::turn::Gate>,
     /// A combat object's town-bell flag and back-to-work records.
     pub town_bell: Option<genie_core::town_bell::TownBell>,
-    /// A combat object's `next_volley`: the missiles of its volley under way already fired.
-    pub volley: Option<u8>,
+    /// A combat object's `next_volley` (the missiles of its volley under way already fired) and
+    /// `mReloadWorldtime` (when it may attack again).
+    pub volley: Option<(u8, u32)>,
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
@@ -3539,7 +3544,9 @@ impl ObjectRow {
                 .then_some((unit.charge, unit.charge_hit, unit.hp_powerups)),
             gate: unit.gate,
             town_bell: unit.combat.then_some(unit.town_bell),
-            volley: unit.combat.then_some(unit.next_volley),
+            volley: unit
+                .combat
+                .then_some((unit.next_volley, unit.reload_worldtime)),
         }
     }
 }
@@ -3658,7 +3665,12 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
             }),
             gate: saved_gate(object),
             town_bell: object.combat().map(town_bell),
-            volley: object.combat().map(|c| c.next_volley),
+            volley: object.combat().map(|c| {
+                (
+                    c.next_volley,
+                    c.rge_combat_object.reload_worldtime.unwrap_or(0),
+                )
+            }),
         })
         .collect())
 }
@@ -4833,7 +4845,7 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             format!("{:?}", g.town_bell),
         );
         field(
-            "next volley",
+            "next volley, reload world time",
             format!("{:?}", s.volley),
             format!("{:?}", g.volley),
         );

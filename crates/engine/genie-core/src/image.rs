@@ -12,6 +12,8 @@ pub mod attack {
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
     /// -1.0
     pub const NONE: f32 = f32::from_bits(0xbf80_0000);
+    /// 1000.0
+    pub const RELOAD_MS: f32 = f32::from_bits(0x447a_0000);
     /// 0.010000000707805157
     pub const TOUCH: f32 = f32::from_bits(0x3c23_d70b);
 }
@@ -404,6 +406,8 @@ pub mod tile_path {
 
 /// The values `crate::turn`'s port reads.
 pub mod turn {
+    /// 1.0
+    pub const ARMED_FIREPOWER: f32 = f32::from_bits(0x3f80_0000);
     /// 0.10000000149011612
     pub const DROP_REACH: f32 = f32::from_bits(0x3dcc_cccd);
     /// 3.4028234663852886e+38

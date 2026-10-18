@@ -36,6 +36,8 @@ const ARRIVED: f32 = crate::image::attack::ARRIVED;
 const EPSILON: f32 = crate::image::attack::EPSILON;
 /// The point an attack on an object has none of (`DAT_14330ec20`).
 const NONE: f32 = crate::image::attack::NONE;
+/// The milliseconds of a second the reload world time counts (`FUN_141089820`).
+const RELOAD_MS: f32 = crate::image::attack::RELOAD_MS;
 /// The hit chance's scale (`0x7fffffff`, the low word of a 64-bit Object-stream draw).
 const DRAW_SCALE: i64 = 0x7fff_ffff;
 /// The states the slice models: 1 done, 2 the target died, 4 on the way, 6 waiting to swing, 7
@@ -171,9 +173,10 @@ pub struct Strike<'a> {
     /// Its master has a volley missile (`+0x8d4`) or a charge projectile (`+0x928`) its player
     /// has: a hit without a missile is a volley too (`FUN_14120c0a0`), not the melee hit.
     pub volleys: bool,
-    /// `+0x91c`, the time until it may attack again (slot 0x100: at most 0); the game's world
-    /// time when it may again (`+0x920`, slot 0x248) is not held.
+    /// `+0x91c`, the time until it may attack again (slot 0x100: at most 0).
     pub attack_timer: &'a mut f32,
+    /// `mReloadWorldtime` (`+0x920`, slot 0x248): the world time it may again.
+    pub reload_worldtime: &'a mut u32,
     /// Slot 0x218 (`FUN_141086c90`): the master's reload time (`speed_of_attack`) with the
     /// unit's reload stinger and powerup.
     pub reload: f32,
@@ -209,6 +212,17 @@ pub struct Strike<'a> {
     pub queue_empty: bool,
     /// The world's time (`FUN_1415300d0`), which a facing over time reads.
     pub world_time: u32,
+    /// The unit AI's order (`+0x3c`, `FUN_140c4cc20`), None without a unit AI.
+    pub ai_order: Option<i32>,
+    /// The unit's player is a computer (`player+0x10 == 3`, `FUN_141659cf0`).
+    pub computer: bool,
+    /// `FUN_14120ea30` for a building: it can attack (class 51 or 54, a missile, or a firepower
+    /// above 1); true for the others.
+    pub armed: bool,
+    /// The update let its target go (slot 0x68 with none: its slot 0x180), the caller's.
+    pub let_go: Option<i32>,
+    /// The update made the unit AI forget its target (`FUN_140c5e1e0`), the caller's.
+    pub forgets: bool,
 }
 
 /// The masters readyToAttack does not turn to face their target (`0x6744`, `0x6746` raw).
@@ -217,6 +231,13 @@ const MASTER_1706: i16 = 1706;
 
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
 const QUIET_SWINGS: [i16; 2] = [73, 559];
+
+/// `FUN_141089820`: the attack timer becomes `t` and the reload world time the world's time plus
+/// `t` in whole milliseconds (slot 0x248).
+fn set_attack_timer(s: &mut Strike<'_>, t: f32) {
+    *s.attack_timer = t;
+    *s.reload_worldtime = s.world_time.wrapping_add((t * RELOAD_MS) as i64 as u32);
+}
 
 /// `FUN_14120c0a0`'s test of `master`: it has a volley missile or a charge projectile its player
 /// has (`masters`), so its hits go through its volley even without a missile.
@@ -514,6 +535,40 @@ impl Attack {
         Ok(())
     }
 
+    /// A unit's own Attack whose target died (the update's start, not quiet: `+0x60` 0): its unit
+    /// AI forgets the target (`FUN_140c5e1e0`; a villager keeps a Gaia target), the target goes
+    /// (slot 0x68 with none) and the point; a human player's unit whose unit AI has an order and
+    /// an empty queue (or no unit AI) posts 0x1fa with 600 (the action completed), any other
+    /// with a unit AI whose queue is empty 0x1fb with 600 and 0x202; it ends (`set_state` 1) and
+    /// returns 5, which keeps it in the list. A dead tree (class 15) up to state 5, which keeps
+    /// a non-villager at it, and a mover of stance 0 that waits instead (`set_state` 5) are not
+    /// modelled.
+    fn lost(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
+        if s.victim.class == 15 && s.own.class != VILLAGER && s.victim.state <= 5 {
+            return Err(Unsupported("an Attack on a dead tree (state up to 5)"));
+        }
+        if s.ai_order.is_some() && (s.victim.player != 0 || s.own.class != VILLAGER) {
+            s.forgets = true;
+        }
+        s.let_go = Some(self.target);
+        self.target = -1;
+        self.point = [NONE; 3];
+        let human = s.own.player != 0 && !s.computer;
+        if human && s.ai_order.is_none_or(|o| o != -1 && s.queue_empty) {
+            let speed = walk.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+            if s.stance == 0 && 0.0 < speed && s.own.class != VILLAGER {
+                return Err(Unsupported(
+                    "an Attack whose target died waiting for another (set_state 5)",
+                ));
+            }
+            s.posted.push((0x1fa, [600, 0, 0]));
+        } else if s.ai_order.is_some() && s.queue_empty {
+            s.posted.push((0x1fb, [600, 0, 0x202]));
+        }
+        self.finish(walk, s)?;
+        Ok(5)
+    }
+
     /// `set_state(1)` (case 1): the unit's animation runs at speed 1 and it takes the sprite it
     /// stands with.
     fn finish(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
@@ -694,6 +749,29 @@ impl Attack {
         ))
     }
 
+    /// The update of an Attack whose target is gone (its target −1 after [`Attack::lost`]): the
+    /// timer runs and, past the target's checks, state 1 (case 0) stops the unit's animation and
+    /// returns 1: the list deletes the Attack. A building that cannot attack (its end with
+    /// 0x1fb) and the other states without a target are not modelled.
+    pub fn update_targetless(
+        &mut self,
+        dt: f32,
+        armed: bool,
+        anim_speed: &mut Option<f32>,
+    ) -> Result<u8, Unsupported> {
+        self.timer += dt;
+        if !armed {
+            return Err(Unsupported(
+                "a building that cannot attack, its Attack without a target",
+            ));
+        }
+        if self.state != DONE {
+            return Err(Unsupported("an Attack without a target in a state but 1"));
+        }
+        *anim_speed = Some(0.0);
+        Ok(1)
+    }
+
     /// One update (slot 6, `0x140a82ae0`): the timer runs, the target is still there and where it
     /// was seen; then the state's step. Returns the action list's code: 0 under way, 5 done after
     /// its target died.
@@ -707,9 +785,7 @@ impl Attack {
             // the target go (slot 0x68 with none) and its point, posts no notify as the hunt's
             // sub-action (`+0x60`), ends (set_state 1) and returns 5
             if !self.sub_action {
-                return Err(Unsupported(
-                    "a unit's own Attack whose target died (its notifies)",
-                ));
+                return self.lost(&mut walk, s);
             }
             if s.own.class != VILLAGER {
                 return Err(Unsupported(
@@ -761,7 +837,21 @@ impl Attack {
             }
             return Ok(4);
         }
+        // a building that cannot attack (FUN_14120ea30) ends it (set_state 1), its own Attack
+        // posting 0x1fb with 600 and the target, and returns 1: the list deletes it
+        if !s.armed {
+            self.finish(&mut walk, s)?;
+            if !self.sub_action {
+                s.posted.push((0x1fb, [600, self.target, 0]));
+            }
+            return Ok(1);
+        }
         match self.state {
+            // case 0: the unit's animation stops; the list deletes the Attack
+            DONE => {
+                *s.anim_speed = Some(0.0);
+                Ok(1)
+            }
             MOVE => self.walk(walk, s, t.position, t.radius),
             READY => {
                 match self.ready_to_attack(&mut walk.reborrow(), s)? {
@@ -915,7 +1005,10 @@ impl Attack {
             } else {
                 self.arms.fire_frame
             };
-            *s.attack_timer = s.reload - f32::from(frame) * sprite.graphic.frame_duration;
+            set_attack_timer(
+                s,
+                s.reload - f32::from(frame) * sprite.graphic.frame_duration,
+            );
             // slot 0x858 (FUN_14120c0a0): the volley, but for a unit without a missile, volley
             // missile or charge projectile, whose hit is FUN_141081020's melee one
             if ranged || s.volleys {

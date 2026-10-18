@@ -1951,8 +1951,16 @@ impl UnitAi {
             // the tower (FUN_140c299f0)
             15 => match n.kind {
                 DAMAGED => Err(Unsupported("a tower's damage notify")),
-                ACTION_COMPLETED if n.p[0] == 600 && self.current_order == 700 => {
-                    Err(Unsupported("a tower's completed attack"))
+                // "I am a defensive building and my current target has been destroyed, purging
+                // attack order.": a target gone or dead (above state 2) is forgotten
+                // (`FUN_140c5e1e0`) and the current action stops (slot 0xb0 with 1)
+                ACTION_COMPLETED if n.p[0] == 600 && self.current_order == ATTACK_ORDER => {
+                    let gone = self.current_target == -1 || at.target.is_none_or(|t| 2 < t.state);
+                    if gone {
+                        self.remove_target();
+                        self.stop_current(true, at, fx)?;
+                    }
+                    Ok(GO_ON)
                 }
                 _ => self.base_notify(n, time, at, ai_rng, side, fx),
             },
@@ -2155,7 +2163,7 @@ impl UnitAi {
     }
 
     /// `FUN_140c5e1e0`: the target becomes the last one, and none (its point −1).
-    const fn remove_target(&mut self) {
+    pub(crate) const fn remove_target(&mut self) {
         if self.current_target != -1 {
             self.last_target = self.current_target;
             self.last_target_type = self.target_type;
