@@ -86,6 +86,30 @@ impl Well512 {
     pub fn below(&mut self, n: u32) -> u32 {
         ((u64::from(self.raw()) * u64::from(n)) >> 32) as u32
     }
+
+    /// An index in `0..n` as the C++ library's `std::shuffle` draws it with the generator as its
+    /// engine (MSVC `_Rng_from_urng`, 32 bits a step): a step, again while it falls in the last
+    /// incomplete span of `n` (`step / n` is not below `u32::MAX / n`, unless `u32::MAX % n` is
+    /// `n − 1`), then `step % n`.
+    pub const fn index(&mut self, n: u32) -> u32 {
+        loop {
+            let v = self.raw();
+            if v / n < u32::MAX / n || u32::MAX % n == n - 1 {
+                return v % n;
+            }
+        }
+    }
+
+    /// `std::shuffle` with the generator as its engine: each place from the second on swaps
+    /// with an [`Well512::index`] up to it.
+    pub fn shuffle<T>(&mut self, items: &mut [T]) {
+        for i in 1..items.len() {
+            let j = self.index(i as u32 + 1) as usize;
+            if j != i {
+                items.swap(i, j);
+            }
+        }
+    }
 }
 
 /// Bob Jenkins' 32-bit integer hash, as the compiler folded it in setSeed.

@@ -519,12 +519,24 @@ pub trait UnitSide {
 
     /// The explorer's point to explore (the base handler's case 0x202 for the auto scout): the
     /// search around its town centre (`FUN_140c65490`), else its unit AI's (`ai`) slot 0x90 with
-    /// a draw of the AI stream (`rng`).
+    /// a draw of the AI stream (`rng`); None when neither finds one.
     ///
     /// # Errors
     ///
-    /// What the searches do not model, and no point at all.
-    fn seek_unexplored(&mut self, ai: &UnitAi, rng: &mut Well512) -> Result<[i32; 2], Unsupported>;
+    /// What the searches do not model.
+    fn seek_unexplored(
+        &mut self,
+        ai: &UnitAi,
+        rng: &mut Well512,
+    ) -> Result<Option<[i32; 2]>, Unsupported>;
+
+    /// The auto scout's last search (`FUN_140c4b130`, [`crate::explore::beyond_sight`]), drawing
+    /// from the AI stream (`rng`); None when it finds no point.
+    ///
+    /// # Errors
+    ///
+    /// What the search does not model.
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported>;
 }
 
 impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
@@ -538,7 +550,15 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
 
     fn set_under_attack(&mut self, _: bool) {}
 
-    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<[i32; 2], Unsupported> {
+    fn seek_unexplored(
+        &mut self,
+        _: &UnitAi,
+        _: &mut Well512,
+    ) -> Result<Option<[i32; 2]>, Unsupported> {
+        Err(Unsupported("an explorer's search without its unit"))
+    }
+
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
         Err(Unsupported("an explorer's search without its unit"))
     }
 }
@@ -649,6 +669,12 @@ pub struct Surroundings {
     pub under_attack: bool,
     /// The unit's id (`+8`), which its attackers' unit AIs must target to stay attackers.
     pub id: i32,
+    /// The unit's slot 0x1f8 (`FUN_14106a6c0`): its animation speed (`+0x7b8`); None while the
+    /// slice does not know it.
+    pub anim_speed: Option<f32>,
+    /// The unit's slot 0x2b0 (`RGE_Action_Object::actionState`): its top action's state, 0
+    /// without one; None for an action the slice does not hold.
+    pub action_state: Option<u8>,
     /// The objects the unit AI names besides its target, as the world's object table holds them:
     /// its attackers ([`UnitAi::attackers`]) and the callers of its queued damage notifies. One
     /// the table does not hold is absent.
@@ -670,6 +696,10 @@ pub struct UnitSeen {
     pub id: i32,
     /// Its master's class.
     pub class: i16,
+    /// Its owner's id (`+0x138`, `player+0x718`); Gaia is 0.
+    pub owner: usize,
+    /// Its master's `combat_level` (`+0x62c`).
+    pub combat_level: u8,
     /// `+0x640`.
     pub state: u8,
     /// Its unit AI's current target (`+0x48`); None without a unit AI.
@@ -704,6 +734,8 @@ pub struct Seen {
 
 /// The class whose busy units skip the idle check (`-0xe98` raw).
 const CLASS_20: i16 = 20;
+/// The class of the attackers and targets a villager's damage notify looks at (`-0xea2` raw).
+const CLASS_10: i16 = 10;
 /// The class whose stop leaves the state position (`-0xe9a` raw, slot 0xb0).
 const CLASS_18: i16 = 18;
 /// The patrol orders (`0x2c7`, `0x2dd`), whose ends reset the idle and secondary timers.
@@ -1885,6 +1917,92 @@ impl UnitAi {
         Ok(BREAK)
     }
 
+    /// The villager's damage notify (`FUN_140c22bf0`, case 500, "I took some damage from Unit
+    /// #%d"): the unit's group (`+0x6d0`, `FUN_140c55c00`) would hear of it, and the slice holds
+    /// none. At no hit points left (`p[1]` below 1) it gives up: the owner's alert (slot 0x2e8
+    /// with `0x209`, the human player's), the notifies end (`FUN_140c5dc10`) and it returns 4.
+    /// An attacker the world does not hold ends it, as does a player who is out (`+0x89` 2; not
+    /// held, 0 in every player probed). A computer's unit AI (slot 0x50) is not modelled. Then the
+    /// owner's alert (slot 0x2e8 with `0x201`); the attacker joins its attackers
+    /// (`FUN_140b43f30`), and a new one that is not its target nor a class-10 attacker of
+    /// combat level 1 (`FUN_140fde4f0`) makes it call for help (`AskForHelp`, `FUN_140c42ce0`),
+    /// which is not modelled; the unit is under attack (`FUN_14119d2d0` with 1). It ignores the
+    /// damage ("I have an attack/hunt/repair order") on a move or enter order while it animates
+    /// (slot 0x1f8 above 0), the attack or the repair order; on the hunt, gather and boar luring
+    /// orders with its top action in state 12 (slot 0x2b0), a target of class 10 the world holds
+    /// and a Gaia attacker; or on those orders from a class-10 attacker of combat level 1 with its
+    /// top action in state 4, 8, 12 or 15 (`0x9110`). Its attack back on a Gaia attacker and its
+    /// evade are not modelled.
+    fn villager_damaged(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        if n.p[1] < 1 {
+            self.end_notifies(time, at, fx)?;
+            return Ok(DEAD);
+        }
+        let Some(attacker) = at.unit(n.caller).copied() else {
+            return Ok(GO_ON);
+        };
+        if computer {
+            return Err(Unsupported(
+                "a computer villager's damage notify (its slot 0x50)",
+            ));
+        }
+        let added = match self.attackers.binary_search(&n.caller) {
+            Ok(_) => false,
+            Err(i) => {
+                self.attackers.insert(i, n.caller);
+                true
+            }
+        };
+        let fierce = attacker.class == CLASS_10 && attacker.combat_level == 1;
+        if added && self.current_target != n.caller && !fierce {
+            return Err(Unsupported(
+                "a villager's call for help (AskForHelp, FUN_140c42ce0)",
+            ));
+        }
+        side.set_under_attack(true);
+        let order = self.current_order;
+        let state = at.action_state.ok_or(Unsupported(
+            "a villager's damage notify with an action the slice does not hold",
+        ))?;
+        let gathers = matches!(
+            order,
+            crate::ai_kinds::ORDER_HUNT
+                | crate::ai_kinds::ORDER_GATHER
+                | crate::ai_kinds::ORDER_AUTO_BOAR_LURING
+        );
+        let moves = matches!(
+            order,
+            crate::ai_kinds::ORDER_MOVEMENT | crate::ai_kinds::ORDER_ENTER
+        ) && 0.0
+            < at.anim_speed.ok_or(Unsupported(
+                "a moving villager's damage notify without its animation speed",
+            ))?;
+        let ignores = moves
+            || order == crate::ai_kinds::ORDER_ATTACK
+            || (gathers
+                && state == 12
+                && at.target.is_some_and(|t| t.class == CLASS_10)
+                && attacker.owner == 0)
+            || order == crate::ai_kinds::ORDER_REPAIR
+            || (fierce && gathers && state < 16 && (0x9110u32 >> state) & 1 != 0);
+        if ignores {
+            return Ok(GO_ON);
+        }
+        Err(Unsupported(if attacker.owner == 0 {
+            "a villager attacking back a Gaia attacker"
+        } else {
+            "a villager evading its attackers"
+        }))
+    }
+
     /// `ClosestValidAttacker` (`FUN_140c158d0`): over the attackers in their order, those the
     /// world holds but of classes 3, 13, 52 and 54, the one with the least squared gap
     /// (`FUN_14118f8c0`); one within `DAT_142ef9004` (0.0625) of the best so far takes over on a
@@ -2004,7 +2122,8 @@ impl UnitAi {
                 0x1fc => Err(Unsupported("a lion's moved target")),
                 _ => self.base_notify(n, time, at, ai_rng, side, fx),
             },
-            // the villager (FUN_140c22bf0): a completion or failure of its action stops it, and slot 0x48
+            // the villager (FUN_140c22bf0; the notifies it has no case for go to the base handler):
+            // a completion or failure of its action stops it, and slot 0x48
             // passes the notify to its owner's slot 0x2e8 (not held); a failed build (0x202, its
             // Build waiting without work, action 0x25a) looks for another foundation to build
             // (FUN_140c1c7c0, when the player's +0x613 is 0: unsaved, 0 in this game) and, finding
@@ -2034,7 +2153,16 @@ impl UnitAi {
                     Err(Unsupported("a computer villager's executed action"))
                 }
                 ACTION_EXECUTED => self.base_notify(n, time, at, ai_rng, side, fx),
-                _ => Err(Unsupported("a villager's notify the slice does not model")),
+                DAMAGED => self.villager_damaged(n, time, at, computer, side, fx),
+                // its own cases the slice does not model; any other is the base handler's
+                ACTION_INVALIDATED
+                | TARGET_MOVED
+                | 0x202
+                | 0x20f
+                | 0x217..=0x21a
+                | 0x21c
+                | 0x21d => Err(Unsupported("a villager's notify the slice does not model")),
+                _ => self.base_notify(n, time, at, ai_rng, side, fx),
             },
             // the soldier (FUN_140c28bb0): its own cases are the computer's, a backing-up and a
             // healer's search
@@ -2103,7 +2231,7 @@ impl UnitAi {
             ACTION_COMPLETED => self.action_completed(n, at, fx),
             ACTION_INVALIDATED => self.action_invalidated(n, at, fx),
             crate::explore::WANTS_POINT if self.explorer() => {
-                self.seek_unexplored(ai_rng, side, fx)
+                self.seek_unexplored(at, ai_rng, side, fx)
             }
             OWNER_CHANGED => {
                 fx.push(Effect::Stop);
@@ -2156,14 +2284,22 @@ impl UnitAi {
     }
 
     /// The base handler's case 0x202 for an explorer ("I'm an explorer, looking for the closest
-    /// undiscovered tile."): on the auto scout's action, with the player's explored-points grid
-    /// never made (`player+0x1370`), the search around the town centre (`FUN_140c65490`), else
-    /// the unit AI's slot 0x90 (`FUN_140c4bd40`), both from its unit
-    /// ([`UnitSide::seek_unexplored`]; no point at all is not modelled); then slot 0x100 with 1 to
-    /// the point ([`UnitAi::explore_at`]), the explore's action value becomes the last and the
-    /// action value comes back; processing breaks. The other explorers' search is not modelled.
+    /// undiscovered tile."): on the auto scout's action, with the player's scout map never made
+    /// (`player+0x1370`), the search around the town centre (`FUN_140c65490`), else the unit AI's
+    /// slot 0x90 (`FUN_140c4bd40`), both from its unit ([`UnitSide::seek_unexplored`]); then slot
+    /// 0x100 with 1 to the point ([`UnitAi::explore_at`]), the explore's action value becomes the
+    /// last and the action value comes back; processing breaks. "Couldn't find any tiles.": on
+    /// the auto scout order its last search ([`UnitSide::seek_beyond_sight`]) sends the auto scout
+    /// to its point the same way (slot 0x100 with 1; the last action stays) and processing breaks;
+    /// with no point left the player's scout map is made from the tiles it sees and the notify
+    /// posted again, which is not modelled. On the scout order (`0x2da`) the player's slot 0x2e8
+    /// with `0x211` is not modelled; on any other the unit AI forgets its target
+    /// (`FUN_140c5e1e0`) and stops (slot 0xb0 with 1; slot 0x48 hands the notify to the owner,
+    /// not held; the interface's flag a last auto scout order sets is not the sim's) and
+    /// processing goes on. The other explorers' search is not modelled.
     fn seek_unexplored(
         &mut self,
+        at: &Surroundings,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
@@ -2174,11 +2310,34 @@ impl UnitAi {
                 "an explorer's search for the closest undiscovered tile (slot 0x90)",
             ));
         }
-        let [x, y] = side.seek_unexplored(self, ai_rng)?;
-        let _ = self.explore_at(x, y, true, fx);
-        self.last_action = self.current_action;
-        self.current_action = action;
-        Ok(BREAK)
+        if let Some([x, y]) = side.seek_unexplored(self, ai_rng)? {
+            let _ = self.explore_at(x, y, true, fx);
+            self.last_action = self.current_action;
+            self.current_action = action;
+            return Ok(BREAK);
+        }
+        match self.current_order {
+            crate::ai_kinds::ORDER_SCOUT => Err(Unsupported(
+                "a scout that finds no undiscovered tile (the player's slot 0x2e8 with 0x211)",
+            )),
+            AUTO_SCOUT_ORDER => {
+                let Some([x, y]) = side.seek_beyond_sight(ai_rng)? else {
+                    return Err(Unsupported(
+                        "an auto scout with no undiscovered tile left (the scout map made)",
+                    ));
+                };
+                if self.current_action == AUTO_SCOUT_ACTION {
+                    let _ = self.explore_at(x, y, true, fx);
+                }
+                self.current_action = action;
+                Ok(BREAK)
+            }
+            _ => {
+                self.remove_target();
+                self.stop_current(true, at, fx)?;
+                Ok(GO_ON)
+            }
+        }
     }
 
     /// The base handler's case `0x1fb` ("Action %d has been invalidated.", `FUN_140c589c0`): an
@@ -2840,7 +2999,11 @@ mod tests {
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<[i32; 2], Unsupported> {
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
             Err(Unsupported("no search here"))
         }
     }
@@ -2860,6 +3023,7 @@ mod tests {
             target: Some(9729),
             gap_squared,
             position: [100.0, 40.0, 0.0],
+            ..UnitSeen::default()
         }
     }
 
@@ -2899,6 +3063,68 @@ mod tests {
         assert_eq!(u.attackers, vec![10049, 10050]);
         assert_eq!(side.attacks, vec![(10049, true)]);
         assert_eq!(u.current_target, 10049);
+    }
+
+    /// MarvinBlue/426048731's villager 10041 in update 4839, hunting the boar 9731 (its Hunt in
+    /// state 12) that hits it: the boar is its target, so it calls nobody for help; it is under
+    /// attack, and the hunt order with a class-10 target and a Gaia attacker ignores the damage.
+    #[test]
+    fn a_hunter_hit_by_its_boar_ignores_the_damage() {
+        let mut u = UnitAi {
+            current_order: crate::ai_kinds::ORDER_HUNT,
+            current_action: 613,
+            current_target: 9731,
+            ..idle(8)
+        };
+        let boar = UnitSeen {
+            owner: 0,
+            ..attacker(9731, CLASS_10, 0.5)
+        };
+        let at = Surroundings {
+            id: 10041,
+            action_state: Some(12),
+            target: Some(Seen {
+                class: CLASS_10,
+                ..Seen::default()
+            }),
+            units: vec![boar],
+            ..Surroundings::default()
+        };
+        let hit = Notify {
+            caller: 9731,
+            recipient: 10041,
+            kind: DAMAGED,
+            p: [9731, 34, 40],
+        };
+        let mut side = Recorder::default();
+        let mut fx = Vec::new();
+        let r = u.villager_damaged(hit, 0, &at, false, &mut side, &mut fx);
+        assert_eq!(r, Ok(GO_ON));
+        assert_eq!(
+            (u.attackers.clone(), side.under_attack),
+            (vec![9731], Some(true))
+        );
+        assert_eq!(
+            (u.current_order, u.current_target),
+            (crate::ai_kinds::ORDER_HUNT, 9731)
+        );
+        // another player's attacker that is not its target would make it call for help
+        let enemy = UnitSeen {
+            owner: 1,
+            ..attacker(9800, 4, 1.0)
+        };
+        let at = Surroundings {
+            units: vec![enemy],
+            ..at
+        };
+        let hit = Notify {
+            caller: 9800,
+            ..hit
+        };
+        assert!(
+            u.villager_damaged(hit, 0, &at, false, &mut side, &mut fx)
+                .is_err()
+        );
     }
 
     #[test]

@@ -357,6 +357,27 @@ fn unit(
         )),
         Err(e) => Some(e),
     };
+    // a missile without its action (one that met its target, dying): the object's own fields, and
+    // the flying flag the load constructor sets (`+0x994` 1, not saved)
+    if unit.missile.is_none()
+        && let Some(mo) = object
+            .rge_object
+            .as_deref()
+            .and_then(|r| r.rge_missile_object.as_deref())
+    {
+        let step = object
+            .moving_part()
+            .map_or([0.0; 3], |m| [m.velocity_x, m.velocity_y, m.velocity_z]);
+        unit.missile = Some(genie_core::missile::Missile {
+            max_range: mo.max_range,
+            fired_from: mo.fired_from_id,
+            charge: mo.is_charge_projectile != 0,
+            flying: true,
+            step,
+            attack_count: mo.rge_combat_object.attack_count,
+            action: None,
+        });
+    }
     let production = production(object, objects).map(|p| unit.production = p);
     let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.mover = m);
     unit.unmodelled_action = imported.and(production).and(moving).err();

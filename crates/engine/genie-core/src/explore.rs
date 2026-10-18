@@ -276,6 +276,83 @@ pub fn closest_undiscovered(
     }
 }
 
+/// How far past its line of sight the auto scout's last search draws its square, in tiles.
+const SQUARE_PAST_SIGHT: i32 = 2;
+
+/// `FUN_140c4b130`, the auto scout's last search when neither the search around the town centre
+/// nor the closest undiscovered tile found a point (the base handler's case 0x202 on the auto
+/// scout order): the edge of a square about the unit's tile (`at`), its line of sight and 2 more
+/// tiles out, side by side (top from its left corner, right, bottom and left from the next
+/// corner on, the tiles off the map left out; `map`), in an order `std::shuffle` draws from the AI
+/// stream (`ai`): the first tile the player never saw, in the unit's zone, where it could stand
+/// (slot 0x278) and that it reaches (slot 0x3d8 within its line of sight less a tile) wins.
+/// Else a flood from the unit's tile through the tiles the player saw (left, right, up and down,
+/// on the map, each once; the start tile is not marked and comes again) stops at the first
+/// unseen tile it meets that counts as above; unseen tiles that do not count end their branch.
+/// None when the flood runs out. The player's scout map (`player+0x1370`), which both would read
+/// instead of the seen tiles and mark the point found in, is never made in the slice.
+pub fn beyond_sight(
+    area: &mut dyn Area,
+    at: [f32; 3],
+    line_of_sight: f32,
+    map: [i32; 2],
+    ai: &mut crate::rng::Well512,
+) -> Result<Option<[i32; 2]>, Unsupported> {
+    let own = area.own_zone();
+    let [w, h] = map;
+    let r = line_of_sight as i32 + SQUARE_PAST_SIGHT;
+    let (ux, uy) = (at[0] as i32, at[1] as i32);
+    let (x0, x1, y0, y1) = (ux - r, ux + r, uy - r, uy + r);
+    let on_x = |x: i32| 0 <= x && x < w;
+    let on_y = |y: i32| 0 <= y && y < h;
+    let mut edge: Vec<[i32; 2]> = Vec::new();
+    if 0 <= y0 {
+        edge.extend((x0..x1).filter(|&x| on_x(x)).map(|x| [x, y0]));
+    }
+    if x1 < w {
+        edge.extend((y0..y1).filter(|&y| on_y(y)).map(|y| [x1, y]));
+    }
+    if y1 < h {
+        edge.extend((x0 + 1..=x1).filter(|&x| on_x(x)).map(|x| [x, y1]));
+    }
+    if 0 <= x0 {
+        edge.extend((y0 + 1..=y1).filter(|&y| on_y(y)).map(|y| [x0, y]));
+    }
+    ai.shuffle(&mut edge);
+    let counts = |area: &mut dyn Area, x: i32, y: i32| -> Result<bool, Unsupported> {
+        Ok(area.zone(x, y) == own && area.clear(x, y)? && area.reaches(x, y)?)
+    };
+    for &[x, y] in &edge {
+        if !area.explored(x, y)? && counts(area, x, y)? {
+            return Ok(Some([x, y]));
+        }
+    }
+    let mut seen = vec![false; (w * h).max(0) as usize];
+    let mut queue = vec![[ux, uy]];
+    let mut i = 0;
+    while i < queue.len() {
+        let [x, y] = queue[i];
+        i += 1;
+        if !area.explored(x, y)? {
+            if counts(area, x, y)? {
+                return Ok(Some([x, y]));
+            }
+            continue;
+        }
+        for [nx, ny] in [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] {
+            if !on_x(nx) || !on_y(ny) {
+                continue;
+            }
+            let k = (ny * w + nx) as usize;
+            if !seen[k] {
+                seen[k] = true;
+                queue.push([nx, ny]);
+            }
+        }
+    }
+    Ok(None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,6 +395,35 @@ mod tests {
             let (dx, dy) = ((x - 20) as f32, (y - 92) as f32);
             crate::fmath::sqrt(dx * dx + dy * dy)
         }
+    }
+
+    fn rng() -> crate::rng::Well512 {
+        let mut r = crate::rng::Well512::default();
+        r.set_seed(7);
+        r
+    }
+
+    /// The last search's square: line of sight 2 makes it 4 tiles out. With every edge tile but
+    /// one seen, that one wins whatever the shuffle; with the edge all seen, the flood walks the
+    /// seen tiles to the first unseen one it meets.
+    #[test]
+    fn the_last_search_takes_the_square_then_floods_the_seen_tiles() {
+        let square: Vec<[i32; 2]> = (16..=24)
+            .flat_map(|x| (88..=96).map(move |y| [x, y]))
+            .collect();
+        let mut area = Open {
+            explored: square.iter().copied().filter(|&p| p != [24, 90]).collect(),
+            unreachable: vec![],
+        };
+        let found = beyond_sight(&mut area, [20.5, 92.5, 0.0], 2.0, [120, 120], &mut rng());
+        assert_eq!(found, Ok(Some([24, 90])));
+        // all of the square seen: the flood leaves it left first, at (15, 92)
+        let mut area = Open {
+            explored: square,
+            unreachable: vec![],
+        };
+        let found = beyond_sight(&mut area, [20.5, 92.5, 0.0], 2.0, [120, 120], &mut rng());
+        assert_eq!(found, Ok(Some([15, 92])));
     }
 
     #[test]

@@ -1544,10 +1544,57 @@ impl Turns {
                 point,
                 clears,
             ),
+            crate::build::BUILD => self.start_build(player, idx, target, &task, point, clears),
             _ => Err(Unsupported(
                 "the action factory for a task the slice does not model",
             )),
         }
+    }
+
+    /// The work command's Build (its task of action type 101, the factory `FUN_140aca4b0` case
+    /// 0x65): the action takes its foundation (slot 0x178); the unit AI's notify
+    /// (`FUN_14106e4e0` kind 0x65: the build order and action, the foundation with its class, the
+    /// work's point); the install (slot 0x808) clears the action list and holds the Build
+    /// ([`crate::build::BuildAction::start`] with the footprints' gap, the task's range and work
+    /// value, the master's work rate with the unit's powerup), as BUILD's builders take it.
+    fn start_build(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        task: &crate::masters::Task,
+        point: [f32; 3],
+        clears: bool,
+    ) -> Result<(), Unsupported> {
+        let (tp, t) = self
+            .object(target)
+            .ok_or(Unsupported("a Build's foundation the slice does not hold"))?;
+        let tm = self.master_of(tp, t.life.master_id)?;
+        let (t_at, t_radius, class) = (t.position, tm.radius, i32::from(tm.class));
+        let unit = &self.players[player].objects[idx];
+        let builder = self.master_of(player, unit.life.master_id)?;
+        let gap = crate::movement::footprint_gap(unit.position, builder.radius, t_at, t_radius);
+        let build_task = crate::build::BuildTask {
+            range: task.work_range,
+            work_value: task.work_val1,
+            work_rate: builder.work_rate + unit.work_rate_powerup,
+        };
+        self.take(target);
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                crate::unit_ai::BUILD_ORDER,
+                crate::unit_ai::BUILD_ACTION,
+                Some((target, class)),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+        }
+        self.clear_actions(player, idx)?;
+        self.players[player].objects[idx].build =
+            Some(crate::build::BuildAction::start(target, gap, build_task));
+        Ok(())
     }
 
     /// The work command's Attack (its task of action type 7, the factory `FUN_140a97e00` case 7):

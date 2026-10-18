@@ -743,7 +743,38 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         self.unit.under_attack = value;
     }
 
-    fn seek_unexplored(&mut self, ai: &UnitAi, rng: &mut Well512) -> Result<[i32; 2], Unsupported> {
+    fn seek_unexplored(
+        &mut self,
+        ai: &UnitAi,
+        rng: &mut Well512,
+    ) -> Result<Option<[i32; 2]>, Unsupported> {
+        let tc = town_centre(self.others)?;
+        let (at, computer) = (self.unit.position, self.computer);
+        let (mut area, map, line_of_sight) = self.scout_area()?;
+        if let Some(p) = crate::explore::unexplored_area(tc, map, &mut area)? {
+            return Ok(Some(p));
+        }
+        // none about the town centre: the unit AI's own search (slot 0x90)
+        let seeker = crate::explore::Seeker {
+            at,
+            line_of_sight,
+            order: ai.current_order,
+            target_point: [ai.target_point[0], ai.target_point[1]],
+            computer,
+        };
+        crate::explore::closest_undiscovered(&mut area, seeker, map, rng)
+    }
+
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+        let at = self.unit.position;
+        let (mut area, map, line_of_sight) = self.scout_area()?;
+        crate::explore::beyond_sight(&mut area, at, line_of_sight, map, rng)
+    }
+}
+
+impl UnitView<'_> {
+    /// What an explorer's searches ask of the world, the map's size and the unit's line of sight.
+    fn scout_area(&mut self) -> Result<(ScoutArea<'_>, [i32; 2], f32), Unsupported> {
         let unit = &*self.unit;
         let master = self
             .masters
@@ -755,7 +786,6 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .mover
             .as_ref()
             .ok_or(Unsupported("an auto scout without movement state"))?;
-        let tc = town_centre(self.others)?;
         let [w, h] = self.spatial.map;
         let terrain = self
             .spatial
@@ -772,7 +802,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             position: unit.position,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        let mut area = ScoutArea {
+        let area = ScoutArea {
             spatial: self.spatial,
             zones,
             plan: Planning {
@@ -789,21 +819,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             radius: master.radius,
             reach: master.line_of_sight - LOS_MARGIN,
         };
-        if let Some(p) = crate::explore::unexplored_area(tc, [w, h], &mut area)? {
-            return Ok(p);
-        }
-        // none about the town centre: the unit AI's own search (slot 0x90)
-        let seeker = crate::explore::Seeker {
-            at: unit.position,
-            line_of_sight: master.line_of_sight,
-            order: ai.current_order,
-            target_point: [ai.target_point[0], ai.target_point[1]],
-            computer: self.computer,
-        };
-        crate::explore::closest_undiscovered(&mut area, seeker, [w, h], rng)?.ok_or(Unsupported(
-            "an explorer that finds no undiscovered tile (the base handler's \"Couldn't find any \
-             tiles.\")",
-        ))
+        Ok((area, [w, h], master.line_of_sight))
     }
 }
 
@@ -2187,6 +2203,8 @@ impl Unit {
             seen.push(crate::unit_ai::UnitSeen {
                 id,
                 class: m.class,
+                owner,
+                combat_level: m.combat_level,
                 state: u.life.state,
                 target: u.ai.as_ref().map(|a| a.current_target),
                 gap_squared: footprint_gap_squared(self.position, me.radius, p.position, p.radius),
@@ -3309,6 +3327,8 @@ impl Unit {
                     c.releases.push((move_to.target, self.releaser(c)));
                 }
             }
+            // an Attack's teardown, then the base teardown's releases
+            self.delete_attack(c)?;
             // the missile action's teardown (FUN_140a73fc0) lets its target and the object it was
             // fired from go (slot 0x180)
             if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
@@ -4106,6 +4126,12 @@ impl Unit {
                 target: c.ai_target?,
                 under_attack: self.under_attack,
                 id: self.id,
+                anim_speed: self.anim_speed,
+                action_state: if self.unmodelled_action.is_some() {
+                    None
+                } else {
+                    Some(self.top_action().map_or(0, |a| a.state))
+                },
                 units: self.named_units(c, others, master)?,
             };
             // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
