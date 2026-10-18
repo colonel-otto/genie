@@ -1722,8 +1722,8 @@ impl Mover {
 
     /// The tile pathfinder (`FUN_140f7c530`) from the unit to `to`, appended to `out`, smoothed
     /// with the obstruction manager's segment test for the unit (its own and its target's records
-    /// ignored); None without a planner. A target with an obstruction record is not modelled (the
-    /// planner reads its record's first byte).
+    /// ignored); None without a planner. The planner reads the first byte of the target's record
+    /// (`+0x658`): 3, a box, for the obstruction types 2, 10, 11 and 13 (`FUN_141056460`).
     #[allow(clippy::too_many_arguments)]
     fn tile_plan(
         &self,
@@ -1736,9 +1736,9 @@ impl Mover {
         target: Option<&Placed>,
         out: &mut Path,
     ) -> Result<Option<u8>, Unsupported> {
-        if target.is_some_and(|t| t.obstruction.is_some()) {
-            return Err(Unsupported("a plan to a target with an obstruction record"));
-        }
+        let target_box = target
+            .and_then(|t| t.obstruction)
+            .is_some_and(|o| matches!(o.kind, 2 | 10 | 11 | 13));
         let [x, y, _] = me.position;
         let req = Request {
             from: [x, y],
@@ -1758,7 +1758,7 @@ impl Mover {
         };
         let mut blocked =
             |a: [f32; 2], b: [f32; 2]| Ok(world.segment_blocked(a, b, radius, mask, &ignore));
-        let found = planner.plan(&req, false, out, Some(&mut blocked))?;
+        let found = planner.plan(&req, target_box, out, Some(&mut blocked))?;
         Ok(Some(found.code()))
     }
 
