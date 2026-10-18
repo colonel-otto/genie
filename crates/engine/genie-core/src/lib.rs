@@ -32,18 +32,6 @@
     clippy::missing_errors_doc
 )]
 
-#[allow(
-    missing_docs,
-    missing_copy_implementations,
-    missing_debug_implementations,
-    trivial_casts,
-    trivial_numeric_casts,
-    unused_qualifications,
-    unused_results,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery
-)] // generated
 pub mod ai_kinds;
 pub mod artifact;
 pub mod attack;
@@ -56,33 +44,9 @@ pub mod facing;
 pub mod fly;
 pub mod fmath;
 pub mod hunt;
-#[allow(
-    missing_docs,
-    missing_copy_implementations,
-    missing_debug_implementations,
-    trivial_casts,
-    trivial_numeric_casts,
-    unused_qualifications,
-    unused_results,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery
-)] // generated
 pub mod image;
 pub mod lifecycle;
 pub mod long_path;
-#[allow(
-    missing_docs,
-    missing_copy_implementations,
-    missing_debug_implementations,
-    trivial_casts,
-    trivial_numeric_casts,
-    unused_qualifications,
-    unused_results,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery
-)] // generated
 pub mod los_tables;
 pub mod masters;
 pub mod mesh;

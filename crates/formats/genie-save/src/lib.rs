@@ -19,18 +19,6 @@
 // the 16.16 version's halves and the stream offsets (a save is far below 4 GiB) are cut on purpose
 #![allow(clippy::cast_possible_truncation)]
 
-#[allow(
-    missing_docs,
-    missing_copy_implementations,
-    missing_debug_implementations,
-    trivial_casts,
-    trivial_numeric_casts,
-    unused_qualifications,
-    unused_results,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery
-)] // generated
 pub mod generated;
 mod layout_types;
 mod objects;

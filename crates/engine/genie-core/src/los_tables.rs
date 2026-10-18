@@ -5,6 +5,7 @@
 //! around the unit's tile. `CENTRED` is the table at `0x143cc5b30`, `OFFSET` the one at
 //! `0x143cc5be0` (the routines' fifth argument picks it).
 
+/// The circles of a sight centred on a tile (`0x143cc5b30`), per LOS.
 #[rustfmt::skip]
 pub const CENTRED: [&[(i8, i8, i8)]; 21] = [
     &[(0, 0, 0)],
@@ -30,6 +31,8 @@ pub const CENTRED: [&[(i8, i8, i8)]; 21] = [
     &[(-20, -4, 4), (-19, -7, 7), (-18, -9, 9), (-17, -11, 11), (-16, -12, 12), (-15, -13, 13), (-14, -14, 14), (-13, -15, 15), (-12, -16, 16), (-11, -17, 17), (-10, -17, 17), (-9, -18, 18), (-8, -18, 18), (-7, -19, 19), (-6, -19, 19), (-5, -19, 19), (-4, -20, 20), (-3, -20, 20), (-2, -20, 20), (-1, -20, 20), (0, -20, 20), (1, -20, 20), (2, -20, 20), (3, -20, 20), (4, -20, 20), (5, -19, 19), (6, -19, 19), (7, -19, 19), (8, -18, 18), (9, -18, 18), (10, -17, 17), (11, -17, 17), (12, -16, 16), (13, -15, 15), (14, -14, 14), (15, -13, 13), (16, -12, 12), (17, -11, 11), (18, -9, 9), (19, -7, 7), (20, -4, 4)],
 ];
 
+/// The circles of a sight centred on a tile's corner (`0x143cc5be0`), per LOS: a finished
+/// building whose radii add up to an even number.
 #[rustfmt::skip]
 pub const OFFSET: [&[(i8, i8, i8)]; 21] = [
     &[(0, 0, 0)],

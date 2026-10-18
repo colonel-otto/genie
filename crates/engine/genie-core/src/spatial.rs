@@ -851,11 +851,11 @@ impl Spatial {
     }
 
     /// A unit AI's search ([`Search`]) for object `me` of `player` (`FUN_140c63e20`): the query
-    /// over the player's registry ([`Registry::visible_units`]) unless the [`SearchCache`] holds
-    /// near the place (`fresh` false: the last answer stands); then its [`Pick`], an attack by the
-    /// unit AI's attack check `can_attack` of an object, its master and its owner. A query that
-    /// reads nothing leaves the last answer too (and so is not fresh). A query near a frozen
-    /// object, or a last answer the slice has not got, fails.
+    /// over the player's registry ([`crate::registry::Registry::visible_units`]) unless the
+    /// [`SearchCache`] holds near the place (`fresh` false: the last answer stands); then its
+    /// [`Pick`], an attack by the unit AI's attack check `can_attack` of an object, its master and
+    /// its owner. A query that reads nothing leaves the last answer too (and so is not fresh). A
+    /// query near a frozen object, or a last answer the slice has not got, fails.
     pub fn search(
         &self,
         me: i32,

@@ -35,12 +35,10 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      # The engine and tool crates must be warning-free. Add every new engine or tool crate here.
-      - name: Clippy (engine and tool crates, warnings are errors)
-        run: cargo clippy --locked --no-deps -p genie-core -p genie-oracle -p genie-swiss-knife --all-targets -- -D warnings
-      # The format crates imported from genie-rs still carry warnings; they are reported only.
-      - name: Clippy (whole workspace, report only)
-        run: cargo clippy --locked --workspace --all-targets
+      # Every crate is warning-free under the workspace lints (root Cargo.toml); a generated file
+      # carries its generator's own allow list.
+      - name: Clippy (whole workspace, warnings are errors)
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
   dependencies:
     name: Format crates do not depend on engine or tool crates

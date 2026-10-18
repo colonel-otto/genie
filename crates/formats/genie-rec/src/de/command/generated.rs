@@ -3,7 +3,7 @@
 
 use super::{Tail, bytes, finish, fits, get, put, words};
 
-/// `0x00` RGE_COMMAND_INTERACT (`GameCommand<RGE_Command_Interact>`, formatter `0x140e5ff90`: `Interact(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
+/// `0x00` `RGE_COMMAND_INTERACT` (`GameCommand<RGE_Command_Interact>`, formatter `0x140e5ff90`: `Interact(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Interact {
     /// `+0x01`, header
@@ -26,14 +26,18 @@ pub struct Interact {
     pub field_0x15: u8,
     /// `+0x16`, handler
     pub field_0x16: u16,
-    /// `+0x18..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x18..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Interact {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x00;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x18;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -51,6 +55,8 @@ impl Interact {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
@@ -67,8 +73,8 @@ impl Interact {
     }
 }
 
-/// `0x01` RGE_COMMAND_STOP (`GameCommand<RGE_Command_Stop>`, formatter `0x140e60820`: `Stop(num=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x01` `RGE_COMMAND_STOP` (`GameCommand<RGE_Command_Stop>`, formatter `0x140e60820`: `Stop(num=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stop {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -76,14 +82,18 @@ pub struct Stop {
     pub num: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Stop {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x01;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -94,6 +104,8 @@ impl Stop {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -103,9 +115,9 @@ impl Stop {
     }
 }
 
-/// `0x02` RGE_COMMAND_WORK (`GameCommand<RGE_Command_Work>`, formatter `0x140e60b20`: `Work(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
+/// `0x02` `RGE_COMMAND_WORK` (`GameCommand<RGE_Command_Work>`, formatter `0x140e60b20`: `Work(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
 ///
-/// Not in the corpus: the layout is the one of `0x00` RGE_COMMAND_INTERACT, whose formatter prints the same fields.
+/// Not in the corpus: the layout is the one of `0x00` `RGE_COMMAND_INTERACT`, whose formatter prints the same fields.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Work {
     /// `+0x01`, header
@@ -128,14 +140,18 @@ pub struct Work {
     pub field_0x15: u8,
     /// `+0x16`, handler
     pub field_0x16: u16,
-    /// `+0x18..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x18..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Work {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x02;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x18;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -153,6 +169,8 @@ impl Work {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
@@ -169,7 +187,7 @@ impl Work {
     }
 }
 
-/// `0x03` RGE_COMMAND_MOVE (`GameCommand<RGE_Command_Move>`, formatter `0x140e60140`: `Move(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
+/// `0x03` `RGE_COMMAND_MOVE` (`GameCommand<RGE_Command_Move>`, formatter `0x140e60140`: `Move(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Move {
     /// `+0x01`, header
@@ -192,14 +210,18 @@ pub struct Move {
     pub field_0x15: u8,
     /// `+0x16`, gap
     pub gap_0x16: [u8; 2],
-    /// `+0x18..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x18..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Move {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x03;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x18;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -217,6 +239,8 @@ impl Move {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
@@ -233,7 +257,7 @@ impl Move {
     }
 }
 
-/// `0x04` RGE_COMMAND_CREATE (`GameCommand<RGE_Command_Create>`, formatter `0x140e5f670`: `Create( obj_cat=%d, commpId=%d, loc=%.10f,%.10f,%.10f )`).
+/// `0x04` `RGE_COMMAND_CREATE` (`GameCommand<RGE_Command_Create>`, formatter `0x140e5f670`: `Create( obj_cat=%d, commpId=%d, loc=%.10f,%.10f,%.10f )`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Create {
     /// `+0x01`, header
@@ -251,9 +275,13 @@ pub struct Create {
 }
 
 impl Create {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x04;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x12;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -266,6 +294,8 @@ impl Create {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.loc);
@@ -277,7 +307,7 @@ impl Create {
     }
 }
 
-/// `0x05` RGE_COMMAND_ADD_ATTRIBUTE (`GameCommand<RGE_Command_Add_Attribute>`, formatter `0x140e5eee0`: `AddAttr(commpId=%d, attrId=%d, amt=%.10f)`).
+/// `0x05` `RGE_COMMAND_ADD_ATTRIBUTE` (`GameCommand<RGE_Command_Add_Attribute>`, formatter `0x140e5eee0`: `AddAttr(commpId=%d, attrId=%d, amt=%.10f)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddAttribute {
     /// `+0x01`, header
@@ -291,9 +321,13 @@ pub struct AddAttribute {
 }
 
 impl AddAttribute {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x05;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -304,6 +338,8 @@ impl AddAttribute {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.attr_id);
@@ -313,10 +349,10 @@ impl AddAttribute {
     }
 }
 
-/// `0x07` RGE_COMMAND_GIVE_ATTRIBUTE (`GameCommand<RGE_Command_Give_Attribute>`, its formatter prints no fields).
+/// `0x07` `RGE_COMMAND_GIVE_ATTRIBUTE` (`GameCommand<RGE_Command_Give_Attribute>`, its formatter prints no fields).
 ///
-/// Its class is `RGE_Command_Give_Attribute`, the one of `0x6c` TRIBE_COMMAND_GIVE_ATTRIBUTE: the formatter prints that command, so its names are not used here.
-#[derive(Debug, Clone, PartialEq)]
+/// Its class is `RGE_Command_Give_Attribute`, the one of `0x6c` `TRIBE_COMMAND_GIVE_ATTRIBUTE`: the formatter prints that command, so its names are not used here.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RgeGiveAttribute {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -325,9 +361,13 @@ pub struct RgeGiveAttribute {
 }
 
 impl RgeGiveAttribute {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x07;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -336,6 +376,8 @@ impl RgeGiveAttribute {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
@@ -343,7 +385,7 @@ impl RgeGiveAttribute {
     }
 }
 
-/// `0x0a` RGE_COMMAND_AI_ORDER (`GameCommand<RGE_Command_AI_Order>`, formatter `0x140e5ec80`: `AIOrder(num=%d, commpId=%d, recipient=%d, order=%d, pri=%d, tId=%d, tOwner=%d, tPos=%.10f,%.10f,%.10f, range=%.10f, immediate=%d, front=%d)`).
+/// `0x0a` `RGE_COMMAND_AI_ORDER` (`GameCommand<RGE_Command_AI_Order>`, formatter `0x140e5ec80`: `AIOrder(num=%d, commpId=%d, recipient=%d, order=%d, pri=%d, tId=%d, tOwner=%d, tPos=%.10f,%.10f,%.10f, range=%.10f, immediate=%d, front=%d)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AiOrder {
     /// `+0x01`, header
@@ -381,9 +423,13 @@ pub struct AiOrder {
 }
 
 impl AiOrder {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x0a;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x2c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -406,6 +452,8 @@ impl AiOrder {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -427,8 +475,8 @@ impl AiOrder {
     }
 }
 
-/// `0x0b` RGE_COMMAND_RESIGN (`GameCommand<RGE_Command_Resign>`, formatter `0x140e60540`: `Resign(commId=%d, dropped=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x0b` `RGE_COMMAND_RESIGN` (`GameCommand<RGE_Command_Resign>`, formatter `0x140e60540`: `Resign(commId=%d, dropped=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Resign {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -437,9 +485,13 @@ pub struct Resign {
 }
 
 impl Resign {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x0b;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x05;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -448,6 +500,8 @@ impl Resign {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.dropped);
@@ -455,8 +509,8 @@ impl Resign {
     }
 }
 
-/// `0x0c` RGE_COMMAND_ADD_WAYPOINT (`GameCommand<RGE_Command_Add_Waypoint>`, formatter `0x140e5ef90`: `AddWaypoint(commPlayerId=%d, recipient=%d, waypoints[%d]={%s})`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x0c` `RGE_COMMAND_ADD_WAYPOINT` (`GameCommand<RGE_Command_Add_Waypoint>`, formatter `0x140e5ef90`: `AddWaypoint(commPlayerId=%d, recipient=%d, waypoints[%d]={%s})`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddWaypoint {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -469,9 +523,13 @@ pub struct AddWaypoint {
 }
 
 impl AddWaypoint {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x0c;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0a;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -482,6 +540,8 @@ impl AddWaypoint {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.gap_0x04);
@@ -491,10 +551,10 @@ impl AddWaypoint {
     }
 }
 
-/// `0x0d` RGE_COMMAND_PAUSE (`GameCommand<RGE_Command_Pause>`, formatter `0x140e604c0`: `Pause(num=%d)`).
+/// `0x0d` `RGE_COMMAND_PAUSE` (`GameCommand<RGE_Command_Pause>`, formatter `0x140e604c0`: `Pause(num=%d)`).
 ///
-/// Not in the corpus: the layout is the one of `0x01` RGE_COMMAND_STOP, whose formatter prints the same fields.
-#[derive(Debug, Clone, PartialEq)]
+/// Not in the corpus: the layout is the one of `0x01` `RGE_COMMAND_STOP`, whose formatter prints the same fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pause {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -502,14 +562,18 @@ pub struct Pause {
     pub num: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Pause {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x0d;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -520,6 +584,8 @@ impl Pause {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -529,8 +595,8 @@ impl Pause {
     }
 }
 
-/// `0x10` RGE_COMMAND_GROUP_WAYPOINT (`GameCommand<RGE_Command_Group_Waypoint>`, formatter `0x140e5fe10`: `GroupWaypoint(num=%d, commId=%d, x=%d, y=%d )`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x10` `RGE_COMMAND_GROUP_WAYPOINT` (`GameCommand<RGE_Command_Group_Waypoint>`, formatter `0x140e5fe10`: `GroupWaypoint(num=%d, commId=%d, x=%d, y=%d )`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupWaypoint {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -545,9 +611,13 @@ pub struct GroupWaypoint {
 }
 
 impl GroupWaypoint {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x10;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0a;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -559,6 +629,8 @@ impl GroupWaypoint {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -569,7 +641,7 @@ impl GroupWaypoint {
     }
 }
 
-/// `0x11` RGE_COMMAND_GROUP_AI_ORDER (`GameCommand<RGE_Command_Group_AI_Order>`, formatter `0x140e5fbc0`: `GroupAIOrder(commpId=%d, recipientCount=%d, order=%d, pri=%d, tId=%d, tOwner=%d, tPos=%.10f,%.10f,%.10f, range=%.10f, immediate=%d, front=%d)`).
+/// `0x11` `RGE_COMMAND_GROUP_AI_ORDER` (`GameCommand<RGE_Command_Group_AI_Order>`, formatter `0x140e5fbc0`: `GroupAIOrder(commpId=%d, recipientCount=%d, order=%d, pri=%d, tId=%d, tOwner=%d, tPos=%.10f,%.10f,%.10f, range=%.10f, immediate=%d, front=%d)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroupAiOrder {
     /// `+0x01`, header
@@ -605,9 +677,13 @@ pub struct GroupAiOrder {
 }
 
 impl GroupAiOrder {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x11;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x28;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -629,6 +705,8 @@ impl GroupAiOrder {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.recipient_count);
@@ -649,8 +727,8 @@ impl GroupAiOrder {
     }
 }
 
-/// `0x12` RGE_COMMAND_UNIT_AI_STATE (`GameCommand<RGE_Command_Unit_AI_State>`, formatter `0x140e60920`: `UnitAiState(num=%d, state=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x12` `RGE_COMMAND_UNIT_AI_STATE` (`GameCommand<RGE_Command_Unit_AI_State>`, formatter `0x140e60920`: `UnitAiState(num=%d, state=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitAiState {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -662,14 +740,18 @@ pub struct UnitAiState {
     pub state: u8,
     /// `+0x09`, gap
     pub gap_0x09: [u8; 3],
-    /// `+0x0c..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x0c..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl UnitAiState {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x12;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -682,6 +764,8 @@ impl UnitAiState {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -693,8 +777,8 @@ impl UnitAiState {
     }
 }
 
-/// `0x13` RGE_COMMAND_GUARD (`GameCommand<RGE_Command_Guard>`, formatter `0x140e5fef0`: `Guard(num=%d, target=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x13` `RGE_COMMAND_GUARD` (`GameCommand<RGE_Command_Guard>`, formatter `0x140e5fef0`: `Guard(num=%d, target=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Guard {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -704,14 +788,18 @@ pub struct Guard {
     pub gap_0x06: [u8; 2],
     /// `+0x08`, formatter
     pub target: i32,
-    /// `+0x0c..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x0c..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Guard {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x13;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -723,6 +811,8 @@ impl Guard {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -733,8 +823,8 @@ impl Guard {
     }
 }
 
-/// `0x14` RGE_COMMAND_FOLLOW (`GameCommand<RGE_Command_Follow>`, formatter `0x140e5f790`: `Follow(num=%d, target=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x14` `RGE_COMMAND_FOLLOW` (`GameCommand<RGE_Command_Follow>`, formatter `0x140e5f790`: `Follow(num=%d, target=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Follow {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -744,14 +834,18 @@ pub struct Follow {
     pub gap_0x06: [u8; 2],
     /// `+0x08`, formatter
     pub target: i32,
-    /// `+0x0c..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x0c..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Follow {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x14;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -763,6 +857,8 @@ impl Follow {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -773,7 +869,7 @@ impl Follow {
     }
 }
 
-/// `0x15` RGE_COMMAND_PATROL (`GameCommand<RGE_Command_Patrol>`, formatter `0x140e602e0`: `Patrol(num=%d, waypoints[%d]={%s})`).
+/// `0x15` `RGE_COMMAND_PATROL` (`GameCommand<RGE_Command_Patrol>`, formatter `0x140e602e0`: `Patrol(num=%d, waypoints[%d]={%s})`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Patrol {
     /// `+0x01`, header
@@ -828,14 +924,18 @@ pub struct Patrol {
     pub field_0x54: f32,
     /// `+0x58`, handler
     pub field_0x58: f32,
-    /// `+0x5c..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x5c..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Patrol {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x15;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x5c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -869,6 +969,8 @@ impl Patrol {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -901,9 +1003,9 @@ impl Patrol {
     }
 }
 
-/// `0x16` RGE_COMMAND_SCOUT (`GameCommand<RGE_Command_Scout>`, formatter `0x140e606e0`: `Scout(num=%d, x=%.10f, y=%.10f)`).
+/// `0x16` `RGE_COMMAND_SCOUT` (`GameCommand<RGE_Command_Scout>`, formatter `0x140e606e0`: `Scout(num=%d, x=%.10f, y=%.10f)`).
 ///
-/// Not in the corpus: the layout is the one of `0x6b` TRIBE_COMMAND_ATTACK_GROUND, whose formatter prints the same fields.
+/// Not in the corpus: the layout is the one of `0x6b` `TRIBE_COMMAND_ATTACK_GROUND`, whose formatter prints the same fields.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scout {
     /// `+0x01`, header
@@ -920,14 +1022,18 @@ pub struct Scout {
     pub gap_0x10: [u8; 3],
     /// `+0x13`, handler
     pub field_0x13: u8,
-    /// `+0x14..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x14..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Scout {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x16;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x14;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -942,6 +1048,8 @@ impl Scout {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -955,8 +1063,8 @@ impl Scout {
     }
 }
 
-/// `0x17` RGE_COMMAND_FORM_FORMATION (`GameCommand<RGE_Command_Form_Formation>`, formatter `0x140e5f830`: `FormFormation(num=%d, commpId=%d, formation=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x17` `RGE_COMMAND_FORM_FORMATION` (`GameCommand<RGE_Command_Form_Formation>`, formatter `0x140e5f830`: `FormFormation(num=%d, commpId=%d, formation=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormFormation {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -966,14 +1074,18 @@ pub struct FormFormation {
     pub gap_0x06: [u8; 2],
     /// `+0x08`, formatter
     pub formation: i32,
-    /// `+0x0c..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x0c..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl FormFormation {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x17;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -985,6 +1097,8 @@ impl FormFormation {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -995,8 +1109,8 @@ impl FormFormation {
     }
 }
 
-/// `0x18` RGE_COMMAND_BREAK_FORMATION (`GameCommand<RGE_Command_Break_Formation>`, formatter `0x140e5f450`: `BreakFormation(commId=%d, formId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x18` `RGE_COMMAND_BREAK_FORMATION` (`GameCommand<RGE_Command_Break_Formation>`, formatter `0x140e5f450`: `BreakFormation(commId=%d, formId=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BreakFormation {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1007,9 +1121,13 @@ pub struct BreakFormation {
 }
 
 impl BreakFormation {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x18;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1019,6 +1137,8 @@ impl BreakFormation {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.form_id);
@@ -1027,8 +1147,8 @@ impl BreakFormation {
     }
 }
 
-/// `0x19` RGE_COMMAND_WHEEL_FORMATION (`GameCommand<RGE_Command_Wheel_Formation>`, formatter `0x140e60a70`: `WheelFormation(commId=%d, formId=%d, angle=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x19` `RGE_COMMAND_WHEEL_FORMATION` (`GameCommand<RGE_Command_Wheel_Formation>`, formatter `0x140e60a70`: `WheelFormation(commId=%d, formId=%d, angle=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WheelFormation {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1041,9 +1161,13 @@ pub struct WheelFormation {
 }
 
 impl WheelFormation {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x19;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1054,6 +1178,8 @@ impl WheelFormation {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.form_id);
@@ -1063,8 +1189,8 @@ impl WheelFormation {
     }
 }
 
-/// `0x1a` RGE_COMMAND_ABOUT_FACE_FORMATION (`GameCommand<RGE_Command_About_Face_Formation>`, formatter `0x140e5ee40`: `AboutFaceFormation(commId=%d, formId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x1a` `RGE_COMMAND_ABOUT_FACE_FORMATION` (`GameCommand<RGE_Command_About_Face_Formation>`, formatter `0x140e5ee40`: `AboutFaceFormation(commId=%d, formId=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AboutFaceFormation {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1075,9 +1201,13 @@ pub struct AboutFaceFormation {
 }
 
 impl AboutFaceFormation {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x1a;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1087,6 +1217,8 @@ impl AboutFaceFormation {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.form_id);
@@ -1095,8 +1227,8 @@ impl AboutFaceFormation {
     }
 }
 
-/// `0x1b` RGE_COMMAND_SAVE (`GameCommand<RGE_Command_Multiplayer_Save>`, formatter `0x140e60240`: `MpSave(ExitAfterSave=%d, CommId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x1b` `RGE_COMMAND_SAVE` (`GameCommand<RGE_Command_Multiplayer_Save>`, formatter `0x140e60240`: `MpSave(ExitAfterSave=%d, CommId=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Save {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1107,9 +1239,13 @@ pub struct Save {
 }
 
 impl Save {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x1b;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x05;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1119,6 +1255,8 @@ impl Save {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.exit_after_save);
@@ -1127,7 +1265,7 @@ impl Save {
     }
 }
 
-/// `0x1c` RGE_COMMAND_FORMATION_PARAMETERS (`GameCommand<RGE_Command_Formation_Parameters>`, formatter `0x140e5f8e0`: `FormationParams(commpId=%d, lineRatio=%d, colRatio=%d, minColDist=%d, colToLineDist=%d, formInfluenceDist=%.10f, breakAutoFormationsBySpeed=%d)`).
+/// `0x1c` `RGE_COMMAND_FORMATION_PARAMETERS` (`GameCommand<RGE_Command_Formation_Parameters>`, formatter `0x140e5f8e0`: `FormationParams(commpId=%d, lineRatio=%d, colRatio=%d, minColDist=%d, colToLineDist=%d, formInfluenceDist=%.10f, breakAutoFormationsBySpeed=%d)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct FormationParameters {
     /// `+0x01`, header
@@ -1149,9 +1287,13 @@ pub struct FormationParameters {
 }
 
 impl FormationParameters {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x1c;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x19;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1166,6 +1308,8 @@ impl FormationParameters {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.line_ratio);
@@ -1179,8 +1323,8 @@ impl FormationParameters {
     }
 }
 
-/// `0x1d` RGE_COMMAND_AUTO_FORMATIONS (`GameCommand<RGE_Command_Auto_Formations>`, formatter `0x140e5f390`: `AutoFormation( commpId=%d, on=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x1d` `RGE_COMMAND_AUTO_FORMATIONS` (`GameCommand<RGE_Command_Auto_Formations>`, formatter `0x140e5f390`: `AutoFormation( commpId=%d, on=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoFormations {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1191,9 +1335,13 @@ pub struct AutoFormations {
 }
 
 impl AutoFormations {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x1d;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x05;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1203,6 +1351,8 @@ impl AutoFormations {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.on);
@@ -1211,8 +1361,8 @@ impl AutoFormations {
     }
 }
 
-/// `0x1e` RGE_COMMAND_LOCK_FORMATION (`GameCommand<RGE_Command_Lock_Formation>`, formatter `0x140e60090`: `LockFormation(commId=%d, formId=%d, formType=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x1e` `RGE_COMMAND_LOCK_FORMATION` (`GameCommand<RGE_Command_Lock_Formation>`, formatter `0x140e60090`: `LockFormation(commId=%d, formId=%d, formType=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LockFormation {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1225,9 +1375,13 @@ pub struct LockFormation {
 }
 
 impl LockFormation {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x1e;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1238,6 +1392,8 @@ impl LockFormation {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.form_id);
@@ -1247,8 +1403,8 @@ impl LockFormation {
     }
 }
 
-/// `0x1f` RGE_COMMAND_GROUP_MULTI_WAYPOINTS (`GameCommand<RGE_Command_Group_Multi_Waypoints>`, formatter `0x140e5fd70`: `GroupMultWaypoints(num=%d, waypoints=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x1f` `RGE_COMMAND_GROUP_MULTI_WAYPOINTS` (`GameCommand<RGE_Command_Group_Multi_Waypoints>`, formatter `0x140e5fd70`: `GroupMultWaypoints(num=%d, waypoints=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupMultiWaypoints {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1263,9 +1419,13 @@ pub struct GroupMultiWaypoints {
 }
 
 impl GroupMultiWaypoints {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x1f;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0a;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1277,6 +1437,8 @@ impl GroupMultiWaypoints {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -1287,17 +1449,21 @@ impl GroupMultiWaypoints {
     }
 }
 
-/// `0x20` RGE_COMMAND_CHAPTER (`GameCommand<RGE_Command_Chapter>`, formatter `0x140e5f5f0`: `SaveChapter(commId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x20` `RGE_COMMAND_CHAPTER` (`GameCommand<RGE_Command_Chapter>`, formatter `0x140e5f5f0`: `SaveChapter(commId=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Chapter {
     /// `+0x01`, header
     pub commp_id: u8,
 }
 
 impl Chapter {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x20;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -1305,13 +1471,15 @@ impl Chapter {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let out = vec![Self::BYTE, self.commp_id, 0, 0];
         finish(out)
     }
 }
 
-/// `0x21` RGE_COMMAND_ATTACK_MOVE (`GameCommand<RGE_Command_Attack_Move>`, formatter `0x140e5efb0`: `AttackMove(num=%d, waypoints[%d]={%s})`).
+/// `0x21` `RGE_COMMAND_ATTACK_MOVE` (`GameCommand<RGE_Command_Attack_Move>`, formatter `0x140e5efb0`: `AttackMove(num=%d, waypoints[%d]={%s})`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttackMove {
     /// `+0x01`, header
@@ -1336,14 +1504,18 @@ pub struct AttackMove {
     pub field_0x34: f32,
     /// `+0x38`, gap
     pub gap_0x38: [u8; 36],
-    /// `+0x5c..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x5c..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl AttackMove {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x21;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x5c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -1362,6 +1534,8 @@ impl AttackMove {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -1379,8 +1553,8 @@ impl AttackMove {
     }
 }
 
-/// `0x22` RGE_COMMAND_ATTACK_MOVE_TARGET (`GameCommand<RGE_Command_Attack_Move_Target>`, formatter `0x140e5f190`: `AttackMove(num=%d, tId=%d, waypoints[%d]={%s})`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x22` `RGE_COMMAND_ATTACK_MOVE_TARGET` (`GameCommand<RGE_Command_Attack_Move_Target>`, formatter `0x140e5f190`: `AttackMove(num=%d, tId=%d, waypoints[%d]={%s})`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttackMoveTarget {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1399,9 +1573,13 @@ pub struct AttackMoveTarget {
 }
 
 impl AttackMoveTarget {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x22;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x10;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1415,6 +1593,8 @@ impl AttackMoveTarget {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -1427,9 +1607,9 @@ impl AttackMoveTarget {
     }
 }
 
-/// `0x23` RGE_COMMAND_RETREAT (`GameCommand<RGE_Command_Retreat>`, formatter `0x140e605e0`: `Retreat(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
+/// `0x23` `RGE_COMMAND_RETREAT` (`GameCommand<RGE_Command_Retreat>`, formatter `0x140e605e0`: `Retreat(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
 ///
-/// Not in the corpus: the layout is the one of `0x00` RGE_COMMAND_INTERACT, whose formatter prints the same fields.
+/// Not in the corpus: the layout is the one of `0x00` `RGE_COMMAND_INTERACT`, whose formatter prints the same fields.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Retreat {
     /// `+0x01`, header
@@ -1452,14 +1632,18 @@ pub struct Retreat {
     pub field_0x15: u8,
     /// `+0x16`, handler
     pub field_0x16: u16,
-    /// `+0x18..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x18..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Retreat {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x23;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x18;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -1477,6 +1661,8 @@ impl Retreat {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
@@ -1493,8 +1679,8 @@ impl Retreat {
     }
 }
 
-/// `0x25` RGE_COMMAND_UNIT_TYPE_AI_STATE (`GameCommand<RGE_Command_Unit_Type_AI_State>`, formatter `0x140e609c0`: `UnitTypeAiState(type=%d, state=%d, commID=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x25` `RGE_COMMAND_UNIT_TYPE_AI_STATE` (`GameCommand<RGE_Command_Unit_Type_AI_State>`, formatter `0x140e609c0`: `UnitTypeAiState(type=%d, state=%d, commID=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitTypeAiState {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1507,9 +1693,13 @@ pub struct UnitTypeAiState {
 }
 
 impl UnitTypeAiState {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x25;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x09;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1520,6 +1710,8 @@ impl UnitTypeAiState {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.type_);
@@ -1529,8 +1721,8 @@ impl UnitTypeAiState {
     }
 }
 
-/// `0x26` RGE_COMMAND_AUTO_SCOUT (`GameCommand<RGE_Command_Auto_Scout>`, its formatter prints no fields).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x26` `RGE_COMMAND_AUTO_SCOUT` (`GameCommand<RGE_Command_Auto_Scout>`, its formatter prints no fields).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoScout {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1538,14 +1730,18 @@ pub struct AutoScout {
     pub field_0x04: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl AutoScout {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x26;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -1556,6 +1752,8 @@ impl AutoScout {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.field_0x04);
@@ -1565,8 +1763,8 @@ impl AutoScout {
     }
 }
 
-/// `0x27` RGE_COMMAND_STOP_ALL (`GameCommand<RGE_Command_Stop_All>`, its formatter prints no fields).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x27` `RGE_COMMAND_STOP_ALL` (`GameCommand<RGE_Command_Stop_All>`, its formatter prints no fields).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopAll {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1575,9 +1773,13 @@ pub struct StopAll {
 }
 
 impl StopAll {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x27;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1586,6 +1788,8 @@ impl StopAll {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
@@ -1593,8 +1797,8 @@ impl StopAll {
     }
 }
 
-/// `0x29` RGE_COMMAND_TRANSFORM_OBJECT (`GameCommand<RGE_Command_Transform_Object>`, its formatter prints no fields).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x29` `RGE_COMMAND_TRANSFORM_OBJECT` (`GameCommand<RGE_Command_Transform_Object>`, its formatter prints no fields).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TransformObject {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1605,9 +1809,13 @@ pub struct TransformObject {
 }
 
 impl TransformObject {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x29;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -1617,6 +1825,8 @@ impl TransformObject {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.field_0x04);
@@ -1625,8 +1835,8 @@ impl TransformObject {
     }
 }
 
-/// `0x2a` RGE_COMMAND_TRIGGER (`GameCommand<RGE_Command_Trigger>`, its formatter prints no fields).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x2a` `RGE_COMMAND_TRIGGER` (`GameCommand<RGE_Command_Trigger>`, its formatter prints no fields).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Trigger {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1635,9 +1845,13 @@ pub struct Trigger {
 }
 
 impl Trigger {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x2a;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1646,6 +1860,8 @@ impl Trigger {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
@@ -1653,8 +1869,8 @@ impl Trigger {
     }
 }
 
-/// `0x2b` RGE_COMMAND_TRANSFORM_OBJECTS (`GameCommand<RGE_Command_TransformObjects>`, its formatter prints no fields).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x2b` `RGE_COMMAND_TRANSFORM_OBJECTS` (`GameCommand<RGE_Command_TransformObjects>`, its formatter prints no fields).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransformObjects {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1665,9 +1881,13 @@ pub struct TransformObjects {
 }
 
 impl TransformObjects {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x2b;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x10;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1677,6 +1897,8 @@ impl TransformObjects {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.gap_0x04);
@@ -1685,8 +1907,8 @@ impl TransformObjects {
     }
 }
 
-/// `0x2c` RGE_COMMAND_SEEK_SHELTER (`GameCommand<RGE_Command_Seek_Shelter>`, formatter `0x140e607a0`: `Seek Shelter(num=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x2c` `RGE_COMMAND_SEEK_SHELTER` (`GameCommand<RGE_Command_Seek_Shelter>`, formatter `0x140e607a0`: `Seek Shelter(num=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SeekShelter {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1694,14 +1916,18 @@ pub struct SeekShelter {
     pub num: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl SeekShelter {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x2c;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -1712,6 +1938,8 @@ impl SeekShelter {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -1721,7 +1949,7 @@ impl SeekShelter {
     }
 }
 
-/// `0x2d` RGE_COMMAND_BUILDING_COMMAND_QUEUE (`GameCommand<RGE_Command_Building_Command_Queue>`, formatter `0x140e5f4f0`: `Building Command Queue(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
+/// `0x2d` `RGE_COMMAND_BUILDING_COMMAND_QUEUE` (`GameCommand<RGE_Command_Building_Command_Queue>`, formatter `0x140e5f4f0`: `Building Command Queue(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BuildingCommandQueue {
     /// `+0x01`, header
@@ -1736,14 +1964,18 @@ pub struct BuildingCommandQueue {
     pub num: u16,
     /// `+0x12`, gap
     pub gap_0x12: [u8; 6],
-    /// `+0x18..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x18..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl BuildingCommandQueue {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x2d;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x18;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -1757,6 +1989,8 @@ impl BuildingCommandQueue {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
@@ -1769,8 +2003,8 @@ impl BuildingCommandQueue {
     }
 }
 
-/// `0x2e` RGE_COMMAND_FIRE_ACTIVE_ABILITY (`GameCommand<RGE_Command_FireActiveAbility>`, its formatter prints no fields).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x2e` `RGE_COMMAND_FIRE_ACTIVE_ABILITY` (`GameCommand<RGE_Command_FireActiveAbility>`, its formatter prints no fields).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FireActiveAbility {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1779,9 +2013,13 @@ pub struct FireActiveAbility {
 }
 
 impl FireActiveAbility {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x2e;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1790,6 +2028,8 @@ impl FireActiveAbility {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
@@ -1797,10 +2037,10 @@ impl FireActiveAbility {
     }
 }
 
-/// `0x60` RGE_COMMAND_GIVE_ATTRIBUTES (`GameCommand<RGE_Command_Give_Attributes>`, its formatter prints no fields).
+/// `0x60` `RGE_COMMAND_GIVE_ATTRIBUTES` (`GameCommand<RGE_Command_Give_Attributes>`, its formatter prints no fields).
 ///
-/// Its class is `RGE_Command_Give_Attributes`, the one of `0xc4` TRIBE_COMMAND_GIVE_ATTRIBUTES: the formatter prints that command, so its names are not used here.
-#[derive(Debug, Clone, PartialEq)]
+/// Its class is `RGE_Command_Give_Attributes`, the one of `0xc4` `TRIBE_COMMAND_GIVE_ATTRIBUTES`: the formatter prints that command, so its names are not used here.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RgeGiveAttributes {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1809,9 +2049,13 @@ pub struct RgeGiveAttributes {
 }
 
 impl RgeGiveAttributes {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x60;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1820,6 +2064,8 @@ impl RgeGiveAttributes {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
@@ -1827,8 +2073,8 @@ impl RgeGiveAttributes {
     }
 }
 
-/// `0x64` TRIBE_COMMAND_MAKE (`GameCommand<TRIBE_Command_Make>`, formatter `0x140e73b00`: `Make(commpId=%d, uId=%d, oId=%d, qId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x64` `TRIBE_COMMAND_MAKE` (`GameCommand<TRIBE_Command_Make>`, formatter `0x140e73b00`: `Make(commpId=%d, uId=%d, oId=%d, qId=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Make {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1843,9 +2089,13 @@ pub struct Make {
 }
 
 impl Make {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x64;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x10;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -1857,6 +2107,8 @@ impl Make {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -1867,8 +2119,8 @@ impl Make {
     }
 }
 
-/// `0x65` TRIBE_COMMAND_RESEARCH (`GameCommand<TRIBE_Command_Research>`, formatter `0x140e73f50`: `Research(commpId=%d, uId=%d, tId=%d, qId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x65` `TRIBE_COMMAND_RESEARCH` (`GameCommand<TRIBE_Command_Research>`, formatter `0x140e73f50`: `Research(commpId=%d, uId=%d, tId=%d, qId=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Research {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -1882,14 +2134,18 @@ pub struct Research {
     pub q_id: i32,
     /// `+0x10`, handler
     pub field_0x10: u8,
-    /// `+0x11..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x11..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Research {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x65;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x11;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -1903,6 +2159,8 @@ impl Research {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -1915,7 +2173,7 @@ impl Research {
     }
 }
 
-/// `0x66` TRIBE_COMMAND_BUILD (`GameCommand<TRIBE_Command_Build>`, formatter `0x140e72fc0`: `Build(num=%d, x=%.2f, y=%.2f, commpId=%d, oId=%d, qId=%d, frame=%d)`).
+/// `0x66` `TRIBE_COMMAND_BUILD` (`GameCommand<TRIBE_Command_Build>`, formatter `0x140e72fc0`: `Build(num=%d, x=%.2f, y=%.2f, commpId=%d, oId=%d, qId=%d, frame=%d)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Build {
     /// `+0x01`, header
@@ -1942,14 +2200,18 @@ pub struct Build {
     pub field_0x1e: u8,
     /// `+0x1f`, handler
     pub field_0x1f: u8,
-    /// `+0x20..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x20..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Build {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x66;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x20;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -1969,6 +2231,8 @@ impl Build {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -1987,8 +2251,8 @@ impl Build {
     }
 }
 
-/// `0x67` TRIBE_COMMAND_GAME (`GameCommand<TRIBE_Command_Game>`, formatter `0x140e73700`: `GameCmd[%d](%d,%d,%.2f,%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x67` `TRIBE_COMMAND_GAME` (`GameCommand<TRIBE_Command_Game>`, formatter `0x140e73700`: `GameCmd[%d](%d,%d,%.2f,%d)`).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Game {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2007,9 +2271,13 @@ pub struct Game {
 }
 
 impl Game {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x67;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x14;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -2023,6 +2291,8 @@ impl Game {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.field_0x04);
@@ -2035,7 +2305,7 @@ impl Game {
     }
 }
 
-/// `0x68` TRIBE_COMMAND_EXPLORE (`GameCommand<TRIBE_Command_Explore>`, formatter `0x140e73620`: `Explore(num=%d, x=%.2f, y=%.2f, commpId=%d)`).
+/// `0x68` `TRIBE_COMMAND_EXPLORE` (`GameCommand<TRIBE_Command_Explore>`, formatter `0x140e73620`: `Explore(num=%d, x=%.2f, y=%.2f, commpId=%d)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Explore {
     /// `+0x01`, header
@@ -2053,9 +2323,13 @@ pub struct Explore {
 }
 
 impl Explore {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x68;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x10;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -2068,6 +2342,8 @@ impl Explore {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2079,8 +2355,8 @@ impl Explore {
     }
 }
 
-/// `0x69` TRIBE_COMMAND_BUILD_WALL (`GameCommand<TRIBE_Command_Build_Wall>`, formatter `0x140e730e0`: `BuildWall(num=%d, x1=%d, y1=%d, x2=%d, y2=%d, commpId=%d, oId=%d, qId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x69` `TRIBE_COMMAND_BUILD_WALL` (`GameCommand<TRIBE_Command_Build_Wall>`, formatter `0x140e730e0`: `BuildWall(num=%d, x1=%d, y1=%d, x2=%d, y2=%d, commpId=%d, oId=%d, qId=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildWall {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2106,14 +2382,18 @@ pub struct BuildWall {
     pub field_0x1a: u8,
     /// `+0x1b`, handler
     pub field_0x1b: u8,
-    /// `+0x1c..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x1c..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl BuildWall {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x69;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x1c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -2133,6 +2413,8 @@ impl BuildWall {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2151,8 +2433,8 @@ impl BuildWall {
     }
 }
 
-/// `0x6a` TRIBE_COMMAND_CANCEL_BUILD (`GameCommand<TRIBE_Command_Cancel_Build>`, formatter `0x140e732f0`: `CancelBuild( comm=%d, uId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x6a` `TRIBE_COMMAND_CANCEL_BUILD` (`GameCommand<TRIBE_Command_Cancel_Build>`, formatter `0x140e732f0`: `CancelBuild( comm=%d, uId=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CancelBuild {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2161,9 +2443,13 @@ pub struct CancelBuild {
 }
 
 impl CancelBuild {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x6a;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -2172,6 +2458,8 @@ impl CancelBuild {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -2179,7 +2467,7 @@ impl CancelBuild {
     }
 }
 
-/// `0x6b` TRIBE_COMMAND_ATTACK_GROUND (`GameCommand<TRIBE_Command_Attack_Ground>`, formatter `0x140e72f00`: `AttackGround(num=%d, x=%.2f, y=%.2f )`).
+/// `0x6b` `TRIBE_COMMAND_ATTACK_GROUND` (`GameCommand<TRIBE_Command_Attack_Ground>`, formatter `0x140e72f00`: `AttackGround(num=%d, x=%.2f, y=%.2f )`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttackGround {
     /// `+0x01`, header
@@ -2196,14 +2484,18 @@ pub struct AttackGround {
     pub gap_0x10: [u8; 3],
     /// `+0x13`, handler
     pub field_0x13: u8,
-    /// `+0x14..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x14..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl AttackGround {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x6b;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x14;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -2218,6 +2510,8 @@ impl AttackGround {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2231,7 +2525,7 @@ impl AttackGround {
     }
 }
 
-/// `0x6c` TRIBE_COMMAND_GIVE_ATTRIBUTE (`GameCommand<TRIBE_Command_Give_Attribute>`, formatter `0x140e73880`: `GiveAttr(fromComm=%d to=%d, attr=%d, amt=%.2f, cost=%.2f)`).
+/// `0x6c` `TRIBE_COMMAND_GIVE_ATTRIBUTE` (`GameCommand<TRIBE_Command_Give_Attribute>`, formatter `0x140e73880`: `GiveAttr(fromComm=%d to=%d, attr=%d, amt=%.2f, cost=%.2f)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TribeGiveAttribute {
     /// `+0x01`, header
@@ -2249,9 +2543,13 @@ pub struct TribeGiveAttribute {
 }
 
 impl TribeGiveAttribute {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x6c;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0f;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -2264,6 +2562,8 @@ impl TribeGiveAttribute {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.amt);
@@ -2275,8 +2575,8 @@ impl TribeGiveAttribute {
     }
 }
 
-/// `0x6d` TRIBE_COMMAND_TRADE_ATTRIBUTE (`GameCommand<TRIBE_Command_Trade_Attribute>`, formatter `0x140e74400`: `TradeAttr(num=%d, attr=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x6d` `TRIBE_COMMAND_TRADE_ATTRIBUTE` (`GameCommand<TRIBE_Command_Trade_Attribute>`, formatter `0x140e74400`: `TradeAttr(num=%d, attr=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TradeAttribute {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2291,9 +2591,13 @@ pub struct TradeAttribute {
 }
 
 impl TradeAttribute {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x6d;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -2305,6 +2609,8 @@ impl TradeAttribute {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2315,8 +2621,8 @@ impl TradeAttribute {
     }
 }
 
-/// `0x6e` TRIBE_COMMAND_REPAIR (`GameCommand<TRIBE_Command_Repair>`, formatter `0x140e73eb0`: `Repair(num=%d, tId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x6e` `TRIBE_COMMAND_REPAIR` (`GameCommand<TRIBE_Command_Repair>`, formatter `0x140e73eb0`: `Repair(num=%d, tId=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Repair {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2332,14 +2638,18 @@ pub struct Repair {
     pub field_0x0e: u8,
     /// `+0x0f`, handler
     pub field_0x0f: u8,
-    /// `+0x10..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x10..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Repair {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x6e;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x10;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -2354,6 +2664,8 @@ impl Repair {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2367,7 +2679,7 @@ impl Repair {
     }
 }
 
-/// `0x6f` TRIBE_COMMAND_UNLOAD (`GameCommand<TRIBE_Command_Unload>`, formatter `0x140e746a0`: `Unload(num=%d, x=%.2f, y=%.2f, flag=%d, unitType=%d)`).
+/// `0x6f` `TRIBE_COMMAND_UNLOAD` (`GameCommand<TRIBE_Command_Unload>`, formatter `0x140e746a0`: `Unload(num=%d, x=%.2f, y=%.2f, flag=%d, unitType=%d)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Unload {
     /// `+0x01`, header
@@ -2388,14 +2700,18 @@ pub struct Unload {
     pub gap_0x15: [u8; 3],
     /// `+0x18`, handler
     pub field_0x18: u8,
-    /// `+0x19..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x19..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl Unload {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x6f;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x19;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -2412,6 +2728,8 @@ impl Unload {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2427,8 +2745,8 @@ impl Unload {
     }
 }
 
-/// `0x72` TRIBE_COMMAND_GATE (`GameCommand<TRIBE_Command_Gate>`, formatter `0x140e73800`: `Gate(uId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x72` `TRIBE_COMMAND_GATE` (`GameCommand<TRIBE_Command_Gate>`, formatter `0x140e73800`: `Gate(uId=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Gate {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2437,9 +2755,13 @@ pub struct Gate {
 }
 
 impl Gate {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x72;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -2448,6 +2770,8 @@ impl Gate {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -2455,9 +2779,9 @@ impl Gate {
     }
 }
 
-/// `0x73` TRIBE_COMMAND_FLARE (`GameCommand<TRIBE_Command_Repair>`, its formatter prints no fields).
+/// `0x73` `TRIBE_COMMAND_FLARE` (`GameCommand<TRIBE_Command_Repair>`, its formatter prints no fields).
 ///
-/// Its class is `TRIBE_Command_Repair`, the one of `0x6e` TRIBE_COMMAND_REPAIR: the formatter prints that command, so its names are not used here.
+/// Its class is `TRIBE_Command_Repair`, the one of `0x6e` `TRIBE_COMMAND_REPAIR`: the formatter prints that command, so its names are not used here.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Flare {
     /// `+0x01`, header
@@ -2481,9 +2805,13 @@ pub struct Flare {
 }
 
 impl Flare {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x73;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x14;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -2499,6 +2827,8 @@ impl Flare {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.field_0x04);
@@ -2513,8 +2843,8 @@ impl Flare {
     }
 }
 
-/// `0x74` TRIBE_COMMAND_SPECIAL (`GameCommand<TRIBE_Command_Special>`, formatter `0x140e742b0`: `Special(num=%d, tId=%d, action=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x74` `TRIBE_COMMAND_SPECIAL` (`GameCommand<TRIBE_Command_Special>`, formatter `0x140e742b0`: `Special(num=%d, tId=%d, action=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Special {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2531,9 +2861,13 @@ pub struct Special {
 }
 
 impl Special {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x74;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0d;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -2546,6 +2880,8 @@ impl Special {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2557,7 +2893,7 @@ impl Special {
     }
 }
 
-/// `0x75` TRIBE_COMMAND_UNIT_ORDER (`GameCommand<TRIBE_Command_Unit_Order>`, formatter `0x140e744a0`: `UnitOrder(num=%d, x=%.2f, y=%.2f, tId=%d, qId=%d, action=%d, param=%d)`).
+/// `0x75` `TRIBE_COMMAND_UNIT_ORDER` (`GameCommand<TRIBE_Command_Unit_Order>`, formatter `0x140e744a0`: `UnitOrder(num=%d, x=%.2f, y=%.2f, tId=%d, qId=%d, action=%d, param=%d)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnitOrder {
     /// `+0x01`, header
@@ -2586,14 +2922,18 @@ pub struct UnitOrder {
     pub gap_0x1f: [u8; 1],
     /// `+0x20`, handler
     pub field_0x20: u8,
-    /// `+0x21..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x21..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl UnitOrder {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x75;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x21;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -2614,6 +2954,8 @@ impl UnitOrder {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2633,8 +2975,8 @@ impl UnitOrder {
     }
 }
 
-/// `0x76` TRIBE_COMMAND_DIPLOMACY (`GameCommand<TRIBE_Command_Diplomacy>`, formatter `0x140e73410`: `Diplomacy(commpId1=%d, pId2=%d, seq=%d, status=%d, declare=%d, diplo=%d, int=%d, trade=%d, demand=%d, gold=%d, len=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x76` `TRIBE_COMMAND_DIPLOMACY` (`GameCommand<TRIBE_Command_Diplomacy>`, formatter `0x140e73410`: `Diplomacy(commpId1=%d, pId2=%d, seq=%d, status=%d, declare=%d, diplo=%d, int=%d, trade=%d, demand=%d, gold=%d, len=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diplomacy {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2663,9 +3005,13 @@ pub struct Diplomacy {
 }
 
 impl Diplomacy {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x76;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0f;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -2684,6 +3030,8 @@ impl Diplomacy {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.p_id2);
@@ -2701,8 +3049,8 @@ impl Diplomacy {
     }
 }
 
-/// `0x77` TRIBE_COMMAND_QUEUE (`GameCommand<TRIBE_Command_Queue>`, formatter `0x140e73e00`: `Queue(bId=%d, tId=%d, count=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x77` `TRIBE_COMMAND_QUEUE` (`GameCommand<TRIBE_Command_Queue>`, formatter `0x140e73e00`: `Queue(bId=%d, tId=%d, count=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Queue {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2717,9 +3065,13 @@ pub struct Queue {
 }
 
 impl Queue {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x77;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -2731,6 +3083,8 @@ impl Queue {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.b_id);
@@ -2741,7 +3095,7 @@ impl Queue {
     }
 }
 
-/// `0x78` TRIBE_COMMAND_SET_GATHER_POINT (`GameCommand<TRIBE_Command_Set_Gather_Point>`, formatter `0x140e740b0`: `SetGatherPoint(num=%d, x=%.2f, y=%.2f, tId=%d, tmId=%d)`).
+/// `0x78` `TRIBE_COMMAND_SET_GATHER_POINT` (`GameCommand<TRIBE_Command_Set_Gather_Point>`, formatter `0x140e740b0`: `SetGatherPoint(num=%d, x=%.2f, y=%.2f, tId=%d, tmId=%d)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetGatherPoint {
     /// `+0x01`, header
@@ -2760,14 +3114,18 @@ pub struct SetGatherPoint {
     pub tm_id: i32,
     /// `+0x18`, handler
     pub field_0x18: u8,
-    /// `+0x19..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x19..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl SetGatherPoint {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x78;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x19;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -2783,6 +3141,8 @@ impl SetGatherPoint {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2797,10 +3157,10 @@ impl SetGatherPoint {
     }
 }
 
-/// `0x79` TRIBE_COMMAND_SET_RETREAT_POINT (`GameCommand<TRIBE_Command_Set_Retreat_Point>`, formatter `0x140e74230`: `SetRetreatPoint(uId=%d)`).
+/// `0x79` `TRIBE_COMMAND_SET_RETREAT_POINT` (`GameCommand<TRIBE_Command_Set_Retreat_Point>`, formatter `0x140e74230`: `SetRetreatPoint(uId=%d)`).
 ///
-/// Not in the corpus: the layout is the one of `0x72` TRIBE_COMMAND_GATE, whose formatter prints the same fields.
-#[derive(Debug, Clone, PartialEq)]
+/// Not in the corpus: the layout is the one of `0x72` `TRIBE_COMMAND_GATE`, whose formatter prints the same fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SetRetreatPoint {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2809,9 +3169,13 @@ pub struct SetRetreatPoint {
 }
 
 impl SetRetreatPoint {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x79;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -2820,6 +3184,8 @@ impl SetRetreatPoint {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -2827,8 +3193,8 @@ impl SetRetreatPoint {
     }
 }
 
-/// `0x7a` TRIBE_COMMAND_SELL_COMMODITY (`GameCommand<TRIBE_Command_Buy_Sell_Attribute>`, formatter `0x140e73210`: `BuySellAttr(uId=%d, commpId=%d, attr=%d, amt=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x7a` `TRIBE_COMMAND_SELL_COMMODITY` (`GameCommand<TRIBE_Command_Buy_Sell_Attribute>`, formatter `0x140e73210`: `BuySellAttr(uId=%d, commpId=%d, attr=%d, amt=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SellCommodity {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2841,9 +3207,13 @@ pub struct SellCommodity {
 }
 
 impl SellCommodity {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x7a;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -2854,6 +3224,8 @@ impl SellCommodity {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.attr);
@@ -2863,8 +3235,8 @@ impl SellCommodity {
     }
 }
 
-/// `0x7b` TRIBE_COMMAND_BUY_COMMODITY (`GameCommand<TRIBE_Command_Buy_Sell_Attribute>`, formatter `0x140e73210`: `BuySellAttr(uId=%d, commpId=%d, attr=%d, amt=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x7b` `TRIBE_COMMAND_BUY_COMMODITY` (`GameCommand<TRIBE_Command_Buy_Sell_Attribute>`, formatter `0x140e73210`: `BuySellAttr(uId=%d, commpId=%d, attr=%d, amt=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuyCommodity {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2877,9 +3249,13 @@ pub struct BuyCommodity {
 }
 
 impl BuyCommodity {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x7b;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -2890,6 +3266,8 @@ impl BuyCommodity {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.attr);
@@ -2899,8 +3277,8 @@ impl BuyCommodity {
     }
 }
 
-/// `0x7c` TRIBE_COMMAND_OFFBOARD_TRADE (`GameCommand<TRIBE_Command_Offboard_Trade>`, formatter `0x140e73d60`: `OffboardTrade(uId=%d, tradeRoute=%d )`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x7c` `TRIBE_COMMAND_OFFBOARD_TRADE` (`GameCommand<TRIBE_Command_Offboard_Trade>`, formatter `0x140e73d60`: `OffboardTrade(uId=%d, tradeRoute=%d )`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OffboardTrade {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2913,9 +3291,13 @@ pub struct OffboardTrade {
 }
 
 impl OffboardTrade {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x7c;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x0c;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -2926,6 +3308,8 @@ impl OffboardTrade {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -2935,8 +3319,8 @@ impl OffboardTrade {
     }
 }
 
-/// `0x7d` TRIBE_COMMAND_UNIT_TRANSFORM (`GameCommand<TRIBE_Command_Unit_Transform>`, formatter `0x140e745c0`: `UnitTransform(num=%d, uId=%d, commpId=%d, qId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x7d` `TRIBE_COMMAND_UNIT_TRANSFORM` (`GameCommand<TRIBE_Command_Unit_Transform>`, formatter `0x140e745c0`: `UnitTransform(num=%d, uId=%d, commpId=%d, qId=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitTransform {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2953,9 +3337,13 @@ pub struct UnitTransform {
 }
 
 impl UnitTransform {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x7d;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x10;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -2968,6 +3356,8 @@ impl UnitTransform {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -2979,8 +3369,8 @@ impl UnitTransform {
     }
 }
 
-/// `0x7e` TRIBE_COMMAND_DROP_RELIC (`GameCommand<TRIBE_Command_Drop_Relic>`, formatter `0x140e735a0`: `DropRelic(uId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x7e` `TRIBE_COMMAND_DROP_RELIC` (`GameCommand<TRIBE_Command_Drop_Relic>`, formatter `0x140e735a0`: `DropRelic(uId=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DropRelic {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2989,9 +3379,13 @@ pub struct DropRelic {
 }
 
 impl DropRelic {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x7e;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -3000,6 +3394,8 @@ impl DropRelic {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -3007,8 +3403,8 @@ impl DropRelic {
     }
 }
 
-/// `0x7f` TRIBE_COMMAND_TOWN_BELL (`GameCommand<TRIBE_Command_Town_Bell>`, formatter `0x140e74360`: `TownBell(uId=%d, activate=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x7f` `TRIBE_COMMAND_TOWN_BELL` (`GameCommand<TRIBE_Command_Town_Bell>`, formatter `0x140e74360`: `TownBell(uId=%d, activate=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TownBell {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3019,9 +3415,13 @@ pub struct TownBell {
 }
 
 impl TownBell {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x7f;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x09;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -3031,6 +3431,8 @@ impl TownBell {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -3039,8 +3441,8 @@ impl TownBell {
     }
 }
 
-/// `0x80` TRIBE_COMMAND_GO_BACK_TO_WORK (`GameCommand<TRIBE_Command_Go_Back_To_Work>`, formatter `0x140e73a80`: `GoBackToWork(uId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x80` `TRIBE_COMMAND_GO_BACK_TO_WORK` (`GameCommand<TRIBE_Command_Go_Back_To_Work>`, formatter `0x140e73a80`: `GoBackToWork(uId=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GoBackToWork {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3049,9 +3451,13 @@ pub struct GoBackToWork {
 }
 
 impl GoBackToWork {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x80;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -3060,6 +3466,8 @@ impl GoBackToWork {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -3067,8 +3475,8 @@ impl GoBackToWork {
     }
 }
 
-/// `0x81` TRIBE_COMMAND_MULTI_QUEUE (`GameCommand<TRIBE_Command_Multi_Queue>`, formatter `0x140e73c50`: `MultiQueue(commpId=%d, bId=%d, num=%d, tId=%d, count=%d, buttonLocationId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x81` `TRIBE_COMMAND_MULTI_QUEUE` (`GameCommand<TRIBE_Command_Multi_Queue>`, formatter `0x140e73c50`: `MultiQueue(commpId=%d, bId=%d, num=%d, tId=%d, count=%d, buttonLocationId=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MultiQueue {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3084,14 +3492,18 @@ pub struct MultiQueue {
     pub count: i16,
     /// `+0x10`, formatter
     pub button_location_id: i32,
-    /// `+0x14..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x14..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl MultiQueue {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x81;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x14;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -3106,6 +3518,8 @@ impl MultiQueue {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -3119,10 +3533,10 @@ impl MultiQueue {
     }
 }
 
-/// `0x82` TRIBE_COMMAND_SET_GATHER_STATE (`GameCommand<TRIBE_Command_Set_Gather_Point_Self>`, formatter `0x140e741b0`: `SetGatherPointSelf(num=%d)`).
+/// `0x82` `TRIBE_COMMAND_SET_GATHER_STATE` (`GameCommand<TRIBE_Command_Set_Gather_Point_Self>`, formatter `0x140e741b0`: `SetGatherPointSelf(num=%d)`).
 ///
-/// Not in the corpus: the layout is the one of `0x01` RGE_COMMAND_STOP, whose formatter prints the same fields.
-#[derive(Debug, Clone, PartialEq)]
+/// Not in the corpus: the layout is the one of `0x01` `RGE_COMMAND_STOP`, whose formatter prints the same fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetGatherState {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3130,14 +3544,18 @@ pub struct SetGatherState {
     pub num: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl SetGatherState {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x82;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -3148,6 +3566,8 @@ impl SetGatherState {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -3157,10 +3577,10 @@ impl SetGatherState {
     }
 }
 
-/// `0x83` TRIBE_COMMAND_DELETE_OBJECTS (`GameCommand<TRIBE_Command_Delete_Objects>`, formatter `0x140e73390`: `DeleteObjects(num=%d)`).
+/// `0x83` `TRIBE_COMMAND_DELETE_OBJECTS` (`GameCommand<TRIBE_Command_Delete_Objects>`, formatter `0x140e73390`: `DeleteObjects(num=%d)`).
 ///
-/// Not in the corpus: the layout is the one of `0x01` RGE_COMMAND_STOP, whose formatter prints the same fields.
-#[derive(Debug, Clone, PartialEq)]
+/// Not in the corpus: the layout is the one of `0x01` `RGE_COMMAND_STOP`, whose formatter prints the same fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteObjects {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3168,14 +3588,18 @@ pub struct DeleteObjects {
     pub num: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl DeleteObjects {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x83;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -3186,6 +3610,8 @@ impl DeleteObjects {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -3195,10 +3621,10 @@ impl DeleteObjects {
     }
 }
 
-/// `0x84` TRIBE_COMMAND_RESET_BUILDINGS (`GameCommand<TRIBE_Command_Reset_Buildings>`, formatter `0x140e74030`: `ResetBuildings(num=%d)`).
+/// `0x84` `TRIBE_COMMAND_RESET_BUILDINGS` (`GameCommand<TRIBE_Command_Reset_Buildings>`, formatter `0x140e74030`: `ResetBuildings(num=%d)`).
 ///
-/// Not in the corpus: the layout is the one of `0x01` RGE_COMMAND_STOP, whose formatter prints the same fields.
-#[derive(Debug, Clone, PartialEq)]
+/// Not in the corpus: the layout is the one of `0x01` `RGE_COMMAND_STOP`, whose formatter prints the same fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResetBuildings {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3206,14 +3632,18 @@ pub struct ResetBuildings {
     pub num: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (cade_api's `unitIds`, `buildingIds`)
+    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
 impl ResetBuildings {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x84;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
@@ -3224,6 +3654,8 @@ impl ResetBuildings {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
@@ -3233,8 +3665,8 @@ impl ResetBuildings {
     }
 }
 
-/// `0x85` TRIBE_COMMAND_MULTI_GATE (`GameCommand<TRIBE_Command_Multi_Gate>`, formatter `0x140e73bd0`: `Gate(state=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x85` `TRIBE_COMMAND_MULTI_GATE` (`GameCommand<TRIBE_Command_Multi_Gate>`, formatter `0x140e73bd0`: `Gate(state=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MultiGate {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3247,9 +3679,13 @@ pub struct MultiGate {
 }
 
 impl MultiGate {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x85;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x09;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -3260,6 +3696,8 @@ impl MultiGate {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.gap_0x04);
@@ -3269,10 +3707,10 @@ impl MultiGate {
     }
 }
 
-/// `0x86` TRIBE_COMMAND_GO_BACK_TO_WORK2 (`GameCommand<TRIBECommandGoBackToWork>`, its formatter prints no fields).
+/// `0x86` `TRIBE_COMMAND_GO_BACK_TO_WORK2` (`GameCommand<TRIBECommandGoBackToWork>`, its formatter prints no fields).
 ///
-/// Its class is `TRIBECommandGoBackToWork`, the one of `0x80` TRIBE_COMMAND_GO_BACK_TO_WORK: the formatter prints that command, so its names are not used here.
-#[derive(Debug, Clone, PartialEq)]
+/// Its class is `TRIBECommandGoBackToWork`, the one of `0x80` `TRIBE_COMMAND_GO_BACK_TO_WORK`: the formatter prints that command, so its names are not used here.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GoBackToWork2 {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3281,9 +3719,13 @@ pub struct GoBackToWork2 {
 }
 
 impl GoBackToWork2 {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x86;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -3292,6 +3734,8 @@ impl GoBackToWork2 {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
@@ -3299,8 +3743,8 @@ impl GoBackToWork2 {
     }
 }
 
-/// `0x87` TRIBE_COMMAND_CHANGE_PLAYER_NAME (`GameCommand<TRIBECommandChangePlayerName>`, formatter `0x140e72cc0`: `ChangePlayerName(name=%s)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x87` `TRIBE_COMMAND_CHANGE_PLAYER_NAME` (`GameCommand<TRIBECommandChangePlayerName>`, formatter `0x140e72cc0`: `ChangePlayerName(name=%s)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangePlayerName {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3309,9 +3753,13 @@ pub struct ChangePlayerName {
 }
 
 impl ChangePlayerName {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x87;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -3320,6 +3768,8 @@ impl ChangePlayerName {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
@@ -3327,8 +3777,8 @@ impl ChangePlayerName {
     }
 }
 
-/// `0x88` TRIBE_COMMAND_SEND_AI_SIGNAL (`GameCommand<TRIBECommandSendAISignal>`, formatter `0x140e72e00`: `SendAISignal(name=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x88` `TRIBE_COMMAND_SEND_AI_SIGNAL` (`GameCommand<TRIBECommandSendAISignal>`, formatter `0x140e72e00`: `SendAISignal(name=%d)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendAiSignal {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3339,9 +3789,13 @@ pub struct SendAiSignal {
 }
 
 impl SendAiSignal {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x88;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -3351,6 +3805,8 @@ impl SendAiSignal {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.name);
@@ -3359,8 +3815,8 @@ impl SendAiSignal {
     }
 }
 
-/// `0x89` TRIBE_COMMAND_AI_EFFECT_AMOUNT (`GameCommand<TRIBECommandEffectData>`, its formatter prints no fields).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x89` `TRIBE_COMMAND_AI_EFFECT_AMOUNT` (`GameCommand<TRIBECommandEffectData>`, its formatter prints no fields).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AiEffectAmount {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3369,9 +3825,13 @@ pub struct AiEffectAmount {
 }
 
 impl AiEffectAmount {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x89;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -3380,6 +3840,8 @@ impl AiEffectAmount {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
@@ -3387,8 +3849,8 @@ impl AiEffectAmount {
     }
 }
 
-/// `0x8a` TRIBE_COMMAND_AI_EFFECT_PERCENT (`GameCommand<TRIBECommandEffectData>`, its formatter prints no fields).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x8a` `TRIBE_COMMAND_AI_EFFECT_PERCENT` (`GameCommand<TRIBECommandEffectData>`, its formatter prints no fields).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AiEffectPercent {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3397,9 +3859,13 @@ pub struct AiEffectPercent {
 }
 
 impl AiEffectPercent {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x8a;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x04;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
@@ -3408,6 +3874,8 @@ impl AiEffectPercent {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
@@ -3415,8 +3883,8 @@ impl AiEffectPercent {
     }
 }
 
-/// `0x8c` TRIBE_COMMAND_ALL_BACK_TO_WORK (`GameCommand<TRIBE_Command_All_Back_To_Work>`, formatter `0x140e72e80`: `AllBackToWork(uId=%d)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0x8c` `TRIBE_COMMAND_ALL_BACK_TO_WORK` (`GameCommand<TRIBE_Command_All_Back_To_Work>`, formatter `0x140e72e80`: `AllBackToWork(uId=%d)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AllBackToWork {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3425,9 +3893,13 @@ pub struct AllBackToWork {
 }
 
 impl AllBackToWork {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0x8c;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x08;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -3436,6 +3908,8 @@ impl AllBackToWork {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
@@ -3443,8 +3917,8 @@ impl AllBackToWork {
     }
 }
 
-/// `0xc4` TRIBE_COMMAND_GIVE_ATTRIBUTES (`GameCommand<TRIBE_Command_Give_Attributes>`, formatter `0x140e73980`: `GiveAttr(fromComm=%d to=%d, attr=%d, amt=%.2f, cost=%.2f)`).
-#[derive(Debug, Clone, PartialEq)]
+/// `0xc4` `TRIBE_COMMAND_GIVE_ATTRIBUTES` (`GameCommand<TRIBE_Command_Give_Attributes>`, formatter `0x140e73980`: `GiveAttr(fromComm=%d to=%d, attr=%d, amt=%.2f, cost=%.2f)`).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TribeGiveAttributes {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -3477,9 +3951,13 @@ pub struct TribeGiveAttributes {
 }
 
 impl TribeGiveAttributes {
+    /// The packet's first byte.
     pub const BYTE: u8 = 0xc4;
+    /// The length of the fixed part.
     pub const FIXED: usize = 0x2d;
 
+    /// The command in a packet, if the packet fits the layout.
+    #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
@@ -3500,6 +3978,8 @@ impl TribeGiveAttributes {
         })
     }
 
+    /// The packet's bytes.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.amt);
@@ -3522,91 +4002,174 @@ impl TribeGiveAttributes {
 /// A command packet of op 1, decoded by its first byte.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
+    /// [`Interact`].
     Interact(Interact),
+    /// [`Stop`].
     Stop(Stop),
+    /// [`Work`].
     Work(Work),
+    /// [`Move`].
     Move(Move),
+    /// [`Create`].
     Create(Create),
+    /// [`AddAttribute`].
     AddAttribute(AddAttribute),
+    /// [`RgeGiveAttribute`].
     RgeGiveAttribute(RgeGiveAttribute),
+    /// [`AiOrder`].
     AiOrder(AiOrder),
+    /// [`Resign`].
     Resign(Resign),
+    /// [`AddWaypoint`].
     AddWaypoint(AddWaypoint),
+    /// [`Pause`].
     Pause(Pause),
+    /// [`GroupWaypoint`].
     GroupWaypoint(GroupWaypoint),
+    /// [`GroupAiOrder`].
     GroupAiOrder(GroupAiOrder),
+    /// [`UnitAiState`].
     UnitAiState(UnitAiState),
+    /// [`Guard`].
     Guard(Guard),
+    /// [`Follow`].
     Follow(Follow),
+    /// [`Patrol`].
     Patrol(Patrol),
+    /// [`Scout`].
     Scout(Scout),
+    /// [`FormFormation`].
     FormFormation(FormFormation),
+    /// [`BreakFormation`].
     BreakFormation(BreakFormation),
+    /// [`WheelFormation`].
     WheelFormation(WheelFormation),
+    /// [`AboutFaceFormation`].
     AboutFaceFormation(AboutFaceFormation),
+    /// [`Save`].
     Save(Save),
+    /// [`FormationParameters`].
     FormationParameters(FormationParameters),
+    /// [`AutoFormations`].
     AutoFormations(AutoFormations),
+    /// [`LockFormation`].
     LockFormation(LockFormation),
+    /// [`GroupMultiWaypoints`].
     GroupMultiWaypoints(GroupMultiWaypoints),
+    /// [`Chapter`].
     Chapter(Chapter),
+    /// [`AttackMove`].
     AttackMove(AttackMove),
+    /// [`AttackMoveTarget`].
     AttackMoveTarget(AttackMoveTarget),
+    /// [`Retreat`].
     Retreat(Retreat),
+    /// [`UnitTypeAiState`].
     UnitTypeAiState(UnitTypeAiState),
+    /// [`AutoScout`].
     AutoScout(AutoScout),
+    /// [`StopAll`].
     StopAll(StopAll),
+    /// [`TransformObject`].
     TransformObject(TransformObject),
+    /// [`Trigger`].
     Trigger(Trigger),
+    /// [`TransformObjects`].
     TransformObjects(TransformObjects),
+    /// [`SeekShelter`].
     SeekShelter(SeekShelter),
+    /// [`BuildingCommandQueue`].
     BuildingCommandQueue(BuildingCommandQueue),
+    /// [`FireActiveAbility`].
     FireActiveAbility(FireActiveAbility),
+    /// [`RgeGiveAttributes`].
     RgeGiveAttributes(RgeGiveAttributes),
+    /// [`Make`].
     Make(Make),
+    /// [`Research`].
     Research(Research),
+    /// [`Build`].
     Build(Build),
+    /// [`Game`].
     Game(Game),
+    /// [`Explore`].
     Explore(Explore),
+    /// [`BuildWall`].
     BuildWall(BuildWall),
+    /// [`CancelBuild`].
     CancelBuild(CancelBuild),
+    /// [`AttackGround`].
     AttackGround(AttackGround),
+    /// [`TribeGiveAttribute`].
     TribeGiveAttribute(TribeGiveAttribute),
+    /// [`TradeAttribute`].
     TradeAttribute(TradeAttribute),
+    /// [`Repair`].
     Repair(Repair),
+    /// [`Unload`].
     Unload(Unload),
+    /// [`Gate`].
     Gate(Gate),
+    /// [`Flare`].
     Flare(Flare),
+    /// [`Special`].
     Special(Special),
+    /// [`UnitOrder`].
     UnitOrder(UnitOrder),
+    /// [`Diplomacy`].
     Diplomacy(Diplomacy),
+    /// [`Queue`].
     Queue(Queue),
+    /// [`SetGatherPoint`].
     SetGatherPoint(SetGatherPoint),
+    /// [`SetRetreatPoint`].
     SetRetreatPoint(SetRetreatPoint),
+    /// [`SellCommodity`].
     SellCommodity(SellCommodity),
+    /// [`BuyCommodity`].
     BuyCommodity(BuyCommodity),
+    /// [`OffboardTrade`].
     OffboardTrade(OffboardTrade),
+    /// [`UnitTransform`].
     UnitTransform(UnitTransform),
+    /// [`DropRelic`].
     DropRelic(DropRelic),
+    /// [`TownBell`].
     TownBell(TownBell),
+    /// [`GoBackToWork`].
     GoBackToWork(GoBackToWork),
+    /// [`MultiQueue`].
     MultiQueue(MultiQueue),
+    /// [`SetGatherState`].
     SetGatherState(SetGatherState),
+    /// [`DeleteObjects`].
     DeleteObjects(DeleteObjects),
+    /// [`ResetBuildings`].
     ResetBuildings(ResetBuildings),
+    /// [`MultiGate`].
     MultiGate(MultiGate),
+    /// [`GoBackToWork2`].
     GoBackToWork2(GoBackToWork2),
+    /// [`ChangePlayerName`].
     ChangePlayerName(ChangePlayerName),
+    /// [`SendAiSignal`].
     SendAiSignal(SendAiSignal),
+    /// [`AiEffectAmount`].
     AiEffectAmount(AiEffectAmount),
+    /// [`AiEffectPercent`].
     AiEffectPercent(AiEffectPercent),
+    /// [`AllBackToWork`].
     AllBackToWork(AllBackToWork),
+    /// [`TribeGiveAttributes`].
     TribeGiveAttributes(TribeGiveAttributes),
     /// A packet whose byte has no layout here, or that its layout does not fit.
     Unknown(Vec<u8>),
 }
 
 impl Command {
+    /// The command in a packet.
+    #[must_use]
+    #[allow(clippy::too_many_lines)] // one arm per command byte
     pub fn decode(packet: &[u8]) -> Self {
         let decoded = match packet.first().copied() {
             Some(Interact::BYTE) => Interact::decode(packet).map(Self::Interact),
@@ -3727,6 +4290,7 @@ impl Command {
     }
 
     /// The packet's bytes, as the recording stores them.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         match self {
             Self::Interact(c) => c.encode(),
