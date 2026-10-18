@@ -141,6 +141,29 @@ pub struct HuntTask {
     pub kind4: i16,
 }
 
+/// `FUN_140ac5210`, the sprite a hunter stands with: the task's carrying sprite while it holds a
+/// whole unit or more of the task's resource and the sprite exists, else its master's standing
+/// sprite (`standing`).
+pub(crate) fn stand_sprite(
+    task: &HuntTask,
+    standing: i16,
+    held_kind: i16,
+    held: f32,
+    graphics: &std::collections::BTreeMap<i16, Graphic>,
+) -> Option<Graphic> {
+    let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
+    let carrying = task.sprites[3];
+    if task.resource != -1
+        && task.resource == held_kind
+        && 1 <= held as i32
+        && g(carrying).is_some()
+    {
+        g(carrying)
+    } else {
+        g(standing)
+    }
+}
+
 /// The player's resource of what a unit carries (`FUN_140fdd4f0`): the kinds 0 to 3, 9 and 56
 /// themselves, the foods 15 to 17 food (0), any other none (−1); then 0 for a kind beyond the
 /// player's `attributes` (`FUN_140efe5b0`).

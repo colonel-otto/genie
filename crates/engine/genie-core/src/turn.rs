@@ -235,7 +235,8 @@ pub enum Command {
         train_time: f32,
         /// The building's work rate.
         rate: f32,
-        /// The unit's cost entries: resource, amount, paid.
+        /// The unit's three cost entries as its master holds them: resource (−1 for none),
+        /// amount, paid.
         cost: Vec<(i16, i16, bool)>,
     },
     /// RESEARCH (0x65, `0x140e7e270`): the technology `tech` at the building `building`
@@ -297,6 +298,14 @@ pub enum Command {
         unit_type: i32,
         /// `+0x18`.
         sound: bool,
+    },
+    /// RESIGN (0x0b, `FUN_140d25af0`): the comm player `player` resigns, or drops (`dropped`)
+    /// ([`Turns::resign`]).
+    Resign {
+        /// The comm player (the world player of the same number in the slice's games).
+        player: usize,
+        /// A drop from the game, not a resignation.
+        dropped: bool,
     },
     /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
     /// auto scout order, or the stop order when it scouts already ([`Turns::auto_scout`]).
@@ -3705,17 +3714,13 @@ impl Unit {
                     .masters
                     .and_then(|m| m.get(self.life.master_id))
                     .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
-                let g = |id: i16| (0 <= id).then(|| c.graphics.get(&id).copied()).flatten();
-                let carrying = task.sprites[3];
-                let stand = if task.resource != -1
-                    && task.resource == self.life.attribute_type
-                    && 1 <= self.life.amount as i32
-                    && g(carrying).is_some()
-                {
-                    g(carrying)
-                } else {
-                    g(master.standing_sprite)
-                };
+                let stand = crate::hunt::stand_sprite(
+                    &task,
+                    master.standing_sprite,
+                    self.life.attribute_type,
+                    self.life.amount,
+                    c.graphics,
+                );
                 if let Some(s) = stand {
                     crate::attack::set_sprite(&mut self.sprite, s, c.streams.get(Stream::Sprite));
                 }
@@ -4809,6 +4814,20 @@ pub struct Player {
     pub freezes: Vec<(u32, i32, Unsupported)>,
     /// A command the slice could not model stopped the whole player: its objects freeze.
     pub stopped: bool,
+    /// `game_status` (`+0x89`, saved): playing, won or lost ([`crate::game_status`]).
+    pub game_status: u8,
+    /// `+0x8b` (saved with `+0x8c` as its bit 1): the player resigned (slot 3, RESIGN).
+    pub resigned: bool,
+    /// `+0x8c`: its resignation was a drop from the game.
+    pub dropped: bool,
+    /// `allied_victory` (`+0x2d0`, saved): its allies' victory counts as its own.
+    pub allied_victory: bool,
+    /// Its victory conditions' state (`player+0x68`'s `+0x20`, the save's `victory`): 2 when
+    /// they are met (`FUN_1414f35d0`).
+    pub victory: u8,
+    /// `fealty` (`+0x12f8`, saved): the player a defeated player's resources and units would go
+    /// to.
+    pub fealty: i16,
 }
 
 impl Turns {
@@ -5077,6 +5096,10 @@ pub struct GameState {
     pub pending_debit: Vec<[f32; 4]>,
     /// Every player's technology states.
     pub techs: Vec<Vec<crate::tech::TechState>>,
+    /// Every player's game status and resignation (`+0x89`, `+0x8b`).
+    pub statuses: Vec<(u8, bool)>,
+    /// The world's game state (`+0x88`).
+    pub game_state: u32,
     /// Objects the slice modelled but got wrong this tick: they take the game's state too.
     pub resync: Vec<i32>,
     /// The players' visible maps and the unified map, when the slice's differ.
@@ -5129,6 +5152,7 @@ impl Turns {
     pub fn force(&mut self, game: &GameState) -> Vec<(usize, i32, Unsupported)> {
         let mut notes = Vec::new();
         self.frame_seed = game.frame_seed;
+        self.game_state = game.game_state;
         self.recycling.next_id = game.next_reusable_id;
         if let Some(pool) = game.missile_pool.as_ref() {
             self.recycling.missiles.clone_from(pool);
@@ -5163,6 +5187,10 @@ impl Turns {
                     self.players[p].techs.clone_from(t);
                 }
                 self.players[p].stopped = false;
+            }
+            if let Some(&(status, resigned)) = game.statuses.get(p) {
+                self.players[p].game_status = status;
+                self.players[p].resigned = resigned;
             }
             // each update's first unmodelled part is its own: a freeze's would hide a later stop
             self.players[p].unsupported = None;
@@ -5280,7 +5308,7 @@ impl crate::tech::Attributes for Player {
 
 impl Player {
     /// A command the slice does not model for this player: the player stops.
-    fn stop(&mut self, tick: u32, why: Unsupported) {
+    pub(crate) fn stop(&mut self, tick: u32, why: Unsupported) {
         let _ = self.unsupported.get_or_insert((tick, 0, why));
         self.stopped = true;
     }
@@ -5346,6 +5374,11 @@ pub struct Turns {
     pub mode_680: i32,
     /// The game mode (the save's `mGameMode`, options `+0x34`).
     pub game_mode: i32,
+    /// The world's game state (`+0x88`, the save's `tempGameState`): 1 once the game is over.
+    pub game_state: u32,
+    /// The scenario's `victory_conquest` (`world+0x7e0`'s `+0x2c0`, `FUN_140ca4d20`): the game
+    /// ends when one side is left.
+    pub victory_conquest: bool,
     /// The flag a new combat object's setup reads at `FUN_140982ff0()`'s `+0x921`: the unit's
     /// cost also counts in attribute 246. The tick oracle reads 1 in MarvinBlue/426048731 (the
     /// attribute grows by a villager's cost at its spawn); where the save holds it is not known.
@@ -5418,6 +5451,8 @@ impl Turns {
             carry_rule: false,
             mode_680: 0,
             game_mode: 0,
+            game_state: 0,
+            victory_conquest: false,
             unit_cost_246: false,
             zones: crate::zones::Zones::default(),
             recycling: Recycling::default(),
@@ -5628,6 +5663,12 @@ impl Turns {
                     self.unit_order(player, ids, action)
                 };
                 if let Err(e) = result {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
+                }
+            }
+            Command::Resign { player, dropped } => {
+                if let Err(e) = self.resign(player, dropped) {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }
@@ -6241,9 +6282,10 @@ impl Turns {
     }
 
     /// QUEUE at one building: per unit (the game recurses, so the last unit drawn is queued first)
-    /// the villager's male or female draw, then the cost and the queue entry. A unit the player
-    /// cannot pay for (`FUN_14162fb60` -> `FUN_141618db0`: each cost entry but the population's,
-    /// paid or not, needs its amount) is not queued; its draw stays.
+    /// the villager's male or female draw, then the cost and the queue entry, which keeps the
+    /// master's three cost entries (resource and amount) for a cancel's refund. A unit the
+    /// player cannot pay for (`FUN_14162fb60` -> `FUN_141618db0`: each cost entry but the
+    /// population's, paid or not, needs its amount) is not queued; its draw stays.
     fn queue(
         &mut self,
         player: usize,
@@ -6282,7 +6324,7 @@ impl Turns {
             if !can_pay {
                 continue;
             }
-            for &(resource, amount, _) in cost.iter().filter(|c| c.2) {
+            for &(resource, amount, _) in cost.iter().filter(|c| 0 <= c.0 && c.2) {
                 let slot = owner
                     .resources
                     .get_mut(resource as usize)
@@ -6294,14 +6336,19 @@ impl Turns {
                 .get_or_insert_with(|| Production {
                     queue: std::collections::VecDeque::default(),
                     action: false,
+                    make_paid: false,
                     progress: 0.0,
                     rate: q.rate,
                 });
+            let entry = |k: usize| {
+                cost.get(k)
+                    .map_or((-1, 0.0), |&(r, a, _)| (i32::from(r), f32::from(a)))
+            };
             production.queue.push_back(Queued {
                 master,
                 tech: -1,
                 train_time: q.train_time,
-                costs: [(-1, 0.0); 3],
+                costs: [entry(0), entry(1), entry(2)],
             });
         }
         Ok(())
@@ -6619,6 +6666,7 @@ impl Turns {
         self.streams.seed_all(s1);
         self.player_time[self.player_turn] = 0;
         self.player_turn = (self.player_turn + 1) % self.players.len();
+        self.victory_check();
         self.frame_seed = self.streams.get(Stream::World).rand15();
     }
 }

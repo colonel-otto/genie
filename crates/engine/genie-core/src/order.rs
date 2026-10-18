@@ -945,7 +945,7 @@ impl Turns {
     /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: a unit without actions
     /// (others are not modelled here) in state 2 takes its standing sprite where the slice holds
     /// its sprite; an Explore goes, its `MoveTo` stopping the unit.
-    fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+    pub(crate) fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
         let unit = &mut self.players[p].objects[idx];
         if let Some(e) = unit.explore.take()
             && e.move_to.is_some()

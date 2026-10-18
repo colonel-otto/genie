@@ -1086,7 +1086,7 @@ impl Mover {
 
     /// `FUN_140f98e80` on the walked level: its path goes, its parents with it, and it holds the
     /// defaults (its tries back to 10, flags clear; its repath time stays).
-    fn reset_level(&mut self) {
+    pub(crate) fn reset_level(&mut self) {
         self.paths.truncate(1);
         let level = &mut self.paths[0];
         *level = PathData {

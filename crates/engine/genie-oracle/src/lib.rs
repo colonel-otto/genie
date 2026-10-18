@@ -1333,13 +1333,15 @@ fn production(
     let progress = match building.production_queue_actions.entries().next() {
         None if queue.is_empty() => return Ok(None),
         None => None,
-        Some((102, action)) => Some(
+        Some((102, action)) => Some((
             action
                 .tribe_action_make_obj
                 .as_deref()
                 .ok_or(Unsupported("a saved make action without its part"))?
                 .work_done,
-        ),
+            // `+0x60` is the base's subActionValue
+            action.base().is_some_and(|b| b.sub_action_value != 0),
+        )),
         // a research's make action: its progress (its state, 6, and start time are not held)
         Some((103, action)) => {
             let tech = action
@@ -1351,7 +1353,7 @@ fn production(
                     "a saved research action in a state other than 6",
                 ));
             }
-            Some(tech.m_research_progress)
+            Some((tech.m_research_progress, false))
         }
         Some(_) => {
             return Err(Unsupported(
@@ -1375,7 +1377,8 @@ fn production(
     Ok(Some(genie_core::production::Production {
         queue,
         action: progress.is_some(),
-        progress: progress.unwrap_or(0.0),
+        make_paid: progress.is_some_and(|(_, paid)| paid),
+        progress: progress.map_or(0.0, |(work, _)| work),
         rate: building.tribe_combat_object.work_rate_powerup + work_rate,
     }))
 }
@@ -1756,10 +1759,12 @@ const fn unmodelled_command(p: &de::command::Command) -> &'static str {
 /// `BaseWorld`'s fields before the map, the frame seed (`mCurrentFrameRandomSeed`, world+0x7d0) and
 /// the turn order (`player_turn`, `player_time_delta[i]`).
 fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
+    let victory = &header.world.base_world.victory_conditions;
     let players = header
         .players()
         .iter()
-        .map(|p| {
+        .enumerate()
+        .map(|(i, p)| {
             let civ = p.world_player().base.civ_id;
             let attributes = &p.world_player().base.attributes;
             let resource = |i: usize| attributes.get(i).copied().unwrap_or_default();
@@ -1796,6 +1801,14 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 unsupported: None,
                 freezes: Vec::new(),
                 stopped: false,
+                game_status: p.world_player().base.game_status,
+                // `+0x8b` holds the drop in its bit 1 (the load moves it to `+0x8c`)
+                resigned: p.world_player().base.resigned & 2 == 0
+                    && p.world_player().base.resigned != 0,
+                dropped: p.world_player().base.resigned & 2 != 0,
+                allied_victory: p.world_player().base.allied_victory != 0,
+                victory: victory.get(i).map_or(0, |v| v.victory),
+                fealty: p.world_player().fealty as i16,
             }
         })
         .collect();
@@ -1825,6 +1838,8 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     // a statistics flag the tick oracle reads as 1 in MarvinBlue/426048731 (Turns::unit_cost_246)
     turns.unit_cost_246 = true;
     turns.game_mode = header.file_header.game_options_read.game_options.game_mode;
+    turns.game_state = u32::from(world.temp_game_state);
+    turns.victory_conquest = world.tribe_scenario.base_scenario.victory_conquest != 0;
     if let Some(table) = masters {
         turns.drop_sites.clone_from(&table.drop_sites);
         turns.graphics = table.graphics.clone();
@@ -2213,6 +2228,15 @@ fn moving_stats(
 /// A combat master's `build_inventory` entries `(resource, amount, flag)`, three shorts each; the
 /// flag set means paid. Entries of resource -1 are empty.
 fn build_cost(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
+    build_entries(inventory)
+        .into_iter()
+        .filter(|&(kind, ..)| kind >= 0)
+        .collect()
+}
+
+/// A combat master's `build_inventory` entries `(resource, amount, paid)`, the empty ones
+/// (resource −1) kept in their places.
+fn build_entries(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
     inventory
         .iter()
         .map(|e| {
@@ -2221,7 +2245,6 @@ fn build_cost(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
             let flag = i16::from_le_bytes([e[4], e[5]]);
             (kind, amount, flag != 0)
         })
-        .filter(|&(kind, ..)| kind >= 0)
         .collect()
 }
 
@@ -2730,6 +2753,13 @@ impl Decoder {
                 let order = genie_core::turn::Order::Follow(c.target);
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
+            // RESIGN: the comm player, the world player of the same number in these games
+            Packet::Resign(c) => {
+                return Some(Command::Resign {
+                    player: c.commp_id as usize,
+                    dropped: c.dropped != 0,
+                });
+            }
             Packet::Gate(c) => {
                 return Some(Command::Gate {
                     player: c.commp_id as usize,
@@ -2931,7 +2961,8 @@ fn queue_data(
             return Err(Unsupported("villager sexes that cost or train differently"));
         }
     }
-    let cost = build_cost(&unit.build_inventory);
+    // the three entries as the master holds them: the queue entry keeps them all
+    let cost = build_entries(&unit.build_inventory);
     Ok(QueueData {
         train_time: f32::from(time),
         rate: powerup + work_rate,
@@ -4277,6 +4308,7 @@ fn game_state(header: &Header, masters: Option<&MasterTable>) -> genie_core::tur
     let mut game = genie_core::turn::GameState {
         frame_seed: world.current_frame_random_seed,
         next_reusable_id: world.next_reusable_object_id,
+        game_state: u32::from(world.temp_game_state),
         ..Default::default()
     };
     for p in header.players() {
@@ -4290,6 +4322,11 @@ fn game_state(header: &Header, masters: Option<&MasterTable>) -> genie_core::tur
         let r = |i: usize| attributes.get(i).copied().unwrap_or_default();
         game.resources.push([r(0), r(1), r(2), r(3)]);
         game.pending_debit.push(p.world_player().base.pending_debit);
+        let base = &p.world_player().base;
+        game.statuses.push((
+            base.game_status,
+            base.resigned & 2 == 0 && base.resigned != 0,
+        ));
         let techs = &p.world_player().tech_tree.tech_player_tree;
         game.techs.push(techs.iter().map(tech_state).collect());
     }
@@ -4305,7 +4342,14 @@ fn compare_players(
     report: &mut TickReport,
 ) -> Result<(), Error> {
     let seen = &after.seen;
-    // the map's terrain is the world's: its differences go with Gaia's
+    // the world's game state and the map's terrain go with Gaia's differences
+    if turns.game_state != after.game.game_state {
+        let d = format!(
+            "game state slice {} game {}",
+            turns.game_state, after.game.game_state
+        );
+        report.differences.push((0, d));
+    }
     if let Some(t) = turns.spatial.terrain.as_ref() {
         for d in tile_differences(t, after.width, &after.terrain) {
             report.differences.push((0, d));
@@ -4339,6 +4383,16 @@ fn compare_players(
             && *r != player.resources
         {
             let d = format!("resources slice {:?} game {:?}", player.resources, r);
+            report.differences.push((id, d));
+        }
+        if let Some(&(status, resigned)) = after.game.statuses.get(p)
+            && (status, resigned) != (player.game_status, player.resigned)
+        {
+            let d = format!(
+                "game status slice {:?} game {:?} (status, resigned)",
+                (player.game_status, player.resigned),
+                (status, resigned)
+            );
             report.differences.push((id, d));
         }
         if !player.stopped {

@@ -2460,7 +2460,7 @@ impl UnitAi {
 
     /// [`UnitAi::stop_current`] with the unit's position and master's class (`place`), which only
     /// an order the stop ends reads (None: the caller knows it does not end one).
-    fn stop_with(
+    pub(crate) fn stop_with(
         &mut self,
         keep_order: bool,
         place: Option<([f32; 2], i16)>,
@@ -2487,6 +2487,16 @@ impl UnitAi {
         self.current_action = -1;
         self.stop_after_kill = false;
         Ok(())
+    }
+
+    /// `FUN_140c4dcb0` ("Forgetting current target"): the last target (`+0x6c`, `+0x70`) and the
+    /// current one (`+0x48`, `+0x4c`) go, the target point with them.
+    pub(crate) const fn forget_targets(&mut self) {
+        self.last_target = -1;
+        self.last_target_type = -1;
+        self.current_target = -1;
+        self.target_type = -1;
+        self.target_point = [-1.0; 3];
     }
 
     /// The reset at the full update once the unit's actions ended (the unit's slot 0x430 false):

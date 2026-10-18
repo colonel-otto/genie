@@ -15,7 +15,7 @@ pub struct Queued {
     /// The technology researched, −1 for a unit.
     pub tech: i16,
     /// What its queue entry paid (`+0x8`: three attributes and amounts), which a research's start
-    /// reads; for a unit QUEUE queues, not held ((−1, 0) each).
+    /// and a cancel's refund read.
     pub costs: [(i32, f32); 3],
     /// The seconds of work it takes (the master's train time at this building).
     pub train_time: f32,
@@ -28,6 +28,10 @@ pub struct Production {
     pub queue: VecDeque<Queued>,
     /// The make action exists (the building's production action list holds it).
     pub action: bool,
+    /// The make action's `+0x60` (its base's `subActionValue`): set when the building made it
+    /// for a unit its queue paid for (`FUN_140acb140` with 0), so its destructor gives nothing
+    /// back; clear, the destructor refunds the unit's paid costs (`FUN_141630770`).
+    pub make_paid: bool,
     /// `+0x6c`: the seconds of work done on the first unit.
     pub progress: f32,
     /// The building's work rate: its `mWorkRatePowerup` plus its master's `work_rate`.
@@ -106,6 +110,7 @@ mod tests {
                 costs: [(-1, 0.0); 3],
             }]),
             action: true,
+            make_paid: true,
             progress: 0.0,
             rate: 1.0,
         }

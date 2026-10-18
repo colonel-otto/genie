@@ -51,7 +51,7 @@ const RELIC: i16 = 285;
 const VILLAGER: i16 = 4;
 /// The make action's unit-AI action value (`0x26b`), which its constructor sets and its end
 /// notifies.
-const MAKE_ACTION: i32 = 0x26b;
+pub(crate) const MAKE_ACTION: i32 = 0x26b;
 
 /// A new moving object's right vector's z (`FUN_1411580a0` reads `DAT_14330ec20`).
 pub(crate) const START_RIGHT_Z: f32 = crate::image::spawn::START_RIGHT_Z;
@@ -655,6 +655,8 @@ impl Turns {
             }
             if let Some(production) = unit.production.as_mut() {
                 production.action = true;
+                // the queue paid for the unit (FUN_1411e7dc0 makes it with 0): `+0x60` set
+                production.make_paid = true;
             }
             self.players[p].add_attribute(IN_PRODUCTION, pop)?;
         }
