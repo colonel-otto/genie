@@ -163,6 +163,8 @@ enum Readiness {
 
 /// The gate class, whose parts' gaps readyToAttack measures.
 const GATE: i16 = 39;
+/// The villagers' class, whose attack ends on any dead target.
+const VILLAGER: i16 = 4;
 
 impl Attack {
     /// The constructor (`FUN_140a7c210`, from Hunt's set_state 12 with the master's weapon range,
@@ -455,9 +457,25 @@ impl Attack {
     pub fn update(&mut self, mut walk: Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
         self.timer += walk.dt;
         if self.state != KILLED && 2 < s.victim.state {
-            return Err(Unsupported(
-                "an Attack whose target died before its swing ended",
-            ));
+            // the target died before the attack ended (the update's start): a dead tree (class
+            // 15) up to state 5 keeps a non-villager's attack going, and one of stance 0 that
+            // moves would wait (set_state 5), neither modelled; a villager's unit AI keeps a dead
+            // target of Gaia's (another's FUN_140c5e1e0 forgets, not modelled). The attack lets
+            // the target go (slot 0x68 with none) and its point, posts no notify as the hunt's
+            // sub-action (`+0x60`), ends (set_state 1) and returns 5
+            if s.own.class != VILLAGER {
+                return Err(Unsupported(
+                    "an Attack of a unit other than a villager whose target died",
+                ));
+            }
+            if s.victim.player != 0 {
+                return Err(Unsupported(
+                    "a villager's Attack whose player-owned target died (its unit AI forgets it)",
+                ));
+            }
+            self.point = [NONE; 3];
+            self.finish(&mut walk, s)?;
+            return Ok(5);
         }
         let t = walk
             .world
