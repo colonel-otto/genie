@@ -1595,6 +1595,14 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
             .iter()
             .map(genie_core::unit_ai::Notify::from_bytes)
             .collect(),
+        // the load's factory capacity, doubled for what it reads
+        notify_capacity: genie_core::unit_ai::notify_capacity(
+            combat.need_unit_ai as u32,
+            ai.temp_notify.len(),
+        ),
+        processing: false,
+        buffered: Vec::new(),
+        commanded: false,
     })
 }
 

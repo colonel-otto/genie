@@ -641,7 +641,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// clears `+0x900`, puts the unit on its standing sprite (slot 0x68 with `+0x80`) and runs the
     /// range test. A `MoveTo` that starts arrived and a notify posted while the AI runs (its
     /// buffer, `FUN_140c55270`) are not modelled.
-    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<bool, Unsupported> {
+    fn attack(
+        &mut self,
+        target: i32,
+        force: bool,
+        ai: &UnitAi,
+    ) -> Result<crate::unit_ai::Attacked, Unsupported> {
         let unit = &mut *self.unit;
         let master = self
             .masters
@@ -654,8 +659,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 "the attack command of a unit of class 51 or 54",
             ));
         }
+        let no = crate::unit_ai::Attacked::default;
         let Some(t) = self.spatial.get_known(target)?.copied() else {
-            return Ok(false);
+            return Ok(no());
         };
         if unit.attack.is_some_and(|a| a.target == target) {
             if force {
@@ -663,7 +669,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                     "a forced attack command on its own Attack's target (slot 0x48)",
                 ));
             }
-            return Ok(true);
+            return Ok(crate::unit_ai::Attacked {
+                attacks: true,
+                posted: Vec::new(),
+            });
         }
         if master.class == 4 {
             return Err(Unsupported(
@@ -722,14 +731,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         if arrived {
             return Err(Unsupported("an attack command whose MoveTo starts arrived"));
         }
-        if !posted.is_empty() {
-            return Err(Unsupported(
-                "a notify an attack command posts while its unit AI runs",
-            ));
-        }
         unit.attack = Some(attack);
         self.takes.push(target);
-        Ok(true)
+        Ok(crate::unit_ai::Attacked {
+            attacks: true,
+            posted,
+        })
     }
 
     fn set_under_attack(&mut self, value: bool) {

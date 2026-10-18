@@ -84,6 +84,20 @@ pub const ORDER_ON_TARGET: i32 = 0x2db;
 const GO_ON: u32 = 2;
 /// "Notify processing returned stop or new action, breaking."
 const BREAK: u32 = 3;
+/// "I'm dead, purging notifyQueue and returning FALSE."
+const DEAD: u32 = 4;
+
+/// The notify queue's capacity of a unit AI of `ai_type` holding `count` notifies: the
+/// factory's (`FUN_141215560`: 5 for the artifact's and the livestock's, types 14 and 19; 10
+/// for the others), doubled until they fit.
+#[must_use]
+pub const fn notify_capacity(ai_type: u32, count: usize) -> usize {
+    let mut c = if matches!(ai_type, 14 | 19) { 5 } else { 10 };
+    while c < count {
+        c *= 2;
+    }
+    c
+}
 
 /// A queued order (the save's `temp_order`, 0x34 bytes), which the order queue (`+0x18` count,
 /// `+0x20` array) runs once the unit can take it ([`UnitAi::run_orders`]).
@@ -246,10 +260,21 @@ pub struct UnitAi {
     /// A building's or tower's command queue (`+0x1f0`..`+0x1f8`, 0x34-byte orders: the
     /// building command queue a gather point of several steps fills), its length.
     pub building_orders: usize,
-    /// The notify queue (`+0x28` count, `+0x30` array), oldest first. Its capacity (`+0x2c`)
-    /// decides only where a notify posted while the queue is processed goes, which the slice
-    /// never does.
+    /// The notify queue (`+0x28` count, `+0x30` array), oldest first.
     pub notifies: Vec<Notify>,
+    /// Its capacity (`+0x2c`, not saved): the factory's 10 (5 for the artifact's and the
+    /// livestock's, types 14 and 19), doubled by a post that finds it full outside the
+    /// processing (`FUN_140c42470`).
+    pub notify_capacity: usize,
+    /// `+0x38`: the notifies are being processed; a post that finds the queue full then goes to
+    /// the buffer (`DAT_143e6f930`), which the processing's end flushes into the queue
+    /// (`FUN_140c55270`).
+    pub processing: bool,
+    /// The buffered notifies (the game's buffer is global; one unit AI processes at a time).
+    pub buffered: Vec<Notify>,
+    /// This update gave the unit an action of its own (the attack command, from `AttackObject`):
+    /// its action list is no longer as [`Surroundings::busy`] read it.
+    pub commanded: bool,
     /// `+0xc0`, the attackers (count `+0xc8`): a set of object ids kept sorted
     /// (`FUN_140b43f30`), which a boar's damage notify adds to and the full update prunes; the
     /// save's `numberUnits` and `tempInt`.
@@ -458,6 +483,16 @@ pub fn can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
     Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
 }
 
+/// What [`UnitSide::attack`] answers: the unit attacks the target, and the notifies the command
+/// posted to its unit AI (slot 0x328 with the kind and three parameters).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Attacked {
+    /// The unit attacks the target.
+    pub attacks: bool,
+    /// The notifies posted, in order.
+    pub posted: Vec<(i32, [i32; 3])>,
+}
+
 /// The caller's answer to a [`Search`].
 /// What the unit AI asks of its unit and the world while it runs, each answered at once (the game
 /// calls them from inside the AI): its searches over the objects-in-sight registry
@@ -471,12 +506,13 @@ pub trait UnitSide {
     fn closest(&mut self, search: &Search<'_>) -> Result<Found, Unsupported>;
 
     /// The unit's attack command on object `target` (slot 0x338, `FUN_14120cea0`), forced or
-    /// not, while its unit AI stands as `ai`: true when the unit attacks it.
+    /// not, while its unit AI stands as `ai`: true when the unit attacks it, with the notifies
+    /// the command posts to the unit AI (kind and parameters), which the AI queues.
     ///
     /// # Errors
     ///
     /// What the command does not model.
-    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<bool, Unsupported>;
+    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<Attacked, Unsupported>;
 
     /// The unit's `+0x685`, `underAttackValue`, becomes `value` (`FUN_14119d2d0`).
     fn set_under_attack(&mut self, value: bool);
@@ -496,7 +532,7 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
         self(search)
     }
 
-    fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<bool, Unsupported> {
+    fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
         Err(Unsupported("a unit AI's attack without its unit"))
     }
 
@@ -885,6 +921,10 @@ impl UnitAi {
             orders: Vec::new(),
             building_orders: 0,
             notifies: Vec::new(),
+            notify_capacity: notify_capacity(ai_type, 0),
+            processing: false,
+            buffered: Vec::new(),
+            commanded: false,
             attackers: Vec::new(),
         })
     }
@@ -1497,6 +1537,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<Vec<Effect>, Unsupported> {
         let retarget = retarget_kind(self.ai_type)?;
+        self.commanded = false;
         // the full update's start: the time since the last enemy sighting grows by the world's dt
         self.time_since_enemy += at.dt_seconds;
         let mut fx = Vec::new();
@@ -1510,10 +1551,14 @@ impl UnitAi {
         self.look_around_timer = self.look_around_timer.wrapping_add(dt);
         self.idle_timer = self.idle_timer.wrapping_add(dt);
         let result = self.process_notifies(dt, at, computer, ai, side, &mut fx)?;
+        if result == DEAD {
+            self.boar_tail(at, computer, ai, side, &mut fx)?;
+            return Ok(fx);
+        }
         self.end_notifies(dt, at, &mut fx)?;
-        // slot 0x430 again: a stop emptied the action list
+        // slot 0x430 again: a stop emptied the action list, an attack command filled it
         let stopped = fx.contains(&Effect::Stop);
-        let busy = at.busy && !stopped;
+        let busy = (at.busy && !stopped) || self.commanded;
         if !busy {
             self.reset_ended_action(at);
             if self.current_order != -1 {
@@ -1534,18 +1579,30 @@ impl UnitAi {
         }
         self.idle_part(busy, at, computer, ai, side, &mut fx)?;
         self.look_around(computer, ai)?;
-        // the boar's slot 4 (0x140c2c010) after the base: its second idle check runs only for a
-        // timer the base's left past the timeout (a unit with an action), and a boar without a
-        // target calms down
+        self.boar_tail(at, computer, ai, side, &mut fx)?;
+        Ok(fx)
+    }
+
+    /// The boar's slot 4 (`0x140c2c010`) after the base, however that ended: its second idle
+    /// check runs only for a timer the base's left past the timeout (a unit with an action), and
+    /// a boar without a target calms down.
+    fn boar_tail(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
         if let Some(home) = self.home
             && !home.furious
             && self.adjusted_idle_timeout < self.idle_timer
         {
             self.idle_timer = 0;
-            self.process_idle(at, computer, ai, side, &mut fx)?;
+            self.process_idle(at, computer, ai, side, fx)?;
         }
         self.calm_down();
-        Ok(fx)
+        Ok(())
     }
 
     /// The target block at the full update's start (`0x140c66b10`): a unit inside another
@@ -1669,10 +1726,18 @@ impl UnitAi {
     ) -> Result<u32, Unsupported> {
         let mut result = GO_ON;
         while !self.notifies.is_empty() && result == GO_ON {
+            self.processing = true;
             let mut i = 0;
             while i < self.notifies.len() {
                 let n = self.notifies[i];
                 result = self.handle(n, dt, at, computer, ai_rng, side, fx)?;
+                if result == DEAD {
+                    // "I'm dead, purging notifyQueue and returning FALSE.": the full update ends
+                    self.processing = false;
+                    self.flush_buffered();
+                    self.end_notifies(dt, at, fx)?;
+                    return Ok(DEAD);
+                }
                 if result == BREAK || result == 0xd {
                     break;
                 }
@@ -1681,6 +1746,8 @@ impl UnitAi {
             if result == GO_ON {
                 self.end_notifies(dt, at, fx)?;
             }
+            self.processing = false;
+            self.flush_buffered();
         }
         Ok(result)
     }
@@ -1744,9 +1811,29 @@ impl UnitAi {
             _ => true,
         };
         if taken {
-            self.notifies.push(n);
+            self.append(n);
         }
         Ok(())
+    }
+
+    /// `FUN_140c42470`: a notify joins the queue; a full queue doubles its capacity, but while
+    /// it is processed the notify goes to the buffer instead.
+    fn append(&mut self, n: Notify) {
+        if self.notify_capacity <= self.notifies.len() {
+            if self.processing {
+                self.buffered.push(n);
+                return;
+            }
+            self.notify_capacity *= 2;
+        }
+        self.notifies.push(n);
+    }
+
+    /// `FUN_140c55270`: the buffered notifies join the queue, in order.
+    fn flush_buffered(&mut self) {
+        for n in std::mem::take(&mut self.buffered) {
+            self.append(n);
+        }
     }
 
     /// The boar's damage notify (`FUN_140c25770`, case 500): at no hit points left
@@ -1769,7 +1856,7 @@ impl UnitAi {
     ) -> Result<u32, Unsupported> {
         if n.p[1] < 1 {
             self.end_notifies(time, at, fx)?;
-            return Ok(4);
+            return Ok(DEAD);
         }
         if let Err(i) = self.attackers.binary_search(&n.caller) {
             self.attackers.insert(i, n.caller);
@@ -1845,9 +1932,16 @@ impl UnitAi {
                 "AttackObject's slot 0xa0 of a unit AI other than a boar's",
             ));
         }
-        if !side.attack(target, force, self)? {
+        let attacked = side.attack(target, force, self)?;
+        // the unit's posts (slot 0x328 -> the AI's slot 0x38) while the AI processes its
+        // notifies: into its queue, or the buffer when it is full
+        for (kind, p) in attacked.posted {
+            self.post(Notify::own(at.id, kind, p), at.state)?;
+        }
+        if !attacked.attacks {
             return Ok(false);
         }
+        self.commanded = true;
         self.set_action(ATTACK_ACTION);
         self.set_target(target, i32::from(t.class), t.position);
         Ok(true)
@@ -2032,6 +2126,14 @@ impl UnitAi {
             | 0x259..=0x262
             | 0x265..=0x269
             | 0x2be => Ok(GO_ON),
+            // readyToAttack's target out of reach (0x1fd): a unit on the attack order that cannot
+            // move (FUN_140fdd080: a master of type 30 and up with speed) gives the order up
+            0x1fd => {
+                if self.current_order == ATTACK_ORDER && !(29 < at.kind && 0.0 < at.speed) {
+                    self.current_order = -1;
+                }
+                Ok(GO_ON)
+            }
             // "Unit #%d is no longer doing an action on me.": an attacker leaves the set
             NO_LONGER_ON_ME => {
                 if let Ok(i) = self.attackers.binary_search(&n.caller) {
@@ -2715,9 +2817,17 @@ mod tests {
             Err(Unsupported("no search here"))
         }
 
-        fn attack(&mut self, target: i32, force: bool, _: &UnitAi) -> Result<bool, Unsupported> {
+        fn attack(
+            &mut self,
+            target: i32,
+            force: bool,
+            _: &UnitAi,
+        ) -> Result<Attacked, Unsupported> {
             self.attacks.push((target, force));
-            Ok(true)
+            Ok(Attacked {
+                attacks: true,
+                posted: Vec::new(),
+            })
         }
 
         fn set_under_attack(&mut self, value: bool) {
@@ -3176,6 +3286,10 @@ mod tests {
                 orders: Vec::new(),
                 building_orders: 0,
                 notifies: Vec::new(),
+                notify_capacity: 10,
+                processing: false,
+                buffered: Vec::new(),
+                commanded: false,
                 attackers: Vec::new(),
             }
         );
