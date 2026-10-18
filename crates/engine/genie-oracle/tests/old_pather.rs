@@ -138,6 +138,7 @@ fn check(save_tick: usize, calls: &[Call]) -> Option<Vec<String>> {
         registry: registry.as_deref(),
         tiles: tiles.as_deref(),
         pools: pools.as_deref(),
+        inside: None,
     };
     let queries: Vec<_> = calls
         .iter()

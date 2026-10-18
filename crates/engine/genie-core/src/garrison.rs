@@ -94,8 +94,11 @@ const PIERCE: i16 = 3;
 const MELEE: i16 = 4;
 const CLASS_31: i16 = 31;
 const CLASS_38: i16 = 38;
-/// The class whose garrison share is 1 whatever its firepower (`FUN_141213520`, `-0xe82` raw).
+/// The class whose garrison share is 1 whatever its firepower (`FUN_141213520`, `-0xe82` raw);
+/// UNLOAD's flag 0 leaves it inside (`FUN_14118a610`).
 const WHOLE_SHARE_CLASS: i16 = 42;
+/// UNLOAD's point without one (`DAT_14330ec20`).
+const NO_POINT: f32 = crate::image::garrison::NO_POINT;
 
 /// The amounts of `weapons` (class, amount) whose class `counts`.
 fn weapons_sum(weapons: &[(i16, i16)], counts: impl Fn(i16) -> bool) -> f32 {
@@ -327,17 +330,257 @@ impl Turns {
         })();
         self.players[player].objects[idx] = unit;
         let firepower = result?;
+        let id = self.players[player].objects[idx].id;
         if let Some(b) = self.players[player]
             .objects
             .iter_mut()
             .find(|u| u.id == target)
         {
             b.firepower += firepower;
+            b.garrison.push(id);
         }
         for (kind, amount) in adds {
             self.players[player].add_attribute(kind, amount)?;
         }
         Ok(())
+    }
+
+    /// UNLOAD (`FUN_14161f410`) of player `player`'s objects `ids` (each alive, at least 1 hit
+    /// point): a building lets the units inside it out, from the last to come in, those `flag`
+    /// and `unit_type` pick ([`unload_picks`]): each through [`Turns::let_out`], toward the point
+    /// (or its unit AI's command queue location, which is not modelled); each one out has its
+    /// order queue emptied (`FUN_140c5e010`). A unit inside a building that unloads itself and a
+    /// unit with units inside it (a transport's unload) are not modelled; the local player's
+    /// interface flag (`FUN_141663f50`) is not held. A unit (type 70) out is no longer under the
+    /// town bell (`+0x9dc`).
+    pub(crate) fn unload(
+        &mut self,
+        player: usize,
+        ids: &[i32],
+        point: [f32; 2],
+        flag: u8,
+        unit_type: i32,
+        sound: bool,
+    ) -> Result<(), Unsupported> {
+        for &id in ids {
+            let Some(idx) = self.players[player].objects.iter().position(|u| u.id == id) else {
+                continue;
+            };
+            let unit = &self.players[player].objects[idx];
+            if unit.life.hp < 1.0 {
+                continue;
+            }
+            if unit.life.inside.is_some() {
+                return Err(Unsupported("an unload of a unit inside a building"));
+            }
+            if self.master_of(player, unit.life.master_id)?.kind < BUILDING {
+                if unit.garrison.is_empty() {
+                    continue;
+                }
+                return Err(Unsupported(
+                    "an unload of a unit with units inside (a transport)",
+                ));
+            }
+            if unit.ai.as_ref().is_some_and(|ai| ai.building_orders != 0) {
+                return Err(Unsupported(
+                    "an unload toward a building's command queue location",
+                ));
+            }
+            let mut i = unit.garrison.len();
+            while 0 < i {
+                i -= 1;
+                let Some(&inside) = self.players[player].objects[idx].garrison.get(i) else {
+                    continue;
+                };
+                if !self.unload_picks(player, inside, flag, unit_type)? {
+                    continue;
+                }
+                let _ = self.let_out(player, idx, inside, point, sound)?;
+                let ui = self.players[player]
+                    .objects
+                    .iter()
+                    .position(|u| u.id == inside)
+                    .ok_or(Unsupported("an unloaded unit outside its player's list"))?;
+                let kind = self
+                    .master_of(player, self.players[player].objects[ui].life.master_id)?
+                    .kind;
+                let u = &mut self.players[player].objects[ui];
+                // a unit (type 70) is no longer under the town bell (`+0x9dc`)
+                if 70 <= kind {
+                    u.town_bell.flag = false;
+                }
+                if let Some(ai) = u.ai.as_mut() {
+                    ai.orders.clear();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_14118a610`: whether UNLOAD's `flag` and `unit_type` pick the unit `id`: flag 0 every
+    /// unit but class 42. The other flags (a player, a group of classes, an object, a master
+    /// and its class) are not modelled.
+    fn unload_picks(
+        &self,
+        player: usize,
+        id: i32,
+        flag: u8,
+        _unit_type: i32,
+    ) -> Result<bool, Unsupported> {
+        let unit = self.players[player]
+            .objects
+            .iter()
+            .find(|u| u.id == id)
+            .ok_or(Unsupported(
+                "a unit inside a building outside its player's list",
+            ))?;
+        let class = self.master_of(player, unit.life.master_id)?.class;
+        match flag {
+            0 => Ok(class != WHOLE_SHARE_CLASS),
+            _ => Err(Unsupported("an unload of some units (its flag above 0)")),
+        }
+    }
+
+    /// `FUN_1411e7220`: the unit `id` leaves the building at `building` of player `player`
+    /// toward `point`, when a spot beside it is free ([`Turns::spot_beside`], toward the point,
+    /// or the building's gather point when not on itself): it takes the spot at the building's
+    /// height (`FUN_14119d610`), leaves the building (slot 0x1a8, `FUN_141213120`: the
+    /// building's slot 0x1c8, `FUN_1411d6ad0` -> `FUN_141217910`, takes its share off the
+    /// volleys, back to its master's volley fire when none is left inside or it fell below it,
+    /// and lets it out of its list, `FUN_141197e10`; the building's sight lets the circle of 5
+    /// go, slot 0x1d8 with 5) and goes on the map there (slot 0x58: its tile's list, its
+    /// obstruction record, the mesh, its sight). With a gather point (`+0xc30` 1) not on the
+    /// building and no point, it then goes to work on the gather point's target (its unit AI
+    /// forgets its target, `FUN_140c5e1e0`; [`Turns::gather`]). False when no spot is free. Not
+    /// modelled: the work given (slot 0x128 with a target), a point without a gather point (the
+    /// unit AI's stop, or the move there), class 42's and livestock's counts in a building of a
+    /// player with `+0x88`, a siege building's (class 13) slot 0x1b0; not held: the building's
+    /// villager count (`+0xba8`), its sound (slot 0x4c0), its garrison sprite, the unit's
+    /// `+0x9a0`. Its work command (slot 0x128) has `+0xa14` 0: the unit AI keeps its notifies.
+    pub(crate) fn let_out(
+        &mut self,
+        player: usize,
+        building: usize,
+        id: i32,
+        point: [f32; 2],
+        _sound: bool,
+    ) -> Result<bool, Unsupported> {
+        let b = &self.players[player].objects[building];
+        let bid = b.id;
+        let bm = self.master_of(player, b.life.master_id)?.clone();
+        let gather = b.gather_point;
+        let toward = if point[0] == NO_POINT {
+            gather
+                .filter(|g| g.target != bid)
+                .map(|g| [g.point[0], g.point[1]])
+        } else {
+            Some(point)
+        };
+        if point[0] == NO_POINT && gather.is_none() {
+            return Err(Unsupported(
+                "an unload without a gather point (the unit AI's command queue location)",
+            ));
+        }
+        let ui = self.players[player]
+            .objects
+            .iter()
+            .position(|u| u.id == id)
+            .ok_or(Unsupported(
+                "a unit inside a building outside its player's list",
+            ))?;
+        let unit = &self.players[player].objects[ui];
+        let made = self.master_of(player, unit.life.master_id)?.clone();
+        if bm.class == 13 {
+            return Err(Unsupported("an unload of a siege building (class 13)"));
+        }
+        if made.class == WHOLE_SHARE_CLASS || made.class == 58 {
+            return Err(Unsupported(
+                "a class 42 or livestock unit leaving a building (its player's counts)",
+            ));
+        }
+        if !unit.garrison.is_empty() {
+            return Err(Unsupported("a unit with units inside leaving a building"));
+        }
+        let Ok(spot) = self.spot_beside(player, building, &made, toward) else {
+            return Err(Unsupported(
+                "an unload whose unit finds no spot (its later rings)",
+            ));
+        };
+        let z = self.players[player].objects[building].position[2];
+        let at = [spot[0], spot[1], z];
+        // the building's slot 0x1c8: the share off its volleys, the unit out of its list
+        let share = if made.kind == 70 {
+            let masters = self
+                .masters
+                .get(player)
+                .ok_or(Unsupported("an unload without the masters"))?;
+            let b = &self.players[player].objects[building];
+            let unit = &self.players[player].objects[ui];
+            let rate = attack_rate(&bm, masters, b.reload_powerup);
+            share(&made, masters, unit.reload_powerup, rate)?
+        } else {
+            0.0
+        };
+        let b = &mut self.players[player].objects[building];
+        b.firepower -= share;
+        if let Some(k) = b.garrison.iter().position(|&g| g == id) {
+            let _ = b.garrison.swap_remove(k);
+        }
+        if b.garrison.is_empty() || b.firepower < bm.volley_fire {
+            b.firepower = bm.volley_fire;
+        }
+        let (b_at, b_radius) = (b.position, bm.radius);
+        if let Some(v) = self.spatial.sight.as_mut() {
+            v.sight_off_los(bid, b_at, b_radius, false, 5, false);
+        }
+        // slot 0x58: on the map at the spot (new_position: its tile's list, its sight)
+        let mut placed = self
+            .spatial
+            .come_out(id)
+            .ok_or(Unsupported("a unit inside a building without its record"))?;
+        placed.position = at;
+        let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
+        placed.obstruction =
+            (made.obstruction_type != 0 && solid).then_some(crate::spatial::Obstruction {
+                kind: made.obstruction_type,
+                class: made.obstruction_class,
+            });
+        self.spatial.insert(id, placed);
+        self.pathing.moved(id, &placed, false);
+        self.pathing.tiles_changed(self.spatial.take_changes());
+        let world_time = self.world_time;
+        let unit = &mut self.players[player].objects[ui];
+        unit.position = at;
+        unit.life.inside = None;
+        // the position setter's end: a place off where it last moved to is a move
+        if let Some(m) = unit.mover.as_mut() {
+            m.mark_move(at, world_time);
+        }
+        let state = unit.life.state;
+        if let Some(v) = self.spatial.sight.as_mut()
+            && state == 2
+        {
+            let _ = v.sight_on(id, at, made.radius, false, false);
+        }
+        if let Some(e) = self.spatial.take_sight_unsupported() {
+            return Err(e);
+        }
+        // the gather point's work
+        match gather {
+            Some(g) if point[0] == NO_POINT && g.target != bid && g.target != -1 => {
+                if let Some(ai) = self.players[player].objects[ui].ai.as_mut() {
+                    ai.remove_target();
+                }
+                // slot 0x128 with `+0xa14` 0: the unit AI keeps its notifies
+                self.gather(player, ui, g, bid, false)?;
+            }
+            _ => {
+                return Err(Unsupported(
+                    "an unloaded unit's order without a gather point's target",
+                ));
+            }
+        }
+        Ok(true)
     }
 
     /// `FUN_14120eb10(building, player, master, 1, 1)`: whether `building` takes a unit of

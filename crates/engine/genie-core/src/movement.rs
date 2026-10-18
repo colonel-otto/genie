@@ -143,6 +143,9 @@ pub struct Mover {
     pub attack_moving: bool,
     /// `+0x870`, `lastMoveTimeValue`: the world's time when the unit last moved.
     pub last_move: u32,
+    /// `+0x824`..`+0x82c`, `positionValue`: where it last moved to (x, y, height), which the
+    /// position setter compares the new place with (`FUN_141161950`).
+    pub moved_at: [f32; 3],
     /// `+0x874`, `mConsecutiveSubstituteCount`: above 2 a walk counts its waypoint reached.
     pub substitute_count: i32,
     /// The unit's ignore list (`+0x670`, count `+0x678`; the save's `numberUnits` and `tempInt`
@@ -336,7 +339,7 @@ fn point_or_zero_of(level: &PathData, index: i32) -> Vec3 {
 
 /// The position setter's test for a move (`FUN_141161950`): a coordinate changed by more than
 /// 1e-7.
-pub(crate) fn moved_far(a: [f32; 3], b: [f32; 3]) -> bool {
+fn moved_far(a: [f32; 3], b: [f32; 3]) -> bool {
     (0..3).any(|i| EPSILON < (b[i] - a[i]).abs())
 }
 
@@ -534,22 +537,32 @@ impl Mover {
             wanted
         };
         v.velocity[2] = speed;
-        let at = self.move_forward(dt * speed, position, map);
-        if moved_far(position, at) {
-            self.last_move = now;
-        }
+        // the position setter runs only for a distance it moves
+        let Some(at) = self.move_forward(dt * speed, position, map) else {
+            return position;
+        };
+        self.mark_move(at, now);
         at
+    }
+
+    /// The position setter's end (`FUN_141161950`): a place `at` more than 1e-7 off where it
+    /// last moved to on any axis is a move at `now` (`+0x870`), and where it last moved to.
+    pub(crate) fn mark_move(&mut self, at: [f32; 3], now: u32) {
+        if moved_far(self.moved_at, at) {
+            self.last_move = now;
+            self.moved_at = at;
+        }
     }
 
     /// `moveForward` (slot 182): `distance × factor` along the forward vector, through the
     /// position setter; a distance below 1e-7 moves nothing.
-    fn move_forward(&self, distance: f32, position: [f32; 3], map: [i32; 2]) -> [f32; 3] {
+    fn move_forward(&self, distance: f32, position: [f32; 3], map: [i32; 2]) -> Option<[f32; 3]> {
         let d = distance * self.factor;
         if d.abs() < EPSILON {
-            return position;
+            return None;
         }
         let to = fmath::add(vector(position), fmath::scale(d, self.forward));
-        self.set_position(map_position(to), map)
+        Some(self.set_position(map_position(to), map))
     }
 
     /// The position setter (slot 11 -> `FUN_141161950` -> `0x1411a58b0`): a unit that can move
@@ -1132,9 +1145,7 @@ impl Mover {
         pathing: Option<&mut Pathing>,
         now: u32,
     ) {
-        if moved_far(me.position, at) {
-            self.last_move = now;
-        }
+        self.mark_move(at, now);
         me.position = at;
         world.set_position(me.id, at);
         if let (Some(pathing), Some(p)) = (pathing, world.get(me.id)) {
@@ -2608,6 +2619,7 @@ mod tests {
             wait_delays: 0,
             attack_moving: false,
             last_move: 0,
+            moved_at: [0.0; 3],
             substitute_count: 0,
             ignore_units: Vec::new(),
             last_turn: 0.0,

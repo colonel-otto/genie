@@ -1037,6 +1037,7 @@ mod tests {
             wait_delays: 0,
             attack_moving: false,
             last_move: 0,
+            moved_at: [0.0; 3],
             substitute_count: 0,
             ignore_units: Vec::new(),
             last_turn: 0.0,

@@ -690,6 +690,14 @@ fn mover(
         wait_delays: m.number_wait_delays,
         attack_moving: m.attack_moving != 0,
         last_move: m.last_move_time_value,
+        // the save's x, height, y
+        moved_at: {
+            let f = |i: usize| {
+                let b = &m.position_value;
+                f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]])
+            };
+            [f(0), f(8), f(4)]
+        },
         substitute_count: m.consecutive_substitute_count,
         ignore_units: s.temp_int.clone(),
         last_turn: m.turn_towards_time,
@@ -1571,6 +1579,17 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
             .iter()
             .map(genie_core::unit_ai::QueuedOrder::from_bytes)
             .collect(),
+        building_orders: combat
+            .tribe_tower_unit_ai_module
+            .as_deref()
+            .map(|t| t.saved_order.len())
+            .or_else(|| {
+                combat
+                    .tribe_building_unit_ai_module
+                    .as_deref()
+                    .map(|b| b.saved_order.len())
+            })
+            .unwrap_or(0),
         notifies: ai
             .temp_notify
             .iter()
@@ -1806,31 +1825,34 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     turns
 }
 
-/// The volleys of the running game: each unit (type 70) inside a combat object of its player
-/// added its share at its enter (`FUN_14120b790`, [`genie_core::garrison::share`]), which the
-/// load does not restore (`FUN_14121ec90` sets the master's volley fire), in the order the
-/// objects are listed. A share the slice does not model leaves the building unmodelled.
+/// The garrisons of the running game: each object inside another of its player is in that one's
+/// list (`+0x2f8`), in the order the objects are listed (the game's is the order they came in,
+/// which no save holds); and each unit (type 70) added its share to a combat object's volleys at
+/// its enter (`FUN_14120b790`, [`genie_core::garrison::share`]), which the load does not restore
+/// (`FUN_14121ec90` sets the master's volley fire). A share the slice does not model leaves the
+/// building unmodelled.
 fn garrison_firepower(turns: &mut Turns) {
     for (p, player) in turns.players.iter_mut().enumerate() {
         let Some(masters) = turns.masters.get(p) else {
             continue;
         };
-        let units: Vec<(i32, i16, f32)> = player
+        let units: Vec<(i32, i32, i16, f32)> = player
             .objects
             .iter()
             .chain(&player.sleeping)
-            .filter_map(|u| Some((u.life.inside?, u.life.master_id, u.reload_powerup)))
+            .filter_map(|u| Some((u.id, u.life.inside?, u.life.master_id, u.reload_powerup)))
             .collect();
-        for (building, master, reload_powerup) in units {
-            let Some(me) = masters.get(master).filter(|m| m.kind == 70) else {
-                continue;
-            };
+        for (id, building, master, reload_powerup) in units {
             let Some(b) = player
                 .objects
                 .iter_mut()
                 .chain(&mut player.sleeping)
                 .find(|u| u.id == building)
             else {
+                continue;
+            };
+            b.garrison.push(id);
+            let Some(me) = masters.get(master).filter(|m| m.kind == 70) else {
                 continue;
             };
             let Some(bm) = masters.get(b.life.master_id) else {
@@ -2683,6 +2705,22 @@ impl Decoder {
                 return Some(Command::Gate {
                     player: c.commp_id as usize,
                     id: c.u_id,
+                });
+            }
+            // UNLOAD: the objects listed (at most a human player's 60), the count at +4
+            Packet::Unload(c) if c.num != LAST_COMMANDED => {
+                return Some(Command::Unload {
+                    player: c.commp_id as usize,
+                    ids: c
+                        .ids
+                        .iter()
+                        .copied()
+                        .take((c.num as usize).min(MAX_UNITS))
+                        .collect(),
+                    point: [c.x, c.y],
+                    flag: c.flag,
+                    unit_type: c.unit_type,
+                    sound: c.field_0x18 != 0,
                 });
             }
             // UNIT_ORDER: the units listed (at most a human player's 60), the count at +4
@@ -3690,6 +3728,27 @@ pub struct Dumps<'a> {
     /// The world's pools of recycled objects ([`recycle_pools_from_dump`]); without it the slice
     /// starts them empty, as a game loaded from the save does.
     pub pools: Option<&'a str>,
+    /// The objects' inside lists in the game's order ([`inside_lists_from_dump`]); without it
+    /// the slice keeps the order of the objects, as a game loaded from the save does.
+    pub inside: Option<&'a str>,
+}
+
+/// The objects' inside lists as the tick oracle dumps them (`state_dumps.inside_lists_text`):
+/// `container id...` per object with objects inside, in the list's order.
+pub fn inside_lists_from_dump(text: &str) -> Result<Vec<(i32, Vec<i32>)>, Error> {
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let words = l
+                .split_whitespace()
+                .map(|w| w.parse::<i32>().map_err(|_| Error::BadTileDump))
+                .collect::<Result<Vec<_>, _>>()?;
+            match words[..] {
+                [c, ..] => Ok((c, words[1..].to_vec())),
+                [] => Err(Error::BadTileDump),
+            }
+        })
+        .collect()
 }
 
 /// The pool of recycled missiles (type 60, `world+0x1d8`) as the tick oracle dumps it
@@ -4012,6 +4071,9 @@ pub fn forced_run(
     }
     if let Some(text) = dumps.pools {
         turns.recycling.missiles = recycle_pools_from_dump(text)?;
+    }
+    if let Some(text) = dumps.inside {
+        let _ = turns.force_garrisons(&inside_lists_from_dump(text)?);
     }
     let played = de::chapters(recording)?[0];
     let start_header = played.header()?;
@@ -4336,6 +4398,9 @@ fn run_from_save(
     }
     if let Some(text) = dumps.pools {
         turns.recycling.missiles = recycle_pools_from_dump(text)?;
+    }
+    if let Some(text) = dumps.inside {
+        let _ = turns.force_garrisons(&inside_lists_from_dump(text)?);
     }
     let played = de::chapters(recording)?[0];
     hunted_origins(&mut turns, &played.header()?);

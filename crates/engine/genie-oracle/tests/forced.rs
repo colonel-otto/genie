@@ -14,7 +14,7 @@
 //! right keep their own unsaved state; `restart` starts every update from the game's save
 //! (`genie_oracle::forced_ticks`, `GENIE_FORCED_TICKS` updates each, default 1), which also checks
 //! the save's import, but loses unsaved state. Any save is a start: its dumps (`N.mesh.gz`,
-//! `N.registry`, `N.tiles`, `N.pools`) hold the run-time state the save lacks. The saves are
+//! `N.registry`, `N.tiles`, `N.pools`, `N.inside`) hold the run-time state the save lacks. The saves are
 //! parsed on rayon's pool, which the segments share, while the runs go on.
 //!
 //! `GENIE_FORCED_FIRST`, `GENIE_FORCED_LAST` (the window's first and last start, default 680 and
@@ -70,10 +70,11 @@ fn segment(
     };
     let mesh = mesh(dir, start);
     let dump = |t: usize, ext: &str| std::fs::read_to_string(dir.join(format!("{t}.{ext}"))).ok();
-    let (registry, tiles, pools) = (
+    let (registry, tiles, pools, inside) = (
         dump(start, "registry"),
         dump(start, "tiles"),
         dump(start, "pools"),
+        dump(start, "inside"),
     );
     let after = |t: usize| std::fs::read(dir.join(format!("{t}.aoe2record"))).ok();
     genie_oracle::forced_run(
@@ -87,6 +88,7 @@ fn segment(
             registry: registry.as_deref(),
             tiles: tiles.as_deref(),
             pools: pools.as_deref(),
+            inside: inside.as_deref(),
         },
         &after,
         &dump,
@@ -109,6 +111,7 @@ fn step(
     let registry = std::fs::read_to_string(dir.join(format!("{start}.registry"))).ok();
     let tiles = std::fs::read_to_string(dir.join(format!("{start}.tiles"))).ok();
     let pools = std::fs::read_to_string(dir.join(format!("{start}.pools"))).ok();
+    let inside = std::fs::read_to_string(dir.join(format!("{start}.inside"))).ok();
     Some(
         genie_oracle::forced_ticks(
             &save,
@@ -122,6 +125,7 @@ fn step(
                 registry: registry.as_deref(),
                 tiles: tiles.as_deref(),
                 pools: pools.as_deref(),
+                inside: inside.as_deref(),
             },
         )
         .unwrap(),

@@ -48,6 +48,9 @@ fn differences(start: usize, ticks: usize, player: u32) -> Option<Vec<String>> {
             pools: std::fs::read_to_string(dir.join(format!("{start}.pools")))
                 .ok()
                 .as_deref(),
+            inside: std::fs::read_to_string(dir.join(format!("{start}.inside")))
+                .ok()
+                .as_deref(),
         },
     )
     .unwrap();

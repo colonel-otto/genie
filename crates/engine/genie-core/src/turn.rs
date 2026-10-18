@@ -107,6 +107,9 @@ pub struct Unit {
     /// `mReloadWorldtime` (`+0x920`, slots 0x248 and 0x250): the world time its attack timer
     /// runs out at (`FUN_141089820`), 0 for none; once past, the volley under way is over.
     pub reload_worldtime: u32,
+    /// The objects inside it (`+0x2f8`), in the order they came in (`FUN_141164af0`); one that
+    /// leaves takes the last one's place (`FUN_141166450`).
+    pub garrison: Vec<i32>,
     /// A building's gate lock ([`Gate`]).
     pub gate: Option<Gate>,
     /// Its active sprite and animation speed (`+0x7b8`, the save's `current_speed`), held from
@@ -276,6 +279,24 @@ pub enum Command {
         player: usize,
         /// Its building.
         id: i32,
+    },
+    /// UNLOAD (0x6f, `FUN_14161f410`): the units `ids` (a building, the units inside it; a unit
+    /// inside one, itself) let units out ([`Turns::unload`]) toward `point` (−1, −1 for none),
+    /// those `flag` and `unit_type` pick (`FUN_14118a610`); `sound` (`+0x18`) plays the
+    /// building's.
+    Unload {
+        /// The player.
+        player: usize,
+        /// Its objects.
+        ids: Vec<i32>,
+        /// Where they go.
+        point: [f32; 2],
+        /// Which units leave (`FUN_14118a610`'s switch).
+        flag: u8,
+        /// The unit type or object the flag reads.
+        unit_type: i32,
+        /// `+0x18`.
+        sound: bool,
     },
     /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
     /// auto scout order, or the stop order when it scouts already ([`Turns::auto_scout`]).
@@ -1153,6 +1174,7 @@ impl Unit {
             let firepower = w.firepower;
             if let Some(b) = others.iter_mut().find(|u| u.id == enter.target) {
                 b.firepower += firepower;
+                b.garrison.push(self.id);
             }
         }
         if step.done {
@@ -1268,6 +1290,10 @@ impl Unit {
         if self.life.inside.is_some() {
             return Err(Unsupported("an enter of a unit inside another"));
         }
+        // the building's `+0x9a8` takes the units inside the unit (slot 0x498)
+        if !self.garrison.is_empty() {
+            return Err(Unsupported("an enter of a unit with units inside it"));
+        }
         let placed = w
             .spatial
             .get(self.id)
@@ -1300,6 +1326,8 @@ impl Unit {
                     mask & 0xffff_ffff,
                     0,
                 )?;
+                // its mask (`+0x8f8`) is none after
+                r.entries.entry(self.id).or_default().mask = 0;
             }
             let _ = v.sight_on_los(target, at, building_radius, false, 5, false);
         }
@@ -2507,6 +2535,7 @@ impl Unit {
             wait_delays: 0,
             attack_moving: false,
             last_move: c.world_time,
+            moved_at: [0.0; 3],
             substitute_count: 0,
             ignore_units: Vec::new(),
             last_turn: 0.0,
@@ -2525,6 +2554,7 @@ impl Unit {
                 .ground(position[0], position[1])?;
             position[2] = crate::missile::grounded(position[2], ground, false, stats.fly_mode);
         }
+        mover.mark_move(position, c.world_time);
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         let placed = Placed {
             position,
@@ -2751,9 +2781,7 @@ impl Unit {
             .ok_or(Unsupported("a missile without the map's terrain"))?
             .ground(at[0], at[1])?;
         at[2] = crate::missile::grounded(at[2], ground, flying, stats.fly_mode);
-        if crate::movement::moved_far(old, at) {
-            mover.last_move = c.world_time;
-        }
+        mover.mark_move(at, c.world_time);
         self.position = at;
         c.spatial.set_position(self.id, at);
         if matches!(stats.projectile_type, 0..=2) {
@@ -4531,6 +4559,14 @@ fn armed(master: &Master, firepower: f32) -> bool {
         || ARMED_FIREPOWER < firepower
 }
 
+/// Whether two lists hold the same objects, in any order.
+fn same_members(a: &[i32], b: &[i32]) -> bool {
+    let (mut a, mut b) = (a.to_vec(), b.to_vec());
+    a.sort_unstable();
+    b.sort_unstable();
+    a == b
+}
+
 /// What a missile was fired as, which its hits read while its own part is out of the unit: a
 /// charge's projectile (`+0x99c`) and what it was fired from (`+0x998`).
 #[derive(Clone, Copy, Debug)]
@@ -4976,6 +5012,27 @@ pub struct GameState {
 }
 
 impl Turns {
+    /// The objects' inside lists in the game's order (`+0x2f8`, the tick oracle's dump): each
+    /// container listed takes the order when it holds the same objects. Returns how many did.
+    pub fn force_garrisons(&mut self, lists: &[(i32, Vec<i32>)]) -> usize {
+        let mut n = 0;
+        for (id, order) in lists {
+            let Some(c) = self
+                .players
+                .iter_mut()
+                .flat_map(|p| p.objects.iter_mut().chain(p.sleeping.iter_mut()))
+                .find(|u| u.id == *id)
+            else {
+                continue;
+            };
+            if same_members(&c.garrison, order) {
+                c.garrison.clone_from(order);
+                n += 1;
+            }
+        }
+        n
+    }
+
     /// The forced replay's step after a tick: the frame seed is the game's, and so is every
     /// object the slice did not model (it froze, or its player stopped) or got wrong (`resync`),
     /// and the players' sight where it differs: its unit is the game's
@@ -4984,7 +5041,8 @@ impl Turns {
     /// game no longer holds goes. A stopped player takes the game's resources and runs again.
     /// The world's next reusable id is the game's (the fog ghosts that take them are not
     /// modelled). A stopped player's pending debit and technologies are the game's too, and so
-    /// is the tiles' objects' order where the game's dump has it. Returns
+    /// is the tiles' objects' order where the game's dump has it, and a forced object's inside
+    /// list keeps the slice's order while it holds the same objects. Returns
     /// what could not be forced (an object that changed hands or masters, or
     /// that the game made and the slice did not). Not part of a replay: a dev hook to see past a
     /// freeze.
@@ -5057,6 +5115,11 @@ impl Turns {
                     continue;
                 }
                 let mut forced = g.clone();
+                // the objects inside it keep the slice's order (the game's history, which no save
+                // holds) while they are the same
+                if same_members(&unit.garrison, &forced.garrison) {
+                    forced.garrison.clone_from(&unit.garrison);
+                }
                 if let (Some(old), Some(new)) = (unit.ai.as_ref(), forced.ai.as_mut()) {
                     new.hunted = old.hunted;
                     if let (Some(o), Some(n)) = (old.home, new.home.as_mut()) {
@@ -5369,6 +5432,7 @@ impl Turns {
                         .map_or(0.0, |m| m.volley_fire),
                     next_volley: 0,
                     reload_worldtime: 0,
+                    garrison: Vec::new(),
                     // every building holds a gate's lock, open
                     gate: Some(Gate::default()),
                     workers: 0,
@@ -5449,6 +5513,19 @@ impl Turns {
             }
             Command::Gate { player, id } => {
                 if let Err(e) = self.gate(player, id) {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
+                }
+            }
+            Command::Unload {
+                player,
+                ref ids,
+                point,
+                flag,
+                unit_type,
+                sound,
+            } => {
+                if let Err(e) = self.unload(player, ids, point, flag, unit_type, sound) {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }

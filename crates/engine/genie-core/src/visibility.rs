@@ -746,6 +746,23 @@ impl Visibility {
         let Some(s) = self.seers.get(&id).copied() else {
             return;
         };
+        self.sight_off_los(id, position, radius, square, s.los as i32, offset);
+    }
+
+    /// Slot 0x1d8 with a line of sight of its own (its fourth argument not −1): a building lets 5
+    /// go when a unit leaves it (`FUN_141213120`).
+    pub fn sight_off_los(
+        &mut self,
+        id: i32,
+        position: [f32; 3],
+        radius: [f32; 2],
+        square: bool,
+        los: i32,
+        offset: bool,
+    ) {
+        let Some(s) = self.seers.get(&id).copied() else {
+            return;
+        };
         let offset = match s.building {
             Some(_) if !s.explored => return,
             Some(b) if !b.built => {
@@ -758,7 +775,6 @@ impl Visibility {
             None => offset,
         };
         let square = square && s.master != CIRCLE_MASTER;
-        let los = s.los as i32;
         if los <= 0 {
             return;
         }

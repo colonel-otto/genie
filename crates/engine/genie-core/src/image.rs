@@ -118,6 +118,8 @@ pub mod garrison {
     pub const FAR: f32 = f32::from_bits(0x7f7f_ffff);
     /// 0.2
     pub const LEAST_HP_SHARE: f64 = f64::from_bits(0x3fc9_9999_9999_999a);
+    /// -1.0
+    pub const NO_POINT: f32 = f32::from_bits(0xbf80_0000);
     /// 1.0
     pub const ONE_MISSILE: f32 = f32::from_bits(0x3f80_0000);
     /// 1.0

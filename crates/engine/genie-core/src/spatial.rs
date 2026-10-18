@@ -637,6 +637,12 @@ impl Spatial {
         let _ = self.inside.insert(id, p);
     }
 
+    /// The object `id` comes out of the object it was inside ([`Spatial::go_inside`]): its record,
+    /// which the caller puts on the map again.
+    pub fn come_out(&mut self, id: i32) -> Option<Placed> {
+        self.inside.remove(&id)
+    }
+
     /// The object `id` leaves the world.
     pub fn remove(&mut self, id: i32) {
         let _ = self.inside.remove(&id);

@@ -862,7 +862,6 @@ impl Turns {
             return Err(Unsupported("a spawn without the players' sight"));
         }
         let building = &self.players[p].objects[i];
-        let site_master = self.master_of(p, building.life.master_id)?;
         let made = self.master_of(p, master)?.clone();
         if made.recyclable {
             return Err(Unsupported(
@@ -873,55 +872,11 @@ impl Turns {
             "a spawn without a gather point (the unit AI's command queue location)",
         ))?;
         let position = building.position;
-        let mut walls = [false; 4];
-        for (wall, tiles) in
-            walls
-                .iter_mut()
-                .zip(corner_tiles(position, site_master.radius, made.radius))
-        {
-            for &(x, y) in &tiles {
-                let (fx, fy) = (x as f32, y as f32);
-                self.spatial.check_known([fx, fy, fx + 1.0, fy + 1.0])?;
-            }
-            *wall = tiles
-                .iter()
-                .all(|&(x, y)| self.spatial.object_on_tile(x, y, |o| o.class == WALL));
-        }
-        let site = Site {
-            position,
-            radius: site_master.radius,
-            gather: (gather.target != building.id).then_some([gather.point[0], gather.point[1]]),
-            walls,
-        };
+        let toward = (gather.target != building.id).then_some([gather.point[0], gather.point[1]]);
         let moving = made
             .moving
             .ok_or(Unsupported("a new unit of a master that does not move"))?;
-        let restriction = self
-            .spatial
-            .terrain
-            .as_ref()
-            .and_then(|t| t.restrictions.get(moving.restriction))
-            .ok_or(Unsupported(
-                "a new unit's terrain restriction the data file does not have",
-            ))?;
-        let placing = Placing {
-            player: p,
-            radius: made.radius,
-            tall: made.tall,
-            class: made.class,
-            restriction,
-            hill_mode: made.hill_mode,
-            placement_terrains: made.placement_terrains,
-        };
-        let point = {
-            let map = WorldMap { turns: self };
-            let spatial = &self.spatial;
-            spawn_point(&site, made.radius, &mut |[x, y]| {
-                let [rx, ry] = made.radius;
-                spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
-                placement(&placing, &map, [x, y], false)
-            })?
-        };
+        let point = self.spot_beside(p, i, &made, toward)?;
         let ai_type = factory_type(made.class, master)?
             .ok_or(Unsupported("a new combat unit without a unit AI"))?;
         let standing = (0 <= made.standing_sprite)
@@ -1042,6 +997,7 @@ impl Turns {
                 wait_delays: 0,
                 attack_moving: false,
                 last_move: self.world_time,
+                moved_at: position,
                 substitute_count: 0,
                 ignore_units: Vec::new(),
                 last_turn: 0.0,
@@ -1067,7 +1023,7 @@ impl Turns {
                 state,
             )?;
         }
-        self.gather(p, new, gather, building_id)?;
+        self.gather(p, new, gather, building_id, true)?;
         // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)
         let now = self.players[p].objects[new].life.master_id;
         if self
@@ -1079,6 +1035,69 @@ impl Turns {
             return Err(Unsupported("a new unit's task that spawns more units"));
         }
         Ok(())
+    }
+
+    /// `FUN_1411d12d0` for a unit of `made` beside the building at `i` of player `p`, `toward`
+    /// the point the search faces (its gather point's, or the command's): [`spawn_point`] with
+    /// the walls at the building's corners (class 27 on both tiles beside each) and the master's
+    /// placement test at each candidate ([`placement`]).
+    pub(crate) fn spot_beside(
+        &self,
+        p: usize,
+        i: usize,
+        made: &crate::masters::Master,
+        toward: Option<[f32; 2]>,
+    ) -> Result<[f32; 2], Unsupported> {
+        let building = &self.players[p].objects[i];
+        let site_master = self.master_of(p, building.life.master_id)?;
+        let position = building.position;
+        let mut walls = [false; 4];
+        for (wall, tiles) in
+            walls
+                .iter_mut()
+                .zip(corner_tiles(position, site_master.radius, made.radius))
+        {
+            for &(x, y) in &tiles {
+                let (fx, fy) = (x as f32, y as f32);
+                self.spatial.check_known([fx, fy, fx + 1.0, fy + 1.0])?;
+            }
+            *wall = tiles
+                .iter()
+                .all(|&(x, y)| self.spatial.object_on_tile(x, y, |o| o.class == WALL));
+        }
+        let site = Site {
+            position,
+            radius: site_master.radius,
+            gather: toward,
+            walls,
+        };
+        let moving = made.moving.ok_or(Unsupported(
+            "a unit beside a building of a master that does not move",
+        ))?;
+        let restriction = self
+            .spatial
+            .terrain
+            .as_ref()
+            .and_then(|t| t.restrictions.get(moving.restriction))
+            .ok_or(Unsupported(
+                "a unit's terrain restriction the data file does not have",
+            ))?;
+        let placing = Placing {
+            player: p,
+            radius: made.radius,
+            tall: made.tall,
+            class: made.class,
+            restriction,
+            hill_mode: made.hill_mode,
+            placement_terrains: made.placement_terrains,
+        };
+        let map = WorldMap { turns: self };
+        let spatial = &self.spatial;
+        spawn_point(&site, made.radius, &mut |[x, y]| {
+            let [rx, ry] = made.radius;
+            spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
+            placement(&placing, &map, [x, y], false)
+        })
     }
 
     /// `FUN_1411a4e90`: the remains a dying sprite's end leaves for player `p`: the master's slot
@@ -1230,6 +1249,7 @@ impl Turns {
                 wait_delays: 0,
                 attack_moving: false,
                 last_move: self.world_time,
+                moved_at: at,
                 substitute_count: 0,
                 ignore_units: Vec::new(),
                 last_turn: 0.0,
@@ -1304,12 +1324,13 @@ impl Turns {
     /// `+0xa14` 1, no carry test, any task). A target that is gone (a search for another of its
     /// class), one on the building itself (a garrison), a building target (slot 0x7e8) and a
     /// point without a target are not modelled.
-    fn gather(
+    pub(crate) fn gather(
         &mut self,
         p: usize,
         new: usize,
         g: GatherPoint,
         building: i32,
+        notified: bool,
     ) -> Result<(), Unsupported> {
         if g.target == -1 {
             return self.gather_move(p, new, [g.point[0], g.point[1], 0.0]);
@@ -1333,7 +1354,7 @@ impl Turns {
             point: [g.point[0], g.point[1], 0.0],
             carry_test: false,
             filter: -1,
-            notified: true,
+            notified,
         };
         self.order_work(p, new, &work)
     }
