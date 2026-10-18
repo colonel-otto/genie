@@ -1989,12 +1989,24 @@ impl Mover {
                     }
                 }
                 // slot 0x528's walked level, paused for dt more when its pause is shorter
-                if let Some(p) = world.gait(id).and_then(|g| g.pause).filter(|&p| p < dt) {
+                if let Some(p) = self.pause_of(world, id).filter(|&p| p < dt) {
                     pauses.push((id, p + dt));
                 }
             }
         }
         Ok(Avoided { kept, pauses })
+    }
+
+    /// The pause of unit `id`'s walked level as slot 0x5f0 leaves it: the last this walk gave it
+    /// (the game's call writes it at once, a later pass of the same step reads it), else the
+    /// world's ([`crate::spatial::Gait::pause`]).
+    fn pause_of(&self, world: &Spatial, id: i32) -> Option<f32> {
+        self.pauses
+            .iter()
+            .rev()
+            .find(|&&(i, _)| i == id)
+            .map(|&(_, p)| p)
+            .or_else(|| world.gait(id).and_then(|g| g.pause))
     }
 
     /// The walk's kept hits (`0x141150f00` after its first hit loop): each kept hit without a
