@@ -769,8 +769,14 @@ impl Unit {
         let no_attack = |_: &Placed, _: u8| -> Result<bool, Unsupported> {
             Err(Unsupported("an attack check in a closest search"))
         };
-        let found = spatial.search(self.id, c.player, &search, &no_attack, &mut reach)?;
+        let result = spatial.search(self.id, c.player, &search, &no_attack, &mut reach)?;
+        if result.enemies {
+            return Err(Unsupported(
+                "a hunt's search after its drop-off finding enemies",
+            ));
+        }
         ai.alert_mode = false;
+        let found = result.id;
         if found == -1 {
             return Err(Unsupported("a hunt that found nothing after its drop-off"));
         }
@@ -1747,7 +1753,14 @@ impl Unit {
             None => (c.turn, c.player, c.computer),
         };
         // RGE_Combat_Object::update: on the owner's turn the full update (slot 4), else
-        // FUN_140c68980 for a unit not inside another
+        // FUN_140c68980 for a unit not inside another; a dead unit's full update only adds the
+        // world's dt to its time since the last enemy sighting (`+0x1b4`) before it returns
+        if turn.is_some()
+            && !self.life.is_alive()
+            && let Some(ai) = self.ai.as_mut()
+        {
+            ai.time_since_enemy += c.dt_seconds;
+        }
         let runs = turn.is_some() || !self.life.inside;
         if let Some(orders) = self
             .ai
@@ -1766,6 +1779,9 @@ impl Unit {
             };
             let at = Surroundings {
                 position: self.position,
+                speed: self.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+                map: c.spatial.map,
+                dt_seconds: c.dt_seconds,
                 mode_1: c.mode_1,
                 busy,
                 player,
@@ -2001,6 +2017,7 @@ impl Unit {
             state: crate::move_to::MoveTo::Start,
             goal: Some(m.point),
             range: m.range,
+            run: !m.walk,
         });
         Ok(())
     }
@@ -3798,9 +3815,14 @@ mod tests {
         let with_dead = one(vec![dead_building(), live(2)]);
         let alone = one(vec![live(2)]);
         assert_eq!(with_dead.players[0].objects[0].life.state, 5);
+        // its full update adds the world's dt to the time since the last enemy sighting, and
+        // returns before anything else
+        let dead_ai = dead_building().ai.map(|ai| UnitAi {
+            time_since_enemy: ai.time_since_enemy + 0.01,
+            ..ai
+        });
         assert_eq!(
-            with_dead.players[0].objects[0].ai,
-            dead_building().ai,
+            with_dead.players[0].objects[0].ai, dead_ai,
             "the dead building's timers stay"
         );
         assert_eq!(

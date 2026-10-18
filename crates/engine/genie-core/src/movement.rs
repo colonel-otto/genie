@@ -67,9 +67,14 @@ pub struct PathData {
 /// What movement reads of the unit's master.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MoveStats {
-    /// The top speed (object slot 65, `0x141202c70`): the master's speed (`+0x740`), times the
-    /// current sprite's speed factor when that is above 0.
+    /// The top speed (object slot 65, `0x141202c70` -> `FUN_14114d1d0`): the master's speed
+    /// (`+0x740`), times the current sprite's speed factor when that is above 0.
     pub speed: f32,
+    /// The top speed with the master's walking sprite (`+0x748`) and with its running one
+    /// (`+0x750`, the walking one without it): a MoveTo that runs or walks shows one, and the
+    /// unit moves at its speed.
+    pub walk_speed: f32,
+    pub run_speed: f32,
     /// Master `+0x774`: the most the unit turns per second ([`turn_rate`]).
     pub turn_rate: f32,
     /// Master `+0x76c` and `+0x770`: the turn radius is `turn_radius × speed / turn_radius_speed`
@@ -2384,6 +2389,8 @@ mod tests {
             move_algorithm: 0,
             min_collision: 1.0,
             fast_turn: false,
+            walk_speed: 1.0,
+            run_speed: 1.0,
         }
     }
 

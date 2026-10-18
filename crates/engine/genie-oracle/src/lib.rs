@@ -442,7 +442,7 @@ fn mover(
             own.terrain_restriction_mask_id,
             animated.max_speed,
             s.own_moving_master()
-                .map(|m| (m.turn_speed, m.temp_move_sprite)),
+                .map(|m| (m.turn_speed, m.temp_move_sprite, m.temp_run_sprite)),
             own.object_flags,
         ),
         (Some(_), None) => {
@@ -464,7 +464,7 @@ fn mover(
                 [placement.radius_x, placement.radius_y, placement.radius_z],
                 placement.terrain_restriction_mask_id,
                 base,
-                moving_master(master).map(|m| (m.turn_speed, m.move_sprite_id)),
+                moving_master(master).map(|m| (m.turn_speed, m.move_sprite_id, m.run_sprite_id)),
                 placement.object_flags,
             )
         }
@@ -477,7 +477,19 @@ fn mover(
     let turning = table
         .turning(civ, s.master_obj)
         .ok_or(Unsupported("a moving master the data file does not have"))?;
-    let (turn_speed, walking) = turn.ok_or(Unsupported("a moving master without a moving part"))?;
+    let (turn_speed, walking, running) =
+        turn.ok_or(Unsupported("a moving master without a moving part"))?;
+    // the top speed with a sprite: the master's speed times the sprite's factor above 0
+    let with = |sprite: i16| {
+        let f = table.sprite_speed(sprite).unwrap_or(0.0);
+        if 0.0 < f { base * f } else { base }
+    };
+    let walk_speed = with(walking);
+    let run_speed = if 0 <= running {
+        with(running)
+    } else {
+        walk_speed
+    };
     let facets = table.graphics.get(&walking).map(|g| g.facets);
     let velocity = (m.have_movement == 1).then(|| Velocity {
         velocity: m.velocity.as_ref().map_or([0.0; 3], vec3),
@@ -514,6 +526,8 @@ fn mover(
             move_algorithm: turning.move_algorithm,
             min_collision: turning.min_collision_size_multiplier,
             fast_turn: flags & 2 != 0,
+            walk_speed,
+            run_speed,
         },
         waiting: m.waiting_to_move_value,
         wait_delays: m.number_wait_delays,
@@ -607,6 +621,15 @@ fn saved_actions(
                 range: action
                     .move_to_range()
                     .ok_or(Unsupported("a saved MoveTo without its range"))?,
+                // its sprite (`+0x48`'s id) is the master's running one
+                run: objects
+                    .master(s.master_obj)
+                    .and_then(moving_master)
+                    .is_some_and(|m| {
+                        0 <= m.run_sprite_id
+                            && m.run_sprite_id != m.move_sprite_id
+                            && base.short_val_2 == m.run_sprite_id
+                    }),
             });
             Ok(())
         }
@@ -1198,6 +1221,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         state_position: [ai.state_position_xvalue, ai.state_position_yvalue],
         retarget_disabled: ai.disable_retargeting,
         alert_mode: ai.alert_mode_value != 0,
+        time_since_enemy: ai.time_since_enemy_sighting,
         patrol_path: ai.has_patrol_path == 1,
         stop_after_kill: ai.stop_after_target_killed_value != 0,
         home: combat
@@ -1610,6 +1634,19 @@ fn moving_stats(
         move_algorithm: turning.move_algorithm,
         min_collision: turning.min_collision_size_multiplier,
         fast_turn: s.object_flags & 2 != 0,
+        walk_speed: {
+            let f = table.sprite_speed(moving.move_sprite_id).unwrap_or(0.0);
+            if 0.0 < f { base * f } else { base }
+        },
+        run_speed: {
+            let id = if 0 <= moving.run_sprite_id {
+                moving.run_sprite_id
+            } else {
+                moving.move_sprite_id
+            };
+            let f = table.sprite_speed(id).unwrap_or(0.0);
+            if 0.0 < f { base * f } else { base }
+        },
     })
 }
 
@@ -2614,6 +2651,8 @@ impl AiRow {
                 ("last_retarget_time", f(&ai.last_retarget_time)),
                 ("state_position", f(&ai.state_position)),
                 ("last_update_time", f(&ai.last_update_time)),
+                ("alert_mode", f(&ai.alert_mode)),
+                ("time_since_enemy_sighting", f(&ai.time_since_enemy)),
                 ("orders", f(&ai.orders)),
                 ("notifies", f(&ai.notifies)),
             ],
@@ -2655,6 +2694,11 @@ impl AiRow {
                     f(&[ai.state_position_xvalue, ai.state_position_yvalue]),
                 ),
                 ("last_update_time", f(&ai.last_update_time_value)),
+                ("alert_mode", f(&(ai.alert_mode_value != 0))),
+                (
+                    "time_since_enemy_sighting",
+                    f(&ai.time_since_enemy_sighting),
+                ),
                 (
                     "orders",
                     f(&ai

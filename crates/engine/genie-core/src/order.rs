@@ -700,6 +700,7 @@ impl Turns {
             self.clear_actions(player, idx)?;
             let unit = &mut self.players[player].objects[idx];
             unit.move_to = Some(crate::move_to::MoveToAction {
+                run: false,
                 // FUN_140aa2100: no target, so far from it: state 3 for a unit with speed
                 state: crate::move_to::MoveTo::Start,
                 goal: Some(point),

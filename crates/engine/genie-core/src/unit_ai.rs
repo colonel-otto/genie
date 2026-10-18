@@ -200,6 +200,9 @@ pub struct UnitAi {
     pub retarget_disabled: u8,
     /// `+0x1b8`, `alertModeValue`: the last search found enemies.
     pub alert_mode: bool,
+    /// `+0x1b4`, `time_since_enemy_sighting`: seconds since a search last found enemies; each full
+    /// update adds the world's dt.
+    pub time_since_enemy: f32,
     /// `+0x1c0` holds a patrol path (the save's `hasPatrolPath`).
     pub patrol_path: bool,
     /// `+0x1a8`, `stop_after_target_killed_value`: a move does not let the current action take its
@@ -231,6 +234,11 @@ pub struct Hunted {
     /// of action type 6, `FUN_141206d50`): beyond it the animal goes home.
     pub leash: f32,
 }
+
+/// The hunted animal evades by its speed times this (`FUN_140c1eea0`, `DAT_142eb1c98`), and a
+/// point at the map's far edge goes this far in (`FUN_140c4d140`, `DAT_14330eb8c`).
+const EVADE_REACH: f32 = crate::image::unit_ai::EVADE_REACH;
+const EVADE_EDGE: f32 = crate::image::unit_ai::EVADE_EDGE;
 
 /// The classes a hunted animal cares about (`+0x190`, the constructor's list).
 pub const HUNTED_CARED: [i32; 28] = [
@@ -388,10 +396,29 @@ pub fn can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
 }
 
 /// The caller's answer to a [`Search`].
-pub type Closest<'a> = dyn FnMut(&Search<'_>) -> Result<i32, Unsupported> + 'a;
+pub type Closest<'a> = dyn FnMut(&Search<'_>) -> Result<Found, Unsupported> + 'a;
+
+/// What a [`Search`] answers: the object picked (−1 for none) and whether the query found enemies
+/// (its fifth relation list), which sets the alert mode.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Found {
+    pub id: i32,
+    pub enemies: bool,
+    /// The object's place (x, y, z), for the caller's use.
+    pub position: Option<[f32; 3]>,
+}
+
+impl Found {
+    /// Nothing found, no enemies.
+    pub const NONE: Found = Found {
+        id: -1,
+        enemies: false,
+        position: None,
+    };
+}
 
 /// A search that never runs (units without a search).
-pub fn no_search(_: &Search<'_>) -> Result<i32, Unsupported> {
+pub fn no_search(_: &Search<'_>) -> Result<Found, Unsupported> {
     Err(Unsupported("a unit AI's search the caller does not answer"))
 }
 
@@ -412,6 +439,11 @@ pub struct Home {
 pub struct Surroundings {
     /// The unit's position (`+0x3c8`, `+0x4c8`, `+0x5a8`).
     pub position: [f32; 3],
+    /// Its top speed (slot 0x208, `FUN_141202c70`; 0 for a unit that does not move), the map's
+    /// size in tiles and the world's dt in seconds (`world+0x164`).
+    pub speed: f32,
+    pub map: [i32; 2],
+    pub dt_seconds: f32,
     /// The game's setting at `+0x680` (`FUN_140ec0cd0`) is 1: boars stay put.
     pub mode_1: bool,
     /// The unit's action list has an action (object slot 0x430, `FUN_14106d0e0`; its slot 0x818,
@@ -648,6 +680,7 @@ impl UnitAi {
             state_position: [position[0], position[1]],
             retarget_disabled: 0,
             alert_mode: false,
+            time_since_enemy: 0.0,
             patrol_path: false,
             stop_after_kill: false,
             home: None,
@@ -851,6 +884,47 @@ impl UnitAi {
     /// goes home from more than 2 tiles away, else once in 7 (the same draw) it wanders, two more
     /// draws; mode 1's herd is not modelled. A found object it would evade (slot 0x150), which is
     /// not modelled. Its moves keep its height and come within 0.5, forced and walking.
+    /// `FUN_140c63e20`'s alert after a search with its argument 4 set (ClosestObject's, 1 at every
+    /// call probed): enemies found set the alert mode and start the time since the last sighting
+    /// again (past 10 seconds it would tell the owner first, slot 0x2e8 with notify 0x210, which
+    /// the slice does not hold); none clear the alert mode.
+    fn alert(&mut self, enemies: bool, _dt: f32) {
+        self.alert_mode = enemies;
+        if enemies {
+            self.time_since_enemy = 0.0;
+        }
+    }
+
+    /// The hunted animal's evade of the object its search found (`FUN_140c1eea0`, then slot
+    /// 0x150, `FUN_140c4d140`, with arguments 5 and 6 as the idle's frame leaves them: 1 and 0 at
+    /// every call probed): from its place away from the object by three times its speed (slot
+    /// 0x208; one tile more in mode 1, not here), held on the map (below 0 to 0, at the far edge
+    /// one tile in), the unit's move there (slot 0x340: range 0, forced, running); the AI holds
+    /// the move action and the point.
+    fn evade(&mut self, at: &Surroundings, other: [f32; 3]) -> Option<AiMove> {
+        let [x, y, z] = at.position;
+        let reach = at.speed * EVADE_REACH;
+        let (dx, dy) = (other[0] - x, other[1] - y);
+        let d = crate::fmath::sqrt(dy * dy + dx * dx);
+        let held = |v: f32, size: i32| {
+            if v < 0.0 {
+                0.0
+            } else if size as f32 <= v {
+                size as f32 - EVADE_EDGE
+            } else {
+                v
+            }
+        };
+        let ex = held(x - (dx / d) * reach, at.map[0]);
+        let ey = held(y - (dy / d) * reach, at.map[1]);
+        self.move_to(AiMove {
+            point: [ex, ey, z],
+            range: 0.0,
+            force: true,
+            walk: false,
+        })
+    }
+
     fn hunted_idle(
         &mut self,
         at: &Surroundings,
@@ -906,12 +980,12 @@ impl UnitAi {
                 workers: -1,
             },
         })?;
-        // the search found no enemies (or it would have failed): the alert mode clears
-        self.alert_mode = false;
-        if found != -1 {
-            return Err(Unsupported(
-                "a hunted animal evading an object it sees (slot 0x150)",
-            ));
+        self.alert(found.enemies, at.dt_seconds);
+        if found.id != -1 {
+            let other = found
+                .position
+                .ok_or(Unsupported("a found object without its place"))?;
+            return Ok(self.evade(at, other));
         }
         let r = ai.rand15();
         if r.is_multiple_of(BOAR_WANDER) {
@@ -972,12 +1046,11 @@ impl UnitAi {
             },
         };
         let mut found = closest(&search(4))?;
-        if found < 0 {
+        if found.id < 0 {
             found = closest(&search(-1))?;
         }
-        // the searches found no enemies (or they would have failed): the alert mode clears
-        self.alert_mode = false;
-        if found != -1 {
+        self.alert(found.enemies, at.dt_seconds);
+        if found.id != -1 {
             return Err(Unsupported(
                 "a lion attacking an object it sees (slot 0xb8)",
             ));
@@ -1071,7 +1144,7 @@ impl UnitAi {
                 lowest: if at.scenario { 2 } else { 0 },
             },
         })?;
-        if found != -1 {
+        if found.id != -1 {
             return Err(Unsupported(
                 "a soldier attacking what its idle search found (slot 0xb8)",
             ));
@@ -1127,7 +1200,7 @@ impl UnitAi {
                 lowest: if at.scenario && !computer { 2 } else { 0 },
             },
         })?;
-        if found != -1 {
+        if found.id != -1 {
             return Err(Unsupported(
                 "a tower attacking what its idle search found (slot 0xb8)",
             ));
@@ -1160,6 +1233,8 @@ impl UnitAi {
         closest: &mut Closest<'_>,
     ) -> Result<Vec<Effect>, Unsupported> {
         let retarget = retarget_kind(self.ai_type)?;
+        // the full update's start: the time since the last enemy sighting grows by the world's dt
+        self.time_since_enemy += at.dt_seconds;
         let mut fx = Vec::new();
         self.target_block(at, computer, &mut fx)?;
         self.check_busy_order(retarget, at.busy && fx.is_empty())?;
@@ -2337,6 +2412,7 @@ mod tests {
                 state_position: [30.0, 88.0],
                 retarget_disabled: 0,
                 alert_mode: false,
+                time_since_enemy: 0.0,
                 patrol_path: false,
                 stop_after_kill: false,
                 home: None,
@@ -2663,7 +2739,7 @@ mod tests {
         let mut searched = Vec::new();
         let mut nothing = |s: &Search<'_>| {
             searched.push((s.at, s.radius, s.classes.len(), s.size));
-            Ok(-1)
+            Ok(Found::NONE)
         };
         let mut u = deer();
         let mut r = wander_seed(false);
@@ -2683,7 +2759,9 @@ mod tests {
         let step = |n: u32| if 3 <= n { n as i32 - 6 } else { n as i32 + 1 };
         let (dx, dy) = (step(e.rand15() % 6), step(e.rand15() % 6));
         let moved = u
-            .update_idle(10, 0, false, &place, &mut r, &mut |_: &Search<'_>| Ok(-1))
+            .update_idle(10, 0, false, &place, &mut r, &mut |_: &Search<'_>| {
+                Ok(Found::NONE)
+            })
             .unwrap()
             .unwrap();
         assert_eq!(moved.point, [31.5 + dx as f32, 106.5 + dy as f32, 0.0]);
@@ -2697,7 +2775,9 @@ mod tests {
         let mut r = wander_seed(true);
         let away = deer_at([34.5, 106.5, 0.5]);
         let moved = u
-            .update_idle(10, 0, false, &away, &mut r, &mut |_: &Search<'_>| Ok(-1))
+            .update_idle(10, 0, false, &away, &mut r, &mut |_: &Search<'_>| {
+                Ok(Found::NONE)
+            })
             .unwrap()
             .unwrap();
         assert_eq!((moved.point, r.draws), ([31.5, 106.5, 0.5], 1));
@@ -2713,15 +2793,41 @@ mod tests {
         assert_eq!((moved.point, r.draws), ([31.5, 106.5, 0.5], 0));
     }
 
+    /// A deer that sees an object runs from it by three times its speed (slot 0x150), forced
+    /// and running, and holds the move action and the point; an enemy among what it saw sets its
+    /// alert mode and starts its sighting time again (deer 9655 at update 2626).
     #[test]
-    fn a_deer_that_sees_an_object_would_evade_it_which_is_not_modelled() {
-        let mut u = deer();
+    fn a_deer_that_sees_an_object_evades_it() {
+        let mut u = UnitAi {
+            time_since_enemy: 12.0,
+            ..deer()
+        };
         let mut r = wander_seed(false);
-        let place = deer_at([31.5, 106.5, 0.0]);
-        assert!(
-            u.update_idle(10, 0, false, &place, &mut r, &mut |_: &Search<'_>| Ok(9185))
-                .is_err()
+        let place = Surroundings {
+            speed: 1.2,
+            map: [120, 120],
+            ..deer_at([31.5, 106.5, 0.0])
+        };
+        let enemy = |_: &Search<'_>| {
+            Ok(Found {
+                id: 9183,
+                enemies: true,
+                position: Some([33.5, 106.5, 0.0]),
+            })
+        };
+        let moved = u
+            .update_idle(10, 0, false, &place, &mut r, &mut enemy.clone())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (moved.point, moved.range, moved.force, moved.walk),
+            ([31.5 - 1.2 * 3.0, 106.5, 0.0], 0.0, true, false)
         );
+        assert_eq!(
+            (u.current_action, u.target_point),
+            (MOVE_ACTION, moved.point)
+        );
+        assert_eq!((u.alert_mode, u.time_since_enemy), (true, 0.0));
     }
 
     #[test]
@@ -3125,7 +3231,7 @@ mod tests {
         let mut searched = Vec::new();
         let mut closest = |s: &Search<'_>| {
             searched.push((s.radius, s.classes.len(), s.pick));
-            Ok(-1)
+            Ok(Found::NONE)
         };
         let fx = u
             .update(28, 0, false, &at, &mut rng(), &mut closest)
@@ -3136,12 +3242,18 @@ mod tests {
         assert_eq!(u.idle_timer, 0);
         // something found would be attacked, which is not modelled
         let (mut u, at) = idle_scout();
-        let mut found = |_: &Search<'_>| Ok(9731);
+        let mut found = |_: &Search<'_>| {
+            Ok(Found {
+                id: 9731,
+                enemies: false,
+                position: Some([0.0; 3]),
+            })
+        };
         assert!(u.update(28, 0, false, &at, &mut rng(), &mut found).is_err());
         // away from its state position, a stance-2 soldier would walk back
         let (mut u, at) = idle_scout();
         u.state_position = [25.0, 92.5];
-        let mut none = |_: &Search<'_>| Ok(-1);
+        let mut none = |_: &Search<'_>| Ok(Found::NONE);
         assert!(u.update(28, 0, false, &at, &mut rng(), &mut none).is_err());
     }
 
@@ -3218,7 +3330,7 @@ mod tests {
         let mut searched = Vec::new();
         let mut closest = |s: &Search<'_>| {
             searched.push((s.radius, s.classes.to_vec()));
-            Ok(-1)
+            Ok(Found::NONE)
         };
         let fx = u
             .update(28, 0, false, &at, &mut rng(), &mut closest)

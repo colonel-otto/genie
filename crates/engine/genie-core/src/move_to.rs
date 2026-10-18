@@ -199,12 +199,15 @@ pub struct MoveToAction {
     pub goal: Option<[f32; 3]>,
     /// `+0x68`.
     pub range: f32,
+    /// It shows the master's running sprite (an AI move that does not walk, slot 0x340 with
+    /// its seventh argument 0), else its walking one.
+    pub run: bool,
 }
 
 impl MoveToAction {
     /// One update (`0x140aa2240`): true once it is done (its update in state 1 returns 1), for
     /// the action list to remove it.
-    pub fn update(&mut self, walk: Walk<'_>) -> Result<bool, Unsupported> {
+    pub fn update(&mut self, mut walk: Walk<'_>) -> Result<bool, Unsupported> {
         match self.state {
             MoveTo::Moving => {
                 self.state = walk_on(walk)?;
@@ -214,6 +217,14 @@ impl MoveToAction {
                 let goal = self
                     .goal
                     .ok_or(Unsupported("a MoveTo of its own to a target object"))?;
+                // its sprite, the running or the walking one, sets the unit's speed
+                if let Some(m) = walk.mover.as_deref_mut() {
+                    m.stats.speed = if self.run {
+                        m.stats.run_speed
+                    } else {
+                        m.stats.walk_speed
+                    };
+                }
                 self.state = MoveTo::Moving;
                 self.state = start_walk(walk, Goal::Point(goal), self.range, false)?;
                 Ok(false)

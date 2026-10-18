@@ -10,7 +10,7 @@
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
 use crate::registry::{Record, relation_kind};
-use crate::unit_ai::{Pick, Search, Unsupported};
+use crate::unit_ai::{Found, Pick, Search, Unsupported};
 use crate::visibility::Visibility;
 use std::collections::BTreeMap;
 
@@ -805,7 +805,7 @@ impl Spatial {
         search: &Search<'_>,
         can_attack: &dyn Fn(&Placed, u8) -> Result<bool, Unsupported>,
         reach: &mut Reach<'_>,
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<Found, Unsupported> {
         let v = self
             .sight
             .as_ref()
@@ -853,10 +853,6 @@ impl Spatial {
                 master,
                 workers,
             } => {
-                // FUN_140c63e20 sets the alert mode on enemies found (and may tell the player)
-                if !found[4].is_empty() {
-                    return Err(Unsupported("a search that finds enemies (the alert mode)"));
-                }
                 let filter = Filter {
                     group,
                     relation,
@@ -864,10 +860,20 @@ impl Spatial {
                     master,
                     workers,
                 };
-                self.closest_object(v, me, &found, filter, reach)
+                let id = self.closest_object(v, me, &found, filter, reach)?;
+                Ok(Found {
+                    id,
+                    enemies: !found[4].is_empty(),
+                    position: self.objects.get(&id).map(|p| p.position),
+                })
             }
             Pick::Attack { lowest } => {
-                self.best_unit_to_attack(v, own, player, &found, lowest, can_attack)
+                let id = self.best_unit_to_attack(v, own, player, &found, lowest, can_attack)?;
+                Ok(Found {
+                    id,
+                    enemies: false,
+                    position: self.objects.get(&id).map(|p| p.position),
+                })
             }
         }
     }

@@ -244,6 +244,10 @@ pub mod turn {
 
 pub mod unit_ai {
     /// 1.0
+    pub const EVADE_EDGE: f32 = f32::from_bits(0x3f800000);
+    /// 3.0
+    pub const EVADE_REACH: f32 = f32::from_bits(0x40400000);
+    /// 1.0
     pub const EXPLORE_Z: f32 = f32::from_bits(0x3f800000);
 }
 
