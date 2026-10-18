@@ -131,7 +131,8 @@ impl Header {
         self.file_header.new_save_game_version
     }
 
-    /// The player sections, Gaia first, with where each starts and ends.
+    /// The player sections, Gaia first, with where each starts ([`PlayerSection::ends`] gives
+    /// where it ends).
     #[must_use]
     pub fn players(&self) -> Vec<PlayerSection<'_>> {
         self.world
@@ -139,10 +140,7 @@ impl Header {
             .players
             .iter()
             .map(|p| PlayerSection {
-                ends: PlayerEnds {
-                    start: p.pos as usize,
-                    end: p.pos as usize + written_len(&p.val),
-                },
+                start: p.pos as usize,
                 player: &p.val,
             })
             .collect()
@@ -150,7 +148,7 @@ impl Header {
 }
 
 /// The bytes a value writes back: as many as it read.
-fn written_len<T: binrw::BinWrite>(value: &T) -> usize
+pub(crate) fn written_len<T: binrw::BinWrite>(value: &T) -> usize
 where
     for<'a> T::Args<'a>: Default,
 {

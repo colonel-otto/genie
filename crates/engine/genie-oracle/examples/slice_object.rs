@@ -30,6 +30,7 @@ fn main() {
         });
     let registry = std::fs::read_to_string(dir.join(format!("{start}.registry"))).ok();
     let tiles = std::fs::read_to_string(dir.join(format!("{start}.tiles"))).ok();
+    let pools = std::fs::read_to_string(dir.join(format!("{start}.pools"))).ok();
     let run = genie_oracle::objects_from_save(
         &save,
         &rec,
@@ -41,6 +42,7 @@ fn main() {
             mesh: mesh.as_deref(),
             registry: registry.as_deref(),
             tiles: tiles.as_deref(),
+            pools: pools.as_deref(),
         },
     )
     .unwrap();

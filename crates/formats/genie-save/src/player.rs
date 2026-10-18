@@ -18,13 +18,23 @@ pub struct PlayerEnds {
 /// (`WorldPlayer` vtable slot 29).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlayerSection<'a> {
-    /// Where it starts and ends.
-    pub ends: PlayerEnds,
+    /// Where it starts.
+    pub start: usize,
     /// The player as read.
     pub player: &'a Player,
 }
 
 impl<'a> PlayerSection<'a> {
+    /// Where it starts and ends: its end is as many bytes on as it writes back, which takes a
+    /// write of the whole section.
+    #[must_use]
+    pub fn ends(&self) -> PlayerEnds {
+        PlayerEnds {
+            start: self.start,
+            end: self.start + super::written_len(self.player),
+        }
+    }
+
     /// The player load of the section's class.
     ///
     /// # Panics

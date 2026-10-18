@@ -74,6 +74,7 @@ fn a_foundation_s_tiles_link_when_its_construction_starts() {
         mesh: Some(&mesh),
         registry: Some(&registry),
         tiles: tiles.as_deref(),
+        pools: None,
     };
     let run =
         genie_oracle::objects_from_save(&save, &rec, 680, 60, 2, Some(&masters), dumps).unwrap();
@@ -162,6 +163,7 @@ fn player_2_s_registry_from_a_save_matches_the_game_s_through_1180() {
         mesh: Some(&mesh),
         registry: Some(&start),
         tiles: tiles.as_deref(),
+        pools: None,
     };
     let run =
         genie_oracle::objects_from_save(&save, &rec, 680, 500, 2, Some(&masters), dumps).unwrap();

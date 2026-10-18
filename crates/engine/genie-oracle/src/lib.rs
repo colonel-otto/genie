@@ -87,6 +87,8 @@ pub enum Error {
     BadRegistryDump,
     /// A tile list dump's line out of shape.
     BadTileDump,
+    /// A recycled pools dump's line out of shape.
+    BadPoolDump,
 }
 
 impl From<de::Error> for Error {
@@ -105,6 +107,7 @@ impl std::fmt::Display for Error {
             Self::BadMeshDump => write!(f, "the mesh dump has no mesh line"),
             Self::BadRegistryDump => write!(f, "the registry dump is out of shape"),
             Self::BadTileDump => write!(f, "the tile list dump is out of shape"),
+            Self::BadPoolDump => write!(f, "the recycled pools dump is out of shape"),
         }
     }
 }
@@ -268,7 +271,7 @@ fn unit(
         my_pasture: s.my_pasture_id,
         annex_of: object
             .tribe_building_object
-            .as_ref()
+            .as_deref()
             .map(|b| b.mupt_linked_object_references_linked_owner_id)
             .filter(|&owner| owner != -1),
         hp_powerups: object
@@ -306,8 +309,8 @@ fn unit(
             .or_else(|| {
                 object
                     .rge_object
-                    .as_ref()
-                    .and_then(|r| r.rge_missile_object.as_ref())
+                    .as_deref()
+                    .and_then(|r| r.rge_missile_object.as_deref())
                     .map(|m| &m.rge_combat_object)
             })
             .map_or(0, |c| c.attack_count),
@@ -344,7 +347,7 @@ fn unit(
 
 /// A saved building's gate lock ([`genie_core::turn::Gate`]).
 fn saved_gate(object: &genie_save::Object) -> Option<genie_core::turn::Gate> {
-    let b = object.tribe_building_object.as_ref()?;
+    let b = object.tribe_building_object.as_deref()?;
     Some(genie_core::turn::Gate {
         locked: b.gate_locked != 0,
     })
@@ -358,14 +361,14 @@ fn construction(
     s: &RgeStaticObject,
     objects: &PlayerObjects,
 ) -> Option<genie_core::build::Construction> {
-    let b = object.tribe_building_object.as_ref()?;
+    let b = object.tribe_building_object.as_deref()?;
     let m = objects.master(s.master_obj)?;
     let ms = m.static_part()?;
     let build_time = m
         .tribe_master_building_object
-        .as_ref()
+        .as_deref()
         .map(|b| &b.tribe_master_combat_object)
-        .or(m.tribe_master_combat_object.as_ref())
+        .or(m.tribe_master_combat_object.as_deref())
         .and_then(|c| c.train_location.first())
         .map_or(0, |t| t.train_time);
     Some(genie_core::build::Construction {
@@ -390,9 +393,9 @@ fn vec3(b: &[u8; 12]) -> genie_core::fmath::Vec3 {
 
 /// The animated part of a player's master, which holds its speed (`mMaxSpeed`, master `+0x740`).
 fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
-    let combat = m.tribe_master_combat_object.as_ref().or_else(|| {
+    let combat = m.tribe_master_combat_object.as_deref().or_else(|| {
         m.tribe_master_building_object
-            .as_ref()
+            .as_deref()
             .map(|b| &b.tribe_master_combat_object)
     });
     if let Some(c) = combat {
@@ -402,27 +405,27 @@ fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
             .rge_master_moving_object;
         return Some(&moving.rge_master_animated_object);
     }
-    let r = m.rge_master.as_ref()?;
-    None.or(r.rge_master_animated_object.as_ref())
+    let r = m.rge_master.as_deref()?;
+    None.or(r.rge_master_animated_object.as_deref())
         .or_else(|| {
             r.rge_master_moving_object
-                .as_ref()
+                .as_deref()
                 .map(|m| &m.rge_master_animated_object)
         })
         .or_else(|| {
             r.rge_master_action_object
-                .as_ref()
+                .as_deref()
                 .map(|a| &a.rge_master_moving_object.rge_master_animated_object)
         })
         .or_else(|| {
-            r.rge_master_combat_object.as_ref().map(|c| {
+            r.rge_master_combat_object.as_deref().map(|c| {
                 &c.rge_master_action_object
                     .rge_master_moving_object
                     .rge_master_animated_object
             })
         })
         .or_else(|| {
-            r.rge_master_missile_object.as_ref().map(|m| {
+            r.rge_master_missile_object.as_deref().map(|m| {
                 &m.rge_master_combat_object
                     .rge_master_action_object
                     .rge_master_moving_object
@@ -433,9 +436,9 @@ fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
 
 /// The moving part of a saved master, when its class has one.
 fn moving_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterMovingObject> {
-    let combat = m.tribe_master_combat_object.as_ref().or_else(|| {
+    let combat = m.tribe_master_combat_object.as_deref().or_else(|| {
         m.tribe_master_building_object
-            .as_ref()
+            .as_deref()
             .map(|b| &b.tribe_master_combat_object)
     });
     if let Some(c) = combat {
@@ -445,20 +448,20 @@ fn moving_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterM
                 .rge_master_moving_object,
         );
     }
-    let r = m.rge_master.as_ref()?;
-    None.or(r.rge_master_moving_object.as_ref())
+    let r = m.rge_master.as_deref()?;
+    None.or(r.rge_master_moving_object.as_deref())
         .or_else(|| {
             r.rge_master_action_object
-                .as_ref()
+                .as_deref()
                 .map(|a| &a.rge_master_moving_object)
         })
         .or_else(|| {
             r.rge_master_combat_object
-                .as_ref()
+                .as_deref()
                 .map(|c| &c.rge_master_action_object.rge_master_moving_object)
         })
         .or_else(|| {
-            r.rge_master_missile_object.as_ref().map(|m| {
+            r.rge_master_missile_object.as_deref().map(|m| {
                 &m.rge_master_combat_object
                     .rge_master_action_object
                     .rge_master_moving_object
@@ -768,13 +771,13 @@ fn saved_actions(
         genie_core::missile::MISSILE => {
             let ma = action
                 .rge_action_by_type
-                .as_ref()
-                .and_then(|t| t.rge_action_missile.as_ref())
+                .as_deref()
+                .and_then(|t| t.rge_action_missile.as_deref())
                 .ok_or(Unsupported("a saved missile action without its part"))?;
             let mo = object
                 .rge_object
-                .as_ref()
-                .and_then(|r| r.rge_missile_object.as_ref())
+                .as_deref()
+                .and_then(|r| r.rge_missile_object.as_deref())
                 .ok_or(Unsupported(
                     "a missile action of an object that is not a missile",
                 ))?;
@@ -784,8 +787,8 @@ fn saved_actions(
             // the hit mode copies the master's (`+0x80`, a miss's 1 is not saved)
             let hit_mode = objects
                 .master(s.master_obj)
-                .and_then(|m| m.rge_master.as_ref())
-                .and_then(|r| r.rge_master_missile_object.as_ref())
+                .and_then(|m| m.rge_master.as_deref())
+                .and_then(|r| r.rge_master_missile_object.as_deref())
                 .map_or(0, |m| m.missile_hit_info);
             unit.missile = Some(genie_core::missile::Missile {
                 max_range: mo.max_range,
@@ -853,7 +856,7 @@ fn saved_actions(
                 task,
                 added: action
                     .tribe_action_build
-                    .as_ref()
+                    .as_deref()
                     .is_some_and(|b| b.added_to_num_builders != 0),
             });
             Ok(())
@@ -862,7 +865,7 @@ fn saved_actions(
             use genie_core::hunt::{ATTACK, DROP, FACE, GATHER, HuntAction, HuntTask, WALK};
             let part = action
                 .tribe_action_hunt
-                .as_ref()
+                .as_deref()
                 .ok_or(Unsupported("a saved Hunt without its own part"))?;
             if !matches!(base.state, WALK | FACE | GATHER | DROP | ATTACK) {
                 return Err(Unsupported(
@@ -922,8 +925,8 @@ fn saved_actions(
                     // its wait (`+0x6c`, `+0x70`, `+0x74`)
                     if let Some(m) = sub
                         .rge_action_by_type
-                        .as_ref()
-                        .and_then(|b| b.rge_action_move_to.as_ref())
+                        .as_deref()
+                        .and_then(|b| b.rge_action_move_to.as_deref())
                     {
                         hunt.move_wait = genie_core::move_to::MoveWait {
                             state: m.movement_wait_state,
@@ -986,7 +989,7 @@ fn saved_reload(
         .find(|m| m.static_part().is_some_and(|ms| ms.id() == s.master_obj))?;
     let rc = &master
         .tribe_master_combat_object
-        .as_ref()?
+        .as_deref()?
         .rge_master_combat_object;
     Some(c.reload_stinger + (rc.speed_of_attack - c.reload_powerup))
 }
@@ -998,11 +1001,11 @@ fn saved_sprite(
     s: &RgeStaticObject,
     graphics: &std::collections::BTreeMap<i16, genie_core::sprite::Graphic>,
 ) -> Option<genie_core::sprite::ActiveSprite> {
-    let list = s.active_sprite_list.as_ref()?;
+    let list = s.active_sprite_list.as_deref()?;
     let node = list
         .sprite_type_list
         .iter()
-        .filter_map(|e| e.type_.as_ref()?.rge_active_animated_sprite.as_ref())
+        .filter_map(|e| e.type_.as_deref()?.rge_active_animated_sprite.as_deref())
         .find(|a| a.rge_active_sprite.sprite_id as i16 == s.sprite)?;
     Some(genie_core::sprite::ActiveSprite {
         graphic: graphics.get(&s.sprite).copied()?,
@@ -1034,8 +1037,8 @@ fn saved_attack(
         .ok_or(Unsupported("a saved Attack without its base"))?;
     let a = sub
         .rge_action_by_type
-        .as_ref()
-        .and_then(|t| t.rge_action_attack.as_ref())
+        .as_deref()
+        .and_then(|t| t.rge_action_attack.as_deref())
         .ok_or(Unsupported("a saved Attack without its own part"))?;
     let graphics = graphics.ok_or(Unsupported("a saved Attack without the sprites' table"))?;
     let g = |id: u16| {
@@ -1112,9 +1115,9 @@ fn fly_task(
     let fly = genie_core::fly::FLY;
     let saved = objects
         .master(master)
-        .and_then(|m| m.rge_master.as_ref())
-        .and_then(|r| r.rge_master_action_object.as_ref())
-        .and_then(|a| a.tasks.as_ref());
+        .and_then(|m| m.rge_master.as_deref())
+        .and_then(|r| r.rge_master_action_object.as_deref())
+        .and_then(|a| a.tasks.as_deref());
     if let Some(tasks) = saved {
         return tasks
             .list
@@ -1138,11 +1141,11 @@ fn build_range(
     m: &Master,
     master: i16,
 ) -> Result<(f32, f32), Unsupported> {
-    let saved = m.tribe_master_combat_object.as_ref().and_then(|c| {
+    let saved = m.tribe_master_combat_object.as_deref().and_then(|c| {
         c.rge_master_combat_object
             .rge_master_action_object
             .tasks
-            .as_ref()
+            .as_deref()
     });
     let build = genie_core::build::BUILD;
     if let Some(tasks) = saved {
@@ -1169,7 +1172,7 @@ fn production(
     object: &genie_save::Object,
     objects: &PlayerObjects,
 ) -> Result<Option<genie_core::production::Production>, Unsupported> {
-    let Some(building) = object.tribe_building_object.as_ref() else {
+    let Some(building) = object.tribe_building_object.as_deref() else {
         return Ok(None);
     };
     let queue: std::collections::VecDeque<_> = building
@@ -1201,7 +1204,7 @@ fn production(
         Some((102, action)) => Some(
             action
                 .tribe_action_make_obj
-                .as_ref()
+                .as_deref()
                 .ok_or(Unsupported("a saved make action without its part"))?
                 .work_done,
         ),
@@ -1209,7 +1212,7 @@ fn production(
         Some((103, action)) => {
             let tech = action
                 .tribe_action_make_tech
-                .as_ref()
+                .as_deref()
                 .ok_or(Unsupported("a saved research action without its part"))?;
             if action.base().is_some_and(|b| b.state != 6) {
                 return Err(Unsupported(
@@ -1249,7 +1252,7 @@ fn production(
 fn gather_point(object: &genie_save::Object) -> Option<genie_core::turn::GatherPoint> {
     let b = object
         .tribe_building_object
-        .as_ref()
+        .as_deref()
         .filter(|b| b.gather_point_exists != 0)?;
     Some(genie_core::turn::GatherPoint {
         point: [b.gather_point_x, b.gather_point_y, b.gather_point_z],
@@ -1306,7 +1309,7 @@ const FACTORY_TYPES: [i16; 28] = [
 /// (missile), 70 (tribe combat) and 80 (building).
 fn is_action_object(object: &genie_save::Object) -> bool {
     object.combat().is_some()
-        || object.rge_object.as_ref().is_some_and(|r| {
+        || object.rge_object.as_deref().is_some_and(|r| {
             r.rge_action_object.is_some()
                 || r.rge_combat_object.is_some()
                 || r.rge_missile_object.is_some()
@@ -1320,20 +1323,24 @@ fn own_default_task(s: &RgeStaticObject) -> Option<i16> {
             .own_rge_master_action_object
             .default_task
     };
-    None.or_else(|| s.rge_master_action_object.as_ref().map(|a| a.default_task))
-        .or_else(|| {
-            s.rge_master_missile_object.as_ref().map(|m| {
-                m.own_rge_master_combat_object
-                    .own_rge_master_action_object
-                    .default_task
-            })
+    None.or_else(|| {
+        s.rge_master_action_object
+            .as_deref()
+            .map(|a| a.default_task)
+    })
+    .or_else(|| {
+        s.rge_master_missile_object.as_deref().map(|m| {
+            m.own_rge_master_combat_object
+                .own_rge_master_action_object
+                .default_task
         })
-        .or_else(|| s.tribe_master_combat_object.as_ref().map(tribe))
-        .or_else(|| {
-            s.tribe_master_building_object
-                .as_ref()
-                .map(|b| tribe(&b.own_tribe_master_combat_object))
-        })
+    })
+    .or_else(|| s.tribe_master_combat_object.as_deref().map(tribe))
+    .or_else(|| {
+        s.tribe_master_building_object
+            .as_deref()
+            .map(|b| tribe(&b.own_tribe_master_combat_object))
+    })
 }
 
 /// The object's lifecycle fields. An object with its own master takes every master value from it;
@@ -1348,7 +1355,7 @@ fn lifecycle(
 ) -> Lifecycle {
     let pure_static = object
         .rge_object
-        .as_ref()
+        .as_deref()
         .is_some_and(|r| r.rge_static_object.is_some());
     let death_sprite = s.own_master().map_or_else(
         || {
@@ -1447,7 +1454,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         stop_after_kill: ai.stop_after_target_killed_value != 0,
         home: combat
             .tribe_elephant_unit_ai_module
-            .as_ref()
+            .as_deref()
             .map(|e| genie_core::unit_ai::Home {
                 origin: [e.origin_x, e.origin_y, e.origin_z],
                 furious: e.furious != 0,
@@ -1711,7 +1718,7 @@ fn master_facets(
     if let Some(c) = combat_master(m) {
         sprites.push(c.fight_sprite_id);
     }
-    if let Some(tasks) = action_part(m).and_then(|a| a.tasks.as_ref()) {
+    if let Some(tasks) = action_part(m).and_then(|a| a.tasks.as_deref()) {
         for e in &tasks.list {
             let t = &e.task;
             sprites.extend([t.short_val, t.short_val_2, t.short_val_3, t.short_val_4]);
@@ -1734,21 +1741,21 @@ fn master_facets(
 fn action_part(m: &Master) -> Option<&genie_save::generated::world::RgeMasterActionObject> {
     None.or_else(|| {
         m.tribe_master_combat_object
-            .as_ref()
+            .as_deref()
             .map(|c| &c.rge_master_combat_object.rge_master_action_object)
     })
     .or_else(|| {
-        m.tribe_master_building_object.as_ref().map(|b| {
+        m.tribe_master_building_object.as_deref().map(|b| {
             &b.tribe_master_combat_object
                 .rge_master_combat_object
                 .rge_master_action_object
         })
     })
     .or_else(|| {
-        m.rge_master.as_ref().and_then(|r| {
-            r.rge_master_action_object.as_ref().or_else(|| {
+        m.rge_master.as_deref().and_then(|r| {
+            r.rge_master_action_object.as_deref().or_else(|| {
                 r.rge_master_combat_object
-                    .as_ref()
+                    .as_deref()
                     .map(|c| &c.rge_master_action_object)
             })
         })
@@ -1769,7 +1776,7 @@ fn task_at(
     let saved = objects
         .master(master)
         .and_then(action_part)
-        .and_then(|a| a.tasks.as_ref());
+        .and_then(|a| a.tasks.as_deref());
     if let Some(tasks) = saved {
         return tasks
             .list
@@ -1839,13 +1846,13 @@ fn work_masters(
         if let Some(a) = action_part(m) {
             work.work_rate = a.work_rate;
             work.search_radius = a.search_radius;
-            if let Some(tasks) = a.tasks.as_ref() {
+            if let Some(tasks) = a.tasks.as_deref() {
                 work.tasks = tasks.list.iter().map(|e| task(&e.task)).collect();
             }
         }
-        let combat = m.tribe_master_combat_object.as_ref().or_else(|| {
+        let combat = m.tribe_master_combat_object.as_deref().or_else(|| {
             m.tribe_master_building_object
-                .as_ref()
+                .as_deref()
                 .map(|b| &b.tribe_master_combat_object)
         });
         if let Some(c) = combat {
@@ -1902,7 +1909,7 @@ fn work_masters(
         // the save holds the foundation terrain of its own building masters
         if let (Some(b), Some(saved)) = (
             work.building.as_mut(),
-            m.tribe_master_building_object.as_ref(),
+            m.tribe_master_building_object.as_deref(),
         ) {
             b.foundation_terrain = saved.on_build_make_tile;
         }
@@ -1910,8 +1917,8 @@ fn work_masters(
         // type
         if let Some(mm) = m
             .rge_master
-            .as_ref()
-            .and_then(|r| r.rge_master_missile_object.as_ref())
+            .as_deref()
+            .and_then(|r| r.rge_master_missile_object.as_deref())
         {
             work.missile_stats = Some(genie_core::missile::MissileStats {
                 projectile_type: table.projectile_type(civ, s.id()).unwrap_or(0),
@@ -2172,34 +2179,6 @@ impl SavedStep {
     }
 }
 
-/// `f(0..n)` on up to `threads` worker threads, in order.
-fn parse_ahead<T: Send>(n: usize, threads: usize, f: &(dyn Fn(usize) -> T + Sync)) -> Vec<T> {
-    let next = std::sync::atomic::AtomicUsize::new(0);
-    let done: Vec<std::sync::Mutex<Option<T>>> =
-        (0..n).map(|_| std::sync::Mutex::new(None)).collect();
-    std::thread::scope(|scope| {
-        for _ in 0..threads.min(n) {
-            let _ = scope.spawn(|| {
-                loop {
-                    let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    if n <= k {
-                        break;
-                    }
-                    let v = f(k);
-                    *done[k].lock().expect("a worker panicked") = Some(v);
-                }
-            });
-        }
-    });
-    done.into_iter()
-        .map(|m| {
-            m.into_inner()
-                .expect("a worker panicked")
-                .expect("every index ran")
-        })
-        .collect()
-}
-
 fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spatial {
     use genie_core::spatial::{Obstruction, Placed, Spatial, Tiles};
     let map = &header.world.base_world.map;
@@ -2219,7 +2198,7 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
             let Some(m) = placement(s, section.objects()) else {
                 continue;
             };
-            let building = o.tribe_building_object.as_ref();
+            let building = o.tribe_building_object.as_deref();
             // a building's place links its tiles (FUN_1411e6780), an annex's does not, and a
             // foundation made desolid lost them (FUN_1411cf770); so do a combat unit's that does
             // not move and is more than a tile wide (FUN_14108c320). A building keeps its
@@ -2267,7 +2246,7 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
             );
             let desolid = o
                 .tribe_building_object
-                .as_ref()
+                .as_deref()
                 .is_some_and(|b| b.desolid_flag != 0);
             let solid = m.radius.iter().all(|&r| 0.0 < r) && !desolid;
             let obstruction = (m.obstruction_type != 0 && solid).then_some(Obstruction {
@@ -2372,14 +2351,28 @@ pub fn visibility_differences(slice: &Visibility, game: &Visibility, player: usi
     }
     let w = slice.width.max(1) as usize;
     let bits = 1u64 << player | 1u64 << (32 + player);
+    let unified_same = || {
+        slice
+            .unified
+            .iter()
+            .zip(&game.unified)
+            .all(|(u, v)| u & bits == v & bits)
+    };
+    // the usual case, every tile the same, without a look at each tile's place
+    if a.counts == b.counts && unified_same() {
+        return out;
+    }
     for (i, (&c, &g)) in a.counts.iter().zip(&b.counts).enumerate() {
+        let (u, v) = (slice.unified[i] & bits, game.unified[i] & bits);
+        if c == g && u == v {
+            continue;
+        }
         let (x, y) = (i % w, i / w);
         if c != g {
             out.push(format!(
                 "player {player} tile ({x}, {y}) count {c}, the game {g}"
             ));
         }
-        let (u, v) = (slice.unified[i] & bits, game.unified[i] & bits);
         if u != v {
             out.push(format!(
                 "player {player} tile ({x}, {y}) unified bits {u:#x}, the game {v:#x}"
@@ -2661,7 +2654,7 @@ fn queue_data(
     let combat = |id| {
         objects
             .master(id)
-            .and_then(|m| m.tribe_master_combat_object.as_ref())
+            .and_then(|m| m.tribe_master_combat_object.as_deref())
     };
     let unit = combat(master_id).ok_or(Unsupported("QUEUE of a master without a combat part"))?;
     let building_object = section
@@ -2764,23 +2757,23 @@ fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, Unsu
 fn combat_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterCombatObject> {
     None.or_else(|| {
         m.tribe_master_combat_object
-            .as_ref()
+            .as_deref()
             .map(|c| &c.rge_master_combat_object)
     })
     .or_else(|| {
         m.tribe_master_building_object
-            .as_ref()
+            .as_deref()
             .map(|b| &b.tribe_master_combat_object.rge_master_combat_object)
     })
     .or_else(|| {
         m.rge_master
-            .as_ref()
-            .and_then(|r| r.rge_master_combat_object.as_ref())
+            .as_deref()
+            .and_then(|r| r.rge_master_combat_object.as_deref())
     })
     .or_else(|| {
-        m.rge_master.as_ref().and_then(|r| {
+        m.rge_master.as_deref().and_then(|r| {
             r.rge_master_missile_object
-                .as_ref()
+                .as_deref()
                 .map(|m| &m.rge_master_combat_object)
         })
     })
@@ -3146,6 +3139,138 @@ impl AiRow {
     }
 }
 
+/// Equality to the bit (an `f32` by its bits): two values the same this way print the same, so a
+/// row the same this way has no difference ([`object_differences`] compares the fields' texts).
+trait Same {
+    fn same(&self, other: &Self) -> bool;
+}
+
+macro_rules! same_by_eq {
+    ($($t:ty),*) => {
+        $(impl Same for $t {
+            fn same(&self, other: &Self) -> bool {
+                self == other
+            }
+        })*
+    };
+}
+
+same_by_eq!(
+    i16,
+    i32,
+    u8,
+    u32,
+    bool,
+    &'static str,
+    String,
+    genie_core::turn::Gate
+);
+
+impl Same for f32 {
+    fn same(&self, other: &Self) -> bool {
+        self.to_bits() == other.to_bits()
+    }
+}
+
+impl<T: Same> Same for Option<T> {
+    fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Some(a), Some(b)) => a.same(b),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+}
+
+impl<T: Same, const N: usize> Same for [T; N] {
+    fn same(&self, other: &Self) -> bool {
+        self.iter().zip(other).all(|(a, b)| a.same(b))
+    }
+}
+
+impl<T: Same> Same for Vec<T> {
+    fn same(&self, other: &Self) -> bool {
+        self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.same(b))
+    }
+}
+
+impl<A: Same, B: Same> Same for (A, B) {
+    fn same(&self, other: &Self) -> bool {
+        self.0.same(&other.0) && self.1.same(&other.1)
+    }
+}
+
+impl<A: Same, B: Same, C: Same> Same for (A, B, C) {
+    fn same(&self, other: &Self) -> bool {
+        self.0.same(&other.0) && self.1.same(&other.1) && self.2.same(&other.2)
+    }
+}
+
+impl Same for genie_core::movement::PathData {
+    fn same(&self, other: &Self) -> bool {
+        self.level == other.level
+            && self.linked_type == other.linked_type
+            && self.points.same(&other.points)
+            && self.path_flags == other.path_flags
+            && self.waypoint == other.waypoint
+            && self.state == other.state
+            && self.range.same(&other.range)
+            && self.target == other.target
+            && self.pause_time.same(&other.pause_time)
+            && self.flags == other.flags
+            && self.length.same(&other.length)
+            && self.created == other.created
+            && self.continue_counter == other.continue_counter
+            && self.repath_time.same(&other.repath_time)
+            && self.ignore == other.ignore
+            && self.ignored == other.ignored
+    }
+}
+
+impl Same for MoveRow {
+    fn same(&self, other: &Self) -> bool {
+        self.forward.same(&other.forward)
+            && self.right.same(&other.right)
+            && self.velocity.same(&other.velocity)
+            && self.paths.same(&other.paths)
+            && self.waiting == other.waiting
+            && self.wait_delays == other.wait_delays
+            && self.attack_moving == other.attack_moving
+            && self.last_move == other.last_move
+            && self.substitute_count == other.substitute_count
+            && self.ignore_units == other.ignore_units
+            && self.angle.same(&other.angle)
+    }
+}
+
+impl Same for AiRow {
+    fn same(&self, other: &Self) -> bool {
+        self.fields == other.fields
+    }
+}
+
+impl Same for ObjectRow {
+    fn same(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.master == other.master
+            && self.state == other.state
+            && self.hp.same(&other.hp)
+            && self.amount.same(&other.amount)
+            && self.position.same(&other.position)
+            && self.action == other.action
+            && self.action_target == other.action_target
+            && self.retarget == other.retarget
+            && self.movement.same(&other.movement)
+            && self.construction.same(&other.construction)
+            && self.build_added == other.build_added
+            && self.ai.same(&other.ai)
+            && self.human_order == other.human_order
+            && self.gather.same(&other.gather)
+            && self.combat.same(&other.combat)
+            && self.gate == other.gate
+    }
+}
+
 /// What a moving object's row compares of its movement.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MoveRow {
@@ -3307,7 +3432,7 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
                 .and_then(|c| c.unit_ai())
                 .map(|ai| ai.randomized_retarget_timer as i32),
             movement: saved_movement(object, &header.world.base_world.path),
-            construction: object.tribe_building_object.as_ref().map(|b| {
+            construction: object.tribe_building_object.as_deref().map(|b| {
                 (
                     b.desolid_flag != 0,
                     b.build_pts,
@@ -3318,10 +3443,10 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
                 .actions()
                 .and_then(|a| a.entries().next())
                 .filter(|&(kind, _)| kind == genie_core::build::BUILD)
-                .and_then(|(_, a)| a.tribe_action_build.as_ref())
+                .and_then(|(_, a)| a.tribe_action_build.as_deref())
                 .map(|b| b.added_to_num_builders != 0),
             ai: object.combat().and_then(|c| {
-                let elephant = c.tribe_elephant_unit_ai_module.as_ref();
+                let elephant = c.tribe_elephant_unit_ai_module.as_deref();
                 c.unit_ai()
                     .map(|ai| AiRow::saved(ai, elephant, s.under_attack_value != 0))
             }),
@@ -3351,6 +3476,33 @@ pub struct Dumps<'a> {
     /// The map tiles' object lists in the game's order ([`tile_lists_from_dump`]); without it
     /// the slice keeps the order of its load.
     pub tiles: Option<&'a str>,
+    /// The world's pools of recycled objects ([`recycle_pools_from_dump`]); without it the slice
+    /// starts them empty, as a game loaded from the save does.
+    pub pools: Option<&'a str>,
+}
+
+/// The pool of recycled missiles (type 60, `world+0x1d8`) as the tick oracle dumps it
+/// (`state_dumps.recycle_pools_text`: per type a `pool TYPE COUNT` line, then `ID FLYING` per
+/// object from the list's first, the next to come back), in the slice's order
+/// ([`genie_core::turn::Recycling::missiles`]: the next to come back last). The slice recycles no
+/// object of another type; their pools are not read.
+pub fn recycle_pools_from_dump(text: &str) -> Result<Vec<(i32, bool)>, Error> {
+    let mut missiles = Vec::new();
+    let mut kind = None;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match words[..] {
+            ["pool", k, _] => kind = Some(k.parse::<i32>().map_err(|_| Error::BadPoolDump)?),
+            [id, flying] if kind == Some(60) => missiles.push((
+                id.parse::<i32>().map_err(|_| Error::BadPoolDump)?,
+                flying.parse::<u8>().map_err(|_| Error::BadPoolDump)? != 0,
+            )),
+            [_, _] if kind.is_some() => {}
+            _ => return Err(Error::BadPoolDump),
+        }
+    }
+    missiles.reverse();
+    Ok(missiles)
 }
 
 /// The map tiles' object lists as the tick oracle dumps them (`state_dumps.tile_lists_text`):
@@ -3615,11 +3767,12 @@ pub fn forced_ticks(
 /// after `start` (with its dumps), then `ticks` updates, each compared with the game's save after
 /// it (`save_after(update)`, which may end the run early with None) and then forced to the game's
 /// state where the slice did not model it or got it wrong ([`genie_core::turn::Turns::force`]: the
-/// frame seed, the frozen and the differing objects, a stopped player, the sight, and the tiles'
-/// object lists of the game's dump after the update, `tiles_after(update)`, whose order the slice
-/// got wrong is a difference of Gaia's). The objects the slice gets right keep their own state,
-/// the saved and the unsaved, from tick to tick. One report per update, each with that update's
-/// own differences. Dev only.
+/// frame seed, the frozen and the differing objects, a stopped player, the sight, and what the
+/// game's dumps after the update hold, `dump_after(update, extension)`: the tiles' object lists
+/// (`tiles`) and the recycled missiles (`pools`), whose differences are Gaia's). The objects the
+/// slice gets right keep their own state, the saved and the unsaved, from tick to tick. One report
+/// per update, each with that update's own differences, and where the run's time went. The saves
+/// are parsed on rayon's pool while the run goes on, at most `window` ahead of it. Dev only.
 #[allow(clippy::too_many_arguments)]
 pub fn forced_run(
     start_save: &[u8],
@@ -3629,8 +3782,9 @@ pub fn forced_run(
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
     save_after: &(dyn Fn(usize) -> Option<Vec<u8>> + Sync),
-    tiles_after: &dyn Fn(usize) -> Option<String>,
-) -> Result<Vec<TickReport>, Error> {
+    dump_after: &dyn Fn(usize, &str) -> Option<String>,
+    window: usize,
+) -> Result<(Vec<TickReport>, Times), Error> {
     let chapter = de::chapters(start_save)?[0];
     let header = chapter.header()?;
     let sections = header.players();
@@ -3645,6 +3799,9 @@ pub fn forced_run(
     if let Some(text) = dumps.tiles {
         let _ = turns.spatial.force_tile_lists(&tile_lists_from_dump(text)?);
     }
+    if let Some(text) = dumps.pools {
+        turns.recycling.missiles = recycle_pools_from_dump(text)?;
+    }
     let played = de::chapters(recording)?[0];
     let start_header = played.header()?;
     hunted_origins(&mut turns, &start_header);
@@ -3654,66 +3811,162 @@ pub fn forced_run(
     let mut decoder = Decoder::default();
     decoder.prime(&all[..updates.min(all.len())], &sections);
     let mut reports = Vec::new();
-    // the game's saves after each update, parsed ahead on every core a batch at a time
-    let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
-    let mut ahead = std::collections::VecDeque::new();
-    for k in 0..ticks {
-        let Some(frame) = all.get(updates + k) else {
-            break;
-        };
-        if ahead.is_empty() {
-            let n = (2 * threads).min(ticks - k);
-            let parse =
-                |i: usize| save_after(start + k + i + 1).map(|save| SavedStep::of(&save, masters));
-            ahead.extend(parse_ahead(n, threads, &parse));
-        }
-        let Some(after) = ahead.pop_front().flatten() else {
-            break;
-        };
-        let after = after?;
-        run(
-            &mut turns,
-            &mut decoder,
-            std::slice::from_ref(frame),
-            &sections,
-        );
-        let mut report = TickReport {
-            start: start + k,
-            ticks: 1,
-            ..TickReport::default()
-        };
-        let tick = turns.ticks;
-        compare_players(&turns, &after, Some(tick), &mut report)?;
-        let tiles = tiles_after(start + k + 1)
-            .map(|text| tile_lists_from_dump(&text))
-            .transpose()?;
-        if let Some(t) = tiles.as_ref() {
-            for d in tile_order_differences(&turns.spatial, t) {
-                report.differences.push((0, d));
+    // the game's saves after each update, parsed on rayon's pool while the run goes on, at most
+    // `window` ahead of it; the pool is shared by every run going on at once
+    let window = window.max(1);
+    let ahead = Ahead::new();
+    let parse = |i: usize| save_after(start + i + 1).map(|save| SavedStep::of(&save, masters));
+    let mut times = Times::default();
+    rayon::in_place_scope(|tasks| {
+        let (ahead, parse) = (&ahead, &parse);
+        let ask = |i: usize| {
+            if i < ticks {
+                tasks.spawn(move |_| ahead.put(i, parse(i)));
             }
+        };
+        (0..window).for_each(ask);
+        let mut run_all = || -> Result<(), Error> {
+            for k in 0..ticks {
+                let Some(frame) = all.get(updates + k) else {
+                    break;
+                };
+                let clock = std::time::Instant::now();
+                let taken = ahead.take(k);
+                ask(k + window);
+                let Some(after) = taken else {
+                    break;
+                };
+                let after = after?;
+                times.parse += clock.elapsed();
+                let clock = std::time::Instant::now();
+                run(
+                    &mut turns,
+                    &mut decoder,
+                    std::slice::from_ref(frame),
+                    &sections,
+                );
+                times.run += clock.elapsed();
+                let clock = std::time::Instant::now();
+                let mut report = TickReport {
+                    start: start + k,
+                    ticks: 1,
+                    ..TickReport::default()
+                };
+                let tick = turns.ticks;
+                compare_players(&turns, &after, Some(tick), &mut report)?;
+                let tiles = dump_after(start + k + 1, "tiles")
+                    .map(|text| tile_lists_from_dump(&text))
+                    .transpose()?;
+                if let Some(t) = tiles.as_ref() {
+                    for d in tile_order_differences(&turns.spatial, t) {
+                        report.differences.push((0, d));
+                    }
+                }
+                let pool = dump_after(start + k + 1, "pools")
+                    .map(|text| recycle_pools_from_dump(&text))
+                    .transpose()?;
+                if let Some(game_pool) = pool.as_ref()
+                    && *game_pool != turns.recycling.missiles
+                {
+                    report.differences.push((
+                        0,
+                        format!(
+                            "recycled missiles slice {:?}, the game {game_pool:?}",
+                            turns.recycling.missiles
+                        ),
+                    ));
+                }
+                times.compare += clock.elapsed();
+                let clock = std::time::Instant::now();
+                let SavedStep {
+                    objects,
+                    mut seen,
+                    terrain,
+                    mut game,
+                    ..
+                } = after;
+                game.tile_lists = tiles;
+                game.missile_pool = pool;
+                // what the slice got wrong takes the game's state too: each update's differences are
+                // its own, not an earlier update's carried on
+                game.resync = report
+                    .differences
+                    .iter()
+                    .filter_map(|(_, d)| d.split(':').next().and_then(|o| o.parse::<i32>().ok()))
+                    .collect();
+                if report
+                    .differences
+                    .iter()
+                    .any(|(_, d)| d.starts_with("player "))
+                {
+                    game.sight = Some((
+                        std::mem::take(&mut seen.maps),
+                        std::mem::take(&mut seen.unified),
+                    ));
+                }
+                for (p, id, why) in turns.force(&game) {
+                    report.unsupported.push((p as u32, Some(id), tick, why));
+                }
+                // a parsed save's state is dropped on the pool: its drop costs the run as much as
+                // its forcing
+                let gone = (game, objects, seen, terrain);
+                tasks.spawn(move |_| drop(gone));
+                times.force += clock.elapsed();
+                reports.push(report);
+            }
+            Ok(())
+        };
+        run_all()
+    })?;
+    Ok((reports, times))
+}
+
+/// The game's saves parsed ahead of a forced run ([`forced_run`]): the pool's tasks put them by
+/// index, the run takes them in order.
+struct Ahead<T> {
+    parsed: std::sync::Mutex<std::collections::BTreeMap<usize, T>>,
+    ready: std::sync::Condvar,
+}
+
+impl<T> Ahead<T> {
+    const fn new() -> Self {
+        Self {
+            parsed: std::sync::Mutex::new(std::collections::BTreeMap::new()),
+            ready: std::sync::Condvar::new(),
         }
-        let mut game = after.game;
-        game.tile_lists = tiles;
-        // what the slice got wrong takes the game's state too: each update's differences are
-        // its own, not an earlier update's carried on
-        game.resync = report
-            .differences
-            .iter()
-            .filter_map(|(_, d)| d.split(':').next().and_then(|o| o.parse::<i32>().ok()))
-            .collect();
-        if report
-            .differences
-            .iter()
-            .any(|(_, d)| d.starts_with("player "))
-        {
-            game.sight = Some((after.seen.maps, after.seen.unified));
-        }
-        for (p, id, why) in turns.force(&game) {
-            report.unsupported.push((p as u32, Some(id), tick, why));
-        }
-        reports.push(report);
     }
-    Ok(reports)
+
+    /// A task's parse of index `k`.
+    fn put(&self, k: usize, v: T) {
+        let _ = self.parsed.lock().expect("a parse panicked").insert(k, v);
+        self.ready.notify_all();
+    }
+
+    /// The run takes index `k`, waiting until it is parsed.
+    fn take(&self, k: usize) -> T {
+        let mut parsed = self.parsed.lock().expect("a parse panicked");
+        loop {
+            if let Some(v) = parsed.remove(&k) {
+                return v;
+            }
+            parsed = self.ready.wait(parsed).expect("a parse panicked");
+        }
+    }
+}
+
+/// Where a forced run's time went ([`forced_run`]): waiting for the game's saves to be parsed
+/// (the parse of a batch runs on every core while the run waits), the slice's updates, the
+/// comparisons (with the dumps' reading) and the forcing.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Times {
+    /// Waiting for the parsed saves.
+    pub parse: std::time::Duration,
+    /// The slice's updates.
+    pub run: std::time::Duration,
+    /// The comparisons with the game's saves and dumps.
+    pub compare: std::time::Duration,
+    /// The forcing.
+    pub force: std::time::Duration,
 }
 
 /// The game's state in a save as the slice's units ([`genie_core::turn::GameState`]).
@@ -3869,6 +4122,9 @@ fn run_from_save(
     }
     if let Some(text) = dumps.tiles {
         let _ = turns.spatial.force_tile_lists(&tile_lists_from_dump(text)?);
+    }
+    if let Some(text) = dumps.pools {
+        turns.recycling.missiles = recycle_pools_from_dump(text)?;
     }
     let played = de::chapters(recording)?[0];
     hunted_origins(&mut turns, &played.header()?);
@@ -4141,7 +4397,7 @@ pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Err
                     pasture: s.parent_pasture_id,
                     annex_of: o
                         .tribe_building_object
-                        .as_ref()
+                        .as_deref()
                         .map(|b| b.mupt_linked_object_references_linked_owner_id)
                         .filter(|&owner| owner != -1),
                     top_action: o
@@ -4297,11 +4553,20 @@ pub fn planner_from_save(
 #[must_use]
 pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String> {
     let mut out = Vec::new();
+    // the first slice row of each id, as a search from the front finds it
+    let mut by_id = std::collections::HashMap::with_capacity(slice.len());
+    for s in slice {
+        let _ = by_id.entry(s.id).or_insert(s);
+    }
     for g in game {
-        let Some(s) = slice.iter().find(|s| s.id == g.id) else {
+        let Some(&s) = by_id.get(&g.id) else {
             out.push(format!("{}: only in the game ({g:?})", g.id));
             continue;
         };
+        // a row the same to the bit has no field that differs: skip the fields' texts
+        if s.same(g) {
+            continue;
+        }
         let mut field = |name: &str, a: String, b: String| {
             if a != b {
                 out.push(format!("{}: {name} slice {a} game {b}", g.id));

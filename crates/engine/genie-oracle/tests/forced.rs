@@ -10,9 +10,12 @@
 //! its start (or segments of `GENIE_FORCED_SEGMENT` updates, in parallel, each from its own
 //! save), every update compared and then forced where the slice did not model it or got it wrong
 //! (`genie_oracle::forced_run`: the frame seed, the frozen and the differing objects, a stopped
-//! player, the sight), so the objects it gets right keep their own unsaved state; `restart`
-//! starts every update from the game's save (`genie_oracle::forced_ticks`, `GENIE_FORCED_TICKS`
-//! updates each, default 1), which also checks the save's import, but loses unsaved state.
+//! player, the sight, the tiles' object lists, the recycled missiles), so the objects it gets
+//! right keep their own unsaved state; `restart` starts every update from the game's save
+//! (`genie_oracle::forced_ticks`, `GENIE_FORCED_TICKS` updates each, default 1), which also checks
+//! the save's import, but loses unsaved state. Any save is a start: its dumps (`N.mesh.gz`,
+//! `N.registry`, `N.tiles`, `N.pools`) hold the run-time state the save lacks. The saves are
+//! parsed on rayon's pool, which the segments share, while the runs go on.
 //!
 //! `GENIE_FORCED_FIRST`, `GENIE_FORCED_LAST` (the window's first and last start, default 680 and
 //! 1500) and `GENIE_FORCED_OUT` (the Markdown report, default `target/tmp/forced_report.md`).
@@ -52,20 +55,26 @@ fn mesh(dir: &Path, tick: usize) -> Option<String> {
     Some(text)
 }
 
-/// A segment of the continuous mode from the save after `start`, `ticks` updates.
+/// A segment of the continuous mode from the save after `start`, `ticks` updates, its saves
+/// parsed on rayon's pool at most `window` ahead, and where its time went.
 fn segment(
     dir: &Path,
     rec: &[u8],
     masters: &genie_oracle::MasterTable,
     start: usize,
     ticks: usize,
-) -> Vec<TickReport> {
+    window: usize,
+) -> (Vec<TickReport>, genie_oracle::Times) {
     let Ok(save) = std::fs::read(dir.join(format!("{start}.aoe2record"))) else {
-        return Vec::new();
+        return (Vec::new(), genie_oracle::Times::default());
     };
     let mesh = mesh(dir, start);
-    let registry = std::fs::read_to_string(dir.join(format!("{start}.registry"))).ok();
-    let tiles = std::fs::read_to_string(dir.join(format!("{start}.tiles"))).ok();
+    let dump = |t: usize, ext: &str| std::fs::read_to_string(dir.join(format!("{t}.{ext}"))).ok();
+    let (registry, tiles, pools) = (
+        dump(start, "registry"),
+        dump(start, "tiles"),
+        dump(start, "pools"),
+    );
     let after = |t: usize| std::fs::read(dir.join(format!("{t}.aoe2record"))).ok();
     genie_oracle::forced_run(
         &save,
@@ -77,9 +86,11 @@ fn segment(
             mesh: mesh.as_deref(),
             registry: registry.as_deref(),
             tiles: tiles.as_deref(),
+            pools: pools.as_deref(),
         },
         &after,
-        &|t: usize| std::fs::read_to_string(dir.join(format!("{t}.tiles"))).ok(),
+        &dump,
+        window,
     )
     .unwrap()
 }
@@ -97,6 +108,7 @@ fn step(
     let mesh = mesh(dir, start);
     let registry = std::fs::read_to_string(dir.join(format!("{start}.registry"))).ok();
     let tiles = std::fs::read_to_string(dir.join(format!("{start}.tiles"))).ok();
+    let pools = std::fs::read_to_string(dir.join(format!("{start}.pools"))).ok();
     Some(
         genie_oracle::forced_ticks(
             &save,
@@ -109,6 +121,7 @@ fn step(
                 mesh: mesh.as_deref(),
                 registry: registry.as_deref(),
                 tiles: tiles.as_deref(),
+                pools: pools.as_deref(),
             },
         )
         .unwrap(),
@@ -212,36 +225,37 @@ fn the_forced_replay_report() {
         PathBuf::from,
     );
     let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+    let mut times = genie_oracle::Times::default();
     let mut reports: Vec<TickReport> = if restart {
-        let starts: Vec<usize> = (first..=last).collect();
-        let chunk = starts.len().div_ceil(threads).max(1);
-        std::thread::scope(|s| {
-            starts
-                .chunks(chunk)
-                .map(|part| {
-                    let (dir, rec, masters) = (&dir, &rec, &masters);
-                    s.spawn(move || {
-                        part.iter()
-                            .filter_map(|&t| step(dir, rec, masters, t, ticks))
-                            .collect::<Vec<_>>()
-                    })
-                })
-                .flat_map(|h| h.join().unwrap())
-                .collect()
-        })
+        use rayon::prelude::*;
+        (first..=last)
+            .into_par_iter()
+            .filter_map(|t| step(&dir, &rec, &masters, t, ticks))
+            .collect()
     } else {
         let segments: Vec<(usize, usize)> = (first..=last)
             .step_by(length)
             .map(|s| (s, length.min(last + 1 - s)))
             .collect();
+        // the saves each segment parses ahead on the shared pool: the cores' worth between them
+        let window = (2 * threads / segments.len()).max(8);
         std::thread::scope(|s| {
             segments
                 .iter()
                 .map(|&(start, n)| {
                     let (dir, rec, masters) = (&dir, &rec, &masters);
-                    s.spawn(move || segment(dir, rec, masters, start, n))
+                    s.spawn(move || segment(dir, rec, masters, start, n, window))
                 })
-                .flat_map(|h| h.join().unwrap())
+                .collect::<Vec<_>>()
+                .into_iter()
+                .flat_map(|h| {
+                    let (r, t) = h.join().unwrap();
+                    times.parse += t.parse;
+                    times.run += t.run;
+                    times.compare += t.compare;
+                    times.force += t.force;
+                    r
+                })
                 .collect()
         })
     };
@@ -326,5 +340,13 @@ fn the_forced_replay_report() {
         unsupported.len(),
         differences.len(),
         out.display()
+    );
+    eprintln!(
+        "forced replay's time, summed over its segments: parse wait {:.1} s, updates {:.1} s, \
+         comparisons {:.1} s, forcing {:.1} s",
+        times.parse.as_secs_f64(),
+        times.run.as_secs_f64(),
+        times.compare.as_secs_f64(),
+        times.force.as_secs_f64()
     );
 }

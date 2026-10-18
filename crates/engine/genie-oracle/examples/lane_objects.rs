@@ -57,8 +57,8 @@ fn action_object(o: &genie_save::Object) -> Option<&genie_save::generated::world
     if let Some(c) = o.combat() {
         return Some(&c.rge_combat_object.rge_action_object);
     }
-    let r = o.rge_object.as_ref()?;
+    let r = o.rge_object.as_deref()?;
     r.rge_action_object
-        .as_ref()
-        .or_else(|| r.rge_combat_object.as_ref().map(|c| &c.rge_action_object))
+        .as_deref()
+        .or_else(|| r.rge_combat_object.as_deref().map(|c| &c.rge_action_object))
 }

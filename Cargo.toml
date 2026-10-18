@@ -48,6 +48,7 @@ binrw = { version = "0.15", default-features = false, features = ["std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = { version = "2", features = ["serde"] }
+rayon = "1"
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
 [profile.dev]
@@ -73,6 +74,16 @@ debug-assertions = false
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# the forced replay's loop (`just forced`): release code, built fast (thin LTO, parallel codegen,
+# incremental) and with the line tables a profiler needs; never for a release
+[profile.forced]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+incremental = true
+debug = "line-tables-only"
+strip = false
 
 [profile.test]
 opt-level = 1

@@ -1372,39 +1372,39 @@ pub struct BxsSyscallModule {
     /// unnamed in the binary
     /// read by 0x1416b3320
     #[br(if(!(version < 2)), args(ver))]
-    pub xs_activation_record_version: Option<XsActivationRecordVersion>,
+    pub xs_activation_record_version: Option<Box<XsActivationRecordVersion>>,
     /// unnamed in the binary
     /// read by 0x1416e41e0
     #[br(if(!(version < 2)), args(ver))]
-    pub xs_data_version: Option<XsDataVersion>,
+    pub xs_data_version: Option<Box<XsDataVersion>>,
     /// unnamed in the binary
     /// read by 0x1416e4530
     #[br(if(!(version < 2)), args(ver))]
-    pub xs_data_version2: Option<XsDataVersion2>,
+    pub xs_data_version2: Option<Box<XsDataVersion2>>,
     /// unnamed in the binary
     /// read by 0x14174d040
     #[br(if(!(version < 2)), args(ver))]
-    pub xs_variable_entry_version: Option<XsVariableEntryVersion>,
+    pub xs_variable_entry_version: Option<Box<XsVariableEntryVersion>>,
     /// unnamed in the binary
     /// read by 0x1416f1ee0
     #[br(if(!(version < 2)), args(ver))]
-    pub xs_file_entry_version: Option<XsFileEntryVersion>,
+    pub xs_file_entry_version: Option<Box<XsFileEntryVersion>>,
     /// unnamed in the binary
     /// read by 0x1416fcb10
     #[br(if(!(version < 2)), args(ver))]
-    pub xs_function_entry_version: Option<XsFunctionEntryVersion>,
+    pub xs_function_entry_version: Option<Box<XsFunctionEntryVersion>>,
     /// unnamed in the binary
     /// read by 0x141734cf0
     #[br(if(!(version < 2)), args(ver))]
-    pub xs_symbol_table_version: Option<XsSymbolTableVersion>,
+    pub xs_symbol_table_version: Option<Box<XsSymbolTableVersion>>,
     /// unnamed in the binary
     /// read by 0x141735010
     #[br(if(!(version < 2)), args(ver))]
-    pub xs_symbol_table_version2: Option<XsSymbolTableVersion2>,
+    pub xs_symbol_table_version2: Option<Box<XsSymbolTableVersion2>>,
     /// unnamed in the binary
     /// read by 0x14173ae90
     #[br(if(!(version < 2)), args(ver))]
-    pub xs_syscall_entry_version: Option<XsSyscallEntryVersion>,
+    pub xs_syscall_entry_version: Option<Box<XsSyscallEntryVersion>>,
     /// game: `&numberSyscalls`
     /// read at 0x1417408b1
     pub number_syscalls: u32,
@@ -2054,7 +2054,7 @@ pub struct BxsRuntimeEntry1 {
     /// unnamed in the binary
     /// read by 0x1416dbab0
     #[br(if(have_data == 1), args(ver))]
-    pub bxs_data: Option<BxsData>,
+    pub bxs_data: Option<Box<BxsData>>,
 }
 
 /// Read by `FUN_14171c470` (`xsruntime.cpp`) of the build.
@@ -2370,7 +2370,7 @@ pub struct WorldPlayer {
     pub is_scout_map_enabled: Option<i32>,
     /// read by 0x140f4c080
     #[br(if(type_ == 1 && is_scout_map_enabled.unwrap_or_default() != 0), args(ver))]
-    pub tribe_information_aimodule: Option<TribeInformationAIModule>,
+    pub tribe_information_aimodule: Option<Box<TribeInformationAIModule>>,
     /// game: `&mFinalBattleRoyalePosition`
     /// helper 0x140b4b760
     pub final_battle_royale_position: u32,
@@ -2402,7 +2402,7 @@ pub struct WorldPlayer {
     /// unnamed in the binary
     /// read by 0x141613020
     #[br(if(type_ == 3 && !(temp.unwrap_or_default() != 1) && using_xs.unwrap_or_default() != 0), args(ver))]
-    pub bxs_runtime: Option<BxsRuntime>,
+    pub bxs_runtime: Option<Box<BxsRuntime>>,
     /// unnamed in the binary
     /// the routine's closing marker
     #[brw(magic = b"\x0b")]
@@ -2808,7 +2808,7 @@ pub struct RgeMasterActionObject {
     pub object_task_flags: u8,
     /// read by 0x1411a8f80; named by the save's write in the same place (0x1410a4e70)
     #[br(if((object_task_flags & 1) != 0), args(ver))]
-    pub tasks: Option<TaskList>,
+    pub tasks: Option<Box<TaskList>>,
     /// game: `&tempSoundNum`
     /// read at 0x1410a41e3
     pub temp_sound_num: u16,
@@ -3092,25 +3092,25 @@ pub struct RgeMasterMissileObject {
 pub struct RgeMaster {
     /// read by 0x1410ee760
     #[br(if((10..61).contains(&master_type) && master_type == 10), args(ver))]
-    pub rge_master_static_object: Option<RgeMasterStaticObject>,
+    pub rge_master_static_object: Option<Box<RgeMasterStaticObject>>,
     /// read by 0x1410a6b70
     #[br(if((10..61).contains(&master_type) && master_type == 20), args(ver))]
-    pub rge_master_animated_object: Option<RgeMasterAnimatedObject>,
+    pub rge_master_animated_object: Option<Box<RgeMasterAnimatedObject>>,
     /// read by 0x1410cf320
     #[br(if((10..61).contains(&master_type) && master_type == 25), args(ver))]
-    pub rge_master_doppleganger_object: Option<RgeMasterAnimatedObject>,
+    pub rge_master_doppleganger_object: Option<Box<RgeMasterAnimatedObject>>,
     /// read by 0x1410d9790
     #[br(if((10..61).contains(&master_type) && master_type == 30), args(ver))]
-    pub rge_master_moving_object: Option<RgeMasterMovingObject>,
+    pub rge_master_moving_object: Option<Box<RgeMasterMovingObject>>,
     /// read by 0x141094d30
     #[br(if((10..61).contains(&master_type) && master_type == 40), args(ver))]
-    pub rge_master_action_object: Option<RgeMasterActionObject>,
+    pub rge_master_action_object: Option<Box<RgeMasterActionObject>>,
     /// read by 0x1410ab7c0
     #[br(if((10..61).contains(&master_type) && master_type == 50), args(ver))]
-    pub rge_master_combat_object: Option<RgeMasterCombatObject>,
+    pub rge_master_combat_object: Option<Box<RgeMasterCombatObject>>,
     /// read by 0x1410d11e0
     #[br(if((10..61).contains(&master_type) && master_type == 60), args(ver))]
-    pub rge_master_missile_object: Option<RgeMasterMissileObject>,
+    pub rge_master_missile_object: Option<Box<RgeMasterMissileObject>>,
 }
 
 /// Read by `FUN_1412439d0` (`TribeMasterBuildingObject.cpp`) of the build.
@@ -3177,17 +3177,17 @@ pub struct TribeMasterBuildingObject {
 pub struct Master {
     /// read by 0x141277b70
     #[br(if(master_type == 15), args(ver))]
-    pub tribe_master_tree_object: Option<RgeMasterStaticObject>,
+    pub tribe_master_tree_object: Option<Box<RgeMasterStaticObject>>,
     /// read by 0x14124b140
     #[br(if(!(master_type == 15) && master_type == 70), args(ver))]
-    pub tribe_master_combat_object: Option<TribeMasterCombatObject>,
+    pub tribe_master_combat_object: Option<Box<TribeMasterCombatObject>>,
     /// unnamed in the binary
     /// read by 0x141665db0
     #[br(if(!(master_type == 15) && !(master_type == 70) && master_type != 80), args(ver, master_type))]
-    pub rge_master: Option<RgeMaster>,
+    pub rge_master: Option<Box<RgeMaster>>,
     /// read by 0x141229be0
     #[br(if(!(master_type == 15) && !(master_type == 70) && !(master_type != 80)), args(ver))]
-    pub tribe_master_building_object: Option<TribeMasterBuildingObject>,
+    pub tribe_master_building_object: Option<Box<TribeMasterBuildingObject>>,
 }
 
 /// Read by `FUN_141282780` of the build.
@@ -4098,7 +4098,7 @@ pub struct RgeActiveAnimatedSprite {
 pub struct ActiveSprite {
     /// read by 0x1413b0c50
     #[br(if(sprite_type == 1), args(ver))]
-    pub rge_active_sprite: Option<RgeActiveSprite>,
+    pub rge_active_sprite: Option<Box<RgeActiveSprite>>,
     /// game: `node->order`
     /// read at 0x1413b977e
     #[br(if(sprite_type == 1))]
@@ -4113,7 +4113,7 @@ pub struct ActiveSprite {
     pub node_count: Option<u8>,
     /// read by 0x1413b07d0
     #[br(if(!(sprite_type == 1) && sprite_type == 2), args(ver))]
-    pub rge_active_animated_sprite: Option<RgeActiveAnimatedSprite>,
+    pub rge_active_animated_sprite: Option<Box<RgeActiveAnimatedSprite>>,
     /// game: `node->order`
     /// read at 0x1413b8ea4
     #[br(if(!(sprite_type == 1) && sprite_type == 2))]
@@ -4139,7 +4139,7 @@ pub struct ActiveSpriteListEntry1 {
     /// game: `type`
     /// read by 0x1413b8a90
     #[br(if(sprite_type != 0), args(ver, sprite_type))]
-    pub type_: Option<ActiveSprite>,
+    pub type_: Option<Box<ActiveSprite>>,
 }
 
 /// Read by `FUN_1413b87c0` of the build.
@@ -4334,63 +4334,63 @@ pub struct RgeStaticObject {
     pub master_type: Option<u8>,
     /// read by 0x1410ed770
     #[br(if(has_own_master_object != 0 && master_type.unwrap_or_default() == 10), args(ver))]
-    pub rge_master_static_object: Option<OwnRgeMasterStaticObject>,
+    pub rge_master_static_object: Option<Box<OwnRgeMasterStaticObject>>,
     /// read by 0x1410a69e0
     #[br(if(has_own_master_object != 0 && master_type.unwrap_or_default() == 20), args(ver))]
-    pub rge_master_animated_object: Option<OwnRgeMasterAnimatedObject>,
+    pub rge_master_animated_object: Option<Box<OwnRgeMasterAnimatedObject>>,
     /// read by 0x1410d95b0
     #[br(if(has_own_master_object != 0 && master_type.unwrap_or_default() == 30), args(ver))]
-    pub rge_master_moving_object: Option<OwnRgeMasterMovingObject>,
+    pub rge_master_moving_object: Option<Box<OwnRgeMasterMovingObject>>,
     /// read by 0x141094b50
     #[br(if(has_own_master_object != 0 && master_type.unwrap_or_default() == 40), args(ver))]
-    pub rge_master_action_object: Option<OwnRgeMasterActionObject>,
+    pub rge_master_action_object: Option<Box<OwnRgeMasterActionObject>>,
     /// read by 0x1410d1050
     #[br(if(has_own_master_object != 0 && master_type.unwrap_or_default() == 60), args(ver))]
-    pub rge_master_missile_object: Option<OwnRgeMasterMissileObject>,
+    pub rge_master_missile_object: Option<Box<OwnRgeMasterMissileObject>>,
     /// read by 0x14124aec0
     #[br(if(has_own_master_object != 0 && master_type.unwrap_or_default() == 70), args(ver))]
-    pub tribe_master_combat_object: Option<OwnTribeMasterCombatObject>,
+    pub tribe_master_combat_object: Option<Box<OwnTribeMasterCombatObject>>,
     /// read by 0x141229a30
     #[br(if(has_own_master_object != 0 && master_type.unwrap_or_default() == 80), args(ver))]
-    pub tribe_master_building_object: Option<OwnTribeMasterBuildingObject>,
+    pub tribe_master_building_object: Option<Box<OwnTribeMasterBuildingObject>>,
     /// game: `masterType`
     /// read at 0x1411a2714
     #[br(if(has_successor_master_obj != 0))]
     pub master_type_2: Option<u8>,
     /// read by 0x1410ed770
     #[br(if(has_successor_master_obj != 0 && master_type_2.unwrap_or_default() == 10), args(ver))]
-    pub rge_master_static_object_2: Option<OwnRgeMasterStaticObject>,
+    pub rge_master_static_object_2: Option<Box<OwnRgeMasterStaticObject>>,
     /// read by 0x1410a69e0
     #[br(if(has_successor_master_obj != 0 && master_type_2.unwrap_or_default() == 20), args(ver))]
-    pub rge_master_animated_object_2: Option<OwnRgeMasterAnimatedObject>,
+    pub rge_master_animated_object_2: Option<Box<OwnRgeMasterAnimatedObject>>,
     /// read by 0x1410d95b0
     #[br(if(has_successor_master_obj != 0 && master_type_2.unwrap_or_default() == 30), args(ver))]
-    pub rge_master_moving_object_2: Option<OwnRgeMasterMovingObject>,
+    pub rge_master_moving_object_2: Option<Box<OwnRgeMasterMovingObject>>,
     /// read by 0x141094b50
     #[br(if(has_successor_master_obj != 0 && master_type_2.unwrap_or_default() == 40), args(ver))]
-    pub rge_master_action_object_2: Option<OwnRgeMasterActionObject>,
+    pub rge_master_action_object_2: Option<Box<OwnRgeMasterActionObject>>,
     /// read by 0x1410d1050
     #[br(if(has_successor_master_obj != 0 && master_type_2.unwrap_or_default() == 60), args(ver))]
-    pub rge_master_missile_object_2: Option<OwnRgeMasterMissileObject>,
+    pub rge_master_missile_object_2: Option<Box<OwnRgeMasterMissileObject>>,
     /// read by 0x14124aec0
     #[br(if(has_successor_master_obj != 0 && master_type_2.unwrap_or_default() == 70), args(ver))]
-    pub tribe_master_combat_object_2: Option<OwnTribeMasterCombatObject>,
+    pub tribe_master_combat_object_2: Option<Box<OwnTribeMasterCombatObject>>,
     /// read by 0x141229a30
     #[br(if(has_successor_master_obj != 0 && master_type_2.unwrap_or_default() == 80), args(ver))]
-    pub tribe_master_building_object_2: Option<OwnTribeMasterBuildingObject>,
+    pub tribe_master_building_object_2: Option<Box<OwnTribeMasterBuildingObject>>,
     /// game: `temp_load_sprite_list`
     /// read at 0x1411a2c56
     pub temp_load_sprite_list: u8,
     /// unnamed in the binary
     /// read by 0x1413b87c0
     #[br(if(!(temp_load_sprite_list == 0)), args(ver))]
-    pub active_sprite_list: Option<ActiveSpriteList>,
+    pub active_sprite_list: Option<Box<ActiveSpriteList>>,
     /// game: `short_val`
     /// read at 0x1411a2eee
     pub short_val_2: i16,
     /// read by 0x1408cb520; named by the save's write in the same place (0x1411985d0)
     #[br(if(short_val_2 != 0), args(ver))]
-    pub particle_instance: Option<Particle>,
+    pub particle_instance: Option<Box<Particle>>,
     /// game: `short_val`
     /// read at 0x1411a307a
     pub short_val_3: i16,
@@ -4568,7 +4568,7 @@ pub struct RgeMovingObject {
     pub have_future_path_data: u32,
     /// read by 0x140f97360; named by the save's write in the same place (0x141159ab0)
     #[br(if(have_future_path_data == 1), args(ver))]
-    pub future_path_data: Option<PathData>,
+    pub future_path_data: Option<Box<PathData>>,
     /// game: `haveMovement`
     /// read at 0x14115f7ea
     pub have_movement: u32,
@@ -4925,34 +4925,34 @@ pub struct ActionHeroPower {
 pub struct RgeActionByType {
     /// read by 0x140aa1240
     #[br(if(action_type == 1), args(ver, num_players))]
-    pub rge_action_move_to: Option<RgeActionMoveTo>,
+    pub rge_action_move_to: Option<Box<RgeActionMoveTo>>,
     /// read by 0x140a85700
     #[br(if(action_type == 3), args(ver, num_players))]
-    pub rge_action_enter: Option<RgeActionEnter>,
+    pub rge_action_enter: Option<Box<RgeActionEnter>>,
     /// read by 0x140a87da0
     #[br(if(action_type == 4), args(ver, num_players))]
-    pub rge_action_explore: Option<RgeAction>,
+    pub rge_action_explore: Option<Box<RgeAction>>,
     /// read by 0x140a88940
     #[br(if(action_type == 5), args(ver, num_players))]
-    pub rge_action_gather: Option<RgeActionGather>,
+    pub rge_action_gather: Option<Box<RgeActionGather>>,
     /// read by 0x140a9a4d0
     #[br(if(action_type == 8), args(ver, num_players))]
-    pub rge_action_missile: Option<RgeActionMissile>,
+    pub rge_action_missile: Option<Box<RgeActionMissile>>,
     /// read by 0x140a7c880
     #[br(if(action_type == 9), args(ver, num_players))]
-    pub rge_action_attack: Option<RgeActionAttack>,
+    pub rge_action_attack: Option<Box<RgeActionAttack>>,
     /// read by 0x140a84700
     #[br(if(action_type == 10), args(ver, num_players))]
-    pub rge_action_bird: Option<RgeAction>,
+    pub rge_action_bird: Option<Box<RgeAction>>,
     /// read by 0x140a90c60
     #[br(if(action_type == 13), args(ver, num_players))]
-    pub rge_action_guard: Option<RgeAction>,
+    pub rge_action_guard: Option<Box<RgeAction>>,
     /// read by 0x140a99480
     #[br(if(action_type == 21), args(ver, num_players))]
-    pub rge_action_make: Option<RgeActionMake>,
+    pub rge_action_make: Option<Box<RgeActionMake>>,
     /// read by 0x140a916c0
     #[br(if(action_type == 126), args(ver, num_players))]
-    pub action_hero_power: Option<ActionHeroPower>,
+    pub action_hero_power: Option<Box<ActionHeroPower>>,
 }
 
 /// Read by `FUN_140aad670` of the build.
@@ -5303,89 +5303,89 @@ pub struct TribeActionWaitSolidify {
 pub struct Action {
     /// read by 0x140a85700
     #[br(if(action_type == 3), args(ver, num_players))]
-    pub rge_action_enter: Option<RgeActionEnter>,
+    pub rge_action_enter: Option<Box<RgeActionEnter>>,
     /// unnamed in the binary
     /// read by 0x140a97a10
     #[br(if(!(action_type == 3 || action_type == 12 || action_type == 14 || action_type == 101 || action_type == 102 || action_type == 103 || action_type == 104 || action_type == 105 || action_type == 106 || action_type == 107 || action_type == 108 || action_type == 110 || action_type == 111 || action_type == 120 || action_type == 121 || action_type == 122 || action_type == 123 || action_type == 124 || action_type == 125 || action_type == 131 || action_type == 132 || action_type == 133 || action_type == 134 || action_type == 135 || action_type == 136 || action_type == 149 || action_type == 154)), args(ver, action_type, num_players))]
-    pub rge_action_by_type: Option<RgeActionByType>,
+    pub rge_action_by_type: Option<Box<RgeActionByType>>,
     /// read by 0x140aa3b20
     #[br(if(action_type == 12), args(ver, num_players))]
-    pub rge_action_transport: Option<RgeAction>,
+    pub rge_action_transport: Option<Box<RgeAction>>,
     /// read by 0x140aa4b90
     #[br(if(action_type == 14), args(ver, num_players))]
-    pub rge_action_transport_over_wall: Option<RgeAction>,
+    pub rge_action_transport_over_wall: Option<Box<RgeAction>>,
     /// read by 0x140aad670
     #[br(if(action_type == 101), args(ver, num_players))]
-    pub tribe_action_build: Option<TribeActionBuild>,
+    pub tribe_action_build: Option<Box<TribeActionBuild>>,
     /// read by 0x140acb1e0
     #[br(if(action_type == 102), args(ver, num_players))]
-    pub tribe_action_make_obj: Option<TribeActionMakeObj>,
+    pub tribe_action_make_obj: Option<Box<TribeActionMakeObj>>,
     /// read by 0x140ad0840
     #[br(if(action_type == 103), args(ver, num_players))]
-    pub tribe_action_make_tech: Option<TribeActionMakeTech>,
+    pub tribe_action_make_tech: Option<Box<TribeActionMakeTech>>,
     /// read by 0x140ab3b70
     #[br(if(action_type == 104), args(ver, num_players))]
-    pub tribe_action_convert: Option<TribeActionConvert>,
+    pub tribe_action_convert: Option<Box<TribeActionConvert>>,
     /// read by 0x140ac07e0
     #[br(if(action_type == 105), args(ver, num_players))]
-    pub tribe_action_heal: Option<RgeAction>,
+    pub tribe_action_heal: Option<Box<RgeAction>>,
     /// read by 0x140ad8110
     #[br(if(action_type == 106), args(ver, num_players))]
-    pub tribe_action_repair: Option<TribeActionRepair>,
+    pub tribe_action_repair: Option<Box<TribeActionRepair>>,
     /// read by 0x140aa8a10
     #[br(if(action_type == 107), args(ver, num_players))]
-    pub tribe_action_artifact: Option<TribeActionArtifact>,
+    pub tribe_action_artifact: Option<Box<TribeActionArtifact>>,
     /// read by 0x140abc4d0
     #[br(if(action_type == 108), args(ver, num_players))]
-    pub tribe_action_discovery_artifact: Option<TribeActionDiscoveryArtifact>,
+    pub tribe_action_discovery_artifact: Option<Box<TribeActionDiscoveryArtifact>>,
     /// read by 0x140ac3010
     #[br(if(action_type == 110), args(ver, num_players))]
-    pub tribe_action_hunt: Option<TribeActionHunt>,
+    pub tribe_action_hunt: Option<Box<TribeActionHunt>>,
     /// read by 0x140adea70
     #[br(if(action_type == 111), args(ver, num_players))]
-    pub tribe_action_trade: Option<TribeActionTrade>,
+    pub tribe_action_trade: Option<Box<TribeActionTrade>>,
     /// read by 0x140ae8fa0
     #[br(if(action_type == 120), args(ver, num_players))]
-    pub tribe_action_wonder: Option<TribeActionWonder>,
+    pub tribe_action_wonder: Option<Box<TribeActionWonder>>,
     /// read by 0x140abd5c0
     #[br(if(action_type == 121), args(ver, num_players))]
-    pub tribe_action_farm: Option<RgeAction>,
+    pub tribe_action_farm: Option<Box<RgeAction>>,
     /// read by 0x140abdba0
     #[br(if(action_type == 122), args(ver, num_players))]
-    pub tribe_action_gather: Option<TribeActionGather>,
+    pub tribe_action_gather: Option<Box<TribeActionGather>>,
     /// read by 0x140ac1bc0
     #[br(if(action_type == 123), args(ver, num_players))]
-    pub tribe_action_housing: Option<TribeActionHousing>,
+    pub tribe_action_housing: Option<Box<TribeActionHousing>>,
     /// read by 0x140ad5090
     #[br(if(action_type == 124), args(ver, num_players))]
-    pub tribe_action_pack: Option<TribeActionPack>,
+    pub tribe_action_pack: Option<Box<TribeActionPack>>,
     /// read by 0x140ae59d0
     #[br(if(action_type == 125), args(ver, num_players))]
-    pub tribe_action_unpack: Option<TribeActionUnpack>,
+    pub tribe_action_unpack: Option<Box<TribeActionUnpack>>,
     /// read by 0x140ad3080
     #[br(if(action_type == 131), args(ver, num_players))]
-    pub tribe_action_offboard_trade: Option<TribeActionOffboardTrade>,
+    pub tribe_action_offboard_trade: Option<Box<TribeActionOffboardTrade>>,
     /// read by 0x140ad70c0
     #[br(if(action_type == 132), args(ver, num_players))]
-    pub tribe_action_pickup_relic: Option<RgeAction>,
+    pub tribe_action_pickup_relic: Option<Box<RgeAction>>,
     /// read by 0x140ab2f40
     #[br(if(action_type == 133), args(ver, num_players))]
-    pub tribe_action_charge: Option<RgeAction>,
+    pub tribe_action_charge: Option<Box<RgeAction>>,
     /// read by 0x140ae4820
     #[br(if(action_type == 134), args(ver, num_players))]
-    pub tribe_action_unit_transform: Option<TribeActionUnitTransform>,
+    pub tribe_action_unit_transform: Option<Box<TribeActionUnitTransform>>,
     /// read by 0x140ab1c20
     #[br(if(action_type == 135), args(ver, num_players))]
-    pub tribe_action_capture: Option<RgeAction>,
+    pub tribe_action_capture: Option<Box<RgeAction>>,
     /// read by 0x140abb720
     #[br(if(action_type == 136), args(ver, num_players))]
-    pub tribe_action_deliver_relic: Option<RgeAction>,
+    pub tribe_action_deliver_relic: Option<Box<RgeAction>>,
     /// read by 0x140adb7a0
     #[br(if(action_type == 149), args(ver, num_players))]
-    pub tribe_action_shepherd: Option<RgeAction>,
+    pub tribe_action_shepherd: Option<Box<RgeAction>>,
     /// read by 0x140ae8220
     #[br(if(action_type == 154), args(ver, num_players))]
-    pub tribe_action_wait_solidify: Option<TribeActionWaitSolidify>,
+    pub tribe_action_wait_solidify: Option<Box<TribeActionWaitSolidify>>,
 }
 
 #[binrw]
@@ -5398,7 +5398,7 @@ pub struct ActionListEntry1 {
     /// unnamed in the binary
     /// read by 0x140ac9b40
     #[br(if(action_type != 0), args(ver, action_type, num_players))]
-    pub action: Option<Action>,
+    pub action: Option<Box<Action>>,
 }
 
 /// Read by `FUN_140a98850` of the build.
@@ -5722,7 +5722,7 @@ pub struct UnitAiModule {
     pub has_patrol_path: u32,
     /// read by 0x140f961e0; named by the save's write in the same place (0x140c5f900)
     #[br(if(has_patrol_path == 1), args(ver))]
-    pub patrol_path: Option<Path>,
+    pub patrol_path: Option<Box<Path>>,
     /// game: `mPatrolCurrentWaypoint`
     /// read at 0x140c52c43
     pub patrol_current_waypoint: i32,
@@ -5870,23 +5870,23 @@ pub struct TribeCombatObject {
     /// unnamed in the binary
     /// read by 0x140c4efc0
     #[br(if(need_unit_ai < 2 && need_unit_ai == 1), args(ver))]
-    pub unit_ai_module: Option<UnitAiModule>,
+    pub unit_ai_module: Option<Box<UnitAiModule>>,
     /// unnamed in the binary
     /// read by 0x140c1d860; the unit AI class FUN_141215560 builds for the type; its vtable slot 2
     #[br(if(!(need_unit_ai < 2) && need_unit_ai == 4), args(ver))]
-    pub tribe_elephant_unit_ai_module: Option<TribeElephantUnitAiModule>,
+    pub tribe_elephant_unit_ai_module: Option<Box<TribeElephantUnitAiModule>>,
     /// unnamed in the binary
     /// read by 0x140c1df80; the unit AI class FUN_141215560 builds for the type; its vtable slot 2
     #[br(if(!(need_unit_ai < 2) && need_unit_ai == 15), args(ver))]
-    pub tribe_tower_unit_ai_module: Option<TribeTowerUnitAiModule>,
+    pub tribe_tower_unit_ai_module: Option<Box<TribeTowerUnitAiModule>>,
     /// unnamed in the binary
     /// read by 0x140c1d3c0; the unit AI class FUN_141215560 builds for the type; its vtable slot 2
     #[br(if(!(need_unit_ai < 2) && need_unit_ai == 17), args(ver))]
-    pub tribe_building_unit_ai_module: Option<TribeBuildingUnitAiModule>,
+    pub tribe_building_unit_ai_module: Option<Box<TribeBuildingUnitAiModule>>,
     /// unnamed in the binary
     /// read by 0x140c4efc0; the unit AI class FUN_141215560 builds for the type; its vtable slot 2
     #[br(if(!(need_unit_ai < 2) && !(need_unit_ai == 4 || need_unit_ai == 15 || need_unit_ai == 17)), args(ver))]
-    pub unit_ai_module_2: Option<UnitAiModule>,
+    pub unit_ai_module_2: Option<Box<UnitAiModule>>,
     /// game: `mTownBellFlag`
     /// read at 0x141220a3d
     pub town_bell_flag: u8,
@@ -6179,7 +6179,7 @@ pub struct TribeBuildingObject {
     pub master_type: Option<u8>,
     /// read by 0x141229a30
     #[br(if(has_open_closed_master_object != 0), args(ver))]
-    pub tribe_master_building_object: Option<OwnTribeMasterBuildingObject>,
+    pub tribe_master_building_object: Option<Box<OwnTribeMasterBuildingObject>>,
     /// game: `attackingUnitsCount`
     /// read at 0x1411e4805
     pub attacking_units_count: i32,
@@ -6274,25 +6274,25 @@ pub struct RgeMissileObject {
 pub struct RgeObject {
     /// read by 0x14116a500
     #[br(if(object_type == 10), args(ver))]
-    pub rge_static_object: Option<RgeStaticObject>,
+    pub rge_static_object: Option<Box<RgeStaticObject>>,
     /// read by 0x141070e10
     #[br(if(object_type == 20), args(ver))]
-    pub rge_animated_object: Option<RgeAnimatedObject>,
+    pub rge_animated_object: Option<Box<RgeAnimatedObject>>,
     /// read by 0x14108dda0
     #[br(if(object_type == 25), args(ver))]
-    pub rge_doppleganger_object: Option<RgeDopplegangerObject>,
+    pub rge_doppleganger_object: Option<Box<RgeDopplegangerObject>>,
     /// read by 0x141141b10
     #[br(if(object_type == 30), args(ver))]
-    pub rge_moving_object: Option<RgeMovingObject>,
+    pub rge_moving_object: Option<Box<RgeMovingObject>>,
     /// read by 0x141068160
     #[br(if(object_type == 40), args(ver, num_players))]
-    pub rge_action_object: Option<RgeActionObject>,
+    pub rge_action_object: Option<Box<RgeActionObject>>,
     /// read by 0x141072d20
     #[br(if(object_type == 50), args(ver, num_players))]
-    pub rge_combat_object: Option<RgeCombatObject>,
+    pub rge_combat_object: Option<Box<RgeCombatObject>>,
     /// read by 0x14113c660
     #[br(if(object_type == 60), args(ver, num_players))]
-    pub rge_missile_object: Option<RgeMissileObject>,
+    pub rge_missile_object: Option<Box<RgeMissileObject>>,
 }
 
 /// Read by `FUN_141278040` of the build.
@@ -6303,14 +6303,14 @@ pub struct RgeObject {
 pub struct Object {
     /// read by 0x1411ea960
     #[br(if(object_type == 70), args(ver, num_players))]
-    pub tribe_combat_object: Option<TribeCombatObject>,
+    pub tribe_combat_object: Option<Box<TribeCombatObject>>,
     /// read by 0x1411ac170
     #[br(if(!(object_type == 70) && object_type == 80), args(ver, num_players))]
-    pub tribe_building_object: Option<TribeBuildingObject>,
+    pub tribe_building_object: Option<Box<TribeBuildingObject>>,
     /// unnamed in the binary
     /// read by 0x141165e30
     #[br(if(!(object_type == 70) && !(object_type == 80)), args(ver, object_type, num_players))]
-    pub rge_object: Option<RgeObject>,
+    pub rge_object: Option<Box<RgeObject>>,
 }
 
 #[binrw]
@@ -6323,7 +6323,7 @@ pub struct ObjectListEntry1 {
     /// unnamed in the binary
     /// read by 0x141278040
     #[br(if(object_type != 0), args(ver, object_type, num_players))]
-    pub object: Option<Object>,
+    pub object: Option<Box<Object>>,
 }
 
 /// Read by `FUN_141168280` of the build.
@@ -6624,19 +6624,19 @@ pub struct Player {
     /// unnamed in the binary
     /// read by 0x14167b2d0; the creator FUN_141679be0 registers for the type; its vtable slot 1 constructs the player
     #[br(if(type_ == 0), args(ver, num_players))]
-    pub scenario_editor_phantom_player: Option<ScenarioEditorPhantomPlayer>,
+    pub scenario_editor_phantom_player: Option<Box<ScenarioEditorPhantomPlayer>>,
     /// unnamed in the binary
     /// read by 0x14167aca0; the creator FUN_141679be0 registers for the type; its vtable slot 1 constructs the player
     #[br(if(type_ == 1), args(ver, num_players))]
-    pub human_or_coop_player: Option<HumanOrCoopPlayer>,
+    pub human_or_coop_player: Option<Box<HumanOrCoopPlayer>>,
     /// unnamed in the binary
     /// read by 0x14167a670; the creator FUN_141679be0 registers for the type; its vtable slot 1 constructs the player
     #[br(if(type_ == 2), args(ver, num_players))]
-    pub gaia_player: Option<GaiaPlayer>,
+    pub gaia_player: Option<Box<GaiaPlayer>>,
     /// unnamed in the binary
     /// read by 0x14167a040; the creator FUN_141679be0 registers for the type; its vtable slot 1 constructs the player
     #[br(if(type_ == 3), args(ver, num_players))]
-    pub computer_player: Option<ComputerPlayer>,
+    pub computer_player: Option<Box<ComputerPlayer>>,
 }
 
 #[binrw]
@@ -8086,13 +8086,13 @@ pub struct UnitGroup {
     pub temp_bool: u32,
     /// read by 0x1410180b0; named by the save's write in the same place (0x1410321e0)
     #[br(if(temp_bool == 1), args(ver))]
-    pub previous_formation: Option<Formation>,
+    pub previous_formation: Option<Box<Formation>>,
     /// game: `tempBOOL`
     /// read at 0x14101f432
     pub temp_bool_2: u32,
     /// read by 0x1410180b0; named by the save's write in the same place (0x1410321e0)
     #[br(if(temp_bool_2 == 1), args(ver))]
-    pub current_formation: Option<Formation>,
+    pub current_formation: Option<Box<Formation>>,
     /// game: `garbage`
     /// read at 0x14101f6d2
     pub garbage: u32,
@@ -8948,7 +8948,7 @@ pub struct World {
     pub is_xsenabled: u8,
     /// read by 0x1415c7950; named by the save's write in the same place (0x1415e25e0)
     #[br(if(is_xsenabled != 0), args(ver))]
-    pub scripted_trigger_system: Option<BxsRuntime>,
+    pub scripted_trigger_system: Option<Box<BxsRuntime>>,
     /// game: `size`
     /// read at 0x1415d4035
     pub size: u64,
@@ -8960,7 +8960,7 @@ pub struct World {
     pub is_rmsxsenabled: u8,
     /// read by 0x1415c72c0; named by the save's write in the same place (0x1415e25e0)
     #[br(if(is_rmsxsenabled != 0), args(ver))]
-    pub scripted_rmssystem: Option<BxsRuntime>,
+    pub scripted_rmssystem: Option<Box<BxsRuntime>>,
     /// game: `&playerTeams[i]`
     /// read by 0x141310780, a routine of one read
     #[br(count = 8)]

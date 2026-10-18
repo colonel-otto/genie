@@ -132,11 +132,12 @@ fn check(save_tick: usize, calls: &[Call]) -> Option<Vec<String>> {
             std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&raw[..]), &mut text);
         mesh = Some(text);
     }
-    let (registry, tiles) = (read("registry"), read("tiles"));
+    let (registry, tiles, pools) = (read("registry"), read("tiles"), read("pools"));
     let dumps = genie_oracle::Dumps {
         mesh: mesh.as_deref(),
         registry: registry.as_deref(),
         tiles: tiles.as_deref(),
+        pools: pools.as_deref(),
     };
     let queries: Vec<_> = calls
         .iter()

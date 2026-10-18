@@ -4187,6 +4187,9 @@ pub struct GameState {
     /// The map tiles' object lists in the game's order (`x`, `y`, ids; each tile of two objects
     /// or more), when the oracle dumped them: the order is the game's history, no save holds it.
     pub tile_lists: Option<Vec<(i32, i32, Vec<i32>)>>,
+    /// The pool of recycled missiles ([`Recycling::missiles`]), when the oracle dumped it: no
+    /// save holds it.
+    pub missile_pool: Option<Vec<(i32, bool)>>,
 }
 
 impl Turns {
@@ -4206,12 +4209,23 @@ impl Turns {
         let mut notes = Vec::new();
         self.frame_seed = game.frame_seed;
         self.recycling.next_id = game.next_reusable_id;
+        if let Some(pool) = game.missile_pool.as_ref() {
+            self.recycling.missiles.clone_from(pool);
+        }
         if let (Some((maps, unified)), Some(sight)) =
             (game.sight.as_ref(), self.spatial.sight.as_mut())
         {
             sight.maps.clone_from(maps);
             sight.unified.clone_from(unified);
         }
+        // the objects the slice holds, sorted: forcing only takes away objects the game no
+        // longer holds
+        let mut known: Vec<i32> = self
+            .players
+            .iter()
+            .flat_map(|q| q.objects.iter().chain(&q.sleeping).map(|u| u.id))
+            .collect();
+        known.sort_unstable();
         for p in 0..self.players.len() {
             let Some(theirs) = game.players.get(p) else {
                 continue;
@@ -4289,11 +4303,7 @@ impl Turns {
                 i += 1;
             }
             for g in theirs {
-                let known = self
-                    .players
-                    .iter()
-                    .any(|q| q.objects.iter().chain(&q.sleeping).any(|u| u.id == g.id));
-                if !known {
+                if known.binary_search(&g.id).is_err() {
                     notes.push((
                         p,
                         g.id,

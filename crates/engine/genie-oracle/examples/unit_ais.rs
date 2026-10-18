@@ -37,7 +37,7 @@ fn main() {
             "{} master {} at ({}, {}) state {} unit-AI type {}",
             s.id, s.master_obj, s.t_x, s.t_y, s.object_state, combat.need_unit_ai
         );
-        if let Some(e) = combat.tribe_elephant_unit_ai_module.as_ref() {
+        if let Some(e) = combat.tribe_elephant_unit_ai_module.as_deref() {
             println!(
                 "  origin ({}, {}, {}) furious {}",
                 e.origin_x, e.origin_y, e.origin_z, e.furious

@@ -63,7 +63,7 @@ fn main() {
             "  speedup building {} value {}",
             m.speedup_building_id, m.speedup_value
         );
-        let datas = m.temp_path_data.iter().chain(m.future_path_data.iter());
+        let datas = m.temp_path_data.iter().chain(m.future_path_data.as_deref());
         for d in datas {
             println!("  path data {d:?}");
             for p in paths.iter().filter(|p| p.idvalue == d.path_id) {
