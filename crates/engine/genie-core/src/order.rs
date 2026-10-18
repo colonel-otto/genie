@@ -79,7 +79,7 @@ const GARRISON: i16 = 3;
 
 /// Where an object is: its player and its index in the live or the sleeping list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Place {
+pub(crate) enum Place {
     Live(usize, usize),
     Sleeping(usize, usize),
 }
@@ -145,7 +145,7 @@ fn splits_together(
 const AUTO_SCOUT_CLASS: i16 = 58;
 
 impl Turns {
-    fn place(&self, id: i32) -> Option<Place> {
+    pub(crate) fn place(&self, id: i32) -> Option<Place> {
         self.players.iter().enumerate().find_map(|(p, player)| {
             if let Some(i) = player.objects.iter().position(|u| u.id == id) {
                 return Some(Place::Live(p, i));

@@ -3938,7 +3938,10 @@ impl Turns {
                     charge: 0.0,
                     charge_hit: false,
                 });
-                if let Err(e) = self.task_builders(player, id, master, position, builders) {
+                let built = self
+                    .clear_footprint(player, master, [position[0], position[1]])
+                    .and_then(|()| self.task_builders(player, id, master, position, builders));
+                if let Err(e) = built {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }
@@ -4111,6 +4114,106 @@ impl Turns {
                 self.spatial.set_gait(u.id, u.gait());
             }
         }
+    }
+
+    /// A new building's footprint clearing (`FUN_1415c3620` from the building's constructor
+    /// `FUN_1411de5f0`, both flags 0) for a building of `master` of `player` at `at`: the
+    /// objects on the tiles within 4 of it (rows, then columns, held on the map), not of its own
+    /// master, whose master can be built on (`+0x5e9`) and whose box overlaps its master's radii
+    /// (on each axis the gap below the two radii summed), are deleted (slot 0xd0,
+    /// `FUN_14118f1e0`: hit points 0, a sleeping one wakes to the end of its player's live list,
+    /// `FUN_14119deb0`, and set_state 7; the updates take it to 8 and out of the list). Nothing
+    /// for a master without radii. Not modelled: a wall under one of the player's gates (class
+    /// 27, `FUN_1411ccbb0`), the flag masters without height (`FUN_140fde270`), an object other
+    /// than a static one, with an obstruction record or inside another, and two on one tile (the
+    /// tile's list order).
+    fn clear_footprint(
+        &mut self,
+        player: usize,
+        master: i16,
+        at: [f32; 2],
+    ) -> Result<(), Unsupported> {
+        let site = self.master_of(player, master)?;
+        let [rx, ry] = site.radius;
+        if rx <= 0.0 && ry <= 0.0 {
+            return Ok(());
+        }
+        let [w, h] = self.spatial.map;
+        let edge = |v: f32, size: i32| {
+            let low = (v - 4.0) as i32 as i16;
+            let high = (v + 4.0) as i32 as i16;
+            (
+                low.max(0),
+                if i32::from(high) < size {
+                    high
+                } else {
+                    (size - 1) as i16
+                },
+            )
+        };
+        let (x0, x1) = edge(at[0], w);
+        let (y0, y1) = edge(at[1], h);
+        let mut deleted = Vec::new();
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let here: Vec<i32> = self
+                    .spatial
+                    .objects_on(i32::from(x), i32::from(y))
+                    .filter(|(_, o)| {
+                        o.master != master
+                            && o.buildable_on != 0
+                            && (o.position[0] - at[0]).abs() < o.radius[0] + rx
+                            && (o.position[1] - at[1]).abs() < o.radius[1] + ry
+                    })
+                    .map(|(id, _)| id)
+                    .collect();
+                if 1 < here.len() {
+                    return Err(Unsupported("a footprint clearing of two objects on a tile"));
+                }
+                deleted.extend(here);
+            }
+        }
+        for id in deleted {
+            let place = self.place(id).ok_or(Unsupported(
+                "a footprint clearing of an object the slice does not hold",
+            ))?;
+            let (p, i) = match place {
+                crate::order::Place::Live(p, i) => (p, i),
+                crate::order::Place::Sleeping(p, i) => {
+                    let woken = self.players[p].sleeping.swap_remove(i);
+                    self.players[p].objects.push(woken);
+                    (p, self.players[p].objects.len() - 1)
+                }
+            };
+            let u = &mut self.players[p].objects[i];
+            if u.life.class != Class::Static || u.mover.is_some() || u.ai.is_some() {
+                return Err(Unsupported(
+                    "a footprint clearing of an object above the static type",
+                ));
+            }
+            if u.life.master_id == 0x112 || u.life.master_id == 0x699 || u.life.master_id == 0x6f9 {
+                return Err(Unsupported(
+                    "a footprint clearing of a flag master (FUN_140fde270)",
+                ));
+            }
+            if u.life.inside
+                || self
+                    .spatial
+                    .get(id)
+                    .is_some_and(|o| o.obstruction.is_some())
+            {
+                return Err(Unsupported(
+                    "a footprint clearing of an object inside another or with a record",
+                ));
+            }
+            if u.life.state < 7 {
+                u.life.hp = 0.0;
+                u.life.goto_sleep = false;
+                u.life.state = 7;
+                self.spatial.sight_state(id, 7);
+            }
+        }
+        Ok(())
     }
 
     /// BUILD's part for its own player: the cost, paid when the foundation is placed, and per
