@@ -172,6 +172,52 @@ impl Turns {
             in_reach,
         )?;
         self.players[player].objects[idx].enter = Some(action);
+        if in_reach {
+            self.enter_now(player, idx, target)?;
+        }
+        Ok(())
+    }
+
+    /// The enter at the Enter's start ([`crate::turn::Unit::enter_building`], then the start's
+    /// own `set_state(1)`); the load it gives goes to the owner's attributes at once.
+    fn enter_now(&mut self, player: usize, idx: usize, target: i32) -> Result<(), Unsupported> {
+        let inside = self
+            .players
+            .iter()
+            .flat_map(|p| p.objects.iter().chain(&p.sleeping))
+            .filter(|u| u.life.inside == Some(target))
+            .count();
+        let mut unit = std::mem::take(&mut self.players[player].objects[idx]);
+        let mut adds = Vec::new();
+        let result = (|| {
+            let building = self.players[player]
+                .objects
+                .iter()
+                .find(|u| u.id == target)
+                .ok_or(Unsupported("an enter into a building of another player"))?;
+            let owner = &self.players[player];
+            let mut w = crate::turn::EnterWorld {
+                spatial: &mut self.spatial,
+                pathing: &mut self.pathing,
+                masters: self.masters.get(player),
+                graphics: &self.graphics,
+                sprite_rng: self.streams.get(crate::rng::Stream::Sprite),
+                drop_sites: &self.drop_sites,
+                attributes: &owner.attributes,
+                civ: owner.civ,
+                player,
+                attribute_adds: &mut adds,
+            };
+            if !unit.enter_building(building, inside, &mut w)? {
+                return Err(Unsupported("an Enter in reach that did not get in"));
+            }
+            unit.entered(&mut w)
+        })();
+        self.players[player].objects[idx] = unit;
+        result?;
+        for (kind, amount) in adds {
+            self.players[player].add_attribute(kind, amount)?;
+        }
         Ok(())
     }
 
@@ -472,11 +518,12 @@ impl EnterAction {
     /// The factory's constructor (`FUN_140a855d0`: the target, an annex's main building, is the
     /// caller's, as its add, slot 0x178; the point `FUN_140a85f30` gives a building, its place)
     /// and the install's start (slot 5, `FUN_140a86f20`) with its `set_state(4)` (`FUN_140a87320`)
-    /// on a building with room: a `MoveTo` to it within the task's range (`FUN_140aa0df0`, quiet,
-    /// its start `0x140aa2100`: within [`ARRIVED`] of its footprint already in state 1, else 3).
-    /// A unit inside an object (`set_state` 13), a building without room (`FUN_140a864d0`, then
-    /// `set_state` 11), a unit in reach at the start (the enter at once) and a unit without speed
-    /// (the `MoveTo`'s state 13) are not modelled.
+    /// on a building with room: a unit in reach (`FUN_140a85c30`) enters at once, which the
+    /// caller does (`FUN_140a867b0`, then `set_state(1)`); else a `MoveTo` to it within the
+    /// task's range (`FUN_140aa0df0`, quiet, its start `0x140aa2100`: within [`ARRIVED`] of its
+    /// footprint already in state 1, else 3). A unit inside an object (`set_state` 13), a
+    /// building without room (`FUN_140a864d0`, then `set_state` 11) and a unit without speed (the
+    /// `MoveTo`'s state 13) are not modelled.
     pub fn start(
         target: i32,
         point: [f32; 3],
@@ -486,23 +533,20 @@ impl EnterAction {
         speed: f32,
         in_reach: bool,
     ) -> Result<Self, Unsupported> {
-        if in_reach {
-            return Err(Unsupported(
-                "an Enter in reach of its building at its start",
-            ));
-        }
-        let move_to = if ARRIVED < gap {
+        let move_to = if in_reach {
+            None
+        } else if ARRIVED < gap {
             if speed == 0.0 {
                 return Err(Unsupported("an Enter's MoveTo of a unit without speed"));
             }
-            MoveTo::Start
+            Some(MoveTo::Start)
         } else {
-            MoveTo::Arrived
+            Some(MoveTo::Arrived)
         };
         Ok(Self {
             target,
             state: WALK,
-            move_to: Some(move_to),
+            move_to,
             point,
             range,
             timer: 0.0,
@@ -600,6 +644,20 @@ impl EnterAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
+        // MarvinBlue/426048731's 9171 garrisons the town centre at (104, 47) from 3.5 tiles off
+        let far = EnterAction::start(9149, [104.0, 47.0, 0.0], 1.0, 3, 3.5, 0.8, false).unwrap();
+        assert_eq!((far.state, far.move_to), (WALK, Some(MoveTo::Start)));
+        // 10049 of update 4409 stands within the task's range: it enters at once
+        let near = EnterAction::start(9149, [104.0, 47.0, 0.0], 1.0, 3, 0.6, 0.8, true).unwrap();
+        assert_eq!(near.move_to, None);
+        // the reach is the footprints' squared gap against the range squared
+        assert!(EnterAction::in_reach(1.0, 1.0, 0.0).unwrap());
+        assert!(!EnterAction::in_reach(1.0, 1.01, 0.0).unwrap());
+        assert!(EnterAction::in_reach(1.0, 0.5, 0.8).is_err());
+    }
 
     #[test]
     fn a_town_center_takes_villagers_infantry_cavalry_and_monks() {

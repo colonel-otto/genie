@@ -106,6 +106,8 @@ pub mod fly {
 
 /// The values `crate::garrison`'s port reads.
 pub mod garrison {
+    /// 0.20000000298023224
+    pub const ENTER_HP_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
     /// 3.4028234663852886e+38
     pub const FAR: f32 = f32::from_bits(0x7f7f_ffff);
     /// 0.2

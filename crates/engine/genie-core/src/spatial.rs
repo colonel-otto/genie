@@ -277,6 +277,9 @@ pub struct Spatial {
     /// The map's size in tiles.
     pub map: [i32; 2],
     objects: BTreeMap<i32, Placed>,
+    /// The objects inside others (`+0x2f0`): off the tiles' lists and the obstruction manager,
+    /// without a record, at their container's x and y; a lookup by id still finds them.
+    inside: BTreeMap<i32, Placed>,
     tiles: Tiles,
     /// The tile rectangles (x0, y0, x1, y1) whose static marks changed, for the planners
     /// ([`Spatial::take_changes`]).
@@ -332,6 +335,7 @@ impl Spatial {
         Self {
             map,
             objects: BTreeMap::new(),
+            inside: BTreeMap::new(),
             tiles,
             changed: Vec::new(),
             frozen_for: BTreeMap::new(),
@@ -445,13 +449,13 @@ impl Spatial {
 
     /// The object `id`'s place, if the world holds it.
     pub fn get(&self, id: i32) -> Option<&Placed> {
-        self.objects.get(&id)
+        self.objects.get(&id).or_else(|| self.inside.get(&id))
     }
 
     /// An object whose place the slice knows: an object of a player the slice stopped is known
     /// while it cannot have moved.
     pub fn get_known(&self, id: i32) -> Result<Option<&Placed>, Unsupported> {
-        match self.objects.get(&id) {
+        match self.get(id) {
             Some(p) if p.unknown.is_some_and(|u| 0.0 < u) => Err(Unsupported(
                 "an object of a stopped player (its place is unknown)",
             )),
@@ -620,8 +624,22 @@ impl Spatial {
         Ok(())
     }
 
+    /// The object goes inside another at `at` (`FUN_1411921d0`): it leaves its tile's list
+    /// (`FUN_140f5f560`) and the obstruction manager (`FUN_141055b40`), and takes its container's
+    /// x and y (`FUN_14118c890`).
+    pub fn go_inside(&mut self, id: i32, at: [f32; 3]) {
+        let Some(mut p) = self.objects.get(&id).copied() else {
+            return;
+        };
+        self.remove(id);
+        p.position = [at[0], at[1], p.position[2]];
+        p.obstruction = None;
+        let _ = self.inside.insert(id, p);
+    }
+
     /// The object `id` leaves the world.
     pub fn remove(&mut self, id: i32) {
+        let _ = self.inside.remove(&id);
         if let Some(gone) = self.objects.remove(&id) {
             if let Some(i) = self.tiles.tile_of(gone.position) {
                 self.tiles.take_off(i, id);

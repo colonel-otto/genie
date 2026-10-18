@@ -654,6 +654,23 @@ impl Visibility {
         let Some(s) = self.seers.get(&id).copied() else {
             return 0;
         };
+        self.sight_on_los(id, position, radius, square, s.los as i32, offset)
+    }
+
+    /// Slot 0x1d0 with a line of sight of its own (its fourth argument not −1): a building takes
+    /// 5 when a unit enters it (`FUN_141212e10`).
+    pub fn sight_on_los(
+        &mut self,
+        id: i32,
+        position: [f32; 3],
+        radius: [f32; 2],
+        square: bool,
+        los: i32,
+        offset: bool,
+    ) -> i32 {
+        let Some(s) = self.seers.get(&id).copied() else {
+            return 0;
+        };
         let (square, offset) = match s.building {
             Some(b) if !b.built => {
                 if !b.started {
@@ -675,10 +692,11 @@ impl Visibility {
             }
             None => (square, offset),
         };
-        self.base_sight_on(id, s, position, radius, square, offset)
+        self.base_sight_on(id, s, position, radius, square, los, offset)
     }
 
     /// `FUN_141192560`.
+    #[allow(clippy::too_many_arguments)]
     fn base_sight_on(
         &mut self,
         id: i32,
@@ -686,10 +704,10 @@ impl Visibility {
         position: [f32; 3],
         radius: [f32; 2],
         square: bool,
+        los: i32,
         offset: bool,
     ) -> i32 {
         let square = square && s.master != CIRCLE_MASTER;
-        let los = s.los as i32;
         if los <= 0 {
             return 0;
         }

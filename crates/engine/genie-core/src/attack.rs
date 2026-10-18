@@ -191,6 +191,8 @@ pub struct Strike<'a> {
     /// The notifies a unit's own Attack posts to its unit AI this update (slot 0x328: kind and
     /// three parameters), the caller's.
     pub posted: Vec<(i32, [i32; 3])>,
+    /// The unit has a unit AI whose order queue is empty (`FUN_140c564a0` is 0).
+    pub queue_empty: bool,
 }
 
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
@@ -677,6 +679,16 @@ impl Attack {
                     "an Attack in state 5 or 11 whose target moved (set_state 4)",
                 ));
             }
+        }
+        // a target inside another (+0x2f0): the attack ends (set_state 1) and returns 4, which
+        // keeps it in the list; a unit's own Attack (not quiet, +0x60) of a unit whose unit AI's
+        // order queue is empty posts 0x1fb with 600 and the target
+        if s.victim.inside {
+            self.finish(&mut walk, s)?;
+            if !self.sub_action && s.queue_empty {
+                s.posted.push((0x1fb, [600, self.target, 0]));
+            }
+            return Ok(4);
         }
         match self.state {
             MOVE => self.walk(walk, s, t.position, t.radius),

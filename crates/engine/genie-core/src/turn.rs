@@ -1100,7 +1100,31 @@ impl Unit {
             .expect("checked above")
             .update(walk, building)?;
         if step.enter {
-            return Err(Unsupported("the enter into a building (FUN_140a867b0)"));
+            let building = others
+                .iter()
+                .find(|u| u.id == enter.target)
+                .ok_or(Unsupported("an enter into a building of another player"))?;
+            let inside = others
+                .iter()
+                .filter(|u| u.life.inside == Some(enter.target))
+                .count();
+            let mut w = EnterWorld {
+                spatial: c.spatial,
+                pathing: c.pathing,
+                masters: c.masters,
+                graphics: c.graphics,
+                sprite_rng: c.streams.get(Stream::Sprite),
+                drop_sites: c.drop_sites,
+                attributes: c.attributes,
+                civ: c.civ,
+                player: c.player,
+                attribute_adds: &mut c.attribute_adds,
+            };
+            if !self.enter_building(building, inside, &mut w)? {
+                return Err(Unsupported("an Enter that did not get in (state 2)"));
+            }
+            // the update's own set_state(1) after the enter's
+            self.entered(&mut w)?;
         }
         if step.done {
             return Err(Unsupported("a done Enter outside its building"));
@@ -1108,12 +1132,181 @@ impl Unit {
         Ok(())
     }
 
+    /// The Enter's `set_state(1)` (`FUN_140a87320` case 1): its sub-actions go (`FUN_140a98620`: a
+    /// `MoveTo`'s teardown stops the unit, slot 0x5d0), the unit shows its master's standing
+    /// sprite ([`Unit::shows_standing_sprite`]) and, the Enter not being quiet, its unit AI gets
+    /// notify 0x1f9 with the enter action value.
+    pub(crate) fn entered(&mut self, w: &mut EnterWorld<'_>) -> Result<(), Unsupported> {
+        let enter = self
+            .enter
+            .as_mut()
+            .ok_or(Unsupported("an entered unit without its Enter"))?;
+        if enter.move_to.take().is_some()
+            && let Some(m) = self.mover.as_mut()
+        {
+            m.stop()?;
+        }
+        enter.state = crate::garrison::ENTERED;
+        self.shows_standing_sprite(w.masters, w.graphics, w.sprite_rng)?;
+        self.post_own(
+            crate::ai_kinds::NOTIFY_ACTION_FAILED,
+            [crate::garrison::ENTER_ACTION, 0, 0],
+        )
+    }
+
+    /// The enter (`FUN_140a867b0`) into `target`, one of the unit's player's buildings: a
+    /// building that takes what the unit carries (`FUN_140fdd190`, as a drop site) takes its load
+    /// first (the resource for kinds 15 to 17 is food, 0 to 3 and 56 their own, others none:
+    /// [`give_load`]; the unit carries nothing after, `FUN_14119d310` with −1). A building at no
+    /// more than a fifth of its master's hit points (in floats) and a master with a transform
+    /// task (0x88) on the building's are not modelled. Then slot 0x1a0 (`FUN_141212e10` ->
+    /// `FUN_141084b30` -> `FUN_1411921d0`): with room in the building, the unit's sight goes from
+    /// its tile (slot 0x1d8), it leaves its tile's list (`FUN_140f5f560`), the obstruction
+    /// manager (`FUN_141055b40`) and the mesh (`+0x660`, `FUN_141053840`), and joins the
+    /// building's (slot 0x1c0, `FUN_1411cb850` -> `FUN_14118c890`: `+0x2f0`, at the building's
+    /// x and y); its records leave the registry's lists (`FUN_14128a1d0` from its mask to 0);
+    /// the building's sight takes a circle of 5 (slot 0x1d0 with 5) and the villager's town-bell
+    /// flag follows the garrison (`FUN_1412067f0` with 3). Then notify 0x1fa with the enter
+    /// action value and `set_state(1)` ([`Unit::entered`]). The building's firepower (`+0xa00`)
+    /// and villager count (`+0xba8`) follow from the units inside; the sound, the tracker and
+    /// a Gaia building's capture (slot 0x70) are not held.
+    pub(crate) fn enter_building(
+        &mut self,
+        building: &Self,
+        inside: usize,
+        w: &mut EnterWorld<'_>,
+    ) -> Result<bool, Unsupported> {
+        let masters = w
+            .masters
+            .ok_or(Unsupported("an enter without the masters"))?;
+        let target = building.id;
+        let bm = masters.get(building.life.master_id).ok_or(Unsupported(
+            "an enter into a building of a master the slice lacks",
+        ))?;
+        let me = masters
+            .get(self.life.master_id)
+            .ok_or(Unsupported("an entering unit of a master the slice lacks"))?;
+        let actor = Actor {
+            id: self.id,
+            master: me,
+            player: w.player,
+            held: (self.life.attribute_type, self.life.amount),
+            attribute_95: w.attributes.get(95).copied().unwrap_or(0.0),
+            civ: w.civ,
+        };
+        if crate::tasks::drops_at(w.drop_sites, bm.id, &actor)
+            && 0.0 < self.life.amount
+            && bm.kind == crate::order::BUILDING
+        {
+            let kind = self.life.attribute_type;
+            let resource = match kind {
+                15..=17 => Some(0),
+                0..=3 | 56 => Some(kind),
+                _ => None,
+            };
+            if let Some(resource) = resource {
+                give_load(
+                    &w.spatial.relations,
+                    w.player,
+                    w.attribute_adds,
+                    resource,
+                    self.life.amount,
+                )?;
+                self.life.attribute_type = -1;
+                self.life.amount = 0.0;
+            }
+        }
+        if bm.kind == crate::order::BUILDING
+            && building.life.hp <= f32::from(bm.hit_points) * crate::image::garrison::ENTER_HP_SHARE
+        {
+            return Err(Unsupported(
+                "an enter into a building at a fifth of its hit points (state 13)",
+            ));
+        }
+        if me
+            .tasks
+            .iter()
+            .find(|t| t.action_type == 0x88)
+            .is_some_and(|t| t.object_id == bm.id)
+        {
+            return Err(Unsupported(
+                "an enter of a master that transforms (task 0x88)",
+            ));
+        }
+        if usize::from(bm.garrison) <= inside {
+            return Ok(false);
+        }
+        if self.life.inside.is_some() {
+            return Err(Unsupported("an enter of a unit inside another"));
+        }
+        let placed = w
+            .spatial
+            .get(self.id)
+            .copied()
+            .ok_or(Unsupported("an entering unit without a place"))?;
+        if let Some(v) = w.spatial.sight.as_mut() {
+            v.sight_off(self.id, self.position, placed.radius, false, false);
+        }
+        let at = building.position;
+        w.spatial.go_inside(self.id, at);
+        w.pathing.removed(self.id);
+        let building_radius = w.spatial.get(target).map_or(bm.radius, |p| p.radius);
+        self.life.inside = Some(target);
+        self.position = [at[0], at[1], self.position[2]];
+        if let Some(v) = w.spatial.sight.as_mut() {
+            if let Some(r) = v.registry.as_mut().filter(|_| 0 <= self.id) {
+                let mask = r.entry(self.id).map_or(0, |e| e.mask);
+                r.update_unit(
+                    self.id,
+                    w.player as u8,
+                    [self.position[0], self.position[1]],
+                    placed.radius,
+                    placed.class,
+                    mask & 0xffff_ffff,
+                    0,
+                )?;
+            }
+            let _ = v.sight_on_los(target, at, building_radius, false, 5, false);
+        }
+        if !self.town_bell.flag {
+            return Err(Unsupported(
+                "a town-bell record at the enter (FUN_1412067f0 with 3)",
+            ));
+        }
+        self.town_bell.flag =
+            bm.building.is_some_and(|b| b.garrison_type & 1 != 0) && building.life.state == 2;
+        self.post_own(
+            crate::ai_kinds::NOTIFY_ACTION_COMPLETED,
+            [crate::garrison::ENTER_ACTION, 0, 0],
+        )?;
+        self.entered(w)?;
+        Ok(true)
+    }
+
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes (`FUN_140a98620`; a
     /// `MoveTo`'s teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
     /// 0x68 with slot 0x798's, [`crate::attack::set_sprite`]) where the slice holds its sprite.
     /// A Build waiting without its foundation (state 3) goes with nothing to release
-    /// (`FUN_140aadbf0`); other actions' teardowns are not modelled.
+    /// (`FUN_140aadbf0`), its own Attack and an Enter let their target go; other actions'
+    /// teardowns are not modelled.
     fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
+        if let Some(mut a) = self.attack.take() {
+            a.tear_down(self.mover.as_mut())?;
+            if a.target != -1 {
+                c.releases.push((a.target, self.releaser(c)));
+            }
+        }
+        // the Enter's teardown: its MoveTo's stops the unit, and the base teardown
+        // (FUN_140a73fc0) lets the building go (slot 0x180; its `+0x60` is 0)
+        if let Some(e) = self.enter.take() {
+            if e.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+            c.releases.push((e.target, self.releaser(c)));
+        }
         self.clear_own_actions()?;
         if self.life.state == 2
             && let Some(m) = self.mover.as_mut()
@@ -2870,7 +3063,20 @@ impl Unit {
                 }
             }
         }
-        if self.enter.is_some() {
+        // RGE_Action_Object::update: the actions of an object inside another do not update; its
+        // inside update (FUN_140a98790) deletes its top action (FUN_140a78480 -> FUN_140a784a0:
+        // a dead target let go, the sub-actions' end; then the action's teardown, which lets its
+        // building go, slot 0x180)
+        if self.life.inside.is_some() {
+            if let Some(e) = self.enter.take() {
+                if e.move_to.is_some() {
+                    return Err(Unsupported("an inside unit's Enter with its MoveTo"));
+                }
+                c.releases.push((e.target, self.releaser(c)));
+            } else if self.top_action_kind().is_some() || self.unmodelled_action.is_some() {
+                return Err(Unsupported("the inside update of an action not an Enter"));
+            }
+        } else if self.enter.is_some() {
             self.enter_update(c, others, me)?;
         }
         if self.missile.as_ref().is_some_and(|m| m.action.is_some()) {
@@ -3062,27 +3268,13 @@ impl Unit {
                 // the local player's tracker (FUN_14097daf0) are not held. With 1 the resources
                 // would go to the allies too under +0x1426 (FUN_141626780): a player with allies
                 // is not modelled
-                let own = c
-                    .spatial
-                    .relations
-                    .get(c.player)
-                    .map_or(&[][..], |r| &r[..]);
-                let allied = (1..own.len())
-                    .any(|q| q != c.player && crate::tasks::allied(own, c.player, q, true));
-                if allied {
-                    return Err(Unsupported(
-                        "a load given to a player with allies (+0x1426)",
-                    ));
-                }
-                c.attribute_adds.push((kind, amount));
-                match kind {
-                    0..=2 => c.attribute_adds.push((166 + kind, amount)),
-                    3 => {
-                        c.attribute_adds.push((49, amount));
-                        c.attribute_adds.push((169, amount));
-                    }
-                    _ => {}
-                }
+                give_load(
+                    &c.spatial.relations,
+                    c.player,
+                    &mut c.attribute_adds,
+                    kind,
+                    amount,
+                )?;
                 self.hunt_after_drop(c, others)?;
             }
         } else if let Some(hunt) = self
@@ -3240,6 +3432,7 @@ impl Unit {
                 can_move,
                 stance,
                 posted: Vec::new(),
+                queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
             };
             let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let fired = strike.fire.map(|target| {
@@ -3301,6 +3494,7 @@ impl Unit {
                 can_move,
                 stance,
                 posted: Vec::new(),
+                queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
             };
             let code = attack.update(walk, &mut strike)?;
             let fired = strike.fire.map(|target| {
@@ -3326,7 +3520,8 @@ impl Unit {
                 self.post_own(ACTION_EXECUTED, [600, target, 0])?;
             }
             c.own_killed = self.hit_back(own)?;
-            if code != 0 {
+            // codes 1 and 3 delete the action (RGE_Action_Object::update)
+            if matches!(code, 1 | 3) {
                 return Err(Unsupported(
                     "a unit's own Attack that ends (its code to the action list)",
                 ));
@@ -3388,7 +3583,7 @@ impl Unit {
             .filter(|_| self.life.is_alive() && runs)
             .map(|ai| !ai.orders.is_empty())
         {
-            if turn.is_some() && busy && self.life.inside.is_some() {
+            if turn.is_some() && busy && self.life.inside.is_some() && self.enter.is_none() {
                 return Err(Unsupported("a busy unit inside another"));
             }
             // slot 0x2d0 matters only to a queue with orders
@@ -3686,6 +3881,62 @@ impl Unit {
         }
         Ok(())
     }
+}
+
+/// The player's slot 0xf8 (`FUN_141616820`) with 1 and 1 on a unit's load: the resource and its
+/// gathered total (166 to 168; gold's 49 and 169), which the caller adds after the update; the
+/// statistics (slot 0xb8) and the local player's tracker (`FUN_14097daf0`) are not held. With 1
+/// the resources would go to the allies too under `+0x1426` (`FUN_141626780`): a player with
+/// allies is not modelled.
+fn give_load(
+    relations: &[Vec<u8>],
+    player: usize,
+    adds: &mut Vec<(i16, f32)>,
+    kind: i16,
+    amount: f32,
+) -> Result<(), Unsupported> {
+    let own = relations.get(player).map_or(&[][..], |r| &r[..]);
+    let allied = (1..own.len()).any(|q| q != player && crate::tasks::allied(own, player, q, true));
+    if allied {
+        return Err(Unsupported(
+            "a load given to a player with allies (+0x1426)",
+        ));
+    }
+    adds.push((kind, amount));
+    match kind {
+        0..=2 => adds.push((166 + kind, amount)),
+        3 => {
+            adds.push((49, amount));
+            adds.push((169, amount));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// What the enter into a building ([`Unit::enter_building`]) reads and changes of the world
+/// besides the unit and the building.
+pub(crate) struct EnterWorld<'a> {
+    /// Every object's place, the sight and the registry.
+    pub spatial: &'a mut Spatial,
+    /// The mesh the unit's shape leaves.
+    pub pathing: &'a mut Pathing,
+    /// The owner's masters.
+    pub masters: Option<&'a Masters>,
+    /// The graphics, for the standing sprite.
+    pub graphics: &'a std::collections::BTreeMap<i16, Graphic>,
+    /// The Sprite stream, which a new sprite may draw from.
+    pub sprite_rng: &'a mut Well512,
+    /// The drop-site table.
+    pub drop_sites: &'a [DropSite],
+    /// The owner's attributes and civ, as the drop-site test's actor.
+    pub attributes: &'a [f32],
+    /// The owner's civ.
+    pub civ: u8,
+    /// The owner.
+    pub player: usize,
+    /// The attributes the owner gains (a load), which the caller adds.
+    pub attribute_adds: &'a mut Vec<(i16, f32)>,
 }
 
 /// The population's resource, which a cost check skips (`FUN_141618db0` with its fifth argument
@@ -5855,6 +6106,7 @@ pub(crate) fn victim_of(
         attack_elevation,
         allied: [false; 2],
         uncertain: false,
+        inside: u.life.inside.is_some(),
         source: crate::damage::Attacker {
             id: u.id,
             kind,

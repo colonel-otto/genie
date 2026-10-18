@@ -110,6 +110,8 @@ pub struct Victim {
     pub allied: [bool; 2],
     /// Its place is a guess: its player's update is not modelled.
     pub uncertain: bool,
+    /// It is inside another object (`+0x2f0`): an Attack on it ends.
+    pub inside: bool,
     /// Its own attack (a retaliation's): its values as a hit's source and its master's weapons
     /// (class, amount).
     pub source: Attacker,

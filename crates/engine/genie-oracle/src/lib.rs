@@ -2337,6 +2337,11 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
                     obstruction,
                 },
             );
+            // an object inside another left its tile's list and the obstruction manager
+            // (FUN_1411921d0)
+            if s.inside_obj != -1 {
+                out.go_inside(s.id, [s.t_x, s.t_y, s.t_z]);
+            }
         }
         for ghost in section.objects().doppleganger_objects.objects() {
             if let Some(s) = ghost.static_part() {

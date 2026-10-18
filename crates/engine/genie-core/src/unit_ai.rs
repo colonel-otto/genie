@@ -1251,7 +1251,8 @@ impl UnitAi {
 
     /// Slot 72 for the factory types modelled: the boar's, the hunted animal's, the lion's and
     /// the soldier's ([`UnitAi::soldier_idle`]) do something for an idle unit; each, and the
-    /// transport ship's, first lowers the unit's last human order time to `FUN_140fe0d10`'s 5000
+    /// transport ship's and the villager's (`FUN_140c1e610`, which does nothing else), first
+    /// lowers the unit's last human order time to `FUN_140fe0d10`'s 5000
     /// (`FUN_140c41e50`; not on orders 701, 711, 712 and 733, and a group's would decide, the
     /// slice holds none), as does the tower's ([`UnitAi::tower_idle`]). The building's does
     /// nothing.
@@ -1263,7 +1264,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
-        if matches!(self.ai_type, 2 | 4 | 5 | 11 | 13 | 15)
+        if matches!(self.ai_type, 2 | 4 | 5 | 8 | 11 | 13 | 15)
             && !matches!(self.current_order, 0x2bd | 0x2c7 | 0x2c8 | 0x2dd)
         {
             fx.push(Effect::CapHumanOrder(HUMAN_ORDER_CAP));
@@ -1982,6 +1983,7 @@ impl UnitAi {
     ) -> Result<u32, Unsupported> {
         match n.kind {
             ACTION_COMPLETED => self.action_completed(n, at, fx),
+            ACTION_INVALIDATED => self.action_invalidated(n, at, fx),
             crate::explore::WANTS_POINT if self.explorer() => {
                 self.seek_unexplored(ai_rng, side, fx)
             }
@@ -2051,6 +2053,42 @@ impl UnitAi {
         self.last_action = self.current_action;
         self.current_action = action;
         Ok(BREAK)
+    }
+
+    /// The base handler's case `0x1fb` ("Action %d has been invalidated.", `FUN_140c589c0`): an
+    /// attack (600) invalidated on the attack order (700) or with `0x202` (its retarget, slot
+    /// 0x240) is not modelled. Without an order, the invalidation of the current action forgets
+    /// the target (`FUN_140c5e1e0`) and stops it (slot 0xb0 with 1; then slot 0x48 hands the
+    /// notify to the owner, not held); with one, so does the invalidation of the order's own
+    /// action (action + 100 = order); order `0x2d4` and `0x2bd` on action `0x262` are not
+    /// modelled; any other invalidated attack forgets the target and stops; the rest go on.
+    fn action_invalidated(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
+        if (order == 700 || n.p[2] == 0x202) && p0 == 600 {
+            return Err(Unsupported(
+                "an invalidated attack on the attack order (its retarget, slot 0x240)",
+            ));
+        }
+        let own = if order == -1 {
+            action == p0
+        } else {
+            if matches!(order, 0x2d4 | 0x2bd) && p0 == 0x262 {
+                return Err(Unsupported(
+                    "an invalidated action 0x262 on order 0x2d4 or 0x2bd",
+                ));
+            }
+            action + 100 == order
+        };
+        if own || p0 == 600 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(GO_ON)
     }
 
     /// The base handler's case `0x1fa` (`FUN_140c589c0`): without an order, a completion of the
