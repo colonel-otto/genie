@@ -597,6 +597,17 @@ impl HuntAction {
                     ))
                 }
             }
+            // case 6 without a target (or a task): set_state(8) to carry the load off, set_state(3)
+            // with none
+            GATHER if self.target == -1 => {
+                if *gather.held <= 0.0 {
+                    return Err(Unsupported(
+                        "a hunt without a target or a load (set_state 3)",
+                    ));
+                }
+                full = true;
+                Ok(())
+            }
             GATHER => {
                 full = self.gather(walk.dt, strike.victim, gather)?;
                 Ok(())

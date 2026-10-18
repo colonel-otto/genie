@@ -1435,8 +1435,9 @@ impl UnitAi {
     }
 
     /// The units the update models after its target block ([`UnitAi::target_block`]): a target
-    /// only on a villager's build or hunt (702/602, 713/613) or on the follow order (712 with its
-    /// action 612, the move's 610 or none); busy (`busy`, the actions left), only those or a unit
+    /// only on a villager's build or hunt (702/602, 713/613), on the follow order (712 with its
+    /// action 612, the move's 610 or none) or without an order and an action (a hunt ended by
+    /// its queued orders); busy (`busy`, the actions left), only those or a unit
     /// on MOVE's order without a target (710/610, or an animal's own wander), and for the types
     /// that never retarget also one whose move ended (710 with no action value).
     fn check_busy_order(&self, retarget: Retarget, busy: bool) -> Result<(), Unsupported> {
@@ -1452,7 +1453,9 @@ impl UnitAi {
         let moved = order == (MOVE_ORDER, -1) && self.current_target == -1;
         let scouting = order == (AUTO_SCOUT_ORDER, AUTO_SCOUT_ACTION) && self.current_target == -1;
         let following = order.0 == FOLLOW_ORDER;
-        if self.current_target != -1 && !working {
+        // without an order and an action the target is a stale one: the order queue's next order
+        // takes over
+        if self.current_target != -1 && !working && order != (-1, -1) {
             return Err(Unsupported("a unit AI's target the slice does not model"));
         }
         if !busy || self.is_idle() {

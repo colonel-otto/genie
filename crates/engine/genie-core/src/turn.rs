@@ -690,7 +690,8 @@ impl Unit {
     /// hunt with a target walks back to it (set_state 4), not modelled. One without asks its unit
     /// AI: the queued orders (gather, hunt, on a target) whose target is gone or dead go
     /// (`FUN_140c5de60`); orders left end the hunt (the AI's order and action clear, set_state
-    /// 1), not modelled. The target class (the AI's target's, else the hunt's `+0x68`) the
+    /// 1, the action list removes it; its teardown's release of the drop site is not held, as its
+    /// take is not). The target class (the AI's target's, else the hunt's `+0x68`) the
     /// civilian's slot 0x1b0 knows (`FUN_140c1c4f0`) takes the search by kind (slot 0x80), not
     /// modelled; a hunt of class 10, a unit in a pasture (`FUN_1411c7670`) and a farm found are
     /// not modelled either. Else `ClosestObject` (`FUN_140c488b0`, every relation, below one
@@ -767,9 +768,13 @@ impl Unit {
         ai.orders
             .retain(|o| !(matches!(o.order, 0x2c5 | 0x2c9 | 0x2db) && gone(o.target)));
         if !ai.orders.is_empty() {
-            return Err(Unsupported(
-                "a hunt ended by its unit AI's orders after its drop-off (set_state 1)",
-            ));
+            // the AI's order and action clear (FUN_140c64b60, FUN_140c64b50), the hunt ends
+            // (set_state 1; its update returns 1 and the action list removes it): its unit AI
+            // runs the queued order
+            ai.end_order_and_action()?;
+            let mut hunt = self.hunt.take().expect("the caller's hunt");
+            hunt.tear_down(self.mover.as_mut())?;
+            return Ok(());
         }
         let class = if ai.target_type != -1 {
             ai.target_type
@@ -2240,6 +2245,31 @@ impl Unit {
                 mover.stop()?;
             }
         }
+        // the Hunt's update (0x140ac7a00) first checks its target: one gone from the world's table
+        // is dropped (slot 0x68 with none), one past state 6 is let go (slot 0x180, its `+0x60`
+        // being 0) and dropped; the drop site's checks (`+0x34`) are not modelled
+        if let Some(target) = self.hunt.map(|h| h.target).filter(|&t| t != -1) {
+            let state = c
+                .victim
+                .as_deref()
+                .filter(|v| v.id == target)
+                .map(|v| v.state);
+            let gone = match state {
+                Some(s) => 6 < s,
+                None if c.spatial.get(target).is_some() => {
+                    return Err(Unsupported("a hunt's target the slice cannot read"));
+                }
+                None => true,
+            };
+            if gone {
+                if state.is_some() {
+                    c.releases.push(target);
+                }
+                if let Some(h) = self.hunt.as_mut() {
+                    h.target = -1;
+                }
+            }
+        }
         // the hunter as a combat object, which its hits read and change
         let own = self.hunt.as_ref().and_then(|_| {
             let master = c.masters?.get(self.life.master_id)?;
@@ -2253,7 +2283,20 @@ impl Unit {
                 c.mode_680,
             ))
         });
-        if let Some(hunt) = self.hunt.as_mut().filter(|h| h.state == crate::hunt::DROP) {
+        if let Some(hunt) = self
+            .hunt
+            .as_mut()
+            .filter(|h| h.state == crate::hunt::DROP && h.timer < 0.0)
+        {
+            // case 7 waiting to try again: the timer runs by dt; at its end the drop site goes
+            // (FUN_140a7a190 with none) and set_state(8) searches again
+            hunt.timer += c.dt_seconds;
+            if 0.0 <= hunt.timer {
+                hunt.timer = 0.0;
+                hunt.carry_to = -1;
+                self.hunt_drop_off(c, others)?;
+            }
+        } else if let Some(hunt) = self.hunt.as_mut().filter(|h| h.state == crate::hunt::DROP) {
             // state 8 has no target: its drop site (the second target) is what it walks to
             let master = c
                 .masters
@@ -2356,6 +2399,16 @@ impl Unit {
                 if kind < 70 && u.workers == 0 && u.life.state == 2 {
                     return Err(Unsupported("a released target going to sleep"));
                 }
+            }
+        } else if let Some(hunt) = self
+            .hunt
+            .as_mut()
+            .filter(|h| h.target == -1 && h.state == crate::hunt::WALK && h.timer < 0.0)
+        {
+            // case 3 waiting after a given-up MoveTo, its target gone: the timer runs by dt
+            hunt.timer += c.dt_seconds;
+            if 0.0 <= hunt.timer {
+                return Err(Unsupported("a hunt's set_state 11 after its wait"));
             }
         } else if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;

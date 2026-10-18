@@ -2054,8 +2054,10 @@ impl Mover {
         if EPSILON < fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]) {
             points.push(end);
         }
-        // a new path's flags are 6 (FUN_140f8f5d0); the request clears bits 0 and 1
+        // a new path's flags are 6 (FUN_140f8f5d0); the request clears bits 0 and 1. The walked
+        // level, if any, is reset for it (FUN_140f98e80: its repath time stays)
         let path_flags = 6 & !1 & !2;
+        let repath_time = self.paths.first().map_or(0.0, |l| l.repath_time);
         self.paths = vec![PathData {
             level: 2,
             points,
@@ -2064,6 +2066,7 @@ impl Mover {
             state: 2,
             range,
             target,
+            repath_time,
             ..PathData::new(now)
         }];
     }
