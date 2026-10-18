@@ -155,6 +155,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         auto_gather: unit.enable_auto_gather != 0,
         gather_group: unit.resource_gather_group,
         hill_mode: unit.hill_mode,
+        fog_visibility: unit.fog_visibility,
         placement_terrains: unit
             .placement_side_terrain
             .iter()

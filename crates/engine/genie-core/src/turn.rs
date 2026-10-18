@@ -5308,6 +5308,7 @@ pub(crate) fn victim_of(
         storage: master.storage.first().map_or(0.0, |s| s.1),
         capacity: master.capacity,
         blast_defense: master.blast_defense,
+        fog_visibility: master.fog_visibility,
         goto_sleep: u.life.goto_sleep,
         decay: u.life.master.map_or(0.0, |m| m.decay),
         player: p,

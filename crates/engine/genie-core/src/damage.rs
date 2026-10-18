@@ -95,6 +95,8 @@ pub struct Victim {
     pub goto_sleep: bool,
     /// Its master's decay (`+0x620`), which a hunt's decay stop reads (`FUN_140ac44b0`).
     pub decay: f32,
+    /// Its master's `fog_visibility` (`+0x605`): an Attack goes on against it in the fog.
+    pub fog_visibility: u8,
     /// Its player, and that player's attributes 272 and 273 (a higher or lower attacker's hits
     /// add them) and 211 and 212 (its own hits from higher or lower up add them).
     pub player: usize,

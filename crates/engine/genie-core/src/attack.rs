@@ -528,14 +528,15 @@ impl Attack {
         if self.state != KILLED && (t.position[0] != self.seen[0] || t.position[1] != self.seen[1])
         {
             // the target moved: where it was seen follows (`+0xa4`..`+0xac`); one the unit's
-            // player sees (the target's slot 0x1e0: 0xf) keeps the attack going, but an attack in
-            // state 5 or 11 walks again (set_state 4). A target out of sight (or only explored,
-            // with its master's fog flag) is not modelled.
+            // player sees (the target's slot 0x1e0, `FUN_1416635e0` at its tile: 0xf), or only
+            // explored (0x80) with its master's fog flag (`+0x605`), keeps the attack going, but
+            // an attack in state 5 or 11 walks again (set_state 4). A target out of sight is not
+            // modelled.
             self.seen = t.position;
-            if !walk
-                .world
-                .sees_tile(s.own.player, t.position[0] as i32, t.position[1] as i32)
-            {
+            let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
+            let seen = walk.world.sees_tile(s.own.player, tx, ty)
+                || (s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?);
+            if !seen {
                 return Err(Unsupported(
                     "an Attack whose target moved out of its player's sight",
                 ));

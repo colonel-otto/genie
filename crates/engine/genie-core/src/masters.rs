@@ -225,6 +225,9 @@ pub struct Master {
     pub gather_group: u8,
     /// `+0x604`, `hill_mode`: how a placement test checks the elevation.
     pub hill_mode: u8,
+    /// `+0x605`, `fog_visibility`: an object of it the player only explored stays a target
+    /// (the Attack's update).
+    pub fog_visibility: u8,
     /// The placement terrains (`+0x5f2`..`+0x5f8`, the `.dat`'s `placement_side_terrain` and
     /// `placement_terrain`) name a terrain: a placement test checks the tiles for them.
     pub placement_terrains: bool,
