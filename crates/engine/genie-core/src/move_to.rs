@@ -87,9 +87,10 @@ pub enum Goal {
 /// once ([`walk_on`]); returns the MoveTo's state after it. In range is the footprints' squared
 /// gap (`FUN_14118f8c0`) to a target object, the gap from the unit's footprint to a point, at most
 /// `range` squared. A unit already in range ends the MoveTo (set_state 1, code 0) when it has a
-/// unit AI not on order 711 or 733; `quiet` says the caller's MoveTo is quiet (its `+0x60` set, so
-/// set_state 1 keeps the sprite and `+0x7b8`) and the unit's AI qualifies. Any other unit in range
-/// is not modelled.
+/// unit AI not on order 711 or 733, which the caller checks; a MoveTo that is not `quiet` (its
+/// `+0x60` clear) then shows the unit's idle sprite (slot 0x68 with slot 0x798's: the master's
+/// standing sprite, [`Mover::shows_standing`]; the sprite itself and `+0x7b8`, cleared, are the
+/// caller's).
 pub fn start_walk(
     walk: Walk<'_>,
     goal: Goal,
@@ -117,12 +118,10 @@ pub fn start_walk(
         footprint_gap_squared(walk.me.position, ground, point, radius)
     };
     if squared <= range * range {
-        if quiet {
-            return Ok(MoveTo::Arrived);
+        if !quiet {
+            mover.shows_standing();
         }
-        return Err(Unsupported(
-            "a MoveTo in range when it starts (set_state 1)",
-        ));
+        return Ok(MoveTo::Arrived);
     }
     let now = walk.plan.as_ref().map_or(0, |p| p.now);
     mover.request_path(walk.me.position, point, range, target, now);

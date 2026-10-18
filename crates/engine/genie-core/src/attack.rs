@@ -544,7 +544,20 @@ impl Attack {
             Some(MoveTo::Start) => {
                 self.move_to = Some(MoveTo::Moving);
                 let goal = Goal::Target(self.target);
-                self.move_to = Some(start_walk(walk.reborrow(), goal, self.range, false)?);
+                let state = start_walk(walk.reborrow(), goal, self.range, false)?;
+                if state == MoveTo::Arrived {
+                    // in range at its start: the MoveTo, not quiet, shows the idle sprite and
+                    // clears `+0x7b8`
+                    let g = self
+                        .arms
+                        .idle_sprite
+                        .ok_or(Unsupported("an attacker without its standing sprite"))?;
+                    set_sprite(s.sprite, g, s.sprite_rng);
+                    if let Some(a) = s.anim_speed.as_mut() {
+                        *a = 0.0;
+                    }
+                }
+                self.move_to = Some(state);
                 0
             }
             Some(MoveTo::Moving) => {
