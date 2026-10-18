@@ -27,7 +27,7 @@ fn written(h: &genie_save::Header) -> Vec<u8> {
 /// The first offset where `ours` differs from `theirs`, or where the shorter one ends.
 fn first_difference(ours: &[u8], theirs: &[u8]) -> Option<usize> {
     let common = ours.iter().zip(theirs).position(|(a, b)| a != b);
-    common.or((ours.len() != theirs.len()).then(|| ours.len().min(theirs.len())))
+    common.or_else(|| (ours.len() != theirs.len()).then(|| ours.len().min(theirs.len())))
 }
 
 #[test]
@@ -48,7 +48,7 @@ fn tier_1_headers_write_back_their_bytes() {
         let Ok(version) = chapters[0].save_version() else {
             continue;
         };
-        if (version.hundredths(), version.build) != (6660, 158041) {
+        if (version.hundredths(), version.build) != (6660, 158_041) {
             continue;
         }
         let inflated = chapters[0].inflate_header().unwrap();

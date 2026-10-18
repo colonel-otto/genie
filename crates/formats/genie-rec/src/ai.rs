@@ -1,4 +1,8 @@
 //! Read and write player AI state.
+//!
+//! A computer player's AI state is saved as a chain of modules (main, build, construction,
+//! diplomacy, emotional, information, resource, strategy). The field names follow the genie-rs
+//! reader and the AI's own terms; values whose meaning is not known say so.
 
 use crate::element::{ReadableHeaderElement, WritableHeaderElement};
 use crate::reader::RecordingHeaderReader;
@@ -12,6 +16,7 @@ use std::io::{Read, Write};
 /// The main AI module.
 #[derive(Debug, Default, Clone)]
 pub struct MainAI {
+    /// The object IDs the main module lists.
     pub objects: Vec<ObjectID>,
 }
 
@@ -26,21 +31,37 @@ impl ReadableHeaderElement for MainAI {
     }
 }
 
+/// One entry of the build AI's build list: something the AI wants to build or train.
 #[derive(Debug, Default, Clone)]
 pub struct BuildItem {
+    /// The item's name.
     pub name: Option<String>,
+    /// The unit type to build.
     pub type_id: u32,
+    /// The ID of the item's object in the game, as the reader names it; not verified.
     pub game_id: u32,
+    /// The item's size along x, y and z.
     pub size: (f32, f32, f32),
+    /// The item's skip counter.
     pub skip: u32,
+    /// The item's build category.
     pub build_category: u32,
+    /// Whether the item is being built, as the reader names it.
     pub in_progress: u32,
+    /// Whether the item has been built, as the reader names it.
     pub built: u32,
+    /// How often the AI tried to build the item.
     pub build_attempts: u32,
+    /// Where the item is built from, as the reader names it; not verified.
     pub build_from: u32,
+    /// The terrain set the item may be placed on.
     pub terrain_set: u32,
+    /// The item's two terrain adjacency values.
     pub terrain_adjacency: (u32, u32),
+    /// Whether the item is placed on elevation, as the reader names it.
     pub place_on_elevation: u32,
+    /// Whether the item uses `UserPatch`'s forward placement. Stored after version 10.87, false
+    /// before.
     pub is_forward: bool,
 }
 
@@ -84,15 +105,24 @@ impl ReadableHeaderElement for BuildItem {
     }
 }
 
+/// The build AI module: the build list and what the AI has queued.
 #[derive(Debug, Default, Clone)]
 pub struct BuildAI {
+    /// The name of the build list.
     pub build_list_name: Option<String>,
+    /// The name of the build item requested last.
     pub last_build_item_requested: Option<String>,
+    /// The name of the build item requested now.
     pub current_build_item_requested: Option<String>,
+    /// The name of the build item to request next.
     pub next_build_item_requested: Option<String>,
+    /// The items of the build list.
     pub build_queue: Vec<BuildItem>,
+    /// Queued counts per object type (600 entries).
     pub queued_object_count: Vec<u32>,
+    /// The number of buildings queued.
     pub queued_building_count: u32,
+    /// The number of units queued.
     pub queued_unit_count: u32,
 }
 
@@ -124,18 +154,30 @@ impl ReadableHeaderElement for BuildAI {
     }
 }
 
+/// A construction lot of the construction AI: a place where the AI plans a building.
 #[derive(Debug, Default, Clone)]
 pub struct ConstructionItem {
+    /// The lot's name.
     pub name: Option<String>,
+    /// The unit type planned for the lot.
     pub type_id: u32,
+    /// The lot's X position.
     pub x: f32,
+    /// The lot's Y position.
     pub y: f32,
+    /// The lot's Z position.
     pub z: f32,
+    /// The lot's size along X.
     pub xs: f32,
+    /// The lot's size along Y.
     pub ys: f32,
+    /// The lot's size along Z.
     pub zs: f32,
+    /// The lot's skip counter.
     pub skip: u32,
+    /// Whether the building on the lot is in progress, as the reader names it.
     pub in_progress: u32,
+    /// Whether the building on the lot is built, as the reader names it.
     pub built: u32,
 }
 
@@ -163,12 +205,18 @@ impl ReadableHeaderElement for ConstructionItem {
     }
 }
 
+/// The construction AI module: the construction plan and its lots.
 #[derive(Debug, Default, Clone)]
 pub struct ConstructionAI {
+    /// The name of the construction plan.
     pub plan_name: Option<String>,
+    /// The plan's reference point (x, y, z).
     pub reference_point: (f32, f32, f32),
+    /// The map size in tiles (x, y).
     pub map_size: (u32, u32),
+    /// The plan's construction lots.
     pub construction_lots: Vec<ConstructionItem>,
+    /// The lots placed at random positions.
     pub random_construction_lots: Vec<ConstructionItem>,
 }
 
@@ -196,12 +244,14 @@ impl ReadableHeaderElement for ConstructionAI {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The diplomacy AI module: how the AI feels about each player.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct DiplomacyAI {
     /// How much this AI dislikes each player, 0-100.
     pub dislike: [u32; 10],
     /// How much this AI likes each player, 0-100.
     pub like: [u32; 10],
+    /// Whether the AI may change its stance towards each player.
     pub changeable: [u8; 10],
 }
 
@@ -217,8 +267,10 @@ impl ReadableHeaderElement for DiplomacyAI {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The emotional AI module.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct EmotionalAI {
+    /// The AI's six emotional state values.
     pub state: [u32; 6],
 }
 
@@ -230,20 +282,34 @@ impl ReadableHeaderElement for EmotionalAI {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// What the information AI remembers about an important object.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ImportantObjectMemory {
+    /// The object's ID; `None` marks an empty slot.
     pub id: Option<ObjectID>,
+    /// The object's unit type.
     pub unit_type_id: Option<UnitTypeID>,
+    /// The object's unit class.
     pub unit_class: Option<u16>,
+    /// The object's last known tile position (x, y, z).
     pub location: (u8, u8, u8),
+    /// The object's owner.
     pub owner: PlayerID,
+    /// The object's last known hit points.
     pub hit_points: u16,
+    /// How often the AI attacked the object.
     pub attack_attempts: u32,
+    /// The number of kills the AI attributes to the object.
     pub kills: u8,
+    /// The object's damage capability, as the AI estimates it.
     pub damage_capability: f32,
+    /// The object's rate of fire.
     pub rate_of_fire: f32,
+    /// The object's attack range.
     pub range: f32,
+    /// The game time when the AI last saw the object, if it did.
     pub time_seen: Option<u32>,
+    /// Whether the object is garrisoned (non-zero).
     pub is_garrisoned: u32,
 }
 
@@ -267,10 +333,14 @@ impl ReadableHeaderElement for ImportantObjectMemory {
     }
 }
 
+/// A building lot of the information AI: a place reserved for a building.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BuildingLot {
+    /// The building type planned for the lot; `None` marks an empty slot.
     pub unit_type_id: Option<UnitTypeID>,
+    /// The lot's status.
     pub status: u8,
+    /// The lot's tile position (x, y).
     pub location: (u8, u8),
 }
 
@@ -289,15 +359,24 @@ impl ReadableHeaderElement for BuildingLot {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// One straight line of a perimeter wall.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct WallLine {
+    /// The kind of line. Stored from version 10.78, 0 before.
     pub line_type: u32,
+    /// The wall unit type, if set.
     pub wall_type: Option<u32>,
+    /// The number of gates in the line. Stored from version 10.78, 0 before.
     pub gate_count: u32,
+    /// The number of wall segments in the line.
     pub segment_count: u32,
+    /// The number of invisible segments. Stored from version 11.34, 0 before.
     pub invisible_segment_count: u32,
+    /// The number of unfinished segments. Stored from version 11.29, 0 before.
     pub unfinished_segment_count: u32,
+    /// The tile (x, y) where the line starts.
     pub line_start: (u32, u32),
+    /// The tile (x, y) where the line ends.
     pub line_end: (u32, u32),
 }
 
@@ -324,17 +403,28 @@ impl ReadableHeaderElement for WallLine {
     }
 }
 
+/// A wall the AI plans around its town.
 #[derive(Debug, Default, Clone)]
 pub struct PerimeterWall {
+    /// Whether the AI uses this wall. Stored from version 11.22; true before.
     pub enabled: bool,
+    /// The lines the wall is made of.
     pub lines: Vec<WallLine>,
+    /// The number of gates in the wall. Stored from version 11.20, 0 before.
     pub gate_count: u32,
+    /// The number of lines a gate fits in. The reader does not read it, so it is always 0.
     pub gate_fitting_line_count: u32,
+    /// How much of the wall is built, in percent. Stored from version 11.20, 0 before.
     pub percentage_complete: u32,
+    /// The number of wall segments. Stored from version 11.20, 0 before.
     pub segment_count: u32,
+    /// The number of invisible segments. Stored from version 11.34, 0 before.
     pub invisible_segment_count: u32,
+    /// The number of unfinished segments. Stored from version 11.20, 0 before.
     pub unfinished_segment_count: u32,
+    /// The index of the line the AI updates next. Stored from version 11.29, 0 before.
     pub next_line_to_refresh: u32,
+    /// The index of the segment the AI updates next. Stored from version 11.29, 0 before.
     pub next_segment_to_refresh: u32,
 }
 
@@ -375,19 +465,32 @@ impl ReadableHeaderElement for PerimeterWall {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// What the information AI remembers about an attack.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct AttackMemory {
+    /// The attack's ID, if set.
     pub id: Option<i32>,
+    /// The kind of attack.
     pub typ: u8,
+    /// The smallest X tile of the attacked area.
     pub min_x: u8,
+    /// The smallest Y tile of the attacked area.
     pub min_y: u8,
+    /// The largest X tile of the attacked area.
     pub max_x: u8,
+    /// The largest Y tile of the attacked area.
     pub max_y: u8,
+    /// The attacking player, if known.
     pub attacking_owner: Option<u8>,
+    /// The attacked player, if known.
     pub target_owner: Option<u8>,
+    /// The number of kills in the attack.
     pub kills: u16,
+    /// Whether the attack succeeded.
     pub success: bool,
+    /// The game time of the attack, if set.
     pub timestamp: Option<u32>,
+    /// The AI play (attack plan) used for the attack, if any.
     pub play: Option<i32>,
 }
 
@@ -420,17 +523,29 @@ impl ReadableHeaderElement for AttackMemory {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// What the information AI remembers about a resource object.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ResourceMemory {
+    /// The resource object's ID.
     pub id: ObjectID,
+    /// The resource's tile position (x, y).
     pub location: (u8, u8),
+    /// How often the AI tried to gather from it.
     pub gather_attempts: u8,
+    /// The amount gathered from it, as the reader names it.
     pub gather: u32,
+    /// Whether the entry is valid.
     pub valid: bool,
+    /// Whether the resource is gone.
     pub gone: bool,
+    /// The distance to the drop site.
     pub drop_distance: u8,
+    /// The resource type.
     pub resource_type: u8,
+    /// The ID of the drop site used for the resource.
     pub dropsite_id: ObjectID,
+    /// The game time when gatherers at the resource were last attacked, if they were. Stored
+    /// from version 10.91.
     pub attacked_time: Option<u32>,
 }
 
@@ -456,12 +571,18 @@ impl ReadableHeaderElement for ResourceMemory {
     }
 }
 
+/// An influence map: one value per tile, used by the AI for decisions such as pathing.
 #[derive(Debug, Default, Clone)]
 pub struct InfluenceMap {
+    /// The map's width in tiles.
     pub width: u32,
+    /// The map's height in tiles.
     pub height: u32,
+    /// The map's reference point (x, y).
     pub reference_point: (u32, u32),
+    /// The map's unchangeable limit, as the reader names it; its effect is not known yet.
     pub unchangeable_limit: u8,
+    /// The values, `width * height` of them, row by row.
     pub values: Vec<i8>,
 }
 
@@ -478,10 +599,14 @@ impl ReadableHeaderElement for InfluenceMap {
     }
 }
 
+/// The information AI's statistics for one quadrant of the map.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct QuadrantLog {
+    /// The number of explored tiles in the quadrant.
     pub explored_tiles: u32,
+    /// The number of attacks on the AI in the quadrant.
     pub attacks_on_us: u32,
+    /// The number of attacks by the AI in the quadrant.
     pub attacks_by_us: u32,
 }
 
@@ -498,31 +623,52 @@ impl ReadableHeaderElement for QuadrantLog {
     }
 }
 
+/// The information AI module: what the AI knows about the map, objects and other players.
 #[derive(Debug, Default, Clone)]
 pub struct InformationAI {
+    /// Four lists of `u32` values, one per resource type; their meaning is not known yet.
     pub resource_types: Vec<Vec<u32>>,
+    /// The AI's doctrine value.
     pub doctrine: i32,
+    /// The AI's random number.
     pub random_number: i32,
+    /// The AI's 40 goal values.
     pub goals: Vec<i32>,
+    /// The map size in tiles (x, y).
     pub map_size: (u32, u32),
+    /// The building lots in use (empty slots are left out).
     pub building_lots: Vec<BuildingLot>,
+    /// The AI's two perimeter walls.
     pub perimeter_walls: (PerimeterWall, PerimeterWall),
+    /// What the AI remembers about attacks.
     pub attack_memories: Vec<AttackMemory>,
+    /// The resources the AI knows of, one list per resource type.
     pub resource_memories: [Vec<ResourceMemory>; 4],
+    /// What the AI remembers about important objects (empty slots are left out).
     pub important_objects: Vec<ImportantObjectMemory>,
+    /// The IDs of the important objects.
     pub important_object_ids: Vec<ObjectID>,
+    /// The IDs of the important units.
     pub important_unit_ids: Vec<ObjectID>,
+    /// The IDs of other important objects.
     pub important_misc_ids: Vec<ObjectID>,
+    /// The IDs of the objects the AI defends.
     pub items_to_defend: Vec<ObjectID>,
+    /// The IDs of the AI player's buildings.
     pub player_buildings: Vec<ObjectID>,
+    /// The IDs of the AI player's objects.
     pub player_objects: Vec<ObjectID>,
+    /// Object counts by unit type: 750, 850 or 900 entries, depending on the version.
     pub object_counts: Vec<u32>,
+    /// The influence map the AI uses for pathing.
     pub path_map: InfluenceMap,
+    /// Statistics for each of the four map quadrants.
     pub quadrant_log: [QuadrantLog; 4],
 }
 
 impl ReadableHeaderElement for InformationAI {
-    #[allow(clippy::cognitive_complexity)]
+    // Reads the module's fields one after another, in file order.
+    #[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let mut ai = Self::default();
         for _ in 0..4096 {
@@ -727,8 +873,8 @@ impl ReadableHeaderElement for InformationAI {
             dbg!(last_player_count_refresh_time);
         }
 
-        let player_unit_counts_size = if input.version() >= 11.51 { 120 } else { 102 };
-        let mut player_unit_counts = vec![vec![0; player_unit_counts_size as usize]; 8];
+        let player_unit_counts_size: usize = if input.version() >= 11.51 { 120 } else { 102 };
+        let mut player_unit_counts = vec![vec![0; player_unit_counts_size]; 8];
         for unit_counts in &mut player_unit_counts {
             input.read_u32_into::<LE>(unit_counts)?;
         }
@@ -754,8 +900,10 @@ impl ReadableHeaderElement for InformationAI {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The resource AI module.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ResourceAI {
+    /// The number of resources the module tracks.
     pub num_resources: u32,
 }
 
@@ -773,21 +921,36 @@ impl WritableHeaderElement for ResourceAI {
     }
 }
 
+/// The strategy AI module: the AI's victory condition, targets and rules.
 #[derive(Debug, Default, Clone)]
 pub struct StrategyAI {
+    /// The victory condition the AI pursues now.
     pub current_victory_condition: u32,
+    /// The ID of the current target.
     pub target_id: u32,
+    /// The ID of a second target.
     pub second_target_id: u32,
+    /// The type of the second target.
     pub second_target_type: u32,
+    /// The current target point.
     pub target_point: Waypoint,
+    /// A second target point.
     pub target_point_2: Waypoint,
+    /// The target attribute, as the reader names it; not known yet.
     pub target_attribute: u32,
+    /// The target number, as the reader names it; not known yet.
     pub target_number: u32,
+    /// The time until the AI may change its victory condition.
     pub victory_condition_change_timeout: u32,
+    /// The name of the AI's rule set.
     pub ruleset_name: Option<String>,
+    /// The IDs of the rules for the victory condition.
     pub vc_ruleset: Vec<u32>,
+    /// The IDs of the rules being executed.
     pub executing_rules: Vec<u32>,
+    /// The IDs of the idle rules.
     pub idle_rules: Vec<u32>,
+    /// The expert list ID. Stored from version 9.71.
     pub expert_list_id: Option<u32>,
 }
 
@@ -816,28 +979,53 @@ impl ReadableHeaderElement for StrategyAI {
     }
 }
 
+/// The tactical AI module: the AI's units by role, its targets and its groups.
+///
+/// Reading it is not finished: the reader stops after `trade_carts`, so the later fields are
+/// never filled in.
 #[derive(Debug, Default, Clone)]
 pub struct TacticalAI {
+    /// The AI's civilian units.
     pub civilians: Vec<ObjectID>,
+    /// The civilians used as explorers.
     pub civilian_explorers: Vec<ObjectID>,
+    /// The AI's soldiers.
     pub soldiers: Vec<ObjectID>,
+    /// The soldiers that are in no group.
     pub ungrouped_soldiers: Vec<ObjectID>,
+    /// The AI's boats.
     pub boats: Vec<ObjectID>,
+    /// The AI's war boats.
     pub war_boats: Vec<ObjectID>,
+    /// The AI's fishing boats.
     pub fishing_boats: Vec<ObjectID>,
+    /// The AI's trade boats.
     pub trade_boats: Vec<ObjectID>,
+    /// The AI's transport boats.
     pub transport_boats: Vec<ObjectID>,
+    /// The artifacts (such as relics) the AI knows of.
     pub artifacts: Vec<ObjectID>,
+    /// The AI's trade carts.
     pub trade_carts: Vec<ObjectID>,
+    /// The AI's strategic numbers. Not read yet.
     pub strategic_numbers: Vec<i32>,
+    /// The players the AI attacks. Not read yet.
     pub players_to_attack: Vec<u32>,
+    /// The players the AI defends. Not read yet.
     pub players_to_defend: Vec<u32>,
+    /// The AI's working area. Not read yet.
     pub working_area: Vec<u32>,
+    /// The units the AI gave tasks in this update. Not read yet.
     pub units_tasked_this_update: Vec<ObjectID>,
+    /// How the AI's gatherers are spread over the four resources. Not read yet.
     pub gatherer_distribution: [u32; 4],
+    /// How the AI wants its gatherers spread over the four resources. Not read yet.
     pub desired_gatherer_distribution: [u32; 4],
+    /// The amount of each of the four resources the AI needs. Not read yet.
     pub resources_needed: [u32; 4],
+    /// The AI's group ID. Not read yet.
     pub group_id: u32,
+    /// The AI's unit groups. Not read yet.
     pub groups: Vec<()>,
 }
 
@@ -868,15 +1056,24 @@ impl ReadableHeaderElement for TacticalAI {
     }
 }
 
+/// The AI state of one computer player: its AI modules in file order.
 #[derive(Debug, Default, Clone)]
 pub struct PlayerAI {
+    /// The main AI module.
     pub main_ai: MainAI,
+    /// The build AI module.
     pub build_ai: BuildAI,
+    /// The construction AI module.
     pub construction_ai: ConstructionAI,
+    /// The diplomacy AI module.
     pub diplomacy_ai: DiplomacyAI,
+    /// The emotional AI module.
     pub emotional_ai: EmotionalAI,
+    /// The information AI module.
     pub information_ai: InformationAI,
+    /// The resource AI module.
     pub resource_ai: ResourceAI,
+    /// The strategy AI module.
     pub strategy_ai: StrategyAI,
 }
 

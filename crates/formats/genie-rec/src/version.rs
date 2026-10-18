@@ -22,16 +22,23 @@ pub enum GameVariant {
     DefinitiveEdition,
 }
 
+/// Game version string of the trial versions (`TRL 9.3`).
 pub const TRIAL_VERSION: GameVersion = GameVersion(*b"TRL 9.3\0");
+/// Game version string of The Age of Kings (`VER 9.3`).
 pub const AGE_OF_KINGS_VERSION: GameVersion = GameVersion(*b"VER 9.3\0");
+/// Game version string of The Conquerors (`VER 9.4`); HD Edition and DE write it too, and are told
+/// apart by the save version.
 pub const AGE_OF_CONQUERORS_VERSION: GameVersion = GameVersion(*b"VER 9.4\0");
+/// Game version string of the Forgotten Empires mod (`VER 9.5`).
 pub const FORGOTTEN_EMPIRES_VERSION: GameVersion = GameVersion(*b"VER 9.5\0");
 
 // So last known AoC version is 11.76
 // Since all versions only have a precision of 2
 // We can save do + 0.01
+/// Lowest save version of an HD Edition recording.
 pub const HD_SAVE_VERSION: f32 = 11.77;
 
+/// Lowest save version of a Definitive Edition recording.
 pub const DE_SAVE_VERSION: f32 = 12.97;
 
 use GameVariant::{
@@ -40,6 +47,8 @@ use GameVariant::{
 };
 
 impl GameVariant {
+    /// The game variant that wrote a file with this game version string and save version, if it
+    /// is a known one.
     #[must_use]
     pub fn resolve_variant(version: &GameVersion, sub_version: f32) -> Option<Self> {
         // taken from https://github.com/goto-bus-stop/recanalyst/blob/master/src/Analyzers/VersionAnalyzer.php
@@ -58,16 +67,19 @@ impl GameVariant {
         })
     }
 
+    /// Whether this is one of the original Ensemble Studios releases (trial, `AoK`, `AoC`).
     #[must_use]
     pub const fn is_original(&self) -> bool {
         matches!(self, Trial | AgeOfKings | AgeOfConquerors)
     }
 
+    /// Whether this is a community mod (Forgotten Empires, `UserPatch`).
     #[must_use]
     pub const fn is_mod(&self) -> bool {
         matches!(self, ForgottenEmpires | UserPatch)
     }
 
+    /// Whether this is one of the later official editions (HD Edition, Definitive Edition).
     #[must_use]
     pub const fn is_update(&self) -> bool {
         matches!(self, HighDefinition | DefinitiveEdition)
@@ -111,18 +123,16 @@ impl PartialOrd for GameVariant {
         // and we removed all comparisons that are equal
         // so the only comparison left is within their own class
         Some(match self {
-            // Trial is only compared to AoK and AoC, and is the first version, thus always less
-            Trial => Ordering::Less,
             // AoK can only be greater if compared against trial
             AgeOfKings if other == &Trial => Ordering::Greater,
-            AgeOfKings => Ordering::Less,
-            // AoC will always be greater
-            AgeOfConquerors => Ordering::Greater,
+            // Trial is only compared to AoK and AoC, and is the first version, thus always less;
+            // AoK is less than anything but Trial;
+            // HD can only be compared to DE (and vice versa), and is the older one
+            Trial | AgeOfKings | HighDefinition => Ordering::Less,
+            // AoC will always be greater, and so is DE against HD
+            AgeOfConquerors | DefinitiveEdition => Ordering::Greater,
             // Can we compare UP and FE???
             UserPatch | ForgottenEmpires => return None,
-            // HD can only be compared to DE, and vice versa
-            HighDefinition => Ordering::Less,
-            DefinitiveEdition => Ordering::Greater,
         })
     }
 }
@@ -160,6 +170,10 @@ impl Display for GameVersion {
 
 impl GameVersion {
     /// Read the game version string from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the 8 bytes cannot be read.
     pub fn read_from<R: Read>(input: &mut R) -> crate::Result<Self> {
         let mut game_version = [0; 8];
         input.read_exact(&mut game_version)?;

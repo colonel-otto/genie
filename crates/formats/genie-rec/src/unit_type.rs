@@ -8,16 +8,27 @@ pub use genie_support::{StringKey, UnitTypeID};
 use std::convert::TryInto;
 use std::io::{Read, Write};
 
+/// A player's copy of a unit type as the recording header stores it: only the attributes that can
+/// change during a game, grouped by the base class that introduces them.
 #[derive(Debug, Clone)]
 pub struct CompactUnitType {
+    /// The unit type's base class; it decides which of the attribute groups below are present.
     pub unit_base_class: UnitBaseClass,
+    /// The attributes every unit type has.
     pub static_: StaticUnitAttributes,
+    /// Present from the animated base class on.
     pub animated: Option<AnimatedUnitAttributes>,
+    /// Present from the moving base class on.
     pub moving: Option<MovingUnitAttributes>,
+    /// Present from the action base class on.
     pub action: Option<ActionUnitAttributes>,
+    /// Present from the base combat base class on.
     pub base_combat: Option<BaseCombatUnitAttributes>,
+    /// Present from the missile base class on.
     pub missile: Option<MissileUnitAttributes>,
+    /// Present from the combat base class on.
     pub combat: Option<CombatUnitAttributes>,
+    /// Present for buildings.
     pub building: Option<BuildingUnitAttributes>,
 }
 
@@ -61,7 +72,10 @@ impl ReadableHeaderElement for CompactUnitType {
     }
 }
 
+/// The attributes every unit type has (ids, hit points, line of sight, resources held …).
 #[allow(dead_code)]
+// The bools are the format's on/off flags.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Clone)]
 pub struct StaticUnitAttributes {
     id: UnitTypeID,
@@ -128,8 +142,10 @@ impl ReadableHeaderElement for StaticUnitAttributes {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The attributes the animated base class adds.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct AnimatedUnitAttributes {
+    /// The movement speed.
     pub speed: f32,
 }
 
@@ -147,8 +163,10 @@ impl WritableHeaderElement for AnimatedUnitAttributes {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The attributes the moving base class adds.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct MovingUnitAttributes {
+    /// The turning speed.
     pub turn_speed: f32,
 }
 
@@ -166,9 +184,12 @@ impl WritableHeaderElement for MovingUnitAttributes {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The attributes the action base class adds.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ActionUnitAttributes {
+    /// The radius within which the unit looks for targets on its own.
     pub search_radius: f32,
+    /// The rate at which it works (gathers, builds, repairs, heals …).
     pub work_rate: f32,
 }
 
@@ -191,9 +212,12 @@ impl WritableHeaderElement for ActionUnitAttributes {
     }
 }
 
+/// One attack or armour value and the attack/armour class it applies to.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HitType {
+    /// The attack/armour class.
     pub hit_type: u16,
+    /// The attack or armour value for that class.
     pub amount: i16,
 }
 
@@ -205,18 +229,31 @@ impl ReadableHeaderElement for HitType {
     }
 }
 
+/// The attributes the base combat base class adds: attack and armour.
 #[derive(Debug, Default, Clone)]
 pub struct BaseCombatUnitAttributes {
+    /// The base armour, for attack classes the unit has no armour entry for. Stored as a `u8`
+    /// before save version 11.52.
     pub base_armor: u16,
+    /// The attack values, one per attack class.
     pub attacks: Vec<HitType>,
+    /// The armour values, one per armour class.
     pub armors: Vec<HitType>,
+    /// The time between two attacks (reload time).
     pub attack_speed: f32,
+    /// The maximum attack range.
     pub weapon_range_max: f32,
+    /// The chance to hit, in percent.
     pub base_hit_chance: u16,
+    /// The unit type of the projectile it fires, if any.
     pub projectile_object_id: Option<UnitTypeID>,
+    /// The terrain table that changes its armour by the terrain it stands on, if any.
     pub defense_terrain_bonus: Option<u16>,
+    /// A second maximum attack range. Not known yet how it differs from `weapon_range_max`.
     pub weapon_range_max_2: f32,
+    /// The radius of its area (splash) damage.
     pub area_of_effect: f32,
+    /// The minimum attack range.
     pub weapon_range_min: f32,
 }
 
@@ -256,8 +293,10 @@ impl ReadableHeaderElement for BaseCombatUnitAttributes {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The attributes the missile (projectile) base class adds.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct MissileUnitAttributes {
+    /// How the projectile aims at its target.
     pub targeting_type: u8,
 }
 
@@ -275,21 +314,36 @@ impl WritableHeaderElement for MissileUnitAttributes {
     }
 }
 
+/// The attributes the combat base class adds: costs, training, and `UserPatch`'s extra data.
 #[derive(Debug, Default, Clone)]
 pub struct CombatUnitAttributes {
+    /// The resource costs, up to three; entries with a negative resource type are left out.
     pub costs: ArrayVec<AttributeCost, 3>,
+    /// The training time.
     pub create_time: u16,
+    /// `UserPatch` only: the pierce armour before changes.
     pub original_pierce_armor: Option<u16>,
+    /// `UserPatch` only: the melee armour before changes.
     pub original_armor: Option<u16>,
+    /// `UserPatch` only: the attack before changes.
     pub original_weapon: Option<u16>,
+    /// `UserPatch` only: the attack range before changes.
     pub original_weapon_range: Option<f32>,
+    /// `UserPatch` only: the area-of-effect (blast) level.
     pub area_effect_level: Option<u8>,
+    /// `UserPatch` only: the delay of the attack within its animation.
     pub frame_delay: Option<u16>,
+    /// `UserPatch` only: the building that trains the unit.
     pub create_at_building: Option<UnitTypeID>,
+    /// `UserPatch` only: the unit's button position in that building's menu.
     pub create_button: Option<i8>,
+    /// `UserPatch` only: the damage multiplier for attacks from behind.
     pub rear_attack_modifier: Option<f32>,
+    /// `UserPatch` only: the hero flags.
     pub hero_flag: Option<u8>,
+    /// The number of projectiles fired per attack.
     pub volley_fire_amount: f32,
+    /// The largest number of projectiles per attack (with garrisoned units).
     pub max_attacks_in_volley: u8,
 }
 
@@ -304,7 +358,7 @@ impl ReadableHeaderElement for CombatUnitAttributes {
         }
         let create_time = input.read_u16::<LE>()?;
         // UserPatch data
-        if create_time == u16::max_value() - 15 {
+        if create_time == u16::MAX - 15 {
             attrs.original_pierce_armor = Some(input.read_u16::<LE>()?);
             attrs.original_armor = Some(input.read_u16::<LE>()?);
             attrs.original_weapon = Some(input.read_u16::<LE>()?);
@@ -328,13 +382,16 @@ impl ReadableHeaderElement for CombatUnitAttributes {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The attributes the building base class adds.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct BuildingUnitAttributes {
+    /// The building's facet: which angle of its graphic it shows.
     pub facet: i16,
     // &facet + 62
     needs_a_name: Option<u8>,
     // &facet + 12
     needs_a_name_2: Option<u8>,
+    /// `UserPatch` only: the rate at which garrisoned units heal.
     pub garrison_heal_rate: Option<f32>,
 }
 

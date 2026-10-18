@@ -14,7 +14,8 @@ fn inflated() -> Option<Vec<u8>> {
         return Some(raw);
     }
     let mut data = Vec::new();
-    DeflateDecoder::new(&raw[..])
+    // The byte count is `data.len()`.
+    let _ = DeflateDecoder::new(&raw[..])
         .read_to_end(&mut data)
         .unwrap();
     Some(data)

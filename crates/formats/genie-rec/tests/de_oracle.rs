@@ -9,6 +9,7 @@
 
 use binrw::io::{Cursor, Read, Seek, SeekFrom};
 use genie_rec::de;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 /// A cursor that records the position and length of every read.
@@ -51,7 +52,8 @@ fn read_trace(path: &Path) -> Trace {
         word_at(&data[8..], 1) as usize,
     );
     let mut rows = Vec::new();
-    flate2::read::ZlibDecoder::new(&data[16..])
+    // The row count is checked against `rows.len()` below.
+    let _ = flate2::read::ZlibDecoder::new(&data[16..])
         .read_to_end(&mut rows)
         .unwrap();
     let step = 1 + width;
@@ -168,10 +170,8 @@ fn context(header: &[u8], ours: &[(u64, u64)], trace: &Trace, at: u64, radius: u
     let window = |pos: u64, len: u64| pos + len + radius > at && pos < at + radius;
     let hex = |pos: u64, len: u64| {
         let end = (pos + len).min(header.len() as u64).min(pos + 12);
-        let b: Vec<String> = header[pos as usize..end as usize]
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let range = usize::try_from(pos).unwrap()..usize::try_from(end).unwrap();
+        let b: Vec<String> = header[range].iter().map(|b| format!("{b:02x}")).collect();
         b.join(" ")
     };
     let mut out = String::from("  game reads (offset +size bytes, caller RVA):\n");
@@ -179,11 +179,13 @@ fn context(header: &[u8], ours: &[(u64, u64)], trace: &Trace, at: u64, radius: u
     for (i, &size) in trace.sizes.iter().enumerate() {
         let len = u64::from(size);
         if window(pos, len) {
-            out += &format!(
-                "    {pos:>8} +{len:<4} {:<36} {:#x}\n",
+            writeln!(
+                out,
+                "    {pos:>8} +{len:<4} {:<36} {:#x}",
                 hex(pos, len),
                 trace.callers[i]
-            );
+            )
+            .unwrap();
         }
         pos += len;
         if pos > at + radius {
@@ -192,7 +194,7 @@ fn context(header: &[u8], ours: &[(u64, u64)], trace: &Trace, at: u64, radius: u
     }
     out += "  our reads:\n";
     for &(pos, len) in ours.iter().filter(|&&(p, l)| window(p, l)) {
-        out += &format!("    {pos:>8} +{len:<4} {}\n", hex(pos, len));
+        writeln!(out, "    {pos:>8} +{len:<4} {}", hex(pos, len)).unwrap();
     }
     out
 }
@@ -222,6 +224,8 @@ fn trace_name(path: &Path, corpus: &Path) -> String {
     format!("{}.trace", parts.join("__"))
 }
 
+// One end-to-end check over the corpus, with its report in one place.
+#[allow(clippy::too_many_lines)]
 #[test]
 fn the_reader_agrees_with_the_games_reads_on_every_traced_recording() {
     let (Some(corpus), Some(traces)) = (env_dir("GENIE_REC_CORPUS"), env_dir("GENIE_REC_TRACES"))

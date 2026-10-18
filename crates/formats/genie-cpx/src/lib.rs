@@ -8,7 +8,6 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
-#![allow(missing_docs)]
 
 use std::io::{Read, Seek, Write};
 
@@ -68,12 +67,32 @@ impl<R> Campaign<R>
 where
     R: Read + Seek,
 {
-    /// Write the scenario file to an output stream, using the same version as when reading it.
+    /// Write the campaign file to an output stream, using the same version as when reading it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a scenario cannot be read back from the source campaign, or if writing
+    /// to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a name or the scenario count does not fit the target version's fields (see
+    /// [`CampaignWriter::flush`]).
     pub fn write_to<W: Write>(&mut self, output: &mut W) -> Result<(), WriteCampaignError> {
         self.write_to_version(output, self.version())
     }
 
-    /// Write the scenario file to an output stream with the given version.
+    /// Write the campaign file to an output stream with the given version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a scenario cannot be read back from the source campaign, or if writing
+    /// to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a name or the scenario count does not fit the target version's fields (see
+    /// [`CampaignWriter::flush`]).
     pub fn write_to_version<W: Write>(
         &mut self,
         output: &mut W,

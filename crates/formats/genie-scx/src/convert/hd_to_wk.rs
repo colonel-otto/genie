@@ -5,6 +5,7 @@ use nohash_hasher::IntMap;
 /// Convert an HD Edition scenario to a WololoKingdoms-compatible one.
 ///
 /// Maps HD unit IDs and terrain IDs to their WK equivalents.
+#[derive(Debug)]
 pub struct HDToWK {
     object_ids_map: IntMap<i32, UnitTypeID>,
     terrain_ids_map: IntMap<u8, u8>,
@@ -115,6 +116,10 @@ impl HDToWK {
     }
 
     /// Convert a scenario from HD to WK in-place.
+    ///
+    /// # Errors
+    ///
+    /// Never fails at present; the `Result` matches the other converters.
     pub fn convert(&self, scen: &mut Scenario) -> Result<(), ConvertError> {
         for object in scen.objects_mut() {
             self.convert_object(object);

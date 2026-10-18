@@ -15,21 +15,30 @@
 #![deny(nonstandard_style)]
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
-// #![warn(missing_docs)]
 #![warn(unused)]
 
 pub mod actions;
 pub mod ai;
 pub mod de;
+/// The trait shared by the header's parts.
 pub mod element;
+/// The recorded-game header (pre-DE layout).
 pub mod header;
+/// The map: tiles, zones, visibility and obstruction data.
 pub mod map;
+/// The players' state in the header.
 pub mod player;
+/// Readers that track the header's versions while reading.
 pub mod reader;
+/// The string table in the header.
 pub mod string_table;
+/// Units (game objects) in the header.
 pub mod unit;
+/// Unit actions (their current tasks) in the header.
 pub mod unit_action;
+/// Unit types (the per-player copies of the data file's units) in the header.
 pub mod unit_type;
+/// Game variant and version detection.
 pub mod version;
 
 use crate::actions::{Action, Meta};
@@ -77,6 +86,7 @@ infallible_try_into!(PlayerID, u16);
 infallible_try_into!(PlayerID, i32);
 infallible_try_into!(PlayerID, u32);
 
+/// ID identifying a game object (unit, building, resource …).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ObjectID(u32);
 
@@ -106,13 +116,15 @@ fallible_try_from!(ObjectID, i32);
 fallible_try_into!(ObjectID, i16);
 fallible_try_into!(ObjectID, i32);
 
-///
-#[derive(Debug, thiserror::Error)]
+/// The body's sync (checksum) actions did not arrive at the interval the body's meta action set.
+#[derive(Debug, Clone, Copy, thiserror::Error)]
 pub enum SyncError {
+    /// A sync action arrived this many time actions too early.
     #[error(
         "Got a sync message, but the log header said there would be a sync message {0} ticks later. The recorded game file may be corrupt"
     )]
     UnexpectedSync(u32),
+    /// A time action arrived where a sync action was due.
     #[error("Expected a sync message at this point, the recorded game file may be corrupt")]
     ExpectedSync,
 }
@@ -120,12 +132,16 @@ pub enum SyncError {
 /// Errors that may occur while reading a recorded game file.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Reading the file failed.
     #[error(transparent)]
     IoError(#[from] io::Error),
+    /// The body's sync actions are out of step.
     #[error(transparent)]
     SyncError(#[from] SyncError),
+    /// A string could not be decoded.
     #[error(transparent)]
     DecodeStringError(#[from] genie_support::DecodeStringError),
+    /// The scenario embedded in the header could not be read.
     #[error("Could not read embedded scenario data: {0}")]
     ReadScenarioError(#[from] genie_scx::Error),
 }
@@ -143,6 +159,7 @@ impl From<genie_support::ReadStringError> for Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Iterator over body actions.
+#[derive(Debug)]
 pub struct BodyActions<R>
 where
     R: BufRead,
@@ -156,6 +173,14 @@ impl<R> BodyActions<R>
 where
     R: BufRead,
 {
+    /// Read the body's meta action and start iterating over the actions after it.
+    ///
+    /// `data_version` is the header's save version: from 11.76 on, the meta action has the mgx
+    /// layout, before it the mgl one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the meta action cannot be read.
     pub fn new(mut input: R, data_version: f32) -> Result<Self> {
         let meta = if data_version >= 11.76 {
             Meta::read_from_mgx(&mut input)?
@@ -212,75 +237,124 @@ where
     }
 }
 
+/// The AI difficulty setting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Difficulty {
+    /// The easiest difficulty.
     Easiest,
+    /// Easy.
     Easy,
+    /// Standard (moderate).
     Standard,
+    /// Hard.
     Hard,
+    /// Hardest.
     Hardest,
     /// Age of Empires 2: Definitive Edition only.
     Extreme,
 }
 
+/// The map size setting. Placeholder: no variants are modelled yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MapSize {}
 
+/// The map type (random map script) setting. Placeholder: no variants are modelled yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MapType {}
 
+/// The map visibility setting (normal, explored, all visible). Placeholder: no variants are
+/// modelled yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Visibility {}
 
+/// The starting resources setting. Placeholder: no variants are modelled yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResourceLevel {}
 
+/// An age (Dark, Feudal, Castle, Imperial, Post-Imperial). Placeholder: no variants are modelled
+/// yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Age {}
 
+/// The game mode setting (random map, regicide, death match …). Placeholder: no variants are
+/// modelled yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum GameMode {}
 
+/// The game speed setting. Placeholder: no variants are modelled yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum GameSpeed {}
 
+/// The game settings an HD Edition recording stores. Not read by this crate yet.
+// The bools mirror the settings' on/off flags.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone)]
 pub struct HDGameOptions {
+    /// The DLCs the game uses.
     pub dlc_options: DLCOptions,
+    /// The AI difficulty.
     pub difficulty: Difficulty,
+    /// The map size.
     pub map_size: MapSize,
+    /// The map type.
     pub map_type: MapType,
+    /// The map visibility.
     pub visibility: Visibility,
+    /// The starting resources.
     pub starting_resources: ResourceLevel,
+    /// The age the players start in.
     pub starting_age: Age,
+    /// The last age the players can reach.
     pub ending_age: Age,
+    /// The game mode.
     pub game_mode: GameMode,
     // if version < 1001
+    /// The random map script's name.
     pub random_map_name: Option<String>,
     // if version < 1001
+    /// The scenario's name.
     pub scenario_name: Option<String>,
+    /// The game speed.
     pub game_speed: GameSpeed,
+    /// The treaty length (time before players may attack each other).
     pub treaty_length: i32,
+    /// The population limit.
     pub population_limit: i32,
+    /// The number of players.
     pub num_players: i32,
+    /// The amount the victory condition needs (score, time …).
     pub victory_amount: i32,
+    /// Whether trading is allowed.
     pub trading_enabled: bool,
+    /// Whether team bonuses are on.
     pub team_bonuses_enabled: bool,
+    /// Whether the starting positions are randomized.
     pub randomize_positions_enabled: bool,
+    /// Whether every civilization gets the full tech tree.
     pub full_tech_tree_enabled: bool,
+    /// The number of units each player starts with.
     pub num_starting_units: i8,
+    /// Whether the teams are locked.
     pub teams_locked: bool,
+    /// Whether the game speed is locked.
     pub speed_locked: bool,
+    /// Whether it is a multiplayer game.
     pub multiplayer: bool,
+    /// Whether cheats are allowed.
     pub cheats_enabled: bool,
+    /// Whether the game is recorded.
     pub record_game: bool,
+    /// Whether (huntable) animals are on the map.
     pub animals_enabled: bool,
+    /// Whether predators are on the map.
     pub predators_enabled: bool,
     // if version > 1.16 && version < 1002
+    /// The scenario player each player plays.
     pub scenario_player_indices: Vec<i32>,
 }
 
 /// Recorded game reader.
+#[derive(Debug)]
 pub struct RecordedGame<R>
 where
     R: Read + Seek,
@@ -302,10 +376,16 @@ impl<R> RecordedGame<R>
 where
     R: Read + Seek,
 {
+    /// Read the file's offsets and versions; the header and body are read on demand.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if seeking or reading the first bytes fails.
     pub fn new(mut input: R) -> Result<Self> {
         let file_size = {
             let size = input.seek(SeekFrom::End(0))?;
-            input.seek(SeekFrom::Start(0))?;
+            // Rewinding to the start: the new position is known.
+            let _ = input.seek(SeekFrom::Start(0))?;
             size
         };
 
@@ -321,7 +401,7 @@ where
         };
 
         let (game_version, save_version) = {
-            input.seek(SeekFrom::Start(header_start))?;
+            let _ = input.seek(SeekFrom::Start(header_start))?;
             let version_reader = SmallBufReader::new(&mut input);
             let mut deflate = DeflateDecoder::new(version_reader);
             let game_version = GameVersion::read_from(&mut deflate)?;
@@ -340,17 +420,22 @@ where
     }
 
     fn seek_to_first_header(&mut self) -> Result<()> {
-        self.inner.seek(SeekFrom::Start(self.header_start))?;
+        let _ = self.inner.seek(SeekFrom::Start(self.header_start))?;
 
         Ok(())
     }
 
     fn seek_to_body(&mut self) -> Result<()> {
-        self.inner.seek(SeekFrom::Start(self.header_end))?;
+        let _ = self.inner.seek(SeekFrom::Start(self.header_end))?;
 
         Ok(())
     }
 
+    /// Inflate and read the header.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the header cannot be read or decoded.
     pub fn header(&mut self) -> Result<Header> {
         self.seek_to_first_header()?;
         let reader = BufReader::new(&mut self.inner).take(self.header_end - self.header_start);
@@ -359,11 +444,17 @@ where
         Ok(header)
     }
 
+    /// Iterate over the body's actions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if seeking to the body or reading its meta action fails.
     pub fn actions(&mut self) -> Result<BodyActions<BufReader<&mut R>>> {
         self.seek_to_body()?;
         BodyActions::new(BufReader::new(&mut self.inner), self.save_version)
     }
 
+    /// Give back the underlying reader.
     pub fn into_inner(self) -> R {
         self.inner
     }
@@ -380,7 +471,7 @@ mod tests {
     fn incomplete_up_15_rec_with_ai() {
         let f = File::open("test/rec.20181208-195117.mgz").unwrap();
         let mut r = RecordedGame::new(f).unwrap();
-        r.header().expect("AI data cannot be fully parsed");
+        let _ = r.header().expect("AI data cannot be fully parsed");
         for act in r.actions().unwrap() {
             let _act = act.unwrap();
         }
@@ -390,7 +481,7 @@ mod tests {
     fn aoc_1_0_rec() -> anyhow::Result<()> {
         let f = File::open("test/missyou_finally_vs_11.mgx")?;
         let mut r = RecordedGame::new(f)?;
-        r.header()?;
+        let _ = r.header()?;
         for act in r.actions()? {
             match act {
                 Ok(act) => println!("{act:?}"),
@@ -407,7 +498,7 @@ mod tests {
     fn aok_rec() -> anyhow::Result<()> {
         let f = File::open("test/aok.mgl")?;
         let mut r = RecordedGame::new(f)?;
-        r.header()?;
+        let _ = r.header()?;
         for act in r.actions()? {
             println!("{:?}", act?);
         }

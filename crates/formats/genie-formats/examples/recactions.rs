@@ -1,3 +1,5 @@
+//! Prints every action (player command) in the body of a recorded game.
+
 use genie_formats::RecordedGame;
 use std::fs::File;
 use std::path::PathBuf;

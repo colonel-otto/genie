@@ -27,7 +27,6 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
-#![allow(missing_docs)]
 
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use sorted_vec::SortedVec;
@@ -89,10 +88,9 @@ impl AsRef<str> for ResourceType {
     }
 }
 
-impl ToString for ResourceType {
-    fn to_string(&self) -> String {
-        let s: &str = self.as_ref();
-        s.to_string()
+impl std::fmt::Display for ResourceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_ref())
     }
 }
 
@@ -100,7 +98,7 @@ impl ToString for ResourceType {
 ///
 /// This may be caused by:
 ///   - The input string not being 4 characters long
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, Copy, thiserror::Error)]
 #[error("invalid resource type, must be 4 characters")]
 pub struct ParseResourceTypeError;
 
@@ -142,6 +140,7 @@ impl From<&str> for ResourceType {
 }
 
 /// The DRS archive header.
+#[derive(Clone, Copy)]
 pub struct DRSHeader {
     /// A copyright message.
     banner_msg: [u8; 40],
@@ -233,8 +232,8 @@ impl DRSTable {
             resource_type,
             offset,
             num_resources,
-            resources: Default::default(),
-            resource_ids: Default::default(),
+            resources: Vec::new(),
+            resource_ids: SortedVec::default(),
         }
     }
 
@@ -313,10 +312,9 @@ impl DRSTable {
 
     /// Add a resource to this table.
     #[inline]
-    pub(crate) fn add(&mut self, res: DRSResource) -> &mut DRSResource {
+    pub(crate) fn add(&mut self, res: DRSResource) {
         self.resources.push(res);
         self.num_resources += 1;
-        self.resources.last_mut().expect("last_mut returned None?")
     }
 }
 
@@ -325,15 +323,13 @@ impl std::fmt::Debug for DRSTable {
         write!(
             f,
             "DRSTable {{ resource_type: '{}', offset: {}, num_resources: {} }}",
-            self.resource_type.to_string(),
-            self.offset,
-            self.num_resources
+            self.resource_type, self.offset, self.num_resources
         )
     }
 }
 
 /// A single resource in a DRS archive.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct DRSResource {
     /// The resource ID.
     pub id: u32,

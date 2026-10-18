@@ -18,15 +18,16 @@ pub enum WriteCampaignError {
 fn write_variable_str<W: Write>(output: &mut W, value: &str) -> io::Result<()> {
     output.write_u16::<LE>(0x0A60)?;
     let len = value.len();
-    assert!(len < std::u16::MAX as usize);
-    output.write_u16::<LE>(len as u16)?;
+    assert!(len < u16::MAX as usize);
+    output.write_u16::<LE>(u16::try_from(len).expect("checked by the assert above"))?;
     output.write_all(value.as_bytes())?;
     Ok(())
 }
 
 /// Write the campaign header to the `output` stream.
 fn write_campaign_header<W: Write>(header: &CampaignHeader, output: &mut W) -> io::Result<()> {
-    assert!(header.num_scenarios < std::i32::MAX as usize);
+    assert!(header.num_scenarios < i32::MAX as usize);
+    let num_scenarios = u32::try_from(header.num_scenarios).expect("checked by the assert above");
 
     output.write_all(&header.version)?;
     if header.version == AOE2_DE {
@@ -39,7 +40,7 @@ fn write_campaign_header<W: Write>(header: &CampaignHeader, output: &mut W) -> i
             DLCPackage::RiseOfTheRajas,
             DLCPackage::LastKhans,
         ];
-        output.write_u32::<LE>(dependencies.len() as u32)?;
+        output.write_u32::<LE>(u32::try_from(dependencies.len()).expect("six packages"))?;
         for dep in &dependencies {
             output.write_i32::<LE>(i32::from(*dep))?;
         }
@@ -47,27 +48,27 @@ fn write_campaign_header<W: Write>(header: &CampaignHeader, output: &mut W) -> i
         assert!(name_bytes.len() < 256);
         name_bytes.resize(256, 0);
         output.write_all(&name_bytes)?;
-        output.write_u32::<LE>(header.num_scenarios as u32)?;
+        output.write_u32::<LE>(num_scenarios)?;
     } else if header.version == AOE1_DE {
-        output.write_u32::<LE>(header.num_scenarios as u32)?;
+        output.write_u32::<LE>(num_scenarios)?;
         write_variable_str(output, &header.name)?;
     } else {
         let mut name_bytes = header.name.as_bytes().to_vec();
         assert!(name_bytes.len() < 256);
         name_bytes.resize(256, 0);
         output.write_all(&name_bytes)?;
-        output.write_u32::<LE>(header.num_scenarios as u32)?;
+        output.write_u32::<LE>(num_scenarios)?;
     }
     Ok(())
 }
 
 /// Write metadata for a single scenario into the `output` stream in the classic AoE/AoK format.
 fn write_scenario_meta<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Result<()> {
-    assert!(meta.size < std::i32::MAX as usize);
-    assert!(meta.offset < std::i32::MAX as usize);
+    assert!(meta.size < i32::MAX as usize);
+    assert!(meta.offset < i32::MAX as usize);
 
-    output.write_i32::<LE>(meta.size as i32)?;
-    output.write_i32::<LE>(meta.offset as i32)?;
+    output.write_i32::<LE>(i32::try_from(meta.size).expect("checked by the assert above"))?;
+    output.write_i32::<LE>(i32::try_from(meta.offset).expect("checked by the assert above"))?;
 
     let mut name_bytes = meta.name.as_bytes().to_vec();
     assert!(name_bytes.len() < 255);
@@ -84,8 +85,9 @@ fn write_scenario_meta<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Res
 
 /// Write metadata for a single scenario into the `output` stream, in the `AoE1`: DE format.
 fn write_scenario_meta_de<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Result<()> {
-    assert!(meta.size < std::u64::MAX as usize);
-    assert!(meta.offset < std::u64::MAX as usize);
+    // `u64::MAX as usize` is `usize::MAX` on every target.
+    assert!(meta.size < usize::MAX);
+    assert!(meta.offset < usize::MAX);
 
     output.write_u64::<LE>(meta.size as u64)?;
     output.write_u64::<LE>(meta.offset as u64)?;
@@ -96,17 +98,18 @@ fn write_scenario_meta_de<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::
 
 /// Write metadata for a single scenario into the `output` stream, in the `AoE2`: DE format.
 fn write_scenario_meta_de2<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Result<()> {
-    assert!(meta.size < std::u32::MAX as usize);
-    assert!(meta.offset < std::u32::MAX as usize);
+    assert!(meta.size < u32::MAX as usize);
+    assert!(meta.offset < u32::MAX as usize);
 
-    output.write_u32::<LE>(meta.size as u32)?;
-    output.write_u32::<LE>(meta.offset as u32)?;
+    output.write_u32::<LE>(u32::try_from(meta.size).expect("checked by the assert above"))?;
+    output.write_u32::<LE>(u32::try_from(meta.offset).expect("checked by the assert above"))?;
     write_variable_str(output, &meta.name)?;
     write_variable_str(output, &meta.filename)?;
     Ok(())
 }
 
 /// Describes a scenario file to be added to the campaign.
+#[derive(Debug)]
 struct CampaignEntry {
     name: String,
     filename: String,
@@ -137,7 +140,9 @@ impl CampaignEntry {
 
 /// A campaign file writer. Instantiate it, then add scenario files to it.
 ///
-/// This has to keep all scenario files in memory until the file is written, either on a call to `flush()` or implicitly when the struct is dropped.
+/// This has to keep all scenario files in memory until the file is written on a call to
+/// `flush()`.
+#[derive(Debug)]
 pub struct CampaignWriter<W: Write> {
     writer: W,
     header: CampaignHeader,
@@ -155,6 +160,7 @@ impl<W: Write> CampaignWriter<W> {
     }
 
     /// Set the file version to output.
+    #[must_use]
     pub fn version(mut self, version: CPXVersion) -> Self {
         debug_assert!(
             [AOE_AOK, AOE1_DE, AOE2_DE].contains(&version),
@@ -177,6 +183,10 @@ impl<W: Write> CampaignWriter<W> {
     ///
     /// This returns a Result because it serializes the scenario to an in-memory byte array, which
     /// may fail.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the scenario cannot be serialized.
     pub fn add(&mut self, name: &str, scx: &Scenario) -> SCXResult<()> {
         let mut bytes = vec![];
         scx.write_to(&mut bytes)?;
@@ -281,6 +291,17 @@ impl<W: Write> CampaignWriter<W> {
     /// Write the scenarios to the output stream, consuming the `CampaignWriter` object.
     ///
     /// Returns the inner `Write`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to the output stream fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the campaign has `i32::MAX` scenarios or more, or if a name does not fit the
+    /// version's fields: 255 bytes or more for the campaign name (classic and `AoE2`: DE) or a
+    /// scenario's name or file name (classic), `u16::MAX` bytes or more for a variable-length
+    /// string, or a scenario size or offset too large for the version's integer width.
     pub fn flush(mut self) -> io::Result<W> {
         self.write_header()?;
         self.write_metas()?;

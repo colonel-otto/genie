@@ -1,6 +1,7 @@
-/// Helper trait to map a container of T to a container of some type F that implements From<T>.
+/// Helper trait to map a container of `T` to a container of some type `F` that implements
+/// `From<T>`.
 ///
-/// For example, Result<T> to Result<From<T>>, or Option<T> to Option<From<T>>.
+/// For example, `Result<T>` to `Result<From<T>>`, or `Option<T>` to `Option<From<T>>`.
 pub trait MapInto<T> {
     /// Map the contained `T` into a different type.
     ///

@@ -7,7 +7,7 @@ use std::convert::TryInto;
 use std::io::{Read, Write};
 
 /// Data about a map tile.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Tile {
     /// The terrain type of this tile.
     pub terrain: u8,
@@ -51,14 +51,19 @@ impl WritableHeaderElement for Tile {
     }
 }
 
+/// A zone map: the map split into zones, the areas a unit with one set of passability rules (one
+/// terrain restriction) can move within.
 #[derive(Debug, Clone)]
 pub struct MapZone {
     /// Zone information—this is a Vec<> of a fixed size, and can only be accessed as a slice
     /// through the `info()` accessors to prevent modifications to the size.
     info: Vec<i8>,
     tiles: Vec<i32>,
+    /// The zone of each tile, row by row.
     pub zone_map: Vec<i8>,
+    /// The passability of each terrain under this zone map's terrain restriction.
     pub passability_rules: Vec<f32>,
+    /// The number of zones.
     pub num_zones: u32,
 }
 
@@ -67,31 +72,51 @@ impl Default for MapZone {
         Self {
             info: vec![0; 255],
             tiles: vec![0; 255],
-            zone_map: Default::default(),
-            passability_rules: Default::default(),
+            zone_map: Vec::default(),
+            passability_rules: Vec::default(),
             num_zones: Default::default(),
         }
     }
 }
 
 impl MapZone {
+    /// The 255 per-zone info bytes. Not known yet what they hold.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are not exactly 255 of them; `MapZone`'s constructors always make 255.
     #[must_use]
     pub fn info(&self) -> &[i8] {
         assert_eq!(self.info.len(), 255);
         &self.info
     }
 
+    /// The 255 per-zone info bytes, mutable; see [`MapZone::info`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are not exactly 255 of them; `MapZone`'s constructors always make 255.
     pub fn info_mut(&mut self) -> &mut [i8] {
         assert_eq!(self.info.len(), 255);
         &mut self.info
     }
 
+    /// The 255 per-zone `i32` values; probably the number of tiles in each zone.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are not exactly 255 of them; `MapZone`'s constructors always make 255.
     #[must_use]
     pub fn tiles(&self) -> &[i32] {
         assert_eq!(self.tiles.len(), 255);
         &self.tiles
     }
 
+    /// The 255 per-zone `i32` values, mutable; see [`MapZone::tiles`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are not exactly 255 of them; `MapZone`'s constructors always make 255.
     pub fn tiles_mut(&mut self) -> &mut [i32] {
         assert_eq!(self.tiles.len(), 255);
         &mut self.tiles
@@ -135,7 +160,7 @@ impl WritableHeaderElement for MapZone {
     }
 }
 
-///
+/// Which players can see or have explored each tile.
 #[derive(Debug, Default, Clone)]
 pub struct VisibilityMap {
     /// Width of the visibility map.

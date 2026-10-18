@@ -15,6 +15,11 @@ use std::io::{self, Error, ErrorKind, Read, Result};
 /// assert_eq!(read_opt_u16::<u16, _>(&mut minus_one).unwrap(), None);
 /// assert_eq!(read_opt_u16(&mut zero).unwrap(), Some(0));
 /// ```
+///
+/// # Errors
+///
+/// Returns an error if reading from `input` fails, or if the value does not fit in `T`
+/// (`ErrorKind::InvalidData`).
 #[inline]
 pub fn read_opt_u16<T, R>(input: &mut R) -> Result<Option<T>>
 where
@@ -45,6 +50,11 @@ where
 /// assert_eq!(read_opt_u32::<u32, _>(&mut minus_one).unwrap(), None);
 /// assert_eq!(read_opt_u32(&mut one).unwrap(), Some(1));
 /// ```
+///
+/// # Errors
+///
+/// Returns an error if reading from `input` fails, or if the value does not fit in `T`
+/// (`ErrorKind::InvalidData`).
 #[inline]
 pub fn read_opt_u32<T, R>(input: &mut R) -> Result<Option<T>>
 where
@@ -53,9 +63,8 @@ where
     R: Read,
 {
     let opt = match input.read_u32::<LE>()? {
-        0xFFFF_FFFF => None,
-        // HD Edition uses -2 in some places.
-        0xFFFF_FFFE => None,
+        // -1, or -2, which HD Edition uses in some places.
+        0xFFFF_FFFF | 0xFFFF_FFFE => None,
         v => Some(
             v.try_into()
                 .map_err(|e| Error::new(ErrorKind::InvalidData, e))?,
@@ -67,12 +76,20 @@ where
 /// Extension trait that adds a `skip()` method to `Read` instances.
 pub trait ReadSkipExt {
     /// Read and discard a number of bytes.
+    ///
+    /// Stopping early at the end of the input is not an error: fewer than `dist` bytes may be
+    /// skipped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails.
     fn skip(&mut self, dist: u64) -> Result<()>;
 }
 
 impl<T: Read> ReadSkipExt for T {
     fn skip(&mut self, dist: u64) -> Result<()> {
-        io::copy(&mut self.by_ref().take(dist), &mut io::sink())?;
+        // The count may fall short of `dist` at the end of the input; that is not checked.
+        let _ = io::copy(&mut self.by_ref().take(dist), &mut io::sink())?;
         Ok(())
     }
 }

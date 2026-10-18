@@ -13,7 +13,7 @@ fn linked_techs_read_their_keys() {
     let l = &t.linked_techs[0];
     assert_eq!(
         (l.name_id, l.local, l.kind.as_str(), &l.techs[..]),
-        (424001, Some(true), "MutuallyExclusive", &[1195, 1196][..])
+        (424_001, Some(true), "MutuallyExclusive", &[1195, 1196][..])
     );
     assert_eq!((l.starting_tech, l.instant), (None, None));
 }

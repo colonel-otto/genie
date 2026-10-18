@@ -7,6 +7,7 @@
 //! `probe`).
 
 use flate2::read::DeflateDecoder;
+use std::fmt::Write as _;
 use std::io::{Cursor, Read};
 
 /// What the probe found for one file.
@@ -152,7 +153,9 @@ fn quote(s: &str) -> String {
         match c {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c if (c as u32) < 0x20 => {
+                write!(out, "\\u{:04x}", c as u32).expect("writing to a String");
+            }
             c => out.push(c),
         }
     }
@@ -180,9 +183,7 @@ fn main() {
                     "panic: {}",
                     p.downcast_ref::<String>()
                         .cloned()
-                        .or(p
-                            .downcast_ref::<&str>()
-                            .map(std::string::ToString::to_string))
+                        .or_else(|| p.downcast_ref::<&str>().map(ToString::to_string))
                         .unwrap_or_default()
                 ))
             }),
@@ -190,8 +191,10 @@ fn main() {
         };
         let roundtrip = outcome
             .roundtrip
-            .map_or("null".to_string(), |b| b.to_string());
-        let error = outcome.error.map_or("null".to_string(), |e| quote(&e));
+            .map_or_else(|| "null".to_string(), |b| b.to_string());
+        let error = outcome
+            .error
+            .map_or_else(|| "null".to_string(), |e| quote(&e));
         println!(
             "{{\"file\": {}, \"read\": {}, \"roundtrip\": {roundtrip}, \"error\": {error}}}",
             quote(&file),

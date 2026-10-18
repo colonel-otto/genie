@@ -27,7 +27,7 @@ fn a_built_command_decodes_its_fields() {
     packet.extend((-1i32).to_le_bytes());
     packet.extend([0; 8]);
     packet.extend(1234i32.to_le_bytes());
-    let size = (packet.len() - 4) as u16;
+    let size = u16::try_from(packet.len() - 4).unwrap();
     packet[2..4].copy_from_slice(&size.to_le_bytes());
 
     let Command::Build(build) = Command::decode(&packet) else {
@@ -69,7 +69,7 @@ fn every_tier_1_command_decodes_and_writes_back() {
         let Ok(version) = chapters[0].save_version() else {
             continue;
         };
-        if (version.hundredths(), version.build) != (6660, 158041) {
+        if (version.hundredths(), version.build) != (6660, 158_041) {
             continue;
         }
         for chapter in &chapters {

@@ -11,6 +11,10 @@ pub struct DRSReader {
 impl DRSReader {
     /// Create a new DRS archive reader for the given handle.
     /// The handle must be `Read`able and `Seek`able.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading the header, the table list or the resource directory fails.
     pub fn new<R>(handle: &mut R) -> Result<Self, Error>
     where
         R: Read + Seek,
@@ -81,6 +85,11 @@ impl DRSReader {
     ///
     /// It shares the file handle that is given, so make sure to use the return value before
     /// calling this method again.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `ErrorKind::NotFound` error if the archive has no such resource, and an error
+    /// if seeking to it fails.
     pub fn get_resource_reader<R: Read + Seek>(
         &self,
         mut handle: R,
@@ -91,12 +100,17 @@ impl DRSReader {
             .get_resource(resource_type, id)
             .ok_or_else(|| Error::new(ErrorKind::NotFound, "Resource not found in this archive"))?;
 
-        handle.seek(SeekFrom::Start(u64::from(offset)))?;
+        let _ = handle.seek(SeekFrom::Start(u64::from(offset)))?;
 
         Ok(handle.take(u64::from(size)))
     }
 
     /// Read a file from the DRS archive.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `ErrorKind::NotFound` error if the archive has no such resource, and an error
+    /// if seeking to or reading it fails.
     pub fn read_resource<R: Read + Seek>(
         &self,
         handle: &mut R,
@@ -105,7 +119,9 @@ impl DRSReader {
     ) -> Result<Box<[u8]>, Error> {
         let mut buf = vec![];
 
-        self.get_resource_reader(handle, resource_type, id)?
+        // The byte count is `buf.len()`.
+        let _ = self
+            .get_resource_reader(handle, resource_type, id)?
             .read_to_end(&mut buf)?;
 
         Ok(buf.into_boxed_slice())

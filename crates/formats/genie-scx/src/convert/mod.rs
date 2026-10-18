@@ -10,7 +10,7 @@ pub use aoc_to_wk::AoCToWK;
 pub use hd_to_wk::HDToWK;
 
 /// Error indicating scenario conversion failure.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, Copy, thiserror::Error)]
 pub enum ConvertError {
     /// The input scenario version is not supported by the converter.
     #[error("invalid version")]
@@ -30,8 +30,7 @@ pub enum ConvertError {
 /// use genie_scx::convert::AutoToWK;
 /// AutoToWK::default().convert(&mut scenario)?
 /// ```
-
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct AutoToWK {}
 
 /// Check if a scenario object is likely a `WololoKingdoms` one.
@@ -42,6 +41,12 @@ const fn is_wk_object(object: &ScenarioObject) -> bool {
 }
 
 impl AutoToWK {
+    /// Convert a scenario to `WololoKingdoms` in place, choosing the converter by its version.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConvertError::InvalidVersion`] if the scenario is neither an HD Edition nor an
+    /// `AoK`/`AoC` scenario.
     pub fn convert(&self, scen: &mut Scenario) -> Result<(), ConvertError> {
         if scen.version().is_hd_edition() {
             HDToWK::default().convert(scen)

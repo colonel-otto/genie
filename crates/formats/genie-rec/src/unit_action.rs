@@ -8,18 +8,31 @@ pub use genie_support::UnitTypeID;
 use genie_support::{read_opt_u16, read_opt_u32};
 use std::io::{Read, Write};
 
+/// A unit's action (a task it carries out), with the sub-actions it runs.
 #[derive(Debug, Clone)]
 pub struct UnitAction {
+    /// The action's state (its step in the action's state machine). Stored as a `u8` up to save
+    /// version 11.76.
     pub state: u32,
+    /// The object the action targets, if any.
     pub target_object_id: Option<ObjectID>,
+    /// A second target object, if any.
     pub target_object_id_2: Option<ObjectID>,
+    /// The target position (x, y, z).
     pub target_position: (f32, f32, f32),
+    /// The action's timer.
     pub timer: f32,
+    /// Whether and how the target has moved; the values are not known yet.
     pub target_moved_state: u8,
+    /// The task (of the unit type's task list) the action carries out, if any.
     pub task_id: Option<u16>,
+    /// Not known yet.
     pub sub_action_value: u8,
+    /// The sub-actions this action runs.
     pub sub_actions: Vec<Self>,
+    /// The sprite the unit shows during the action, if any.
     pub sprite_id: Option<SpriteID>,
+    /// The data specific to the action type.
     pub params: ActionType,
 }
 
@@ -75,6 +88,15 @@ impl UnitAction {
         })
     }
 
+    /// Read a list of actions, each one prefixed with its type, up to a type of 0.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics on an action type the reader does not know yet (see [`ActionType::read_from`]).
     pub fn read_list_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Vec<Self>> {
         let mut list = vec![];
         loop {
@@ -88,20 +110,39 @@ impl UnitAction {
     }
 }
 
-#[derive(Debug, Clone)]
+/// The action types the reader knows, with the data specific to each.
+#[derive(Debug, Clone, Copy)]
 pub enum ActionType {
+    /// Move to a position or object (type 1).
     MoveTo(ActionMoveTo),
+    /// Enter (garrison in) an object (type 3).
     Enter(ActionEnter),
+    /// Explore the map (type 4).
     Explore,
+    /// Attack (type 9).
     Attack(ActionAttack),
+    /// Fly around, as birds do (type 10).
     Bird,
+    /// Transport units (type 12).
     Transport,
+    /// Guard (type 13).
     Guard,
+    /// Make (train or research) something (type 21).
     Make(ActionMake),
+    /// An artifact's (relic's) behaviour (type 107).
     Artifact,
 }
 
 impl ActionType {
+    /// Read the data of an action of type `action_type`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics on an action type the reader does not know yet.
     pub fn read_from<R: Read>(
         input: &mut RecordingHeaderReader<R>,
         action_type: u16,
@@ -122,8 +163,10 @@ impl ActionType {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The data of a move action.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ActionMoveTo {
+    /// How close the unit has to get to the target.
     pub range: f32,
 }
 
@@ -141,8 +184,10 @@ impl WritableHeaderElement for ActionMoveTo {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The data of an enter action.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ActionEnter {
+    /// Not known yet; read as a `u32`.
     pub first_time: u32,
 }
 
@@ -160,8 +205,9 @@ impl WritableHeaderElement for ActionEnter {
     }
 }
 
+/// The data of an attack action.
 #[allow(dead_code)]
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ActionAttack {
     range: f32,
     min_range: f32,
@@ -198,8 +244,10 @@ impl ReadableHeaderElement for ActionAttack {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The data of a make action.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ActionMake {
+    /// The time worked on it so far.
     pub work_timer: f32,
 }
 

@@ -79,7 +79,9 @@ impl LegacyVictoryInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+/// One victory condition: what has to happen (destroy, capture, collect, bring an object to an
+/// area, …), for which player and objects, and how far it got.
+#[derive(Debug, Clone, Copy)]
 pub struct VictoryEntry {
     command: VictoryCondition,
     object_type: i32,
@@ -98,6 +100,11 @@ pub struct VictoryEntry {
 }
 
 impl VictoryEntry {
+    /// Read a victory condition from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let command = input.read_u8()?.into();
         let object_type = input.read_i32::<LE>()?;
@@ -132,6 +139,11 @@ impl VictoryEntry {
         })
     }
 
+    /// Write the victory condition to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_u8(self.command.into())?;
         output.write_i32::<LE>(self.object_type)?;
@@ -151,7 +163,9 @@ impl VictoryEntry {
     }
 }
 
-#[derive(Debug, Clone)]
+/// One entry of the points victory: the attribute it scores, the amount and the points it is
+/// worth, and the points gained so far.
+#[derive(Debug, Clone, Copy)]
 pub struct VictoryPointEntry {
     command: i8,
     state: i8,
@@ -167,6 +181,11 @@ pub struct VictoryPointEntry {
 }
 
 impl VictoryPointEntry {
+    /// Read a points entry; versions before 2.0 lack the second attribute.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails.
     pub fn read_from(mut input: impl Read, version: f32) -> Result<Self> {
         let command = input.read_i8()?;
         let state = input.read_i8()?;
@@ -198,6 +217,11 @@ impl VictoryPointEntry {
         })
     }
 
+    /// Write the points entry in the layout of `version`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
     pub fn write_to(&self, mut output: impl Write, version: f32) -> Result<()> {
         output.write_i8(self.command)?;
         output.write_i8(self.state)?;
@@ -251,7 +275,9 @@ pub struct VictoryConditions {
     starting_points: i32,
     /// Unused.
     starting_group: i32,
+    /// The victory conditions.
     pub entries: Vec<VictoryEntry>,
+    /// The entries of the points victory (data version 1.0 and later).
     pub point_entries: Vec<VictoryPointEntry>,
 }
 
@@ -264,6 +290,12 @@ impl VictoryConditions {
     }
 
     /// Read victory conditions from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails or the victory state is unknown.
+    // The format stores the condition count as an i32; valid files never make it negative.
+    #[allow(clippy::cast_sign_loss)]
     pub fn read_from(mut input: impl Read, has_version: bool) -> Result<Self> {
         let version = if has_version {
             input.read_f32::<LE>()?
@@ -310,12 +342,18 @@ impl VictoryConditions {
     }
 
     /// Write victory conditions to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
+    // The format stores the entry counts as i32.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     pub fn write_to(&self, mut output: impl Write, version: Option<f32>) -> Result<()> {
         if let Some(v) = version {
             output.write_f32::<LE>(v)?;
         }
 
-        let version = version.unwrap_or(std::f32::MIN);
+        let version = version.unwrap_or(f32::MIN);
 
         output.write_i32::<LE>(self.entries.len() as i32)?;
         output.write_u8(self.victory.into())?;

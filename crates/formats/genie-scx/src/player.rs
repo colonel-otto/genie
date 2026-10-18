@@ -88,15 +88,25 @@ impl PlayerStartResources {
     }
 }
 
+/// A player's scenario settings: name, camera, diplomacy, colour and victory conditions.
 #[derive(Debug, Clone)]
 pub struct ScenarioPlayerData {
+    /// The player's default name, if the scenario sets one.
     pub name: Option<String>,
+    /// The initial camera position, (x, y) in tiles.
     pub view: (f32, f32),
+    /// The player's start location, (x, y) in tiles.
     pub location: (i16, i16),
+    /// Whether the player can win together with its allies (stored after version 1.00).
     pub allied_victory: bool,
+    /// The player's diplomacy byte toward each player, one per entry.
     pub relations: Vec<i8>,
+    /// One stance per player slot (Gaia and players 1 to 8), stored from version 1.08;
+    /// recorded games use 0 Gaia, 1 self, 2 ally, 3 neutral, 4 enemy, -1 no player.
     pub unit_diplomacy: Vec<i32>,
+    /// The player colour, stored from version 1.13.
     pub color: Option<i32>,
+    /// The player's own victory conditions.
     pub victory: VictoryConditions,
 }
 
@@ -113,6 +123,12 @@ impl ScenarioPlayerData {
     }
 
     /// Read player data from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails or the name cannot be decoded.
+    // The format stores the diplomacy count as an i16; valid files never make it negative.
+    #[allow(clippy::cast_sign_loss)]
     pub fn read_from(mut input: impl Read, version: f32) -> Result<Self> {
         let name = input.read_u16_length_prefixed_str()?;
 
@@ -169,6 +185,12 @@ impl ScenarioPlayerData {
     }
 
     /// Write player data to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails or the name cannot be encoded.
+    // The format stores the diplomacy count as an i16.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     pub fn write_to(
         &self,
         mut output: impl Write,
@@ -222,7 +244,7 @@ impl ScenarioPlayerData {
 }
 
 /// Initial player attributes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct WorldPlayerData {
     /// Initial food count.
     pub(crate) food: f32,
@@ -255,6 +277,11 @@ impl Default for WorldPlayerData {
 }
 
 impl WorldPlayerData {
+    /// Read the initial resources and population limit; fields the version lacks get defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails.
     pub fn read_from(mut input: impl Read, version: f32) -> Result<Self> {
         Ok(Self {
             food: if version > 1.06 {
@@ -295,6 +322,11 @@ impl WorldPlayerData {
         })
     }
 
+    /// Write the initial resources and population limit the version has.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
     pub fn write_to(&self, mut output: impl Write, version: f32) -> Result<()> {
         if version > 1.06 {
             output.write_f32::<LE>(self.food)?;

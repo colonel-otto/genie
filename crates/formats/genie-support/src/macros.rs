@@ -1,6 +1,9 @@
 #[macro_export]
-/// Create an infallible `TryInto` implementation for an ID container type that returns its contained number as the given target type.
+/// Create a `From` implementation for an ID container type that returns its contained number as
+/// the given target type.
 ///
+/// The standard library's blanket implementation turns it into an infallible `TryFrom`/`TryInto`
+/// (with `Infallible` as its error), which is what the macro's name refers to.
 ///
 /// ## Example
 ///
@@ -14,11 +17,10 @@
 /// ```
 macro_rules! infallible_try_into {
     ($from:ident, $to:ty) => {
-        impl ::std::convert::TryFrom<$from> for $to {
-            type Error = ::std::convert::Infallible;
-            fn try_from(n: $from) -> ::std::result::Result<Self, Self::Error> {
-                use ::std::convert::TryInto;
-                n.0.try_into()
+        impl ::std::convert::From<$from> for $to {
+            #[inline]
+            fn from(n: $from) -> Self {
+                n.0.into()
             }
         }
     };
@@ -90,7 +92,7 @@ macro_rules! fallible_try_from {
 /// ```
 macro_rules! f32_eq {
     ($left:expr, $right:expr) => {
-        f32::abs($left - $right) < std::f32::EPSILON
+        f32::abs($left - $right) < f32::EPSILON
     };
 }
 
@@ -105,6 +107,6 @@ macro_rules! f32_eq {
 /// ```
 macro_rules! f32_neq {
     ($left:expr, $right:expr) => {
-        f32::abs($left - $right) > std::f32::EPSILON
+        f32::abs($left - $right) > f32::EPSILON
     };
 }

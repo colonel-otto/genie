@@ -2,6 +2,10 @@ use super::ConvertError;
 use crate::{Scenario, ScenarioObject, Tile, Trigger, UnitTypeID};
 use nohash_hasher::IntMap;
 
+/// Convert an `AoC` scenario to a WololoKingdoms-compatible one.
+///
+/// Swaps the unit IDs and terrain IDs that look different in WK.
+#[derive(Debug)]
 pub struct AoCToWK {
     object_ids_map: IntMap<i32, UnitTypeID>,
     terrain_ids_map: IntMap<u8, u8>,
@@ -76,6 +80,10 @@ impl AoCToWK {
     }
 
     /// Convert a scenario from `AoC` to WK in-place.
+    ///
+    /// # Errors
+    ///
+    /// Never fails at present; the `Result` matches the other converters.
     pub fn convert(&self, scen: &mut Scenario) -> Result<(), ConvertError> {
         for object in scen.objects_mut() {
             self.convert_object(object);

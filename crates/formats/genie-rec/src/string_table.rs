@@ -4,6 +4,7 @@ use crate::reader::RecordingHeaderReader;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 
+/// A table of strings in the recording header, with room for a fixed number of them.
 #[derive(Debug, Clone)]
 pub struct StringTable {
     max_strings: u16,
@@ -11,6 +12,7 @@ pub struct StringTable {
 }
 
 impl StringTable {
+    /// An empty table with room for `max_strings` strings.
     #[must_use]
     pub const fn new(max_strings: u16) -> Self {
         Self {
@@ -19,18 +21,25 @@ impl StringTable {
         }
     }
 
+    /// The number of strings the table has room for.
     #[must_use]
     pub const fn max_strings(&self) -> u16 {
         self.max_strings
     }
 
+    /// The number of strings in the table.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the table holds 65535 (`u16::MAX`) strings or more.
     #[must_use]
     pub fn num_strings(&self) -> u16 {
         let len = self.strings.len();
-        assert!(len < u16::max_value() as usize);
-        len as u16
+        assert!(len < u16::MAX as usize);
+        u16::try_from(len).expect("the assert above bounds the length")
     }
 
+    /// The strings in the table.
     #[must_use]
     pub const fn strings(&self) -> &Vec<String> {
         &self.strings
@@ -66,8 +75,9 @@ impl WritableHeaderElement for StringTable {
 
         for string in &self.strings {
             let len = string.len();
-            assert!(len < u32::max_value() as usize);
-            handle.write_u32::<LE>(len as u32)?;
+            assert!(len < u32::MAX as usize);
+            let len = u32::try_from(len).expect("the assert above bounds the length");
+            handle.write_u32::<LE>(len)?;
             handle.write_all(string.as_bytes())?;
         }
 

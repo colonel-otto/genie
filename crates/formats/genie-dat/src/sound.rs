@@ -50,7 +50,7 @@ pub struct Sound {
 }
 
 /// A single sound file.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct SoundItem {
     /// Internal file name for this sound file.
     pub filename: ArrayString<13>,
@@ -66,6 +66,10 @@ pub struct SoundItem {
 
 impl SoundItem {
     /// Read this sound item from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R, _version: FileVersion) -> Result<Self> {
         let mut item = Self::default();
         // TODO actually use this
@@ -81,6 +85,14 @@ impl SoundItem {
     }
 
     /// Write this sound item to an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `civilization` or `icon_set` is `None`: the format always stores both.
     pub fn write_to<W: Write>(&self, output: &mut W, _version: FileVersion) -> Result<()> {
         output.write_all(&[0; 13])?;
         output.write_i32::<LE>(self.resource_id)?;
@@ -96,6 +108,10 @@ impl SoundItem {
 
 impl Sound {
     /// Read this sound from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R, version: FileVersion) -> Result<Self> {
         let mut sound = Self {
             id: input.read_u16::<LE>()?.into(),
@@ -114,6 +130,15 @@ impl Sound {
     }
 
     /// Write this sound to an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than `u16::MAX` sound files, or if a sound file lacks its
+    /// `civilization` or `icon_set` (see [`SoundItem::write_to`]).
     pub fn write_to<W: Write>(&self, output: &mut W, version: FileVersion) -> Result<()> {
         output.write_u16::<LE>(self.id.into())?;
         output.write_i16::<LE>(self.play_delay)?;

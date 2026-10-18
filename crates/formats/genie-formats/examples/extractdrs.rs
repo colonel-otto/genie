@@ -1,8 +1,11 @@
-use genie_drs::{DRSReader, DRSWriter, ReserveDirectoryStrategy};
+//! Lists, extracts or adds resources in a .drs archive.
+
+use genie_drs::{DRSReader, DRSTable, DRSWriter, ReserveDirectoryStrategy};
 use std::collections::HashSet;
 use std::fs::{File, create_dir_all};
 use std::io::{self, Write, stdout};
 use std::path::PathBuf;
+use std::time::SystemTime;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -148,24 +151,14 @@ fn add(args: Add) -> anyhow::Result<()> {
     let mut input = File::open(&args.archive)?;
     let drs_read = DRSReader::new(&mut input)?;
 
-    let (tables, files) = drs_read.tables().fold((0, 0), |(tables, files), table| {
-        (tables + 1, files + table.len() as u32)
-    });
-    let new_tables = args
-        .table
-        .iter()
-        .fold(HashSet::new(), |mut uniq, table| {
-            uniq.insert(table);
-            uniq
-        })
-        .len() as u32;
-    let new_files = args.id.len() as u32;
+    let tables = u32::try_from(drs_read.tables().len())?;
+    let files = u32::try_from(drs_read.tables().map(DRSTable::len).sum::<usize>())?;
+    let new_tables = u32::try_from(args.table.iter().collect::<HashSet<_>>().len())?;
+    let new_files = u32::try_from(args.id.len())?;
 
-    use std::time::SystemTime;
-    let suffix = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(d) => format!("{}", d.as_secs()),
-        _ => "temp".to_string(),
-    };
+    let suffix = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or_else(|_| "temp".to_string(), |d| format!("{}", d.as_secs()));
     let mut temp_out = args.output.as_ref().unwrap_or(&args.archive).clone();
     temp_out.set_file_name(format!(
         "{}.{}",
@@ -194,7 +187,8 @@ fn add(args: Add) -> anyhow::Result<()> {
         drs_write.add(res_type, args.id[i], File::open(path)?)?;
     }
 
-    drs_write.flush()?;
+    // Close the new archive before it replaces the old one.
+    drop(drs_write.flush()?);
 
     std::fs::rename(
         temp_out,

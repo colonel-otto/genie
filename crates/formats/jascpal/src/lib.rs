@@ -34,7 +34,6 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
-#![allow(missing_docs)]
 
 use nom::IResult;
 use nom::bytes::complete::tag;
@@ -137,10 +136,11 @@ fn parse_rgb(input: &[u8]) -> IResult<&[u8], Color> {
 fn parse(input: &[u8]) -> IResult<&[u8], Vec<Color>> {
     let (input, _) = tag(b"JASC-PAL\r\n")(input)?;
     let (input, _) = tag(b"0100\r\n")(input)?;
-    let (input, num_colors) = parse_number(input)?;
+    let (input, num_colors): (_, i32) = parse_number(input)?;
     let (input, _) = tag(b"\r\n")(input)?;
 
-    let mut colors = Vec::with_capacity(num_colors as usize);
+    // `digit1` takes no sign, so the count is never negative.
+    let mut colors = Vec::with_capacity(usize::try_from(num_colors).unwrap_or(0));
     let mut input = input;
     for _ in 0..num_colors {
         let (remaining, color) = parse_rgb(input)?;
@@ -181,7 +181,7 @@ impl Default for Palette {
     /// Create a palette with 256 colours, all black.
     #[inline]
     fn default() -> Self {
-        Self::from(vec![Default::default(); 256])
+        Self::from(vec![Color::default(); 256])
     }
 }
 
@@ -194,23 +194,28 @@ impl Palette {
     }
 
     /// Read a palette from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReadPaletteError::IoError`] if reading fails, and
+    /// [`ReadPaletteError::ParseError`] if the input is not a JASC palette.
     #[inline]
     pub fn read_from(mut input: impl Read) -> Result<Self, ReadPaletteError> {
         let mut buffer = vec![];
-        input.read_to_end(&mut buffer)?;
+        // The byte count is `buffer.len()`.
+        let _ = input.read_to_end(&mut buffer)?;
         let (_remaining, pal) = parse(&buffer).map_err(|_| ReadPaletteError::ParseError)?;
         Ok(Self::from(pal))
     }
 
     /// Write a palette to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     #[inline]
     pub fn write_to(&self, mut output: impl Write) -> Result<(), std::io::Error> {
-        output.write_all(b"JASC-PAL\r\n0100\r\n")?;
-        output.write_all(format!("{}\r\n", self.colors.len()).as_bytes())?;
-        for c in &self.colors {
-            output.write_all(format!("{} {} {}\r\n", c.r, c.g, c.b).as_bytes())?;
-        }
-        Ok(())
+        write!(output, "{self}")
     }
 
     /// Return the colours in a Vec so it can be manipulated.
@@ -242,6 +247,12 @@ impl Palette {
         self.colors.len()
     }
 
+    /// Iterate over the colours.
+    #[inline]
+    pub fn iter(&self) -> std::slice::Iter<'_, Color> {
+        self.colors.iter()
+    }
+
     /// Returns `true` if this palette contains 0 colours.
     #[inline]
     #[must_use]
@@ -259,10 +270,7 @@ impl Palette {
     #[inline]
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![];
-        self.write_to(&mut bytes)
-            .expect("serialization failed, this is a bug");
-        bytes
+        self.to_string().into_bytes()
     }
 }
 
@@ -314,11 +322,15 @@ impl<'a> IntoIterator for &'a Palette {
     }
 }
 
-impl ToString for Palette {
-    #[inline]
-    fn to_string(&self) -> String {
-        let s = self.to_bytes();
-        String::from_utf8(s).expect("serialization not utf-8, this is a bug")
+impl std::fmt::Display for Palette {
+    /// Write the palette in the JASC-PAL text format.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("JASC-PAL\r\n0100\r\n")?;
+        write!(f, "{}\r\n", self.colors.len())?;
+        for c in &self.colors {
+            write!(f, "{} {} {}\r\n", c.r, c.g, c.b)?;
+        }
+        Ok(())
     }
 }
 
@@ -329,7 +341,10 @@ mod tests {
 
     #[test]
     fn parse_test() {
-        parse(b"JASC-PAL\r\n0100\r\n2\r\n0 0 0\r\n255 255 255\r\n").expect("failed to parse");
+        let (rest, colors) =
+            parse(b"JASC-PAL\r\n0100\r\n2\r\n0 0 0\r\n255 255 255\r\n").expect("failed to parse");
+        assert_eq!(rest, b"");
+        assert_eq!(colors.len(), 2);
     }
 
     #[test]

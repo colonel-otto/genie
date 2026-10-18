@@ -29,7 +29,7 @@ use std::io::{self, Read, Write};
 // }
 
 /// An object placed in the scenario.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ScenarioObject {
     /// Position (x, y, z) of this object.
     pub position: (f32, f32, f32),
@@ -49,6 +49,11 @@ pub struct ScenarioObject {
 }
 
 impl ScenarioObject {
+    /// Read a placed object in the layout of the given format version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails.
     pub fn read_from(mut input: impl Read, version: SCXVersion) -> Result<Self> {
         let position = (
             input.read_f32::<LE>()?,
@@ -90,6 +95,11 @@ impl ScenarioObject {
         })
     }
 
+    /// Write the placed object in the layout of the given format version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
     pub fn write_to(&self, mut output: impl Write, version: SCXVersion) -> Result<()> {
         output.write_f32::<LE>(self.position.0)?;
         output.write_f32::<LE>(self.position.1)?;
@@ -148,6 +158,9 @@ pub(crate) struct RGEScen {
 }
 
 impl RGEScen {
+    // A sequential reader of the format's fields, in file order. The format stores the embedded
+    // file lengths as i32; valid files never make them negative.
+    #[allow(clippy::too_many_lines, clippy::cast_sign_loss)]
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let version = input.read_f32::<LE>()?;
         log::debug!("RGEScen version {version}");
@@ -184,17 +197,17 @@ impl RGEScen {
         dbg!(victory_conquest);
 
         {
-            let _timeline_count = input.read_i16::<LE>()?;
-            let _timeline_available = input.read_i16::<LE>()?;
-            let _old_time = input.read_f32::<LE>()?;
-            dbg!(_timeline_count, _timeline_available, _old_time);
-            assert_eq!(_timeline_count, 0, "Unexpected RGE_Timeline");
-            // assert_eq!(_timeline_available, 0, "Unexpected RGE_Timeline");
+            let timeline_count = input.read_i16::<LE>()?;
+            let timeline_available = input.read_i16::<LE>()?;
+            let old_time = input.read_f32::<LE>()?;
+            dbg!(timeline_count, timeline_available, old_time);
+            assert_eq!(timeline_count, 0, "Unexpected RGE_Timeline");
+            // assert_eq!(timeline_available, 0, "Unexpected RGE_Timeline");
         }
 
         if version >= 1.28 {
-            let _civ_lock = &mut [0; 16];
-            input.read_u32_into::<LE>(_civ_lock)?;
+            let civ_lock = &mut [0; 16];
+            input.read_u32_into::<LE>(civ_lock)?;
         }
 
         // File name may be empty for embedded scenario data inside recorded games.
@@ -221,7 +234,7 @@ impl RGEScen {
         let scout_string_table = if version >= 1.22 {
             read_opt_u32(&mut input)?
         } else {
-            Default::default()
+            None
         };
 
         let description = input.read_u16_length_prefixed_str()?;
@@ -337,6 +350,9 @@ impl RGEScen {
         })
     }
 
+    // A sequential writer of the format's fields, in file order. The format stores the embedded
+    // file lengths as u32.
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write, version: f32) -> Result<()> {
         output.write_f32::<LE>(version)?;
 
@@ -356,7 +372,7 @@ impl RGEScen {
         if version > 1.16 {
             assert_eq!(self.player_string_table.len(), 16);
             for id in &self.player_string_table {
-                write_opt_string_key(&mut output, id)?;
+                write_opt_string_key(&mut output, id.as_ref())?;
             }
         }
 
@@ -389,14 +405,14 @@ impl RGEScen {
         write_str(&mut output, &self.name)?;
 
         if version >= 1.16 {
-            write_opt_string_key(&mut output, &self.description_string_table)?;
-            write_opt_string_key(&mut output, &self.hints_string_table)?;
-            write_opt_string_key(&mut output, &self.win_message_string_table)?;
-            write_opt_string_key(&mut output, &self.loss_message_string_table)?;
-            write_opt_string_key(&mut output, &self.history_string_table)?;
+            write_opt_string_key(&mut output, self.description_string_table.as_ref())?;
+            write_opt_string_key(&mut output, self.hints_string_table.as_ref())?;
+            write_opt_string_key(&mut output, self.win_message_string_table.as_ref())?;
+            write_opt_string_key(&mut output, self.loss_message_string_table.as_ref())?;
+            write_opt_string_key(&mut output, self.history_string_table.as_ref())?;
         }
         if version >= 1.22 {
-            write_opt_string_key(&mut output, &self.scout_string_table)?;
+            write_opt_string_key(&mut output, self.scout_string_table.as_ref())?;
         }
 
         write_opt_str(&mut output, &self.description)?;
@@ -492,6 +508,8 @@ impl RGEScen {
 /// placed objects.
 ///
 /// The game saves this structure in scenario files, and also in saved and recorded game files.
+// Each bool is a setting the format stores.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Clone)]
 pub struct TribeScen {
     /// "Engine" data.
@@ -582,6 +600,19 @@ impl TribeScen {
     }
 
     /// Read scenario data from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails, if a string cannot be decoded, or if a diplomatic
+    /// stance or starting age is unknown.
+    // A sequential reader of the format's fields, in file order. The format stores the disabled
+    // counts as i32 (never negative in valid files); a guessed count is at most 20.
+    #[allow(
+        clippy::too_many_lines,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap
+    )]
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut base = RGEScen::read_from(&mut input)?;
         let version = base.version;
@@ -852,6 +883,19 @@ impl TribeScen {
     }
 
     /// Write scenario data to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails, if a string cannot be encoded or a string key does not
+    /// fit a u32, or if `version` cannot hold the disabled technologies, units or buildings.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a per-player list does not have 16 entries, or if a player name is longer than
+    /// 256 bytes.
+    // A sequential writer of the format's fields, in file order. The disabled counts are never
+    // negative in valid data.
+    #[allow(clippy::too_many_lines, clippy::cast_sign_loss)]
     pub fn write_to(&self, mut output: impl Write, version: f32, num_triggers: u32) -> Result<()> {
         self.base.write_to(&mut output, version)?;
 
@@ -1089,11 +1133,13 @@ impl TribeScen {
         Ok(())
     }
 
+    /// Get the data version of the scenario data.
     #[must_use]
     pub const fn version(&self) -> f32 {
         self.base.version
     }
 
+    /// Get the scenario description (the instructions text), if any.
     #[must_use]
     pub fn description(&self) -> Option<&str> {
         self.base.description.as_deref()
@@ -1138,22 +1184,6 @@ impl SCXFormat {
     }
 
     fn load_inner(version: SCXVersion, player_version: f32, mut input: impl Read) -> Result<Self> {
-        let header = SCXHeader::read_from(&mut input, version)?;
-
-        let mut input = DeflateDecoder::new(&mut input);
-        let next_object_id = input.read_i32::<LE>()?;
-
-        let tribe_scen = TribeScen::read_from(&mut input)?;
-
-        let map = Map::read_from(&mut input)?;
-
-        let num_players = input.read_u32::<LE>()?;
-        log::debug!("number of players: {num_players}");
-        let mut world_players = Vec::with_capacity(num_players as usize);
-        for _ in 1..num_players {
-            world_players.push(WorldPlayerData::read_from(&mut input, player_version)?);
-        }
-
         fn read_scenario_players(
             mut input: impl Read,
             player_version: f32,
@@ -1183,6 +1213,22 @@ impl SCXFormat {
                 player_objects.push(objects);
             }
             Ok(player_objects)
+        }
+
+        let header = SCXHeader::read_from(&mut input, version)?;
+
+        let mut input = DeflateDecoder::new(&mut input);
+        let next_object_id = input.read_i32::<LE>()?;
+
+        let tribe_scen = TribeScen::read_from(&mut input)?;
+
+        let map = Map::read_from(&mut input)?;
+
+        let num_players = input.read_u32::<LE>()?;
+        log::debug!("number of players: {num_players}");
+        let mut world_players = Vec::with_capacity(num_players as usize);
+        for _ in 1..num_players {
+            world_players.push(WorldPlayerData::read_from(&mut input, player_version)?);
         }
 
         // The order is flipped … thanks DE
@@ -1226,13 +1272,14 @@ impl SCXFormat {
         let mut format_version = [0; 4];
         input.read_exact(&mut format_version)?;
         let format_version = SCXVersion(format_version);
-        if let Some(player_version) = format_version.to_player_version() {
-            Self::load_inner(format_version, player_version, input)
-        } else {
-            Err(Error::UnsupportedFormatVersionError(format_version))
-        }
+        let Some(player_version) = format_version.to_player_version() else {
+            return Err(Error::UnsupportedFormatVersionError(format_version));
+        };
+        Self::load_inner(format_version, player_version, input)
     }
 
+    // The format stores the object count as an i32.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn write_player_objects(
         &self,
         mut output: impl Write,
@@ -1247,6 +1294,8 @@ impl SCXFormat {
         Ok(())
     }
 
+    // The format stores the player count as an i32.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn write_scenario_players(
         &self,
         mut output: impl Write,
@@ -1260,10 +1309,11 @@ impl SCXFormat {
         Ok(())
     }
 
+    // The format stores the player count as an i32.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     pub fn write_to(&self, mut output: impl Write, version: &VersionBundle) -> Result<()> {
-        let player_version = match version.format.to_player_version() {
-            Some(v) => v,
-            None => return Err(Error::UnsupportedFormatVersionError(version.format)),
+        let Some(player_version) = version.format.to_player_version() else {
+            return Err(Error::UnsupportedFormatVersionError(version.format));
         };
 
         output.write_all(version.format.as_bytes())?;
@@ -1296,23 +1346,18 @@ impl SCXFormat {
 
         if version.format > SCXVersion(*b"1.13") {
             let def = TriggerSystem::default();
-            let triggers = match self.triggers {
-                Some(ref tr) => tr,
-                None => &def,
-            };
+            let triggers = self.triggers.as_ref().unwrap_or(&def);
             triggers.write_to(&mut output, version.triggers.unwrap_or(1.6))?;
         }
 
         if version.format > SCXVersion(*b"1.17") && version.format < SCXVersion(*b"2.00") {
             let def = AIInfo::default();
-            let ai_info = match self.ai_info {
-                Some(ref ai) => ai,
-                None => &def,
-            };
+            let ai_info = self.ai_info.as_ref().unwrap_or(&def);
             ai_info.write_to(&mut output)?;
         }
 
-        output.finish()?;
+        // The inner writer is not needed once the compressed stream is finished.
+        let _ = output.finish()?;
 
         Ok(())
     }
@@ -1339,7 +1384,7 @@ impl SCXFormat {
     }
 }
 
-fn write_opt_string_key(mut output: impl Write, opt_key: &Option<StringKey>) -> Result<()> {
+fn write_opt_string_key(mut output: impl Write, opt_key: Option<&StringKey>) -> Result<()> {
     output.write_u32::<LE>(if let Some(key) = opt_key {
         key.try_into()
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?
@@ -1373,7 +1418,7 @@ mod tests {
             Err(err) => panic!("{}", err),
             Ok(()) => {
                 let mut trailing_data = vec![byte[0]];
-                input.read_to_end(&mut trailing_data).unwrap();
+                let _ = input.read_to_end(&mut trailing_data).unwrap();
                 panic!("data left in buffer ({}): {:?}", trailing_data.len(), {
                     trailing_data.truncate(32);
                     trailing_data
@@ -1539,7 +1584,7 @@ mod tests {
     /// (Ignored because it doesn't work yet.)
     /// Source: <http://aoe.heavengames.com/dl-php/showfile.php?fileid=2708>
     #[test]
-    #[ignore]
+    #[ignore = "Definitive Edition (AoE1) scenarios are not supported yet"]
     fn aoe_de_scn() {
         let mut f = File::open("test/scenarios/Corlis.aoescn").unwrap();
         let format = SCXFormat::load_scenario(&mut f).expect("failed to read");

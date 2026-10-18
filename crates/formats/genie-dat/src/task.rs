@@ -7,10 +7,13 @@ use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 use std::ops::Deref;
 
+/// The list of tasks a unit type can perform, in file order.
 #[derive(Debug, Default, Clone)]
 pub struct TaskList(Vec<Task>);
 
-#[derive(Debug, Default, Clone)]
+/// A task a unit type can perform (gather, build, attack, …): the action, the targets it applies
+/// to, and the sprites and sounds the unit uses while doing it.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Task {
     id: u16,
     is_default: bool,
@@ -45,6 +48,15 @@ impl Deref for TaskList {
 }
 
 impl TaskList {
+    /// Read a task list from an input stream: a u16 count, then each task preceded by its type.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a task's type is not 1.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let num_tasks = input.read_u16::<LE>()?;
         let mut tasks = vec![];
@@ -57,6 +69,16 @@ impl TaskList {
         Ok(Self(tasks))
     }
 
+    /// Write this task list to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than `u16::MAX` tasks, or if a task's IDs do not fit the format
+    /// (see [`Task::write_to`]).
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u16::<LE>(self.len().try_into().unwrap())?;
         for task in self.iter() {
@@ -68,6 +90,11 @@ impl TaskList {
 }
 
 impl Task {
+    /// Read a task from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if an ID is out of range.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         Ok(Self {
             id: input.read_u16::<LE>()?,
@@ -101,6 +128,15 @@ impl Task {
         })
     }
 
+    /// Write this task to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the target unit type, a sprite or a sound ID does not fit the format's `i16`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u16::<LE>(self.id)?;
         output.write_u8(u8::from(self.is_default))?;

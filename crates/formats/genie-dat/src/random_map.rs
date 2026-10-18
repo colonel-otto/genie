@@ -1,27 +1,48 @@
 //! Types related to the random map data from Age of Empires 1.
 
-#![allow(missing_docs)]
-
 use crate::unit_type::UnitTypeID;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
+use genie_support::ReadSkipExt;
 use std::convert::TryInto;
 use std::io::{Read, Result, Write};
 
+/// A random map: its basic layout, and the lands, terrains, objects and elevations placed on it.
 #[derive(Debug, Default, Clone)]
 pub struct RandomMapInfo {
     id: i32,
+    /// Distances of the land from the map's south-west, north-west, north-east and south-east
+    /// edges.
     pub borders: (i32, i32, i32, i32),
+    /// How the borders are used (genieutils' `BorderUsage`).
     pub border_fade: i32,
+    /// Shape of the water (genieutils' `WaterShape`).
     pub water_border: i32,
+    /// The terrain the whole map starts out as.
     pub base_terrain: i32,
+    /// Share of the map that is land, in percent (genieutils' `LandCoverage`).
     pub land_percent: i32,
+    /// The lands placed on the map.
     pub lands: Vec<RandomMapLand>,
+    /// The terrains placed on the map.
     pub terrains: Vec<RandomMapTerrain>,
+    /// The objects placed on the map.
     pub objects: Vec<RandomMapObject>,
+    /// The elevations (hills) placed on the map.
     pub elevations: Vec<RandomMapElevation>,
 }
 
 impl RandomMapInfo {
+    /// Read a map's header from an input stream. The lists get their lengths but default
+    /// entries; [`finish`](Self::finish) reads the entries, which the file stores after all map
+    /// headers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a count does not fit a `usize` (on targets with 16-bit pointers).
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut info = Self {
             id: input.read_i32::<LE>()?,
@@ -56,33 +77,48 @@ impl RandomMapInfo {
         Ok(info)
     }
 
+    /// Read the map's lands, terrains, objects and elevations from an input stream, skipping the
+    /// copies of the header data in between.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn finish<R: Read>(&mut self, input: &mut R) -> Result<()> {
         // duplicate data
-        std::io::copy(&mut input.by_ref().take(44), &mut std::io::sink())?;
+        input.skip(44)?;
         for land in &mut self.lands {
             *land = RandomMapLand::read_from(input)?;
         }
 
         // duplicate data
-        std::io::copy(&mut input.by_ref().take(8), &mut std::io::sink())?;
+        input.skip(8)?;
         for terrain in &mut self.terrains {
             *terrain = RandomMapTerrain::read_from(input)?;
         }
 
         // duplicate data
-        std::io::copy(&mut input.by_ref().take(8), &mut std::io::sink())?;
+        input.skip(8)?;
         for object in &mut self.objects {
             *object = RandomMapObject::read_from(input)?;
         }
 
         // duplicate data
-        std::io::copy(&mut input.by_ref().take(8), &mut std::io::sink())?;
+        input.skip(8)?;
         for elevation in &mut self.elevations {
             *elevation = RandomMapElevation::read_from(input)?;
         }
         Ok(())
     }
 
+    /// Write the map's header to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a list has more than `u32::MAX` entries.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i32::<LE>(self.id)?;
         output.write_i32::<LE>(self.borders.0)?;
@@ -107,6 +143,16 @@ impl RandomMapInfo {
         Ok(())
     }
 
+    /// Write the map's lands, terrains, objects and elevations to an output stream, each list
+    /// preceded by a copy of the header data.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a list has more than `u32::MAX` entries.
     pub fn write_commands_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i32::<LE>(self.borders.0)?;
         output.write_i32::<LE>(self.borders.1)?;
@@ -142,24 +188,43 @@ impl RandomMapInfo {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// A land of a random map: an area with its own terrain, e.g. a player's start area.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct RandomMapLand {
+    /// ID of the land.
     pub id: i32,
+    /// Terrain of the land.
     pub terrain_type: u8,
+    /// Distance kept from other lands, in tiles (genieutils' `LandSpacing`).
     pub land_avoidance_tiles: i32,
+    /// Radius of the square the land grows from (genieutils' `BaseSize`).
     pub base_square_radius: i32,
+    /// Zone the land belongs to.
     pub zone: i8,
+    /// How the land is placed (genieutils' `PlacementType`).
     pub placement_type: i8,
+    /// X position of the land's base (genieutils' `BaseX`).
     pub x: i32,
+    /// Y position of the land's base (genieutils' `BaseY`).
     pub y: i32,
+    /// Share of the map the land covers, in percent (genieutils' `LandProportion`).
     pub amount_of_land_used_percent: i8,
+    /// Whether one land is made per player (genieutils' `ByPlayerFlag`).
     pub by_player_flag: i8,
+    /// Radius of the start area (genieutils' `StartAreaRadius`).
     pub radius: i32,
+    /// How far the land's terrain edge fades (genieutils' `TerrainEdgeFade`).
     pub fade: i32,
+    /// How clumpy the land's shape is.
     pub clumpiness_factor: i32,
 }
 
 impl RandomMapLand {
+    /// Read a land from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut land = Self {
             id: input.read_i32::<LE>()?,
@@ -184,6 +249,11 @@ impl RandomMapLand {
         Ok(land)
     }
 
+    /// Write this land to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i32::<LE>(self.id)?;
         output.write_u8(self.terrain_type)?;
@@ -206,17 +276,29 @@ impl RandomMapLand {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// A terrain placed in clumps on a random map.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct RandomMapTerrain {
+    /// Share of the map covered, in percent (genieutils' `Proportion`).
     pub percent: i32,
+    /// The terrain placed.
     pub terrain_type: i32,
+    /// Number of clumps.
     pub clumps: i32,
+    /// Distance kept from the edges of other terrains (genieutils' `EdgeSpacing`).
     pub spacing: i32,
+    /// The terrain on which the clumps are placed (genieutils' `PlacementTerrain`).
     pub base_terrain_type: i32,
+    /// How clumpy the clumps are.
     pub clumpiness_factor: i32,
 }
 
 impl RandomMapTerrain {
+    /// Read a map terrain from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         Ok(Self {
             percent: input.read_i32::<LE>()?,
@@ -228,6 +310,11 @@ impl RandomMapTerrain {
         })
     }
 
+    /// Write this map terrain to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i32::<LE>(self.percent)?;
         output.write_i32::<LE>(self.terrain_type)?;
@@ -239,23 +326,45 @@ impl RandomMapTerrain {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// Objects placed in groups on a random map.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct RandomMapObject {
+    /// The unit type placed.
     pub unit_type: UnitTypeID,
+    /// The terrain the objects are placed on (genieutils' `HostTerrain`).
     pub terrain_type: i32,
+    /// How the group is placed (genieutils' `GroupPlacing`).
     pub group_flag: i8,
+    /// genieutils' `ScaleFlag`: whether the count scales with the map size.
     pub scale_flag: i8,
+    /// Objects per group.
     pub group_size: i32,
+    /// Random variation of the group size (genieutils' `Fluctuation`).
     pub group_size_variance: i32,
+    /// Groups per player.
     pub group_count: i32,
+    /// Radius of a group (genieutils' `GroupArena`).
     pub group_area: i32,
+    /// Who owns the objects (genieutils' `PlayerID`): -1 for each player, 0 for none.
     pub player_id: i32,
+    /// genieutils reads this value as `SetPlaceForAllPlayers`; genie-rs takes it as a land ID.
     pub land_id: i32,
+    /// Minimum distance from the players' start positions.
     pub min_distance_to_players: i32,
+    /// Maximum distance from the players' start positions.
     pub max_distance_to_players: i32,
 }
 
 impl RandomMapObject {
+    /// Read a map object entry from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the unit type ID does not fit a [`UnitTypeID`].
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut object = Self {
             unit_type: input.read_u32::<LE>()?.try_into().unwrap(),
@@ -276,6 +385,11 @@ impl RandomMapObject {
         Ok(object)
     }
 
+    /// Write this map object entry to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u32::<LE>(self.unit_type.into())?;
         output.write_i32::<LE>(self.terrain_type)?;
@@ -294,17 +408,36 @@ impl RandomMapObject {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// Hills placed in clumps on a random map.
+///
+/// genie-rs named the fields; genieutils and openage read the second, fourth, fifth and sixth
+/// values with other meanings, as the field docs say.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct RandomMapElevation {
+    /// Share of the map raised, in percent (genieutils' `Proportion`).
     pub percent: i32,
+    /// genieutils reads this value as `Terrain`: the terrain the hills are placed on.
     pub height: i32,
+    /// Number of clumps (genieutils' `ClumpCount`).
     pub clumps: i32,
+    /// genieutils reads this value as `BaseTerrain`.
     pub spacing: i32,
+    /// genieutils reads this value as `BaseElevation`.
     pub base_terrain_type: i32,
+    /// genieutils reads this value as `TileSpacing`.
     pub base_elevation: i32,
 }
 
 impl RandomMapElevation {
+    /// Read a map elevation from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored percentage, read as a u32, is above `i32::MAX`.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         Ok(Self {
             percent: input.read_u32::<LE>()?.try_into().unwrap(),
@@ -316,6 +449,11 @@ impl RandomMapElevation {
         })
     }
 
+    /// Write this map elevation to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i32::<LE>(self.percent)?;
         output.write_i32::<LE>(self.height)?;

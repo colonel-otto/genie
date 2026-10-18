@@ -5,7 +5,6 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
-#![allow(missing_docs)]
 
 mod ids;
 mod macros;

@@ -15,16 +15,27 @@ pub use genie_support::{StringKey, UnitTypeID};
 use std::convert::TryInto;
 use std::io::{Read, Write};
 
+/// A game object (unit, building, resource …) as the recording header stores it, with the
+/// attribute groups of its base class.
 #[derive(Debug, Clone)]
 pub struct Unit {
+    /// The object's base class; it decides which of the attribute groups below are present.
     pub unit_base_class: UnitBaseClass,
+    /// The attributes every object has.
     pub static_: StaticUnitAttributes,
+    /// Present from the animated base class on.
     pub animated: Option<AnimatedUnitAttributes>,
+    /// Present from the moving base class on.
     pub moving: Option<MovingUnitAttributes>,
+    /// Present from the action base class on.
     pub action: Option<ActionUnitAttributes>,
+    /// Present from the base combat base class on.
     pub base_combat: Option<BaseCombatUnitAttributes>,
+    /// Present from the missile base class on.
     pub missile: Option<MissileUnitAttributes>,
+    /// Present from the combat base class on.
     pub combat: Option<CombatUnitAttributes>,
+    /// Present for buildings.
     pub building: Option<BuildingUnitAttributes>,
 }
 
@@ -99,14 +110,22 @@ impl WritableHeaderElement for Unit {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The animation state of a sprite node.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct SpriteNodeAnimation {
+    /// The time between two animation frames.
     pub animate_interval: u32,
+    /// The time of the last frame change.
     pub animate_last: u32,
+    /// The frame shown last.
     pub last_frame: u16,
+    /// Whether the frame changed at the last update.
     pub frame_changed: u8,
+    /// Whether the animation looped at the last update.
     pub frame_looped: u8,
+    /// Whether the sprite animates.
     pub animate_flag: u8,
+    /// The animation speed at the last update.
     pub last_speed: f32,
 }
 
@@ -137,16 +156,27 @@ impl WritableHeaderElement for SpriteNodeAnimation {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// One sprite drawn for an object; an object can carry several (a building and its damage
+/// fires, for example).
+#[derive(Debug, Default, Clone, Copy)]
 pub struct SpriteNode {
+    /// The sprite.
     pub id: SpriteID,
+    /// The sprite's horizontal offset.
     pub x: u32,
+    /// The sprite's vertical offset.
     pub y: u32,
+    /// The frame shown.
     pub frame: u16,
+    /// Whether the sprite is hidden.
     pub invisible: bool,
+    /// The animation state, for an animated node.
     pub animation: Option<SpriteNodeAnimation>,
+    /// The drawing order among the object's sprites.
     pub order: u8,
+    /// Not known yet.
     pub flag: u8,
+    /// Not known yet.
     pub count: u8,
 }
 
@@ -194,8 +224,10 @@ impl WritableHeaderElement for SpriteNode {
     }
 }
 
+/// The sprites drawn for an object.
 #[derive(Debug, Default, Clone)]
 pub struct SpriteList {
+    /// The sprite nodes, in drawing order.
     pub sprites: Vec<SpriteNode>,
 }
 
@@ -219,32 +251,61 @@ impl WritableHeaderElement for SpriteList {
     }
 }
 
+/// The attributes every object has.
+// The bools are the format's on/off flags.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Clone)]
 pub struct StaticUnitAttributes {
+    /// The player who owns the object.
     pub owner_id: PlayerID,
+    /// The object's unit type.
     pub unit_type_id: UnitTypeID,
+    /// The sprite the object shows.
     pub sprite_id: SpriteID,
+    /// The object it is garrisoned in, if any.
     pub garrisoned_in_id: Option<ObjectID>,
+    /// The hit points.
     pub hit_points: f32,
+    /// The object's life state (alive, dying, dead …).
     pub object_state: u8,
+    /// Whether the object is asleep (not updated).
     pub sleep_flag: bool,
+    /// Whether the object has a doppelganger, a stand-in shown under the fog of war.
     pub dopple_flag: bool,
+    /// Whether the object falls asleep at its next update.
     pub go_to_sleep_flag: bool,
+    /// The object's id.
     pub id: ObjectID,
+    /// The facet (direction) the object faces.
     pub facet: u8,
+    /// The position (x, y, z).
     pub position: (f32, f32, f32),
+    /// The offset at which the object is drawn on screen.
     pub screen_offset: (u16, u16),
+    /// The offset of the object's shadow.
     pub shadow_offset: (u16, u16),
+    /// The control group the object is in; stored before save version 11.58 only.
     pub selected_group: Option<u8>,
+    /// The attribute (resource) the object holds: the food of a sheep, the gold a villager
+    /// carries.
     pub attribute_type_held: u16,
+    /// The amount of that attribute.
     pub attribute_amount_held: f32,
+    /// The number of units working on the object (gatherers, builders …).
     pub worker_count: u8,
+    /// The damage stage the object shows.
     pub current_damage: u8,
+    /// The timer since the object was last damaged.
     pub damaged_lately_timer: u8,
+    /// Whether the object is under attack.
     pub under_attack: bool,
+    /// The objects in the object's pathing group (units that move together).
     pub pathing_group_members: Vec<ObjectID>,
+    /// The object's group id, if any.
     pub group_id: Option<u32>,
+    /// Not known yet.
     pub roo_already_called: u8,
+    /// The sprites drawn for the object, if it has a sprite list.
     pub sprite_list: Option<SpriteList>,
 }
 
@@ -309,8 +370,10 @@ impl WritableHeaderElement for StaticUnitAttributes {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The attributes the animated base class adds.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct AnimatedUnitAttributes {
+    /// The current movement speed.
     pub speed: f32,
 }
 
@@ -328,20 +391,34 @@ impl WritableHeaderElement for AnimatedUnitAttributes {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// A path a moving object follows.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct PathData {
+    /// The path's id.
     pub id: u32,
+    /// Not known yet; the type of a linked path.
     pub linked_path_type: u32,
+    /// Not known yet.
     pub waypoint_level: u32,
+    /// Not known yet.
     pub path_id: u32,
+    /// The waypoint the object is at.
     pub waypoint: u32,
+    /// Disable flags; stored before save version 10.25 only.
     pub disable_flags: Option<u32>,
+    /// Enable flags; stored in save versions 10.20 to 10.24 only.
     pub enable_flags: Option<u32>,
+    /// The path's state.
     pub state: u32,
+    /// How close the object has to get to the target.
     pub range: f32,
+    /// The target object.
     pub target_id: u32,
+    /// How long the object pauses.
     pub pause_time: f32,
+    /// Not known yet.
     pub continue_counter: u32,
+    /// Path flags; not known yet in detail.
     pub flags: u32,
 }
 
@@ -371,9 +448,12 @@ impl ReadableHeaderElement for PathData {
     }
 }
 
+/// A moving object's velocity and acceleration.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MovementData {
+    /// The velocity (x, y, z).
     pub velocity: (f32, f32, f32),
+    /// The acceleration (x, y, z).
     pub acceleration: (f32, f32, f32),
 }
 
@@ -395,6 +475,11 @@ impl MovementData {
         })
     }
 
+    /// Write the velocity and acceleration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_f32::<LE>(self.velocity.0)?;
         output.write_f32::<LE>(self.velocity.1)?;
@@ -406,27 +491,48 @@ impl MovementData {
     }
 }
 
+/// The attributes the moving base class adds: movement and paths.
 #[derive(Debug, Default, Clone)]
 pub struct MovingUnitAttributes {
+    /// Not known yet.
     pub trail_remainder: u32,
+    /// The velocity (x, y, z).
     pub velocity: (f32, f32, f32),
+    /// The angle the object faces.
     pub angle: f32,
+    /// Not known yet; a timing of its turn towards a target.
     pub turn_towards_time: u32,
+    /// The turning timer.
     pub turn_timer: u32,
+    /// Not known yet.
     pub continue_counter: u32,
+    /// Two terrain exceptions; not known yet.
     pub current_terrain_exception: (Option<u32>, Option<u32>),
+    /// Whether the object waits to move.
     pub waiting_to_move: u8,
+    /// How often the object has waited for its move.
     pub wait_delays_count: u8,
+    /// Whether the object is on the ground.
     pub on_ground: u8,
+    /// The paths the object follows.
     pub path_data: Vec<PathData>,
+    /// The next path, if one is planned.
     pub future_path_data: Option<PathData>,
+    /// The velocity and acceleration, if stored.
     pub movement_data: Option<MovementData>,
+    /// A position (x, y, z); not known yet how it differs from the static attributes' one.
     pub position: (f32, f32, f32),
+    /// The forward direction vector.
     pub orientation_forward: (f32, f32, f32),
+    /// The right direction vector.
     pub orientation_right: (f32, f32, f32),
+    /// The time the object last moved.
     pub last_move_time: u32,
+    /// The waypoints the player set.
     pub user_defined_waypoints: Vec<(f32, f32, f32)>,
+    /// A substitute position, if set; not known yet what for.
     pub substitute_position: Option<(f32, f32, f32)>,
+    /// How many substitute positions in a row the object has used.
     pub consecutive_substitute_count: u32,
 }
 
@@ -505,11 +611,16 @@ impl ReadableHeaderElement for MovingUnitAttributes {
 
 impl WritableHeaderElement for MovingUnitAttributes {}
 
+/// The attributes the action base class adds: the action stack.
 #[derive(Debug, Default, Clone)]
 pub struct ActionUnitAttributes {
+    /// Whether the unit is waiting.
     pub waiting: bool,
+    /// Not known yet; stored from save version 6.5 on.
     pub command_flag: u8,
+    /// Control group information; stored from save version 11.58 on.
     pub selected_group_info: u16,
+    /// The unit's action stack.
     pub actions: Vec<UnitAction>,
 }
 
@@ -533,15 +644,24 @@ impl ReadableHeaderElement for ActionUnitAttributes {
 
 impl WritableHeaderElement for ActionUnitAttributes {}
 
-#[derive(Debug, Default, Clone)]
+/// The attributes the base combat base class adds.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct BaseCombatUnitAttributes {
+    /// The formation the unit is in.
     pub formation_id: u8,
+    /// The unit's row in the formation.
     pub formation_row: u8,
+    /// The unit's column in the formation.
     pub formation_column: u8,
+    /// The time until the next attack.
     pub attack_timer: f32,
+    /// Not known yet; a capture flag.
     pub capture_flag: u8,
+    /// Not known yet.
     pub multi_unified_points: u8,
+    /// Not known yet.
     pub large_object_radius: u8,
+    /// The number of attacks the unit has made.
     pub attack_count: u32,
 }
 
@@ -570,10 +690,14 @@ impl ReadableHeaderElement for BaseCombatUnitAttributes {
 
 impl WritableHeaderElement for BaseCombatUnitAttributes {}
 
+/// The attributes the missile (projectile) base class adds.
 #[derive(Debug, Default, Clone)]
 pub struct MissileUnitAttributes {
+    /// The furthest the projectile flies.
     pub max_range: f32,
+    /// The object that fired the projectile.
     pub fired_from_id: ObjectID,
+    /// The object's own copy of its unit type, if it has one.
     pub own_base: Option<UnitType>,
 }
 
@@ -596,8 +720,9 @@ impl ReadableHeaderElement for MissileUnitAttributes {
 
 impl WritableHeaderElement for MissileUnitAttributes {}
 
+/// An order in a unit AI's order queue.
 #[allow(dead_code)]
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct UnitAIOrder {
     issuer: u32,
     order_type: u32,
@@ -626,11 +751,16 @@ impl ReadableHeaderElement for UnitAIOrder {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// A notification one unit AI sends another.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct UnitAINotification {
+    /// The object that sent the notification.
     pub caller: u32,
+    /// The object the notification is for.
     pub recipient: u32,
+    /// The kind of notification.
     pub notification_type: u32,
+    /// The notification's three parameters.
     pub params: (u32, u32, u32),
 }
 
@@ -649,8 +779,9 @@ impl ReadableHeaderElement for UnitAINotification {
     }
 }
 
+/// An entry of a unit AI's order history.
 #[allow(dead_code)]
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct UnitAIOrderHistory {
     order: u32,
     action: u32,
@@ -676,7 +807,7 @@ impl ReadableHeaderElement for UnitAIOrderHistory {
             target_attack_category: if input.version() >= 10.50 {
                 read_opt_u32(input)?
             } else {
-                Default::default()
+                None
             },
             target_position: (
                 input.read_f32::<LE>()?,
@@ -687,9 +818,12 @@ impl ReadableHeaderElement for UnitAIOrderHistory {
     }
 }
 
+/// A target a unit AI keeps track of for retargeting, with a timeout.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct UnitAIRetargetEntry {
+    /// The target object.
     pub target_id: ObjectID,
+    /// When the entry times out.
     pub retarget_timeout: u32,
 }
 
@@ -704,9 +838,12 @@ impl ReadableHeaderElement for UnitAIRetargetEntry {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// A waypoint of a path.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Waypoint {
+    /// The position (x, y, z).
     pub location: (f32, f32, f32),
+    /// The facet (direction) towards the next waypoint.
     pub facet_to_next_waypoint: u8,
 }
 
@@ -727,6 +864,7 @@ impl ReadableHeaderElement for Waypoint {
     }
 }
 
+/// A patrol path. Placeholder: reading one is not implemented yet and panics.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PatrolPath {}
 
@@ -736,6 +874,7 @@ impl ReadableHeaderElement for PatrolPath {
     }
 }
 
+/// A unit's AI state: orders, targets, timers and notifications.
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
 pub struct UnitAI {
@@ -781,6 +920,8 @@ pub struct UnitAI {
 }
 
 impl ReadableHeaderElement for UnitAI {
+    // Reads the unit AI's fields in file order.
+    #[allow(clippy::too_many_lines)]
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let mut ai = Self {
             mood: read_opt_u32(input)?,
@@ -890,25 +1031,45 @@ impl ReadableHeaderElement for UnitAI {
     }
 }
 
+/// The attributes the combat base class adds.
 #[derive(Debug, Default, Clone)]
 pub struct CombatUnitAttributes {
+    /// Not known yet; tracks the next volley.
     pub next_volley: u8,
+    /// Whether the unit uses its special attack animation.
     pub using_special_attack_animation: u8,
+    /// The object's own copy of its unit type, if it has one.
     pub own_base: Option<UnitType>,
+    /// Six attribute amounts; not known yet which.
     pub attribute_amounts: [u16; 6],
+    /// The decay timer; stored from save version 9.16 on.
     pub decay_timer: u16,
+    /// Not known yet; stored from save version 9.61 on.
     pub raider_build_countdown: u32,
+    /// Not known yet; stored from save version 9.65 on.
     pub locked_down_count: u32,
+    /// The number of units garrisoned inside; stored from save version 11.56 on.
     pub inside_garrison_count: u8,
+    /// The unit's AI, if it has one.
     pub unit_ai: Option<UnitAI>,
+    /// The town bell state; stored from save version 10.30 on.
     pub town_bell_flag: i8,
+    /// The object the town bell sent the unit to, if any.
     pub town_bell_target_id: Option<ObjectID>,
+    /// The position the town bell sent the unit to, if any.
     pub town_bell_target_location: Option<(f32, f32)>,
+    /// A second town bell target object; stored from save version 11.71 on.
     pub town_bell_target_id_2: Option<ObjectID>,
+    /// The town bell target's type; stored from save version 11.71 on.
     pub town_bell_target_type: u32,
+    /// The town bell action; stored from save version 11.74 on.
     pub town_bell_action: u32,
+    /// The hit point regeneration timer (as Berserkers have); stored from save version
+    /// 10.42 on.
     pub berserker_timer: f32,
+    /// The number of units building the object; stored from save version 10.46 on.
     pub num_builders: u8,
+    /// The number of units healing the object; stored from save version 11.69 on.
     pub num_healers: u8,
 }
 
@@ -984,15 +1145,33 @@ impl ReadableHeaderElement for CombatUnitAttributes {
 
 impl WritableHeaderElement for CombatUnitAttributes {}
 
-#[derive(Debug, Clone)]
+/// Where a building sends the units it trains.
+#[derive(Debug, Clone, Copy)]
 pub enum GatherPoint {
-    Location { x: f32, y: f32, z: f32 },
-    Object { id: ObjectID, unit_type: UnitTypeID },
+    /// A position.
+    Location {
+        /// The x coordinate.
+        x: f32,
+        /// The y coordinate.
+        y: f32,
+        /// The z coordinate (height).
+        z: f32,
+    },
+    /// An object, with its unit type.
+    Object {
+        /// The object.
+        id: ObjectID,
+        /// The object's unit type.
+        unit_type: UnitTypeID,
+    },
 }
 
-#[derive(Debug, Default, Clone)]
+/// An entry of a building's production queue.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ProductionQueueEntry {
+    /// The unit type to train.
     pub unit_type_id: UnitTypeID,
+    /// How many to train.
     pub count: u16,
 }
 
@@ -1007,6 +1186,9 @@ impl ReadableHeaderElement for ProductionQueueEntry {
     }
 }
 
+/// The attributes the building base class adds.
+// The bools are the format's on/off flags.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Clone)]
 pub struct BuildingUnitAttributes {
     /// Is this building fully built?
@@ -1019,7 +1201,9 @@ pub struct BuildingUnitAttributes {
     pub culture: u8,
     /// Is this building on fire?
     pub burning: u8,
+    /// The time the building last burned.
     pub last_burn_time: u32,
+    /// The time a unit last garrisoned in the building.
     pub last_garrison_time: u32,
     /// The number of relics currently stored inside this building.
     pub relic_count: u32,
@@ -1030,28 +1214,42 @@ pub struct BuildingUnitAttributes {
     pub specific_relic_count: u32,
     /// Gather point for units trained from this building.
     pub gather_point: Option<GatherPoint>,
+    /// Whether the building has been made passable.
     pub desolid_flag: bool,
+    /// Not known yet; stored from save version 10.54 on.
     pub pending_order: u32,
     /// The "owner" building, if this building object is part of a larger building like a Town
     /// Center.
     pub linked_owner: Option<ObjectID>,
     /// The IDs of the children of this building object, also known as "annex buildings".
     pub linked_children: ArrayVec<ObjectID, 4>,
+    /// Not known yet; the name suggests a count of captured units.
     pub captured_unit_count: u8,
+    /// Further actions; not known yet what for.
     pub extra_actions: Vec<UnitAction>,
+    /// The research actions.
     pub research_actions: Vec<UnitAction>,
     /// The current active production queue.
     pub production_queue: Vec<ProductionQueueEntry>,
     /// Cumulative count of queued units.
     pub production_queue_total_units: u16,
+    /// Whether the production queue is enabled.
     pub production_queue_enabled: bool,
     /// The actions currently in the production queue.
     pub production_queue_actions: Vec<UnitAction>,
+    /// A gate end point (x, y, z). The file has two; the game reads both into one field, so
+    /// the second wins.
     pub endpoint: (f32, f32, f32),
+    /// Whether the gate is locked.
     pub gate_locked: u32,
+    /// Not known yet; stored from save version 10.65 on.
     pub first_update: u32,
+    /// The gate's close timer.
     pub close_timer: u32,
+    /// A terrain, probably the one under the building; stored from save version 10.67 on.
     pub terrain_type: Option<TerrainID>,
+    /// Whether the building is semi-asleep (updated less often); stored from save version
+    /// 11.43 on.
     pub semi_asleep: bool,
     /// Should this building be rendered with the snow graphic?
     pub snow_flag: bool,
@@ -1095,7 +1293,7 @@ impl ReadableHeaderElement for BuildingUnitAttributes {
         }
         attrs.linked_owner = read_opt_u32(input)?;
         attrs.linked_children = {
-            let mut children: ArrayVec<ObjectID, 4> = Default::default();
+            let mut children: ArrayVec<ObjectID, 4> = ArrayVec::new();
             for _ in 0..4 {
                 let id = input.read_i32::<LE>()?;
                 if id != -1 {

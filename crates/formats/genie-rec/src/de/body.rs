@@ -18,10 +18,13 @@ pub struct Pregame {
     pub multiplayer: u32,
     /// aoe2rec's name ("rec owner"); not verified against the engine.
     pub recording_player: u32,
+    /// Not known yet; 2 in the test data.
     pub unknown3: u32,
     /// aoe2rec calls it "use sequence numbers", but recordings with 1 here carry no sequence byte.
     pub unknown4: u32,
+    /// Not known yet.
     pub unknown5: u32,
+    /// Not known yet.
     pub unknown6: u32,
 }
 
@@ -31,7 +34,9 @@ pub struct Pregame {
 #[brw(little)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Checkpoint {
+    /// The 11-word state block of each of the 8 lanes.
     pub lanes: [[u32; 11]; 8],
+    /// The world time (game time, in milliseconds) of the checkpoint.
     pub world_time: u32,
 }
 
@@ -40,8 +45,11 @@ pub struct Checkpoint {
 #[brw(little)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct View {
+    /// The camera position, x.
     pub x: f32,
+    /// The camera position, y.
     pub y: f32,
+    /// The player whose camera it is.
     pub player: i32,
 }
 
@@ -50,38 +58,51 @@ pub struct View {
 #[brw(little)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TriggerSync {
+    /// The index of the condition within its trigger, or -1.
     pub condition: i32,
+    /// The index of the trigger.
     pub trigger: i32,
 }
 
 /// One record of a chapter's op stream.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op<'a> {
+    /// Op 5 as the first record of a recording: the recording settings.
     Pregame(Pregame),
     /// Op 1: a command packet, executed in the tick it was recorded in.
     Command {
+        /// The command bytes.
         packet: &'a [u8],
+        /// The world time (game time, in milliseconds) it was recorded at.
         world_time: u32,
     },
     /// Op 2: the next tick's length in milliseconds.
     Sync {
+        /// The tick's length in milliseconds.
         dt: u32,
     },
     /// Op 2 carrying a checkpoint. Boxed: it is 356 bytes and comes once per `checkpoint_interval`
     /// syncs, so every other op stays small and allocation-free.
     Checkpoint {
+        /// The tick's length in milliseconds.
         dt: u32,
+        /// The checkpoint.
         checkpoint: Box<Checkpoint>,
     },
+    /// Op 3: the recording player's camera position.
     View(View),
     /// Op 4: a chat line (JSON text in DE).
     Chat {
+        /// The chat channel; -1 in the recordings seen.
         channel: i32,
+        /// The text bytes.
         text: &'a [u8],
     },
+    /// Op 5 after the first record: the recorded outcome of a trigger condition.
     TriggerSync(TriggerSync),
     /// Op 6: the end of playback. The postgame trailer follows.
     End {
+        /// The bytes after the end op, up to the end of the chapter.
         trailer: &'a [u8],
     },
 }
@@ -168,7 +189,7 @@ impl<'a> OpReader<'a> {
             }
             3 => Ok(Op::View(self.fixed(12, record)?)),
             4 => {
-                let channel = self.u32(record)? as i32;
+                let channel = self.u32(record)?.cast_signed();
                 let len = self.u32(record)? as usize;
                 let text = self.take(len, record)?;
                 Ok(Op::Chat { channel, text })
@@ -209,6 +230,9 @@ impl<'a> Iterator for OpReader<'a> {
 
 impl Op<'_> {
     /// Write the record back in the recording's encoding.
+    // The format stores the packet and text lengths as u32; a record read from a recording always
+    // fits.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write(&self, out: &mut Vec<u8>) {
         let words =
             |out: &mut Vec<u8>, ws: &[u32]| ws.iter().for_each(|w| out.extend(w.to_le_bytes()));
@@ -232,7 +256,7 @@ impl Op<'_> {
                 write_fixed(v, out);
             }
             Op::Chat { channel, text } => {
-                words(out, &[4, *channel as u32, text.len() as u32]);
+                words(out, &[4, channel.cast_unsigned(), text.len() as u32]);
                 out.extend_from_slice(text);
             }
             Op::TriggerSync(t) => {
@@ -275,7 +299,7 @@ mod tests {
 
     fn checkpoint_body() -> (Vec<u8>, Checkpoint) {
         let mut lanes = [[0u32; 11]; 8];
-        lanes[1] = [0, 700, 11230, 126, 150, 0, 63, 771100, 2, 62248, 586462];
+        lanes[1] = [0, 700, 11230, 126, 150, 0, 63, 771_100, 2, 62248, 586_462];
         let mut body = le(&[2, 33, 0]);
         body.extend(lanes.iter().flatten().flat_map(|w| w.to_le_bytes()));
         body.extend(le(&[11298]));
@@ -337,7 +361,7 @@ mod tests {
     #[test]
     fn a_sync_followed_by_another_op_is_a_plain_sync() {
         let mut body = le(&[2, 104, 3]);
-        body.extend(le(&[0x431e0000, 0x41c00000, 5]));
+        body.extend(le(&[0x431e_0000, 0x41c0_0000, 5]));
         let view = View {
             x: 158.0,
             y: 24.0,
@@ -414,7 +438,7 @@ mod tests {
     fn writing_every_op_reproduces_the_body() {
         let mut body = le(&[5, 500, 1, 1, 2, 0, 0, 0, 1, 4, 0x0167, 4242, 2, 104]);
         body.extend(checkpoint_body().0);
-        body.extend(le(&[3, 0x431e0000, 0x41c00000, 5, 4, u32::MAX, 2]));
+        body.extend(le(&[3, 0x431e_0000, 0x41c0_0000, 5, 4, u32::MAX, 2]));
         body.extend(b"hi");
         body.extend(le(&[5, 7, 3, 6]));
         body.extend(b"postgame");

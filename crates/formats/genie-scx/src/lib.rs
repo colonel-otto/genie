@@ -8,7 +8,6 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
-#![allow(missing_docs)]
 
 mod ai;
 mod bitmap;
@@ -124,6 +123,11 @@ pub struct Scenario {
 
 impl Scenario {
     /// Read a scenario file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading or decompressing fails, if the format version is not
+    /// supported, or if the data is malformed (unknown IDs, strings that cannot be decoded).
     pub fn read_from(input: impl Read) -> Result<Self> {
         let format = SCXFormat::load_scenario(input)?;
         let version = format.version();
@@ -132,6 +136,10 @@ impl Scenario {
     }
 
     /// Read a scenario file.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`Scenario::read_from`].
     #[deprecated = "Use Scenario::read_from instead."]
     pub fn from<R: Read>(input: &mut R) -> Result<Self> {
         Self::read_from(input)
@@ -140,11 +148,20 @@ impl Scenario {
     /// Write the scenario file to an output stream.
     ///
     /// Equivalent to `scen.write_to_version(scen.version())`.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`Scenario::write_to_version`].
     pub fn write_to(&self, output: impl Write) -> Result<()> {
         self.format.write_to(output, self.version())
     }
 
     /// Write the scenario file to an output stream, targeting specific game versions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing or compressing fails, if a string cannot be encoded, or if
+    /// the target version cannot hold the scenario's disabled technologies, units or buildings.
     pub fn write_to_version(&self, output: impl Write, version: &VersionBundle) -> Result<()> {
         self.format.write_to(output, version)
     }
@@ -202,10 +219,10 @@ impl Scenario {
     #[inline]
     #[must_use]
     pub fn requires_dlc(&self, dlc: DLCPackage) -> bool {
-        match &self.header().dlc_options {
-            Some(options) => options.dependencies.contains(&dlc),
-            None => false,
-        }
+        self.header()
+            .dlc_options
+            .as_ref()
+            .is_some_and(|options| options.dependencies.contains(&dlc))
     }
 
     /// Get the `UserPatch` mod name of the mod that was used to create this scenario.
@@ -235,11 +252,13 @@ impl Scenario {
             .flat_map(|list| list.iter_mut())
     }
 
+    /// Get the players' initial resources and population limits.
     #[must_use]
     pub fn world_players(&self) -> &[WorldPlayerData] {
         &self.format.world_players
     }
 
+    /// Get the players' scenario settings: names, camera, diplomacy and victory conditions.
     #[must_use]
     pub fn scenario_players(&self) -> &[ScenarioPlayerData] {
         &self.format.scenario_players

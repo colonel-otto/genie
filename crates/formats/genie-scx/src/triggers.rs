@@ -14,6 +14,12 @@ pub struct TriggerCondition {
 
 impl TriggerCondition {
     /// Read a trigger condition from an input stream, with the given trigger system version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails.
+    // The format stores the property count as an i32; valid files never make it negative.
+    #[allow(clippy::cast_sign_loss)]
     pub fn read_from(mut input: impl Read, version: f64) -> Result<Self> {
         let condition_type = input.read_i32::<LE>()?;
         let num_properties = if version > 1.0 {
@@ -37,6 +43,12 @@ impl TriggerCondition {
     }
 
     /// Write this trigger condition to an output stream, with the given trigger system version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
+    // The format stores the property count as an i32.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     pub fn write_to(&self, mut output: impl Write, version: f64) -> Result<()> {
         output.write_i32::<LE>(self.condition_type)?;
         if version > 1.0 {
@@ -109,6 +121,10 @@ impl TriggerCondition {
     }
 
     /// Get the "unit type" value for this trigger condition.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored value is not a unit type ID, e.g. -1 when none is set.
     #[must_use]
     pub fn unit_type(&self) -> UnitTypeID {
         self.properties[4].try_into().unwrap()
@@ -198,6 +214,10 @@ impl TriggerCondition {
     }
 
     /// Get the "Object Type" value for this trigger condition.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored value is not a unit type ID, e.g. -1 when none is set.
     #[must_use]
     pub fn object_type(&self) -> UnitTypeID {
         self.properties[14].try_into().unwrap()
@@ -243,6 +263,12 @@ pub struct TriggerEffect {
 
 impl TriggerEffect {
     /// Read a trigger effect from an input stream, with the given trigger system version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails or a string cannot be decoded.
+    // The format stores the property count as an i32; valid files never make it negative.
+    #[allow(clippy::cast_sign_loss)]
     pub fn read_from(mut input: impl Read, version: f64) -> Result<Self> {
         let effect_type = input.read_i32::<LE>()?;
         let num_properties = if version > 1.0 {
@@ -282,6 +308,17 @@ impl TriggerEffect {
     }
 
     /// Write a trigger effect to an output stream, with the given trigger system version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails or a string cannot be encoded.
+    // The format stores the property count as an i32; the object count is never negative in
+    // valid data.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        clippy::cast_sign_loss
+    )]
     pub fn write_to(&self, mut output: impl Write, version: f64) -> Result<()> {
         output.write_i32::<LE>(self.effect_type)?;
         output.write_i32::<LE>(self.properties.len() as i32)?;
@@ -368,6 +405,10 @@ impl TriggerEffect {
     }
 
     /// Get the "Unit Type" value for this trigger effect.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored value is not a unit type ID, e.g. -1 when none is set.
     #[must_use]
     pub fn unit_type(&self) -> UnitTypeID {
         self.properties[6].try_into().unwrap()
@@ -498,6 +539,10 @@ impl TriggerEffect {
     }
 
     /// Get the "Object Type" value for this trigger effect.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored value is not a unit type ID, e.g. -1 when none is set.
     #[must_use]
     pub fn object_type(&self) -> UnitTypeID {
         self.properties[21].try_into().unwrap()
@@ -532,6 +577,8 @@ impl TriggerEffect {
 }
 
 /// A trigger, describing automatic interactive behaviours in a scenario.
+// Each bool is a flag the format stores.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone)]
 pub struct Trigger {
     enabled: bool,
@@ -556,6 +603,10 @@ pub struct Trigger {
 
 impl Trigger {
     /// Read a trigger from an input stream, with the given trigger system version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails or a string cannot be decoded.
     pub fn read_from(mut input: impl Read, version: f64) -> Result<Self> {
         let enabled = input.read_i32::<LE>()? != 0;
         let looping = input.read_i8()? != 0;
@@ -630,7 +681,14 @@ impl Trigger {
         })
     }
 
-    /// Write this trigger condition to an output stream, with the given trigger system version.
+    /// Write this trigger to an output stream, with the given trigger system version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails, a string cannot be encoded, or the short description
+    /// key is a name or does not fit a u32.
+    // The format stores the effect and condition counts as u32.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write, version: f64) -> Result<()> {
         output.write_i32::<LE>(i32::from(self.enabled))?;
         output.write_i8(i8::from(self.looping))?;
@@ -640,7 +698,7 @@ impl Trigger {
 
         if version >= 1.8 {
             output.write_u8(u8::from(self.make_header))?;
-            write_opt_string_key(&mut output, &self.short_description_id)?;
+            write_opt_string_key(&mut output, self.short_description_id.as_ref())?;
             output.write_u8(u8::from(self.display_short_description))?;
             output.write_u8(self.short_description_state)?;
             output.write_u32::<LE>(self.start_time)?;
@@ -674,6 +732,8 @@ impl Trigger {
     }
 
     /// Get the conditions in this trigger, in display order.
+    // The order entries are indices, never negative in valid data.
+    #[allow(clippy::cast_sign_loss)]
     pub fn conditions(&self) -> impl Iterator<Item = &TriggerCondition> {
         self.condition_order
             .iter()
@@ -686,6 +746,8 @@ impl Trigger {
     }
 
     /// Get the effects in this trigger, in display order.
+    // The order entries are indices, never negative in valid data.
+    #[allow(clippy::cast_sign_loss)]
     pub fn effects(&self) -> impl Iterator<Item = &TriggerEffect> {
         self.effect_order
             .iter()
@@ -726,6 +788,14 @@ impl Default for TriggerSystem {
 
 impl TriggerSystem {
     /// Read a trigger system from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails or a string cannot be decoded.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a variable name has a variable number of 256 or more.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let version = input.read_f64::<LE>()?;
         log::debug!("Trigger system version {version}");
@@ -749,20 +819,16 @@ impl TriggerSystem {
             }
         }
 
-        let mut variable_values = vec![];
-        let mut enabled_techs = vec![];
-        let mut variable_names = vec![];
-
-        if version >= 2.2 {
-            variable_values.resize(256, 0);
+        let (variable_values, enabled_techs, variable_names) = if version >= 2.2 {
+            let mut variable_values = vec![0; 256];
             input.read_u32_into::<LE>(&mut variable_values)?;
-            enabled_techs = {
+            let enabled_techs = {
                 let num_enabled_techs = input.read_u32::<LE>()?;
                 let mut enabled_techs = vec![0; num_enabled_techs as usize];
                 input.read_u32_into::<LE>(&mut enabled_techs)?;
                 enabled_techs
             };
-            variable_names = {
+            let variable_names = {
                 let num_var_names = input.read_u32::<LE>()?;
                 let mut variable_names = vec![String::new(); 256];
                 for _ in 0..num_var_names {
@@ -776,7 +842,10 @@ impl TriggerSystem {
                 }
                 variable_names
             };
-        }
+            (variable_values, enabled_techs, variable_names)
+        } else {
+            (vec![], vec![], vec![])
+        };
 
         Ok(Self {
             version,
@@ -790,6 +859,17 @@ impl TriggerSystem {
     }
 
     /// Write the trigger system to an output stream with the given system version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails, a string cannot be encoded, or a trigger's short
+    /// description key is a name or does not fit a u32.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than `u32::MAX` triggers.
+    // The format stores the technology and variable name counts and the variable numbers as u32.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write, version: f64) -> Result<()> {
         output.write_f64::<LE>(version)?;
         if version >= 1.5 {
@@ -841,12 +921,16 @@ impl TriggerSystem {
     }
 
     /// Get the number of triggers in the trigger system.
+    // The format stores the trigger count as a u32.
+    #[allow(clippy::cast_possible_truncation)]
     #[must_use]
     pub const fn num_triggers(&self) -> u32 {
         self.triggers.len() as u32
     }
 
     /// Iterate over all triggers, in order.
+    // The order entries are indices, never negative in valid data.
+    #[allow(clippy::cast_sign_loss)]
     pub fn triggers(&self) -> impl Iterator<Item = &Trigger> {
         self.trigger_order
             .iter()
@@ -859,7 +943,7 @@ impl TriggerSystem {
     }
 }
 
-fn write_opt_string_key(mut output: impl Write, opt_key: &Option<StringKey>) -> Result<()> {
+fn write_opt_string_key(mut output: impl Write, opt_key: Option<&StringKey>) -> Result<()> {
     use std::io::{Error, ErrorKind};
     output.write_u32::<LE>(if let Some(key) = opt_key {
         key.try_into()

@@ -12,10 +12,14 @@ use std::convert::TryInto;
 use std::fmt::{self, Debug};
 use std::io::Read;
 
-#[derive(Debug, Default, Clone)]
+/// A fact or an action of an AI rule.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct AICommand {
+    /// The kind of command.
     pub command_type: i32,
+    /// The fact or action id.
     pub id: u16,
+    /// The command's four parameters.
     pub parameters: [i32; 4],
 }
 
@@ -33,6 +37,7 @@ impl ReadableHeaderElement for AICommand {
     }
 }
 
+/// A rule of an AI script: its facts (conditions) and actions.
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
 pub struct AIListRule {
@@ -55,7 +60,7 @@ impl ReadableHeaderElement for AIListRule {
         };
         let num_facts = input.read_u8()?;
         let num_facts_actions = input.read_u8()?;
-        input.read_u16::<LE>()?;
+        let _padding = input.read_u16::<LE>()?;
         for i in 0..16 {
             let cmd = AICommand::read_from(input)?;
             if i < num_facts {
@@ -68,6 +73,7 @@ impl ReadableHeaderElement for AIListRule {
     }
 }
 
+/// The rule list of an AI script.
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
 pub struct AIList {
@@ -86,7 +92,8 @@ impl ReadableHeaderElement for AIList {
             ..Default::default()
         };
         let num_rules = input.read_u16::<LE>()?;
-        input.read_u32::<LE>()?;
+        // Not known yet; probably the in-memory list pointer, as in the string table.
+        let _rules_ptr = input.read_u32::<LE>()?;
         for _ in 0..num_rules {
             list.rules.push(AIListRule::read_from(input)?);
         }
@@ -94,6 +101,7 @@ impl ReadableHeaderElement for AIList {
     }
 }
 
+/// The rule groups of an AI script.
 #[derive(Debug, Default, Clone)]
 pub struct AIGroupTable {
     #[allow(dead_code)]
@@ -109,7 +117,8 @@ impl ReadableHeaderElement for AIGroupTable {
         };
 
         let num_groups = input.read_u16::<LE>()?;
-        input.read_u32::<LE>()?;
+        // Not known yet; probably the in-memory list pointer, as in the string table.
+        let _groups_ptr = input.read_u32::<LE>()?;
         for _ in 0..num_groups {
             table.groups.push(input.read_u16::<LE>()?);
         }
@@ -117,22 +126,38 @@ impl ReadableHeaderElement for AIGroupTable {
     }
 }
 
+/// The game settings and AI state the AI scripts' facts read.
 #[derive(Clone)]
 pub struct AIFactState {
+    /// The save version of the AI state.
     pub save_version: f32,
+    /// The version of the AI state.
     pub version: f32,
+    /// Whether the game is a death match.
     pub death_match: bool,
+    /// Whether the game is a regicide game.
     pub regicide: bool,
+    /// The map size setting.
     pub map_size: u8,
+    /// The map type setting.
     pub map_type: u8,
+    /// The starting resources setting.
     pub starting_resources: u8,
+    /// The starting age setting.
     pub starting_age: u8,
+    /// Whether cheats are allowed.
     pub cheats_enabled: bool,
+    /// The difficulty setting.
     pub difficulty: u8,
+    /// The AI timers: 10 for each of the 8 players.
     pub timers: [[i32; 10]; 8],
+    /// The 256 goals the AIs share.
     pub shared_goals: [u32; 256],
+    /// The 256 AI signals, which scenario triggers can set.
     pub signals: [u32; 256],
+    /// The 256 AI trigger values.
     pub triggers: [u32; 256],
+    /// The 256 taunt values for each of the 8 players.
     pub taunts: [[i8; 256]; 8],
 }
 
@@ -205,11 +230,16 @@ impl ReadableHeaderElement for AIFactState {
     }
 }
 
+/// The AI scripts the game runs, with their state.
 #[derive(Debug, Clone)]
 pub struct AIScripts {
+    /// The strings the scripts use.
     pub string_table: StringTable,
+    /// The rule lists, one per script.
     pub lists: Vec<AIList>,
+    /// The group tables, one per rule list.
     pub groups: Vec<AIGroupTable>,
+    /// The game settings and AI state the scripts read.
     pub fact_state: AIFactState,
 }
 
@@ -241,6 +271,8 @@ impl ReadableHeaderElement for AIScripts {
     }
 }
 
+/// The recorded game header (the layout before DE): versions, AI scripts, map, players and the
+/// scenario.
 #[derive(Debug, Default)]
 pub struct Header {
     game_version: GameVersion,
@@ -253,6 +285,7 @@ pub struct Header {
 }
 
 impl Header {
+    /// The players, in the header's order.
     pub fn players(&self) -> impl Iterator<Item = &Player> {
         self.players.iter()
     }

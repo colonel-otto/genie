@@ -12,33 +12,51 @@ use genie_support::{ReadStringsExt, read_opt_u32};
 use std::convert::TryInto;
 use std::io::{Read, Write};
 
+/// A player's state in the recording header: settings, resources (attributes), technologies,
+/// unit types, visibility and units.
 #[derive(Debug, Default, Clone)]
 pub struct Player {
-    player_type: u8,
+    /// The player type: 2 is Gaia, 3 a computer (AI) player.
+    kind: u8,
     relations: Vec<u8>,
     diplomacy: [u32; 9],
     allied_los: bool,
     allied_victory: bool,
     name: String,
+    /// The player's attributes (resources): food, wood, stone, gold, population …, indexed by
+    /// attribute id.
     pub attributes: Vec<f32>,
     initial_view: (f32, f32),
     saved_views: Vec<(f32, f32)>,
     spawn_location: (u16, u16),
     culture_id: u8,
+    /// The player's civilization.
     pub civilization_id: CivilizationID,
     game_status: u8,
     resigned: bool,
+    /// `UserPatch` 1.5's extra player data (save version 11.97 only).
     pub userpatch_data: Option<UserPatchData>,
+    /// The state of each technology for this player.
     pub tech_state: PlayerTech,
+    /// The player's population history and statistics.
     pub history_info: HistoryInfo,
+    /// The player's tech tree, from save version 9.38 on.
     pub tech_tree: Option<TechTree>,
+    /// Gaia's extra data (creature growth, wolf attacks); only for the Gaia player.
     pub gaia: Option<GaiaData>,
+    /// The player's copy of each unit type, by unit type id; `None` for the ones it does not have.
     pub unit_types: Vec<Option<CompactUnitType>>,
+    /// Which tiles the player has explored and sees.
     pub visible_map: VisibleMap,
+    /// The resource objects the player knows of.
     pub visible_resources: VisibleResources,
+    /// The player's active units.
     pub units: Vec<Unit>,
+    /// The player's sleeping (inactive) units.
     pub sleeping_units: Vec<Unit>,
+    /// The player's doppelganger objects: the stand-ins for objects seen under the fog of war.
     pub doppelganger_units: Vec<Unit>,
+    /// The player's victory conditions.
     pub victory: VictoryConditions,
 }
 
@@ -49,6 +67,11 @@ impl Player {
         &self.name
     }
 
+    /// Read the player's victory conditions, which the header stores after all players.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if they cannot be read.
     pub fn read_info<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<()> {
         self.victory = VictoryConditions::read_from(input, true)?;
         Ok(())
@@ -56,10 +79,11 @@ impl Player {
 }
 
 impl ReadableHeaderElement for Player {
-    #[allow(clippy::cognitive_complexity)]
+    // Reads the player's fields in file order.
+    #[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let mut player = Self {
-            player_type: input.read_u8()?,
+            kind: input.read_u8()?,
             ..Default::default()
         };
         if input.version() >= 10.55 {
@@ -243,13 +267,12 @@ impl ReadableHeaderElement for Player {
             let mut diplomacy = [0; 9];
             let mut intelligence = [0; 9];
             let mut trade = [0; 9];
-            let mut offer = vec![];
             for i in 0..9 {
                 diplomacy[i] = input.read_u8()?;
                 intelligence[i] = input.read_u8()?;
                 trade[i] = input.read_u8()?;
 
-                offer.push(DiplomacyOffer::read_from(input)?);
+                let _offer = DiplomacyOffer::read_from(input)?;
             }
             let _fealty = input.read_u16::<LE>()?;
         }
@@ -345,7 +368,7 @@ impl ReadableHeaderElement for Player {
             assert_eq!(input.read_u8()?, 11);
         }
 
-        let _player_ai = if player.player_type == 3 && input.read_u32::<LE>()? == 1 {
+        let _player_ai = if player.kind == 3 && input.read_u32::<LE>()? == 1 {
             Some(PlayerAI::read_from(input)?)
         } else {
             None
@@ -355,7 +378,7 @@ impl ReadableHeaderElement for Player {
             assert_eq!(input.read_u8()?, 11);
         }
 
-        player.gaia = if player.player_type == 2 {
+        player.gaia = if player.kind == 2 {
             Some(GaiaData::read_from(input)?)
         } else {
             None
@@ -448,12 +471,18 @@ impl ReadableHeaderElement for Player {
     }
 }
 
+/// A player's view of the map: which tiles it has explored and currently sees.
 #[derive(Debug, Default, Clone)]
 pub struct VisibleMap {
+    /// The map width in tiles.
     pub width: u32,
+    /// The map height in tiles.
     pub height: u32,
+    /// The number of tiles the player has explored; 0 before save version 6.70.
     pub explored_tiles_count: u32,
+    /// The player the map belongs to.
     pub player_id: PlayerID,
+    /// The visibility of each tile, row by row.
     pub tiles: Vec<i8>,
 }
 
@@ -474,11 +503,16 @@ impl ReadableHeaderElement for VisibleMap {
     }
 }
 
+/// A resource object a player knows of.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct VisibleResource {
+    /// The resource object.
     pub object_id: ObjectID,
+    /// Its distance, in tiles; the point it is measured from is not known yet.
     pub distance: u8,
+    /// The zone it is in.
     pub zone: i8,
+    /// Its tile position (x, y).
     pub location: (u8, u8),
 }
 
@@ -493,6 +527,7 @@ impl ReadableHeaderElement for VisibleResource {
     }
 }
 
+/// The resource objects a player knows of, in several lists (probably one per resource kind).
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
 pub struct VisibleResources {
@@ -519,6 +554,7 @@ impl ReadableHeaderElement for VisibleResources {
     }
 }
 
+/// Gaia's extra state: creature (animal) growth and the wolf attacks on villagers.
 #[derive(Debug, Default, Clone)]
 pub struct GaiaData {
     #[allow(dead_code)]
@@ -575,10 +611,14 @@ impl ReadableHeaderElement for GaiaData {
     }
 }
 
+/// The growth of one kind of Gaia creature (animal).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GaiaCreature {
+    /// How fast the creatures grow in number.
     pub growth_rate: f32,
+    /// The fraction of growth carried over to the next update.
     pub remainder: f32,
+    /// The most creatures of this kind there can be.
     pub max: u32,
 }
 
@@ -601,9 +641,12 @@ impl WritableHeaderElement for GaiaCreature {
     }
 }
 
+/// A wolf that takes part in Gaia's wolf attacks.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GaiaWolfInfo {
+    /// The wolf's object id.
     pub id: u32,
+    /// Its distance to its target villager.
     pub distance: f32,
 }
 
@@ -669,9 +712,12 @@ impl ReadableHeaderElement for DiplomacyOffer {
     }
 }
 
+/// A player's history, the data of the post-game timeline.
 #[derive(Debug, Default, Clone)]
 pub struct HistoryInfo {
+    /// The population at each history update.
     pub entries: Vec<HistoryEntry>,
+    /// The events (age advances, battles …) on the timeline.
     pub events: Vec<HistoryEvent>,
 }
 
@@ -731,11 +777,16 @@ impl ReadableHeaderElement for HistoryInfo {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// An event on a player's timeline.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct HistoryEvent {
+    /// The kind of event.
     pub event_type: i8,
+    /// The history update the event falls into.
     pub time_slice: u32,
+    /// The game time of the event.
     pub world_time: u32,
+    /// The event's three parameters; their meaning depends on the event type.
     pub params: (f32, f32, f32),
 }
 
@@ -754,9 +805,12 @@ impl ReadableHeaderElement for HistoryEvent {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// A player's population at one history update.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct HistoryEntry {
+    /// The number of civilian units.
     pub civilian_population: u16,
+    /// The number of military units.
     pub military_population: u16,
 }
 
@@ -771,11 +825,16 @@ impl ReadableHeaderElement for HistoryEntry {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// The state of one technology for a player.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct TechState {
+    /// How far the research has progressed.
     pub progress: f32,
+    /// The research state (unavailable, available, researching, done …).
     pub state: i16,
+    /// Changes to the technology's three costs.
     pub modifiers: (i16, i16, i16),
+    /// The change to its research time.
     pub time_modifier: i16,
 }
 
@@ -794,8 +853,10 @@ impl ReadableHeaderElement for TechState {
     }
 }
 
+/// The state of every technology for a player.
 #[derive(Debug, Default, Clone)]
 pub struct PlayerTech {
+    /// The state of each technology, by technology id.
     pub tech_states: Vec<TechState>,
 }
 
@@ -810,7 +871,8 @@ impl ReadableHeaderElement for PlayerTech {
     }
 }
 
-#[derive(Debug, Clone)]
+/// `UserPatch` 1.5's extra player data. Read past but not kept yet.
+#[derive(Debug, Clone, Copy)]
 pub struct UserPatchData {}
 
 impl ReadableHeaderElement for UserPatchData {

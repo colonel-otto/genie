@@ -72,6 +72,14 @@ impl Civilization {
     }
 
     /// Read civilization data from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the name, decoded from WINDOWS-1252, takes more than 20 bytes as UTF-8.
     pub fn read_from(mut input: impl Read, version: GameVersion) -> Result<Self> {
         let mut civ = Self::default();
         let mut bytes = [0; 20];
@@ -111,6 +119,14 @@ impl Civilization {
     }
 
     /// Write civilization data to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than `u16::MAX` attributes or unit types.
     pub fn write_to(&self, mut output: impl Write, version: GameVersion) -> Result<()> {
         let mut name = [0; 20];
         (name[..self.name.len()]).copy_from_slice(self.name.as_bytes());

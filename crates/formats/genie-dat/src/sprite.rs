@@ -36,34 +36,50 @@ fallible_try_into!(GraphicID, i16);
 infallible_try_into!(GraphicID, u32);
 fallible_try_into!(GraphicID, i32);
 
-#[derive(Debug, Default, Clone)]
+/// Another sprite drawn as part of this one, at an offset (e.g. the parts of a building).
+#[derive(Debug, Default, Clone, Copy)]
 pub struct SpriteDelta {
+    /// The sprite to draw, or `None` (-1).
     pub sprite_id: Option<SpriteID>,
+    /// Horizontal offset from this sprite's anchor, in pixels.
     pub offset_x: i16,
+    /// Vertical offset from this sprite's anchor, in pixels.
     pub offset_y: i16,
+    /// The facing angle at which the delta is drawn; -1 draws it at every angle.
     pub display_angle: i16,
 }
 
+/// A sound played during an attack animation, after a delay.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SoundProp {
+    /// How long into the animation the sound starts.
     pub sound_delay: i16,
+    /// The sound to play; 0xFFFF marks an unused slot.
     pub sound_id: SoundID,
     #[allow(dead_code)]
     wwise_sound_id: Option<u32>,
 }
 
+/// The attack sounds of one facing angle: up to three sounds with their delays.
 #[derive(Debug, Default, Clone)]
 pub struct SpriteAttackSound {
+    /// The used sound slots; unused slots (sound 0xFFFF) are dropped when reading.
     pub sound_props: ArrayVec<SoundProp, 3>,
 }
 
+/// A sprite (graphic): an SLP image with its frames and angles, the sprites drawn with it, and
+/// its sounds.
 #[derive(Debug, Default, Clone)]
 pub struct Sprite {
+    /// ID of this sprite.
     pub id: SpriteID,
+    /// Internal name (at most 21 bytes in the file).
     pub name: String,
+    /// File name of the SLP (at most 13 bytes in the file).
     pub filename: String,
     /// The SLP resource ID for this sprite.
     pub slp_id: Option<GraphicID>,
+    /// Whether the game has loaded the image: a runtime flag the file keeps unused.
     pub is_loaded: bool,
     /// If `Some(id)`, the sprite will always be rendered with this player colour.
     force_player_color: Option<u8>,
@@ -87,9 +103,14 @@ pub struct Sprite {
     /// 30   Projectiles, explosions
     /// ```
     pub layer: u8,
+    /// Two bytes read as one: genieutils reads them as the player colour the sprite is drawn
+    /// with (`PlayerColor`) and a flag whether that colour changes with the owner (`Rainbow`).
     pub color_table: u16,
+    /// genieutils' `TransparentSelection` flag; its exact effect is not known yet.
     pub transparent_selection: bool,
+    /// The sprite's extent as four coordinates (genieutils' `Coordinates`).
     pub bounding_box: (i16, i16, i16, i16),
+    /// Sound played with the animation, or `None`.
     pub sound_id: Option<SoundID>,
     /// Number of frames per angle animation
     pub num_frames: u16,
@@ -104,15 +125,24 @@ pub struct Sprite {
     pub frame_rate: f32,
     /// Time to wait until the animation sequence is started again.
     pub replay_delay: f32,
+    /// Animation sequence type (genieutils' `SequenceType`); not decoded here.
     pub sequence_type: u8,
+    /// How the angles that are not stored are mirrored (genieutils' `MirroringMode`).
     pub mirror_flag: i8,
     /// editor flag?
     other_flag: i8,
+    /// Sprites drawn as part of this one.
     pub deltas: Vec<SpriteDelta>,
+    /// Attack sounds, one entry per angle; empty if the sprite has none.
     pub attack_sounds: Vec<SpriteAttackSound>,
 }
 
 impl SpriteDelta {
+    /// Read a sprite delta from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut delta = Self {
             sprite_id: read_opt_u16(&mut input)?,
@@ -128,6 +158,11 @@ impl SpriteDelta {
         Ok(delta)
     }
 
+    /// Write this sprite delta to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u16::<LE>(self.sprite_id.map_into().unwrap_or(0xFFFF))?;
         // padding
@@ -145,6 +180,11 @@ impl SpriteDelta {
 }
 
 impl SoundProp {
+    /// Read an attack sound slot from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let sound_delay = input.read_i16::<LE>()?;
         let sound_id = input.read_u16::<LE>()?.into();
@@ -155,12 +195,22 @@ impl SoundProp {
         })
     }
 
+    /// Write this attack sound slot to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(self, output: &mut W) -> Result<()> {
         output.write_i16::<LE>(self.sound_delay)?;
         output.write_u16::<LE>(self.sound_id.into())?;
         Ok(())
     }
 
+    /// Write an unused attack sound slot (delay 0, sound 0xFFFF).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_empty<W: Write>(output: &mut W) -> Result<()> {
         output.write_u16::<LE>(0)?;
         output.write_u16::<LE>(0xFFFF)?;
@@ -169,6 +219,11 @@ impl SoundProp {
 }
 
 impl SpriteAttackSound {
+    /// Read the three attack sound slots of one angle from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut val = Self::default();
         for _ in 0..val.sound_props.capacity() {
@@ -180,6 +235,11 @@ impl SpriteAttackSound {
         Ok(val)
     }
 
+    /// Write the three attack sound slots of one angle, padding with unused slots.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         for index in 0..self.sound_props.capacity() {
             match self.sound_props.get(index) {
@@ -192,6 +252,16 @@ impl SpriteAttackSound {
 }
 
 impl Sprite {
+    /// Read a sprite from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if an ID is out of range.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the name or file name is not valid UTF-8, or if the SLP ID is negative but not
+    /// -1.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut sprite = Self::default();
         let mut name = [0u8; 21];
@@ -251,6 +321,17 @@ impl Sprite {
         Ok(sprite)
     }
 
+    /// Write this sprite to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails, or if the name or file name is longer than
+    /// its fixed-size field.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are attack sounds but not one per angle, if there are more than
+    /// `u16::MAX` deltas, or if the SLP or sound ID does not fit the format's signed field.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         if !self.attack_sounds.is_empty() {
             assert_eq!(self.attack_sounds.len(), usize::from(self.num_angles));

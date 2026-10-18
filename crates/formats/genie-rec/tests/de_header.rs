@@ -68,7 +68,7 @@ fn marvinblue_sections_end_where_imhex_says() {
             header.save_version().build,
             header.save_version().hundredths()
         ),
-        (66, 158041, 6660)
+        (66, 158_041, 6660)
     );
     let ends = header.ends;
     assert_eq!(ends.lobby, expected("lobby_settings"));
@@ -192,7 +192,7 @@ fn every_corpus_header_parses() {
         let data = std::fs::read(path).unwrap();
         let chapter = de::chapters(&data).unwrap()[0];
         let version = chapter.save_version().unwrap();
-        let is_tier1 = (version.hundredths(), version.build) == (6660, 158041);
+        let is_tier1 = (version.hundredths(), version.build) == (6660, 158_041);
         let outcome = match genie_save::parse(&chapter.inflate_header().unwrap()) {
             Ok(_) => "parsed".to_string(),
             Err(e) => {

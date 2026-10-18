@@ -5,6 +5,7 @@ use genie_support::{ReadStringsExt, write_opt_i32_str};
 use std::convert::TryFrom;
 use std::io::{Read, Write};
 
+/// The data set and the DLC packages a scenario needs (HD Edition and later).
 #[derive(Debug, Clone)]
 pub struct DLCOptions {
     /// Version of the DLC options structure.
@@ -26,6 +27,11 @@ impl Default for DLCOptions {
 }
 
 impl DLCOptions {
+    /// Read DLC options, including the unversioned form older files have.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails, or if the data set or a DLC package ID is unknown.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         // If version is 0 or 1, it's actually the dataset identifier from
         // before DLCOptions was versioned.
@@ -57,6 +63,13 @@ impl DLCOptions {
         })
     }
 
+    /// Write the DLC options in the versioned form (version 1000).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
+    // The format stores the number of dependencies as a u32.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_u32::<LE>(1000)?;
         output.write_i32::<LE>(self.game_data_set.into())?;
@@ -68,6 +81,7 @@ impl DLCOptions {
     }
 }
 
+/// The scenario header: version, timestamp, description, player count and DLC needs.
 #[derive(Debug, Clone)]
 pub struct SCXHeader {
     /// Version of the header.
@@ -91,6 +105,11 @@ pub struct SCXHeader {
 
 impl SCXHeader {
     /// Parse an SCX header from a byte stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails, if a string cannot be decoded, or if the DLC options
+    /// hold an unknown ID.
     pub fn read_from(mut input: impl Read, format_version: SCXVersion) -> Result<Self> {
         let _header_size = input.read_u32::<LE>()?;
         let version = input.read_u32::<LE>()?;
@@ -135,6 +154,18 @@ impl SCXHeader {
     }
 
     /// Serialize an SCX header to a byte stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails or the author name cannot be encoded.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the description with its NULL terminator is longer than its length prefix
+    /// allows (`u16` in format 3.13, `u32` otherwise), or if the author name is too long for
+    /// its `i32` prefix.
+    // The format stores the header size as a u32.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(
         &self,
         output: impl Write,
@@ -155,17 +186,13 @@ impl SCXHeader {
         }
         description_bytes.push(0);
         if format_version == *b"3.13" {
-            assert!(
-                description_bytes.len() <= std::u16::MAX as usize,
-                "description length must fit in u16"
-            );
-            intermediate.write_u16::<LE>(description_bytes.len() as u16)?;
+            let len =
+                u16::try_from(description_bytes.len()).expect("description length must fit in u16");
+            intermediate.write_u16::<LE>(len)?;
         } else {
-            assert!(
-                description_bytes.len() <= std::u32::MAX as usize,
-                "description length must fit in u32"
-            );
-            intermediate.write_u32::<LE>(description_bytes.len() as u32)?;
+            let len =
+                u32::try_from(description_bytes.len()).expect("description length must fit in u32");
+            intermediate.write_u32::<LE>(len)?;
         }
         intermediate.write_all(&description_bytes)?;
 
@@ -174,10 +201,7 @@ impl SCXHeader {
 
         if version > 2 && format_version != *b"3.13" {
             let def = DLCOptions::default();
-            let dlc_options = match self.dlc_options {
-                Some(ref options) => options,
-                None => &def,
-            };
+            let dlc_options = self.dlc_options.as_ref().unwrap_or(&def);
             dlc_options.write_to(&mut intermediate)?;
         }
 
@@ -195,7 +219,13 @@ impl SCXHeader {
         Ok(())
     }
 
-    /// Update the timestamp.
+    /// Update the timestamp to the current time.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the system clock is before the Unix epoch.
+    // The format stores a 32-bit Unix timestamp.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn touch(&mut self) -> std::result::Result<(), std::time::SystemTimeError> {
         let system_time = std::time::SystemTime::now();
         let duration = system_time.duration_since(std::time::UNIX_EPOCH)?;

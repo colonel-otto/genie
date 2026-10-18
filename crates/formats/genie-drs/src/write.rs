@@ -17,7 +17,18 @@ pub trait Strategy<W>
 where
     W: Write + Seek,
 {
+    /// Start the archive; called once by [`DRSWriter::new`], before any resource is added.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to the output fails.
     fn open(&mut self, drs: &mut InnerDRSWriter<W>) -> Result<(), io::Error>;
+    /// Take in the data of one resource of type `table`, and return `resource` with its size
+    /// (and its offset, if the strategy already knows it) filled in.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading `data` or writing to the output fails.
     fn add_resource(
         &mut self,
         drs: &mut InnerDRSWriter<W>,
@@ -25,13 +36,19 @@ where
         resource: DRSResource,
         data: &mut dyn Read,
     ) -> Result<DRSResource, io::Error>;
+    /// Finish the archive; called once by [`DRSWriter::flush`]. Writes the header, the table
+    /// directory and whatever resource data is still pending.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to or seeking in the output fails.
     fn close(&mut self, drs: &mut InnerDRSWriter<W>) -> Result<(), io::Error>;
 }
 
 /// Create the entire DRS file in memory first, then flush it to the output.
 ///
 /// This works best for archives with small files.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct InMemoryStrategy {
     resources: Vec<(ResourceType, Vec<u8>)>,
 }
@@ -52,16 +69,22 @@ where
         data: &mut dyn Read,
     ) -> Result<DRSResource, io::Error> {
         let mut bytes = vec![];
-        data.read_to_end(&mut bytes)?;
-        assert!(bytes.len() < u32::max_value() as usize, "file too large");
-        resource.size = bytes.len() as u32;
+        // The byte count is `bytes.len()`.
+        let _ = data.read_to_end(&mut bytes)?;
+        resource.size = u32::try_from(bytes.len())
+            .ok()
+            .filter(|&size| size < u32::MAX)
+            .expect("file too large");
         self.resources.push((table, bytes));
         Ok(resource)
     }
 
+    // The format stores the directory size and offsets as u32; the counts are not checked
+    // against that beyond the assert, so the casts keep their truncating behaviour.
+    #[allow(clippy::cast_possible_truncation)]
     fn close(&mut self, drs: &mut InnerDRSWriter<W>) -> Result<(), io::Error> {
         assert!(
-            self.resources.len() < u32::max_value() as usize,
+            self.resources.len() < u32::MAX as usize,
             "too many resources"
         );
 
@@ -75,7 +98,7 @@ where
         let mut file_offset = drs.header.directory_size;
         for table in &mut drs.tables {
             table.offset = table_offset;
-            table_offset += 12 * (table.len() as u32);
+            table_offset += 12 * table.num_resources;
 
             // Assign file offsets
             for res in &mut table.resources {
@@ -106,6 +129,7 @@ where
 }
 
 /// Writer strategy that reserve space for metadata for the given amount of tables and files at the top of the file, then fills it in at the end.
+#[derive(Debug, Clone, Copy)]
 pub struct ReserveDirectoryStrategy {
     reserved_tables: u32,
     file_space_left: u32,
@@ -154,9 +178,11 @@ where
         self.file_space_left -= 1;
 
         let len = io::copy(data, &mut drs.output)?;
-        assert!(len < u64::from(u32::max_value()), "file too large");
         resource.offset = self.write_offset;
-        resource.size = len as u32;
+        resource.size = u32::try_from(len)
+            .ok()
+            .filter(|&size| size < u32::MAX)
+            .expect("file too large");
         self.write_offset += resource.size;
         Ok(resource)
     }
@@ -168,20 +194,22 @@ where
         );
 
         // Update the resource type count
-        drs.output.seek(SeekFrom::Start(56))?;
+        let _ = drs.output.seek(SeekFrom::Start(56))?;
         drs.output.write_u32::<LE>(drs.header.num_resource_types)?;
-        drs.output.seek(SeekFrom::Current(4))?;
+        let _ = drs.output.seek(SeekFrom::Current(4))?;
 
         // Assign table offsets
-        let mut table_offset = 64 + 12 * (drs.tables.len() as u32);
+        let num_tables =
+            u32::try_from(drs.tables.len()).expect("at most `reserved_tables`, checked above");
+        let mut table_offset = 64 + 12 * num_tables;
         for table in &mut drs.tables {
             table.offset = table_offset;
-            table_offset += 12 * (table.len() as u32);
+            table_offset += 12 * table.num_resources;
         }
 
         // Write out all the table data
         drs.write_tables()?;
-        drs.output.seek(SeekFrom::End(0))?;
+        let _ = drs.output.seek(SeekFrom::End(0))?;
 
         Ok(())
     }
@@ -195,6 +223,8 @@ impl Default for ReserveDirectoryStrategy {
     }
 }
 
+/// The archive state a [`Strategy`] works on: the output, the header and the tables so far.
+#[derive(Debug)]
 pub struct InnerDRSWriter<W>
 where
     W: Write + Seek,
@@ -254,11 +284,27 @@ where
     strategy: Box<dyn Strategy<W>>,
 }
 
+impl<W> std::fmt::Debug for DRSWriter<W>
+where
+    W: Write + Seek + std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The strategy is a trait object without `Debug`.
+        f.debug_struct("DRSWriter")
+            .field("inner", &self.inner)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<W> DRSWriter<W>
 where
     W: Write + Seek,
 {
     /// Create a writer with the given strategy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the strategy fails to start the archive (writing to `output`).
     pub fn new(output: W, strategy: impl Strategy<W> + 'static) -> io::Result<Self> {
         let header = DRSHeader::default();
 
@@ -277,6 +323,15 @@ where
     }
 
     /// Add a file to the archive.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading `data` or writing to the output fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the file is 4 GiB or larger, or, with [`ReserveDirectoryStrategy`], if more
+    /// files are added than were reserved.
     #[inline]
     pub fn add(&mut self, t: impl Into<ResourceType>, id: u32, data: impl Read) -> io::Result<()> {
         self.add_inner(t.into(), id, data)
@@ -310,12 +365,20 @@ where
     }
 
     /// Finish any writes that still need to happen and return the file handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to or seeking in the output fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are `u32::MAX` or more tables or resources, or, with
+    /// [`ReserveDirectoryStrategy`], more tables than were reserved.
     pub fn flush(mut self) -> io::Result<W> {
-        assert!(
-            self.inner.tables.len() < u32::max_value() as usize,
-            "too many tables"
-        );
-        self.inner.header.num_resource_types = self.inner.tables.len() as u32;
+        self.inner.header.num_resource_types = u32::try_from(self.inner.tables.len())
+            .ok()
+            .filter(|&n| n < u32::MAX)
+            .expect("too many tables");
 
         self.strategy.close(&mut self.inner)?;
 
@@ -343,7 +406,7 @@ mod test {
     fn one_file_reserve() -> anyhow::Result<()> {
         let output = Cursor::new(vec![]);
         let mut drs = DRSWriter::new(output, ReserveDirectoryStrategy::new(1, 1))?;
-        drs.add("txt", 1, "example test file".as_bytes())?;
+        drs.add("txt", 1, &b"example test file"[..])?;
         let output = drs.flush()?.into_inner();
         assert_eq!(output, ONE_FILE.to_vec());
         Ok(())
@@ -353,7 +416,7 @@ mod test {
     fn one_file_memory() -> anyhow::Result<()> {
         let output = Cursor::new(vec![]);
         let mut drs = DRSWriter::new(output, InMemoryStrategy::default())?;
-        drs.add("txt", 1, "example test file".as_bytes())?;
+        drs.add("txt", 1, &b"example test file"[..])?;
         let output = drs.flush()?.into_inner();
         assert_eq!(output, ONE_FILE.to_vec());
         Ok(())

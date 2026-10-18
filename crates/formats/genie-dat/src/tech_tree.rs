@@ -8,8 +8,10 @@ use genie_support::{TechID, read_opt_u32};
 use std::convert::{TryFrom, TryInto};
 use std::io::{self, Read, Result, Write};
 
+/// The status of a tech tree node for a player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TechTreeStatus {
+    /// No particular status (stored as 1).
     #[default]
     None,
     /// This building/unit/technology is available to the player.
@@ -22,9 +24,13 @@ pub enum TechTreeStatus {
     ResearchedCompleted,
     /// This building/unit/technology is available to the player if someone on their team is this
     /// civilization.
-    AvailableTeam { civilization_id: CivilizationID },
+    AvailableTeam {
+        /// The civilization a team member must play (stored as the status minus 10).
+        civilization_id: CivilizationID,
+    },
 }
 
+/// A tech tree node status byte that is not one of the known values.
 #[derive(Debug, Clone, Copy, thiserror::Error)]
 #[error("invalid tech tree node status {} (must be 1-5)", .0)]
 pub struct ParseTechTreeStatusError(u8);
@@ -63,17 +69,26 @@ impl From<TechTreeStatus> for u8 {
 /// Kinds of tech tree nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TechTreeType {
+    /// No kind.
     #[default]
     None = 0,
+    /// An age.
     Age = 1,
+    /// A unit.
     Unit = 2,
+    /// A unit that is an upgrade of another unit.
     UnitUpgrade = 3,
+    /// A technology.
     Research = 4,
+    /// A building that a technology unlocks.
     BuildingTech = 5,
+    /// A building that needs no technology.
     BuildingNonTech = 6,
+    /// A civilization's unique unit.
     UniqueUnit = 7,
 }
 
+/// A tech tree node type that is not one of the known values.
 #[derive(Debug, Clone, Copy, thiserror::Error)]
 #[error("invalid tech tree node type {} (must be 0-7)", .0)]
 pub struct ParseTechTreeTypeError(i32);
@@ -108,15 +123,21 @@ impl From<TechTreeType> for i32 {
     }
 }
 
+/// The tech tree shown in the game: its age, building, unit and tech nodes.
 #[derive(Debug, Default, Clone)]
 pub struct TechTree {
+    /// The age nodes.
     pub ages: Vec<TechTreeAge>,
+    /// The building nodes.
     pub buildings: Vec<TechTreeBuilding>,
+    /// The unit nodes.
     pub units: Vec<TechTreeUnit>,
+    /// The tech nodes.
     pub techs: Vec<TechTreeTech>,
     num_groups: i32,
 }
 
+/// A prerequisite of a tech tree node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TechTreeDependency {
     /// A dependency on an age being researched.
@@ -134,7 +155,7 @@ pub enum TechTreeDependency {
 }
 
 impl TechTreeDependency {
-    const fn dependency_type(&self) -> TechTreeDependencyType {
+    const fn dependency_type(self) -> TechTreeDependencyType {
         match self {
             Self::Age(_) => TechTreeDependencyType::Age,
             Self::Building(_) => TechTreeDependencyType::Building,
@@ -143,11 +164,10 @@ impl TechTreeDependency {
         }
     }
 
-    fn raw_id(&self) -> i32 {
-        match *self {
+    fn raw_id(self) -> i32 {
+        match self {
             Self::Age(id) => id,
-            Self::Building(id) => id.into(),
-            Self::Unit(id) => id.into(),
+            Self::Building(id) | Self::Unit(id) => id.into(),
             Self::Research(id) => {
                 let id: u16 = id.into();
                 i32::from(id)
@@ -164,6 +184,7 @@ enum TechTreeDependencyType {
     Research = 3,
 }
 
+/// A tech tree dependency type that is not one of the known values.
 #[derive(Debug, Clone, Copy, thiserror::Error)]
 #[error("invalid tech tree dependency type {} (must be 0-3)", .0)]
 pub struct ParseTechTreeDependencyTypeError(i32);
@@ -188,9 +209,11 @@ impl From<TechTreeDependencyType> for i32 {
     }
 }
 
+/// The prerequisites of a tech tree node, at most 10.
 #[derive(Debug, Default, Clone)]
 pub struct TechTreeDependencies(ArrayVec<TechTreeDependency, 10>);
 
+/// An age node of the tech tree.
 #[derive(Debug, Default, Clone)]
 pub struct TechTreeAge {
     age_id: i32,
@@ -209,6 +232,7 @@ pub struct TechTreeAge {
     max_age_length: u8,
 }
 
+/// A building node of the tech tree.
 #[derive(Debug, Default, Clone)]
 pub struct TechTreeBuilding {
     building_id: UnitTypeID,
@@ -234,6 +258,7 @@ pub struct TechTreeBuilding {
     initial_children_by_age: [u8; 5],
 }
 
+/// A unit node of the tech tree.
 #[derive(Debug, Default, Clone)]
 pub struct TechTreeUnit {
     unit_id: UnitTypeID,
@@ -248,6 +273,7 @@ pub struct TechTreeUnit {
     level_no: i32,
 }
 
+/// A tech node of the tech tree.
 #[derive(Debug, Default, Clone)]
 pub struct TechTreeTech {
     tech_id: TechID,
@@ -263,6 +289,16 @@ pub struct TechTreeTech {
 }
 
 impl TechTree {
+    /// Read the tech tree from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if a value is not valid for its field.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an age node has more than 10 building levels or is not of type
+    /// [`TechTreeType::Age`].
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let num_ages = input.read_u8()?;
         let num_buildings = input.read_u8()?;
@@ -299,6 +335,13 @@ impl TechTree {
         })
     }
 
+    /// Write the tech tree to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    // The format stores the node counts as u8 (truncated, as before).
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_u8(self.ages.len() as u8)?;
         output.write_u8(self.buildings.len() as u8)?;
@@ -324,6 +367,11 @@ impl TechTree {
 }
 
 impl TechTreeDependencies {
+    /// Read a node's prerequisites from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if a value is not valid for its field.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut deps = Self::default();
         let num = input.read_u8()?;
@@ -359,17 +407,29 @@ impl TechTreeDependencies {
         Ok(deps)
     }
 
+    /// Write the prerequisites to an output stream, padded to 10 slots.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 10 prerequisites, which the list's capacity rules out.
+    // At most 10 (asserted), so the count fits the format's u8.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         assert!(self.len() <= 10);
         output.write_u8(self.len() as u8)?;
         output.write_all(&[0, 0, 0])?;
         for i in 0..10 {
-            output.write_i32::<LE>(self.0.get(i).map_or(0, TechTreeDependency::raw_id))?;
+            output.write_i32::<LE>(self.0.get(i).copied().map_or(0, TechTreeDependency::raw_id))?;
         }
         for i in 0..10 {
             output.write_i32::<LE>(
                 self.0
                     .get(i)
+                    .copied()
                     .map(TechTreeDependency::dependency_type)
                     .map_or(0, Into::into),
             )?;
@@ -377,16 +437,19 @@ impl TechTreeDependencies {
         Ok(())
     }
 
+    /// The number of prerequisites.
     #[must_use]
     pub const fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Whether there are no prerequisites.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Iterate over the prerequisites.
     pub fn iter(&self) -> impl Iterator<Item = &TechTreeDependency> {
         self.0.iter()
     }
@@ -410,6 +473,16 @@ where
 }
 
 impl TechTreeAge {
+    /// Read an age node from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if a value is not valid for its field.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the node has more than 10 building levels or is not of type
+    /// [`TechTreeType::Age`].
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut age = Self {
             age_id: input.read_i32::<LE>()?,
@@ -434,6 +507,13 @@ impl TechTreeAge {
         Ok(age)
     }
 
+    /// Write this age node to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    // The format stores each list's length as a u8 (truncated, as before).
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_i32::<LE>(self.age_id)?;
         output.write_u8(self.status.into())?;
@@ -460,6 +540,11 @@ impl TechTreeAge {
 }
 
 impl TechTreeBuilding {
+    /// Read a building node from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if a value is not valid for its field.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut building = Self {
             building_id: input.read_i32::<LE>()?.try_into().map_err(invalid_data)?,
@@ -482,6 +567,13 @@ impl TechTreeBuilding {
         Ok(building)
     }
 
+    /// Write this building node to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    // The format stores each list's length as a u8 (truncated, as before).
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_u32::<LE>(self.building_id.into())?;
         output.write_u8(self.status.into())?;
@@ -511,6 +603,11 @@ impl TechTreeBuilding {
 }
 
 impl TechTreeUnit {
+    /// Read a unit node from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if a value is not valid for its field.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         Ok(Self {
             unit_id: input.read_i32::<LE>()?.try_into().map_err(invalid_data)?,
@@ -526,6 +623,13 @@ impl TechTreeUnit {
         })
     }
 
+    /// Write this unit node to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    // The format stores each list's length as a u8 (truncated, as before).
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_u32::<LE>(u16::from(self.unit_id).into())?;
         output.write_u8(self.status.into())?;
@@ -551,6 +655,11 @@ impl TechTreeUnit {
 }
 
 impl TechTreeTech {
+    /// Read a tech node from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if a value is not valid for its field.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         Ok(Self {
             tech_id: input.read_i32::<LE>()?.try_into().map_err(invalid_data)?,
@@ -566,6 +675,13 @@ impl TechTreeTech {
         })
     }
 
+    /// Write this tech node to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    // The format stores each list's length as a u8 (truncated, as before).
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_u32::<LE>(u16::from(self.tech_id).into())?;
         output.write_u8(self.status.into())?;

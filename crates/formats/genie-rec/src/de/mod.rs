@@ -17,14 +17,33 @@ pub use genie_save::SaveVersion;
 /// Errors while reading a DE recording. Offsets are byte offsets into the recording file.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
+    /// The recording ends inside a record.
     #[error("the recording ends inside a record at byte {at:#x}")]
-    Truncated { at: usize },
+    Truncated {
+        /// Where the record starts.
+        at: usize,
+    },
+    /// An op type this reader does not know.
     #[error("unknown op {op} at byte {at:#x}")]
-    UnknownOp { op: u32, at: usize },
+    UnknownOp {
+        /// The op type.
+        op: u32,
+        /// Where the op starts.
+        at: usize,
+    },
+    /// A chapter's offsets point outside the recording or backwards.
     #[error("the chapter at byte {at:#x} points outside the recording")]
-    InvalidChapter { at: usize },
+    InvalidChapter {
+        /// Where the chapter starts.
+        at: usize,
+    },
+    /// A chapter's header is not valid raw deflate data.
     #[error("the header of the chapter at byte {at:#x} does not inflate")]
-    Inflate { at: usize },
+    Inflate {
+        /// Where the chapter starts.
+        at: usize,
+    },
+    /// A chapter's header inflated but could not be read as a world save.
     #[error("header: {0}")]
     Header(#[from] genie_save::Error),
 }
@@ -45,6 +64,11 @@ pub struct Chapter<'a> {
 }
 
 /// Split a recording into its chapters.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidChapter`] if a chapter's offsets point outside the recording, inside
+/// its own 8 offset bytes, or back to an earlier chapter.
 pub fn chapters(data: &[u8]) -> Result<Vec<Chapter<'_>>, Error> {
     let mut out = Vec::new();
     let mut offset = 0;
@@ -54,7 +78,9 @@ pub fn chapters(data: &[u8]) -> Result<Vec<Chapter<'_>>, Error> {
                 .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
         };
         let invalid = Error::InvalidChapter { at: offset };
-        let (header_end, next) = word(offset).zip(word(offset + 4)).ok_or(invalid.clone())?;
+        let (header_end, next) = word(offset)
+            .zip(word(offset + 4))
+            .ok_or_else(|| invalid.clone())?;
         let end = if next == 0 { data.len() } else { next };
         if header_end < offset + 8
             || header_end > end
@@ -85,21 +111,35 @@ impl<'a> Chapter<'a> {
     }
 
     /// Inflate the whole header (the chapter's world save).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Inflate`] if the header is not valid raw deflate data.
     pub fn inflate_header(&self) -> Result<Vec<u8>, Error> {
         use std::io::Read;
         let mut out = Vec::new();
-        flate2::read::DeflateDecoder::new(self.compressed_header)
+        // The byte count is `out.len()`.
+        let _ = flate2::read::DeflateDecoder::new(self.compressed_header)
             .read_to_end(&mut out)
             .map_err(|_| Error::Inflate { at: self.offset })?;
         Ok(out)
     }
 
     /// Inflate the header and read it as a world save.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Inflate`] if the header does not inflate, and [`Error::Header`] if it
+    /// cannot be read as a world save.
     pub fn header(&self) -> Result<genie_save::Header, Error> {
         Ok(genie_save::parse(&self.inflate_header()?)?)
     }
 
     /// Inflate the start of the header and read its version fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Inflate`] if the first 20 bytes of the header do not inflate.
     pub fn save_version(&self) -> Result<SaveVersion, Error> {
         use std::io::Read;
         // "VER 9.4\0", the old f32 save version, minor, major, build
@@ -141,7 +181,10 @@ mod tests {
             } else {
                 0
             };
-            out.extend(le(&[header_end as u32, next as u32]));
+            out.extend(le(&[
+                u32::try_from(header_end).unwrap(),
+                u32::try_from(next).unwrap(),
+            ]));
             out.extend_from_slice(header);
             out.extend_from_slice(body);
         }
@@ -182,13 +225,13 @@ mod tests {
         header.extend((-1.0f32).to_le_bytes());
         header.extend(39321u16.to_le_bytes());
         header.extend(66u16.to_le_bytes());
-        header.extend(158041u32.to_le_bytes());
+        header.extend(158_041_u32.to_le_bytes());
         header.extend([0u8; 64]);
         let data = recording(&[(&deflate(&header), b"")]);
         let v = chapters(&data).unwrap()[0].save_version().unwrap();
         assert_eq!(
             (v.major, v.minor, v.build, v.hundredths()),
-            (66, 39321, 158041, 6660)
+            (66, 39321, 158_041, 6660)
         );
     }
 

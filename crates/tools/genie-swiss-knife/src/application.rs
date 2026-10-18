@@ -72,8 +72,7 @@ impl Application for GenieSwissKnifeApp {
     /// possible.
     fn after_config(&mut self, config: Self::Cfg) -> Result<(), FrameworkError> {
         // Configure components
-        let mut components = self.state.components_mut();
-        components.after_config(&config)?;
+        self.state.components_mut().after_config(&config)?;
         self.config.set_once(config);
         Ok(())
     }

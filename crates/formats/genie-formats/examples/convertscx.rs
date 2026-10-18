@@ -1,3 +1,6 @@
+//! Converts a scenario file to another game version, optionally applying the `WololoKingdoms`
+//! unit and terrain conversion.
+
 use genie_formats::Scenario;
 use genie_formats::scx::{VersionBundle, convert::AutoToWK};
 use std::{fs::File, path::PathBuf};

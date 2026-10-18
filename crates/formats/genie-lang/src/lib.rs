@@ -106,7 +106,6 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
-#![allow(missing_docs)]
 
 use byteorder::{LE, ReadBytesExt};
 use encoding_rs::{UTF_16LE, WINDOWS_1252};
@@ -153,7 +152,7 @@ pub enum LoadError {
 pub struct ParseLangFileTypeError(String);
 
 /// Aoe2 supports three types of language files
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum LangFileType {
     /// An AoK/AoC-style DLL file with language resource strings.
     Dll,
@@ -165,7 +164,11 @@ pub enum LangFileType {
 
 impl LangFileType {
     /// Reads a language file from an input reader.
-    /// Returns a `LoadError` if an error occurs while reading.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `LoadError` if reading fails, if a DLL is not a valid PE file with string
+    /// resources, or if an INI line has a non-numeric string ID.
     pub fn read_from(&self, r: impl Read) -> Result<LangFile, LoadError> {
         use LangFileType::{Dll, Ini, KeyValue};
         let mut lang_file = LangFile::new();
@@ -207,7 +210,7 @@ impl LangFile {
     /// loading the file.
     fn read_dll(&mut self, mut input: impl Read) -> Result<(), LoadError> {
         let mut bytes = vec![];
-        input.read_to_end(&mut bytes)?;
+        let _ = input.read_to_end(&mut bytes)?;
         let pe = PeFile::from_bytes(&bytes)?;
         self.load_pe_file(pe)
     }
@@ -247,11 +250,16 @@ impl LangFile {
     }
 
     /// TODO specify
+    // The cursor runs over the in-memory `data` slice and never past its end (the slice index
+    // below would panic first), so its u64 position fits in a usize.
+    #[allow(clippy::cast_possible_truncation)]
     fn load_pe_data(&mut self, mut index: u32, data: &[u8]) -> Result<(), LoadError> {
         use std::io::{Cursor, Seek, SeekFrom};
         let mut cursor = Cursor::new(data);
         while (cursor.position() as usize) < data.len() {
-            let len = (cursor.read_u16::<LE>()? as usize) * 2;
+            // The length is a count of UTF-16 code units.
+            let units = cursor.read_u16::<LE>()?;
+            let len = usize::from(units) * 2;
             if len == 0 {
                 index += 1;
                 continue;
@@ -259,9 +267,10 @@ impl LangFile {
             let start = cursor.position() as usize;
             let (string, _enc, failed) = UTF_16LE.decode(&data[start..start + len]);
             if !failed {
-                self.0.insert(StringKey::from(index), string.to_string());
+                // A later string with the same index replaces the earlier one.
+                let _ = self.0.insert(StringKey::from(index), string.to_string());
             }
-            cursor.seek(SeekFrom::Current(len as i64))?;
+            let _ = cursor.seek(SeekFrom::Current(i64::from(units) * 2))?;
             index += 1;
         }
         Ok(())
@@ -300,18 +309,17 @@ impl LangFile {
         }
 
         let mut split = line.splitn(2, '=');
-        let id = match split.next() {
-            Some(id) => id,
-            None => return Ok(()),
+        let Some(id) = split.next() else {
+            return Ok(());
         };
-        let value = match split.next() {
-            Some(value) => value,
-            None => return Ok(()),
+        let Some(value) = split.next() else {
+            return Ok(());
         };
 
         let id: u32 = id.parse()?;
         let value = unescape(value.chars(), false);
-        self.0.insert(StringKey::from(id), value);
+        // A later line with the same ID replaces the earlier one.
+        let _ = self.0.insert(StringKey::from(id), value);
         Ok(())
     }
 
@@ -321,7 +329,7 @@ impl LangFile {
     fn read_keyval(&mut self, input: impl Read) -> Result<(), LoadError> {
         let input = BufReader::new(input);
         for line in input.lines() {
-            self.load_keyval_line(&line?)?;
+            self.load_keyval_line(&line?);
         }
         Ok(())
     }
@@ -329,14 +337,13 @@ impl LangFile {
     /// Parses an HD Edition string line.
     ///
     /// The key value pair stored in the line is inserted to `self`, if parsed
-    /// successfully.
-    /// A `LoadError` is returned if an error occurs while parsing.
+    /// successfully. Lines that do not parse are skipped.
     ///
     /// This is incomplete, unquoting and un-escaping is not yet done.
-    fn load_keyval_line(&mut self, line: &str) -> Result<(), LoadError> {
+    fn load_keyval_line(&mut self, line: &str) {
         let line = line.trim();
         if line.starts_with("//") || line.is_empty() {
-            return Ok(());
+            return;
         }
 
         let mut iter = line.chars();
@@ -351,13 +358,19 @@ impl LangFile {
         let value = if iter.next() == Some('"') {
             unescape(iter, true)
         } else {
-            return Ok(());
+            return;
         };
-        self.0.insert(string_key, value);
-        Ok(())
+        // A later line with the same key replaces the earlier one.
+        let _ = self.0.insert(string_key, value);
     }
 
     /// Writes this language file to an output writer using the ini format.
+    ///
+    /// Only numeric keys are written; the format has no named keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to_ini<W: Write>(&self, output: &mut W) -> io::Result<()> {
         // TODO warning if there are string ids
         for (id, string) in self.iter().filter(|(id, _)| id.is_numeric()) {
@@ -368,6 +381,10 @@ impl LangFile {
 
     /// Writes this language file to an output writer using the key-value
     /// format.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to_keyval<W: Write>(&self, output: &mut W) -> io::Result<()> {
         for (id, string) in self {
             output.write_all(format!("{} \"{}\"\n", id, escape(string, true)).as_bytes())?;

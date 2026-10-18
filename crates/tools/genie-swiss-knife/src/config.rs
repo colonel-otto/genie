@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 
 /// `GenieSwissKnife` Configuration. Empty until a subcommand needs a setting.
+// No `Copy`: the settings to come (paths, names) are not `Copy`.
+#[allow(missing_copy_implementations)]
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GenieSwissKnifeConfig {}

@@ -50,10 +50,12 @@ where
     }
 }
 
-/// dynamically allocated buffered reader, by method of "inflation"
-/// The inflation allows us to "peek" into streams, without destroying data
-/// Reading from the buffer also only advances the pointer inside the buffer
-/// Only once another peek is done, data is rearranged (or simply overwritten if the whole buffer has been consumed)
+/// Dynamically allocated buffered reader, by method of "inflation".
+///
+/// The inflation allows us to "peek" into streams, without destroying data.
+/// Reading from the buffer also only advances the pointer inside the buffer.
+/// Only once another peek is done, data is rearranged (or simply overwritten if the whole buffer
+/// has been consumed).
 #[derive(Debug)]
 pub struct InflatableReader<R> {
     /// inner reader
@@ -65,10 +67,12 @@ pub struct InflatableReader<R> {
 }
 
 impl<R> InflatableReader<R> {
+    /// Wrap `inner`, with room for 4096 bytes in the buffer to start with.
     pub fn new(inner: R) -> Self {
         Self::new_with_capacity(inner, 4096)
     }
 
+    /// Wrap `inner`, with room for `capacity` bytes in the buffer to start with.
     pub fn new_with_capacity(inner: R, capacity: usize) -> Self {
         Self {
             inner,
@@ -78,7 +82,13 @@ impl<R> InflatableReader<R> {
     }
 }
 
+/// Look ahead in a stream without consuming the data.
 pub trait Peek {
+    /// The next `amount` bytes, left unconsumed; fewer at the end of the stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from the underlying stream fails.
     fn peek(&mut self, amount: usize) -> io::Result<&[u8]>;
 }
 
@@ -190,41 +200,52 @@ pub struct RecordingHeaderReader<R> {
 }
 
 impl<R> RecordingHeaderReader<R> {
+    /// Wrap `inner`; the versions, map size and player count start out unset (zero, and the
+    /// variant `Trial`).
     pub fn new(inner: R) -> Self {
         Self {
             inner: InflatableReader::new(inner),
-            state: Default::default(),
+            state: RecordingState::default(),
         }
     }
 
+    /// The save version given to [`Self::set_version`].
     pub const fn version(&self) -> f32 {
         self.state.version
     }
 
+    /// The game version string given to [`Self::set_version`].
     pub const fn game_version(&self) -> GameVersion {
         self.state.game_version
     }
 
+    /// The game variant [`Self::set_version`] resolved.
     pub const fn variant(&self) -> GameVariant {
         self.state.variant
     }
 
+    /// The number of map tiles (width times height), from [`Self::set_map_size`].
     pub const fn tile_count(&self) -> usize {
         self.state.tile_count
     }
 
+    /// The map width in tiles, from [`Self::set_map_size`].
     pub const fn map_width(&self) -> u32 {
         self.state.map_width
     }
 
+    /// The map height in tiles, from [`Self::set_map_size`].
     pub const fn map_height(&self) -> u32 {
         self.state.map_height
     }
 
+    /// The number of players, from [`Self::set_num_players`].
     pub const fn num_players(&self) -> u16 {
         self.state.num_players
     }
 
+    /// Record the game version string and save version the rest of the header depends on, and
+    /// resolve the game variant from them (an unknown combination keeps the previous variant).
     pub fn set_version<V: Into<GameVersion>>(&mut self, game_version: V, version: f32) {
         let game_version = game_version.into();
         // Should we actually throw here or smth?
@@ -236,12 +257,14 @@ impl<R> RecordingHeaderReader<R> {
         self.state.game_version = game_version;
     }
 
+    /// Record the map size the map and visibility data depend on.
     pub const fn set_map_size(&mut self, width: u32, height: u32) {
         self.state.map_width = width;
         self.state.map_height = height;
         self.state.tile_count = width as usize * height as usize;
     }
 
+    /// Record the number of players the per-player data depends on.
     pub const fn set_num_players(&mut self, num_players: u16) {
         self.state.num_players = num_players;
     }
@@ -275,7 +298,7 @@ impl Default for RecordingState {
     fn default() -> Self {
         Self {
             version: 0.0,
-            game_version: Default::default(),
+            game_version: GameVersion::default(),
             variant: GameVariant::Trial,
             num_players: 0,
             map_width: 0,

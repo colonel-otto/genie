@@ -47,7 +47,9 @@ fallible_try_from!(TerrainID, u32);
 
 type TerrainName = ArrayString<13>;
 
-#[derive(Debug, Default, Clone)]
+/// The graphics of one terrain under a terrain restriction: the sprites drawn when a unit leaves,
+/// enters and walks on a tile of that terrain (genieutils' `TerrainPassGraphic`).
+#[derive(Debug, Default, Clone, Copy)]
 pub struct TerrainPassGraphic {
     exit_tile_sprite: Option<SpriteID>,
     enter_tile_sprite: Option<SpriteID>,
@@ -56,21 +58,29 @@ pub struct TerrainPassGraphic {
     replication_amount: Option<i32>,
 }
 
+/// A terrain restriction (terrain table): for each terrain, whether and how well the units that use
+/// this table can be on it, and the graphics they use there.
 #[derive(Debug, Clone)]
 pub struct TerrainRestriction {
     passability: Vec<f32>,
     pass_graphics: Vec<TerrainPassGraphic>,
 }
 
-#[derive(Debug, Default, Clone)]
+/// The pixel size of one of the 19 tile shapes (the flat tile and the slopes).
+#[derive(Debug, Default, Clone, Copy)]
 pub struct TileSize {
+    /// Width in pixels.
     pub width: i16,
+    /// Height in pixels.
     pub height: i16,
+    /// Vertical pixel offset of the shape (genieutils' `DeltaY`).
     pub delta_z: i16,
 }
 
-#[derive(Debug, Default, Clone)]
+/// How a terrain or terrain border is animated (e.g. water).
+#[derive(Debug, Default, Clone, Copy)]
 pub struct TerrainAnimation {
+    /// Whether the terrain is animated.
     pub enabled: bool,
     num_frames: i16,
     num_pause_frames: i16,
@@ -83,20 +93,29 @@ pub struct TerrainAnimation {
     drawn: bool,
 }
 
-#[derive(Debug, Default, Clone)]
+/// Which frames of a terrain's SLP draw one tile shape (genieutils' `FrameData`).
+#[derive(Debug, Default, Clone, Copy)]
 pub struct TerrainSpriteFrame {
+    /// Number of frames (variations) of the shape.
     pub num_frames: i16,
+    /// Number of facets (angles) of the shape.
     pub num_facets: i16,
+    /// Index of the shape's first frame in the SLP (genieutils' `ShapeID`).
     pub frame_id: i16,
 }
 
-#[derive(Debug, Default, Clone)]
+/// An object that is placed on a terrain when the map is generated (e.g. the trees of a forest).
+#[derive(Debug, Default, Clone, Copy)]
 pub struct TerrainObject {
+    /// The unit type placed.
     pub object_id: UnitTypeID,
+    /// How densely it is placed.
     pub density: i16,
+    /// Whether the object is centred on its tile (genieutils' `TerrainUnitCentering`).
     pub placement_flag: i8,
 }
 
+/// A terrain type: its graphics, sound, minimap colours, animation and the objects placed on it.
 #[derive(Debug, Default, Clone)]
 pub struct Terrain {
     /// Is this terrain enabled?
@@ -124,35 +143,57 @@ pub struct Terrain {
     pub minimap_color_cliff_lt: u8,
     /// The colour tiles with this terrain will have on the minimap when next to a cliff.
     pub minimap_color_cliff_rt: u8,
+    /// A terrain ID (genieutils' `PassableTerrain`), or `None` (0xFF); its use is not known yet.
     pub passable_terrain_id: Option<u8>,
+    /// A terrain ID (genieutils' `ImpassableTerrain`), or `None` (0xFF); its use is not known yet.
     pub impassable_terrain_id: Option<u8>,
+    /// How the terrain is animated.
     pub animation: TerrainAnimation,
+    /// The frames of each of the 19 tile shapes (the flat tile and the slopes).
     pub elevation_sprites: Vec<TerrainSpriteFrame>,
+    /// The terrain whose graphics are drawn for this one, or `None`.
     pub terrain_id_to_draw: Option<TerrainID>,
     rows: i16,
     cols: i16,
+    /// For each terrain, the terrain border drawn between this terrain and that one.
     pub borders: Vec<i16>,
+    /// The 30 slots of objects placed on this terrain. All slots are kept: the file's count of
+    /// used slots is not applied when reading.
     pub terrain_objects: Vec<TerrainObject>,
 }
 
+/// A terrain border: the graphic that blends two adjacent terrains.
 #[derive(Debug, Default, Clone)]
 pub struct TerrainBorder {
+    /// Whether this border is used.
     pub enabled: bool,
     random: u8,
     name: TerrainName,
     slp_name: TerrainName,
+    /// SLP graphic ID of the border, or `None`.
     pub slp_id: Option<GraphicID>,
+    /// Sound ID of the border, or `None`.
     pub sound_id: Option<SoundID>,
+    /// Three palette indices (genieutils' `Colors`), like a terrain's minimap colours.
     pub color: (u8, u8, u8),
+    /// How the border is animated.
     pub animation: TerrainAnimation,
+    /// For each of the 19 tile shapes, its 12 frame entries.
     pub frames: Vec<Vec<TerrainSpriteFrame>>,
     /// Unused according to Chariot.
     draw_tile: i8,
+    /// The terrain drawn under the border, or `None`.
     pub underlay_terrain: Option<i16>,
+    /// genieutils' `BorderStyle`; its values are not known yet.
     pub border_style: i16,
 }
 
 impl TerrainPassGraphic {
+    /// Read the pass graphics of one terrain from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if a sprite ID is out of range.
     pub fn read_from(mut input: impl Read, version: FileVersion) -> Result<Self> {
         let mut pass = Self {
             exit_tile_sprite: read_opt_u32(&mut input)?,
@@ -169,6 +210,10 @@ impl TerrainPassGraphic {
     }
 
     /// Serialize this object to a binary output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to(&self, mut output: impl Write, version: FileVersion) -> Result<()> {
         output.write_i32::<LE>(self.exit_tile_sprite.map_into().unwrap_or(-1))?;
         output.write_i32::<LE>(self.enter_tile_sprite.map_into().unwrap_or(-1))?;
@@ -184,6 +229,11 @@ impl TerrainPassGraphic {
 }
 
 impl TerrainRestriction {
+    /// Read a terrain restriction for `num_terrains` terrains from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if a sprite ID is out of range.
     pub fn read_from(
         mut input: impl Read,
         version: FileVersion,
@@ -207,6 +257,14 @@ impl TerrainRestriction {
     }
 
     /// Serialize this object to a binary output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the restriction does not hold exactly `num_terrains` entries.
     pub fn write_to(
         &self,
         mut output: impl Write,
@@ -226,6 +284,11 @@ impl TerrainRestriction {
 }
 
 impl TileSize {
+    /// Read a tile size from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let width = input.read_i16::<LE>()?;
         let height = input.read_i16::<LE>()?;
@@ -238,6 +301,10 @@ impl TileSize {
     }
 
     /// Serialize this object to a binary output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i16::<LE>(self.width)?;
         output.write_i16::<LE>(self.height)?;
@@ -247,6 +314,11 @@ impl TileSize {
 }
 
 impl TerrainAnimation {
+    /// Read animation settings from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         Ok(Self {
             enabled: input.read_u8()? != 0,
@@ -263,6 +335,10 @@ impl TerrainAnimation {
     }
 
     /// Serialize this object to a binary output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(u8::from(self.enabled))?;
         output.write_i16::<LE>(self.num_frames)?;
@@ -279,6 +355,11 @@ impl TerrainAnimation {
 }
 
 impl TerrainSpriteFrame {
+    /// Read a tile shape's frame data from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let num_frames = input.read_i16::<LE>()?;
         let num_facets = input.read_i16::<LE>()?;
@@ -291,6 +372,10 @@ impl TerrainSpriteFrame {
     }
 
     /// Serialize this object to a binary output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i16::<LE>(self.num_frames)?;
         output.write_i16::<LE>(self.num_facets)?;
@@ -306,7 +391,11 @@ impl Terrain {
         self.name.as_str()
     }
 
-    /// Read a Terrain object from an input stream.
+    /// Read a Terrain object from an input stream; `num_terrains` is the number of border entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if an ID is out of range.
     pub fn read_from(
         mut input: impl Read,
         version: FileVersion,
@@ -378,6 +467,17 @@ impl Terrain {
     }
 
     /// Serialize this object to a binary output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are not exactly `num_terrains` borders, or if the SLP ID or the terrain to
+    /// draw does not fit the format's signed field.
+    // The format stores the count of terrain objects as a u16 (truncated, as before).
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to<W: Write>(
         &self,
         output: &mut W,
@@ -391,7 +491,7 @@ impl Terrain {
         write_terrain_name(output, &self.slp_name)?;
         output.write_i32::<LE>(self.slp_id.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_i32::<LE>(0)?; // slp pointer
-        output.write_i32::<LE>(self.sound_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(self.sound_id.map_or(-1, i32::from))?;
         output.write_i32::<LE>(self.blend_priority.unwrap_or(-1))?;
         output.write_i32::<LE>(self.blend_mode.unwrap_or(-1))?;
         output.write_u8(self.minimap_color_high)?;
@@ -445,6 +545,11 @@ impl Terrain {
 }
 
 impl TerrainBorder {
+    /// Read a terrain border from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if an ID is out of range.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut border = Self {
             enabled: input.read_u8()? != 0,
@@ -467,8 +572,7 @@ impl TerrainBorder {
         }
 
         border.draw_tile = input.read_i8()?;
-        // Padding
-        input.read_u8()?;
+        let _padding = input.read_u8()?;
         border.underlay_terrain = read_opt_u16(&mut input)?;
         border.border_style = input.read_i16::<LE>()?;
 
@@ -476,6 +580,14 @@ impl TerrainBorder {
     }
 
     /// Serialize this object to a binary output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the SLP ID does not fit the format's `i32`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(u8::from(self.enabled))?;
         output.write_u8(self.random)?;
@@ -483,7 +595,7 @@ impl TerrainBorder {
         write_terrain_name(output, &self.slp_name)?;
         output.write_i32::<LE>(self.slp_id.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_i32::<LE>(0)?; // slp pointer
-        output.write_i32::<LE>(self.sound_id.map_or(-1, |id| id.try_into().unwrap()))?;
+        output.write_i32::<LE>(self.sound_id.map_or(-1, i32::from))?;
         output.write_u8(self.color.0)?;
         output.write_u8(self.color.1)?;
         output.write_u8(self.color.2)?;

@@ -1,4 +1,8 @@
 //! Player actions executed during a game.
+//!
+//! This is the reader for the body of older recorded games (`AoC`, `UserPatch`, HD and early DE).
+//! Command layouts and names follow genie-rs and aoc-mgz; where the meaning of a stored value is
+//! not known, its docs say so.
 
 use crate::{ObjectID, PlayerID, Result};
 use arrayvec::ArrayVec;
@@ -17,7 +21,7 @@ pub type Location3 = (f32, f32, f32);
 /// A viewpoint update, recording where the player is currently looking.
 ///
 /// This is used for the View Lock feature when watching a game.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ViewLock {
     /// The X coordinate the player is looking at.
     pub x: f32,
@@ -29,6 +33,14 @@ pub struct ViewLock {
 
 impl ViewLock {
     /// Read a view lock action from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored player ID is negative or above 255.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let x = input.read_f32::<LE>()?;
         let y = input.read_f32::<LE>()?;
@@ -37,10 +49,14 @@ impl ViewLock {
     }
 
     /// Write a view lock action to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_f32::<LE>(self.x)?;
         output.write_f32::<LE>(self.y)?;
-        output.write_i32::<LE>(self.player.try_into().unwrap())?;
+        output.write_i32::<LE>(i32::from(self.player))?;
         Ok(())
     }
 }
@@ -66,6 +82,16 @@ impl Default for ObjectsList {
 
 impl ObjectsList {
     /// Read a list of objects from an input stream.
+    ///
+    /// A `count` of 0xFF or more means [`ObjectsList::SameAsLast`] and reads nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an object ID in the list is negative.
     pub fn read_from(mut input: impl Read, count: i32) -> Result<Self> {
         if count < 0xFF {
             let mut list = vec![];
@@ -79,6 +105,12 @@ impl ObjectsList {
     }
 
     /// Write a list of objects to an output stream.
+    ///
+    /// [`ObjectsList::SameAsLast`] writes nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         if let Self::List(list) = self {
             for entry in list.iter().copied() {
@@ -121,6 +153,10 @@ pub struct OrderCommand {
 
 impl OrderCommand {
     /// Read an Order command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self {
             player_id: input.read_u8()?.into(),
@@ -135,6 +171,14 @@ impl OrderCommand {
     }
 
     /// Write an Order command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the target ID is above `i32::MAX`, or if there are more than `u32::MAX` objects.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.player_id.into())?;
         output.write_all(&[0, 0])?;
@@ -156,6 +200,10 @@ pub struct StopCommand {
 
 impl StopCommand {
     /// Read a Stop command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = input.read_i8()?;
@@ -164,6 +212,14 @@ impl StopCommand {
     }
 
     /// Write this Stop command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i8(self.objects.len().try_into().unwrap())?;
         self.objects.write_to(output)?;
@@ -184,6 +240,10 @@ pub struct WorkCommand {
 
 impl WorkCommand {
     /// Read a Work command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         input.skip(3)?;
@@ -196,9 +256,17 @@ impl WorkCommand {
     }
 
     /// Write this Work command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
-        output.write_i32::<LE>(self.target_id.map_or(-1, |u| u32::from(u) as i32))?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |u| u32::from(u).cast_signed()))?;
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0, 0])?;
         output.write_f32::<LE>(self.location.0)?;
@@ -223,6 +291,10 @@ pub struct MoveCommand {
 
 impl MoveCommand {
     /// Read a Move command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self {
             player_id: input.read_u8()?.into(),
@@ -238,9 +310,17 @@ impl MoveCommand {
     }
 
     /// Write this Move command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
-        output.write_i32::<LE>(self.target_id.map_or(-1, |u| u32::from(u) as i32))?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |u| u32::from(u).cast_signed()))?;
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0, 0])?;
         output.write_f32::<LE>(self.location.0)?;
@@ -252,7 +332,7 @@ impl MoveCommand {
 /// A command that instantly places a unit type at a given location.
 ///
 /// Typically used for cheats and the like.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct CreateCommand {
     /// The ID of the player issuing this command.
     pub player_id: PlayerID,
@@ -264,6 +344,10 @@ pub struct CreateCommand {
 
 impl CreateCommand {
     /// Read a Create command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let _padding = input.read_u8()?;
@@ -279,6 +363,10 @@ impl CreateCommand {
     }
 
     /// Write this Create command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(0)?;
         output.write_u16::<LE>(self.unit_type_id.into())?;
@@ -294,7 +382,7 @@ impl CreateCommand {
 /// Add resources to a player's stockpile.
 ///
 /// Typically used for cheats.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct AddResourceCommand {
     /// The player this command applies to.
     pub player_id: PlayerID,
@@ -306,6 +394,10 @@ pub struct AddResourceCommand {
 
 impl AddResourceCommand {
     /// Read an `AddResource` command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let player_id = input.read_u8()?.into();
         let resource = input.read_u8()?;
@@ -319,6 +411,10 @@ impl AddResourceCommand {
     }
 
     /// Write this `AddResource` command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.player_id.into())?;
         output.write_u8(self.resource)?;
@@ -328,23 +424,44 @@ impl AddResourceCommand {
     }
 }
 
-///
+/// An order that an AI player gives to its objects (command `0x0a`).
 #[derive(Debug, Default, Clone)]
 pub struct AIOrderCommand {
+    /// The ID of the player the command belongs to (the first player byte).
     pub player_id: PlayerID,
+    /// The second player byte, read as the player issuing the order; not verified.
     pub issuer: PlayerID,
+    /// The objects receiving the order. A single object is stored in the fixed part of the
+    /// command, more than one in a list after it.
     pub objects: ObjectsList,
+    /// The kind of order.
     pub order_type: u16,
+    /// The priority of the order.
     pub order_priority: i8,
+    /// The target object, if any.
     pub target_id: Option<ObjectID>,
+    /// The owner of the target, if any.
     pub target_player_id: Option<PlayerID>,
+    /// The target location.
     pub target_location: Location3,
+    /// The range of the order.
     pub range: f32,
+    /// Whether the order is carried out immediately.
     pub immediate: bool,
+    /// Whether the order goes to the front of the objects' order queue instead of the back.
     pub add_to_front: bool,
 }
 
 impl AIOrderCommand {
+    /// Read an AI order command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the target's owner is stored as a negative number other than -1.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = i32::from(input.read_i8()?);
@@ -377,6 +494,16 @@ impl AIOrderCommand {
         Ok(command)
     }
 
+    /// Write this AI order command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 127 objects (the format's `i8` count), or if the target ID
+    /// is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_u8(self.player_id.into())?;
@@ -390,10 +517,7 @@ impl AIOrderCommand {
         output.write_u16::<LE>(self.order_type)?;
         output.write_i8(self.order_priority)?;
         output.write_u8(0)?;
-        output.write_i32::<LE>(match self.target_id {
-            Some(id) => id.try_into().unwrap(),
-            None => -1,
-        })?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u8(self.player_id.into())?;
         output.write_all(&[0, 0, 0])?;
         output.write_f32::<LE>(self.target_location.0)?;
@@ -411,7 +535,7 @@ impl AIOrderCommand {
 }
 
 /// A player resigns or drops from the game.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ResignCommand {
     /// The ID of the player that is resigning.
     pub player_id: PlayerID,
@@ -423,6 +547,10 @@ pub struct ResignCommand {
 
 impl ResignCommand {
     /// Read a Resign command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let player_id = input.read_u8()?.into();
         let comm_player_id = input.read_u8()?.into();
@@ -435,6 +563,10 @@ impl ResignCommand {
     }
 
     /// Write this Resign command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.player_id.into())?;
         output.write_u8(self.comm_player_id.into())?;
@@ -443,14 +575,23 @@ impl ResignCommand {
     }
 }
 
+/// Set a waypoint for a group of objects (command `0x10`).
 #[derive(Debug, Default, Clone)]
 pub struct GroupWaypointCommand {
+    /// The ID of the player issuing this command.
     pub player_id: PlayerID,
+    /// The waypoint's tile coordinates (x, y).
     pub location: (u8, u8),
+    /// The objects receiving the waypoint.
     pub objects: ObjectsList,
 }
 
 impl GroupWaypointCommand {
+    /// Read a group waypoint command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let player_id = input.read_u8()?.into();
         let num_units = input.read_u8()?;
@@ -463,6 +604,15 @@ impl GroupWaypointCommand {
         })
     }
 
+    /// Write this group waypoint command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 255 objects, the most the format's `u8` count holds.
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_u8(self.player_id.into())?;
         output.write_u8(self.objects.len().try_into().unwrap())?;
@@ -484,6 +634,10 @@ pub struct UnitAIStateCommand {
 
 impl UnitAIStateCommand {
     /// Read a `UnitAIState` command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let selected_count = input.read_u8()?;
         let state = input.read_i8()?;
@@ -492,6 +646,14 @@ impl UnitAIStateCommand {
     }
 
     /// Write this `UnitAIState` command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 255 objects, the most the format's `u8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.objects.len().try_into().unwrap())?;
         output.write_i8(self.state)?;
@@ -511,6 +673,10 @@ pub struct GuardCommand {
 
 impl GuardCommand {
     /// Read a Guard command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = i32::from(input.read_u8()?);
@@ -521,6 +687,15 @@ impl GuardCommand {
     }
 
     /// Write a Guard command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 255 objects (the format's `u8` count), or if the target ID
+    /// is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
@@ -541,6 +716,10 @@ pub struct FollowCommand {
 
 impl FollowCommand {
     /// Read a Follow command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = i32::from(input.read_u8()?);
@@ -551,6 +730,15 @@ impl FollowCommand {
     }
 
     /// Write a Follow command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 255 objects (the format's `u8` count), or if the target ID
+    /// is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
@@ -570,6 +758,18 @@ pub struct PatrolCommand {
 }
 
 impl PatrolCommand {
+    /// Read a Patrol command from an input stream.
+    ///
+    /// The format always stores 10 waypoints: first their X coordinates, then their Y coordinates.
+    /// Only the first `waypoint_count` of them are kept.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the command says it has more than 10 waypoints.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = input.read_i8()?;
@@ -590,6 +790,17 @@ impl PatrolCommand {
         Ok(command)
     }
 
+    /// Write this Patrol command to an output stream.
+    ///
+    /// Unused waypoint slots are written as (0.0, 0.0).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_u8(self.waypoints.len().try_into().unwrap())?;
@@ -617,6 +828,11 @@ pub struct FormFormationCommand {
 }
 
 impl FormFormationCommand {
+    /// Read a Form Formation command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = input.read_i8()?;
@@ -627,6 +843,15 @@ impl FormFormationCommand {
         Ok(command)
     }
 
+    /// Write this Form Formation command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_u8(self.player_id.into())?;
@@ -640,6 +865,7 @@ impl FormFormationCommand {
 /// Meta-command for `UserPatch`'s new AI commands.
 #[derive(Debug, Default, Clone)]
 pub struct UserPatchAICommand {
+    /// The ID of the player issuing this command.
     pub player_id: PlayerID,
     /// 0: move to object
     /// 1: set unit ai state
@@ -658,10 +884,22 @@ pub struct UserPatchAICommand {
     /// 14: unload object
     /// 15: nothing?
     pub ai_action: u8,
+    /// The parameters of the AI action: up to 3 `u32` values, as many as the command's size
+    /// leaves room for.
     pub params: ArrayVec<u32, 4>,
 }
 
 impl UserPatchAICommand {
+    /// Read a `UserPatch` AI command of `size` bytes from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `size` is below 4, or if it leaves room for more than 3 parameters (20 or
+    /// more).
     pub fn read_from(mut input: impl Read, size: u32) -> Result<Self> {
         let num_params = (size - 4) / 4;
         assert!(
@@ -671,7 +909,7 @@ impl UserPatchAICommand {
         let ai_action = input.read_u8()?;
         let player_id = input.read_u8()?.into();
         let _padding = input.read_u8()?;
-        let mut params: ArrayVec<u32, 4> = Default::default();
+        let mut params: ArrayVec<u32, 4> = ArrayVec::default();
         for _ in 0..num_params {
             params.push(input.read_u32::<LE>()?);
         }
@@ -682,6 +920,11 @@ impl UserPatchAICommand {
         })
     }
 
+    /// Write this `UserPatch` AI command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.ai_action)?;
         output.write_u8(self.player_id.into())?;
@@ -693,15 +936,25 @@ impl UserPatchAICommand {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// Train a unit at a building (command `0x64`; aoc-mgz calls it the AI queue command).
+#[derive(Debug, Default, Clone, Copy)]
 pub struct MakeCommand {
+    /// The ID of the player issuing this command.
     pub player_id: PlayerID,
+    /// The building that trains the unit.
     pub building_id: ObjectID,
+    /// The type of unit to train.
     pub unit_type_id: UnitTypeID,
+    /// Not known yet; read as an optional object ID (-1 for none).
     pub target_id: Option<ObjectID>,
 }
 
 impl MakeCommand {
+    /// Read a Make command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         input.skip(3)?;
         let building_id = input.read_u32::<LE>()?.into();
@@ -717,22 +970,28 @@ impl MakeCommand {
         })
     }
 
+    /// Write this Make command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the target ID is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
         output.write_u32::<LE>(self.building_id.into())?;
         output.write_u8(self.player_id.into())?;
         output.write_u8(0)?;
         output.write_u16::<LE>(self.unit_type_id.into())?;
-        output.write_i32::<LE>(match self.target_id {
-            None => -1,
-            Some(id) => id.try_into().unwrap(),
-        })?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
         Ok(())
     }
 }
 
 /// Start a research.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ResearchCommand {
     /// The ID of the player starting the research.
     pub player_id: PlayerID,
@@ -740,11 +999,16 @@ pub struct ResearchCommand {
     pub building_id: ObjectID,
     /// The tech ID of the research.
     pub tech_id: TechID,
-    /// TODO
+    /// Not known yet; read as an optional object ID (-1 for none).
     pub target_id: Option<ObjectID>,
 }
 
 impl ResearchCommand {
+    /// Read a Research command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         input.skip(3)?;
         let building_id = input.read_u32::<LE>()?.into();
@@ -760,16 +1024,22 @@ impl ResearchCommand {
         })
     }
 
+    /// Write this Research command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the target ID is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
         output.write_u32::<LE>(self.building_id.into())?;
         output.write_u8(self.player_id.into())?;
         output.write_u8(0)?;
         output.write_u16::<LE>(self.tech_id.into())?;
-        output.write_i32::<LE>(match self.target_id {
-            None => -1,
-            Some(id) => id.try_into().unwrap(),
-        })?;
+        output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
         Ok(())
     }
 }
@@ -792,6 +1062,11 @@ pub struct BuildCommand {
 }
 
 impl BuildCommand {
+    /// Read a Build command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = input.read_i8()?;
@@ -810,59 +1085,91 @@ impl BuildCommand {
     }
 }
 
-/// Commands affecting the game.
-#[derive(Debug, Clone)]
+/// Commands affecting the game (command `0x67`), one variant per sub-command.
+#[derive(Debug, Clone, Copy)]
 pub enum GameCommand {
+    /// Change the game speed (sub-command 1).
     SetGameSpeed {
+        /// The player who sent the command.
         player_id: PlayerID,
+        /// The new game speed.
         speed: f32,
     },
     /// Not used in game, but implemented.
     Inventory {
+        /// The player who sent the command.
         player_id: PlayerID,
+        /// The attribute (resource) to change.
         attribute_id: i16,
+        /// The amount.
         amount: f32,
     },
     /// Not implemented in game.
     UpgradeTown {
+        /// The player who sent the command.
         player_id: PlayerID,
     },
+    /// The quick build cheat (sub-command 4).
     QuickBuild {
+        /// The player who sent the command.
         player_id: PlayerID,
     },
+    /// Set whether the player wants an allied victory (sub-command 5).
     AlliedVictory {
+        /// The player who sent the command.
         player_id: PlayerID,
+        /// Whether allied victory is turned on.
         status: bool,
     },
+    /// A cheat code (sub-command 6).
     Cheat {
+        /// The player who sent the command.
         player_id: PlayerID,
+        /// The ID of the cheat.
         cheat_id: i16,
     },
     /// Not implemented in game.
     SharedLos {
+        /// The player who sent the command.
         player_id: PlayerID,
     },
+    /// Spies, or Treason in later versions (sub-command 0x0a): the player pays to reveal other
+    /// players' units.
     Spies {
+        /// The player who sent the command.
         player_id: PlayerID,
     },
+    /// Set an AI strategic number (sub-command 0x0b), sent by AI players.
     SetStrategicNumber {
+        /// The player who sent the command.
         player_id: PlayerID,
+        /// The ID of the strategic number.
         strategic_number: i16,
+        /// The new value of the strategic number.
         value: i32,
     },
     /// Appears to be unused.
     Unknown0x0c {
+        /// The player who sent the command.
         player_id: PlayerID,
     },
+    /// Queue farm reseeds at the mill (sub-command 0x0d).
     AddFarmReseedQueue {
+        /// The player who sent the command.
         player_id: PlayerID,
+        /// The number of reseeds to queue.
         amount: i16,
     },
+    /// Remove queued farm reseeds (sub-command 0x0e).
     RemoveFarmReseedQueue {
+        /// The player who sent the command.
         player_id: PlayerID,
+        /// The number of reseeds to remove.
         amount: i16,
     },
+    /// Toggle automatic farm reseeding (sub-command 0x10).
     FarmReseedAutoQueue {
+        /// The player who sent the command.
         player_id: PlayerID,
         // TODO unknown vars
     },
@@ -896,7 +1203,23 @@ impl RawGameCommand {
 }
 
 impl GameCommand {
+    /// Read a game command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the sub-command is not one listed in [`GameCommand`], if the player ID is
+    /// negative or above 255, or if a strategic number's value is above `i32::MAX`.
     pub fn read_from(input: impl Read) -> Result<Self> {
+        use GameCommand::{
+            AddFarmReseedQueue, AlliedVictory, Cheat, FarmReseedAutoQueue, Inventory, QuickBuild,
+            RemoveFarmReseedQueue, SetGameSpeed, SetStrategicNumber, SharedLos, Spies, Unknown0x0c,
+            UpgradeTown,
+        };
+
         let RawGameCommand {
             game_command,
             var1,
@@ -905,11 +1228,6 @@ impl GameCommand {
             var4,
         } = RawGameCommand::read_from(input)?;
 
-        use GameCommand::{
-            AddFarmReseedQueue, AlliedVictory, Cheat, FarmReseedAutoQueue, Inventory, QuickBuild,
-            RemoveFarmReseedQueue, SetGameSpeed, SetStrategicNumber, SharedLos, Spies, Unknown0x0c,
-            UpgradeTown,
-        };
         match game_command {
             0x01 => Ok(SetGameSpeed {
                 player_id: var1.try_into().unwrap(),
@@ -967,10 +1285,15 @@ impl GameCommand {
 /// Task a group of villagers to build a wall from point A to point B.
 #[derive(Debug, Default, Clone)]
 pub struct BuildWallCommand {
+    /// The ID of the player issuing this command.
     pub player_id: PlayerID,
+    /// The tile (x, y) where the wall starts.
     pub start: (u8, u8),
+    /// The tile (x, y) where the wall ends.
     pub end: (u8, u8),
+    /// The type of wall to build.
     pub unit_type_id: UnitTypeID,
+    /// The villagers that are tasked to build the wall.
     pub builders: ObjectsList,
 }
 
@@ -1009,7 +1332,7 @@ impl BuildWallCommand {
 }
 
 /// Delete a building or cancel a building that's not fully built yet.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct CancelBuildCommand {
     /// The ID of the player issuing this command.
     pub player_id: PlayerID,
@@ -1018,6 +1341,15 @@ pub struct CancelBuildCommand {
 }
 
 impl CancelBuildCommand {
+    /// Read a Cancel Build command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored player ID is above 255.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         input.skip(3)?;
         let building_id = input.read_u32::<LE>()?.into();
@@ -1028,10 +1360,15 @@ impl CancelBuildCommand {
         })
     }
 
+    /// Write this Cancel Build command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
         output.write_u32::<LE>(self.building_id.into())?;
-        output.write_u32::<LE>(self.player_id.try_into().unwrap())?;
+        output.write_u32::<LE>(u32::from(self.player_id))?;
         Ok(())
     }
 }
@@ -1047,6 +1384,10 @@ pub struct AttackGroundCommand {
 
 impl AttackGroundCommand {
     /// Read a `AttackGround` command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = i32::from(input.read_i8()?);
@@ -1057,6 +1398,14 @@ impl AttackGroundCommand {
     }
 
     /// Write this `AttackGround` command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
@@ -1078,6 +1427,10 @@ pub struct RepairCommand {
 
 impl RepairCommand {
     /// Read a Repair command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = i32::from(input.read_u8()?);
@@ -1088,6 +1441,15 @@ impl RepairCommand {
     }
 
     /// Write a Repair command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 255 repairers (the format's `u8` count), or if the target
+    /// ID is above `i32::MAX`.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.repairers.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
@@ -1100,9 +1462,16 @@ impl RepairCommand {
 /// Ungarrison objects from a given list of objects.
 #[derive(Debug, Default, Clone)]
 pub struct UngarrisonCommand {
+    /// Which objects to ungarrison. aoc-mgz names the values 0 (all), 3 (selected), 4 (same
+    /// type), 5 (not selected) and 6 (inverse type).
     pub ungarrison_type: i8,
+    /// The unit type to ungarrison, for the kinds that select by type; read as an optional ID
+    /// (-1 for none).
     pub unit_type_id: Option<ObjectID>,
+    /// Where the ungarrisoned objects go, if a location was given (it is stored as -1, -1 if
+    /// not).
     pub location: Option<Location2>,
+    /// The objects to ungarrison from.
     pub objects: ObjectsList,
 }
 
@@ -1127,15 +1496,28 @@ impl UngarrisonCommand {
 }
 
 /// Send a flare at the given location.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct FlareCommand {
+    /// The ID of the player sending the flare.
     pub player_id: PlayerID,
+    /// The multiplayer ID of the player sending the flare.
     pub comm_player_id: PlayerID,
+    /// Which players see the flare, indexed by player ID.
     pub recipients: [bool; 9],
+    /// The location of the flare.
     pub location: Location2,
 }
 
 impl FlareCommand {
+    /// Read a Flare command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the unit ID stored before the recipients is not -1.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         input.skip(3)?;
@@ -1156,14 +1538,22 @@ impl FlareCommand {
     }
 }
 
-///
+/// Give objects a unit order (command `0x75`), such as packing or unpacking a trebuchet.
 #[derive(Debug, Default, Clone)]
 pub struct UnitOrderCommand {
+    /// The target object, if any.
     pub target_id: Option<ObjectID>,
+    /// The order. aoc-mgz names the values 1 (pack a trebuchet), 2 (unpack a trebuchet) and 5
+    /// (garrison).
     pub action: i8,
+    /// A parameter of the order, if any (stored as -1 if not). aoc-mgz reads it as the index of
+    /// the queue entry to cancel when a production queue is cancelled.
     pub param: Option<u8>,
+    /// The target location, if one was given (it is stored as -1, -1 if not).
     pub location: Option<Location2>,
+    /// An ID for the command (stored as -1 if absent); its use is not known yet.
     pub unique_id: Option<u32>,
+    /// The objects receiving the order.
     pub objects: ObjectsList,
 }
 
@@ -1176,7 +1566,7 @@ impl UnitOrderCommand {
         command.action = input.read_i8()?;
         command.param = match input.read_i8()? {
             -1 => None,
-            param => Some(param as u8),
+            param => Some(param.cast_unsigned()),
         };
         let _padding = input.read_u16::<LE>()?;
         let x = input.read_f32::<LE>()?;
@@ -1192,8 +1582,8 @@ impl UnitOrderCommand {
     }
 }
 
-///
-#[derive(Debug, Default, Clone)]
+/// Queue units of one type at a building (command `0x77`).
+#[derive(Debug, Default, Clone, Copy)]
 pub struct QueueCommand {
     /// The ID of the building where this unit is being queued.
     pub building_id: ObjectID,
@@ -1204,6 +1594,11 @@ pub struct QueueCommand {
 }
 
 impl QueueCommand {
+    /// Read a Queue command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         input.skip(3)?;
@@ -1213,6 +1608,11 @@ impl QueueCommand {
         Ok(command)
     }
 
+    /// Write this Queue command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_all(&[0, 0, 0])?;
         output.write_u32::<LE>(self.building_id.into())?;
@@ -1222,7 +1622,7 @@ impl QueueCommand {
     }
 }
 
-///
+/// Set the gather point of one or more buildings (command `0x78`).
 #[derive(Debug, Default, Clone)]
 pub struct SetGatherPointCommand {
     /// The IDs of the buildings whose gather points are being set.
@@ -1236,6 +1636,11 @@ pub struct SetGatherPointCommand {
 }
 
 impl SetGatherPointCommand {
+    /// Read a Set Gather Point command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut command = Self::default();
         let selected_count = i32::from(input.read_i8()?);
@@ -1251,6 +1656,15 @@ impl SetGatherPointCommand {
         Ok(command)
     }
 
+    /// Write this Set Gather Point command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are more than 255 buildings, the most the format's `u8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.buildings.len().try_into().unwrap())?;
         output.write_all(&[0, 0])?;
@@ -1274,6 +1688,11 @@ impl SetGatherPointCommand {
 macro_rules! buy_sell_impl {
     ($name:ident) => {
         impl $name {
+            /// Read this market command from an input stream.
+            ///
+            /// # Errors
+            ///
+            /// Returns an error if reading from `input` fails.
             pub fn read_from(mut input: impl Read) -> Result<Self> {
                 Ok(Self {
                     player_id: input.read_u8()?.into(),
@@ -1283,6 +1702,11 @@ macro_rules! buy_sell_impl {
                 })
             }
 
+            /// Write this market command to an output stream.
+            ///
+            /// # Errors
+            ///
+            /// Returns an error if writing to `output` fails.
             pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
                 output.write_u8(self.player_id.into())?;
                 output.write_u8(self.resource)?;
@@ -1295,7 +1719,7 @@ macro_rules! buy_sell_impl {
 }
 
 /// Sell a resource at the market.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct SellResourceCommand {
     /// The ID of the player issuing this command.
     pub player_id: PlayerID,
@@ -1311,7 +1735,7 @@ pub struct SellResourceCommand {
 buy_sell_impl!(SellResourceCommand);
 
 /// Buy a resource at the market.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct BuyResourceCommand {
     /// The ID of the player issuing this command.
     pub player_id: PlayerID,
@@ -1326,13 +1750,22 @@ pub struct BuyResourceCommand {
 
 buy_sell_impl!(BuyResourceCommand);
 
-#[derive(Debug, Default, Clone)]
+/// Command `0x7f`, which aoc-mgz and the DE engine name the town bell: ring or silence the town
+/// bell of a town center.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Unknown7FCommand {
+    /// The town center whose bell is rung.
     pub object_id: ObjectID,
+    /// Whether the bell is turned on (non-zero) or off, as aoc-mgz reads it.
     pub value: u32,
 }
 
 impl Unknown7FCommand {
+    /// Read a `0x7f` (town bell) command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         input.skip(3)?;
         let object_id = input.read_u32::<LE>()?.into();
@@ -1342,12 +1775,18 @@ impl Unknown7FCommand {
 }
 
 /// Send villagers back to work after they've been garrisoned into the Town Center.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct BackToWorkCommand {
+    /// The building (typically a town center) the villagers leave.
     pub building_id: ObjectID,
 }
 
 impl BackToWorkCommand {
+    /// Read a Back To Work command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         input.skip(3)?;
         let building_id = input.read_u32::<LE>()?.into();
@@ -1358,41 +1797,85 @@ impl BackToWorkCommand {
 /// A player command.
 #[derive(Debug, Clone)]
 pub enum Command {
+    /// Command `0x00`, see [`OrderCommand`].
     Order(OrderCommand),
+    /// Command `0x01`, see [`StopCommand`].
     Stop(StopCommand),
+    /// Command `0x02`, see [`WorkCommand`].
     Work(WorkCommand),
+    /// Command `0x03`, see [`MoveCommand`].
     Move(MoveCommand),
+    /// Command `0x04`, see [`CreateCommand`].
     Create(CreateCommand),
+    /// Command `0x05`, see [`AddResourceCommand`].
     AddResource(AddResourceCommand),
+    /// Command `0x0a`, see [`AIOrderCommand`].
     AIOrder(AIOrderCommand),
+    /// Command `0x0b`, see [`ResignCommand`].
     Resign(ResignCommand),
+    /// Command `0x10`, see [`GroupWaypointCommand`].
     GroupWaypoint(GroupWaypointCommand),
+    /// Command `0x12`, see [`UnitAIStateCommand`].
     UnitAIState(UnitAIStateCommand),
+    /// Command `0x13`, see [`GuardCommand`].
     Guard(GuardCommand),
+    /// Command `0x14`, see [`FollowCommand`].
     Follow(FollowCommand),
+    /// Command `0x15`, see [`PatrolCommand`].
     Patrol(PatrolCommand),
+    /// Command `0x17`, see [`FormFormationCommand`].
     FormFormation(FormFormationCommand),
+    /// Command `0x35`, see [`UserPatchAICommand`].
     UserPatchAI(UserPatchAICommand),
+    /// Command `0x64`, see [`MakeCommand`].
     Make(MakeCommand),
+    /// Command `0x65`, see [`ResearchCommand`].
     Research(ResearchCommand),
+    /// Command `0x66`, see [`BuildCommand`].
     Build(BuildCommand),
+    /// Command `0x67`, see [`GameCommand`].
     Game(GameCommand),
+    /// Command `0x69`, see [`BuildWallCommand`].
     BuildWall(BuildWallCommand),
+    /// Command `0x6a`, see [`CancelBuildCommand`].
     CancelBuild(CancelBuildCommand),
+    /// Command `0x6b`, see [`AttackGroundCommand`].
     AttackGround(AttackGroundCommand),
+    /// Command `0x6e`, see [`RepairCommand`].
     Repair(RepairCommand),
+    /// Command `0x6f`, see [`UngarrisonCommand`].
     Ungarrison(UngarrisonCommand),
+    /// Command `0x73`, see [`FlareCommand`].
     Flare(FlareCommand),
+    /// Command `0x75`, see [`UnitOrderCommand`].
     UnitOrder(UnitOrderCommand),
+    /// Command `0x77`, see [`QueueCommand`].
     Queue(QueueCommand),
+    /// Command `0x78`, see [`SetGatherPointCommand`].
     SetGatherPoint(SetGatherPointCommand),
+    /// Command `0x7a`, see [`SellResourceCommand`].
     SellResource(SellResourceCommand),
+    /// Command `0x7b`, see [`BuyResourceCommand`].
     BuyResource(BuyResourceCommand),
+    /// Command `0x7f`, see [`Unknown7FCommand`].
     Unknown7F(Unknown7FCommand),
+    /// Command `0x80`, see [`BackToWorkCommand`].
     BackToWork(BackToWorkCommand),
 }
 
 impl Command {
+    /// Read a command from an input stream: its length, its bytes, then the world time.
+    ///
+    /// Bytes of the command that its reader does not consume are skipped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the command type is not one listed in [`Command`], or if the command's own
+    /// reader panics.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let len = input.read_u32::<LE>()?;
 
@@ -1432,22 +1915,31 @@ impl Command {
             0x80 => BackToWorkCommand::read_from(&mut cursor).map(Command::BackToWork),
             id => panic!("unsupported command type {id:#x}"),
         };
-        // Consume any excess bytes.
-        std::io::copy(&mut cursor, &mut std::io::sink())?;
+        // Consume any excess bytes; how many there were does not matter.
+        let _ = std::io::copy(&mut cursor, &mut std::io::sink())?;
 
         let _world_time = input.read_u32::<LE>()?;
         command
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// A time step in the body: how much game time passed since the previous one.
+#[derive(Debug, Default, Clone, Copy)]
+// `time` is the public field name callers use.
+#[allow(clippy::struct_field_names)]
 pub struct Time {
+    /// The game time that passed in this step, in milliseconds.
     pub time: u32,
     old_world_time: u32,
     unknown: u32,
 }
 
 impl Time {
+    /// Read a time step from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut time = Self {
             time: input.read_u32::<LE>()?,
@@ -1464,15 +1956,25 @@ impl Time {
 
 /// A Sync message, used to ensure that all players agree on the game state by comparing checksums
 /// and world time.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Sync {
+    /// A checksum of the game state.
     pub checksum: u32,
+    /// A checksum of the objects' positions.
     pub position_checksum: u32,
+    /// A checksum of the commands. When it is non-zero, 332 bytes of further data follow; they
+    /// are skipped.
     pub action_checksum: u32,
+    /// The world time of the next sync, as the reader names it; not verified.
     pub next_world_time: u32,
 }
 
 impl Sync {
+    /// Read a sync message from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut sync = Self::default();
         let _always_zero = input.read_u32::<LE>()?;
@@ -1493,15 +1995,21 @@ impl Sync {
 }
 
 /// Action at the start of the game, contains settings affecting the rec format.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Meta {
     /// The version of the action log format.
     /// `3` for `AoC` 1.0, `4` for `AoC` 1.0c and `UserPatch`.
     pub log_version: Option<u32>,
+    /// How many time steps pass between two sync messages.
     pub checksum_interval: u32,
+    /// Whether the game was a multiplayer game.
     pub is_multiplayer: bool,
+    /// Whether every body operation is preceded by a one-byte sequence number.
     pub use_sequence_numbers: bool,
+    /// The ID of the player who recorded the game.
     pub local_player_id: PlayerID,
+    /// The fourth `u32` of the metadata. genie-rs reads it as a header position, aoc-mgz as the
+    /// reveal-map setting; not verified.
     pub header_position: u32,
     /// The amount of saved chapters in this rec / save game. This is only set if the game version
     /// that generated the file supports saved chapters (i.e. The Conquerors and up).
@@ -1528,6 +2036,14 @@ impl Meta {
 
     /// Read recorded game body metadata in the `mgl` format used by Age of Empires 2: The
     /// Age Of Kings.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored local player ID is above 255.
     pub fn read_from_mgl(mut input: impl Read) -> Result<Self> {
         let meta = Self::read_from_inner(&mut input)?;
         let _exe_file_size = input.read_u64::<LE>()?;
@@ -1542,6 +2058,14 @@ impl Meta {
 
     /// Read recorded game body metadata in the `mgx` format used by Age of Empires 2: The
     /// Conquerors and all subsequent versions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the log version is not 3, 4 or 5, or if the stored local player ID is above 255.
     pub fn read_from_mgx(mut input: impl Read) -> Result<Self> {
         let log_version = input.read_u32::<LE>()?;
         assert!(matches!(log_version, 3..=5));
@@ -1566,6 +2090,15 @@ pub struct Chat {
 }
 
 impl Chat {
+    /// Read a chat message from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails or the text is not valid WINDOWS-1252.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `i32` stored before the text is not -1.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         assert_eq!(input.read_i32::<LE>()?, -1);
         let message = input.read_u32_length_prefixed_str()?.unwrap_or_default();
@@ -1573,12 +2106,17 @@ impl Chat {
     }
 }
 
-/// An action: TODO
+/// One operation of the recorded game body.
 #[derive(Debug, Clone)]
 pub enum Action {
+    /// A player command (operation 1).
     Command(Command),
+    /// A time step (operation 2).
     Time(Time),
+    /// A sync message (operation 0).
     Sync(Sync),
+    /// A view lock (operation 3).
     ViewLock(ViewLock),
+    /// A chat message (operation 4).
     Chat(Chat),
 }

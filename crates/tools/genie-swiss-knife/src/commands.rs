@@ -17,6 +17,8 @@ pub const CONFIG_FILE: &str = "genie_swiss_knife.toml";
 
 /// `GenieSwissKnife` Subcommands
 /// Subcommands need to be listed in an enum.
+// No `Copy`: the planned subcommands carry non-`Copy` arguments (paths).
+#[allow(missing_copy_implementations)]
 #[derive(clap::Parser, Command, Debug, Runnable)]
 pub enum GenieSwissKnifeCmd {}
 

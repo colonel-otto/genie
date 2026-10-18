@@ -80,7 +80,6 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
-#![allow(missing_docs)]
 
 pub use genie_cpx;
 pub use genie_dat;

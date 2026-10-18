@@ -218,11 +218,8 @@ impl TryFrom<i16> for StringKey {
 impl From<&str> for StringKey {
     #[inline]
     fn from(s: &str) -> Self {
-        if let Ok(n) = s.parse() {
-            Self::Num(n)
-        } else {
-            Self::Name(String::from(s))
-        }
+        s.parse()
+            .map_or_else(|_| Self::Name(String::from(s)), Self::Num)
     }
 }
 
@@ -241,7 +238,7 @@ impl From<String> for StringKey {
 ///
 /// When converting to a string, this does not happen, as numeric keys will be converted to
 /// strings.
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, Copy, thiserror::Error)]
 #[error("could not convert StringKey to the wanted integer size")]
 pub struct TryFromStringKeyError;
 

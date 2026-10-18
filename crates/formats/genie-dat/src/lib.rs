@@ -8,7 +8,6 @@
 #![deny(rust_2018_idioms)]
 #![deny(unsafe_code)]
 #![warn(unused)]
-#![allow(missing_docs)]
 
 mod civ;
 mod color_table;
@@ -179,7 +178,26 @@ pub struct DatFile {
 
 impl DatFile {
     /// Read a data file from a compressed byte stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading or inflating `input` fails, or if an ID is out of range.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a civilization's player type is not 1, or if a name does not fit its fixed-size
+    /// buffer after decoding (see [`Civilization::read_from`] and [`TechEffect::read_from`]).
+    // One statement per field of the file, in file order.
+    #[allow(clippy::too_many_lines)]
     pub fn read_from(input: impl Read) -> Result<Self> {
+        fn read_array<T>(num: usize, mut read: impl FnMut() -> Result<T>) -> Result<Vec<T>> {
+            let mut list = vec![];
+            for _ in 0..num {
+                list.push(read()?);
+            }
+            Ok(list)
+        }
+
         let mut input = DeflateDecoder::new(input);
 
         let mut file_version = [0u8; 8];
@@ -192,9 +210,9 @@ impl DatFile {
         let game_version = if file_version == FileVersion(*b"VER 5.7\0") {
             match num_terrains {
                 32 => GameVersion::AoK,
-                41 => GameVersion::AoC,
                 100 => GameVersion::HD,
-                _ => GameVersion::AoC, // TODO support different versions
+                // 41 terrains is AoC. TODO support different versions
+                _ => GameVersion::AoC,
             }
         } else {
             GameVersion::AoC // TODO support different versions
@@ -210,14 +228,6 @@ impl DatFile {
 
         // Two lists of pointers
         input.skip(4 * u64::from(num_terrain_tables) + 4 * u64::from(num_terrain_tables))?;
-
-        fn read_array<T>(num: usize, mut read: impl FnMut() -> Result<T>) -> Result<Vec<T>> {
-            let mut list = vec![];
-            for _ in 0..num {
-                list.push(read()?);
-            }
-            Ok(list)
-        }
 
         let terrain_tables = read_array(num_terrain_tables.into(), || {
             TerrainRestriction::read_from(&mut input, file_version, num_terrains)
@@ -261,8 +271,7 @@ impl DatFile {
             *val = TileSize::read_from(&mut input)?;
         }
 
-        // Padding
-        input.read_i16::<LE>()?;
+        let _padding = input.read_i16::<LE>()?;
 
         let terrains = read_array(num_terrains_fixed.into(), || {
             Terrain::read_from(&mut input, file_version, num_terrains_fixed)
@@ -360,6 +369,18 @@ impl DatFile {
     }
 
     /// Serialize this data file to an output stream. Compression is applied by this function.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing or compressing fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a list is too long for its count field, or if a member cannot be written (see
+    /// the `write_to` methods of the member types).
+    // One statement per field of the file, in file order. The terrain, random map, effect, task
+    // list, civilization and tech counts are truncated to the format's u16/u32, as before.
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         let num_terrains = if self.game_version == GameVersion::AoC && self.terrains.len() == 42 {
             41

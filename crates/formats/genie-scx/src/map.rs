@@ -20,6 +20,10 @@ pub struct Tile {
 
 impl Tile {
     /// Read a tile from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails.
     pub fn read_from(mut input: impl Read, version: u32) -> Result<Self> {
         let mut tile = Self {
             terrain: input.read_u8()?,
@@ -36,6 +40,10 @@ impl Tile {
     }
 
     /// Write a tile to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
     pub fn write_to(&self, mut output: impl Write, version: u32) -> Result<()> {
         output.write_u8(self.terrain)?;
         output.write_i8(self.elevation)?;
@@ -74,7 +82,7 @@ impl Map {
             width,
             height,
             render_waves: true,
-            tiles: vec![Default::default(); (width * height) as usize],
+            tiles: vec![Tile::default(); (width * height) as usize],
         }
     }
 
@@ -86,9 +94,14 @@ impl Map {
     }
 
     /// Read map/terrain data from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails, or if the map is wider or taller than 500 tiles (most
+    /// likely a misread).
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut map = match input.read_u32::<LE>()? {
-            0xDEADF00D => {
+            0xDEAD_F00D => {
                 let version = input.read_u32::<LE>()?;
                 let render_waves = if version < 2 {
                     true
@@ -143,9 +156,17 @@ impl Map {
     }
 
     /// Write map/terrain data to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of tiles is not width × height.
     pub fn write_to(&self, mut output: impl Write, version: u32) -> Result<()> {
         if version != 0 {
-            output.write_u32::<LE>(0xDEADF00D)?;
+            output.write_u32::<LE>(0xDEAD_F00D)?;
             output.write_u32::<LE>(version)?;
         }
         if version >= 2 {

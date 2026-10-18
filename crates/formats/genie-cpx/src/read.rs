@@ -119,6 +119,8 @@ fn read_scenario_meta_de2<R: Read>(input: &mut R) -> Result<ScenarioMeta> {
     })
 }
 
+// `usize` is 64 bits wide on the usual targets; a 32-bit target truncates the u64 values.
+#[allow(clippy::cast_possible_truncation)]
 fn read_scenario_meta_de<R: Read>(input: &mut R) -> Result<ScenarioMeta> {
     let size = input.read_u64::<LE>()? as usize;
     let offset = input.read_u64::<LE>()? as usize;
@@ -133,6 +135,8 @@ fn read_scenario_meta_de<R: Read>(input: &mut R) -> Result<ScenarioMeta> {
     })
 }
 
+// The classic format stores size and offset as i32; a negative value is not expected.
+#[allow(clippy::cast_sign_loss)]
 fn read_scenario_meta<R: Read>(input: &mut R) -> Result<ScenarioMeta> {
     let size = input.read_i32::<LE>()? as usize;
     let offset = input.read_i32::<LE>()? as usize;
@@ -168,6 +172,11 @@ where
     ///
     /// This immediately reads the campaign header and scenario metadata, but not the scenario
     /// files themselves.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails, if a string cannot be decoded, if the campaign or a
+    /// scenario has no name, or if a DLC dependency is unknown.
     pub fn from(mut input: R) -> Result<Self> {
         let header = read_campaign_header(&mut input)?;
         let mut entries = vec![];
@@ -237,6 +246,11 @@ where
     }
 
     /// Get a scenario by its file name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no scenario has that file name, if reading fails, or if the scenario
+    /// cannot be parsed.
     pub fn by_name(&mut self, filename: &str) -> Result<Scenario> {
         self.by_name_raw(filename)
             .map(Cursor::new)
@@ -244,6 +258,11 @@ where
     }
 
     /// Get a scenario by its campaign index.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is out of range, if reading fails, or if the scenario cannot
+    /// be parsed.
     pub fn by_index(&mut self, index: usize) -> Result<Scenario> {
         self.by_index_raw(index)
             .map(Cursor::new)
@@ -251,6 +270,10 @@ where
     }
 
     /// Get a scenario file buffer by its file name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no scenario has that file name, or if reading fails.
     pub fn by_name_raw(&mut self, filename: &str) -> Result<Vec<u8>> {
         self.get_id(filename)
             .ok_or(ReadCampaignError::NotFoundError)
@@ -258,16 +281,23 @@ where
     }
 
     /// Get a scenario file buffer by its campaign index.
+    ///
+    /// The buffer is shorter than the entry's size if the input ends early.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is out of range, or if seeking or reading fails.
     pub fn by_index_raw(&mut self, index: usize) -> Result<Vec<u8>> {
-        let entry = match self.entries.get(index) {
-            Some(entry) => entry,
-            None => return Err(ReadCampaignError::NotFoundError),
+        let Some(entry) = self.entries.get(index) else {
+            return Err(ReadCampaignError::NotFoundError);
         };
 
         let mut result = vec![];
 
-        self.reader.seek(SeekFrom::Start(entry.offset as u64))?;
-        self.reader
+        // The new position and the byte count are not needed: `result` holds the bytes.
+        let _ = self.reader.seek(SeekFrom::Start(entry.offset as u64))?;
+        let _ = self
+            .reader
             .by_ref()
             .take(entry.size as u64)
             .read_to_end(&mut result)?;
@@ -314,9 +344,11 @@ mod tests {
         let filenames: Vec<_> = c.entries().map(|e| &e.filename).collect();
         assert_eq!(filenames, vec!["Bronze Age Art of War.scn"]);
 
-        c.by_index_raw(0).context("could not read raw file")?;
-        c.by_name_raw("Bronze Age Art of War.scn")
+        let by_index = c.by_index_raw(0).context("could not read raw file")?;
+        let by_name = c
+            .by_name_raw("Bronze Age Art of War.scn")
             .context("could not read raw file")?;
+        assert_eq!(by_index, by_name);
         Ok(())
     }
 

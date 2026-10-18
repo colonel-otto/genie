@@ -1,5 +1,7 @@
+//! Prints the version information and map size of a scenario file.
+
 use genie_formats::Scenario;
-use simplelog::{ColorChoice, LevelFilter, TermLogger, TerminalMode};
+use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
 use std::fs::File;
 
 fn main() {
@@ -16,7 +18,7 @@ fn main() {
 
     TermLogger::init(
         log_level,
-        Default::default(),
+        Config::default(),
         TerminalMode::Mixed,
         ColorChoice::Auto,
     )

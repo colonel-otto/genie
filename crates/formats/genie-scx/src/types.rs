@@ -235,6 +235,10 @@ pub enum StartingAge {
 impl StartingAge {
     /// Convert a starting age number to the appropriate enum for a particular
     /// data version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `n` is not a starting age in that data version.
     pub fn try_from(n: i32, version: f32) -> Result<Self, ParseStartingAgeError> {
         if version < 1.25 {
             match n {
@@ -359,7 +363,7 @@ impl From<VictoryCondition> for u8 {
 }
 
 /// All the versions an SCX file uses in a single struct.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VersionBundle {
     /// The version of the 'container' file format.
     pub format: SCXVersion,
@@ -439,7 +443,7 @@ impl VersionBundle {
 
     /// A version bundle with the parameters `UserPatch` 1.5 uses by default.
     #[must_use]
-    pub fn userpatch_15() -> Self {
+    pub const fn userpatch_15() -> Self {
         Self::userpatch_14()
     }
 

@@ -49,7 +49,7 @@ fn tier_1_recordings_read_and_round_trip() {
         let Ok(version) = chapters[0].save_version() else {
             continue;
         };
-        if (version.hundredths(), version.build) != (6660, 158041) {
+        if (version.hundredths(), version.build) != (6660, 158_041) {
             continue;
         }
         tier1 += 1;

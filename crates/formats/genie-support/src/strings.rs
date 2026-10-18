@@ -41,31 +41,49 @@ pub enum WriteStringError {
 
 /// Write a string to an output stream, using code page 1252, using a `u16` for the length prefix.
 ///
-/// This writes the length of the string (including NULL terminator) as a little-endian u16,
+/// This writes the length of the string (including NULL terminator) as a little-endian i16,
 /// followed by the encoded bytes, followed by a NULL terminator.
+///
+/// # Errors
+///
+/// Returns an error if the string cannot be encoded as WINDOWS-1252, or if writing fails.
+///
+/// # Panics
+///
+/// Panics if the encoded string is `i16::MAX` bytes or longer, so that its length with the NULL
+/// terminator does not fit the `i16` prefix.
 pub fn write_str<W: Write>(output: &mut W, string: &str) -> Result<(), WriteStringError> {
     let (bytes, _enc, failed) = WINDOWS_1252.encode(string);
     if failed {
         return Err(WriteStringError::EncodeStringError(EncodeStringError));
     }
-    assert!(bytes.len() < std::i16::MAX as usize);
-    output.write_i16::<LE>(bytes.len() as i16 + 1)?;
+    let len = i16::try_from(bytes.len() + 1).expect("string too long for an i16 length prefix");
+    output.write_i16::<LE>(len)?;
     output.write_all(&bytes)?;
     output.write_u8(0)?;
     Ok(())
 }
 
-/// Write a string to an output stream, using code page 1252, using a `u32` for the length prefix.
+/// Write a string to an output stream, using code page 1252, using an `i32` for the length prefix.
 ///
-/// This writes the length of the string (including NULL terminator) as a little-endian u177,
+/// This writes the length of the string (including NULL terminator) as a little-endian i32,
 /// followed by the encoded bytes, followed by a NULL terminator.
+///
+/// # Errors
+///
+/// Returns an error if the string cannot be encoded as WINDOWS-1252, or if writing fails.
+///
+/// # Panics
+///
+/// Panics if the encoded string is `i32::MAX` bytes or longer, so that its length with the NULL
+/// terminator does not fit the `i32` prefix.
 pub fn write_i32_str<W: Write>(output: &mut W, string: &str) -> Result<(), WriteStringError> {
     let (bytes, _enc, failed) = WINDOWS_1252.encode(string);
     if failed {
         return Err(WriteStringError::EncodeStringError(EncodeStringError));
     }
-    assert!(bytes.len() < std::i32::MAX as usize);
-    output.write_i32::<LE>(bytes.len() as i32 + 1)?;
+    let len = i32::try_from(bytes.len() + 1).expect("string too long for an i32 length prefix");
+    output.write_i32::<LE>(len)?;
     output.write_all(&bytes)?;
     output.write_u8(0)?;
     Ok(())
@@ -74,6 +92,14 @@ pub fn write_i32_str<W: Write>(output: &mut W, string: &str) -> Result<(), Write
 /// Write a string to an output stream, using code page 1252, using a `u16` for the length prefix.
 ///
 /// When given a `None`, it outputs a 0 for the length. Otherwise, see `write_str`.
+///
+/// # Errors
+///
+/// Returns an error if the string cannot be encoded as WINDOWS-1252, or if writing fails.
+///
+/// # Panics
+///
+/// Panics if the encoded string is too long for the `i16` prefix (see `write_str`).
 pub fn write_opt_str<W: Write>(
     output: &mut W,
     option: &Option<String>,
@@ -88,7 +114,15 @@ pub fn write_opt_str<W: Write>(
 
 /// Write a string to an output stream, using code page 1252, using a `u32` for the length prefix.
 ///
-/// When given a `None`, it outputs a 0 for the length. Otherwise, see `write_str`.
+/// When given a `None`, it outputs a 0 for the length. Otherwise, see `write_i32_str`.
+///
+/// # Errors
+///
+/// Returns an error if the string cannot be encoded as WINDOWS-1252, or if writing fails.
+///
+/// # Panics
+///
+/// Panics if the encoded string is too long for the `i32` prefix (see `write_i32_str`).
 pub fn write_opt_i32_str<W: Write>(
     output: &mut W,
     option: &Option<String>,
@@ -119,6 +153,12 @@ fn decode_str(bytes: &[u8]) -> Result<String, DecodeStringError> {
 /// Extension trait for reading strings in several common formats used by `AoE2`.
 pub trait ReadStringsExt: Read {
     /// Read an optionally null-terminated WINDOWS-1252-encoded string with the given `length` in bytes.
+    ///
+    /// Returns `None` for a zero `length` or an empty string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails or the bytes are not valid WINDOWS-1252.
     fn read_str(&mut self, length: usize) -> Result<Option<String>, ReadStringError> {
         if length > 0 {
             let mut bytes = vec![0; length];
@@ -137,7 +177,11 @@ pub trait ReadStringsExt: Read {
     }
 
     /// Read an u16 value, then read an optionally null-terminated WINDOWS-1252-encoded string of
-    /// that length in bytes.
+    /// that length in bytes. A length of `0xFFFF` gives `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails or the bytes are not valid WINDOWS-1252.
     fn read_u16_length_prefixed_str(&mut self) -> Result<Option<String>, ReadStringError> {
         match self.read_u16::<LE>()? {
             0xFFFF => Ok(None),
@@ -146,7 +190,11 @@ pub trait ReadStringsExt: Read {
     }
 
     /// Read an u32 value, then read an optionally null-terminated WINDOWS-1252-encoded string of
-    /// that length in bytes.
+    /// that length in bytes. A length of `0xFFFF_FFFF` gives `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails or the bytes are not valid WINDOWS-1252.
     fn read_u32_length_prefixed_str(&mut self) -> Result<Option<String>, ReadStringError> {
         match self.read_u32::<LE>()? {
             0xFFFF_FFFF => Ok(None),
@@ -158,6 +206,11 @@ pub trait ReadStringsExt: Read {
     ///
     /// Reads a 'signature' value, then the `length` as an u16 value, then reads an optionally
     /// null-terminated WINDOWS-1252-encoded string of that length in bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails, if the signature is not 0x0A60, or if the bytes are not
+    /// valid WINDOWS-1252.
     fn read_hd_style_str(&mut self) -> Result<Option<String>, ReadStringError> {
         let open = self.read_u16::<LE>()?;
         // Check that this actually is the start of a string

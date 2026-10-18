@@ -1,5 +1,7 @@
+//! Lists or extracts the scenario files in a campaign file.
+
 use genie_formats::Campaign;
-use std::{cmp, fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -45,7 +47,7 @@ fn list(args: List) {
 
     (0..campaign.len()).for_each(|i| {
         let bytes = campaign.by_index_raw(i).expect("missing scenario data");
-        println!("- {} ({})", names[i], format_bytes(bytes.len() as u32));
+        println!("- {} ({})", names[i], format_bytes(bytes.len()));
     });
 }
 
@@ -70,18 +72,20 @@ fn extract(args: Extract) {
 }
 
 /// Derived from <https://github.com/banyan/rust-pretty-bytes/blob/master/src/converter.rs>
-fn format_bytes(num: u32) -> String {
+fn format_bytes(num: usize) -> String {
     let units = ["B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
     if num < 1 {
         return format!("{} {}", num, "B");
     }
-    let delimiter = 1000u32;
-    let exponent = cmp::min(
-        f64::from(num).log(f64::from(delimiter)).floor() as u32,
-        (units.len() - 1) as u32,
-    );
-    let pretty_bytes = num / delimiter.pow(exponent);
-    let unit = units[exponent as usize];
+    let delimiter = 1000;
+    // floor(log1000(num)), capped at the largest unit
+    let mut pretty_bytes = num;
+    let mut exponent = 0;
+    while pretty_bytes >= delimiter && exponent < units.len() - 1 {
+        pretty_bytes /= delimiter;
+        exponent += 1;
+    }
+    let unit = units[exponent];
     format!("{pretty_bytes:.2} {unit}")
 }
 

@@ -4,67 +4,69 @@ use genie_support::{DecodeStringError, ReadStringError, ReadStringsExt, write_i3
 use std::convert::TryFrom;
 use std::io::{Read, Write};
 
+/// The error code of an AI script that failed to compile, as the game's AI rule parser reports it.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, num_enum::IntoPrimitive, num_enum::TryFromPrimitive,
 )]
 #[repr(u32)]
 pub enum AIErrorCode {
-    ///
+    /// A `defconst` redefines a constant that already exists.
     ConstantAlreadyDefined = 0,
-    ///
+    /// The AI file could not be opened.
     FileOpenFailed = 1,
-    ///
+    /// The AI file could not be read.
     FileReadFailed = 2,
-    ///
+    /// An identifier is not valid.
     InvalidIdentifier = 3,
-    ///
+    /// A keyword is not valid.
     InvalidKeyword = 4,
-    ///
+    /// A preprocessor directive (`#load-if-defined` and the like) is not valid.
     InvalidPreprocessorDirective = 5,
-    ///
+    /// One of the parser's fixed-size lists is full.
     ListFull = 6,
-    ///
+    /// A rule lacks the `=>` between its conditions and its actions.
     MissingArrow = 7,
-    ///
+    /// A closing parenthesis is missing.
     MissingClosingParenthesis = 8,
-    ///
+    /// A string lacks its closing quote.
     MissingClosingQuote = 9,
-    ///
+    /// A conditional block lacks its `#end-if`.
     MissingEndIf = 10,
-    ///
+    /// A directive that loads a file lacks the file name.
     MissingFileName = 11,
-    ///
+    /// An identifier is missing.
     MissingIdentifier = 12,
-    ///
+    /// A keyword is missing.
     MissingKeyword = 13,
-    ///
+    /// A rule lacks its left-hand side (the conditions).
     MissingLHS = 14,
-    ///
+    /// An opening parenthesis is missing.
     MissingOpeningParenthesis = 15,
-    ///
+    /// A preprocessor directive lacks its symbol.
     MissingPreprocessorSymbol = 16,
-    ///
+    /// A rule lacks its right-hand side (the actions).
     MissingRHS = 17,
-    ///
+    /// The script contains no rules.
     NoRules = 18,
-    ///
+    /// Conditional blocks are nested too deeply.
     PreprocessorNestingTooDeep = 19,
-    ///
+    /// A rule exceeds the parser's length limit.
     RuleTooLong = 20,
-    ///
+    /// The parser's string table is full.
     StringTableFull = 21,
-    ///
+    /// An error the game does not describe.
     UndocumentedError = 22,
-    ///
+    /// An `#else` without a matching `#if`.
     UnexpectedElse = 23,
-    ///
+    /// An `#end-if` without a matching `#if`.
     UnexpectedEndIf = 24,
-    ///
+    /// An unexpected internal error.
     UnexpectedError = 25,
-    ///
+    /// The file ends in the middle of a construct.
     UnexpectedEOF = 26,
 }
 
+/// The compile error the scenario's AI script had when the scenario was saved.
 #[derive(Debug, Clone)]
 pub struct AIErrorInfo {
     filename: String,
@@ -126,6 +128,7 @@ impl AIErrorInfo {
     }
 }
 
+/// An AI script embedded in the scenario: its file name and its source text.
 #[derive(Debug, Clone)]
 pub struct AIFile {
     filename: String,
@@ -153,6 +156,7 @@ impl AIFile {
     }
 }
 
+/// The scenario's embedded AI scripts and the last AI compile error.
 #[derive(Debug, Default, Clone)]
 pub struct AIInfo {
     error: Option<AIErrorInfo>,
@@ -160,6 +164,7 @@ pub struct AIInfo {
 }
 
 impl AIInfo {
+    /// Read the AI scripts block; `None` if it holds neither scripts nor an error.
     pub fn read_from(mut input: impl Read) -> Result<Option<Self>> {
         let has_ai_files = input.read_u32::<LE>()? != 0;
         let has_error = input.read_u32::<LE>()? != 0;
@@ -183,6 +188,9 @@ impl AIInfo {
         Ok(Some(Self { error, files }))
     }
 
+    /// Write the AI scripts block.
+    // The format stores the number of AI files as a u32.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         output.write_u32::<LE>(u32::from(!self.files.is_empty()))?;
 

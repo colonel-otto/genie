@@ -22,23 +22,29 @@ use std::{io::Read, sync::LazyLock};
 /// while `cargo test` runs the tests in parallel.
 pub static RUNNER: LazyLock<CmdRunner> = LazyLock::new(|| {
     let mut runner = CmdRunner::new(env!("CARGO_BIN_EXE_gsk"));
-    runner.exclusive();
+    // `exclusive` returns the runner again, for chaining.
+    let _ = runner.exclusive();
     runner
 });
 
 /// gsk has no subcommands yet: without one it must fail, not pretend to work.
 #[test]
+// False positive: `cmd` holds the runner's exclusive lock, which the consuming `wait` passes on.
+#[allow(clippy::significant_drop_tightening)]
 fn without_a_subcommand_gsk_fails() {
     let mut runner = RUNNER.clone();
     let mut cmd = runner.capture_stderr().run();
     let mut stderr = String::new();
-    cmd.stderr().read_to_string(&mut stderr).unwrap();
+    // The byte count is `stderr.len()`.
+    let _ = cmd.stderr().read_to_string(&mut stderr).unwrap();
     assert!(stderr.contains("Usage: gsk"), "stderr: {stderr}");
     cmd.wait().unwrap().expect_code(2);
 }
 
 /// The version line names the command `gsk`, not the crate.
 #[test]
+// False positive: `cmd` holds the runner's exclusive lock, which the consuming `wait` passes on.
+#[allow(clippy::significant_drop_tightening)]
 fn version_names_the_command_gsk() {
     let mut runner = RUNNER.clone();
     let mut cmd = runner.arg("--version").capture_stdout().run();

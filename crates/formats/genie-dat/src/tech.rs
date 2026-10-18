@@ -8,7 +8,7 @@ use genie_support::{MapInto, StringKey, read_opt_u16, read_opt_u32};
 use std::io::{Read, Result, Write};
 
 /// An effect command specifies an attribute change when a tech effect is triggered.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct EffectCommand {
     /// The command.
     pub command_type: u8,
@@ -27,13 +27,21 @@ pub struct TechEffect {
     pub commands: Vec<EffectCommand>,
 }
 
+/// One of a tech's three resource costs (genieutils' `ResearchResourceCost`).
+///
+/// Despite the name, it holds a cost, not a reference to a [`TechEffect`].
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TechEffectRef {
+    /// The resource type paid; 0xFFFF marks an unused slot.
     pub effect_type: u16,
+    /// The amount of that resource.
     pub amount: u16,
+    /// Whether the cost is deducted from the player's stockpile.
     pub enabled: bool,
 }
 
+/// A technology (research): its prerequisites, costs, where and how long it is researched, and
+/// its strings and icon.
 #[derive(Debug, Default, Clone)]
 pub struct Tech {
     required_techs: ArrayVec<TechID, 6>,
@@ -55,6 +63,11 @@ pub struct Tech {
 }
 
 impl EffectCommand {
+    /// Read an effect command from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let command_type = input.read_u8()?;
         let params = (
@@ -69,6 +82,11 @@ impl EffectCommand {
         })
     }
 
+    /// Write this effect command to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         output.write_u8(self.command_type)?;
         output.write_i16::<LE>(self.params.0)?;
@@ -94,6 +112,15 @@ impl TechEffect {
         self.name = TechEffectName::from(name).unwrap();
     }
 
+    /// Read a tech effect from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the name, decoded from WINDOWS-1252, takes more than 31 bytes as UTF-8.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         let mut effect = Self::default();
         let mut bytes = [0; 31];
@@ -110,6 +137,13 @@ impl TechEffect {
         Ok(effect)
     }
 
+    /// Write this tech effect to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    // The format stores the command count as a u16; longer lists are truncated, as before.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
         let mut buffer = [0; 31];
         buffer[..self.name.len()].copy_from_slice(self.name.as_bytes());
@@ -124,6 +158,11 @@ impl TechEffect {
 }
 
 impl TechEffectRef {
+    /// Read a resource cost from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails.
     pub fn read_from<R: Read>(input: &mut R) -> Result<Self> {
         Ok(Self {
             effect_type: input.read_u16::<LE>()?,
@@ -132,6 +171,11 @@ impl TechEffectRef {
         })
     }
 
+    /// Write this resource cost to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
     pub fn write_to<W: Write>(self, output: &mut W) -> Result<()> {
         output.write_u16::<LE>(self.effect_type)?;
         output.write_u16::<LE>(self.amount)?;
@@ -147,6 +191,11 @@ impl Tech {
         self.name.as_str()
     }
 
+    /// Read a tech from an input stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from `input` fails, or if an ID is out of range.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut tech = Self::default();
         for _ in 0..6 {
@@ -186,6 +235,18 @@ impl Tech {
         Ok(tech)
     }
 
+    /// Write this tech to an output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a string key is a name rather than a number.
+    // The format stores the string IDs and the name length as u16 (truncated, as before); the
+    // count of required techs is at most 6.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
         for i in 0..6 {
             match self.required_techs.get(i) {
