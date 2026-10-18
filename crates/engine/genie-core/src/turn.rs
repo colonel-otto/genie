@@ -173,6 +173,10 @@ pub enum Command {
     /// A command the slice runs part of or none, for a reason the decoder names: it stops the
     /// issuing player's lane.
     Unmodelled { player: usize, why: Unsupported },
+    /// GAME (0x67, `0x140e7c330`) sub-commands 0x10 and 0x13: the player's `autoFarmQueue`
+    /// (`+0x1424`) or `autoFishTrapQueue` (`+0x1425`) flips (`fishtrap` true for 0x13). The other
+    /// sub-commands are the decoder's [`Command::Unmodelled`].
+    AutoQueue { player: usize, fishtrap: bool },
     /// INTERACT (0x00), MOVE (0x03) or RETREAT (0x23): before the order runs, each listed unit's AI
     /// resets its idle timeout ([`UnitAi::reset_for_order`]), in list order, wherever the unit is.
     /// INTERACT's order then runs ([`Interact`]), and MOVE's ([`MoveOrder`]); RETREAT is not
@@ -1473,6 +1477,10 @@ pub struct Player {
     /// The sleeping objects, in their list's order: they are not updated; a unit's work on one
     /// wakes it.
     pub sleeping: Vec<Unit>,
+    /// `autoFarmQueue` (`+0x1424`) and `autoFishTrapQueue` (`+0x1425`), which GAME 0x10 and 0x13
+    /// flip; nothing the slice models reads them yet.
+    pub auto_farm_queue: bool,
+    pub auto_fishtrap_queue: bool,
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, Unsupported)>,
     /// Every object the slice stopped updating, with the tick and why.
@@ -2083,6 +2091,14 @@ impl Turns {
             Command::Unmodelled { player, why } => {
                 let owner = &mut self.players[player];
                 owner.stop(self.ticks, why);
+            }
+            Command::AutoQueue { player, fishtrap } => {
+                let owner = &mut self.players[player];
+                if fishtrap {
+                    owner.auto_fishtrap_queue = !owner.auto_fishtrap_queue;
+                } else {
+                    owner.auto_farm_queue = !owner.auto_farm_queue;
+                }
             }
             Command::GatherPoint {
                 player,

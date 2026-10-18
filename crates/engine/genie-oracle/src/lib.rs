@@ -1240,6 +1240,8 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 attributes: attributes.clone(),
                 civ,
                 relations: p.world_player().base.relation.clone(),
+                auto_farm_queue: p.world_player().auto_farm_queue != 0,
+                auto_fishtrap_queue: p.world_player().auto_fish_trap_queue != 0,
                 unsupported: None,
                 freezes: Vec::new(),
                 stopped: false,
@@ -2023,6 +2025,13 @@ impl Decoder {
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true, None),
+            // GAME's toggles of the automatic farm and fish trap queues; the player is at +8
+            Packet::Game(g) if matches!(g.field_0x04, 0x10 | 0x13) => {
+                return Some(Command::AutoQueue {
+                    player: usize::try_from(g.field_0x08).ok()?,
+                    fishtrap: g.field_0x04 == 0x13,
+                });
+            }
             other => {
                 // a command the decoder does not turn into the slice's stops its player (byte 1
                 // is the issuing comm player)
