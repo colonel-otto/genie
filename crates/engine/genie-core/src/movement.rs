@@ -1769,6 +1769,78 @@ impl Mover {
         self.reach_test(me, world, plan, to, Some((target, t)), range, master)
     }
 
+    /// Slot 0x3e8 of the unit (`FUN_14114f790`): the length of its short path to object `target`
+    /// within `range` (the obstruction manager's pather `FUN_140f85580` from the unit's place, its
+    /// radius, its terrain mask), None when there is none or the target is gone. The pather fails
+    /// (4) for a unit closer to the map's edge than its radius; a unit already within `range` of
+    /// the target's footprint (the gap from its radius plus the target's on each axis) or on the
+    /// target's place needs no path (0, length 0). Its search beyond that is not modelled, nor is
+    /// a goal beyond the edge.
+    pub fn short_reach(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        target: i32,
+        range: f32,
+    ) -> Result<Option<f32>, Unsupported> {
+        let Some(t) = world.get_known(target)? else {
+            return Ok(None);
+        };
+        let [x0, y0, _] = me.position;
+        let [x1, y1, _] = t.position;
+        let r = self.stats.radius[0];
+        let [w, h] = world.map;
+        let (max_x, max_y) = (w as f32 - r, h as f32 - r);
+        if x0 < r || max_x < x0 || y0 < r || max_y < y0 {
+            return Ok(None);
+        }
+        if x1 < r || max_x < x1 || y1 < r || max_y < y1 {
+            return Err(Unsupported(
+                "a short path to a goal at the map's edge (FUN_140f89d80)",
+            ));
+        }
+        let gap = |d: f32, rt: f32| {
+            let g = d.abs() - (r + rt);
+            if g <= 0.0 { 0.0 } else { g }
+        };
+        let (gx, gy) = (gap(x0 - x1, t.radius[0]), gap(y0 - y1, t.radius[1]));
+        if (x0 == x1 && y0 == y1) || fmath::sqrt(gy * gy + gx * gx) <= range {
+            return Ok(Some(0.0));
+        }
+        Err(Unsupported(
+            "the obstruction manager's short pather (FUN_140f85580)",
+        ))
+    }
+
+    /// The length of the tile planner's path (`FUN_140f7c530` with the radii `radii`, range 0, no
+    /// closed tiles, the tile search for a human player, no smoothing) from the unit to `to`, and
+    /// the planner's result; None without a planner for the unit's restriction.
+    pub fn plan_length(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        to: [f32; 2],
+        radii: f32,
+    ) -> Result<Option<(u8, f32)>, Unsupported> {
+        let full = !plan.computer;
+        let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) else {
+            return Ok(None);
+        };
+        let req = Request {
+            from: [me.position[0], me.position[1]],
+            to,
+            radii,
+            range: 0.0,
+            closed: Vec::new(),
+            full,
+        };
+        let mut path = Path::default();
+        let found = planner.plan::<Unsupported>(&req, false, &mut path, None)?;
+        path.measure();
+        Ok(Some((found.code(), path.length)))
+    }
+
     /// `FUN_140fa0370`: both ends lie on the map. With a planner for its restriction, the tile
     /// planner (`FUN_140f7c530` without the tile search, closed tiles or smoothing; the radii are
     /// the unit's and the target's, the range 3 more for a target of master 45 or class 33) must

@@ -844,6 +844,92 @@ impl Unit {
         Ok(())
     }
 
+    /// The hunt's set_state(8) after its gathering (`0x140ac60e0` case 8): a unit that carries
+    /// nothing goes back to state 3 (not modelled). Without a drop site, its master's drop sites
+    /// (`+0x7a0`; none when the first is −1) are searched among its player's objects, from the
+    /// unit by path ([`drop_site_search`] with the unit), else by distance from its place (without
+    /// it); none found is not modelled (notify 0x203, set_state 2). The drop site found is the
+    /// second target (`FUN_140a7a190`) and a quiet MoveTo to it starts ([`HuntAction::set_drop`]).
+    fn hunt_drop_off(&mut self, c: &mut Context<'_>, others: &[Unit]) -> Result<(), Unsupported> {
+        if self.life.amount <= 0.0 {
+            return Err(Unsupported(
+                "a hunt's drop-off carrying nothing (set_state 3)",
+            ));
+        }
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+        let mover = self
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("a hunter without movement state"))?;
+        let hunt = self.hunt.as_ref().expect("the caller's hunt");
+        let mut site = hunt.carry_to;
+        if site == -1 && master.drop_sites.first().is_some_and(|&d| d != -1) {
+            let masters = c
+                .masters
+                .ok_or(Unsupported("a drop-off of a player without masters"))?;
+            let [w, h] = c.spatial.map;
+            let terrain = c
+                .spatial
+                .terrain
+                .as_ref()
+                .ok_or(Unsupported("the map's zones without its terrain"))?;
+            let values = terrain
+                .restrictions
+                .get(mover.stats.restriction)
+                .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+            let zones = c.zones.of(w, h, &terrain.kinds, values);
+            let me = Me {
+                id: self.id,
+                position: self.position,
+                action_state: hunt.state,
+            };
+            let mut plan = Planning {
+                pathing: c.pathing,
+                now: c.world_time,
+                computer: c.computer,
+                object: c.streams.get(Stream::Object),
+                construction_rate: c.construction_rate,
+            };
+            let seeker = Seeker {
+                me,
+                mover,
+                plan: &mut plan,
+                spatial: c.spatial,
+                zones,
+                class: master.class,
+            };
+            let sites = &master.drop_sites;
+            site = drop_site_search(others, masters, sites, self.position, Some(seeker))?
+                .or(drop_site_search(
+                    others,
+                    masters,
+                    sites,
+                    self.position,
+                    None,
+                )?)
+                .unwrap_or(-1);
+        }
+        if site == -1 {
+            return Err(Unsupported(
+                "a hunt without a drop site (notify 0x203, set_state 2)",
+            ));
+        }
+        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let s = c
+            .spatial
+            .get_known(site)?
+            .ok_or(Unsupported("a drop site without a place"))?;
+        let gap = footprint_gap(self.position, ground, s.position, s.radius);
+        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+            return Err(Unsupported("a hunter without its hunt or movement state"));
+        };
+        hunt.carry_to = site;
+        hunt.set_drop(gap, mover)
+    }
+
     /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at
     /// its own height: its top Explore takes the point (slot 0x48), else a new Explore
     /// (`FUN_140a87d30`) becomes its only action (set_only_action, `FUN_14106e990`: the actions
@@ -1607,13 +1693,16 @@ impl Unit {
                 can_move,
                 stance,
             };
-            hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
+            let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
             c.blasted = blasted;
             if let Some(target) = executed {
                 self.post_own(ACTION_EXECUTED, [600, target, 0])?;
             }
             c.own_killed = self.hit_back(own)?;
+            if full {
+                self.hunt_drop_off(c, others)?;
+            }
         }
         // the motion step may have put the unit onto a waypoint it reached
         if let Some(p) = c.spatial.get(self.id) {
@@ -1984,6 +2073,101 @@ enum Step {
     /// that player's list.
     Captured(usize, Vec<i32>),
 }
+
+/// The unit a drop-site search goes from ([`drop_site_search`]).
+struct Seeker<'a, 'b> {
+    me: Me,
+    mover: &'a Mover,
+    plan: &'a mut Planning<'b>,
+    spatial: &'a Spatial,
+    zones: &'a crate::zones::ZoneMap,
+    /// Its master's class.
+    class: i16,
+}
+
+/// A search for drop sites (`FUN_1411671e0` as set_state(8) calls it: in state 2, not at work
+/// on task `0x7d` or `0x7c` (an object of type 40 up whose top action is one), not inside
+/// another): of the player's live objects (`units`, in list order) of a master in `sites`, the
+/// nearest to `at`. With the `seeker`, only objects in its zone count (its restriction's zone of
+/// its tile against each object's tile) and the nearest is by path: the tile planner's path
+/// length (radii the seeker's and the object's, [`Mover::plan_length`]) when it reaches the goal
+/// or its range, then within 10 tiles the shorter of it and the seeker's short path (slot 0x3e8
+/// within 0.1, [`Mover::short_reach`]); for any other result the game keeps the distance it last
+/// measured (of an earlier object, else the largest float), as the slice does. Without one, by
+/// the squared distance of the centres. The seeker's class 21 (its gap test) and a villager
+/// tending a pasture (its pasture's place) are not modelled. The first of equals wins.
+fn drop_site_search(
+    units: &[Unit],
+    masters: &Masters,
+    sites: &[i16],
+    at: [f32; 3],
+    mut seeker: Option<Seeker<'_, '_>>,
+) -> Result<Option<i32>, Unsupported> {
+    const AT_WORK: [i16; 2] = [0x7d, 0x7c];
+    let [x, y, _] = at;
+    if seeker.as_ref().is_some_and(|s| s.class == 21) {
+        return Err(Unsupported("a drop-site search of class 21 (its gap test)"));
+    }
+    let own_zone = seeker.as_ref().map(|s| s.zones.zone(x as i32, y as i32));
+    let mut best: Option<i32> = None;
+    let mut best_d = NO_DROP_DISTANCE;
+    let mut last = NO_DROP_DISTANCE;
+    for o in units {
+        if !sites.contains(&o.life.master_id) || o.life.state != 2 {
+            continue;
+        }
+        let master = masters.get(o.life.master_id).ok_or(Unsupported(
+            "a drop site of a master the slice does not have",
+        ))?;
+        if let (Some(s), Some(zone)) = (seeker.as_ref(), own_zone)
+            && s.zones.zone(o.position[0] as i32, o.position[1] as i32) != zone
+        {
+            continue;
+        }
+        let at_work =
+            40 <= master.kind && o.top_action_kind().is_some_and(|k| AT_WORK.contains(&k));
+        if at_work || o.life.inside {
+            continue;
+        }
+        let d = match seeker.as_mut() {
+            Some(s) => {
+                let radii = s.mover.stats.radius[0] + master.radius[0];
+                let to = [o.position[0], o.position[1]];
+                match s.mover.plan_length(&s.me, s.spatial, s.plan, to, radii)? {
+                    Some((code, length)) if code < 2 => {
+                        last = length;
+                        if length <= SHORT_DROP_REACH
+                            && let Some(short) =
+                                s.mover.short_reach(&s.me, s.spatial, o.id, DROP_REACH)?
+                            && short < length
+                        {
+                            last = short;
+                        }
+                        last
+                    }
+                    Some((code, _)) if 3 <= code => last,
+                    _ => last,
+                }
+            }
+            None => {
+                let (dx, dy) = (x - o.position[0], y - o.position[1]);
+                dy * dy + dx * dx
+            }
+        };
+        if d < best_d {
+            best = Some(o.id);
+            best_d = d;
+        }
+    }
+    Ok(best)
+}
+
+/// A drop site within this path length is measured by the short path too (`FUN_1411671e0`,
+/// `DAT_142eb0f4c`), within this range (`DAT_142eb5690`).
+const SHORT_DROP_REACH: f32 = crate::image::turn::SHORT_DROP_REACH;
+/// The distance a drop-site search starts from (`DAT_14330ebf4`, the largest float).
+const NO_DROP_DISTANCE: f32 = crate::image::turn::NO_DROP_DISTANCE;
+const DROP_REACH: f32 = crate::image::turn::DROP_REACH;
 
 /// `FUN_1411671e0` with a point and no unit: of the player's live objects (`others`, in list
 /// order) of a master in `sites` and in state 2, the one nearest `at` (its centre's squared

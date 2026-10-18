@@ -232,6 +232,12 @@ pub mod tile_path {
 }
 
 pub mod turn {
+    /// 0.10000000149011612
+    pub const DROP_REACH: f32 = f32::from_bits(0x3dcccccd);
+    /// 3.4028234663852886e+38
+    pub const NO_DROP_DISTANCE: f32 = f32::from_bits(0x7f7fffff);
+    /// 10.0
+    pub const SHORT_DROP_REACH: f32 = f32::from_bits(0x41200000);
     /// 1.0000000116860974e-07
     pub const SPEED_EPSILON: f32 = f32::from_bits(0x33d6bf95);
 }

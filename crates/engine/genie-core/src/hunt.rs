@@ -336,7 +336,7 @@ impl HuntAction {
     /// the drop site search `FUN_1411671e0` would find it, not modelled): the sub-actions go and a
     /// quiet MoveTo to the drop site within the task's range starts (`FUN_140aa0df0`, as
     /// [`HuntAction::set_walk`]'s: within 0.01 of its footprint (`gap`) the unit is there already).
-    fn set_drop(&mut self, gap: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+    pub(crate) fn set_drop(&mut self, gap: f32, mover: &mut Mover) -> Result<(), Unsupported> {
         self.tear_down(Some(mover))?;
         self.state = DROP;
         if self.carry_to == -1 {
@@ -460,11 +460,12 @@ impl HuntAction {
         strike: &mut Strike<'_>,
         gather: &mut Gatherer<'_>,
         herd: Option<Herd>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<bool, Unsupported> {
         if computer {
             return Err(Unsupported("a computer player's hunt (FUN_140fde4f0)"));
         }
-        match self.state {
+        let mut full = false;
+        let r = match self.state {
             ATTACK => {
                 let attack = self
                     .attack
@@ -483,7 +484,7 @@ impl HuntAction {
             WALK if self.timer < 0.0 => {
                 self.timer += walk.dt;
                 if self.timer < 0.0 {
-                    return Ok(());
+                    return Ok(false);
                 }
                 self.timer = 0.0;
                 Err(Unsupported("a hunt's set_state 11 after its wait"))
@@ -503,7 +504,7 @@ impl HuntAction {
                 Some(MoveTo::Moving) => {
                     if target_moved(&walk, self.target, true)? {
                         self.move_to = Some(MoveTo::Start);
-                        return Ok(());
+                        return Ok(false);
                     }
                     walk.me.action_state = self.state;
                     match walk_or_give_up(walk)? {
@@ -580,11 +581,15 @@ impl HuntAction {
                     ))
                 }
             }
-            GATHER => self.gather(walk.dt, strike.victim, gather),
+            GATHER => {
+                full = self.gather(walk.dt, strike.victim, gather)?;
+                Ok(())
+            }
             _ => Err(Unsupported(
                 "a Hunt action in a state the slice does not model",
             )),
-        }
+        };
+        r.map(|()| full)
     }
 
     /// `FUN_140ac44b0`: a task whose `attribute_type4` is 0x124, with its player's attribute 292
@@ -746,14 +751,15 @@ impl HuntAction {
     /// times the productivity, while the load stays within the capacity: the target loses the
     /// work, its last bit below 0.1 going with a thousandth of its master's first storage amount;
     /// the unit gains, a remainder below 0.1 of the capacity rounding the load up. A full load or
-    /// an empty target ends the gathering (set_state 8, not modelled). The game's `+0xc14`
+    /// an empty target ends the gathering: true asks the caller for set_state(8) (its drop site
+    /// search, [`HuntAction::set_drop`]). The game's `+0xc14`
     /// (`FUN_140c884c0`), 0 as the tick oracle holds it, would take the whole target at once.
     fn gather(
         &mut self,
         dt: f32,
         victim: &mut Victim,
         g: &mut Gatherer<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<bool, Unsupported> {
         let work = (g.work_rate * self.task.work_value) * dt;
         let take = if work <= victim.amount {
             work
@@ -768,7 +774,7 @@ impl HuntAction {
             gain.partial_cmp(&room),
             Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
         ) {
-            return Err(Unsupported("a full load (the drop-off, set_state 8)"));
+            return Ok(true);
         }
         victim.amount -= take;
         if victim.amount < REMAINDER {
@@ -786,12 +792,7 @@ impl HuntAction {
                 "a gold load of class 9 or 10 (its player's attribute 3)",
             ));
         }
-        if REMAINDER <= over && 0.0 < victim.amount {
-            return Ok(());
-        }
-        Err(Unsupported(
-            "a full load or an empty target (the drop-off, set_state 8)",
-        ))
+        Ok(!(REMAINDER <= over && 0.0 < victim.amount))
     }
 }
 
@@ -987,18 +988,19 @@ mod tests {
             hunt.gather(0.02, tree, &mut g)
         };
         let mut tree = victim(100.0);
-        assert_eq!(gather(&mut held, &mut kind, &mut tree), Ok(()));
+        assert_eq!(gather(&mut held, &mut kind, &mut tree), Ok(false));
         let w = (1.0f32 * 0.39) * 0.02;
         assert_eq!((held, tree.amount), (w, 100.0 - w));
-        // a load 0.1 short of the capacity rounds up, and the full load ends the gathering
+        // a load 0.1 short of the capacity rounds up, and the full load asks for set_state(8)
         held = 9.95 - w;
         let mut tree = victim(50.0);
-        assert!(gather(&mut held, &mut kind, &mut tree).is_err());
+        assert_eq!(gather(&mut held, &mut kind, &mut tree), Ok(true));
         assert_eq!(held, 10.0);
-        // a tree's last bit goes with a thousandth of its master's storage
+        // a tree's last bit goes with a thousandth of its master's storage, the empty target
+        // asking for set_state(8)
         held = 0.0;
         let mut tree = victim(0.05);
-        assert!(gather(&mut held, &mut kind, &mut tree).is_err());
+        assert_eq!(gather(&mut held, &mut kind, &mut tree), Ok(true));
         assert_eq!((held, tree.amount), (0.05 + 100.0 * 0.001, 0.0));
     }
 
