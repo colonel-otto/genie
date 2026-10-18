@@ -293,6 +293,11 @@ pub struct Surroundings {
     pub task_0x99: bool,
     /// An object of type 70 or more inside another (`+0x2f0`): it runs no queued order.
     pub garrisoned: bool,
+    /// A building of the owner's in state 0 (a foundation) stands on a tile of the builder's
+    /// search square (`FUN_140c1c7c0`: the larger of the line of sight and the search radius,
+    /// truncated, each way from the unit's tile), whose search the slice does not run: without one
+    /// it finds nothing.
+    pub foundations: bool,
 }
 
 /// The class whose busy units skip the idle check (`-0xe98` raw).
@@ -1019,8 +1024,23 @@ impl UnitAi {
                 _ => self.base_notify(n, time, at, fx),
             },
             // the villager (FUN_140c22bf0): a completion of its action stops it, and slot 0x48
-            // passes the notify to its owner's slot 0x2e8 (not held)
+            // passes the notify to its owner's slot 0x2e8 (not held); a failed build (0x202, its
+            // Build waiting without work, action 0x25a) looks for another foundation to build
+            // (FUN_140c1c7c0, when the player's +0x613 is 0: unsaved, 0 in this game) and, finding
+            // none, a human player's villager stops (slot 0x3c0) and the processing breaks
             8 => match n.kind {
+                0x202 if self.current_action == BUILD_ACTION => {
+                    if at.foundations {
+                        return Err(Unsupported(
+                            "a builder's search that finds another foundation (FUN_140c1c7c0)",
+                        ));
+                    }
+                    if computer {
+                        return Err(Unsupported("a computer builder without a foundation"));
+                    }
+                    fx.push(Effect::Stop);
+                    Ok(BREAK)
+                }
                 ACTION_COMPLETED => {
                     if self.current_action == n.p[0] {
                         self.remove_target();

@@ -225,8 +225,11 @@ fn the_deer_s_idle_checks_from_a_save_match_the_game_object_by_object() {
     // in 1187 the scout 9185 plans its path past the deer 9657, which stood still; player 2's
     // objects, its visible map and its unified bits through the save after 1431 (from 1329 the
     // cow 9517 and the scout 9185 pause the units they meet, slot 0x5f0, and wait out their own
-    // pauses), through the save after 1492, before its builders search for more work (1494)
-    let Some(found) = differences(680, 812, 2) else {
+    // pauses); in 1494 the builders 9175 and 9177 end the house's work with no more work near it
+    // (no drop-site list for a house): their Builds let the house go and wait (state 3), notify
+    // 0x202, and their unit AIs, finding no other foundation, stop them; through the save after
+    // 1495, before their unit AIs' target block (1497)
+    let Some(found) = differences(680, 815, 2) else {
         return eprintln!("GENIE_SNAPSHOTS / GENIE_TICK_REC / GENIE_DAT are not set; skipping");
     };
     assert_eq!(found, Vec::<String>::new());

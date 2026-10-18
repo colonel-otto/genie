@@ -208,6 +208,9 @@ const VILLAGER_ANY: i16 = 0x712;
 const VILLAGER_FEMALE: i16 = 0x125;
 /// A building's queue holds at most 15 units (`FUN_1411cbc40`).
 const QUEUE_LIMIT: usize = 15;
+/// The notify a Build waiting without work posts (0x202) with its action value
+/// ([`BUILD_ACTION`]).
+const BUILD_IDLE: i32 = 0x202;
 /// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
 const SPEED_EPSILON: f32 = crate::image::turn::SPEED_EPSILON;
 
@@ -262,8 +265,9 @@ struct Context<'a> {
     graphics: &'a std::collections::BTreeMap<i16, Graphic>,
     /// The drop-site table, whose livestock entries a hunt leads its livestock to.
     drop_sites: &'a [DropSite],
-    /// The owner's id.
+    /// The owner's id and civ (`player+0x738`).
     player: usize,
+    civ: u8,
     /// Every player's masters and attribute 97 (by player), for a capture.
     every_masters: &'a [Masters],
     attribute_97: &'a [f32],
@@ -422,8 +426,16 @@ impl Unit {
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes (`FUN_140a98620`; a
     /// MoveTo's teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
     /// 0x68 with slot 0x798's, [`crate::attack::set_sprite`]) where the slice holds its sprite.
-    /// Other actions' teardowns are not modelled.
+    /// A Build waiting without its foundation (state 3) goes with nothing to release
+    /// (`FUN_140aadbf0`); other actions' teardowns are not modelled.
     fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        if self
+            .build
+            .as_ref()
+            .is_some_and(|b| b.state == 3 && b.target == -1 && b.move_to.is_none())
+        {
+            self.build = None;
+        }
         if self.artifact.is_some()
             || self.build.is_some()
             || self.fly.is_some()
@@ -735,6 +747,10 @@ impl Unit {
             let annexed = others.iter().any(|u| u.annex_of == Some(target));
             let masters = c.masters;
             let (attribute_204, mode_680) = (c.attribute_204, c.mode_680);
+            let built = others
+                .iter()
+                .find(|u| u.id == target)
+                .map(|u| u.life.master_id);
             let site = others.iter_mut().find(|u| u.id == target).and_then(|u| {
                 let master = masters.and_then(|m| m.get(u.life.master_id));
                 Some(Site {
@@ -750,12 +766,22 @@ impl Unit {
                     },
                 })
             });
+            let class = masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map_or(-1, |m| m.class);
+            let civ = c.civ;
+            let more_work = built.is_some_and(|b| {
+                c.drop_sites.iter().any(|e| {
+                    e.building == b
+                        && e.worker_class == class
+                        && (e.civs.is_empty() || e.civs.contains(&civ))
+                })
+            });
             let builder = Builder {
-                class: masters
-                    .and_then(|m| m.get(self.life.master_id))
-                    .map_or(-1, |m| m.class),
+                class,
                 held: self.life.amount,
                 ai: self.ai.as_mut(),
+                more_work,
             };
             let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
             if let Some(adds) = step.completed {
@@ -766,6 +792,10 @@ impl Unit {
                 // builders (set_state left them) and releases the foundation (slot 0x180)
                 self.build = None;
                 release_own(others, masters, target)?;
+            }
+            if step.released {
+                release_own(others, masters, target)?;
+                self.post_own(BUILD_IDLE, [BUILD_ACTION, 0, 0])?;
             }
         }
         if let Some(move_to) = self.move_to.as_mut()
@@ -1016,6 +1046,21 @@ impl Unit {
                 interruptible,
                 task_0x99: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x99)),
                 garrisoned: self.life.inside,
+                foundations: master.is_some_and(|m| {
+                    let reach = m.search_radius.max(m.line_of_sight) as i32;
+                    let (x, y) = (self.position[0] as i32, self.position[1] as i32);
+                    others.iter().any(|u| {
+                        let (ux, uy) = (u.position[0] as i32, u.position[1] as i32);
+                        u.life.state == 0
+                            && c.masters
+                                .and_then(|ms| ms.get(u.life.master_id))
+                                .is_some_and(|um| 80 <= um.kind)
+                            && x - reach <= ux
+                            && ux < x + reach
+                            && y - reach <= uy
+                            && uy < y + reach
+                    })
+                }),
             };
             let me = self.id;
             let ai = self.ai.as_mut().expect("filtered above");
@@ -2300,6 +2345,7 @@ impl Turns {
                     pauses: Vec::new(),
                     mode_1: self.mode_680 == 1,
                     player: p,
+                    civ: player.civ,
                     attributes: &player.attributes,
                     graphics: &self.graphics,
                     drop_sites: &self.drop_sites,

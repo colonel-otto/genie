@@ -116,6 +116,9 @@ pub struct Builder<'a> {
     pub held: f32,
     /// Its unit AI, which a finished Build hands its queued orders to.
     pub ai: Option<&'a mut UnitAi>,
+    /// The drop-site table has an entry for the building and the builder's class and civ
+    /// (`FUN_140fdd8a0`): the end of the work searches for more work near it.
+    pub more_work: bool,
 }
 
 /// What a Build action's update leaves to its unit and player.
@@ -126,6 +129,10 @@ pub struct BuildStep {
     pub done: bool,
     /// The work completed the building: the attributes its owner gains.
     pub completed: Option<Vec<(i16, f32)>>,
+    /// The work ended without more work: the action let its foundation go (slot 0x68 with none,
+    /// `FUN_140ab0300` -> `FUN_140a7a230`: the foundation's slot 0x180) and stays in state 3,
+    /// whose set_state posted notify 0x202 (602) to the builder's unit AI: the caller's.
+    pub released: bool,
 }
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
@@ -149,6 +156,8 @@ const CLEAR: u8 = 223;
 const FINISHED: u8 = 224;
 /// 1: the action is done.
 const DONE: u8 = 1;
+/// 3: the action waits without a target.
+const IDLE: u8 = 3;
 /// The masters and the class the end of the work treats apart: 621 and 1889 among the
 /// foundations, class 39 among the builders, 1893 and 1897 (`id - 0x765 & !4 == 0`), the fish
 /// trap 199 and farms (class 49, `FUN_141194b20`).
@@ -192,6 +201,10 @@ impl BuildAction {
         builder: Builder<'_>,
     ) -> Result<BuildStep, Unsupported> {
         let mut step = BuildStep::default();
+        // state 3 without a target: the update does nothing (0x140ab0370's default case)
+        if self.state == IDLE && self.target == -1 {
+            return Ok(step);
+        }
         let computer = walk.plan.as_ref().is_some_and(|p| p.computer);
         let mut site = site;
         if let Some(site) = site.as_mut() {
@@ -215,7 +228,11 @@ impl BuildAction {
             return Err(Unsupported("a Build whose foundation is gone"));
         }
         if self.state == FINISHED {
-            step.done = self.after_work(&walk, site.as_ref(), computer, builder)?;
+            match self.after_work(&walk, site.as_ref(), computer, builder)? {
+                Some(true) => step.done = true,
+                Some(false) => {}
+                None => step.released = true,
+            }
             return Ok(step);
         }
         let walk = walk;
@@ -323,16 +340,19 @@ impl BuildAction {
     /// 1897 are not modelled; the builder's unit AI drops its build orders on foundations gone or
     /// built (`FUN_140c5dcd0`); with orders left in its queue (`FUN_140c564a0`) it has no order
     /// and no action (`FUN_140c64b60`, `FUN_140c64b50` with −1) and the Build ends (set_state(1),
-    /// then the update returns 1, true). A builder without queued orders looks for more work
-    /// within its line of sight (4 to 20 tiles), which is not modelled; nor is a computer
-    /// player's.
+    /// then the update returns 1: Some(true)). A builder without queued orders looks for more
+    /// work around the building, within its master's line of sight held to 4 to 20 tiles
+    /// (`FUN_1415cc4e0`): only the drop sites of the builder's class have a list to search
+    /// ([`Builder::more_work`], a search not modelled); with nothing found the action lets its
+    /// foundation go and waits in state 3 (None, [`BuildStep::released`]). A computer player's
+    /// builder is not modelled.
     fn after_work(
         &mut self,
         walk: &Walk<'_>,
         site: Option<&Site<'_>>,
         computer: bool,
         builder: Builder<'_>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<Option<bool>, Unsupported> {
         if computer {
             return Err(Unsupported("a computer player's builder after its work"));
         }
@@ -353,13 +373,21 @@ impl BuildAction {
             ));
         }
         if ai.orders.is_empty() {
-            return Err(Unsupported(
-                "a builder's search for more work after its building",
-            ));
+            if builder.more_work {
+                return Err(Unsupported(
+                    "a builder's search for more work at a drop site (FUN_1415cc4e0)",
+                ));
+            }
+            if self.move_to.is_some() {
+                return Err(Unsupported("a Build waiting with its MoveTo"));
+            }
+            self.target = -1;
+            self.state = IDLE;
+            return Ok(None);
         }
         ai.end_order_and_action()?;
         self.done(walk)?;
-        Ok(true)
+        Ok(Some(true))
     }
 
     /// set_state(1) (`0x140aae200` case 1): the builder takes its standing sprite (slot 0x68,
@@ -1021,6 +1049,7 @@ mod tests {
                     class: VILLAGER,
                     held: 0.0,
                     ai: None,
+                    more_work: false,
                 },
             )
             .unwrap();
@@ -1054,6 +1083,7 @@ mod tests {
             class: VILLAGER,
             held: 0.0,
             ai: None,
+            more_work: false,
         };
         world.insert(10028, house());
         near.update(walk(1, &mut world), None, builder()).unwrap();
