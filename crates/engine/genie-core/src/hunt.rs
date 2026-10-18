@@ -16,12 +16,15 @@ use crate::unit_ai::Unsupported;
 /// The Hunt action's type, which word 9 adds.
 pub const HUNT: i16 = 110;
 
-/// The states the slice models: 4 walking to a dead target, 6 facing it, 7 gathering from it,
-/// 12 attacking it (`0xc`).
+/// The states the slice models: 4 walking to a dead target, 6 facing it, 7 gathering from it, 8
+/// taking the load to its drop site, 12 attacking it (`0xc`).
 pub const WALK: u8 = 4;
 pub const FACE: u8 = 6;
 pub const GATHER: u8 = 7;
+pub const DROP: u8 = 8;
 pub const ATTACK: u8 = 12;
+/// A building whose top action is this (a farm at work) takes a hunt sent to it to set_state 15.
+const FARM_AT_WORK: i16 = 0x7d;
 
 /// A MoveTo starts in place within this gap of its target (`0x140aa2100`).
 const ARRIVED: f32 = 0.01;
@@ -67,6 +70,19 @@ pub struct HuntAction {
     pub walk_range: f32,
     /// `+0x70`: the drop site its own livestock is led to, −1 for none yet.
     pub drop_site: i32,
+    /// `+0x28` (its id at `+0x34`), the second target: the drop site the load goes to in state 8,
+    /// −1 for none.
+    pub carry_to: i32,
+    /// `+0x44`: the state's timer (state 8 waits with it below 0 before it tries again).
+    pub timer: f32,
+}
+
+/// What the drop-off reads of its drop site on arrival: that the site takes what the unit carries
+/// (`FUN_140fdd190`) and the gap between the two footprints squared (`FUN_14118f8c0`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DropOff {
+    pub takes: bool,
+    pub gap_squared: f32,
 }
 
 /// What set_state(6) reads of a live livestock target (`0x140ac60e0` case 6).
@@ -144,6 +160,8 @@ pub struct Quarry {
     /// The hunter's player counts the target's player as its own or allied (`FUN_141663d90` with
     /// the ally flag).
     pub allied: bool,
+    /// Its top action's type (a building's `+0x880` list).
+    pub top_action: Option<i16>,
 }
 
 /// Food and the food kinds of carcasses and fish (0, 15 to 17): a hunter keeps what it carries
@@ -182,6 +200,8 @@ impl HuntAction {
             move_to: None,
             walk_range: task.range,
             drop_site: -1,
+            carry_to: -1,
+            timer: 0.0,
         };
         if 0.0 < target.amount {
             let kind = task.resource;
@@ -255,20 +275,39 @@ impl HuntAction {
     }
 
     /// Slot 9 (`0x140ac97c0`), the work command's new target for the hunt it keeps: true when the
-    /// hunt takes it. Another target that is not its player's drop site (with a load to drop)
-    /// becomes the hunt's (slot 0x68, `FUN_140ac7980`; the caller releases the old target and
-    /// takes the new) and the hunt starts over at set_state(4). Its own target changes nothing.
+    /// hunt takes it. A building at work as a farm (top action `0x7d`) takes it to set_state 15,
+    /// not modelled. Its own player's drop site (one of its master's, `drops_here`,
+    /// `FUN_14109d4f0`) while it carries something (`held`) takes the load there: the target goes
+    /// (slot 0x68 with none; the caller releases it), the timer and the point clear, the drop site
+    /// becomes the second target (`FUN_140a7a190`) with its class, and set_state(8). Another target
+    /// becomes the hunt's (slot 0x68, `FUN_140ac7980`; the caller releases the old target and takes
+    /// the new) and the hunt starts over at set_state(4). Its own target changes nothing.
+    #[allow(clippy::too_many_arguments)]
     pub fn retarget(
         &mut self,
         target: &Quarry,
         player: usize,
+        held: f32,
+        drops_here: bool,
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
     ) -> Result<bool, Unsupported> {
+        if target.kind == BUILDING && target.top_action == Some(FARM_AT_WORK) {
+            return Err(Unsupported("a hunt sent to a farm at work (set_state 15)"));
+        }
+        if target.player == player && drops_here && 0.0 < held {
+            self.target = -1;
+            self.timer = 0.0;
+            self.point = [-1.0; 3];
+            self.carry_to = target.id;
+            self.target_class = target.class;
+            self.set_drop(attack.gap, mover)?;
+            return Ok(true);
+        }
         if target.kind == BUILDING {
             return Err(Unsupported(
-                "a hunt sent to a building (a farm or a drop site)",
+                "a hunt sent to a building that is not its drop site",
             ));
         }
         if target.player == player {
@@ -283,6 +322,102 @@ impl HuntAction {
         self.target_class = target.class;
         self.chase(target, player, attack, arms, mover)?;
         Ok(true)
+    }
+
+    /// set_state(8) (`0x140ac60e0` case 8) with a load and its drop site (`carry_to`; without one
+    /// the drop site search `FUN_1411671e0` would find it, not modelled): the sub-actions go and a
+    /// quiet MoveTo to the drop site within the task's range starts (`FUN_140aa0df0`, as
+    /// [`HuntAction::set_walk`]'s: within 0.01 of its footprint (`gap`) the unit is there already).
+    fn set_drop(&mut self, gap: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+        self.tear_down(Some(mover))?;
+        self.state = DROP;
+        if self.carry_to == -1 {
+            return Err(Unsupported("a drop-off without its drop site (its search)"));
+        }
+        self.walk_range = self.task.range;
+        self.move_to = Some(if ARRIVED < gap {
+            if mover.stats.speed == 0.0 {
+                return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+            }
+            MoveTo::Start
+        } else {
+            MoveTo::Arrived
+        });
+        Ok(())
+    }
+
+    /// State 8's update (`0x140ac7a00` case 7): the MoveTo to the drop site walks (a MoveTo that
+    /// cannot go on, codes 3 to 5, would wait 3 seconds, not modelled; the timer's wait neither).
+    /// Once it ended (its update in state 1 returns 1: the list deletes it and its destructor stops
+    /// the unit) the load goes to the player at a drop site that takes it within a tile
+    /// (`site`; one that does not, set_state 2, or a farther one are not modelled): the resource
+    /// of what the unit carries (`FUN_140fdd4f0`: food for 15 to 17, nothing outside 0 to 3, 9 and
+    /// 56, then 0 beyond the player's attributes, `FUN_140efe5b0`), which the caller adds; the unit
+    /// carries nothing after (`FUN_14119d310` with -1). Returns the resource and the amount. A
+    /// hunt with a target walks back to it (set_state 4), one without searches for a new one
+    /// (the unit AI's slots 0x1b0 and 0x80, `FUN_140c488b0`): neither is modelled, after the load.
+    pub fn update_drop(
+        &mut self,
+        mut walk: Walk<'_>,
+        held_kind: &mut i16,
+        held: &mut f32,
+        attributes: usize,
+        site: Option<DropOff>,
+    ) -> Result<Option<(i16, f32)>, Unsupported> {
+        if self.timer < 0.0 {
+            return Err(Unsupported("a drop-off waiting to try again (its timer)"));
+        }
+        match self.move_to {
+            Some(MoveTo::Start) => {
+                self.move_to = Some(MoveTo::Moving);
+                let range = self.walk_range;
+                walk.me.action_state = self.state;
+                self.move_to = Some(start_walk(walk, Goal::Target(self.carry_to), range, true)?);
+                return Ok(None);
+            }
+            Some(MoveTo::Moving) => {
+                if target_moved(&walk, self.carry_to, true)? {
+                    self.move_to = Some(MoveTo::Start);
+                    return Ok(None);
+                }
+                walk.me.action_state = self.state;
+                self.move_to = Some(walk_on(walk)?);
+                return Ok(None);
+            }
+            Some(MoveTo::Arrived) => {
+                self.move_to = None;
+                walk.mover
+                    .as_deref_mut()
+                    .ok_or(Unsupported("a hunter without movement state"))?
+                    .stop()?;
+            }
+            None => return Err(Unsupported("a Hunt in state 8 without its MoveTo")),
+        }
+        let site = site.ok_or(Unsupported("a drop-off whose drop site is gone"))?;
+        if !site.takes {
+            return Err(Unsupported(
+                "a drop site that does not take the load (set_state 2)",
+            ));
+        }
+        if 1.0 < site.gap_squared {
+            return Err(Unsupported(
+                "a drop-off out of a tile of its drop site (its wait)",
+            ));
+        }
+        let kind = match *held_kind {
+            0..=3 | 9 | 56 => *held_kind,
+            15..=17 => 0,
+            _ => -1,
+        };
+        let kind = if (0..attributes as i16).contains(&kind) {
+            kind
+        } else {
+            0
+        };
+        let amount = *held;
+        *held_kind = -1;
+        *held = 0.0;
+        Ok(Some((kind, amount)))
     }
 
     /// The teardown (`FUN_140a73fc0`): the sub-actions go; the caller releases the target (slot
@@ -634,6 +769,7 @@ mod tests {
             player: 0,
             amount: 100.0,
             allied: false,
+            top_action: None,
         }
     }
 
@@ -753,6 +889,8 @@ mod tests {
             move_to: None,
             walk_range: 0.0,
             drop_site: -1,
+            carry_to: -1,
+            timer: 0.0,
         };
         let (mut kind, mut held) = (1, 0.0f32);
         let mut gather = |held: &mut f32, kind: &mut i16, tree: &mut Victim| {
@@ -836,5 +974,85 @@ mod tests {
                 (WALK, Some(MoveTo::Start), range, None)
             );
         }
+    }
+
+    /// MarvinBlue/426048731's lumberjack 9181 in update 1897: its MoveTo to the TC 9156 ended
+    /// (state 1); the TC takes wood within a tile, so the load goes to player 2 as wood (1) and
+    /// the unit carries nothing after; the hunt has no target to go back to.
+    #[test]
+    fn a_drop_off_gives_the_load_to_the_player() {
+        let mut hunt = HuntAction {
+            target: -1,
+            state: DROP,
+            point: [-1.0; 3],
+            target_class: 3,
+            task: CHOP,
+            attack: None,
+            move_to: Some(MoveTo::Arrived),
+            walk_range: CHOP.range,
+            drop_site: -1,
+            carry_to: 9156,
+            timer: 0.0,
+        };
+        let mut mover = walker();
+        let mut world = crate::spatial::Spatial::default();
+        fn walk<'a>(mover: &'a mut Mover, world: &'a mut crate::spatial::Spatial) -> Walk<'a> {
+            Walk {
+                mover: Some(mover),
+                me: crate::movement::Me {
+                    id: 9181,
+                    position: [26.820372, 94.718056, 0.0],
+                    action_state: DROP,
+                },
+                dt: 0.028,
+                world,
+                plan: None,
+            }
+        }
+        let (mut kind, mut held) = (1, 7.057_053_6);
+        let site = DropOff {
+            takes: true,
+            gap_squared: 0.5,
+        };
+        let got = hunt
+            .update_drop(
+                walk(&mut mover, &mut world),
+                &mut kind,
+                &mut held,
+                230,
+                Some(site),
+            )
+            .unwrap();
+        assert_eq!(got, Some((1, 7.057_053_6)));
+        assert_eq!((kind, held, hunt.move_to), (-1, 0.0, None));
+        // carried food of a carcass (15) goes as food; a site that does not take it stops
+        let mut kind = 15;
+        let mut held = 2.0;
+        hunt.move_to = Some(MoveTo::Arrived);
+        let got = hunt
+            .update_drop(
+                walk(&mut mover, &mut world),
+                &mut kind,
+                &mut held,
+                230,
+                Some(site),
+            )
+            .unwrap();
+        assert_eq!(got, Some((0, 2.0)));
+        hunt.move_to = Some(MoveTo::Arrived);
+        let refused = DropOff {
+            takes: false,
+            ..site
+        };
+        assert!(
+            hunt.update_drop(
+                walk(&mut mover, &mut world),
+                &mut kind,
+                &mut held,
+                230,
+                Some(refused)
+            )
+            .is_err()
+        );
     }
 }

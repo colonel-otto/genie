@@ -121,6 +121,9 @@ pub struct Master {
     pub work_rate: f32,
     /// `search_radius` (`+0x794`, the object's slot 0x2c8).
     pub search_radius: f32,
+    /// The `.dat`'s `drop_sites` (`+0x7a0`..`+0x7a8`, `FUN_14109d4f0`): the buildings a unit of
+    /// this master takes its load to.
+    pub drop_sites: Vec<i16>,
     /// The hit points (`+0x530`) and the build time: the first train location's train time
     /// (`+0x898`'s first entry), 0 without one.
     pub hit_points: i16,

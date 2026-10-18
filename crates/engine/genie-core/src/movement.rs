@@ -1478,8 +1478,12 @@ impl Mover {
     /// The objects the short pather ignores (`FUN_14114ece0`): the unit, its target, the unit's
     /// own list but itself when its top path was made this update (`+0x858`'s path at `+0x8`),
     /// and, for a standing unit with a target whose action is in state 8 (a drop-off), the
-    /// allied workers standing near it farther from the target than the unit's radius squared,
-    /// which the slice does not model (it stops when any object is that near).
+    /// workers standing within its radius and a tenth (the records `FUN_141051900` finds; one
+    /// whose path was made this update is passed) of the classes 2, 4, 19 and 21 (or whose slot
+    /// 0x4f0 says so: 0 for a combat object, the mule cart's task 0x99 for a building, not
+    /// modelled for the building classes 3, 27, 39, 49 and 52) that are allied with the unit, farther from the target than the unit's radius
+    /// squared and pass the range test (`FUN_140fa0110`), which is not modelled: the slice
+    /// stops on such a worker.
     fn ignore_list(
         &self,
         me: &Me,
@@ -1496,9 +1500,32 @@ impl Mover {
                 let [x, y, _] = me.position;
                 let rect = [x, y, x, y];
                 world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
-                if !world.obstruction_candidates(rect, grow, &list).is_empty() {
+                let t = target.ok_or(Unsupported("unreachable: a drop-off without its target"))?;
+                let owner = world.get(me.id).map(|p| p.player);
+                let r = self.stats.radius[0];
+                for id in world.obstruction_candidates(rect, grow, &list) {
+                    let Some(p) = world.get(id) else { continue };
+                    if world.gait(id).is_some_and(|g| g.moving) {
+                        continue;
+                    }
+                    if !matches!(p.class, 2 | 4 | 19 | 21) {
+                        if matches!(p.class, 3 | 27 | 39 | 49 | 52) {
+                            return Err(Unsupported(
+                                "a building near a drop-off's walker (its slot 0x4f0)",
+                            ));
+                        }
+                        continue;
+                    }
+                    let allied = owner.is_some_and(|o| {
+                        let relations = world.relations.get(p.player).map_or(&[][..], |r| &r[..]);
+                        crate::tasks::allied(relations, p.player, o, true)
+                    });
+                    let gap = footprint_gap_squared(p.position, p.radius, t.position, t.radius);
+                    if !allied || gap <= r * r {
+                        continue;
+                    }
                     return Err(Unsupported(
-                        "the ignore list's workers near the unit (FUN_14114ece0)",
+                        "the range test of a worker near a drop-off's walker (FUN_140fa0110)",
                     ));
                 }
             }

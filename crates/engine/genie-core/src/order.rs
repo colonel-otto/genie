@@ -743,13 +743,29 @@ impl Turns {
             .hunt
             .map_or([-1; 4], |h| h.task.sprites);
         let arms = self.arms(player, idx, sprites)?;
+        // FUN_14109d4f0: the target's master is one of the unit's master's drop sites
+        let target_master = self.object(target).map(|(_, t)| t.life.master_id);
+        let drops_here = self
+            .master_of(player, self.players[player].objects[idx].life.master_id)?
+            .drop_sites
+            .iter()
+            .any(|&d| Some(d) == target_master);
         let unit = &mut self.players[player].objects[idx];
-        let old = unit.hunt.map(|h| h.target);
+        let old = unit.hunt.map(|h| h.target).filter(|&t| t != -1);
+        let held = unit.life.amount;
         let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.mover.as_mut()) else {
             return Err(Unsupported("a hunter without its hunt or movement state"));
         };
         let unit_player = player;
-        if hunt.retarget(&quarry, unit_player, &engagement, arms, mover)? {
+        if hunt.retarget(
+            &quarry,
+            unit_player,
+            held,
+            drops_here,
+            &engagement,
+            arms,
+            mover,
+        )? {
             if let Some(old) = old {
                 self.release(old)?;
             }
@@ -777,6 +793,7 @@ impl Turns {
             player: tp,
             amount: t.life.amount,
             allied: world.allied(player, tp, true),
+            top_action: t.top_action_kind(),
         })
     }
 

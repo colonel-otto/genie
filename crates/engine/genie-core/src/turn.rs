@@ -857,7 +857,79 @@ impl Unit {
                 c.mode_680,
             ))
         });
-        if let Some(hunt) = self.hunt.as_mut() {
+        if let Some(hunt) = self.hunt.as_mut().filter(|h| h.state == crate::hunt::DROP) {
+            // state 8 has no target: its drop site (the second target) is what it walks to
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+            let me_at = c
+                .spatial
+                .get_known(self.id)?
+                .ok_or(Unsupported("a hunter without a place"))?;
+            let (me_position, me_radius) = (me_at.position, me_at.radius);
+            let site = match c.spatial.get_known(hunt.carry_to)? {
+                Some(s) => {
+                    let actor = crate::tasks::Actor {
+                        id: self.id,
+                        master,
+                        player: c.player,
+                        held: (self.life.attribute_type, self.life.amount),
+                        attribute_95: c.attributes.get(95).copied().unwrap_or(0.0),
+                        civ: c.civ,
+                    };
+                    Some(crate::hunt::DropOff {
+                        takes: crate::tasks::drops_at(c.drop_sites, s.master, &actor),
+                        gap_squared: footprint_gap_squared(
+                            me_position,
+                            me_radius,
+                            s.position,
+                            s.radius,
+                        ),
+                    })
+                }
+                None => None,
+            };
+            let attributes = c.attributes.len();
+            let walk = c.walk(self.mover.as_mut(), me);
+            if let Some((kind, amount)) = hunt.update_drop(
+                walk,
+                &mut self.life.attribute_type,
+                &mut self.life.amount,
+                attributes,
+                site,
+            )? {
+                // the player's slot 0xf8 (FUN_141616820) with 1 and 1: the resource, and its
+                // gathered total (166 to 168; gold's 49 and 169); the statistics (slot 0xb8) and
+                // the local player's tracker (FUN_14097daf0) are not held. With 1 the resources
+                // would go to the allies too under +0x1426 (FUN_141626780): a player with allies
+                // is not modelled
+                let own = c
+                    .spatial
+                    .relations
+                    .get(c.player)
+                    .map_or(&[][..], |r| &r[..]);
+                let allied = (1..own.len())
+                    .any(|q| q != c.player && crate::tasks::allied(own, c.player, q, true));
+                if allied {
+                    return Err(Unsupported(
+                        "a load given to a player with allies (+0x1426)",
+                    ));
+                }
+                c.attribute_adds.push((kind, amount));
+                match kind {
+                    0..=2 => c.attribute_adds.push((166 + kind, amount)),
+                    3 => {
+                        c.attribute_adds.push((49, amount));
+                        c.attribute_adds.push((169, amount));
+                    }
+                    _ => {}
+                }
+                return Err(Unsupported(
+                    "a hunt after its drop-off: back to its target or a new one (FUN_140ac7a00 case 7)",
+                ));
+            }
+        } else if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;
             let master = c
                 .masters

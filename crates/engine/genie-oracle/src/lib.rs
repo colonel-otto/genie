@@ -534,8 +534,8 @@ fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
 
 /// The top action of a saved object as the slice models it: the Artifact action (107), the
 /// Build action (101) with its MoveTo, a MoveTo of its own (type 1), a bird's Fly action (10)
-/// with its MoveTo and the Hunt (110) with its Attack or MoveTo. Any other saved action stops the
-/// object's player.
+/// with its MoveTo and the Hunt (110) with its Attack or MoveTo (and in state 8 its second
+/// target, the drop site). Any other saved action stops the object's player.
 fn saved_actions(
     object: &genie_save::Object,
     s: &RgeStaticObject,
@@ -643,12 +643,12 @@ fn saved_actions(
             Ok(())
         }
         genie_core::hunt::HUNT => {
-            use genie_core::hunt::{ATTACK, FACE, GATHER, HuntAction, HuntTask, WALK};
+            use genie_core::hunt::{ATTACK, DROP, FACE, GATHER, HuntAction, HuntTask, WALK};
             let part = action
                 .tribe_action_hunt
                 .as_ref()
                 .ok_or(Unsupported("a saved Hunt without its own part"))?;
-            if !matches!(base.state, WALK | FACE | GATHER | ATTACK) {
+            if !matches!(base.state, WALK | FACE | GATHER | DROP | ATTACK) {
                 return Err(Unsupported(
                     "a saved Hunt in a state the slice does not model",
                 ));
@@ -673,6 +673,8 @@ fn saved_actions(
                 move_to: None,
                 walk_range: task.range,
                 drop_site: part.sheep_drop_site_id as i32,
+                carry_to: base.target2_id,
+                timer: base.timer,
             };
             match base.sub_actions.entries().next() {
                 None => {}

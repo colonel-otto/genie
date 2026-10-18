@@ -114,6 +114,10 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .map_or_else(Vec::new, |b| b.tasks.iter().map(dat_task).collect()),
         cost,
         work_rate: unit.bird.as_ref().map_or(0.0, |b| b.work_rate),
+        drop_sites: unit
+            .bird
+            .as_ref()
+            .map_or_else(Vec::new, |b| b.drop_sites.clone()),
         hit_points: unit.hit_points,
         capacity: unit.resource_capacity,
         build_time: unit
