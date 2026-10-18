@@ -998,6 +998,7 @@ mod tests {
                     count: 16,
                     flag_1: true,
                 }),
+                weapon_range: 0.0,
             },
             waiting: 0,
             wait_delays: 0,

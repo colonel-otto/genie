@@ -14,7 +14,7 @@ pub type Point = [i32; 2];
 
 /// `DAT_142f43b10`, `DAT_142f43a10`: fixed point to float and back.
 const TO_FLOAT: f32 = crate::image::short_path::TO_FLOAT;
-const TO_FIXED: f32 = crate::image::short_path::TO_FIXED;
+pub(crate) const TO_FIXED: f32 = crate::image::short_path::TO_FIXED;
 /// The raycast's start `t` (`0x466666`, 1.1).
 const T_START: i32 = 0x46_6666;
 
@@ -2183,6 +2183,79 @@ impl Pather {
         }
         self.remove_terrain(mesh);
         result
+    }
+
+    /// `FUN_140faa170` (from `FUN_140fa0110`, the drop-off walker's start test): the search's
+    /// prologue as [`Pather::search`]'s, without ignored shapes, then only the start
+    /// (`FUN_140fa4410`): true when it is out of the goal's range and blocked with fewer than
+    /// two escape candidates (its 2). The temporary terrain shapes leave the mesh after it
+    /// (`FUN_140f9d2b0`).
+    pub fn start_blocked(
+        &mut self,
+        mesh: &mut Mesh,
+        words: &dyn Fn(u32, u32) -> u64,
+        q: &Query,
+    ) -> bool {
+        if self.ignore.len() < mesh.shapes.len() {
+            self.ignore.resize(mesh.shapes.len(), false);
+        }
+        let r = q.radius;
+        let d = 0x20_0000 - r;
+        let w = mesh.width as i32;
+        let cap = w.wrapping_mul(ONE) - 1 - r;
+        let (sx, sy) = (q.from[0], q.from[1]);
+        let (gx, gy) = (q.to[0], q.to[1]);
+        let hold_high = |v: i32| {
+            if v.wrapping_add(0x100_0000) < cap {
+                v.wrapping_add(0x100_0000)
+            } else {
+                cap
+            }
+        };
+        let hold_low = |v: i32| {
+            if r < v.wrapping_sub(0x100_0000) {
+                v.wrapping_sub(0x100_0000)
+            } else {
+                r
+            }
+        };
+        let bounds = [
+            hold_low(if sx < gx { sx } else { gx }),
+            hold_low(if sy < gy { sy } else { gy }),
+            hold_high(if gx < sx { sx } else { gx }),
+            hold_high(if gy < sy { sy } else { gy }),
+        ];
+        self.remove_terrain(mesh);
+        self.add_terrain(mesh, words, q.blocked, bounds);
+        let goal = Goal {
+            at: [gx, gy],
+            r,
+            rx: q.target_size[0],
+            ry: q.target_size[1],
+            rrx: i64::from(r.wrapping_add(q.target_size[0])),
+            rry: i64::from(r.wrapping_add(q.target_size[1])),
+            range: q.range,
+            range2: (i64::from(q.range) * i64::from(q.range)) >> 22,
+        };
+        let ignore = self.ignore.clone();
+        let mut s = Search {
+            ctx: Ctx {
+                mesh,
+                ignore: &ignore,
+                d,
+            },
+            goal,
+            bounds,
+            open: Vec::new(),
+            arena: Vec::new(),
+            polys: Vec::new(),
+            goal_node: NONE,
+            best: 0,
+            token: 0,
+        };
+        let blocked = s.start(q.from) == 2;
+        self.remove_terrain(mesh);
+        blocked
     }
 
     /// `FUN_140fa53d0`.

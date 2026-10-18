@@ -568,6 +568,10 @@ fn mover(
             run_speed,
             stand_speed: with(standing),
             facets: sprite_facets,
+            weapon_range: objects
+                .master(s.master_obj)
+                .and_then(combat_master)
+                .map_or(0.0, |c| c.weapon_range),
         },
         waiting: m.waiting_to_move_value,
         wait_delays: m.number_wait_delays,
@@ -1820,6 +1824,7 @@ fn moving_stats(
             if 0.0 < f { base * f } else { base }
         },
         facets: master_facets(m, s, table),
+        weapon_range: combat_master(m).map_or(0.0, |c| c.weapon_range),
     })
 }
 

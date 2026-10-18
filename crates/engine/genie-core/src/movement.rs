@@ -109,6 +109,9 @@ pub struct MoveStats {
     /// The facets the facing routines read of the unit's current sprite: the master's, when
     /// every sprite it shows has the same count and bit 1 (None otherwise, or without sprites).
     pub facets: Option<crate::facing::SpriteFacets>,
+    /// The master's weapon range (slot 0x230, `+0x828`; 0 for an object without combat values),
+    /// which the drop-off walker's start test reads (`FUN_140fa0110`).
+    pub weapon_range: f32,
 }
 
 /// A moving unit's movement state.
@@ -1269,7 +1272,7 @@ impl Mover {
                         if way <= TARGET_SHORT_REACH {
                             let near = self.near_goal(way, gap, to_end);
                             let ignore =
-                                self.ignore_list(me, world, target, target_id, plan.now)?;
+                                self.ignore_list(me, world, plan, target, target_id, waypoint)?;
                             let r = self.short_path(
                                 me,
                                 world,
@@ -1338,7 +1341,7 @@ impl Mover {
                 if SHORT_PATHER && !failed && (way <= SHORT_REACH || near) {
                     planned = false;
                     path.points.clear();
-                    let ignore = self.ignore_list(me, world, target, target_id, plan.now)?;
+                    let ignore = self.ignore_list(me, world, plan, target, target_id, waypoint)?;
                     let r = self.short_path(
                         me,
                         world,
@@ -1604,23 +1607,27 @@ impl Mover {
         Step::Walk
     }
 
-    /// The objects the short pather ignores (`FUN_14114ece0`): the unit, its target, the unit's
-    /// own list but itself when its top path was made this update (`+0x858`'s path at `+0x8`),
-    /// and, for a standing unit with a target whose action is in state 8 (a drop-off), the
-    /// workers standing within its radius and a tenth (the records `FUN_141051900` finds; one
-    /// whose path was made this update is passed) of the classes 2, 4, 19 and 21 (or whose slot
-    /// 0x4f0 says so: 0 for a combat object, the mule cart's task 0x99 for a building, not
-    /// modelled for the building classes 3, 27, 39, 49 and 52) that are allied with the unit, farther from the target than the unit's radius
-    /// squared and pass the range test (`FUN_140fa0110`), which is not modelled: the slice
-    /// stops on such a worker.
+    /// The objects the short pather ignores (`FUN_14114ece0`, its path from the unit to `to`): the
+    /// unit, its target, the unit's own list but itself when its top path was made this update
+    /// (`+0x858`'s path at `+0x8`), and, for a standing unit with a target whose action is in
+    /// state 8 (a drop-off), the workers standing within its radius and a tenth (the records
+    /// `FUN_141051900` finds; one whose path was made this update is passed) of the classes 2, 4,
+    /// 19 and 21 (or whose slot 0x4f0 says so: 0 for a combat object, the mule cart's task 0x99
+    /// for a building, not modelled for the building classes 3, 27, 39, 49 and 52), when the
+    /// unit's start is blocked (`FUN_140fa0110`: [`short_path::Pather::start_blocked`] from its
+    /// place to `to` with its radius, its weapon range and the target's radii, no shape
+    /// ignored), allied with the unit and farther from the target than the unit's radius
+    /// squared.
     fn ignore_list(
         &self,
         me: &Me,
         world: &Spatial,
+        plan: &mut Planning<'_>,
         target: Option<&Placed>,
         target_id: i32,
-        now: u32,
+        to: Vec3,
     ) -> Result<Vec<i32>, Unsupported> {
+        let now = plan.now;
         let mut list = vec![me.id];
         if target.is_some() {
             list.push(target_id);
@@ -1632,6 +1639,7 @@ impl Mover {
                 let t = target.ok_or(Unsupported("unreachable: a drop-off without its target"))?;
                 let owner = world.get(me.id).map(|p| p.player);
                 let r = self.stats.radius[0];
+                let mut blocked: Option<bool> = None;
                 for id in world.obstruction_candidates(rect, grow, &list) {
                     let Some(p) = world.get(id) else { continue };
                     if world.gait(id).is_some_and(|g| g.moving) {
@@ -1645,6 +1653,26 @@ impl Mover {
                         }
                         continue;
                     }
+                    if self
+                        .paths
+                        .first()
+                        .is_some_and(|l| l.created == now && !l.points.is_empty())
+                    {
+                        return Err(Unsupported(
+                            "a worker near a drop-off's walker whose path is this update's",
+                        ));
+                    }
+                    let start_blocked = match blocked {
+                        Some(b) => b,
+                        None => {
+                            let b = self.start_blocked(me, world, plan, t, to)?;
+                            blocked = Some(b);
+                            b
+                        }
+                    };
+                    if !start_blocked {
+                        continue;
+                    }
                     let allied = owner.is_some_and(|o| {
                         let relations = world.relations.get(p.player).map_or(&[][..], |r| &r[..]);
                         crate::tasks::allied(relations, p.player, o, true)
@@ -1653,9 +1681,7 @@ impl Mover {
                     if !allied || gap <= r * r {
                         continue;
                     }
-                    return Err(Unsupported(
-                        "the range test of a worker near a drop-off's walker (FUN_140fa0110)",
-                    ));
+                    list.push(id);
                 }
             }
         }
@@ -1663,6 +1689,36 @@ impl Mover {
             list.extend(self.ignore_units.iter().filter(|&&id| id != me.id));
         }
         Ok(list)
+    }
+
+    /// `FUN_140fa0110`: whether the unit's start is blocked on its way from its place to `to` (in
+    /// fixed point by truncation), with its radius, its weapon range (slot 0x230) and the
+    /// target's radii (`FUN_140faa170`, [`short_path::Pather::start_blocked`]).
+    fn start_blocked(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        target: &Placed,
+        to: Vec3,
+    ) -> Result<bool, Unsupported> {
+        let fixed = |f: f32| (f * short_path::TO_FIXED) as i64 as i32;
+        let [x, y, _] = me.position;
+        let query = short_path::Query {
+            from: [fixed(x), fixed(y)],
+            to: [fixed(to[0]), fixed(to[2])],
+            radius: (self.stats.radius[0] * short_path::TO_FIXED) as i64 as u32 as i32,
+            target_size: [fixed(target.radius[0]), fixed(target.radius[1])],
+            range: fixed(self.stats.weapon_range),
+            blocked: u64::from(self.stats.restriction_mask ^ 0xff),
+        };
+        let tiles = world.tiles();
+        let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);
+        let (mesh, pather) = plan
+            .pathing
+            .mesh_and_pather()
+            .ok_or(Unsupported("a start test without the game's mesh"))?;
+        Ok(pather.start_blocked(mesh, &words, &query))
     }
 
     /// After a short path (`FUN_140f9e540`) for the new level: when the top path (`FUN_140f960f0`
@@ -1943,9 +1999,9 @@ impl Mover {
         let solid = 0.0 < radius[2] && 0.0 < radius[0] && 0.0 < radius[1];
         let (dx, dy) = (to[0] - x, to[1] - y);
         if solid && fmath::sqrt(dx * dx + 0.0 + dy * dy) <= REACH_SHORT {
-            let ignore =
-                self.ignore_list(me, world, target.map(|(_, t)| t), target_id, plan.now)?;
             let goal = [to[0], 0.0, to[1]];
+            let ignore =
+                self.ignore_list(me, world, plan, target.map(|(_, t)| t), target_id, goal)?;
             if self.short_path(me, world, plan, goal, range, target_id, &ignore, &mut path)? < 2 {
                 return Ok(true);
             }
@@ -2485,6 +2541,7 @@ mod tests {
                 count: 16,
                 flag_1: true,
             }),
+            weapon_range: 0.0,
         }
     }
 
