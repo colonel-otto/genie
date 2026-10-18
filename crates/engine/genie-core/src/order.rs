@@ -1749,6 +1749,7 @@ impl Turns {
             amount: t.life.amount,
             allied: world.allied(player, tp, true),
             top_action: t.top_action_kind(),
+            drop_site: false,
         })
     }
 
@@ -1792,7 +1793,27 @@ impl Turns {
         point: [f32; 3],
         clears: bool,
     ) -> Result<(), Unsupported> {
-        let quarry = self.quarry(player, target)?;
+        let mut quarry = self.quarry(player, target)?;
+        // the start's drop-site test (FUN_14109d4f0) of the target, or of a building annex's
+        // main building (`+0xbb8`)
+        quarry.drop_site = {
+            let (tp, t) = self
+                .object(target)
+                .ok_or(Unsupported("a hunt's target the slice does not hold"))?;
+            let main = if quarry.kind == BUILDING {
+                t.annex_of.unwrap_or(target)
+            } else {
+                target
+            };
+            let main_master = match self.object(main) {
+                Some((mp, m)) => self.master_of(mp, m.life.master_id)?.id,
+                None => self.master_of(tp, t.life.master_id)?.id,
+            };
+            let unit = &self.players[player].objects[idx];
+            self.master_of(player, unit.life.master_id)?
+                .drop_sites
+                .contains(&main_master)
+        };
         self.take(target);
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
@@ -1828,7 +1849,15 @@ impl Turns {
             mover,
         )?;
         (unit.life.attribute_type, unit.life.amount) = held;
+        let drops = hunt.target == -1 && hunt.carry_to == target;
         unit.hunt = Some(hunt);
+        // a load to its own drop site: the target taken as the second (FUN_140a7a190), then let
+        // go as the first (slot 0x68 with none)
+        if drops {
+            self.take(target);
+            let by = self.releaser(player, idx);
+            self.release(target, by)?;
+        }
         Ok(())
     }
 

@@ -214,6 +214,9 @@ pub struct Quarry {
     pub allied: bool,
     /// Its top action's type (a building's `+0x880` list).
     pub top_action: Option<i16>,
+    /// The hunter's master has its master (a building annex's main building's, `+0xbb8`) among
+    /// its drop sites (`FUN_14109d4f0`), which the start reads of its own player's object.
+    pub drop_site: bool,
 }
 
 /// Food and the food kinds of carcasses and fish (0, 15 to 17): a hunter keeps what it carries
@@ -225,7 +228,8 @@ fn food(kind: i16) -> bool {
 impl HuntAction {
     /// The factory's constructor (`FUN_140ac2dd0`; its target's add, slot 0x178, is the caller's)
     /// and the install's start (slot 5 with 1, `0x140ac49b0`): a hunter carrying another food
-    /// keeps the amount as the task's kind (`FUN_14119d310` on `held`); then `set_state(4)`. A
+    /// keeps the amount as the task's kind (`FUN_14119d310` on `held`); a loaded hunter sent to
+    /// one of its own drop sites carries the load there (`set_state` 8); else `set_state(4)`. A
     /// target of another, unallied player (or of class 49) that is not dead yet is attacked first
     /// (`set_state` 12). `computer` is the owner's type test (`FUN_141659cf0`); `carry_rule` the
     /// game settings' test `FUN_141302150`, with which a hunter drops another resource it carries
@@ -268,17 +272,18 @@ impl HuntAction {
                 }
             }
         }
-        if target.kind == BUILDING {
-            return Err(Unsupported(
-                "a hunt on a building (its annex and drop-site tests)",
-            ));
-        }
-        // an own target among the hunter's master's drop sites (`+0x7a0`, FUN_14109d4f0) takes a
-        // load there (set_state 8); a hunter carrying nothing does not get there
-        if target.player == player && 0.0 < held.1 {
-            return Err(Unsupported(
-                "a loaded hunt on its own player's object (FUN_14109d4f0, set_state 8)",
-            ));
+        // the start (slot 5 with 1): an own target among the hunter's master's drop sites
+        // (`+0x7a0`, FUN_14109d4f0; a building annex's main building) takes a load there: it
+        // becomes the second target (FUN_140a7a190), the target goes (slot 0x68 with none; the
+        // caller takes and releases it), the point and `+0x68` clear, `set_state(8)`; a hunter
+        // carrying nothing does not get there
+        if target.player == player && target.drop_site && 0.0 < held.1 {
+            hunt.target = -1;
+            hunt.point = [-1.0; 3];
+            hunt.target_class = -1;
+            hunt.carry_to = target.id;
+            hunt.set_drop(attack.gap, mover)?;
+            return Ok(hunt);
         }
         hunt.chase(target, player, attack, arms, mover)?;
         Ok(hunt)
@@ -926,6 +931,7 @@ pub(crate) mod tests {
             amount: 100.0,
             allied: false,
             top_action: None,
+            drop_site: false,
         }
     }
 

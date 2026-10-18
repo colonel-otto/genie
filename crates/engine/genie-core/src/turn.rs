@@ -1502,6 +1502,7 @@ impl Unit {
                 amount: v.amount,
                 allied: v.allied[0],
                 top_action: None,
+                drop_site: false,
             };
             let (me_at, them) = (
                 c.spatial
@@ -1665,6 +1666,7 @@ impl Unit {
             amount: t.life.amount,
             allied: crate::tasks::allied(relations, c.player, owner, true),
             top_action: t.top_action_kind(),
+            drop_site: false,
         };
         let (me_at, them) = (
             c.spatial
