@@ -7,7 +7,7 @@
 //! action type 107. An idle animal holds this action as its top action, so checkpoint word 9 counts
 //! `107 + state` for it.
 
-use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_on};
+use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_or_give_up};
 use crate::unit_ai::Unsupported;
 
 /// One animal's Artifact action, as the checkpoint sees it.
@@ -89,10 +89,14 @@ impl Artifact {
         self.step(dt_ms, searches, owner)
     }
 
-    /// The update's first part: its MoveTo sub-action. True when the MoveTo ended: its update in
-    /// state 1 posts its completion (0x1fa with the move action value; the Artifact's MoveTo is
-    /// not quiet), which the caller sends to the unit AI.
-    pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<bool, Unsupported> {
+    /// The update's first part: its MoveTo sub-action (`FUN_140a992b0`). Some notify kind when the
+    /// MoveTo ended, which the caller sends to the unit AI with the move action value (the
+    /// Artifact's MoveTo is not quiet): its completion (0x1fa) from its update in state 1, or its
+    /// failure (0x1f9) from state 13. A MoveTo whose motion step gave up fails (set_state 13: an
+    /// animal never waits as a villager may); the failed one's update returns 3, the Artifact
+    /// drops it (`FUN_140a98620`: its teardown stops the unit, slot 0x5d0, the caller's) and its
+    /// point (−1). A waiting MoveTo is not modelled.
+    pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<Option<i32>, Unsupported> {
         let need = || Unsupported("a walking animal without its walk");
         match self.move_to {
             Some(MoveTo::Start) => {
@@ -107,20 +111,26 @@ impl Artifact {
                     false,
                 )?);
             }
-            Some(MoveTo::Moving) => self.move_to = Some(walk_on(walk.ok_or_else(need)?)?),
+            Some(MoveTo::Moving) => {
+                let state = walk_or_give_up(walk.ok_or_else(need)?)?;
+                self.move_to = Some(state.unwrap_or(MoveTo::Failed));
+            }
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
                 self.goal = None;
-                return Ok(true);
+                return Ok(Some(crate::unit_ai::ACTION_COMPLETED));
             }
-            Some(MoveTo::Waiting | MoveTo::Failed) => {
-                return Err(Unsupported(
-                    "an Artifact's waiting or failed MoveTo (states 2, 13)",
-                ));
+            Some(MoveTo::Failed) => {
+                self.move_to = None;
+                self.goal = None;
+                return Ok(Some(crate::unit_ai::ACTION_FAILED));
+            }
+            Some(MoveTo::Waiting) => {
+                return Err(Unsupported("an Artifact's waiting MoveTo (state 2)"));
             }
             None => {}
         }
-        Ok(false)
+        Ok(None)
     }
 
     /// The update's second part: the state's step.

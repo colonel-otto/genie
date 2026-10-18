@@ -252,6 +252,7 @@ fn unit(
         saved_actions(
             object,
             s,
+            objects,
             |m| build_task(objects, civ, masters, m),
             |m| fly_task(objects, civ, masters, m),
             |m, i| task_at(objects, civ, masters, m, i),
@@ -545,9 +546,11 @@ fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
 /// Build action (101) with its MoveTo, a MoveTo of its own (type 1), a bird's Fly action (10)
 /// with its MoveTo and the Hunt (110) with its Attack or MoveTo (and in state 8 its second
 /// target, the drop site). Any other saved action stops the object's player.
+#[allow(clippy::too_many_arguments)]
 fn saved_actions(
     object: &genie_save::Object,
     s: &RgeStaticObject,
+    objects: &PlayerObjects,
     work: impl Fn(i16) -> Result<genie_core::build::BuildTask, Unsupported>,
     fly_task: impl Fn(i16) -> Result<genie_core::masters::Task, Unsupported>,
     task_at: impl Fn(i16, i16) -> Result<genie_core::masters::Task, Unsupported>,
@@ -691,7 +694,23 @@ fn saved_actions(
             match base.sub_actions.entries().next() {
                 None => {}
                 Some((genie_core::attack::ATTACK, sub)) => {
-                    hunt.attack = Some(saved_attack(sub, graphics, &move_to_state)?);
+                    let mut attack = saved_attack(sub, graphics, &move_to_state)?;
+                    // a swing past its hit: the swing's times (`+0xb0`, `+0xb4`, unsaved) are what
+                    // the hit left, the reload less the attack sprite's length
+                    if attack.state == genie_core::attack::SWING && !attack.pending {
+                        let reload = saved_reload(object, s, objects)
+                            .ok_or(Unsupported("a saved swing without its unit's reload"))?;
+                        let g = attack
+                            .arms
+                            .sprite
+                            .ok_or(Unsupported("a saved swing without its attack sprite"))?;
+                        let rest = reload - f32::from(g.frames) * g.frame_duration;
+                        attack.swing = rest;
+                        attack.rest = rest.max(0.0);
+                    }
+                    hunt.attack = Some(attack);
+                    // the attack reads and changes the unit's sprite from here on
+                    unit.sprite = graphics.and_then(|g| saved_sprite(s, g));
                 }
                 Some((MOVE_TO, sub)) => {
                     hunt.move_to = Some(move_to_state(sub.base().map_or(0, |b| b.state))?);
@@ -741,6 +760,53 @@ fn saved_actions(
         }
         _ => Err(Unsupported("a saved action the slice does not import")),
     }
+}
+
+/// A saved unit's reload (the Strike's): its `mReloadStinger` plus its master's
+/// `speed_of_attack` less its `mReloadPowerup`; None without a combat master.
+fn saved_reload(
+    object: &genie_save::Object,
+    s: &RgeStaticObject,
+    objects: &PlayerObjects,
+) -> Option<f32> {
+    let c = object.combat()?;
+    let master = objects
+        .masters
+        .iter()
+        .flatten()
+        .map(|m| &m.master)
+        .find(|m| m.static_part().is_some_and(|ms| ms.id() == s.master_obj))?;
+    let rc = &master
+        .tribe_master_combat_object
+        .as_ref()?
+        .rge_master_combat_object;
+    Some(c.reload_stinger + (rc.speed_of_attack - c.reload_powerup))
+}
+
+/// The unit's current sprite as the save holds it: the animated node (type 2) of its sprite
+/// list (`temp_load_sprite_list`, `FUN_1413b87c0`) that shows its sprite (`+0x18`), with its
+/// frame and clock; None without one or for a graphic the table lacks.
+fn saved_sprite(
+    s: &RgeStaticObject,
+    graphics: &std::collections::BTreeMap<i16, genie_core::sprite::Graphic>,
+) -> Option<genie_core::sprite::ActiveSprite> {
+    let list = s.active_sprite_list.as_ref()?;
+    let node = list
+        .sprite_type_list
+        .iter()
+        .filter_map(|e| e.type_.as_ref()?.rge_active_animated_sprite.as_ref())
+        .find(|a| a.rge_active_sprite.sprite_id as i16 == s.sprite)?;
+    Some(genie_core::sprite::ActiveSprite {
+        graphic: graphics.get(&s.sprite).copied()?,
+        frame: node.rge_active_sprite.frame,
+        interval: node.animate_interval,
+        last: node.animate_last,
+        last_frame: node.last_frame as i16,
+        changed: node.frame_changed != 0,
+        looped: node.frame_looped != 0,
+        animate: node.animate_flag,
+        speed: node.last_speed_value,
+    })
 }
 
 /// A saved Attack sub-action (type 9, `FUN_140a7c880`): its target, state, timer, ranges, point,

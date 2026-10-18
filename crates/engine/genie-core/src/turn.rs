@@ -1298,6 +1298,12 @@ impl Unit {
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
             let dt = c.dt;
             let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
+            // a failed MoveTo's teardown stops the unit
+            if ended == Some(crate::unit_ai::ACTION_FAILED)
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
             // FUN_14107cc90: an object of the combat types whose +0x924 is 0 never changes hands
             let capture = c
                 .spatial
@@ -1312,8 +1318,8 @@ impl Unit {
             let new = artifact.step(dt, searches, &mut || {
                 spatial.artifact_owner(id, attribute_97)
             })?;
-            if ended {
-                self.post_own(ACTION_COMPLETED, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
+            if let Some(kind) = ended {
+                self.post_own(kind, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
             }
             if let Some(new) = new {
                 captured = Some((new, self.capture(c, others, new)?));
