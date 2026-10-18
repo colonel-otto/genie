@@ -195,6 +195,87 @@ pub fn unexplored_area(
     Ok(best.map(|(p, _)| p))
 }
 
+/// The order of an explore to a target point (`0x2da`): the search looks within 7 tiles of it.
+const EXPLORE_POINT_ORDER: i32 = 0x2da;
+/// How far past its line of sight the search looks, and about an explore's target point, in tiles.
+const SEARCH_PAST_SIGHT: i32 = 3;
+const SEARCH_ABOUT_POINT: i32 = 7;
+
+/// What `closestUndiscoveredTile` reads of its unit and unit AI.
+#[derive(Clone, Copy, Debug)]
+pub struct Seeker {
+    /// The unit's place.
+    pub at: [f32; 3],
+    /// Its master's line of sight (`+0x5d0`).
+    pub line_of_sight: f32,
+    /// The unit AI's current order (`+0x3c`).
+    pub order: i32,
+    /// The unit AI's target point (`+0x50`, `+0x54`; x is −1 without one).
+    pub target_point: [f32; 2],
+    /// The owner is a computer player (`FUN_141659cf0`, `player+0x10 == 3`).
+    pub computer: bool,
+}
+
+/// `FUN_140c4bd40`, the unit AI's slot 0x90 (`closestUndiscoveredTile`, "the closest
+/// undiscovered tile"): none for a computer player's unit. Else, after one draw of the AI stream
+/// (`ai`), the tiles within the unit's line of sight and 3 more of its tile (within 7 of the target
+/// point under an explore to it, order `0x2da`), held on the map (`map`), row by row: a tile the
+/// player never saw, in the unit's zone, where the unit could stand (slot 0x278) counts by the
+/// squared distance between the tiles (plus that from the target point's, when the AI has one),
+/// and takes the place of the best when it is nearer than the best by more than the draw's slack
+/// (`d < best + draw % 3`). The best then counts only when the unit reaches it (slot 0x3d8 within
+/// its line of sight less a tile). The waypoint queue the search passes by (`+0xd8`, count
+/// `+0x158`, not saved) is empty in the slice.
+pub fn closest_undiscovered(
+    area: &mut dyn Area,
+    seeker: Seeker,
+    map: [i32; 2],
+    ai: &mut crate::rng::Well512,
+) -> Result<Option<[i32; 2]>, Unsupported> {
+    if seeker.computer {
+        return Ok(None);
+    }
+    let [ux, uy, _] = seeker.at;
+    let reach = (seeker.line_of_sight as i32 + SEARCH_PAST_SIGHT) as f32;
+    let (mut x0, mut x1) = ((ux - reach) as i32, (reach + ux) as i32);
+    let (mut y0, mut y1) = ((uy - reach) as i32, (reach + uy) as i32);
+    let [px, py] = seeker.target_point;
+    if seeker.order == EXPLORE_POINT_ORDER {
+        (x0, x1) = (
+            px as i32 - SEARCH_ABOUT_POINT,
+            px as i32 + SEARCH_ABOUT_POINT,
+        );
+        (y0, y1) = (
+            py as i32 - SEARCH_ABOUT_POINT,
+            py as i32 + SEARCH_ABOUT_POINT,
+        );
+    }
+    let (x0, y0) = (x0.max(0), y0.max(0));
+    let (x1, y1) = (x1.min(map[0] - 1), y1.min(map[1] - 1));
+    let slack = (ai.rand15() % 3) as i32;
+    let own = area.own_zone();
+    let (tx, ty) = (ux as i32, uy as i32);
+    let mut best: Option<([i32; 2], i32)> = None;
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            if area.explored(x, y)? || area.zone(x, y) != own || !area.clear(x, y)? {
+                continue;
+            }
+            let mut d = (y - ty) * (y - ty) + (x - tx) * (x - tx);
+            if px != NO_POINT {
+                d += (y - py as i32) * (y - py as i32) + (x - px as i32) * (x - px as i32);
+            }
+            if best.is_none_or(|(_, b)| d < slack + b) {
+                best = Some(([x, y], d));
+            }
+        }
+    }
+    match best {
+        Some(([x, y], _)) if area.reaches(x, y)? => Ok(Some([x, y])),
+        _ => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +343,77 @@ mod tests {
             Ok(Some([9, 94]))
         );
         assert_eq!(unexplored_area(None, [120, 120], &mut area), Ok(None));
+    }
+
+    /// An area where only the listed tiles are unexplored.
+    struct Patch {
+        unexplored: Vec<[i32; 2]>,
+        unreachable: Vec<[i32; 2]>,
+    }
+
+    impl Area for Patch {
+        fn explored(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+            Ok(!self.unexplored.contains(&[x, y]))
+        }
+        fn zone(&mut self, _: i32, _: i32) -> u16 {
+            1
+        }
+        fn own_zone(&mut self) -> u16 {
+            1
+        }
+        fn clear(&self, _: i32, _: i32) -> Result<bool, Unsupported> {
+            Ok(true)
+        }
+        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, Unsupported> {
+            Ok(!self.unreachable.contains(&[x, y]))
+        }
+        fn distance(&self, _: i32, _: i32) -> f32 {
+            0.0
+        }
+    }
+
+    #[test]
+    fn the_unit_ai_s_search_takes_the_nearest_unexplored_tile_it_reaches() {
+        let seeker = Seeker {
+            at: [20.5, 92.5, 0.0],
+            line_of_sight: 4.0,
+            order: -1,
+            target_point: [NO_POINT, NO_POINT],
+            computer: false,
+        };
+        let seeded = || {
+            let mut r = crate::rng::Well512::default();
+            r.set_seed(7);
+            r
+        };
+        let mut area = Patch {
+            // within the line of sight and 3: 16 and 25 tiles squared away, and one beyond
+            unexplored: vec![[16, 92], [25, 92], [20, 97], [40, 92]],
+            unreachable: vec![],
+        };
+        let mut ai = seeded();
+        let found = closest_undiscovered(&mut area, seeker, [120, 120], &mut ai);
+        assert_eq!(found, Ok(Some([16, 92])));
+        // one draw of the AI stream
+        let mut once = seeded();
+        let _ = once.rand15();
+        assert_eq!(ai.rand15(), once.rand15());
+        // the best is the only one tested for reach
+        area.unreachable.push([16, 92]);
+        assert_eq!(
+            closest_undiscovered(&mut area, seeker, [120, 120], &mut seeded()),
+            Ok(None)
+        );
+        // a computer player's unit searches nothing
+        let computer = Seeker {
+            computer: true,
+            ..seeker
+        };
+        let mut untouched = seeded();
+        assert_eq!(
+            closest_undiscovered(&mut area, computer, [120, 120], &mut untouched),
+            Ok(None)
+        );
+        assert_eq!(untouched.rand15(), seeded().rand15());
     }
 }

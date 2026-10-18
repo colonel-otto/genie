@@ -522,6 +522,8 @@ struct UnitView<'u> {
     construction_rate: f32,
     /// The owner's other objects.
     others: &'u [Unit],
+    /// The map's terrain zones, which an explorer's search reads.
+    zones: &'u mut crate::zones::Zones,
     /// The other players' lists.
     foreign: Foreign<'u>,
     /// Every player's masters.
@@ -677,6 +679,69 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     fn set_under_attack(&mut self, value: bool) {
         self.unit.under_attack = value;
+    }
+
+    fn seek_unexplored(&mut self, ai: &UnitAi, rng: &mut Well512) -> Result<[i32; 2], Unsupported> {
+        let unit = &*self.unit;
+        let master = self
+            .masters
+            .and_then(|m| m.get(unit.life.master_id))
+            .ok_or(Unsupported(
+                "an auto scout of a master the slice does not have",
+            ))?;
+        let mover = unit
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("an auto scout without movement state"))?;
+        let tc = town_centre(self.others)?;
+        let [w, h] = self.spatial.map;
+        let terrain = self
+            .spatial
+            .terrain
+            .as_ref()
+            .ok_or(Unsupported("the map's zones without its terrain"))?;
+        let values = terrain
+            .restrictions
+            .get(mover.stats.restriction)
+            .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+        let zones = self.zones.of(w, h, &terrain.kinds, values);
+        let me = Me {
+            id: unit.id,
+            position: unit.position,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let mut area = ScoutArea {
+            spatial: self.spatial,
+            zones,
+            plan: Planning {
+                pathing: self.pathing,
+                now: self.world_time,
+                computer: self.computer,
+                object: self.object,
+                construction_rate: self.construction_rate,
+            },
+            mover,
+            me,
+            player: self.player,
+            master: master.id,
+            radius: master.radius,
+            reach: master.line_of_sight - LOS_MARGIN,
+        };
+        if let Some(p) = crate::explore::unexplored_area(tc, [w, h], &mut area)? {
+            return Ok(p);
+        }
+        // none about the town centre: the unit AI's own search (slot 0x90)
+        let seeker = crate::explore::Seeker {
+            at: unit.position,
+            line_of_sight: master.line_of_sight,
+            order: ai.current_order,
+            target_point: [ai.target_point[0], ai.target_point[1]],
+            computer: self.computer,
+        };
+        crate::explore::closest_undiscovered(&mut area, seeker, [w, h], rng)?.ok_or(Unsupported(
+            "an explorer that finds no undiscovered tile (the base handler's \"Couldn't find any \
+             tiles.\")",
+        ))
     }
 }
 
@@ -1017,7 +1082,6 @@ impl Unit {
         effects: Vec<Effect>,
         class: Option<i16>,
         c: &mut Context<'_>,
-        others: &[Self],
     ) -> Result<(), Unsupported> {
         for e in effects {
             match e {
@@ -1039,13 +1103,6 @@ impl Unit {
                 }
                 Effect::Explore(point) => self.explore_to(point, c)?,
                 Effect::MoveToObject { target, range } => self.move_to_object(target, range, c)?,
-                Effect::SeekUnexplored => {
-                    let [x, y] = self.seek_unexplored(c, others)?;
-                    if let Some(ai) = self.ai.as_mut() {
-                        ai.explore_point(x, y);
-                    }
-                    self.explore_to([x as f32, y as f32], c)?;
-                }
             }
         }
         Ok(())
@@ -1476,65 +1533,6 @@ impl Unit {
             .as_mut()
             .ok_or(Unsupported("a walker without movement state"))?
             .stop()
-    }
-
-    /// The auto scout's search ([`crate::explore::unexplored_area`]) for this unit: around its
-    /// player's town centre ([`town_centre`] among `others`), on the map's terrain zones for its
-    /// restriction ([`crate::zones::Zones`]), its point test (slot 0x278) and reach (slot 0x3d8,
-    /// within its line of sight less a tile, `DAT_14330eb8c`), by the gap from its footprint
-    /// (`FUN_14118faf0`). No point is not modelled (slot 0x90, `FUN_140c4b130`).
-    fn seek_unexplored(
-        &self,
-        c: &mut Context<'_>,
-        others: &[Self],
-    ) -> Result<[i32; 2], Unsupported> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported(
-                "an auto scout of a master the slice does not have",
-            ))?;
-        let mover = self
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("an auto scout without movement state"))?;
-        let tc = town_centre(others)?;
-        let [w, h] = c.spatial.map;
-        let terrain = c
-            .spatial
-            .terrain
-            .as_ref()
-            .ok_or(Unsupported("the map's zones without its terrain"))?;
-        let values = terrain
-            .restrictions
-            .get(mover.stats.restriction)
-            .ok_or(Unsupported("a restriction the slice's data has not got"))?;
-        let zones = c.zones.of(w, h, &terrain.kinds, values);
-        let me = Me {
-            id: self.id,
-            position: self.position,
-            action_state: self.top_action().map_or(0, |a| a.state),
-        };
-        let mut area = ScoutArea {
-            spatial: c.spatial,
-            zones,
-            plan: Planning {
-                pathing: c.pathing,
-                now: c.world_time,
-                computer: c.computer,
-                object: c.streams.get(Stream::Object),
-                construction_rate: c.construction_rate,
-            },
-            mover,
-            me,
-            player: c.player,
-            master: master.id,
-            radius: master.radius,
-            reach: master.line_of_sight - LOS_MARGIN,
-        };
-        crate::explore::unexplored_area(tc, [w, h], &mut area)?.ok_or(Unsupported(
-            "an auto scout without an unexplored point around its town centre (slot 0x90)",
-        ))
     }
 
     /// A stop since the last look cleared the animation speed (`+0x7b8`, [`Mover::speed_stopped`]).
@@ -3383,6 +3381,7 @@ impl Unit {
                             world_time: c.world_time,
                             construction_rate: c.construction_rate,
                             others,
+                            zones: c.zones,
                             foreign: c.foreign,
                             every: c.every_masters,
                             masters: c.masters,
@@ -3399,7 +3398,7 @@ impl Unit {
                 self.ai = Some(ai);
                 result?
             };
-            self.apply(effects, class, c, others)?;
+            self.apply(effects, class, c)?;
         }
         if let Some((new, also)) = captured {
             return Ok(Step::Captured(new, also));

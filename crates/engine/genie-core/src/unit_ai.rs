@@ -151,11 +151,6 @@ pub enum Effect {
     /// (x, y): its Explore takes the point (slot 0x48), else a new Explore to it (`FUN_140a87d30`
     /// at the unit's height) replaces its actions (`FUN_140a98620`, slot 0x808).
     Explore([f32; 2]),
-    /// The explorer's search (the base notify's case 0x202 on the auto scout's action `0x2bd`,
-    /// `FUN_140c65490`): the caller finds the point ([`crate::explore::unexplored_area`]), gives
-    /// the AI its target point and the unit [`Effect::Explore`] to it. No point found is not
-    /// modelled (slot 0x90's search, then `FUN_140c4b130`).
-    SeekUnexplored,
     /// The AI's move to an object (slot 0x138, `FUN_140c55490`, with its fourth argument 1): the
     /// unit's slot 0x348 (`FUN_141086440`, forced) replaces its actions (`FUN_140a98620`) with a
     /// `MoveTo` to the target within `range` showing the master's running sprite (the walking one
@@ -482,6 +477,15 @@ pub trait UnitSide {
 
     /// The unit's `+0x685`, `underAttackValue`, becomes `value` (`FUN_14119d2d0`).
     fn set_under_attack(&mut self, value: bool);
+
+    /// The explorer's point to explore (the base handler's case 0x202 for the auto scout): the
+    /// search around its town centre (`FUN_140c65490`), else its unit AI's (`ai`) slot 0x90 with
+    /// a draw of the AI stream (`rng`).
+    ///
+    /// # Errors
+    ///
+    /// What the searches do not model, and no point at all.
+    fn seek_unexplored(&mut self, ai: &UnitAi, rng: &mut Well512) -> Result<[i32; 2], Unsupported>;
 }
 
 impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
@@ -494,6 +498,10 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
     }
 
     fn set_under_attack(&mut self, _: bool) {}
+
+    fn seek_unexplored(&mut self, _: &UnitAi, _: &mut Well512) -> Result<[i32; 2], Unsupported> {
+        Err(Unsupported("an explorer's search without its unit"))
+    }
 }
 
 /// What a [`Search`] answers: the object picked (−1 for none) and whether the lists it read hold
@@ -1866,7 +1874,7 @@ impl UnitAi {
             2 => match n.kind {
                 DAMAGED => Err(Unsupported("a hunted animal's damage notify (its evade)")),
                 0x20f => Ok(GO_ON),
-                _ => self.base_notify(n, time, at, fx),
+                _ => self.base_notify(n, time, at, ai_rng, side, fx),
             },
             // the boar (FUN_140c25770): its damage notify attacks
             4 => match n.kind {
@@ -1875,13 +1883,13 @@ impl UnitAi {
                     Err(Unsupported("a boar's completion of action 0x2bf"))
                 }
                 0x20f => Ok(GO_ON),
-                _ => self.base_notify(n, time, at, fx),
+                _ => self.base_notify(n, time, at, ai_rng, side, fx),
             },
             // the lion (FUN_140c266f0)
             5 => match n.kind {
                 ACTION_COMPLETED if n.p[0] == 600 => Err(Unsupported("a lion's completed attack")),
                 0x1fc => Err(Unsupported("a lion's moved target")),
-                _ => self.base_notify(n, time, at, fx),
+                _ => self.base_notify(n, time, at, ai_rng, side, fx),
             },
             // the villager (FUN_140c22bf0): a completion or failure of its action stops it, and slot 0x48
             // passes the notify to its owner's slot 0x2e8 (not held); a failed build (0x202, its
@@ -1912,7 +1920,7 @@ impl UnitAi {
                 ACTION_EXECUTED if computer => {
                     Err(Unsupported("a computer villager's executed action"))
                 }
-                ACTION_EXECUTED => self.base_notify(n, time, at, fx),
+                ACTION_EXECUTED => self.base_notify(n, time, at, ai_rng, side, fx),
                 _ => Err(Unsupported("a villager's notify the slice does not model")),
             },
             // the soldier (FUN_140c28bb0): its own cases are the computer's, a backing-up and a
@@ -1925,7 +1933,7 @@ impl UnitAi {
                 0x202 if self.current_action == 0x25b => {
                     Err(Unsupported("a healer's search notify"))
                 }
-                _ => self.base_notify(n, time, at, fx),
+                _ => self.base_notify(n, time, at, ai_rng, side, fx),
             },
             // the tower (FUN_140c299f0)
             15 => match n.kind {
@@ -1933,12 +1941,12 @@ impl UnitAi {
                 ACTION_COMPLETED if n.p[0] == 600 && self.current_order == 700 => {
                     Err(Unsupported("a tower's completed attack"))
                 }
-                _ => self.base_notify(n, time, at, fx),
+                _ => self.base_notify(n, time, at, ai_rng, side, fx),
             },
             // the building (FUN_140c22610): most notifies end there
             17 => match n.kind {
                 DAMAGED | 600 | NO_LONGER_ON_ME => Err(Unsupported("a building's attack notify")),
-                0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, fx),
+                0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, ai_rng, side, fx),
                 _ => Ok(GO_ON),
             },
             // livestock (FUN_140c26ac0): any notify but 0x202 and 0x216 drops the action value
@@ -1960,16 +1968,21 @@ impl UnitAi {
     /// ([`UnitAi::action_completed`]), an ownership change (stopAction, `FUN_140c5e1e0`, slot 0xb0
     /// with 1, `FUN_140c5dc10` with the handler's time, the order queue emptied), the kinds it
     /// ignores; anything else is not modelled.
+    #[allow(clippy::too_many_arguments)]
     fn base_notify(
         &mut self,
         n: Notify,
         time: u32,
         at: &Surroundings,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         match n.kind {
             ACTION_COMPLETED => self.action_completed(n, at, fx),
-            crate::explore::WANTS_POINT if self.explorer() => self.seek_unexplored(fx),
+            crate::explore::WANTS_POINT if self.explorer() => {
+                self.seek_unexplored(ai_rng, side, fx)
+            }
             OWNER_CHANGED => {
                 fx.push(Effect::Stop);
                 self.remove_target();
@@ -2014,24 +2027,27 @@ impl UnitAi {
 
     /// The base handler's case 0x202 for an explorer ("I'm an explorer, looking for the closest
     /// undiscovered tile."): on the auto scout's action, with the player's explored-points grid
-    /// never made (`player+0x1370`), the search around the town centre (`FUN_140c65490`,
-    /// [`Effect::SeekUnexplored`]; the caller finds the point, its absence is not modelled), then
-    /// slot 0x100 with 1 to it ([`UnitAi::explore_at`]: the explore's action value becomes the
-    /// last) and the action value back; processing breaks. The other explorers' search (slot
-    /// 0x90) is not modelled.
-    fn seek_unexplored(&mut self, fx: &mut Vec<Effect>) -> Result<u32, Unsupported> {
+    /// never made (`player+0x1370`), the search around the town centre (`FUN_140c65490`), else
+    /// the unit AI's slot 0x90 (`FUN_140c4bd40`), both from its unit
+    /// ([`UnitSide::seek_unexplored`]; no point at all is not modelled); then slot 0x100 with 1 to
+    /// the point ([`UnitAi::explore_at`]), the explore's action value becomes the last and the
+    /// action value comes back; processing breaks. The other explorers' search is not modelled.
+    fn seek_unexplored(
+        &mut self,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
         let action = self.current_action;
         if action != AUTO_SCOUT_ACTION {
             return Err(Unsupported(
                 "an explorer's search for the closest undiscovered tile (slot 0x90)",
             ));
         }
-        fx.push(Effect::SeekUnexplored);
-        self.last_action = std::mem::replace(&mut self.current_action, EXPLORE_ACTION);
-        self.last_target = self.current_target;
-        self.last_target_type = self.target_type;
-        self.current_target = -1;
-        self.last_action = std::mem::replace(&mut self.current_action, action);
+        let [x, y] = side.seek_unexplored(self, ai_rng)?;
+        let _ = self.explore_at(x, y, true, fx);
+        self.last_action = self.current_action;
+        self.current_action = action;
         Ok(BREAK)
     }
 
@@ -2351,12 +2367,6 @@ impl UnitAi {
         true
     }
 
-    /// The explorer's point (the base notify's case 0x202 after [`Effect::SeekUnexplored`]): the
-    /// AI's target point.
-    pub const fn explore_point(&mut self, x: i32, y: i32) {
-        self.target_point = [x as f32, y as f32, EXPLORE_Z];
-    }
-
     /// Slot 0x28 (`FUN_140c55c90`) with Immediate set and inFront clear: for a unit in state 2 or
     /// below and an order (not −1), the order goes to the front of the queue (`FUN_140c42640`
     /// with inFront 1); then, but for an attack roundup (0x2d9, not modelled), the target goes
@@ -2641,6 +2651,14 @@ mod tests {
         fn set_under_attack(&mut self, value: bool) {
             self.under_attack = Some(value);
         }
+
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<[i32; 2], Unsupported> {
+            Err(Unsupported("no search here"))
+        }
     }
 
     fn hit_boar() -> UnitAi {
@@ -2765,6 +2783,8 @@ mod tests {
             released(10049),
             0,
             &Surroundings::default(),
+            &mut rng(),
+            &mut Recorder::default(),
             &mut Vec::new(),
         );
         assert_eq!((r, u.attackers.clone()), (Ok(GO_ON), Vec::new()));
@@ -3959,9 +3979,16 @@ mod tests {
     fn a_moved_target_notify_is_ignored_without_a_patrol_path() {
         let (mut u, at) = follower([115.0, 40.2, 0.0], true);
         let n = Notify::own(9183, TARGET_MOVED, [0, 0, 0]);
-        assert_eq!(u.base_notify(n, 0, &at, &mut Vec::new()), Ok(GO_ON));
+        let (mut r, mut side) = (rng(), Recorder::default());
+        assert_eq!(
+            u.base_notify(n, 0, &at, &mut r, &mut side, &mut Vec::new()),
+            Ok(GO_ON)
+        );
         u.patrol_path = true;
-        assert!(u.base_notify(n, 0, &at, &mut Vec::new()).is_err());
+        assert!(
+            u.base_notify(n, 0, &at, &mut r, &mut side, &mut Vec::new())
+                .is_err()
+        );
     }
 
     /// The scout 9185 in update 1518: idle (its MOVE done), stance 2 at its state position.
