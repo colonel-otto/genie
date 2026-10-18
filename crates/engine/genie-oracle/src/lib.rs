@@ -260,6 +260,7 @@ fn unit(
         work_rate_powerup: object.combat().map_or(0.0, |c| c.work_rate_powerup),
         attackable: s.unit_attackable_flag != 0,
         untargetable: s.unit_targeting_flag == 0,
+        under_attack: s.under_attack_value != 0,
         pasture: s.parent_pasture_id,
         my_pasture: s.my_pasture_id,
         annex_of: object
@@ -289,6 +290,8 @@ fn unit(
         anim_speed: object
             .moving_part()
             .map(|m| m.rge_animated_object.current_speed),
+        // every animated object's current sprite, which slot 0x68 and the sprite list read
+        sprite: masters.and_then(|t| saved_sprite(s, &t.graphics)),
         charge_hit: object
             .combat()
             .is_some_and(|c| c.rge_combat_object.hit_something_valid_for_charge_attack != 0),
@@ -949,6 +952,12 @@ fn saved_actions(
             });
             Ok(())
         }
+        genie_core::attack::ATTACK => {
+            unit.attack = Some(saved_attack(action, graphics, &move_to_state)?);
+            // the attack reads and changes the unit's sprite from here on
+            unit.sprite = graphics.and_then(|g| saved_sprite(s, g));
+            Ok(())
+        }
         _ => Err(Unsupported("a saved action the slice does not import")),
     }
 }
@@ -1054,6 +1063,8 @@ fn saved_attack(
             fire_frame: a.frame_delay,
             interrupt_frame: a.interrupt_animation_at_frame,
         },
+        sub_action: b.sub_action_value != 0,
+        repaths: b.target_moved_state != 0,
     })
 }
 
@@ -1433,6 +1444,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
             }),
         hunted: None,
         last_update_time: ai.last_update_time_value,
+        attackers: ai.temp_int.clone(),
         orders: ai
             .temp_order
             .iter()
@@ -3017,7 +3029,7 @@ pub struct AiRow {
 }
 
 impl AiRow {
-    fn of(ai: &genie_core::unit_ai::UnitAi) -> Self {
+    fn of(ai: &genie_core::unit_ai::UnitAi, under_attack: bool) -> Self {
         let f = |v: &dyn std::fmt::Debug| format!("{v:?}");
         Self {
             fields: vec![
@@ -3044,11 +3056,18 @@ impl AiRow {
                 ("time_since_enemy_sighting", f(&ai.time_since_enemy)),
                 ("orders", f(&ai.orders)),
                 ("notifies", f(&ai.notifies)),
+                ("attackers", f(&ai.attackers)),
+                ("under_attack", f(&under_attack)),
+                ("furious", f(&ai.home.map(|h| h.furious))),
             ],
         }
     }
 
-    fn saved(ai: &genie_save::generated::world::UnitAiModule) -> Self {
+    fn saved(
+        ai: &genie_save::generated::world::UnitAiModule,
+        elephant: Option<&genie_save::generated::world::TribeElephantUnitAiModule>,
+        under_attack: bool,
+    ) -> Self {
         let f = |v: &dyn std::fmt::Debug| format!("{v:?}");
         Self {
             fields: vec![
@@ -3108,6 +3127,9 @@ impl AiRow {
                         .map(genie_core::unit_ai::Notify::from_bytes)
                         .collect::<Vec<_>>()),
                 ),
+                ("attackers", f(&ai.temp_int)),
+                ("under_attack", f(&under_attack)),
+                ("furious", f(&elephant.map(|e| e.furious != 0))),
             ],
         }
     }
@@ -3177,7 +3199,7 @@ impl ObjectRow {
                 .construction
                 .map(|c| (c.desolid, c.progress, c.builders)),
             build_added: unit.build.map(|b| b.added),
-            ai: unit.ai.as_ref().map(AiRow::of),
+            ai: unit.ai.as_ref().map(|ai| AiRow::of(ai, unit.under_attack)),
             human_order: unit.last_human_order,
             gather: unit
                 .gather_point
@@ -3287,7 +3309,11 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
                 .filter(|&(kind, _)| kind == genie_core::build::BUILD)
                 .and_then(|(_, a)| a.tribe_action_build.as_ref())
                 .map(|b| b.added_to_num_builders != 0),
-            ai: object.combat().and_then(|c| c.unit_ai()).map(AiRow::saved),
+            ai: object.combat().and_then(|c| {
+                let elephant = c.tribe_elephant_unit_ai_module.as_ref();
+                c.unit_ai()
+                    .map(|ai| AiRow::saved(ai, elephant, s.under_attack_value != 0))
+            }),
             human_order: s.last_human_order_time,
             gather: gather_point(object).map(|g| ([g.point[0], g.point[1]], g.target)),
             combat: object.combat().map(|c| {

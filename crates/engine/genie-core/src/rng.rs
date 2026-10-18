@@ -147,6 +147,17 @@ impl Streams {
         &mut self.rngs[stream as usize]
     }
 
+    /// Three different streams at once.
+    ///
+    /// # Panics
+    ///
+    /// When two of them are the same stream.
+    pub fn three(&mut self, a: Stream, b: Stream, c: Stream) -> [&mut Well512; 3] {
+        self.rngs
+            .get_disjoint_mut([a as usize, b as usize, c as usize])
+            .expect("three different streams")
+    }
+
     /// Two different streams at once.
     ///
     /// # Panics

@@ -322,6 +322,10 @@ pub mod turn {
 
 /// The values `crate::unit_ai`'s port reads.
 pub mod unit_ai {
+    /// 3.4028234663852886e+38
+    pub const ATTACKER_FAR: f32 = f32::from_bits(0x7f7f_ffff);
+    /// 0.0625
+    pub const ATTACKER_TIE: f32 = f32::from_bits(0x3d80_0000);
     /// 1.0
     pub const EVADE_EDGE: f32 = f32::from_bits(0x3f80_0000);
     /// 3.0

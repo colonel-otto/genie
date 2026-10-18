@@ -1491,6 +1491,11 @@ impl Turns {
         if let Some(mut h) = hunt {
             h.tear_down(mover.as_deref_mut())?;
         }
+        // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
+        let attack = unit.attack.take();
+        if let Some(mut a) = attack {
+            a.tear_down(mover.as_deref_mut())?;
+        }
         if unit.move_to.take().is_some()
             && let Some(m) = mover
         {
@@ -1511,6 +1516,9 @@ impl Turns {
         }
         if let Some(h) = hunt {
             self.release(h.target)?;
+        }
+        if let Some(a) = attack.filter(|a| a.target != -1) {
+            self.release(a.target)?;
         }
         Ok(())
     }

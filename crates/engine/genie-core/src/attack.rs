@@ -99,6 +99,23 @@ pub struct Attack {
     pub rest: f32,
     /// The sprites and frames from its constructor.
     pub arms: Arms,
+    /// `+0x60`, `subActionValue`: the action is another's sub-action (the Hunt's) and posts no
+    /// notifies; a unit's own Attack posts them to its unit AI ([`Strike::posted`]).
+    pub sub_action: bool,
+    /// `+0x61`, `mTargetMovedState`, which its `MoveTo` takes: a target that leaves the
+    /// `MoveTo`'s point makes it ask for a path at once (the Hunt's `set_state` 12 sets it).
+    pub repaths: bool,
+}
+
+/// A unit's own Attack as the attack command made it ([`Attack::command`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Commanded {
+    /// The attack.
+    pub attack: Attack,
+    /// Its last `MoveTo` started arrived.
+    pub arrived: bool,
+    /// The notifies its start posted (kind and three parameters).
+    pub posted: Vec<(i32, [i32; 3])>,
 }
 
 /// What the Attack reads of its unit and its target when it starts.
@@ -165,6 +182,9 @@ pub struct Strike<'a> {
     pub can_move: bool,
     /// The unit AI's stance (`+0x1a9`).
     pub stance: u8,
+    /// The notifies a unit's own Attack posts to its unit AI this update (slot 0x328: kind and
+    /// three parameters), the caller's.
+    pub posted: Vec<(i32, [i32; 3])>,
 }
 
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
@@ -221,6 +241,8 @@ impl Attack {
             swing: 0.0,
             rest: 0.0,
             arms,
+            sub_action: true,
+            repaths: true,
         };
         // readyToAttack (`FUN_140a7f9d0`): the target has moved from the attack's point (none,
         // FUN_140a7bbf0 and FUN_140a7bd10), so the reach decides
@@ -254,6 +276,96 @@ impl Attack {
         // the start's own test of the speed and the unit AI (slots 0x208 and 0x1d0): state 4
         let arrived = a.set_move(e, mover)?;
         Ok((a, arrived))
+    }
+
+    /// A unit's own Attack (the attack command, `FUN_141081a80`): the constructor
+    /// (`FUN_140a7c210` with sub-action 0: the master's weapon range and least range, its
+    /// sprites, missile and frames; `+0x61` clear) and the start's range test (slot 5,
+    /// `0x140a7f8c0`, readyToAttack): a player's target the unit's player neither sees nor
+    /// explored with its master's fog flag (`visible` false) makes a unit of stance 0 that may
+    /// move follow where it was seen (`set_state` 5: a `MoveTo` to that point, which starts
+    /// unless it arrived, not modelled), any other unit stops (`set_state` 13, not modelled); a
+    /// target it sees takes the start's test of [`Attack::start`] (in reach the point and the
+    /// facing, else `set_state` 4 after notify 0x1fd). Then a unit that may move turns to state 4
+    /// with a new `MoveTo` (the teardown of the old one stops the unit); one that cannot is not
+    /// modelled.
+    ///
+    /// # Errors
+    ///
+    /// What the start does not model.
+    pub fn command(
+        target: i32,
+        e: &Engagement,
+        arms: Arms,
+        visible: bool,
+        target_owner: usize,
+        mover: &mut Mover,
+    ) -> Result<Commanded, Unsupported> {
+        let mut a = Self {
+            target,
+            state: 0,
+            timer: 0.0,
+            range: e.range,
+            min_range: e.min_range,
+            point: [NONE; 3],
+            seen: e.target_position,
+            move_to: None,
+            pending: false,
+            swing: 0.0,
+            rest: 0.0,
+            arms,
+            sub_action: false,
+            repaths: false,
+        };
+        let movable = e.speed != 0.0 && e.can_move;
+        let mut posted = Vec::new();
+        if 0 < target_owner && !visible {
+            if e.stance != 0 || e.speed <= 0.0 || !e.can_move {
+                return Err(Unsupported(
+                    "an attack on a target out of sight by a unit that cannot follow (set_state 13)",
+                ));
+            }
+            // set_state(5): the MoveTo to where the target was seen (FUN_140aa0d30) starts
+            // (state 3) unless the unit's footprint is within reach of the point already
+            if e.gap <= ARRIVED {
+                return Err(Unsupported(
+                    "an attack's MoveTo to the target's last place that starts arrived",
+                ));
+            }
+            a.state = 5;
+            a.range = e.range;
+            a.timer = 0.0;
+            a.move_to = Some(MoveTo::Start);
+        } else {
+            if a.min_range > e.gap {
+                return Err(Unsupported(
+                    "an attack on a target closer than the least range",
+                ));
+            }
+            if a.reach() >= e.gap {
+                a.point = e.target_position;
+                face_target(mover, e.position, e.target_position)?;
+            } else {
+                if e.stance == 1 {
+                    return Err(Unsupported("an attack's leash test (stance 1)"));
+                }
+                posted.push((0x1fd, [0; 3]));
+                if movable {
+                    let _ = a.set_move(e, mover)?;
+                }
+            }
+        }
+        if !movable {
+            return Err(Unsupported(
+                "an attack command of a unit that cannot move (set_state 6 or 13)",
+            ));
+        }
+        let arrived = a.set_move(e, mover)?;
+        Ok(Commanded {
+            attack: a,
+            arrived,
+            posted,
+        })
     }
 
     /// A `MoveTo` of the attack that starts arrived (its `set_state` 1, not quiet): the unit shows
@@ -368,6 +480,10 @@ impl Attack {
         s: &mut Strike<'_>,
         gap: f32,
     ) -> Result<(), Unsupported> {
+        // readyToAttack posts 0x1fd first for a unit's own Attack
+        if !self.sub_action {
+            s.posted.push((0x1fd, [0; 3]));
+        }
         self.enter(MOVE, walk, s)?;
         if self.moving(s.own.source.weapon_range, gap) {
             self.arrived_sprite(s)?;
@@ -376,7 +492,8 @@ impl Attack {
     }
 
     /// readyToAttack (`FUN_140a7f9d0`) on an object: a target of a player (not Gaia) out of the
-    /// unit's player's sight is not modelled. A unit that moves (a master of type 30 and up with a
+    /// unit's player's sight (its slot 0x1e0 neither 0xf nor 0x80 with its master's fog flag) is
+    /// not modelled (`set_state` 5 or 13). A unit that moves (a master of type 30 and up with a
     /// speed, `FUN_140fdd080`; the slice reads the unit's top speed) whose target stands on the
     /// attack's point (`FUN_140a7bbf0`) or within half a tile of it on each axis
     /// (`FUN_140a7bd10`) is ready at once; else the reach decides: the target's gap
@@ -400,10 +517,10 @@ impl Attack {
             .world
             .get_known(self.target)?
             .ok_or(Unsupported("an Attack whose target is gone"))?;
+        let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
         if 0 < t.player
-            && !walk
-                .world
-                .sees_tile(s.own.player, t.position[0] as i32, t.position[1] as i32)
+            && !walk.world.sees_tile(s.own.player, tx, ty)
+            && !(s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?)
         {
             return Err(Unsupported(
                 "readyToAttack on a target out of its player's sight",
@@ -507,6 +624,11 @@ impl Attack {
             // target of Gaia's (another's FUN_140c5e1e0 forgets, not modelled). The attack lets
             // the target go (slot 0x68 with none) and its point, posts no notify as the hunt's
             // sub-action (`+0x60`), ends (set_state 1) and returns 5
+            if !self.sub_action {
+                return Err(Unsupported(
+                    "a unit's own Attack whose target died (its notifies)",
+                ));
+            }
             if s.own.class != VILLAGER {
                 return Err(Unsupported(
                     "an Attack of a unit other than a villager whose target died",
@@ -558,6 +680,9 @@ impl Attack {
                 Ok(0)
             }
             SWING => self.swing(&mut walk, s),
+            KILLED if !self.sub_action => Err(Unsupported(
+                "a unit's own Attack after its target died (notify 0x1fb, code 2)",
+            )),
             KILLED => {
                 // case 1: once the swing's sprite looped (or there is none, or it does not
                 // animate) the attack lets its target go and ends; the hunt reads code 5
@@ -608,7 +733,7 @@ impl Attack {
             Some(MoveTo::Moving) => {
                 // the MoveTo takes the Attack's `+0x61` (`0x140a824ac`), which the Hunt's
                 // set_state(12) sets: a target that left its point asks for a path again
-                if target_moved(&walk, self.target, true)? {
+                if target_moved(&walk, self.target, self.repaths)? {
                     self.move_to = Some(MoveTo::Start);
                 } else {
                     self.move_to = Some(walk_on(walk.reborrow())?);

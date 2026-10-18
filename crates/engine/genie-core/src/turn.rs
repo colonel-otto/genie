@@ -20,7 +20,7 @@ use crate::damage::Victim;
 use crate::fly::Fly;
 use crate::hunt::{Gatherer, HuntAction, HuntSprites};
 use crate::lifecycle::{Class, Lifecycle, seconds};
-use crate::masters::Masters;
+use crate::masters::{Master, Masters};
 use crate::move_to::{MoveTo, MoveToAction};
 use crate::movement::{Me, Mover, Planning, footprint_gap, footprint_gap_squared};
 use crate::order::{Interact, MoveOrder};
@@ -75,6 +75,8 @@ pub struct Unit {
     /// `+0x689`, `mUnitTargetingFlag`, is 0 (a new object's is 1): a gatherer's search takes the
     /// object only through a pasture (`ClosestResourceObject`).
     pub untargetable: bool,
+    /// `+0x685`, `underAttackValue`: its unit AI keeps attackers (`FUN_14119d2d0`).
+    pub under_attack: bool,
     /// `+0x790`, `parent_pasture_id`: the pasture it is in; `+0x794`, `my_pasture_id`: the one it
     /// tends. -1 for none.
     pub pasture: i32,
@@ -87,6 +89,8 @@ pub struct Unit {
     pub hp_powerups: [f32; 2],
     /// A villager's Hunt action, its top action.
     pub hunt: Option<HuntAction>,
+    /// Its own Attack (type 9, not a Hunt's), its top action: a boar's on its attacker.
+    pub attack: Option<crate::attack::Attack>,
     /// An auto scout's Explore action, its top action.
     pub explore: Option<crate::explore::ExploreAction>,
     /// A missile's own part with its action ([`crate::missile`]).
@@ -493,6 +497,189 @@ impl<'a> Foreign<'a> {
     }
 }
 
+/// A unit and the world as its unit AI asks them while it runs, the AI taken out of the unit
+/// for that time ([`crate::unit_ai::UnitSide`]): the searches and the unit's own commands.
+struct UnitView<'u> {
+    /// The unit, without its unit AI.
+    unit: &'u mut Unit,
+    /// What the attack check of a search reads of the unit.
+    attacker: crate::unit_ai::Attacker,
+    /// The owner, as the AI runs (a captured unit's new one).
+    player: usize,
+    /// The owner is a computer player.
+    computer: bool,
+    /// The world's objects.
+    spatial: &'u Spatial,
+    /// The planners and the mesh, which a reach test walks.
+    pathing: &'u mut Pathing,
+    /// The Object stream, which a reach test's new path draws from.
+    object: &'u mut Well512,
+    /// The Sprite stream, which a new sprite draws from.
+    sprite: &'u mut Well512,
+    /// The world's time.
+    world_time: u32,
+    /// The owner's construction rate.
+    construction_rate: f32,
+    /// The owner's other objects.
+    others: &'u [Unit],
+    /// The other players' lists.
+    foreign: Foreign<'u>,
+    /// Every player's masters.
+    every: &'u [Masters],
+    /// The owner's masters.
+    masters: Option<&'u Masters>,
+    /// The sprites.
+    graphics: &'u std::collections::BTreeMap<i16, Graphic>,
+    /// The objects an action took (slot 0x178), the caller's.
+    takes: &'u mut Vec<i32>,
+}
+
+impl crate::unit_ai::UnitSide for UnitView<'_> {
+    fn closest(&mut self, search: &Search<'_>) -> Result<crate::unit_ai::Found, Unsupported> {
+        let every = self.every;
+        let attacker = &self.attacker;
+        let can_attack = |p: &Placed, capture: u8| {
+            let m = every
+                .get(p.player)
+                .and_then(|ms| ms.get(p.master))
+                .ok_or(Unsupported(
+                    "a found object of a master the slice does not have",
+                ))?;
+            crate::unit_ai::can_attack(
+                attacker,
+                &crate::unit_ai::Target {
+                    owner: p.player,
+                    class: m.class,
+                    kind: m.kind,
+                    master: p.master,
+                    combat_level: m.combat_level,
+                    capture,
+                },
+            )
+        };
+        // ClosestObject's reachability check (slot 0x3d0) walks the unit's paths
+        let mut plan = Planning {
+            pathing: self.pathing,
+            now: self.world_time,
+            computer: self.computer,
+            object: self.object,
+            construction_rate: self.construction_rate,
+        };
+        let unit = &*self.unit;
+        let walker = Me {
+            id: unit.id,
+            position: unit.position,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let (mover, master_id, spatial) = (unit.mover.as_ref(), unit.life.master_id, self.spatial);
+        let mut reach = |id: i32, range: f32| {
+            let m = mover.ok_or(Unsupported("a reach test of a unit that does not move"))?;
+            m.reaches_object(&walker, spatial, &mut plan, id, range, master_id)
+        };
+        let (others, foreign) = (self.others, self.foreign);
+        let moving = |id: i32| herded(others, foreign, id);
+        spatial.search(
+            unit.id,
+            self.player,
+            search,
+            &can_attack,
+            &mut reach,
+            &moving,
+        )
+    }
+
+    /// The attack command (slot 0x338, `FUN_14120cea0`; classes 51 and 54 are not modelled) ->
+    /// `FUN_141081a80`: a target the world does not hold fails; `+0x648` takes the world's time
+    /// (not held); the unit's own Attack on the target answers true unless forced (its slot 0x48
+    /// then, not modelled); a villager's master switch (slot 0x90) is not modelled. Then the new
+    /// Attack ([`crate::attack::Attack::command`]): the constructor takes its target (slot 0x178,
+    /// the caller's), the action list clears (the old actions' teardowns), and the install's start
+    /// clears `+0x900`, puts the unit on its standing sprite (slot 0x68 with `+0x80`) and runs the
+    /// range test. A `MoveTo` that starts arrived and a notify posted while the AI runs (its
+    /// buffer, `FUN_140c55270`) are not modelled.
+    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<bool, Unsupported> {
+        let unit = &mut *self.unit;
+        let master = self
+            .masters
+            .and_then(|m| m.get(unit.life.master_id))
+            .ok_or(Unsupported(
+                "an attacker of a master the slice does not have",
+            ))?;
+        if matches!(master.class, 51 | 54) {
+            return Err(Unsupported(
+                "the attack command of a unit of class 51 or 54",
+            ));
+        }
+        let Some(t) = self.spatial.get_known(target)?.copied() else {
+            return Ok(false);
+        };
+        if unit.attack.is_some_and(|a| a.target == target) {
+            if force {
+                return Err(Unsupported(
+                    "a forced attack command on its own Attack's target (slot 0x48)",
+                ));
+            }
+            return Ok(true);
+        }
+        if master.class == 4 {
+            return Err(Unsupported(
+                "a villager's attack command (its master switch, slot 0x90)",
+            ));
+        }
+        let me_at = *self
+            .spatial
+            .get(unit.id)
+            .ok_or(Unsupported("an attacker without a place"))?;
+        let t_master = self
+            .every
+            .get(t.player)
+            .and_then(|m| m.get(t.master))
+            .ok_or(Unsupported(
+                "an attack's target of a master the slice does not have",
+            ))?;
+        let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
+        let visible = self.spatial.sees_tile(self.player, tx, ty)
+            || (t_master.fog_visibility != 0 && self.spatial.explored(self.player, tx, ty)?);
+        let arms = crate::attack::arms(master, self.graphics, [-1; 4]);
+        let standing = arms
+            .idle_sprite
+            .ok_or(Unsupported("an attacker without its standing sprite"))?;
+        if unit.sprite.is_none() {
+            return Err(Unsupported(
+                "an attack command of a unit whose sprite the slice does not hold",
+            ));
+        }
+        unit.clear_own_actions()?;
+        unit.attack_count = 0;
+        crate::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
+        let mover = unit
+            .mover
+            .as_mut()
+            .ok_or(Unsupported("an attacker without movement state"))?;
+        let e = crate::attack::engagement(Some(ai), mover.stats.speed, master, &me_at, &t)?;
+        let crate::attack::Commanded {
+            attack,
+            arrived,
+            posted,
+        } = crate::attack::Attack::command(target, &e, arms, visible, t.player, mover)?;
+        if arrived {
+            return Err(Unsupported("an attack command whose MoveTo starts arrived"));
+        }
+        if !posted.is_empty() {
+            return Err(Unsupported(
+                "a notify an attack command posts while its unit AI runs",
+            ));
+        }
+        unit.attack = Some(attack);
+        self.takes.push(target);
+        Ok(true)
+    }
+
+    fn set_under_attack(&mut self, value: bool) {
+        self.unit.under_attack = value;
+    }
+}
+
 impl Context<'_> {
     /// A walk and the Sprite stream, for an attacker's update.
     fn walk_and_sprites<'b>(
@@ -649,13 +836,16 @@ impl crate::explore::Area for ScoutArea<'_> {
 impl Unit {
     /// The target of its hunt, which it attacks or gathers from.
     fn attack_target(&self) -> Option<i32> {
-        self.hunt.map(|h| h.target).or_else(|| {
-            self.missile
-                .as_ref()
-                .and_then(|m| m.action.as_ref())
-                .map(|a| a.target)
-                .filter(|&t| t != -1)
-        })
+        self.hunt
+            .map(|h| h.target)
+            .or_else(|| self.attack.map(|a| a.target))
+            .or_else(|| {
+                self.missile
+                    .as_ref()
+                    .and_then(|m| m.action.as_ref())
+                    .map(|a| a.target)
+                    .filter(|&t| t != -1)
+            })
     }
 
     /// What the walk reads of it when it meets it ([`crate::spatial::Gait`]).
@@ -694,6 +884,7 @@ impl Unit {
         })
         .or_else(|| self.fly.map(|f| action(crate::fly::FLY, f.state)))
         .or_else(|| self.hunt.map(|h| action(crate::hunt::HUNT, h.state)))
+        .or_else(|| self.attack.map(|a| action(crate::attack::ATTACK, a.state)))
         .or_else(|| {
             self.explore
                 .map(|e| action(crate::explore::EXPLORE, e.state))
@@ -717,6 +908,7 @@ impl Unit {
             .or_else(|| self.move_to.map(|m| m.target))
             .or_else(|| self.fly.map(|_| -1))
             .or_else(|| self.hunt.map(|h| h.target))
+            .or_else(|| self.attack.map(|a| a.target))
             .or_else(|| self.explore.map(|_| -1))
             .or_else(|| {
                 self.missile
@@ -758,6 +950,28 @@ impl Unit {
     /// A Build waiting without its foundation (state 3) goes with nothing to release
     /// (`FUN_140aadbf0`); other actions' teardowns are not modelled.
     fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        self.clear_own_actions()?;
+        if self.life.state == 2
+            && let Some(m) = self.mover.as_mut()
+        {
+            m.shows_standing();
+        }
+        if self.life.state == 2 && self.sprite.is_some() {
+            let standing = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.standing_sprite)
+                .and_then(|id| c.graphics.get(&id).copied())
+                .ok_or(Unsupported("a stopped unit without its standing sprite"))?;
+            crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
+        }
+        Ok(())
+    }
+
+    /// The action list's clearing (`FUN_140a98620`): each action's teardown (a `MoveTo`'s, also
+    /// an Explore's, stops the unit, slot 0x5d0). A Build waiting without work goes; the others
+    /// the slice holds are not modelled.
+    fn clear_own_actions(&mut self) -> Result<(), Unsupported> {
         if self
             .build
             .as_ref()
@@ -769,6 +983,7 @@ impl Unit {
             || self.build.is_some()
             || self.fly.is_some()
             || self.hunt.is_some()
+            || self.attack.is_some()
             || self.unmodelled_action.is_some()
         {
             return Err(Unsupported(
@@ -787,20 +1002,6 @@ impl Unit {
                 .as_mut()
                 .ok_or(Unsupported("a walker without movement state"))?
                 .stop()?;
-        }
-        if self.life.state == 2
-            && let Some(m) = self.mover.as_mut()
-        {
-            m.shows_standing();
-        }
-        if self.life.state == 2 && self.sprite.is_some() {
-            let standing = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .map(|m| m.standing_sprite)
-                .and_then(|id| c.graphics.get(&id).copied())
-                .ok_or(Unsupported("a stopped unit without its standing sprite"))?;
-            crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
         }
         Ok(())
     }
@@ -1556,6 +1757,59 @@ impl Unit {
             filter: -1,
             notified: true,
         }))
+    }
+
+    /// The objects its unit AI names besides its target, as the world's table holds them
+    /// ([`crate::unit_ai::Surroundings::units`]): its attackers and the callers of its damage
+    /// notifies, from its own list or another player's, each with its master's class, state, its
+    /// unit AI's target and its footprint's squared gap to the unit's (`FUN_14118f8c0`).
+    fn named_units(
+        &self,
+        c: &Context<'_>,
+        others: &[Self],
+        master: Option<&Master>,
+    ) -> Result<Vec<crate::unit_ai::UnitSeen>, Unsupported> {
+        let Some(ai) = self.ai.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let damaged = ai
+            .notifies
+            .iter()
+            .filter(|n| n.kind == crate::unit_ai::DAMAGED)
+            .map(|n| n.caller);
+        let mut ids: Vec<i32> = ai.attackers.iter().copied().chain(damaged).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        let mut seen = Vec::new();
+        for id in ids {
+            let found = others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (c.player, u))
+                .or_else(|| c.foreign.find(id));
+            let (Some((owner, u)), Some(p)) = (found, c.spatial.get(id)) else {
+                continue;
+            };
+            let m = c
+                .every_masters
+                .get(owner)
+                .and_then(|ms| ms.get(u.life.master_id))
+                .ok_or(Unsupported(
+                    "a named object of a master the slice does not have",
+                ))?;
+            let me = master.ok_or(Unsupported(
+                "a unit AI's unit of a master the slice does not have",
+            ))?;
+            seen.push(crate::unit_ai::UnitSeen {
+                id,
+                class: m.class,
+                state: u.life.state,
+                target: u.ai.as_ref().map(|a| a.current_target),
+                gap_squared: footprint_gap_squared(self.position, me.radius, p.position, p.radius),
+                position: p.position,
+            });
+        }
+        Ok(seen)
     }
 
     fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), Unsupported> {
@@ -2610,18 +2864,20 @@ impl Unit {
             }
         }
         // the hunter as a combat object, which its hits read and change
-        let own = self.hunt.as_ref().and_then(|_| {
-            let master = c.masters?.get(self.life.master_id)?;
-            let terrain = c.spatial.terrain.as_ref();
-            Some(victim_of(
-                self,
-                master,
-                c.attributes,
-                c.player,
-                terrain,
-                c.mode_680,
-            ))
-        });
+        let own = (self.hunt.is_some() || self.attack.is_some())
+            .then_some(())
+            .and_then(|()| {
+                let master = c.masters?.get(self.life.master_id)?;
+                let terrain = c.spatial.terrain.as_ref();
+                Some(victim_of(
+                    self,
+                    master,
+                    c.attributes,
+                    c.player,
+                    terrain,
+                    c.mode_680,
+                ))
+            });
         if let Some(hunt) = self
             .hunt
             .as_mut()
@@ -2869,6 +3125,7 @@ impl Unit {
                 fire: None,
                 can_move,
                 stance,
+                posted: Vec::new(),
             };
             let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let fired = strike.fire.map(|target| {
@@ -2892,6 +3149,73 @@ impl Unit {
             c.own_killed = self.hit_back(own)?;
             if full {
                 self.hunt_drop_off(c, others)?;
+            }
+        } else if let Some(attack) = self.attack.as_mut() {
+            // the unit's own Attack (slot 6, 0x140a82ae0), its notifies posted to its unit AI
+            // (slot 0x328); an update that ends it (a code to the action list) is not modelled
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(Unsupported(
+                    "an attacker of a master the slice does not have",
+                ))?;
+            let victim = c.victim.take().ok_or(Unsupported(
+                "an attack's target the slice does not hold live",
+            ))?;
+            let own = own.ok_or(Unsupported(
+                "an attacker of a master the slice does not have",
+            ))?;
+            let mut blasted = std::mem::take(&mut c.blasted);
+            let can_move = self
+                .ai
+                .as_ref()
+                .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
+            let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
+            let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+            let mut strike = Strike {
+                sprite: &mut self.sprite,
+                anim_speed: &mut self.anim_speed,
+                attack_timer: &mut self.attack_timer,
+                reload: self.reload_stinger + (master.reload - self.reload_powerup),
+                hit_chance: master.hit_chance,
+                victim,
+                blasted: &mut blasted,
+                sprite_rng,
+                own,
+                executed: None,
+                fire: None,
+                can_move,
+                stance,
+                posted: Vec::new(),
+            };
+            let code = attack.update(walk, &mut strike)?;
+            let fired = strike.fire.map(|target| {
+                let v = &*strike.victim;
+                Aimed {
+                    target,
+                    position: v.position,
+                    radius: [v.radius[0], v.radius[1], v.height],
+                    class: v.class,
+                    player: v.player,
+                }
+            });
+            let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
+            let posted = std::mem::take(&mut strike.posted);
+            c.blasted = blasted;
+            for (kind, p) in posted {
+                self.post_own(kind, p)?;
+            }
+            if let Some(aimed) = fired {
+                self.fire(c, aimed)?;
+            }
+            if let Some(target) = executed {
+                self.post_own(ACTION_EXECUTED, [600, target, 0])?;
+            }
+            c.own_killed = self.hit_back(own)?;
+            if code != 0 {
+                return Err(Unsupported(
+                    "a unit's own Attack that ends (its code to the action list)",
+                ));
             }
         }
         // the motion step may have put the unit onto a waypoint it reached
@@ -3009,13 +3333,14 @@ impl Unit {
                 scenario: c.scenario,
                 task_0x69: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x69)),
                 target: c.ai_target?,
+                under_attack: self.under_attack,
+                id: self.id,
+                units: self.named_units(c, others, master)?,
             };
-            let me = self.id;
-            let busy_state = self.top_action().map_or(0, |a| a.state);
-            let ai = self.ai.as_mut().expect("filtered above");
-            let effects = match turn {
-                Some(dt) => {
-                    let spatial: &Spatial = c.spatial;
+            // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
+            let mut ai = self.ai.take().expect("filtered above");
+            let effects = if let Some(dt) = turn {
+                {
                     let attacker = crate::unit_ai::Attacker {
                         ai_type: ai.ai_type,
                         player,
@@ -3025,52 +3350,36 @@ impl Unit {
                         missile: master.map_or(-1, |m| m.missile),
                         scenario: c.scenario,
                     };
-                    let every = c.every_masters;
-                    let can_attack = |p: &Placed, capture: u8| {
-                        let m = every.get(p.player).and_then(|ms| ms.get(p.master)).ok_or(
-                            Unsupported("a found object of a master the slice does not have"),
-                        )?;
-                        crate::unit_ai::can_attack(
-                            &attacker,
-                            &crate::unit_ai::Target {
-                                owner: p.player,
-                                class: m.class,
-                                kind: m.kind,
-                                master: p.master,
-                                combat_level: m.combat_level,
-                                capture,
-                            },
-                        )
+                    let [ai_stream, object, sprite] =
+                        c.streams.three(Stream::Ai, Stream::Object, Stream::Sprite);
+                    let result = {
+                        let mut side = UnitView {
+                            unit: self,
+                            attacker,
+                            player,
+                            computer,
+                            spatial: c.spatial,
+                            pathing: c.pathing,
+                            object,
+                            sprite,
+                            world_time: c.world_time,
+                            construction_rate: c.construction_rate,
+                            others,
+                            foreign: c.foreign,
+                            every: c.every_masters,
+                            masters: c.masters,
+                            graphics: c.graphics,
+                            takes: &mut c.takes,
+                        };
+                        ai.update(dt, c.world_time, computer, &at, ai_stream, &mut side)
                     };
-                    // ClosestObject's reachability check (slot 0x3d0) walks the unit's paths
-                    let (ai_stream, object) = c.streams.two(Stream::Ai, Stream::Object);
-                    let mut plan = Planning {
-                        pathing: c.pathing,
-                        now: c.world_time,
-                        computer,
-                        object,
-                        construction_rate: c.construction_rate,
-                    };
-                    let walker = Me {
-                        id: me,
-                        position: self.position,
-                        action_state: busy_state,
-                    };
-                    let mover = self.mover.as_ref();
-                    let master_id = self.life.master_id;
-                    let mut reach = |id: i32, range: f32| {
-                        let m = mover
-                            .ok_or(Unsupported("a reach test of a unit that does not move"))?;
-                        m.reaches_object(&walker, spatial, &mut plan, id, range, master_id)
-                    };
-                    let foreign = c.foreign;
-                    let moving = |id: i32| herded(others, foreign, id);
-                    let mut closest = |s: &Search<'_>| {
-                        spatial.search(me, player, s, &can_attack, &mut reach, &moving)
-                    };
-                    ai.update(dt, c.world_time, computer, &at, ai_stream, &mut closest)?
+                    self.ai = Some(ai);
+                    result?
                 }
-                None => ai.off_turn(&at)?,
+            } else {
+                let result = ai.off_turn(&at);
+                self.ai = Some(ai);
+                result?
             };
             self.apply(effects, class, c, others)?;
         }
@@ -4169,12 +4478,14 @@ impl Turns {
                     work_rate_powerup: 0.0,
                     attackable: true,
                     untargetable: false,
+                    under_attack: false,
                     last_human_order: 0,
                     pasture: -1,
                     my_pasture: -1,
                     annex_of: None,
                     hp_powerups: [0.0; 2],
                     hunt: None,
+                    attack: None,
                     explore: None,
                     missile: None,
                     attack_count: 0,
@@ -5269,7 +5580,7 @@ pub const fn scenario_mode(game_mode: i32) -> bool {
 
 pub(crate) fn victim_of(
     u: &Unit,
-    master: &crate::masters::Master,
+    master: &Master,
     attributes: &[f32],
     p: usize,
     terrain: Option<&crate::terrain::Terrain>,
@@ -5973,11 +6284,11 @@ mod tests {
                 ..Player::default()
             }],
         );
-        let villager = |id| crate::masters::Master {
+        let villager = |id| Master {
             id,
             class: 4,
             storage: vec![(4, -1.0, 2), (11, 1.0, 2)],
-            ..crate::masters::Master::default()
+            ..Master::default()
         };
         t.masters = vec![Masters::new([villager(83), villager(293)])];
         t
@@ -6077,11 +6388,11 @@ mod tests {
                 },
             ],
         );
-        let master = crate::masters::Master {
+        let master = Master {
             id: 705,
             class: 58,
             storage: vec![(16, 100.0, 1)],
-            ..crate::masters::Master::default()
+            ..Master::default()
         };
         t.masters = vec![Masters::new([master.clone()]), Masters::new([master])];
         t.spatial.insert(
@@ -6125,10 +6436,10 @@ mod tests {
         let mut tc = town_centre(9149);
         tc.life.master_id = 109;
         let mut t = one_player(vec![tc], [200.0; 4]);
-        t.masters = vec![Masters::new([crate::masters::Master {
+        t.masters = vec![Masters::new([Master {
             id: 109,
             garrison: 15,
-            ..crate::masters::Master::default()
+            ..Master::default()
         }])];
         let set = |target, point, own| Command::GatherPoint {
             player: 0,
