@@ -1635,6 +1635,163 @@ impl Spatial {
     }
 }
 
+/// A record a pather query met (an entry of `FUN_141051900`'s list): an object's (its id) or a
+/// temporary tile record's (`x << 12 | y | 0xf0000000`, `FUN_1410510c0`), with its box
+/// (`+0x20`..`+0x2c`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hit {
+    /// The record's id (`+0x18`).
+    pub id: i32,
+    /// Its box x0, y0, x1, y1.
+    pub bounds: [f32; 4],
+}
+
+/// The id of tile (`x`, `y`)'s temporary record (`FUN_1410510c0`) and of the tile in a pather's
+/// ignore list (`FUN_140f89e40`): `x << 12 | y` with the top four bits set.
+#[must_use]
+pub const fn tile_record_id(x: i32, y: i32) -> i32 {
+    (x << 12) | y | (0xf000_0000_u32 as i32)
+}
+
+impl Spatial {
+    /// The old short pather's line queries (flags 0x40: moving objects left out, every kind
+    /// tested), after `FUN_141052b90` put a temporary record (kind 3, the tile's box) on each
+    /// tile of the walk's box, grown by `buffer` and held on the map, whose terrain class the
+    /// unit's `mask` lacks (`mask & 0x7f | 0x80`): the records whose box, grown by `buffer`, meets
+    /// the walk `a` -> `b` (`FUN_1410512f0`, a circle's `FUN_141051630` alike) and whose id is not
+    /// in `ignore` (the manager's list `+0x2c`, the pather's). An object that moves (its record's
+    /// `+3` bit 0x10, set from slot 0x5c8 at the end of its update, [`Gait::moving`]) is left
+    /// out, as is a gate the player may pass (slot 0x678, not modelled). `first` stops at the
+    /// first hit (`FUN_141052350`); else at the 25th (`FUN_141051900`). The hits are in the
+    /// tiles' row order, then by id; the game's are in its grid's order, which its callers do not
+    /// read. A walk whose grown box leaves the map is blocked (`FUN_141052350`) or meets the
+    /// map's edge records (`FUN_141057290`, not modelled).
+    #[allow(clippy::too_many_arguments)]
+    fn pather_query(
+        &self,
+        a: [f32; 2],
+        b: [f32; 2],
+        buffer: Option<f32>,
+        mask: u8,
+        ignore: &[i32],
+        first: bool,
+    ) -> Result<Option<Vec<Hit>>, Unsupported> {
+        const MOST_HITS: usize = 25;
+        let lo_x = if b[0] <= a[0] { b[0] } else { a[0] };
+        let hi_x = if a[0] <= b[0] { b[0] } else { a[0] };
+        let lo_y = if b[1] <= a[1] { b[1] } else { a[1] };
+        let hi_y = if a[1] <= b[1] { b[1] } else { a[1] };
+        let g = buffer.unwrap_or(0.0);
+        let [w, h] = self.map;
+        let grown = [lo_x - g, lo_y - g, g + hi_x, g + hi_y];
+        if grown[0] < 0.0 || grown[1] < 0.0 || (w as f32) < grown[2] || (h as f32) < grown[3] {
+            return Ok(None);
+        }
+        self.check_known_records(grown)?;
+        let walk = [a[0], a[1], b[0], b[1]];
+        let meets = |bx: [f32; 4]| {
+            let r = [bx[0] - g, bx[1] - g, g + bx[2], g + bx[3]];
+            lo_x <= r[2]
+                && r[0] <= hi_x
+                && lo_y <= r[3]
+                && r[1] <= hi_y
+                && box_meets_segment(bx, g, walk)
+        };
+        let mut hits = Vec::new();
+        let impassable = u64::from(mask & 0x7f | 0x80);
+        let tx1 = if (grown[2] as i32) < w {
+            grown[2] as i32
+        } else {
+            w - 1
+        };
+        let ty1 = if (grown[3] as i32) < h {
+            grown[3] as i32
+        } else {
+            h - 1
+        };
+        for y in (grown[1] as i32).max(0)..=ty1 {
+            for x in (grown[0] as i32).max(0)..=tx1 {
+                let Some(word) = self.tiles.word(x, y) else {
+                    continue;
+                };
+                let id = tile_record_id(x, y);
+                let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
+                if word & impassable == 0 && !ignore.contains(&id) && meets(bx) {
+                    hits.push(Hit { id, bounds: bx });
+                    if first || MOST_HITS <= hits.len() {
+                        return Ok(Some(hits));
+                    }
+                }
+            }
+        }
+        for (&id, p) in &self.objects {
+            let Some(o) = p.obstruction else {
+                continue;
+            };
+            let kind = if o.kind == 10 { 2 } else { o.kind };
+            if !TESTED_KINDS.contains(&kind)
+                || self.gaits.get(&id).is_some_and(|g| g.moving)
+                || ignore.contains(&id)
+            {
+                continue;
+            }
+            let bx = p.bounds();
+            if !meets(bx) {
+                continue;
+            }
+            if kind == 11 {
+                return Err(Unsupported(
+                    "a pather query meeting a record of kind 11 (its own radii)",
+                ));
+            }
+            if p.class == GATE_CLASS {
+                return Err(Unsupported(
+                    "a pather query meeting a gate (its players' passage, slot 0x678)",
+                ));
+            }
+            hits.push(Hit { id, bounds: bx });
+            if first || MOST_HITS <= hits.len() {
+                break;
+            }
+        }
+        Ok(Some(hits))
+    }
+
+    /// Whether the old short pather's walk `a` -> `b` meets a record ([`Spatial::pather_query`]:
+    /// `FUN_141052b90`, then `FUN_141052350` with flags 0x40).
+    pub fn pather_blocked(
+        &self,
+        a: [f32; 2],
+        b: [f32; 2],
+        buffer: Option<f32>,
+        mask: u8,
+        ignore: &[i32],
+    ) -> Result<bool, Unsupported> {
+        Ok(self
+            .pather_query(a, b, buffer, mask, ignore, true)?
+            .is_none_or(|hits| !hits.is_empty()))
+    }
+
+    /// The records the old short pather's walk `a` -> `b` meets, at most 25
+    /// ([`Spatial::pather_query`]: `FUN_141052b90`, then `FUN_141051900` with flags 0x40).
+    pub fn pather_hits(
+        &self,
+        a: [f32; 2],
+        b: [f32; 2],
+        buffer: Option<f32>,
+        mask: u8,
+        ignore: &[i32],
+    ) -> Result<Vec<Hit>, Unsupported> {
+        self.pather_query(a, b, buffer, mask, ignore, false)?
+            .ok_or(Unsupported(
+                "a pather query beyond the map's edge (FUN_141057290)",
+            ))
+    }
+}
+
+/// The class of a gate, which a player's allies may pass (slot 0x678, `FUN_1411d4a30`).
+const GATE_CLASS: i16 = 39;
+
 /// `FUN_1410576a0`, Sedgewick's ccw: 1 when `p0`, `p1`, `p2` turn counter-clockwise (or lie in
 /// a line with `p2` beyond `p1`), -1 clockwise (or `p0` between), 0 when `p2` lies on the segment.
 fn ccw(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2]) -> i32 {
@@ -1898,8 +2055,14 @@ mod tests {
         assert_eq!(s.tiles().list(1, 1), [9173, 10029]);
         s.set_position(9171, [1.0, 1.0, 0.0]);
         assert_eq!(s.tiles().list(1, 1), [9173, 10029, 9171]);
-        assert_eq!((s.tiles().objects(1, 1), s.tiles().tall(1, 1)), (Some(3), Some(3)));
-        assert!(s.force_tile_lists(&[(1, 1, vec![9171, 9173, 10029])]).is_empty());
+        assert_eq!(
+            (s.tiles().objects(1, 1), s.tiles().tall(1, 1)),
+            (Some(3), Some(3))
+        );
+        assert_eq!(
+            s.force_tile_lists(&[(1, 1, vec![9171, 9173, 10029])]),
+            Vec::new()
+        );
         assert_eq!(s.tiles().list(1, 1), [9171, 9173, 10029]);
     }
 

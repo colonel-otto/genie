@@ -5336,6 +5336,13 @@ impl Turns {
     }
 
     /// Tell the world which objects move now and how the players stand to each other, for the
+    /// walk's query ([`Spatial::walk_hits`]), as each update does first: for a look at the
+    /// world between updates.
+    pub fn sync_world(&mut self) {
+        self.sync_moving();
+    }
+
+    /// Tell the world which objects move now and how the players stand to each other, for the
     /// walk's query ([`Spatial::walk_hits`]).
     fn sync_moving(&mut self) {
         for p in &self.players {

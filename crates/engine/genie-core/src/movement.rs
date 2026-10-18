@@ -10,6 +10,7 @@
 //! Vectors are the game's `BVector`s ([`fmath::Vec3`]: x, height, y).
 
 use crate::fmath::{self, Vec3};
+use crate::hull_path::HullPather;
 use crate::pathing::Pathing;
 use crate::rng::Well512;
 use crate::short_path::{self, Call, Entry, Listed};
@@ -1887,12 +1888,10 @@ impl Mover {
     }
 
     /// Slot 0x3e8 of the unit (`FUN_14114f790`): the length of its short path to object `target`
-    /// within `range` (the obstruction manager's pather `FUN_140f85580` from the unit's place, its
-    /// radius, its terrain mask), None when there is none or the target is gone. The pather fails
-    /// (4) for a unit closer to the map's edge than its radius; a unit already within `range` of
-    /// the target's footprint (the gap from its radius plus the target's on each axis) or on the
-    /// target's place needs no path (0, length 0). Its search beyond that is not modelled, nor is
-    /// a goal beyond the edge.
+    /// within `range`: the obstruction manager's old short pather ([`HullPather::find`], with the
+    /// unit's place, radius and terrain mask, ignoring the unit and the target) when it finds a
+    /// path within range or none is needed (its result below 2); None for another result or a
+    /// target that is gone.
     pub fn short_reach(
         &self,
         me: &Me,
@@ -1903,30 +1902,11 @@ impl Mover {
         let Some(t) = world.get_known(target)? else {
             return Ok(None);
         };
-        let [x0, y0, _] = me.position;
-        let [x1, y1, _] = t.position;
-        let r = self.stats.radius[0];
-        let [w, h] = world.map;
-        let (max_x, max_y) = (w as f32 - r, h as f32 - r);
-        if x0 < r || max_x < x0 || y0 < r || max_y < y0 {
-            return Ok(None);
-        }
-        if x1 < r || max_x < x1 || y1 < r || max_y < y1 {
-            return Err(Unsupported(
-                "a short path to a goal at the map's edge (FUN_140f89d80)",
-            ));
-        }
-        let gap = |d: f32, rt: f32| {
-            let g = d.abs() - (r + rt);
-            if g <= 0.0 { 0.0 } else { g }
-        };
-        let (gx, gy) = (gap(x0 - x1, t.radius[0]), gap(y0 - y1, t.radius[1]));
-        if (x0 == x1 && y0 == y1) || fmath::sqrt(gy * gy + gx * gx) <= range {
-            return Ok(Some(0.0));
-        }
-        Err(Unsupported(
-            "the obstruction manager's short pather (FUN_140f85580)",
-        ))
+        let to = [t.position[0], t.position[1]];
+        let mask = self.stats.restriction_mask;
+        let mut pather = HullPather::new(world, me.id, target, mask, self.stats.radius[0]);
+        let (result, path) = pather.find([me.position[0], me.position[1]], to, target, range)?;
+        Ok((result < 2).then(|| path.length()))
     }
 
     /// The length of the tile planner's path (`FUN_140f7c530` with the radii `radii`, range 0, no

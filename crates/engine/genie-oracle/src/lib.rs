@@ -3500,6 +3500,75 @@ pub fn objects_from_save(
     })
 }
 
+/// The slice as it starts from the tick oracle's save at tick `start_tick` with `dumps`, before
+/// any update, its world told what it reads of the units (as an update starts). Dev only.
+pub fn turns_from_save(
+    save: &[u8],
+    recording: &[u8],
+    start_tick: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+) -> Result<Turns, Error> {
+    let mut turns = run_from_save(save, recording, start_tick, 0, masters, dumps)?;
+    turns.sync_world();
+    Ok(turns)
+}
+
+/// The old short pather's result and path for one call ([`old_pather_paths`]).
+pub type PatherAnswer = (u8, Vec<[f32; 2]>);
+
+/// The old short pather's answers (slot 0x3e8, [`genie_core::hull_path::HullPather::find`]) in
+/// the world of the slice started from the tick oracle's save at tick `start_tick` with `dumps`,
+/// for each call (the unit, its place then, the target, the range): the pather's result and path.
+/// Each unit stands at its place for its call. Dev only: a check of the pather against the game's
+/// own calls (`load_oracle/probes/_obspath.py`), whose world is the save's but for the units the
+/// update moved before the call.
+pub fn old_pather_paths(
+    save: &[u8],
+    recording: &[u8],
+    start_tick: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+    calls: &[(i32, [f32; 2], i32, f32)],
+) -> Result<Vec<Result<PatherAnswer, Unsupported>>, Error> {
+    let mut turns = turns_from_save(save, recording, start_tick, masters, dumps)?;
+    let mut out = Vec::new();
+    for &(id, from, target, range) in calls {
+        let Some(unit) = turns
+            .players
+            .iter()
+            .flat_map(|p| &p.objects)
+            .find(|u| u.id == id)
+        else {
+            out.push(Err(Unsupported("a caller the save does not hold")));
+            continue;
+        };
+        let Some(mover) = unit.mover.as_ref() else {
+            out.push(Err(Unsupported("a caller that does not move")));
+            continue;
+        };
+        let (mask, radius) = (mover.stats.restriction_mask, mover.stats.radius[0]);
+        let z = turns.spatial.get(id).map_or(0.0, |p| p.position[2]);
+        turns.spatial.set_position(id, [from[0], from[1], z]);
+        let Some(to) = turns
+            .spatial
+            .get(target)
+            .map(|p| [p.position[0], p.position[1]])
+        else {
+            out.push(Err(Unsupported("a target the save does not hold")));
+            continue;
+        };
+        let mut pather =
+            genie_core::hull_path::HullPather::new(&turns.spatial, id, target, mask, radius);
+        out.push(
+            pather
+                .find(from, to, target, range)
+                .map(|(r, p)| (r, p.points)),
+        );
+    }
+    Ok(out)
+}
+
 /// What one forced replay step found ([`forced_ticks`]): the slice started from the game's save
 /// after `start`, run `ticks` updates, against the game's save after `start + ticks`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
