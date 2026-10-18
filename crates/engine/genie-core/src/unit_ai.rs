@@ -1212,7 +1212,8 @@ impl UnitAi {
 
     /// The units the update models after its target block ([`UnitAi::target_block`]): a target
     /// only on a villager's build or hunt (702/602, 713/613); busy (`busy`, the actions left), only
-    /// those or a unit on MOVE's order without a target (710/610, or an animal's own wander).
+    /// those or a unit on MOVE's order without a target (710/610, or an animal's own wander), and
+    /// for the types that never retarget also one whose move ended (710 with no action value).
     fn check_busy_order(&self, retarget: Retarget, busy: bool) -> Result<(), Unsupported> {
         let order = (self.current_order, self.current_action);
         let working = matches!(
@@ -1220,6 +1221,8 @@ impl UnitAi {
             (BUILD_ORDER, BUILD_ACTION) | (HUNT_ORDER, HUNT_ACTION)
         );
         let moving = matches!(order, (MOVE_ORDER | -1, MOVE_ACTION)) && self.current_target == -1;
+        // a move whose action ended (the action value reset) while the default action runs
+        let moved = order == (MOVE_ORDER, -1) && self.current_target == -1;
         if self.current_target != -1 && !working {
             return Err(Unsupported("a unit AI's target the slice does not model"));
         }
@@ -1227,7 +1230,7 @@ impl UnitAi {
             return Ok(());
         }
         match retarget {
-            Retarget::Never if working || moving => Ok(()),
+            Retarget::Never if working || moving || moved => Ok(()),
             Retarget::Base if moving => Ok(()),
             _ => Err(Unsupported(
                 "a busy unit AI on an order the slice does not model",
