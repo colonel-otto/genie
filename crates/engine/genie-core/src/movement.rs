@@ -316,10 +316,10 @@ const FAST_TURN: f32 = crate::image::movement::FAST_TURN;
 /// The pause a kept hit's ranking gives a unit the walker outranks: 0.1 for an ally
 /// (`DAT_142eb5690`), 0.5 for another (`DAT_142e7f384`).
 const ALLY_PAUSE: f32 = crate::image::movement::ALLY_PAUSE;
+const OTHER_PAUSE: f32 = crate::image::movement::OTHER_PAUSE;
 /// The pause a level at its last waypoint without a path gives its own unit while it may still
 /// try (`DAT_142eb5690`).
 const STUCK_PAUSE: f32 = crate::image::movement::STUCK_PAUSE;
-const OTHER_PAUSE: f32 = crate::image::movement::OTHER_PAUSE;
 /// What [`Mover::avoid`] makes of the walk's hits: the hits it keeps and the pauses it gives.
 struct Avoided {
     kept: Vec<i32>,
