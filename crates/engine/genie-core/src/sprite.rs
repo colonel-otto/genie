@@ -1,9 +1,17 @@
-//! An object's active animated sprite (`RGE_Active_Animated_Sprite`, vtable `0x142f751b0`): the
-//! frame of its sprite (a `.dat` graphic) and the clock that advances it. The save holds it (the
-//! object's active sprite list). An attack lands on a frame of its sprite ([`crate::attack`]).
+//! An object's active sprite: the frame of its sprite (a `.dat` graphic) and, for a graphic that
+//! animates, the clock that advances it. The save holds it (the object's active sprite list). An
+//! attack lands on a frame of its sprite ([`crate::attack`]).
 //!
-//! 158041: start `FUN_1413b2ef0` (with `FUN_1413b3490`), update (slot 5) `FUN_1413b5070`, the
-//! frame's reach test (slot 11) `FUN_1413b2d70`, the frame reset (slot 9) `FUN_1413b4ff0`.
+//! The list's node factory (`FUN_1408dc940`) makes an animated node
+//! (`RGE_Active_Animated_Sprite`, vtable `0x142f751b0`) for a graphic with sequence bit 0 and a
+//! static one (`RGE_Active_Sprite`, vtable `0x142f75128`) for the others; a new sprite is a new
+//! node, so the graphic tells the two apart.
+//!
+//! 158041, animated: start `FUN_1413b2ef0` (with `FUN_1413b3490`), update (slot 5)
+//! `FUN_1413b5070`, the frame's reach test (slot 11) `FUN_1413b2d70`, the frame reset (slot 9)
+//! `FUN_1413b4ff0`. Static: start `FUN_1413b3490`, update `FUN_1413b5330` (none), reach test
+//! `FUN_1413b2d90` (always), frame reset `FUN_1413b5030`, looped (slot 12) `FUN_1413b38e0`
+//! (never).
 
 use crate::rng::Well512;
 
@@ -46,7 +54,8 @@ const SHORTEST: f32 = crate::image::sprite::SHORTEST;
 /// The gap below which a speed multiplier counts as none (`DAT_142eb0c60`).
 const EPSILON: f32 = crate::image::sprite::EPSILON;
 
-/// The active sprite (the save's `RGE_Active_Animated_Sprite`, memory `+0x24`..`+0x3b`).
+/// The active sprite (the save's `RGE_Active_Animated_Sprite`, memory `+0x24`..`+0x3b`; a static
+/// one, the save's `RGE_Active_Sprite`, has only the frame, and the clock's fields stay at rest).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ActiveSprite {
     /// The graphic.
@@ -71,8 +80,12 @@ pub struct ActiveSprite {
 
 impl ActiveSprite {
     /// A new sprite instance (`FUN_1413b2ef0`): its first frame and interval; a sprite with a
-    /// random first frame draws it from the Sprite stream twice (`FUN_1413b3490`, then here).
+    /// random first frame draws it from the Sprite stream twice (`FUN_1413b3490`, then here). A
+    /// static one ([`ActiveSprite::start_static`]) draws it once.
     pub fn start(graphic: Graphic, sprite_rng: &mut Well512) -> Self {
+        if !graphic.animated() {
+            return Self::start_static(graphic, sprite_rng);
+        }
         let last = graphic.frames - 1;
         if graphic.flags & 4 != 0 {
             // FUN_1413b3490's draw, which the second one overrides
@@ -115,16 +128,54 @@ impl ActiveSprite {
         s
     }
 
-    /// Slot 9 with `0x7fff` (`FUN_1413b4ff0`): back to the first frame, not looped.
+    /// A static sprite instance (`FUN_1413b3490`): its first frame, or one the Sprite stream
+    /// draws for a sprite with a random first frame.
+    fn start_static(graphic: Graphic, sprite_rng: &mut Well512) -> Self {
+        let last = graphic.frames - 1;
+        let mut frame = graphic.first_frame();
+        if graphic.flags & 4 != 0 {
+            let draw = sprite_rng.rand15() as i32;
+            frame = ((draw * i32::from(graphic.frames)) / 0x7fff) as i16;
+            frame = frame.min(last);
+        }
+        Self::at_rest(graphic, frame)
+    }
+
+    /// A static sprite at `frame` (the save's `RGE_Active_Sprite`), its clock at rest.
+    #[must_use]
+    pub const fn at_rest(graphic: Graphic, frame: i16) -> Self {
+        Self {
+            graphic,
+            frame,
+            interval: 0.0,
+            last: 0.0,
+            last_frame: frame,
+            changed: false,
+            looped: false,
+            animate: 0,
+            speed: 0.0,
+        }
+    }
+
+    /// Slot 9 with `0x7fff` (`FUN_1413b4ff0`): back to the first frame, not looped; a static
+    /// sprite (`FUN_1413b5030`) only takes the frame.
     pub const fn reset_frame(&mut self) {
+        if !self.graphic.animated() {
+            self.frame = self.graphic.first_frame();
+            return;
+        }
         self.frame = self.graphic.first_frame();
         self.looped = false;
         self.last_frame = self.frame;
     }
 
-    /// Slot 11 (`FUN_1413b2d70`): the last advance passed `frame` or looped.
+    /// Slot 11 (`FUN_1413b2d70`): the last advance passed `frame` or looped; a static sprite
+    /// (`FUN_1413b2d90`) has reached every frame.
     #[must_use]
     pub const fn reached(&self, frame: i16) -> bool {
+        if !self.graphic.animated() {
+            return true;
+        }
         self.changed && (self.looped || (frame <= self.frame && self.last_frame < frame))
     }
 
@@ -146,7 +197,8 @@ impl ActiveSprite {
     /// frames (backwards for such a sprite); past its last frame it loops, after its replay delay,
     /// or stops on it when played once.
     pub fn update(&mut self, dt: f32, speed: f32) {
-        if self.animate == 0 {
+        // a static sprite's update (`FUN_1413b5330`) does nothing
+        if !self.graphic.animated() || self.animate == 0 {
             return;
         }
         self.changed = false;
@@ -259,5 +311,31 @@ mod tests {
         }
         // update 1057, the 49th
         assert_eq!((n, s.frame), (49, 22));
+    }
+
+    #[test]
+    fn a_static_sprite_stays_on_its_frame_and_has_reached_every_frame() {
+        // build 158041's town center sprite 3241 does not animate (sequence bit 0 clear)
+        let still = Graphic {
+            id: 3241,
+            frames: 1,
+            facets: 1,
+            speed_multiplier: 0.0,
+            frame_duration: 0.0,
+            replay_delay: 0.0,
+            flags: 0,
+        };
+        let mut rng = Well512::default();
+        let mut s = ActiveSprite::start(still, &mut rng);
+        assert_eq!(rng, Well512::default());
+        s.update(0.5, 1.0);
+        assert_eq!((s.frame, s.changed, s.looped), (0, false, false));
+        assert!(s.reached(0) && s.reached(7));
+        // a random first frame draws once, not twice as an animated one does
+        let mut once = Well512::default();
+        let _ = once.rand15();
+        let mut rng = Well512::default();
+        let _ = ActiveSprite::start(Graphic { flags: 4, ..still }, &mut rng);
+        assert_eq!(rng, once);
     }
 }

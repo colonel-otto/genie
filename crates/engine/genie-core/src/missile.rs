@@ -35,6 +35,13 @@ pub const LANDING: f32 = crate::image::missile::LANDING;
 pub const QUERY_EDGE: f32 = crate::image::missile::QUERY_EDGE;
 /// The reach adds this to the shooter's radius and range (`FUN_141081020`, `DAT_142e8c150`).
 const REACH_MARGIN: f32 = crate::image::missile::REACH_MARGIN;
+/// A volley's count takes the firepower past this hair (`FUN_141203140`).
+const VOLLEY_EPSILON: f32 = crate::image::missile::VOLLEY_EPSILON;
+/// A volley's scatter: the draw's scale and the half spread (`FUN_14120c0a0`).
+const VOLLEY_SCALE: f32 = crate::image::missile::VOLLEY_SCALE;
+const VOLLEY_HALF: f32 = crate::image::missile::VOLLEY_HALF;
+/// What a volley's extra missile's reach adds to the range (`FUN_141226690`).
+const VOLLEY_REACH_MARGIN: f32 = crate::image::missile::VOLLEY_REACH_MARGIN;
 
 /// What a missile's master holds for the flight: the `.dat`'s `projectile_type` (`+0x880`, not
 /// saved), `smart_mode` (`+0x881`, the save's `targetting_type`), `hit_mode` (`+0x882`,
@@ -167,6 +174,63 @@ pub fn spawn_point(at: [f32; 3], angle: f32, offset: [f32; 3]) -> [f32; 3] {
 #[must_use]
 pub fn reach(radius: [f32; 2], range: f32) -> f32 {
     fmath::sqrt(radius[0] * radius[0] + radius[1] * radius[1]) + range + REACH_MARGIN
+}
+
+/// `FUN_141203140` (no charge): a volley's missiles, the object's firepower (`+0xa00`, in whole
+/// missiles past a hair) up to its master's `max_attacks_in_volley`.
+#[must_use]
+pub fn volley_count(firepower: f32, max_volley: u8) -> i32 {
+    let n = (firepower + VOLLEY_EPSILON) as i64 as i32;
+    n.min(i32::from(max_volley))
+}
+
+/// `FUN_14120c0a0`'s scatter of a volley's extra missile along a spread: an Object-stream draw
+/// over 32767 of the spread, less half of it.
+#[must_use]
+pub fn scatter(draw: u32, spread: f32) -> f32 {
+    (draw as i32 as f32 * spread) / VOLLEY_SCALE - spread * VOLLEY_HALF
+}
+
+/// `FUN_141226690`'s place for a volley's extra missile, scattered by `scatter` (x, y): the
+/// weapon offset, plus the scatter over the master's spread adjustment when that is above 0
+/// (its height by 0 over it), turned by the facing from the object's place
+/// ([`spawn_point`]); a building (class 3) whose target `target` lies nearer than its weapon
+/// offset's length on the ground fires from the target's x and y.
+#[must_use]
+pub fn volley_spawn_point(
+    at: [f32; 3],
+    angle: f32,
+    offset: [f32; 3],
+    adjustment: f32,
+    scatter: [f32; 2],
+    building_at: Option<[f32; 2]>,
+) -> [f32; 3] {
+    let [ox, oy, oz] = offset;
+    let offset = if 0.0 < adjustment {
+        [
+            scatter[0] / adjustment + ox,
+            scatter[1] / adjustment + oy,
+            0.0 / adjustment + oz,
+        ]
+    } else {
+        offset
+    };
+    let mut p = spawn_point(at, angle, offset);
+    if let Some(t) = building_at {
+        let (dx, dy) = (t[0] - at[0], t[1] - at[1]);
+        let gap = (dx * dx + dy * dy).sqrt();
+        if gap < (ox * ox + oy * oy).sqrt() {
+            p[0] = t[0];
+            p[1] = t[1];
+        }
+    }
+    p
+}
+
+/// `FUN_141226690`'s reach: the firing master's radii's length plus its range plus 6.
+#[must_use]
+pub fn volley_reach(radius: [f32; 2], range: f32) -> f32 {
+    fmath::sqrt(radius[0] * radius[0] + radius[1] * radius[1]) + range + VOLLEY_REACH_MARGIN
 }
 
 /// What the aim reads of the firing object (`+0x28`, else the missile): its master's
@@ -459,5 +523,49 @@ mod tests {
             [10.3, 9.8, 0.0],
             [0.2, 0.2]
         ));
+    }
+
+    #[test]
+    fn a_volley_fires_whole_missiles_up_to_its_master_s_most_scattered_about_its_point() {
+        // a town center with 7 villagers inside fires 8 a volley, 11 at most
+        assert_eq!(volley_count(8.0, 11), 8);
+        assert_eq!(volley_count(12.0, 11), 11);
+        assert_eq!(volley_count(0.999_999_9, 11), 1);
+        // a spread of 0.5: from a quarter short to a quarter past
+        assert_eq!(scatter(0, 0.5), -0.25);
+        assert_eq!(scatter(0x7fff, 0.5), 0.25);
+        // the reach adds 6 to the range
+        assert_eq!(volley_reach([2.0, 0.0], 6.0), 14.0);
+    }
+
+    #[test]
+    fn a_building_s_volley_missile_starts_at_its_target_when_the_target_is_nearer_than_its_offset()
+    {
+        let at = [10.0, 10.0, 0.0];
+        // facing x (angle 0): the offset's x goes along -y, its y along x
+        let p = volley_spawn_point(at, 0.0, [0.0, 2.0, 1.0], 0.0, [0.0, 0.0], None);
+        assert_eq!(p, [12.0, 10.0, 1.0]);
+        // the scatter over the adjustment adds to the offset
+        let p = volley_spawn_point(at, 0.0, [0.0, 2.0, 1.0], 0.5, [0.0, 0.25], None);
+        assert_eq!(p, [12.5, 10.0, 1.0]);
+        // a building's target a tile off: nearer than the offset's 2
+        let p = volley_spawn_point(
+            at,
+            0.0,
+            [0.0, 2.0, 1.0],
+            0.0,
+            [0.0, 0.0],
+            Some([11.0, 10.0]),
+        );
+        assert_eq!(p, [11.0, 10.0, 1.0]);
+        let p = volley_spawn_point(
+            at,
+            0.0,
+            [0.0, 2.0, 1.0],
+            0.0,
+            [0.0, 0.0],
+            Some([13.0, 10.0]),
+        );
+        assert_eq!(p, [12.0, 10.0, 1.0]);
     }
 }

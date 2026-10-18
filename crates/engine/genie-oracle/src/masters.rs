@@ -169,6 +169,31 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .is_some_and(|c| 0 <= c.special_graphic),
         death_sprite: unit.dying_graphic,
         death_spawns: [unit.dead_unit_id, unit.blood_unit_id],
+        garrison_firepower: unit
+            .type50
+            .as_ref()
+            .and_then(|t| t.garrison_firepower)
+            .unwrap_or(0.0),
+        volley_fire: unit.creatable.as_ref().map_or(0.0, |c| c.total_projectiles),
+        max_volley: unit
+            .creatable
+            .as_ref()
+            .map_or(0, |c| c.max_total_projectiles),
+        volley_spread: unit
+            .creatable
+            .as_ref()
+            .map_or([0.0; 3], |c| c.projectile_spawning_area),
+        volley_missile: unit
+            .creatable
+            .as_ref()
+            .and_then(|c| i16::try_from(c.secondary_projectile_unit).ok())
+            .filter(|&id| 0 <= id),
+        charge_projectile: unit
+            .creatable
+            .as_ref()
+            .and_then(|c| c.charge_projectile_unit)
+            .and_then(|id| i16::try_from(id).ok())
+            .filter(|&id| 0 <= id),
         ..work::Master::default()
     }
 }

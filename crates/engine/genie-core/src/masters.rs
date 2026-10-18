@@ -275,6 +275,21 @@ pub struct Master {
     pub weapon_offset: [f32; 3],
     /// How far a missed missile strays per tile of the way (`missed_missile_spread`, `+0x860`).
     pub missed_spread: f32,
+    /// `garrison_firepower` (`+0x870`): what a unit adds to the volleys of a building it is
+    /// inside; one at most 0 adds its magnitude.
+    pub garrison_firepower: f32,
+    /// `volley_fire_amount` (`+0x8c0`, the `.dat`'s total projectiles): a new object's missiles
+    /// per volley (`+0xa00`).
+    pub volley_fire: f32,
+    /// `max_attacks_in_volley` (`+0x8c4`, the `.dat`'s max total projectiles).
+    pub max_volley: u8,
+    /// `volley_x_spread`, `volley_y_spread` and `volley_start_spread_adjustment` (`+0x8c8`..
+    /// `+0x8d0`, the `.dat`'s projectile spawning area): how far a volley's missiles scatter.
+    pub volley_spread: [f32; 3],
+    /// `volley_missile_id` (`+0x8d4`, the `.dat`'s secondary projectile), None for −1.
+    pub volley_missile: Option<i16>,
+    /// `mChargeProjectileUnit` (`+0x928`), None for −1.
+    pub charge_projectile: Option<i16>,
     /// A missile master's flight (type 60, [`crate::missile::MissileStats`]).
     pub missile_stats: Option<crate::missile::MissileStats>,
     /// What a unit of this master moves with, its speed with the master's walking sprite (the

@@ -110,10 +110,16 @@ pub mod fly {
 pub mod garrison {
     /// 0.20000000298023224
     pub const ENTER_HP_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
+    /// 1.0000000116860974e-07
+    pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
     /// 3.4028234663852886e+38
     pub const FAR: f32 = f32::from_bits(0x7f7f_ffff);
     /// 0.2
     pub const LEAST_HP_SHARE: f64 = f64::from_bits(0x3fc9_9999_9999_999a);
+    /// 1.0
+    pub const ONE_MISSILE: f32 = f32::from_bits(0x3f80_0000);
+    /// 1.0
+    pub const RATE_RANGE: f32 = f32::from_bits(0x3f80_0000);
 }
 
 /// The values `crate::gather_search`'s port reads.
@@ -232,6 +238,14 @@ pub mod missile {
     pub const QUERY_EDGE: f32 = f32::from_bits(0x3dcc_cccd);
     /// 2.0
     pub const REACH_MARGIN: f32 = f32::from_bits(0x4000_0000);
+    /// 1.0000000116860974e-07
+    pub const VOLLEY_EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 0.5
+    pub const VOLLEY_HALF: f32 = f32::from_bits(0x3f00_0000);
+    /// 6.0
+    pub const VOLLEY_REACH_MARGIN: f32 = f32::from_bits(0x40c0_0000);
+    /// 32767.0
+    pub const VOLLEY_SCALE: f32 = f32::from_bits(0x46ff_fe00);
 }
 
 /// The values `crate::move_to`'s port reads.
@@ -416,6 +430,8 @@ pub mod unit_ai {
     pub const FOLLOW_SLACK_HIGH: f32 = f32::from_bits(0x3f80_0000);
     /// -1.0
     pub const FOLLOW_SLACK_LOW: f32 = f32::from_bits(0xbf80_0000);
+    /// 3.0
+    pub const RETARGET_RANGE: f32 = f32::from_bits(0x4040_0000);
 }
 
 /// The values `crate::visibility`'s port reads.

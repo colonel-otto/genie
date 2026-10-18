@@ -78,6 +78,9 @@ pub struct Arms {
 pub struct Attack {
     /// The target object (`+0x20`, its id at `+0x30`).
     pub target: i32,
+    /// The second target (`+0x28`, its id at `+0x34`): the work command's Attack takes its
+    /// target as this too (`FUN_140a7a190`, slot 0x178), −1 for none.
+    pub target2: i32,
     /// The action state (`+0x18`).
     pub state: u8,
     /// `+0x44`: seconds in the state, the update adds dt.
@@ -122,6 +125,9 @@ pub struct Commanded {
     pub arrived: bool,
     /// The notifies its start posted (kind and three parameters).
     pub posted: Vec<(i32, [i32; 3])>,
+    /// A unit that cannot move in reach of its target: its start's `set_state(6)` (READY) is the
+    /// caller's ([`Attack::enter_ready`]), with what the swing reads.
+    pub ready: bool,
 }
 
 /// What the Attack reads of its unit and its target when it starts.
@@ -159,6 +165,12 @@ pub struct Strike<'a> {
     pub sprite: &'a mut Option<ActiveSprite>,
     /// The unit's animation speed (`+0x7b8`), None while the slice does not know it.
     pub anim_speed: &'a mut Option<f32>,
+    /// Its master's standing sprite (`+0x470`), which slot 0x68 shows for no sprite
+    /// (`FUN_141158620`).
+    pub standing: Option<Graphic>,
+    /// Its master has a volley missile (`+0x8d4`) or a charge projectile (`+0x928`) its player
+    /// has: a hit without a missile is a volley too (`FUN_14120c0a0`), not the melee hit.
+    pub volleys: bool,
     /// `+0x91c`, the time until it may attack again (slot 0x100: at most 0); the game's world
     /// time when it may again (`+0x920`, slot 0x248) is not held.
     pub attack_timer: &'a mut f32,
@@ -206,6 +218,13 @@ const MASTER_1706: i16 = 1706;
 /// The masters whose swings post no executed action (`0x60e5`, `0x62cb` raw).
 const QUIET_SWINGS: [i16; 2] = [73, 559];
 
+/// `FUN_14120c0a0`'s test of `master`: it has a volley missile or a charge projectile its player
+/// has (`masters`), so its hits go through its volley even without a missile.
+pub(crate) fn volleys(master: &crate::masters::Master, masters: &crate::masters::Masters) -> bool {
+    let has = |id: Option<i16>| id.and_then(|id| masters.get(id)).is_some();
+    has(master.volley_missile) || has(master.charge_projectile)
+}
+
 /// Slot 0x68 (`FUN_141217000`): the unit's sprite becomes `g` unless it is already; a new sprite
 /// starts a new instance (`FUN_1413b2ef0`).
 pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mut Well512) {
@@ -246,6 +265,7 @@ impl Attack {
     ) -> Result<(Self, bool), Unsupported> {
         let mut a = Self {
             target,
+            target2: -1,
             state: 0,
             timer: 0.0,
             range: e.range,
@@ -321,6 +341,7 @@ impl Attack {
     ) -> Result<Commanded, Unsupported> {
         let mut a = Self {
             target,
+            target2: -1,
             state: 0,
             timer: 0.0,
             range: e.range,
@@ -374,17 +395,42 @@ impl Attack {
                 }
             }
         }
+        // the start's end (0x140a7f8c0): a unit that cannot move goes ready (set_state 6) when
+        // readyToAttack reached its ready end (in reach), else stops (13)
         if !movable {
-            return Err(Unsupported(
-                "an attack command of a unit that cannot move (set_state 6 or 13)",
-            ));
+            if a.state == 5 || a.reach() < e.gap {
+                return Err(Unsupported(
+                    "an attack command of a unit that cannot move out of reach (set_state 13)",
+                ));
+            }
+            return Ok(Commanded {
+                attack: a,
+                arrived: false,
+                posted,
+                ready: true,
+            });
         }
         let arrived = a.set_move(e, mover)?;
         Ok(Commanded {
             attack: a,
             arrived,
             posted,
+            ready: false,
         })
+    }
+
+    /// The start's `set_state(6)` for a unit that cannot move ([`Commanded::ready`]): the range
+    /// test again, and the swing when it is ready.
+    ///
+    /// # Errors
+    ///
+    /// What the range test and the swing do not model.
+    pub fn enter_ready(
+        &mut self,
+        mut walk: Walk<'_>,
+        s: &mut Strike<'_>,
+    ) -> Result<(), Unsupported> {
+        self.ready(&mut walk, s)
     }
 
     /// A `MoveTo` of the attack that starts arrived (its `set_state` 1, not quiet): the unit shows
@@ -608,8 +654,9 @@ impl Attack {
     }
 
     /// `set_state(7)` (case 7): the swing. The unit takes the attack sprite (a second attack sprite,
-    /// picked by an Object-stream draw, is not modelled) from its first frame (`FUN_1413b9f00`); a
-    /// hit is pending; a reload shorter than the sprite speeds the animation up to fit it.
+    /// picked by an Object-stream draw, is not modelled; without one slot 0x68 shows its master's
+    /// standing sprite) from its first frame (`FUN_1413b9f00`); a hit is pending; a reload shorter
+    /// than the sprite speeds the animation up to fit it.
     fn set_swing(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
         self.enter(SWING, walk, s)?;
         if self.arms.second_sprite.is_some() {
@@ -617,10 +664,9 @@ impl Attack {
                 "an attacker with a second attack sprite (its draw)",
             ));
         }
-        let g = self
-            .arms
-            .sprite
-            .ok_or(Unsupported("an attacker without an attack sprite"))?;
+        let g = self.arms.sprite.or(s.standing).ok_or(Unsupported(
+            "an attacker without an attack or standing sprite",
+        ))?;
         set_sprite(s.sprite, g, s.sprite_rng);
         if let Some(sp) = s.sprite.as_mut() {
             sp.reset_frame();
@@ -634,6 +680,18 @@ impl Attack {
             1.0
         });
         Ok(())
+    }
+
+    /// Slot 9 (`FUN_140a841d0`) on `target`, the Attack's own target (an attacker with an area
+    /// effect would take a building's main building): one in states 4 to 7 or 11 keeps it as it
+    /// is. The range test of the other states (and the new target's) is not modelled.
+    pub const fn keeps(&self, target: i32) -> Result<bool, Unsupported> {
+        if target == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
+            return Ok(true);
+        }
+        Err(Unsupported(
+            "an Attack's slot 9 on a target out of its states 4 to 7 and 11",
+        ))
     }
 
     /// One update (slot 6, `0x140a82ae0`): the timer runs, the target is still there and where it
@@ -858,9 +916,16 @@ impl Attack {
                 self.arms.fire_frame
             };
             *s.attack_timer = s.reload - f32::from(frame) * sprite.graphic.frame_duration;
-            if ranged {
+            // slot 0x858 (FUN_14120c0a0): the volley, but for a unit without a missile, volley
+            // missile or charge projectile, whose hit is FUN_141081020's melee one
+            if ranged || s.volleys {
                 s.fire = Some(self.target);
             } else {
+                if matches!(s.own.master_id, 527 | 528 | 1104 | 2133..=2135) {
+                    return Err(Unsupported(
+                        "a self-destructing attacker's hit (masters 527, 528, 1104, 2133..2135)",
+                    ));
+                }
                 let object = walk
                     .plan
                     .as_mut()
@@ -929,7 +994,7 @@ impl Attack {
     fn strike(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
         let hit = Hit {
             at: s.own.position,
-            from_z: s.own.position[2],
+            from_z: Some(s.own.position[2]),
             missile: false,
             chance: s.hit_chance,
         };
@@ -967,13 +1032,15 @@ impl Attack {
 }
 
 /// Where a hit comes from: the place it lands (`FUN_141084230`'s x, y, z: the attacker's for a
-/// melee hit, the missile's for a missile's), the height of its origin record (`+0x8`, which the
-/// elevation factor reads), whether a missile lands it (a shield of charge type 4 blocks it
-/// instead of 5) and the attacker's hit chance (`+0x83e`).
+/// melee hit, the missile's for a missile's), the height the elevation factor compares with the
+/// target's (the attacker's slot 0x1f0: a combat object's, `FUN_14120d780`, its origin record's
+/// `+0x8` when the record names an owner that has its master, else its own; None for a missile
+/// whose record names no owner, `FUN_14113e550`: a factor of 1), whether a missile lands it (a
+/// shield of charge type 4 blocks it instead of 5) and the attacker's hit chance (`+0x83e`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Hit {
     pub at: [f32; 3],
-    pub from_z: f32,
+    pub from_z: Option<f32>,
     pub missile: bool,
     pub chance: i16,
 }
@@ -1035,7 +1102,9 @@ pub(crate) fn strike(
     if i64::from(hit.chance) < r && a.missile < 0 {
         return Ok(struck);
     }
-    let factor = damage::elevation_factor(hit.from_z, own.attack_elevation, victim);
+    let factor = hit.from_z.map_or(1.0, |z| {
+        damage::elevation_factor(z, own.attack_elevation, victim)
+    });
     let weapons = own.weapons.clone();
     damage::take(victim, own, &weapons, factor, 0.0)?;
     Ok(struck)

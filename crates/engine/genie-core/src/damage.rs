@@ -253,6 +253,9 @@ pub struct Attacker {
     pub player: usize,
     /// Its master has a task of action type 0x9a (a kill bonus).
     pub kill_bonus_tasks: bool,
+    /// What a missile was fired from (`+0x998`), its damage notify's sender; a missile without
+    /// one is −1.
+    pub fired_from: i32,
 }
 
 /// Slot 0x1f0 of a combat object (`FUN_14120d780`) at height `z` whose player has `up_down` as
@@ -732,10 +735,10 @@ fn take_unit(
 /// type 70 and up records whether the hit is its charge's (slot 0x2f0, `+0x8a8`), which empties
 /// a charge without an area effect (slot 0x318 with 0); the target loses it (slot 0xb0). The
 /// target's unit AI gets notify 500 (but from an attacker of class 64) with the attacker, the hit
-/// points left and its master's. Below 1 hit point it has 0 and is killed: Gaia takes a player's
-/// livestock (type 70). Not modelled: an attacker of type 60 and up whose combat ability marks its
-/// target (bit 2, `FUN_141206250`), a missile's shooter as the notify's sender (`+0x998`) and a
-/// kill reward task (action type 0xa1). Not held: the damaged flag (`+0x683`), the last damage
+/// points left and its master's, sent by the attacker (a missile, type 60: by what it was fired
+/// from, `+0x998`). Below 1 hit point it has 0 and is killed: Gaia takes a player's livestock
+/// (type 70). Not modelled: an attacker of type 60 and up whose combat ability marks its target
+/// (bit 2, `FUN_141206250`) and a kill reward task (action type 0xa1). Not held: the damaged flag (`+0x683`), the last damage
 /// time (`+0x648`), the alerts of another owner (slot 0x2e8), the killer (`+0x690`, `+0x694`),
 /// the local player's statistics, the damage sprites (slot 0x4c0) and the trigger events.
 fn damage(
@@ -762,12 +765,14 @@ fn damage(
             "an attacker whose combat ability marks its target (FUN_141206250)",
         ));
     }
-    if src.kind == 60 {
-        return Err(Unsupported("a missile's damage (its shooter, +0x998)"));
-    }
     let master_hp = t.armored.as_ref().map_or(0, |a| i32::from(a.master_hp));
     if src.source.class != ELEPHANT_ARCHER {
-        t.damaged = Some((src.id, [src.id, t.hp as i32, master_hp]));
+        let sender = if src.kind == 60 {
+            src.source.fired_from
+        } else {
+            src.id
+        };
+        t.damaged = Some((sender, [src.id, t.hp as i32, master_hp]));
     }
     if t.hp < 1.0 {
         t.hp = 0.0;

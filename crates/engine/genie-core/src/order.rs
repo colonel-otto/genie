@@ -78,6 +78,8 @@ pub(crate) const BUILDING: u8 = 80;
 const MOVING: u8 = 30;
 /// The task filter of garrisoning (3).
 pub(crate) const GARRISON: i16 = 3;
+/// A task's action type of attacking (7), whose factory makes an Attack (type 9).
+const ATTACK_TASK: i16 = 7;
 
 /// Where an object is: its player and its index in the live or the sleeping list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1395,6 +1397,33 @@ impl Turns {
                 "a work command with the carried-resource test (+0x12)",
             ));
         }
+        // the top Attack on this very target, the filter none or 9: its slot 9
+        // (`FUN_140a841d0`) keeps it, and the unit AI hears of it as of a new one (slot 0x828)
+        let attacking = self.players[player].objects[idx]
+            .attack
+            .filter(|a| top == Some(crate::attack::ATTACK) && a.target == target);
+        if let Some(a) = attacking.filter(|_| matches!(filter, -1 | 9))
+            && a.keeps(target)?
+        {
+            let (tp, t) = self
+                .object(target)
+                .ok_or(Unsupported("an attack's target the slice does not hold"))?;
+            let class = i32::from(self.master_of(tp, t.life.master_id)?.class);
+            let world_time = self.world_time;
+            let unit = &mut self.players[player].objects[idx];
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.last_retarget_time = world_time;
+                ai.notify_work(
+                    700,
+                    600,
+                    Some((target, class)),
+                    point,
+                    clears,
+                    self.streams.get(Stream::Ai),
+                )?;
+            }
+            return Ok(());
+        }
         if matches!(top, Some(9 | 0x7e)) || (top == Some(0x6b) && task.action_type == 3) {
             return Err(Unsupported(
                 "a work command on a unit attacking, gathering or 0x7e",
@@ -1405,6 +1434,7 @@ impl Turns {
         }
         match task.action_type {
             crate::garrison::ENTER => self.start_enter(player, idx, target, &task, point, clears),
+            ATTACK_TASK => self.start_attack(player, idx, target, &task, point, clears),
             HUNT => self.start_hunt(
                 player,
                 idx,
@@ -1425,6 +1455,196 @@ impl Turns {
                 "the action factory for a task the slice does not model",
             )),
         }
+    }
+
+    /// The work command's Attack (its task of action type 7, the factory `FUN_140a97e00` case 7):
+    /// the unit AI takes action 600 (`FUN_140c64b50`) and the target (an annex its main building,
+    /// `FUN_141189b20`) at its place (`FUN_140c64c10`); the Attack (`FUN_140a7c210`, sub-action 0:
+    /// the task's sprites, the task's range or slot 0x238's for 0) takes its target (slot 0x178);
+    /// the notify (`FUN_14106e4e0` kind 9: the last retarget time `+0xbc` takes the world's time,
+    /// then order 700, action 600, the target with its class and the work's point); the install
+    /// clears the action list and starts the Attack (slot 5, `0x140a7f8c0`: `+0x900` cleared, the
+    /// standing sprite, the range test of [`Attack::command`]; a unit that cannot move in reach
+    /// goes ready, `set_state(6)`, [`Attack::enter_ready`]); then the Attack takes the target as
+    /// its second target too (`FUN_140a7a190`, slot 0x178). The unit AI's `+0x1d5`, cleared, is
+    /// not held; a task range other than 0 is not modelled.
+    fn start_attack(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        task: &crate::masters::Task,
+        point: [f32; 3],
+        clears: bool,
+    ) -> Result<(), Unsupported> {
+        use crate::attack::Strike;
+        use crate::move_to::Walk;
+        if task.work_range != 0.0 {
+            return Err(Unsupported("an attack task with a range of its own"));
+        }
+        let (tp, t) = self.object(target).ok_or(Unsupported(
+            "an attack task's target the slice does not hold",
+        ))?;
+        let tm = self.master_of(tp, t.life.master_id)?;
+        let aimed = if tm.kind == BUILDING {
+            t.annex_of.unwrap_or(target)
+        } else {
+            target
+        };
+        let (class, fog_visibility) = (i32::from(tm.class), tm.fog_visibility);
+        let (ap, a) = self
+            .object(aimed)
+            .ok_or(Unsupported("an attack task's main building is gone"))?;
+        let aimed_at = a.position;
+        let aimed_class = i32::from(self.master_of(ap, a.life.master_id)?.class);
+        let world_time = self.world_time;
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.set_action(600);
+            ai.set_target(aimed, aimed_class, aimed_at);
+        }
+        self.take(target);
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.last_retarget_time = world_time;
+            ai.notify_work(
+                700,
+                600,
+                Some((target, class)),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+        }
+        self.clear_actions(player, idx)?;
+        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
+        let arms = crate::attack::arms(master, &self.graphics, task.sprites);
+        let standing = arms
+            .idle_sprite
+            .ok_or(Unsupported("an attacker without its standing sprite"))?;
+        let me_at = *self
+            .spatial
+            .get(self.players[player].objects[idx].id)
+            .ok_or(Unsupported("an attacker without a place"))?;
+        let t_at = *self
+            .spatial
+            .get_known(target)?
+            .ok_or(Unsupported("an attack's target without a place"))?;
+        let (tx, ty) = (t_at.position[0] as i32, t_at.position[1] as i32);
+        let visible = self.spatial.sees_tile(player, tx, ty)
+            || (fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
+        let reload = {
+            let u = &self.players[player].objects[idx];
+            u.reload_stinger + (master.reload - u.reload_powerup)
+        };
+        let hit_chance = master.hit_chance;
+        let volleys = self
+            .masters
+            .get(player)
+            .is_some_and(|m| crate::attack::volleys(master, m));
+        let mut victim = self.victim(target, player).ok_or(Unsupported(
+            "an attack's target the slice does not hold live",
+        ))?;
+        let own = {
+            let u = &self.players[player].objects[idx];
+            let terrain = self.spatial.terrain.as_ref();
+            crate::turn::victim_of(
+                u,
+                master,
+                &self.players[player].attributes,
+                player,
+                terrain,
+                self.mode_680,
+            )
+        };
+        let speed = self.players[player].objects[idx]
+            .mover
+            .as_ref()
+            .map_or(0.0, |m| m.stats.speed);
+        let e = crate::attack::engagement(
+            self.players[player].objects[idx].ai.as_ref(),
+            speed,
+            master,
+            &me_at,
+            &t_at,
+            world_time,
+        )?;
+        let unit = &mut self.players[player].objects[idx];
+        if unit.sprite.is_none() {
+            return Err(Unsupported(
+                "an attack task of a unit whose sprite the slice does not hold",
+            ));
+        }
+        unit.attack_count = 0;
+        crate::attack::set_sprite(&mut unit.sprite, standing, self.streams.get(Stream::Sprite));
+        let mover = unit
+            .mover
+            .as_mut()
+            .ok_or(Unsupported("an attacker without movement state"))?;
+        let crate::attack::Commanded {
+            mut attack,
+            arrived,
+            posted,
+            ready,
+        } = crate::attack::Attack::command(target, &e, arms, visible, tp, mover)?;
+        if arrived {
+            return Err(Unsupported("an attack task whose MoveTo starts arrived"));
+        }
+        let (id, state) = (unit.id, unit.life.state);
+        for (kind, p) in posted {
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.post(crate::unit_ai::Notify::own(id, kind, p), state)?;
+            }
+        }
+        if ready {
+            let me = crate::movement::Me {
+                id: unit.id,
+                position: unit.position,
+                action_state: crate::attack::READY,
+            };
+            let can_move = unit
+                .ai
+                .as_ref()
+                .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
+            let stance = unit.ai.as_ref().map_or(0, |ai| ai.stance);
+            let queue_empty = unit.ai.as_ref().is_some_and(|ai| ai.orders.is_empty());
+            let walk = Walk {
+                mover: unit.mover.as_mut(),
+                me,
+                dt: 0.0,
+                world: &mut self.spatial,
+                plan: None,
+            };
+            let mut blasted = Vec::new();
+            let mut strike = Strike {
+                sprite: &mut unit.sprite,
+                anim_speed: &mut unit.anim_speed,
+                standing: Some(standing),
+                volleys,
+                attack_timer: &mut unit.attack_timer,
+                reload,
+                hit_chance,
+                victim: &mut victim,
+                blasted: &mut blasted,
+                sprite_rng: self.streams.get(Stream::Sprite),
+                own,
+                executed: None,
+                fire: None,
+                can_move,
+                stance,
+                posted: Vec::new(),
+                queue_empty,
+                world_time,
+            };
+            attack.enter_ready(walk, &mut strike)?;
+            if strike.executed.is_some() || strike.fire.is_some() || !strike.posted.is_empty() {
+                return Err(Unsupported("an attack task's swing at its start"));
+            }
+        }
+        attack.target2 = target;
+        unit.attack = Some(attack);
+        self.take(target);
+        Ok(())
     }
 
     /// The hunt's slot 9 (`0x140ac97c0`) on the work command's new target: a new target is
@@ -1633,16 +1853,13 @@ impl Turns {
     /// The action list's clearing (`FUN_140a98620`): each action's teardown. A Build action takes
     /// its builder out of the foundation's builders (`FUN_140aadbf0`); a `MoveTo`'s teardown stops
     /// the unit (slot 0x5d0); the Build and the Hunt release their targets (slot 0x180,
-    /// [`Turns::release`]).
+    /// [`Turns::release`]). A building's make action is in its production's own list, which
+    /// stays.
     pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
         let by = self.releaser(player, idx);
         let objects = &mut self.players[player].objects;
         let unit = &mut objects[idx];
-        if unit.artifact.is_some()
-            || unit.fly.is_some()
-            || unit.production.is_some()
-            || unit.enter.is_some()
-        {
+        if unit.artifact.is_some() || unit.fly.is_some() || unit.enter.is_some() {
             return Err(Unsupported(
                 "clearing an action list the slice does not model",
             ));
@@ -1692,8 +1909,13 @@ impl Turns {
         if let Some(h) = hunt {
             self.release(h.target, by)?;
         }
-        if let Some(a) = attack.filter(|a| a.target != -1) {
-            self.release(a.target, by)?;
+        // the base teardown (FUN_140a73fc0) lets the target, then the second target go
+        if let Some(a) = attack {
+            for t in [a.target, a.target2] {
+                if t != -1 {
+                    self.release(t, by)?;
+                }
+            }
         }
         Ok(())
     }

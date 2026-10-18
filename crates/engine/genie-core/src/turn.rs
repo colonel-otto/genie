@@ -99,6 +99,11 @@ pub struct Unit {
     pub missile: Option<crate::missile::Missile>,
     /// `+0x900`, `attack_count`: the swings that fired a missile (`FUN_141081020`).
     pub attack_count: i32,
+    /// `+0xa00` (not saved): a combat object's missiles per volley, its master's volley fire plus
+    /// the shares of the units inside it ([`crate::garrison::share`]).
+    pub firepower: f32,
+    /// `next_volley` (`+0xa04`): the missiles of the volley under way already fired.
+    pub next_volley: u8,
     /// A building's gate lock ([`Gate`]).
     pub gate: Option<Gate>,
     /// Its active sprite and animation speed (`+0x7b8`, the save's `current_speed`), held from
@@ -681,7 +686,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             attack,
             arrived,
             posted,
+            ready,
         } = crate::attack::Attack::command(target, &e, arms, visible, t.player, mover)?;
+        if ready {
+            return Err(Unsupported(
+                "an attack command of a unit that cannot move (its set_state 6)",
+            ));
+        }
         if arrived {
             return Err(Unsupported("an attack command whose MoveTo starts arrived"));
         }
@@ -1020,6 +1031,7 @@ impl Unit {
                 .as_ref()
                 .and_then(|m| m.action.as_ref())
                 .map(|a| a.fired_from),
+            crate::attack::ATTACK => self.attack.map(|a| a.target2),
             _ => Some(-1),
         }
     }
@@ -1058,7 +1070,7 @@ impl Unit {
     fn enter_update(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: &mut [Self],
         me: Me,
     ) -> Result<(), Unsupported> {
         let enter = self.enter.expect("checked by the caller");
@@ -1126,12 +1138,17 @@ impl Unit {
                 civ: c.civ,
                 player: c.player,
                 attribute_adds: &mut c.attribute_adds,
+                firepower: 0.0,
             };
             if !self.enter_building(building, inside, &mut w)? {
                 return Err(Unsupported("an Enter that did not get in (state 2)"));
             }
             // the update's own set_state(1) after the enter's
             self.entered(&mut w)?;
+            let firepower = w.firepower;
+            if let Some(b) = others.iter_mut().find(|u| u.id == enter.target) {
+                b.firepower += firepower;
+            }
         }
         if step.done {
             return Err(Unsupported("a done Enter outside its building"));
@@ -1259,6 +1276,12 @@ impl Unit {
         w.pathing.removed(self.id);
         let building_radius = w.spatial.get(target).map_or(bm.radius, |p| p.radius);
         self.life.inside = Some(target);
+        // the building's slot 0x1c0 (FUN_1411cb850 -> FUN_14120b790): a unit (type 70) adds its
+        // share to the building's volleys
+        if me.kind == 70 {
+            let rate = crate::garrison::attack_rate(bm, masters, building.reload_powerup);
+            w.firepower = crate::garrison::share(me, masters, self.reload_powerup, rate)?;
+        }
         self.position = [at[0], at[1], self.position[2]];
         if let Some(v) = w.spatial.sight.as_mut() {
             if let Some(r) = v.registry.as_mut().filter(|_| 0 <= self.id) {
@@ -1300,8 +1323,10 @@ impl Unit {
         // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
         if let Some(mut a) = self.attack.take() {
             a.tear_down(self.mover.as_mut())?;
-            if a.target != -1 {
-                c.releases.push((a.target, self.releaser(c)));
+            for t in [a.target, a.target2] {
+                if t != -1 {
+                    c.releases.push((t, self.releaser(c)));
+                }
             }
         }
         // the Enter's teardown: its MoveTo's stops the unit, and the base teardown
@@ -2162,27 +2187,109 @@ impl Unit {
         Ok(own.killed)
     }
 
-    /// `FUN_141081020`, a ranged unit's swing at its target (slot 0x858 from the Attack's state
-    /// 7): its attack count (`+0x900`) rises; its master's missile (`missile_id`; a charge
-    /// projectile, slot 0x2f8 with charge types 6 and 7, is not modelled) comes from its player's
-    /// master's slot 0x40 (`FUN_1410d5920`) at its weapon offset turned by its facing
-    /// ([`crate::missile::spawn_point`]): from the pool of type 60 when it holds one (keeping its
-    /// id), else new with the next reusable id ([`Recycling`]). The setups draw as a new
-    /// object's do (its standing sprite, [`ActiveSprite::start`] on the Sprite stream; its facet
-    /// for a sprite with a random first frame and several facets, then its angle for a turning
-    /// one: Object stream) and put it on the map (slot 0x58: held inside it; a pooled missile
-    /// that last flew no farther than 0.1 takes the ground by its fly mode); it joins the end of
-    /// its owner's list. Then its action (`FUN_14113f520` -> `FUN_140a9a040`): the shooter's
-    /// attack count, its reach ([`crate::missile::reach`]), the target's place as its point, the
-    /// master's hit mode, the target and the shooter taken (slot 0x178 each), the shooter's place,
-    /// master and owner with the missile's radii as its origin; the list's add starts it
-    /// (`FUN_140a9c5b0`): `set_state` 3 aims ([`crate::missile::aim`], Action stream) and launches
-    /// ([`crate::missile::MissileAction::launch`], its angle). Last the shooter tells its unit AI
-    /// the action executed (0x200 with 600, but for masters 73 and 559). Not modelled: a target of
-    /// a computer player, which a shooter whose blast does not spare friends notifies (0x20f).
-    /// Not held: the damaged flag of masters 83, 293, 122 and 216 (`+0x683`), the missile's
-    /// sprite and pitch facet, and a shooter's own master copy (its origin's master −1).
-    fn fire(&mut self, c: &mut Context<'_>, aimed: Aimed) -> Result<(), Unsupported> {
+    /// Slot 0x858 (`FUN_14120c0a0`), a combat object's hit at its target from the Attack's swing
+    /// when it has a missile, a volley missile or a charge projectile
+    /// ([`crate::attack::volleys`]; the others' melee hit is the Attack's). A master without
+    /// `max_attacks_in_volley` fires its missile ([`Unit::fire`]). One with it fires its volley
+    /// (`next_volley`, `+0xa04`, already fired of [`crate::missile::volley_count`] missiles):
+    /// unless its `combat_ability` has bit 4, a master with a spread fires 1 to 3 at a time (an
+    /// Object-stream draw, "attack"), the rest of the volley next with its attack timer at 0.05;
+    /// the volley's last (masters 73 and 559 tell their unit AI the action executed) leaves
+    /// `next_volley` 0. Of the missiles at a time, the first of a volley is its missile (none
+    /// without one) and the others its extra missiles ([`Unit::volley_missile`]), each scattered
+    /// by two draws. Not modelled: the self-destructing masters (527, 528, 1104, 2133..2135,
+    /// classes 35 and 64 alive), a charge (charge types 6 and 7), a target of another player
+    /// than Gaia (its player's object 112, slot 0x1c0) or of a computer player (its notify
+    /// 0x214). Not held: the local player's statistics (`FUN_140a4ba80`).
+    fn volley(&mut self, c: &mut Context<'_>, aimed: Aimed) -> Result<(), Unsupported> {
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported(
+                "an attacker of a master the slice does not have",
+            ))?;
+        if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135) || matches!(master.class, 35 | 64))
+            && self.life.state == 2
+        {
+            return Err(Unsupported(
+                "a self-destructing attacker's hit (its object 112 and its death)",
+            ));
+        }
+        if matches!(master.charge_type, 6 | 7) {
+            return Err(Unsupported(
+                "a charged hit (slot 0x2f8 with charge types 6 and 7)",
+            ));
+        }
+        let missile = 0 <= master.missile;
+        let (first, extra) = if master.max_volley == 0 {
+            (true, 0)
+        } else {
+            let count = crate::missile::volley_count(self.firepower, master.max_volley);
+            let old = self.next_volley;
+            let mut n = count - i32::from(old);
+            let [x_spread, y_spread, _] = master.volley_spread;
+            let mut all = true;
+            if master.combat_ability & 0x10 == 0 {
+                let k = if 0.0 < x_spread || 0.0 < y_spread {
+                    let draw = c.streams.get(Stream::Object).rand15() as i32;
+                    (draw * 2) / 0x7fff + 1
+                } else {
+                    1
+                };
+                if k < n {
+                    self.next_volley = self.next_volley.wrapping_add(k as u8);
+                    // an immediate 0.05
+                    self.attack_timer = 0.05;
+                    n = k;
+                    all = false;
+                }
+            }
+            if all {
+                self.next_volley = 0;
+                if matches!(master.id, 73 | 559) {
+                    self.post_own(ACTION_EXECUTED, [600, -1, 0])?;
+                }
+            }
+            (old == 0, if old == 0 { n - 1 } else { n })
+        };
+        if missile || 0 < extra {
+            if 0 < aimed.player {
+                return Err(Unsupported(
+                    "a hit on a player's object (its player's object 112, slot 0x1c0)",
+                ));
+            }
+            let [x_spread, y_spread, _] = master.volley_spread;
+            for _ in 0..extra {
+                let object = c.streams.get(Stream::Object);
+                let (x, y) = (object.rand15(), object.rand15());
+                let scatter = [
+                    crate::missile::scatter(x, x_spread),
+                    crate::missile::scatter(y, y_spread),
+                ];
+                self.volley_missile(c, &aimed, scatter)?;
+            }
+        }
+        if (extra != 0 || missile) && c.computers.get(aimed.player).copied().unwrap_or(false) {
+            return Err(Unsupported(
+                "a hit on a computer player's object (its notify 0x214)",
+            ));
+        }
+        if first && missile {
+            self.fire(c, &aimed)?;
+        }
+        Ok(())
+    }
+
+    /// `FUN_141081020`, a ranged unit's swing at its target (from its volley): its attack count
+    /// (`+0x900`) rises; its master's missile (`missile_id`; a charge projectile, slot 0x2f8 with
+    /// charge types 6 and 7, is not modelled) at its weapon offset turned by its facing
+    /// ([`crate::missile::spawn_point`]), its reach [`crate::missile::reach`], aimed at the
+    /// target's place, the shooter its origin ([`Unit::launch`], `FUN_14113f520`). Last the
+    /// shooter tells its unit AI the action executed (0x200 with 600, but for masters 73 and
+    /// 559). Not modelled: a target of a computer player, which a shooter whose blast does not
+    /// spare friends notifies (0x20f). Not held: the damaged flag of masters 83, 293, 122 and 216
+    /// (`+0x683`).
+    fn fire(&mut self, c: &mut Context<'_>, aimed: &Aimed) -> Result<(), Unsupported> {
         self.attack_count += 1;
         let master = c
             .masters
@@ -2200,11 +2307,137 @@ impl Unit {
             .as_ref()
             .map(|m| m.angle)
             .ok_or(Unsupported("a ranged unit that does not move"))?;
-        let at = crate::missile::spawn_point(self.position, facing, master.weapon_offset);
-        let reach = crate::missile::reach(master.radius, master.weapon_range);
+        let shot = Shot {
+            made: master.missile,
+            at: crate::missile::spawn_point(self.position, facing, master.weapon_offset),
+            point: aimed.position,
+            reach: crate::missile::reach(master.radius, master.weapon_range),
+            shooter: true,
+            aimer: crate::missile::Aimer {
+                hit_chance: master.hit_chance,
+                spread: master.missed_spread,
+                class: master.class,
+            },
+            attack_count: self.attack_count,
+        };
+        self.launch(c, aimed, &shot)?;
+        if !matches!(self.life.master_id, 73 | 559) {
+            self.post_own(ACTION_EXECUTED, [600, aimed.target, 0])?;
+        }
+        // FUN_1410bfcb0: a blast of a unit of range above 1 without the level's bit 2 does not
+        // spare friends
+        let spares_friends = !(1.0 < master.weapon_range && master.blast_level & 4 == 0);
+        if !spares_friends && c.computers.get(aimed.player).copied().unwrap_or(false) {
+            return Err(Unsupported(
+                "a missile fired at a computer player's object (its notify 0x20f)",
+            ));
+        }
+        Ok(())
+    }
+
+    /// `FUN_141226690`, a volley's extra missile scattered by `scatter`: the master's volley
+    /// missile (`FUN_141203760`, a master its player has), shooterless, else its missile with
+    /// the shooter; placed by [`crate::missile::volley_spawn_point`], its reach
+    /// [`crate::missile::volley_reach`], aimed at the target's place plus the scatter turned by
+    /// the facing (`FUN_14113f410`); the missile's own aim when shooterless; it records the
+    /// object as what it was fired from (`+0x998`). Last the object tells its unit AI the action
+    /// executed (0x200 with 600 and no target, but for masters 73 and 559). Not modelled: a
+    /// missile of master 527 or 528 (whose aim reads its attack count, set after it) and a
+    /// master without a missile of either kind.
+    fn volley_missile(
+        &mut self,
+        c: &mut Context<'_>,
+        aimed: &Aimed,
+        scatter: [f32; 2],
+    ) -> Result<(), Unsupported> {
+        let masters = c
+            .masters
+            .ok_or(Unsupported("a volley without the masters"))?;
+        let master = masters.get(self.life.master_id).ok_or(Unsupported(
+            "a ranged unit of a master the slice does not have",
+        ))?;
+        let facing = self
+            .mover
+            .as_ref()
+            .map(|m| m.angle)
+            .ok_or(Unsupported("a ranged unit that does not move"))?;
+        let building = master.class == crate::garrison::BUILDING_CLASS;
+        let at = crate::missile::volley_spawn_point(
+            self.position,
+            facing,
+            master.weapon_offset,
+            master.volley_spread[2],
+            scatter,
+            building.then_some([aimed.position[0], aimed.position[1]]),
+        );
+        let volley = master.volley_missile.and_then(|id| masters.get(id));
+        let made = match volley {
+            Some(v) => v,
+            None if 0 <= master.missile => masters
+                .get(master.missile)
+                .ok_or(Unsupported("a missile its player's masters do not have"))?,
+            None => {
+                return Err(Unsupported(
+                    "a volley's extra missile of a master without a missile",
+                ));
+            }
+        };
+        if matches!(made.id, 527 | 528) {
+            return Err(Unsupported(
+                "a volley's extra missile of master 527 or 528 (its attack count)",
+            ));
+        }
+        let shooter = volley.is_none();
+        let aimer = if shooter { master } else { made };
+        let shot = Shot {
+            made: made.id,
+            at,
+            point: crate::missile::spawn_point(
+                aimed.position,
+                facing,
+                [scatter[0], scatter[1], 0.0],
+            ),
+            reach: crate::missile::volley_reach(master.radius, master.weapon_range),
+            shooter,
+            aimer: crate::missile::Aimer {
+                hit_chance: aimer.hit_chance,
+                spread: aimer.missed_spread,
+                class: aimer.class,
+            },
+            attack_count: 0,
+        };
+        self.launch(c, aimed, &shot)?;
+        if !matches!(self.life.master_id, 73 | 559) {
+            self.post_own(ACTION_EXECUTED, [600, -1, 0])?;
+        }
+        Ok(())
+    }
+
+    /// A missile's making and start, which [`Unit::fire`] and [`Unit::volley_missile`] share.
+    /// The missile master comes from the player's master's slot 0x40 (`FUN_1410d5920`): from the
+    /// pool of type 60 when it holds one (keeping its id), else new with the next reusable id
+    /// ([`Recycling`]). The setups draw as a new object's do (its standing sprite,
+    /// [`ActiveSprite::start`] on the Sprite stream; its facet for a sprite with a random first
+    /// frame and several facets, then its angle for a turning one: Object stream) and put it on
+    /// the map (slot 0x58: held inside it; a pooled missile that last flew no farther than 0.1
+    /// takes the ground by its fly mode); it joins the end of its owner's list. Then its action
+    /// (`FUN_140a9a040`): the shot's point, the master's hit mode, the target taken (slot 0x178)
+    /// and, with the shooter, the shooter taken too and its place, master and owner with the
+    /// missile's radii as its origin (else none); the list's add starts it (`FUN_140a9c5b0`):
+    /// `set_state` 3 aims ([`crate::missile::aim`], Action stream) and launches
+    /// ([`crate::missile::MissileAction::launch`], its angle). The missile keeps the object's id
+    /// as what it was fired from, its reach and the object's attack count. Not held: the
+    /// missile's sprite and pitch facet, and a shooter's own master copy (its origin's master
+    /// −1).
+    fn launch(
+        &mut self,
+        c: &mut Context<'_>,
+        aimed: &Aimed,
+        shot: &Shot,
+    ) -> Result<(), Unsupported> {
         let made = c
             .masters
-            .and_then(|m| m.get(master.missile))
+            .and_then(|m| m.get(shot.made))
             .ok_or(Unsupported("a missile its player's masters do not have"))?;
         let stats = made
             .missile_stats
@@ -2260,7 +2493,7 @@ impl Unit {
             speed_stopped: false,
             pauses: Vec::new(),
         };
-        let mut position = mover.set_position(at, c.spatial.map);
+        let mut position = mover.set_position(shot.at, c.spatial.map);
         if !flying {
             let ground = c
                 .spatial
@@ -2321,8 +2554,8 @@ impl Unit {
         let mut action = crate::missile::MissileAction {
             state: 0,
             target: aimed.target,
-            fired_from: self.id,
-            point: aimed.position,
+            fired_from: if shot.shooter { self.id } else { -1 },
+            point: shot.point,
             timer: 0.0,
             direction: [0.0; 3],
             ballistic_velocity: 0.0,
@@ -2330,33 +2563,34 @@ impl Unit {
             distance: 0.0,
             hit_mode: stats.hit_mode,
             result: 0,
-            origin: crate::missile::Origin {
-                position: self.position,
-                radius: made.radius,
-                master: i32::from(self.life.master_id),
-                owner: c.player as i32,
+            origin: if shot.shooter {
+                crate::missile::Origin {
+                    position: self.position,
+                    radius: made.radius,
+                    master: i32::from(self.life.master_id),
+                    owner: c.player as i32,
+                }
+            } else {
+                crate::missile::Origin::NONE
             },
             met: Vec::new(),
         };
         c.takes.push(aimed.target);
-        if self.workers < 550 {
-            self.workers += 1;
+        if shot.shooter {
+            if self.workers < 550 {
+                self.workers += 1;
+            }
+            self.life.goto_sleep = false;
         }
-        self.life.goto_sleep = false;
-        let aimer = crate::missile::Aimer {
-            hit_chance: master.hit_chance,
-            spread: master.missed_spread,
-            class: master.class,
-        };
         let point = {
             let draws = c.streams.get(Stream::Action);
             crate::missile::aim(
                 action.point,
                 position,
                 Some((aimed.radius, aimed.class)),
-                aimer,
+                shot.aimer,
                 made.id,
-                self.attack_count,
+                shot.attack_count,
                 &mut action.hit_mode,
                 &mut || draws.rand15(),
             )?
@@ -2385,7 +2619,7 @@ impl Unit {
             },
             mover: Some(mover),
             missile: Some(crate::missile::Missile {
-                max_range: reach,
+                max_range: shot.reach,
                 fired_from: self.id,
                 charge: false,
                 flying,
@@ -2398,17 +2632,6 @@ impl Unit {
             my_pasture: -1,
             ..Self::default()
         });
-        if !matches!(self.life.master_id, 73 | 559) {
-            self.post_own(ACTION_EXECUTED, [600, aimed.target, 0])?;
-        }
-        // FUN_1410bfcb0: a blast of a unit of range above 1 without the level's bit 2 does not
-        // spare friends
-        let spares_friends = !(1.0 < master.weapon_range && master.blast_level & 4 == 0);
-        if !spares_friends && c.computers.get(aimed.player).copied().unwrap_or(false) {
-            return Err(Unsupported(
-                "a missile fired at a computer player's object (its notify 0x20f)",
-            ));
-        }
         Ok(())
     }
 
@@ -2512,8 +2735,11 @@ impl Unit {
         self.position = at;
         c.spatial.set_position(self.id, at);
         if matches!(stats.projectile_type, 0..=2) {
-            let charge = missile.charge;
-            self.missile_hits(action, &stats, charge, old, c, others)?;
+            let fired = Fired {
+                charge: missile.charge,
+                by: missile.fired_from,
+            };
+            self.missile_hits(action, &stats, fired, old, c, others)?;
         }
         if ground == at[2] {
             self.missile_lands(missile, &stats, c, others)?;
@@ -2537,7 +2763,7 @@ impl Unit {
         &mut self,
         action: &mut crate::missile::MissileAction,
         stats: &crate::missile::MissileStats,
-        charge: bool,
+        fired: Fired,
         old: [f32; 3],
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -2606,7 +2832,7 @@ impl Unit {
                     if id != action.target {
                         continue;
                     }
-                    let result = self.missile_strike(action, charge, c, others)?;
+                    let result = self.missile_strike(action, fired, c, others)?;
                     action.result = result;
                     if stats.vanish_mode & 1 == 0 && result != 2 {
                         self.end_missile(action);
@@ -2628,7 +2854,7 @@ impl Unit {
                             "a missed missile meeting another object than its target",
                         ));
                     }
-                    let result = self.missile_strike(action, charge, c, others)?;
+                    let result = self.missile_strike(action, fired, c, others)?;
                     action.result = result;
                     // the master's dying sprite plays there (a sprite of its own, not held)
                     if (stats.vanish_mode & 1 != 0 || result == 2) && blast_level <= level {
@@ -2654,22 +2880,24 @@ impl Unit {
 
     /// The shooter's hit for its missile (`FUN_140a9e6e0`: slot 0x860 of the object it was fired
     /// from, `FUN_1412115e0`, at the missile's place with 1 and the missile flag, the action's
-    /// origin as the hit's): [`crate::attack::strike`] on the target, the executed action posted
-    /// to the shooter's unit AI, the shooter's own part written back; its result. A charge
-    /// projectile's and a shooter-less missile's own hit (slot 0x860 of the missile,
-    /// `FUN_141084230`), a shooter with an area effect (its trample or blast) and a retaliation
-    /// killing the shooter are not modelled.
+    /// origin as the hit's, whose height the elevation factor reads): [`crate::attack::strike`] on
+    /// the target, the executed action posted to the shooter's unit AI, the shooter's own part
+    /// written back; its result. A shooterless missile hits on its own ([`Unit::own_strike`]). A
+    /// charge projectile's own hit, a shooter with an area effect (its trample or blast), a
+    /// building shooter (its elevation factor, `FUN_1411cc890`, reads its `+0xc20` and `+0xc24`)
+    /// and a retaliation killing the shooter are not modelled.
     fn missile_strike(
-        &self,
+        &mut self,
         action: &crate::missile::MissileAction,
-        charge: bool,
+        fired: Fired,
         c: &mut Context<'_>,
         others: &mut [Self],
     ) -> Result<u8, Unsupported> {
-        if charge || action.fired_from == -1 {
-            return Err(Unsupported(
-                "a missile's own hit (a charge projectile's, or shooterless)",
-            ));
+        if fired.charge {
+            return Err(Unsupported("a charge projectile's own hit"));
+        }
+        if action.fired_from == -1 {
+            return self.own_strike(action, fired.by, c);
         }
         let shooter = others
             .iter_mut()
@@ -2684,6 +2912,11 @@ impl Unit {
         if 0.0 < master.area_effect {
             return Err(Unsupported("a missile of a shooter with an area effect"));
         }
+        if master.kind == crate::order::BUILDING {
+            return Err(Unsupported(
+                "a building's missile hit (its elevation factor, FUN_1411cc890)",
+            ));
+        }
         let terrain = c.spatial.terrain.as_ref();
         let mut own = victim_of(shooter, master, c.attributes, c.player, terrain, c.mode_680);
         let victim = c
@@ -2695,7 +2928,7 @@ impl Unit {
             ))?;
         let hit = crate::attack::Hit {
             at: self.position,
-            from_z: action.origin.position[2],
+            from_z: Some(action.origin.position[2]),
             missile: true,
             chance: master.hit_chance,
         };
@@ -2706,6 +2939,57 @@ impl Unit {
         }
         if shooter.hit_back(own)?.is_some() {
             return Err(Unsupported("a retaliation killing a missile's shooter"));
+        }
+        Ok(struck.result)
+    }
+
+    /// A shooterless missile's own hit (`FUN_140a9e6e0`: slot 0x860 of the missile,
+    /// `FUN_141084230`, at its place): [`crate::attack::strike`] with the missile as the attacker,
+    /// its own master's weapons and hit chance (its origin names no master), and no elevation
+    /// factor (the missile's slot 0x1f0, `FUN_14113e550`: 1 for an origin without an owner); the
+    /// damage's notify comes from what it was fired from (`+0x998`, [`crate::damage`]). The
+    /// executed action goes to the missile's unit AI, which it has none of; what a retaliation
+    /// does to it is written back. A missile with an area effect (its blast) or whose origin
+    /// names an owner is not modelled.
+    fn own_strike(
+        &mut self,
+        action: &crate::missile::MissileAction,
+        fired_from: i32,
+        c: &mut Context<'_>,
+    ) -> Result<u8, Unsupported> {
+        if action.origin.owner != -1 {
+            return Err(Unsupported(
+                "a shooterless missile with an origin (its elevation, FUN_14113e550)",
+            ));
+        }
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported("a missile of a master the slice does not have"))?;
+        if 0.0 < master.area_effect {
+            return Err(Unsupported("a shooterless missile with an area effect"));
+        }
+        let terrain = c.spatial.terrain.as_ref();
+        let mut own = victim_of(self, master, c.attributes, c.player, terrain, c.mode_680);
+        // the missile's own part is out of the unit while it flies
+        own.source.fired_from = fired_from;
+        let victim = c
+            .victim
+            .as_deref_mut()
+            .filter(|v| v.id == action.target)
+            .ok_or(Unsupported(
+                "a missile's target the slice does not hold live",
+            ))?;
+        let hit = crate::attack::Hit {
+            at: self.position,
+            from_z: None,
+            missile: true,
+            chance: master.hit_chance,
+        };
+        let object = c.streams.get(Stream::Object);
+        let struck = crate::attack::strike(&mut own, victim, &mut [], hit, object)?;
+        if self.hit_back(own)?.is_some() {
+            return Err(Unsupported("a retaliation killing a missile"));
         }
         Ok(struck.result)
     }
@@ -2726,7 +3010,11 @@ impl Unit {
         c: &mut Context<'_>,
         others: &mut [Self],
     ) -> Result<(), Unsupported> {
-        let charge = missile.charge;
+        let fired = Fired {
+            charge: missile.charge,
+            by: missile.fired_from,
+        };
+        let charge = fired.charge;
         let Some(action) = missile.action.as_mut() else {
             return Ok(());
         };
@@ -2746,7 +3034,7 @@ impl Unit {
             if (matches!(mode, 0 | 2) || (mode == 1 && c.player != target_player))
                 && crate::missile::on_target(self.position, stats.radius, target_at, target_radius)
             {
-                let result = self.missile_strike(action, charge, c, others)?;
+                let result = self.missile_strike(action, fired, c, others)?;
                 action.result = result;
                 if result != 2 {
                     self.end_missile(action);
@@ -3438,10 +3726,14 @@ impl Unit {
                 .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             let world_time = c.world_time;
+            let standing = c.graphics.get(&master.standing_sprite).copied();
+            let volleys = c.masters.is_some_and(|m| crate::attack::volleys(master, m));
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
                 anim_speed: &mut self.anim_speed,
+                standing,
+                volleys,
                 attack_timer: &mut self.attack_timer,
                 reload: self.reload_stinger + (master.reload - self.reload_powerup),
                 hit_chance: master.hit_chance,
@@ -3471,7 +3763,7 @@ impl Unit {
             let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
             c.blasted = blasted;
             if let Some(aimed) = fired {
-                self.fire(c, aimed)?;
+                self.volley(c, aimed)?;
             }
             if let Some(target) = executed {
                 self.post_own(ACTION_EXECUTED, [600, target, 0])?;
@@ -3502,10 +3794,14 @@ impl Unit {
                 .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             let world_time = c.world_time;
+            let standing = c.graphics.get(&master.standing_sprite).copied();
+            let volleys = c.masters.is_some_and(|m| crate::attack::volleys(master, m));
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
                 anim_speed: &mut self.anim_speed,
+                standing,
+                volleys,
                 attack_timer: &mut self.attack_timer,
                 reload: self.reload_stinger + (master.reload - self.reload_powerup),
                 hit_chance: master.hit_chance,
@@ -3539,7 +3835,7 @@ impl Unit {
                 self.post_own(kind, p)?;
             }
             if let Some(aimed) = fired {
-                self.fire(c, aimed)?;
+                self.volley(c, aimed)?;
             }
             if let Some(target) = executed {
                 self.post_own(ACTION_EXECUTED, [600, target, 0])?;
@@ -3637,6 +3933,7 @@ impl Unit {
                 size: master.map_or([0.0; 2], |m| m.radius),
                 los: master.map_or(0.0, |m| m.line_of_sight),
                 search_radius: master.map_or(0.0, |m| m.search_radius),
+                weapon_range: master.map_or(0.0, |m| m.weapon_range),
                 interruptible,
                 task_0x99: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x99)),
                 garrisoned: self.life.inside.is_some(),
@@ -3962,6 +4259,9 @@ pub(crate) struct EnterWorld<'a> {
     pub player: usize,
     /// The attributes the owner gains (a load), which the caller adds.
     pub attribute_adds: &'a mut Vec<(i16, f32)>,
+    /// What the building's volleys gain (`+0xa00`, [`crate::garrison::share`]), which the caller
+    /// adds.
+    pub firepower: f32,
 }
 
 /// The population's resource, which a cost check skips (`FUN_141618db0` with its fifth argument
@@ -4164,6 +4464,27 @@ struct Aimed {
     player: usize,
 }
 
+/// What a missile was fired as, which its hits read while its own part is out of the unit: a
+/// charge's projectile (`+0x99c`) and what it was fired from (`+0x998`).
+#[derive(Clone, Copy, Debug)]
+struct Fired {
+    charge: bool,
+    by: i32,
+}
+
+/// A missile [`Unit::launch`] makes: its master, where it starts, the point its action aims at,
+/// its reach (`+0x990`), whether its action has the object as its shooter (else none), what its
+/// aim reads of the firing object (or the missile) and the attack count the aim sees.
+struct Shot {
+    made: i16,
+    at: [f32; 3],
+    point: [f32; 3],
+    reach: f32,
+    shooter: bool,
+    aimer: crate::missile::Aimer,
+    attack_count: i32,
+}
+
 /// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
 /// update: its worker count falls, and a static object no one works on any more that is alive is
 /// flagged to sleep.
@@ -4311,7 +4632,7 @@ impl Turns {
     /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): a
     /// live object the slice holds, with its relations to the attacker's player and whether its
     /// place is a guess.
-    fn victim(&self, id: i32, attacker: usize) -> Option<Victim> {
+    pub(crate) fn victim(&self, id: i32, attacker: usize) -> Option<Victim> {
         let (p, u) =
             self.players.iter().enumerate().find_map(|(p, player)| {
                 player.objects.iter().find(|u| u.id == id).map(|u| (p, u))
@@ -4973,6 +5294,13 @@ impl Turns {
                     enter: None,
                     missile: None,
                     attack_count: 0,
+                    // the TRIBE combat setup (FUN_14121df60): the master's volley fire
+                    firepower: self
+                        .masters
+                        .get(player)
+                        .and_then(|m| m.get(master))
+                        .map_or(0.0, |m| m.volley_fire),
+                    next_volley: 0,
                     // every building holds a gate's lock, open
                     gate: Some(Gate::default()),
                     workers: 0,
@@ -6154,6 +6482,7 @@ pub(crate) fn victim_of(
             bonus_tasks: tasks(0xa0),
             player: p,
             kill_bonus_tasks: tasks(0x9a),
+            fired_from: u.missile.as_ref().map_or(-1, |m| m.fired_from),
         },
         weapons: master.weapons.clone(),
         // a combat object's slot 0xf0 is FUN_141082530 (types 50 and up)

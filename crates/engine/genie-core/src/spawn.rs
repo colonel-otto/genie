@@ -1054,6 +1054,8 @@ impl Turns {
             pasture: -1,
             my_pasture: -1,
             combat: true,
+            // the TRIBE combat setup (FUN_14121df60): the master's volley fire
+            firepower: made.volley_fire,
             ..Unit::default()
         });
         let new = owner.objects.len() - 1;

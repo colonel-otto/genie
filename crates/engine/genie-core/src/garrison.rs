@@ -4,7 +4,7 @@
 //! the garrison work on it (slot 0x7e8 with task filter 3); and a building's test whether it takes
 //! a unit in (`FUN_14120eb10`).
 
-use crate::masters::Task;
+use crate::masters::{Master, Masters, Task};
 use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_on};
 use crate::movement::footprint_gap_squared;
 use crate::order::{BUILDING, GARRISON, Work};
@@ -19,7 +19,7 @@ const FAR: f32 = crate::image::garrison::FAR;
 /// in doubles).
 const LEAST_HP_SHARE: f64 = crate::image::garrison::LEAST_HP_SHARE;
 /// The class of buildings, which a unit's garrison task names (`FUN_1415c9240` with 3, 3).
-const BUILDING_CLASS: i16 = 3;
+pub(crate) const BUILDING_CLASS: i16 = 3;
 /// A gate's class: its annex is not its main building for a garrison order.
 const GATE_CLASS: i16 = 39;
 /// The class of relics, which a building's count leaves out (`+0xc2c`).
@@ -81,6 +81,116 @@ pub const ENTER_ORDER: i32 = crate::ai_kinds::ORDER_ENTER;
 /// The unit AI's action value of entering (`0x269`), which the garrison work notifies and the
 /// Enter's notifies carry.
 pub const ENTER_ACTION: i32 = 0x269;
+
+/// A combat master's attack rate needs a weapon range above this (`FUN_14120dc10`).
+const RATE_RANGE: f32 = crate::image::garrison::RATE_RANGE;
+/// A unit's firepower counts its volley missiles beyond this many (`FUN_14120e1a0`).
+const ONE_MISSILE: f32 = crate::image::garrison::ONE_MISSILE;
+/// A reload at most this long gives no firepower (`FUN_14120e1a0`).
+const EPSILON: f32 = crate::image::garrison::EPSILON;
+/// The armor classes the attack rates sum: pierce (3) and 38 for missiles; melee (4) and 31 too
+/// for a master's own weapons.
+const PIERCE: i16 = 3;
+const MELEE: i16 = 4;
+const CLASS_31: i16 = 31;
+const CLASS_38: i16 = 38;
+/// The class whose garrison share is 1 whatever its firepower (`FUN_141213520`, `-0xe82` raw).
+const WHOLE_SHARE_CLASS: i16 = 42;
+
+/// The amounts of `weapons` (class, amount) whose class `counts`.
+fn weapons_sum(weapons: &[(i16, i16)], counts: impl Fn(i16) -> bool) -> f32 {
+    weapons
+        .iter()
+        .filter(|&&(class, _)| counts(class))
+        .fold(0.0, |sum, &(_, amount)| sum + f32::from(amount))
+}
+
+/// `FUN_14120dc10`: the attack rate of an object of `master` (its reload powerup `+0xa28`
+/// taken off its reload): none without a reload or a range above 1; else the pierce and class 38
+/// amounts of its volley missile (a master its player has; not for classes 4 and 6), else its
+/// own melee, pierce, class 31 and 38 amounts, over the reload.
+#[must_use]
+pub fn attack_rate(master: &Master, masters: &Masters, reload_powerup: f32) -> f32 {
+    if master.reload <= 0.0 || master.weapon_range <= RATE_RANGE {
+        return 0.0;
+    }
+    let volley = master
+        .volley_missile
+        .and_then(|id| masters.get(id))
+        .filter(|_| !matches!(master.class, 4 | 6));
+    let sum = volley.map_or_else(
+        || {
+            weapons_sum(&master.weapons, |c| {
+                matches!(c, MELEE | PIERCE | CLASS_31 | CLASS_38)
+            })
+        },
+        |v| weapons_sum(&v.weapons, |c| matches!(c, PIERCE | CLASS_38)),
+    );
+    sum / (master.reload - reload_powerup)
+}
+
+/// `FUN_14120e1a0`: what a unit of `master` (its reload powerup `reload_powerup`) fires inside a
+/// building. A master's garrison firepower at most 0 is its magnitude; else the firepower times
+/// its rate: the pierce and class 38 amounts of its volley missile (else its missile; masters its
+/// player has) times its volley fire past one missile (in whole missiles), plus its own melee,
+/// pierce, class 31 and 38 amounts, over its reload (none at most 1e-7).
+#[must_use]
+pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32 {
+    let g = master.garrison_firepower;
+    if g <= 0.0 {
+        return g.abs();
+    }
+    let mut sum = 0.0;
+    if ONE_MISSILE < master.volley_fire {
+        let missile = master
+            .volley_missile
+            .and_then(|id| masters.get(id))
+            .or_else(|| masters.get(master.missile));
+        if let Some(m) = missile {
+            let extra = (master.volley_fire - ONE_MISSILE) as i32;
+            for &(class, amount) in &m.weapons {
+                if matches!(class, PIERCE | CLASS_38) {
+                    sum += (i32::from(amount) * extra) as f32;
+                }
+            }
+        }
+    }
+    // one sum, the missile's amounts first
+    for &(class, amount) in &master.weapons {
+        if matches!(class, MELEE | PIERCE | CLASS_31 | CLASS_38) {
+            sum += f32::from(amount);
+        }
+    }
+    let reload = master.reload - reload_powerup;
+    if reload <= EPSILON {
+        return 0.0;
+    }
+    sum / reload * g
+}
+
+/// `FUN_141213520`: the share of a building's volleys a unit of `master` inside it adds, against
+/// the building's attack rate `rate` ([`attack_rate`]): none against a rate of 0; 1 for class 42;
+/// else its [`firepower`] over the rate. A master whose object flags have bit 3 (the larger
+/// share of another master, `+0x656`) is not modelled.
+pub fn share(
+    master: &Master,
+    masters: &Masters,
+    reload_powerup: f32,
+    rate: f32,
+) -> Result<f32, Unsupported> {
+    if rate == 0.0 {
+        return Ok(0.0);
+    }
+    if master.class == WHOLE_SHARE_CLASS {
+        return Ok(1.0);
+    }
+    if master.object_flags & 8 != 0 {
+        return Err(Unsupported(
+            "a garrison share of a master with object flag 3 (+0x656's share)",
+        ));
+    }
+    Ok(firepower(master, masters, reload_powerup) / rate)
+}
 
 impl Turns {
     /// Slot 0x198 of a building (`FUN_1412169b0`) for `unit`: its count ([`Turns::garrisoned`])
@@ -207,14 +317,23 @@ impl Turns {
                 civ: owner.civ,
                 player,
                 attribute_adds: &mut adds,
+                firepower: 0.0,
             };
             if !unit.enter_building(building, inside, &mut w)? {
                 return Err(Unsupported("an Enter in reach that did not get in"));
             }
-            unit.entered(&mut w)
+            unit.entered(&mut w)?;
+            Ok(w.firepower)
         })();
         self.players[player].objects[idx] = unit;
-        result?;
+        let firepower = result?;
+        if let Some(b) = self.players[player]
+            .objects
+            .iter_mut()
+            .find(|u| u.id == target)
+        {
+            b.firepower += firepower;
+        }
         for (kind, amount) in adds {
             self.players[player].add_attribute(kind, amount)?;
         }
@@ -673,5 +792,51 @@ mod tests {
         assert!(!garrison_type_takes(3, 18, 125, true));
         assert!(garrison_type_takes(8, 42, 1, true));
         assert!(!garrison_type_takes(8, 42, 1, false));
+    }
+
+    #[test]
+    fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
+        // MarvinBlue/426048731's town center 9149 (the tick oracle, update 4439): pierce 5 by its
+        // volley missile 54 every 2 s; its 7 villagers made its firepower 1 + 7
+        let arrow = Master {
+            id: 54,
+            kind: 60,
+            weapons: vec![(3, 5)],
+            ..Master::default()
+        };
+        let tc = Master {
+            id: 109,
+            kind: 80,
+            class: 3,
+            reload: 2.0,
+            weapon_range: 6.0,
+            weapons: vec![(3, 5)],
+            volley_missile: Some(54),
+            volley_fire: 1.0,
+            max_volley: 11,
+            ..Master::default()
+        };
+        let villager = Master {
+            id: 83,
+            kind: 70,
+            class: 4,
+            reload: 2.0,
+            weapons: vec![(11, 3), (4, 3), (13, 6), (24, 0), (17, 0)],
+            garrison_firepower: -2.5,
+            ..Master::default()
+        };
+        let masters = Masters::new([arrow, tc.clone(), villager.clone()]);
+        let rate = attack_rate(&tc, &masters, 0.0);
+        assert_eq!(rate, 2.5);
+        // a garrison firepower at most 0 is its magnitude
+        assert_eq!(firepower(&villager, &masters, 0.0), 2.5);
+        assert_eq!(share(&villager, &masters, 0.0, rate), Ok(1.0));
+        assert_eq!(share(&villager, &masters, 0.0, 0.0), Ok(0.0));
+        // one above 0 times the melee, pierce, class 31 and 38 amounts over the reload
+        let armed = Master {
+            garrison_firepower: 0.5,
+            ..villager
+        };
+        assert_eq!(firepower(&armed, &masters, 0.0), 0.75);
     }
 }

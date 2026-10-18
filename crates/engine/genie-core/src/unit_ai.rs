@@ -574,6 +574,8 @@ pub struct Surroundings {
     pub los: f32,
     /// The search radius (`+0x794`, the unit's slot 0x2c8).
     pub search_radius: f32,
+    /// Slot 0x230 (`FUN_14108d960`): its master's weapon range (`+0x828`).
+    pub weapon_range: f32,
     /// The unit's slot 0x2d0 with 0 (`FUN_14106d170`): its top action may be interrupted, or it
     /// has none.
     pub interruptible: bool,
@@ -781,6 +783,11 @@ const CLASS_KING: i16 = 59;
 const ENDED_ACTIONS: [i32; 9] = [600, 0x261, 0x262, 0x265, 0x269, 0x26b, 0x26c, 0x2be, 0x2bf];
 /// The attack action value.
 const ATTACK_ACTION: i32 = 600;
+/// The attack order (`0x2bc`), which a work command's attack notifies (kind 9).
+const ATTACK_ORDER: i32 = 700;
+/// A human player's unit on the attack order with a range above this does not retarget
+/// (processMisc).
+const RETARGET_RANGE: f32 = crate::image::unit_ai::RETARGET_RANGE;
 /// The action values that need a live target (the target block's mask `0x4002080d` over the
 /// value − `0x259`).
 const LIVE_TARGET_ACTIONS: [i32; 6] = [0x259, 0x25b, 0x25c, 0x264, 0x26a, 0x277];
@@ -1519,7 +1526,7 @@ impl UnitAi {
             self.run_orders(&mut fx)?;
         }
         if matches!(retarget, Retarget::Base) {
-            self.retarget_check(world_time, at, ai, &mut fx)?;
+            self.retarget_check(world_time, computer, at, ai, &mut fx)?;
         }
         self.idle_part(busy, at, computer, ai, side, &mut fx)?;
         self.look_around(computer, ai)?;
@@ -1601,11 +1608,12 @@ impl UnitAi {
 
     /// The units the update models after its target block ([`UnitAi::target_block`]): a target
     /// only on a villager's build, hunt or garrison (702/602, 713/613, 717/617), on the follow
-    /// order (712 with its
-    /// action 612, the move's 610 or none) or without an order and an action (a hunt ended by
-    /// its queued orders); busy (`busy`, the actions left), only those or a unit
-    /// on MOVE's order without a target (710/610, or an animal's own wander), and for the types
-    /// that never retarget also one whose move ended (710 with no action value).
+    /// order (712 with its action 612, the move's 610 or none), on a boar's own attack (−1/600)
+    /// or the attack order (700/600), or without an order and an action (a hunt ended by its
+    /// queued orders); busy (`busy`, the actions left), only those or a unit on MOVE's order
+    /// without a target (710/610, or an animal's own wander), and for the types that never
+    /// retarget also one whose move ended (710 with no action value); the attacks only for the
+    /// types that do.
     fn check_busy_order(&self, retarget: Retarget, busy: bool) -> Result<(), Unsupported> {
         let order = (self.current_order, self.current_action);
         let working = matches!(
@@ -1620,8 +1628,10 @@ impl UnitAi {
         let moved = order == (MOVE_ORDER, -1) && self.current_target == -1;
         let scouting = order == (AUTO_SCOUT_ORDER, AUTO_SCOUT_ACTION) && self.current_target == -1;
         let following = order.0 == FOLLOW_ORDER;
-        // a boar's own attack on its attacker ([`UnitAi::attack_object`])
-        let attacking = self.ai_type == 4 && order == (-1, ATTACK_ACTION);
+        // a boar's own attack on its attacker ([`UnitAi::attack_object`]), or a work command's
+        // attack (the attack order and action, notify kind 9)
+        let attacking = (self.ai_type == 4 && order == (-1, ATTACK_ACTION))
+            || order == (ATTACK_ORDER, ATTACK_ACTION);
         // without an order and an action the target is a stale one: the order queue's next order
         // takes over
         if self.current_target != -1 && !working && !attacking && order != (-1, -1) {
@@ -2481,16 +2491,18 @@ impl UnitAi {
     /// is not modelled. Then the leash checks: stance 1's is not modelled; stance 2's (stand
     /// ground) stops a unit with an action that strayed from its state position by more than its
     /// range plus `DAT_142eb880c` (0.25), which a unit on an order, whose state position this
-    /// update set, never has, and an idle unit has no action to stop. Then the retarget check,
-    /// not on the attack order 700: with retargeting on (`+0x1d6` 0), a timer used up is redrawn
-    /// (`750 + r % 500`); a unit with a target of Gaia's ("I have a GAIA target, so I can't
-    /// retarget.") or without a target stops there, as does one with a player's target off the
-    /// attack order but for a building or wall target (classes 3, 27, 39, 49, 52) or a trebuchet's
-    /// (51, 54), whose search for a better target (slot 0x538 with 9, then slot 0x520) is not
-    /// modelled.
+    /// update set, never has, and an idle unit has no action to stop. Then the retarget check:
+    /// with retargeting on (`+0x1d6` 0), a timer used up is redrawn (`750 + r % 500`); a human
+    /// player's unit of a range above 3 on the attack order 700 stops there ("I have a range >
+    /// 3.0 with an attack order, so I don't retarget."), as does a unit with a target of Gaia's
+    /// ("I have a GAIA target, so I can't retarget.") or without a target, and one with a
+    /// player's target off the attack order but for a building or wall target (classes 3, 27,
+    /// 39, 49, 52) or a trebuchet's (51, 54), whose search for a better target (slot 0x538 with
+    /// 9, then slot 0x520) is not modelled; nor is the attack order's search.
     fn retarget_check(
         &mut self,
         world_time: u32,
+        computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
@@ -2509,9 +2521,6 @@ impl UnitAi {
         if self.stance == 1 {
             return Err(Unsupported("stance 1 leash check"));
         }
-        if self.current_order == 700 {
-            return Err(Unsupported("a retarget on order 700"));
-        }
         if self.retarget_disabled != 0 {
             return Ok(());
         }
@@ -2520,19 +2529,30 @@ impl UnitAi {
         }
         self.last_retarget_time = world_time;
         self.retarget_timer = 750 + ai.rand15() % 500;
+        let attack_order = self.current_order == ATTACK_ORDER;
+        if attack_order && RETARGET_RANGE < at.weapon_range && !computer {
+            return Ok(());
+        }
+        let mut search = false;
         if self.current_target != -1 {
             match at.target {
-                Some(t) if t.owner == 0 => {}
+                Some(t) if t.owner == 0 => return Ok(()),
                 Some(t) if matches!(t.class, 3 | 27 | 39 | 49 | 52 | 51 | 54) => {
-                    return Err(Unsupported(
-                        "a retarget from a building, wall or trebuchet target",
-                    ));
+                    if attack_order && !computer {
+                        return Ok(());
+                    }
+                    search = true;
                 }
                 Some(_) => {}
                 None => return Err(Unsupported("a retarget with a target the world lacks")),
             }
         }
-        Ok(())
+        if !attack_order && !search {
+            return Ok(());
+        }
+        Err(Unsupported(
+            "a unit AI's search for a better target (slot 0x538 with 9, then slot 0x520)",
+        ))
     }
 
     /// processMisc's follow order (`0x140c567c0`, "I have a follow order for Unit #%d"): a

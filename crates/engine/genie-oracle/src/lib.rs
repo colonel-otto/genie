@@ -281,6 +281,19 @@ fn unit(
         last_human_order: s.last_human_order_time,
         town_bell: object.combat().map(town_bell).unwrap_or_default(),
         combat: object.combat().is_some(),
+        next_volley: object.combat().map_or(0, |c| c.next_volley),
+        // the load's (FUN_14121ec90): the master's volley fire; the shares of the units inside
+        // follow in `garrison_firepower`
+        firepower: objects
+            .master(s.master_obj)
+            .and_then(|m| {
+                m.tribe_master_combat_object.as_deref().or_else(|| {
+                    m.tribe_master_building_object
+                        .as_deref()
+                        .map(|b| &b.tribe_master_combat_object)
+                })
+            })
+            .map_or(0.0, |c| c.volley_fire_amount),
         attack_timer: object
             .combat()
             .map_or(0.0, |c| c.rge_combat_object.attack_timer),
@@ -760,10 +773,13 @@ fn saved_actions(
     let base = action
         .base()
         .ok_or(Unsupported("a saved action without its base"))?;
-    // the second target (+0x34): only the Hunt (its drop site) and the missile (its shooter)
-    // hold one in the slice
+    // the second target (+0x34): only the Hunt (its drop site), the missile (its shooter) and the
+    // Attack hold one in the slice
     if base.target2_id != -1
-        && !matches!(kind, genie_core::hunt::HUNT | genie_core::missile::MISSILE)
+        && !matches!(
+            kind,
+            genie_core::hunt::HUNT | genie_core::missile::MISSILE | genie_core::attack::ATTACK
+        )
     {
         return Err(Unsupported("a saved action with a second target"));
     }
@@ -1063,21 +1079,34 @@ fn saved_reload(
     Some(c.reload_stinger + (rc.speed_of_attack - c.reload_powerup))
 }
 
-/// The unit's current sprite as the save holds it: the animated node (type 2) of its sprite
-/// list (`temp_load_sprite_list`, `FUN_1413b87c0`) that shows its sprite (`+0x18`), with its
-/// frame and clock; None without one or for a graphic the table lacks.
+/// The unit's current sprite as the save holds it: the node of its sprite list
+/// (`temp_load_sprite_list`, `FUN_1413b87c0`) that shows its sprite (`+0x18`), an animated one
+/// (type 2) with its frame and clock, a static one (type 1) with its frame; None without one or
+/// for a graphic the table lacks.
 fn saved_sprite(
     s: &RgeStaticObject,
     graphics: &std::collections::BTreeMap<i16, genie_core::sprite::Graphic>,
 ) -> Option<genie_core::sprite::ActiveSprite> {
     let list = s.active_sprite_list.as_deref()?;
-    let node = list
-        .sprite_type_list
-        .iter()
-        .filter_map(|e| e.type_.as_deref()?.rge_active_animated_sprite.as_deref())
-        .find(|a| a.rge_active_sprite.sprite_id as i16 == s.sprite)?;
+    let graphic = graphics.get(&s.sprite).copied()?;
+    let nodes = || {
+        list.sprite_type_list
+            .iter()
+            .filter_map(|e| e.type_.as_deref())
+    };
+    let Some(node) = nodes()
+        .filter_map(|n| n.rge_active_animated_sprite.as_deref())
+        .find(|a| a.rge_active_sprite.sprite_id as i16 == s.sprite)
+    else {
+        let node = nodes()
+            .filter_map(|n| n.rge_active_sprite.as_deref())
+            .find(|a| a.sprite_id as i16 == s.sprite)?;
+        return Some(genie_core::sprite::ActiveSprite::at_rest(
+            graphic, node.frame,
+        ));
+    };
     Some(genie_core::sprite::ActiveSprite {
-        graphic: graphics.get(&s.sprite).copied()?,
+        graphic,
         frame: node.rge_active_sprite.frame,
         interval: node.animate_interval,
         last: node.animate_last,
@@ -1121,6 +1150,7 @@ fn saved_attack(
     };
     Ok(genie_core::attack::Attack {
         target: b.target_id,
+        target2: b.target2_id,
         state: b.state,
         timer: b.timer,
         range: a.range,
@@ -1767,8 +1797,48 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         turns.spatial.reach = all()
             .flat_map(|m| m.tasks.iter().map(|t| t.work_range).chain([m.weapon_range]))
             .fold(0.0, f32::max);
+        garrison_firepower(&mut turns);
     }
     turns
+}
+
+/// The volleys of the running game: each unit (type 70) inside a combat object of its player
+/// added its share at its enter (`FUN_14120b790`, [`genie_core::garrison::share`]), which the
+/// load does not restore (`FUN_14121ec90` sets the master's volley fire), in the order the
+/// objects are listed. A share the slice does not model leaves the building unmodelled.
+fn garrison_firepower(turns: &mut Turns) {
+    for (p, player) in turns.players.iter_mut().enumerate() {
+        let Some(masters) = turns.masters.get(p) else {
+            continue;
+        };
+        let units: Vec<(i32, i16, f32)> = player
+            .objects
+            .iter()
+            .chain(&player.sleeping)
+            .filter_map(|u| Some((u.life.inside?, u.life.master_id, u.reload_powerup)))
+            .collect();
+        for (building, master, reload_powerup) in units {
+            let Some(me) = masters.get(master).filter(|m| m.kind == 70) else {
+                continue;
+            };
+            let Some(b) = player
+                .objects
+                .iter_mut()
+                .chain(&mut player.sleeping)
+                .find(|u| u.id == building)
+            else {
+                continue;
+            };
+            let Some(bm) = masters.get(b.life.master_id) else {
+                continue;
+            };
+            let rate = genie_core::garrison::attack_rate(bm, masters, b.reload_powerup);
+            match genie_core::garrison::share(me, masters, reload_powerup, rate) {
+                Ok(share) => b.firepower += share,
+                Err(e) => b.unmodelled_action = Some(e),
+            }
+        }
+    }
 }
 
 /// The facets every sprite a live object of a saved master shows ([`genie_core::facing::SpriteFacets`]):
@@ -1929,7 +1999,30 @@ fn work_masters(
             work.build_time = c.train_location.first().map_or(0, |t| t.train_time);
             work.charge_type = c.charge_type;
             work.formation_category = c.temp_formation_category;
-            let rc = &c.rge_master_combat_object;
+            work.volley_fire = c.volley_fire_amount;
+            work.max_volley = c.max_attacks_in_volley;
+            work.volley_spread = [
+                c.volley_x_spread,
+                c.volley_y_spread,
+                c.volley_start_spread_adjustment,
+            ];
+            let id = |id: i32| i16::try_from(id).ok().filter(|&id| 0 <= id);
+            work.volley_missile = id(c.volley_missile_id);
+            work.charge_projectile = id(c.charge_projectile_unit);
+            work.invulnerability = c.invulnerability_level;
+            work.attack_priority = c.attack_priority;
+            work.special_attack = c.special_attack_flag;
+            work.max_charge = c.max_charge;
+            work.charge_target = c.charge_target;
+        }
+        // the combat part a missile master has too (`RGE_Master_Missile_Object`'s base)
+        let rge_combat = combat.map(|c| &c.rge_master_combat_object).or_else(|| {
+            m.rge_master
+                .as_deref()
+                .and_then(|r| r.rge_master_missile_object.as_deref())
+                .map(|mm| &mm.rge_master_combat_object)
+        });
+        if let Some(rc) = rge_combat {
             work.weapon_range = rc.weapon_range;
             work.min_range = rc.minimum_weapon_range;
             work.missile = rc.missile_id;
@@ -1958,11 +2051,7 @@ fn work_masters(
             work.area_effect = rc.area_effect_range;
             work.blast_level = rc.area_effect_level;
             work.area_damage = rc.area_damage;
-            work.invulnerability = c.invulnerability_level;
-            work.attack_priority = c.attack_priority;
-            work.special_attack = c.special_attack_flag;
-            work.max_charge = c.max_charge;
-            work.charge_target = c.charge_target;
+            work.garrison_firepower = rc.garrison_firepower;
         }
         work.storage = s
             .attribute
@@ -3102,6 +3191,8 @@ pub struct ObjectRow {
     pub gate: Option<genie_core::turn::Gate>,
     /// A combat object's town-bell flag and back-to-work records.
     pub town_bell: Option<genie_core::town_bell::TownBell>,
+    /// A combat object's `next_volley`: the missiles of its volley under way already fired.
+    pub volley: Option<u8>,
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
@@ -3367,6 +3458,7 @@ impl Same for ObjectRow {
             && self.combat.same(&other.combat)
             && self.gate == other.gate
             && self.town_bell.same(&other.town_bell)
+            && self.volley == other.volley
     }
 }
 
@@ -3447,6 +3539,7 @@ impl ObjectRow {
                 .then_some((unit.charge, unit.charge_hit, unit.hp_powerups)),
             gate: unit.gate,
             town_bell: unit.combat.then_some(unit.town_bell),
+            volley: unit.combat.then_some(unit.next_volley),
         }
     }
 }
@@ -3565,6 +3658,7 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
             }),
             gate: saved_gate(object),
             town_bell: object.combat().map(town_bell),
+            volley: object.combat().map(|c| c.next_volley),
         })
         .collect())
 }
@@ -4737,6 +4831,11 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             "town bell",
             format!("{:?}", s.town_bell),
             format!("{:?}", g.town_bell),
+        );
+        field(
+            "next volley",
+            format!("{:?}", s.volley),
+            format!("{:?}", g.volley),
         );
         match (&s.ai, &g.ai) {
             (Some(a), Some(b)) => {
