@@ -198,6 +198,13 @@ pub enum Command {
     /// AUTO_SCOUT (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
     /// auto scout order, or the stop order when it scouts already ([`Turns::auto_scout`]).
     AutoScout { player: usize, ids: Vec<i32> },
+    /// UNIT_AI_STATE (0x12, `FUN_140e6a7c0`): the unit AIs of `ids` (at most 60, the decoder's)
+    /// take the stance `state` ([`Turns::unit_ai_state`]).
+    UnitAiState {
+        player: usize,
+        ids: Vec<i32>,
+        state: u8,
+    },
     /// UNIT_ORDER (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
     /// decoder's) take the order `action` ([`Turns::unit_order`]); `human` (`+0x20`) sets their
     /// last human order time first. Its target (`tId`, which action 5 reads), point, `qId`,
@@ -2006,6 +2013,16 @@ impl Unit {
             {
                 m.stop()?;
             }
+            // a MoveTo of its own: its teardown stops the unit, and the base teardown
+            // (FUN_140a73fc0) lets its target go (slot 0x180; its `+0x60` is 0)
+            if let Some(move_to) = self.move_to.take() {
+                if let Some(m) = self.mover.as_mut() {
+                    m.stop()?;
+                }
+                if move_to.target != -1 {
+                    c.releases.push(move_to.target);
+                }
+            }
             // the missile action's teardown (FUN_140a73fc0) lets its target and the object it was
             // fired from go (slot 0x180)
             if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
@@ -3751,6 +3768,16 @@ impl Turns {
             }
             Command::AutoScout { player, ref ids } => {
                 if let Err(e) = self.auto_scout(player, ids) {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
+                }
+            }
+            Command::UnitAiState {
+                player,
+                ref ids,
+                state,
+            } => {
+                if let Err(e) = self.unit_ai_state(player, ids, state) {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }

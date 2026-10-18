@@ -2364,6 +2364,19 @@ impl Decoder {
                     human: c.field_0x20 == 1,
                 });
             }
+            // UNIT_AI_STATE: the units listed (at most a human player's 60), the count at +4
+            Packet::UnitAiState(c) => {
+                return Some(Command::UnitAiState {
+                    player: c.commp_id as usize,
+                    ids: c
+                        .ids
+                        .iter()
+                        .copied()
+                        .take(usize::from(c.num).min(MAX_UNITS))
+                        .collect(),
+                    state: c.state,
+                });
+            }
             // AUTO_SCOUT: the units listed (at most a human player's 60), the count at +4
             Packet::AutoScout(c) => {
                 return Some(Command::AutoScout {

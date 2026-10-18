@@ -693,6 +693,57 @@ impl Turns {
         Ok(())
     }
 
+    /// UNIT_AI_STATE (`do_command` case 0x12: the check `FUN_140e55d30`, then `FUN_140e6a7c0`):
+    /// each of `ids` the world holds, of the player's, with a unit AI takes the stance `state`
+    /// (slot 0x1c0, `FUN_140c64d50`: `+0x1a9`, its place as the stance's, `+0x1ac`), but not
+    /// stances 1 and 2 for classes 54 and 51 (and, the siege AI's slot, masters 42 and 331). An id
+    /// gone or another player's counts for nothing (a game setting, `FUN_1412ffe00`, or the
+    /// world's `+0xb12` may let another player's through, not modelled). NoAttack (3) on a unit
+    /// that attacks (order 700 or action 600: slot 0xb0 with 1, `FUN_140c5e1e0`) and the UI's
+    /// flag are not modelled.
+    pub(crate) fn unit_ai_state(
+        &mut self,
+        player: usize,
+        ids: &[i32],
+        state: u8,
+    ) -> Result<(), Unsupported> {
+        for &id in ids {
+            let Some(place) = self.place(id) else {
+                continue;
+            };
+            let (p, idx) = match place {
+                Place::Live(p, i) => (p, i),
+                Place::Sleeping(..) => {
+                    return Err(Unsupported("a UNIT_AI_STATE of a sleeping object"));
+                }
+            };
+            if p != player {
+                continue;
+            }
+            let unit = &self.players[p].objects[idx];
+            if unit.ai.is_none() {
+                continue;
+            }
+            let master = self.master_of(p, unit.life.master_id)?;
+            if matches!(state, 1 | 2)
+                && (matches!(master.class, 51 | 54) || matches!(master.id, 42 | 331))
+            {
+                continue;
+            }
+            let unit = &mut self.players[p].objects[idx];
+            let [x, y, _] = unit.position;
+            let ai = unit.ai.as_mut().expect("checked above");
+            ai.stance = state;
+            ai.state_position = [x, y];
+            if state == 3 && (ai.current_order == 700 || ai.current_action == 600) {
+                return Err(Unsupported(
+                    "NoAttack on an attacking unit (slot 0xb0, FUN_140c5e1e0)",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// GATE (`do_command` case 0x72): the object `id` (any player's: a missing one does nothing)
     /// of a master of type 80 toggles its gate lock (slot 0x670 with slot 0x668's value
     /// negated, `FUN_1411dba30`): a lock sets its last move time to the world time plus 1. The
