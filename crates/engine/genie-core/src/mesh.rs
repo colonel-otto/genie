@@ -334,13 +334,13 @@ impl Mesh {
                     }
                 }
                 if let Some(at) = self.tiles[t].iter().position(|&x| x == id) {
-                    self.tiles[t].remove(at);
+                    let _ = self.tiles[t].remove(at);
                 }
             }
         }
         if id as usize == self.shapes.len() - 1 {
-            self.shapes.pop();
-            self.sides.pop();
+            let _ = self.shapes.pop();
+            let _ = self.sides.pop();
         } else {
             self.shapes[id as usize] = [self.free as i32, 0, 0, 0];
             for side in &mut self.sides[id as usize] {

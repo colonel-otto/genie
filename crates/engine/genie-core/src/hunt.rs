@@ -94,6 +94,7 @@ pub struct DropOff {
 }
 
 /// What `set_state(6)` reads of a live livestock target (`0x140ac60e0` case 6).
+#[derive(Clone, Copy, Debug)]
 pub struct Herd {
     /// The target's player is the hunter's.
     pub own: bool,
@@ -150,6 +151,7 @@ pub struct HuntSprites {
 }
 
 /// What the gathering reads of its unit and changes besides the attack's [`Strike`].
+#[derive(Debug)]
 pub struct Gatherer<'a> {
     /// `+0x308`, `+0x310`: what the unit carries.
     pub held_kind: &'a mut i16,
@@ -534,7 +536,7 @@ impl HuntAction {
                     walk.me.action_state = self.state;
                     match walk_or_give_up(walk)? {
                         Some(m) => self.move_to = Some(m),
-                        None => self.give_up(strike)?,
+                        None => self.give_up(strike),
                     }
                     Ok(())
                 }
@@ -642,15 +644,14 @@ impl HuntAction {
     /// human player's villager that has not waited yet waits (`set_state` 2, `+0x6c` 1) a second
     /// with a stance below 2 (or without a unit AI), else two, then asks again; any other `MoveTo`
     /// fails (`set_state` 13, quiet).
-    const fn give_up(&mut self, strike: &Strike<'_>) -> Result<(), Unsupported> {
+    const fn give_up(&mut self, strike: &Strike<'_>) {
         if self.move_wait.state != 0 || strike.own.class != VILLAGER_CLASS {
             self.move_to = Some(MoveTo::Failed);
-            return Ok(());
+            return;
         }
         self.move_wait.delay = if strike.stance < 2 { 1.0 } else { 2.0 };
         self.move_wait.state = 1;
         self.move_to = Some(MoveTo::Waiting);
-        Ok(())
     }
 
     /// `set_state(4)` (`0x140ac60e0` case 4) after the target died: the sub-actions go, the target's
@@ -787,7 +788,7 @@ impl HuntAction {
     /// search, [`HuntAction::set_drop`]). The game's `+0xc14`
     /// (`FUN_140c884c0`), 0 as the tick oracle holds it, would take the whole target at once.
     fn gather(
-        &mut self,
+        &self,
         dt: f32,
         victim: &mut Victim,
         g: &mut Gatherer<'_>,
@@ -944,10 +945,7 @@ mod tests {
         .unwrap();
         assert_eq!(hunt.state, ATTACK);
         let attack = hunt.attack.unwrap();
-        assert_eq!(
-            (attack.state, attack.move_to),
-            (4, Some(crate::move_to::MoveTo::Start))
-        );
+        assert_eq!((attack.state, attack.move_to), (4, Some(MoveTo::Start)));
         // the first MoveTo's teardown stopped the unit
         let v = mover.velocity.unwrap();
         assert_eq!(
@@ -962,7 +960,7 @@ mod tests {
     fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
         let start = |held: (i16, f32), carry_rule: bool| {
             let mut held = held;
-            HuntAction::start(
+            let _ = HuntAction::start(
                 CHOP,
                 &tree(),
                 2,
@@ -995,7 +993,7 @@ mod tests {
 
     #[test]
     fn a_villager_gathers_work_rate_times_work_value_times_dt_until_its_load_is_full() {
-        let mut hunt = HuntAction {
+        let hunt = HuntAction {
             target: 9357,
             state: GATHER,
             point: [24.5, 94.5, 0.0],
@@ -1014,7 +1012,7 @@ mod tests {
             move_wait: MoveWait::default(),
         };
         let (mut kind, mut held) = (1, 0.0f32);
-        let mut gather = |held: &mut f32, kind: &mut i16, tree: &mut Victim| {
+        let gather = |held: &mut f32, kind: &mut i16, tree: &mut Victim| {
             let mut g = Gatherer {
                 held_kind: kind,
                 held,
@@ -1046,7 +1044,7 @@ mod tests {
         assert_eq!((held, tree.amount), (0.05 + 100.0 * 0.001, 0.0));
     }
 
-    /// A live allied target fails the hunt at once (set_state 13, its timer cleared), as house
+    /// A live allied target fails the hunt at once (`set_state` 13, its timer cleared), as house
     /// 9158 did MarvinBlue/426048731's 9181 after its drop-off in update 1897.
     #[test]
     fn a_hunt_on_a_live_ally_fails() {
@@ -1073,8 +1071,8 @@ mod tests {
         );
     }
 
-    /// set_state(4) on a dead target, or on the hunter's own livestock, walks to it: a quiet
-    /// MoveTo within the task's range, or 1.5 to the livestock (MarvinBlue/426048731's 9171 to its
+    /// `set_state(4)` on a dead target, or on the hunter's own livestock, walks to it: a quiet
+    /// `MoveTo` within the task's range, or 1.5 to the livestock (MarvinBlue/426048731's 9171 to its
     /// own sheep 9520 in update 1116).
     #[test]
     fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
@@ -1105,11 +1103,24 @@ mod tests {
         }
     }
 
-    /// MarvinBlue/426048731's lumberjack 9181 in update 1897: its MoveTo to the TC 9156 ended
+    /// MarvinBlue/426048731's lumberjack 9181 in update 1897: its `MoveTo` to the TC 9156 ended
     /// (state 1); the TC takes wood within a tile, so the load goes to player 2 as wood (1) and
     /// the unit carries nothing after; the hunt has no target to go back to.
     #[test]
     fn a_drop_off_gives_the_load_to_the_player() {
+        fn walk<'a>(mover: &'a mut Mover, world: &'a mut crate::spatial::Spatial) -> Walk<'a> {
+            Walk {
+                mover: Some(mover),
+                me: crate::movement::Me {
+                    id: 9181,
+                    position: [26.820_372, 94.718_056, 0.0],
+                    action_state: DROP,
+                },
+                dt: 0.028,
+                world,
+                plan: None,
+            }
+        }
         let mut hunt = HuntAction {
             target: -1,
             state: DROP,
@@ -1126,19 +1137,6 @@ mod tests {
         };
         let mut mover = walker();
         let mut world = crate::spatial::Spatial::default();
-        fn walk<'a>(mover: &'a mut Mover, world: &'a mut crate::spatial::Spatial) -> Walk<'a> {
-            Walk {
-                mover: Some(mover),
-                me: crate::movement::Me {
-                    id: 9181,
-                    position: [26.820372, 94.718056, 0.0],
-                    action_state: DROP,
-                },
-                dt: 0.028,
-                world,
-                plan: None,
-            }
-        }
         let (mut kind, mut held) = (1, 7.057_053_6);
         let site = DropOff {
             takes: true,

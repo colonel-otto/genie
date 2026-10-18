@@ -261,7 +261,7 @@ mod tests {
         let mut x = 12345u32;
         let mut v: Vec<(u32, usize)> = (0..500)
             .map(|i| {
-                x = x.wrapping_mul(1103515245).wrapping_add(12345);
+                x = x.wrapping_mul(1_103_515_245).wrapping_add(12345);
                 ((x >> 16) % 37, i)
             })
             .collect();
@@ -269,8 +269,8 @@ mod tests {
         by_key(&mut v);
         assert!(v.windows(2).all(|w| w[0].0 >= w[1].0));
         let mut got = v.clone();
-        got.sort();
-        expected.sort();
+        got.sort_unstable();
+        expected.sort_unstable();
         assert_eq!(got, expected);
     }
 

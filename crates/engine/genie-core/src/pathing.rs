@@ -123,7 +123,7 @@ impl Pathing {
         if !self.planners.contains_key(&restriction) {
             let passable = self.restrictions.get(restriction)?.clone();
             let planner = Planner::new(self.size, self.terrain.clone(), passable, &blocked);
-            self.planners.insert(restriction, planner);
+            let _ = self.planners.insert(restriction, planner);
         }
         self.planners.get_mut(&restriction)
     }
@@ -159,7 +159,7 @@ impl Pathing {
             None => mesh.add(rect),
             Some(&s) => mesh.replace(s, rect),
         };
-        self.shapes.insert(id, s);
+        let _ = self.shapes.insert(id, s);
     }
 
     /// The end of an action object's update (`RGE_Action_Object::update` -> `FUN_141163080` ->
@@ -192,7 +192,7 @@ impl Pathing {
             None => mesh.add(rect),
             Some(&s) => mesh.replace(s, rect),
         };
-        self.shapes.insert(id, s);
+        let _ = self.shapes.insert(id, s);
     }
 
     /// A temporary shape for a kept hit of the walk (`FUN_141054fe0` with 1 on an object without a
@@ -279,7 +279,7 @@ mod tests {
         // moving, it has none; without a record, none either
         p.refresh(10029, &hunter, true, [0.0; 2]);
         assert_eq!(p.shape(10029), None);
-        let mut bare = hunter.clone();
+        let mut bare = hunter;
         bare.obstruction = None;
         p.refresh(10029, &bare, false, [0.0; 2]);
         assert_eq!(p.shape(10029), None);

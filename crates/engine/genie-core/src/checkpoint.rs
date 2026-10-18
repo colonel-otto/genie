@@ -5,7 +5,7 @@
 //! wrapping 32-bit add, and every float-to-int step is the x86 `CVTTSS2SI` instruction.
 
 /// What the block reads from one object of a player's live list.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ObjectState {
     pub id: i32,
     pub main_id: i16,

@@ -654,7 +654,7 @@ fn attack_search_radius(at: &Surroundings) -> f32 {
 }
 
 /// `UpdateAdjustedIdleTimeout` (`0x140c41e00`): `r % (base / 2) + 3 * base / 4`, one AI draw.
-fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
+const fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
     ai.rand15() % (base >> 1) + ((base * 3) >> 2)
 }
 
@@ -683,7 +683,7 @@ impl UnitAi {
     /// `0x140c11470`) and the civilian's (8, `TribeCivilianUnitAIModule` `0x140c115d0`) are
     /// modelled, both of which set the stance (`+0x1a9`) to 0 after the base's 3; for any other
     /// type nothing is drawn.
-    pub fn constructed(
+    pub const fn constructed(
         ai_type: u32,
         position: [f32; 3],
         ai: &mut Well512,
@@ -746,7 +746,7 @@ impl UnitAi {
 
     /// `UpdateAdjustedIdleTimeout` (slot 0x1a8): the base draws around the idle timeout
     /// (`0x140c41e00`); a deer's or fox's (factory type 2, `FUN_140c17170`) is 5/4 of it.
-    fn update_adjusted_idle_timeout(&mut self, ai: &mut Well512) {
+    const fn update_adjusted_idle_timeout(&mut self, ai: &mut Well512) {
         self.adjusted_idle_timeout = if self.ai_type == 2 {
             self.idle_timeout.wrapping_mul(5) >> 2
         } else {
@@ -771,7 +771,7 @@ impl UnitAi {
     /// The end of a Build whose AI holds queued orders (`0x140ab0370` case 0xdf): no order and no
     /// action (`FUN_140c64b60` with −1 and 1, `FUN_140c64b50` with −1); leaving a patrol order,
     /// whose timers reset, is not modelled.
-    pub fn end_order_and_action(&mut self) -> Result<(), Unsupported> {
+    pub const fn end_order_and_action(&mut self) -> Result<(), Unsupported> {
         if matches!(self.current_order, PATROL | PATROL_2) {
             return Err(Unsupported("the end of a Build on a patrol order"));
         }
@@ -857,7 +857,7 @@ impl UnitAi {
     /// The AI's move (slot 0x130, `FUN_140c55620`): with `force` or no action value, the unit takes
     /// it (its slot 0x340, which the caller runs), and the AI holds the move action and the point
     /// without a target (`FUN_140c64c10` with −1, which leaves the target class).
-    fn move_to(&mut self, m: AiMove) -> Option<AiMove> {
+    const fn move_to(&mut self, m: AiMove) -> Option<AiMove> {
         if !m.force && self.current_action != -1 {
             return None;
         }
@@ -1357,7 +1357,7 @@ impl UnitAi {
         let stopped = fx.contains(&Effect::Stop);
         let busy = at.busy && !stopped;
         if !busy {
-            self.reset_ended_action(at)?;
+            self.reset_ended_action(at);
             if self.current_order != -1 {
                 self.check_order(at)?;
             }
@@ -1712,10 +1712,17 @@ impl UnitAi {
             TARGET_MOVED if self.patrol_path => {
                 Err(Unsupported("a moved target's processIdle on a patrol path"))
             }
-            TARGET_MOVED => Ok(GO_ON),
-            // "I'm ignoring that."
-            0x1f6 | 0x1f7 | 0x1f8 | 0x1ff | ACTION_EXECUTED | 0x203 => Ok(GO_ON),
-            0x259..=0x262 | 0x265..=0x269 | 0x2be => Ok(GO_ON),
+            // a moved target, then the kinds "I'm ignoring that." and the action values
+            TARGET_MOVED
+            | 0x1f6
+            | 0x1f7
+            | 0x1f8
+            | 0x1ff
+            | ACTION_EXECUTED
+            | 0x203
+            | 0x259..=0x262
+            | 0x265..=0x269
+            | 0x2be => Ok(GO_ON),
             _ => Err(Unsupported("a notify kind the base handler does not model")),
         }
     }
@@ -1867,14 +1874,13 @@ impl UnitAi {
     /// The reset at the full update once the unit's actions ended (the unit's slot 0x430 false):
     /// an action value of [`ENDED_ACTIONS`] goes; `0x2bf` of stance 2 also sets the state
     /// position.
-    fn reset_ended_action(&mut self, at: &Surroundings) -> Result<(), Unsupported> {
+    fn reset_ended_action(&mut self, at: &Surroundings) {
         if ENDED_ACTIONS.contains(&self.current_action) {
             if self.current_action == 0x2bf && self.stance == 2 {
                 self.state_position = [at.position[0], at.position[1]];
             }
             self.current_action = -1;
         }
-        Ok(())
     }
 
     /// The order check of a unit that is not busy: an order of these values the unit can give up
@@ -1972,7 +1978,7 @@ impl UnitAi {
                 k += 1;
                 continue;
             }
-            self.orders.remove(k);
+            let _ = self.orders.remove(k);
             if r == 1 {
                 return Ok(());
             }
@@ -2099,7 +2105,7 @@ impl UnitAi {
         self.stop_with(true, Some(place), fx)?;
         self.clear_notifies(0)?;
         if self.process_order(&order, fx)? != 0xe {
-            self.orders.remove(0);
+            let _ = self.orders.remove(0);
         }
         Ok(())
     }
@@ -2266,7 +2272,7 @@ impl UnitAi {
 
     /// The look-around check at the end of the full update (`LAB_140c6809c`): a timer past its
     /// timeout restarts with a timeout drawn around 5 s.
-    fn look_around(&mut self, computer: bool, ai: &mut Well512) -> Result<(), Unsupported> {
+    const fn look_around(&mut self, computer: bool, ai: &mut Well512) -> Result<(), Unsupported> {
         if self.look_around_timer > self.look_around_timeout {
             // the human branch; `FUN_14152b470` sends players allied with a computer elsewhere
             if computer {
@@ -2349,7 +2355,7 @@ mod tests {
             class: 4,
             ..Surroundings::default()
         };
-        u.update(50, 0, false, &at, &mut r, &mut no_search).unwrap();
+        let _ = u.update(50, 0, false, &at, &mut r, &mut no_search).unwrap();
         assert_eq!(
             (u.idle_timer, u.secondary_timer, u.look_around_timer),
             (0, 0, 0)
@@ -2406,25 +2412,27 @@ mod tests {
     fn retarget_waits_for_the_timer() {
         let mut u = idle(17);
         let mut r = rng();
-        u.update_idle(
-            50,
-            899,
-            false,
-            &Surroundings::default(),
-            &mut r,
-            &mut no_search,
-        )
-        .unwrap();
+        let _ = u
+            .update_idle(
+                50,
+                899,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
         assert_eq!((u.retarget_timer, r.draws), (900, 0));
-        u.update_idle(
-            50,
-            900,
-            false,
-            &Surroundings::default(),
-            &mut r,
-            &mut no_search,
-        )
-        .unwrap();
+        let _ = u
+            .update_idle(
+                50,
+                900,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
         // the first rand15 after seed 0 is 7241
         assert_eq!(
             (u.last_retarget_time, u.retarget_timer),
@@ -2439,15 +2447,16 @@ mod tests {
             ..idle(15)
         };
         let mut r = rng();
-        u.update_idle(
-            50,
-            100,
-            false,
-            &Surroundings::default(),
-            &mut r,
-            &mut no_search,
-        )
-        .unwrap();
+        let _ = u
+            .update_idle(
+                50,
+                100,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
         assert_eq!((u.last_retarget_time, r.draws), (100, 1));
     }
 
@@ -2456,15 +2465,16 @@ mod tests {
         for t in [8, 19] {
             let mut u = idle(t);
             let mut r = rng();
-            u.update_idle(
-                50,
-                5000,
-                false,
-                &Surroundings::default(),
-                &mut r,
-                &mut no_search,
-            )
-            .unwrap();
+            let _ = u
+                .update_idle(
+                    50,
+                    5000,
+                    false,
+                    &Surroundings::default(),
+                    &mut r,
+                    &mut no_search,
+                )
+                .unwrap();
             assert_eq!((u.retarget_timer, r.draws), (900, 0), "type {t}");
         }
     }
@@ -2476,25 +2486,27 @@ mod tests {
             ..idle(8)
         };
         let mut r = rng();
-        u.update_idle(
-            1000,
-            0,
-            false,
-            &Surroundings::default(),
-            &mut r,
-            &mut no_search,
-        )
-        .unwrap();
+        let _ = u
+            .update_idle(
+                1000,
+                0,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
         assert_eq!((u.look_around_timer, r.draws), (1000, 0));
-        u.update_idle(
-            1,
-            0,
-            false,
-            &Surroundings::default(),
-            &mut r,
-            &mut no_search,
-        )
-        .unwrap();
+        let _ = u
+            .update_idle(
+                1,
+                0,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
         assert_eq!(
             (u.look_around_timer, u.look_around_timeout),
             (0, 4500 + 7241 % 1000)
@@ -2508,15 +2520,16 @@ mod tests {
             ..idle(13)
         };
         let mut r = rng();
-        u.update_idle(
-            1,
-            900,
-            false,
-            &Surroundings::default(),
-            &mut r,
-            &mut no_search,
-        )
-        .unwrap();
+        let _ = u
+            .update_idle(
+                1,
+                900,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
         assert_eq!(u.retarget_timer, 750 + 7241 % 500);
         assert_eq!(u.look_around_timeout, 4500 + 25269 % 1000);
     }
@@ -2528,15 +2541,16 @@ mod tests {
             ..idle(8)
         };
         let mut r = rng();
-        u.update_idle(
-            3001,
-            0,
-            false,
-            &Surroundings::default(),
-            &mut r,
-            &mut no_search,
-        )
-        .unwrap();
+        let _ = u
+            .update_idle(
+                3001,
+                0,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
         assert_eq!((u.idle_timer, u.secondary_timer), (0, 0));
     }
 
@@ -2701,6 +2715,7 @@ mod tests {
     }
 
     /// A seed whose idle check (a scaled draw, then rand15) wanders, or does not.
+    #[allow(clippy::maybe_infinite_iter)] // the search ends at the first seed that fits
     fn seed_for(wanders: bool) -> Well512 {
         (0..)
             .map(|seed| {
@@ -2710,7 +2725,7 @@ mod tests {
             })
             .find(|r| {
                 let mut e = r.clone();
-                e.below(81);
+                let _ = e.below(81);
                 (e.rand15() % 7 == 0) == wanders
             })
             .unwrap()
@@ -2739,8 +2754,8 @@ mod tests {
         let mut u = boar();
         let mut r = seed_for(true);
         let mut e = r.clone();
-        e.below(81);
-        e.rand15();
+        let _ = e.below(81);
+        let _ = e.rand15();
         let (dx, dy) = (e.rand15() % 6, e.rand15() % 6);
         let moved = u
             .update_idle(
@@ -2859,7 +2874,7 @@ mod tests {
             target_type: 15,
             ..idle(13)
         };
-        u.notify_move(true, None, [21.947916, 92.489586], &mut rng());
+        u.notify_move(true, None, [21.947_916, 92.489_586], &mut rng());
         assert_eq!(
             (
                 u.current_order,
@@ -2878,7 +2893,7 @@ mod tests {
             ),
             (-1, -1, -1, -1)
         );
-        assert_eq!(u.target_point, [21.947916, 92.489586, 0.0]);
+        assert_eq!(u.target_point, [21.947_916, 92.489_586, 0.0]);
     }
 
     #[test]
@@ -2887,15 +2902,16 @@ mod tests {
         // nothing
         let mut u = idle(11);
         let mut r = rng();
-        u.update_idle(
-            50,
-            900,
-            false,
-            &Surroundings::default(),
-            &mut r,
-            &mut no_search,
-        )
-        .unwrap();
+        let _ = u
+            .update_idle(
+                50,
+                900,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
         assert_eq!(
             (u.last_retarget_time, u.retarget_timer),
             (900, 750 + 7241 % 500)
@@ -2935,6 +2951,7 @@ mod tests {
     }
 
     /// A stream whose next rand15 is a multiple of 7 or not.
+    #[allow(clippy::maybe_infinite_iter)] // the search ends at the first seed that fits
     fn wander_seed(wanders: bool) -> Well512 {
         (0..)
             .map(|seed| {
@@ -2967,7 +2984,7 @@ mod tests {
         let mut u = deer();
         let mut r = wander_seed(true);
         let mut e = r.clone();
-        e.rand15();
+        let _ = e.rand15();
         let step = |n: u32| if 3 <= n { n as i32 - 6 } else { n as i32 + 1 };
         let (dx, dy) = (step(e.rand15() % 6), step(e.rand15() % 6));
         let moved = u
@@ -3065,7 +3082,8 @@ mod tests {
             busy: true,
             ..place
         };
-        u.update(10, 0, false, &walking, &mut r, &mut no_search)
+        let _ = u
+            .update(10, 0, false, &walking, &mut r, &mut no_search)
             .unwrap();
         assert_eq!(
             (u.current_action, u.idle_timer, u.state_position),
@@ -3074,7 +3092,7 @@ mod tests {
     }
 
     /// MarvinBlue/426048731's scout 9183 (soldier AI, type 13) as saved after 821: on its MOVE
-    /// order with five queued moves, its MoveTo about to arrive.
+    /// order with five queued moves, its `MoveTo` about to arrive.
     fn scout() -> UnitAi {
         let order = |x: f32, y: f32| QueuedOrder {
             issuer: 1,
@@ -3093,13 +3111,13 @@ mod tests {
             order_priority: -1,
             current_action: MOVE_ACTION,
             target_type: -1,
-            target_point: [93.583336, 57.791668, 0.0],
+            target_point: [93.583_336, 57.791_668, 0.0],
             last_order: MOVE_ORDER,
             last_action: MOVE_ACTION,
             last_target: -1,
             last_target_type: -1,
             stance: 2,
-            orders: vec![order(89.09375, 60.677082), order(91.822914, 52.489582)],
+            orders: vec![order(89.09375, 60.677_082), order(91.822_914, 52.489_582)],
             ..idle(13)
         }
     }
@@ -3125,7 +3143,7 @@ mod tests {
         assert_eq!(
             fx,
             vec![Effect::Move(AiMove {
-                point: [89.09375, 60.677082, 0.0],
+                point: [89.09375, 60.677_082, 0.0],
                 range: 0.0,
                 force: true,
                 walk: true,
@@ -3135,9 +3153,9 @@ mod tests {
             (u.current_order, u.order_priority, u.current_action),
             (MOVE_ORDER, 100, MOVE_ACTION)
         );
-        assert_eq!(u.target_point, [89.09375, 60.677082, 0.0]);
+        assert_eq!(u.target_point, [89.09375, 60.677_082, 0.0]);
         assert_eq!(u.orders.len(), 1);
-        assert_eq!(u.orders[0].point, [91.822914, 52.489582, 0.0]);
+        assert_eq!(u.orders[0].point, [91.822_914, 52.489_582, 0.0]);
     }
 
     #[test]
@@ -3154,9 +3172,9 @@ mod tests {
         // an order not ready stays and the next one runs
         let mut u = scout();
         u.orders[0].ready = false;
-        u.off_turn(&scout_at(true, true)).unwrap();
+        let _ = u.off_turn(&scout_at(true, true)).unwrap();
         assert_eq!(u.orders.len(), 1);
-        assert_eq!(u.orders[0].point, [89.09375, 60.677082, 0.0]);
+        assert_eq!(u.orders[0].point, [89.09375, 60.677_082, 0.0]);
     }
 
     #[test]
@@ -3223,7 +3241,7 @@ mod tests {
             ..idle(8)
         };
         builder.post(completed, 2).unwrap();
-        assert!(builder.notifies.is_empty());
+        assert_eq!(builder.notifies, Vec::<Notify>::new());
         let mut wanderer = UnitAi {
             current_action: MOVE_ACTION,
             ..deer()
@@ -3236,7 +3254,7 @@ mod tests {
             ..deer()
         };
         dying.post(completed, 3).unwrap();
-        assert!(dying.notifies.is_empty());
+        assert_eq!(dying.notifies, Vec::<Notify>::new());
     }
 
     #[test]
@@ -3278,7 +3296,7 @@ mod tests {
         };
         let mut ai = UnitAi::default();
         assert_eq!(ai.queue_order(3, order(1, true), false, false), Ok(false));
-        assert!(ai.orders.is_empty());
+        assert_eq!(ai.orders, Vec::<QueuedOrder>::new());
         for (target, front) in [(1, true), (2, false), (3, true)] {
             assert_eq!(
                 ai.queue_order(2, order(target, true), false, front),
@@ -3288,7 +3306,7 @@ mod tests {
         let targets: Vec<i32> = ai.orders.iter().map(|o| o.target).collect();
         assert_eq!(targets, [3, 1, 2]);
         assert!(!ai.has_unready_order());
-        ai.queue_order(2, order(4, false), false, false).unwrap();
+        let _ = ai.queue_order(2, order(4, false), false, false).unwrap();
         assert!(ai.has_unready_order());
         assert!(ai.queue_order(2, order(5, true), true, false).is_err());
     }
@@ -3299,7 +3317,7 @@ mod tests {
         for (i, w) in [1i32, 710, 100, -1, -1].iter().enumerate() {
             order[4 * i..4 * i + 4].copy_from_slice(&w.to_le_bytes());
         }
-        for (i, f) in [91.822914f32, 52.489582, 0.0, 0.0, 91.822914, 52.489582]
+        for (i, f) in [91.822_914_f32, 52.489_582, 0.0, 0.0, 91.822_914, 52.489_582]
             .iter()
             .enumerate()
         {
@@ -3318,7 +3336,7 @@ mod tests {
                 o.ready,
                 o.target_type
             ),
-            (1, 710, 100, [91.822914, 52.489582, 0.0], 0.0, true, -1)
+            (1, 710, 100, [91.822_914, 52.489_582, 0.0], 0.0, true, -1)
         );
         let mut notify = [0u8; 24];
         for (i, w) in [9851i32, 9851, 506, 610, 0, 0].iter().enumerate() {
@@ -3431,7 +3449,7 @@ mod tests {
             current_action: FOLLOW_ACTION,
             current_target: 9655,
             target_type: 9,
-            target_point: [115.6998, 39.299213, 0.0],
+            target_point: [115.6998, 39.299_213, 0.0],
             desired_distance: 2.0,
             stance: 2,
             ..UnitAi::default()
@@ -3483,8 +3501,8 @@ mod tests {
         let (mut u, at) = follower([115.0, 40.2, 0.0], true);
         let mut fx = Vec::new();
         assert!(!u.follow(&at, &mut fx).unwrap());
-        assert!(fx.is_empty());
-        assert_eq!(u.target_point, [115.6998, 39.299213, 0.0]);
+        assert_eq!(fx, Vec::<Effect>::new());
+        assert_eq!(u.target_point, [115.6998, 39.299_213, 0.0]);
     }
 
     #[test]
@@ -3515,11 +3533,11 @@ mod tests {
             idle_timer: 504,
             adjusted_idle_timeout: 503,
             stance: 2,
-            state_position: [21.947916, 92.489586],
+            state_position: [21.947_916, 92.489_586],
             ..idle(13)
         };
         let at = Surroundings {
-            position: [21.947916, 92.489586, 0.0],
+            position: [21.947_916, 92.489_586, 0.0],
             player: 2,
             class: 12,
             size: [0.2, 0.2],

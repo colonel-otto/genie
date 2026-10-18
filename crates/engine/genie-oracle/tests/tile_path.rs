@@ -4,6 +4,15 @@
 //! `aoe2de-exe-re/artifacts/playback/planner_426048731_679.txt`), `GENIE_SNAPSHOTS` the directory
 //! with the save of that tick (`679.aoe2record`), `GENIE_DAT` the data file. Skips without them.
 
+// the dumps' numbers fit the game's widths; a test runs the whole comparison
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::too_many_lines
+)]
+
 use genie_core::tile_path::Planner;
 
 /// One planner of the dump: its restriction's values per terrain and the cells of each level.

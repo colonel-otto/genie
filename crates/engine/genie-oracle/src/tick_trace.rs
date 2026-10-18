@@ -37,6 +37,16 @@ pub struct TickTrace {
 }
 
 impl TickTrace {
+    /// A trace from its file's bytes: the magic, the tick and lane counts, then each tick's row
+    /// of eleven words per lane.
+    ///
+    /// # Errors
+    ///
+    /// [`TraceError`] when the bytes are not a trace, do not inflate or end early.
+    ///
+    /// # Panics
+    ///
+    /// Never: the header's length is checked before its words are read.
     pub fn decode(data: &[u8]) -> Result<Self, TraceError> {
         if data.len() < 16 || &data[..8] != MAGIC {
             return Err(TraceError::NotATrace);
@@ -44,7 +54,7 @@ impl TickTrace {
         let ticks = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
         let lane_count = u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize;
         let mut rows = Vec::new();
-        ZlibDecoder::new(&data[16..])
+        let _ = ZlibDecoder::new(&data[16..])
             .read_to_end(&mut rows)
             .map_err(TraceError::Inflate)?;
         let row = 4 * (1 + 11 * lane_count);

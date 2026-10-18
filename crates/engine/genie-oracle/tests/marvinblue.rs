@@ -33,10 +33,10 @@ fn marvinblue_header_save_reproduces_the_first_checkpoint_of_player_2() {
             150,
             0,
             63,
-            771100,
+            771_100,
             2,
             p2.from_save[9],
-            586462
+            586_462
         ]
     );
     // Player 1 has spent 250 resources and has 4 more objects by then: that needs the simulation.

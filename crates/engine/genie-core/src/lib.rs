@@ -14,10 +14,17 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
-    // the decompiled routines' math names (dx, dy, x0, y1 …) and their flag fields
+    // the decompiled routines' math names (dx, dy, x0, y1 …), formulas, flag fields and
+    // parameters, assignment order, and member functions whose `this` goes unused
     clippy::many_single_char_names,
     clippy::similar_names,
+    clippy::suspicious_operation_groupings,
     clippy::struct_excessive_bools,
+    clippy::fn_params_excessive_bools,
+    clippy::useless_let_if_seq,
+    clippy::unused_self,
+    // the contexts are bundles of references, passed by value
+    clippy::needless_pass_by_value,
     // a routine is ported whole, its documentation opens with the routine and its addresses
     clippy::too_many_lines,
     clippy::too_long_first_doc_paragraph,
@@ -25,7 +32,18 @@
     clippy::missing_errors_doc
 )]
 
-#[allow(missing_docs, clippy::all, clippy::pedantic, clippy::nursery)] // generated
+#[allow(
+    missing_docs,
+    missing_copy_implementations,
+    missing_debug_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_qualifications,
+    unused_results,
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery
+)] // generated
 pub mod ai_kinds;
 pub mod artifact;
 pub mod attack;
@@ -38,11 +56,33 @@ pub mod facing;
 pub mod fly;
 pub mod fmath;
 pub mod hunt;
-#[allow(missing_docs, clippy::all, clippy::pedantic, clippy::nursery)] // generated
+#[allow(
+    missing_docs,
+    missing_copy_implementations,
+    missing_debug_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_qualifications,
+    unused_results,
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery
+)] // generated
 pub mod image;
 pub mod lifecycle;
 pub mod long_path;
-#[allow(missing_docs, clippy::all, clippy::pedantic, clippy::nursery)] // generated
+#[allow(
+    missing_docs,
+    missing_copy_implementations,
+    missing_debug_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_qualifications,
+    unused_results,
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery
+)] // generated
 pub mod los_tables;
 pub mod masters;
 pub mod mesh;

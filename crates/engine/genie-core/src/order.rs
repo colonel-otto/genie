@@ -278,10 +278,10 @@ impl Turns {
         }
         // the first pass: units above type 69 of formation category 0 stay loose (the dock test
         // FUN_141158210 is 1 only on an `E` tile in game type 12)
-        let (mut loose, mut left): (Vec<Splittable>, Vec<Splittable>) = left
+        let (loose, mut left): (Vec<Splittable>, Vec<Splittable>) = left
             .into_iter()
             .partition(|u| MAX_UNGROUPED < u.kind && !u.grouped);
-        let mut loose: Vec<i32> = loose.drain(..).map(|u| u.id).collect();
+        let mut loose: Vec<i32> = loose.into_iter().map(|u| u.id).collect();
         // then the unit with the most others that join it, the first of equals, with them
         while !left.is_empty() {
             let mut best = (0, 0);
@@ -421,7 +421,7 @@ impl Turns {
             .ai
             .as_mut()
             .ok_or(Unsupported("unreachable: no unit AI"))?;
-        ai.queue_order(state, queued, false, false)?;
+        let _ = ai.queue_order(state, queued, false, false)?;
         if !order.queued && !order.direct {
             return Err(Unsupported(
                 "the readiness pass after an order neither queued nor direct (FUN_140c42b60)",
@@ -612,10 +612,7 @@ impl Turns {
         if let Some(ai) = unit.ai.as_mut() {
             ai.set_order(FOLLOW_ORDER, self.streams.get(Stream::Ai));
             ai.set_action(FOLLOW_ACTION);
-            let (t, class) = match target_class {
-                Some(class) => (target, class),
-                None => (-1, -1),
-            };
+            let (t, class) = target_class.map_or((-1, -1), |class| (target, class));
             ai.set_target(t, class, [target_place[0], target_place[1], 0.0]);
         }
         Ok(())
@@ -997,7 +994,7 @@ impl Turns {
                 ready: order.direct,
                 target_type,
             };
-            ai.queue_order(state, queued, false, false)?;
+            let _ = ai.queue_order(state, queued, false, false)?;
             if !order.queued && !order.direct {
                 return Err(Unsupported(
                     "the readiness pass after a move neither queued nor direct (FUN_140c42b60)",
@@ -1568,11 +1565,10 @@ impl Turns {
             if let Some(m) = unit.mover.as_mut() {
                 m.stats = next
                     .moving
-                    .clone()
                     .ok_or(Unsupported("a moving unit's new master does not move"))?;
             }
             let id = unit.id;
-            if let Some(mut placed) = self.spatial.get(id).cloned() {
+            if let Some(mut placed) = self.spatial.get(id).copied() {
                 placed.radius = next.radius;
                 placed.class = next.class;
                 placed.master = new;
@@ -1587,7 +1583,7 @@ impl Turns {
                 self.pathing.removed(id);
                 self.spatial
                     .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
-                self.spatial.insert(id, placed.clone());
+                self.spatial.insert(id, placed);
                 self.pathing.moved(id, &placed, moving);
             }
             // slot 0x68 with the new master's standing sprite (`+0x470`, FUN_141217000): a new
@@ -1606,7 +1602,7 @@ impl Turns {
                 if unit.sprite.is_some() {
                     crate::attack::set_sprite(&mut unit.sprite, g, rng);
                 } else {
-                    crate::sprite::ActiveSprite::start(g, rng);
+                    let _ = crate::sprite::ActiveSprite::start(g, rng);
                 }
             }
             let owner = &mut self.players[player];
@@ -1703,13 +1699,13 @@ mod tests {
     use super::*;
 
     /// MarvinBlue/426048731's MOVE of 1569: player 2's villagers 9175 and 9177 (by id) take a
-    /// grid of one cell a row, half a tile apart, from the order's point (their MoveTos' points in
+    /// grid of one cell a row, half a tile apart, from the order's point (their `MoveTos`' points in
     /// the save after 1568).
     #[test]
     fn units_of_a_move_take_the_cells_of_a_grid() {
-        let point = [29.78125, 92.489586];
-        assert_eq!(grid_point(0, 2, point, [120, 120]), [29.78125, 92.489586]);
-        assert_eq!(grid_point(1, 2, point, [120, 120]), [29.78125, 92.989586]);
+        let point = [29.78125, 92.489_586];
+        assert_eq!(grid_point(0, 2, point, [120, 120]), [29.78125, 92.489_586]);
+        assert_eq!(grid_point(1, 2, point, [120, 120]), [29.78125, 92.989_586]);
         // nine units: three a row around the point; off the map an axis keeps a tile inside
         assert_eq!(grid_point(0, 9, [10.0, 10.0], [120, 120]), [9.5, 9.5]);
         assert_eq!(grid_point(4, 9, [10.0, 10.0], [120, 120]), [10.0, 10.0]);
@@ -1721,12 +1717,12 @@ mod tests {
     /// side; the queued orders of the save after 927 hold their points around the order's.
     #[test]
     fn units_of_an_order_take_their_offsets_from_their_centroid() {
-        let (a, b) = ([104.32466, 39.299885], [103.67509, 39.299885]);
+        let (a, b) = ([104.32466, 39.299_885], [103.67509, 39.299_885]);
         let c = centroid(&[a, b]).unwrap();
         let point = [108.37596, 43.91338];
         assert_eq!(
             offset_point(a, c, point, [120, 120]),
-            [108.700745, 43.91338]
+            [108.700_745, 43.91338]
         );
         assert_eq!(offset_point(b, c, point, [120, 120]), [108.05117, 43.91338]);
     }
@@ -1759,7 +1755,7 @@ mod tests {
             position,
             state: 2,
         };
-        let scout = unit(9185, true, [42.047367, 94.338486, 0.0]);
+        let scout = unit(9185, true, [42.047_367, 94.338_486, 0.0]);
         let sheep = unit(9529, false, [45.5, 93.5, 0.0]);
         assert!(!splits_together(&scout, &sheep, f, false).unwrap());
         // nearer than 20 tiles the game measures a path

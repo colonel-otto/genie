@@ -60,5 +60,5 @@ fn action_object(o: &genie_save::Object) -> Option<&genie_save::generated::world
     let r = o.rge_object.as_ref()?;
     r.rge_action_object
         .as_ref()
-        .or(r.rge_combat_object.as_ref().map(|c| &c.rge_action_object))
+        .or_else(|| r.rge_combat_object.as_ref().map(|c| &c.rge_action_object))
 }

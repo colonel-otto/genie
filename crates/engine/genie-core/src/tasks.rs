@@ -457,10 +457,7 @@ fn build_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&
             generic = Some(task);
         }
     }
-    match by_class {
-        Some(task) => (0.0 < task.work_val1).then_some(task),
-        None => generic,
-    }
+    by_class.map_or(generic, |task| (0.0 < task.work_val1).then_some(task))
 }
 
 #[cfg(test)]
@@ -540,7 +537,7 @@ mod tests {
         let site = building(&house, 2, 0);
         let by = |tasks: Vec<Task>| {
             let builder = master(118, 70, class::VILLAGER, tasks);
-            find(&builder, (-1, 0.0), &site).map(|t| t.copied())
+            find(&builder, (-1, 0.0), &site).map(Option::<&Task>::copied)
         };
         let generic = task(101, -1, -1, 0.0);
         assert_eq!(by(vec![generic]), Ok(Some(generic)));

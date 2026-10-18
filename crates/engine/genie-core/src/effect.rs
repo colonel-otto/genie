@@ -64,7 +64,7 @@ impl Turns {
         self.update_dependents(p, t)?;
         let owner = &self.players[p];
         let state = &owner.techs[t];
-        let location = building.map_or(state.locations.first(), |b| state.location(b));
+        let location = building.map_or_else(|| state.locations.first(), |b| state.location(b));
         if location.is_some_and(|l| 0 <= l.building && l.button != 0) {
             let get = |k: i16| owner.get(k);
             let factors = crate::tech::factors(t as i16, &get)?;
@@ -268,7 +268,7 @@ impl Turns {
                 return Err(Unsupported("an effect on a master of another type"));
             }
             if attribute == HIT_POINTS {
-                m.hit_points = m.hit_points.wrapping_add(amount as i32 as i16)
+                m.hit_points = m.hit_points.wrapping_add(amount as i32 as i16);
             } else {
                 let (code, delta) = if amount < 0.0 {
                     let u = (-amount) as i32 as u16;

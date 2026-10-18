@@ -195,15 +195,15 @@ impl Visibility {
     }
 
     fn unsupported(&mut self, what: &'static str) {
-        self.unsupported.get_or_insert(Unsupported(what));
+        let _ = self.unsupported.get_or_insert(Unsupported(what));
     }
 
     pub fn add_seer(&mut self, id: i32, seer: Seer) {
-        self.seers.insert(id, seer);
+        let _ = self.seers.insert(id, seer);
     }
 
     pub fn remove_seer(&mut self, id: i32) {
-        self.seers.remove(&id);
+        let _ = self.seers.remove(&id);
     }
 
     #[must_use]
@@ -278,7 +278,7 @@ impl Visibility {
         };
         let i = self.index(x, y);
         self.maps[player].counts[i] = 1;
-        self.reveal_rect(player, x0, y0, x1, y1);
+        let _ = self.reveal_rect(player, x0, y0, x1, y1);
     }
 
     /// `unexplore_terrain` (`FUN_141287170`): the circle's tiles count one seer less (a tile at 0
@@ -760,7 +760,7 @@ impl Visibility {
         }
         self.sight_off(id, from, radius, false, false);
         if self.seers.get(&id).is_some_and(|s| s.state == 2) {
-            self.sight_on(id, to, radius, false, false);
+            let _ = self.sight_on(id, to, radius, false, false);
         }
     }
 
@@ -777,7 +777,7 @@ impl Visibility {
         if old == 2 && (2 < new || new == 0) {
             self.sight_off(id, position, radius, false, false);
             if master_sees {
-                self.sight_on(id, position, radius, true, false);
+                let _ = self.sight_on(id, position, radius, true, false);
             }
         }
         if old < 7 && new == 7 && master_sees {
@@ -804,7 +804,7 @@ impl Visibility {
             s.master = master;
             s.los = los;
         }
-        self.sight_on(id, position, new_radius, false, false);
+        let _ = self.sight_on(id, position, new_radius, false, false);
     }
 
     /// The unified map's word at tile (`x`, `y`) of a position, masked ([`MASK`]).
@@ -818,6 +818,10 @@ impl Visibility {
     /// entry), with no test of the map's edge. A changed mask updates the registry with the place
     /// read, the master's radii and class (`Update_Unit_Info`). An object another player takes
     /// over by seeing it (`+0x924` 1) is not modelled.
+    ///
+    /// # Panics
+    ///
+    /// Never: the registry is checked before it is updated.
     #[allow(clippy::too_many_arguments)]
     pub fn combat_sight(
         &mut self,
@@ -930,7 +934,7 @@ impl Visibility {
             mask & 0xffff_ffff,
             0,
         )?;
-        r.entries.remove(&id);
+        let _ = r.entries.remove(&id);
         Ok(())
     }
 
@@ -960,7 +964,7 @@ impl Visibility {
             s.los = los;
         }
         if s.state == 2 {
-            self.sight_on(id, position, radius, false, false);
+            let _ = self.sight_on(id, position, radius, false, false);
         }
         Ok(())
     }
@@ -977,7 +981,7 @@ impl Visibility {
         }
         b.built = true;
         self.sight_off(id, position, radius, true, false);
-        self.sight_on(id, position, radius, false, false);
+        let _ = self.sight_on(id, position, radius, false, false);
     }
 
     /// A foundation's construction starts (`FUN_1411e5670`): its build points become a sliver,
@@ -986,8 +990,8 @@ impl Visibility {
         if let Some(b) = self.seers.get_mut(&id).and_then(|s| s.building.as_mut()) {
             b.started = true;
         }
-        self.sight_on(id, position, radius, true, false);
-        self.link_building(position, radius);
+        let _ = self.sight_on(id, position, radius, true, false);
+        let _ = self.link_building(position, radius);
     }
 }
 
@@ -1056,7 +1060,7 @@ mod tests {
         let mut v = world(3);
         v.add_seer(7, unit(1, 2.0));
         let r = [0.5, 0.5];
-        v.sight_on(7, [5.5, 5.5, 0.0], r, false, false);
+        let _ = v.sight_on(7, [5.5, 5.5, 0.0], r, false, false);
         let before = v.maps[1].counts.clone();
         v.moved(7, [5.5, 5.5, 0.0], [5.9, 5.2, 0.0], r);
         assert_eq!(v.maps[1].counts, before, "the same tile");
@@ -1131,7 +1135,7 @@ mod tests {
         assert_eq!(seen(&v), 4);
         v.seer_mut(9).unwrap().building.as_mut().unwrap().built = true;
         v.sight_off(9, at, r, true, false);
-        v.sight_on(9, at, r, false, false);
+        let _ = v.sight_on(9, at, r, false, false);
         // the table of a tile corner: at LOS 2 a 4 by 4 square around the corner
         assert_eq!(seen(&v), 16);
         assert_eq!(v.maps[2].counts[v.index(8, 9)], 1);

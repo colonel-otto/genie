@@ -17,9 +17,19 @@
 //! `GENIE_FORCED_FIRST`, `GENIE_FORCED_LAST` (the window's first and last start, default 680 and
 //! 1500) and `GENIE_FORCED_OUT` (the Markdown report, default `target/tmp/forced_report.md`).
 
+// the dumps' numbers fit the game's widths; a test runs the whole comparison
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::too_many_lines
+)]
+
 mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -36,7 +46,7 @@ fn mesh(dir: &Path, tick: usize) -> Option<String> {
     }
     let raw = std::fs::read(dir.join(format!("{tick}.mesh.gz"))).ok()?;
     let mut text = String::new();
-    flate2::read::GzDecoder::new(&raw[..])
+    let _ = flate2::read::GzDecoder::new(&raw[..])
         .read_to_string(&mut text)
         .unwrap();
     Some(text)
@@ -142,9 +152,9 @@ impl Tally {
             self.first_clean = Some(start);
         }
         self.count += 1;
-        self.players.insert(player);
+        let _ = self.players.insert(player);
         if let Some(o) = object {
-            self.objects.insert(o);
+            let _ = self.objects.insert(o);
         }
     }
 
@@ -153,10 +163,12 @@ impl Tally {
             .objects
             .iter()
             .take(6)
-            .map(std::string::ToString::to_string)
+            .map(ToString::to_string)
             .collect();
         let more = if 6 < self.objects.len() { " …" } else { "" };
-        let clean = self.first_clean.map_or("-".to_string(), |f| f.to_string());
+        let clean = self
+            .first_clean
+            .map_or_else(|| "-".to_string(), |f| f.to_string());
         format!(
             "| {what} | {} | {} | {clean} | {:?} | {}{more} |",
             self.count,
@@ -199,7 +211,7 @@ fn the_forced_replay_report() {
         let starts: Vec<usize> = (first..=last).collect();
         let chunk = starts.len().div_ceil(threads).max(1);
         std::thread::scope(|s| {
-            let handles: Vec<_> = starts
+            starts
                 .chunks(chunk)
                 .map(|part| {
                     let (dir, rec, masters) = (&dir, &rec, &masters);
@@ -209,9 +221,6 @@ fn the_forced_replay_report() {
                             .collect::<Vec<_>>()
                     })
                 })
-                .collect();
-            handles
-                .into_iter()
                 .flat_map(|h| h.join().unwrap())
                 .collect()
         })
@@ -221,15 +230,12 @@ fn the_forced_replay_report() {
             .map(|s| (s, length.min(last + 1 - s)))
             .collect();
         std::thread::scope(|s| {
-            let handles: Vec<_> = segments
+            segments
                 .iter()
                 .map(|&(start, n)| {
                     let (dir, rec, masters) = (&dir, &rec, &masters);
                     s.spawn(move || segment(dir, rec, masters, start, n))
                 })
-                .collect();
-            handles
-                .into_iter()
                 .flat_map(|h| h.join().unwrap())
                 .collect()
         })
@@ -294,10 +300,15 @@ fn the_forced_replay_report() {
         .filter(|r| !r.differences.is_empty())
         .take(40)
     {
-        md += &format!("- update {} (from the save file {}):\n", update(r), r.start);
+        let _ = writeln!(
+            md,
+            "- update {} (from the save file {}):",
+            update(r),
+            r.start
+        );
         for (player, d) in r.differences.iter().take(8) {
             let d: String = d.chars().take(300).collect();
-            md += &format!("  - player {player}: {d}\n");
+            let _ = writeln!(md, "  - player {player}: {d}");
         }
     }
     if let Some(parent) = out.parent() {

@@ -468,7 +468,7 @@ impl Context<'_> {
     }
 
     /// What an object's walking action needs from the tick.
-    fn walk<'b>(&'b mut self, mover: Option<&'b mut Mover>, me: Me) -> Walk<'b> {
+    const fn walk<'b>(&'b mut self, mover: Option<&'b mut Mover>, me: Me) -> Walk<'b> {
         Walk {
             mover,
             me,
@@ -571,12 +571,13 @@ impl crate::explore::Area for ScoutArea<'_> {
 impl Unit {
     /// The target of its hunt, which it attacks or gathers from.
     fn attack_target(&self) -> Option<i32> {
-        self.hunt.map(|h| h.target).or(self
-            .missile
-            .as_ref()
-            .and_then(|m| m.action.as_ref())
-            .map(|a| a.target)
-            .filter(|&t| t != -1))
+        self.hunt.map(|h| h.target).or_else(|| {
+            self.missile
+                .as_ref()
+                .and_then(|m| m.action.as_ref())
+                .map(|a| a.target)
+                .filter(|&t| t != -1)
+        })
     }
 
     /// What the walk reads of it when it meets it ([`crate::spatial::Gait`]).
@@ -604,23 +605,27 @@ impl Unit {
     #[must_use]
     pub fn top_action(&self) -> Option<TopAction> {
         let action = |kind, state| TopAction { kind, state };
-        None.or(self
-            .artifact
-            .map(|a| action(crate::artifact::ARTIFACT_TYPE, a.state)))
-            .or(self.build.map(|b| action(BUILD, b.state)))
-            .or(self
-                .move_to
-                .map(|m| action(crate::move_to::MOVE_TO, m.state.number())))
-            .or(self.fly.map(|f| action(crate::fly::FLY, f.state)))
-            .or(self.hunt.map(|h| action(crate::hunt::HUNT, h.state)))
-            .or(self
-                .explore
-                .map(|e| action(crate::explore::EXPLORE, e.state)))
-            .or(self
-                .missile
+        None.or_else(|| {
+            self.artifact
+                .map(|a| action(crate::artifact::ARTIFACT_TYPE, a.state))
+        })
+        .or_else(|| self.build.map(|b| action(BUILD, b.state)))
+        .or_else(|| {
+            self.move_to
+                .map(|m| action(crate::move_to::MOVE_TO, m.state.number()))
+        })
+        .or_else(|| self.fly.map(|f| action(crate::fly::FLY, f.state)))
+        .or_else(|| self.hunt.map(|h| action(crate::hunt::HUNT, h.state)))
+        .or_else(|| {
+            self.explore
+                .map(|e| action(crate::explore::EXPLORE, e.state))
+        })
+        .or_else(|| {
+            self.missile
                 .as_ref()
                 .and_then(|m| m.action.as_ref())
-                .map(|a| action(crate::missile::MISSILE, a.state)))
+                .map(|a| action(crate::missile::MISSILE, a.state))
+        })
     }
 
     /// The target of its top action ([`Unit::top_action`]), −1 for an action without one (an
@@ -630,16 +635,17 @@ impl Unit {
         if self.artifact.is_some() {
             return Some(-1);
         }
-        None.or(self.build.map(|b| b.target))
-            .or(self.move_to.map(|m| m.target))
-            .or(self.fly.map(|_| -1))
-            .or(self.hunt.map(|h| h.target))
-            .or(self.explore.map(|_| -1))
-            .or(self
-                .missile
-                .as_ref()
-                .and_then(|m| m.action.as_ref())
-                .map(|a| a.target))
+        None.or_else(|| self.build.map(|b| b.target))
+            .or_else(|| self.move_to.map(|m| m.target))
+            .or_else(|| self.fly.map(|_| -1))
+            .or_else(|| self.hunt.map(|h| h.target))
+            .or_else(|| self.explore.map(|_| -1))
+            .or_else(|| {
+                self.missile
+                    .as_ref()
+                    .and_then(|m| m.action.as_ref())
+                    .map(|a| a.target)
+            })
     }
 
     /// Slot 0x2d0 with 0 (`FUN_14106d170`): whether its top action may be interrupted (the group
@@ -1194,7 +1200,7 @@ impl Unit {
     /// within its line of sight less a tile, `DAT_14330eb8c`), by the gap from its footprint
     /// (`FUN_14118faf0`). No point is not modelled (slot 0x90, `FUN_140c4b130`).
     fn seek_unexplored(
-        &mut self,
+        &self,
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<[i32; 2], Unsupported> {
@@ -1312,10 +1318,9 @@ impl Unit {
     /// A notify the unit posts to its own unit AI (slot 0x328).
     fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), Unsupported> {
         let (id, state) = (self.id, self.life.state);
-        match self.ai.as_mut() {
-            Some(ai) => ai.post(Notify::own(id, kind, p), state),
-            None => Ok(()),
-        }
+        self.ai
+            .as_mut()
+            .map_or(Ok(()), |ai| ai.post(Notify::own(id, kind, p), state))
     }
 
     /// The unit's own part of its hit, written back: what a retaliation or reflected damage left
@@ -1396,7 +1401,6 @@ impl Unit {
         }
         let moving = made
             .moving
-            .clone()
             .ok_or(Unsupported("a missile master that does not move"))?;
         let (id, flying) = if let Some(pooled) = c.recycling.missiles.pop() {
             pooled
@@ -1410,9 +1414,9 @@ impl Unit {
             .then(|| c.graphics.get(&made.standing_sprite).copied())
             .flatten();
         if let Some(g) = standing {
-            ActiveSprite::start(g, c.streams.get(Stream::Sprite));
+            let _ = ActiveSprite::start(g, c.streams.get(Stream::Sprite));
             if g.flags & 4 != 0 && 1 < g.facets {
-                c.streams.get(Stream::Object).rand15();
+                let _ = c.streams.get(Stream::Object).rand15();
             }
         }
         let facets = standing.map(|g| crate::facing::SpriteFacets {
@@ -1471,7 +1475,7 @@ impl Unit {
                 },
             ),
         };
-        c.spatial.insert(id, placed.clone());
+        c.spatial.insert(id, placed);
         c.pathing.moved(id, &placed, false);
         if let Some(v) = c.spatial.sight.as_mut() {
             v.add_seer(
@@ -1488,7 +1492,7 @@ impl Unit {
                     kind: made.kind,
                 },
             );
-            v.sight_on(id, position, made.radius, false, false);
+            let _ = v.sight_on(id, position, made.radius, false, false);
         }
         let mut held = (-1, 0.0);
         for &(kind, amount, flag) in &made.storage {
@@ -1879,7 +1883,7 @@ impl Unit {
             at: self.position,
             from_z: action.origin.position[2],
             missile: true,
-            hit_chance: master.hit_chance,
+            chance: master.hit_chance,
         };
         let object = c.streams.get(Stream::Object);
         let struck = crate::attack::strike(&mut own, victim, &mut [], hit, object)?;
@@ -2655,7 +2659,7 @@ impl Unit {
             .masters
             .and_then(|ms| ms.get(self.life.master_id))
             .filter(|m| 40 <= m.kind)
-            && let Some(p) = c.spatial.get(self.id).cloned()
+            && let Some(p) = c.spatial.get(self.id).copied()
         {
             let moving = self.mover.as_ref().is_some_and(Mover::is_moving);
             c.pathing.refresh(self.id, &p, moving, m.outline);
@@ -2965,7 +2969,7 @@ impl Unit {
         &mut self,
         target: i32,
         range: f32,
-        c: &mut Context<'_>,
+        c: &Context<'_>,
     ) -> Result<(), Unsupported> {
         let top = self.top_action_kind();
         if self.unmodelled_action.is_some() || !matches!(top, Some(crate::move_to::MOVE_TO) | None)
@@ -3364,7 +3368,7 @@ impl Turns {
             .objects_within(x - reach, y - reach, x + reach, y + reach)
             .filter(|&(id, _)| id != unit.id && id != target)
             .map(|(id, o)| {
-                self.victim(id, p).unwrap_or(Victim {
+                self.victim(id, p).unwrap_or_else(|| Victim {
                     id,
                     position: o.position,
                     uncertain: true,
@@ -3422,10 +3426,7 @@ impl Turns {
             };
             ai.post(n, u.life.state)?;
         }
-        match v.killed {
-            Some(kill) => self.killed(q, j, kill),
-            None => Ok(()),
-        }
+        v.killed.map_or(Ok(()), |kill| self.killed(q, j, kill))
     }
 
     /// A combat object's death by a hit (`FUN_141082e80`, `FUN_1412108e0`): its owner's computer
@@ -3441,6 +3442,10 @@ impl Turns {
     /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
     /// player and the particles (`FUN_141158bb0`).
     fn killed(&mut self, q: usize, j: usize, kill: crate::damage::Kill) -> Result<(), Unsupported> {
+        const PEACEFUL: [i16; 26] = [
+            1, 3, 5, 7, 8, 9, 10, 11, 14, 15, 16, 27, 29, 30, 31, 32, 33, 34, 38, 39, 40, 48, 52,
+            58, 60, 63,
+        ];
         if self.players[q].computer {
             return Err(Unsupported(
                 "a computer player's killed object (its AI's slot 0x2f0)",
@@ -3461,10 +3466,6 @@ impl Turns {
             ));
         }
         let ap = kill.attacker_player;
-        const PEACEFUL: [i16; 26] = [
-            1, 3, 5, 7, 8, 9, 10, 11, 14, 15, 16, 27, 29, 30, 31, 32, 33, 34, 38, 39, 40, 48, 52,
-            58, 60, 63,
-        ];
         if !PEACEFUL.contains(&master.class) {
             self.players[ap].add_attribute(20, 1.0)?;
             self.players[q].add_attribute(154, 1.0)?;
@@ -3645,11 +3646,8 @@ impl Turns {
                 }
                 self.spatial.unfreeze(id);
                 self.spatial.set_gait(id, forced.gait());
-                if let Some(placed) = self.spatial.get(id).cloned() {
-                    let moving = forced
-                        .mover
-                        .as_ref()
-                        .is_some_and(super::movement::Mover::is_moving);
+                if let Some(placed) = self.spatial.get(id).copied() {
+                    let moving = forced.mover.as_ref().is_some_and(Mover::is_moving);
                     self.pathing.moved(id, &placed, moving);
                 }
                 forced.stopped = false;
@@ -3708,7 +3706,7 @@ impl crate::tech::Attributes for Player {
 impl Player {
     /// A command the slice does not model for this player: the player stops.
     fn stop(&mut self, tick: u32, why: Unsupported) {
-        self.unsupported.get_or_insert((tick, 0, why));
+        let _ = self.unsupported.get_or_insert((tick, 0, why));
         self.stopped = true;
     }
 
@@ -3836,13 +3834,13 @@ impl Turns {
             masters: Vec::new(),
             spatial: Spatial::default(),
             pathing: Pathing::default(),
-            graphics: Default::default(),
+            graphics: std::collections::BTreeMap::default(),
             drop_sites: Vec::new(),
             carry_rule: false,
             mode_680: 0,
             game_mode: 0,
             unit_cost_246: false,
-            zones: Default::default(),
+            zones: crate::zones::Zones::default(),
             recycling: Recycling::default(),
             streams: Streams::default(),
             techs: Vec::new(),
@@ -3870,7 +3868,7 @@ impl Turns {
                     // the constructor's draws are unknown, so the turn player's are too
                     let turn = &mut self.players[self.player_turn];
                     let at = turn.objects.len();
-                    turn.unsupported.get_or_insert((self.ticks, at, e));
+                    let _ = turn.unsupported.get_or_insert((self.ticks, at, e));
                     turn.stopped = true;
                     None
                 });
@@ -4675,7 +4673,7 @@ impl Turns {
             let production = owner.objects[index]
                 .production
                 .get_or_insert_with(|| Production {
-                    queue: Default::default(),
+                    queue: std::collections::VecDeque::default(),
                     action: false,
                     progress: 0.0,
                     rate: q.rate,
@@ -4710,6 +4708,10 @@ impl Turns {
     }
 
     /// One world update of `dt` game milliseconds, with the commands recorded in it.
+    ///
+    /// # Panics
+    ///
+    /// Never: each player updates in turn, so the one it splits off exists.
     pub fn tick_with(&mut self, dt: u32, commands: &[Command]) {
         self.ticks += 1;
         self.world_time = self.world_time.wrapping_add(dt);
@@ -4889,7 +4891,7 @@ impl Turns {
                     Ok(Step::Leave) => {
                         let gone = player.objects.swap_remove(i);
                         if let Err(e) = self.spatial.leave(gone.id) {
-                            player.unsupported.get_or_insert((self.ticks, i, e));
+                            let _ = player.unsupported.get_or_insert((self.ticks, i, e));
                         }
                         // a recyclable master's missile goes to the pool of type 60
                         let recyclable = self
@@ -4941,16 +4943,16 @@ impl Turns {
                             if matches!(flag, 2 | 16 | 32)
                                 && let Err(e) = self.players[p].add_attribute(kind, -amount)
                             {
-                                failed.get_or_insert(e);
+                                let _ = failed.get_or_insert(e);
                             }
                             if matches!(flag, 1 | 2 | 32)
                                 && let Err(e) = self.players[new].add_attribute(kind, amount)
                             {
-                                failed.get_or_insert(e);
+                                let _ = failed.get_or_insert(e);
                             }
                         }
                         if let Some(e) = failed {
-                            self.players[p]
+                            let _ = self.players[p]
                                 .unsupported
                                 .get_or_insert((self.ticks, i, e));
                         }
@@ -4960,7 +4962,7 @@ impl Turns {
                     Ok(Step::Stay) => i += 1,
                     Err(e) => {
                         player.freezes.push((self.ticks, player.objects[i].id, e));
-                        player.unsupported.get_or_insert((self.ticks, i, e));
+                        let _ = player.unsupported.get_or_insert((self.ticks, i, e));
                         player.objects[i].stopped = true;
                         self.spatial.freeze(player.objects[i].id);
                         i += 1;
@@ -5329,7 +5331,7 @@ mod tests {
 
     /// The masters of MarvinBlue/426048731's player 2 that its BUILD at tick 679 uses, shortened
     /// from build 158041's save and `.dat`.
-    fn builder_masters() -> crate::masters::Masters {
+    fn builder_masters() -> Masters {
         use crate::masters::{Master, Masters, Task};
         let task = |action_type, object_group| Task {
             action_type,
@@ -5416,7 +5418,7 @@ mod tests {
             ],
         );
         t.next_object_id = 10028;
-        t.masters = vec![Default::default(), builder_masters()];
+        t.masters = vec![Masters::default(), builder_masters()];
         t.tick_with(
             50,
             &[Command::Build {
@@ -5657,7 +5659,7 @@ mod tests {
             resync: vec![8],
             ..game
         };
-        t.force(&game);
+        let _ = t.force(&game);
         assert_eq!(
             (t.players[0].stopped, t.players[0].resources),
             (false, [1.0, 2.0, 3.0, 4.0])
@@ -5778,7 +5780,7 @@ mod tests {
                 hp: 2.0,
                 ..Lifecycle::default()
             },
-            ai: Some(crate::unit_ai::UnitAi::default()),
+            ai: Some(UnitAi::default()),
             ..Unit::default()
         };
         let mut t = Turns::new(
@@ -5859,12 +5861,12 @@ mod tests {
             target_master: 705,
             own,
         };
-        t.tick_with(25, &[set(9520, [107.2451, 46.075863], false)]);
+        t.tick_with(25, &[set(9520, [107.2451, 46.075_863], false)]);
         assert_eq!(t.players[0].unsupported, None);
         assert_eq!(
             t.players[0].objects[0].gather_point,
             Some(GatherPoint {
-                point: [107.2451, 46.075863, 0.0],
+                point: [107.2451, 46.075_863, 0.0],
                 target: 9520,
                 target_master: 705,
             })

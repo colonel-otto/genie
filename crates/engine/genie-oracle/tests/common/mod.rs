@@ -23,7 +23,7 @@ pub fn tier1_recordings(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
             let version = genie_rec::de::chapters(data).unwrap()[0]
                 .save_version()
                 .unwrap();
-            (version.hundredths(), version.build) == (6660, 158041)
+            (version.hundredths(), version.build) == (6660, 158_041)
         })
         .collect()
 }

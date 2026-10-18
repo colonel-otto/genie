@@ -359,7 +359,7 @@ mod tests {
     use super::*;
 
     /// MarvinBlue/426048731's spear -28 (master 509: speed 7, arc −0.06), fired at the deer 9655
-    /// in the update that made the save after 3137: 2.80657 to go when set_state(3) ran, and its
+    /// in the update that made the save after 3137: 2.80657 to go when `set_state(3)` ran, and its
     /// arc's acceleration −23.52 and vertical speed 4.71503 as the game held them.
     #[test]
     fn a_spear_arcs_to_its_point() {
@@ -394,7 +394,7 @@ mod tests {
         assert!((a.ballistic_acceleration - -23.52).abs() < 1e-3);
         assert!((a.ballistic_velocity - 4.71503).abs() < 1e-4);
         // one update of 52 ms: 0.364 of the way
-        let (step, flying) = a.fly(0.052, 5.2828426, &stats).unwrap();
+        let (step, flying) = a.fly(0.052, 5.282_842_6, &stats).unwrap();
         assert!((a.timer - 0.364).abs() < 1e-6);
         assert!((a.distance - 2.44257).abs() < 1e-5);
         assert!((step[0] - 0.364).abs() < 1e-6);
@@ -406,7 +406,7 @@ mod tests {
         // facing along x: the offset's y is ahead, its x to the side
         let p = spawn_point([10.0, 20.0, 0.0], 0.0, [0.0, 0.5, 1.5]);
         assert_eq!(p, [10.5, 20.0, 1.5]);
-        assert_eq!(reach([0.2, 0.2], 3.0), 0.28284273 + 3.0 + 2.0);
+        assert_eq!(reach([0.2, 0.2], 3.0), 0.282_842_73 + 3.0 + 2.0);
     }
 
     /// MarvinBlue/426048731's spears (fly mode 1) in the update that made the save after 3148:

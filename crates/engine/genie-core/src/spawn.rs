@@ -131,7 +131,7 @@ pub fn spawn_point(
     let top = y + by + sy;
     let bottom = y - (by + sy);
     let [left_top, right_top, right_bottom, left_bottom] = site.walls;
-    let (gx, gy) = site.gather.map_or((NONE, NONE), |[gx, gy]| (gx, gy));
+    let [gx, gy] = site.gather.unwrap_or([NONE, NONE]);
     let dx = (x - gx).abs();
     let dy = (y - gy).abs();
     let (no_x, no_y) = (gx == NONE, gy == NONE);
@@ -795,7 +795,7 @@ impl Turns {
             }
             let adjustment = state.location(master).map_or(0.0, |l| l.adjustment);
             if repeat || time + adjustment <= state.research_done {
-                self.complete_research(p, t, Some(master))?;
+                let _ = self.complete_research(p, t, Some(master))?;
             }
         }
         if 0.0 < self.players[p].get(WORLD_EFFECT)? {
@@ -877,7 +877,6 @@ impl Turns {
         };
         let moving = made
             .moving
-            .clone()
             .ok_or(Unsupported("a new unit of a master that does not move"))?;
         let restriction = self
             .spatial
@@ -918,9 +917,9 @@ impl Turns {
         let position = [point[0], point[1], position[2]];
         // the setups' draws
         if standing.flags & 4 != 0 && 1 < standing.facets {
-            self.streams.get(Stream::Object).rand15();
+            let _ = self.streams.get(Stream::Object).rand15();
         }
-        ActiveSprite::start(standing, self.streams.get(Stream::Sprite));
+        let _ = ActiveSprite::start(standing, self.streams.get(Stream::Sprite));
         let facets = crate::facing::SpriteFacets {
             count: standing.facets,
             flag_1: standing.flags & 2 != 0,
@@ -932,7 +931,7 @@ impl Turns {
             0.0
         };
         let ai = UnitAi::constructed(ai_type, position, self.streams.get(Stream::Ai))?;
-        self.streams.get(Stream::Object).rand15();
+        let _ = self.streams.get(Stream::Object).rand15();
         // its place, record, mesh shape and sight (new_position, slot 0x58, and FUN_141054fe0)
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         let placed = Placed {
@@ -951,7 +950,7 @@ impl Turns {
                 class: made.obstruction_class,
             }),
         };
-        self.spatial.insert(id, placed.clone());
+        self.spatial.insert(id, placed);
         self.pathing.moved(id, &placed, false);
         self.pathing.tiles_changed(self.spatial.take_changes());
         if let Some(v) = self.spatial.sight.as_mut() {
@@ -969,7 +968,7 @@ impl Turns {
                     kind: made.kind,
                 },
             );
-            v.sight_on(id, position, made.radius, false, false);
+            let _ = v.sight_on(id, position, made.radius, false, false);
         }
         if let Some(e) = self.spatial.take_sight_unsupported() {
             return Err(e);
@@ -1097,9 +1096,9 @@ impl Turns {
             .then(|| self.graphics.get(&made.standing_sprite).copied())
             .flatten();
         if let Some(g) = standing {
-            ActiveSprite::start(g, self.streams.get(Stream::Sprite));
+            let _ = ActiveSprite::start(g, self.streams.get(Stream::Sprite));
             if g.flags & 4 != 0 && 1 < g.facets {
-                self.streams.get(Stream::Object).rand15();
+                let _ = self.streams.get(Stream::Object).rand15();
             }
         }
         let mut angle = 0.0;
@@ -1108,7 +1107,7 @@ impl Turns {
             // replaces: that facet's angle (FUN_14119d490, FUN_14114d780, with the remains' own
             // sprite's facets)
             if standing.is_some_and(|g| g.flags & 2 != 0 && 1 < g.facets) {
-                self.streams.get(Stream::Object).rand15();
+                let _ = self.streams.get(Stream::Object).rand15();
             }
             let facet = facet.ok_or(Unsupported(
                 "moving remains of an object without a facet the slice holds",
@@ -1126,7 +1125,6 @@ impl Turns {
             angle = crate::facing::angle_of_facet(facet, own);
             Some(
                 made.moving
-                    .clone()
                     .ok_or(Unsupported("moving remains without a moving master"))?,
             )
         } else {
@@ -1149,7 +1147,7 @@ impl Turns {
                 class: made.obstruction_class,
             }),
         };
-        self.spatial.insert(id, placed.clone());
+        self.spatial.insert(id, placed);
         self.pathing.moved(id, &placed, false);
         self.pathing.tiles_changed(self.spatial.take_changes());
         if let Some(v) = self.spatial.sight.as_mut() {
@@ -1167,7 +1165,7 @@ impl Turns {
                     kind: made.kind,
                 },
             );
-            v.sight_on(id, at, made.radius, false, false);
+            let _ = v.sight_on(id, at, made.radius, false, false);
         }
         if let Some(e) = self.spatial.take_sight_unsupported() {
             return Err(e);
@@ -1333,7 +1331,7 @@ mod tests {
         let site = Site {
             position: [104.0, 47.0, 0.0],
             radius: [2.0, 2.0],
-            gather: Some([107.2451, 46.075863]),
+            gather: Some([107.2451, 46.075_863]),
             walls: [false; 4],
         };
         let mut tried = Vec::new();

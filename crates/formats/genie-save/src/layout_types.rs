@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn a_positioned_value_keeps_where_it_was_read_and_writes_the_value_only() {
         let mut c = Cursor::new(b"\x01\x02\x00".as_slice());
-        u8::read_le(&mut c).unwrap();
+        let _ = u8::read_le(&mut c).unwrap();
         let p = Positioned::<u16>::read_le(&mut c).unwrap();
         assert_eq!((p.pos, p.val, *p), (1, 2, 2));
         let mut out = Cursor::new(Vec::new());

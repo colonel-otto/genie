@@ -3,6 +3,15 @@
 //! (that state's time plus the checkpoint tick's dt). Needs `GENIE_TICK_TRACE` (a GRTICK1 file) and
 //! `GENIE_TICK_REC` (its recording); skips without them.
 
+// the dumps' numbers fit the game's widths; a test runs the whole comparison
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::too_many_lines
+)]
+
 mod common;
 
 use genie_oracle::tick_trace::TickTrace;

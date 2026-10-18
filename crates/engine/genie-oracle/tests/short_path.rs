@@ -5,6 +5,15 @@
 //! the save of that tick (the tile words) and `GENIE_DAT` the data file (restriction 7's mask).
 //! Skips without them.
 
+// the dumps' numbers fit the game's widths; a test runs the whole comparison
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::too_many_lines
+)]
+
 use genie_core::short_path::{Call, Entry, Listed, Pather, ShortPath, Target, to_path};
 
 fn f32_of(hex: &str) -> f32 {
@@ -126,7 +135,7 @@ fn the_slice_s_short_paths_are_the_game_s() {
     let after: String = text
         .lines()
         .skip_while(|l| !l.starts_with("mesh "))
-        .map(|l| format!("{l}\n"))
+        .flat_map(|l| [l, "\n"])
         .collect();
     let game = genie_oracle::mesh_from_dump(&after).unwrap();
     assert_eq!(mesh.free, game.free, "the free list's head");

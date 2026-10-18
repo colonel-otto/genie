@@ -7,6 +7,8 @@
 
 /// One generator. Only what the simulation reads: the 16-word state and its index, the draw count
 /// and the last `rand15` value (`currand`, which a save records).
+// not `Copy`: a stream's draws must advance the stream, never a silent copy of it
+#[allow(missing_copy_implementations)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Well512 {
     state: [u32; 16],
@@ -74,7 +76,7 @@ impl Well512 {
         (u64::from(hi) << 32) | u64::from(lo)
     }
 
-    pub fn rand15(&mut self) -> u32 {
+    pub const fn rand15(&mut self) -> u32 {
         self.last = self.raw() & 0x7fff;
         self.last
     }
@@ -133,6 +135,10 @@ impl Streams {
     }
 
     /// Two different streams at once.
+    ///
+    /// # Panics
+    ///
+    /// When `a` and `b` are the same stream.
     pub fn two(&mut self, a: Stream, b: Stream) -> (&mut Well512, &mut Well512) {
         let (i, j) = (a as usize, b as usize);
         assert_ne!(i, j, "two different streams");
@@ -170,7 +176,13 @@ mod tests {
         let got: Vec<u32> = (0..5).map(|_| r.raw()).collect();
         assert_eq!(
             got,
-            [3025362954, 1149836362, 891056692, 54472551, 1361767319]
+            [
+                3_025_362_954,
+                1_149_836_362,
+                891_056_692,
+                54_472_551,
+                1_361_767_319
+            ]
         );
         assert_eq!(r.draws, 5);
     }
@@ -189,7 +201,7 @@ mod tests {
         let mut r = Well512::default();
         r.set_seed(0xdead_be3f);
         let got: Vec<u32> = (0..20).map(|_| r.raw()).collect();
-        assert_eq!(&got[17..], &[3247376368, 3960506532, 2739179492]);
+        assert_eq!(&got[17..], &[3_247_376_368, 3_960_506_532, 2_739_179_492]);
     }
 
     #[test]

@@ -1,6 +1,15 @@
 //! The tick oracle's per-tick trace (FD-015, `GRTICK1`): every tick's world time and checkpoint
 //! lanes from build 158041's own simulation, the reference the engine is compared with tick by tick.
 
+// the dumps' numbers fit the game's widths; a test runs the whole comparison
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::too_many_lines
+)]
+
 use flate2::{Compression, write::ZlibEncoder};
 use genie_oracle::tick_trace::{TickTrace, TraceError};
 use std::io::Write;

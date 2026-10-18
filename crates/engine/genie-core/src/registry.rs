@@ -151,7 +151,7 @@ impl Registry {
                                 *s = Some(i);
                             }
                         }
-                        self.lists[p][class].pop();
+                        let _ = self.lists[p][class].pop();
                     }
                     if let Some(s) = self.entries.get_mut(&id).and_then(|e| e.slots.get_mut(p)) {
                         *s = None;
@@ -311,7 +311,7 @@ mod tests {
             [1, 2, 3]
         );
         assert_eq!(r.lists[2][4].len(), 3);
-        assert!(r.lists[1][4].is_empty());
+        assert_eq!(r.lists[1][4], Vec::<Record>::new());
         // 1 leaves player 0's sight: 3 takes its place
         r.update_unit(1, 1, [1.0, 5.0], [0.2, 0.2], 4, 0b101, 0b100)
             .unwrap();

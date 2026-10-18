@@ -20,10 +20,17 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
-    // the decompiled routines' math names (dx, dy, x0, y1 …) and their flag fields
+    // the decompiled routines' math names (dx, dy, x0, y1 …), formulas, flag fields and
+    // parameters, assignment order, and member functions whose `this` goes unused
     clippy::many_single_char_names,
     clippy::similar_names,
+    clippy::suspicious_operation_groupings,
     clippy::struct_excessive_bools,
+    clippy::fn_params_excessive_bools,
+    clippy::useless_let_if_seq,
+    clippy::unused_self,
+    // the contexts are bundles of references, passed by value
+    clippy::needless_pass_by_value,
     // a routine is ported whole, its documentation opens with the routine and its addresses
     clippy::too_many_lines,
     clippy::too_long_first_doc_paragraph,
@@ -53,7 +60,7 @@ use genie_save::generated::world::{
 pub const SAVE_WORDS: [usize; 10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10];
 
 /// One player's block, computed from the save and as the recording stores it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PlayerComparison {
     pub id: u32,
     pub from_save: [u32; 11],
@@ -203,7 +210,7 @@ pub struct GroupCommand {
 }
 
 /// Word 9 of one player's first checkpoint, from the unit-AI slice and as recorded.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Word9 {
     pub id: u32,
     pub simulated: u32,
@@ -280,11 +287,13 @@ fn unit(
         attack_count: object
             .combat()
             .map(|c| &c.rge_combat_object)
-            .or(object
-                .rge_object
-                .as_ref()
-                .and_then(|r| r.rge_missile_object.as_ref())
-                .map(|m| &m.rge_combat_object))
+            .or_else(|| {
+                object
+                    .rge_object
+                    .as_ref()
+                    .and_then(|r| r.rge_missile_object.as_ref())
+                    .map(|m| &m.rge_combat_object)
+            })
             .map_or(0, |c| c.attack_count),
         ..Unit::default()
     };
@@ -365,10 +374,11 @@ fn vec3(b: &[u8; 12]) -> genie_core::fmath::Vec3 {
 
 /// The animated part of a player's master, which holds its speed (`mMaxSpeed`, master `+0x740`).
 fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
-    let combat = m.tribe_master_combat_object.as_ref().or(m
-        .tribe_master_building_object
-        .as_ref()
-        .map(|b| &b.tribe_master_combat_object));
+    let combat = m.tribe_master_combat_object.as_ref().or_else(|| {
+        m.tribe_master_building_object
+            .as_ref()
+            .map(|b| &b.tribe_master_combat_object)
+    });
     if let Some(c) = combat {
         let moving = &c
             .rge_master_combat_object
@@ -378,33 +388,40 @@ fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
     }
     let r = m.rge_master.as_ref()?;
     None.or(r.rge_master_animated_object.as_ref())
-        .or(r
-            .rge_master_moving_object
-            .as_ref()
-            .map(|m| &m.rge_master_animated_object))
-        .or(r
-            .rge_master_action_object
-            .as_ref()
-            .map(|a| &a.rge_master_moving_object.rge_master_animated_object))
-        .or(r.rge_master_combat_object.as_ref().map(|c| {
-            &c.rge_master_action_object
-                .rge_master_moving_object
-                .rge_master_animated_object
-        }))
-        .or(r.rge_master_missile_object.as_ref().map(|m| {
-            &m.rge_master_combat_object
-                .rge_master_action_object
-                .rge_master_moving_object
-                .rge_master_animated_object
-        }))
+        .or_else(|| {
+            r.rge_master_moving_object
+                .as_ref()
+                .map(|m| &m.rge_master_animated_object)
+        })
+        .or_else(|| {
+            r.rge_master_action_object
+                .as_ref()
+                .map(|a| &a.rge_master_moving_object.rge_master_animated_object)
+        })
+        .or_else(|| {
+            r.rge_master_combat_object.as_ref().map(|c| {
+                &c.rge_master_action_object
+                    .rge_master_moving_object
+                    .rge_master_animated_object
+            })
+        })
+        .or_else(|| {
+            r.rge_master_missile_object.as_ref().map(|m| {
+                &m.rge_master_combat_object
+                    .rge_master_action_object
+                    .rge_master_moving_object
+                    .rge_master_animated_object
+            })
+        })
 }
 
 /// The moving part of a saved master, when its class has one.
 fn moving_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterMovingObject> {
-    let combat = m.tribe_master_combat_object.as_ref().or(m
-        .tribe_master_building_object
-        .as_ref()
-        .map(|b| &b.tribe_master_combat_object));
+    let combat = m.tribe_master_combat_object.as_ref().or_else(|| {
+        m.tribe_master_building_object
+            .as_ref()
+            .map(|b| &b.tribe_master_combat_object)
+    });
     if let Some(c) = combat {
         return Some(
             &c.rge_master_combat_object
@@ -414,19 +431,23 @@ fn moving_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterM
     }
     let r = m.rge_master.as_ref()?;
     None.or(r.rge_master_moving_object.as_ref())
-        .or(r
-            .rge_master_action_object
-            .as_ref()
-            .map(|a| &a.rge_master_moving_object))
-        .or(r
-            .rge_master_combat_object
-            .as_ref()
-            .map(|c| &c.rge_master_action_object.rge_master_moving_object))
-        .or(r.rge_master_missile_object.as_ref().map(|m| {
-            &m.rge_master_combat_object
-                .rge_master_action_object
-                .rge_master_moving_object
-        }))
+        .or_else(|| {
+            r.rge_master_action_object
+                .as_ref()
+                .map(|a| &a.rge_master_moving_object)
+        })
+        .or_else(|| {
+            r.rge_master_combat_object
+                .as_ref()
+                .map(|c| &c.rge_master_action_object.rge_master_moving_object)
+        })
+        .or_else(|| {
+            r.rge_master_missile_object.as_ref().map(|m| {
+                &m.rge_master_combat_object
+                    .rge_master_action_object
+                    .rge_master_moving_object
+            })
+        })
 }
 
 /// One saved level of path data, with its path's waypoints from the world's path table.
@@ -699,7 +720,7 @@ fn saved_actions(
                 timer: base.timer,
                 gaia: s.owner == 0,
                 move_to,
-                goal: move_to.and(point(base)),
+                goal: move_to.and_then(|_| point(base)),
             });
             Ok(())
         }
@@ -1267,17 +1288,20 @@ fn own_default_task(s: &RgeStaticObject) -> Option<i16> {
             .own_rge_master_action_object
             .default_task
     };
-    None.or(s.rge_master_action_object.as_ref().map(|a| a.default_task))
-        .or(s.rge_master_missile_object.as_ref().map(|m| {
-            m.own_rge_master_combat_object
-                .own_rge_master_action_object
-                .default_task
-        }))
-        .or(s.tribe_master_combat_object.as_ref().map(tribe))
-        .or(s
-            .tribe_master_building_object
-            .as_ref()
-            .map(|b| tribe(&b.own_tribe_master_combat_object)))
+    None.or_else(|| s.rge_master_action_object.as_ref().map(|a| a.default_task))
+        .or_else(|| {
+            s.rge_master_missile_object.as_ref().map(|m| {
+                m.own_rge_master_combat_object
+                    .own_rge_master_action_object
+                    .default_task
+            })
+        })
+        .or_else(|| s.tribe_master_combat_object.as_ref().map(tribe))
+        .or_else(|| {
+            s.tribe_master_building_object
+                .as_ref()
+                .map(|b| tribe(&b.own_tribe_master_combat_object))
+        })
 }
 
 /// The object's lifecycle fields. An object with its own master takes every master value from it;
@@ -1294,13 +1318,15 @@ fn lifecycle(
         .rge_object
         .as_ref()
         .is_some_and(|r| r.rge_static_object.is_some());
-    let death_sprite = match s.own_master() {
-        Some(own) => own.death_sprite_num,
-        None => objects
-            .master(s.master_obj)
-            .and_then(|m| m.static_part())
-            .map_or(-1, |m| m.death_sprite_id),
-    };
+    let death_sprite = s.own_master().map_or_else(
+        || {
+            objects
+                .master(s.master_obj)
+                .and_then(|m| m.static_part())
+                .map_or(-1, |m| m.death_sprite_id)
+        },
+        |own| own.death_sprite_num,
+    );
     // the sprite after the death: the dying one, else the current one
     let after = if death_sprite >= 0 {
         death_sprite
@@ -1311,23 +1337,26 @@ fn lifecycle(
         .and_then(|t| t.graphics.get(&after))
         .filter(|g| pure_static && g.flags & 4 != 0 && 1 < g.facets)
         .map(|g| g.facets);
-    let (dying_sprite, [death_spawn, remains], master) = if let Some(own) = s.own_master() {
-        (
-            (own.death_sprite_num >= 0).then_some(own.death_sprite_num),
-            [own.death_spawn_obj_id, own.death_spawn_obj_id2],
-            Some(MasterData {
-                decay: own.attribute_rot,
-                undead: own.undead_flag != 0,
-            }),
-        )
-    } else {
-        let player = objects.master(s.master_obj).and_then(|m| m.static_part());
-        (
-            player.map(|m| m.death_sprite_id).filter(|&d| d >= 0),
-            player.map_or([-1, -1], |m| [m.death_spawn_obj_id, m.death_spawn_obj_id2]),
-            masters.and_then(|t| t.get(civ, s.master_obj)),
-        )
-    };
+    let (dying_sprite, [death_spawn, remains], master) = s.own_master().map_or_else(
+        || {
+            let player = objects.master(s.master_obj).and_then(|m| m.static_part());
+            (
+                player.map(|m| m.death_sprite_id).filter(|&d| d >= 0),
+                player.map_or([-1, -1], |m| [m.death_spawn_obj_id, m.death_spawn_obj_id2]),
+                masters.and_then(|t| t.get(civ, s.master_obj)),
+            )
+        },
+        |own| {
+            (
+                (own.death_sprite_num >= 0).then_some(own.death_sprite_num),
+                [own.death_spawn_obj_id, own.death_spawn_obj_id2],
+                Some(MasterData {
+                    decay: own.attribute_rot,
+                    undead: own.undead_flag != 0,
+                }),
+            )
+        },
+    );
     Lifecycle {
         class: if pure_static {
             Class::Static
@@ -1606,9 +1635,9 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     turns.unit_cost_246 = true;
     turns.game_mode = header.file_header.game_options_read.game_options.game_mode;
     if let Some(table) = masters {
-        turns.drop_sites = table.drop_sites.clone();
+        turns.drop_sites.clone_from(&table.drop_sites);
         turns.graphics = table.graphics.clone();
-        turns.techs = table.techs.clone();
+        turns.techs.clone_from(&table.techs);
         turns.masters = header
             .players()
             .iter()
@@ -1670,21 +1699,27 @@ fn master_facets(
 /// A master's action part, whatever class it is: what holds its work rate, search radius and
 /// task list.
 fn action_part(m: &Master) -> Option<&genie_save::generated::world::RgeMasterActionObject> {
-    None.or(m
-        .tribe_master_combat_object
-        .as_ref()
-        .map(|c| &c.rge_master_combat_object.rge_master_action_object))
-        .or(m.tribe_master_building_object.as_ref().map(|b| {
+    None.or_else(|| {
+        m.tribe_master_combat_object
+            .as_ref()
+            .map(|c| &c.rge_master_combat_object.rge_master_action_object)
+    })
+    .or_else(|| {
+        m.tribe_master_building_object.as_ref().map(|b| {
             &b.tribe_master_combat_object
                 .rge_master_combat_object
                 .rge_master_action_object
-        }))
-        .or(m.rge_master.as_ref().and_then(|r| {
-            r.rge_master_action_object.as_ref().or(r
-                .rge_master_combat_object
-                .as_ref()
-                .map(|c| &c.rge_master_action_object))
-        }))
+        })
+    })
+    .or_else(|| {
+        m.rge_master.as_ref().and_then(|r| {
+            r.rge_master_action_object.as_ref().or_else(|| {
+                r.rge_master_combat_object
+                    .as_ref()
+                    .map(|c| &c.rge_master_action_object)
+            })
+        })
+    })
 }
 
 /// The task at `index` in a master's task list (its saved list, else the `.dat`'s): the task a
@@ -1775,10 +1810,11 @@ fn work_masters(
                 work.tasks = tasks.list.iter().map(|e| task(&e.task)).collect();
             }
         }
-        let combat = m.tribe_master_combat_object.as_ref().or(m
-            .tribe_master_building_object
-            .as_ref()
-            .map(|b| &b.tribe_master_combat_object));
+        let combat = m.tribe_master_combat_object.as_ref().or_else(|| {
+            m.tribe_master_building_object
+                .as_ref()
+                .map(|b| &b.tribe_master_combat_object)
+        });
         if let Some(c) = combat {
             work.cost = build_cost(&c.build_inventory);
             work.build_time = c.train_location.first().map_or(0, |t| t.train_time);
@@ -2110,7 +2146,7 @@ fn parse_ahead<T: Send>(n: usize, threads: usize, f: &(dyn Fn(usize) -> T + Sync
         (0..n).map(|_| std::sync::Mutex::new(None)).collect();
     std::thread::scope(|scope| {
         for _ in 0..threads.min(n) {
-            scope.spawn(|| {
+            let _ = scope.spawn(|| {
                 loop {
                     let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     if n <= k {
@@ -2158,18 +2194,14 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
             let place = [s.t_x, s.t_y, s.t_z];
             let footprint = [m.radius[0], m.radius[1]];
             let speed = moving_speed(o, s, section.objects());
-            let links = match building {
-                Some(b) => {
-                    b.mupt_linked_object_references_linked_owner_id == -1 && b.desolid_flag == 0
-                }
-                None => {
-                    o.combat().is_some() && speed == 0.0 && (0.5 < m.radius[0] || 0.5 < m.radius[1])
-                }
-            };
+            let links = building.map_or_else(
+                || o.combat().is_some() && speed == 0.0 && (0.5 < m.radius[0] || 0.5 < m.radius[1]),
+                |b| b.mupt_linked_object_references_linked_owner_id == -1 && b.desolid_flag == 0,
+            );
             let umv = match (links, building.is_some()) {
                 (true, true) => sight.link_building(place, footprint),
                 (true, false) => {
-                    sight.link_building(place, footprint);
+                    let _ = sight.link_building(place, footprint);
                     0
                 }
                 (false, true) => sight.building_entry(place, footprint),
@@ -2386,7 +2418,7 @@ impl Decoder {
     fn prime(&mut self, frames: &[Frame<'_>], sections: &[PlayerSection<'_>]) {
         for frame in frames {
             for p in &frame.commands {
-                self.command(p, sections);
+                let _ = self.command(p, sections);
             }
         }
     }
@@ -2526,7 +2558,7 @@ impl Decoder {
                 .into_iter()
                 .take((num as usize).min(MAX_UNITS))
                 .collect();
-            self.last_commanded.insert(player, units.clone());
+            let _ = self.last_commanded.insert(player, units.clone());
             units
         };
         order.then_some(Command::Order {
@@ -2624,7 +2656,7 @@ fn queue_data(
                     && t.train_location_id == building_master
                     && t.button_location_id == button as u8
             })
-            .or(c.train_location.first())
+            .or_else(|| c.train_location.first())
             .map(|t| t.train_time)
     };
     let time = train_time(unit).ok_or(Unsupported("a master without a train location"))?;
@@ -2650,10 +2682,10 @@ fn queue_data(
 fn build_command(packet: &de::command::Build, sections: &[PlayerSection<'_>]) -> Command {
     let player = packet.commp_id as usize;
     let master = packet.o_id as i16;
-    let unit_ai = match sections.get(player) {
-        Some(section) => new_unit_ai(section.objects(), master),
-        None => Err(Unsupported("BUILD names a player the save does not have")),
-    };
+    let unit_ai = sections.get(player).map_or(
+        Err(Unsupported("BUILD names a player the save does not have")),
+        |section| new_unit_ai(section.objects(), master),
+    );
     if packet.num == LAST_COMMANDED {
         return Command::Unmodelled {
             player,
@@ -2697,23 +2729,28 @@ fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, Unsu
 }
 
 fn combat_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterCombatObject> {
-    None.or(m
-        .tribe_master_combat_object
-        .as_ref()
-        .map(|c| &c.rge_master_combat_object))
-        .or(m
-            .tribe_master_building_object
+    None.or_else(|| {
+        m.tribe_master_combat_object
             .as_ref()
-            .map(|b| &b.tribe_master_combat_object.rge_master_combat_object))
-        .or(m
-            .rge_master
+            .map(|c| &c.rge_master_combat_object)
+    })
+    .or_else(|| {
+        m.tribe_master_building_object
             .as_ref()
-            .and_then(|r| r.rge_master_combat_object.as_ref()))
-        .or(m.rge_master.as_ref().and_then(|r| {
+            .map(|b| &b.tribe_master_combat_object.rge_master_combat_object)
+    })
+    .or_else(|| {
+        m.rge_master
+            .as_ref()
+            .and_then(|r| r.rge_master_combat_object.as_ref())
+    })
+    .or_else(|| {
+        m.rge_master.as_ref().and_then(|r| {
             r.rge_master_missile_object
                 .as_ref()
                 .map(|m| &m.rge_master_combat_object)
-        }))
+        })
+    })
 }
 
 /// Run the slice over `frames`, each tick with its commands.
@@ -2746,6 +2783,10 @@ fn run(
 ///
 /// The checkpoint block is built before the player loop of the tick that records it, so it shows
 /// the state after one tick fewer than the syncs before it.
+///
+/// # Panics
+///
+/// Never: the first checkpoint it reads is the one it found.
 pub fn simulate_word9(
     recording: &[u8],
     masters: Option<&MasterTable>,
@@ -2813,10 +2854,12 @@ fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32;
             position: unit.position,
             retarget_timer: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
             // a producing building's action state is its make action's; its type stays -1
-            top_action: top_action(unit).or(unit.production.as_ref().map(|_| TopAction {
-                kind: -1,
-                state: genie_core::production::Production::MAKING,
-            })),
+            top_action: top_action(unit).or_else(|| {
+                unit.production.as_ref().map(|_| TopAction {
+                    kind: -1,
+                    state: genie_core::production::Production::MAKING,
+                })
+            }),
         })
         .collect();
     player_block(&state)
@@ -3289,7 +3332,7 @@ pub fn registry_from_dump(text: &str) -> Result<genie_core::registry::Registry, 
                     let v = number(w[3 + k])?;
                     *slot = usize::try_from(v).ok();
                 }
-                out.entries.insert(number(w[1])? as i32, entry);
+                let _ = out.entries.insert(number(w[1])? as i32, entry);
             }
             _ => return Err(bad()),
         }
@@ -3684,6 +3727,10 @@ pub fn spatial_with_tiles(
 /// a header line `mesh width W shapes N free F`, a `shape ID X0 Y0 X1 Y1` line per slot with its
 /// sides' contacts (`  side S` and seven hex words), then `tile X Y IDS...` for every tile that
 /// holds shapes. The save does not hold the mesh: its ids and orders follow the game's history.
+///
+/// # Panics
+///
+/// When a contact line of the dump does not hold numbers (the dump's own format).
 #[must_use]
 pub fn mesh_from_dump(text: &str) -> Option<genie_core::mesh::Mesh> {
     use genie_core::mesh::{Contact, Mesh};
@@ -3736,6 +3783,7 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::mesh::Mesh> {
 /// What the task finder (`genie_core::tasks`) reads of a save: every player's masters as the work
 /// command reads them, every object's state, holding and flags, the players' relations and their
 /// attribute 95.
+#[derive(Debug)]
 pub struct FinderWorld {
     pub masters: Vec<genie_core::masters::Masters>,
     pub objects: std::collections::HashMap<i32, FinderObject>,
@@ -3857,7 +3905,7 @@ pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Err
                 .master(s.master_obj)
                 .and_then(|m| m.static_part())
                 .map_or(0.0, |m| f32::from(m.read_temp_6));
-            objects.insert(
+            let _ = objects.insert(
                 s.id,
                 FinderObject {
                     player,

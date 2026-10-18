@@ -158,7 +158,7 @@ impl TechState {
         self.locations
             .iter()
             .find(|l| l.building == building)
-            .or(self.locations.first())
+            .or_else(|| self.locations.first())
     }
 
     /// `FUN_1411c3190` for a research in state 2 or 4 (else none): the costs its queue entry
@@ -460,9 +460,9 @@ mod tests {
         assert_eq!(s.listed_costs(&d, (0.0, 1)), [(3, 50), (-1, 0), (-1, 0)]);
         assert!(!s.repeatable(&d, false));
         // the game's attributes in 3842 (80 food, 157 wood, 200 stone, 100 gold) and after it
-        let mut held = Held([79.956116, 157.05705, 200.0, 100.0]);
+        let mut held = Held([79.956_116, 157.05705, 200.0, 100.0]);
         assert_eq!(s.pay(&d, (0.0, 1), false, 109, &mut held), Ok(true));
-        assert_eq!(held.0, [79.956116, 157.05705, 200.0, 50.0]);
+        assert_eq!(held.0, [79.956_116, 157.05705, 200.0, 50.0]);
         assert_eq!((s.state, s.building_master), (4, 109));
         // queued, it may not be researched again
         assert_eq!(s.pay(&d, (0.0, 1), false, 109, &mut held), Ok(false));

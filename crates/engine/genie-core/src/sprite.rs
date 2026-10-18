@@ -35,7 +35,7 @@ impl Graphic {
     }
 
     /// The first frame: the last one for a sprite played backwards.
-    fn first_frame(&self) -> i16 {
+    const fn first_frame(&self) -> i16 {
         if self.backwards() { self.frames - 1 } else { 0 }
     }
 }
@@ -73,7 +73,7 @@ impl ActiveSprite {
         let last = graphic.frames - 1;
         if graphic.flags & 4 != 0 {
             // FUN_1413b3490's draw, which the second one overrides
-            sprite_rng.rand15();
+            let _ = sprite_rng.rand15();
         }
         let mut s = Self {
             graphic,
@@ -113,7 +113,7 @@ impl ActiveSprite {
     }
 
     /// Slot 9 with `0x7fff` (`FUN_1413b4ff0`): back to the first frame, not looped.
-    pub fn reset_frame(&mut self) {
+    pub const fn reset_frame(&mut self) {
         self.frame = self.graphic.first_frame();
         self.looped = false;
         self.last_frame = self.frame;

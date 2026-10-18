@@ -41,6 +41,7 @@ pub struct Fly {
 }
 
 /// What a flight's choice reads of the bird and the world.
+#[derive(Debug)]
 pub struct Sky<'a> {
     /// The bird's top speed (slot 0x208) and place.
     pub speed: f32,
@@ -59,7 +60,7 @@ impl Fly {
     /// caller's: the returned flag); 2 gives the bird its master's sprite (slot 0x68, not held
     /// for a bird); 3 draws the flight's time, `r * 10 / 0x7fff + 5` seconds, from the Action
     /// stream.
-    fn set_state(&mut self, state: u8, action: &mut Well512) -> bool {
+    const fn set_state(&mut self, state: u8, action: &mut Well512) -> bool {
         self.state = state;
         if state == FLYING {
             return false;
@@ -191,7 +192,7 @@ impl Fly {
         let [moving, proceeding, working, carrying] = t.sprites;
         if moving != -1 || carrying != -1 || proceeding != -1 {
             // the moving, working or proceeding sprite, the first there from r % 3 on
-            sky.action.rand15();
+            let _ = sky.action.rand15();
             if moving == -1 && working == -1 && proceeding == -1 {
                 return Err(Unsupported(
                     "a flight whose task has only a carrying sprite",
@@ -200,7 +201,7 @@ impl Fly {
         }
         self.goal = Some([point[0], point[1], z]);
         self.move_to = Some(MoveTo::Start);
-        self.set_state(FLYING, sky.action);
+        let _ = self.set_state(FLYING, sky.action);
         Ok(false)
     }
 
@@ -236,7 +237,7 @@ mod tests {
             mover: None,
             me: Me {
                 id: 9925,
-                position: [57.845688, 104.499275, 9.0],
+                position: [57.845_688, 104.499_275, 9.0],
                 action_state: 0,
             },
             dt: 0.021,
@@ -267,7 +268,7 @@ mod tests {
     fn sky(action: &mut Well512) -> Sky<'_> {
         Sky {
             speed: 1.32,
-            position: [57.845688, 104.499275, 9.0],
+            position: [57.845_688, 104.499_275, 9.0],
             radius: [0.2, 0.2],
             map: [120, 120],
             action,
@@ -282,8 +283,8 @@ mod tests {
         let mut world = Spatial::default();
         let mut fly = Fly {
             move_to: Some(MoveTo::Moving),
-            goal: Some([57.844986, 104.49953, 9.0]),
-            ..hawk(FLYING, 0.015977083)
+            goal: Some([57.844_986, 104.49953, 9.0]),
+            ..hawk(FLYING, 0.015_977_083)
         };
         let mut r = Well512::default();
         r.set_seed(1);
@@ -304,14 +305,14 @@ mod tests {
         let mut r = Well512::default();
         r.set_seed(7);
         let mut e = r.clone();
-        fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        let _ = fly.update(walk(&mut world), sky(&mut r)).unwrap();
         let angle = e.below(360) as i32;
         let d = 1.32 * (10.0f32 - 0.021) * 1.0;
         let theta = angle as f32 * DEGREE;
         let (c, s) = (cos(theta), sin(theta));
         let point = [
-            (c * 0.0 - s) * d + 57.845688,
-            (s * 0.0 + c) * d + 104.499275,
+            (c * 0.0 - s) * d + 57.845_688,
+            (s * 0.0 + c) * d + 104.499_275,
         ];
         let inside = |p: [f32; 2]| 0.0 < p[0] && p[0] <= 119.0 && 0.0 < p[1] && p[1] <= 119.0;
         assert!(inside(point), "the seed's first angle lands on the map");
@@ -328,7 +329,7 @@ mod tests {
         assert_eq!(fly.update(walk(&mut world), sky(&mut r)), Ok(false));
         assert_eq!((fly.state, r.draws), (RESTING, 0));
         fly.timer = 0.01;
-        fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        let _ = fly.update(walk(&mut world), sky(&mut r)).unwrap();
         assert_eq!((fly.state, r.draws), (CHOOSING, 1));
     }
 

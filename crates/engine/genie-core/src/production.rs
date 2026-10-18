@@ -7,7 +7,7 @@ use crate::unit_ai::Unsupported;
 use std::collections::VecDeque;
 
 /// One unit or research in a building's queue.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Queued {
     /// The master that spawns (a villager's male or female master is drawn when it is queued),
     /// −1 for a research.
@@ -49,7 +49,7 @@ impl Production {
     /// The first unit spawned: its make action ends (its update returns 1 and the action list
     /// deletes it) and the queue lets it go (`FUN_1411e7dc0` after the list's update).
     pub fn spawned(&mut self) {
-        self.queue.pop_front();
+        let _ = self.queue.pop_front();
         self.action = false;
         self.progress = 0.0;
     }

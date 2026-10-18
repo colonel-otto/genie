@@ -56,7 +56,7 @@ pub struct Gait {
 }
 
 /// One object as movement sees it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Placed {
     /// x, y, z on the map.
     pub position: [f32; 3],
@@ -134,6 +134,10 @@ pub struct Tiles {
 impl Tiles {
     /// A map whose tiles hold `classes` (one terrain class bit per tile, row by row) and nothing
     /// else.
+    ///
+    /// # Panics
+    ///
+    /// When `classes` does not hold one class per tile of the map.
     pub fn new(width: i32, height: i32, classes: Vec<u8>) -> Self {
         let n = classes.len();
         assert_eq!(
@@ -313,7 +317,7 @@ impl Spatial {
             relations: Vec::new(),
             sight: None,
             terrain: None,
-            search_cache: Default::default(),
+            search_cache: std::cell::RefCell::default(),
         }
     }
 
@@ -358,7 +362,7 @@ impl Spatial {
     /// The object's obstruction record goes (`FUN_141055b40`'s record part): a static record's
     /// tiles keep only their terrain class (`FUN_141055980`).
     pub fn drop_record(&mut self, id: i32) {
-        let Some(p) = self.objects.get(&id).cloned() else {
+        let Some(p) = self.objects.get(&id).copied() else {
             return;
         };
         if p.obstruction.is_some_and(Obstruction::marks_tiles) {
@@ -432,8 +436,8 @@ impl Spatial {
     /// times the time since.
     pub fn freeze(&mut self, id: i32) {
         if let Some(p) = self.objects.get_mut(&id) {
-            p.unknown.get_or_insert(0.0);
-            self.frozen_for.entry(id).or_insert(0.0);
+            let _ = p.unknown.get_or_insert(0.0);
+            let _ = self.frozen_for.entry(id).or_insert(0.0);
         }
     }
 
@@ -442,7 +446,7 @@ impl Spatial {
         if let Some(p) = self.objects.get_mut(&id) {
             p.unknown = None;
         }
-        self.frozen_for.remove(&id);
+        let _ = self.frozen_for.remove(&id);
     }
 
     /// A tick of `dt` seconds passed: every frozen object may have moved its speed times dt.
@@ -540,7 +544,7 @@ impl Spatial {
             self.tiles.mark(&placed, o);
             self.changed.push(self.tiles.covered_rect(&placed));
         }
-        self.objects.insert(id, placed);
+        let _ = self.objects.insert(id, placed);
     }
 
     /// The object leaves the world: its place, its sight's state and its records in the registry
@@ -606,6 +610,10 @@ impl Spatial {
     /// temporary tile records of `FUN_1410510c0`): whether a tile of the walk's box whose terrain
     /// class the unit's `mask` lacks, grown by `grow`, meets the walk's segment. A walk whose grown
     /// box leaves the map counts as blocked.
+    ///
+    /// # Panics
+    ///
+    /// Never: the rectangle's tiles are held on the map.
     pub fn tiles_block(&self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) -> bool {
         let (lo_x, hi_x) = (
             if b[0] <= a[0] { b[0] } else { a[0] },
@@ -671,10 +679,10 @@ impl Spatial {
     pub fn set_gait(&mut self, id: i32, gait: Option<Gait>) {
         match gait {
             Some(g) => {
-                self.gaits.insert(id, g);
+                let _ = self.gaits.insert(id, g);
             }
             None => {
-                self.gaits.remove(&id);
+                let _ = self.gaits.remove(&id);
             }
         }
     }
@@ -687,10 +695,10 @@ impl Spatial {
     pub fn set_annex(&mut self, id: i32, main: Option<i32>) {
         match main {
             Some(m) => {
-                self.annexes.insert(id, m);
+                let _ = self.annexes.insert(id, m);
             }
             None => {
-                self.annexes.remove(&id);
+                let _ = self.annexes.remove(&id);
             }
         }
     }
@@ -1304,6 +1312,10 @@ impl Spatial {
     /// Whether a unit with terrain mask `mask` can stand on tile (`x`, `y`) (`FUN_14114d460`): the
     /// tile is on the map, its class is in the mask and no static record blocks it. A tile with
     /// two tall objects needs the game's point query, which the slice does not model.
+    ///
+    /// # Panics
+    ///
+    /// Never: the tall-object grid covers the map as the word grid does.
     pub fn passable(&self, x: i32, y: i32, mask: u8) -> Result<bool, Unsupported> {
         let Some(word) = self.tiles.word(x, y) else {
             return Ok(false);
@@ -1776,7 +1788,7 @@ mod tests {
         house.master = 70;
         house.obstruction_type = 2;
         house.obstruction = None;
-        s.insert(10028, house.clone());
+        s.insert(10028, house);
         (s, house)
     }
 

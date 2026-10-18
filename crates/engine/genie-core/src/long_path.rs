@@ -39,7 +39,7 @@ const HUMAN_PERCENT: i32 = 7500;
 const COMPUTER_FACTOR: i32 = 25;
 
 /// The heap's slot 0 (`+0x119424`), below every cost: a sift up stops there.
-const SENTINEL: i32 = 0x88ca6c00_u32 as i32;
+const SENTINEL: i32 = 0x88ca_6c00_u32 as i32;
 
 /// The goal counts as reached within this many tiles, and a range above it ends the search
 /// before it starts when the goal lies within the range (`DAT_14330eb8c`).
@@ -215,10 +215,9 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
         return Ok(true);
     }
     // the goal: the target's tile and footprint, else the goal tile
-    let (goal, rect) = match req.target {
-        Some(t) => (t.tile, t.rect),
-        None => ([x1, y1], [x1, y1, x1, y1]),
-    };
+    let (goal, rect) = req
+        .target
+        .map_or(([x1, y1], [x1, y1, x1, y1]), |t| (t.tile, t.rect));
     let in_rect = |x: i32, y: i32| rect[0] <= x && x <= rect[2] && rect[1] <= y && y <= rect[3];
     if REACHED < req.range && req.target.is_none() && (gap2 as f32) < req.range * req.range {
         return Ok(true);

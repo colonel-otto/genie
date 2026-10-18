@@ -89,6 +89,7 @@ pub struct Attack {
 }
 
 /// What the Attack reads of its unit and its target when it starts.
+#[derive(Clone, Copy, Debug)]
 pub struct Engagement {
     /// The gap between the two footprints squared (`FUN_14118f8c0`) and its root (`FUN_14118f680`).
     pub gap_squared: f32,
@@ -109,6 +110,7 @@ pub struct Engagement {
 }
 
 /// What the Attack's update reads of its unit besides its movement, and changes.
+#[derive(Debug)]
 pub struct Strike<'a> {
     /// The unit's active sprite and animation speed (`+0x7b8`), None while the slice does not
     /// know them.
@@ -227,7 +229,7 @@ impl Attack {
                     "an attack whose unit cannot move to its target",
                 ));
             }
-            a.set_move(e, mover)?;
+            let _ = a.set_move(e, mover)?;
         }
         // the start's own test of the speed and the unit AI (slots 0x208 and 0x1d0): state 4
         let arrived = a.set_move(e, mover)?;
@@ -499,11 +501,10 @@ impl Attack {
             self.finish(&mut walk, s)?;
             return Ok(5);
         }
-        let t = walk
+        let t = *walk
             .world
             .get_known(self.target)?
-            .ok_or(Unsupported("an Attack whose target is gone"))?
-            .clone();
+            .ok_or(Unsupported("an Attack whose target is gone"))?;
         if self.state != KILLED && (t.position[0] != self.seen[0] || t.position[1] != self.seen[1])
         {
             // the target moved: where it was seen follows (`+0xa4`..`+0xac`); one the unit's
@@ -736,7 +737,7 @@ impl Attack {
             at: s.own.position,
             from_z: s.own.position[2],
             missile: false,
-            hit_chance: s.hit_chance,
+            chance: s.hit_chance,
         };
         let struck = strike(&mut s.own, s.victim, s.blasted, hit, object_rng)?;
         s.executed = struck.executed;
@@ -780,7 +781,7 @@ pub(crate) struct Hit {
     pub at: [f32; 3],
     pub from_z: f32,
     pub missile: bool,
-    pub hit_chance: i16,
+    pub chance: i16,
 }
 
 /// What a hit did: its result (`+0x98` of a missile: 2 when a shield blocked it, else 1) and the
@@ -837,7 +838,7 @@ pub(crate) fn strike(
     }
     let draw = object_rng.raw64();
     let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
-    if i64::from(hit.hit_chance) < r && a.missile < 0 {
+    if i64::from(hit.chance) < r && a.missile < 0 {
         return Ok(struck);
     }
     let factor = damage::elevation_factor(hit.from_z, own.attack_elevation, victim);
@@ -857,7 +858,7 @@ pub fn arms(
 ) -> Arms {
     let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
     Arms {
-        sprite: g(sprites[1]).or(g(master.attack_sprite)),
+        sprite: g(sprites[1]).or_else(|| g(master.attack_sprite)),
         second_sprite: g(master.attack_sprite2),
         idle_sprite: g(master.standing_sprite),
         idle_attack_sprite: g(master.idle_attack_sprite),

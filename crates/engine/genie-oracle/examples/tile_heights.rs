@@ -25,7 +25,7 @@ fn main() {
             let line: Vec<String> = (x0..=x1)
                 .map(|x| {
                     at(if order { x } else { y }, if order { y } else { x })
-                        .map_or("-".into(), |e| e.to_string())
+                        .map_or_else(|| "-".into(), |e| e.to_string())
                 })
                 .collect();
             println!("  y {y:3}: {}", line.join(" "));

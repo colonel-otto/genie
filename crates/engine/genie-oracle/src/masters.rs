@@ -419,7 +419,7 @@ impl MasterTable {
                 })
                 .collect(),
             sprite_speed: HashMap::new(),
-            graphics: Default::default(),
+            graphics: std::collections::BTreeMap::default(),
             terrain: TerrainTable::default(),
             drop_sites: Vec::new(),
             techs: Vec::new(),

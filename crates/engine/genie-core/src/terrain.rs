@@ -200,6 +200,10 @@ impl Terrain {
     /// foundation's (`FUN_140f64170`), or with no snow layer and setting `+0x680` at 1 its layer.
     /// The deferred covering under `DAT_143f69454` (0 when probed), farms, master 109's gaps,
     /// masters 357 and 1188 and class 14 are not modelled.
+    ///
+    /// # Panics
+    ///
+    /// Never: the tiles it covers are held on the map.
     pub fn cover(&mut self, f: &Foundation) -> Result<(), Unsupported> {
         /// `DAT_142eb1e9c`.
         const INSIDE: f32 = crate::image::terrain::INSIDE;

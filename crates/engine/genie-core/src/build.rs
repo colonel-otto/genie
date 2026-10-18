@@ -74,6 +74,7 @@ pub struct Construction {
 }
 
 /// What a builder's work reaches of its foundation.
+#[derive(Debug)]
 pub struct Site<'a> {
     pub id: i32,
     pub life: &'a mut Lifecycle,
@@ -109,6 +110,7 @@ pub enum Worked {
 }
 
 /// What a builder brings to its Build action's update besides its walk.
+#[derive(Debug)]
 pub struct Builder<'a> {
     /// The builder's class (`+0x0a`, decoded).
     pub class: i16,
@@ -195,6 +197,11 @@ impl BuildAction {
     /// no longer under construction (a state above 0) ends the work (`set_state(224)`) unless the
     /// Build already ended (224, 4, 8); one that is gone, a dead one, master 621, a builder of
     /// class 39 and master 1889 of a human player are not modelled.
+    ///
+    /// # Panics
+    ///
+    /// Never: a builder clearing the footprint (state 223) always has the point its `set_state`
+    /// gave it.
     pub fn update(
         &mut self,
         mut walk: Walk<'_>,
@@ -250,7 +257,7 @@ impl BuildAction {
                 self.move_to = Some(start_walk(walk, Goal::Target(self.target), range, false)?);
                 Ok(())
             }
-            (4, Some(MoveTo::Moving)) => {
+            (4 | CLEAR, Some(MoveTo::Moving)) => {
                 self.move_to = Some(walk_on(walk)?);
                 Ok(())
             }
@@ -278,10 +285,6 @@ impl BuildAction {
                 self.move_to = Some(MoveTo::Moving);
                 let goal = self.goal.expect("set_state(223) sets the goal");
                 self.move_to = Some(start_walk(walk, Goal::Point(goal), 0.0, false)?);
-                Ok(())
-            }
-            (CLEAR, Some(MoveTo::Moving)) => {
-                self.move_to = Some(walk_on(walk)?);
                 Ok(())
             }
             // case 0xde: the MoveTo ended (its update in state 1 returns 1): a villager goes
@@ -720,10 +723,9 @@ impl Construction {
                 return Err(Unsupported("a completion with an own store (mode 16)"));
             }
         }
-        let placed = world
+        let placed = *world
             .get(id)
-            .ok_or(Unsupported("a completed building without a place"))?
-            .clone();
+            .ok_or(Unsupported("a completed building without a place"))?;
         if let Some(v) = world.sight.as_mut() {
             v.construction_completed(id, placed.position, placed.radius);
         }
@@ -767,10 +769,9 @@ impl Construction {
         world: &mut Spatial,
         pathing: &mut Pathing,
     ) -> Result<(), Unsupported> {
-        let placed = world
+        let placed = *world
             .get(id)
-            .ok_or(Unsupported("a foundation that is gone"))?
-            .clone();
+            .ok_or(Unsupported("a foundation that is gone"))?;
         if world.foundations_overlapping(id, &placed) {
             return Err(Unsupported("a construction start over another foundation"));
         }
@@ -1046,7 +1047,7 @@ mod tests {
                 mode_680: 0,
             },
         };
-        build
+        let _ = build
             .update(
                 Walk {
                     mover: Some(&mut mover),
@@ -1076,11 +1077,6 @@ mod tests {
 
     #[test]
     fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it() {
-        let mut near = BuildAction::start(10028, 0.0, TASK);
-        let mut far = BuildAction::start(10028, 0.8, TASK);
-        assert_eq!((near.state, near.move_to), (4, Some(MoveTo::Arrived)));
-        assert_eq!((far.state, far.move_to), (4, Some(MoveTo::Start)));
-        let mut world = Spatial::default();
         fn walk(id: i32, world: &mut Spatial) -> Walk<'_> {
             Walk {
                 mover: None,
@@ -1094,6 +1090,11 @@ mod tests {
                 plan: None,
             }
         }
+        let mut near = BuildAction::start(10028, 0.0, TASK);
+        let mut far = BuildAction::start(10028, 0.8, TASK);
+        assert_eq!((near.state, near.move_to), (4, Some(MoveTo::Arrived)));
+        assert_eq!((far.state, far.move_to), (4, Some(MoveTo::Start)));
+        let mut world = Spatial::default();
         let builder = || Builder {
             class: VILLAGER,
             held: 0.0,
@@ -1101,7 +1102,7 @@ mod tests {
             more_work: false,
         };
         world.insert(10028, house());
-        near.update(walk(1, &mut world), None, builder()).unwrap();
+        let _ = near.update(walk(1, &mut world), None, builder()).unwrap();
         assert_eq!((near.state, near.move_to), (6, None));
         // the far one checks its foundation, which must be in the world
         let mut empty = Spatial::default();

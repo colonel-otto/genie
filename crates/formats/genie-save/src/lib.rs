@@ -16,7 +16,18 @@
 //! `tests/de_roundtrip.rs`, over the recordings' chapters). The generated version gates compare
 //! the raw 16.16 save version ([`Header::raw_version`]).
 
-#[allow(missing_docs, clippy::all, clippy::pedantic, clippy::nursery)] // generated
+#[allow(
+    missing_docs,
+    missing_copy_implementations,
+    missing_debug_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_qualifications,
+    unused_results,
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery
+)] // generated
 pub mod generated;
 mod layout_types;
 mod objects;
@@ -165,7 +176,8 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
             message: format!("save version {v} is older than 66.0"),
         });
     }
-    r.seek(SeekFrom::Start(start as u64))
+    let _ = r
+        .seek(SeekFrom::Start(start as u64))
         .map_err(|e| read_error(e.into()))?;
     let file_header = SaveGameFileHeader::read_args(r, (raw,)).map_err(read_error)?;
     let lobby_end = position(r)?;
@@ -244,7 +256,7 @@ mod tests {
         let v = SaveVersion {
             major: 66,
             minor: 39321,
-            build: 158041,
+            build: 158_041,
         };
         assert_eq!(v.hundredths(), 6660);
     }

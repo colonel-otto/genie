@@ -32,7 +32,7 @@ pub enum Class {
 }
 
 /// The fields the dead-object steps read and write, with their offsets in 158041.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Lifecycle {
     pub class: Class,
     /// `+0x640`, the save's `object_state`.
@@ -265,7 +265,8 @@ mod tests {
             }),
             ..dead(Class::Static)
         };
-        life.update(seconds(104), &mut Well512::default(), false)
+        let _ = life
+            .update(seconds(104), &mut Well512::default(), false)
             .unwrap();
         assert_eq!((life.state, life.amount), (3, 0.0));
     }
@@ -279,11 +280,11 @@ mod tests {
             ..dead(Class::Animated)
         };
         let mut rng = Well512::default();
-        sheep.update(0.025, &mut rng, true).unwrap();
+        let _ = sheep.update(0.025, &mut rng, true).unwrap();
         assert_eq!(sheep.state, 4);
-        sheep.update(0.025, &mut rng, true).unwrap();
+        let _ = sheep.update(0.025, &mut rng, true).unwrap();
         assert_eq!(sheep.state, 4);
-        sheep.update(0.025, &mut rng, false).unwrap();
+        let _ = sheep.update(0.025, &mut rng, false).unwrap();
         assert_eq!(sheep.state, 5);
     }
 
@@ -351,10 +352,10 @@ mod tests {
         };
         let mut object = Well512::default();
         object.set_seed(1);
-        tree.update(0.02, &mut object, false).unwrap();
+        let _ = tree.update(0.02, &mut object, false).unwrap();
         assert_eq!((tree.state, tree.amount, object.draws), (3, 100.0, 1));
         // dead with its wood, it waits (no decay) and draws nothing more
-        tree.update(0.02, &mut object, false).unwrap();
+        let _ = tree.update(0.02, &mut object, false).unwrap();
         assert_eq!((tree.state, object.draws), (3, 1));
     }
 
@@ -362,7 +363,7 @@ mod tests {
     fn the_unit_ai_runs_up_to_state_2() {
         let mut life = dead(Class::Animated);
         assert!(life.is_alive());
-        life.update(0.104, &mut Well512::default(), false).unwrap();
+        let _ = life.update(0.104, &mut Well512::default(), false).unwrap();
         assert!(!life.is_alive());
     }
 }

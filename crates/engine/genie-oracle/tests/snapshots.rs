@@ -97,7 +97,7 @@ fn a_save_read_as_the_slice_s_start_is_the_save() {
         0,
         2,
         Some(&masters),
-        Default::default(),
+        genie_oracle::Dumps::default(),
     )
     .unwrap();
     let game = genie_oracle::saved_objects(&start, 2).unwrap();

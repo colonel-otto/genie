@@ -54,6 +54,7 @@ impl MoveTo {
 
 /// What a walking unit's update needs: its movement state, where it is, and the world; the
 /// planners and the world's time for a path request (None where the caller has none).
+#[derive(Debug)]
 pub struct Walk<'a> {
     pub mover: Option<&'a mut Mover>,
     pub me: Me,

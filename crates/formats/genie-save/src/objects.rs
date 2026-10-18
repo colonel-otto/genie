@@ -15,37 +15,43 @@ impl Player {
     /// The player load of its class (`WorldPlayer.cpp`); None for a type no creator handles.
     #[must_use]
     pub fn world_player(&self) -> Option<&WorldPlayer> {
-        None.or(self
-            .scenario_editor_phantom_player
-            .as_ref()
-            .map(|p| &p.world_player_scenario_editor_phantom))
-            .or(self
-                .human_or_coop_player
+        None.or_else(|| {
+            self.scenario_editor_phantom_player
                 .as_ref()
-                .map(|p| &p.world_player_human_or_coop))
-            .or(self
-                .gaia_player
+                .map(|p| &p.world_player_scenario_editor_phantom)
+        })
+        .or_else(|| {
+            self.human_or_coop_player
                 .as_ref()
-                .map(|p| &p.world_player_gaia.world_player))
-            .or(self
-                .computer_player
+                .map(|p| &p.world_player_human_or_coop)
+        })
+        .or_else(|| {
+            self.gaia_player
                 .as_ref()
-                .map(|p| &p.world_player_computer))
+                .map(|p| &p.world_player_gaia.world_player)
+        })
+        .or_else(|| {
+            self.computer_player
+                .as_ref()
+                .map(|p| &p.world_player_computer)
+        })
     }
 
     /// The masters, maps and objects (`WorldPlayer` vtable slot 29).
     #[must_use]
     pub fn objects(&self) -> Option<&PlayerObjects> {
-        None.or(self
-            .scenario_editor_phantom_player
-            .as_ref()
-            .map(|p| &p.player_objects))
-            .or(self
-                .human_or_coop_player
+        None.or_else(|| {
+            self.scenario_editor_phantom_player
                 .as_ref()
-                .map(|p| &p.player_objects))
-            .or(self.gaia_player.as_ref().map(|p| &p.player_objects))
-            .or(self.computer_player.as_ref().map(|p| &p.player_objects))
+                .map(|p| &p.player_objects)
+        })
+        .or_else(|| {
+            self.human_or_coop_player
+                .as_ref()
+                .map(|p| &p.player_objects)
+        })
+        .or_else(|| self.gaia_player.as_ref().map(|p| &p.player_objects))
+        .or_else(|| self.computer_player.as_ref().map(|p| &p.player_objects))
     }
 }
 
@@ -64,6 +70,7 @@ impl PlayerObjects {
 
 impl Master {
     /// The static master every class starts with.
+    #[must_use]
     pub fn static_part(&self) -> Option<&RgeMasterStaticObject> {
         if let Some(t) = &self.tribe_master_tree_object {
             return Some(t);
@@ -76,24 +83,28 @@ impl Master {
         }
         let r = self.rge_master.as_ref()?;
         None.or(r.rge_master_static_object.as_ref())
-            .or(r
-                .rge_master_animated_object
-                .as_ref()
-                .map(|a| &a.rge_master_static_object))
-            .or(r
-                .rge_master_doppleganger_object
-                .as_ref()
-                .map(|d| &d.rge_master_static_object))
-            .or(r.rge_master_moving_object.as_ref().map(moving_master))
-            .or(r.rge_master_action_object.as_ref().map(action_master))
-            .or(r
-                .rge_master_combat_object
-                .as_ref()
-                .map(|c| action_master(&c.rge_master_action_object)))
-            .or(r
-                .rge_master_missile_object
-                .as_ref()
-                .map(|m| action_master(&m.rge_master_combat_object.rge_master_action_object)))
+            .or_else(|| {
+                r.rge_master_animated_object
+                    .as_ref()
+                    .map(|a| &a.rge_master_static_object)
+            })
+            .or_else(|| {
+                r.rge_master_doppleganger_object
+                    .as_ref()
+                    .map(|d| &d.rge_master_static_object)
+            })
+            .or_else(|| r.rge_master_moving_object.as_ref().map(moving_master))
+            .or_else(|| r.rge_master_action_object.as_ref().map(action_master))
+            .or_else(|| {
+                r.rge_master_combat_object
+                    .as_ref()
+                    .map(|c| action_master(&c.rge_master_action_object))
+            })
+            .or_else(|| {
+                r.rge_master_missile_object
+                    .as_ref()
+                    .map(|m| action_master(&m.rge_master_combat_object.rge_master_action_object))
+            })
     }
 }
 
@@ -113,86 +124,112 @@ const fn action_master(a: &RgeMasterActionObject) -> &RgeMasterStaticObject {
     moving_master(&a.rge_master_moving_object)
 }
 
-fn tribe_combat_master(c: &TribeMasterCombatObject) -> &RgeMasterStaticObject {
+const fn tribe_combat_master(c: &TribeMasterCombatObject) -> &RgeMasterStaticObject {
     action_master(&c.rge_master_combat_object.rge_master_action_object)
 }
 
 impl RgeStaticObject {
     /// The static part of the object's own master (`has_own_master_object`), which the object
     /// uses instead of its player's.
+    #[must_use]
     pub fn own_master(&self) -> Option<&OwnRgeMasterStaticObject> {
         None.or(self.rge_master_static_object.as_ref())
-            .or(self
-                .rge_master_animated_object
-                .as_ref()
-                .map(|a| &a.own_rge_master_static_object))
-            .or(self.rge_master_moving_object.as_ref().map(|m| {
-                &m.own_rge_master_animated_object
-                    .own_rge_master_static_object
-            }))
-            .or(self
-                .rge_master_action_object
-                .as_ref()
-                .map(own_action_master))
-            .or(self.rge_master_missile_object.as_ref().map(|m| {
-                own_action_master(&m.own_rge_master_combat_object.own_rge_master_action_object)
-            }))
-            .or(self
-                .tribe_master_combat_object
-                .as_ref()
-                .map(own_tribe_combat_master))
-            .or(self
-                .tribe_master_building_object
-                .as_ref()
-                .map(|b| own_tribe_combat_master(&b.own_tribe_master_combat_object)))
+            .or_else(|| {
+                self.rge_master_animated_object
+                    .as_ref()
+                    .map(|a| &a.own_rge_master_static_object)
+            })
+            .or_else(|| {
+                self.rge_master_moving_object.as_ref().map(|m| {
+                    &m.own_rge_master_animated_object
+                        .own_rge_master_static_object
+                })
+            })
+            .or_else(|| {
+                self.rge_master_action_object
+                    .as_ref()
+                    .map(own_action_master)
+            })
+            .or_else(|| {
+                self.rge_master_missile_object.as_ref().map(|m| {
+                    own_action_master(&m.own_rge_master_combat_object.own_rge_master_action_object)
+                })
+            })
+            .or_else(|| {
+                self.tribe_master_combat_object
+                    .as_ref()
+                    .map(own_tribe_combat_master)
+            })
+            .or_else(|| {
+                self.tribe_master_building_object
+                    .as_ref()
+                    .map(|b| own_tribe_combat_master(&b.own_tribe_master_combat_object))
+            })
     }
 }
 
 impl RgeStaticObject {
     /// The animated part of the object's own master, which holds its speed (`mMaxSpeed`); None
     /// for an object without an own master or one without an animated part.
+    #[must_use]
     pub fn own_moving_master(&self) -> Option<&OwnRgeMasterMovingObject> {
         None.or(self.rge_master_moving_object.as_ref())
-            .or(self
-                .rge_master_action_object
-                .as_ref()
-                .map(own_action_moving))
-            .or(self.rge_master_missile_object.as_ref().map(|m| {
-                own_action_moving(&m.own_rge_master_combat_object.own_rge_master_action_object)
-            }))
-            .or(self.tribe_master_combat_object.as_ref().map(|c| {
-                own_action_moving(&c.own_rge_master_combat_object.own_rge_master_action_object)
-            }))
-            .or(self.tribe_master_building_object.as_ref().map(|b| {
-                own_action_moving(
-                    &b.own_tribe_master_combat_object
-                        .own_rge_master_combat_object
-                        .own_rge_master_action_object,
-                )
-            }))
+            .or_else(|| {
+                self.rge_master_action_object
+                    .as_ref()
+                    .map(own_action_moving)
+            })
+            .or_else(|| {
+                self.rge_master_missile_object.as_ref().map(|m| {
+                    own_action_moving(&m.own_rge_master_combat_object.own_rge_master_action_object)
+                })
+            })
+            .or_else(|| {
+                self.tribe_master_combat_object.as_ref().map(|c| {
+                    own_action_moving(&c.own_rge_master_combat_object.own_rge_master_action_object)
+                })
+            })
+            .or_else(|| {
+                self.tribe_master_building_object.as_ref().map(|b| {
+                    own_action_moving(
+                        &b.own_tribe_master_combat_object
+                            .own_rge_master_combat_object
+                            .own_rge_master_action_object,
+                    )
+                })
+            })
     }
 
+    #[must_use]
     pub fn own_animated_master(&self) -> Option<&OwnRgeMasterAnimatedObject> {
         None.or(self.rge_master_animated_object.as_ref())
-            .or(self
-                .rge_master_moving_object
-                .as_ref()
-                .map(|m| &m.own_rge_master_animated_object))
-            .or(self
-                .rge_master_action_object
-                .as_ref()
-                .map(own_action_animated))
-            .or(self.rge_master_missile_object.as_ref().map(|m| {
-                own_action_animated(&m.own_rge_master_combat_object.own_rge_master_action_object)
-            }))
-            .or(self
-                .tribe_master_combat_object
-                .as_ref()
-                .map(own_combat_animated))
-            .or(self
-                .tribe_master_building_object
-                .as_ref()
-                .map(|b| own_combat_animated(&b.own_tribe_master_combat_object)))
+            .or_else(|| {
+                self.rge_master_moving_object
+                    .as_ref()
+                    .map(|m| &m.own_rge_master_animated_object)
+            })
+            .or_else(|| {
+                self.rge_master_action_object
+                    .as_ref()
+                    .map(own_action_animated)
+            })
+            .or_else(|| {
+                self.rge_master_missile_object.as_ref().map(|m| {
+                    own_action_animated(
+                        &m.own_rge_master_combat_object.own_rge_master_action_object,
+                    )
+                })
+            })
+            .or_else(|| {
+                self.tribe_master_combat_object
+                    .as_ref()
+                    .map(own_combat_animated)
+            })
+            .or_else(|| {
+                self.tribe_master_building_object
+                    .as_ref()
+                    .map(|b| own_combat_animated(&b.own_tribe_master_combat_object))
+            })
     }
 }
 
@@ -245,15 +282,17 @@ impl Object {
         }
         let r = self.rge_object.as_ref()?;
         None.or(r.rge_moving_object.as_ref())
-            .or(r.rge_action_object.as_ref().map(|a| &a.rge_moving_object))
-            .or(r
-                .rge_combat_object
-                .as_ref()
-                .map(|c| &c.rge_action_object.rge_moving_object))
-            .or(r
-                .rge_missile_object
-                .as_ref()
-                .map(|m| &m.rge_combat_object.rge_action_object.rge_moving_object))
+            .or_else(|| r.rge_action_object.as_ref().map(|a| &a.rge_moving_object))
+            .or_else(|| {
+                r.rge_combat_object
+                    .as_ref()
+                    .map(|c| &c.rge_action_object.rge_moving_object)
+            })
+            .or_else(|| {
+                r.rge_missile_object
+                    .as_ref()
+                    .map(|m| &m.rge_combat_object.rge_action_object.rge_moving_object)
+            })
     }
 
     /// The tribe combat object of a combat object (type 70) or a building (type 80).
@@ -306,7 +345,7 @@ const fn action(a: &RgeActionObject) -> &RgeStaticObject {
     moving(&a.rge_moving_object)
 }
 
-fn combat_static(c: &TribeCombatObject) -> &RgeStaticObject {
+const fn combat_static(c: &TribeCombatObject) -> &RgeStaticObject {
     action(&c.rge_combat_object.rge_action_object)
 }
 
@@ -345,11 +384,12 @@ impl Object {
         }
         let r = self.rge_object.as_ref()?;
         None.or(r.rge_action_object.as_ref())
-            .or(r.rge_combat_object.as_ref().map(|c| &c.rge_action_object))
-            .or(r
-                .rge_missile_object
-                .as_ref()
-                .map(|m| &m.rge_combat_object.rge_action_object))
+            .or_else(|| r.rge_combat_object.as_ref().map(|c| &c.rge_action_object))
+            .or_else(|| {
+                r.rge_missile_object
+                    .as_ref()
+                    .map(|m| &m.rge_combat_object.rge_action_object)
+            })
             .map(|a| &a.actions)
     }
 }

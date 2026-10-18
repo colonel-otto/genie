@@ -88,7 +88,7 @@ impl ZoneMap {
 }
 
 /// The map's zone maps, one per passability pattern, made when first asked for.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Zones {
     maps: Vec<ZoneMap>,
 }
@@ -152,9 +152,9 @@ mod tests {
     fn restrictions_of_one_pattern_share_their_map() {
         let mut zones = Zones::default();
         let kinds = [0, 1];
-        zones.of(2, 1, &kinds, &[1.0, 0.0]);
-        zones.of(2, 1, &kinds, &[0.5, -1.0]);
-        zones.of(2, 1, &kinds, &[0.0, 1.0]);
+        let _ = zones.of(2, 1, &kinds, &[1.0, 0.0]);
+        let _ = zones.of(2, 1, &kinds, &[0.5, -1.0]);
+        let _ = zones.of(2, 1, &kinds, &[0.0, 1.0]);
         assert_eq!(zones.maps.len(), 2);
     }
 }

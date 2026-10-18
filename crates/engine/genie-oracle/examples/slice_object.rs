@@ -21,8 +21,11 @@ fn main() {
         .or_else(|| {
             let raw = std::fs::read(dir.join(format!("{start}.mesh.gz"))).ok()?;
             let mut text = String::new();
-            std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&raw[..]), &mut text)
-                .ok()?;
+            let _ = std::io::Read::read_to_string(
+                &mut flate2::read::GzDecoder::new(&raw[..]),
+                &mut text,
+            )
+            .ok()?;
             Some(text)
         });
     let registry = std::fs::read_to_string(dir.join(format!("{start}.registry"))).ok();

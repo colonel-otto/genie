@@ -86,7 +86,7 @@ impl Artifact {
         searches: bool,
         owner: &mut dyn FnMut() -> Result<Option<usize>, Unsupported>,
     ) -> Result<Option<usize>, Unsupported> {
-        self.walk(walk)?;
+        let _ = self.walk(walk)?;
         self.step(dt_ms, searches, owner)
     }
 
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn a_check_finds_no_owner_and_waits_one_second() {
         let mut a = Artifact::new(false);
-        a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer), (10, 1.0));
     }
 
@@ -204,29 +204,29 @@ mod tests {
         assert!(a.update(None, 50, true, &mut || Ok(None)).is_err());
         // a MoveTo that ended goes with the point, then the check waits again
         a.move_to = Some(MoveTo::Arrived);
-        a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer, a.move_to, a.goal), (10, 1.0, None, None));
     }
 
     #[test]
     fn gaia_waits_half_a_second() {
         let mut a = Artifact::new(true);
-        a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!(a.timer, 0.5);
     }
 
     #[test]
     fn the_wait_ends_when_the_timer_reaches_zero_then_one_check_follows() {
         let mut a = Artifact::new(false);
-        a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
         // 1.0 - 20 × 0.05 in f32 is -1.56e-7, so the 20th update ends the wait
         let waits = (0..30).take_while(|_| {
-            a.update(None, 50, true, &mut || Ok(None)).unwrap();
+            let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
             a.state == 10
         });
         assert_eq!(waits.count(), 19);
         assert_eq!(a.state, 6);
-        a.update(None, 50, true, &mut || Ok(None)).unwrap();
+        let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer), (10, 1.0));
     }
 

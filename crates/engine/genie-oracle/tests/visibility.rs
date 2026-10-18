@@ -3,6 +3,15 @@
 //! (`<tick>.tilelinks`: `load_oracle/probes/tile_links.py`, which the save does not hold),
 //! `GENIE_TICK_REC` the recording, `GENIE_DAT` the build's `.dat`. Skips without them.
 
+// the dumps' numbers fit the game's widths; a test runs the whole comparison
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::too_many_lines
+)]
+
 mod common;
 
 use genie_core::visibility::Visibility;

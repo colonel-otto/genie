@@ -105,13 +105,13 @@ impl ExploreAction {
     /// What the update does after its `MoveTo`'s update returned `code` (`0x140a880c0` in state 11,
     /// `FUN_140a992b0`): 0 goes on; 1, 2, 3 and 5 make it wait for a new point (`set_state` 3); 4
     /// runs the action's slot 0x68 and walks again (`set_state` 11), which is not modelled.
-    pub fn after_walk(&mut self, code: u8) -> Result<Owner, Unsupported> {
+    pub const fn after_walk(&mut self, code: u8) -> Result<Owner, Unsupported> {
         match code {
-            0 => Ok(Owner::Nothing),
             1 | 2 | 3 | 5 => Ok(self.set_state(WAIT)),
             4 => Err(Unsupported(
                 "an Explore whose MoveTo returned 4 (its slot 0x68)",
             )),
+            // 0 (and any other code) goes on
             _ => Ok(Owner::Nothing),
         }
     }

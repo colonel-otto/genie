@@ -19,7 +19,7 @@ use crate::unit_ai::Unsupported;
 
 /// The velocity data (`+0x868`): velocity and acceleration in the unit's own frame; component 2 is
 /// along the forward vector.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Velocity {
     pub velocity: Vec3,
     pub acceleration: Vec3,
@@ -70,7 +70,7 @@ pub struct PathData {
 }
 
 /// What movement reads of the unit's master.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MoveStats {
     /// The top speed (object slot 65, `0x141202c70` -> `FUN_14114d1d0`): the master's speed
     /// (`+0x740`), times the current sprite's speed factor when that is above 0.
@@ -411,7 +411,7 @@ fn split(path: &mut Path, i: i32) {
         (d[1] / again) * half,
         (d[2] / again) * half,
     ];
-    path.insert(at + 1, fmath::add(a, step));
+    let _ = path.insert(at + 1, fmath::add(a, step));
 }
 
 /// What the motion step knows of where the walked level goes: its target, the gap to it
@@ -425,6 +425,7 @@ struct Goal<'w> {
 }
 
 /// What the motion step's planning needs of the world besides the objects' places.
+#[derive(Debug)]
 pub struct Planning<'a> {
     /// The planners, the mesh and the short pather.
     pub pathing: &'a mut Pathing,
@@ -627,10 +628,9 @@ impl Mover {
             let target = match level.target {
                 -1 => None,
                 id => Some(
-                    world
+                    *world
                         .get_known(id)?
-                        .ok_or(Unsupported("a path target that is gone"))?
-                        .clone(),
+                        .ok_or(Unsupported("a path target that is gone"))?,
                 ),
             };
             if target.as_ref().is_some_and(|t| t.class == GATE) {
@@ -684,9 +684,8 @@ impl Mover {
             }
             let (now, computer) = plan.as_deref().map_or((0, false), |p| (p.now, p.computer));
             let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
-            match self.walk(me, dt, world, pathing, goal, now, computer)? {
-                Next::Done(m) => return Ok(m),
-                _ => continue,
+            if let Next::Done(m) = self.walk(me, dt, world, pathing, goal, now, computer)? {
+                return Ok(m);
             }
         }
     }
@@ -839,7 +838,7 @@ impl Mover {
             if rx <= x && ry <= y && x <= w as f32 - rx && y <= h as f32 - ry {
                 break;
             }
-            level.points.remove(level.waypoint as usize);
+            let _ = level.points.remove(level.waypoint as usize);
         }
         if level.path_flags & 1 != 0 {
             return Err(Unsupported(
@@ -936,7 +935,7 @@ impl Mover {
         if k == from {
             return Ok(false);
         }
-        self.paths.remove(0);
+        let _ = self.paths.remove(0);
         let parent = &mut self.paths[0];
         parent.waypoint = k;
         parent.state = 2;
@@ -1038,11 +1037,11 @@ impl Mover {
         }
         match level.linked_type {
             1 => {
-                self.paths.remove(0);
+                let _ = self.paths.remove(0);
                 self.paths[0].flags |= 1;
             }
             2 => {
-                self.paths.remove(0);
+                let _ = self.paths.remove(0);
                 let parent = &mut self.paths[0];
                 parent.state = 2;
                 if parent.path_flags & 1 != 0 {
@@ -1052,7 +1051,7 @@ impl Mover {
                 }
             }
             3 => {
-                self.paths.remove(0);
+                let _ = self.paths.remove(0);
                 self.paths[0].state = 2;
             }
             _ => return Err(Unsupported("an arrived level of another link")),
@@ -1319,8 +1318,8 @@ impl Mover {
                     }
                 } else {
                     // no planner: the straight way
-                    path.insert(0, position);
-                    path.push(waypoint);
+                    let _ = path.insert(0, position);
+                    let _ = path.push(waypoint);
                     planned = true;
                     found = true;
                 }
@@ -1391,8 +1390,8 @@ impl Mover {
                 {
                     // the close-in path: the straight way to the waypoint
                     path.points.clear();
-                    path.push(position);
-                    path.push(waypoint);
+                    let _ = path.push(position);
+                    let _ = path.push(waypoint);
                     path.measure();
                     new.created = plan.now;
                     found = true;
@@ -1443,7 +1442,7 @@ impl Mover {
                         if (r.wrapping_sub(1) < 2 || 4 < r) && end < end_gap {
                             path.points.clear();
                             for &p in &other.points {
-                                path.push(p);
+                                let _ = path.push(p);
                             }
                             planned = true;
                             found = true;
@@ -1464,13 +1463,13 @@ impl Mover {
             }
         } else {
             let level = &self.paths[0];
-            path.insert(0, position);
+            let _ = path.insert(0, position);
             let to = if level.waypoint < level.points.len() as i32 {
                 level.point(level.waypoint)?
             } else {
                 position
             };
-            path.push(to);
+            let _ = path.push(to);
             path.measure();
             found = true;
         }
@@ -1796,7 +1795,7 @@ impl Mover {
                     .ok_or(Unsupported("a short path without the game's mesh"))?;
                 let found = pather.search(mesh, &words, &query, &ignore)?;
                 for p in short_path::to_path(&found.points).points {
-                    out.push(p);
+                    let _ = out.push(p);
                 }
                 Ok(found.result)
             }
@@ -2370,7 +2369,7 @@ impl Mover {
                 "a kept hit on a walk without a parent level (its stop)",
             ));
         }
-        self.paths.remove(0);
+        let _ = self.paths.remove(0);
         self.paths[0].state = 2;
         Ok(Next::Again)
     }
@@ -2548,7 +2547,7 @@ mod tests {
     fn level(level: u8, points: &[[f32; 2]], state: i32) -> PathData {
         PathData {
             level,
-            linked_type: if level == 0 { 1 } else { 0 },
+            linked_type: i32::from(level == 0),
             points: points.iter().map(|&[x, y]| [x, 0.0, y]).collect(),
             path_flags: if level == 0 { 6 } else { 4 },
             waypoint: 1,
@@ -2570,8 +2569,8 @@ mod tests {
     /// first path toward the house foundation 10028, facing along it, not yet moving.
     fn builder_9177() -> Mover {
         Mover {
-            forward: [0.8944272, 0.0, -0.44721362],
-            right: [-0.44721362, 0.0, -0.8944272],
+            forward: [0.894_427_2, 0.0, -0.447_213_62],
+            right: [-0.447_213_62, 0.0, -0.894_427_2],
             velocity: Some(Velocity {
                 velocity: [0.0; 3],
                 acceleration: [0.0, 0.0, f32::MAX],
@@ -2730,7 +2729,7 @@ mod tests {
             m.velocity.as_ref().unwrap().acceleration,
             [0.0, 0.0, f32::MAX]
         );
-        assert_eq!(m.forward, [0.8944272, 0.0, -0.44721362]);
+        assert_eq!(m.forward, [0.894_427_2, 0.0, -0.447_213_62]);
     }
 
     #[test]
@@ -2739,12 +2738,12 @@ mod tests {
         let mut w = world();
         let (at, _) = tick(&mut m, [28.0, 89.0, 0.0], &mut w);
         let (at, _) = tick(&mut m, at, &mut w);
-        assert_eq!(at, [28.028622, 88.98569, 0.0]);
+        assert_eq!(at, [28.028_622, 88.98569, 0.0]);
         // after update 682 the game's forward vector points from there to (30, 88)
-        assert_eq!(m.forward, [0.89458156, 0.0, -0.44690478]);
-        assert_eq!(m.right, [-0.44690478, 0.0, -0.89458156]);
+        assert_eq!(m.forward, [0.894_581_56, 0.0, -0.446_904_78]);
+        assert_eq!(m.right, [-0.446_904_78, 0.0, -0.894_581_56]);
         let (at, _) = tick(&mut m, at, &mut w);
-        assert_eq!(at, [28.042934, 88.97854, 0.0]);
+        assert_eq!(at, [28.042_934, 88.97854, 0.0]);
     }
 
     #[test]
@@ -2836,7 +2835,7 @@ mod tests {
         assert_eq!(m.paths[0].state, 0);
     }
 
-    /// MarvinBlue/426048731's 9175 in update 682: the path request of its MoveTo off the house
+    /// MarvinBlue/426048731's 9175 in update 682: the path request of its `MoveTo` off the house
     /// footprint, which the game saves as the top level of its path data.
     #[test]
     fn a_path_request_makes_the_top_level_from_the_unit_to_its_goal() {
@@ -2888,7 +2887,7 @@ mod tests {
         // and 9177 walks on; once 9175's last human order is the older, 9177 pauses it for dt
         // more than its pause (slot 0x5f0)
         let mut w = world();
-        let mut close = w.get(9175).unwrap().clone();
+        let mut close = *w.get(9175).unwrap();
         close.position = [28.3, 88.9, 0.0];
         w.insert(9175, close);
         let me = Me {
@@ -2914,7 +2913,7 @@ mod tests {
                 .motion(&mut me.clone(), DT, &mut w, None)
                 .is_ok()
         );
-        assert!(walker_9177.pauses.is_empty());
+        assert_eq!(walker_9177.pauses, Vec::<(i32, f32)>::new());
         w.set_gait(
             9175,
             Some(Gait {

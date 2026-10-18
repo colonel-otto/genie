@@ -115,7 +115,7 @@ impl Path {
     /// anew when `other`'s is at most 1e-7.
     pub fn append(&mut self, other: &Self) {
         for &p in &other.points {
-            self.push(p);
+            let _ = self.push(p);
         }
         if other.length <= 1e-7 {
             self.measure();
@@ -160,12 +160,12 @@ fn straighten(path: &mut Path, first: i32, last: i32, between: i32) -> i32 {
     let at = (first + 1) as usize;
     if fewer < 0 {
         for _ in 0..-fewer {
-            path.insert(at, [0.0; 3]);
+            let _ = path.insert(at, [0.0; 3]);
         }
     } else {
         for _ in 0..fewer {
             if at < path.points.len() {
-                path.points.remove(at);
+                let _ = path.points.remove(at);
             }
         }
     }
@@ -212,7 +212,7 @@ pub fn smooth<E>(
         } else {
             next = probe + 1;
             if next as usize == path.points.len() && 0 < (probe - first) - 1 {
-                straighten(path, first, probe, (probe - first) - 1);
+                let _ = straighten(path, first, probe, (probe - first) - 1);
             }
         }
         probe = next;
@@ -394,7 +394,7 @@ impl Planner {
         };
         for x in (0..widths[3]).rev() {
             for y in (0..heights[3]).rev() {
-                planner.init_cell(3, x, y);
+                let _ = planner.init_cell(3, x, y);
             }
         }
         planner.update([0, 0, w, h], map);
@@ -500,7 +500,7 @@ impl Planner {
         self.region = [rx0, ry0, rx1, ry1];
         for cx in (rx0 >> 3)..=(rx1 >> 3) {
             for cy in (ry0 >> 3)..=(ry1 >> 3) {
-                self.rebuild(3, cx, cy, map);
+                let _ = self.rebuild(3, cx, cy, map);
             }
         }
     }
@@ -761,7 +761,7 @@ impl Planner {
             {
                 return Some(n);
             }
-            if dir & 10 != 0
+            if dir & 0b1010 != 0
                 && let Some(n) = self.expand(l, x2, y2 + 1, g, parent, dir)
             {
                 return Some(n);
@@ -1053,7 +1053,7 @@ impl Planner {
         }
         if !changed {
             let i = self.index(0, self.goal[0], self.goal[1]);
-            self.toggle_goal(i, set);
+            let _ = self.toggle_goal(i, set);
         }
     }
 
@@ -1367,7 +1367,7 @@ impl Planner {
             let (tx, ty) = parent
                 .and_then(|p| self.nodes[p].parent)
                 .and_then(|gp| self.crossing(gp))
-                .unwrap_or((start[0], start[1]));
+                .unwrap_or_else(|| start.into());
             if let Some((ox, oy)) = self.aim(node, tx, ty, self.last[0], self.last[1]) {
                 self.points.push(Self::centre(ox, oy));
                 self.last = [ox, oy];
@@ -1439,7 +1439,7 @@ impl Planner {
             }
         };
         for &p in self.points.iter().rev() {
-            out.push(p);
+            let _ = out.push(p);
         }
         self.mark_goal(req.goal(), false);
         self.clear_nodes();
@@ -1551,7 +1551,7 @@ impl Planner {
         };
         if self.search_on_tiles(&to_point, &mut shortcut) == Found::Goal {
             for &p in &levels.points[i + 1..] {
-                shortcut.push(p);
+                let _ = shortcut.push(p);
             }
             // the game empties the path before it appends the shortcut (0x140f7c940)
             levels.points.clear();
@@ -1595,7 +1595,7 @@ impl Planner {
             }
         };
         for &p in self.points.iter().rev() {
-            out.push(p);
+            let _ = out.push(p);
         }
         self.mark_goal_tiles(req.goal(), false);
         self.clear_nodes();

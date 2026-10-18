@@ -340,6 +340,7 @@ enum Callback {
 }
 
 /// What the searches share for a unit: the mesh, the shapes it ignores, its shrinking.
+#[derive(Debug)]
 pub struct Ctx<'a> {
     pub mesh: &'a Mesh,
     /// Per shape id: ignored (`pather + 0xd8`).
@@ -957,7 +958,7 @@ impl Search<'_> {
         if low <= gv && gv <= high {
             let foot = if dx != 0 { [gv, a[1]] } else { [a[0], gv] };
             let g = g0.wrapping_add((gv.wrapping_sub(s)).wrapping_abs());
-            self.goal_test(g, parent, dir, lo, hi, poly, foot);
+            let _ = self.goal_test(g, parent, dir, lo, hi, poly, foot);
         }
     }
 
@@ -1015,9 +1016,9 @@ impl Search<'_> {
             };
             if closes {
                 if poly.sides.last() == poly.sides.first() {
-                    poly.vertices.remove(0);
-                    poly.sides.remove(0);
-                    poly.shapes.remove(0);
+                    let _ = poly.vertices.remove(0);
+                    let _ = poly.sides.remove(0);
+                    let _ = poly.shapes.remove(0);
                 }
                 return true;
             }
@@ -1453,8 +1454,10 @@ impl Search<'_> {
     /// candidates (type 2) around it within twice the radius: 2 for fewer than two, else 1 with
     /// only the cheapest kept open.
     fn start(&mut self, p: Point) -> i32 {
+        const PAIRS: [(u32, u32); 4] = [(0, 1), (1, 2), (3, 2), (0, 3)];
+        const DIRS: [Point; 4] = [[ONE, 0], [0, ONE], [ONE, 0], [0, ONE]];
         let g = &self.goal;
-        if (g.range2 >= g.rect_distance2(p)) {
+        if g.range2 >= g.rect_distance2(p) {
             return 3;
         }
         let fx = (g.at[0].wrapping_sub(p[0])) as f32 * TO_FLOAT;
@@ -1487,8 +1490,6 @@ impl Search<'_> {
             tile(px + rr, py + rr),
             tile(px - rr, py + rr),
         ];
-        const DIRS: [Point; 4] = [[ONE, 0], [0, ONE], [ONE, 0], [0, ONE]];
-        const PAIRS: [(u32, u32); 4] = [(0, 1), (1, 2), (3, 2), (0, 3)];
         let root = start.idx;
         let fdist = |a: Point| -> i32 {
             let dy = (py.wrapping_sub(a[1])) as f32 * TO_FLOAT;
@@ -1525,7 +1526,7 @@ impl Search<'_> {
                         let dx = i64::from(px - a[0]);
                         (t, ((perp * perp) >> 22) + ((dx * dx) >> 22), e[1] - a[1])
                     };
-                    if (dist2 > rr2) {
+                    if dist2 > rr2 {
                         continue;
                     }
                     let h = (fmath::sqrt((rr2 - dist2) as f32 * TO_FLOAT) * TO_FIXED) as i32;
@@ -1605,7 +1606,7 @@ impl Search<'_> {
             return 2;
         }
         let keep = self.open.len() - 1;
-        self.open.drain(..keep);
+        let _ = self.open.drain(..keep);
         let n = &mut self.open[0];
         let f = self.goal.heuristic(n.at).wrapping_add(n.g);
         n.f = f;
@@ -1977,7 +1978,7 @@ impl Search<'_> {
 /// The short pather's inputs in fixed point: the start and the goal, the unit's radius, the
 /// target's half sizes (when the goal is the target's own position), the range, and the terrain
 /// classes the unit cannot cross (`mask ^ 0xff`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Query {
     pub from: Point,
     pub to: Point,
@@ -2030,7 +2031,7 @@ pub struct Call {
 }
 
 /// What the entry makes of a call.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Entry {
     /// 0: the start lies within range of the target (`FUN_14118faf0` less the radius): the path is
     /// cleared.
@@ -2094,7 +2095,7 @@ impl Call {
 pub fn to_path(points: &[Point]) -> crate::tile_path::Path {
     let mut path = crate::tile_path::Path::default();
     for &[x, y] in points {
-        path.push([x as f32 * TO_FLOAT, 0.0, y as f32 * TO_FLOAT]);
+        let _ = path.push([x as f32 * TO_FLOAT, 0.0, y as f32 * TO_FLOAT]);
     }
     path
 }
@@ -2206,8 +2207,8 @@ impl Pather {
         let d = 0x20_0000 - r;
         let w = mesh.width as i32;
         let cap = w.wrapping_mul(ONE) - 1 - r;
-        let (sx, sy) = (q.from[0], q.from[1]);
-        let (gx, gy) = (q.to[0], q.to[1]);
+        let [sx, sy] = q.from;
+        let [gx, gy] = q.to;
         let hold_high = |v: i32| {
             if v.wrapping_add(0x100_0000) < cap {
                 v.wrapping_add(0x100_0000)
@@ -2272,8 +2273,8 @@ impl Pather {
         let d = 0x20_0000 - r;
         let w = mesh.width as i32;
         let cap = w.wrapping_mul(ONE) - 1 - r;
-        let (sx, sy) = (q.from[0], q.from[1]);
-        let (mut gx, mut gy) = (q.to[0], q.to[1]);
+        let [sx, sy] = q.from;
+        let [mut gx, mut gy] = q.to;
         let hold_high = |v: i32| {
             if v.wrapping_add(0x100_0000) < cap {
                 v.wrapping_add(0x100_0000)
@@ -2419,7 +2420,7 @@ impl Search<'_> {
             let mut j = i + 2;
             while j < pts.len() {
                 if !sight.sight_blocked(pts[j], pts[i]) {
-                    pts.drain(i + 1..j);
+                    let _ = pts.drain(i + 1..j);
                     j = i + 1;
                 }
                 j += 1;
@@ -2442,7 +2443,7 @@ impl Search<'_> {
         let d = self.ctx.d;
         match n.kind {
             Kind::Waypoint => {
-                self.pop_test(&n);
+                let _ = self.pop_test(&n);
             }
             Kind::Start { shape } => {
                 if self.pop_test(&n) {
@@ -2484,7 +2485,7 @@ impl Search<'_> {
                 if self.pop_test(&n) {
                     return Ok(None);
                 }
-                self.side_expand(n, shape, side)?;
+                let _ = self.side_expand(n, shape, side)?;
             }
             Kind::Corner {
                 token, prev, next, ..
