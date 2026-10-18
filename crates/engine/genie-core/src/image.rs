@@ -158,6 +158,10 @@ pub mod order {
     pub const GRID_AREA: f32 = f32::from_bits(0x3fc00000);
     /// 0.5
     pub const GRID_STEP: f32 = f32::from_bits(0x3f000000);
+    /// 20.0
+    pub const SPLIT_PATH_REACH: f32 = f32::from_bits(0x41a00000);
+    /// 0.20000000298023224
+    pub const SPLIT_SPEED_GAP: f32 = f32::from_bits(0x3e4ccccd);
     /// 8.0
     pub const SPREAD: f32 = f32::from_bits(0x41000000);
 }

@@ -84,6 +84,62 @@ enum Place {
     Sleeping(usize, usize),
 }
 
+/// What the order splitter reads of a unit: its master's type, formation category (not 0),
+/// object flags' bit 1, its top speed (slot 0x208), place and state.
+#[derive(Clone, Copy, Debug)]
+struct Splittable {
+    id: i32,
+    kind: u8,
+    grouped: bool,
+    flag_1: bool,
+    speed: f32,
+    position: [f32; 3],
+    state: u8,
+}
+
+/// The splitter groups units of a type above this (`0x45`).
+const MAX_UNGROUPED: u8 = 69;
+/// Units whose speeds differ by more than this do not join where the player breaks formations by
+/// speed (`FUN_140fd76d0`, `DAT_143cc2918`).
+const SPLIT_SPEED_GAP: f32 = crate::image::order::SPLIT_SPEED_GAP;
+/// Units nearer than this are measured by a path (`FUN_140fd76d0`, `DAT_142e7f38c`) while
+/// `DAT_1439e60e3` (1 at run time) holds.
+const SPLIT_PATH_REACH: f32 = crate::image::order::SPLIT_PATH_REACH;
+const SPLIT_BY_PATH: bool = true;
+
+/// `FUN_140fd76d0`'s test whether `b` joins `a`: both above type 69, both of formation category
+/// 0 or neither, the same object flags' bit 1, speeds within [`SPLIT_SPEED_GAP`] where the player
+/// breaks formations by speed, then (`member`: for the chosen unit's group, also `b` in a state
+/// of 2 or more) within the player's influence distance on the ground (`FUN_14087e560` with the
+/// height zeroed). Within [`SPLIT_PATH_REACH`] the game measures a path instead (the planner of
+/// `b`'s restriction, `FUN_140f7cb30` -> `FUN_140f7c530`, from `b` to `a`), which is not
+/// modelled.
+fn splits_together(
+    a: &Splittable,
+    b: &Splittable,
+    f: crate::turn::Formations,
+    member: bool,
+) -> Result<bool, Unsupported> {
+    if a.kind <= MAX_UNGROUPED || b.kind <= MAX_UNGROUPED {
+        return Ok(false);
+    }
+    if a.grouped != b.grouped || a.flag_1 != b.flag_1 {
+        return Ok(false);
+    }
+    if f.by_speed && SPLIT_SPEED_GAP < (a.speed - b.speed).abs() {
+        return Ok(false);
+    }
+    if member && b.state < 2 {
+        return Ok(false);
+    }
+    let (dx, dy) = (a.position[0] - b.position[0], a.position[1] - b.position[1]);
+    let d = crate::fmath::sqrt(dx * dx + 0.0 + dy * dy);
+    if SPLIT_BY_PATH && d < SPLIT_PATH_REACH {
+        return Err(Unsupported("the order splitter's path between two units"));
+    }
+    Ok(d <= f.influence)
+}
+
 /// The class `FUN_140c89760` lets scout without the master's flag when a game setting allows it
 /// (raw `0x3a`).
 const AUTO_SCOUT_CLASS: i16 = 58;
@@ -192,19 +248,66 @@ impl Turns {
         if 60 < units.len() {
             return Err(Unsupported("an order to more than 60 units"));
         }
+        let Some((owner, _)) = units.first().and_then(|&id| self.object(id)) else {
+            return Err(Unsupported(
+                "an order whose first unit is gone (the splitter stops)",
+            ));
+        };
         let mut sorted = units.to_vec();
         sorted.sort_unstable();
         sorted.dedup();
-        let mut loose = Vec::with_capacity(sorted.len());
+        let mut left: Vec<Splittable> = Vec::with_capacity(sorted.len());
         for id in sorted {
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
             let master = self.master_of(p, u.life.master_id)?;
-            if master.kind <= 69 || master.formation_category != 0 {
-                return Err(Unsupported("a unit the order splitter may group"));
+            left.push(Splittable {
+                id,
+                kind: master.kind,
+                grouped: master.formation_category != 0,
+                flag_1: master.object_flags & 2 != 0,
+                speed: u.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+                position: u.position,
+                state: u.life.state,
+            });
+        }
+        let formations = self.players[owner].formations;
+        if !formations.auto {
+            return Ok(left.iter().map(|u| u.id).collect());
+        }
+        // the first pass: units above type 69 of formation category 0 stay loose (the dock test
+        // FUN_141158210 is 1 only on an `E` tile in game type 12)
+        let (mut loose, mut left): (Vec<Splittable>, Vec<Splittable>) = left
+            .into_iter()
+            .partition(|u| MAX_UNGROUPED < u.kind && !u.grouped);
+        let mut loose: Vec<i32> = loose.drain(..).map(|u| u.id).collect();
+        // then the unit with the most others that join it, the first of equals, with them
+        while !left.is_empty() {
+            let mut best = (0, 0);
+            for (i, a) in left.iter().enumerate() {
+                let mut n = 1;
+                for b in left.iter().filter(|b| b.id != a.id) {
+                    n += usize::from(splits_together(a, b, formations, false)?);
+                }
+                if best.1 < n {
+                    best = (i, n);
+                }
             }
-            loose.push(id);
+            let chosen = left.remove(best.0);
+            let mut group = vec![chosen.id];
+            let mut i = 0;
+            while i < left.len() {
+                if splits_together(&chosen, &left[i], formations, true)? {
+                    group.push(left.remove(i).id);
+                } else {
+                    i += 1;
+                }
+            }
+            if 1 < group.len() {
+                return Err(Unsupported("a unit group the order splitter forms"));
+            }
+            loose.push(chosen.id);
         }
         Ok(loose)
     }
@@ -476,7 +579,7 @@ impl Turns {
             let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
             if unit.ai.is_some() && !stop_after_kill {
                 match unit.top_action_kind() {
-                    None | Some(crate::move_to::MOVE_TO) => {}
+                    None | Some(crate::move_to::MOVE_TO | crate::explore::EXPLORE) => {}
                     Some(crate::artifact::ARTIFACT_TYPE) => {
                         return Err(Unsupported("an Artifact taking a FOLLOW's target"));
                     }
@@ -889,7 +992,8 @@ impl Turns {
                 }
                 true
             }
-            (true, Some(t)) if t != crate::move_to::MOVE_TO => {
+            // an Explore's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's
+            (true, Some(t)) if t != crate::move_to::MOVE_TO && t != crate::explore::EXPLORE => {
                 return Err(Unsupported("a move of a unit with an action (its slot 8)"));
             }
             _ => false,
@@ -1319,7 +1423,14 @@ impl Turns {
             ));
         }
         let build = unit.build.take();
+        let explore = unit.explore.take();
         let mut mover = unit.mover.as_mut();
+        // an Explore's teardown (0x140a87dd0): its MoveTo's stops the unit
+        if explore.is_some_and(|e| e.move_to.is_some())
+            && let Some(m) = mover.as_deref_mut()
+        {
+            m.stop()?;
+        }
         if let Some(b) = build
             && b.move_to.is_some()
             && let Some(m) = mover.as_deref_mut()
@@ -1569,6 +1680,42 @@ mod tests {
         assert!(centroid(&[[50.0, 50.0], [30.0, 50.0]]).is_some());
         assert_eq!(centroid(&[[30.0, 50.0], [39.0, 50.0]]), None);
         assert_eq!(centroid(&[[30.0, 50.0], [38.0, 50.0]]), Some([34.0, 50.0]));
+    }
+
+    /// MarvinBlue/426048731's MOVE of 2979 (the save after 2977): player 2's livestock 9528 and
+    /// 9529 (formation category 0) stay loose, the scout 9185 has none to join it.
+    #[test]
+    fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
+        let f = crate::turn::Formations {
+            auto: true,
+            influence: 3.0,
+            by_speed: false,
+        };
+        let unit = |id, grouped, position| Splittable {
+            id,
+            kind: 70,
+            grouped,
+            flag_1: false,
+            speed: 1.2,
+            position,
+            state: 2,
+        };
+        let scout = unit(9185, true, [42.047367, 94.338486, 0.0]);
+        let sheep = unit(9529, false, [45.5, 93.5, 0.0]);
+        assert!(!splits_together(&scout, &sheep, f, false).unwrap());
+        // nearer than 20 tiles the game measures a path
+        let other = unit(9186, true, [44.0, 94.0, 0.0]);
+        assert!(splits_together(&scout, &other, f, false).is_err());
+        let far = unit(9187, true, [80.0, 94.0, 0.0]);
+        assert!(!splits_together(&scout, &far, f, false).unwrap());
+        let wide = crate::turn::Formations {
+            influence: 40.0,
+            ..f
+        };
+        assert!(splits_together(&scout, &far, wide, false).unwrap());
+        // a member must stand in state 2 or more
+        let born = Splittable { state: 0, ..far };
+        assert!(!splits_together(&scout, &born, wide, true).unwrap());
     }
 
     #[test]

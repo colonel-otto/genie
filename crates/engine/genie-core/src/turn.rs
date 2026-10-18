@@ -2338,6 +2338,17 @@ fn release_own(others: &mut [Unit], masters: Option<&Masters>, id: i32) -> Resul
     Ok(())
 }
 
+/// A player's settings for the groups an order's splitter forms ([`Player::formations`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Formations {
+    /// The splitter groups units at all (`+0x6c0` not 0).
+    pub auto: bool,
+    /// How near two units join (`+0x6c4`).
+    pub influence: f32,
+    /// Units whose speeds differ by more than [`crate::order`]'s gap do not join (`+0x6c8` 1).
+    pub by_speed: bool,
+}
+
 /// One player's objects in live-list order.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Player {
@@ -2362,6 +2373,9 @@ pub struct Player {
     /// flip; nothing the slice models reads them yet.
     pub auto_farm_queue: bool,
     pub auto_fishtrap_queue: bool,
+    /// The order splitter's settings (`+0x6c0` `mAutoFormations`, `+0x6c4`
+    /// `mFormationInfluenceDistance`, `+0x6c8` `mBreakAutoFormationsBySpeed`).
+    pub formations: Formations,
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, Unsupported)>,
     /// Every object the slice stopped updating, with the tick and why.

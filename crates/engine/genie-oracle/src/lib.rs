@@ -1374,6 +1374,11 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 relations: p.world_player().base.relation.clone(),
                 auto_farm_queue: p.world_player().auto_farm_queue != 0,
                 auto_fishtrap_queue: p.world_player().auto_fish_trap_queue != 0,
+                formations: genie_core::turn::Formations {
+                    auto: p.world_player().base.auto_formations != 0,
+                    influence: p.world_player().base.formation_influence_distance,
+                    by_speed: p.world_player().base.break_auto_formations_by_speed == 1,
+                },
                 unsupported: None,
                 freezes: Vec::new(),
                 stopped: false,
