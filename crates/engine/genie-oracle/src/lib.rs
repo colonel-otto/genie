@@ -62,14 +62,18 @@ pub const SAVE_WORDS: [usize; 10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10];
 /// One player's block, computed from the save and as the recording stores it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PlayerComparison {
+    /// The player's id.
     pub id: u32,
+    /// The block computed from the header save.
     pub from_save: [u32; 11],
+    /// The block the checkpoint stores.
     pub checkpoint: [u32; 11],
 }
 
 /// Why a recording could not be compared.
 #[derive(Debug)]
 pub enum Error {
+    /// The recording could not be read.
     Rec(de::Error),
     /// The recording has no checkpoint (it ends within the first interval).
     NoCheckpoint,
@@ -205,15 +209,20 @@ const CONSTRUCTION_RATE: usize = 195;
 pub struct GroupCommand {
     /// The tick (1-based) the command executes in: the frame of the sync before it.
     pub tick: u32,
+    /// The commanding player.
     pub player: u8,
+    /// The command's byte.
     pub command: u8,
 }
 
 /// Word 9 of one player's first checkpoint, from the unit-AI slice and as recorded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Word9 {
+    /// The player's id.
     pub id: u32,
+    /// Word 9 from the slice.
     pub simulated: u32,
+    /// Word 9 as the checkpoint stores it.
     pub checkpoint: u32,
     /// The first command before the checkpoint, by any player, that may create a unit group.
     pub group_command: Option<GroupCommand>,
@@ -2874,9 +2883,13 @@ fn top_action(unit: &Unit) -> Option<TopAction> {
 /// type (or -1) and state, and the unit-AI retarget timer (0 without a unit AI).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Word9Terms {
+    /// The object's id.
     pub id: u32,
+    /// Its top action's type, −1 for none.
     pub action: i32,
+    /// Its top action's state.
     pub state: u8,
+    /// Its unit AI's retarget timer, 0 without a unit AI.
     pub retarget: i32,
 }
 
@@ -2958,15 +2971,23 @@ pub fn blocks_per_tick(
 /// retarget timer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ObjectRow {
+    /// The object's id.
     pub id: i32,
+    /// Its master.
     pub master: i16,
+    /// Its state.
     pub state: u8,
+    /// Its hit points.
     pub hp: f32,
+    /// What it holds.
     pub amount: f32,
+    /// Its place.
     pub position: [f32; 3],
+    /// Its top action's type and state.
     pub action: Option<(i16, u8)>,
     /// The top action's target (`+0x30`), where the slice holds the action.
     pub action_target: Option<i32>,
+    /// Its unit AI's retarget timer.
     pub retarget: Option<i32>,
     /// A moving object's orientation, velocity data and path data (the level it walks first).
     pub movement: Option<MoveRow>,
@@ -2990,6 +3011,7 @@ pub struct ObjectRow {
 /// What an object's row compares of its unit AI (named as in the save).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AiRow {
+    /// The fields, named as in the save, with their values.
     pub fields: Vec<(&'static str, String)>,
 }
 
@@ -3093,16 +3115,23 @@ impl AiRow {
 /// What a moving object's row compares of its movement.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MoveRow {
+    /// `+0x830`: where it heads.
     pub forward: genie_core::fmath::Vec3,
+    /// `+0x83c`: its right.
     pub right: genie_core::fmath::Vec3,
     /// Velocity and acceleration, when the object has velocity data.
     pub velocity: Option<(genie_core::fmath::Vec3, genie_core::fmath::Vec3)>,
+    /// Its path data, the walked level first.
     pub paths: Vec<genie_core::movement::PathData>,
     /// `+0x7f9`, `+0x7fa`, `+0x7fb`, `+0x870`, `+0x874`.
     pub waiting: u8,
+    /// `+0x7fa`: the walk's waits.
     pub wait_delays: u8,
+    /// `+0x7fb`: it moves to attack.
     pub attack_moving: bool,
+    /// `+0x870`: its last move time.
     pub last_move: u32,
+    /// `+0x874`: the substitutes counted.
     pub substitute_count: i32,
     /// The unit's ignore list (`+0x670`).
     pub ignore_units: Vec<i32>,
@@ -3193,7 +3222,9 @@ fn saved_movement(object: &genie_save::Object, paths: &[Path]) -> Option<MoveRow
 /// update the slice could not model, if any.
 #[derive(Clone, Debug)]
 pub struct SliceRun {
+    /// Every object the player holds after the run.
     pub objects: Vec<ObjectRow>,
+    /// The first update the slice could not model: the tick, the object's index and why.
     pub unsupported: Option<(u32, usize, Unsupported)>,
     /// The id of the object whose update was not modelled.
     pub unsupported_id: Option<i32>,
@@ -3387,7 +3418,9 @@ pub fn objects_from_save(
 /// after `start`, run `ticks` updates, against the game's save after `start + ticks`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TickReport {
+    /// The save the step starts from.
     pub start: usize,
+    /// How many updates it ran.
     pub ticks: usize,
     /// What differs, by player: the objects that ran modelled (an object that froze, or every
     /// object of a player that stopped, is left out: its reason is in `unsupported`) and the
@@ -3785,29 +3818,44 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::mesh::Mesh> {
 /// attribute 95.
 #[derive(Debug)]
 pub struct FinderWorld {
+    /// Every player's masters.
     pub masters: Vec<genie_core::masters::Masters>,
+    /// The objects by id.
     pub objects: std::collections::HashMap<i32, FinderObject>,
     /// `relation[i]` of each player (`player+0x260`).
     pub relations: Vec<Vec<u8>>,
+    /// Every player's attribute 95.
     pub attribute_95: Vec<f32>,
+    /// Every player's civ.
     pub civs: Vec<u8>,
+    /// The drop-site table.
     pub drop_sites: Vec<genie_core::tasks::DropSite>,
 }
 
 /// One object as the task finder reads it.
 #[derive(Clone, Copy, Debug)]
 pub struct FinderObject {
+    /// Its player.
     pub player: usize,
+    /// Its master.
     pub master: i16,
+    /// Its state.
     pub state: u8,
+    /// What it holds: the attribute and the amount.
     pub held: (i16, f32),
+    /// Its hit points.
     pub hp: f32,
+    /// Its most hit points.
     pub max_hp: f32,
+    /// It may be attacked.
     pub attackable: bool,
+    /// The pasture it is in, −1 for none.
     pub pasture: i32,
     /// The main building of an annex (`+0xbb8`), if it is one.
     pub annex_of: Option<i32>,
+    /// Its top action's type, if it has one.
     pub top_action: Option<i16>,
+    /// Its place.
     pub position: [f32; 3],
 }
 

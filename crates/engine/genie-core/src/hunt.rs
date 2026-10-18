@@ -21,9 +21,13 @@ pub const HUNT: i16 = 110;
 /// The states the slice models: 4 walking to a dead target, 6 facing it, 7 gathering from it, 8
 /// taking the load to its drop site, 12 attacking it (`0xc`).
 pub const WALK: u8 = 4;
+/// State 6: facing the dead target.
 pub const FACE: u8 = 6;
+/// State 7: gathering from it.
 pub const GATHER: u8 = 7;
+/// State 8: taking the load to its drop site.
 pub const DROP: u8 = 8;
+/// State 12 (`0xc`): attacking it.
 pub const ATTACK: u8 = 12;
 /// State 13: the hunt failed; its next update tells its unit AI (notify 0x1f9) and ends it.
 pub const FAILED: u8 = 13;
@@ -55,6 +59,7 @@ const VILLAGER_CLASS: i16 = 4;
 pub const LIVESTOCK: i16 = 58;
 const CLASS_49: i16 = 49;
 
+/// The Hunt action of a gatherer (`TRIBE_Action_Hunt`, type 110).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HuntAction {
     /// The target object (`+0x20`, its id at `+0x30`).
@@ -65,6 +70,7 @@ pub struct HuntAction {
     pub point: [f32; 3],
     /// `+0x68`: the target's class.
     pub target_class: i16,
+    /// `+0x48`: its task.
     pub task: HuntTask,
     /// The sub-action of state 12.
     pub attack: Option<Attack>,
@@ -89,7 +95,9 @@ pub struct HuntAction {
 /// (`FUN_140fdd190`) and the gap between the two footprints squared (`FUN_14118f8c0`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DropOff {
+    /// The site takes what the unit carries (`FUN_140fdd190`).
     pub takes: bool,
+    /// The gap between the two footprints squared (`FUN_14118f8c0`).
     pub gap_squared: f32,
 }
 
@@ -103,6 +111,7 @@ pub struct Herd {
     pub drop_site: Option<(i32, f32)>,
     /// The Attack `set_state(12)` starts.
     pub engagement: Engagement,
+    /// The Attack's sprites and frames.
     pub arms: Arms,
 }
 
@@ -111,8 +120,11 @@ pub struct Herd {
 /// (`attribute_type`, `+0x20`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HuntTask {
+    /// Its id in the master's task list (`+0xa`).
     pub id: i16,
+    /// The work range (`+0x30`).
     pub range: f32,
+    /// The resource it gathers (`attribute_type`, `+0x20`).
     pub resource: i16,
     /// Its moving, proceeding, working and carrying sprites (`+0x40`..`+0x58`).
     pub sprites: [i16; 4],
@@ -144,9 +156,13 @@ pub(crate) fn resource_kind(kind: i16, attributes: usize) -> i16 {
 /// master's standing sprite, which slot 0x68 takes for none.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct HuntSprites {
+    /// The moving sprite.
     pub moving: Option<Graphic>,
+    /// The working sprite.
     pub working: Option<Graphic>,
+    /// The carrying sprite.
     pub carrying: Option<Graphic>,
+    /// The master's standing sprite.
     pub standing: Option<Graphic>,
 }
 
@@ -155,6 +171,7 @@ pub struct HuntSprites {
 pub struct Gatherer<'a> {
     /// `+0x308`, `+0x310`: what the unit carries.
     pub held_kind: &'a mut i16,
+    /// `+0x310`: how much.
     pub held: &'a mut f32,
     /// The master's work rate (`+0x798`) plus the unit's powerup (slot 0x6e8, `+0xa30`).
     pub work_rate: f32,
@@ -164,24 +181,31 @@ pub struct Gatherer<'a> {
     pub productivity: f32,
     /// The target's master's class and its first storage amount (`+0x610`).
     pub target_class: i16,
+    /// The target's master's first storage amount (`+0x610`).
     pub target_storage: f32,
     /// The player's attribute 292 is 1: a task whose `attribute_type4` is 0x124 stops the
     /// target's decay (`FUN_140ac44b0`).
     pub stops_decay: bool,
     /// The unit AI's target class (`+0x4c`, `FUN_140c4cc50`), None for a unit without one.
     pub ai_class: Option<i32>,
+    /// The sprites the hunt shows.
     pub sprites: HuntSprites,
 }
 
 /// What the hunt reads of its target when it starts.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Quarry {
+    /// The target.
     pub id: i32,
+    /// Its place.
     pub position: [f32; 3],
     /// Its master's class and type, its state (`+0x640`) and owner.
     pub class: i16,
+    /// Its master's type.
     pub kind: u8,
+    /// Its state (`+0x640`).
     pub state: u8,
+    /// Its owner.
     pub player: usize,
     /// What it holds (`+0x310`).
     pub amount: f32,

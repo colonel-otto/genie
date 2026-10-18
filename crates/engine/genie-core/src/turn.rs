@@ -44,7 +44,9 @@ pub struct Unit {
     pub id: i32,
     /// x, y, z (`+0x3c8`, `+0x4c8`, `+0x5a8`, obfuscated in the game's memory).
     pub position: [f32; 3],
+    /// Its life cycle: state, hit points, master, what it holds, its dying sprite.
     pub life: Lifecycle,
+    /// Its unit AI, when it has one.
     pub ai: Option<UnitAi>,
     /// The livestock default action, the object's top action.
     pub artifact: Option<Artifact>,
@@ -73,6 +75,7 @@ pub struct Unit {
     /// `+0x790`, `parent_pasture_id`: the pasture it is in; `+0x794`, `my_pasture_id`: the one it
     /// tends. -1 for none.
     pub pasture: i32,
+    /// `+0x794`, `my_pasture_id`: the pasture it tends, −1 for none.
     pub my_pasture: i32,
     /// An annex's main building (`+0xbb8`, the save's linked owner).
     pub annex_of: Option<i32>,
@@ -92,11 +95,14 @@ pub struct Unit {
     /// Its active sprite and animation speed (`+0x7b8`, the save's `current_speed`), held from
     /// an attack's swing on; None while the slice does not know them.
     pub sprite: Option<ActiveSprite>,
+    /// Its animation speed (`+0x7b8`), held with its sprite.
     pub anim_speed: Option<f32>,
     /// `+0x91c`, `attack_timer`: the time until it may attack again; `mReloadStinger` and
     /// `mReloadPowerup` (`+0xb40`, `+0xa28`), which change its reload time.
     pub attack_timer: f32,
+    /// `mReloadStinger` (`+0xb40`), added to its master's reload time.
     pub reload_stinger: f32,
+    /// `mReloadPowerup` (`+0xa28`), taken off its master's reload time.
     pub reload_powerup: f32,
     /// What a hit reads of its unit and its target besides the masters: `+0xa24`
     /// (`mAttackPowerup`, the attacker's slot 0x6d8), the armor powerups (`+0xa48` melee,
@@ -104,9 +110,13 @@ pub struct Unit {
     /// (`+0x9e4`, `+0x9e6`), the charge (`+0x9e0`) and `mHitSomethingValidForChargeAttack`
     /// (`+0x8a8`: its last hit was its charge's).
     pub attack_powerup: f32,
+    /// Its melee and pierce armor powerups (`+0x9e4`, `+0x9e6`).
     pub armor_powerups: [i16; 2],
+    /// The melee and pierce armor taken off it (its charge's hits).
     pub armor_removed: [i16; 2],
+    /// Its charge (`+0x9e0`).
     pub charge: f32,
+    /// `mHitSomethingValidForChargeAttack` (`+0x8a8`): its last hit was its charge's.
     pub charge_hit: bool,
     /// `+0x644`, `worker_num`: the actions that have the object as their target.
     pub workers: i32,
@@ -128,6 +138,7 @@ pub struct Unit {
 /// building's last move time, [`Mover::last_move`], slot 0x670, `FUN_1411dba30`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Gate {
+    /// `mGateLocked`: the gate is locked.
     pub locked: bool,
 }
 
@@ -135,9 +146,11 @@ pub struct Gate {
 /// master; the save's `gather_point_*`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GatherPoint {
+    /// The point its trained units walk to.
     pub point: [f32; 3],
     /// The object it is on, −1 for none.
     pub target: i32,
+    /// The target's master, −1 without a target.
     pub target_master: i16,
 }
 
@@ -152,10 +165,15 @@ pub enum Command {
     /// takes the master it builds with and starts a Build action (`Turns::masters`). The slice
     /// takes the placement as given: the recording's game accepted it.
     Build {
+        /// The player who places it.
         player: usize,
+        /// The foundation's master.
         master: i16,
+        /// The unit AI type its class gets, if any, or why the slice cannot tell.
         unit_ai: Result<Option<u32>, Unsupported>,
+        /// Where it is placed.
         position: [f32; 3],
+        /// The units told to build it, in packet order.
         builders: Vec<i32>,
     },
     /// SET GATHER POINT (0x78, `FUN_140e7e9a0`): each of the player's objects of `ids` that takes
@@ -165,11 +183,17 @@ pub enum Command {
     /// players' objects are left out (the game setting `+0x1074` that lets them is not modelled),
     /// and the unit AI's command queue (`+0x1f0`, which its slot 0x210 empties) is not held.
     GatherPoint {
+        /// The player whose objects take it.
         player: usize,
+        /// The objects of the packet.
         ids: Vec<i32>,
+        /// The point.
         point: [f32; 2],
+        /// The object the point is on, −1 for none.
         target: i32,
+        /// That object's master.
         target_master: i16,
+        /// The building itself is the gather point (`+0x18`).
         own: bool,
     },
     /// QUEUE (0x81, the player's queue `FUN_141614450`, the building's `FUN_1411cbc40`): `amount`
@@ -177,43 +201,79 @@ pub enum Command {
     /// comes off the player's resources per unit; a villager's master is drawn male or female from
     /// the Action stream. The make action then works `rate` seconds of `train_time` per second.
     Queue {
+        /// The player who queues.
         player: usize,
+        /// The building.
         building: i32,
+        /// The master to train (0x712 for the villager).
         unit: i16,
+        /// How many.
         amount: u16,
+        /// The seconds of work each takes at that building.
         train_time: f32,
+        /// The building's work rate.
         rate: f32,
+        /// The unit's cost entries: resource, amount, paid.
         cost: Vec<(i16, i16, bool)>,
     },
     /// RESEARCH (0x65, `0x140e7e270`): the technology `tech` at the building `building`
     /// ([`Turns::research`]). `count` (`+0x8`) counts the buildings the packet lists, `target`
     /// (`+0xc`) is −1 for a research to run, and `shift` (`+0x10`) asks for five at once.
     Research {
+        /// The player who researches.
         player: usize,
+        /// The building of the packet.
         building: i32,
+        /// `+0x8`: how many buildings the packet lists.
         count: i16,
+        /// `+0xa`: the technology.
         tech: i16,
+        /// `+0xc`: −1 for a research to run.
         target: i32,
+        /// `+0x10`: five at once.
         shift: bool,
     },
     /// A command the slice runs part of or none, for a reason the decoder names: it stops the
     /// issuing player's lane.
-    Unmodelled { player: usize, why: Unsupported },
+    Unmodelled {
+        /// The issuing player.
+        player: usize,
+        /// Why its command is not modelled.
+        why: Unsupported,
+    },
     /// GAME (0x67, `0x140e7c330`) sub-commands 0x10 and 0x13: the player's `autoFarmQueue`
     /// (`+0x1424`) or `autoFishTrapQueue` (`+0x1425`) flips (`fishtrap` true for 0x13). The other
     /// sub-commands are the decoder's [`Command::Unmodelled`].
-    AutoQueue { player: usize, fishtrap: bool },
+    AutoQueue {
+        /// The player.
+        player: usize,
+        /// The fish trap queue flips (0x13), else the farm queue (0x10).
+        fishtrap: bool,
+    },
     /// GATE (0x72, `do_command` case 0x72): the player's building `id` toggles its gate lock
     /// ([`Turns::gate`]).
-    Gate { player: usize, id: i32 },
+    Gate {
+        /// The player.
+        player: usize,
+        /// Its building.
+        id: i32,
+    },
     /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
     /// auto scout order, or the stop order when it scouts already ([`Turns::auto_scout`]).
-    AutoScout { player: usize, ids: Vec<i32> },
+    AutoScout {
+        /// The player.
+        player: usize,
+        /// Its units.
+        ids: Vec<i32>,
+    },
     /// `UNIT_AI_STATE` (0x12, `FUN_140e6a7c0`): the unit AIs of `ids` (at most 60, the decoder's)
     /// take the stance `state` ([`Turns::unit_ai_state`]).
     UnitAiState {
+        /// The player whose units take it.
         player: usize,
+        /// The units.
         ids: Vec<i32>,
+        /// The stance.
         state: u8,
     },
     /// `UNIT_ORDER` (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
@@ -221,9 +281,13 @@ pub enum Command {
     /// last human order time first. Its target (`tId`, which action 5 reads), point, `qId`,
     /// `param` and the flags `+0x1d`, `+0x1e` are not read by the actions modelled.
     UnitOrder {
+        /// The player whose units take it.
         player: usize,
+        /// The units.
         ids: Vec<i32>,
+        /// The order's action (8: the drop-off).
         action: u8,
+        /// `+0x20`: it sets their last human order time.
         human: bool,
     },
     /// INTERACT (0x00), MOVE (0x03) or RETREAT (0x23): before the order runs, each listed unit's AI
@@ -231,8 +295,11 @@ pub enum Command {
     /// INTERACT's order then runs ([`Interact`]), and MOVE's ([`MoveOrder`]); RETREAT is not
     /// modelled.
     Order {
+        /// The player who orders.
         player: usize,
+        /// The units of the packet.
         units: Vec<i32>,
+        /// The order they take, None for a command that only resets their idle timeouts.
         order: Option<Order>,
     },
 }
@@ -240,7 +307,9 @@ pub enum Command {
 /// What an order command gives its units.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Order {
+    /// INTERACT: work on, attack or follow a target.
     Interact(Interact),
+    /// MOVE: walk to a point.
     Move(MoveOrder),
     /// FOLLOW's target (`+0x8`).
     Follow(i32),
@@ -3249,6 +3318,7 @@ pub struct Formations {
 /// One player's objects in live-list order.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Player {
+    /// Its live objects, in their list's order.
     pub objects: Vec<Unit>,
     /// `player+0x10 == 3`.
     pub computer: bool,
@@ -3269,6 +3339,7 @@ pub struct Player {
     /// `autoFarmQueue` (`+0x1424`) and `autoFishTrapQueue` (`+0x1425`), which GAME 0x10 and 0x13
     /// flip; nothing the slice models reads them yet.
     pub auto_farm_queue: bool,
+    /// `autoFishTrapQueue` (`+0x1425`).
     pub auto_fishtrap_queue: bool,
     /// The order splitter's settings (`+0x6c0` `mAutoFormations`, `+0x6c4`
     /// `mFormationInfluenceDistance`, `+0x6c8` `mBreakAutoFormationsBySpeed`).
@@ -3542,11 +3613,15 @@ impl Turns {
 /// player's live units and resources as the game holds them.
 #[derive(Clone, Debug, Default)]
 pub struct GameState {
+    /// `world+0x7d0`, the frame seed.
     pub frame_seed: u32,
+    /// Every player's live objects.
     pub players: Vec<Vec<Unit>>,
+    /// Every player's food, wood, stone and gold.
     pub resources: Vec<[f32; 4]>,
     /// The players' pending debits and technology states.
     pub pending_debit: Vec<[f32; 4]>,
+    /// Every player's technology states.
     pub techs: Vec<Vec<crate::tech::TechState>>,
     /// Objects the slice modelled but got wrong this tick: they take the game's state too.
     pub resync: Vec<i32>,
@@ -3737,6 +3812,7 @@ impl Player {
 /// World state the slice carries from tick to tick. All of it is in the header save.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Turns {
+    /// The world's time in milliseconds (`world_time`).
     pub world_time: u32,
     /// `world+0x7d0`.
     pub frame_seed: u32,
@@ -3744,7 +3820,9 @@ pub struct Turns {
     pub player_turn: usize,
     /// `world+0x18c[p]`, the time each player accumulated since its last turn.
     pub player_time: Vec<u32>,
+    /// Every player, Gaia first.
     pub players: Vec<Player>,
+    /// The updates run so far.
     pub ticks: u32,
     /// `mNextObjectId`, the id the next new object gets.
     pub next_object_id: i32,
@@ -3815,6 +3893,7 @@ impl Diplomacy for World<'_> {
 }
 
 impl Turns {
+    /// The world as the header save holds it: its time, frame seed, turn order and players.
     #[must_use]
     pub fn new(
         world_time: u32,

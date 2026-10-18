@@ -37,6 +37,7 @@ pub struct Pathing {
     shapes: BTreeMap<i32, u32>,
     /// The temporary shapes of the motion step under way (its `local_1688`).
     temporary: Vec<u32>,
+    /// The short pather.
     pub pather: Pather,
 }
 
@@ -72,6 +73,7 @@ pub fn refreshed_rect(position: [f32; 3], radius: [f32; 2]) -> Rect {
 }
 
 impl Pathing {
+    /// The planners and the pather for a map, without a mesh yet.
     #[must_use]
     pub fn new(
         size: [i32; 2],
@@ -94,6 +96,7 @@ impl Pathing {
         self.shapes = shapes.into_iter().collect();
     }
 
+    /// The mesh, once set.
     #[must_use]
     pub const fn mesh(&self) -> Option<&Mesh> {
         self.mesh.as_ref()

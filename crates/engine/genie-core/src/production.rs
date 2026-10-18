@@ -24,6 +24,7 @@ pub struct Queued {
 /// A building's queue and its make action.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Production {
+    /// The units and researches queued, one item each.
     pub queue: VecDeque<Queued>,
     /// The make action exists (the building's production action list holds it).
     pub action: bool,
@@ -68,9 +69,13 @@ pub fn population(storage: &[(i16, f32, u8)]) -> f32 {
 /// The population headroom (attribute 4), the population (11), the population cap (32), the
 /// units queued (80) and the units in production (81).
 pub const HEADROOM: i16 = 4;
+/// The population (attribute 11).
 pub const POPULATION: usize = 11;
+/// The population cap (attribute 32).
 pub const POPULATION_CAP: usize = 32;
+/// The units queued (attribute 80).
 pub const QUEUED: i16 = 80;
+/// The units in production (attribute 81).
 pub const IN_PRODUCTION: i16 = 81;
 
 /// `FUN_1411e7dc0`'s test before it makes a unit's make action: the population with the units in

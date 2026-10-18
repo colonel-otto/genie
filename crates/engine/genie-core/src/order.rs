@@ -43,7 +43,9 @@ pub struct MoveOrder {
     /// `+0x13`: queued; `+0x14`: a unit with a unit AI takes it at once; `+0x15`: the last human
     /// order time is set.
     pub queued: bool,
+    /// `+0x14`: a unit with a unit AI takes it at once.
     pub direct: bool,
+    /// `+0x15`: the last human order time is set.
     pub human: bool,
 }
 

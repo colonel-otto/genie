@@ -28,15 +28,18 @@ const ARRIVED: f32 = crate::image::build::ARRIVED;
 /// The villager's class (4, `-0xea8` encoded): Build's walk off the footprint returns at once.
 const VILLAGER: i16 = 4;
 
+/// The Build action of a builder (`TRIBE_Action_Build`, type 101).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BuildAction {
     /// The foundation's id.
     pub target: i32,
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
+    /// Its `MoveTo` sub-action's state.
     pub move_to: Option<MoveTo>,
     /// The point the `MoveTo` walks to (its `+0x38`..`+0x40`), when not to the foundation.
     pub goal: Option<[f32; 3]>,
+    /// The task it builds with.
     pub task: BuildTask,
     /// `+0x68`, `added_to_num_builders`: the builder counts among the foundation's builders.
     pub added: bool,
@@ -47,8 +50,12 @@ pub struct BuildAction {
 /// its master's `work_rate` (`+0x798`) plus its own `mWorkRatePowerup` (`+0xa30`, slot 0x6e8).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BuildTask {
+    /// The task's work range.
     pub range: f32,
+    /// The task's work value.
     pub work_value: f32,
+    /// The builder's work rate: its master's `work_rate` (`+0x798`) plus its `mWorkRatePowerup`
+    /// (`+0xa30`).
     pub work_rate: f32,
 }
 
@@ -64,6 +71,7 @@ pub struct Construction {
     /// Its master's hit points (`+0x530`) and build time (`+0x898`, the first train location's
     /// train time; 0 without one).
     pub hit_points: i16,
+    /// Its master's build time (the first train location's train time; 0 without one).
     pub build_time: i16,
     /// The record its start adds: its master's obstruction kind and class.
     pub record: Obstruction,
@@ -76,8 +84,11 @@ pub struct Construction {
 /// What a builder's work reaches of its foundation.
 #[derive(Debug)]
 pub struct Site<'a> {
+    /// The foundation.
     pub id: i32,
+    /// Its life cycle.
     pub life: &'a mut Lifecycle,
+    /// Its construction.
     pub construction: &'a mut Construction,
     /// The foundation's movement state (its last move time), if the slice holds it.
     pub mover: Option<&'a mut crate::movement::Mover>,

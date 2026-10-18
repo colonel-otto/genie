@@ -24,6 +24,7 @@ const DEGREE: f32 = crate::image::fly::DEGREE;
 const ANGLE_STEP: i32 = 80;
 const TRIES: i32 = 12;
 
+/// A bird's Fly action (type 10).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fly {
     /// `+0x18`.
@@ -32,6 +33,7 @@ pub struct Fly {
     pub timer: f32,
     /// The `MoveTo` sub-action's state and its point.
     pub move_to: Option<MoveTo>,
+    /// The point its `MoveTo` flies to.
     pub goal: Option<[f32; 3]>,
     /// `+0x38`, `+0x3c`: the point the bird keeps within its task's leash.
     pub home: [f32; 2],
@@ -45,6 +47,7 @@ pub struct Fly {
 pub struct Sky<'a> {
     /// The bird's top speed (slot 0x208) and place.
     pub speed: f32,
+    /// The bird's place.
     pub position: [f32; 3],
     /// Its master's radii, which its distance to the leash's centre leaves out
     /// (`FUN_140a847c0`).

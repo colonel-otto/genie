@@ -21,9 +21,13 @@ use crate::rng::Well512;
 /// `kind`, with three parameters.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Notify {
+    /// The object that posts it.
     pub caller: i32,
+    /// The object whose unit AI takes it.
     pub recipient: i32,
+    /// The kind (named in [`crate::ai_kinds`]).
     pub kind: i32,
+    /// Its three parameters.
     pub p: [i32; 3],
 }
 
@@ -92,9 +96,11 @@ pub struct QueuedOrder {
     /// `+0xc`, `+0x10`: the target and its owner (−1 for none; "T", "`TOwner`" in the log line of
     /// `FUN_140c55c90`).
     pub target: i32,
+    /// The target's owner.
     pub target_owner: i32,
     /// `+0x14`..`+0x1c`: the point; `+0x20`: the range.
     pub point: [f32; 3],
+    /// The range.
     pub range: f32,
     /// `+0x24`, `+0x28`: the point the unit's slot 0x2d8 shows (not held).
     pub shown: [f32; 2],
@@ -152,7 +158,12 @@ pub enum Effect {
     /// unit's slot 0x348 (`FUN_141086440`, forced) replaces its actions (`FUN_140a98620`) with a
     /// `MoveTo` to the target within `range` showing the master's running sprite (the walking one
     /// without it) and starts it (slot 0x808).
-    MoveToObject { target: i32, range: f32 },
+    MoveToObject {
+        /// The target.
+        target: i32,
+        /// The range within which the `MoveTo` arrives.
+        range: f32,
+    },
 }
 
 /// The first move among a full update's effects.
@@ -179,6 +190,7 @@ pub struct UnitAi {
     pub current_target: i32,
     /// `+0x4c`, the target's class (−1 for none), and `+0x50`..`+0x58`, its point.
     pub target_type: i32,
+    /// `+0x50`..`+0x58`: the target's point.
     pub target_point: [f32; 3],
     /// `+0x5c`, `desiredTargetDistance`: how near the follow order keeps the unit to its target
     /// (the constructor's 2).
@@ -186,8 +198,11 @@ pub struct UnitAi {
     /// `+0x64`, `+0x68`, `+0x6c`, `+0x70`: the order, action, target and target class before the
     /// current ones.
     pub last_order: i32,
+    /// `+0x68`: the action before the current one.
     pub last_action: i32,
+    /// `+0x6c`: the target before the current one.
     pub last_target: i32,
+    /// `+0x70`: that target's class.
     pub last_target_type: i32,
     /// `+0x160`.
     pub idle_timer: u32,
@@ -314,10 +329,15 @@ pub const TOWER_CARED: [i32; 40] = [
 /// with the object's id, −1 for none.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Search<'a> {
+    /// Where it searches from.
     pub at: [f32; 2],
+    /// How far.
     pub radius: f32,
+    /// The object classes it cares about.
     pub classes: &'a [i32],
+    /// The searcher's radii.
     pub size: [f32; 2],
+    /// What it picks of what it finds.
     pub pick: Pick,
 }
 
@@ -329,10 +349,15 @@ pub enum Pick {
     /// 3 itself), in state `state`, of master `master` and below `workers` workers (each −1 for
     /// any), reachable ones only.
     Closest {
+        /// The master class (−1 any).
         group: i32,
+        /// The relation (0 itself or friends, 1 neutrals, 2 enemies, 3 itself; −1 any).
         relation: i32,
+        /// The object state (−1 any).
         state: i32,
+        /// The master (−1 any).
         master: i32,
+        /// The workers cap (−1 none).
         workers: i32,
     },
     /// `bestUnitToAttack` (`FUN_140c44680`) with no current target and no extra objects, as the
@@ -341,7 +366,10 @@ pub enum Pick {
     /// check ([`can_attack`]). The search sets the alert mode
     /// (`+0x1b8`) when it finds enemies, and holds a second search from within 5 tiles in the same
     /// update to the first's answer, which the idle checks never ask.
-    Attack { lowest: usize },
+    Attack {
+        /// The lowest relation it looks at (0 Gaia, 2 in a scenario).
+        lowest: usize,
+    },
     /// The search alone (slot 0x50 as a `NoAttack` soldier's idle check calls it): no object, and
     /// whether it found enemies (the alert mode).
     Look,
@@ -351,12 +379,19 @@ pub enum Pick {
 /// (`+0x640`) and its master's class, `attack_priority` (`+0x92c`) and `missile_id` (`+0x83c`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Attacker {
+    /// The unit AI's type.
     pub ai_type: u32,
+    /// The unit's player.
     pub player: usize,
+    /// The unit's state.
     pub state: u8,
+    /// Its master's class.
     pub class: i16,
+    /// Its master's `attack_priority`.
     pub attack_priority: u8,
+    /// Its master's missile, −1 for none.
     pub missile: i16,
+    /// The game mode is a scenario's.
     pub scenario: bool,
 }
 
@@ -364,11 +399,17 @@ pub struct Attacker {
 /// type, id and `combat_level` (`+0x62c`), and the object's `+0x924`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Target {
+    /// The object's player.
     pub owner: usize,
+    /// Its master's class.
     pub class: i16,
+    /// Its master's type.
     pub kind: u8,
+    /// Its master.
     pub master: i16,
+    /// Its master's `combat_level`.
     pub combat_level: u8,
+    /// The object's `+0x924`.
     pub capture: u8,
 }
 
@@ -421,10 +462,13 @@ pub type Closest<'a> = dyn FnMut(&Search<'_>) -> Result<Found, Unsupported> + 'a
 /// search that read the last answer leaves the alert mode as it is).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Found {
+    /// The object picked, −1 for none.
     pub id: i32,
+    /// The lists read hold enemies.
     pub enemies: bool,
     /// The object's place (x, y, z), for the caller's use.
     pub position: Option<[f32; 3]>,
+    /// Its query ran (else it read the last answer).
     pub fresh: bool,
 }
 
@@ -463,7 +507,9 @@ pub struct Surroundings {
     /// Its top speed (slot 0x208, `FUN_141202c70`; 0 for a unit that does not move), the map's
     /// size in tiles and the world's dt in seconds (`world+0x164`).
     pub speed: f32,
+    /// The map's size in tiles.
     pub map: [i32; 2],
+    /// The world's dt in seconds (`world+0x164`).
     pub dt_seconds: f32,
     /// The game's setting at `+0x680` (`FUN_140ec0cd0`) is 1: boars stay put.
     pub mode_1: bool,
@@ -477,7 +523,9 @@ pub struct Surroundings {
     /// The master's radii (`+0x5d8`, `+0x5dc`), line of sight (`+0x5d0`) and search radius
     /// (`+0x794`, the unit's slot 0x2c8).
     pub size: [f32; 2],
+    /// The master's line of sight (`+0x5d0`).
     pub los: f32,
+    /// The search radius (`+0x794`, the unit's slot 0x2c8).
     pub search_radius: f32,
     /// The unit's slot 0x2d0 with 0 (`FUN_14106d170`): its top action may be interrupted, or it
     /// has none.
@@ -494,8 +542,11 @@ pub struct Surroundings {
     pub foundations: bool,
     /// The unit's state (`+0x640`), type (`+0xf`), `+0x924` and master id.
     pub state: u8,
+    /// The unit's type (`+0xf`).
     pub kind: u8,
+    /// The unit's `+0x924`.
     pub capture: u8,
+    /// The unit's master.
     pub master: i16,
     /// The game mode (the save's `mGameMode`, options `+0x34`) is one of `FUN_141302540`'s:
     /// Scenario (3), Campaign (4), King of the Hill (5), Co-op Campaign (15).
@@ -514,12 +565,19 @@ pub struct Surroundings {
 /// (`FUN_140c68a00` gives 0xf: the tile's bit of the unified map and the player's mask `+0x2a8`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Seen {
+    /// The object's state.
     pub state: u8,
+    /// Its master's type.
     pub kind: u8,
+    /// Its owner.
     pub owner: usize,
+    /// Its master's class.
     pub class: i16,
+    /// Its place.
     pub position: [f32; 3],
+    /// Its master's radii.
     pub radius: [f32; 2],
+    /// Its tile is visible to the viewer.
     pub visible: bool,
 }
 
@@ -539,7 +597,9 @@ const CLASS_52: i16 = 52;
 /// 0x340): a `MoveTo` to `point` within `range`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AiMove {
+    /// The point.
     pub point: [f32; 3],
+    /// The range within which it arrives.
     pub range: f32,
     /// The sixth argument: the move replaces even a `MoveTo` to the same point.
     pub force: bool,
@@ -601,10 +661,12 @@ pub const AUTO_SCOUT_ACTION: i32 = 0x2bd;
 pub const EXPLORE_ACTION: i32 = crate::explore::EXPLORE_ACTION;
 /// The height of the explore's target point (`FUN_140c4d910`, `DAT_14330eb8c`).
 const EXPLORE_Z: f32 = crate::image::unit_ai::EXPLORE_Z;
+/// The move action value (`0x262`).
 pub const MOVE_ACTION: i32 = 0x262;
 /// The follow order (`0x2c8`, "I have a follow order for Unit #%d" in slot 73) and its action
 /// value (`0x264`), which FOLLOW gives.
 pub const FOLLOW_ORDER: i32 = 0x2c8;
+/// The follow action value (`0x264`).
 pub const FOLLOW_ACTION: i32 = 0x264;
 /// The defend order (`0x2bd`, "I have a defend order for Unit #%d" in slot 73).
 const DEFEND_ORDER: i32 = 0x2bd;
@@ -2287,9 +2349,11 @@ impl UnitAi {
 
 /// The build order (`0x2be`) and the build action value (`0x25a`) of a villager's unit AI.
 pub const BUILD_ORDER: i32 = 702;
+/// The build action value (`0x25a`).
 pub const BUILD_ACTION: i32 = 602;
 /// The hunt order (`0x2c9`) and action value (`0x265`) of a villager's unit AI.
 pub const HUNT_ORDER: i32 = 713;
+/// The hunt action value (`0x265`).
 pub const HUNT_ACTION: i32 = 613;
 
 #[cfg(test)]

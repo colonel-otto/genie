@@ -22,6 +22,7 @@ pub struct Artifact {
     /// The `MoveTo` sub-action of a move its player gave the animal, and the action's point
     /// (`+0x38`..`+0x40`) it walks to.
     pub move_to: Option<MoveTo>,
+    /// The point its `MoveTo` walks to (`+0x38`..`+0x40`).
     pub goal: Option<[f32; 3]>,
 }
 

@@ -39,9 +39,13 @@ const DRAW_SCALE: i64 = 0x7fff_ffff;
 /// The states the slice models: 1 done, 2 the target died, 4 on the way, 6 waiting to swing, 7
 /// swinging.
 pub const DONE: u8 = 1;
+/// State 2: the target died.
 pub const KILLED: u8 = 2;
+/// State 4: on the way.
 pub const MOVE: u8 = 4;
+/// State 6: waiting to swing.
 pub const READY: u8 = 6;
+/// State 7: swinging.
 pub const SWING: u8 = 7;
 
 /// The sprites and frames the Attack takes from its constructor.
@@ -51,17 +55,23 @@ pub struct Arms {
     /// the unit picks from; `+0x80`, the sprite it stands with when done; `+0x88`, the sprite it
     /// waits with between swings (the master's idle attack sprite).
     pub sprite: Option<Graphic>,
+    /// `+0x78`: a second attack sprite the unit picks from.
     pub second_sprite: Option<Graphic>,
+    /// `+0x80`: the sprite it stands with when done.
     pub idle_sprite: Option<Graphic>,
+    /// `+0x88`: the sprite it waits with between swings.
     pub idle_attack_sprite: Option<Graphic>,
     /// `+0x98`, the master's missile (`missile_id`, -1 for a melee unit); `+0x9a`, the frame that
     /// fires (`fire_missile_at_frame`); `+0x9c`, the frame that may interrupt
     /// (`interrupt_frame`), -1 for none.
     pub missile: i16,
+    /// `+0x98`: the frame it fires at (`fire_missile_at_frame`).
     pub fire_frame: i16,
+    /// `+0x9c`: the frame that may interrupt (`interrupt_frame`), −1 for none.
     pub interrupt_frame: i16,
 }
 
+/// The Attack action (`RGE_Action_Attack`, type 9) as the hunt's sub-action.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Attack {
     /// The target object (`+0x20`, its id at `+0x30`).
@@ -72,6 +82,7 @@ pub struct Attack {
     pub timer: f32,
     /// `+0x90`: the range it attacks from; `+0x94`, the least.
     pub range: f32,
+    /// `+0x94`: the least range it attacks from.
     pub min_range: f32,
     /// `+0x38`..`+0x40`: the point it attacks; -1 for none.
     pub point: [f32; 3],
@@ -84,7 +95,9 @@ pub struct Attack {
     /// `+0xb0` and `+0xb4`: the time of a swing past its sprite's length; a melee swing counts
     /// `+0xb0` down until the hit.
     pub swing: f32,
+    /// `+0xb4`: the rest after the swing's sprite.
     pub rest: f32,
+    /// The sprites and frames from its constructor.
     pub arms: Arms,
 }
 
@@ -93,14 +106,18 @@ pub struct Attack {
 pub struct Engagement {
     /// The gap between the two footprints squared (`FUN_14118f8c0`) and its root (`FUN_14118f680`).
     pub gap_squared: f32,
+    /// The gap's root (`FUN_14118f680`).
     pub gap: f32,
     /// The unit's and the target's positions.
     pub position: [f32; 3],
+    /// The target's place.
     pub target_position: [f32; 3],
     /// The unit's top speed (slot 0x208), its master's weapon range with any bonus against the
     /// target (slot 0x238) and its least range.
     pub speed: f32,
+    /// Its master's weapon range with any bonus against the target (slot 0x238).
     pub range: f32,
+    /// Its least range.
     pub min_range: f32,
     /// The unit AI's `canMoveToAttack` (`FUN_140c48420`): it has an order, or no order but a stance
     /// below 2.
@@ -115,6 +132,7 @@ pub struct Strike<'a> {
     /// The unit's active sprite and animation speed (`+0x7b8`), None while the slice does not
     /// know them.
     pub sprite: &'a mut Option<ActiveSprite>,
+    /// The unit's animation speed (`+0x7b8`), None while the slice does not know it.
     pub anim_speed: &'a mut Option<f32>,
     /// `+0x91c`, the time until it may attack again (slot 0x100: at most 0); the game's world
     /// time when it may again (`+0x920`, slot 0x248) is not held.
@@ -124,6 +142,7 @@ pub struct Strike<'a> {
     pub reload: f32,
     /// The master's hit chance (`+0x83e`).
     pub hit_chance: i16,
+    /// The target, which the hit changes.
     pub victim: &'a mut Victim,
     /// The objects about the unit a blast of it may reach (its master has an area effect),
     /// besides the unit and its target; empty for others.
@@ -144,6 +163,7 @@ pub struct Strike<'a> {
     /// The unit AI's canMoveToAttack (slot 0x1d0, `FUN_140c48420`) and stance (`+0x1a9`), which
     /// readyToAttack reads of a target out of reach.
     pub can_move: bool,
+    /// The unit AI's stance (`+0x1a9`).
     pub stance: u8,
 }
 

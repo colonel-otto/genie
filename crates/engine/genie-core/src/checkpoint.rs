@@ -7,28 +7,41 @@
 /// What the block reads from one object of a player's live list.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ObjectState {
+    /// The object's id.
     pub id: i32,
+    /// Its master.
     pub main_id: i16,
+    /// Its state.
     pub state: u8,
+    /// What it holds.
     pub amount_held: f32,
+    /// Its place.
     pub position: [f32; 3],
+    /// Its top action.
     pub top_action: Option<TopAction>,
+    /// Its unit AI's retarget timer, None without a unit AI.
     pub retarget_timer: Option<i32>,
 }
 
 /// The type (virtual slot 166) and state (virtual slot 86) of an object's top action.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TopAction {
+    /// The type (virtual slot 166).
     pub kind: i16,
+    /// The state (virtual slot 86).
     pub state: u8,
 }
 
 /// What the block reads from a player.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct PlayerState {
+    /// The player's id.
     pub id: u32,
+    /// Food, wood, stone and gold.
     pub resources: [f32; 4],
+    /// How many objects sleep.
     pub sleeping_count: u32,
+    /// The live objects, in their list's order.
     pub live: Vec<ObjectState>,
 }
 

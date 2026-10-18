@@ -31,7 +31,9 @@ const TWO: f32 = crate::image::facing::TWO;
 /// flags have bit 1 (`+0x1a`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SpriteFacets {
+    /// How many facets.
     pub count: i16,
+    /// Its sequence flags have bit 1 (`+0x1a`): the sprite turns.
     pub flag_1: bool,
 }
 

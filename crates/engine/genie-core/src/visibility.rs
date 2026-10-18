@@ -67,6 +67,7 @@ pub struct BuildingSight {
 /// What an object's sight reads of it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Seer {
+    /// The object's player.
     pub player: usize,
     /// The master's id (`+0x58`, decoded).
     pub master: i16,
@@ -78,6 +79,7 @@ pub struct Seer {
     /// and a foundation made in the game has it clear until its construction starts). Only a
     /// building's slot 0x1d8 reads it.
     pub explored: bool,
+    /// A building's sight, which its construction changes.
     pub building: Option<BuildingSight>,
     /// A building's UMV entry (`+0x904`, from 1; 0 for none): the extra tiles its mask reads.
     pub umv: u8,
@@ -93,7 +95,9 @@ pub struct Seer {
 /// less anchor), and the offsets of the tiles the visible-object updator checks for it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Extent {
+    /// The guid of its entry.
     pub guid: u32,
+    /// The offsets of the tiles the visible-object updater checks for it.
     pub offsets: Vec<[i32; 2]>,
     /// The offsets' capacity (the entry's second word).
     pub capacity: i32,
@@ -103,7 +107,9 @@ pub struct Extent {
 /// sight.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Visibility {
+    /// The map's width in tiles.
     pub width: i32,
+    /// The map's height in tiles.
     pub height: i32,
     /// By player index (Gaia 0).
     pub maps: Vec<VisibleMap>,
@@ -112,6 +118,7 @@ pub struct Visibility {
     /// Per tile, the `+0x19` link bits and the `+0x1a` byte (a direction to the anchor, or the
     /// anchor's UMV entry).
     links: Vec<(u8, u8)>,
+    /// The UMV list: the entries of the buildings' extents.
     pub extents: Vec<Extent>,
     /// The UMV list's capacity (`+0x5e04`): it grows by 8.
     pub extents_capacity: i32,
@@ -198,19 +205,23 @@ impl Visibility {
         let _ = self.unsupported.get_or_insert(Unsupported(what));
     }
 
+    /// The object `id` comes into the players' sight with `seer`.
     pub fn add_seer(&mut self, id: i32, seer: Seer) {
         let _ = self.seers.insert(id, seer);
     }
 
+    /// The object `id` leaves the sight.
     pub fn remove_seer(&mut self, id: i32) {
         let _ = self.seers.remove(&id);
     }
 
+    /// What the object `id`'s sight reads of it.
     #[must_use]
     pub fn seer(&self, id: i32) -> Option<&Seer> {
         self.seers.get(&id)
     }
 
+    /// The same, to change.
     pub fn seer_mut(&mut self, id: i32) -> Option<&mut Seer> {
         self.seers.get_mut(&id)
     }

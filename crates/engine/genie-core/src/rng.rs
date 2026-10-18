@@ -76,6 +76,7 @@ impl Well512 {
         (u64::from(hi) << 32) | u64::from(lo)
     }
 
+    /// The next draw, 15 bits (`rand15`).
     pub const fn rand15(&mut self) -> u32 {
         self.last = self.raw() & 0x7fff;
         self.last
@@ -100,16 +101,27 @@ const fn jenkins(a: u32) -> u32 {
 /// The streams in registry order. The names come from the constructors' strings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stream {
+    /// The Action stream.
     Action,
+    /// The random map's stream.
     RandomMap,
+    /// The sprites' stream.
     Sprite,
+    /// The world's stream.
     World,
+    /// The AI stream.
     Ai,
+    /// The objects' stream.
     Object,
+    /// The players' stream.
     Player,
+    /// The editor's stream.
     Editor,
+    /// The stream outside the sync.
     Unsynced,
+    /// The communication's stream.
     Comm,
+    /// The interface's stream.
     Ui,
 }
 
@@ -130,6 +142,7 @@ impl Streams {
         }
     }
 
+    /// The stream `stream`.
     pub const fn get(&mut self, stream: Stream) -> &mut Well512 {
         &mut self.rngs[stream as usize]
     }

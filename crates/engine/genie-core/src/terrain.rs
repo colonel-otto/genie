@@ -51,7 +51,9 @@ pub struct Terrain {
     /// Per tile, row by row: the terrain (`+0x9`), the terrain to restore (`+0xa`, 255 for none)
     /// and the layer (`+0xc`, −1 for none).
     pub kinds: Vec<u8>,
+    /// Per tile: the terrain to restore (`+0xa`, 255 for none).
     pub restore: Vec<u8>,
+    /// Per tile: the layer (`+0xc`, −1 for none).
     pub layers: Vec<i16>,
     /// Per terrain id, the `.dat`'s records.
     pub terrains: Vec<TerrainKind>,
@@ -65,6 +67,7 @@ pub struct Terrain {
 /// What a completed building's foundation reads of it (`FUN_1411ddd90`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Foundation {
+    /// The building's place.
     pub position: [f32; 3],
     /// Its master's `clearance_size` (`+0x5fc`).
     pub clearance: [f32; 2],
@@ -74,7 +77,9 @@ pub struct Foundation {
     pub snow: bool,
     /// The master's id and class, its `defense_terrain_bonus` (`+0x820`).
     pub master: i16,
+    /// The master's class.
     pub class: i16,
+    /// The master's `defense_terrain_bonus` (`+0x820`).
     pub terrain_bonus: i16,
     /// The game's setting `FUN_140ec0cd0` reads at `+0x680` ([`crate::turn::Turns::mode_680`]):
     /// at 1 a foundation without a snow layer goes into the layer, not the terrain.
@@ -82,6 +87,7 @@ pub struct Foundation {
 }
 
 impl Terrain {
+    /// The map's terrain from its tiles, the terrain table and the restrictions.
     #[must_use]
     pub fn new(
         width: i32,

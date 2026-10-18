@@ -34,12 +34,19 @@ pub const CLASSES: usize = 65;
 /// its own), the owner's id (`player+0x718`), the place and the master's radii.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Record {
+    /// The object.
     pub id: i32,
+    /// Its distance (`FLT_MAX` in the lists; a query's copy holds its own).
     pub distance: f32,
+    /// The owner's id (`player+0x718`).
     pub owner: u8,
+    /// Its x.
     pub x: f32,
+    /// Its y.
     pub y: f32,
+    /// Its master's radius on x.
     pub rx: f32,
+    /// Its master's radius on y.
     pub ry: f32,
 }
 
@@ -47,16 +54,22 @@ pub struct Record {
 /// that player's list of its class (`+0x8b0`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Entry {
+    /// Its mask (`+0x8f8`): the players whose lists hold it.
     pub mask: u64,
+    /// Per player, its record's index in that player's list of its class (`+0x8b0`).
     pub slots: [Option<usize>; SLOTS],
 }
 
 /// The registry: `lists[player][class]`, and each object's [`Entry`].
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Registry {
+    /// The players it holds lists for.
     pub players: usize,
+    /// The classes per player ([`CLASSES`]).
     pub classes: usize,
+    /// `lists[player][class]`: the records.
     pub lists: Vec<Vec<Vec<Record>>>,
+    /// Each object's entry.
     pub entries: BTreeMap<i32, Entry>,
 }
 
@@ -80,6 +93,7 @@ pub const fn relation_kind(viewer: usize, owner: usize, relation: u8) -> Result<
 }
 
 impl Registry {
+    /// An empty registry of `players` and `classes`.
     #[must_use]
     pub fn new(players: usize, classes: usize) -> Self {
         Self {
@@ -90,6 +104,7 @@ impl Registry {
         }
     }
 
+    /// The object `id`'s entry, if it has one.
     #[must_use]
     pub fn entry(&self, id: i32) -> Option<&Entry> {
         self.entries.get(&id)

@@ -16,6 +16,7 @@ pub const MISSILE: i16 = 8;
 
 /// A missile's states: 4 flies, 1 ends (`set_state` 1: the object's slot 0xd8, its hit points to 0).
 pub const FLYING: u8 = 4;
+/// State 1: the missile ends.
 pub const DONE: u8 = 1;
 
 /// A target's height counts a third of its master's height radius (`FUN_140a9c600`,
@@ -43,13 +44,21 @@ const REACH_MARGIN: f32 = crate::image::missile::REACH_MARGIN;
 /// it, `FUN_141193a10`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MissileStats {
+    /// `projectile_type` (`+0x880`).
     pub projectile_type: u8,
+    /// `smart_mode`.
     pub smart_mode: u8,
+    /// `hit_mode` (`missile_hit_info`).
     pub hit_mode: u8,
+    /// `vanish_mode` (`missile_die_info`).
     pub vanish_mode: u8,
+    /// `projectile_arc` (`ballistics_ratio`).
     pub arc: f32,
+    /// Its master's speed (slot 0xe8).
     pub speed: f32,
+    /// Its master's radii (`+0x5d8`..`+0x5e0`).
     pub radius: [f32; 3],
+    /// The `.dat`'s `fly_mode` (`+0x608`): 0 holds it on the ground, 1 above it.
     pub fly_mode: u8,
 }
 
@@ -58,9 +67,13 @@ pub struct MissileStats {
 /// both without one, `FUN_140aa8720`). The hit's elevation reads its height.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Origin {
+    /// The firing object's place.
     pub position: [f32; 3],
+    /// The missile master's radii on the ground.
     pub radius: [f32; 2],
+    /// The firing object's master, −1 without one.
     pub master: i32,
+    /// Its owner, −1 without one.
     pub owner: i32,
 }
 
@@ -95,6 +108,7 @@ pub struct MissileAction {
     /// The target (`+0x20`, its id `+0x30`) and the object it was fired from (`+0x28`, `+0x34`),
     /// −1 for none.
     pub target: i32,
+    /// The object it was fired from (`+0x28`, its id `+0x34`), −1 for none.
     pub fired_from: i32,
     /// `+0x38`..`+0x40`: the target's place when fired.
     pub point: [f32; 3],
@@ -104,6 +118,7 @@ pub struct MissileAction {
     pub direction: [f32; 3],
     /// `+0x74`, `+0x78`: the arc's vertical speed and acceleration.
     pub ballistic_velocity: f32,
+    /// `+0x78`: the arc's vertical acceleration.
     pub ballistic_acceleration: f32,
     /// `+0x7c`: the way left to the aimed point.
     pub distance: f32,
@@ -124,6 +139,7 @@ pub struct Missile {
     pub max_range: f32,
     /// `+0x998` (`fired_from_id`) and `+0x99c` (`mIsChargeProjectile`).
     pub fired_from: i32,
+    /// `+0x99c` (`mIsChargeProjectile`): a charge's projectile.
     pub charge: bool,
     /// `+0x994`: farther than [`LANDING`] from its point; the ground does not stop it.
     pub flying: bool,
@@ -158,8 +174,11 @@ pub fn reach(radius: [f32; 2], range: f32) -> f32 {
 /// target's master's radius on x and class for the class-54 rule.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Aimer {
+    /// The firing object's master's `base_hit_chance` (`+0x83e`).
     pub hit_chance: i16,
+    /// Its `missed_missile_spread` (`+0x860`).
     pub spread: f32,
+    /// Its class.
     pub class: i16,
 }
 

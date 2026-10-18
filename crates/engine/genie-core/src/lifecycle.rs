@@ -34,6 +34,7 @@ pub enum Class {
 /// The fields the dead-object steps read and write, with their offsets in 158041.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Lifecycle {
+    /// The object's class: static or animated.
     pub class: Class,
     /// `+0x640`, the save's `object_state`.
     pub state: u8,
@@ -62,6 +63,7 @@ pub struct Lifecycle {
     pub goto_sleep: bool,
     /// The master's id: the static update has a special case for 61.
     pub master_id: i16,
+    /// What the dead-object steps read of the master.
     pub master: Option<MasterData>,
 }
 

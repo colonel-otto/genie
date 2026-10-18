@@ -33,8 +33,11 @@ pub enum MoveTo {
 /// the `MoveTo`; a new `MoveTo` starts without one.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MoveWait {
+    /// `+0x6c`, `movement_wait_state`: 0 never waited, 1 waiting, 2 asked again.
     pub state: u8,
+    /// `+0x70`: the time waited.
     pub timer: f32,
+    /// `+0x74`: how long it waits.
     pub delay: f32,
 }
 
@@ -56,11 +59,15 @@ impl MoveTo {
 /// planners and the world's time for a path request (None where the caller has none).
 #[derive(Debug)]
 pub struct Walk<'a> {
+    /// The unit's movement state, if it moves.
     pub mover: Option<&'a mut Mover>,
+    /// The unit.
     pub me: Me,
+    /// The world's dt in seconds.
     pub dt: f32,
     /// The objects' places; the motion step moves the unit onto a waypoint it reached.
     pub world: &'a mut Spatial,
+    /// The planners and the world's time for a path request, None where the caller has none.
     pub plan: Option<Planning<'a>>,
 }
 
@@ -80,7 +87,9 @@ impl Walk<'_> {
 /// Where a `MoveTo` goes: a target object or a point (`x, y, z` on the map).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Goal {
+    /// A target object.
     Target(i32),
+    /// A point.
     Point([f32; 3]),
 }
 
@@ -212,6 +221,7 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<bool, U
 /// `+0x60` and `+0x61` are 0: it is not quiet.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MoveToAction {
+    /// Its state (`+0x18`).
     pub state: MoveTo,
     /// The point it walks to (`+0x38`..`+0x40`), when it has no target object.
     pub goal: Option<[f32; 3]>,

@@ -313,7 +313,9 @@ fn ray_rect(a: Point, b: Point, r: Rect, t: &mut i32, side: &mut u8) -> i32 {
 /// A hit of the raycast or a sweep: the shape and its side.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Hit {
+    /// The shape hit.
     pub shape: u32,
+    /// Its side.
     pub side: u8,
 }
 
@@ -342,9 +344,11 @@ enum Callback {
 /// What the searches share for a unit: the mesh, the shapes it ignores, its shrinking.
 #[derive(Debug)]
 pub struct Ctx<'a> {
+    /// The mesh.
     pub mesh: &'a Mesh,
     /// Per shape id: ignored (`pather + 0xd8`).
     pub ignore: &'a [bool],
+    /// How far the searches shrink a shape's box (`FUN_140fa8460`, `FUN_14087c650`).
     pub d: i32,
 }
 
@@ -1980,11 +1984,17 @@ impl Search<'_> {
 /// classes the unit cannot cross (`mask ^ 0xff`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Query {
+    /// The start.
     pub from: Point,
+    /// The goal.
     pub to: Point,
+    /// The unit's radius.
     pub radius: i32,
+    /// The target's half sizes, when the goal is its own position.
     pub target_size: [i32; 2],
+    /// The range.
     pub range: i32,
+    /// The terrain classes the unit cannot cross, as a tile mask.
     pub blocked: u64,
 }
 
@@ -1994,6 +2004,7 @@ pub struct Query {
 pub struct ShortPath {
     /// 0 already in range, 1 reached, 2 a partial path, 3 the start blocked, 4 invalid.
     pub result: u8,
+    /// The path's points.
     pub points: Vec<Point>,
 }
 
@@ -2001,8 +2012,11 @@ pub struct ShortPath {
 /// sizes (`+0x5d8`, `+0x5dc`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Target {
+    /// The target.
     pub id: i32,
+    /// Its place.
     pub position: [f32; 2],
+    /// Its master's half sizes (`+0x5d8`, `+0x5dc`).
     pub half_size: [f32; 2],
 }
 
@@ -2010,7 +2024,9 @@ pub struct Target {
 /// (`+0x64c`), if it has one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Listed {
+    /// The object.
     pub id: i32,
+    /// Its shape in the mesh (`+0x64c`), if it has one.
     pub shape: Option<u32>,
 }
 
@@ -2019,12 +2035,19 @@ pub struct Listed {
 /// ignore, the map's size and the unit's terrain mask.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Call {
+    /// The start.
     pub from: [f32; 2],
+    /// The goal.
     pub to: [f32; 2],
+    /// The unit's radius.
     pub radius: f32,
+    /// Its range.
     pub range: f32,
+    /// The target, when the goal is an object.
     pub target: Option<Target>,
+    /// The objects it ignores.
     pub listed: Vec<Listed>,
+    /// The map's size in tiles.
     pub map: [i32; 2],
     /// The terrain classes the unit can cross (its restriction's mask).
     pub mask: u8,
@@ -2039,7 +2062,12 @@ pub enum Entry {
     /// 4: the start or the goal lies off the map.
     Invalid,
     /// A search with the shapes it ignores.
-    Search { query: Query, ignore: Vec<u32> },
+    Search {
+        /// The query.
+        query: Query,
+        /// The shapes it ignores.
+        ignore: Vec<u32>,
+    },
 }
 
 impl Call {

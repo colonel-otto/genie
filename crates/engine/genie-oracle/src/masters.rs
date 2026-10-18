@@ -197,6 +197,7 @@ const fn terrain_class(flags: u8) -> u8 {
 }
 
 impl TerrainTable {
+    /// The terrain table of `dat`: each terrain's restrictions and the restrictions' passability.
     #[must_use]
     pub fn from_dat(dat: &DatFile) -> Self {
         let classes: Vec<u8> = dat
@@ -270,6 +271,7 @@ pub struct MasterTable {
     sprite_speed: HashMap<i16, f32>,
     /// What the sprite clock reads of each graphic.
     pub graphics: std::collections::BTreeMap<i16, genie_core::sprite::Graphic>,
+    /// The terrain table.
     pub terrain: TerrainTable,
     /// The drop-site table (`dropsites.json` beside the `.dat`, [`crate::drop_sites`]); empty
     /// when not loaded.

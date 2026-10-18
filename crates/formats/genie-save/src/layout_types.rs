@@ -2,6 +2,9 @@
 //! Hand-written; the generator names them in its helper table (aoe2de-exe-re `layout/b<build>.py`).
 //! Each writes back the bytes it read: a length is the length of what follows.
 
+// binrw's expansion of the lengths' `try_calc` casts and qualifies; the code is the macro's
+#![allow(trivial_casts, unused_qualifications)]
+
 use binrw::io::{Read, Seek, Write};
 use binrw::{BinRead, BinResult, BinWrite, Endian, binrw};
 
@@ -13,6 +16,7 @@ pub struct LenString16 {
     #[br(temp)]
     #[bw(try_calc = u16::try_from(bytes.len()))]
     len: u16,
+    /// The bytes.
     #[br(count = len)]
     pub bytes: Vec<u8>,
 }
@@ -25,17 +29,21 @@ pub struct LenString32 {
     #[br(temp)]
     #[bw(try_calc = u32::try_from(bytes.len()))]
     len: u32,
+    /// The bytes.
     #[br(count = len)]
     pub bytes: Vec<u8>,
 }
 
-/// A string behind the signature `0x0a60` (158041: `0x140932010`, `strings.cpp`): two u16, the
-/// signature `&theSig` and the length `&theLen`, then that many bytes. The game takes the pair in
-/// either order: when the first is not the signature but the second is, the first is the length.
+/// A string behind the signature `0x0a60` (158041: `0x140932010`, `strings.cpp`).
+///
+/// Two u16, the signature `&theSig` and the length `&theLen`, then that many bytes. The game takes
+/// the pair in either order: when the first is not the signature but the second is, the first is
+/// the length.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SigString {
     /// The length came first and the signature second.
     pub swapped: bool,
+    /// The bytes.
     pub bytes: Vec<u8>,
 }
 
@@ -184,12 +192,16 @@ impl BinWrite for Unsupported {
     }
 }
 
-/// A value with the stream position it was read at: the reader reports where the save's sections
-/// start (aoe2de-exe-re `layout`, overlay `positioned`). Writes the value only. binrw's own
-/// `PosValue` compares only with the bare value, so a struct holding it cannot derive `PartialEq`.
+/// A value with the stream position it was read at.
+///
+/// The reader reports where the save's sections start (aoe2de-exe-re `layout`, overlay
+/// `positioned`). Writes the value only. binrw's own `PosValue` compares only with the bare
+/// value, so a struct holding it cannot derive `PartialEq`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Positioned<T> {
+    /// The stream position.
     pub pos: u64,
+    /// The value.
     pub val: T,
 }
 

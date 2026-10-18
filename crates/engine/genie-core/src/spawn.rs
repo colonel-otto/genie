@@ -59,6 +59,7 @@ pub(crate) const START_RIGHT_Z: f32 = crate::image::spawn::START_RIGHT_Z;
 /// The building a unit spawns from, as the search reads it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Site {
+    /// The building's place.
     pub position: [f32; 3],
     /// Its master's radii.
     pub radius: [f32; 2],
@@ -73,9 +74,11 @@ pub struct Site {
 /// What the placement test found at a candidate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tested {
+    /// Free: the unit may stand there.
     Free,
     /// Not free; `stays`: the object it reports blocks for good, which ends the spot.
     Blocked {
+        /// The object it reports blocks for good, which ends the spot.
         stays: bool,
     },
 }
@@ -296,21 +299,30 @@ pub fn spawn_point(
 /// An object near a candidate, as the placement test and the blocker test read it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Near {
+    /// The object.
     pub id: i32,
+    /// Its place.
     pub position: [f32; 3],
     /// Its master's radii on the ground and whether its height radius is above 0.
     pub radius: [f32; 2],
+    /// Its master's height radius is above 0.
     pub tall: bool,
     /// Its master's type (`+0x8`), class, id, `can_be_built_on` (`+0x5e9`), `obstruction_type`
     /// (`+0x651`) and `enable_auto_gather` (`+0x681`).
     pub kind: u8,
+    /// Its master's class.
     pub class: i16,
+    /// Its master.
     pub master: i16,
+    /// Its master's `can_be_built_on` (`+0x5e9`).
     pub buildable_on: u8,
+    /// Its master's `obstruction_type` (`+0x651`).
     pub obstruction_type: u8,
+    /// Its master's `enable_auto_gather` (`+0x681`).
     pub auto_gather: bool,
     /// Its state (`+0x640`) and, for a building, its `desolid_flag` (`+0xc60`).
     pub state: u8,
+    /// A building's `desolid_flag` (`+0xc60`).
     pub desolid: bool,
 }
 
@@ -340,19 +352,25 @@ impl Near {
 /// mode, the objects checked).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Placing<'a> {
+    /// The unit's player.
     pub player: usize,
+    /// Its master's radii.
     pub radius: [f32; 2],
+    /// Its master's height radius is above 0.
     pub tall: bool,
+    /// Its master's class.
     pub class: i16,
     /// Its terrain restriction's value per terrain.
     pub restriction: &'a [f32],
     /// `hill_mode` (`+0x604`) and whether the placement terrains (`+0x5f2`..`+0x5f8`) name one.
     pub hill_mode: u8,
+    /// The placement terrains (`+0x5f2`..`+0x5f8`) name a terrain.
     pub placement_terrains: bool,
 }
 
 /// What the placement test reads of the map.
 pub trait PlaceMap {
+    /// The map's size in tiles.
     fn size(&self) -> [i32; 2];
     /// A tile's terrain (the map tile's `+0x9`).
     fn terrain(&self, x: i32, y: i32) -> Result<u8, Unsupported>;

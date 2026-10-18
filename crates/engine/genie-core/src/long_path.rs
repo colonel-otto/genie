@@ -83,9 +83,11 @@ pub struct LongTarget {
     /// Its tile, and the tiles of its footprint (x0, y0, x1, y1: the centre less the radius, the
     /// centre plus the radius less `EDGE_GAP`, whole).
     pub tile: [i32; 2],
+    /// The tiles of its footprint (x0, y0, x1, y1).
     pub rect: [i32; 4],
     /// The unit's footprint gap to it, squared (`FUN_14118f8c0`) and not (`FUN_14118f680`).
     pub gap_squared: f32,
+    /// The gap, not squared (`FUN_14118f680`).
     pub gap: f32,
 }
 
@@ -111,8 +113,11 @@ impl LongTarget {
 /// What the search is asked: from one tile to another, within `range`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LongRequest {
+    /// The start tile.
     pub from: [i32; 2],
+    /// The goal tile.
     pub to: [i32; 2],
+    /// How near counts as there.
     pub range: f32,
     /// The target object, None for a point.
     pub target: Option<LongTarget>,

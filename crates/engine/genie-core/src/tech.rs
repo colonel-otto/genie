@@ -31,6 +31,7 @@ pub const SHARED_KIND: i16 = 0x20;
 pub struct Cost {
     /// The attribute it takes (−1 none).
     pub attribute: i16,
+    /// How much.
     pub amount: i16,
     /// 0 not paid, 1 paid from the player's attribute, 2 from the building (`FUN_141204310`).
     pub paid: u8,
@@ -45,13 +46,16 @@ pub struct TechDef {
     pub kind: i16,
     /// Its effect (`+0x3a`) and the effect's commands (the world's effect table `+0x128`).
     pub effect_id: i16,
+    /// The effect's commands.
     pub effect: Vec<EffectCommand>,
     /// `+0x18`, `+0x24`: the technologies it requires and how many of them.
     pub required: [i16; 6],
+    /// How many of them it requires.
     pub required_count: i16,
     /// `+0x26`: the civ it belongs to (below 1 every civ's); `+0x28`: the game modes it is for
     /// (0 every one, `FUN_1413cf2f0`).
     pub civ: i16,
+    /// `+0x28`: the game modes it is for (0 and 1 every one, `FUN_1413cf2f0`).
     pub mode: i16,
     /// `+0x70`: where it is researched, the building's master and the seconds it takes.
     pub locations: Vec<(i16, i16)>,
@@ -60,10 +64,15 @@ pub struct TechDef {
 /// One command of an effect (12 bytes): its kind and arguments.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct EffectCommand {
+    /// The command's kind (4 adds to an attribute).
     pub kind: u8,
+    /// Its first argument (a master, −1 for none).
     pub a: i16,
+    /// Its second (a class, −1 for none).
     pub b: i16,
+    /// Its third (an attribute).
     pub c: i16,
+    /// Its amount.
     pub d: f32,
 }
 
@@ -90,9 +99,13 @@ impl TechDef {
 /// the seconds it takes there, its button and the seconds added (`+0xc`, `FUN_1413cec90`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Location {
+    /// The building's master.
     pub building: i16,
+    /// The seconds it takes there.
     pub time: u16,
+    /// Its button.
     pub button: u8,
+    /// The seconds added (`+0xc`, `FUN_1413cec90`).
     pub adjustment: f32,
 }
 
@@ -401,7 +414,9 @@ impl TechState {
 
 /// The player's attributes as a technology's costs read and write them.
 pub trait Attributes {
+    /// Attribute `i`.
     fn get(&self, i: i16) -> Result<f32, Unsupported>;
+    /// Attribute `i` set to `v`.
     fn set(&mut self, i: i16, v: f32) -> Result<(), Unsupported>;
 }
 

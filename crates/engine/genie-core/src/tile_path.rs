@@ -20,16 +20,23 @@ use crate::msvc;
 
 /// Byte 0: the edges to the cells above (y − 1), left, right and below (y + 1).
 pub const N: u8 = 1;
+/// The edge to the cell left.
 pub const W: u8 = 2;
+/// The edge to the cell right.
 pub const E: u8 = 4;
+/// The edge to the cell below (y + 1).
 pub const S: u8 = 8;
 /// Byte 0 during a search: a node of the cell was opened, or closed.
 pub const OPEN: u8 = 0x10;
+/// A node of the cell was closed.
 pub const CLOSED: u8 = 0x20;
-/// Byte 1.
+/// Byte 1: the goal's cell.
 pub const GOAL: u8 = 0x10;
+/// Byte 1: the cell is uniform and searched as one node.
 pub const NODE: u8 = 0x20;
+/// Byte 1: the cell's children are searched instead of it.
 pub const MIXED: u8 = 0x40;
+/// Byte 1: a passable tile with no passable neighbour.
 pub const LONE: u8 = 0x80;
 
 /// The cost the best node starts from in each search (`0x497423f0`).
@@ -63,6 +70,7 @@ pub enum Found {
 }
 
 impl Found {
+    /// The search's result as the game's code (0 to 3).
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
@@ -77,7 +85,9 @@ impl Found {
 /// A path's points and its length, as the game's path data holds them (`+0x438`..`+0x440`, `+4`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Path {
+    /// The points.
     pub points: Vec<Vec3>,
+    /// The length.
     pub length: f32,
 }
 
@@ -351,6 +361,7 @@ pub struct Planner {
 /// What the grid reads of the map: whether the obstruction manager marks a tile blocked
 /// (`DAT_143f0a088 + 0x98`, bit `0x4000`).
 pub trait Blocked {
+    /// Tile (`x`, `y`) is blocked.
     fn blocked(&self, x: i32, y: i32) -> bool;
 }
 
@@ -630,10 +641,12 @@ impl Planner {
 pub struct Request {
     /// x, y on the map.
     pub from: [f32; 2],
+    /// x, y of the goal on the map.
     pub to: [f32; 2],
     /// The unit's and its target's radii, and how near the goal counts as there (the path
     /// level's range).
     pub radii: f32,
+    /// How near the goal counts as there (the path level's range).
     pub range: f32,
     /// Rectangles of tiles closed for this search (x0, y0, x1, y1).
     pub closed: Vec<[i16; 4]>,

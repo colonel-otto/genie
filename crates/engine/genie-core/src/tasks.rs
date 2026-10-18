@@ -59,6 +59,7 @@ const fn special_type(t: i16) -> bool {
 /// What the finder reads of the unit that would do the task.
 #[derive(Clone, Copy, Debug)]
 pub struct Actor<'a> {
+    /// The unit.
     pub id: i32,
     /// Its own master (the finder's `param_3`, also when another master's list is searched).
     pub master: &'a Master,
@@ -75,8 +76,11 @@ pub struct Actor<'a> {
 /// What the finder reads of a target object.
 #[derive(Clone, Copy, Debug)]
 pub struct TaskTarget<'a> {
+    /// The target.
     pub id: i32,
+    /// Its master.
     pub master: &'a Master,
+    /// Its player.
     pub player: usize,
     /// The object state (`+0x640`).
     pub state: u8,
@@ -84,6 +88,7 @@ pub struct TaskTarget<'a> {
     pub held: (i16, f32),
     /// Its hit points and their most (slots 0xc0 and 200).
     pub hp: f32,
+    /// Its most hit points (slot 200).
     pub max_hp: f32,
     /// `+0x68a`, `unit_attackable_flag` (`FUN_141188b10`).
     pub attackable: bool,
@@ -113,7 +118,9 @@ pub fn allied(relations: &[u8], from: usize, to: usize, with_ally: bool) -> bool
     }
 }
 
+/// The players' relations and the drop sites, as the task finder reads them.
 pub trait Diplomacy {
+    /// Player `from` counts `to` as its own or allied (with its allies when `with_ally`).
     fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool;
     /// `FUN_140fdd190`: a building of master `building` takes what `actor` carries.
     fn drops_at(&self, building: i16, actor: &Actor<'_>) -> bool;
@@ -124,10 +131,15 @@ pub trait Diplomacy {
 /// for (empty: all) and the resource kinds it takes.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DropSite {
+    /// The building's master.
     pub building: i16,
+    /// The class of the units that drop there (−1 any).
     pub worker_class: i16,
+    /// The unit masters that drop there (empty: all).
     pub workers: Vec<i16>,
+    /// The civs it is for (empty: all).
     pub civs: Vec<u8>,
+    /// The resource kinds it takes.
     pub resources: Vec<i16>,
     /// The entry has `accepts_livestock` (`FUN_140fdf480` keeps the key's presence): its building
     /// is one of the drop sites a hunted livestock is led to (`DAT_143f157f0`, in table order).

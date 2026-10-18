@@ -30,13 +30,17 @@ pub struct Task {
     /// `resource_multiplier`: the attribute that scales the gathering, `resource_out`,
     /// `unused_resource`).
     pub attribute_type: i16,
+    /// `+0x22`, `attribute_type2` (`resource_multiplier`): the attribute that scales the gathering.
     pub attribute_type2: i16,
+    /// `+0x24`, `attribute_type3` (`resource_out`).
     pub attribute_type3: i16,
+    /// `+0x26`, `attribute_type4` (`unused_resource`).
     pub attribute_type4: i16,
     /// `+0x1c`, `search_wait_time`: a Fly task's rest between flights.
     pub wait_time: f32,
     /// `+0x28`, the save's `work_val1`; `+0x2c`, `work_val2`.
     pub work_val1: f32,
+    /// `+0x2c`, the save's `work_val2`.
     pub work_val2: f32,
     /// `+0x30`: how near the target the work is done.
     pub work_range: f32,
@@ -92,6 +96,7 @@ pub struct BuildingMaster {
 /// The master values the task finder and the work command read.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Master {
+    /// The master's id.
     pub id: i16,
     /// The master's type (`+0x8`): 70 for a combat unit, 80 (`'P'`) for a building.
     pub kind: u8,
@@ -110,6 +115,7 @@ pub struct Master {
     pub line_of_sight: f32,
     /// `obstruction_type` (`+0x651`) and `can_be_built_on` (`+0x5e9`).
     pub obstruction_type: u8,
+    /// `can_be_built_on` (`+0x5e9`): a new building deletes an object of it off its footprint.
     pub buildable_on: u8,
     /// `obstruction_class` (`+0x652`).
     pub obstruction_class: u8,
@@ -117,6 +123,7 @@ pub struct Master {
     pub object_flags: u32,
     /// The `.dat`'s `combat_level` (`+0x62c`).
     pub combat_level: u8,
+    /// Its task list.
     pub tasks: Vec<Task>,
     /// The build cost `(resource, amount, paid)`.
     pub cost: Vec<(i16, i16, bool)>,
@@ -130,10 +137,12 @@ pub struct Master {
     /// The hit points (`+0x530`) and the build time: the first train location's train time
     /// (`+0x898`'s first entry), 0 without one.
     pub hit_points: i16,
+    /// The build time: the first train location's train time, 0 without one.
     pub build_time: i16,
     /// The combat master's `weapon_range` (`+0x828`, object slot 0x230) and
     /// `minimum_weapon_range` (`+0x850`, slot 0x240).
     pub weapon_range: f32,
+    /// `minimum_weapon_range` (`+0x850`, slot 0x240).
     pub min_range: f32,
     /// `charge_type` (`+0x922`): 6 and 7 add `charge_event` (`+0x920`) to the range against some
     /// targets (slot 0x2f8).
@@ -171,22 +180,36 @@ pub struct Master {
     /// `area_effect_level` (`+0x830`), `area_damage` (`+0x834`), `max_charge` (`+0x918`) and
     /// `charge_target` (`+0x924`).
     pub base_armor: i16,
+    /// Its armor classes (class, amount; `+0x808`, count `+0x802`).
     pub armors: Vec<(i16, i16)>,
+    /// `bonus_damage_resistance` (`+0x824`).
     pub resistance: f32,
+    /// `combat_ability` (`+0x840`).
     pub combat_ability: u8,
+    /// `damage_reflection` (`+0x864`).
     pub reflection: f32,
+    /// `invulnerability_level` (`+0x930`): a hit point floor.
     pub invulnerability: f32,
     /// `attack_priority` (`+0x92c`, `FUN_141202220`): 3 attacks only the classes of
     /// `FUN_140fddf10`.
     pub attack_priority: u8,
+    /// `special_attack_flag` (`+0x8d8`).
     pub special_attack: u8,
+    /// `friendly_fire_damage` (`+0x868`).
     pub friendly_fire: f32,
+    /// It has a special graphic (`+0x8e8`).
     pub special_graphic: bool,
+    /// `area_effect_object_level` (`+0x62b`): the blasts that reach it.
     pub blast_defense: u8,
+    /// `area_effect_range` (`+0x82c`): its blast's radius.
     pub area_effect: f32,
+    /// `area_effect_level` (`+0x830`).
     pub blast_level: u8,
+    /// `area_damage` (`+0x834`).
     pub area_damage: f32,
+    /// `max_charge` (`+0x918`).
     pub max_charge: f32,
+    /// `charge_target` (`+0x924`).
     pub charge_target: i16,
     /// `+0x5d4`, `obj_max` (the `.dat`'s `garrison_capacity`): a building that garrisons takes a
     /// gather point (`FUN_140e7e9a0`).
@@ -206,7 +229,9 @@ pub struct Master {
     /// none), and what a dead object's steps read of the master
     /// ([`crate::lifecycle::MasterData`]), for a new object's [`crate::lifecycle::Lifecycle`].
     pub death_sprite: i16,
+    /// The death spawns (`+0x5e4`, `+0x5e6`, −1 for none).
     pub death_spawns: [i16; 2],
+    /// What a dead object's steps read of the master.
     pub life: Option<crate::lifecycle::MasterData>,
     /// What a combat master's attack reads: its standing sprite (`+0x470`), its attack sprite
     /// (`+0x7f8`, `fight_sprite_id`), a second attack sprite
@@ -215,19 +240,29 @@ pub struct Master {
     /// (class, amount); and the sprite it waits with between swings (`+0x910`, the `.dat`'s
     /// `idle_attack_graphic`, −1 for none).
     pub standing_sprite: i16,
+    /// The sprite it waits with between swings (`+0x910`, −1 for none).
     pub idle_attack_sprite: i16,
+    /// Its attack sprite (`+0x7f8`, `fight_sprite_id`).
     pub attack_sprite: i16,
+    /// A second attack sprite (`+0x878`).
     pub attack_sprite2: i16,
+    /// `missile_id`, −1 for none.
     pub missile: i16,
+    /// `fire_missile_at_frame`.
     pub fire_frame: i16,
+    /// `interrupt_frame`.
     pub interrupt_frame: i16,
+    /// `base_hit_chance`.
     pub hit_chance: i16,
+    /// `speed_of_attack`: the reload time.
     pub reload: f32,
+    /// Its weapons (class, amount).
     pub weapons: Vec<(i16, i16)>,
     /// Where its missile starts from its place, turned by its facing (`+0x844`..`+0x84c`,
     /// `weapon_offset`), and how far a missed missile strays per tile of the way
     /// (`missed_missile_spread`, `+0x860`).
     pub weapon_offset: [f32; 3],
+    /// How far a missed missile strays per tile of the way (`missed_missile_spread`, `+0x860`).
     pub missed_spread: f32,
     /// A missile master's flight (type 60, [`crate::missile::MissileStats`]).
     pub missile_stats: Option<crate::missile::MissileStats>,
@@ -244,6 +279,7 @@ pub struct Masters {
 }
 
 impl Masters {
+    /// The masters, by their ids.
     pub fn new(masters: impl IntoIterator<Item = Master>) -> Self {
         let mut by_id: Vec<Option<Master>> = Vec::new();
         for m in masters {
@@ -256,6 +292,7 @@ impl Masters {
         Self { by_id }
     }
 
+    /// The master `id`, if the player has it.
     #[must_use]
     pub fn get(&self, id: i16) -> Option<&Master> {
         self.by_id.get(usize::try_from(id).ok()?)?.as_ref()

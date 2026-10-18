@@ -10,6 +10,7 @@ use crate::rng::Well512;
 /// What the clock reads of a sprite (the `.dat` graphic, memory `+0x8`..`+0x1a`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Graphic {
+    /// The graphic's id.
     pub id: i16,
     /// `+0x8`, `frame_count`.
     pub frames: i16,
@@ -48,6 +49,7 @@ const EPSILON: f32 = crate::image::sprite::EPSILON;
 /// The active sprite (the save's `RGE_Active_Animated_Sprite`, memory `+0x24`..`+0x3b`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ActiveSprite {
+    /// The graphic.
     pub graphic: Graphic,
     /// `+0x24`, `frame`.
     pub frame: i16,
@@ -59,6 +61,7 @@ pub struct ActiveSprite {
     pub last_frame: i16,
     /// `+0x34`, `frame_changed`; `+0x35`, `frame_looped`.
     pub changed: bool,
+    /// `+0x35`, `frame_looped`.
     pub looped: bool,
     /// `+0x36`, `animate_flag`: 0 stopped, 1 playing, 2 in the replay delay.
     pub animate: u8,

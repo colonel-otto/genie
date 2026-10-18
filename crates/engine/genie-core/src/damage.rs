@@ -62,24 +62,34 @@ const RAMS: [i16; 4] = [35, 422, 548, 1258];
 /// retaliation or of reflected damage.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Victim {
+    /// The object.
     pub id: i32,
     /// Its hit points (`+0x278`), what it holds (`+0x310`), its state and place.
     pub hp: f32,
+    /// What it holds (`+0x310`).
     pub amount: f32,
+    /// Its state (`+0x640`).
     pub state: u8,
+    /// Its place.
     pub position: [f32; 3],
     /// Its master's type, class, id, radii, first storage amount (`+0x610`, which a gatherer
     /// reads), `attribute_max_amount` and `area_effect_object_level` (`+0x62b`, the blast
     /// levels that reach it).
     pub kind: u8,
+    /// Its master's class.
     pub class: i16,
+    /// Its master.
     pub master_id: i16,
+    /// Its master's radii.
     pub radius: [f32; 2],
     /// Its master's `radius_z` (`+0x5e0`): a missile meets it within that height above it
     /// (`FUN_14113f740`).
     pub height: f32,
+    /// Its master's first storage amount (`+0x610`), which a gatherer reads.
     pub storage: f32,
+    /// Its master's `attribute_max_amount`.
     pub capacity: i16,
+    /// Its master's `area_effect_object_level` (`+0x62b`): the blast levels that reach it.
     pub blast_defense: u8,
     /// Flagged to sleep (`+0x641`, `+0x643`): a killing hit wakes it (`FUN_14119deb0` with 0).
     pub goto_sleep: bool,
@@ -88,7 +98,9 @@ pub struct Victim {
     /// Its player, and that player's attributes 272 and 273 (a higher or lower attacker's hits
     /// add them) and 211 and 212 (its own hits from higher or lower up add them).
     pub player: usize,
+    /// Its player's attributes 272 and 273: what a higher or lower attacker's hits add.
     pub elevation: [f32; 2],
+    /// Its player's attributes 211 and 212: what its own hits from higher or lower up add.
     pub attack_elevation: [f32; 2],
     /// The attacker's player counts its player as its own or allied (`FUN_141663d90` with the
     /// ally flag), and the other way round: a blast spares the first and scales its damage on
@@ -99,6 +111,7 @@ pub struct Victim {
     /// Its own attack (a retaliation's): its values as a hit's source and its master's weapons
     /// (class, amount).
     pub source: Attacker,
+    /// Its master's weapons (class, amount).
     pub weapons: Vec<(i16, i16)>,
     /// A combat object's armor and what its damage reads (types 50 and up); None for others.
     pub armored: Option<Armored>,
@@ -112,7 +125,9 @@ pub struct Victim {
 /// What a killing hit leaves for the caller ([`crate::turn::Turns`]'s write-back).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Kill {
+    /// The object that killed it.
     pub attacker: i32,
+    /// That object's player.
     pub attacker_player: usize,
     /// Gaia takes it: a player's livestock (`FUN_1412108e0`).
     pub to_gaia: bool,
@@ -122,7 +137,9 @@ pub struct Kill {
 /// facet, `FUN_14114d780`) and its sprite's facets (`+0x140` -> `+0xa`, 0 without a sprite).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Facing {
+    /// `+0x7e8`, where it faces.
     pub angle: f32,
+    /// Its sprite's facets, 0 without a sprite.
     pub facets: i16,
 }
 
@@ -133,14 +150,23 @@ pub struct Armored {
     /// `bonus_damage_resistance`, `combat_ability`, `damage_reflection`,
     /// `invulnerability_level`, `special_attack_flag`, hit points and `friendly_fire_damage`.
     pub armors: Vec<(i16, i16)>,
+    /// Its master's base armor for a class it does not list.
     pub base_armor: i16,
+    /// Its master's `defense_terrain_bonus`.
     pub terrain_bonus: i16,
+    /// Its master's `bonus_damage_resistance`.
     pub resistance: f32,
+    /// Its master's `combat_ability`.
     pub ability: u8,
+    /// Its master's `damage_reflection`.
     pub reflection: f32,
+    /// Its master's `invulnerability_level`.
     pub invulnerability: f32,
+    /// Its master's `special_attack_flag`.
     pub special_attack: u8,
+    /// Its master's hit points.
     pub master_hp: i16,
+    /// Its master's `friendly_fire_damage`.
     pub friendly_fire: f32,
     /// Its master has a special graphic (`+0x8e8`), which its special attack shows.
     pub special_graphic: bool,
@@ -151,7 +177,9 @@ pub struct Armored {
     /// The object's armor powerups and armor removed (melee, pierce) and its hit point powerups
     /// (`+0xa38`, `+0xa3c`, which absorb damage first).
     pub armor_powerups: [i16; 2],
+    /// The melee and pierce armor taken off it.
     pub armor_removed: [i16; 2],
+    /// Its hit point powerups (`+0xa38`, `+0xa3c`), which absorb damage first.
     pub hp_powerups: [f32; 2],
     /// Its master has a task of action type 0xa1 with a work value (a kill reward,
     /// `FUN_14120b5f0`).
@@ -161,7 +189,9 @@ pub struct Armored {
     /// current action): a special attack and a retaliation need it idle. The slice does not hold
     /// the alert mode and the attacking units: None.
     pub busy: bool,
+    /// It has a unit AI.
     pub unit_ai: bool,
+    /// Its unit AI is idle in alert mode, when the slice knows it (None: it does not).
     pub alert_idle: Option<bool>,
     /// Where it faces; None: the slice does not hold the facet.
     pub facing: Option<Facing>,
@@ -170,38 +200,54 @@ pub struct Armored {
 /// What a hit reads of its attacker's attack, and the charge it changes.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Attacker {
+    /// The attacking object.
     pub id: i32,
     /// Its master's type, class, id, `combat_ability` and `missile_id`.
     pub kind: u8,
+    /// Its master's class.
     pub class: i16,
+    /// Its master.
     pub master_id: i16,
+    /// Its master's `combat_ability`.
     pub ability: u8,
+    /// Its master's missile, −1 for none.
     pub missile: i16,
     /// Its master's weapon range (`+0x828`), `area_effect_range` (`+0x82c`: the blast's radius),
     /// `area_effect_level` (`+0x830`: the levels it reaches, bit 2 its friends too, bit 5 a wide
     /// cone, bit 6 a falloff, bit 7 a cone) and `area_damage` (`+0x834`: the share of the damage
     /// the objects besides its target take, a fixed damage below 0).
     pub weapon_range: f32,
+    /// Its master's `area_effect_range` (`+0x82c`): the blast's radius.
     pub area_effect: f32,
+    /// Its master's `area_effect_level` (`+0x830`).
     pub blast_level: u8,
+    /// Its master's `area_damage` (`+0x834`).
     pub area_damage: f32,
     /// Its master's `charge_type`, `max_charge`, `charge_target` and `special_attack_flag`; its
     /// charge (`+0x9e0`) and `mHitSomethingValidForChargeAttack` (`+0x8a8`), which its hits set.
     pub charge_type: i16,
+    /// Its master's `max_charge`.
     pub max_charge: f32,
+    /// Its master's `charge_target`.
     pub charge_target: i16,
+    /// Its master's `special_attack_flag`.
     pub special_attack: u8,
+    /// Its charge (`+0x9e0`).
     pub charge: f32,
+    /// `mHitSomethingValidForChargeAttack` (`+0x8a8`), which its hits set.
     pub charge_hit: bool,
     /// Its attack powerup (`+0xa24`), the game's setting `+0x680`
     /// ([`crate::turn::Turns::mode_680`]: at 1 a hit may do no damage), and whether its master
     /// has a task of action type 0xa0 (bonus damage, `FUN_14107ce60`).
     pub attack_powerup: f32,
+    /// The game's setting `+0x680` ([`crate::turn::Turns::mode_680`]).
     pub mode_680: i32,
+    /// Its master has a task of action type 0xa0 (bonus damage).
     pub bonus_tasks: bool,
     /// Its player and whether its master has a task of action type 0x9a (a kill bonus,
     /// `FUN_1415c6510`).
     pub player: usize,
+    /// Its master has a task of action type 0x9a (a kill bonus).
     pub kill_bonus_tasks: bool,
 }
 

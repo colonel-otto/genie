@@ -11,7 +11,9 @@ const MAGIC: &[u8; 8] = b"GRTICK1\0";
 /// Why a trace could not be read.
 #[derive(Debug)]
 pub enum TraceError {
+    /// The bytes are not a trace (no magic).
     NotATrace,
+    /// The rows would not inflate.
     Inflate(std::io::Error),
     /// The rows hold fewer bytes than the header announces.
     Truncated,
@@ -76,11 +78,13 @@ impl TickTrace {
         Ok(Self { times, lanes })
     }
 
+    /// How many ticks the trace holds.
     #[must_use]
     pub const fn len(&self) -> usize {
         self.times.len()
     }
 
+    /// The trace holds no tick.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.times.is_empty()

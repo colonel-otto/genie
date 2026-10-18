@@ -48,8 +48,11 @@ const TESTED_KINDS: [u8; 5] = [2, 3, 5, 11, 13];
 /// path level's pause time (`+0x858`'s `+0x34`, slot 0x528), none without a level.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Gait {
+    /// It moves: its velocity (`+0x868`) is not 0 (slot 0x5c8).
     pub moving: bool,
+    /// Its last move time (`+0x870`, slot 0x5e8).
     pub last_move: u32,
+    /// Its current path level's pause time (slot 0x528), none without a level.
     pub pause: Option<f32>,
     /// `+0x650`, `mLastHumanOrderTime`: a met unit's rank against a human walker.
     pub human_order: u32,
@@ -90,7 +93,9 @@ pub struct Placed {
 /// and the master's `obstruction_class` (`+0x652`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Obstruction {
+    /// The record's kind (`obstruction_type`).
     pub kind: u8,
+    /// The master's `obstruction_class`.
     pub class: u8,
 }
 
@@ -159,16 +164,19 @@ impl Tiles {
             .then(|| (y * self.width + x) as usize)
     }
 
+    /// Tile (`x`, `y`)'s word: its terrain class and the obstruction manager's marks.
     #[must_use]
     pub fn word(&self, x: i32, y: i32) -> Option<u64> {
         self.index(x, y).map(|i| self.words[i])
     }
 
+    /// How many tall objects stand on tile (`x`, `y`).
     #[must_use]
     pub fn tall(&self, x: i32, y: i32) -> Option<u8> {
         self.index(x, y).map(|i| self.tall[i])
     }
 
+    /// How many objects stand on tile (`x`, `y`).
     #[must_use]
     pub fn objects(&self, x: i32, y: i32) -> Option<u8> {
         self.index(x, y).map(|i| self.objects[i])
@@ -252,6 +260,7 @@ impl Tiles {
 /// The world's objects by id, the map's size in tiles and what the game keeps per tile.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Spatial {
+    /// The map's size in tiles.
     pub map: [i32; 2],
     objects: BTreeMap<i32, Placed>,
     tiles: Tiles,
@@ -264,6 +273,7 @@ pub struct Spatial {
     /// masters (type 70) moves and the farthest any acts beyond its footprint (its weapon or work
     /// range), for [`Spatial::check_known`]. 0 when not set.
     pub fastest: f32,
+    /// The farthest any of the players' units acts beyond its footprint.
     pub reach: f32,
     /// What the walk reads of the moving objects it meets ([`Gait`]).
     gaits: BTreeMap<i32, Gait>,
@@ -302,6 +312,7 @@ impl Spatial {
         Self::with_tiles(map, Tiles::new(map[0], map[1], vec![0; n]))
     }
 
+    /// A map with the given tiles.
     #[must_use]
     pub fn with_tiles(map: [i32; 2], tiles: Tiles) -> Self {
         Self {
@@ -326,6 +337,7 @@ impl Spatial {
         self.search_cache.borrow_mut().holds = false;
     }
 
+    /// What the game keeps per tile.
     pub const fn tiles(&self) -> &Tiles {
         &self.tiles
     }
@@ -417,6 +429,7 @@ impl Spatial {
         std::mem::take(&mut self.changed)
     }
 
+    /// The object `id`'s place, if the world holds it.
     pub fn get(&self, id: i32) -> Option<&Placed> {
         self.objects.get(&id)
     }
@@ -558,6 +571,7 @@ impl Spatial {
         Ok(())
     }
 
+    /// The object `id` leaves the world.
     pub fn remove(&mut self, id: i32) {
         if let Some(gone) = self.objects.remove(&id) {
             self.tiles.count(gone.position, gone.tall, false);
@@ -687,6 +701,7 @@ impl Spatial {
         }
     }
 
+    /// What the walk reads of the moving object `id`.
     pub fn gait(&self, id: i32) -> Option<Gait> {
         self.gaits.get(&id).copied()
     }
@@ -703,6 +718,7 @@ impl Spatial {
         }
     }
 
+    /// The main building of the annex `id`, if it is one.
     pub fn annex_of(&self, id: i32) -> Option<i32> {
         self.annexes.get(&id).copied()
     }

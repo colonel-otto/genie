@@ -21,7 +21,9 @@ use crate::unit_ai::Unsupported;
 /// along the forward vector.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Velocity {
+    /// The velocity.
     pub velocity: Vec3,
+    /// The acceleration.
     pub acceleration: Vec3,
 }
 
@@ -79,6 +81,7 @@ pub struct MoveStats {
     /// (`+0x750`, the walking one without it): a `MoveTo` that runs or walks shows one, and the
     /// unit moves at its speed.
     pub walk_speed: f32,
+    /// The running speed.
     pub run_speed: f32,
     /// The top speed with the master's standing sprite (`+0x470`), which a non-quiet `MoveTo`'s end
     /// (`set_state` 1 or 13, slot 0x68 with slot 0x798's) and a stop in state 2 show.
@@ -88,12 +91,14 @@ pub struct MoveStats {
     /// Master `+0x76c` and `+0x770`: the turn radius is `turn_radius × speed / turn_radius_speed`
     /// (0 and the largest float for every master the game copies, [`turn_rate`]).
     pub turn_radius: f32,
+    /// `+0x770`: the speed at which the turn radius is its value.
     pub turn_radius_speed: f32,
     /// Master `+0x5d8`, `+0x5dc`, `+0x5e0`.
     pub radius: [f32; 3],
     /// The master's terrain restriction (`+0x606`) and the terrain classes it lets the unit stand
     /// on (its mask).
     pub restriction: usize,
+    /// The terrain classes the restriction lets it stand on (its mask).
     pub restriction_mask: u8,
     /// The master's turn speed (`+0x758`, the `.dat`'s `rotation_speed`) is 0: the unit faces a
     /// target at once (`FUN_141162db0`).
@@ -121,11 +126,13 @@ pub struct Mover {
     pub forward: Vec3,
     /// `+0x83c`.
     pub right: Vec3,
+    /// Its velocity data, when it has any.
     pub velocity: Option<Velocity>,
     /// The path data, the level the unit walks first, each next one its parent.
     pub paths: Vec<PathData>,
     /// `+0x878`: moveForward's distance factor.
     pub factor: f32,
+    /// What its master gives its movement.
     pub stats: MoveStats,
     /// `+0x7f9`, `waitingToMoveValue`.
     pub waiting: u8,
@@ -159,6 +166,7 @@ pub struct Mover {
 /// The moving unit, as the motion step needs it besides its [`Mover`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Me {
+    /// The unit.
     pub id: i32,
     /// x, y, z on the map.
     pub position: [f32; 3],

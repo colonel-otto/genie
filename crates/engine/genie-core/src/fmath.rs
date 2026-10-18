@@ -5,21 +5,25 @@
 //! sinf `0x14099ed60`. The `libm` crate ports the same sources. Its sqrtf `0x14099ef70` is an
 //! integer Newton iteration that rounds correctly, so IEEE's square root gives the same bits.
 
+/// The square root, as the game's (correctly rounded).
 #[must_use]
 pub fn sqrt(x: f32) -> f32 {
     x.sqrt()
 }
 
+/// The arc cosine, as the game's acosf (msun's) computes it.
 #[must_use]
 pub fn acos(x: f32) -> f32 {
     libm::acosf(x)
 }
 
+/// The cosine, as the game's cosf (msun's) computes it.
 #[must_use]
 pub fn cos(x: f32) -> f32 {
     libm::cosf(x)
 }
 
+/// The sine, as the game's sinf (msun's) computes it.
 #[must_use]
 pub fn sin(x: f32) -> f32 {
     libm::sinf(x)

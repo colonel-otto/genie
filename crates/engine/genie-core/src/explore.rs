@@ -15,9 +15,13 @@ pub const EXPLORE: i16 = 4;
 
 /// The states the slice models.
 pub const DONE: u8 = 1;
+/// State 2: stopped.
 pub const STOPPED: u8 = 2;
+/// State 3: waiting for a point.
 pub const WAIT: u8 = 3;
+/// State 11: walking to the point.
 pub const WALK: u8 = 11;
+/// State 13: failed.
 pub const FAILED: u8 = 13;
 
 /// A point of −1 is no point (`DAT_14330ec20`).
@@ -26,6 +30,7 @@ const NO_POINT: f32 = crate::image::explore::NO_POINT;
 /// The action's notify to its unit AI when it waits for a point (state 3): 0x202 with the
 /// explore action value 605.
 pub const WANTS_POINT: i32 = 0x202;
+/// The explore action value (605).
 pub const EXPLORE_ACTION: i32 = 0x25d;
 
 /// What an Explore's `set_state` asks of its owner besides its own fields.
@@ -140,6 +145,7 @@ pub trait Area {
     /// The tile's zone for the unit's restriction (`FUN_1411958c0`), and the unit's own
     /// (`FUN_14118eea0`).
     fn zone(&mut self, x: i32, y: i32) -> u16;
+    /// The unit's own zone (`FUN_14118eea0`).
     fn own_zone(&mut self) -> u16;
     /// The unit could stand at the point (slot 0x278, [`crate::spatial::Spatial::point_clear`]).
     fn clear(&self, x: i32, y: i32) -> Result<bool, Unsupported>;

@@ -191,6 +191,7 @@ fn half(v: i32) -> i32 {
 }
 
 impl Mesh {
+    /// An empty mesh for a map `width` tiles wide.
     #[must_use]
     pub fn new(width: u32) -> Self {
         Self {

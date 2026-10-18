@@ -16,6 +16,9 @@
 //! `tests/de_roundtrip.rs`, over the recordings' chapters). The generated version gates compare
 //! the raw 16.16 save version ([`Header::raw_version`]).
 
+// the 16.16 version's halves and the stream offsets (a save is far below 4 GiB) are cut on purpose
+#![allow(clippy::cast_possible_truncation)]
+
 #[allow(
     missing_docs,
     missing_copy_implementations,
@@ -52,17 +55,32 @@ pub const MIN_HUNDREDTHS: u32 = 6600;
 /// Errors while reading a world save. Offsets are byte offsets into the save.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
+    /// The bytes are not a save this reader takes: too old, cut short, or not the layout.
     #[error("world save: {message}")]
-    Read { message: String },
+    Read {
+        /// What went wrong, with where.
+        message: String,
+    },
+    /// Writing a parsed save failed.
     #[error("world save written: {message}")]
-    Write { message: String },
+    Write {
+        /// What went wrong.
+        message: String,
+    },
+    /// A part of the layout the generator does not derive yet.
     #[error("unsupported in this reader yet: {what} at save byte {at:#x}")]
-    Unsupported { what: &'static str, at: usize },
+    Unsupported {
+        /// The part.
+        what: &'static str,
+        /// Where it starts in the save.
+        at: usize,
+    },
 }
 
 /// The version fields at the start of a save.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SaveVersion {
+    /// The whole part, 66 for save 66.6.
     pub major: u16,
     /// A binary fraction: 39321 / 65536 is the ".6" of save 66.6.
     pub minor: u16,
@@ -87,6 +105,7 @@ pub struct SectionEnds {
     pub lobby: usize,
     /// `BaseWorld`'s fields before the map (aoe2rec's `Replay`).
     pub replay: usize,
+    /// The map ends.
     pub map: usize,
     /// The first player section starts here.
     pub players_start: usize,
@@ -96,8 +115,11 @@ pub struct SectionEnds {
 /// from the game's load code, to the save's last byte.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Header {
+    /// The save-game file header: version, build, the lobby's options.
     pub file_header: SaveGameFileHeader,
+    /// The world, to the save's last byte.
     pub world: World,
+    /// Where its sections end.
     pub ends: SectionEnds,
 }
 
@@ -152,18 +174,27 @@ where
 }
 
 /// Read a world save (a recording's chapter header once inflated).
+///
+/// # Errors
+///
+/// [`Error::Read`] for bytes that are not a save of 66.0 or later or do not end where the world
+/// does, [`Error::Unsupported`] for a part the reader does not derive yet.
 pub fn parse(save: &[u8]) -> Result<Header, Error> {
     parse_reader(&mut binrw::io::Cursor::new(save))
 }
 
 /// Read a world save from any seekable reader, e.g. one that logs its reads. The world reads to
 /// the save's last byte; bytes left after it are an error.
+///
+/// # Errors
+///
+/// As [`parse`], and for a reader that fails.
 pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
     // The save version (16.16) at offset 12, peeked: the file header's own gates are decided for the
     // supported versions, and it brings the version the world's gates compare.
     let start = position(r)?;
     let mut peek = [0u8; 16];
-    r.read_exact(&mut peek).map_err(|e| read_error(e.into()))?;
+    r.read_exact(&mut peek).map_err(|e| read_error(&e.into()))?;
     let raw = u32::from_le_bytes([peek[12], peek[13], peek[14], peek[15]]);
     let v = SaveVersion {
         major: (raw >> 16) as u16,
@@ -178,18 +209,20 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
     }
     let _ = r
         .seek(SeekFrom::Start(start as u64))
-        .map_err(|e| read_error(e.into()))?;
-    let file_header = SaveGameFileHeader::read_args(r, (raw,)).map_err(read_error)?;
+        .map_err(|e| read_error(&e.into()))?;
+    let file_header = SaveGameFileHeader::read_args(r, (raw,)).map_err(|e| read_error(&e))?;
     let lobby_end = position(r)?;
     let world =
         World::read_args(r, (file_header.new_save_game_version,)).map_err(
             |e| match unsupported_in(&e) {
                 Some((what, at)) => Error::Unsupported { what, at },
-                None => read_error(e),
+                None => read_error(&e),
             },
         )?;
     let here = position(r)?;
-    let end = r.seek(SeekFrom::End(0)).map_err(|e| read_error(e.into()))? as usize;
+    let end = r
+        .seek(SeekFrom::End(0))
+        .map_err(|e| read_error(&e.into()))? as usize;
     if here != end {
         return Err(Error::Read {
             message: format!(
@@ -226,6 +259,10 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
 
 /// Write a save as `parse` read it, in read order. Read, then write gives back the save byte for
 /// byte (genie-rec's `tests/de_roundtrip.rs`).
+///
+/// # Errors
+///
+/// [`Error::Write`] when the writer fails or a value cannot be written back.
 pub fn write<W: binrw::io::Write + Seek>(h: &Header, w: &mut W) -> Result<(), Error> {
     use binrw::BinWrite;
     (|| {
@@ -238,10 +275,10 @@ pub fn write<W: binrw::io::Write + Seek>(h: &Header, w: &mut W) -> Result<(), Er
 }
 
 fn position<R: Seek>(r: &mut R) -> Result<usize, Error> {
-    Ok(r.stream_position().map_err(|e| read_error(e.into()))? as usize)
+    Ok(r.stream_position().map_err(|e| read_error(&e.into()))? as usize)
 }
 
-fn read_error(e: binrw::Error) -> Error {
+fn read_error(e: &binrw::Error) -> Error {
     Error::Read {
         message: e.to_string(),
     }

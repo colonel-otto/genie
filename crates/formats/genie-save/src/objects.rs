@@ -200,6 +200,7 @@ impl RgeStaticObject {
             })
     }
 
+    /// The animated part of an own master copy, whichever of the master types holds it.
     #[must_use]
     pub fn own_animated_master(&self) -> Option<&OwnRgeMasterAnimatedObject> {
         None.or(self.rge_master_animated_object.as_ref())
