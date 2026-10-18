@@ -178,6 +178,11 @@ const REACH_SHORT: f32 = crate::image::movement::REACH_SHORT;
 const REACH_NEAR: f32 = crate::image::movement::REACH_NEAR;
 /// The master the long pather lets move without a speed (`FUN_140f9eb70`, raw id `0x2a`).
 const LONG_PATH_MOVER: i16 = 42;
+/// A target of this master (raw `0x60c9`) or class gives the tile planner of a reach test this
+/// much more range (`FUN_140fa0370`, `DAT_142eb1c98`).
+const WIDE_MASTER: i16 = 45;
+const WIDE_CLASS: i16 = 33;
+const WIDE_RANGE: f32 = crate::image::movement::WIDE_RANGE;
 /// The trade cart's class (19), whose path requests the owner's budget limits (`FUN_14165d6f0`).
 const TRADE_CART: i16 = 19;
 /// No distance (`DAT_14330ebf4`).
@@ -1730,24 +1735,60 @@ impl Mover {
         Ok(Some(found.code()))
     }
 
-    /// Slot 0x3d8 of the unit (`FUN_14114ffc0` -> `FUN_140fa0370`, without a target object):
-    /// whether it can walk to within `range` of the point `to` (x, y on the map). Both ends lie on
-    /// the map. With a planner for its restriction, the tile planner (`FUN_140f7c530` without the
-    /// tile search, closed tiles or smoothing) must reach the goal or its range (result 0 or 1).
-    /// Then a unit with a footprint and a height (`FUN_141194060` with 1) no more than 10 tiles
-    /// from the point asks the short pather (`FUN_140f9e540` with its ignore list,
-    /// `FUN_14114ece0`), whose path to the goal or into the range (a result below 2) answers yes.
-    /// Otherwise a point at least a tile from the unit's footprint (its squared gap at least 1)
-    /// is the long pather's to answer ([`crate::long_path::reaches`], from the unit's tile to the
-    /// point's, the planner's other arguments unset: no path, the reach within a tile, no
-    /// player's objects); a nearer one is not reached. `master` is the unit's master's id (42
-    /// moves for the long pather without a speed).
+    /// Slot 0x3d8 of the unit (`FUN_14114ffc0` -> `FUN_140fa0370` without a target object):
+    /// whether it can walk to within `range` of the point `to` (x, y on the map), as
+    /// [`Mover::reach_test`] decides. `master` is the unit's master's id.
     pub fn reaches(
         &self,
         me: &Me,
         world: &Spatial,
         plan: &mut Planning<'_>,
         to: [f32; 2],
+        range: f32,
+        master: i16,
+    ) -> Result<bool, Unsupported> {
+        self.reach_test(me, world, plan, to, None, range, master)
+    }
+
+    /// Slot 0x3d0 of the unit (`FUN_14114fea0` -> `FUN_140fa0370` with the target object): whether
+    /// it can walk to within `range` of object `target` (its place for the target's slot 0x520),
+    /// as [`Mover::reach_test`] decides; a target that is gone is not reached.
+    pub fn reaches_object(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        target: i32,
+        range: f32,
+        master: i16,
+    ) -> Result<bool, Unsupported> {
+        let Some(t) = world.get_known(target)? else {
+            return Ok(false);
+        };
+        let to = [t.position[0], t.position[1]];
+        self.reach_test(me, world, plan, to, Some((target, t)), range, master)
+    }
+
+    /// `FUN_140fa0370`: both ends lie on the map. With a planner for its restriction, the tile
+    /// planner (`FUN_140f7c530` without the tile search, closed tiles or smoothing; the radii are
+    /// the unit's and the target's, the range 3 more for a target of master 45 or class 33) must
+    /// reach the goal or its range (result 0 or 1). Then a unit with a footprint and a height
+    /// (`FUN_141194060` with 1) no more than 10 tiles from the goal asks the short pather
+    /// (`FUN_140f9e540` with its ignore list, `FUN_14114ece0`), whose path to the goal or into the
+    /// range (a result below 2) answers yes. Otherwise a goal at least a tile from the unit's
+    /// footprint (the squared gap, to the target's footprint for a target, at least 1) is the long
+    /// pather's to answer ([`crate::long_path::reaches`], from the unit's tile to the goal's, the
+    /// planner's other arguments unset: no path, the reach within a tile, no player's objects); a
+    /// nearer one is not reached. `master` is the unit's master's id (42 moves for the long
+    /// pather without a speed).
+    #[allow(clippy::too_many_arguments)]
+    fn reach_test(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        to: [f32; 2],
+        target: Option<(i32, &Placed)>,
         range: f32,
         master: i16,
     ) -> Result<bool, Unsupported> {
@@ -1758,13 +1799,16 @@ impl Mover {
             return Ok(false);
         }
         let radius = self.stats.radius;
+        let ground = [radius[0], radius[1]];
+        let (target_id, target_radius) = target.map_or((-1, 0.0), |(id, t)| (id, t.radius[0]));
+        let bonus = target.is_some_and(|(_, t)| t.master == WIDE_MASTER || t.class == WIDE_CLASS);
         let mut path = Path::default();
         if let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) {
             let req = Request {
                 from: [x, y],
                 to,
-                radii: radius[0],
-                range,
+                radii: radius[0] + target_radius,
+                range: if bonus { range + WIDE_RANGE } else { range },
                 closed: Vec::new(),
                 full: false,
             };
@@ -1776,34 +1820,54 @@ impl Mover {
         let solid = 0.0 < radius[2] && 0.0 < radius[0] && 0.0 < radius[1];
         let (dx, dy) = (to[0] - x, to[1] - y);
         if solid && fmath::sqrt(dx * dx + 0.0 + dy * dy) <= REACH_SHORT {
-            let ignore = self.ignore_list(me, world, None, -1, plan.now)?;
+            let ignore =
+                self.ignore_list(me, world, target.map(|(_, t)| t), target_id, plan.now)?;
             let goal = [to[0], 0.0, to[1]];
-            if self.short_path(me, world, plan, goal, range, -1, &ignore, &mut path)? < 2 {
+            if self.short_path(me, world, plan, goal, range, target_id, &ignore, &mut path)? < 2 {
                 return Ok(true);
             }
         }
-        let gap = |d: f32, r: f32| {
-            let g = d.abs() - r;
-            if 0.0 <= g { g } else { 0.0 }
+        let long_target = match target {
+            Some((_, t)) => {
+                let gap2 = footprint_gap_squared(me.position, ground, t.position, t.radius);
+                if gap2 < REACH_NEAR {
+                    return Ok(false);
+                }
+                let gap = footprint_gap(me.position, ground, t.position, t.radius);
+                Some(crate::long_path::LongTarget::new(
+                    t.position, t.radius, gap, gap2,
+                ))
+            }
+            None => {
+                let gap = |d: f32, r: f32| {
+                    let g = d.abs() - r;
+                    if 0.0 <= g { g } else { 0.0 }
+                };
+                let (gx, gy) = (gap(dx, radius[0]), gap(dy, radius[1]));
+                if gx * gx + gy * gy < REACH_NEAR {
+                    return Ok(false);
+                }
+                None
+            }
         };
-        let (gx, gy) = (gap(dx, radius[0]), gap(dy, radius[1]));
-        if gx * gx + gy * gy < REACH_NEAR {
-            return Ok(false);
-        }
         if !self.ignore_units.is_empty() {
             return Err(Unsupported(
                 "the long pather's ignored units (slots 0x2a8, 0x5c8)",
             ));
         }
-        let lowered = world
-            .get(me.id)
+        // FUN_140f60440 lowers the tall count under the unit and the target
+        let lowered = [Some(me.id), target.map(|(id, _)| id)]
+            .into_iter()
+            .flatten()
+            .filter_map(|id| world.get(id))
             .filter(|p| p.tall)
-            .map(|p| vec![[p.position[0] as i32, p.position[1] as i32]])
-            .unwrap_or_default();
+            .map(|p| [p.position[0] as i32, p.position[1] as i32])
+            .collect();
         let req = crate::long_path::LongRequest {
             from: [x as i32, y as i32],
             to: [to[0] as i32, to[1] as i32],
             range,
+            target: long_target,
             moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
             mask: self.stats.restriction_mask,
             computer: plan.computer,

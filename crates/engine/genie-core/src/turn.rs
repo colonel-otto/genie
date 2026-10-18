@@ -623,6 +623,191 @@ impl Unit {
         Ok(())
     }
 
+    /// The hunt's state 8 after its load went (`0x140ac7a00` case 7, after `FUN_14119d310`): a
+    /// hunt with a target walks back to it (set_state 4), not modelled. One without asks its unit
+    /// AI: the queued orders (gather, hunt, on a target) whose target is gone or dead go
+    /// (`FUN_140c5de60`); orders left end the hunt (the AI's order and action clear, set_state
+    /// 1), not modelled. The target class (the AI's target's, else the hunt's `+0x68`) the
+    /// civilian's slot 0x1b0 knows (`FUN_140c1c4f0`) takes the search by kind (slot 0x80), not
+    /// modelled; a hunt of class 10, a unit in a pasture (`FUN_1411c7670`) and a farm found are
+    /// not modelled either. Else `ClosestObject` (`FUN_140c488b0`, every relation, below one
+    /// worker for class 49) of the class over the AI's search (`FUN_140c63e20`: its sight plus a
+    /// tile, at least its search radius, plus the civilian's growth; enemies found are not
+    /// modelled, else the alert mode clears). The object found becomes the hunt's target (slot
+    /// 0x48, [`HuntAction::retarget`], which takes it: its workers count one more); finding none
+    /// is not modelled (the hunt's point, then its own search). A hunt that fails at once takes
+    /// the standing sprite (slot 0x68 with `FUN_140ac5210`'s: the unit carries nothing now).
+    fn hunt_after_drop(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Unit],
+    ) -> Result<(), Unsupported> {
+        let hunt = self.hunt.as_ref().expect("the caller's hunt");
+        if hunt.target != -1 {
+            return Err(Unsupported(
+                "a hunt walking back to its target after its drop-off (set_state 4)",
+            ));
+        }
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+        let ai = self
+            .ai
+            .as_mut()
+            .ok_or(Unsupported("a hunt without a unit AI after its drop-off"))?;
+        let spatial: &Spatial = c.spatial;
+        let gone = |id: i32| match spatial.get(id) {
+            None => true,
+            Some(_) => spatial
+                .sight
+                .as_ref()
+                .and_then(|v| v.seer(id))
+                .is_some_and(|s| 5 < s.state),
+        };
+        ai.orders
+            .retain(|o| !(matches!(o.order, 0x2c5 | 0x2c9 | 0x2db) && gone(o.target)));
+        if !ai.orders.is_empty() {
+            return Err(Unsupported(
+                "a hunt ended by its unit AI's orders after its drop-off (set_state 1)",
+            ));
+        }
+        let class = if ai.target_type != -1 {
+            ai.target_type
+        } else {
+            i32::from(hunt.target_class)
+        };
+        if ai.ai_type != crate::unit_ai::CIVILIAN {
+            return Err(Unsupported(
+                "slot 0x1b0 of another unit AI than the civilian's",
+            ));
+        }
+        if crate::unit_ai::civilian_kind(class) != -1 {
+            return Err(Unsupported("a hunt's search by kind (slot 0x80)"));
+        }
+        if hunt.target_class == 10 {
+            return Err(Unsupported("a hunt of class 10 after its drop-off"));
+        }
+        if self.my_pasture != -1 {
+            return Err(Unsupported("a hunter tending a pasture (FUN_1411c7670)"));
+        }
+        let mover = self
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("a hunter without movement state"))?;
+        let sight = master.line_of_sight + 1.0;
+        let radius = if sight <= master.search_radius {
+            master.search_radius
+        } else {
+            sight
+        } + crate::unit_ai::CIVILIAN_SEARCH_GROWTH;
+        let search = Search {
+            at: [self.position[0], self.position[1]],
+            radius,
+            classes: &crate::unit_ai::CIVILIAN_CARED,
+            size: master.radius,
+            pick: crate::unit_ai::Pick::Closest {
+                group: class,
+                relation: -1,
+                state: -1,
+                master: -1,
+                workers: if class == 49 { 1 } else { -1 },
+            },
+        };
+        let me = Me {
+            id: self.id,
+            position: self.position,
+            action_state: hunt.state,
+        };
+        let mut plan = Planning {
+            pathing: c.pathing,
+            now: c.world_time,
+            computer: c.computer,
+            object: c.streams.get(Stream::Object),
+            construction_rate: c.construction_rate,
+        };
+        let master_id = self.life.master_id;
+        let mut reach = |id: i32, range: f32| {
+            mover.reaches_object(&me, spatial, &mut plan, id, range, master_id)
+        };
+        let no_attack = |_: &Placed, _: u8| -> Result<bool, Unsupported> {
+            Err(Unsupported("an attack check in a closest search"))
+        };
+        let found = spatial.search(self.id, c.player, &search, &no_attack, &mut reach)?;
+        ai.alert_mode = false;
+        if found == -1 {
+            return Err(Unsupported("a hunt that found nothing after its drop-off"));
+        }
+        let t = others
+            .iter()
+            .find(|u| u.id == found)
+            .ok_or(Unsupported("a hunt's new target of another player"))?;
+        let t_master = c
+            .masters
+            .and_then(|m| m.get(t.life.master_id))
+            .ok_or(Unsupported(
+                "a hunt's target of a master the slice does not have",
+            ))?;
+        if matches!(t.life.master_id, 1893 | 1897) {
+            return Err(Unsupported("a hunt finding a farm (FUN_1411c7670)"));
+        }
+        let quarry = crate::hunt::Quarry {
+            id: found,
+            position: t.position,
+            class: t_master.class,
+            kind: t_master.kind,
+            state: t.life.state,
+            player: c.player,
+            amount: t.life.amount,
+            allied: true,
+            top_action: t.top_action_kind(),
+        };
+        let (me_at, them) = (
+            c.spatial
+                .get_known(self.id)?
+                .ok_or(Unsupported("a hunter without a place"))?,
+            c.spatial
+                .get_known(found)?
+                .ok_or(Unsupported("a hunt's target without a place"))?,
+        );
+        let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        let engagement = crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them)?;
+        let sprites = self.hunt.as_ref().map_or([-1; 4], |h| h.task.sprites);
+        let arms = crate::attack::arms(master, c.graphics, sprites);
+        let drops_here = master.drop_sites.contains(&t.life.master_id);
+        let held = self.life.amount;
+        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+            return Err(Unsupported("a hunter without its hunt or movement state"));
+        };
+        if hunt.retarget(
+            &quarry,
+            c.player,
+            held,
+            drops_here,
+            &engagement,
+            arms,
+            mover,
+        )? {
+            let u = others
+                .iter_mut()
+                .find(|u| u.id == found)
+                .expect("found above");
+            if u.workers < 550 {
+                u.workers += 1;
+            }
+            u.life.goto_sleep = false;
+        }
+        if hunt.state == crate::hunt::FAILED && self.sprite.is_some() {
+            let standing = c
+                .graphics
+                .get(&master.standing_sprite)
+                .copied()
+                .ok_or(Unsupported("a hunter without its standing sprite"))?;
+            crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
+        }
+        Ok(())
+    }
+
     /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at
     /// its own height: its top Explore takes the point (slot 0x48), else a new Explore
     /// (`FUN_140a87d30`) becomes its only action (set_only_action, `FUN_14106e990`: the actions
@@ -1230,9 +1415,41 @@ impl Unit {
                     }
                     _ => {}
                 }
-                return Err(Unsupported(
-                    "a hunt after its drop-off: back to its target or a new one (FUN_140ac7a00 case 7)",
-                ));
+                self.hunt_after_drop(c, others)?;
+            }
+        } else if let Some(hunt) = self
+            .hunt
+            .as_mut()
+            .filter(|h| h.state == crate::hunt::FAILED)
+        {
+            // state 13 (0x140ac7a00 case 0xc): notify 0x1f9 with the hunt's action value, and the
+            // update returns 3: the action list removes the hunt (FUN_140a98e20), whose teardown
+            // lets its target go
+            let target = hunt.target;
+            if hunt.attack.is_some() || hunt.move_to.is_some() {
+                return Err(Unsupported("a failed hunt with a sub-action"));
+            }
+            self.post_own(
+                crate::unit_ai::ACTION_FAILED,
+                [crate::unit_ai::HUNT_ACTION, 0, 0],
+            )?;
+            self.hunt = None;
+            if target != -1 {
+                let u = others
+                    .iter_mut()
+                    .find(|u| u.id == target)
+                    .ok_or(Unsupported("a failed hunt's target of another player"))?;
+                let kind = c
+                    .masters
+                    .and_then(|m| m.get(u.life.master_id))
+                    .map(|m| m.kind)
+                    .ok_or(Unsupported(
+                        "a hunt's target of a master the slice does not have",
+                    ))?;
+                u.workers = u.workers.saturating_sub(1).max(0);
+                if kind < 70 && u.workers == 0 && u.life.state == 2 {
+                    return Err(Unsupported("a released target going to sleep"));
+                }
             }
         } else if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;
@@ -1465,6 +1682,7 @@ impl Unit {
                 target: c.ai_target?,
             };
             let me = self.id;
+            let busy_state = self.top_action().map_or(0, |a| a.state);
             let ai = self.ai.as_mut().expect("filtered above");
             let effects = match turn {
                 Some(dt) => {
@@ -1495,15 +1713,30 @@ impl Unit {
                             },
                         )
                     };
-                    let mut closest = |s: &Search<'_>| spatial.search(me, player, s, &can_attack);
-                    ai.update(
-                        dt,
-                        c.world_time,
+                    // ClosestObject's reachability check (slot 0x3d0) walks the unit's paths
+                    let (ai_stream, object) = c.streams.two(Stream::Ai, Stream::Object);
+                    let mut plan = Planning {
+                        pathing: c.pathing,
+                        now: c.world_time,
                         computer,
-                        &at,
-                        c.streams.get(Stream::Ai),
-                        &mut closest,
-                    )?
+                        object,
+                        construction_rate: c.construction_rate,
+                    };
+                    let walker = Me {
+                        id: me,
+                        position: self.position,
+                        action_state: busy_state,
+                    };
+                    let mover = self.mover.as_ref();
+                    let master_id = self.life.master_id;
+                    let mut reach = |id: i32, range: f32| {
+                        let m = mover
+                            .ok_or(Unsupported("a reach test of a unit that does not move"))?;
+                        m.reaches_object(&walker, spatial, &mut plan, id, range, master_id)
+                    };
+                    let mut closest =
+                        |s: &Search<'_>| spatial.search(me, player, s, &can_attack, &mut reach);
+                    ai.update(dt, c.world_time, computer, &at, ai_stream, &mut closest)?
                 }
                 None => ai.off_turn(&at)?,
             };

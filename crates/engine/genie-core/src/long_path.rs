@@ -14,10 +14,13 @@
 //! a tile of it (or, with `within_range`, within the range), after too many expansions, or when
 //! the heap runs dry.
 //!
-//! Not modelled: a target object (its box and range, `FUN_14118f680`), the path the search can
-//! write (`FUN_140f9d770`; the reachability test asks for none), an allied gate on the way (the
-//! tile's record of class 5, slot 0x678) and the search beside a player's objects when the caller
-//! names one (argument 11, `FUN_14152f790`). The pather's flag at `+0x2db638` (terrain the unit
+//! With a target object the goal is its footprint's tiles (each of which the search enters past
+//! its static record, not past a tall object), it counts as reached at once within the range of
+//! its footprint (`FUN_14118f680`), and a unit already in range (`FUN_14118f8c0`) needs no search.
+//!
+//! Not modelled: the path the search can write (`FUN_140f9d770`; the reachability test asks for
+//! none), an allied gate on the way (the tile's record of class 5, slot 0x678) and the search
+//! beside a player's objects when the caller names one (argument 11, `FUN_14152f790`). The pather's flag at `+0x2db638` (terrain the unit
 //! may cross anyway, `FUN_1413fc2b0`) is never set in this build: no instruction writes it.
 
 use crate::spatial::{BLOCKED, Tiles};
@@ -45,6 +48,9 @@ const REACHED: f32 = crate::image::long_path::REACHED;
 /// The margin of the reached test within the range (`DAT_142eb0c60`).
 const EPSILON: f32 = crate::image::long_path::EPSILON;
 
+/// A target's footprint ends this short of its far edges (`DAT_142eb99cc`).
+const EDGE_GAP: f32 = crate::image::long_path::EDGE_GAP;
+
 /// The record class whose tiles an allied unit may pass when its gate lets it (`0x500` in the
 /// obstruction manager's word, bits 8 to 13).
 const GATE_CLASS_BITS: u64 = 0x500;
@@ -71,12 +77,44 @@ fn behind(came: u8) -> u8 {
     (0x38u8).rotate_left(u32::from(came))
 }
 
+/// The target object of a search (`FUN_140f9eb70`'s argument 8).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LongTarget {
+    /// Its tile, and the tiles of its footprint (x0, y0, x1, y1: the centre less the radius, the
+    /// centre plus the radius less `EDGE_GAP`, whole).
+    pub tile: [i32; 2],
+    pub rect: [i32; 4],
+    /// The unit's footprint gap to it, squared (`FUN_14118f8c0`) and not (`FUN_14118f680`).
+    pub gap_squared: f32,
+    pub gap: f32,
+}
+
+impl LongTarget {
+    /// The target at `position` with radii `radius`, `gap` and `gap_squared` from the unit.
+    pub fn new(position: [f32; 3], radius: [f32; 2], gap: f32, gap_squared: f32) -> Self {
+        let [x, y, _] = position;
+        LongTarget {
+            tile: [x as i32, y as i32],
+            rect: [
+                (x - radius[0]) as i32,
+                (y - radius[1]) as i32,
+                ((x + radius[0]) - EDGE_GAP) as i32,
+                ((y + radius[1]) - EDGE_GAP) as i32,
+            ],
+            gap_squared,
+            gap,
+        }
+    }
+}
+
 /// What the search is asked: from one tile to another, within `range`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LongRequest {
     pub from: [i32; 2],
     pub to: [i32; 2],
     pub range: f32,
+    /// The target object, None for a point.
+    pub target: Option<LongTarget>,
     /// The unit moves: its speed (slot 0x208, `FUN_141202c70`) is not 0, or its master is 42.
     pub moves: bool,
     /// The terrain classes the unit may stand on (its restriction's mask).
@@ -170,7 +208,18 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
     }
     let (dx, dy) = (x1 - x0, y1 - y0);
     let gap2 = dy.wrapping_mul(dy).wrapping_add(dx.wrapping_mul(dx));
-    if REACHED < req.range && (gap2 as f32) < req.range * req.range {
+    if let Some(t) = req.target
+        && t.gap_squared <= req.range * req.range
+    {
+        return Ok(true);
+    }
+    // the goal: the target's tile and footprint, else the goal tile
+    let (goal, rect) = match req.target {
+        Some(t) => (t.tile, t.rect),
+        None => ([x1, y1], [x1, y1, x1, y1]),
+    };
+    let in_rect = |x: i32, y: i32| rect[0] <= x && x <= rect[2] && rect[1] <= y && y <= rect[3];
+    if REACHED < req.range && req.target.is_none() && (gap2 as f32) < req.range * req.range {
         return Ok(true);
     }
     if !req.moves {
@@ -215,12 +264,12 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
         let ([cx, cy], _) = heap.slots[1];
         let (gx, gy) = (x1 - cx, y1 - cy);
         let d = crate::fmath::sqrt(gx.wrapping_mul(gx).wrapping_add(gy.wrapping_mul(gy)) as f32);
-        let reached = if req.within_range {
-            d - req.range < EPSILON
-        } else {
-            d < REACHED
+        let reached = match req.target {
+            Some(t) => t.gap - req.range < EPSILON || d < REACHED,
+            None if req.within_range => d - req.range < EPSILON,
+            None => d < REACHED,
         };
-        if (cx == x1 && cy == y1) || reached {
+        if in_rect(cx, cy) || reached {
             return Ok(true);
         }
         heap.pop();
@@ -263,16 +312,24 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
             if !clear(&|x, y| word(x, y) & blocked_terrain == 0) {
                 continue;
             }
-            let at_goal = nx == x1 && ny == y1;
+            let at_goal = (nx == goal[0] && ny == goal[1]) || in_rect(nx, ny);
+            let corners = |test: &dyn Fn(i32, i32) -> bool| {
+                beside.is_none_or(|b| b.iter().all(|&[x, y]| test(x, y)))
+            };
+            let passes = || {
+                corners(&|x, y| word(x, y) & blocked == 0)
+                    && tall(nx, ny) == 0
+                    && corners(&|x, y| tall(x, y) == 0)
+            };
             let open = if word(nx, ny) & blocked == 0 {
-                clear(&|x, y| word(x, y) & blocked == 0) && clear(&|x, y| tall(x, y) == 0)
+                passes()
+            } else if word(nx, ny) & 0x3f00 == GATE_CLASS_BITS {
+                return Err(Unsupported(
+                    "the long pather at a gate's tile (the alliance test, slot 0x678)",
+                ));
             } else {
-                if word(nx, ny) & 0x3f00 == GATE_CLASS_BITS {
-                    return Err(Unsupported(
-                        "the long pather at a gate's tile (the alliance test, slot 0x678)",
-                    ));
-                }
-                false
+                // the target's own tiles pass their static record
+                at_goal && req.target.is_some() && passes()
             };
             if !open {
                 if req.near_player {
@@ -334,6 +391,7 @@ mod tests {
             from,
             to,
             range: 3.0,
+            target: None,
             moves: true,
             mask: 1,
             computer: false,

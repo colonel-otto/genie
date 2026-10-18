@@ -14,6 +14,28 @@ use crate::unit_ai::{Pick, Search, Unsupported};
 use crate::visibility::Visibility;
 use std::collections::BTreeMap;
 
+/// The range of ClosestObject's reachability check (`FUN_140c488b0`, `DAT_142eb5690`).
+const CLOSEST_RANGE: f32 = crate::image::spatial::CLOSEST_RANGE;
+
+/// The pasture and livestock classes ClosestObject treats apart.
+const PASTURE_CLASS: i32 = 49;
+const LIVESTOCK_CLASS: i32 = 58;
+
+/// The caller's reachability check of a found object (slot 0x3d0 within a range).
+pub type Reach<'a> = dyn FnMut(i32, f32) -> Result<bool, Unsupported> + 'a;
+
+/// What ClosestObject keeps of the objects found (its arguments 2 to 6; each −1 for any): the
+/// master class, the relation (0 itself or friends, 1 neutrals, 2 enemies, 3 itself), the state,
+/// the master and the cap of workers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Filter {
+    group: i32,
+    relation: i32,
+    state: i32,
+    master: i32,
+    workers: i32,
+}
+
 /// Obstruction kinds the query tests (`FUN_141051e00`): boxes (2, 3, 11, 13) and circles (5).
 const TESTED_KINDS: [u8; 5] = [2, 3, 5, 11, 13];
 
@@ -782,6 +804,7 @@ impl Spatial {
         player: usize,
         search: &Search<'_>,
         can_attack: &dyn Fn(&Placed, u8) -> Result<bool, Unsupported>,
+        reach: &mut Reach<'_>,
     ) -> Result<i32, Unsupported> {
         let v = self
             .sight
@@ -827,31 +850,50 @@ impl Spatial {
                 group,
                 relation,
                 state,
-            } => self.closest_object(v, me, &found, group, relation, state),
+                master,
+                workers,
+            } => {
+                // FUN_140c63e20 sets the alert mode on enemies found (and may tell the player)
+                if !found[4].is_empty() {
+                    return Err(Unsupported("a search that finds enemies (the alert mode)"));
+                }
+                let filter = Filter {
+                    group,
+                    relation,
+                    state,
+                    master,
+                    workers,
+                };
+                self.closest_object(v, me, &found, filter, reach)
+            }
             Pick::Attack { lowest } => {
                 self.best_unit_to_attack(v, own, player, &found, lowest, can_attack)
             }
         }
     }
 
-    /// `ClosestObject` (`FUN_140c488b0`) for object `me` as a hunted animal calls it, over what
-    /// its search `found`: each record by relation and order: itself, an object that is gone and
-    /// one dying (state 7 and up) are passed; any other would need the reachability check (the
-    /// unit's slot 0x3d0, `FUN_140fa0370`, the pathfinders), which is not modelled. Nothing found
-    /// answers −1.
+    /// `ClosestObject` (`FUN_140c488b0`) for object `me` over what its search `found`, its
+    /// reachability check on (argument 8, every caller's): each record by relation and order:
+    /// itself, an object that is gone and one dying (state 7 and up) are passed, so is one the
+    /// [`Filter`] leaves out; then one the unit reaches within `CLOSEST_RANGE` (slot 0x3d0,
+    /// `reach`) and nearer than the nearest so far (by the search's distance; a tie goes to the
+    /// lower id) is the nearest. Not modelled: a workers cap (argument 6; the objects' `+0x644`),
+    /// the unbuilt farm test of a search for state 0, the pastures (class 49) and livestock
+    /// (class 58), a searcher of class 10 (with its test of master 440 and the object flag 0x10)
+    /// and the game's `+0x6b4`. Nothing found answers −1.
     fn closest_object(
         &self,
         v: &Visibility,
         me: i32,
         found: &[Vec<Record>; 5],
-        group: i32,
-        relation: i32,
-        state: i32,
+        filter: Filter,
+        reach: &mut Reach<'_>,
     ) -> Result<i32, Unsupported> {
+        let mut best: Option<(i32, f32)> = None;
         for (kind, records) in found.iter().enumerate() {
             // the relation filter (`param_3`): 0 friends and itself, 1 neutrals, 2 enemies, 3
             // itself, else any
-            let related = match relation {
+            let related = match filter.relation {
                 0 => matches!(kind, 1 | 2),
                 1 => kind == 3,
                 2 => kind == 4,
@@ -869,18 +911,41 @@ impl Spatial {
                 if 7 <= seer.state || !related {
                     continue;
                 }
-                if group != -1 && i32::from(p.class) != group {
+                if filter.group != -1 && i32::from(p.class) != filter.group {
                     continue;
                 }
-                if state != -1 && i32::from(seer.state) != state {
+                if filter.master != -1 && i32::from(p.master) != filter.master {
                     continue;
                 }
-                return Err(Unsupported(
-                    "ClosestObject's reachability check (slot 0x3d0) of a found object",
-                ));
+                if filter.state != -1 && i32::from(seer.state) != filter.state {
+                    continue;
+                }
+                if filter.workers != -1 {
+                    return Err(Unsupported("ClosestObject's workers cap (+0x644)"));
+                }
+                if filter.state == 0 {
+                    return Err(Unsupported("ClosestObject's unbuilt farm test"));
+                }
+                if matches!(filter.group, PASTURE_CLASS | LIVESTOCK_CLASS) {
+                    return Err(Unsupported("ClosestObject over pastures or livestock"));
+                }
+                if self.objects.get(&me).is_some_and(|m| m.class == 10) {
+                    return Err(Unsupported("ClosestObject of a class-10 searcher"));
+                }
+                if !reach(record.id, CLOSEST_RANGE)? {
+                    continue;
+                }
+                match best {
+                    Some((id, d)) if d <= record.distance => {
+                        if record.distance == d && record.id < id {
+                            best = Some((record.id, d));
+                        }
+                    }
+                    _ => best = Some((record.id, record.distance)),
+                }
             }
         }
-        Ok(-1)
+        Ok(best.map_or(-1, |(id, _)| id))
     }
 
     /// `bestUnitToAttack` (`FUN_140c44680`) for a unit of `player` (diplomacy `own`, its

@@ -55,6 +55,8 @@ impl Notify {
 pub const ACTION_COMPLETED: i32 = crate::ai_kinds::NOTIFY_ACTION_COMPLETED;
 /// `0x1fb`: an action's invalidation (p1 the action value).
 pub const ACTION_INVALIDATED: i32 = crate::ai_kinds::NOTIFY_ACTION_INVALIDATED;
+/// `0x1f9`: an action failed (p1 its action value).
+pub const ACTION_FAILED: i32 = crate::ai_kinds::NOTIFY_ACTION_FAILED;
 /// `0x200`: "ActionExecuted" (the soldier's log line), an attack's swing (p1 600, p2 the target).
 pub const ACTION_EXECUTED: i32 = 0x200;
 /// `0x20b`: the unit changed hands (p1 the new owner).
@@ -242,6 +244,33 @@ pub const LION_CARED: [i32; 18] = [
     4, 0, 26, 24, 6, 25, 12, 35, 23, 36, 28, 44, 46, 45, 50, 56, 57, 9,
 ];
 
+/// The civilian's factory type (`TribeCivilianUnitAIModule`, the villagers').
+pub const CIVILIAN: u32 = 8;
+
+/// The classes a civilian cares about (`+0x190`, `TribeCivilianUnitAIModule`'s constructor
+/// `FUN_140c115d0`).
+pub const CIVILIAN_CARED: [i32; 39] = [
+    3, 7, 8, 9, 10, 15, 17, 18, 32, 33, 27, 49, 39, 52, 58, 63, 0, 4, 26, 24, 6, 35, 25, 12, 23,
+    36, 28, 22, 44, 46, 45, 47, 50, 52, 55, 56, 57, 19, 61,
+];
+
+/// What the civilian's constructor gives the base (`FUN_140c2e080` with 7): `+0x1e8`, which its
+/// search adds to its radius (`FUN_140c63e20`).
+pub const CIVILIAN_SEARCH_GROWTH: f32 = 7.0;
+
+/// The civilian's slot 0x1b0 (`FUN_140c1c4f0`): the kind of a target class (0 for 15, 1 for 7, 2
+/// for 5, 31 and 33, 3 for 8, 4 for 32 and 63), −1 for any other.
+pub fn civilian_kind(class: i32) -> i8 {
+    match class {
+        5 | 0x1f | 0x21 => 2,
+        7 => 1,
+        8 => 3,
+        0xf => 0,
+        0x20 | 0x3f => 4,
+        _ => -1,
+    }
+}
+
 /// The classes a soldier cares about (`+0x190`, `TribeSoldierUnitAIModule`'s constructor
 /// `FUN_140c12300`; a computer player's adds 10).
 pub const SOLDIER_CARED: [i32; 39] = [
@@ -272,13 +301,16 @@ pub struct Search<'a> {
 /// What a [`Search`] picks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pick {
-    /// `ClosestObject` (`FUN_140c488b0`), as the animals call it: the closest object of master
-    /// class `group`, of relation `relation` (0 itself or friends, 1 neutrals, 2 enemies, 3
-    /// itself) and in state `state` (each −1 for any), reachable ones only.
+    /// `ClosestObject` (`FUN_140c488b0`) with its reachability check: the closest object of
+    /// master class `group`, of relation `relation` (0 itself or friends, 1 neutrals, 2 enemies,
+    /// 3 itself), in state `state`, of master `master` and below `workers` workers (each −1 for
+    /// any), reachable ones only.
     Closest {
         group: i32,
         relation: i32,
         state: i32,
+        master: i32,
+        workers: i32,
     },
     /// `bestUnitToAttack` (`FUN_140c44680`) with no current target and no extra objects, as the
     /// idle checks call it: of the relations from enemies down to `lowest` (2 in the scenario
@@ -870,8 +902,12 @@ impl UnitAi {
                 group: -1,
                 relation: -1,
                 state: -1,
+                master: -1,
+                workers: -1,
             },
         })?;
+        // the search found no enemies (or it would have failed): the alert mode clears
+        self.alert_mode = false;
         if found != -1 {
             return Err(Unsupported(
                 "a hunted animal evading an object it sees (slot 0x150)",
@@ -931,12 +967,16 @@ impl UnitAi {
                 group,
                 relation: 2,
                 state: 2,
+                master: -1,
+                workers: -1,
             },
         };
         let mut found = closest(&search(4))?;
         if found < 0 {
             found = closest(&search(-1))?;
         }
+        // the searches found no enemies (or they would have failed): the alert mode clears
+        self.alert_mode = false;
         if found != -1 {
             return Err(Unsupported(
                 "a lion attacking an object it sees (slot 0xb8)",
@@ -1384,7 +1424,7 @@ impl UnitAi {
                 0x1fc => Err(Unsupported("a lion's moved target")),
                 _ => self.base_notify(n, time, at, fx),
             },
-            // the villager (FUN_140c22bf0): a completion of its action stops it, and slot 0x48
+            // the villager (FUN_140c22bf0): a completion or failure of its action stops it, and slot 0x48
             // passes the notify to its owner's slot 0x2e8 (not held); a failed build (0x202, its
             // Build waiting without work, action 0x25a) looks for another foundation to build
             // (FUN_140c1c7c0, when the player's +0x613 is 0: unsaved, 0 in this game) and, finding
@@ -1402,7 +1442,8 @@ impl UnitAi {
                     fx.push(Effect::Stop);
                     Ok(BREAK)
                 }
-                ACTION_COMPLETED => {
+                // a completion or a failure of its action (0x1fa, 0x1f9) stops it
+                ACTION_COMPLETED | ACTION_FAILED => {
                     if self.current_action == n.p[0] {
                         self.remove_target();
                         self.stop_current(true, at, fx)?;

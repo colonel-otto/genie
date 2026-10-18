@@ -25,6 +25,8 @@ pub const FACE: u8 = 6;
 pub const GATHER: u8 = 7;
 pub const DROP: u8 = 8;
 pub const ATTACK: u8 = 12;
+/// State 13: the hunt failed; its next update tells its unit AI (notify 0x1f9) and ends it.
+pub const FAILED: u8 = 13;
 /// A building whose top action is this (a farm at work) takes a hunt sent to it to set_state 15.
 const FARM_AT_WORK: i16 = 0x7d;
 
@@ -246,7 +248,7 @@ impl HuntAction {
     /// `OWN_LIVESTOCK_RANGE` to the livestock (`FUN_140aa0df0`; its start `0x140aa2100`: a unit
     /// within 0.01 of the target's footprint is there already). A target not dead yet of another,
     /// unallied player (or of class 49) is attacked first: set_state(12) (case 0xc) with an
-    /// Attack of the master's ranges.
+    /// Attack of the master's ranges. A live allied one fails the hunt (set_state 13).
     fn chase(
         &mut self,
         target: &Quarry,
@@ -277,7 +279,11 @@ impl HuntAction {
             return Ok(());
         }
         if target.class != CLASS_49 && target.allied {
-            return Err(Unsupported("a hunt on an allied target (set_state 13)"));
+            // LAB_140ac679d: set_state(13): the timer clears; the unit's sprite (slot 0x68 with
+            // FUN_140ac5210's) is the caller's
+            self.state = FAILED;
+            self.timer = 0.0;
+            return Ok(());
         }
         self.state = ATTACK;
         self.attack = Some(Attack::start(target.id, attack, arms, mover)?);
@@ -315,21 +321,12 @@ impl HuntAction {
             self.set_drop(attack.gap, mover)?;
             return Ok(true);
         }
-        if target.kind == BUILDING {
-            return Err(Unsupported(
-                "a hunt sent to a building that is not its drop site",
-            ));
-        }
-        if target.player == player {
-            return Err(Unsupported(
-                "a hunt sent to its own player's object (FUN_14109d4f0)",
-            ));
-        }
         if target.id == self.target {
             return Ok(false);
         }
         self.target = target.id;
         self.target_class = target.class;
+        self.carry_to = -1;
         self.chase(target, player, attack, arms, mover)?;
         Ok(true)
     }
@@ -1004,14 +1001,16 @@ mod tests {
         assert_eq!((held, tree.amount), (0.05 + 100.0 * 0.001, 0.0));
     }
 
+    /// A live allied target fails the hunt at once (set_state 13, its timer cleared), as house
+    /// 9158 did MarvinBlue/426048731's 9181 after its drop-off in update 1897.
     #[test]
-    fn a_hunt_on_an_ally_is_not_modelled() {
+    fn a_hunt_on_a_live_ally_fails() {
         let ally = Quarry {
             allied: true,
             ..tree()
         };
         let mut held = (-1, 0.0);
-        let r = HuntAction::start(
+        let hunt = HuntAction::start(
             CHOP,
             &ally,
             2,
@@ -1021,8 +1020,12 @@ mod tests {
             &engagement(),
             ARMS,
             &mut walker(),
+        )
+        .expect("a hunt");
+        assert_eq!(
+            (hunt.state, hunt.timer, hunt.target),
+            (FAILED, 0.0, ally.id)
         );
-        assert!(r.is_err());
     }
 
     /// set_state(4) on a dead target, or on the hunter's own livestock, walks to it: a quiet

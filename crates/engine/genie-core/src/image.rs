@@ -87,6 +87,8 @@ pub mod hunt {
 }
 
 pub mod long_path {
+    /// 0.009999999776482582
+    pub const EDGE_GAP: f32 = f32::from_bits(0x3c23d70a);
     /// 1.0000000116860974e-07
     pub const EPSILON: f32 = f32::from_bits(0x33d6bf95);
     /// 1.0
@@ -141,6 +143,8 @@ pub mod movement {
     pub const TARGET_SHORT_REACH: f32 = f32::from_bits(0x41200000);
     /// 6.2831854820251465
     pub const TWO_PI: f32 = f32::from_bits(0x40c90fdb);
+    /// 3.0
+    pub const WIDE_RANGE: f32 = f32::from_bits(0x40400000);
 }
 
 pub mod order {
@@ -168,6 +172,11 @@ pub mod short_path {
     pub const TO_FIXED: f32 = f32::from_bits(0x4a800000);
     /// 2.384185791015625e-07
     pub const TO_FLOAT: f32 = f32::from_bits(0x34800000);
+}
+
+pub mod spatial {
+    /// 0.10000000149011612
+    pub const CLOSEST_RANGE: f32 = f32::from_bits(0x3dcccccd);
 }
 
 pub mod spawn {
