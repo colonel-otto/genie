@@ -5302,6 +5302,9 @@ pub struct GameState {
     pub players: Vec<Vec<Unit>>,
     /// Every player's food, wood, stone and gold.
     pub resources: Vec<[f32; 4]>,
+    /// Every player's attributes as saved (the first four are the resources), which the oracle
+    /// compares; forcing leaves them alone.
+    pub attributes: Vec<Vec<f32>>,
     /// The players' pending debits and technology states.
     pub pending_debit: Vec<[f32; 4]>,
     /// Every player's technology states.

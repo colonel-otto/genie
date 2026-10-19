@@ -4235,6 +4235,10 @@ pub struct TickReport {
     /// What the slice could not model: the player, the object (None for the player's stop), the
     /// update and why.
     pub unsupported: Vec<(u32, Option<i32>, u32, Unsupported)>,
+    /// The players' attributes past the resources that differ, apart from the differences (the
+    /// slice does not keep every statistic yet): the player, the attribute, the slice's value
+    /// and the game's (their f32 bits).
+    pub attributes: Vec<(u32, usize, u32, u32)>,
 }
 
 /// One step of the forced replay (FD-008, CONTINUE.md): genie-core from the game's own save after
@@ -4530,6 +4534,7 @@ fn game_state(header: &Header, masters: Option<&MasterTable>) -> genie_core::tur
         let attributes = &p.world_player().base.attributes;
         let r = |i: usize| attributes.get(i).copied().unwrap_or_default();
         game.resources.push([r(0), r(1), r(2), r(3)]);
+        game.attributes.push(attributes.clone());
         game.pending_debit.push(p.world_player().base.pending_debit);
         let base = &p.world_player().base;
         game.statuses.push((
@@ -4593,6 +4598,21 @@ fn compare_players(
         {
             let d = format!("resources slice {:?} game {:?}", player.resources, r);
             report.differences.push((id, d));
+        }
+        // the other attributes, each one the slice holds that differs (reported apart)
+        if !player.stopped
+            && let Some(saved) = after.game.attributes.get(p)
+        {
+            report.attributes.extend(
+                player
+                    .attributes
+                    .iter()
+                    .zip(saved)
+                    .enumerate()
+                    .skip(4)
+                    .filter(|(_, (a, b))| a.to_bits() != b.to_bits())
+                    .map(|(i, (a, b))| (id, i, a.to_bits(), b.to_bits())),
+            );
         }
         if let Some(&(status, resigned)) = after.game.statuses.get(p)
             && (status, resigned) != (player.game_status, player.resigned)

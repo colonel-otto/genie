@@ -285,6 +285,23 @@ fn the_forced_replay_report() {
                 .add(update(r), *player, object, clean);
         }
     }
+    // the attributes past the resources, apart: each one's tally and first values
+    let mut attributes: BTreeMap<String, Tally> = BTreeMap::new();
+    let mut first_values: BTreeMap<usize, (usize, u32, f32, f32)> = BTreeMap::new();
+    for r in &reports {
+        for &(player, i, a, b) in &r.attributes {
+            attributes
+                .entry(format!("attribute {i:03}"))
+                .or_default()
+                .add(update(r), player, None, r.unsupported.is_empty());
+            first_values.entry(i).or_insert((
+                update(r),
+                player,
+                f32::from_bits(a),
+                f32::from_bits(b),
+            ));
+        }
+    }
     let clean = reports
         .iter()
         .filter(|r| r.unsupported.is_empty() && r.differences.is_empty())
@@ -316,6 +333,21 @@ fn the_forced_replay_report() {
     for (f, t) in ranked(&differences) {
         md += &t.row(f);
         md.push('\n');
+    }
+    md += "\n## Attributes that differ, apart from the differences\n\n\
+           The players' attributes past the resources, which the slice does not all keep yet \
+           (statistics among them); they do not count against a clean update.\n\n\
+           | attribute | count | first | first without a freeze | players | - |\n\
+           | --- | --- | --- | --- | --- | --- |\n";
+    for (a, t) in ranked(&attributes) {
+        md += &t.row(a);
+        md.push('\n');
+    }
+    for (i, (u, p, a, b)) in &first_values {
+        let _ = writeln!(
+            md,
+            "- attribute {i}: first in update {u}, player {p}: slice {a}, game {b}"
+        );
     }
     md += "\n## The first updates with differences\n\n";
     for r in reports
