@@ -880,17 +880,23 @@ const fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
     ai.rand15() % (base >> 1) + ((base * 3) >> 2)
 }
 
-/// The unit-AI type the factory (`FUN_141215a90`) gives a new object of a master of `class`:
-/// none for classes 5, 7, 8, 11, 14, 15, 16, 30 to 34, 38, 42, 48 and 63, the civilian's (8)
-/// for class 4. Masters 1105, 1744 and 1746 have their own, and the other classes' types are
-/// not modelled.
-pub const fn factory_type(class: i16, master: i16) -> Result<Option<u32>, Unsupported> {
+/// The unit-AI type the factory (`FUN_141215a90`) gives a new object of a master of `class`
+/// with `missile` (`+0x8d4`, −1 for none): none for classes 5, 7, 8, 11, 14, 15, 16, 30 to 34,
+/// 38, 42, 48 and 63, the civilian's (8) for class 4, the building's (17) for classes 3, 27, 39,
+/// 49 and 60 without a missile. Masters 1105, 1744 and 1746 have their own, and the other
+/// classes' types are not modelled.
+pub const fn factory_type(
+    class: i16,
+    master: i16,
+    missile: i16,
+) -> Result<Option<u32>, Unsupported> {
     if matches!(master, 1105 | 1744 | 1746) {
         return Err(Unsupported("a new object of a master with its own unit AI"));
     }
     match class {
         5 | 7 | 8 | 11 | 14 | 15 | 16 | 30..=34 | 38 | 42 | 48 | 63 => Ok(None),
         4 => Ok(Some(8)),
+        3 | 27 | 39 | 49 | 60 if missile < 0 => Ok(Some(17)),
         _ => Err(Unsupported(
             "a new object whose unit-AI type is not modelled",
         )),

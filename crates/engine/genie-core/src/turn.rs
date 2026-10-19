@@ -504,6 +504,9 @@ struct Context<'a> {
     /// The buildings whose construction started in this update: their owner watches them
     /// ([`Turns::watch_started`]), the caller's.
     started: Vec<i32>,
+    /// The buildings that died in this update: their owner's watched list lets them go
+    /// (`FUN_141091310`), the caller's.
+    unwatched: Vec<i32>,
     /// The world's reusable ids and pools.
     recycling: &'a mut Recycling,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
@@ -2016,13 +2019,10 @@ impl Unit {
         };
         if master.kind == 80 {
             // the building's set_state (FUN_1411dbb70) from state 2: an annex's death is the
-            // combat object's below; any other building's (its pasture's workers, its storage
-            // of kinds 4 and 0x10, its tiles' links, its units inside, the last of its master's
-            // technology) is not modelled
+            // combat object's below; a built building's first lets its parts go
             if self.annex_of.is_none() {
-                return Err(Unsupported("a dying building other than an annex"));
-            }
-            if !self.garrison.is_empty()
+                self.building_died(c, master)?;
+            } else if !self.garrison.is_empty()
                 || master
                     .storage
                     .iter()
@@ -2068,6 +2068,51 @@ impl Unit {
                 .ok_or(Unsupported("a dying sprite the data file does not have"))?;
             crate::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
         }
+        Ok(())
+    }
+
+    /// A built building's death (`FUN_1411dbb70`'s state 3 with `+0x640` 2), before the combat
+    /// object's (`FUN_14121cc40`, the caller's): its owner's watched list lets it go
+    /// (`FUN_141091310`, the caller's); its pasture's workers (`+0xcb8`), its storage of kinds 4
+    /// and 0x10 (`FUN_1411e63f0`, `FUN_1411e6580`), the terrain under it (`+0x2e8`,
+    /// `FUN_140f65580`), the castle's, monastery's and wonder's attributes, its linked objects
+    /// (`+0xb78`, none held), the computer player's part (`FUN_1411e7ca0`) and the last building
+    /// of a master with a technology (`FUN_141166ab0`, `FUN_1413d4ec0`) are not modelled.
+    fn building_died(&self, c: &mut Context<'_>, master: &Master) -> Result<(), Unsupported> {
+        let built = self
+            .construction
+            .is_some_and(|k| f32::from(k.build_time) <= k.progress);
+        if !built {
+            return Err(Unsupported(
+                "a dying foundation (FUN_1411dbb70 before it is built)",
+            ));
+        }
+        let building = master.building.ok_or(Unsupported(
+            "a dying building of a master without its building part",
+        ))?;
+        if c.computer
+            || self.pasture != -1
+            || self.my_pasture != -1
+            || !self.garrison.is_empty()
+            || self.life.attribute_type == 4
+            || master
+                .storage
+                .iter()
+                .any(|&(kind, amount, flag)| 0 <= kind && 0.0 < amount && matches!(flag, 4 | 0x10))
+        {
+            return Err(Unsupported(
+                "a dying building of a computer player, with a pasture, units inside or a storage of kind 4 or 0x10",
+            ));
+        }
+        if 0 <= building.foundation_terrain
+            || 0 <= building.tech
+            || matches!(master.id, 82 | 104 | 276)
+        {
+            return Err(Unsupported(
+                "a dying building with a foundation terrain or a technology, the castle, the monastery or the wonder",
+            ));
+        }
+        c.unwatched.push(self.id);
         Ok(())
     }
 
@@ -3255,6 +3300,53 @@ impl Unit {
         Ok(())
     }
 
+    /// `TRIBE_Building_Object::update` (`0x1411c9000`) before its combat update: a building in
+    /// state 0 whose build points (`+0xc50`, the construction's progress) reached its build time
+    /// (its master's first train time, `FUN_140ace5e0`) completes (`set_state(2)`,
+    /// [`Construction::complete`]); outside the walls' branch (class 27, master 70) only one that
+    /// is not an annex (`+0xbb8`). A builder's work completes a foundation itself
+    /// (`FUN_1411cc430`); this one completes a building made without a build time (a death
+    /// spawn's). The walls' branch's facet and the other branch's work before it are not modelled
+    /// for such a building.
+    fn complete_on_update(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+    ) -> Result<(), Unsupported> {
+        let due = self.life.state == 0
+            && self
+                .construction
+                .is_some_and(|cons| f32::from(cons.build_time) <= cons.progress);
+        if !due {
+            return Ok(());
+        }
+        let master = c.masters.and_then(|m| m.get(self.life.master_id));
+        let walls = master.is_some_and(|m| m.class == 27 || m.id == 70);
+        if !walls && self.annex_of.is_some() {
+            return Ok(());
+        }
+        let annexed = others.iter().any(|u| u.annex_of == Some(self.id));
+        let Some(construction) = self.construction.as_mut() else {
+            return Ok(());
+        };
+        let mut site = Site {
+            id: self.id,
+            life: &mut self.life,
+            construction,
+            mover: self.mover.as_mut(),
+            completion: Completion {
+                master,
+                annexed,
+                attribute_204: c.attribute_204,
+                mode_680: c.mode_680,
+            },
+        };
+        let built = Construction::complete(&mut site, c.spatial)?;
+        c.attribute_adds.extend(built.attributes);
+        c.techs_done.extend(built.tech);
+        Ok(())
+    }
+
     /// One update, and whether the object stays in its list, leaves it or goes to sleep. `others`
     /// are the rest of the owner's objects, whose foundations a builder works on.
     fn update(&mut self, c: &mut Context<'_>, others: &mut [Self]) -> Result<Step, Unsupported> {
@@ -3268,6 +3360,7 @@ impl Unit {
             self.life.goto_sleep = false;
             return Ok(Step::Sleep);
         }
+        self.complete_on_update(c, others)?;
         self.take_stopped_speed();
         // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
         // `+0x87c` (1.0 for every unit the slice has met; its writer is not ported)
@@ -6634,6 +6727,7 @@ impl Turns {
                     made: Vec::new(),
                     ghost_deaths: Vec::new(),
                     started: Vec::new(),
+                    unwatched: Vec::new(),
                     recycling: &mut self.recycling,
                     mode_1: self.mode_680 == 1,
                     player: p,
@@ -6668,9 +6762,10 @@ impl Turns {
                 let pauses = std::mem::take(&mut c.pauses);
                 let releases = std::mem::take(&mut c.releases);
                 let (takes, made) = (std::mem::take(&mut c.takes), std::mem::take(&mut c.made));
-                let (ghost_deaths, started) = (
+                let (ghost_deaths, started, unwatched) = (
                     std::mem::take(&mut c.ghost_deaths),
                     std::mem::take(&mut c.started),
+                    std::mem::take(&mut c.unwatched),
                 );
                 if let Some(e) = self.spatial.take_sight_unsupported() {
                     result = result.and(Err(e));
@@ -6692,8 +6787,12 @@ impl Turns {
                 for (id, pause) in pauses {
                     self.pause(id, pause);
                 }
-                // the ghosts of a death (FUN_14118e990, while the game state is not 2) and the
+                // a dead building leaves its owner's watched list (FUN_141091310), then the
+                // ghosts of a death (FUN_14118e990, while the game state is not 2) and the
                 // watch of a started construction (FUN_1411e5670)
+                for id in unwatched {
+                    self.unwatch(p, id);
+                }
                 for id in ghost_deaths {
                     if self.game_state != 2
                         && let Err(e) = self.ghosts_at_death(p, id)

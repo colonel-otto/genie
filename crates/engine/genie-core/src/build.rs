@@ -693,7 +693,8 @@ impl Construction {
     /// sight swaps from its footprint to its line of sight (slots 0x1d8, 0x1d0); it takes its
     /// standing sprite (not held); on snow it gets its snow flag; its foundation terrain covers
     /// its clearance ([`crate::terrain::Terrain::cover`]; the tile it stands on, `+0x2e8`, keeps
-    /// no terrain to restore in the slice); its owner's attributes 98 and 165 grow by 1; then the
+    /// no terrain to restore in the slice); its owner's attributes 98 and 165 grow by its paid cost (`0x1411dd3ee`: the sum of its
+    /// cost entries flagged paid, as a new unit's 98 and 164 do); then the
     /// base `set_state` (`FUN_14121cc40`, `FUN_14119d710`) puts it in state 2. The local player's
     /// sound (slot 0x4c0), the event 0x69 (`FUN_140c898a0`) and the owner's AI (slot 0x388) are
     /// not held. Last, the master's technology is researched (`FUN_1413cdcd0` with `param_3` 0
@@ -776,8 +777,15 @@ impl Construction {
                 mode_680: done.mode_680,
             })?;
         }
-        attributes.push((98, 1.0));
-        attributes.push((165, 1.0));
+        // its paid cost: the cost entries of a resource flagged paid (`+0x880`), summed as shorts
+        let paid: i32 = master
+            .cost
+            .iter()
+            .filter(|&&(resource, _, paid)| 0 <= resource && paid)
+            .map(|&(_, amount, _)| i32::from(amount))
+            .sum();
+        attributes.push((98, paid as f32));
+        attributes.push((165, paid as f32));
         site.life.state = 2;
         world.sight_state(id, 2);
         Ok(Built {
@@ -886,6 +894,8 @@ mod tests {
             clearance: [1.0, 1.0],
             terrain_bonus: 4,
             storage: vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)],
+            // a house's cost: 25 wood paid; the unpaid entry does not count
+            cost: vec![(1, 25, true), (4, 5, false)],
             building: Some(crate::masters::BuildingMaster {
                 adjacent_mode: 0,
                 disappears_when_built: false,
@@ -893,6 +903,8 @@ mod tests {
                 foundation_terrain: 27,
                 tech: -1,
                 garrison_type: 0,
+                annexes: [-1; 4],
+                head_unit: -1,
             }),
             ..Master::default()
         };
@@ -929,7 +941,7 @@ mod tests {
         assert_eq!(
             worked,
             Ok(Worked::Completed(Built {
-                attributes: vec![(4, 5.0), (98, 1.0), (165, 1.0)],
+                attributes: vec![(4, 5.0), (98, 25.0), (165, 25.0)],
                 tech: None
             }))
         );

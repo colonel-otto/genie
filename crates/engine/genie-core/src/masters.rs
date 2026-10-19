@@ -93,6 +93,10 @@ pub struct BuildingMaster {
     pub tech: i16,
     /// `+0x9bc`, `garrison_type`: the kinds of units it takes in (bit 0 villagers, `FUN_14120eb10`).
     pub garrison_type: u8,
+    /// `+0x990`, the masters of its annexes (−1 for none; their places beside it at `+0x998`).
+    pub annexes: [i16; 4],
+    /// `+0x9b8`, `head_unit`: the building it is an annex of (−1 for none).
+    pub head_unit: i16,
 }
 
 /// The master values the task finder and the work command read.

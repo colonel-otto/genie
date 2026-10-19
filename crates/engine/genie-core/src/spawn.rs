@@ -879,7 +879,7 @@ impl Turns {
             .moving
             .ok_or(Unsupported("a new unit of a master that does not move"))?;
         let point = self.spot_beside(p, i, &made, toward)?;
-        let ai_type = factory_type(made.class, master)?
+        let ai_type = factory_type(made.class, master, made.missile)?
             .ok_or(Unsupported("a new combat unit without a unit AI"))?;
         let standing = (0 <= made.standing_sprite)
             .then(|| self.graphics.get(&made.standing_sprite).copied())
@@ -1121,6 +1121,9 @@ impl Turns {
         facet: Option<u8>,
     ) -> Result<(), Unsupported> {
         let made = self.master_of(p, master)?.clone();
+        if made.kind == BUILDING {
+            return self.new_building(p, &made, at);
+        }
         if !(20..40).contains(&made.kind) {
             return Err(Unsupported("remains of a type other than 20 to 39"));
         }
@@ -1266,6 +1269,150 @@ impl Turns {
             ..Unit::default()
         });
         Ok(())
+    }
+
+    /// A death spawn or the remains of a building master: its slot 0x40 (`FUN_14123d1a0`) makes a
+    /// building at `at` (`FUN_1411ac5c0` with 1, so its init `FUN_1411de5f0`): the combat setup
+    /// (`FUN_14121df60`) with its draws, the unit AI's three ([`UnitAi::constructed`]; the
+    /// building's) and the powerup offset's (`FUN_1408117b0`, Object stream); a building adds its
+    /// paid cost to attribute 247 only with a train location, none here without a cost. Then type
+    /// 80 and `set_state(0)`. Without a build time above 0 it keeps its master's hit points and
+    /// holds 0 build points (`+0xc50`), so its first update, later in the same tick, completes it
+    /// ([`crate::build::Construction::complete`] from the building's update). Its footprint
+    /// clearing (`FUN_1415c3620`) finds nothing without radii. It holds a gate's lock, open.
+    ///
+    /// Not modelled: a build time above 0 (the construction sprite, one hit point and the
+    /// desolid footprint, `FUN_1411cf770`), radii, a standing sprite, annexes or an annex master,
+    /// classes 51 and 54, masters 50, 70, 276, 357, 1187 and 1188, a paid cost, a computer
+    /// player's, a building with sight, the dead object's `+0x6a8`, and its facet
+    /// (`FUN_14119d490`). Its owner watches it ([`Turns::watch_started`]).
+    fn new_building(
+        &mut self,
+        p: usize,
+        made: &crate::masters::Master,
+        at: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        let master = made.id;
+        let building = made.building.ok_or(Unsupported(
+            "a new building of a master without its building part",
+        ))?;
+        if self.players[p].computer {
+            return Err(Unsupported(
+                "a computer player's new building (its AI's slot 0x398)",
+            ));
+        }
+        if 0 < made.build_time || 0.0 < made.radius[0] || 0.0 < made.radius[1] {
+            return Err(Unsupported(
+                "a new building with a build time or radii (its construction, its footprint)",
+            ));
+        }
+        if 0 <= made.standing_sprite || 0.0 < made.line_of_sight {
+            return Err(Unsupported(
+                "a new building with a standing sprite or sight (its setups' draws, its watch)",
+            ));
+        }
+        if building.annexes.iter().any(|&a| 0 <= a) || 0 <= building.head_unit {
+            return Err(Unsupported("a new building with annexes or of an annex"));
+        }
+        if matches!(made.class, 51 | 54) || matches!(master, 50 | 70 | 276 | 357 | 1187 | 1188) {
+            return Err(Unsupported(
+                "a new building of classes 51, 54 or masters 50, 70, 276, 357, 1187, 1188",
+            ));
+        }
+        if made.recyclable
+            || made
+                .cost
+                .iter()
+                .any(|&(r, a, paid)| 0 <= r && paid && a != 0)
+        {
+            return Err(Unsupported(
+                "a new building of a recyclable master or with a paid cost",
+            ));
+        }
+        let ai_type = factory_type(made.class, master, made.missile)?;
+        let id = self.next_object_id;
+        self.next_object_id += 1;
+        let ai = ai_type
+            .map(|t| UnitAi::constructed(t, at, self.streams.get(Stream::Ai)))
+            .transpose()?;
+        // the combat setup's powerup offset (`+0xa54`)
+        let _ = self.streams.get(Stream::Object).rand15();
+        let placed = Placed {
+            position: at,
+            radius: made.radius,
+            class: made.class,
+            player: p,
+            master,
+            obstruction_type: made.obstruction_type,
+            buildable_on: made.buildable_on,
+            tall: made.tall,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        };
+        self.spatial.insert(id, placed);
+        if let Some(v) = self.spatial.sight.as_mut() {
+            v.add_seer(
+                id,
+                Seer {
+                    player: p,
+                    master,
+                    los: made.line_of_sight,
+                    state: 0,
+                    explored: false,
+                    building: None,
+                    umv: 0,
+                    capture: capture_kind(p, made.class, master),
+                    kind: made.kind,
+                },
+            );
+        }
+        if let Some(e) = self.spatial.take_sight_unsupported() {
+            return Err(e);
+        }
+        self.players[p].objects.push(Unit {
+            id,
+            position: at,
+            life: Lifecycle {
+                class: Class::Animated,
+                state: 0,
+                hp: f32::from(made.hit_points),
+                attribute_type: -1,
+                amount: 0.0,
+                dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
+                death_spawn: 0 <= made.death_spawns[0],
+                remains: made.death_spawns[1],
+                death_facets: None,
+                inside: None,
+                goto_sleep: false,
+                master_id: master,
+                master: made.life,
+            },
+            ai,
+            construction: Some(crate::build::Construction {
+                progress: 0.0,
+                desolid: false,
+                builders: 0,
+                hit_points: made.hit_points,
+                build_time: made.build_time,
+                record: Obstruction {
+                    kind: made.obstruction_type,
+                    class: made.obstruction_class,
+                },
+                snow: false,
+                sprite_override: false,
+                started: false,
+            }),
+            firepower: made.volley_fire,
+            gate: Some(crate::turn::Gate::default()),
+            combat: true,
+            attackable: true,
+            pasture: -1,
+            my_pasture: -1,
+            ..Unit::default()
+        });
+        // the constructor's watch (`FUN_1411cc980`, `FUN_141090430`)
+        self.watch_started(p, id)
     }
 
     /// `FUN_140ace9c0` with a gather point without a target: the new unit waits to move (slot
