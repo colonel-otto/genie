@@ -1,0 +1,158 @@
+//! The players' vision masks (`player+0x2a8`, visible, and `+0x2a0`, explored): the bits of the
+//! unified map a player's tile tests read (`FUN_141663500`, `FUN_140c68a00`). Each holds the
+//! player's own bit and one no tile has (29; explored 61), bits 30 and 62 once the player won or
+//! lost, and the bits of the players whose sight it shares: its mutual allies while its allied
+//! vision is on (`allied_LOS_Enable`, `+0x2cc`, saved; attribute 50 turns it on) and every player
+//! while its attribute 183 is not 0. The world rebuilds them all (`FUN_141552df0`, from its slot
+//! 0x78 `FUN_1415e92b0`) at a load and when one of those changes.
+//!
+//! 158041: the rebuild `FUN_141552df0`; the attribute setter `FUN_141616820` (attributes 50, 183).
+
+use crate::turn::Turns;
+use crate::unit_ai::Unsupported;
+
+/// The visible bit no tile has that every player's mask carries.
+pub const NO_TILE: u64 = 1 << 29;
+/// The explored bit no tile has that every player's explored mask carries.
+pub const NO_TILE_EXPLORED: u64 = 1 << 61;
+/// The visible bit of a player who won or lost (`+0x89` 1 or 2).
+pub const ENDED: u64 = 1 << 30;
+/// The explored bit of a player who won or lost.
+pub const ENDED_EXPLORED: u64 = 1 << 62;
+/// The attribute whose change turns the allied vision on (`FUN_141616820`'s case 0x32).
+pub const REVEAL_ALLY: usize = 50;
+/// The attribute that shares every player's sight while it is not 0.
+pub const REVEAL_ALL: usize = 183;
+/// The attribute that reveals the other players' town centres (notify 0x2b9 to each of class
+/// 109), not modelled.
+const REVEAL_CENTRES: usize = 209;
+/// The attributes that add a scenario's masks of visible and explored players, not modelled.
+const SHARED_MASKS: [usize; 2] = [285, 286];
+
+/// The masks of player `p` before any sharing: its own bits and the bits no tile has, with the
+/// ended ones for a player who won or lost.
+#[must_use]
+pub const fn own_masks(p: usize, ended: bool) -> [u64; 2] {
+    let mut masks = [(1u64 << p) | NO_TILE, (1u64 << (32 + p)) | NO_TILE_EXPLORED];
+    if ended {
+        masks[0] |= ENDED;
+        masks[1] |= ENDED_EXPLORED;
+    }
+    masks
+}
+
+impl Turns {
+    /// `FUN_141552df0`: every player's masks again. A player's own bits first (the ended ones for
+    /// a player who won or lost); then for every player past Gaia, with its allied vision on, the
+    /// bits of each other player past Gaia it and who both count each other as allies (relation
+    /// 0), and with attribute 183 not 0 the bits of every player past Gaia. The players' share
+    /// flags (`+0x290`) and the third parties' table (`+0x2b0`, `+0x2b8`) are not held.
+    pub fn rebuild_vision(&mut self) -> Result<(), Unsupported> {
+        let n = self.players.len();
+        let mut masks: Vec<[u64; 2]> = self
+            .players
+            .iter()
+            .enumerate()
+            .map(|(p, player)| own_masks(p, matches!(player.game_status, 1 | 2)))
+            .collect();
+        for (p, me) in self.players.iter().enumerate().skip(1) {
+            let attribute = |i: usize| me.attributes.get(i).copied().unwrap_or(0.0);
+            if me.allied_vision {
+                for q in 1..n {
+                    if q != p
+                        && me.relations.get(q) == Some(&0)
+                        && self.players[q].relations.get(p) == Some(&0)
+                    {
+                        masks[p][0] |= 1 << q;
+                        masks[p][1] |= 1 << (32 + q);
+                    }
+                }
+            }
+            if attribute(REVEAL_ALL) != 0.0 {
+                for q in 1..n {
+                    masks[p][0] |= 1 << q;
+                    masks[p][1] |= 1 << (32 + q);
+                }
+            }
+            if REVEAL_CENTRES < me.attributes.len() && 0.0 < attribute(REVEAL_CENTRES) {
+                return Err(Unsupported(
+                    "the other players' town centres revealed (attribute 209)",
+                ));
+            }
+            if SHARED_MASKS[1] < me.attributes.len()
+                && SHARED_MASKS.iter().any(|&i| attribute(i) != 0.0)
+            {
+                return Err(Unsupported(
+                    "a scenario's shared vision masks (attributes 285, 286)",
+                ));
+            }
+        }
+        self.spatial.vision = masks;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::turn::Player;
+
+    /// Gaia and two teams of two (players 1 and 3 against 2 and 4), every player's allied
+    /// vision on: each sees with its team's bits, as records/425906646's players do after the
+    /// game's header load (`0xaa` for 1, 3, 5, 7 in its 4v4).
+    fn teams() -> Turns {
+        let player = |relations: Vec<u8>| Player {
+            relations,
+            allied_vision: true,
+            attributes: vec![0.0; 250],
+            ..Player::default()
+        };
+        Turns::new(
+            0,
+            1,
+            0,
+            vec![0; 5],
+            vec![
+                Player::default(),
+                player(vec![0, 1, 3, 0, 3]),
+                player(vec![0, 3, 1, 3, 0]),
+                player(vec![0, 0, 3, 1, 3]),
+                player(vec![0, 3, 0, 3, 1]),
+            ],
+        )
+    }
+
+    #[test]
+    fn mutual_allies_share_their_sight() {
+        let mut t = teams();
+        t.rebuild_vision().unwrap();
+        assert_eq!(t.spatial.vision[0], own_masks(0, false));
+        assert_eq!(t.spatial.vision[1], [0x2000_000a, 0x2000_000a_0000_0000]);
+        assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
+    }
+
+    #[test]
+    fn an_ally_one_way_or_the_vision_off_shares_nothing() {
+        let mut t = teams();
+        t.players[3].relations[1] = 3;
+        t.players[2].allied_vision = false;
+        t.rebuild_vision().unwrap();
+        assert_eq!(t.spatial.vision[1], own_masks(1, false));
+        assert_eq!(t.spatial.vision[2], own_masks(2, false));
+        assert_eq!(t.spatial.vision[4], [0x2000_0014, 0x2000_0014_0000_0000]);
+    }
+
+    #[test]
+    fn attribute_183_shares_every_players_sight() {
+        let mut t = teams();
+        t.players[2].attributes[REVEAL_ALL] = 1.0;
+        t.rebuild_vision().unwrap();
+        assert_eq!(t.spatial.vision[2], [0x2000_001e, 0x2000_001e_0000_0000]);
+    }
+
+    #[test]
+    fn a_player_alone_sees_with_its_own_bits() {
+        assert_eq!(own_masks(2, false), [0x2000_0004, 0x2000_0004_0000_0000]);
+        assert_eq!(own_masks(1, true), [0x6000_0002, 0x6000_0002_0000_0000]);
+    }
+}

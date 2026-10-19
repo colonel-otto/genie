@@ -301,6 +301,9 @@ pub struct Spatial {
     /// What the players see, when the slice holds it: the objects' sight follows their tiles
     /// ([`Spatial::set_position`]).
     pub sight: Option<Visibility>,
+    /// Each player's vision masks, visible (`+0x2a8`) and explored (`+0x2a0`), as the world's
+    /// rebuild sets them ([`crate::vision`]); a player without them sees with its own bits.
+    pub vision: Vec<[u64; 2]>,
     /// The map's terrain, when the slice holds it.
     pub terrain: Option<crate::terrain::Terrain>,
     /// The unit AIs' search cache ([`SearchCache`]).
@@ -345,6 +348,7 @@ impl Spatial {
             annexes: BTreeMap::new(),
             relations: Vec::new(),
             sight: None,
+            vision: Vec::new(),
             terrain: None,
             search_cache: std::cell::RefCell::default(),
         }
@@ -1318,8 +1322,19 @@ impl Spatial {
         Ok(())
     }
 
-    /// Whether player `player` sees tile (`x`, `y`) (`FUN_141663500` returning 0xf): its bit of
-    /// the unified map (its `+0x2a8` mask is its bit and bit 29, which no tile has; bit 61 neither).
+    /// The vision masks of player `player` (`+0x2a8`, `+0x2a0`; [`crate::vision`]): the world's
+    /// rebuild's, else its own bits and the ones no tile has.
+    #[must_use]
+    pub fn vision(&self, player: usize) -> [u64; 2] {
+        self.vision
+            .get(player)
+            .copied()
+            .unwrap_or_else(|| crate::vision::own_masks(player, false))
+    }
+
+    /// Whether player `player` sees tile (`x`, `y`) (`FUN_141663500` returning 0xf): its mask
+    /// `+0x2a8` meets the unified map's visible bits there (bits 29 and 61, which a tile has only
+    /// when the map is revealed, are not held).
     pub fn sees_tile(&self, player: usize, x: i32, y: i32) -> bool {
         let Some(v) = self.sight.as_ref() else {
             return false;
@@ -1327,12 +1342,12 @@ impl Spatial {
         if x < 0 || y < 0 || v.width <= x || v.height <= y {
             return false;
         }
-        v.unified[(y * v.width + x) as usize] & (1u64 << player) != 0
+        v.unified[(y * v.width + x) as usize] & crate::registry::MASK & self.vision(player)[0] != 0
     }
 
-    /// `FUN_141663500` is not 0: player `player` sees tile (`x`, `y`) or saw it (its bit, or its
-    /// bit 32 up, of the unified map; the player's masks `+0x2a8` and `+0x2a0` add bits 29 and
-    /// 61, which no tile has). Unknown without the players' sight.
+    /// `FUN_141663500` is not 0: player `player` sees tile (`x`, `y`) or saw it (its masks
+    /// `+0x2a8` and `+0x2a0` meet the unified map's bits there). Unknown without the players'
+    /// sight.
     pub fn explored(&self, player: usize, x: i32, y: i32) -> Result<bool, Unsupported> {
         let v = self.sight.as_ref().ok_or(Unsupported(
             "a test of explored tiles without the players' sight",
@@ -1340,21 +1355,15 @@ impl Spatial {
         if x < 0 || y < 0 || v.width <= x || v.height <= y {
             return Ok(false);
         }
-        let bits = (1u64 << player) | (1u64 << (32 + player));
-        Ok(v.unified[(y * v.width + x) as usize] & bits != 0)
+        let [seen, explored] = self.vision(player);
+        Ok(v.unified[(y * v.width + x) as usize] & crate::registry::MASK & (seen | explored) != 0)
     }
 
-    /// `FUN_140c68a00` gives 0xf: player `player` sees tile (`x`, `y`) now (its bit of the
-    /// unified map; the player's mask `+0x2a8` adds bit 29, which no tile has). False off the map
-    /// and without the players' sight.
+    /// `FUN_140c68a00` gives 0xf: player `player` sees tile (`x`, `y`) now (its mask `+0x2a8`
+    /// meets the unified map's visible bits there). False off the map and without the players'
+    /// sight.
     pub fn visible(&self, player: usize, x: i32, y: i32) -> bool {
-        let Some(v) = self.sight.as_ref() else {
-            return false;
-        };
-        if x < 0 || y < 0 || v.width <= x || v.height <= y {
-            return false;
-        }
-        v.unified[(y * v.width + x) as usize] & (1u64 << player) != 0
+        self.sees_tile(player, x, y)
     }
 
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its

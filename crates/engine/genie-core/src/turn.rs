@@ -4937,6 +4937,9 @@ pub struct Player {
     /// `+0x71c`, the offensive posture (0 or 1, GAME 0x14): not saved, a load sets 0; new soldiers
     /// read it (their unit AI's constructor, not modelled).
     pub posture: i32,
+    /// `allied_LOS_Enable` (`+0x2cc`, saved): the player shares its mutual allies' sight
+    /// ([`crate::vision`]).
+    pub allied_vision: bool,
     /// The objects whose ghosts the player's list follows (`+0x78`, [`crate::ghost`]): not
     /// saved; the load builds it ([`Turns::build_watched`]).
     pub watched: Vec<crate::ghost::Watched>,

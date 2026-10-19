@@ -1831,6 +1831,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                     && p.world_player().base.resigned != 0,
                 dropped: p.world_player().base.resigned & 2 != 0,
                 allied_victory: p.world_player().base.allied_victory != 0,
+                allied_vision: p.world_player().base.allied_los_enable != 0,
                 victory: victory.get(i).map_or(0, |v| v.victory),
                 fealty: p.world_player().fealty as i16,
                 // the load sets it 0 (`FUN_14163e970`)
@@ -1896,6 +1897,13 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         garrison_firepower(&mut turns);
         // the shape mesh as the game's load builds it (a dump of the game's replaces it)
         turns.build_mesh();
+    }
+    // the players' vision masks, which the world's load rebuilds (its slot 0x78)
+    if let Err(e) = turns.rebuild_vision() {
+        for p in &mut turns.players {
+            let _ = p.unsupported.get_or_insert((0, 0, e));
+            p.stopped = true;
+        }
     }
     turns
 }

@@ -24,8 +24,6 @@ pub const GHOST_MASTER: i16 = 243;
 pub const GHOST: u8 = 25;
 /// A master's `create_doppelganger_on_death` that leaves ghosts.
 pub const LEAVES_GHOSTS: u8 = 2;
-/// The bit no tile has that every player's vision mask (`player+0x2a8`) carries besides its own.
-const NO_TILE_BIT: u64 = 1 << 29;
 /// The classes a building's watch leaves out (`FUN_1411cc980`) and the gates' class, whose annex
 /// stays watched.
 const UNWATCHED_CLASSES: [i16; 2] = [51, 54];
@@ -88,18 +86,9 @@ pub struct Ghost {
 }
 
 impl Turns {
-    /// The vision mask of player `p` (`player+0x2a8`): its own bit and a bit no tile has. A
-    /// player with an ally among the others (who may share its sight) is not modelled.
-    fn vision_mask(&self, p: usize) -> Result<u64, Unsupported> {
-        let allied = self.players.get(p).is_some_and(|me| {
-            (1..self.players.len()).any(|q| q != p && me.relations.get(q) == Some(&0))
-        });
-        if allied {
-            return Err(Unsupported(
-                "a player's vision with allies (its mask +0x2a8)",
-            ));
-        }
-        Ok((1u64 << p) | NO_TILE_BIT)
+    /// The vision mask of player `p` (`player+0x2a8`, [`crate::vision`]).
+    fn vision_mask(&self, p: usize) -> u64 {
+        self.spatial.vision(p)[0]
     }
 
     /// The unified map's visible and explored bits at tile (`x`, `y`) (`map+0x5e30`, masked);
@@ -482,7 +471,7 @@ impl Turns {
         let mut unseen = false;
         let mut cant_see = g.cant_see;
         for i in 1..self.players.len() {
-            let mask = self.vision_mask(i)?;
+            let mask = self.vision_mask(i);
             if (mask >> g.original_owner) & 1 == 0 {
                 if (mask >> p) & 1 != 0 && bits & mask == 0 {
                     unseen = true;
@@ -491,7 +480,7 @@ impl Turns {
                 cant_see |= 1 << p;
             }
         }
-        let viewer = self.vision_mask(p)?;
+        let viewer = self.vision_mask(p);
         let mut seen = g.seen;
         let mut destroy = false;
         if bits & viewer != 0 && !unseen && g.state < 3 {
