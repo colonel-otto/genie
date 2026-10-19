@@ -107,15 +107,15 @@ fn the_slice_follows_the_game_up_to_a_named_tick() {
     // QUEUEs (ticks 553, 586, 591: the cost from the save's master, the Town Centre's make action in
     // state 6) and player 2's own BUILD in tick 679 (the house's cost, its foundation, three
     // villagers turned builders through their task swap groups, Build actions in state 6 next to
-    // the foundation and 4 away from it), until tick 680: the builders walk (word 7), and the one
-    // standing in the foundation's footprint steps aside (Build state 7, word 9)
+    // the foundation and 4 away from it), until tick 680: the builders walk (word 7). The shape
+    // mesh built at load (`Turns::build_mesh`) gives the one standing in the foundation's
+    // footprint its step aside (Build state 7, word 9); the walk still differs, next to Gaia and
+    // player 1, which the run stops early (a bird's Fly its default task starts at tick 1,
+    // TRANSFORM_OBJECT at tick 4)
     let words: Option<Vec<usize>> = first
         .as_ref()
         .map(|(_, w)| w.iter().map(|&(w, ..)| w).collect());
-    assert_eq!(
-        (first.map(|(t, _)| t), words),
-        (Some(680), Some(vec![7, 9]))
-    );
+    assert_eq!((first.map(|(t, _)| t), words), (Some(680), Some(vec![7])));
 }
 
 /// The same comparison for any recording and player, unpinned: `GENIE_TICK_PLAYER` names the

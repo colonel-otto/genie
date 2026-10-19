@@ -1865,6 +1865,8 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
             .flat_map(|m| m.tasks.iter().map(|t| t.work_range).chain([m.weapon_range]))
             .fold(0.0, f32::max);
         garrison_firepower(&mut turns);
+        // the shape mesh as the game's load builds it (a dump of the game's replaces it)
+        turns.build_mesh();
     }
     turns
 }
@@ -3225,14 +3227,7 @@ pub fn blocks_per_tick(
     if let Some(&id) = ids.iter().find(|&&id| sections.len() <= id as usize) {
         return Err(Error::NoSuchPlayer(id));
     }
-    let mut turns = slice(&header, masters);
-    // the header's load makes the registry empty, with every object's mask 0
-    if let Some(sight) = turns.spatial.sight.as_mut() {
-        sight.registry = Some(genie_core::registry::Registry::new(
-            sections.len(),
-            genie_core::registry::CLASSES,
-        ));
-    }
+    let mut turns = header_slice(&header, masters);
     let mut out = Vec::with_capacity(ticks);
     let mut decoder = Decoder::default();
     for frame in frames(&chapter, ticks)? {
@@ -3249,6 +3244,52 @@ pub fn blocks_per_tick(
         );
     }
     Ok(out)
+}
+
+/// The slice as the recording's header load leaves it: [`slice`] with the objects-in-sight
+/// registry empty, every object's mask 0, as the game's load makes it.
+fn header_slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
+    let mut turns = slice(header, masters);
+    if let Some(sight) = turns.spatial.sight.as_mut() {
+        sight.registry = Some(genie_core::registry::Registry::new(
+            header.players().len(),
+            genie_core::registry::CLASSES,
+        ));
+    }
+    turns
+}
+
+/// The slice from the recording's header ([`header_slice`]) after its first `ticks` updates,
+/// nothing forced: for comparing a run from the start with the tick oracle's saves. Dev only.
+pub fn header_run(
+    recording: &[u8],
+    ticks: usize,
+    masters: Option<&MasterTable>,
+) -> Result<Turns, Error> {
+    let chapter = de::chapters(recording)?[0];
+    let header = chapter.header()?;
+    let sections = header.players();
+    let mut turns = header_slice(&header, masters);
+    let mut decoder = Decoder::default();
+    run(
+        &mut turns,
+        &mut decoder,
+        &frames(&chapter, ticks)?,
+        &sections,
+    );
+    Ok(turns)
+}
+
+/// The rows the comparison with the game's saves reads of a player's live objects in a slice.
+#[must_use]
+pub fn object_rows(turns: &Turns, player: usize) -> Vec<ObjectRow> {
+    turns.players.get(player).map_or_else(Vec::new, |p| {
+        p.objects
+            .iter()
+            .filter(|u| listed(u))
+            .map(ObjectRow::of_unit)
+            .collect()
+    })
 }
 
 /// What the comparison with the game's saves checks of one live object: its master, state, hit

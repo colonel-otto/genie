@@ -90,6 +90,13 @@ impl Pathing {
         }
     }
 
+    /// An empty mesh for a map `width` tiles wide, as the game's load starts it.
+    pub fn start_mesh(&mut self, width: u32) {
+        self.mesh = Some(Mesh::new(width));
+        self.shapes.clear();
+        self.temporary.clear();
+    }
+
     /// The game's mesh and each object's shape in it, at the tick the slice starts from.
     pub fn set_mesh(&mut self, mesh: Mesh, shapes: impl IntoIterator<Item = (i32, u32)>) {
         self.mesh = Some(mesh);
@@ -157,6 +164,20 @@ impl Pathing {
             }
             return;
         }
+        let rect = shape_rect(p);
+        let s = match self.shapes.get(&id) {
+            None => mesh.add(rect),
+            Some(&s) => mesh.replace(s, rect),
+        };
+        let _ = self.shapes.insert(id, s);
+    }
+
+    /// `FUN_141056460`'s shape for an object that does not move, by its master's obstruction
+    /// kind and class whether or not it has its record (the load's rehook): added or replaced.
+    pub fn place_shape(&mut self, id: i32, p: &Placed) {
+        let Some(mesh) = self.mesh.as_mut() else {
+            return;
+        };
         let rect = shape_rect(p);
         let s = match self.shapes.get(&id) {
             None => mesh.add(rect),

@@ -6354,6 +6354,47 @@ impl Turns {
         Ok(())
     }
 
+    /// The shape mesh the game's load builds, which no save holds: an empty mesh of the map's
+    /// width, then the load's rehook of each object (`RGE_Static_Object::rehook`, slot 9, through
+    /// `FUN_141665650` and `FUN_1411689f0`: each player's live list, then its sleeping list):
+    /// its position set again (slot 0x58 -> `FUN_14118c540`: below state 7 and tall, then
+    /// `FUN_141056460`'s shape by its master's obstruction kind, not 0 or 12, and class, not 0,
+    /// for an object that does not move, [`Pathing::place_shape`]), then with an obstruction
+    /// record the refresh an update ends with (`FUN_141054fe0`, [`Pathing::refresh`]). An object
+    /// inside another has none (it left the obstruction manager); `mROOAlreadyCalled`
+    /// (`+0x686`) is not held (0 at a game's start), and a desolid foundation in a save is left
+    /// without one, as the game's own placement leaves it (unchecked at a load).
+    pub fn build_mesh(&mut self) {
+        let width = u32::try_from(self.spatial.map[0]).unwrap_or(0);
+        self.pathing.start_mesh(width);
+        for (q, p) in self.players.iter().enumerate() {
+            for u in p.objects.iter().chain(&p.sleeping) {
+                if u.life.inside.is_some() || 7 <= u.life.state {
+                    continue;
+                }
+                let (Some(placed), Some(m)) = (
+                    self.spatial.get(u.id),
+                    self.masters.get(q).and_then(|m| m.get(u.life.master_id)),
+                ) else {
+                    continue;
+                };
+                let moving = u.mover.as_ref().is_some_and(Mover::is_moving);
+                let desolid = u.construction.is_some_and(|c| c.desolid);
+                let kind = m.obstruction_type;
+                if placed.tall
+                    && kind != 0
+                    && kind != 12
+                    && m.obstruction_class != 0
+                    && !moving
+                    && !desolid
+                {
+                    self.pathing.place_shape(u.id, placed);
+                }
+                self.pathing.refresh(u.id, placed, moving, m.outline);
+            }
+        }
+    }
+
     /// One world update of `dt` game milliseconds without commands.
     pub fn tick(&mut self, dt: u32) {
         self.tick_with(dt, &[]);
