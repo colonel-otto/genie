@@ -95,9 +95,9 @@ impl Artifact {
     /// `MoveTo` ended, which the caller sends to the unit AI with the move action value (the
     /// Artifact's `MoveTo` is not quiet): its completion (0x1fa) from its update in state 1, or its
     /// failure (0x1f9) from state 13. A `MoveTo` whose motion step gave up fails (`set_state` 13: an
-    /// animal never waits as a villager may); the failed one's update returns 3, the Artifact
-    /// drops it (`FUN_140a98620`: its teardown stops the unit, slot 0x5d0, the caller's) and its
-    /// point (−1). A waiting `MoveTo` is not modelled.
+    /// animal never waits as a villager may); the failed one's update returns 3. On either code
+    /// the Artifact drops it (`FUN_140a98620`: its teardown stops the unit, slot 0x5d0, the
+    /// caller's) and its point (−1). A waiting `MoveTo` is not modelled.
     pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<Option<i32>, Unsupported> {
         let need = || Unsupported("a walking animal without its walk");
         match self.move_to {

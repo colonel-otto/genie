@@ -3729,8 +3729,8 @@ impl Unit {
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
             let dt = c.dt;
             let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
-            // a failed MoveTo's teardown stops the unit
-            if ended == Some(crate::unit_ai::ACTION_FAILED)
+            // an ended MoveTo (codes 1 to 5) goes (FUN_140a98620): its teardown stops the unit
+            if ended.is_some()
                 && let Some(m) = self.mover.as_mut()
             {
                 m.stop()?;
