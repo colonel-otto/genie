@@ -374,9 +374,10 @@ impl Turns {
                 "an order to a unit the slice does not hold live",
             ));
         };
-        if p != player {
-            return Err(Unsupported("an order to another player's unit"));
-        }
+        // the command looks its units up in the world's table without an owner test
+        // (`FUN_140e6b750`): another player's unit takes the order as its own player's; the
+        // queued order names the command's player as its issuer
+        let (issuer, player) = (player, p);
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0) {
@@ -433,7 +434,7 @@ impl Turns {
         let (target_type, target_owner) =
             target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
         let queued = crate::unit_ai::QueuedOrder {
-            issuer: player as i32,
+            issuer: issuer as i32,
             order: crate::unit_ai::ORDER_ON_TARGET,
             priority: 100,
             target: if target.is_some() { order.target } else { -1 },
@@ -1138,9 +1139,9 @@ impl Turns {
         let Place::Live(p, idx) = place else {
             return Err(Unsupported("a move of a unit the slice does not hold live"));
         };
-        if p != player {
-            return Err(Unsupported("a move of another player's unit"));
-        }
+        // the command looks its units up without an owner test (`FUN_140e6b750`): another
+        // player's unit moves as its own player's; the queued order's issuer is the command's
+        let (issuer, player) = (player, p);
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || speed <= 0.0 {
@@ -1174,7 +1175,7 @@ impl Turns {
             let (target_type, target_owner) =
                 target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
             let queued = crate::unit_ai::QueuedOrder {
-                issuer: player as i32,
+                issuer: issuer as i32,
                 order: MOVE_ORDER,
                 priority: 100,
                 target: if target.is_some() { order.target } else { -1 },

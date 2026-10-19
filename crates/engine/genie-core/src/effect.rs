@@ -100,7 +100,7 @@ impl Turns {
     /// `+0x63` while not of mode 1, not modelled) or not for this game mode; else with fewer of
     /// its requirements researched than it needs it turns to 0 (from above 0), with them all to
     /// 1 (from below 1) unless its research is done already (its work done reaching a
-    /// location's time, which completes it, not modelled). Each such technology, and each in
+    /// location's time), which completes it ([`Turns::complete_research`]). Each such technology, and each in
     /// state 2, counts; none counted sets attribute 39 to 1 where it is 0. The game's lists hold
     /// the dependents by id, as the `.dat`'s requirements give them.
     pub(crate) fn update_dependents(&mut self, p: usize, t: usize) -> Result<(), Unsupported> {
@@ -166,16 +166,24 @@ impl Turns {
                 let at = state.location(l.building).copied().unwrap_or(*l);
                 f32::from(l.time as i16) + at.adjustment <= state.research_done
             };
-            let done = if state.building_master == -1 {
-                state.locations.iter().any(reached)
-            } else {
-                state.location(state.building_master).is_some_and(reached)
-            };
-            if done {
-                return Err(Unsupported(
-                    "a dependent technology done on its requirements (FUN_1413cdcd0)",
-                ));
+            // its research done already: it completes (`FUN_1413cdcd0` with `param_3` 0 and no
+            // building), once per location reached without a building of its own (each
+            // uncounting it; past the first the technology is done and the call does nothing),
+            // else once for its building's
+            if state.building_master == -1 {
+                let reached = state.locations.iter().filter(|l| reached(l)).count();
+                if 0 < reached {
+                    for _ in 0..reached {
+                        let _ = self.complete_research(p, d, None)?;
+                        counted -= 1;
+                    }
+                    continue;
+                }
+            } else if state.location(state.building_master).is_some_and(reached) {
+                let _ = self.complete_research(p, d, None)?;
+                continue;
             }
+            let state = &mut self.players[p].techs[d];
             if state.state < 1 {
                 state.state = 1;
             }
@@ -369,5 +377,34 @@ mod tests {
         // a garrisoned unit's building would change its garrison bonus: not modelled
         t.players[0].objects[1].life.inside = Some(1);
         assert!(t.do_effect(0, &loom).is_err());
+    }
+    /// A technology whose requirement is researched and whose research takes no time at a
+    /// location (`FUN_1413cce70`'s call of `FUN_1413cdcd0`) is done at once, and so are those
+    /// that depend on it in turn; one still missing a requirement stays unavailable.
+    #[test]
+    fn a_dependent_technology_done_already_completes_with_its_requirement() {
+        use crate::tech::{Location, TechDef, TechState};
+        let def = |required: i16, count| TechDef {
+            required: [required, -1, -1, -1, -1, -1],
+            required_count: count,
+            ..TechDef::default()
+        };
+        let free = TechState {
+            locations: vec![Location {
+                building: 109,
+                ..Location::default()
+            }],
+            building_master: -1,
+            ..TechState::default()
+        };
+        let player = Player {
+            techs: vec![TechState::default(), free.clone(), free.clone(), free],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        t.techs = vec![def(-1, 0), def(0, 1), def(1, 1), def(0, 2)];
+        assert_eq!(t.complete_research(0, 0, None), Ok(true));
+        let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
+        assert_eq!(states, [3, 3, 3, 0]);
     }
 }
