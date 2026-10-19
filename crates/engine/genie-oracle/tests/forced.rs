@@ -228,21 +228,31 @@ fn the_forced_replay_report() {
         || PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("forced_report.md"),
         PathBuf::from,
     );
-    let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
     let mut times = genie_oracle::Times::default();
     let mut reports: Vec<TickReport> = if restart {
         use rayon::prelude::*;
-        (first..=last)
-            .into_par_iter()
-            .filter_map(|t| step(&dir, &rec, &masters, t, ticks))
-            .collect()
+        // each step holds a slice and its saves at once: `GENIE_FORCED_JOBS` (8) of them, not one
+        // per core
+        let jobs = env_or("GENIE_FORCED_JOBS", 8).max(1);
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(jobs)
+            .build()
+            .expect("the restart's thread pool");
+        pool.install(|| {
+            (first..=last)
+                .into_par_iter()
+                .filter_map(|t| step(&dir, &rec, &masters, t, ticks))
+                .collect()
+        })
     } else {
         let segments: Vec<(usize, usize)> = (first..=last)
             .step_by(length)
             .map(|s| (s, length.min(last + 1 - s)))
             .collect();
-        // the saves each segment parses ahead on the shared pool: the cores' worth between them
-        let window = (2 * threads / segments.len()).max(8);
+        // the saves each segment parses ahead on the shared pool (`GENIE_FORCED_WINDOW`): 8 keep
+        // a run fed (records/425906646 0..4998 waited 0.3 s for its parses in 290 s), and each
+        // parsed save of a 4v4 holds ~45 MB (a window of 96 took 4.7 GB, 8 take 1.4 GB)
+        let window = env_or("GENIE_FORCED_WINDOW", 8);
         std::thread::scope(|s| {
             segments
                 .iter()
