@@ -142,6 +142,11 @@ pub struct Builder<'a> {
     pub class: i16,
     /// What it carries (`+0x310`).
     pub held: f32,
+    /// The kind of what it carries (`+0x308`, −1 for none).
+    pub held_kind: i16,
+    /// Its foundation's master is a drop site for its civ (`FUN_140fde180`): the end of the work
+    /// gives its load to its player.
+    pub drop_site: bool,
     /// Its unit AI, which a finished Build hands its queued orders to.
     pub ai: Option<&'a mut UnitAi>,
     /// `+0x889`: the builder's waits for an occupied footprint (not saved, 0 at a load).
@@ -170,6 +175,21 @@ pub struct BuildStep {
     /// The units on the foundation's footprint besides the builder, which its test
     /// (`FUN_14123bb20`) would send off: the caller's.
     pub occupants: Vec<i32>,
+    /// The end of the work at a drop site (`set_state(224)`, `FUN_140aadc50`): the load the
+    /// builder gives its player (kind, amount; the food kinds 15 to 17 as 0), which it no longer
+    /// carries (`FUN_14119d310` with −1 and 0): the caller's.
+    pub dropped: Option<(i16, f32)>,
+}
+
+/// A load a builder drops at the end of its work: kind and amount ([`BuildStep::dropped`]).
+type Dropped = Option<(i16, f32)>;
+
+/// What a builder carries when its work ends, and whether its foundation takes it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Load {
+    amount: f32,
+    kind: i16,
+    drop_site: bool,
 }
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
@@ -254,6 +274,11 @@ impl BuildAction {
             return Ok(step);
         }
         let computer = walk.plan.as_ref().is_some_and(|p| p.computer);
+        let load = Load {
+            amount: builder.held,
+            kind: builder.held_kind,
+            drop_site: builder.drop_site,
+        };
         let mut site = site;
         if let Some(site) = site.as_mut() {
             let master = site.completion.master;
@@ -270,7 +295,7 @@ impl BuildAction {
                 if 3 <= state {
                     return Err(Unsupported("a Build whose foundation died"));
                 }
-                self.finish(&mut walk, Some(&mut *site.construction), builder.held)?;
+                step.dropped = self.finish(&mut walk, Some(&mut *site.construction), load)?;
             }
         } else if walk.world.get(self.target).is_none() {
             return Err(Unsupported("a Build whose foundation is gone"));
@@ -284,7 +309,6 @@ impl BuildAction {
             return Ok(step);
         }
         let mut walk = walk;
-        let held = builder.held;
         let waits = builder.waits;
         let r = match (self.state, self.move_to) {
             // set_state(6): the prelude's MoveTo teardown stops the unit (slot 0x5d0)
@@ -336,7 +360,10 @@ impl BuildAction {
                 self.timer = 0.0;
                 self.place(&walk, site, waits, &mut step)
             }
-            (PLACE, _) => self.work(walk, site, held).map(|c| step.completed = c),
+            (PLACE, _) => self.work(walk, site, load).map(|(c, d)| {
+                step.completed = c;
+                step.dropped = d;
+            }),
             (CLEAR, Some(MoveTo::Start)) => {
                 self.move_to = Some(MoveTo::Moving);
                 let goal = self.goal.expect("set_state(223) sets the goal");
@@ -377,15 +404,15 @@ impl BuildAction {
         Ok(())
     }
 
-    /// `set_state(224)` (`0x140aae200` case 0xe0): the work ended. A builder carrying a resource
-    /// the finished building takes (`FUN_140fde180`, then `FUN_140aadc50`'s drop) is not
-    /// modelled.
+    /// `set_state(224)` (`0x140aae200` case 0xe0): the work ended. A builder carrying something
+    /// (`+0x310` above 0, its kind not −1) on a drop site of its civ (`FUN_140fde180`) drops it
+    /// (`FUN_140aadc50`): returns the load its player gets ([`BuildStep::dropped`]).
     fn finish(
         &mut self,
         walk: &mut Walk<'_>,
         site: Option<&mut Construction>,
-        held: f32,
-    ) -> Result<(), Unsupported> {
+        load: Load,
+    ) -> Result<Dropped, Unsupported> {
         if self.added && site.is_none() {
             return Err(Unsupported(
                 "the end of a Build counted among another player's builders",
@@ -393,12 +420,16 @@ impl BuildAction {
         }
         self.leave(walk, site)?;
         self.state = FINISHED;
-        if 0.0 < held {
-            return Err(Unsupported(
-                "a builder carrying a resource when its building completes (FUN_140fde180)",
-            ));
+        if !(load.drop_site && 0.0 < load.amount && 0 <= load.kind) {
+            return Ok(None);
         }
-        Ok(())
+        // FUN_140aadc50: the food kinds become food
+        let kind = if matches!(load.kind, 15..=17) {
+            0
+        } else {
+            load.kind
+        };
+        Ok(Some((kind, load.amount)))
     }
 
     /// Case 0xdf of the update, the work ended (224): a farm, the fish trap and masters 1893 and
@@ -627,8 +658,8 @@ impl BuildAction {
         &mut self,
         mut walk: Walk<'_>,
         site: Option<Site<'_>>,
-        held: f32,
-    ) -> Result<Option<Built>, Unsupported> {
+        load: Load,
+    ) -> Result<(Option<Built>, Dropped), Unsupported> {
         let mut site = site.ok_or(Unsupported("a foundation of another player"))?;
         let plan = walk
             .plan
@@ -649,19 +680,19 @@ impl BuildAction {
         let (pathing, now) = (&mut *plan.pathing, plan.now);
         let worked = Construction::work(&mut site, rate, walk.world, pathing, now)?;
         let completed = match worked {
-            Worked::Going => return Ok(None),
+            Worked::Going => return Ok((None, None)),
             Worked::Done => None,
             Worked::Completed(built) => Some(built),
         };
         // a finished foundation with hit points ends the work (its `+0x278`, decoded)
         if 0.0 < site.life.hp {
-            self.finish(&mut walk, Some(&mut *site.construction), held)?;
+            let dropped = self.finish(&mut walk, Some(&mut *site.construction), load)?;
+            Ok((completed, dropped))
         } else {
-            return Err(Unsupported(
+            Err(Unsupported(
                 "work on a finished foundation without hit points",
-            ));
+            ))
         }
-        Ok(completed)
     }
 
     /// `set_state(4)` after the walk off the footprint (`0x140aae200` case 4): the goal is the
@@ -945,6 +976,43 @@ mod tests {
             unknown: None,
             obstruction: None,
         }
+    }
+
+    /// records/425906646's update 3145: a builder carrying wood when its lumber camp completes
+    /// drops it there (`FUN_140aadc50`); food kinds become food; at a house it keeps its load.
+    #[test]
+    fn a_builder_drops_its_load_at_a_drop_site_it_completes() {
+        let mut world = Spatial::default();
+        let mut finish = |kind: i16, drop_site: bool| {
+            let mut b = BuildAction {
+                state: PLACE,
+                move_to: None,
+                ..BuildAction::start(31500, 0.0, TASK)
+            };
+            let mut walk = Walk {
+                mover: None,
+                me: Me {
+                    id: 1,
+                    position: [0.0; 3],
+                    action_state: 0,
+                },
+                dt: 0.02,
+                world: &mut world,
+                plan: None,
+            };
+            let load = Load {
+                amount: 6.881_128,
+                kind,
+                drop_site,
+            };
+            let dropped = b.finish(&mut walk, None, load).unwrap();
+            assert_eq!(b.state, FINISHED);
+            dropped
+        };
+        assert_eq!(finish(1, true), Some((1, 6.881_128)));
+        assert_eq!(finish(16, true), Some((0, 6.881_128)));
+        assert_eq!(finish(1, false), None);
+        assert_eq!(finish(-1, true), None);
     }
 
     /// records/425906646's update 673: builders 27232 and 27234, at work on house 31011 (state
@@ -1247,6 +1315,8 @@ mod tests {
                 Builder {
                     class: VILLAGER,
                     held: 0.0,
+                    held_kind: -1,
+                    drop_site: false,
                     ai: None,
                     waits: &mut 0,
                     build_targets: &[],
@@ -1284,6 +1354,8 @@ mod tests {
         let mut builder = || Builder {
             class: VILLAGER,
             held: 0.0,
+            held_kind: -1,
+            drop_site: false,
             ai: None,
             waits: waits.next().expect("a wait count per update"),
             build_targets: &[],

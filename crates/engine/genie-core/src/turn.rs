@@ -431,6 +431,9 @@ const VILLAGER: i16 = 0x53;
 const VILLAGER_ANY: i16 = 0x712;
 /// The female villager master (`0x125`).
 const VILLAGER_FEMALE: i16 = 0x125;
+/// The building masters `FUN_140fde180` counts as drop sites besides the drop-site table's:
+/// 562, 584 and 621 (`0x232` plus the bits of `0x800000000400001`), 68, 1808, 50, 1187 and 199.
+const DROP_SITE_MASTERS: [i16; 8] = [562, 584, 621, 68, 1808, 50, 1187, 199];
 /// A building's queue holds at most 15 units (`FUN_1411cbc40`).
 const QUEUE_LIMIT: usize = 15;
 /// A computer player's QUEUE fills a building's queue to at most 2 (`FUN_141614450`).
@@ -3650,9 +3653,23 @@ impl Unit {
             let class = masters
                 .and_then(|m| m.get(self.life.master_id))
                 .map_or(-1, |m| m.class);
+            // FUN_140fde180: the foundation's master is a drop site (the masters 562, 584, 621,
+            // 68, 1808, 50, 1187 and 199, or one the drop-site table has for every civ or the
+            // builder's)
+            let drop_site = built.is_some_and(|m| {
+                DROP_SITE_MASTERS.contains(&m)
+                    || c.drop_sites
+                        .iter()
+                        .any(|d| d.building == m && (d.civs.is_empty() || d.civs.contains(&c.civ)))
+            });
+            // FUN_140aadc50 drops only a kind the player has (FUN_140efe5b0)
+            let held_kind = self.life.attribute_type;
+            let has_kind = usize::try_from(held_kind).is_ok_and(|k| k < c.attributes.len());
             let builder = Builder {
                 class,
                 held: self.life.amount,
+                held_kind,
+                drop_site: drop_site && has_kind,
                 ai: self.ai.as_mut(),
                 waits: &mut self.footprint_waits,
                 build_targets: &build_targets,
@@ -3674,6 +3691,19 @@ impl Unit {
             if let Some(built) = step.completed {
                 c.attribute_adds.extend(built.attributes);
                 c.techs_done.extend(built.tech);
+            }
+            // the load dropped at the end of the work (FUN_140aadc50: the player's slot 0xf8 with
+            // 1 and 1, then the builder carries nothing, FUN_14119d310)
+            if let Some((kind, amount)) = step.dropped {
+                give_load(
+                    (&c.spatial.relations, c.sharing),
+                    c.player,
+                    &mut c.attribute_adds,
+                    kind,
+                    amount,
+                )?;
+                self.life.attribute_type = -1;
+                self.life.amount = 0.0;
             }
             if step.done {
                 // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
