@@ -976,14 +976,21 @@ impl Turns {
         Ok(())
     }
 
-    /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: a unit without actions
-    /// (others are not modelled here) in state 2 takes its standing sprite where the slice holds
-    /// its sprite; an Explore goes, its `MoveTo` stopping the unit.
+    /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: the action list empties
+    /// (`FUN_140a98620`) and a unit in state 2 takes its standing sprite where the slice holds
+    /// its sprite. An Explore goes, its `MoveTo` stopping the unit; an own `MoveTo` goes, its
+    /// teardown (`0x140aa1f30`) stopping the unit; other actions are not modelled here.
     pub(crate) fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
         let unit = &mut self.players[p].objects[idx];
         if let Some(e) = unit.explore.take()
             && e.move_to.is_some()
         {
+            unit.mover
+                .as_mut()
+                .ok_or(Unsupported("a walker without movement state"))?
+                .stop()?;
+        }
+        if unit.move_to.take().is_some() {
             unit.mover
                 .as_mut()
                 .ok_or(Unsupported("a walker without movement state"))?
@@ -1176,8 +1183,13 @@ impl Turns {
             // range (`+0x48`'s `+0x30`) does not take it, else the hunt walks there (state 15)
             // and lets its target go
             (true, Some(HUNT)) => self.hunt_take_move(player, idx, None, point)?,
-            // an Explore's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's
-            (true, Some(t)) if t != crate::move_to::MOVE_TO && t != crate::explore::EXPLORE => {
+            // an Explore's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's and a
+            // Build's (0x140aade60)
+            (true, Some(t))
+                if t != crate::move_to::MOVE_TO
+                    && t != crate::explore::EXPLORE
+                    && t != crate::build::BUILD =>
+            {
                 return Err(Unsupported("a move of a unit with an action (its slot 8)"));
             }
             _ => false,
@@ -1884,6 +1896,7 @@ impl Turns {
                 ai_order: unit.ai.as_ref().map(|ai| ai.current_order),
                 computer,
                 armed: true,
+                volley_under_way: unit.next_volley != 0,
                 let_go: None,
                 forgets: false,
             };

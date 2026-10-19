@@ -219,11 +219,16 @@ pub struct Strike<'a> {
     /// `FUN_14120ea30` for a building: it can attack (class 51 or 54, a missile, or a firepower
     /// above 1); true for the others.
     pub armed: bool,
+    /// `FUN_1412161a0`: a volley is under way (`next_volley`, `+0xa04`, not 0).
+    pub volley_under_way: bool,
     /// The update let its target go (slot 0x68 with none: its slot 0x180), the caller's.
     pub let_go: Option<i32>,
     /// The update made the unit AI forget its target (`FUN_140c5e1e0`), the caller's.
     pub forgets: bool,
 }
+
+/// readyToAttack's gap for a range up to [`NO_RANGE`]: half a tile less (`DAT_142eb6e58`).
+const SHORT_RANGE_GAP: f32 = crate::image::attack::SHORT_RANGE_GAP;
 
 /// The masters readyToAttack does not turn to face their target (`0x6744`, `0x6746` raw).
 const MASTER_1704: i16 = 1704;
@@ -616,7 +621,10 @@ impl Attack {
     /// not modelled (`set_state` 5 or 13). A unit that moves (a master of type 30 and up with a
     /// speed, `FUN_140fdd080`; the slice reads the unit's top speed) whose target stands on the
     /// attack's point (`FUN_140a7bbf0`) or within half a tile of it on each axis
-    /// (`FUN_140a7bd10`) is ready at once; else the reach decides: the target's gap
+    /// (`FUN_140a7bd10`) is ready at once; so is a unit that does not move with such a target in
+    /// its range (the gap half a tile less for a range up to 0.1) and not under its least range
+    /// (none up to 0.1), or with a volley under way (`FUN_1412161a0`); else the reach decides:
+    /// the target's gap
     /// (`FUN_14118f680`) below the least range is not modelled; beyond the reach (the range, half
     /// a tile more without one) the unit follows it (`set_state` 4, [`Readiness::Away`]) when it may
     /// move (its speed and canMoveToAttack, slot 0x1d0; a stance-1 leash and `set_state` 13 are not
@@ -658,10 +666,20 @@ impl Attack {
         if !moved || (!far && mobile) {
             return self.face(mover, at, t.position, s);
         }
-        if !mobile {
-            return Err(Unsupported(
-                "readyToAttack of a unit that does not move (FUN_1412161a0)",
-            ));
+        if !far {
+            // a unit that does not move: ready with the target in its range (the gap half a tile
+            // less for a range up to 0.1) and not under its least range (none up to 0.1), or
+            // with a volley under way (FUN_1412161a0)
+            let near = if self.range <= NO_RANGE {
+                gap + SHORT_RANGE_GAP
+            } else {
+                gap
+            };
+            let in_range =
+                near <= self.range && (self.min_range <= NO_RANGE || self.min_range <= near);
+            if in_range || s.volley_under_way {
+                return self.face(mover, at, t.position, s);
+            }
         }
         if gap < self.min_range {
             return Err(Unsupported(

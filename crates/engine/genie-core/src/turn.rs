@@ -4146,6 +4146,7 @@ impl Unit {
                 ai_order: self.ai.as_ref().map(|ai| ai.current_order),
                 computer,
                 armed: true,
+                volley_under_way: self.next_volley != 0,
                 let_go: None,
                 forgets: false,
             };
@@ -4235,6 +4236,7 @@ impl Unit {
                 ai_order: self.ai.as_ref().map(|ai| ai.current_order),
                 computer,
                 armed,
+                volley_under_way: self.next_volley != 0,
                 let_go: None,
                 forgets: false,
             };
