@@ -359,7 +359,7 @@ fn the_forced_replay_report() {
             r.start
         );
         for (player, d) in r.differences.iter().take(8) {
-            let d: String = d.chars().take(300).collect();
+            let d: String = d.chars().take(env_or("GENIE_FORCED_WIDTH", 300)).collect();
             let _ = writeln!(md, "  - player {player}: {d}");
         }
     }

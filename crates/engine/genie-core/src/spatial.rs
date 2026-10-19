@@ -2,9 +2,11 @@
 //! class, and the obstruction record the game keeps for it in its obstruction manager
 //! (`DAT_143f0a088`, queried by `FUN_141051900`).
 //!
-//! The game files its records in a five-level grid; the slice keeps them by object id. The grid
-//! only orders a query's hits, and the slice stops a walker at its first hit
-//! ([`Spatial::walk_hits`]), so it needs no order yet.
+//! The game files its records in a grid of levels ([`Grid`]); the slice keeps them by object id
+//! and asks the grid only which records a query visits: a record filed in a cell outside the
+//! query's tiles is not found, even when its grown box meets the query. The grid also orders a
+//! query's hits, but the slice stops a walker at its first hit ([`Spatial::walk_hits`]), so it
+//! needs no order yet.
 //!
 //! [`Tiles`] holds what the game keeps per tile: the obstruction manager's word (terrain class,
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
@@ -124,6 +126,45 @@ impl Placed {
 
 /// The tile bit a static record sets (`0x4000`, in `FUN_141056460`): the tile is blocked.
 pub const BLOCKED: u64 = 0x4000;
+
+/// The obstruction manager's grid (`FUN_141054660`): its top cell is the largest power of two up
+/// to twice the map's longer side (at most 4096 tiles), each level halves the cells' side
+/// (level `k`'s cells are `top >> k` tiles wide, its cell shift `levels - k + 2`), down to cells
+/// of 8 tiles. Records are filed in one cell each ([`Spatial::filed`]); a query visits on every
+/// level the cells its tile range covers (`FUN_141051900`, `FUN_141052350`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Grid {
+    /// How many levels (`+0x1ac`).
+    levels: i32,
+}
+
+impl Grid {
+    fn new([w, h]: [i32; 2]) -> Self {
+        let longer = w.max(h);
+        let mut top = 0x1000;
+        while longer * 2 < top {
+            top >>= 1;
+        }
+        let mut levels = 0;
+        while 7 < top {
+            levels += 1;
+            top >>= 1;
+        }
+        Self { levels }
+    }
+
+    /// The level table (`+0x1bc`): the finest level whose cells hold two tiles whose coordinates
+    /// XOR, shifted right by 3, to `v` (the levels less its bit length, at least −1).
+    fn level(self, v: i32) -> i32 {
+        let bits = 32 - v.cast_unsigned().leading_zeros() as i32;
+        (self.levels - 1 - bits).max(-1)
+    }
+
+    /// Level `level`'s cell shift (`+0x2c4`).
+    const fn shift(self, level: i32) -> i32 {
+        self.levels - level + 2
+    }
+}
 
 /// What the game keeps per tile, row by row.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -308,6 +349,8 @@ pub struct Spatial {
     pub terrain: Option<crate::terrain::Terrain>,
     /// The unit AIs' search cache ([`SearchCache`]).
     search_cache: std::cell::RefCell<SearchCache>,
+    /// The obstruction manager's grid, from the map's size.
+    grid: Grid,
 }
 
 /// The unit AIs' search cache (`FUN_140c63e20`): a search within [`SEARCH_REUSE_SQUARED`] (squared)
@@ -351,6 +394,7 @@ impl Spatial {
             vision: Vec::new(),
             terrain: None,
             search_cache: std::cell::RefCell::default(),
+            grid: Grid::new(map),
         }
     }
 
@@ -665,7 +709,8 @@ impl Spatial {
     /// Whether the straight walk from `a` to `b` (x, y) of a unit `grow` wide meets an obstruction,
     /// as the path smoothing asks (`FUN_141052b90`, then `FUN_141052350` with flags `0x100`): the
     /// tiles its terrain mask lacks ([`Spatial::tiles_block`]) and the static records (kinds 2, 11
-    /// and 13) of objects not in `ignore`, each box grown by `grow`, against the walk's segment
+    /// and 13) of objects not in `ignore` that the query visits ([`Spatial::visits`], the walk's
+    /// box grown by `grow`), each box grown by `grow`, against the walk's segment
     /// (`FUN_141052e10`).
     pub fn segment_blocked(
         &self,
@@ -685,6 +730,7 @@ impl Spatial {
             a[0].max(b[0]),
             a[1].max(b[1]),
         ];
+        let query = [lo_x - grow, lo_y - grow, grow + hi_x, grow + hi_y];
         self.objects.iter().any(|(id, p)| {
             // kind 10 is filed as 2
             let kind = p.obstruction.map(|o| if o.kind == 10 { 2 } else { o.kind });
@@ -697,6 +743,7 @@ impl Spatial {
                 && lo_y <= grown[3]
                 && grown[1] <= hi_y
                 && box_meets_segment(bx, grow, walk)
+                && self.visits(p, kind.unwrap_or(0), query)
         })
     }
 
@@ -767,6 +814,49 @@ impl Spatial {
             .filter_map(|(&id, p)| Some((id, p.obstruction?.kind, p.bounds())))
     }
 
+    /// Each obstruction record's grid cell ([`Spatial::filed`]): the object's id, the level and
+    /// the cell's x and y.
+    pub fn record_cells(&self) -> impl Iterator<Item = (i32, (i32, i32, i32))> + '_ {
+        self.objects
+            .iter()
+            .filter_map(|(&id, p)| Some((id, self.filed(p, p.obstruction?.kind))))
+    }
+
+    /// The grid cell an object's record of kind `kind` is filed in (`FUN_141056460`): level and
+    /// cell x, y. Its box's tiles, held on the map; a box of kind 2 (10), 11 or 13 whose centre
+    /// sits on a half tile ends 0.001 short on both axes. The level is the finest whose cell holds
+    /// both corners' tiles, the cell the one of the low corner's tile.
+    fn filed(&self, p: &Placed, kind: u8) -> (i32, i32, i32) {
+        let [x0, y0, mut x1, mut y1] = p.bounds();
+        let [x, y, _] = p.position;
+        if matches!(kind, 2 | 10 | 11 | 13) && x % 0.5 < 0.001 && y % 0.5 < 0.001 {
+            x1 -= 0.001;
+            y1 -= 0.001;
+        }
+        let [w, h] = self.map;
+        let tile = |v: f32, n: i32| (v as i32).clamp(0, n - 1);
+        let (tx0, ty0, tx1, ty1) = (tile(x0, w), tile(y0, h), tile(x1, w), tile(y1, h));
+        let level = self
+            .grid
+            .level((tx1 ^ tx0) >> 3)
+            .min(self.grid.level((ty1 ^ ty0) >> 3));
+        let shift = self.grid.shift(level);
+        (level, tx0 >> shift, ty0 >> shift)
+    }
+
+    /// Whether a query whose rectangle, grown as the query grows it, is `rect` (`x0, y0, x1, y1`)
+    /// visits the cell an object's record of kind `kind` is filed in ([`Spatial::filed`]): the
+    /// query's tiles run from the low corner's (at least 0) to the high corner's (at most the
+    /// map's size), and on each level it visits the cells they cover.
+    fn visits(&self, p: &Placed, kind: u8, rect: [f32; 4]) -> bool {
+        let (level, cx, cy) = self.filed(p, kind);
+        let shift = self.grid.shift(level);
+        let [w, h] = self.map;
+        let (qx0, qy0) = ((rect[0] as i32).max(0), (rect[1] as i32).max(0));
+        let (qx1, qy1) = ((rect[2] as i32).min(w), (rect[3] as i32).min(h));
+        qx0 >> shift <= cx && cx <= qx1 >> shift && qy0 >> shift <= cy && cy <= qy1 >> shift
+    }
+
     /// The object moved: its record moves with it, and it changes tiles when its centre crosses
     /// a tile's edge (`RGE_Static_Object::new_position`, `0x1411a58b0`).
     /// What the walk reads of a moving object now, None for one without movement state.
@@ -825,8 +915,9 @@ impl Spatial {
 
     /// The walk's obstruction query (`FUN_14114cc60` -> `FUN_141051900` with flags `0x90`, each
     /// cell's records by `FUN_141051e00`): the records of a tested kind (kind 10 filed as 2),
-    /// except the `ignore`d objects', whose box, grown by `grow` (the walker's radius), meets the
-    /// step's rectangle `rect` and whose grown box meets the step `from` -> `to`
+    /// except the `ignore`d objects', in the cells the query visits ([`Spatial::visits`], `rect`
+    /// grown by `grow`), whose box, grown by `grow` (the walker's radius), meets the step's
+    /// rectangle `rect` and whose grown box meets the step `from` -> `to`
     /// (`FUN_1410512f0`; a circle's, kind 5, `FUN_141051630`, alike). A moving object of
     /// `player` or an ally grows by `grow × ally_factor` instead (`+0x84`, the walker's master's
     /// `min_collision_size_multiplier`). The ids hit, in id order; the game's are in its grid's,
@@ -854,13 +945,20 @@ impl Spatial {
             ));
         }
         let walk = [from[0], from[1], to[0], to[1]];
+        let query = [
+            rect[0] - grow,
+            rect[1] - grow,
+            grow + rect[2],
+            grow + rect[3],
+        ];
         let mut hits = Vec::new();
         for (&id, p) in &self.objects {
             let Some(o) = p.obstruction else {
                 continue;
             };
             let kind = if o.kind == 10 { 2 } else { o.kind };
-            if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) {
+            if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) || !self.visits(p, kind, query)
+            {
                 continue;
             }
             let g = if self.gaits.get(&id).is_some_and(|g| g.moving) {
@@ -1630,8 +1728,9 @@ impl Spatial {
     /// tile is on the obstruction manager's map and its terrain class in the unit's `mask` (the
     /// tile's word, `DAT_143f0a088 + 0x98`; a static record's own bits do not count here), and no
     /// obstruction record but the unit's own holds the point within its box grown by `grow` (the
-    /// unit's radius): `FUN_141051900` with flags 0x20, whose point test `FUN_141052160` takes
-    /// records of every kind, edges included. A grown point beyond the map's edge meets the edge's
+    /// unit's radius): `FUN_141051900` with flags 0x20 in the cells it visits
+    /// ([`Spatial::visits`]), whose point test `FUN_141052160` takes records of every kind, edges
+    /// included. A grown point beyond the map's edge meets the edge's
     /// records ([`Spatial::edge_records`]) and is never clear.
     pub fn point_clear(
         &self,
@@ -1657,7 +1756,10 @@ impl Spatial {
         }
         self.check_known_records(rect)?;
         let hit = self.objects.iter().any(|(&id, p)| {
-            if id == me || p.obstruction.is_none() {
+            let Some(o) = p.obstruction.filter(|_| id != me) else {
+                return false;
+            };
+            if !self.visits(p, o.kind, rect) {
                 return false;
             }
             let [x0, y0, x1, y1] = p.bounds();
@@ -1667,17 +1769,23 @@ impl Spatial {
     }
 
     /// The records a move query could report (`FUN_14114cc60` -> `FUN_141051900`): those of a
-    /// tested kind whose box, grown by `grow`, meets `rect` (`x0, y0, x1, y1`, edges included),
-    /// except the `ignore`d objects'. The game then tests each candidate against the move's
+    /// tested kind in the cells the query visits ([`Spatial::visits`]) whose box, grown by
+    /// `grow`, meets `rect` (`x0, y0, x1, y1`, edges included), except the `ignore`d objects'. The game then tests each candidate against the move's
     /// segment and shrinks moving allies' boxes (master `+0x780`, at most 1); every hit is a
     /// candidate, so no candidate means no hit.
     pub fn obstruction_candidates(&self, rect: [f32; 4], grow: f32, ignore: &[i32]) -> Vec<i32> {
+        let query = [
+            rect[0] - grow,
+            rect[1] - grow,
+            grow + rect[2],
+            grow + rect[3],
+        ];
         self.objects
             .iter()
             .filter(|(id, p)| {
-                p.obstruction
-                    .is_some_and(|o| TESTED_KINDS.contains(&o.kind))
-                    && !ignore.contains(id)
+                p.obstruction.is_some_and(|o| {
+                    TESTED_KINDS.contains(&o.kind) && self.visits(p, o.kind, query)
+                }) && !ignore.contains(id)
             })
             .filter(|(_, p)| {
                 let [x0, y0, x1, y1] = p.bounds();
@@ -1712,8 +1820,9 @@ impl Spatial {
     /// tested), after `FUN_141052b90` put a temporary record (kind 3, the tile's box) on each
     /// tile of the walk's box, grown by `buffer` and held on the map, whose terrain class the
     /// unit's `mask` lacks (`mask & 0x7f | 0x80`): the records whose box, grown by `buffer`, meets
-    /// the walk `a` -> `b` (`FUN_1410512f0`, a circle's `FUN_141051630` alike) and whose id is not
-    /// in `ignore` (the manager's list `+0x2c`, the pather's). An object that moves (its record's
+    /// the walk `a` -> `b` (`FUN_1410512f0`, a circle's `FUN_141051630` alike), whose cell the
+    /// query visits ([`Spatial::visits`]) and whose id is not in `ignore` (the manager's list
+    /// `+0x2c`, the pather's). An object that moves (its record's
     /// `+3` bit 0x10, set from slot 0x5c8 at the end of its update, [`Gait::moving`]) is left
     /// out, as is a gate the player may pass (slot 0x678, not modelled). `first` stops at the
     /// first hit (`FUN_141052350`); else at the 25th (`FUN_141051900`). The hits are in the
@@ -1789,6 +1898,7 @@ impl Spatial {
             if !TESTED_KINDS.contains(&kind)
                 || self.gaits.get(&id).is_some_and(|g| g.moving)
                 || ignore.contains(&id)
+                || !self.visits(p, kind, grown)
             {
                 continue;
             }
@@ -2059,6 +2169,30 @@ mod tests {
             s.obstruction_candidates([29.0, 89.0, 29.61, 89.0], 0.2, &[9177]),
             vec![9175]
         );
+    }
+
+    #[test]
+    fn a_record_filed_in_a_cell_the_query_does_not_visit_is_not_found() {
+        // records/425906646's update 553: the smoothing of 27272's plan (radius 0.25) tests
+        // (32.25, 154.59375) -> (32.5, 151.5); bush 13594's box (31, 154)-(32, 155) grown by 0.25
+        // touches the start, but it is filed in level 5's cell (3, 19) (tiles 24..31) and the
+        // query's tiles are 32..32
+        let mut s = Spatial::with_tiles([220, 220], Tiles::new(220, 220, vec![1; 220 * 220]));
+        assert_eq!(s.grid, Grid { levels: 6 });
+        let mut bush = villager(31.5, 154.5);
+        bush.radius = [0.5, 0.5];
+        bush.player = 0;
+        bush.obstruction = Some(Obstruction { kind: 2, class: 1 });
+        s.insert(13594, bush);
+        assert_eq!(s.filed(&bush, 2), (5, 3, 19));
+        let (from, to) = ([32.25, 154.59375], [32.5, 151.5]);
+        assert!(!s.segment_blocked(from, to, 0.25, 0xff, &[]));
+        // a start a hair to the left visits tile 31's cell: the box blocks
+        assert!(s.segment_blocked([32.2, 154.59375], to, 0.25, 0xff, &[]));
+        // off a half tile, the box's far edge is its tile: (31.6 ± 0.5) spans tiles 31 and 32,
+        // which share only level 2's cells of 64 tiles
+        bush.position = [31.6, 154.5, 0.0];
+        assert_eq!(s.filed(&bush, 2), (2, 0, 2));
     }
 
     #[test]

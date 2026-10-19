@@ -2,7 +2,8 @@
 //! manager at the same tick: `GENIE_OBSTRUCTIONS` names the tick oracle's dump
 //! (`load_oracle/probes/obstructions.py` after 680 updates of MarvinBlue/426048731, in
 //! `aoe2de-exe-re/artifacts/playback/obstructions_426048731_679.txt`), `GENIE_SNAPSHOTS` the
-//! directory with the save of that tick (`679.aoe2record`). Skips without them.
+//! directory with the save of that tick (`679.aoe2record`). The records' grid cells are checked
+//! too. Skips without them.
 
 // the dumps' numbers fit the game's widths; a test runs the whole comparison
 #![allow(
@@ -28,6 +29,25 @@ fn game_records(text: &str) -> Records {
             let inside = line.split("box (").nth(1)?.trim_end_matches(')');
             let v: Vec<f32> = inside.split(", ").map(|f| f.parse().unwrap()).collect();
             Some((id, (kind, [v[0], v[1], v[2], v[3]])))
+        })
+        .collect()
+}
+
+/// The dump's grid cells: `ID .. level LEVEL cell (X,Y) ..` per line.
+fn game_cells(text: &str) -> BTreeMap<i32, (i32, i32, i32)> {
+    text.lines()
+        .filter_map(|line| {
+            let id: i32 = line.split_whitespace().next()?.parse().ok()?;
+            let level: i32 = line
+                .split(" level ")
+                .nth(1)?
+                .split(' ')
+                .next()?
+                .parse()
+                .ok()?;
+            let cell = line.split(" cell (").nth(1)?.split(')').next()?;
+            let (x, y) = cell.split_once(',')?;
+            Some((id, (level, x.parse().ok()?, y.parse().ok()?)))
         })
         .collect()
 }
@@ -58,6 +78,15 @@ fn the_slice_s_obstruction_records_are_the_game_s() {
     }
     for (id, o) in ours.iter().filter(|(id, _)| !game.contains_key(id)) {
         differences.push(format!("{id}: only in the slice {o:?}"));
+    }
+    // the grid cell each record is filed in
+    let cells = game_cells(
+        &std::fs::read_to_string(std::env::var_os("GENIE_OBSTRUCTIONS").unwrap()).unwrap(),
+    );
+    for (id, cell) in spatial.record_cells() {
+        if cells.get(&id).is_some_and(|g| *g != cell) {
+            differences.push(format!("{id}: cell slice {cell:?} game {:?}", cells[&id]));
+        }
     }
     assert_eq!(game.len(), 7488);
     assert!(
