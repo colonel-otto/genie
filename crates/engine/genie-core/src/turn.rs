@@ -170,11 +170,115 @@ pub struct Unit {
 }
 
 /// What every building holds of a gate: `mGateLocked` (`+0xc7c`; a lock also sets the
-/// building's last move time, [`Mover::last_move`], slot 0x670, `FUN_1411dba30`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// building's last move time, [`Mover::last_move`], slot 0x670, `FUN_1411dba30`), `mFirstUpdate`
+/// (`+0xc80`) and `mCloseTimer` (`+0xc84`) ([`Unit::gate_update`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Gate {
     /// `mGateLocked`: the gate is locked.
     pub locked: bool,
+    /// `mFirstUpdate`: a new building's is set; a gate's first update in state 2 takes its
+    /// annexes' places as its endpoints (`mEndpoint1`, `mEndpoint2`, not held) and clears it.
+    pub first_update: bool,
+    /// `mCloseTimer`: the seconds an open gate with nothing in it waits before it shuts.
+    pub close_timer: f32,
+    /// The building has a saved open or shut master (`+0xc58`, the save's
+    /// `has_open_closed_master_object`) or its original owner's masters (`mOriginalOwner`,
+    /// `+0xc88`): a gate's toggle then takes another master, not modelled. A master of its own
+    /// (`+0x6c0`, which a foundation holds until its first builder starts) the slice does not
+    /// hold.
+    pub other_masters: bool,
+}
+
+/// A gate's height (its master's `radius_z`) above this shuts it (`DAT_142eb0c60`); a unit
+/// slower than it counts in a gate only when it is a player's.
+const GATE_EPSILON: f32 = crate::image::turn::GATE_EPSILON;
+/// A gate's query grows its records and its own box by this (`FUN_1410562d0` with
+/// `DAT_142eb3630`).
+const GATE_GROW: f32 = crate::image::turn::GATE_GROW;
+/// The least height of a shut gate its player opens (`FUN_14162f7e0`, `DAT_14330eb8c`).
+const GATE_SHUT_HEIGHT: f32 = crate::image::turn::GATE_SHUT_HEIGHT;
+/// The seconds an open gate with nothing in it waits before it shuts (`FUN_1411e7730`'s
+/// immediate `0x3f000000`).
+const GATE_CLOSE_DELAY: f32 = 0.5;
+/// The most records a gate's query lists (`FUN_1411d0570`'s list of 10) and the most units it
+/// counts (25).
+const GATE_QUERY_RECORDS: usize = 10;
+const GATE_COUNT_CAP: usize = 25;
+
+/// A building's annexes among `objects` (`+0xbc0`.., the save's linked object ids), in id order,
+/// as the building made them.
+pub(crate) fn annexes_of(id: i32, objects: &[Unit]) -> Vec<i32> {
+    let mut annexes: Vec<i32> = objects
+        .iter()
+        .filter(|u| u.annex_of == Some(id))
+        .map(|u| u.id)
+        .collect();
+    annexes.sort_unstable();
+    annexes
+}
+
+/// The units in gate `gate` (`FUN_1411d0570`): the obstruction manager's query from its first
+/// annex to its second (`+0xbc0`, `+0xbc8`) with flags 0x10, the gate and its annexes ignored
+/// (`FUN_1410562e0`), every record and the query grown by [`GATE_GROW`] (`FUN_1410562d0`), any
+/// kind and player ([`Spatial::walk_hits`]; its list holds 10 records, more are not modelled).
+/// Of the objects it lists, those not of the classes 27, 39 and 52, nor of class 3 standing
+/// still, and either moving (a top speed of at least [`GATE_EPSILON`]) or not Gaia's count, at
+/// most 25; the second answer is how many of them are of a player the gate's counts an ally
+/// (`FUN_141663d90` with the ally flag).
+pub(crate) fn gate_units(
+    spatial: &Spatial,
+    gate: i32,
+    annexes: &[i32],
+) -> Result<(Vec<i32>, usize), Unsupported> {
+    let [a, b] = annexes[..] else {
+        return Err(Unsupported("a gate without its two annexes"));
+    };
+    let place = |id| {
+        spatial
+            .get(id)
+            .map(|p| [p.position[0], p.position[1]])
+            .ok_or(Unsupported("a gate's annex without a place"))
+    };
+    let (from, to) = (place(a)?, place(b)?);
+    let rect = [
+        from[0].min(to[0]),
+        from[1].min(to[1]),
+        from[0].max(to[0]),
+        from[1].max(to[1]),
+    ];
+    let owner = spatial
+        .get(gate)
+        .map(|p| p.player)
+        .ok_or(Unsupported("a gate without a place"))?;
+    spatial.check_known_records([
+        rect[0] - GATE_GROW,
+        rect[1] - GATE_GROW,
+        rect[2] + GATE_GROW,
+        rect[3] + GATE_GROW,
+    ])?;
+    let hits = spatial.walk_hits(from, to, rect, GATE_GROW, 1.0, Some(owner), &[gate, a, b])?;
+    if GATE_QUERY_RECORDS < hits.len() {
+        return Err(Unsupported("a gate's query of more than 10 records"));
+    }
+    let (mut units, mut allied) = (Vec::new(), 0);
+    for id in hits {
+        if GATE_COUNT_CAP <= units.len() {
+            break;
+        }
+        let Some(p) = spatial.get(id) else {
+            continue;
+        };
+        let counts = !matches!(p.class, 27 | 39 | 52)
+            && (p.class != 3 || p.speed != 0.0)
+            && (GATE_EPSILON <= p.speed || p.player != 0);
+        if counts {
+            units.push(id);
+            if spatial.allied_with(owner, p.player) {
+                allied += 1;
+            }
+        }
+    }
+    Ok((units, allied))
 }
 
 /// A building's gather point (`+0xc30`..`+0xc44`: it exists, x, y, z, the target and the target's
@@ -443,7 +547,7 @@ const VILLAGER_FEMALE: i16 = 0x125;
 /// (`FUN_1411c39b0`, the player's attribute 255).
 const BUILDING_TERRAIN: usize = 255;
 /// A building at most this share of its hit points lets its garrison out (`DAT_142eae8d0`).
-const EJECT_SHARE: f32 = crate::image::building::EJECT_SHARE;
+const EJECT_SHARE: f32 = crate::image::turn::EJECT_SHARE;
 /// The monastery (master 104, `0x6104` raw), whose relics give goods every second.
 const MONASTERY: i16 = 104;
 /// The petard (master 440, `0x6254` raw), which a class-10 searcher passes (`FUN_140c488b0`).
@@ -527,6 +631,12 @@ struct Context<'a> {
     refund: Option<f32>,
     /// The pauses the unit's walk gave units it met ([`Mover::pauses`]).
     pauses: Vec<(i32, f32)>,
+    /// The gate's update asked its player to open or shut it ([`Turns::toggle_gate`], the
+    /// caller's after the update).
+    gate_toggle: bool,
+    /// The unit's update stopped before its unit AI for the caller's work order
+    /// ([`Unit::ai_part`]); given back, the update runs only that part.
+    ai_resume: Option<AiResume>,
     /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.
@@ -3381,6 +3491,65 @@ impl Unit {
         Ok(())
     }
 
+    /// The gate's update (`FUN_1411e7730`, `TRIBE_Building_Object::update` for a master of class
+    /// 39 outside the walls' branch): a gate in state 2 whose master transforms
+    /// (`transform_unit`, `+0x9ba`) clears its first update (its endpoints, not held). Unless it
+    /// is shut (its master's height above [`GATE_EPSILON`]) and locked, it counts the units in it
+    /// ([`Unit::gate_count`]): a shut, unlocked gate with one of an ally (its player counting the
+    /// unit's an ally) in it opens (its player's slot 0x340, `FUN_14162f7e0`: a gate of a height
+    /// of at least 1, [`Turns::toggle_gate`]) and its close timer is 0; an open one (a height
+    /// below the epsilon) with nothing in it starts its close timer at 0.5 s, or runs it down by
+    /// the world's dt, and at 0 shuts (slot 0x338, `FUN_1416193e0`: a height of at most 0).
+    fn gate_update(&mut self, c: &mut Context<'_>, others: &[Self]) -> Result<(), Unsupported> {
+        let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+            return Ok(());
+        };
+        let transforms = master
+            .building
+            .as_ref()
+            .is_some_and(|b| b.transform_unit != -1);
+        if master.class != crate::spatial::GATE_CLASS || !transforms || self.life.state != 2 {
+            return Ok(());
+        }
+        let height = master.height;
+        let gate = self
+            .gate
+            .as_mut()
+            .ok_or(Unsupported("a gate without its gate state"))?;
+        gate.first_update = false;
+        let shut = GATE_EPSILON < height;
+        if gate.locked && shut {
+            return Ok(());
+        }
+        let locked = gate.locked;
+        let (total, allied) = self.gate_count(c, others)?;
+        let gate = self.gate.as_mut().expect("held above");
+        if shut && 0 < allied && !locked {
+            c.gate_toggle = GATE_SHUT_HEIGHT <= height;
+            gate.close_timer = 0.0;
+            return Ok(());
+        }
+        if height < GATE_EPSILON && total == 0 {
+            if gate.close_timer <= 0.0 {
+                gate.close_timer = GATE_CLOSE_DELAY;
+            } else {
+                gate.close_timer -= c.dt_seconds;
+                if gate.close_timer <= 0.0 {
+                    gate.close_timer = 0.0;
+                    c.gate_toggle = height <= 0.0;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// [`gate_units`] of this gate, its annexes the units of `others` that are its (in id order,
+    /// as made): the units in it and how many of them are of an ally.
+    fn gate_count(&self, c: &Context<'_>, others: &[Self]) -> Result<(usize, usize), Unsupported> {
+        let (units, allied) = gate_units(c.spatial, self.id, &annexes_of(self.id, others))?;
+        Ok((units.len(), allied))
+    }
+
     /// `TRIBE_Building_Object::update` (`0x1411c9000`) before its combat update: a building in
     /// state 0 whose build points (`+0xc50`, the construction's progress) reached its build time
     /// (its master's first train time, `FUN_140ace5e0`) completes (`set_state(2)`,
@@ -3559,6 +3728,9 @@ impl Unit {
     /// One update, and whether the object stays in its list, leaves it or goes to sleep. `others`
     /// are the rest of the owner's objects, whose foundations a builder works on.
     fn update(&mut self, c: &mut Context<'_>, others: &mut [Self]) -> Result<Step, Unsupported> {
+        if let Some(resume) = c.ai_resume.take() {
+            return self.ai_part(c, others, resume);
+        }
         // RGE_Static_Object::update (0x14118ad50): an object flagged to sleep (`+0x643`) drops
         // the flag, is marked asleep (`+0x641`) and moves to its player's sleeping list (player
         // slots 0x2d8 and 0x2d0), and its update ends; only static objects (type 10) are flagged
@@ -3569,6 +3741,7 @@ impl Unit {
             self.life.goto_sleep = false;
             return Ok(Step::Sleep);
         }
+        self.gate_update(c, others)?;
         self.complete_on_update(c, others)?;
         self.building_seconds(c, others)?;
         self.take_stopped_speed();
@@ -4525,6 +4698,26 @@ impl Unit {
         if self.combat {
             c.spatial.combat_sight(self.id)?;
         }
+        let resume = AiResume { captured, leaves };
+        // a builder's work found in its update runs (the caller's, `Turns::order_work`) before
+        // its unit AI, which the caller then runs ([`Unit::ai_part`])
+        if c.work_order.is_some() && self.ai.is_some() {
+            c.ai_resume = Some(resume);
+            return Ok(Step::Stay);
+        }
+        self.ai_part(c, others, resume)
+    }
+
+    /// The end of [`Unit::update`] (`RGE_Combat_Object::update` after the actions and the sight):
+    /// the unit AI's full update on its owner's turn, else its check between turns, and the
+    /// effects it has on the unit; then the step the update ends with.
+    fn ai_part(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        resume: AiResume,
+    ) -> Result<Step, Unsupported> {
+        let AiResume { captured, leaves } = resume;
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
         let master = c.masters.and_then(|ms| ms.get(self.life.master_id));
         let class = master.map(|ms| ms.class);
@@ -5006,6 +5199,14 @@ enum Step {
     /// A player took it (and these other objects of its player) over: they move to the end of
     /// that player's list.
     Captured(usize, Vec<i32>),
+}
+
+/// What a unit's update hands its unit AI part when that runs after the caller gave the work its
+/// builder found ([`Unit::ai_part`]): a takeover and the step the update ends with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AiResume {
+    captured: Option<(usize, Vec<i32>)>,
+    leaves: Step,
 }
 
 /// The unit a drop-site search goes from ([`drop_site_search`]).
@@ -6091,7 +6292,10 @@ impl Turns {
                     relics: [0; 2],
                     raider_countdown: 0,
                     // every building holds a gate's lock, open
-                    gate: Some(Gate::default()),
+                    gate: Some(Gate {
+                        first_update: true,
+                        ..Gate::default()
+                    }),
                     workers: 0,
                     combat: true,
                     default_task: None,
@@ -7473,11 +7677,15 @@ impl Turns {
                 .iter()
                 .any(|q| q.attributes.get(204).is_some_and(|&v| v != 0.0));
             let mut i = 0;
+            // a unit whose update stopped before its unit AI for its work order runs that part
+            // again once the work is given ([`Unit::ai_part`])
+            let mut resume: Option<AiResume> = None;
             while i < self.players[p].objects.len() {
                 let player = &self.players[p];
                 let stopped = player.stopped || player.objects[i].stopped;
                 if stopped && player.objects[i].life.is_alive() {
                     self.spatial.freeze(player.objects[i].id);
+                    resume = None;
                     i += 1;
                     continue;
                 }
@@ -7539,6 +7747,8 @@ impl Turns {
                     attribute_adds: Vec::new(),
                     techs_done: Vec::new(),
                     work_order: None,
+                    gate_toggle: false,
+                    ai_resume: resume.take(),
                     order_on_target: None,
                     zones: &mut self.zones,
                     foreign: Foreign { before, after },
@@ -7553,6 +7763,8 @@ impl Turns {
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
                 let (remains, refund) = (c.remains.take(), c.refund.take());
                 let pauses = std::mem::take(&mut c.pauses);
+                let gate_toggle = std::mem::take(&mut c.gate_toggle);
+                let ai_resume = c.ai_resume.take();
                 let releases = std::mem::take(&mut c.releases);
                 let (takes, made) = (std::mem::take(&mut c.takes), std::mem::take(&mut c.made));
                 let (ghost_deaths, started, unwatched, evacuations) = (
@@ -7567,6 +7779,10 @@ impl Turns {
                 self.spatial.set_gait(unit.id, unit.gait());
                 player.objects[i] = unit;
                 player.objects.extend(made);
+                // the gate's player opens or shuts it, in the gate's update before the rest
+                if gate_toggle && let Err(e) = self.toggle_gate(p, i) {
+                    result = result.and(Err(e));
+                }
                 for (kind, amount) in adds {
                     if let Err(e) = self.players[p].add_attribute(kind, amount) {
                         result = result.and(Err(e));
@@ -7624,8 +7840,10 @@ impl Turns {
                 {
                     result = result.and(Err(e));
                 }
-                // TRIBE_Building_Object::update: the production after the combat update
+                // TRIBE_Building_Object::update: the production after the combat update (once,
+                // with the update's unit AI part)
                 if matches!(result, Ok(Step::Stay))
+                    && ai_resume.is_none()
                     && let Err(e) = self.produce(p, i, seconds(dt))
                 {
                     result = Err(e);
@@ -7677,6 +7895,10 @@ impl Turns {
                     }
                 }
                 self.pathing.tiles_changed(self.spatial.take_changes());
+                if matches!(result, Ok(Step::Stay)) && ai_resume.is_some() {
+                    resume = ai_resume;
+                    continue;
+                }
                 let player = &mut self.players[p];
                 match result {
                     Ok(Step::Leave) => {
@@ -8567,7 +8789,7 @@ mod tests {
                 state: 2,
                 ..Lifecycle::default()
             },
-            gate: Some(Gate { locked: false }),
+            gate: Some(Gate::default()),
             ..Unit::default()
         };
         let player = |objects: Vec<Unit>, relations: Vec<u8>| Player {
@@ -8646,9 +8868,47 @@ mod tests {
         assert!(blocked(&t));
         // a locked gate stays closed for its allies
         t.close_gates(3, &mut open);
-        t.players[2].objects[0].gate = Some(Gate { locked: true });
+        t.players[2].objects[0].gate = Some(Gate {
+            locked: true,
+            ..Gate::default()
+        });
         t.open_gates(1, &mut open).unwrap();
         assert!(blocked(&t));
+    }
+
+    /// records/425906646's gate 27745 of player 3 (annexes 27746 and 27747) in update 2865: an
+    /// ally walking between the posts opens it; a standing Gaia animal does not count, an enemy
+    /// counts but is no ally, a wall next to it neither.
+    #[test]
+    fn a_gate_counts_the_moving_units_between_its_posts() {
+        let mut s =
+            Spatial::with_tiles([40, 40], crate::spatial::Tiles::new(40, 40, vec![1; 1600]));
+        s.relations = vec![vec![0, 3, 3], vec![3, 0, 3], vec![3, 3, 0]];
+        let placed = |x: f32, class, player, speed, kind| Placed {
+            position: [x, 20.0, 0.0],
+            radius: [0.2, 0.2],
+            class,
+            player,
+            master: 0,
+            obstruction_type: kind,
+            buildable_on: 0,
+            tall: true,
+            speed,
+            unknown: None,
+            obstruction: Some(crate::spatial::Obstruction { kind, class: 2 }),
+        };
+        s.insert(27745, placed(20.0, 39, 1, 0.0, 2));
+        s.insert(27746, placed(18.5, 39, 1, 0.0, 2));
+        s.insert(27747, placed(21.5, 39, 1, 0.0, 2));
+        s.insert(1, placed(19.6, 4, 1, 0.8, 5));
+        let (units, allied) = gate_units(&s, 27745, &[27746, 27747]).unwrap();
+        assert_eq!((units, allied), (vec![1], 1));
+        s.insert(2, placed(20.4, 10, 0, 0.0, 5));
+        s.insert(3, placed(20.8, 6, 2, 0.9, 5));
+        s.insert(4, placed(21.0, 27, 1, 0.0, 2));
+        let (units, allied) = gate_units(&s, 27745, &[27746, 27747]).unwrap();
+        assert_eq!((units, allied), (vec![1, 3], 1));
+        assert!(gate_units(&s, 27745, &[27746]).is_err());
     }
 
     #[test]

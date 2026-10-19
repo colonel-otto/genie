@@ -1667,7 +1667,11 @@ impl Turns {
                 started: false,
             }),
             firepower: made.volley_fire,
-            gate: Some(crate::turn::Gate::default()),
+            // the building's constructor sets its first update (`mFirstUpdate`)
+            gate: Some(crate::turn::Gate {
+                first_update: true,
+                ..crate::turn::Gate::default()
+            }),
             combat: true,
             attackable: true,
             pasture: -1,

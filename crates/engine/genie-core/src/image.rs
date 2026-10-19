@@ -30,12 +30,6 @@ pub mod build {
     pub const WONDER_RATE: f32 = f32::from_bits(0x3f99_999a);
 }
 
-/// The values `crate::building`'s port reads.
-pub mod building {
-    /// 0.20000000298023224
-    pub const EJECT_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
-}
-
 /// The values `crate::damage`'s port reads.
 pub mod damage {
     /// 0.9900000095367432
@@ -322,6 +316,8 @@ pub mod movement {
 pub mod order {
     /// 10000.0
     pub const BOX_START: f32 = f32::from_bits(0x461c_4000);
+    /// 100.0
+    pub const DAMAGE_WHOLE: f32 = f32::from_bits(0x42c8_0000);
     /// 1.0
     pub const EDGE: f32 = f32::from_bits(0x3f80_0000);
     /// 1.5
@@ -422,6 +418,14 @@ pub mod turn {
     pub const ARMED_FIREPOWER: f32 = f32::from_bits(0x3f80_0000);
     /// 0.10000000149011612
     pub const DROP_REACH: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 0.20000000298023224
+    pub const EJECT_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
+    /// 1.0000000116860974e-07
+    pub const GATE_EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 0.4000000059604645
+    pub const GATE_GROW: f32 = f32::from_bits(0x3ecc_cccd);
+    /// 1.0
+    pub const GATE_SHUT_HEIGHT: f32 = f32::from_bits(0x3f80_0000);
     /// 3.4028234663852886e+38
     pub const NO_DROP_DISTANCE: f32 = f32::from_bits(0x7f7f_ffff);
     /// 10.0

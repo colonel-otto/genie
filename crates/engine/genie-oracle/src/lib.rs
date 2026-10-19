@@ -433,11 +433,16 @@ const fn town_bell(
     }
 }
 
-/// A saved building's gate lock ([`genie_core::turn::Gate`]).
+/// A saved building's gate state ([`genie_core::turn::Gate`]): its lock, first update and close
+/// timer, and whether a saved open or shut master or its original owner's would take part in a
+/// toggle.
 fn saved_gate(object: &genie_save::Object) -> Option<genie_core::turn::Gate> {
     let b = object.tribe_building_object.as_deref()?;
     Some(genie_core::turn::Gate {
         locked: b.gate_locked != 0,
+        first_update: b.first_update != 0,
+        close_timer: b.close_timer,
+        other_masters: b.has_open_closed_master_object != 0 || b.original_owner != -1,
     })
 }
 

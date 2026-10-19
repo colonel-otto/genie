@@ -2333,6 +2333,60 @@ impl Turns {
         Ok(())
     }
 
+    /// The player's gate toggle (`FUN_14162f8c0`, from its slots 0x340 and 0x338): a gate of its
+    /// player's masters, without masters of its own ([`crate::turn::Gate::other_masters`]),
+    /// changes to its master's `transform_unit` (slot 0x90, the building's `FUN_1411e6d90`:
+    /// [`Turns::change_master`], then a built gate's build points take the new master's build
+    /// time). A gate that shut (the new master's height above 0) kills the units in it (slot 0xd8
+    /// on those its count finds, `FUN_141211340`: not modelled) and takes the world time plus 1
+    /// as its last move time (`+0x870`).
+    pub(crate) fn toggle_gate(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        if unit.gate.is_some_and(|g| g.other_masters) {
+            return Err(Unsupported(
+                "a gate's toggle to a master of its own or its original owner's",
+            ));
+        }
+        let new = self
+            .master_of(player, unit.life.master_id)?
+            .building
+            .as_ref()
+            .map_or(-1, |b| b.transform_unit);
+        if new == -1 {
+            return Ok(());
+        }
+        self.change_master(player, idx, new)?;
+        let next = self.master_of(player, new)?;
+        let (build_time, height) = (next.build_time, next.height);
+        let now = self.world_time;
+        let unit = &mut self.players[player].objects[idx];
+        if unit.life.state == 2
+            && let Some(c) = unit.construction.as_mut()
+        {
+            c.progress = f32::from(build_time);
+        }
+        if 0.0 < height {
+            let id = unit.id;
+            let annexes = crate::turn::annexes_of(id, &self.players[player].objects);
+            let (units, _) = crate::turn::gate_units(&self.spatial, id, &annexes)?;
+            for u in units {
+                let killed = self.object(u).is_some_and(|(owner, o)| {
+                    self.master_of(owner, o.life.master_id)
+                        .is_ok_and(|m| m.class != 42 && (m.class != 58 || o.life.amount <= 0.0))
+                });
+                if killed {
+                    return Err(Unsupported("a gate shutting on a unit (slot 0xd8)"));
+                }
+            }
+            self.players[player].objects[idx]
+                .mover
+                .as_mut()
+                .ok_or(Unsupported("a shut gate without its moving part"))?
+                .last_move = now.wrapping_add(1);
+        }
+        Ok(())
+    }
+
     /// Slot 0x90 (`FUN_141225b70` with 0): the unit changes its master. Its action list is
     /// cleared; in a state below 3 (`FUN_1411a6a70`) the old master's storage leaves its player's
     /// attributes and the new one's comes in (`FUN_1411a56c0`, flag 2), its hit points keep their
@@ -2355,11 +2409,6 @@ impl Turns {
             if unit.life.inside.is_some() {
                 return Err(Unsupported("a master change of an object inside another"));
             }
-            if old.damage_sprites || next.damage_sprites {
-                return Err(Unsupported(
-                    "a master change with damage sprites (FUN_1411859a0)",
-                ));
-            }
             let owner = &mut self.players[player];
             for &(kind, amount, flag) in &old.storage {
                 if kind >= 0 && matches!(flag, 2 | 16 | 32) {
@@ -2376,7 +2425,18 @@ impl Turns {
             } else {
                 1.0
             };
+            let old_hp = unit.life.hp;
             unit.life.hp = f32::from(hp as i32 as i16);
+            // FUN_1411859a0: the damage share picks the damage sprites; one that stays keeps them
+            // (the object's `+0xd`, not held, taken to be the old master's share)
+            if (old.damage_sprites || next.damage_sprites)
+                && (damage_share(old_hp, old.hit_points, old.class)?
+                    != damage_share(unit.life.hp, next.hit_points, next.class)?)
+            {
+                return Err(Unsupported(
+                    "a master change that changes the damage sprites (FUN_1411859a0)",
+                ));
+            }
             unit.life.master_id = new;
             let moving = unit
                 .mover
@@ -2514,9 +2574,40 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
     [inside_map(x, map[0]), inside_map(y, map[1])]
 }
 
+/// A whole share (`DAT_14330ebcc`), which `FUN_1411859a0` takes hit points against.
+const DAMAGE_WHOLE: f32 = crate::image::order::DAMAGE_WHOLE;
+
+/// The damage share `FUN_1411859a0` picks damage sprites by: `100 − hp × 100 / hit points`,
+/// whole, of hit points at most the master's. An object whose share is its resource's (the
+/// classes `FUN_141193590` names; its master's `+0x681` would add any) is not modelled.
+fn damage_share(hp: f32, hit_points: i16, class: i16) -> Result<u8, Unsupported> {
+    if matches!(
+        class,
+        5 | 7 | 8 | 9 | 10 | 15 | 29 | 31 | 32 | 33 | 38 | 40 | 41 | 48 | 58 | 61 | 63
+    ) {
+        return Err(Unsupported(
+            "the damage share of a resource object (FUN_141193590)",
+        ));
+    }
+    let most = f32::from(hit_points);
+    let hp = hp.min(most);
+    Ok((DAMAGE_WHOLE - hp * DAMAGE_WHOLE / most) as i32 as u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// records/425906646's gate 27745 (masters 88 and 91, 1650 hit points each, three damage
+    /// sprites): unhurt, its share is 0 under either master; a resource's share is not modelled.
+    #[test]
+    fn a_damage_share_is_the_whole_less_the_hit_points_share() {
+        assert_eq!(damage_share(1650.0, 1650, 39), Ok(0));
+        assert_eq!(damage_share(825.0, 1650, 39), Ok(50));
+        assert_eq!(damage_share(1.0, 1650, 39), Ok(99));
+        assert_eq!(damage_share(2000.0, 1650, 39), Ok(0));
+        assert!(damage_share(10.0, 100, 58).is_err());
+    }
 
     /// records/425906646's update 1641: player 6's drop-off order reaches its goose 28766 (class
     /// 58, 100 food, no drop sites, its default task on top): no table entry takes class 58, so

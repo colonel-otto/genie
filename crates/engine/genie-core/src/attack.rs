@@ -958,11 +958,21 @@ impl Attack {
                     follow_path_end(&mut walk, p)?;
                 }
                 if follow.again() {
-                    // without `+0x61` the MoveTo tells the unit first (notify 0x1fc)
-                    if !self.repaths {
+                    if self.repaths {
+                        // with `+0x61` the MoveTo only turns to state 3 (`LAB_140aa3a59`)
+                        self.move_to = Some(MoveTo::Start);
+                    } else {
+                        // without it the MoveTo tells the unit (notify 0x1fc), turns to state 3
+                        // and runs the motion step (`LAB_140aa320c`): moving on, it stays in
+                        // state 3
                         s.posted.push((0x1fc, [0; 3]));
+                        let state = walk_on(walk.reborrow())?;
+                        in_the_way(&mut walk, s);
+                        self.move_to = Some(match state {
+                            MoveTo::Moving => MoveTo::Start,
+                            other => other,
+                        });
                     }
-                    self.move_to = Some(MoveTo::Start);
                 } else {
                     self.move_to = Some(walk_on(walk.reborrow())?);
                     in_the_way(&mut walk, s);
