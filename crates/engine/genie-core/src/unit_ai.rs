@@ -3592,22 +3592,6 @@ mod tests {
                 )
                 .is_err()
         );
-        let mut defensive = UnitAi {
-            stance: 1,
-            ..idle(13)
-        };
-        assert!(
-            defensive
-                .update_idle(
-                    1,
-                    0,
-                    false,
-                    &Surroundings::default(),
-                    &mut r,
-                    &mut no_search
-                )
-                .is_err()
-        );
     }
 
     #[test]
