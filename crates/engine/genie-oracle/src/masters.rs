@@ -105,6 +105,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         kind: unit.unit_type,
         copy_id: unit.copy_id,
         class: unit.class,
+        terrain_restriction: unit.terrain_restriction,
         task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),
         radius: [unit.collision_size[0], unit.collision_size[1]],
         tall: 0.0 < unit.collision_size[2],
@@ -257,9 +258,29 @@ impl TerrainTable {
             .terrain_block
             .terrains
             .iter()
-            .map(|t| genie_core::terrain::TerrainKind {
-                shown: t.enabled != 0 || 0 <= t.terrain_to_draw,
-                flags: t.is_water,
+            .map(|t| {
+                // FUN_140f5efb0: the densities of the terrain's units of class 15 (Gaia's)
+                let trees: i32 = t
+                    .terrain_unit_id
+                    .iter()
+                    .zip(&t.terrain_unit_density)
+                    .take(usize::try_from(t.number_of_terrain_units_used).unwrap_or(0))
+                    .filter(|&(&id, _)| {
+                        usize::try_from(id).is_ok_and(|i| {
+                            dat.civs
+                                .first()
+                                .and_then(|c| c.units.get(i))
+                                .and_then(Option::as_ref)
+                                .is_some_and(|u| u.class == 15)
+                        })
+                    })
+                    .map(|(_, &d)| i32::from(d))
+                    .sum();
+                genie_core::terrain::TerrainKind {
+                    shown: t.enabled != 0 || 0 <= t.terrain_to_draw,
+                    flags: t.is_water,
+                    forest: 249 < trees,
+                }
             })
             .collect();
         Self {

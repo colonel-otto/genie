@@ -45,6 +45,8 @@ const TREE: i16 = 15;
 const FARM: i16 = 49;
 const CLASS_51: i16 = 51;
 const CLASS_54: i16 = 54;
+/// The gate class, whose own walls BUILD's placement scan passes over (`FUN_14123aee0`).
+const GATE: i16 = 39;
 /// The relic's master, which always stays (`FUN_141194e80`).
 const RELIC: i16 = 285;
 /// The villager class, whose new units count in attribute 248.
@@ -324,6 +326,20 @@ pub struct Near {
     pub state: u8,
     /// A building's `desolid_flag` (`+0xc60`).
     pub desolid: bool,
+    /// Its owner.
+    pub player: usize,
+    /// Its master moves (speed above 0).
+    pub moving: bool,
+    /// Its master's `fog_visibility` (`+0x605`).
+    pub fog_visibility: u8,
+    /// It holds an amount (`+0x310` above 0) of food, wood, stone or gold (its attribute,
+    /// `+0x308`, through `FUN_140fdd470` below 4: 0 to 3 and the meats 15 to 17).
+    pub holds: bool,
+    /// Its hit points.
+    pub hp: f32,
+    /// The terrain of its tile (`+0x2e8`, taken as the tile it stands on) is a forest
+    /// ([`crate::terrain::TerrainKind::forest`]).
+    pub forest_tile: bool,
 }
 
 impl Near {
@@ -376,6 +392,13 @@ pub trait PlaceMap {
     fn terrain(&self, x: i32, y: i32) -> Result<u8, Unsupported>;
     /// `FUN_141663500` is not 0: the player sees or saw the tile.
     fn explored(&self, player: usize, x: i32, y: i32) -> bool;
+    /// The player sees the tile now (its mask `+0x2a8` meets the tile's visible bits).
+    fn visible(&self, player: usize, x: i32, y: i32) -> bool;
+    /// A tile's elevation (`+0x14`), when the map holds it.
+    fn elevation(&self, x: i32, y: i32) -> Option<u8>;
+    /// Player `a` counts player `b` as an ally (`FUN_141663dc0`): itself; never Gaia; relation 0,
+    /// or with `with_4` relation 4 too (the zone mode's relation 1 is not modelled).
+    fn allied(&self, a: usize, b: usize, with_4: bool) -> bool;
     /// The objects on tile (`x`, `y`) (their centre there), in the tile list's order; `Err` where
     /// it cannot tell.
     fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, Unsupported>;
@@ -418,6 +441,193 @@ fn overlapping(
     }
     Ok(out)
 }
+
+/// What BUILD's placement test reads of the building master and the game.
+#[derive(Clone, Copy, Debug)]
+pub struct BuildSite<'a> {
+    /// The player who places it.
+    pub player: usize,
+    /// A human player (`p6`: the explored test).
+    pub human: bool,
+    /// The master's clearance radii (`+0x5fc`, `+0x600`; `p9`).
+    pub clearance: [f32; 2],
+    /// The master's class.
+    pub class: i16,
+    /// The master's `obstruction_type` is neither 0 nor 12 (`FUN_1411205c0`).
+    pub obstructs: bool,
+    /// The master's terrain restriction's value per terrain.
+    pub restriction: &'a [f32],
+    /// `hill_mode` (`+0x604`, `p7`).
+    pub hill_mode: u8,
+    /// The placement terrains (`+0x5f2`..`+0x5f8`) name one.
+    pub placement_terrains: bool,
+    /// The world's zone mode (`+0x820`, `FUN_1415e8e10`).
+    pub zones: bool,
+}
+
+/// BUILD's placement test (`FUN_140e7a400`'s call of the master's slot 0x50, the building
+/// master's `FUN_14123aee0` with BUILD's flags: `p6` human, `p7`, `p8`, `p9` 1, `p10` 0, `p11` 1,
+/// no object of its own, `p13` 0, `p14` 1): 0 when the foundation may go to `p`, else the game's
+/// code. First the static test (`FUN_141123f80` through `FUN_141264db0`, whose scans are off)
+/// over the clearance box: off the map 7; per tile, columns then rows, a terrain the
+/// restriction forbids 2 (`DAT_142eb7e5c`'s threshold, the spawn's); a human who explored none of
+/// the tiles 5; a hill mode's slope 3 (passed on flat ground). Then the building master's scan of the tiles within 8 (rows, then columns; each
+/// tile's objects in its list's order): an object the player sees, or on a tile it never
+/// explored (the test's explored flag `+0x730` is set by then), or in the fog with a fog
+/// visibility, and only its own in the fog without one, that is below state 3 (another type
+/// below 7), standing (or the master obstructs, or it is below type 30), not a wall under its
+/// own gate, a desolid building only of an ally both ways, not a moving unit of the player, Gaia
+/// or a mutual ally, not a felled tree off a forest (at most 1 hit point; `+0x2e8` taken as its
+/// own tile), not buildable on, whose box with a
+/// height overlaps the clearance box: 6. Not modelled: the placement terrains, hill modes, the
+/// zone test (`FUN_1415c6400`), the editor (game mode 4), a fogged object of fog visibility 3 or
+/// a fogged building with its visibility mask (`+0x8f8`), game type 7's test of allies, the
+/// outline radii of
+/// obstruction types 11 to 13 and a hill mode on uneven ground (the tiles' slopes `+8`).
+pub fn build_placement(
+    site: &BuildSite<'_>,
+    map: &dyn PlaceMap,
+    p: [f32; 2],
+) -> Result<u8, Unsupported> {
+    if site.placement_terrains {
+        return Err(Unsupported(
+            "BUILD's placement test with placement terrains",
+        ));
+    }
+    let [x, y] = p;
+    let [rx, ry] = site.clearance;
+    let [w, h] = map.size();
+    let (far_x, far_y) = ((x + rx) - INSIDE, (y + ry) - INSIDE);
+    if x - rx < 0.0 || w as f32 <= far_x || y - ry < 0.0 || h as f32 <= far_y {
+        return Ok(7);
+    }
+    let mut explored = false;
+    for tx in (x - rx) as i32..=far_x as i32 {
+        for ty in (y - ry) as i32..=far_y as i32 {
+            let t = map.terrain(tx, ty)?;
+            let value = site
+                .restriction
+                .get(usize::from(t))
+                .ok_or(Unsupported("a terrain its restriction does not list"))?;
+            if *value <= PASSABLE {
+                return Ok(2);
+            }
+            explored = explored || (site.human && map.explored(site.player, tx, ty));
+        }
+    }
+    // the hill modes read each tile's slope (`+8`, which a load computes from the elevations):
+    // on a flat area (the box and the tiles beside it of one elevation) every slope is 0, which
+    // each of them passes
+    if site.hill_mode != 0 {
+        let base = map.elevation((x - rx) as i32, (y - ry) as i32);
+        let flat = ((x - rx) as i32 - 1..=far_x as i32 + 1).all(|tx| {
+            ((y - ry) as i32 - 1..=far_y as i32 + 1).all(|ty| {
+                !(0 <= tx && 0 <= ty && tx < w && ty < h) || map.elevation(tx, ty) == base
+            })
+        });
+        if base.is_none() || !flat {
+            return Err(Unsupported(
+                "BUILD's placement test of a hill mode on uneven ground (the tiles' slopes)",
+            ));
+        }
+    }
+    if site.human && !explored {
+        return Ok(5);
+    }
+    if (0.0 < rx || 0.0 < ry) && site.zones {
+        return Err(Unsupported("BUILD's placement test in a zone mode"));
+    }
+    // FUN_14123aee0's scan
+    let near = |v: f32, size: i32| {
+        let low = (v - BUILD_SCAN) as i32 as i16;
+        let high = (v + BUILD_SCAN) as i32 as i16;
+        (
+            i32::from(low.max(0)),
+            if i32::from(high) < size {
+                i32::from(high)
+            } else {
+                size - 1
+            },
+        )
+    };
+    let ((x0, x1), (y0, y1)) = (near(x, w), near(y, h));
+    let player = site.player;
+    for ty in y0..=y1 {
+        for tx in x0..=x1 {
+            let (seen, visible) = (map.explored(player, tx, ty), map.visible(player, tx, ty));
+            for o in map.objects(tx, ty)? {
+                if !(seen && visible) {
+                    let fog = if seen { o.fog_visibility } else { 1 };
+                    if fog == 3 {
+                        return Err(Unsupported(
+                            "a fogged object of fog visibility 3 near a BUILD",
+                        ));
+                    }
+                    if fog == 0 {
+                        if o.class != 49 && 50 <= o.kind {
+                            return Err(Unsupported(
+                                "a fogged building near a BUILD (its visibility mask)",
+                            ));
+                        }
+                        if o.player != player || !map.allied(o.player, player, true) {
+                            continue;
+                        }
+                    }
+                } else if o.fog_visibility == 3 {
+                    continue;
+                }
+                let alive = o.state < 3 || (o.kind != BUILDING && o.state < 7);
+                let standing = site.obstructs || o.kind < 30 || !o.moving;
+                let gate_wall = site.class == GATE && o.class == WALL && o.player == player;
+                let foundation = o.kind == BUILDING
+                    && !matches!(o.class, CLASS_51 | CLASS_54)
+                    && o.desolid
+                    && !(map.allied(player, o.player, true) && map.allied(o.player, player, true));
+                if !alive || !standing || gate_wall || foundation {
+                    continue;
+                }
+                // a moving unit of the player, of Gaia or of a mutual ally passes (the game type
+                // 7's own test of allies is not modelled)
+                let passes = 30 <= o.kind
+                    && o.state == 2
+                    && o.moving
+                    && (o.player == player
+                        || o.player == 0
+                        || (map.allied(player, o.player, false)
+                            && map.allied(o.player, player, false)));
+                if passes || o.buildable_on == 1 {
+                    continue;
+                }
+                // a felled tree (at most 1 hit point) passes off a forest (`FUN_140f5efb0` on its
+                // tile's terrain)
+                if o.class == TREE && o.hp <= 1.0 && !o.forest_tile {
+                    continue;
+                }
+                if (11..=13).contains(&o.obstruction_type) {
+                    return Err(Unsupported(
+                        "an object of obstruction types 11 to 13 near a BUILD (its outline radii)",
+                    ));
+                }
+                // no height: a building's counts as 1, and so does that of an object holding food,
+                // wood, stone or gold
+                let tall = o.tall || o.kind == BUILDING || o.holds;
+                let [orx, ory] = o.radius;
+                if 0.0 < orx
+                    && 0.0 < ory
+                    && tall
+                    && (o.position[0] - x).abs() < orx + rx
+                    && (o.position[1] - y).abs() < ory + ry
+                {
+                    return Ok(6);
+                }
+            }
+        }
+    }
+    Ok(0)
+}
+
+/// How far BUILD's placement scan looks around the point (`FUN_14123aee0`'s 8.0).
+const BUILD_SCAN: f32 = 8.0;
 
 /// The first object of a scan, which the game reports as the blocker. Objects on one tile come
 /// in its list's order, which the slice does not hold: several there must agree on staying.
@@ -552,8 +762,8 @@ fn corner_tiles(position: [f32; 3], radius: [f32; 2], unit: [f32; 2]) -> [[(i32,
 
 /// The map as the spawn's placement test reads it: the terrain, the players' sight and the
 /// objects with what their units and masters say.
-struct WorldMap<'a> {
-    turns: &'a Turns,
+pub(crate) struct WorldMap<'a> {
+    pub(crate) turns: &'a Turns,
 }
 
 impl PlaceMap for WorldMap<'_> {
@@ -575,6 +785,27 @@ impl PlaceMap for WorldMap<'_> {
     fn explored(&self, player: usize, x: i32, y: i32) -> bool {
         // without the sight the spawn stops before (Turns::spawn)
         self.turns.spatial.explored(player, x, y).unwrap_or(false)
+    }
+
+    fn visible(&self, player: usize, x: i32, y: i32) -> bool {
+        self.turns.spatial.visible(player, x, y)
+    }
+
+    fn elevation(&self, x: i32, y: i32) -> Option<u8> {
+        let t = self.turns.spatial.terrain.as_ref()?;
+        let [w, h] = self.turns.spatial.map;
+        (0 <= x && 0 <= y && x < w && y < h)
+            .then(|| t.elevations.get((y * w + x) as usize).copied())
+            .flatten()
+    }
+
+    fn allied(&self, a: usize, b: usize, with_4: bool) -> bool {
+        a == b
+            || (b != 0
+                && self.turns.players.get(a).is_some_and(|p| {
+                    matches!(p.relations.get(b), Some(0))
+                        || (with_4 && p.relations.get(b) == Some(&4))
+                }))
     }
 
     fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, Unsupported> {
@@ -599,6 +830,17 @@ impl PlaceMap for WorldMap<'_> {
                     auto_gather: master.auto_gather,
                     state: unit.life.state,
                     desolid: unit.construction.is_some_and(|c| c.desolid),
+                    player: owner,
+                    moving: master.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
+                    fog_visibility: master.fog_visibility,
+                    holds: 0.0 < unit.life.amount
+                        && matches!(unit.life.attribute_type, 0..=3 | 15..=17),
+                    hp: unit.life.hp,
+                    forest_tile: t.spatial.terrain.as_ref().is_some_and(|ter| {
+                        ter.kind(placed.position[0] as i32, placed.position[1] as i32)
+                            .and_then(|k| ter.terrains.get(usize::from(k)))
+                            .is_some_and(|k| k.forest)
+                    }),
                 })
             })
             .collect()
@@ -1575,6 +1817,12 @@ mod tests {
             auto_gather: false,
             state,
             desolid: false,
+            player: 0,
+            moving: true,
+            fog_visibility: 0,
+            holds: false,
+            hp: 7.0,
+            forest_tile: false,
         }
     }
 
@@ -1602,6 +1850,15 @@ mod tests {
         }
         fn explored(&self, _: usize, _: i32, _: i32) -> bool {
             true
+        }
+        fn visible(&self, _: usize, _: i32, _: i32) -> bool {
+            true
+        }
+        fn elevation(&self, _: i32, _: i32) -> Option<u8> {
+            Some(0)
+        }
+        fn allied(&self, a: usize, b: usize, _: bool) -> bool {
+            a == b
         }
         fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, Unsupported> {
             Ok(self

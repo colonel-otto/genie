@@ -122,6 +122,9 @@ pub struct Master {
     pub height: f32,
     /// `line_of_sight` (`+0x5d0`).
     pub line_of_sight: f32,
+    /// `+0x606`, its terrain restriction (the save's `terrain_restriction_mask_id`; −1 for none),
+    /// which a placement test reads.
+    pub terrain_restriction: i16,
     /// `obstruction_type` (`+0x651`) and `can_be_built_on` (`+0x5e9`).
     pub obstruction_type: u8,
     /// `can_be_built_on` (`+0x5e9`): a new building deletes an object of it off its footprint.

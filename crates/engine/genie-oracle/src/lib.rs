@@ -2240,6 +2240,7 @@ fn work_masters(
         work.death_sprite = s.death_sprite_id;
         work.garrison = s.obj_max;
         work.death_spawns = [s.death_spawn_obj_id, s.death_spawn_obj_id2];
+        work.terrain_restriction = s.terrain_restriction_mask_id;
         work.life = table.get(civ, s.id());
         work.moving = moving_stats(m, s, civ, table);
         Some(work)

@@ -18,6 +18,9 @@ pub struct TerrainKind {
     /// The `.dat`'s `is_water` byte, which the map's load copies to the terrain table
     /// (`FUN_1413fc340`, `DAT_143cc7b40 + 0x2c`): bit 7 marks snow (`FUN_1413fc280`).
     pub flags: u8,
+    /// A forest (`FUN_140f5efb0`): the densities of its terrain units of class 15 (Gaia's
+    /// masters) sum to more than 249.
+    pub forest: bool,
 }
 
 /// The terrain a completed building leaves on snow (`FUN_1411ddd90`): its foundation 27 becomes 6
@@ -296,7 +299,8 @@ mod tests {
         let mut terrains = vec![
             TerrainKind {
                 shown: true,
-                flags: 0x20
+                flags: 0x20,
+                forest: false,
             };
             40
         ];

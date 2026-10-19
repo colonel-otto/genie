@@ -875,7 +875,8 @@ mod tests {
         let mut kinds = vec![
             TerrainKind {
                 shown: true,
-                flags: 0x20
+                flags: 0x20,
+                forest: false,
             };
             40
         ];

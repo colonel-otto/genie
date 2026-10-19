@@ -5699,6 +5699,22 @@ impl Turns {
                 queued,
                 commits,
             } => {
+                // the pending debit first (FUN_141630d10 with 0), then the placement test and
+                // the payment's: a refused BUILD places nothing
+                if let Err(e) = self.debit_listed(player, master) {
+                    let tick = self.ticks;
+                    self.players[player].stop(tick, e);
+                    return;
+                }
+                match self.build_allowed(player, master, [position[0], position[1]]) {
+                    Ok(true) => {}
+                    Ok(false) => return,
+                    Err(e) => {
+                        let tick = self.ticks;
+                        self.players[player].stop(tick, e);
+                        return;
+                    }
+                }
                 let id = self.next_object_id;
                 self.next_object_id += 1;
                 let ai = unit_ai.and_then(|t| {
@@ -6018,6 +6034,89 @@ impl Turns {
         }
     }
 
+    /// BUILD's pending debit (`FUN_141630d10` with 0, before its placement test): every cost
+    /// entry of the master, paid or not, by resource, comes off the player's pending debit.
+    fn debit_listed(&mut self, player: usize, master: i16) -> Result<(), Unsupported> {
+        let site = self
+            .masters
+            .get(player)
+            .and_then(|m| m.get(master))
+            .ok_or(Unsupported("BUILD of a master the player does not have"))?;
+        let mut listed = [0i16; 4];
+        for &(resource, amount, _) in &site.cost {
+            if let Some(r) = usize::try_from(resource).ok().filter(|&r| r < 4) {
+                listed[r] = listed[r].wrapping_add(amount);
+            }
+        }
+        for (debit, amount) in self.players[player].pending_debit.iter_mut().zip(listed) {
+            *debit -= f32::from(amount);
+        }
+        Ok(())
+    }
+
+    /// Whether BUILD (`FUN_140e7a400`) places a foundation of `master` at `at` for `player`: its
+    /// placement test ([`crate::spawn::build_placement`], the master's slot 0x50), then the
+    /// payment's (`FUN_14162fb60` -> `FUN_141618db0`: every cost entry of a resource, paid or
+    /// not, at most what the player holds). A refused BUILD places, pays and draws nothing (the
+    /// player's slot 0x380 shows why). A farm (master 50) on the terrains that swap it for 1187
+    /// and a cost in population (attribute 4) are not modelled.
+    fn build_allowed(&self, player: usize, master: i16, at: [f32; 2]) -> Result<bool, Unsupported> {
+        if master == 50 {
+            return Err(Unsupported("BUILD of a farm (its terrain's master swap)"));
+        }
+        let site = self.master_of(player, master)?;
+        if self.spatial.sight.is_none() {
+            return Err(Unsupported(
+                "BUILD's placement test without the players' sight",
+            ));
+        }
+        let restriction = self
+            .spatial
+            .terrain
+            .as_ref()
+            .and_then(|t| {
+                usize::try_from(site.terrain_restriction)
+                    .ok()
+                    .and_then(|r| t.restrictions.get(r))
+            })
+            .ok_or(Unsupported(
+                "a foundation's terrain restriction the data file does not have",
+            ))?;
+        let build = crate::spawn::BuildSite {
+            player,
+            human: !self.players[player].computer,
+            clearance: site.clearance,
+            class: site.class,
+            obstructs: !matches!(site.obstruction_type, 0 | 12),
+            restriction,
+            hill_mode: site.hill_mode,
+            placement_terrains: site.placement_terrains,
+            zones: false,
+        };
+        let map = crate::spawn::WorldMap { turns: self };
+        if crate::spawn::build_placement(&build, &map, at)? != 0 {
+            return Ok(false);
+        }
+        let owner = &self.players[player];
+        for &(resource, amount, _) in &site.cost {
+            let Ok(r) = usize::try_from(resource) else {
+                continue;
+            };
+            if r == 4 {
+                return Err(Unsupported("a BUILD whose cost lists the population"));
+            }
+            let held = if r < 4 {
+                owner.resources[r]
+            } else {
+                owner.attributes.get(r).copied().unwrap_or(0.0)
+            };
+            if held < f32::from(amount) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     /// A new building's footprint clearing (`FUN_1415c3620` from the building's constructor
     /// `FUN_1411de5f0`, both flags 0) for a building of `master` of `player` at `at`: the
     /// objects on the tiles within 4 of it (rows, then columns, held on the map), not of its own
@@ -6118,7 +6217,8 @@ impl Turns {
         Ok(())
     }
 
-    /// BUILD's part for its own player: the cost, paid when the foundation is placed, and per
+    /// BUILD's part for its own player: the cost, paid when the foundation is placed (the
+    /// pending debit came before, [`Turns::debit_listed`]), and per
     /// builder its ignore list emptied (`FUN_141197da0`), then slot 0x128 on the foundation (its
     /// slot 0x7e8 with task filter −1: the town-bell record, [`Turns::town_bell_order`]), then
     /// the work command (slot 37, `FUN_14106ff70`): the master it builds with
@@ -6146,16 +6246,6 @@ impl Turns {
             .ok_or(Unsupported("BUILD of a master the player does not have"))?;
         let site_class = i32::from(site.class);
         let owner = &mut self.players[player];
-        // FUN_141630d10 with 0: every cost entry of the master, paid or not, by resource
-        let mut listed = [0i16; 4];
-        for &(resource, amount, _) in &site.cost {
-            if let Some(r) = usize::try_from(resource).ok().filter(|&r| r < 4) {
-                listed[r] = listed[r].wrapping_add(amount);
-            }
-        }
-        for (debit, amount) in owner.pending_debit.iter_mut().zip(listed) {
-            *debit -= f32::from(amount);
-        }
         for &(resource, amount, paid) in &site.cost {
             let slot = usize::try_from(resource)
                 .ok()
@@ -7582,9 +7672,51 @@ mod tests {
                 work_rate: 0.0,
                 hit_points: 550,
                 build_time: 25,
+                // a house's clearance, which BUILD's placement test reads
+                clearance: [1.0, 1.0],
                 ..Master::default()
             },
         ])
+    }
+
+    /// A flat map of terrain 0 that the first terrain restriction lets anything stand on, every
+    /// tile seen by every player: BUILD's placement test passes anywhere free.
+    fn placeable(t: &mut Turns) {
+        let (w, h) = (120, 120);
+        let n = (w * h) as usize;
+        t.spatial.map = [w, h];
+        let mut terrain = crate::terrain::Terrain::new(
+            w,
+            h,
+            vec![(0, 255, -1); n],
+            vec![
+                crate::terrain::TerrainKind {
+                    shown: true,
+                    flags: 0,
+                    forest: false,
+                };
+                1
+            ],
+            vec![vec![1.0]],
+        );
+        terrain.elevations = vec![0; n];
+        t.spatial.terrain = Some(terrain);
+        let players = t.players.len();
+        let seen = (0..players).fold(0u64, |b, p| b | (1 << p) | (1 << (32 + p)));
+        t.spatial.sight = Some(crate::visibility::Visibility::new(
+            w,
+            h,
+            (0..players)
+                .map(|_| crate::visibility::VisibleMap {
+                    counts: vec![0; n],
+                    explored: 0,
+                })
+                .collect(),
+            vec![seen; n],
+            Vec::new(),
+            0,
+            vec![false; players],
+        ));
     }
 
     #[test]
@@ -7628,6 +7760,7 @@ mod tests {
         );
         t.next_object_id = 10028;
         t.masters = vec![Masters::default(), builder_masters()];
+        placeable(&mut t);
         t.tick_with(
             50,
             &[Command::Build {
@@ -7685,7 +7818,10 @@ mod tests {
                 1,
                 vec![0, 0],
                 vec![
-                    Player::default(),
+                    Player {
+                        resources: [0.0, 100.0, 0.0, 0.0],
+                        ..Player::default()
+                    },
                     Player {
                         objects,
                         ..Player::default()
@@ -7693,6 +7829,8 @@ mod tests {
                 ],
             );
             t.next_object_id = 100;
+            t.masters = vec![builder_masters(), builder_masters()];
+            placeable(&mut t);
             t
         };
         let mut built = world(vec![live(2)]);
@@ -7702,7 +7840,7 @@ mod tests {
                 player: 0,
                 master: 70,
                 unit_ai: Ok(Some(17)),
-                position: [0.0; 3],
+                position: [10.0, 10.0, 0.0],
                 builders: vec![],
                 queued: false,
                 commits: false,
@@ -7718,13 +7856,12 @@ mod tests {
             (100, 0, 70)
         );
         assert_eq!(built.next_object_id, 101);
-        assert!(built.players[0].unsupported.is_some());
         // the same tick without the BUILD, with three AI draws taken by hand after the reseed
         let mut by_hand = world(vec![live(2)]);
         let mut streams = Streams::default();
         streams.seed_all(29910);
         let ai = streams.get(Stream::Ai);
-        let first = UnitAi::constructed(17, [0.0; 3], ai).unwrap();
+        let first = UnitAi::constructed(17, [10.0, 10.0, 0.0], ai).unwrap();
         assert_eq!(foundation.ai, Some(first));
         let next = 750 + ai.rand15() % 500;
         by_hand.tick(40);
