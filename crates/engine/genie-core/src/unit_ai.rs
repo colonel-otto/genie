@@ -2652,6 +2652,13 @@ impl UnitAi {
             self.order_priority = -1;
             return Ok(1);
         }
+        if o.order == BUILD_ORDER {
+            // case 0x2be: slot 0xf0 (`FUN_140c47d80`) with 1 builds on the target, and the tail
+            // makes the order the AI's with its priority (the caller runs both,
+            // [`crate::turn::Turns::build_order`])
+            fx.push(Effect::OrderOnTarget(*o));
+            return Ok(1);
+        }
         if o.order == ORDER_ON_TARGET {
             // case 0x2db: the unit's slot 0x128 on the target, then the tail keeps the order the
             // work gave the AI and takes the order's priority (the caller runs both); a patrol

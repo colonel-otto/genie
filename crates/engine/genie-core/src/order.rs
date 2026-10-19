@@ -499,6 +499,9 @@ impl Turns {
         idx: usize,
         order: crate::unit_ai::QueuedOrder,
     ) -> Result<(), Unsupported> {
+        if order.order == crate::unit_ai::BUILD_ORDER {
+            return self.build_order(player, idx, order);
+        }
         let (_, t) = self
             .object(order.target)
             .ok_or(Unsupported("a queued order on a target that is gone"))?;
