@@ -79,6 +79,9 @@ pub struct Construction {
     pub snow: bool,
     /// `+0x788`, `sprite_override_id`, is not −1.
     pub sprite_override: bool,
+    /// Its construction started in this update: its owner's watched list takes it
+    /// (`FUN_1411e5670`'s `FUN_141090430`, the caller's).
+    pub started: bool,
 }
 
 /// What a builder's work reaches of its foundation.
@@ -803,6 +806,7 @@ impl Construction {
             return Err(Unsupported("a construction start over another foundation"));
         }
         c.desolid = false;
+        c.started = true;
         c.progress = f32::from_bits(STARTED);
         if let Some(v) = world.sight.as_mut() {
             v.construction_started(id, placed.position, placed.radius);
@@ -907,6 +911,7 @@ mod tests {
             record: Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
+            started: false,
         };
         let mut site = Site {
             id: 10026,
@@ -955,6 +960,7 @@ mod tests {
             record: Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
+            started: false,
         };
         let mut pathing = Pathing::default();
         let mut site = Site {
@@ -1067,6 +1073,7 @@ mod tests {
             record: Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
+            started: false,
         };
         let site = Site {
             id: 10028,

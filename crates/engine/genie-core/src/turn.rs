@@ -498,6 +498,12 @@ struct Context<'a> {
     /// The objects the unit made (a ranged unit's missiles), which join the end of its owner's
     /// list after it and update later in the same tick.
     made: Vec<Unit>,
+    /// The objects whose master leaves ghosts that died in this update ([`crate::ghost`]), the
+    /// caller's.
+    ghost_deaths: Vec<i32>,
+    /// The buildings whose construction started in this update: their owner watches them
+    /// ([`Turns::watch_started`]), the caller's.
+    started: Vec<i32>,
     /// The world's reusable ids and pools.
     recycling: &'a mut Recycling,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
@@ -3331,6 +3337,13 @@ impl Unit {
         let after = self.life.state;
         if before <= 2 && 3 <= after {
             self.died(c)?;
+            // the static set_state's ghosts (FUN_14118e990), the caller's
+            if c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .is_some_and(|m| m.ghost_on_death == crate::ghost::LEAVES_GHOSTS)
+            {
+                c.ghost_deaths.push(self.id);
+            }
         }
         if after != before {
             if before <= 2 && 3 <= after {
@@ -3514,6 +3527,16 @@ impl Unit {
                 ai: self.ai.as_mut(),
             };
             let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
+            // a construction that started: its owner watches it (FUN_1411e5670), the caller's
+            if let Some(cons) = others
+                .iter_mut()
+                .find(|u| u.id == target)
+                .and_then(|u| u.construction.as_mut())
+                .filter(|cons| cons.started)
+            {
+                cons.started = false;
+                c.started.push(target);
+            }
             if let Some(built) = step.completed {
                 c.attribute_adds.extend(built.attributes);
                 c.techs_done.extend(built.tech);
@@ -4914,6 +4937,11 @@ pub struct Player {
     /// `+0x71c`, the offensive posture (0 or 1, GAME 0x14): not saved, a load sets 0; new soldiers
     /// read it (their unit AI's constructor, not modelled).
     pub posture: i32,
+    /// The objects whose ghosts the player's list follows (`+0x78`, [`crate::ghost`]): not
+    /// saved; the load builds it ([`Turns::build_watched`]).
+    pub watched: Vec<crate::ghost::Watched>,
+    /// The player's ghosts (its doppelganger list `+0x40`), in the list's order.
+    pub ghosts: Vec<crate::ghost::Ghost>,
 }
 
 impl Turns {
@@ -5198,6 +5226,8 @@ pub struct GameState {
     /// The pool of recycled missiles ([`Recycling::missiles`]), when the oracle dumped it: no
     /// save holds it.
     pub missile_pool: Option<Vec<(i32, bool)>>,
+    /// The world's pool of recycled ghosts, when the oracle dumped it.
+    pub ghost_pool: Option<Vec<i32>>,
 }
 
 impl Turns {
@@ -5240,6 +5270,9 @@ impl Turns {
         self.frame_seed = game.frame_seed;
         self.game_state = game.game_state;
         self.recycling.next_id = game.next_reusable_id;
+        if let Some(pool) = game.ghost_pool.as_ref() {
+            self.recycling.ghosts.clone_from(pool);
+        }
         if let Some(pool) = game.missile_pool.as_ref() {
             self.recycling.missiles.clone_from(pool);
         }
@@ -5491,6 +5524,8 @@ pub struct Recycling {
     /// The pool of type 60 (`world+0x1d8`): each missile's id and its flying flag (`+0x994`,
     /// which the object keeps), the last in last.
     pub missiles: Vec<(i32, bool)>,
+    /// The pool of type 25 (`world+0x1e0`): the ghosts' ids, the last in last.
+    pub ghosts: Vec<i32>,
 }
 
 /// The players' relations and the drop sites, as the task finder reads them.
@@ -5608,6 +5643,7 @@ impl Turns {
                             },
                             snow: false,
                             sprite_override: false,
+                            started: false,
                         }),
                     work_rate_powerup: 0.0,
                     attackable: true,
@@ -6593,6 +6629,8 @@ impl Turns {
                     releases: Vec::new(),
                     takes: Vec::new(),
                     made: Vec::new(),
+                    ghost_deaths: Vec::new(),
+                    started: Vec::new(),
                     recycling: &mut self.recycling,
                     mode_1: self.mode_680 == 1,
                     player: p,
@@ -6627,6 +6665,10 @@ impl Turns {
                 let pauses = std::mem::take(&mut c.pauses);
                 let releases = std::mem::take(&mut c.releases);
                 let (takes, made) = (std::mem::take(&mut c.takes), std::mem::take(&mut c.made));
+                let (ghost_deaths, started) = (
+                    std::mem::take(&mut c.ghost_deaths),
+                    std::mem::take(&mut c.started),
+                );
                 if let Some(e) = self.spatial.take_sight_unsupported() {
                     result = result.and(Err(e));
                 }
@@ -6646,6 +6688,22 @@ impl Turns {
                 // slot 0x5f0 on each unit the walk paused: its walked level's pause
                 for (id, pause) in pauses {
                     self.pause(id, pause);
+                }
+                // the ghosts of a death (FUN_14118e990, while the game state is not 2) and the
+                // watch of a started construction (FUN_1411e5670)
+                for id in ghost_deaths {
+                    if self.game_state != 2
+                        && let Err(e) = self.ghosts_at_death(p, id)
+                    {
+                        result = result.and(Err(e));
+                    }
+                }
+                for id in started {
+                    if let Some((owner, _)) = self.object(id)
+                        && let Err(e) = self.watch_started(owner, id)
+                    {
+                        result = result.and(Err(e));
+                    }
                 }
                 // a dead unit's paid cost leaves attributes 98 and 164, each at least 0
                 // (FUN_14121cc40: slots 0xf8, then 0xf0 with 0)
@@ -6722,6 +6780,8 @@ impl Turns {
                         if let Err(e) = self.spatial.leave(gone.id) {
                             let _ = player.unsupported.get_or_insert((self.ticks, i, e));
                         }
+                        // its owner's watched list lets it go (FUN_141091310 as it leaves)
+                        self.unwatch(p, gone.id);
                         // a recyclable master's missile goes to the pool of type 60
                         let recyclable = self
                             .masters
@@ -6801,6 +6861,21 @@ impl Turns {
         }
         self.spatial.grow_unknown(seconds(dt));
         let s1 = self.streams.get(Stream::World).rand15();
+        // every player's ghosts (FUN_141166550 on +0x40), then every player's watched list
+        // (FUN_1410905e0); the objects' visibility masks (FUN_14107d280 on +0x80, before the
+        // draw) are the registry's, kept as the objects update
+        for p in 0..self.players.len() {
+            if let Err(e) = self.update_ghosts(p) {
+                let tick = self.ticks;
+                self.players[p].stop(tick, e);
+            }
+        }
+        for p in 0..self.players.len() {
+            if let Err(e) = self.watch_pass(p) {
+                let tick = self.ticks;
+                self.players[p].stop(tick, e);
+            }
+        }
         self.streams.seed_all(s1);
         self.player_time[self.player_turn] = 0;
         self.player_turn = (self.player_turn + 1) % self.players.len();

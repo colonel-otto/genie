@@ -100,23 +100,27 @@ fn the_slice_follows_the_game_up_to_a_named_tick() {
         return eprintln!("the pinned lane is MarvinBlue/426048731's player 2; skipping");
     }
     let trace = TickTrace::decode(&std::fs::read(trace).unwrap()).unwrap();
-    let first = first_difference(&trace, &std::fs::read(rec).unwrap(), 2, &masters);
+    let recording = std::fs::read(rec).unwrap();
+    let first = first_difference(&trace, &recording, 2, &masters);
     eprintln!("first difference (tick, [(word, slice, game)]): {first:?}");
+    for player in [1, 0] {
+        assert_eq!(
+            first_difference(&trace, &recording, player, &masters),
+            None,
+            "player {player}"
+        );
+    }
     // the slice holds the whole block through player 1's BUILDs (ticks 135 and 281: their
     // foundations' unit-AI constructors draw three AI values each), player 2's three villager
     // QUEUEs (ticks 553, 586, 591: the cost from the save's master, the Town Centre's make action in
     // state 6) and player 2's own BUILD in tick 679 (the house's cost, its foundation, three
     // villagers turned builders through their task swap groups, Build actions in state 6 next to
-    // the foundation and 4 away from it), and on: with the shape mesh its load builds
+    // the foundation and 4 away from it), and on to the end: with the shape mesh its load builds
     // (`Turns::build_mesh`), the birds' Fly their default task starts at tick 1, the trophy's
-    // TRANSFORM_OBJECT and the empty annexes' death, the run from the header follows the game
-    // object by object, until row 1546, where word 9 adds a missile's id: the ghosts the game
-    // makes of a dying object of fog visibility 2 for the players who explored its tile but do
-    // not see it (FUN_14118e990) took reusable ids the slice does not take
-    let words: Option<Vec<usize>> = first
-        .as_ref()
-        .map(|(_, w)| w.iter().map(|&(w, ..)| w).collect());
-    assert_eq!((first.map(|(t, _)| t), words), (Some(1546), Some(vec![9])));
+    // TRANSFORM_OBJECT, the empty annexes' death and the fog's ghosts that share the missiles'
+    // reusable ids (`crate::ghost`), the run from the header follows the game at every tick of
+    // the recording, as it does for player 1 and Gaia (asserted above)
+    assert_eq!(first, None);
 }
 
 /// The same comparison for any recording and player, unpinned: `GENIE_TICK_PLAYER` names the

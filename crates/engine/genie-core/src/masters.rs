@@ -235,6 +235,10 @@ pub struct Master {
     /// `+0x605`, `fog_visibility`: an object of it the player only explored stays a target
     /// (the Attack's update).
     pub fog_visibility: u8,
+    /// `+0x682`, `create_doppelganger_on_death`: 2 leaves ghosts of an object of it for the
+    /// players who explored its tile but do not see it, at its death and once they lose sight
+    /// of it ([`crate::ghost`]).
+    pub ghost_on_death: u8,
     /// The placement terrains (`+0x5f2`..`+0x5f8`, the `.dat`'s `placement_side_terrain` and
     /// `placement_terrain`) name a terrain: a placement test checks the tiles for them.
     pub placement_terrains: bool,

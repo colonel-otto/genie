@@ -462,6 +462,7 @@ fn construction(
         },
         snow: b.snow_flag != 0,
         sprite_override: s.sprite_override_id != -1,
+        started: false,
     })
 }
 
@@ -1834,6 +1835,9 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 fealty: p.world_player().fealty as i16,
                 // the load sets it 0 (`FUN_14163e970`)
                 posture: 0,
+                // the load builds the watched lists (Turns::build_watched)
+                watched: Vec::new(),
+                ghosts: saved_ghosts(p),
             }
         })
         .collect();
@@ -1894,6 +1898,42 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         turns.build_mesh();
     }
     turns
+}
+
+/// A player's ghosts (its doppelganger list) as saved: each one's id, place, state, the original's
+/// id (`long_val`), owner (`doppled_player`) and UMV entry (`Multi_Unified_Points`), and the
+/// players who cannot see it (`CantSeeBits`). Its last bits (`+0x7e8`) and seen flag (`+0x7f7`)
+/// are not saved: a load starts them at 0; its original's link waits for the original's update
+/// (the slice links it by id).
+fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::ghost::Ghost> {
+    section
+        .objects()
+        .doppleganger_objects
+        .objects()
+        .filter_map(|o| {
+            let s = o.static_part()?;
+            let d = o
+                .rge_object
+                .as_deref()?
+                .rge_doppleganger_object
+                .as_deref()?;
+            let original = d.long_val as i32;
+            Some(genie_core::ghost::Ghost {
+                id: s.id,
+                original: (original != -1).then_some(original),
+                original_id: original,
+                original_master: (d.long_val_2 as i32 != -1).then_some(d.long_val_2 as i16),
+                original_owner: usize::try_from(d.doppled_player).unwrap_or(0),
+                position: [s.t_x, s.t_y, s.t_z],
+                tile: [s.t_x as i32, s.t_y as i32],
+                footprint: d.multi_unified_points,
+                bits: 0,
+                cant_see: d.cant_see_bits,
+                seen: false,
+                state: s.object_state,
+            })
+        })
+        .collect()
 }
 
 /// The garrisons of the running game: each object inside another of its player is in that one's
@@ -3189,12 +3229,16 @@ fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32;
             amount_held: unit.life.amount,
             position: unit.position,
             retarget_timer: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
-            // a producing building's action state is its make action's; its type stays -1
+            // a producing building's action state is its make action's while it has one; its
+            // type stays -1
             top_action: top_action(unit).or_else(|| {
-                unit.production.as_ref().map(|_| TopAction {
-                    kind: -1,
-                    state: genie_core::production::Production::MAKING,
-                })
+                unit.production
+                    .as_ref()
+                    .filter(|p| p.action)
+                    .map(|_| TopAction {
+                        kind: -1,
+                        state: genie_core::production::Production::MAKING,
+                    })
             }),
         })
         .collect();
@@ -3299,7 +3343,19 @@ fn header_slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     }
     // the hunted animals' origins are their places in this very save
     hunted_origins(&mut turns, header);
+    watch_at_load(&mut turns);
     turns
+}
+
+/// The ghosts' watched lists as the game's load builds them ([`Turns::build_watched`]), once the
+/// slice holds its registry; what it cannot build stops every player.
+fn watch_at_load(turns: &mut Turns) {
+    if let Err(e) = turns.build_watched() {
+        for p in &mut turns.players {
+            let _ = p.unsupported.get_or_insert((0, 0, e));
+            p.stopped = true;
+        }
+    }
 }
 
 /// The slice from the recording's header ([`header_slice`]) after its first `ticks` updates,
@@ -3919,6 +3975,27 @@ pub fn recycle_pools_from_dump(text: &str) -> Result<Vec<(i32, bool)>, Error> {
     Ok(missiles)
 }
 
+/// The world's pool of recycled ghosts (type 25) as the tick oracle dumps it
+/// (`state_dumps.recycle_pools_text`): their ids, the last to come back first in the slice's
+/// order ([`genie_core::turn::Recycling::ghosts`]).
+pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<i32>, Error> {
+    let mut ghosts = Vec::new();
+    let mut kind = None;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match words[..] {
+            ["pool", k, _] => kind = Some(k.parse::<i32>().map_err(|_| Error::BadPoolDump)?),
+            [id, _] if kind == Some(i32::from(genie_core::ghost::GHOST)) => {
+                ghosts.push(id.parse::<i32>().map_err(|_| Error::BadPoolDump)?);
+            }
+            [_, _] if kind.is_some() => {}
+            _ => return Err(Error::BadPoolDump),
+        }
+    }
+    ghosts.reverse();
+    Ok(ghosts)
+}
+
 /// The map tiles' object lists as the tick oracle dumps them (`state_dumps.tile_lists_text`):
 /// `x y id...` per tile of two objects or more, in the tile's order (an id signed, or its 32
 /// bits unsigned as the first dumps wrote a missile's).
@@ -4215,10 +4292,12 @@ pub fn forced_run(
     }
     if let Some(text) = dumps.pools {
         turns.recycling.missiles = recycle_pools_from_dump(text)?;
+        turns.recycling.ghosts = ghost_pool_from_dump(text)?;
     }
     if let Some(text) = dumps.inside {
         let _ = turns.force_garrisons(&inside_lists_from_dump(text)?);
     }
+    watch_at_load(&mut turns);
     let played = de::chapters(recording)?[0];
     let start_header = played.header()?;
     hunted_origins(&mut turns, &start_header);
@@ -4279,8 +4358,14 @@ pub fn forced_run(
                         report.differences.push((0, d));
                     }
                 }
-                let pool = dump_after(start + k + 1, "pools")
-                    .map(|text| recycle_pools_from_dump(&text))
+                let pools_text = dump_after(start + k + 1, "pools");
+                let pool = pools_text
+                    .as_deref()
+                    .map(recycle_pools_from_dump)
+                    .transpose()?;
+                let ghost_pool = pools_text
+                    .as_deref()
+                    .map(ghost_pool_from_dump)
                     .transpose()?;
                 if let Some(game_pool) = pool.as_ref()
                     && *game_pool != turns.recycling.missiles
@@ -4290,6 +4375,27 @@ pub fn forced_run(
                         format!(
                             "recycled missiles slice {:?}, the game {game_pool:?}",
                             turns.recycling.missiles
+                        ),
+                    ));
+                }
+                if let Some(game_pool) = ghost_pool.as_ref()
+                    && *game_pool != turns.recycling.ghosts
+                {
+                    report.differences.push((
+                        0,
+                        format!(
+                            "recycled ghosts slice {:?}, the game {game_pool:?}",
+                            turns.recycling.ghosts
+                        ),
+                    ));
+                }
+                // the world's next reusable id, which ghosts and missiles take
+                if turns.recycling.next_id != after.game.next_reusable_id {
+                    report.differences.push((
+                        0,
+                        format!(
+                            "next reusable id slice {} game {}",
+                            turns.recycling.next_id, after.game.next_reusable_id
                         ),
                     ));
                 }
@@ -4314,6 +4420,7 @@ pub fn forced_run(
                 } = after;
                 game.tile_lists = tiles;
                 game.missile_pool = pool;
+                game.ghost_pool = ghost_pool;
                 // what the slice got wrong takes the game's state too: each update's differences are
                 // its own, not an earlier update's carried on
                 game.resync = report
@@ -4575,10 +4682,12 @@ fn run_from_save(
     }
     if let Some(text) = dumps.pools {
         turns.recycling.missiles = recycle_pools_from_dump(text)?;
+        turns.recycling.ghosts = ghost_pool_from_dump(text)?;
     }
     if let Some(text) = dumps.inside {
         let _ = turns.force_garrisons(&inside_lists_from_dump(text)?);
     }
+    watch_at_load(&mut turns);
     let played = de::chapters(recording)?[0];
     hunted_origins(&mut turns, &played.header()?);
     let updates = start_tick + 1;

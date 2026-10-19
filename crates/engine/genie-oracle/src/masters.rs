@@ -158,6 +158,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         gather_group: unit.resource_gather_group,
         hill_mode: unit.hill_mode,
         fog_visibility: unit.fog_visibility,
+        ghost_on_death: unit.create_doppelganger_on_death,
         placement_terrains: unit
             .placement_side_terrain
             .iter()

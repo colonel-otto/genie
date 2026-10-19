@@ -1416,6 +1416,13 @@ impl Spatial {
         }
     }
 
+    /// A ghost leaves its tile's list (its last object takes its place).
+    pub fn remove_ghost(&mut self, id: i32, position: [f32; 3]) {
+        if let Some(i) = self.tiles.tile_of(position) {
+            self.tiles.take_off(i, id);
+        }
+    }
+
     /// The tiles' lists in the game's order (`x`, `y`, ids), each a tile of two objects or more
     /// (a single object's tile follows from the positions); the order is the game's history,
     /// which no save holds. Returns the tiles whose objects the slice does not hold as the game
