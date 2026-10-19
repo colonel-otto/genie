@@ -1481,7 +1481,9 @@ impl Turns {
             }
             return Ok(());
         };
-        if with != self.players[player].objects[idx].life.master_id {
+        // a new master's task is another than the one the unit's action holds
+        let same_master = with == self.players[player].objects[idx].life.master_id;
+        if !same_master {
             self.change_master(player, idx, with)?;
         }
         if !enabled(&self.players[player].attributes, task.enablement) {
@@ -1509,6 +1511,15 @@ impl Turns {
                         self.streams.get(Stream::Ai),
                     )?;
                 }
+                true
+            }
+            _ if top == Some(task.action_type) && task.action_type == crate::build::BUILD => {
+                if !same_master {
+                    return Err(Unsupported(
+                        "a work command on the Build task of the unit's former master",
+                    ));
+                }
+                self.retake_build(player, idx, target, point, clears)?;
                 true
             }
             _ if top == Some(task.action_type) && top != Some(HUNT) => {
@@ -1601,6 +1612,64 @@ impl Turns {
         self.clear_actions(player, idx)?;
         self.players[player].objects[idx].build =
             Some(crate::build::BuildAction::start(target, gap, build_task));
+        Ok(())
+    }
+
+    /// The work command's target for the Build the unit runs (`LAB_1410706a8`: its task is the
+    /// one found, slot 0x48 takes the target, [`crate::build::BuildAction::retake`]), then the
+    /// notify of the Build (slot 0x828: order 702, action 602, the target with its class). Only
+    /// the Build's own foundation again is modelled: another foundation (slot 0x68 lets the old
+    /// one go and takes the new) and another player's object (`set_state(11)`) are not.
+    fn retake_build(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        point: [f32; 3],
+        clears: bool,
+    ) -> Result<(), Unsupported> {
+        let (tp, t) = self
+            .object(target)
+            .ok_or(Unsupported("a Build's foundation the slice does not hold"))?;
+        if tp != player {
+            return Err(Unsupported(
+                "a Build retargeted to another player's object (set_state 11)",
+            ));
+        }
+        let tm = self.master_of(tp, t.life.master_id)?;
+        let (t_at, t_radius, class) = (t.position, tm.radius, i32::from(tm.class));
+        let unit = &self.players[player].objects[idx];
+        if unit.build.is_none_or(|b| b.target != target) {
+            return Err(Unsupported("a Build retargeted to another foundation"));
+        }
+        let builder = self.master_of(player, unit.life.master_id)?;
+        let gap = crate::movement::footprint_gap(unit.position, builder.radius, t_at, t_radius);
+        let computer = self.players[player].computer;
+        let Some(Place::Live(fp, fi)) = self.place(target) else {
+            return Err(Unsupported("a Build's foundation that sleeps"));
+        };
+        let (mut build, mut mover) = {
+            let unit = &mut self.players[player].objects[idx];
+            (unit.build.take(), unit.mover.take())
+        };
+        let site = self.players[fp].objects[fi].construction.as_mut();
+        let r = build
+            .as_mut()
+            .expect("found above")
+            .retake(gap, mover.as_mut(), site, computer);
+        let unit = &mut self.players[player].objects[idx];
+        (unit.build, unit.mover) = (build, mover);
+        r?;
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                crate::unit_ai::BUILD_ORDER,
+                crate::unit_ai::BUILD_ACTION,
+                Some((target, class)),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+        }
         Ok(())
     }
 

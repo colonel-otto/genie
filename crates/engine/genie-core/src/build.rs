@@ -287,9 +287,10 @@ impl BuildAction {
         let held = builder.held;
         let waits = builder.waits;
         let r = match (self.state, self.move_to) {
+            // set_state(6): the prelude's MoveTo teardown stops the unit (slot 0x5d0)
             (4, Some(MoveTo::Arrived)) => {
-                self.state = 6;
-                self.move_to = None;
+                self.leave(&mut walk, None)?;
+                self.state = WORK;
                 Ok(())
             }
             (4, Some(MoveTo::Start)) => {
@@ -451,6 +452,41 @@ impl BuildAction {
         ai.end_order_and_action()?;
         self.done(walk)?;
         Ok(Some(true))
+    }
+
+    /// Slot 0x48 (`FUN_140ab1b30`), the work command's target for the Build's own task, here its
+    /// own foundation again (slot 0x68 with the same target does nothing): working (state 6) it
+    /// stays, as does a computer player's builder walking to it (state 4); else `set_state(4)`:
+    /// it leaves the foundation's builders (`site`, its construction) and its `MoveTo` (the unit
+    /// stops, slot 0x5d0), and a new `MoveTo` to the foundation starts, arrived when the
+    /// footprints touch (`gap`).
+    ///
+    /// # Errors
+    ///
+    /// A builder counted among the builders of a foundation the caller does not hold.
+    pub fn retake(
+        &mut self,
+        gap: f32,
+        mover: Option<&mut crate::movement::Mover>,
+        site: Option<&mut Construction>,
+        computer: bool,
+    ) -> Result<(), Unsupported> {
+        if self.state == WORK || (self.state == MOVE && computer) {
+            return Ok(());
+        }
+        if self.added {
+            let c = site.ok_or(Unsupported(
+                "a builder retaking a foundation the slice does not hold",
+            ))?;
+            c.builders = c.builders.wrapping_sub(1);
+        }
+        if self.move_to.is_some()
+            && let Some(m) = mover
+        {
+            m.stop()?;
+        }
+        *self = Self::start(self.target, gap, self.task);
+        Ok(())
     }
 
     /// The search for more work found nothing (`0x140ab0f00`): slot 0x68 with none lets the
@@ -909,6 +945,43 @@ mod tests {
             unknown: None,
             obstruction: None,
         }
+    }
+
+    /// records/425906646's update 673: builders 27232 and 27234, at work on house 31011 (state
+    /// 7, counted among its builders), are told to build it again: each leaves the builders and
+    /// starts over (state 4, its `MoveTo` arrived beside the house); one at work (state 6) stays.
+    #[test]
+    fn a_builder_told_to_build_its_foundation_again_starts_over() {
+        let mut c = Construction {
+            progress: 3.0,
+            desolid: false,
+            builders: 2,
+            hit_points: 25,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let mut b = BuildAction {
+            state: PLACE,
+            move_to: None,
+            added: true,
+            ..BuildAction::start(31011, 0.0, TASK)
+        };
+        b.retake(0.0, None, Some(&mut c), false).unwrap();
+        assert_eq!(c.builders, 1);
+        assert_eq!(b, BuildAction::start(31011, 0.0, TASK));
+        assert_eq!(b.move_to, Some(MoveTo::Arrived));
+        let mut working = BuildAction {
+            state: WORK,
+            move_to: None,
+            ..BuildAction::start(31011, 0.0, TASK)
+        };
+        let before = working;
+        working.retake(0.0, None, Some(&mut c), false).unwrap();
+        assert_eq!(working, before);
+        assert_eq!(c.builders, 1);
     }
 
     /// MarvinBlue/426048731's house 10026 in update 1115 (player 1): the work that reaches 25 s
