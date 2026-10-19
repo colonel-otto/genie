@@ -374,10 +374,15 @@ impl Turns {
                 "an order to a unit the slice does not hold live",
             ));
         };
-        // the command looks its units up in the world's table without an owner test
-        // (`FUN_140e6b750`): another player's unit takes the order as its own player's; the
-        // queued order names the command's player as its issuer
-        let (issuer, player) = (player, p);
+        // the command's check (`FUN_140e55250`) drops another player's unit (its id -1) unless
+        // the game setting `+0x1074` (`FUN_1412ffe00`, not held) lets players order each
+        // other's units; the lookup itself has no owner test (`FUN_140e6b750`)
+        if p != player {
+            return Err(Unsupported(
+                "an order to another player's unit (the setting +0x1074)",
+            ));
+        }
+        let issuer = player;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0) {
@@ -1139,9 +1144,15 @@ impl Turns {
         let Place::Live(p, idx) = place else {
             return Err(Unsupported("a move of a unit the slice does not hold live"));
         };
-        // the command looks its units up without an owner test (`FUN_140e6b750`): another
-        // player's unit moves as its own player's; the queued order's issuer is the command's
-        let (issuer, player) = (player, p);
+        // the command's check (`FUN_140e553f0`) drops another player's unit (its id -1) unless
+        // the game setting `+0x1074` (`FUN_1412ffe00`, not held) lets players order each
+        // other's units
+        if p != player {
+            return Err(Unsupported(
+                "a move of another player's unit (the setting +0x1074)",
+            ));
+        }
+        let issuer = player;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || speed <= 0.0 {
