@@ -1097,7 +1097,9 @@ impl Turns {
     /// [`Turns::unit_cost_246`]) grow by its paid cost and a villager's (class 4) attribute 248 by
     /// one. Then attribute 81 lowers by its population, the building notifies its unit AI 506
     /// with 619, and the gather point's work comes (`FUN_140ace9c0`): `+0x7f9` (waiting to move)
-    /// set, the work command on the gather point's target at the point (slot 0x128 with 1).
+    /// set, the work command on the gather point's target at the point (slot 0x128 with 1). A
+    /// building without a gather point (`+0xc30` 0) spawns the unit idle, its spot facing nothing;
+    /// one whose unit AI holds a command queue (slot 0x218) is not modelled.
     ///
     /// Not held: its facet and angle, its sprite (the slice holds sprites from an attack on), its
     /// powerup offset, the building's `+0xc1c` group (unsaved), the game's events
@@ -1120,11 +1122,18 @@ impl Turns {
                 "a new object of a recyclable master (a negative id)",
             ));
         }
-        let gather = building.gather_point.ok_or(Unsupported(
-            "a spawn without a gather point (the unit AI's command queue location)",
-        ))?;
+        // the building unit AI's command queue (`+0x1f0`, saved as `savedOrder`): its first
+        // location takes the gather point's place
+        if building.ai.as_ref().is_some_and(|a| a.building_orders != 0) {
+            return Err(Unsupported(
+                "a spawn at a building with a command queue (its first location, slot 0x220)",
+            ));
+        }
+        let gather = building.gather_point;
         let position = building.position;
-        let toward = (gather.target != building.id).then_some([gather.point[0], gather.point[1]]);
+        let toward = gather
+            .filter(|g| g.target != building.id)
+            .map(|g| [g.point[0], g.point[1]]);
         let moving = made
             .moving
             .ok_or(Unsupported("a new unit of a master that does not move"))?;
@@ -1275,7 +1284,9 @@ impl Turns {
                 state,
             )?;
         }
-        self.gather(p, new, gather, building_id, true)?;
+        if let Some(gather) = gather {
+            self.gather(p, new, gather, building_id, true)?;
+        }
         // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)
         let now = self.players[p].objects[new].life.master_id;
         if self
