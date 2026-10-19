@@ -38,6 +38,7 @@
     clippy::missing_errors_doc
 )]
 
+pub mod census;
 pub mod masters;
 pub mod tick_trace;
 
