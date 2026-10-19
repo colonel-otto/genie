@@ -175,6 +175,8 @@ pub struct Master {
     /// The master has damage sprites (`+0x638`..`+0x640`): a master change checks them
     /// (`FUN_1411859a0`).
     pub damage_sprites: bool,
+    /// The `.dat`'s `fly_mode` (`+0x608`): 1 flies above the ground (a bird's Fly lifts it).
+    pub fly_mode: u8,
     /// What a hit on an object of this master reads (`FUN_141082530`): its armor classes (class,
     /// amount; `+0x808`, count `+0x802`), its base armor for a class it does not list (`+0x800`),
     /// `bonus_damage_resistance` (`+0x824`), `combat_ability` (`+0x840`), `damage_reflection`

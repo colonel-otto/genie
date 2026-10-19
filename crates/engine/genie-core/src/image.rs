@@ -106,6 +106,8 @@ pub mod fly {
     pub const DEGREE: f32 = f32::from_bits(0x3c8e_fa35);
     /// 1.0000000116860974e-07
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 9.0
+    pub const HEIGHT: f32 = f32::from_bits(0x4110_0000);
 }
 
 /// The values `crate::garrison`'s port reads.

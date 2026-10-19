@@ -58,7 +58,28 @@ pub struct Sky<'a> {
     pub action: &'a mut Well512,
 }
 
+/// The height a bird of fly mode 1 flies at once its Fly starts (`FUN_140a84900`).
+pub const HEIGHT: f32 = crate::image::fly::HEIGHT;
+
 impl Fly {
+    /// The Fly a bird's default task starts (constructor `FUN_140a845c0`, then its first, slot
+    /// 0x28 `FUN_140a84900` with 1, as the action list adds it): its home the bird's place
+    /// (`position`), then `set_state(3)` draws the flight's time from the Action stream. The
+    /// first's other parts are the caller's: a player's bird whose task has `+0x15` set goes to
+    /// state 1 first, and a master of fly mode 1 lifts the bird to [`HEIGHT`] (slot 0x58).
+    pub const fn start(task: Task, position: [f32; 3], action: &mut Well512) -> Self {
+        let mut fly = Self {
+            state: 0,
+            timer: 0.0,
+            move_to: None,
+            goal: None,
+            home: [position[0], position[1]],
+            task,
+        };
+        let _ = fly.set_state(CHOOSING, action);
+        fly
+    }
+
     /// `set_state` (`0x140a84a50`): 2 and 3 drop the `MoveTo` (its teardown stops the bird, the
     /// caller's: the returned flag); 2 gives the bird its master's sprite (slot 0x68, not held
     /// for a bird); 3 draws the flight's time, `r * 10 / 0x7fff + 5` seconds, from the Action

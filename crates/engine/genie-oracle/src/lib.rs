@@ -346,17 +346,27 @@ fn unit(
             &mut unit,
         )
     } else {
-        default_task(object, s, civ, masters).map(|artifact| unit.artifact = artifact)
+        // an object without actions in a save: its default task's action (an Artifact exists
+        // from the load on; a Fly starts in its first update)
+        default_task(object, s, objects, civ, masters).map(|d| match d {
+            Some(DefaultStart::Artifact(a)) => unit.artifact = Some(a),
+            Some(DefaultStart::Fly(task)) => unit.default_fly = Some(task),
+            None => {}
+        })
     };
-    // what the default task starts once the action list empties: nothing, the Artifact (whose
-    // restart the slice does not model) or something not modelled
-    unit.default_task = match default_task(object, s, civ, masters) {
-        Ok(None) => None,
-        Ok(Some(_)) => Some(Unsupported(
+    // what the default task starts once the action list empties: nothing, a Fly, the Artifact
+    // (whose restart the slice does not model) or something not modelled
+    unit.default_task = match default_task(object, s, objects, civ, masters) {
+        Ok(None | Some(DefaultStart::Fly(_))) => None,
+        Ok(Some(DefaultStart::Artifact(_))) => Some(Unsupported(
             "the default task's restart (the Artifact action)",
         )),
         Err(e) => Some(e),
     };
+    if saved {
+        // a saved object's Fly is its saved action's: none starts again (it never ends)
+        unit.default_fly = None;
+    }
     // a missile without its action (one that met its target, dying): the object's own fields, and
     // the flying flag the load constructor sets (`+0x994` 1, not saved)
     if unit.missile.is_none()
@@ -1396,16 +1406,26 @@ fn gather_point(object: &genie_save::Object) -> Option<genie_core::turn::GatherP
     })
 }
 
+/// A default task's action the slice models.
+enum DefaultStart {
+    /// The Artifact action (type 107, livestock's).
+    Artifact(genie_core::artifact::Artifact),
+    /// A bird's Fly (type 10) with its task.
+    Fly(genie_core::masters::Task),
+}
+
 /// What an object's first update starts of its master's default task (`RGE_Action_Object::update`,
 /// 0x14106ac90): only action objects (types 40 and up) have one. The default task is game data:
 /// the table's, from the `.dat`, or the object's own master's. The slice models the Artifact action
-/// (type 107, the default task of livestock); any other default task is reported.
+/// (type 107, the default task of livestock) and a bird's Fly (type 10); any other default task is
+/// reported.
 fn default_task(
     object: &genie_save::Object,
     s: &RgeStaticObject,
+    objects: &PlayerObjects,
     civ: u8,
     masters: Option<&MasterTable>,
-) -> Result<Option<genie_core::artifact::Artifact>, Unsupported> {
+) -> Result<Option<DefaultStart>, Unsupported> {
     if !is_action_object(object) {
         return Ok(None);
     }
@@ -1421,8 +1441,11 @@ fn default_task(
     };
     match action {
         DefaultAction::None => Ok(None),
-        DefaultAction::Type(ARTIFACT_TYPE) => {
-            Ok(Some(genie_core::artifact::Artifact::new(s.owner == 0)))
+        DefaultAction::Type(ARTIFACT_TYPE) => Ok(Some(DefaultStart::Artifact(
+            genie_core::artifact::Artifact::new(s.owner == 0),
+        ))),
+        DefaultAction::Type(genie_core::fly::FLY) => {
+            fly_task(objects, civ, masters, s.master_obj).map(|t| Some(DefaultStart::Fly(t)))
         }
         // the action list's factory (`FUN_140aca4b0`, then the RGE one `FUN_140a97e00`) makes
         // no action of the other types: the default task starts nothing (wild animals' Explore,
@@ -1809,6 +1832,8 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 allied_victory: p.world_player().base.allied_victory != 0,
                 victory: victory.get(i).map_or(0, |v| v.victory),
                 fealty: p.world_player().fealty as i16,
+                // the load sets it 0 (`FUN_14163e970`)
+                posture: 0,
             }
         })
         .collect();
@@ -2162,6 +2187,7 @@ fn work_masters(
             });
         }
         work.damage_sprites = !s.damage_sprite.is_empty();
+        work.fly_mode = table.fly_mode(civ, s.id()).unwrap_or(0);
         work.standing_sprite = s.idle_sprite_id;
         work.death_sprite = s.death_sprite_id;
         work.garrison = s.obj_max;
@@ -2762,6 +2788,14 @@ impl Decoder {
                     dropped: c.dropped != 0,
                 });
             }
+            // TRANSFORM_OBJECT: the object at +8 takes the master at +4
+            Packet::TransformObject(c) => {
+                return Some(Command::TransformObject {
+                    player: c.commp_id as usize,
+                    id: c.field_0x08 as i32,
+                    master: c.field_0x04 as i16,
+                });
+            }
             Packet::Gate(c) => {
                 return Some(Command::Gate {
                     player: c.commp_id as usize,
@@ -2831,6 +2865,12 @@ impl Decoder {
                 return Some(Command::AutoQueue {
                     player: usize::try_from(g.field_0x08).ok()?,
                     fishtrap: g.field_0x04 == 0x13,
+                });
+            }
+            // GAME's toggle of the offensive posture; the player is at +8
+            Packet::Game(g) if g.field_0x04 == 0x14 => {
+                return Some(Command::Posture {
+                    player: usize::try_from(g.field_0x08).ok()?,
                 });
             }
             other => {
@@ -3247,7 +3287,8 @@ pub fn blocks_per_tick(
 }
 
 /// The slice as the recording's header load leaves it: [`slice`] with the objects-in-sight
-/// registry empty, every object's mask 0, as the game's load makes it.
+/// registry empty, every object's mask 0, as the game's load makes it, and the hunted animals'
+/// unit AI fields their load made.
 fn header_slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     let mut turns = slice(header, masters);
     if let Some(sight) = turns.spatial.sight.as_mut() {
@@ -3256,6 +3297,8 @@ fn header_slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
             genie_core::registry::CLASSES,
         ));
     }
+    // the hunted animals' origins are their places in this very save
+    hunted_origins(&mut turns, header);
     turns
 }
 

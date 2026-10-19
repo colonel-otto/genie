@@ -147,6 +147,9 @@ fn splits_together(
 /// The class `FUN_140c89760` lets scout without the master's flag when a game setting allows it
 /// (raw `0x3a`).
 const AUTO_SCOUT_CLASS: i16 = 58;
+/// The trophy master `TRANSFORM_OBJECT` changes ("Trophy None") and the trophies it may take.
+const TROPHY: i16 = 1649;
+const TROPHIES: std::ops::RangeInclusive<i16> = 1650..=1653;
 
 impl Turns {
     pub(crate) fn place(&self, id: i32) -> Option<Place> {
@@ -2153,6 +2156,38 @@ impl Turns {
                     self.release(t, by)?;
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// `TRANSFORM_OBJECT` (`RGE_Command::do_command` case 0x29): the object `id`, the player's
+    /// (another player's is refused, the cheat flag `+0xb12` aside), of the trophy master
+    /// (1649) takes one of the trophies 1650 to 1653 the player has (`FUN_141659d20`): slot 0x90
+    /// with 0, the building's (`FUN_1411e6d90`): [`Turns::change_master`], then a built
+    /// building's build points (`+0xc50`) take the new master's build time.
+    pub(crate) fn transform_object(
+        &mut self,
+        player: usize,
+        id: i32,
+        master: i16,
+    ) -> Result<(), Unsupported> {
+        let Some(Place::Live(p, idx)) = self.place(id) else {
+            return Ok(());
+        };
+        if p != player || self.master_of(player, master).is_err() {
+            return Ok(());
+        }
+        let unit = &self.players[p].objects[idx];
+        if unit.life.master_id != TROPHY || !TROPHIES.contains(&master) {
+            return Ok(());
+        }
+        self.change_master(p, idx, master)?;
+        let build_time = self.master_of(p, master)?.build_time;
+        let unit = &mut self.players[p].objects[idx];
+        if unit.life.state == 2
+            && let Some(c) = unit.construction.as_mut()
+        {
+            c.progress = f32::from(build_time);
         }
         Ok(())
     }

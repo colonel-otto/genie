@@ -151,6 +151,9 @@ pub struct Unit {
     /// What its master's default task would start once its action list is empty, when the
     /// slice does not model it (None: nothing, as a wild animal's Explore).
     pub default_task: Option<Unsupported>,
+    /// The Fly task its master's default task starts once its action list is empty (a bird at
+    /// a game's start, before its first update).
+    pub default_fly: Option<crate::masters::Task>,
     /// The slice could not model one of its updates: it freezes (its place is known only within
     /// its speed since) while the rest of its player's objects go on.
     pub stopped: bool,
@@ -273,6 +276,12 @@ pub enum Command {
         /// The fish trap queue flips (0x13), else the farm queue (0x10).
         fishtrap: bool,
     },
+    /// GAME (0x67, `0x140e7c330`) sub-command 0x14 [`default_stance`]: the player's offensive
+    /// posture (`+0x71c`, `WorldPlayer` slot 0x14 `FUN_14163a630`) flips between 0 and 1.
+    Posture {
+        /// The player.
+        player: usize,
+    },
     /// GATE (0x72, `do_command` case 0x72): the player's building `id` toggles its gate lock
     /// ([`Turns::gate`]).
     Gate {
@@ -298,6 +307,16 @@ pub enum Command {
         unit_type: i32,
         /// `+0x18`.
         sound: bool,
+    },
+    /// `TRANSFORM_OBJECT` (0x29, `RGE_Command::do_command`'s case): the player's object `id`
+    /// takes the master `master` ([`Turns::transform_object`]).
+    TransformObject {
+        /// The player.
+        player: usize,
+        /// The object (`+8`).
+        id: i32,
+        /// The new master (`+4`).
+        master: i16,
     },
     /// RESIGN (0x0b, `FUN_140d25af0`): the comm player `player` resigns, or drops (`dropped`)
     /// ([`Turns::resign`]).
@@ -1937,6 +1956,40 @@ impl Unit {
         }
     }
 
+    /// The default task's Fly ([`crate::fly::Fly::start`]): a player's bird (its task's
+    /// `+0x15`, not held) is not modelled; a master of fly mode 1 lifts the bird to the fly
+    /// height (slot 0x58, the position setter: its tile stays, so do its counts).
+    fn start_fly(
+        &mut self,
+        c: &mut Context<'_>,
+        task: crate::masters::Task,
+    ) -> Result<(), Unsupported> {
+        if c.player != 0 {
+            return Err(Unsupported(
+                "a player's bird's default Fly (its task's +0x15)",
+            ));
+        }
+        let fly_mode = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .map(|m| m.fly_mode)
+            .ok_or(Unsupported("a bird of a master the slice does not have"))?;
+        self.fly = Some(Fly::start(
+            task,
+            self.position,
+            c.streams.get(Stream::Action),
+        ));
+        if fly_mode == 1 {
+            self.position[2] = crate::fly::HEIGHT;
+            c.spatial.set_position(self.id, self.position);
+            // the position setter marks the move (`+0x824`, `+0x870`)
+            if let Some(m) = self.mover.as_mut() {
+                m.mark_move(self.position, c.world_time);
+            }
+        }
+        Ok(())
+    }
+
     /// The death's `set_state(3)` of a combat object of type 70 (`TRIBE_Combat_Object`'s,
     /// `FUN_14121cc40`, then the base `FUN_14119d710`, whose storage and sight are the caller's)
     /// and the static update's dying sprite after it (slot 0x7a0, then slot 0x68,
@@ -1955,7 +2008,26 @@ impl Unit {
             }
             return Ok(());
         };
-        if master.kind != 70 {
+        if master.kind == 80 {
+            // the building's set_state (FUN_1411dbb70) from state 2: an annex's death is the
+            // combat object's below; any other building's (its pasture's workers, its storage
+            // of kinds 4 and 0x10, its tiles' links, its units inside, the last of its master's
+            // technology) is not modelled
+            if self.annex_of.is_none() {
+                return Err(Unsupported("a dying building other than an annex"));
+            }
+            if !self.garrison.is_empty()
+                || master
+                    .storage
+                    .iter()
+                    .any(|&(kind, _, flag)| 0 <= kind && matches!(flag, 4 | 0x10))
+                || self.life.attribute_type == 4
+            {
+                return Err(Unsupported(
+                    "a dying annex with units inside or a storage of kind 4 or 0x10",
+                ));
+            }
+        } else if master.kind != 70 {
             // a static object's dying sprite is the lifecycle's ([`Lifecycle::die`])
             if self.life.class == Class::Animated && self.life.dying_sprite.is_some() {
                 return Err(Unsupported(
@@ -1970,6 +2042,8 @@ impl Unit {
         if matches!(master.class, 1 | 13 | 43) {
             return Err(Unsupported("a dying unit of class 1, 13 or 43"));
         }
+        // its hit points go to 0 (`+0x278`)
+        self.life.hp = 0.0;
         c.pathing.removed(self.id);
         c.spatial.drop_record(self.id);
         c.spatial.set_tall(self.id, false);
@@ -3351,7 +3425,16 @@ impl Unit {
             }
         }
         // RGE_Action_Object::update with no action in state 2 starts the master's default task
-        // (slot 0x7f0)
+        // (slot 0x7f0): a bird's Fly, whose first update comes in the next tick
+        let mut flies_from_now = false;
+        if self.life.state == 2
+            && self.top_action_kind().is_none()
+            && self.production.is_none()
+            && let Some(task) = self.default_fly
+        {
+            self.start_fly(c, task)?;
+            flies_from_now = true;
+        }
         if self.life.state == 2
             && self.top_action_kind().is_none()
             && self.production.is_none()
@@ -3542,7 +3625,7 @@ impl Unit {
                 _ => {}
             }
         }
-        if let Some(fly) = self.fly.as_mut() {
+        if let Some(fly) = self.fly.as_mut().filter(|_| !flies_from_now) {
             let mover = self
                 .mover
                 .as_mut()
@@ -4828,6 +4911,9 @@ pub struct Player {
     /// `fealty` (`+0x12f8`, saved): the player a defeated player's resources and units would go
     /// to.
     pub fealty: i16,
+    /// `+0x71c`, the offensive posture (0 or 1, GAME 0x14): not saved, a load sets 0; new soldiers
+    /// read it (their unit AI's constructor, not modelled).
+    pub posture: i32,
 }
 
 impl Turns {
@@ -5553,6 +5639,7 @@ impl Turns {
                     workers: 0,
                     combat: true,
                     default_task: None,
+                    default_fly: None,
                     stopped: false,
                     sprite: None,
                     anim_speed: None,
@@ -5626,6 +5713,10 @@ impl Turns {
                     owner.auto_farm_queue = !owner.auto_farm_queue;
                 }
             }
+            Command::Posture { player } => {
+                let owner = &mut self.players[player];
+                owner.posture = i32::from(owner.posture == 0);
+            }
             Command::Gate { player, id } => {
                 if let Err(e) = self.gate(player, id) {
                     let owner = &mut self.players[player];
@@ -5663,6 +5754,12 @@ impl Turns {
                     self.unit_order(player, ids, action)
                 };
                 if let Err(e) = result {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
+                }
+            }
+            Command::TransformObject { player, id, master } => {
+                if let Err(e) = self.transform_object(player, id, master) {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }
