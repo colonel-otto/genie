@@ -1896,7 +1896,9 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
             .flat_map(|m| m.tasks.iter().map(|t| t.work_range).chain([m.weapon_range]))
             .fold(0.0, f32::max);
         garrison_firepower(&mut turns);
-        // the shape mesh as the game's load builds it (a dump of the game's replaces it)
+        // the planners the load makes and the shape mesh it builds (a dump of the game's mesh
+        // replaces it)
+        turns.register_planners();
         turns.build_mesh();
     }
     // the players' vision masks, which the world's load rebuilds (its slot 0x78)

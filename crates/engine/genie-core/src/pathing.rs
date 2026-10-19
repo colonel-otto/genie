@@ -27,6 +27,9 @@ pub struct Pathing {
     /// The game type (the world's `game_type`): type 12 has the escape the motion step runs for
     /// a unit on an `E` tile (`FUN_141158210` result 1), which the slice does not model.
     pub game_type: u8,
+    /// The restrictions the world's load gave planners (`FUN_140f7d310`, [`Pathing::register`]),
+    /// in their order; None builds one for any restriction (a world made without a load).
+    planned: Option<Vec<usize>>,
     planners: BTreeMap<usize, Planner>,
     /// Tile rectangles (x0, y0, x1, y1) whose static marks changed since the planners last saw
     /// them.
@@ -120,9 +123,20 @@ impl Pathing {
         self.shapes.get(&id).copied()
     }
 
-    /// The planner of a terrain restriction (`FUN_140f7cb30` -> `FUN_140f7ca70`), built from the
-    /// map on first use (`FUN_140f74f90`); the planners built before see the tiles' changes first.
-    /// None for a restriction the data has not got.
+    /// The world's load gives restriction `restriction` a planner (`FUN_140f7d310`), unless one
+    /// with the same values has one.
+    pub fn register(&mut self, restriction: usize) {
+        let planned = self.planned.get_or_insert_with(Vec::new);
+        let values = self.restrictions.get(restriction);
+        if values.is_some() && !planned.iter().any(|&r| self.restrictions.get(r) == values) {
+            planned.push(restriction);
+        }
+    }
+
+    /// The planner of a terrain restriction (`FUN_140f7cb30` -> `FUN_140f7ca70`): the first of
+    /// the load's planners whose restriction has the same values, else none (the slice builds it
+    /// from the map on first use, `FUN_140f74f90`); the planners built before see the tiles'
+    /// changes first. None for a restriction the data has not got.
     pub fn planner(&mut self, restriction: usize, tiles: &Tiles) -> Option<&mut Planner> {
         let blocked = |x: i32, y: i32| tiles.word(x, y).is_some_and(|w| w & BLOCKED != 0);
         for rect in self.pending.drain(..) {
@@ -130,12 +144,20 @@ impl Pathing {
                 p.update(rect, &blocked);
             }
         }
-        if !self.planners.contains_key(&restriction) {
-            let passable = self.restrictions.get(restriction)?.clone();
+        let values = self.restrictions.get(restriction)?;
+        let key = match self.planned.as_ref() {
+            None => restriction,
+            Some(planned) => planned
+                .iter()
+                .copied()
+                .find(|&r| self.restrictions.get(r) == Some(values))?,
+        };
+        if !self.planners.contains_key(&key) {
+            let passable = self.restrictions.get(key)?.clone();
             let planner = Planner::new(self.size, self.terrain.clone(), passable, &blocked);
-            let _ = self.planners.insert(restriction, planner);
+            let _ = self.planners.insert(key, planner);
         }
-        self.planners.get_mut(&restriction)
+        self.planners.get_mut(&key)
     }
 
     /// Static marks changed over these tile rectangles.

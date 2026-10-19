@@ -412,6 +412,9 @@ pub(crate) const RESEARCH_ACTION: i32 = 0x26c;
 const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
 /// The building master type RESEARCH asks for (`'P'`, 80).
 const BUILDING_KIND: u8 = 80;
+/// The masters whose restrictions the world's load gives planners (`World::load_world`'s two
+/// calls of `FUN_140f7d310`: Gaia's entries `+0x298` and `+0x10b8`).
+const PLANNED_MASTERS: [i16; 2] = [83, 535];
 
 /// QUEUE's unit and building (the fields of [`Command::Queue`] but the cost).
 struct QueueAt {
@@ -6908,6 +6911,22 @@ impl Turns {
             });
         }
         Ok(())
+    }
+
+    /// `World::load_world`'s planners (`FUN_140f7d310`): the restrictions of Gaia's masters 83
+    /// (the villager's) and 535 (the galley's), each unless one of the same values has one; any
+    /// other restriction finds none (its units walk without the tile pathfinder).
+    pub fn register_planners(&mut self) {
+        for master in PLANNED_MASTERS {
+            if let Some(r) = self
+                .masters
+                .first()
+                .and_then(|m| m.get(master))
+                .and_then(|m| usize::try_from(m.terrain_restriction).ok())
+            {
+                self.pathing.register(r);
+            }
+        }
     }
 
     /// The shape mesh the game's load builds, which no save holds: an empty mesh of the map's
