@@ -3609,6 +3609,21 @@ impl Unit {
                 .iter()
                 .find(|u| u.id == target)
                 .map(|u| u.life.master_id);
+            // the foundations its unit AI's queued build orders name, as they stand
+            let build_targets: Vec<(i32, Option<u8>)> =
+                self.ai.as_ref().map_or_else(Vec::new, |ai| {
+                    ai.orders
+                        .iter()
+                        .filter(|o| o.order == BUILD_ORDER)
+                        .map(|o| {
+                            let state = others
+                                .iter()
+                                .find(|u| u.id == o.target)
+                                .map(|u| u.life.state);
+                            (o.target, state)
+                        })
+                        .collect()
+                });
             let site = others.iter_mut().find(|u| u.id == target).and_then(|u| {
                 let master = masters.and_then(|m| m.get(u.life.master_id));
                 Some(Site {
@@ -3632,6 +3647,7 @@ impl Unit {
                 held: self.life.amount,
                 ai: self.ai.as_mut(),
                 waits: &mut self.footprint_waits,
+                build_targets: &build_targets,
             };
             let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
             if !step.occupants.is_empty() {

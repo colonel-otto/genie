@@ -146,6 +146,9 @@ pub struct Builder<'a> {
     pub ai: Option<&'a mut UnitAi>,
     /// `+0x889`: the builder's waits for an occupied footprint (not saved, 0 at a load).
     pub waits: &'a mut u8,
+    /// The state of each foundation its unit AI's queued build orders name (None for one that
+    /// is gone), as the update starts.
+    pub build_targets: &'a [(i32, Option<u8>)],
 }
 
 /// What a Build action's update leaves to its unit and player.
@@ -425,11 +428,23 @@ impl BuildAction {
         let ai = builder
             .ai
             .ok_or(Unsupported("a builder without a unit AI after its work"))?;
-        if ai.orders.iter().any(|o| o.order == BUILD_ORDER) {
-            return Err(Unsupported(
-                "a builder's queued build orders (FUN_140c5dcd0)",
-            ));
-        }
+        // FUN_140c5dcd0: a build order whose foundation is gone or no longer in state 0 leaves
+        // the queue (the building just completed is in state 2 now)
+        let built = site.map(|s| (s.id, s.life.state));
+        ai.orders.retain(|o| {
+            if o.order != BUILD_ORDER {
+                return true;
+            }
+            let state = match built {
+                Some((id, state)) if id == o.target => Some(state),
+                _ => builder
+                    .build_targets
+                    .iter()
+                    .find(|&&(id, _)| id == o.target)
+                    .and_then(|&(_, s)| s),
+            };
+            state == Some(0)
+        });
         if ai.orders.is_empty() {
             return Ok(Some(false));
         }
@@ -1160,6 +1175,7 @@ mod tests {
                     held: 0.0,
                     ai: None,
                     waits: &mut 0,
+                    build_targets: &[],
                 },
             )
             .unwrap();
@@ -1196,6 +1212,7 @@ mod tests {
             held: 0.0,
             ai: None,
             waits: waits.next().expect("a wait count per update"),
+            build_targets: &[],
         };
         world.insert(10028, house());
         let _ = near.update(walk(1, &mut world), None, builder()).unwrap();
