@@ -91,6 +91,10 @@ const DEFEND_LEASH: f32 = crate::image::unit_ai::DEFEND_LEASH;
 const BREAK: u32 = 3;
 /// "I'm dead, purging notifyQueue and returning FALSE."
 const DEAD: u32 = 4;
+/// "`ProcessIdle` produced an action."
+const PRODUCED: u32 = 0xd;
+/// The boar's unit-AI type (`TribePreditorUnitAIModule`).
+const BOAR_AI: u32 = 4;
 
 /// The notify queue's capacity of a unit AI of `ai_type` holding `count` notifies: the
 /// factory's (`FUN_141215560`: 5 for the artifact's and the livestock's, types 14 and 19; 10
@@ -635,7 +639,9 @@ pub struct Home {
     pub origin: [f32; 3],
     /// `+0x1fc`, `furious`: it does not wander.
     pub furious: bool,
-    /// `+0x1fd`: its next idle check sends it home. Not saved; a loaded boar starts without it.
+    /// `+0x1fd`: its next idle check sends it home; its slot 0x1f0 (`FUN_140c16d50`) sets it
+    /// after a failed Attack ([`crate::attack::Attack::update`]). Not saved; a loaded boar
+    /// starts without it.
     pub go_home: bool,
 }
 
@@ -1141,15 +1147,27 @@ impl UnitAi {
         Some(m)
     }
 
+    /// `FUN_140c41e50`: the unit's last human order time drops to `FUN_140fe0d10`'s 5000, not on
+    /// orders 701, 711, 712 and 733.
+    fn cap_human_order(&self, fx: &mut Vec<Effect>) {
+        if !matches!(self.current_order, 0x2bd | 0x2c7 | 0x2c8 | 0x2dd) {
+            fx.push(Effect::CapHumanOrder(HUMAN_ORDER_CAP));
+        }
+    }
+
     /// The boar's idle check (slot 72, `FUN_140c1e630`): a furious boar, or any in mode 1, stays.
     /// Then one draw of `0..81` widens its leash: outside it, a boar not yet heading home goes
     /// home; inside, once in 7 checks (a second draw) it goes home from more than 2 tiles away, or
     /// wanders up to 3 tiles (two more draws). Its moves keep its height. `FUN_140c41e50`, first,
     /// lowers the unit's last human order time to 5000 (`FUN_140fe0d10`); the slice does not hold it.
-    fn boar_idle(&mut self, at: &Surroundings, ai: &mut Well512) -> Option<AiMove> {
-        let home = self.home?;
+    /// True when it produced an action (6, not 5): every way but staying and the 6 in 7 checks
+    /// inside the leash that do nothing, including the one heading home already.
+    fn boar_idle(&mut self, at: &Surroundings, ai: &mut Well512) -> (bool, Option<AiMove>) {
+        let Some(home) = self.home else {
+            return (false, None);
+        };
         if home.furious || at.mode_1 {
-            return None;
+            return (false, None);
         }
         let [x, y, z] = at.position;
         let dx = x - home.origin[0];
@@ -1167,28 +1185,31 @@ impl UnitAi {
             if let Some(h) = self.home.as_mut() {
                 h.go_home = false;
             }
-            return m;
+            return (true, m);
         }
         // comiss; jbe: unordered counts as inside
         if d2.partial_cmp(&leash) != Some(std::cmp::Ordering::Greater) {
             if !ai.rand15().is_multiple_of(BOAR_WANDER) {
-                return None;
+                return (false, None);
             }
             if d2 > BOAR_HOME {
-                return self.move_to(go_home);
+                return (true, self.move_to(go_home));
             }
             let step = |ai: &mut Well512| (ai.rand15() % BOAR_STEP) as i32 - BOAR_OFFSET;
             let nx = step(ai) as f32 + x;
             let ny = step(ai) as f32 + y;
-            return self.move_to(AiMove {
-                point: [nx, ny, z],
-                ..go_home
-            });
+            return (
+                true,
+                self.move_to(AiMove {
+                    point: [nx, ny, z],
+                    ..go_home
+                }),
+            );
         }
         if self.target_point[0] == home.origin[0] || self.target_point[1] == home.origin[1] {
-            return None;
+            return (true, None);
         }
-        self.move_to(go_home)
+        (true, self.move_to(go_home))
     }
 
     /// The hunted animal's idle check (slot 72, `FUN_140c1eea0`). `FUN_140c41e50`, first, lowers
@@ -1363,11 +1384,13 @@ impl UnitAi {
                 workers: -1,
             },
         };
+        // each search that queries sets the alert mode (`FUN_140c63e20`)
         let mut found = side.closest(&search(4))?;
+        self.alert(found, at.dt_seconds);
         if found.id < 0 {
             found = side.closest(&search(-1))?;
+            self.alert(found, at.dt_seconds);
         }
-        self.alert(found, at.dt_seconds);
         if found.id != -1 {
             return Err(Unsupported(
                 "a lion attacking an object it sees (slot 0xb8)",
@@ -1391,10 +1414,8 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
-        if matches!(self.ai_type, 2 | 4 | 5 | 8 | 11 | 13 | 15)
-            && !matches!(self.current_order, 0x2bd | 0x2c7 | 0x2c8 | 0x2dd)
-        {
-            fx.push(Effect::CapHumanOrder(HUMAN_ORDER_CAP));
+        if matches!(self.ai_type, 2 | 4 | 5 | 8 | 11 | 13 | 15) {
+            self.cap_human_order(fx);
         }
         match self.ai_type {
             13 => return self.soldier_idle(at, computer, side),
@@ -1403,7 +1424,7 @@ impl UnitAi {
         }
         let moved = match self.ai_type {
             2 => self.hunted_idle(at, ai, side)?,
-            4 => self.boar_idle(at, ai),
+            BOAR_AI => self.boar_idle(at, ai).1,
             5 => self.lion_idle(at, ai, side)?,
             _ => None,
         };
@@ -1860,7 +1881,7 @@ impl UnitAi {
                     self.end_notifies(dt, at, fx)?;
                     return Ok(DEAD);
                 }
-                if result == BREAK || result == 0xd {
+                if result == BREAK || result == PRODUCED {
                     break;
                 }
                 i += 1;
@@ -2201,7 +2222,7 @@ impl UnitAi {
             2 => match n.kind {
                 DAMAGED => Err(Unsupported("a hunted animal's damage notify (its evade)")),
                 0x20f => Ok(GO_ON),
-                _ => self.base_notify(n, time, at, ai_rng, side, fx),
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the boar (FUN_140c25770): its damage notify attacks
             4 => match n.kind {
@@ -2210,13 +2231,13 @@ impl UnitAi {
                     Err(Unsupported("a boar's completion of action 0x2bf"))
                 }
                 0x20f => Ok(GO_ON),
-                _ => self.base_notify(n, time, at, ai_rng, side, fx),
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the lion (FUN_140c266f0)
             5 => match n.kind {
                 ACTION_COMPLETED if n.p[0] == 600 => Err(Unsupported("a lion's completed attack")),
                 0x1fc => Err(Unsupported("a lion's moved target")),
-                _ => self.base_notify(n, time, at, ai_rng, side, fx),
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the villager (FUN_140c22bf0; the notifies it has no case for go to the base handler):
             // a completion or failure of its action stops it, and slot 0x48
@@ -2248,7 +2269,7 @@ impl UnitAi {
                 ACTION_EXECUTED if computer => {
                     Err(Unsupported("a computer villager's executed action"))
                 }
-                ACTION_EXECUTED => self.base_notify(n, time, at, ai_rng, side, fx),
+                ACTION_EXECUTED => self.base_notify(n, time, at, computer, ai_rng, side, fx),
                 DAMAGED => self.villager_damaged(n, time, at, computer, side, fx),
                 // its own cases the slice does not model; any other is the base handler's
                 ACTION_INVALIDATED
@@ -2258,7 +2279,7 @@ impl UnitAi {
                 | 0x217..=0x21a
                 | 0x21c
                 | 0x21d => Err(Unsupported("a villager's notify the slice does not model")),
-                _ => self.base_notify(n, time, at, ai_rng, side, fx),
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the soldier (FUN_140c28bb0): its own cases are the computer's, a backing-up and a
             // healer's search
@@ -2270,7 +2291,7 @@ impl UnitAi {
                 0x202 if self.current_action == 0x25b => {
                     Err(Unsupported("a healer's search notify"))
                 }
-                _ => self.base_notify(n, time, at, ai_rng, side, fx),
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the tower (FUN_140c299f0)
             15 => match n.kind {
@@ -2286,12 +2307,12 @@ impl UnitAi {
                     }
                     Ok(GO_ON)
                 }
-                _ => self.base_notify(n, time, at, ai_rng, side, fx),
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the building (FUN_140c22610): most notifies end there
             17 => match n.kind {
                 DAMAGED | 600 | NO_LONGER_ON_ME => Err(Unsupported("a building's attack notify")),
-                0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, ai_rng, side, fx),
+                0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, computer, ai_rng, side, fx),
                 _ => Ok(GO_ON),
             },
             // livestock (FUN_140c26ac0): any notify but 0x202 and 0x216 drops the action value
@@ -2319,13 +2340,14 @@ impl UnitAi {
         n: Notify,
         time: u32,
         at: &Surroundings,
+        computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         match n.kind {
             ACTION_COMPLETED => self.action_completed(n, at, fx),
-            ACTION_FAILED => self.action_failed(n, at, fx),
+            ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, fx),
             ACTION_INVALIDATED => self.action_invalidated(n, at, fx),
             crate::explore::WANTS_POINT if self.explorer() => {
                 self.seek_unexplored(at, ai_rng, side, fx)
@@ -2464,8 +2486,10 @@ impl UnitAi {
 
     /// The base handler's case `0x1f9` ("Action %d has failed.", `FUN_140c589c0`): with an order
     /// the state position takes the unit's place first; on the scout order (`0x2da`) the
-    /// player's slot 0x2e8 with `0x211` is not modelled, nor is a failed attack (600) on the
-    /// attack order (700) or with the attack action current (processIdle, slot 0x240). Without an
+    /// player's slot 0x2e8 with `0x211` is not modelled. A failed attack (600) on the attack order
+    /// (700) or with the attack action current runs processIdle (slot 0x240 with 0; the boar's
+    /// only, [`UnitAi::boar_idle`]): an action it produced breaks off (0xd), none makes a human
+    /// player's unit forget its target and stop (slot 0xb0 with 1). Without an
     /// order, the failure of the current action forgets the target (`FUN_140c5e1e0`) and stops
     /// it (slot 0xb0 with 1; slot 0x48 hands the notify to the owner, not held); with one, so
     /// does the failure of the order's own action (action + 100 = order); on order `0x2d4` a
@@ -2476,6 +2500,8 @@ impl UnitAi {
         &mut self,
         n: Notify,
         at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
@@ -2488,9 +2514,25 @@ impl UnitAi {
             }
         }
         if p0 == 600 && (order == 700 || action == 600) {
-            return Err(Unsupported(
-                "a failed attack on the attack order or action (processIdle, slot 0x240)",
-            ));
+            if self.ai_type != BOAR_AI {
+                return Err(Unsupported(
+                    "a failed attack on the attack order or action (processIdle, slot 0x240)",
+                ));
+            }
+            self.cap_human_order(fx);
+            let (produced, moved) = self.boar_idle(at, ai);
+            fx.extend(moved.map(Effect::Move));
+            if produced {
+                return Ok(PRODUCED);
+            }
+            if computer {
+                return Err(Unsupported(
+                    "a computer player's failed attack without a new action",
+                ));
+            }
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
         }
         let own = if order == -1 {
             action == p0
@@ -3511,6 +3553,7 @@ mod tests {
             released(10049),
             0,
             &Surroundings::default(),
+            false,
             &mut rng(),
             &mut Recorder::default(),
             &mut Vec::new(),
@@ -4434,7 +4477,8 @@ mod tests {
         let mut fx = Vec::new();
         let n = Notify::own(9183, ACTION_FAILED, [MOVE_ACTION, 0, 0]);
         assert_eq!(
-            u.action_failed(n, &at([10.0, 10.0, 0.0]), &mut fx).unwrap(),
+            u.action_failed(n, &at([10.0, 10.0, 0.0]), false, &mut rng(), &mut fx)
+                .unwrap(),
             GO_ON
         );
         assert_eq!((u.current_action, u.last_action), (-1, MOVE_ACTION));
@@ -4446,16 +4490,21 @@ mod tests {
             ..UnitAi::default()
         };
         let mut fx = Vec::new();
-        let _ = u.action_failed(n, &at([10.0, 12.0, 0.0]), &mut fx).unwrap();
+        let _ = u
+            .action_failed(n, &at([10.0, 12.0, 0.0]), false, &mut rng(), &mut fx)
+            .unwrap();
         assert_eq!((u.current_order, u.current_action), (-1, -1));
         assert_eq!(u.state_position, [10.0, 12.0]);
-        // another action's failure goes on; a failed attack on the attack order is not modelled
+        // another action's failure goes on; a failed attack on the attack order of a unit AI
+        // but a boar's is not modelled
         let mut u = UnitAi {
             current_order: -1,
             current_action: 0x25a,
             ..UnitAi::default()
         };
-        let _ = u.action_failed(n, &at([10.0, 12.0, 0.0]), &mut fx).unwrap();
+        let _ = u
+            .action_failed(n, &at([10.0, 12.0, 0.0]), false, &mut rng(), &mut fx)
+            .unwrap();
         assert_eq!(u.current_action, 0x25a);
         let mut u = UnitAi {
             current_order: 700,
@@ -4463,9 +4512,43 @@ mod tests {
         };
         let attack = Notify::own(9183, ACTION_FAILED, [600, 0, 0]);
         assert!(
-            u.action_failed(attack, &at([10.0, 12.0, 0.0]), &mut fx)
+            u.action_failed(attack, &at([10.0, 12.0, 0.0]), false, &mut rng(), &mut fx)
                 .is_err()
         );
+    }
+
+    /// records/425906646's wolf 29827 (Gaia, a boar's unit AI) in update 3891: its Attack's target
+    /// went out of sight, which sent it home (`+0x1fd`); the failure's processIdle (slot 0x240)
+    /// walks it there and breaks off. A boar that stays forgets its target and stops.
+    #[test]
+    fn a_boar_s_failed_attack_runs_its_idle_check() {
+        let home = |go_home, furious| Home {
+            origin: [171.5, 51.5, 0.0],
+            furious,
+            go_home,
+        };
+        let boar = |h| UnitAi {
+            ai_type: BOAR_AI,
+            current_order: -1,
+            current_action: 600,
+            current_target: 31110,
+            home: Some(h),
+            ..UnitAi::default()
+        };
+        let attack = Notify::own(29827, ACTION_FAILED, [600, 0, 0]);
+        let mut u = boar(home(true, false));
+        let mut fx = Vec::new();
+        let r = u.action_failed(attack, &at([169.5, 50.6, 0.0]), false, &mut rng(), &mut fx);
+        assert_eq!(r, Ok(PRODUCED));
+        assert_eq!(first_move(&fx).map(|m| m.point), Some([171.5, 51.5, 0.0]));
+        assert_eq!((u.current_action, u.last_action), (MOVE_ACTION, 600));
+        assert!(u.home.is_some_and(|h| !h.go_home));
+        let mut u = boar(home(false, true));
+        let mut fx = Vec::new();
+        let r = u.action_failed(attack, &at([169.5, 50.6, 0.0]), false, &mut rng(), &mut fx);
+        assert_eq!(r, Ok(GO_ON));
+        assert_eq!((u.current_target, u.last_target), (-1, 31110));
+        assert!(first_move(&fx).is_none());
     }
 
     #[test]
@@ -4785,12 +4868,12 @@ mod tests {
         let n = Notify::own(9183, TARGET_MOVED, [0, 0, 0]);
         let (mut r, mut side) = (rng(), Recorder::default());
         assert_eq!(
-            u.base_notify(n, 0, &at, &mut r, &mut side, &mut Vec::new()),
+            u.base_notify(n, 0, &at, false, &mut r, &mut side, &mut Vec::new()),
             Ok(GO_ON)
         );
         u.patrol_path = true;
         assert!(
-            u.base_notify(n, 0, &at, &mut r, &mut side, &mut Vec::new())
+            u.base_notify(n, 0, &at, false, &mut r, &mut side, &mut Vec::new())
                 .is_err()
         );
     }

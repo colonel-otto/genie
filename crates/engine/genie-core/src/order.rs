@@ -1979,11 +1979,13 @@ impl Turns {
                 queue_empty,
                 world_time,
                 ai_order: unit.ai.as_ref().map(|ai| ai.current_order),
+                ai_type: unit.ai.as_ref().map(|ai| ai.ai_type),
                 computer,
                 armed: true,
                 volley_under_way: unit.next_volley != 0,
                 let_go: None,
                 forgets: false,
+                sends_home: false,
             };
             attack.enter_ready(walk, &mut strike)?;
             if strike.executed.is_some() || strike.fire.is_some() || !strike.posted.is_empty() {

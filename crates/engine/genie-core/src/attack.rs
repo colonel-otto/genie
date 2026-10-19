@@ -41,7 +41,7 @@ const RELOAD_MS: f32 = crate::image::attack::RELOAD_MS;
 /// The hit chance's scale (`0x7fffffff`, the low word of a 64-bit Object-stream draw).
 const DRAW_SCALE: i64 = 0x7fff_ffff;
 /// The states the slice models: 1 done, 2 the target died, 4 on the way, 6 waiting to swing, 7
-/// swinging.
+/// swinging, 13 failed.
 pub const DONE: u8 = 1;
 /// State 2: the target died.
 pub const KILLED: u8 = 2;
@@ -51,6 +51,16 @@ pub const MOVE: u8 = 4;
 pub const READY: u8 = 6;
 /// State 7: swinging.
 pub const SWING: u8 = 7;
+/// State 13 ("Failed"): the target went out of sight.
+pub const FAILED: u8 = 13;
+/// The waiting state 5 ("Goto2"), a `MoveTo` to where the target was seen.
+const GOTO_SEEN: u8 = 5;
+/// The predators' class (10), whose unit AI's slot 0x1f0 a failed Attack calls.
+const PREDATOR: i16 = 10;
+/// The boar's unit-AI type, whose slot 0x1f0 (`FUN_140c16d50`) sends it home.
+const BOAR_AI: u32 = 4;
+/// The lion's unit-AI type, whose slot 0x1f0 (`FUN_140c16d60`) does nothing.
+const LION_AI: u32 = 5;
 
 /// The sprites and frames the Attack takes from its constructor.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -218,6 +228,8 @@ pub struct Strike<'a> {
     pub world_time: u32,
     /// The unit AI's order (`+0x3c`, `FUN_140c4cc20`), None without a unit AI.
     pub ai_order: Option<i32>,
+    /// The unit AI's factory type, None without a unit AI.
+    pub ai_type: Option<u32>,
     /// The unit's player is a computer (`player+0x10 == 3`, `FUN_141659cf0`).
     pub computer: bool,
     /// `FUN_14120ea30` for a building: it can attack (class 51 or 54, a missile, or a firepower
@@ -229,6 +241,9 @@ pub struct Strike<'a> {
     pub let_go: Option<i32>,
     /// The update made the unit AI forget its target (`FUN_140c5e1e0`), the caller's.
     pub forgets: bool,
+    /// The update sent a boar home at its next idle check (its unit AI's slot 0x1f0,
+    /// `FUN_140c16d50`: `+0x1fd`), the caller's.
+    pub sends_home: bool,
 }
 
 /// readyToAttack's gap for a range up to [`NO_RANGE`]: half a tile less (`DAT_142eb6e58`).
@@ -591,10 +606,47 @@ impl Attack {
         Ok(5)
     }
 
+    /// The update's answer to a target out of sight ([`Attack::update`]): the target goes (slot
+    /// 0x68 with none), the attack fails (`set_state` 13, as 1), the unit AI forgets the target
+    /// (`FUN_140c5e1e0`), a predator's unit AI's slot 0x1f0 runs (the boar's sends it home at its
+    /// next idle check, `sends_home`; the lion's does nothing) and a unit's own Attack whose unit AI's queue is empty posts 0x1f9 with 600;
+    /// returns 3, which deletes it.
+    fn out_of_sight(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
+        s.let_go = Some(self.target);
+        self.target = -1;
+        self.finish_in(FAILED, walk, s)?;
+        s.forgets = s.ai_order.is_some();
+        if s.own.class == PREDATOR {
+            match s.ai_type {
+                Some(BOAR_AI) => s.sends_home = true,
+                Some(LION_AI) | None => {}
+                Some(_) => {
+                    return Err(Unsupported(
+                        "a predator's failed Attack whose unit AI is not a boar's or a lion's (slot 0x1f0)",
+                    ));
+                }
+            }
+        }
+        if !self.sub_action && s.queue_empty {
+            s.posted.push((crate::unit_ai::ACTION_FAILED, [600, 0, 0]));
+        }
+        Ok(3)
+    }
+
     /// `set_state(1)` (case 1): the unit's animation runs at speed 1 and it takes the sprite it
     /// stands with.
     fn finish(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
-        self.enter(DONE, walk, s)?;
+        self.finish_in(DONE, walk, s)
+    }
+
+    /// `set_state` cases 1, 13 and 14: as [`Attack::finish`], in `state`.
+    fn finish_in(
+        &mut self,
+        state: u8,
+        walk: &mut Walk<'_>,
+        s: &mut Strike<'_>,
+    ) -> Result<(), Unsupported> {
+        self.enter(state, walk, s)?;
         *s.anim_speed = Some(1.0);
         let idle = self
             .arms
@@ -845,18 +897,25 @@ impl Attack {
             // the target moved: where it was seen follows (`+0xa4`..`+0xac`); one the unit's
             // player sees (the target's slot 0x1e0, `FUN_1416635e0` at its tile: 0xf), or only
             // explored (0x80) with its master's fog flag (`+0x605`), keeps the attack going, but
-            // an attack in state 5 or 11 walks again (set_state 4). A target out of sight is not
-            // modelled.
+            // an attack in state 5 or 11 walks again (set_state 4). One out of sight keeps an
+            // attack in a state but 4 and 5 going; a player's unit without a unit AI, or whose
+            // unit AI has an order and an empty queue, waits (set_state 5, not modelled; one in
+            // state 5 keeps going); any other fails ([`Attack::out_of_sight`])
             self.seen = t.position;
             let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
             let seen = walk.world.sees_tile(s.own.player, tx, ty)
                 || (s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?);
-            if !seen {
-                return Err(Unsupported(
-                    "an Attack whose target moved out of its player's sight",
-                ));
+            if !seen && matches!(self.state, MOVE | GOTO_SEEN) {
+                if s.own.player == 0 || s.ai_order.is_some_and(|o| o == -1 || !s.queue_empty) {
+                    return self.out_of_sight(&mut walk, s);
+                }
+                if self.state != GOTO_SEEN {
+                    return Err(Unsupported(
+                        "an Attack whose target moved out of its player's sight waiting (set_state 5)",
+                    ));
+                }
             }
-            if matches!(self.state, 5 | 11) {
+            if seen && matches!(self.state, GOTO_SEEN | 11) {
                 return Err(Unsupported(
                     "an Attack in state 5 or 11 whose target moved (set_state 4)",
                 ));

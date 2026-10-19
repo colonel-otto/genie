@@ -398,8 +398,9 @@ impl Turns {
     /// The ghosts of player `p` in their list's order (`FUN_141166550` on `+0x40`), each one's
     /// update (`FUN_141090000`): its static step (state 7 goes to 8, a ghost in state 8 leaves);
     /// one its viewer saw while the original's mask had not is destroyed; its original past state
-    /// 6 is forgotten; then, its tile's bits (and its footprint's) changed, a ghost its viewer
-    /// sees in state 2, unless one of the players sharing the viewer's sight does not, is
+    /// 6 is forgotten; then, its tile's bits (and its footprint's) changed, every player sharing
+    /// the original owner's sight notes itself in the ghost's `cant_see` (`+0x7f0`), and a ghost
+    /// its viewer sees in state 2, unless one of the players sharing the viewer's sight does not, is
     /// destroyed (or marked seen, for a building's ghost whose original the viewer's mask misses
     /// and whose tile it does not see). A ghost that leaves (`FUN_141090ad0`) goes to the pool of
     /// type 25 and off its tile, the last ghost taking its place in the list. The viewer's
@@ -477,7 +478,8 @@ impl Turns {
                     unseen = true;
                 }
             } else {
-                cant_see |= 1 << p;
+                // a player sharing the original owner's sight notes itself
+                cant_see |= 1 << i;
             }
         }
         let viewer = self.vision_mask(p);

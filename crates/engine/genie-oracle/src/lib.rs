@@ -978,12 +978,18 @@ fn saved_actions(
             Ok(())
         }
         genie_core::hunt::HUNT => {
-            use genie_core::hunt::{ATTACK, DROP, FACE, GATHER, HuntAction, HuntTask, WALK};
+            use genie_core::hunt::{
+                ATTACK, DROP, FACE, GATHER, HuntAction, HuntTask, IDLE, WALK, WALK_POINT,
+                WALK_SEARCH,
+            };
             let part = action
                 .tribe_action_hunt
                 .as_deref()
                 .ok_or(Unsupported("a saved Hunt without its own part"))?;
-            if !matches!(base.state, WALK | FACE | GATHER | DROP | ATTACK) {
+            if !matches!(
+                base.state,
+                IDLE | WALK | FACE | GATHER | DROP | ATTACK | WALK_SEARCH | WALK_POINT
+            ) {
                 return Err(Unsupported(
                     "a saved Hunt in a state the slice does not model",
                 ));

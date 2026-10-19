@@ -36,6 +36,9 @@ pub const FAILED: u8 = 13;
 pub const IDLE: u8 = 2;
 /// State 15 (`0xf`): walking to a point a move gave it (its slot 0x40).
 pub const WALK_POINT: u8 = 15;
+/// State 11 (`0xb`): walking to the point after the target went on the way to it; its end
+/// searches (`set_state` 3).
+pub const WALK_SEARCH: u8 = 11;
 /// A building whose top action is this (a farm at work) takes a hunt sent to it to `set_state` 15.
 const FARM_AT_WORK: i16 = 0x7d;
 
@@ -509,8 +512,16 @@ impl HuntAction {
         self.point = point;
         self.target_class = -1;
         self.target = -1;
+        self.set_point_walk(WALK_POINT, mover)?;
+        Ok(true)
+    }
+
+    /// `set_state` 11 and 15 (`0x140ac60e0` case 0xb): the sub-actions go, the timer clears and a
+    /// quiet `MoveTo` to the point within the task's range starts (`FUN_140aa0d30`, showing the
+    /// walking sprite of [`walk_sprite`]).
+    fn set_point_walk(&mut self, state: u8, mover: &mut Mover) -> Result<(), Unsupported> {
         self.tear_down(Some(mover))?;
-        self.state = WALK_POINT;
+        self.state = state;
         self.timer = 0.0;
         self.walk_range = self.task.range;
         self.move_wait = MoveWait::default();
@@ -518,14 +529,15 @@ impl HuntAction {
             return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
         }
         self.move_to = Some(MoveTo::Start);
-        Ok(true)
+        Ok(())
     }
 
-    /// State 15's update (`0x140ac7a00` case 0xe): the `MoveTo` to the point walks; once it
-    /// ended (its update returns 1, 2 or 5: the list deletes it, its destructor stops the unit)
-    /// a human player's hunt is done (`set_state(2)`: the unit takes its standing sprite, the
-    /// caller's; a computer player's would end it, `set_state` 1). A `MoveTo` that failed or
-    /// waits (codes 3 and 4) is not modelled. True when the walk ended.
+    /// State 15's and 11's update (`0x140ac7a00` cases 0xe and 0xa): the `MoveTo` to the point
+    /// walks; once it ended (its update returns 1, 2 or 5: the list deletes it, its destructor
+    /// stops the unit) a human player's hunt in state 15 is done (`set_state(2)`: the unit takes
+    /// its standing sprite, the caller's; a computer player's would end it, `set_state` 1); one in
+    /// state 11 would search (`set_state` 3), not modelled. A `MoveTo` that failed or waits
+    /// (codes 3 and 4) is not modelled. True when the walk ended.
     pub fn update_point_walk(
         &mut self,
         mut walk: Walk<'_>,
@@ -548,6 +560,11 @@ impl HuntAction {
                 Ok(false)
             }
             Some(MoveTo::Arrived) => {
+                if self.state == WALK_SEARCH {
+                    return Err(Unsupported(
+                        "a hunt's search after its walk to the point (set_state 3)",
+                    ));
+                }
                 self.move_to = None;
                 walk.mover
                     .as_deref_mut()
@@ -709,6 +726,12 @@ impl HuntAction {
             return Err(Unsupported("a computer player's hunt (FUN_140fde4f0)"));
         }
         let mut full = false;
+        // a target gone or past state 6 went at the update's start (slot 0x68 with none, the
+        // caller's): in state 4 its `MoveTo`, quiet, forgets it too and returns 5
+        if self.state == WALK && self.target == -1 && 0.0 <= self.timer && self.move_to.is_some() {
+            self.lost_on_the_way(&mut walk, gather)?;
+            return Ok(false);
+        }
         let r = match self.state {
             ATTACK => {
                 let attack = self
@@ -869,6 +892,34 @@ impl HuntAction {
             )),
         };
         r.map(|()| full)
+    }
+
+    /// State 4's answer to its `MoveTo` losing the target (codes 4 and 5): `FUN_140ac4670` with 8
+    /// and -1 would look for another target of a class the unit AI's slot 0x1b0 gives 0 (trees,
+    /// not modelled); then the target goes (slot 0x68 with none) and the hunt walks to its point
+    /// (`set_state` 11).
+    fn lost_on_the_way(
+        &mut self,
+        walk: &mut Walk<'_>,
+        gather: &Gatherer<'_>,
+    ) -> Result<(), Unsupported> {
+        if let Some(class) = gather.ai_class {
+            let class = if class == -1 {
+                i32::from(self.target_class)
+            } else {
+                class
+            };
+            if class == 15 {
+                return Err(Unsupported(
+                    "a hunt's search for another tree (FUN_140ac4670)",
+                ));
+            }
+        }
+        let mover = walk
+            .mover
+            .as_deref_mut()
+            .ok_or(Unsupported("a hunter without movement state"))?;
+        self.set_point_walk(WALK_SEARCH, mover)
     }
 
     /// `FUN_140ac44b0`: a task whose `attribute_type4` is 0x124, with its player's attribute 292
@@ -1364,6 +1415,61 @@ pub(crate) mod tests {
                 (WALK, Some(MoveTo::Start), range, None)
             );
         }
+    }
+
+    /// 425906646's shepherd 31110 in update 3543: the carcass it walks to went past state 6, so
+    /// its walk ends and a new one to the hunt's point starts (state 11), the unit stopped; a
+    /// lumberjack (its unit AI's class 15) would search for another tree first.
+    #[test]
+    fn a_hunt_whose_target_went_walks_to_its_point() {
+        let mut hunt = HuntAction {
+            target: 28813,
+            state: WALK,
+            point: [177.272_75, 62.444_31, 0.0],
+            target_class: LIVESTOCK,
+            task: CHOP,
+            attack: None,
+            move_to: Some(MoveTo::Moving),
+            walk_range: CHOP.range,
+            drop_site: -1,
+            carry_to: -1,
+            timer: 0.0,
+            move_wait: MoveWait::default(),
+        };
+        let mut mover = walker();
+        let mut world = crate::spatial::Spatial::default();
+        let (mut kind, mut held) = (-1, 0.0);
+        let mut walk = Walk {
+            mover: Some(&mut mover),
+            me: crate::movement::Me {
+                id: 31110,
+                position: [171.888_89, 59.053_39, 0.0],
+                action_state: WALK,
+            },
+            dt: 0.028,
+            world: &mut world,
+            plan: None,
+        };
+        let mut gather = Gatherer {
+            held_kind: &mut kind,
+            held: &mut held,
+            work_rate: 1.0,
+            capacity: 10.0,
+            productivity: 1.0,
+            target_class: LIVESTOCK,
+            target_storage: 0.0,
+            stops_decay: false,
+            ai_class: Some(15),
+            sprites: HuntSprites::default(),
+        };
+        assert!(hunt.clone().lost_on_the_way(&mut walk, &gather).is_err());
+        gather.ai_class = Some(-1);
+        hunt.lost_on_the_way(&mut walk, &gather).unwrap();
+        assert_eq!(
+            (hunt.state, hunt.move_to, hunt.timer, hunt.point[0]),
+            (WALK_SEARCH, Some(MoveTo::Start), 0.0, 177.272_75)
+        );
+        assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
     }
 
     /// MarvinBlue/426048731's lumberjack 9181 in update 1897: its `MoveTo` to the TC 9156 ended

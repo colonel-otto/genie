@@ -4397,11 +4397,11 @@ impl Unit {
         } else if let Some(hunt) = self
             .hunt
             .as_mut()
-            .filter(|h| h.state == crate::hunt::WALK_POINT)
+            .filter(|h| matches!(h.state, crate::hunt::WALK_POINT | crate::hunt::WALK_SEARCH))
         {
-            // state 15: the walk to a move's point; its end is set_state(2): the unit takes the
-            // hunt's sprite to stand with (slot 0x68 with FUN_140ac5210's), the target and the
-            // second target go
+            // states 15 and 11: the walk to a point; state 15's end is set_state(2): the unit
+            // takes the hunt's sprite to stand with (slot 0x68 with FUN_140ac5210's), the target
+            // and the second target go
             let computer = c.computer;
             let shows = hunt_walk_sprite(hunt, c.graphics, &self.life);
             let (walk, rng) = c.walk_and_sprites(self.mover.as_mut(), me);
@@ -4588,11 +4588,13 @@ impl Unit {
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
                 world_time,
                 ai_order: self.ai.as_ref().map(|ai| ai.current_order),
+                ai_type: self.ai.as_ref().map(|ai| ai.ai_type),
                 computer,
                 armed: true,
                 volley_under_way: self.next_volley != 0,
                 let_go: None,
                 forgets: false,
+                sends_home: false,
             };
             let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let fired = strike.fire.map(|target| {
@@ -4678,11 +4680,13 @@ impl Unit {
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
                 world_time,
                 ai_order: self.ai.as_ref().map(|ai| ai.current_order),
+                ai_type: self.ai.as_ref().map(|ai| ai.ai_type),
                 computer,
                 armed,
                 volley_under_way: self.next_volley != 0,
                 let_go: None,
                 forgets: false,
+                sends_home: false,
             };
             let code = attack.update(walk, &mut strike)?;
             let fired = strike.fire.map(|target| {
@@ -4698,12 +4702,16 @@ impl Unit {
             let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
             let posted = std::mem::take(&mut strike.posted);
             let (let_go, forgets) = (strike.let_go, strike.forgets);
+            let sends_home = strike.sends_home;
             c.blasted = blasted;
             if let Some(t) = let_go {
                 c.releases.push((t, self.releaser(c)));
             }
             if forgets && let Some(ai) = self.ai.as_mut() {
                 ai.remove_target();
+            }
+            if sends_home && let Some(home) = self.ai.as_mut().and_then(|ai| ai.home.as_mut()) {
+                home.go_home = true;
             }
             for (kind, p) in posted {
                 self.post_own(kind, p)?;
