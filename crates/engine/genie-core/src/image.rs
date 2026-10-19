@@ -428,6 +428,8 @@ pub mod unit_ai {
     pub const ATTACKER_FAR: f32 = f32::from_bits(0x7f7f_ffff);
     /// 0.0625
     pub const ATTACKER_TIE: f32 = f32::from_bits(0x3d80_0000);
+    /// 25.0
+    pub const DEFEND_LEASH: f32 = f32::from_bits(0x41c8_0000);
     /// 1.0
     pub const EVADE_EDGE: f32 = f32::from_bits(0x3f80_0000);
     /// 3.0

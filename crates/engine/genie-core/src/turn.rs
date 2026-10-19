@@ -3740,11 +3740,17 @@ impl Unit {
         if step.target_moved {
             self.post_own(TARGET_MOVED, [0, 0, 0])?;
         }
-        if step.done {
+        if step.done || step.failed {
             // its update in state 1 posts its completion (0x1fa with the move action value; an
-            // own MoveTo is never quiet), then the action list removes it (FUN_140a98e20): its
-            // teardown (0x140aa1f30) stops the unit (slot 0x5d0)
-            self.post_own(ACTION_COMPLETED, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
+            // own MoveTo is never quiet), in state 13 its failure (0x1f9) and returns 3; the
+            // action list removes it (FUN_140a98e20): its teardown (0x140aa1f30) stops the unit
+            // (slot 0x5d0)
+            let notify = if step.failed {
+                crate::unit_ai::ACTION_FAILED
+            } else {
+                ACTION_COMPLETED
+            };
+            self.post_own(notify, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
             self.move_to = None;
             if let Some(m) = self.mover.as_mut() {
                 m.stop()?;

@@ -301,6 +301,9 @@ pub struct MoveStep {
     /// The motion step could not go on (its result 1): the caller sets state 13, or for a
     /// human's villager the wait of state 2 (`LAB_140aa320c`).
     pub gave_up: bool,
+    /// It had failed (state 13): its update returns 3 after the notify 0x1f9 (an own `MoveTo` is
+    /// never quiet); the action list removes it.
+    pub failed: bool,
 }
 
 impl MoveToAction {
@@ -415,7 +418,11 @@ impl MoveToAction {
                 Ok(step)
             }
             MoveTo::Waiting => Err(Unsupported("a waiting MoveTo of its own (state 2)")),
-            MoveTo::Failed => Err(Unsupported("a failed MoveTo of its own (state 13)")),
+            // 0x140aa2a70's state 13: the notify (the caller's), then code 3
+            MoveTo::Failed => {
+                step.failed = true;
+                Ok(step)
+            }
         }
     }
 }

@@ -82,6 +82,8 @@ pub const ORDER_ON_TARGET: i32 = 0x2db;
 
 /// What a notify handler (unit-AI slot 0x238) returns: go on with the next notify.
 const GO_ON: u32 = 2;
+/// The defend stance's leash, squared (`DAT_142ed6f20`).
+const DEFEND_LEASH: f32 = crate::image::unit_ai::DEFEND_LEASH;
 /// "Notify processing returned stop or new action, breaking."
 const BREAK: u32 = 3;
 /// "I'm dead, purging notifyQueue and returning FALSE."
@@ -2235,6 +2237,7 @@ impl UnitAi {
     ) -> Result<u32, Unsupported> {
         match n.kind {
             ACTION_COMPLETED => self.action_completed(n, at, fx),
+            ACTION_FAILED => self.action_failed(n, at, fx),
             ACTION_INVALIDATED => self.action_invalidated(n, at, fx),
             crate::explore::WANTS_POINT if self.explorer() => {
                 self.seek_unexplored(at, ai_rng, side, fx)
@@ -2344,6 +2347,65 @@ impl UnitAi {
                 Ok(GO_ON)
             }
         }
+    }
+
+    /// The base handler's case `0x1f9` ("Action %d has failed.", `FUN_140c589c0`): with an order
+    /// the state position takes the unit's place first; on the scout order (`0x2da`) the
+    /// player's slot 0x2e8 with `0x211` is not modelled, nor is a failed attack (600) on the
+    /// attack order (700) or with the attack action current (processIdle, slot 0x240). Without an
+    /// order, the failure of the current action forgets the target (`FUN_140c5e1e0`) and stops
+    /// it (slot 0xb0 with 1; slot 0x48 hands the notify to the owner, not held); with one, so
+    /// does the failure of the order's own action (action + 100 = order); on order `0x2d4` a
+    /// failed `0x262` forgets the target and ends the order too (slot 0xb0 with 0), on `0x2bd`
+    /// the action value goes (the last action takes it); any other failed attack forgets the
+    /// target and stops; the rest go on.
+    fn action_failed(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
+        if order != -1 {
+            self.state_position = [at.position[0], at.position[1]];
+            if order == crate::ai_kinds::ORDER_SCOUT {
+                return Err(Unsupported(
+                    "a failed action on the scout order (the player's slot 0x2e8 with 0x211)",
+                ));
+            }
+        }
+        if p0 == 600 && (order == 700 || action == 600) {
+            return Err(Unsupported(
+                "a failed attack on the attack order or action (processIdle, slot 0x240)",
+            ));
+        }
+        let own = if order == -1 {
+            action == p0
+        } else {
+            action + 100 == order
+        };
+        if own {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        match (order, p0) {
+            (0x2d4, 0x262) => {
+                self.remove_target();
+                self.stop_current(false, at, fx)?;
+                return Ok(GO_ON);
+            }
+            (0x2bd, 0x262) => {
+                self.set_action(-1);
+                return Ok(GO_ON);
+            }
+            _ => {}
+        }
+        if p0 == 600 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(GO_ON)
     }
 
     /// The base handler's case `0x1fb` ("Action %d has been invalidated.", `FUN_140c589c0`): an
@@ -2816,8 +2878,29 @@ impl UnitAi {
         if order == FOLLOW_ORDER && self.follow(at, fx)? {
             return Ok(());
         }
-        if self.stance == 1 {
-            return Err(Unsupported("stance 1 leash check"));
+        // the defend stance's leash (unless on orders 0x2c7, 0x2dd and 0x323; a unit group's
+        // flags would skip it too, and the slice holds no unit groups): a unit more than 5
+        // tiles (DAT_142ed6f20, squared) from its state position, measured from its footprint
+        // (FUN_140a847c0), stops (slot 0xb0 with 1), forgets its target and walks back
+        if self.stance == 1 && !matches!(self.current_order, 0x2c7 | 0x2dd | 0x323) {
+            if self.patrol_path {
+                return Err(Unsupported(
+                    "a defending unit's leash with patrol information",
+                ));
+            }
+            let gap = |d: f32, r: f32| {
+                let g = d.abs() - r;
+                if 0.0 <= g { g } else { 0.0 }
+            };
+            let dx = gap(self.state_position[0] - at.position[0], at.size[0]);
+            let dy = gap(self.state_position[1] - at.position[1], at.size[1]);
+            if DEFEND_LEASH < dy * dy + dx * dx {
+                self.stop_current(true, at, fx)?;
+                self.remove_target();
+                return Err(Unsupported(
+                    "a defending unit's walk back to its state position (FUN_140c5e7d0)",
+                ));
+            }
         }
         if self.retarget_disabled != 0 {
             return Ok(());
@@ -3295,6 +3378,40 @@ mod tests {
         .unwrap();
         assert_eq!((r.draws, u.secondary_timer), (1, 750));
         assert_ne!(u.adjusted_idle_timeout, 750);
+    }
+
+    #[test]
+    fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back() {
+        // records/425906646's update 1404: player 8's unit on the defend stance (1); within 5
+        // tiles of its state position (from its footprint) it goes on to the retarget check
+        let defender = |x: f32| {
+            let u = UnitAi {
+                stance: 1,
+                current_order: -1,
+                current_action: 0x25a,
+                current_target: 4321,
+                state_position: [10.0, 10.0],
+                retarget_timer: u32::MAX,
+                ..idle(13)
+            };
+            let at = Surroundings {
+                position: [x, 10.0, 0.0],
+                size: [0.5, 0.5],
+                ..Surroundings::default()
+            };
+            (u, at)
+        };
+        let (mut u, at) = defender(15.4);
+        let mut fx = Vec::new();
+        let mut r = rng();
+        assert!(u.retarget_check(0, false, &at, &mut r, &mut fx).is_ok());
+        assert_eq!(fx, Vec::<Effect>::new());
+        // 5.1 tiles off its footprint: it stops and forgets its target (the walk back is not
+        // modelled)
+        let (mut u, at) = defender(15.6);
+        assert!(u.retarget_check(0, false, &at, &mut r, &mut fx).is_err());
+        assert_eq!(fx, vec![Effect::Stop]);
+        assert_eq!((u.current_action, u.current_target), (-1, -1));
     }
 
     #[test]
@@ -4100,6 +4217,53 @@ mod tests {
         assert_eq!((u.last_order, u.last_action), (MOVE_ORDER, MOVE_ACTION));
         assert_eq!(u.state_position, [93.5, 58.25]);
         assert_eq!((u.notifies.len(), u.last_update_time), (0, 60));
+    }
+
+    #[test]
+    fn a_failed_action_stops_like_a_completed_one_and_an_order_s_own_failure_ends_it() {
+        // records/425906646's update 1234: a Gaia animal's own MoveTo failed (state 13, notify
+        // 0x1f9); without an order the failure of the current action stops it
+        let mut u = UnitAi {
+            current_order: -1,
+            current_action: MOVE_ACTION,
+            current_target: 31234,
+            ..UnitAi::default()
+        };
+        let mut fx = Vec::new();
+        let n = Notify::own(9183, ACTION_FAILED, [MOVE_ACTION, 0, 0]);
+        assert_eq!(
+            u.action_failed(n, &at([10.0, 10.0, 0.0]), &mut fx).unwrap(),
+            GO_ON
+        );
+        assert_eq!((u.current_action, u.last_action), (-1, MOVE_ACTION));
+        assert_eq!((u.current_target, u.last_target), (-1, 31234));
+        // on its order (610 + 100) the failure ends the order too and sets the state position
+        let mut u = UnitAi {
+            current_order: MOVE_ORDER,
+            current_action: MOVE_ACTION,
+            ..UnitAi::default()
+        };
+        let mut fx = Vec::new();
+        let _ = u.action_failed(n, &at([10.0, 12.0, 0.0]), &mut fx).unwrap();
+        assert_eq!((u.current_order, u.current_action), (-1, -1));
+        assert_eq!(u.state_position, [10.0, 12.0]);
+        // another action's failure goes on; a failed attack on the attack order is not modelled
+        let mut u = UnitAi {
+            current_order: -1,
+            current_action: 0x25a,
+            ..UnitAi::default()
+        };
+        let _ = u.action_failed(n, &at([10.0, 12.0, 0.0]), &mut fx).unwrap();
+        assert_eq!(u.current_action, 0x25a);
+        let mut u = UnitAi {
+            current_order: 700,
+            ..UnitAi::default()
+        };
+        let attack = Notify::own(9183, ACTION_FAILED, [600, 0, 0]);
+        assert!(
+            u.action_failed(attack, &at([10.0, 12.0, 0.0]), &mut fx)
+                .is_err()
+        );
     }
 
     #[test]
