@@ -30,6 +30,12 @@ pub mod build {
     pub const WONDER_RATE: f32 = f32::from_bits(0x3f99_999a);
 }
 
+/// The values `crate::building`'s port reads.
+pub mod building {
+    /// 0.20000000298023224
+    pub const EJECT_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
+}
+
 /// The values `crate::damage`'s port reads.
 pub mod damage {
     /// 0.9900000095367432

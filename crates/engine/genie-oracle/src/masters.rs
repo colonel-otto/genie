@@ -152,6 +152,8 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             foundation_terrain: b.foundation_terrain_id,
             tech: b.tech_id,
             garrison_type: b.garrison_type,
+            garrison_heal_rate: b.garrison_heal_rate,
+            garrison_repair_rate: b.garrison_repair_rate,
             annexes: b.annexes.map(|a| a.unit_id),
             head_unit: b.head_unit,
             transform_unit: b.transform_unit,

@@ -1100,6 +1100,8 @@ mod tests {
                 foundation_terrain: 27,
                 tech: -1,
                 garrison_type: 0,
+                garrison_heal_rate: 0.0,
+                garrison_repair_rate: 0.0,
                 annexes: [-1; 4],
                 head_unit: -1,
                 transform_unit: -1,

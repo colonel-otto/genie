@@ -282,6 +282,15 @@ fn unit(
         town_bell: object.combat().map(town_bell).unwrap_or_default(),
         combat: object.combat().is_some(),
         next_volley: object.combat().map_or(0, |c| c.next_volley),
+        raider_countdown: object.combat().map_or(0, |c| c.raider_build_countdown),
+        garrison_time: object
+            .tribe_building_object
+            .as_deref()
+            .map_or(0, |b| b.last_garrison_time),
+        relics: object
+            .tribe_building_object
+            .as_deref()
+            .map_or([0; 2], |b| [b.relic_count, b.specific_relic_count]),
         reload_worldtime: object
             .combat()
             .and_then(|c| c.rge_combat_object.reload_worldtime)

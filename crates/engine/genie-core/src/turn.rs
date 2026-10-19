@@ -112,6 +112,14 @@ pub struct Unit {
     /// The objects inside it (`+0x2f8`), in the order they came in (`FUN_141164af0`); one that
     /// leaves takes the last one's place (`FUN_141166450`).
     pub garrison: Vec<i32>,
+    /// A building's `last_garrison_time` (`+0xbe0`): the world time of its last whole second,
+    /// on which its garrison heals ([`Unit::building_seconds`]).
+    pub garrison_time: u32,
+    /// A building's `relic_count` and `specific_relic_count` (`+0xc20`, `+0xc24`).
+    pub relics: [i32; 2],
+    /// A combat object's `raider_build_countdown` (`+0x9a0`): the seconds it may stay inside a
+    /// building.
+    pub raider_countdown: i32,
     /// A building's gate lock ([`Gate`]).
     pub gate: Option<Gate>,
     /// Its active sprite and animation speed (`+0x7b8`, the save's `current_speed`), held from
@@ -431,6 +439,15 @@ const VILLAGER: i16 = 0x53;
 const VILLAGER_ANY: i16 = 0x712;
 /// The female villager master (`0x125`).
 const VILLAGER_FEMALE: i16 = 0x125;
+/// The attribute naming a building master that changes the terrain around its buildings
+/// (`FUN_1411c39b0`, the player's attribute 255).
+const BUILDING_TERRAIN: usize = 255;
+/// A building at most this share of its hit points lets its garrison out (`DAT_142eae8d0`).
+const EJECT_SHARE: f32 = crate::image::building::EJECT_SHARE;
+/// The monastery (master 104, `0x6104` raw), whose relics give goods every second.
+const MONASTERY: i16 = 104;
+/// The villager's class (4), which a building's repair by its garrison counts.
+const VILLAGER_CLASS: i16 = 4;
 /// The building masters `FUN_140fde180` counts as drop sites besides the drop-site table's:
 /// 562, 584 and 621 (`0x232` plus the bits of `0x800000000400001`), 68, 1808, 50, 1187 and 199.
 const DROP_SITE_MASTERS: [i16; 8] = [562, 584, 621, 68, 1808, 50, 1187, 199];
@@ -3371,6 +3388,134 @@ impl Unit {
         Ok(())
     }
 
+    /// `TRIBE_Building_Object::update`'s whole seconds of a building in state 2 (`0x1411c9000`,
+    /// before its combat update): `FUN_1411c39b0` (attribute 255 naming its master: a terrain
+    /// effect around it, not modelled); then for each whole second since `last_garrison_time`
+    /// (`+0xbe0`, which moves on by them): a monastery's (master 104) relics give their goods
+    /// (not modelled with relics inside); each unit inside (from the last) whose
+    /// `raider_build_countdown` (`+0x9a0`) runs would be let out at its end (not modelled); the
+    /// units inside (from the first) heal by the master's `garrison_heal_rate` below their
+    /// master's hit points (slot 0x110, [`Unit::heal`]); with villagers inside, a damaged
+    /// building with a `garrison_repair_rate` repairs itself at a cost (`FUN_1411d33e0`, not
+    /// modelled). The `damaged_lately_timer` (`+0x30d`) a second takes off is not held.
+    fn building_seconds(
+        &mut self,
+        c: &Context<'_>,
+        others: &mut [Self],
+    ) -> Result<(), Unsupported> {
+        if self.life.state != 2 {
+            return Ok(());
+        }
+        let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+            return Ok(());
+        };
+        let Some(bm) = master.building else {
+            return Ok(());
+        };
+        // at most a fifth of its hit points (DAT_142eae8d0), it lets its garrison out
+        // (FUN_1411e7220 for each from the last, then their slots 0x1a8 and 0xd0); its master's
+        // slot 0x110 only sets a sound flag
+        if self.life.hp <= f32::from(master.hit_points) * EJECT_SHARE && !self.garrison.is_empty() {
+            return Err(Unsupported(
+                "a damaged building lets its garrison out (a fifth of its hit points)",
+            ));
+        }
+        if c.attributes.get(BUILDING_TERRAIN) == Some(&f32::from(master.id)) {
+            return Err(Unsupported(
+                "a building whose master attribute 255 names (FUN_1411c39b0)",
+            ));
+        }
+        let seconds = c.world_time.wrapping_sub(self.garrison_time) / 1000;
+        if seconds == 0 {
+            return Ok(());
+        }
+        self.garrison_time = self.garrison_time.wrapping_add(seconds * 1000);
+        if master.id == MONASTERY && self.relics != [0; 2] {
+            return Err(Unsupported("a monastery's relics' goods (its seconds)"));
+        }
+        let inside = |id: i32, others: &[Self]| others.iter().position(|u| u.id == id);
+        for &id in self.garrison.iter().rev() {
+            let Some(i) = inside(id, others) else {
+                continue;
+            };
+            let kind = c
+                .masters
+                .and_then(|m| m.get(others[i].life.master_id))
+                .map(|m| m.kind);
+            if kind == Some(70) && 0 < others[i].raider_countdown {
+                return Err(Unsupported(
+                    "a unit inside whose raider_build_countdown runs (FUN_1411e7220)",
+                ));
+            }
+        }
+        let rate = bm.garrison_heal_rate;
+        let mut villagers = 0;
+        for &id in &self.garrison {
+            let Some(i) = inside(id, others) else {
+                continue;
+            };
+            let m = c
+                .masters
+                .and_then(|m| m.get(others[i].life.master_id))
+                .ok_or(Unsupported(
+                    "a unit inside of a master the slice does not have",
+                ))?;
+            if m.class == VILLAGER_CLASS {
+                villagers += 1;
+            }
+            if 0.0 < rate && others[i].life.hp < f32::from(m.hit_points) {
+                others[i].heal(m, rate)?;
+            }
+        }
+        if 0 < villagers
+            && 0.0 < bm.garrison_repair_rate
+            && self.life.hp < f32::from(master.hit_points)
+        {
+            return Err(Unsupported(
+                "a building its villagers inside repair (FUN_1411d33e0)",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Slot 0x110 of a combat object (`FUN_141213b10`): the classes 2, 20, 21, 22 and 53 repair
+    /// at a cost (not modelled); any other heals (`FUN_141193b30`): slot 0xb8 (`FUN_141203be0`)
+    /// adds `amount` up to its hit points with its powerups' room, an overflow taken off the
+    /// powerup (`+0xa38`, never below 0; the hit point transforms of `FUN_141204450`, empty in
+    /// the recordings, are not held); healed to its full hit points (slot 0xc0 at least slot
+    /// 200), it holds exactly its master's. The heal timer `+0x9e4` a full heal clears is not held.
+    fn heal(&mut self, master: &Master, amount: f32) -> Result<(), Unsupported> {
+        if matches!(master.class, 2 | 20 | 21 | 22 | 53) {
+            return Err(Unsupported("a heal at a cost (FUN_141213b10's classes)"));
+        }
+        let full = f32::from(master.hit_points);
+        let [mut up, room] = self.hp_powerups;
+        let most = full + room;
+        if room < up {
+            up = room;
+        }
+        if most <= self.life.hp {
+            if 0.0 < up {
+                up = (up - amount).max(0.0);
+            }
+        } else {
+            let healed = self.life.hp + amount;
+            self.life.hp = healed;
+            if most < healed {
+                self.life.hp = most;
+                if 0.0 < up {
+                    up = (up - (healed - most)).max(0.0);
+                }
+            }
+        }
+        self.hp_powerups[0] = up;
+        // slot 0xc0 (the hit points with the powerups' room) at least slot 200 (the most)
+        if most <= (room - up) + self.life.hp {
+            self.life.hp = full;
+        }
+        Ok(())
+    }
+
     /// One update, and whether the object stays in its list, leaves it or goes to sleep. `others`
     /// are the rest of the owner's objects, whose foundations a builder works on.
     fn update(&mut self, c: &mut Context<'_>, others: &mut [Self]) -> Result<Step, Unsupported> {
@@ -3385,6 +3530,7 @@ impl Unit {
             return Ok(Step::Sleep);
         }
         self.complete_on_update(c, others)?;
+        self.building_seconds(c, others)?;
         self.take_stopped_speed();
         // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
         // `+0x87c` (1.0 for every unit the slice has met; its writer is not ported)
@@ -5894,6 +6040,9 @@ impl Turns {
                     next_volley: 0,
                     reload_worldtime: 0,
                     garrison: Vec::new(),
+                    garrison_time: 0,
+                    relics: [0; 2],
+                    raider_countdown: 0,
                     // every building holds a gate's lock, open
                     gate: Some(Gate::default()),
                     workers: 0,
@@ -8305,6 +8454,45 @@ mod tests {
             rate: 1.0,
             cost: vec![(0, 46, true), (4, 1, false)],
         }
+    }
+
+    #[test]
+    fn a_unit_inside_heals_up_to_its_hit_points() {
+        // records/425906646's update 2191: villager 27260 inside TC 27150 heals by the TC's
+        // garrison heal rate once a second
+        let master = Master {
+            id: 592,
+            class: 4,
+            hit_points: 25,
+            ..Master::default()
+        };
+        let mut v = Unit {
+            id: 27260,
+            life: Lifecycle {
+                hp: 11.0,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        v.heal(&master, 0.1).unwrap();
+        assert_eq!(v.life.hp, 11.1);
+        // a heal past the hit points stops at them, the powerup's room taking the rest
+        v.life.hp = 24.95;
+        v.hp_powerups = [1.0, 2.0];
+        v.heal(&master, 0.1).unwrap();
+        assert_eq!((v.life.hp, v.hp_powerups), (24.95f32 + 0.1, [1.0, 2.0]));
+        // past them with the room: the overflow comes off the powerup, then a full unit holds
+        // exactly its master's hit points
+        v.life.hp = 26.95;
+        v.heal(&master, 0.1).unwrap();
+        assert_eq!(v.life.hp, 25.0);
+        assert_eq!(v.hp_powerups[0], 1.0 - (26.95f32 + 0.1 - 27.0));
+        // a paid class heals at a cost: not modelled
+        let ship = Master {
+            class: 22,
+            ..master
+        };
+        assert!(v.heal(&ship, 0.1).is_err());
     }
 
     #[test]

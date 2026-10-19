@@ -79,7 +79,7 @@ impl Default for Task {
 
 /// What a building's completion (`FUN_1411dbb70` with 2) reads of its master, the `.dat`'s type
 /// 80 values.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct BuildingMaster {
     /// `+0x980`, `adjacent_mode`: walls and gates join their neighbours (`FUN_1411ce890`).
     pub adjacent_mode: u8,
@@ -93,6 +93,10 @@ pub struct BuildingMaster {
     pub tech: i16,
     /// `+0x9bc`, `garrison_type`: the kinds of units it takes in (bit 0 villagers, `FUN_14120eb10`).
     pub garrison_type: u8,
+    /// `+0x9c0`, `garrison_heal_rate`: the hit points a second it gives the units inside.
+    pub garrison_heal_rate: f32,
+    /// `+0x9c4`, `garrison_repair_rate`: its repair a second per villager inside.
+    pub garrison_repair_rate: f32,
     /// `+0x990`, the masters of its annexes (−1 for none; their places beside it at `+0x998`).
     pub annexes: [i16; 4],
     /// `+0x9b8`, `head_unit`: the building it is an annex of (−1 for none).
