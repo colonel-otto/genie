@@ -294,12 +294,9 @@ fn the_forced_replay_report() {
                 .entry(format!("attribute {i:03}"))
                 .or_default()
                 .add(update(r), player, None, r.unsupported.is_empty());
-            first_values.entry(i).or_insert((
-                update(r),
-                player,
-                f32::from_bits(a),
-                f32::from_bits(b),
-            ));
+            let _ = first_values
+                .entry(i)
+                .or_insert_with(|| (update(r), player, f32::from_bits(a), f32::from_bits(b)));
         }
     }
     let clean = reports
