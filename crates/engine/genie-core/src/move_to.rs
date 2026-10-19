@@ -298,6 +298,9 @@ pub struct MoveStep {
     pub done: bool,
     /// Its target left its point: it told the unit (notify 0x1fc) and turned to state 3.
     pub target_moved: bool,
+    /// The motion step could not go on (its result 1): the caller sets state 13, or for a
+    /// human's villager the wait of state 2 (`LAB_140aa320c`).
+    pub gave_up: bool,
 }
 
 impl MoveToAction {
@@ -380,7 +383,10 @@ impl MoveToAction {
                         other => other,
                     };
                 } else {
-                    self.state = walk_on(walk.reborrow())?;
+                    match walk_or_give_up(walk.reborrow())? {
+                        Some(state) => self.state = state,
+                        None => step.gave_up = true,
+                    }
                 }
                 self.ended(&mut walk);
                 Ok(step)
