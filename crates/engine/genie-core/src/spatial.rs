@@ -1459,14 +1459,24 @@ impl Spatial {
         differ
     }
 
-    /// Whether a unit with terrain mask `mask` can stand on tile (`x`, `y`) (`FUN_14114d460`): the
-    /// tile is on the map, its class is in the mask and no static record blocks it. A tile with
-    /// two tall objects needs the game's point query, which the slice does not model.
+    /// Whether unit `me` (its x radius `radius_x`) with terrain mask `mask` can stand on tile
+    /// (`x`, `y`) (`FUN_14114d460`): the tile is on the map, its class is in the mask and no
+    /// static record blocks it; on a tile with two tall objects or more, the obstruction
+    /// manager's point query at the tile's corner (`FUN_141051900` with flags 0x20, the records
+    /// grown by half the x radius, `FUN_1410562d0`, the unit itself ignored, `FUN_1410562e0`)
+    /// finds none ([`Spatial::point_clear`]).
     ///
     /// # Panics
     ///
     /// Never: the tall-object grid covers the map as the word grid does.
-    pub fn passable(&self, x: i32, y: i32, mask: u8) -> Result<bool, Unsupported> {
+    pub fn passable(
+        &self,
+        x: i32,
+        y: i32,
+        mask: u8,
+        me: i32,
+        radius_x: f32,
+    ) -> Result<bool, Unsupported> {
         let Some(word) = self.tiles.word(x, y) else {
             return Ok(false);
         };
@@ -1474,9 +1484,7 @@ impl Spatial {
             return Ok(false);
         }
         if 1 < self.tiles.tall(x, y).expect("a tile with a word") {
-            return Err(Unsupported(
-                "a tile with two tall objects (its point query)",
-            ));
+            return self.point_clear(me, [x as f32, y as f32], radius_x * 0.5, mask);
         }
         Ok(true)
     }
@@ -1489,6 +1497,7 @@ impl Spatial {
     pub fn spot_beside(
         &self,
         from: [f32; 3],
+        (me, radius_x): (i32, f32),
         mask: u8,
         site: &Placed,
     ) -> Result<Option<[f32; 2]>, Unsupported> {
@@ -1513,7 +1522,7 @@ impl Spatial {
             if (cx - x).abs() < reach && (cy - y).abs() < reach {
                 for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
                     let at = ((ox + nx) * size + ny + oy) as usize;
-                    if !visited[at] && self.passable(nx, ny, mask)? {
+                    if !visited[at] && self.passable(nx, ny, mask, me, radius_x)? {
                         visited[at] = true;
                         list.push((nx, ny));
                     }
@@ -2198,14 +2207,14 @@ mod tests {
     #[test]
     fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
         let (mut s, _) = site();
-        assert_eq!(s.passable(29, 89, 6), Ok(true));
-        assert_eq!(s.passable(29, 89, 1), Ok(false));
-        assert_eq!(s.passable(-1, 89, 6), Ok(false));
+        assert_eq!(s.passable(29, 89, 6, 1, 0.2), Ok(true));
+        assert_eq!(s.passable(29, 89, 1, 1, 0.2), Ok(false));
+        assert_eq!(s.passable(-1, 89, 6, 1, 0.2), Ok(false));
         let mut tree = villager(29.5, 90.5);
         tree.radius = [0.5, 0.5];
         tree.obstruction = Some(Obstruction { kind: 2, class: 1 });
         s.insert(48, tree);
-        assert_eq!(s.passable(29, 90, 6), Ok(false));
+        assert_eq!(s.passable(29, 90, 6, 1, 0.2), Ok(false));
     }
 
     #[test]
@@ -2213,7 +2222,7 @@ mod tests {
         // the game sends 9175 to (29.5, 89.5): (30, 89) is as close but holds 9175 itself
         let (s, house) = site();
         assert_eq!(
-            s.spot_beside([30.0, 89.0, 0.0], 6, &house),
+            s.spot_beside([30.0, 89.0, 0.0], (1, 0.2), 6, &house),
             Ok(Some([29.5, 89.5]))
         );
     }

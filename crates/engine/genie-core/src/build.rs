@@ -610,7 +610,12 @@ impl BuildAction {
         let site = walk.world.get(self.target).expect("place found it");
         let spot = walk
             .world
-            .spot_beside(walk.me.position, mover.stats.restriction_mask, site)?
+            .spot_beside(
+                walk.me.position,
+                (walk.me.id, mover.stats.radius[0]),
+                mover.stats.restriction_mask,
+                site,
+            )?
             .ok_or(Unsupported(
                 "no free tile beside the footprint (set_state 2)",
             ))?;
