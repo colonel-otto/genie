@@ -3821,8 +3821,16 @@ impl Unit {
                 map,
                 action,
             };
-            if fly.update(walk, sky)? {
+            let step = fly.update(walk, sky)?;
+            if step.stopped {
                 mover.stop()?;
+            }
+            // a failed flight's MoveTo posts its failure (notify 0x1f9, the move action value)
+            if step.failed {
+                self.post_own(
+                    crate::unit_ai::ACTION_FAILED,
+                    [crate::unit_ai::MOVE_ACTION, 0, 0],
+                )?;
             }
         }
         // the Hunt's update (0x140ac7a00) first checks its target: one gone from the world's table

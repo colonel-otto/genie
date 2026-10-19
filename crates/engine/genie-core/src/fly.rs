@@ -5,7 +5,7 @@
 
 use crate::fmath::{cos, sin};
 use crate::masters::Task;
-use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_on};
+use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_or_give_up};
 use crate::rng::Well512;
 use crate::unit_ai::Unsupported;
 
@@ -23,6 +23,15 @@ const DEGREE: f32 = crate::image::fly::DEGREE;
 /// The flight angle's step between tries, in degrees, and the tries (`FUN_140a84b40`, state 3).
 const ANGLE_STEP: i32 = 80;
 const TRIES: i32 = 12;
+
+/// What a Fly update did besides its own state.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FlyStep {
+    /// The bird stopped (a dropped `MoveTo`'s teardown, slot 0x5d0).
+    pub stopped: bool,
+    /// Its failed `MoveTo` (state 13) posted notify 0x1f9 with the move action value.
+    pub failed: bool,
+}
 
 /// A bird's Fly action (type 10).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -102,29 +111,35 @@ impl Fly {
     /// out chooses (`set_state` 3); choosing, it picks its flight ([`Fly::choose`]); flying, a timer
     /// run out rests it (`set_state` 2, the rest time set), and once the `MoveTo` is done or gone
     /// (its list's update returns 1) it rests for the rest time more, or chooses at once.
-    /// Returns whether the bird stopped (a dropped `MoveTo`'s teardown, slot 0x5d0).
-    pub fn update(&mut self, mut walk: Walk<'_>, sky: Sky<'_>) -> Result<bool, Unsupported> {
+    /// Returns whether the bird stopped (a dropped `MoveTo`'s teardown, slot 0x5d0) and whether
+    /// its failed `MoveTo` posted its failure.
+    pub fn update(&mut self, mut walk: Walk<'_>, sky: Sky<'_>) -> Result<FlyStep, Unsupported> {
         if 0.0 < self.timer {
             self.timer -= walk.dt;
         }
         let rest = self.task.wait_time;
+        let mut step = FlyStep::default();
         match self.state {
             RESTING => {
                 if 0.0 < self.timer {
-                    return Ok(false);
+                    return Ok(step);
                 }
-                Ok(self.set_state(CHOOSING, sky.action))
+                step.stopped = self.set_state(CHOOSING, sky.action);
+                Ok(step)
             }
-            CHOOSING => self.choose(sky),
+            CHOOSING => {
+                step.stopped = self.choose(sky)?;
+                Ok(step)
+            }
             FLYING => {
-                let mut stopped = false;
                 if self.timer <= 0.0 {
-                    stopped |= self.set_state(RESTING, sky.action);
+                    step.stopped |= self.set_state(RESTING, sky.action);
                     if EPSILON < rest {
                         self.timer = rest;
                     }
                 }
-                // the sub-action list's update: none left, or the MoveTo's state 1, is 1
+                // the sub-action list's update (FUN_140a992b0): none left, the MoveTo's state 1
+                // (code 1) or its state 13 (code 3) end the flight
                 let done = match self.move_to {
                     None | Some(MoveTo::Arrived) => true,
                     Some(MoveTo::Start) => {
@@ -134,26 +149,32 @@ impl Fly {
                             Some(start_walk(walk.reborrow(), Goal::Point(goal), 0.0, false)?);
                         false
                     }
+                    // a bird is no villager: a motion step that gives up fails the MoveTo
+                    // (set_state 13, LAB_140aa320c), whose update returned 0
                     Some(MoveTo::Moving) => {
-                        self.move_to = Some(walk_on(walk)?);
+                        self.move_to = Some(walk_or_give_up(walk)?.unwrap_or(MoveTo::Failed));
                         false
                     }
-                    Some(MoveTo::Waiting | MoveTo::Failed) => {
-                        return Err(Unsupported(
-                            "a Fly's waiting or failed MoveTo (states 2, 13)",
-                        ));
+                    // the failed MoveTo's update posts notify 0x1f9 (it is not quiet: the
+                    // caller's) and returns 3
+                    Some(MoveTo::Failed) => {
+                        step.failed = true;
+                        true
+                    }
+                    Some(MoveTo::Waiting) => {
+                        return Err(Unsupported("a Fly's waiting MoveTo (state 2)"));
                     }
                 };
                 if !done {
-                    return Ok(stopped);
+                    return Ok(step);
                 }
                 if EPSILON < rest {
                     self.timer += rest;
-                    stopped |= self.set_state(RESTING, sky.action);
-                    return Ok(stopped);
+                    step.stopped |= self.set_state(RESTING, sky.action);
+                    return Ok(step);
                 }
-                stopped |= self.set_state(CHOOSING, sky.action);
-                Ok(stopped)
+                step.stopped |= self.set_state(CHOOSING, sky.action);
+                Ok(step)
             }
             _ => Err(Unsupported(
                 "a Fly action in a state the slice does not model",
@@ -313,8 +334,8 @@ mod tests {
         let mut r = Well512::default();
         r.set_seed(1);
         let mut e = r.clone();
-        let stopped = fly.update(walk(&mut world), sky(&mut r)).unwrap();
-        assert!(stopped);
+        let step = fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        assert!(step.stopped && !step.failed);
         let t = ((e.rand15() as i32 * 10) / 0x7fff + 5) as f32;
         assert_eq!((fly.state, fly.timer, fly.move_to), (CHOOSING, t, None));
         assert_eq!(r.draws, 1);
@@ -346,11 +367,30 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_flight_posts_its_failure_and_rests() {
+        // records/425906646's update 2025: the hawk 30594's MoveTo failed (state 13) the update
+        // before; its update returns 3, the flight ends as an arrived one does
+        let mut world = Spatial::default();
+        let mut fly = Fly {
+            move_to: Some(MoveTo::Failed),
+            goal: Some([57.844_986, 104.49953, 9.0]),
+            ..hawk(FLYING, 5.0)
+        };
+        let mut r = Well512::default();
+        let step = fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        assert!(step.failed && step.stopped);
+        assert_eq!(fly.move_to, None);
+    }
+
+    #[test]
     fn a_resting_bird_chooses_once_its_rest_ran_out() {
         let mut world = Spatial::default();
         let mut fly = hawk(RESTING, 0.5);
         let mut r = Well512::default();
-        assert_eq!(fly.update(walk(&mut world), sky(&mut r)), Ok(false));
+        assert_eq!(
+            fly.update(walk(&mut world), sky(&mut r)),
+            Ok(FlyStep::default())
+        );
         assert_eq!((fly.state, r.draws), (RESTING, 0));
         fly.timer = 0.01;
         let _ = fly.update(walk(&mut world), sky(&mut r)).unwrap();

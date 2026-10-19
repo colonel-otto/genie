@@ -259,6 +259,10 @@ const LOOK_AHEAD: f32 = crate::image::movement::LOOK_AHEAD;
 const STRAIGHT_GROW: f32 = crate::image::movement::STRAIGHT_GROW;
 /// A path shorter than this is too short (`DAT_142eb99cc`).
 const SHORTEST: f32 = crate::image::movement::SHORTEST;
+/// The point `FUN_140f9bcd0` returns outside a path: `DAT_143f0dc88`, in `.bss` (zero at the
+/// load; probed zero in records/425906646 with no write in the update after).
+const OUTSIDE_PATH: Vec3 = [0.0; 3];
+
 /// A planned path shorter than this replaces no short path (`DAT_143cc2f28`), and a path is long
 /// when it is longer than this and than 1.25 times the way (`DAT_14330ebb8`, `DAT_142eb56a8`).
 const LONG: f32 = 5.0;
@@ -302,14 +306,14 @@ impl PathData {
         }
     }
 
-    /// The waypoint at `index` (`FUN_140f9bcd0`); the game returns a static zero point outside the
-    /// path, which the slice does not follow.
-    fn point(&self, index: i32) -> Result<Vec3, Unsupported> {
+    /// The waypoint at `index` (`FUN_140f9bcd0`); outside the path the game returns its static
+    /// point `DAT_143f0dc88` ([`OUTSIDE_PATH`]).
+    fn point(&self, index: i32) -> Vec3 {
         usize::try_from(index)
             .ok()
             .and_then(|i| self.points.get(i))
             .copied()
-            .ok_or(Unsupported("a waypoint index outside its path"))
+            .unwrap_or(OUTSIDE_PATH)
     }
 
     /// The level has waypoints after the current one (`FUN_140f96050` on a top level).
@@ -847,7 +851,7 @@ impl Mover {
         let level = &mut self.paths[0];
         if level.flags & 2 != 0 {
             if level.waypoint < level.points.len() as i32 {
-                let p = level.point(level.waypoint)?;
+                let p = level.point(level.waypoint);
                 let at = self.set_position(map_position(p), world.map);
                 self.moved_to(me, at, world, pathing, now);
             }
@@ -1198,7 +1202,7 @@ impl Mover {
             level.state = 4;
             return Ok(Step::Again);
         }
-        let waypoint = level.point(level.waypoint)?;
+        let waypoint = level.point(level.waypoint);
         if ground(position, waypoint) == 0.0 {
             let away = target.is_none_or(|t| {
                 EPSILON < footprint_gap(me.position, ground_radius, t.position, t.radius)
@@ -1488,7 +1492,7 @@ impl Mover {
             let level = &self.paths[0];
             let _ = path.insert(0, position);
             let to = if level.waypoint < level.points.len() as i32 {
-                level.point(level.waypoint)?
+                level.point(level.waypoint)
             } else {
                 position
             };
