@@ -43,6 +43,8 @@ pub struct BuildAction {
     pub task: BuildTask,
     /// `+0x68`, `added_to_num_builders`: the builder counts among the foundation's builders.
     pub added: bool,
+    /// `+0x44`, the action's timer: state 222's wait (a second from its `set_state`).
+    pub timer: f32,
 }
 
 /// What a builder's Build task gives its work: the task's work range (`+0x30`; its `MoveTo` to the
@@ -142,6 +144,8 @@ pub struct Builder<'a> {
     pub held: f32,
     /// Its unit AI, which a finished Build hands its queued orders to.
     pub ai: Option<&'a mut UnitAi>,
+    /// `+0x889`: the builder's waits for an occupied footprint (not saved, 0 at a load).
+    pub waits: &'a mut u8,
 }
 
 /// What a Build action's update leaves to its unit and player.
@@ -160,6 +164,9 @@ pub struct BuildStep {
     /// [`crate::gather_search::more_work`]): the caller's, which works what it finds, else lets
     /// the foundation go ([`BuildAction::no_more_work`], then as [`BuildStep::released`]).
     pub search: bool,
+    /// The units on the foundation's footprint besides the builder, which its test
+    /// (`FUN_14123bb20`) would send off: the caller's.
+    pub occupants: Vec<i32>,
 }
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
@@ -177,6 +184,10 @@ const WALL: i16 = 27;
 const MOVE: u8 = 4;
 const WORK: u8 = 6;
 const PLACE: u8 = 7;
+/// The wait for an occupied footprint (`set_state(222)`).
+const WAIT: u8 = 222;
+/// The waits a builder makes before it gives up (`0x15`).
+const MAX_WAITS: u8 = 21;
 /// 223 (`0xdf`): off the footprint, to a free tile beside it.
 const CLEAR: u8 = 223;
 /// 224 (`0xe0`): the work ended, the building completed.
@@ -213,6 +224,7 @@ impl BuildAction {
             goal: None,
             task,
             added: false,
+            timer: 0.0,
         }
     }
 
@@ -270,6 +282,7 @@ impl BuildAction {
         }
         let mut walk = walk;
         let held = builder.held;
+        let waits = builder.waits;
         let r = match (self.state, self.move_to) {
             (4, Some(MoveTo::Arrived)) => {
                 self.state = 6;
@@ -308,7 +321,16 @@ impl BuildAction {
                         "a builder that turns over time to face its foundation",
                     ));
                 }
-                self.place(&walk, site)
+                self.place(&walk, site, waits, &mut step)
+            }
+            // case 0xdd: the wait runs down by the world's dt, then set_state(7) again
+            (WAIT, _) => {
+                self.timer -= walk.dt;
+                if 0.0 < self.timer {
+                    return Ok(step);
+                }
+                self.timer = 0.0;
+                self.place(&walk, site, waits, &mut step)
             }
             (PLACE, _) => self.work(walk, site, held).map(|c| step.completed = c),
             (CLEAR, Some(MoveTo::Start)) => {
@@ -445,7 +467,13 @@ impl BuildAction {
     /// `set_state(7)` (`0x140aae200` case 7) on a foundation no builder started: clear the
     /// footprint of what may be built over, find who stands on it, and send this builder off it
     /// if it stands there itself.
-    fn place(&mut self, walk: &Walk<'_>, site: Option<Site<'_>>) -> Result<(), Unsupported> {
+    fn place(
+        &mut self,
+        walk: &Walk<'_>,
+        site: Option<Site<'_>>,
+        waits: &mut u8,
+        step: &mut BuildStep,
+    ) -> Result<(), Unsupported> {
         let mut site = site.ok_or(Unsupported("a foundation of another player"))?;
         // every set_state first takes the builder out of the foundation's builders
         if self.added {
@@ -471,11 +499,11 @@ impl BuildAction {
             return Err(Unsupported("a foundation whose master does not obstruct"));
         }
         let occupants = world.footprint_occupants(self.target, site)?;
-        if occupants.iter().any(|&id| id != walk.me.id) {
-            return Err(Unsupported(
-                "another unit on the footprint (its evacuation)",
-            ));
-        }
+        step.occupants = occupants
+            .iter()
+            .copied()
+            .filter(|&id| id != walk.me.id)
+            .collect();
         if world.foreign_marks(site) {
             return Err(Unsupported("another player's marks on the footprint"));
         }
@@ -485,12 +513,19 @@ impl BuildAction {
         let [bx, by, _] = walk.me.position;
         let [sx, sy, _] = site.position;
         let inside = (bx - sx).abs() <= site.radius[0] && (by - sy).abs() <= site.radius[1];
-        if !inside {
+        if inside {
+            return self.clear(walk);
+        }
+        // LAB_140aaf5d4: the builder waits a second (set_state 222) up to 21 times
+        if MAX_WAITS <= *waits {
             return Err(Unsupported(
-                "a builder waits for its footprint to clear (state 222)",
+                "a builder gives up on its occupied footprint (event 0x88, set_state 2)",
             ));
         }
-        self.clear(walk)
+        *waits += 1;
+        self.state = WAIT;
+        self.timer = 1.0;
+        Ok(())
     }
 
     /// `LAB_140aaf9f4`: the builder joins the work: unless walls of other players stand on both
@@ -1077,6 +1112,7 @@ mod tests {
             goal: None,
             task: TASK,
             added: false,
+            timer: 0.0,
         };
         let mut life = Lifecycle {
             state: 0,
@@ -1123,6 +1159,7 @@ mod tests {
                     class: VILLAGER,
                     held: 0.0,
                     ai: None,
+                    waits: &mut 0,
                 },
             )
             .unwrap();
@@ -1152,10 +1189,13 @@ mod tests {
         assert_eq!((near.state, near.move_to), (4, Some(MoveTo::Arrived)));
         assert_eq!((far.state, far.move_to), (4, Some(MoveTo::Start)));
         let mut world = Spatial::default();
-        let builder = || Builder {
+        let mut waits = [0u8; 3];
+        let mut waits = waits.iter_mut();
+        let mut builder = || Builder {
             class: VILLAGER,
             held: 0.0,
             ai: None,
+            waits: waits.next().expect("a wait count per update"),
         };
         world.insert(10028, house());
         let _ = near.update(walk(1, &mut world), None, builder()).unwrap();

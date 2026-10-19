@@ -42,6 +42,8 @@ use crate::visibility::{BuildingSight, Seer, capture_kind};
 pub struct Unit {
     /// The object's id (`+0x8`), which names it across ticks.
     pub id: i32,
+    /// `+0x889`: its waits as a builder for an occupied footprint (not saved; 0 at a load).
+    pub footprint_waits: u8,
     /// x, y, z (`+0x3c8`, `+0x4c8`, `+0x5a8`, obfuscated in the game's memory).
     pub position: [f32; 3],
     /// Its life cycle: state, hit points, master, what it holds, its dying sprite.
@@ -512,6 +514,9 @@ struct Context<'a> {
     /// The buildings that died in this update: their owner's watched list lets them go
     /// (`FUN_141091310`), the caller's.
     unwatched: Vec<i32>,
+    /// The units on a foundation's footprint its builder's test met (the foundation, them):
+    /// the caller sends off those the test would ([`Turns::evacuate`]).
+    evacuations: Vec<(i32, Vec<i32>)>,
     /// The world's reusable ids and pools.
     recycling: &'a mut Recycling,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
@@ -3623,8 +3628,12 @@ impl Unit {
                 class,
                 held: self.life.amount,
                 ai: self.ai.as_mut(),
+                waits: &mut self.footprint_waits,
             };
             let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
+            if !step.occupants.is_empty() {
+                c.evacuations.push((target, step.occupants.clone()));
+            }
             // a construction that started: its owner watches it (FUN_1411e5670), the caller's
             if let Some(cons) = others
                 .iter_mut()
@@ -5732,6 +5741,7 @@ impl Turns {
                 let owner = &mut self.players[player];
                 owner.objects.push(Unit {
                     id,
+                    footprint_waits: 0,
                     position,
                     life: Lifecycle {
                         class: Class::Animated,
@@ -6115,6 +6125,42 @@ impl Turns {
             }
         }
         Ok(true)
+    }
+
+    /// `FUN_14123bb20`'s sending off (with `DAT_1439e60e2` 1) of the units on `foundation`'s
+    /// footprint: each of type 30 or more in state 2 whose top action is not on the foundation,
+    /// that stands (`FUN_14114f740`: Gaia's of classes 9 and 10, or not walking, its animation
+    /// speed `+0x7b8` at most 0, and its path level `+0x858` absent or in state 0 or 6) and whose
+    /// unit AI's action is not 0x2bf or 0x2c0, would be sent off (the foundation owner's own of
+    /// type 70 and more with master `+0x8bc` by a group move to a spot beside it, `FUN_1416123a0`,
+    /// any other by notify 0x216), which is not modelled.
+    fn evacuate(&self, foundation: i32, units: &[i32]) -> Result<(), Unsupported> {
+        for &id in units {
+            let Some((owner, u)) = self.object(id) else {
+                continue;
+            };
+            let master = self.master_of(owner, u.life.master_id)?;
+            if master.kind < 30 || u.life.state != 2 || u.top_target() == Some(foundation) {
+                continue;
+            }
+            let walking = u.anim_speed.is_some_and(|s| 0.0 < s);
+            let level = u
+                .mover
+                .as_ref()
+                .and_then(|m| m.paths.first())
+                .map(|l| l.state);
+            let stands = (owner == 0 && matches!(master.class, 9 | 10))
+                || (!walking && level.is_none_or(|s| matches!(s, 0 | 6)));
+            let busy =
+                u.ai.as_ref()
+                    .is_none_or(|ai| matches!(ai.current_action, 0x2bf | 0x2c0));
+            if stands && !busy {
+                return Err(Unsupported(
+                    "a unit sent off a foundation's footprint (FUN_14123bb20)",
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// A new building's footprint clearing (`FUN_1415c3620` from the building's constructor
@@ -7009,6 +7055,7 @@ impl Turns {
                     ghost_deaths: Vec::new(),
                     started: Vec::new(),
                     unwatched: Vec::new(),
+                    evacuations: Vec::new(),
                     recycling: &mut self.recycling,
                     mode_1: self.mode_680 == 1,
                     player: p,
@@ -7043,10 +7090,11 @@ impl Turns {
                 let pauses = std::mem::take(&mut c.pauses);
                 let releases = std::mem::take(&mut c.releases);
                 let (takes, made) = (std::mem::take(&mut c.takes), std::mem::take(&mut c.made));
-                let (ghost_deaths, started, unwatched) = (
+                let (ghost_deaths, started, unwatched, evacuations) = (
                     std::mem::take(&mut c.ghost_deaths),
                     std::mem::take(&mut c.started),
                     std::mem::take(&mut c.unwatched),
+                    std::mem::take(&mut c.evacuations),
                 );
                 if let Some(e) = self.spatial.take_sight_unsupported() {
                     result = result.and(Err(e));
@@ -7073,6 +7121,11 @@ impl Turns {
                 // watch of a started construction (FUN_1411e5670)
                 for id in unwatched {
                     self.unwatch(p, id);
+                }
+                for (foundation, units) in evacuations {
+                    if let Err(e) = self.evacuate(foundation, &units) {
+                        result = result.and(Err(e));
+                    }
                 }
                 for id in ghost_deaths {
                     if self.game_state != 2

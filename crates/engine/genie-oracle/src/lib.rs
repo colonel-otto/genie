@@ -957,6 +957,7 @@ fn saved_actions(
                     .tribe_action_build
                     .as_deref()
                     .is_some_and(|b| b.added_to_num_builders != 0),
+                timer: base.timer,
             });
             Ok(())
         }
