@@ -1871,6 +1871,9 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 dropped: p.world_player().base.resigned & 2 != 0,
                 allied_victory: p.world_player().base.allied_victory != 0,
                 allied_vision: p.world_player().base.allied_los_enable != 0,
+                // the reveal of the enemies' town centres (attribute 209) is done once any
+                // mTCFlared bit is set; the saved map then already holds the revealed tiles
+                tc_flared: p.world_player().tcflared.iter().any(|&b| b != 0),
                 sharing: p.world_player().sharing_is_caring != 0,
                 victory: victory.get(i).map_or(0, |v| v.victory),
                 fealty: p.world_player().fealty as i16,

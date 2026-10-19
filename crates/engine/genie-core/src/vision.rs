@@ -24,7 +24,7 @@ pub const REVEAL_ALLY: usize = 50;
 /// The attribute that shares every player's sight while it is not 0.
 pub const REVEAL_ALL: usize = 183;
 /// The attribute that reveals the other players' town centres (notify 0x2b9 to each of class
-/// 109), not modelled.
+/// 109), a one-time tile reveal recorded in `mTCFlared` ([`crate::turn::Player::tc_flared`]).
 const REVEAL_CENTRES: usize = 209;
 /// The attributes that add a scenario's masks of visible and explored players, not modelled.
 const SHARED_MASKS: [usize; 2] = [285, 286];
@@ -74,9 +74,14 @@ impl Turns {
                     masks[p][1] |= 1 << (32 + q);
                 }
             }
-            if REVEAL_CENTRES < me.attributes.len() && 0.0 < attribute(REVEAL_CENTRES) {
+            // attribute 209 does not touch the masks: the reveal is a one-time tile reveal, in the
+            // saved map once `mTCFlared` records it. A reveal not yet recorded, genie cannot do.
+            if REVEAL_CENTRES < me.attributes.len()
+                && 0.0 < attribute(REVEAL_CENTRES)
+                && !me.tc_flared
+            {
                 return Err(Unsupported(
-                    "the other players' town centres revealed (attribute 209)",
+                    "the other players' town centres to reveal (attribute 209, not yet flared)",
                 ));
             }
             if SHARED_MASKS[1] < me.attributes.len()
@@ -154,5 +159,19 @@ mod tests {
     fn a_player_alone_sees_with_its_own_bits() {
         assert_eq!(own_masks(2, false), [0x2000_0004, 0x2000_0004_0000_0000]);
         assert_eq!(own_masks(1, true), [0x6000_0002, 0x6000_0002_0000_0000]);
+    }
+
+    /// Attribute 209 (reveal the enemies' town centres) does not touch the masks and is no stop
+    /// once `mTCFlared` records the reveal (MarvinBlue/426048737 p2 after its header load), only
+    /// before (a reveal genie cannot perform). It leaves the masks exactly the allies' sharing.
+    #[test]
+    fn attribute_209_stops_only_before_the_flare_is_recorded() {
+        let mut t = teams();
+        t.players[2].attributes[REVEAL_CENTRES] = 5.0;
+        assert!(t.rebuild_vision().is_err());
+
+        t.players[2].tc_flared = true;
+        t.rebuild_vision().unwrap();
+        assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
     }
 }
