@@ -747,6 +747,31 @@ impl Turns {
         Ok(())
     }
 
+    /// `UNIT_ORDER`'s action 4 (`FUN_14161e370` case 4) to the objects `ids`: each the world
+    /// holds (any player's) that is a building in state 2 cancels the `index`-th unit of its
+    /// queue ([`Turns::cancel_queued`], `all` the command's `+0x1d`).
+    pub(crate) fn cancel_order(
+        &mut self,
+        ids: &[i32],
+        index: u32,
+        all: bool,
+    ) -> Result<(), Unsupported> {
+        for &id in ids {
+            let Some(place) = self.place(id) else {
+                continue;
+            };
+            let Place::Live(p, idx) = place else {
+                return Err(Unsupported("a cancel at a sleeping object"));
+            };
+            let unit = &self.players[p].objects[idx];
+            if unit.life.state != 2 || self.master_of(p, unit.life.master_id)?.kind < 80 {
+                continue;
+            }
+            self.cancel_queued(p, idx, index as usize, all)?;
+        }
+        Ok(())
+    }
+
     /// `UNIT_ORDER`'s order `action` to the units `ids` (`FUN_14161e370`). Action 8, the drop-off
     /// (as 6 and 7): each unit the world holds in state 2 of a type above 39 that carries
     /// something (`+0x310` above 0) and whose top action is a Hunt (110) with a target or a
@@ -1462,6 +1487,38 @@ impl Turns {
         Ok(true)
     }
 
+    /// The unit's own task list's finder with filter 3 (slot 2 of its master's `+0x788`,
+    /// `FUN_1412784d0`: the garrison's, [`crate::tasks::find_task`]) on `target`: whether it
+    /// finds a task, as a gather point on a building asks (`FUN_140ace9c0`).
+    pub(crate) fn garrison_task_found(
+        &self,
+        player: usize,
+        idx: usize,
+        target: i32,
+    ) -> Result<bool, Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let owner = &self.players[player];
+        let master = self.master_of(player, unit.life.master_id)?;
+        let actor = Actor {
+            id: unit.id,
+            master,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+            civ: owner.civ,
+        };
+        let world = World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let t = self.task_target(target, 1)?;
+        let general = self.task_target(target, 2)?;
+        Ok(
+            crate::tasks::find_task(master, &actor, Some(&t), Some(&general), None, 3, &world)?
+                .is_some(),
+        )
+    }
+
     /// The work command (slot 37, `FUN_14106ff70`) of a unit on a target object: the master and
     /// task of [`crate::masters::Masters::work_master`] (the master changes, slot 0x90), the task's
     /// requirement, then the task's action from the action list's factory (slot 0x10), the unit
@@ -1801,7 +1858,8 @@ impl Turns {
         }
         self.clear_actions(player, idx)?;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
-        let arms = crate::attack::arms(master, &self.graphics, task.sprites);
+        // the task factory (`FUN_140a97e00` case 7) gives the Attack the task's moving sprite
+        let arms = crate::attack::arms(master, &self.graphics, task.sprites, task.sprites[0]);
         let standing = arms
             .idle_sprite
             .ok_or(Unsupported("an attacker without its standing sprite"))?;
@@ -1944,10 +2002,11 @@ impl Turns {
     fn retarget_hunt(&mut self, player: usize, idx: usize, target: i32) -> Result<(), Unsupported> {
         let quarry = self.quarry(player, target)?;
         let engagement = self.engagement(player, idx, target)?;
-        let sprites = self.players[player].objects[idx]
+        let task = self.players[player].objects[idx]
             .hunt
-            .map_or([-1; 4], |h| h.task.sprites);
-        let arms = self.arms(player, idx, sprites)?;
+            .map(|h| h.task)
+            .ok_or(Unsupported("a hunt's retarget without its hunt"))?;
+        let arms = self.arms(player, idx, &task)?;
         // FUN_14109d4f0: the target's master is one of the unit's master's drop sites
         let target_master = self.object(target).map(|(_, t)| t.life.master_id);
         let drops_here = self
@@ -2084,11 +2143,18 @@ impl Turns {
         })
     }
 
-    /// [`crate::attack::arms`] of the unit at `idx`.
-    fn arms(&self, player: usize, idx: usize, sprites: [i16; 4]) -> Result<Arms, Unsupported> {
+    /// [`crate::attack::arms`] of the unit at `idx` for its hunt's Attack (Hunt's `set_state` 12:
+    /// the `MoveTo` shows the hunt's walking sprite, [`HuntTask::walk_sprite_id`]).
+    fn arms(&self, player: usize, idx: usize, task: &HuntTask) -> Result<Arms, Unsupported> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
-        Ok(crate::attack::arms(master, &self.graphics, sprites))
+        let moving = task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
+        Ok(crate::attack::arms(
+            master,
+            &self.graphics,
+            task.sprites,
+            moving,
+        ))
     }
 
     /// [`crate::attack::engagement`] of the unit at `idx` with `target`.
@@ -2140,7 +2206,7 @@ impl Turns {
         }
         self.clear_actions(player, idx)?;
         let engagement = self.engagement(player, idx, target)?;
-        let arms = self.arms(player, idx, task.sprites)?;
+        let arms = self.arms(player, idx, &task)?;
         let computer = self.players[player].computer;
         let carry_rule = self.carry_rule;
         let unit = &mut self.players[player].objects[idx];

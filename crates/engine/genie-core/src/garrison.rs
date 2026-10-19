@@ -573,7 +573,7 @@ impl Turns {
                     ai.remove_target();
                 }
                 // slot 0x128 with `+0xa14` 0: the unit AI keeps its notifies
-                self.gather(player, ui, g, bid, false)?;
+                self.gather(player, ui, g, bid, false, false)?;
             }
             _ => {
                 return Err(Unsupported(

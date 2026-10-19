@@ -1227,6 +1227,7 @@ fn saved_attack(
         swing: 0.0,
         rest: 0.0,
         arms: genie_core::attack::Arms {
+            move_sprite: g(a.short_val),
             sprite: g(a.short_val_2),
             second_sprite: None,
             idle_sprite: g(a.short_val_3),
@@ -2257,6 +2258,8 @@ fn work_masters(
         work.damage_sprites = !s.damage_sprite.is_empty();
         work.fly_mode = table.fly_mode(civ, s.id()).unwrap_or(0);
         work.standing_sprite = s.idle_sprite_id;
+        (work.move_sprite, work.run_sprite) =
+            moving_master(m).map_or((-1, -1), |mv| (mv.move_sprite_id, mv.run_sprite_id));
         work.death_sprite = s.death_sprite_id;
         work.garrison = s.obj_max;
         work.death_spawns = [s.death_spawn_obj_id, s.death_spawn_obj_id2];
@@ -2488,6 +2491,8 @@ fn tile_differences(
 /// the replay's time, so [`forced_run`] builds these on worker threads ahead of the replay.
 struct SavedStep {
     objects: Vec<Vec<ObjectRow>>,
+    /// Each player's ghosts (type 25) in its list's order.
+    ghosts: Vec<Vec<genie_core::ghost::Ghost>>,
     seen: Visibility,
     width: usize,
     terrain: Vec<(u8, u8, i16)>,
@@ -2504,6 +2509,7 @@ impl SavedStep {
         let (width, terrain) = saved_terrain(&header);
         Ok(Self {
             objects,
+            ghosts: header.players().iter().map(saved_ghosts).collect(),
             seen: saved_sight(&header),
             width,
             terrain,
@@ -2901,6 +2907,7 @@ impl Decoder {
                     through_ai: c.field_0x1d != 0,
                     nearby: c.field_0x1e != 0,
                     action: c.action,
+                    param: c.param.cast_unsigned(),
                     human: c.field_0x20 == 1,
                 });
             }
@@ -4399,6 +4406,35 @@ pub fn forced_run(
                 if let Some(t) = tiles.as_ref() {
                     for d in tile_order_differences(&turns.spatial, t) {
                         report.differences.push((0, d));
+                    }
+                }
+                // each player's ghosts, in the list's order, by what the save holds of them
+                for (p, game) in after.ghosts.iter().enumerate() {
+                    let slice = turns.players.get(p).map_or(&[][..], |q| &q.ghosts[..]);
+                    let key = |g: &genie_core::ghost::Ghost| {
+                        (
+                            g.id,
+                            g.original_id,
+                            g.state,
+                            g.cant_see,
+                            g.position.map(f32::to_bits),
+                        )
+                    };
+                    let (a, b): (Vec<_>, Vec<_>) = (
+                        slice.iter().map(key).collect(),
+                        game.iter().map(key).collect(),
+                    );
+                    if a != b {
+                        let only = |x: &Vec<_>, y: &Vec<_>| -> Vec<_> {
+                            x.iter().filter(|e| !y.contains(*e)).copied().collect()
+                        };
+                        let (sl, gm) = (only(&a, &b), only(&b, &a));
+                        let what = if sl.is_empty() && gm.is_empty() {
+                            format!("ghosts in another order: slice {a:?}, the game {b:?}")
+                        } else {
+                            format!("ghosts the slice's alone {sl:?}, the game's alone {gm:?}")
+                        };
+                        report.differences.push((p as u32, what));
                     }
                 }
                 let pools_text = dump_after(start + k + 1, "pools");

@@ -273,6 +273,11 @@ pub struct Master {
     pub standing_sprite: i16,
     /// The sprite it waits with between swings (`+0x910`, −1 for none).
     pub idle_attack_sprite: i16,
+    /// Its walking sprite (`+0x748`, `move_sprite_id`; the unit's slot 0x7c8) and its running
+    /// one (`+0x750`, `run_sprite_id`; slot 0x7d0), −1 for none.
+    pub move_sprite: i16,
+    /// Its running sprite (`+0x750`), −1 for none.
+    pub run_sprite: i16,
     /// Its attack sprite (`+0x7f8`, `fight_sprite_id`).
     pub attack_sprite: i16,
     /// A second attack sprite (`+0x878`).

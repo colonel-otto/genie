@@ -194,6 +194,60 @@ pub struct HuntSprites {
     pub standing: Option<Graphic>,
 }
 
+impl HuntTask {
+    /// [`walk_sprite`]'s id from the task's sprites (`FUN_140ac51d0`), which the hunt's Attack
+    /// takes for its `MoveTo` (`FUN_140a7c210`'s argument 4).
+    #[must_use]
+    pub const fn walk_sprite_id(&self, held_kind: i16, held: f32) -> i16 {
+        let carrying = self.resource != -1 && held_kind == self.resource && 1 <= held as i32;
+        if carrying && 0 <= self.sprites[3] {
+            self.sprites[3]
+        } else {
+            self.sprites[0]
+        }
+    }
+}
+
+/// `FUN_140ac51d0`: the sprite a hunt's `MoveTo` shows (its `set_state(4)`, slot 0x68 with
+/// `+0x58`): the task's carrying sprite while the unit carries at least 1 of the task's
+/// resource, else its moving one; None for none.
+#[must_use]
+pub const fn walk_sprite(
+    resource: i16,
+    held_kind: i16,
+    held: f32,
+    sprites: &HuntSprites,
+) -> Option<Graphic> {
+    let carrying = resource != -1 && held_kind == resource && 1 <= held as i32;
+    match (carrying, sprites.carrying) {
+        (true, Some(g)) => Some(g),
+        _ => sprites.moving,
+    }
+}
+
+/// The unit's sprite, the Sprite stream and the sprite a walk shows: a `MoveTo` that turns to
+/// state 4 shows its sprite (`0x140aa29e0`, slot 0x68 with `+0x58`).
+#[derive(Debug)]
+pub struct Shown<'a> {
+    /// The unit's sprite.
+    pub sprite: &'a mut Option<crate::sprite::ActiveSprite>,
+    /// The Sprite stream.
+    pub rng: &'a mut crate::rng::Well512,
+    /// The `MoveTo`'s sprite.
+    pub graphic: Option<Graphic>,
+}
+
+impl Shown<'_> {
+    /// The `MoveTo` that started turned to state 4: the unit shows its sprite.
+    fn walking(&mut self, state: MoveTo) {
+        if state == MoveTo::Moving
+            && let Some(g) = self.graphic
+        {
+            set_sprite(self.sprite, g, self.rng);
+        }
+    }
+}
+
 /// What the gathering reads of its unit and changes besides the attack's [`Strike`].
 #[derive(Debug)]
 pub struct Gatherer<'a> {
@@ -476,13 +530,16 @@ impl HuntAction {
         &mut self,
         mut walk: Walk<'_>,
         computer: bool,
+        mut shown: Shown<'_>,
     ) -> Result<bool, Unsupported> {
         match self.move_to {
             Some(MoveTo::Start) => {
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.walk_range;
                 walk.me.action_state = self.state;
-                self.move_to = Some(start_walk(walk, Goal::Point(self.point), range, true)?);
+                let state = start_walk(walk, Goal::Point(self.point), range, true)?;
+                shown.walking(state);
+                self.move_to = Some(state);
                 Ok(false)
             }
             Some(MoveTo::Moving) => {
@@ -553,6 +610,7 @@ impl HuntAction {
         held: &mut f32,
         attributes: usize,
         site: Option<DropOff>,
+        mut shown: Shown<'_>,
     ) -> Result<Option<(i16, f32)>, Unsupported> {
         if self.timer < 0.0 {
             return Err(Unsupported("a drop-off waiting to try again (its timer)"));
@@ -562,7 +620,9 @@ impl HuntAction {
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.walk_range;
                 walk.me.action_state = self.state;
-                self.move_to = Some(start_walk(walk, Goal::Target(self.carry_to), range, true)?);
+                let state = start_walk(walk, Goal::Target(self.carry_to), range, true)?;
+                shown.walking(state);
+                self.move_to = Some(state);
                 return Ok(None);
             }
             Some(MoveTo::Moving) => {
@@ -683,8 +743,22 @@ impl HuntAction {
                     let range = self.walk_range;
                     walk.me.action_state = self.state;
                     let goal = Goal::Target(self.target);
-                    self.move_to = Some(start_walk(walk.reborrow(), goal, range, true)?);
+                    let state = start_walk(walk.reborrow(), goal, range, true)?;
                     crate::attack::in_the_way(&mut walk, strike);
+                    // the MoveTo's set_state(4) shows the hunt's walking sprite
+                    let shows = walk_sprite(
+                        self.task.resource,
+                        *gather.held_kind,
+                        *gather.held,
+                        &gather.sprites,
+                    );
+                    Shown {
+                        sprite: strike.sprite,
+                        rng: strike.sprite_rng,
+                        graphic: shows,
+                    }
+                    .walking(state);
+                    self.move_to = Some(state);
                     Ok(())
                 }
                 Some(MoveTo::Moving) => {
@@ -1002,6 +1076,18 @@ impl HuntAction {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// No sprite shown: a test hunt's walk.
+    fn shown<'a>(
+        sprite: &'a mut Option<crate::sprite::ActiveSprite>,
+        rng: &'a mut crate::rng::Well512,
+    ) -> Shown<'a> {
+        Shown {
+            sprite,
+            rng,
+            graphic: None,
+        }
+    }
     use crate::movement::{MoveStats, Velocity};
 
     /// A villager walking at 0.8 tiles a second, radius 0.2.
@@ -1084,6 +1170,7 @@ pub(crate) mod tests {
     }
 
     const ARMS: Arms = Arms {
+        move_sprite: None,
         sprite: None,
         second_sprite: None,
         idle_sprite: None,
@@ -1313,6 +1400,7 @@ pub(crate) mod tests {
         };
         let mut mover = walker();
         let mut world = crate::spatial::Spatial::default();
+        let (mut sprite, mut rng) = (None, crate::rng::Well512::default());
         let (mut kind, mut held) = (1, 7.057_053_6);
         let site = DropOff {
             takes: true,
@@ -1325,6 +1413,7 @@ pub(crate) mod tests {
                 &mut held,
                 230,
                 Some(site),
+                shown(&mut sprite, &mut rng),
             )
             .unwrap();
         assert_eq!(got, Some((1, 7.057_053_6)));
@@ -1340,6 +1429,7 @@ pub(crate) mod tests {
                 &mut held,
                 230,
                 Some(site),
+                shown(&mut sprite, &mut rng),
             )
             .unwrap();
         assert_eq!(got, Some((0, 2.0)));
@@ -1354,7 +1444,8 @@ pub(crate) mod tests {
                 &mut kind,
                 &mut held,
                 230,
-                Some(refused)
+                Some(refused),
+                shown(&mut sprite, &mut rng),
             )
             .is_err()
         );

@@ -1286,7 +1286,7 @@ impl Turns {
             )?;
         }
         if let Some(gather) = gather {
-            self.gather(p, new, gather, building_id, true)?;
+            self.gather(p, new, gather, building_id, true, true)?;
         }
         // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)
         let now = self.players[p].objects[new].life.master_id;
@@ -1799,6 +1799,14 @@ impl Turns {
         closest(&gaia.sleeping)
     }
 
+    /// The new unit's walk to the gather point of its building `building` (`FUN_140ace9c0` with a
+    /// point or a target): a point is a move; a target that is gone is looked for again
+    /// ([`Turns::lost_gather_target`]). The unit waits to move (slot 0x2a0 with 1); on a building
+    /// its own task list's garrison finder (filter 3, [`Turns::garrison_task_found`]) decides: a
+    /// task found is worked at once (slot 0x7e8 with filter 3, outside slot 0x128: `+0xa14` 1);
+    /// else, and for any other target, slot 0x128 works it (`notified`, any task). An unloaded
+    /// unit's caller goes to slot 0x128 at once (`finder` clear). A gather point on its own
+    /// building (a garrison) is not modelled.
     pub(crate) fn gather(
         &mut self,
         p: usize,
@@ -1806,6 +1814,7 @@ impl Turns {
         g: GatherPoint,
         building: i32,
         notified: bool,
+        finder: bool,
     ) -> Result<(), Unsupported> {
         if g.target == -1 {
             return self.gather_move(p, new, [g.point[0], g.point[1], 0.0]);
@@ -1826,18 +1835,17 @@ impl Turns {
         let (owner, t) = self
             .object(target)
             .ok_or(Unsupported("unreachable: a gather point's target found"))?;
-        if self.master_of(owner, t.life.master_id)?.kind == BUILDING {
-            return Err(Unsupported("a gather point on a building (slot 0x7e8)"));
-        }
+        let on_building = self.master_of(owner, t.life.master_id)?.kind == BUILDING;
         if let Some(m) = self.players[p].objects[new].mover.as_mut() {
             m.waiting = 1;
         }
+        let garrison = finder && on_building && self.garrison_task_found(p, new, target)?;
         let work = Work {
             target,
             point: [g.point[0], g.point[1], 0.0],
             carry_test: false,
-            filter: -1,
-            notified,
+            filter: if garrison { 3 } else { -1 },
+            notified: garrison || notified,
         };
         self.order_work(p, new, &work)
     }

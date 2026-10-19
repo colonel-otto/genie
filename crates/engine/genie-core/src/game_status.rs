@@ -384,7 +384,6 @@ impl Turns {
     /// (`FUN_141630770`); the building's unit AI is told the make action completed (506 with
     /// 619).
     fn cancel_queue(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
-        use crate::production::{IN_PRODUCTION, QUEUED, population};
         let Some(production) = self.players[p].objects[idx].production.clone() else {
             return Ok(());
         };
@@ -393,23 +392,102 @@ impl Turns {
         }
         let front = production.queue.front().map(|q| q.master);
         for q in &production.queue {
-            let master = self.master_of(p, q.master)?.clone();
-            if REFUNDED_TYPE <= master.kind {
-                for &(resource, _, paid) in &master.cost {
-                    if resource < 0 || !paid {
-                        continue;
-                    }
-                    let back = q
-                        .costs
-                        .iter()
-                        .rev()
-                        .find(|c| c.0 != -1 && c.0 == i32::from(resource))
-                        .map_or(0.0, |c| c.1);
-                    self.players[p].add_attribute(resource, back)?;
-                }
-            }
-            self.players[p].add_attribute(QUEUED, -population(&master.storage))?;
+            self.refund_queued(p, q)?;
         }
+        self.drop_make_action(p, idx, &production, front)?;
+        if let Some(production) = self.players[p].objects[idx].production.as_mut() {
+            production.queue.clear();
+            production.action = false;
+            production.progress = 0.0;
+        }
+        Ok(())
+    }
+
+    /// A queued unit's refund (`FUN_141630530`, masters of type 70 and up): its entry's amount of
+    /// each of its master's paid costs comes back; its population leaves attribute 80.
+    fn refund_queued(
+        &mut self,
+        p: usize,
+        q: &crate::production::Queued,
+    ) -> Result<(), Unsupported> {
+        use crate::production::{QUEUED, population};
+        let master = self.master_of(p, q.master)?.clone();
+        if REFUNDED_TYPE <= master.kind {
+            for &(resource, _, paid) in &master.cost {
+                if resource < 0 || !paid {
+                    continue;
+                }
+                let back = q
+                    .costs
+                    .iter()
+                    .rev()
+                    .find(|c| c.0 != -1 && c.0 == i32::from(resource))
+                    .map_or(0.0, |c| c.1);
+                self.players[p].add_attribute(resource, back)?;
+            }
+        }
+        self.players[p].add_attribute(QUEUED, -population(&master.storage))
+    }
+
+    /// `UNIT_ORDER`'s action 4 (`FUN_14161e370` case 4 -> `FUN_1411d66b0`) at the building at
+    /// `idx`: the `index`-th unit of its queue (by unit, across its entries) is cancelled: its
+    /// refund ([`Turns::refund_queued`]) and the queue lets it go (the player's queue counts,
+    /// `+0x18`, and the building's `+0xbf4` and `+0xc00` are not held); the first one's make
+    /// action goes too ([`Turns::drop_make_action`]; the interface's `+0xc02` is not the sim's).
+    /// An index past the queue does nothing. A research's cancel and the cancel of up to five of
+    /// a kind (`all`, the command's `+0x1d`: `FUN_1411d61e0`) are not modelled, nor is game mode
+    /// 16's tail.
+    pub(crate) fn cancel_queued(
+        &mut self,
+        p: usize,
+        idx: usize,
+        index: usize,
+        all: bool,
+    ) -> Result<(), Unsupported> {
+        let Some(production) = self.players[p].objects[idx].production.clone() else {
+            return Ok(());
+        };
+        let Some(&q) = production.queue.get(index) else {
+            return Ok(());
+        };
+        if q.tech != -1 {
+            return Err(Unsupported("a cancelled research (FUN_1411d61e0)"));
+        }
+        if all {
+            return Err(Unsupported(
+                "a cancel of up to five of a kind (FUN_1411d61e0)",
+            ));
+        }
+        if self.game_mode == 16 {
+            return Err(Unsupported("a cancel's tail in game mode 16"));
+        }
+        self.refund_queued(p, &q)?;
+        if let Some(production) = self.players[p].objects[idx].production.as_mut() {
+            let _ = production.queue.remove(index);
+        }
+        if index == 0 {
+            self.drop_make_action(p, idx, &production, Some(q.master))?;
+            if let Some(production) = self.players[p].objects[idx].production.as_mut() {
+                production.action = false;
+                production.progress = 0.0;
+            }
+        }
+        Ok(())
+    }
+
+    /// The building's make action goes (`FUN_140a98620` on `+0xbf8`), its destructor
+    /// (`FUN_140ace3f0`): while the game is not over its unit's (`front`) population leaves
+    /// attribute 81 and, made without the queue's payment (`+0x60` clear), the master's paid costs
+    /// come back (`FUN_141630770`); the building's unit AI is told the make action completed (506
+    /// with 619).
+    fn drop_make_action(
+        &mut self,
+        p: usize,
+        idx: usize,
+        production: &crate::production::Production,
+        front: Option<i16>,
+    ) -> Result<(), Unsupported> {
+        use crate::production::{IN_PRODUCTION, population};
         if production.action {
             let master = self
                 .master_of(
@@ -437,11 +515,6 @@ impl Turns {
                 );
                 ai.post(n, state)?;
             }
-        }
-        if let Some(production) = self.players[p].objects[idx].production.as_mut() {
-            production.queue.clear();
-            production.action = false;
-            production.progress = 0.0;
         }
         Ok(())
     }
@@ -516,6 +589,38 @@ mod tests {
         t.masters = vec![masters.clone(), masters.clone(), masters];
         t.victory_conquest = true;
         t
+    }
+
+    /// records/425906646's player 2 cancels the second villager of its town centre at update
+    /// 3699 (`UNIT_ORDER` action 4, index 1): that one's 46 food come back and its population
+    /// leaves attribute 80; the first keeps its make action. A cancel of the first drops the make
+    /// action too; an index past the queue does nothing.
+    #[test]
+    fn a_cancel_gives_back_one_queued_unit() {
+        let mut t = game();
+        let second = Queued {
+            costs: [(0, 45.0), (-1, 0.0), (4, 1.0)],
+            ..t.players[1].objects[0].production.as_ref().unwrap().queue[0]
+        };
+        let tc = t.players[1].objects[0].production.as_mut().unwrap();
+        tc.queue.push_back(second);
+        t.players[1].attributes[80] = 2.0;
+        t.cancel_order(&[9], 1, false).unwrap();
+        let p = &t.players[1];
+        assert_eq!((p.resources[0], p.attributes[80]), (45.0, 1.0));
+        let production = p.objects[0].production.as_ref().unwrap();
+        assert_eq!((production.queue.len(), production.action), (1, true));
+        t.cancel_order(&[9], 5, false).unwrap();
+        assert_eq!(t.players[1].resources[0], 45.0);
+        t.cancel_order(&[9], 0, false).unwrap();
+        let p = &t.players[1];
+        assert_eq!(
+            (p.resources[0], p.attributes[80], p.attributes[81]),
+            (91.0, 0.0, 0.0)
+        );
+        let production = p.objects[0].production.as_ref().unwrap();
+        assert!(production.queue.is_empty() && !production.action);
+        assert!(t.cancel_order(&[9], 0, true).is_ok());
     }
 
     /// MarvinBlue/426048731's player 1 resigns in its last update: its town centre gives back

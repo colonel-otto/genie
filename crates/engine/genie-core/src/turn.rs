@@ -205,6 +205,27 @@ const GATE_CLOSE_DELAY: f32 = 0.5;
 const GATE_QUERY_RECORDS: usize = 10;
 const GATE_COUNT_CAP: usize = 25;
 
+/// The sprite a hunt's walk shows ([`crate::hunt::walk_sprite`]) from its task's sprites.
+fn hunt_walk_sprite(
+    hunt: &HuntAction,
+    graphics: &std::collections::BTreeMap<i16, Graphic>,
+    life: &Lifecycle,
+) -> Option<Graphic> {
+    let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
+    let sprites = HuntSprites {
+        moving: g(hunt.task.sprites[0]),
+        working: g(hunt.task.sprites[2]),
+        carrying: g(hunt.task.sprites[3]),
+        standing: None,
+    };
+    crate::hunt::walk_sprite(
+        hunt.task.resource,
+        life.attribute_type,
+        life.amount,
+        &sprites,
+    )
+}
+
 /// A building's annexes among `objects` (`+0xbc0`.., the save's linked object ids), in id order,
 /// as the building made them.
 pub(crate) fn annexes_of(id: i32, objects: &[Unit]) -> Vec<i32> {
@@ -475,12 +496,15 @@ pub enum Command {
         ids: Vec<i32>,
         /// `tId`: the target object's id.
         target: i32,
-        /// `+0x1d`: a garrison goes through the units' unit AIs (their slot 0x30).
+        /// `+0x1d`: a garrison goes through the units' unit AIs (their slot 0x30); a cancel
+        /// (action 4) cancels up to five of a kind.
         through_ai: bool,
         /// `+0x1e`: a garrison takes the buildings of the target's master near it.
         nearby: bool,
-        /// The order's action (8: the drop-off).
+        /// The order's action (4: a queue's cancel, 8: the drop-off).
         action: u8,
+        /// `+0x18`: a cancel's unit index in the queue.
+        param: u32,
         /// `+0x20`: it sets their last human order time.
         human: bool,
     },
@@ -897,7 +921,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
         let visible = self.spatial.sees_tile(self.player, tx, ty)
             || (t_master.fog_visibility != 0 && self.spatial.explored(self.player, tx, ty)?);
-        let arms = crate::attack::arms(master, self.graphics, [-1; 4]);
+        // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the master's
+        let arms = crate::attack::arms(master, self.graphics, [-1; 4], -1);
         let standing = arms
             .idle_sprite
             .ok_or(Unsupported("an attacker without its standing sprite"))?;
@@ -1755,7 +1780,10 @@ impl Unit {
                 them,
                 c.world_time,
             )?;
-            let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites);
+            let moving = hunt
+                .task
+                .walk_sprite_id(self.life.attribute_type, self.life.amount);
+            let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites, moving);
             let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
                 return Err(Unsupported("a hunter without its hunt or movement state"));
             };
@@ -1918,8 +1946,13 @@ impl Unit {
         let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
         let engagement =
             crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them, c.world_time)?;
-        let sprites = self.hunt.as_ref().map_or([-1; 4], |h| h.task.sprites);
-        let arms = crate::attack::arms(master, c.graphics, sprites);
+        let (sprites, moving) = self.hunt.as_ref().map_or(([-1; 4], -1), |h| {
+            let moving = h
+                .task
+                .walk_sprite_id(self.life.attribute_type, self.life.amount);
+            (h.task.sprites, moving)
+        });
+        let arms = crate::attack::arms(master, c.graphics, sprites, moving);
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let held = self.life.amount;
         let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
@@ -4309,13 +4342,20 @@ impl Unit {
                 None => None,
             };
             let attributes = c.attributes.len();
-            let walk = c.walk(self.mover.as_mut(), me);
+            let shows = hunt_walk_sprite(hunt, c.graphics, &self.life);
+            let (walk, rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+            let shown = crate::hunt::Shown {
+                sprite: &mut self.sprite,
+                rng,
+                graphic: shows,
+            };
             if let Some((kind, amount)) = hunt.update_drop(
                 walk,
                 &mut self.life.attribute_type,
                 &mut self.life.amount,
                 attributes,
                 site,
+                shown,
             )? {
                 // the player's slot 0xf8 (FUN_141616820) with 1 and 1: the resource, and its
                 // gathered total (166 to 168; gold's 49 and 169); the statistics (slot 0xb8) and
@@ -4363,8 +4403,14 @@ impl Unit {
             // hunt's sprite to stand with (slot 0x68 with FUN_140ac5210's), the target and the
             // second target go
             let computer = c.computer;
-            let walk = c.walk(self.mover.as_mut(), me);
-            if hunt.update_point_walk(walk, computer)? {
+            let shows = hunt_walk_sprite(hunt, c.graphics, &self.life);
+            let (walk, rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+            let shown = crate::hunt::Shown {
+                sprite: &mut self.sprite,
+                rng,
+                graphic: shows,
+            };
+            if hunt.update_point_walk(walk, computer, shown)? {
                 let task = hunt.task;
                 let second = std::mem::replace(&mut hunt.carry_to, -1);
                 let master = c
@@ -4462,7 +4508,8 @@ impl Unit {
                     them,
                     c.world_time,
                 )?;
-                let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites);
+                let moving = hunt.task.walk_sprite_id(*gather.held_kind, *gather.held);
+                let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites, moving);
                 let own = them.player == c.player;
                 let drop_site = if !own {
                     None
@@ -4684,7 +4731,28 @@ impl Unit {
                 ));
             }
         }
-        // RGE_Action_Object::update's end (FUN_141163080): an action object's shape
+        let resume = AiResume { captured, leaves };
+        // a builder's work found in its Build's update (slot 0x7e8 from case 0xdf) runs inside the
+        // action update; the caller gives it (`Turns::order_work`) and then runs the rest of this
+        // update ([`Unit::ai_part`])
+        if c.work_order.is_some() {
+            c.ai_resume = Some(resume);
+            return Ok(Step::Stay);
+        }
+        self.ai_part(c, others, resume)
+    }
+
+    /// The end of [`Unit::update`] after the actions: `RGE_Action_Object::update`'s end
+    /// (`FUN_141163080`: the action object's shape), `RGE_Combat_Object::update`'s sight mask,
+    /// then the unit AI's full update on its owner's turn, else its check between turns, and the
+    /// effects it has on the unit; then the step the update ends with.
+    fn ai_part(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        resume: AiResume,
+    ) -> Result<Step, Unsupported> {
+        let AiResume { captured, leaves } = resume;
         if let Some(m) = c
             .masters
             .and_then(|ms| ms.get(self.life.master_id))
@@ -4698,26 +4766,6 @@ impl Unit {
         if self.combat {
             c.spatial.combat_sight(self.id)?;
         }
-        let resume = AiResume { captured, leaves };
-        // a builder's work found in its update runs (the caller's, `Turns::order_work`) before
-        // its unit AI, which the caller then runs ([`Unit::ai_part`])
-        if c.work_order.is_some() && self.ai.is_some() {
-            c.ai_resume = Some(resume);
-            return Ok(Step::Stay);
-        }
-        self.ai_part(c, others, resume)
-    }
-
-    /// The end of [`Unit::update`] (`RGE_Combat_Object::update` after the actions and the sight):
-    /// the unit AI's full update on its owner's turn, else its check between turns, and the
-    /// effects it has on the unit; then the step the update ends with.
-    fn ai_part(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &[Self],
-        resume: AiResume,
-    ) -> Result<Step, Unsupported> {
-        let AiResume { captured, leaves } = resume;
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
         let master = c.masters.and_then(|ms| ms.get(self.life.master_id));
         let class = master.map(|ms| ms.class);
@@ -6412,15 +6460,16 @@ impl Turns {
                 through_ai,
                 nearby,
                 action,
+                param,
                 human,
             } => {
                 if human {
                     self.human_order(ids);
                 }
-                let result = if action == 5 {
-                    self.garrison_order(player, ids, target, through_ai, nearby)
-                } else {
-                    self.unit_order(player, ids, action)
+                let result = match action {
+                    5 => self.garrison_order(player, ids, target, through_ai, nearby),
+                    4 => self.cancel_order(ids, param, through_ai),
+                    _ => self.unit_order(player, ids, action),
                 };
                 if let Err(e) = result {
                     let owner = &mut self.players[player];
