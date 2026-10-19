@@ -433,6 +433,11 @@ const VILLAGER_ANY: i16 = 0x712;
 const VILLAGER_FEMALE: i16 = 0x125;
 /// A building's queue holds at most 15 units (`FUN_1411cbc40`).
 const QUEUE_LIMIT: usize = 15;
+/// A computer player's QUEUE fills a building's queue to at most 2 (`FUN_141614450`).
+const COMPUTER_QUEUE_LIMIT: usize = 2;
+/// The game type whose QUEUE trains one unit in the first age (`FUN_141614450`, the settings'
+/// `+0x34`).
+const ONE_UNIT_GAME: u8 = 0x10;
 /// The notify a Build waiting without work posts (0x202) with its action value
 /// ([`BUILD_ACTION`]).
 const BUILD_IDLE: i32 = 0x202;
@@ -6871,25 +6876,26 @@ impl Turns {
         Ok(true)
     }
 
-    /// QUEUE at one building: per unit (the game recurses, so the last unit drawn is queued first)
-    /// the villager's male or female draw, then the cost and the queue entry, which keeps the
-    /// master's three cost entries (resource and amount) for a cancel's refund. A unit the
-    /// player cannot pay for (`FUN_14162fb60` -> `FUN_141618db0`: each cost entry but the
-    /// population's, paid or not, needs its amount) is not queued; its draw stays.
+    /// QUEUE at one building. The player's part (`FUN_141614450`) first caps `amount` at the
+    /// building's room (15 queued, a computer player's 2), then lowers it while the player cannot
+    /// pay for that many: each cost entry but the population's, paid or not, needs its amount
+    /// times the count. With none left nothing is queued and nothing drawn. Then the building's
+    /// part (`FUN_1411cbc40`): per unit (it recurses, so the last unit drawn is queued first) the
+    /// villager's male or female draw, then the cost and the queue entry, which keeps the
+    /// master's three cost entries (resource and amount) for a cancel's refund. A unit the player
+    /// cannot pay for (`FUN_14162fb60` -> `FUN_141618db0`) is not queued; its draw stays. The
+    /// limited units' counts (`FUN_1416116c0`, `FUN_141611520`, the master's `+0x5f1` flags) and
+    /// a building that cannot train the unit (`FUN_141263610`) are not modelled.
     fn queue(
         &mut self,
         player: usize,
         q: &QueueAt,
         cost: &[(i16, i16, bool)],
     ) -> Result<(), Unsupported> {
-        let action = self.streams.get(Stream::Action);
-        let masters: Vec<i16> = (0..q.amount)
-            .map(|_| match q.unit {
-                VILLAGER | VILLAGER_ANY => villager(action.raw64()),
-                other => other,
-            })
-            .collect();
-        let owner = &mut self.players[player];
+        if self.pathing.game_type == ONE_UNIT_GAME {
+            return Err(Unsupported("QUEUE in the one-unit game type"));
+        }
+        let owner = &self.players[player];
         let index = owner
             .objects
             .iter()
@@ -6899,9 +6905,35 @@ impl Turns {
             .production
             .as_ref()
             .map_or(0, |p| p.queue.len());
-        if queued + masters.len() > QUEUE_LIMIT {
-            return Err(Unsupported("QUEUE beyond a building's 15 units"));
+        let limit = if owner.computer {
+            COMPUTER_QUEUE_LIMIT
+        } else {
+            QUEUE_LIMIT
+        };
+        let mut amount = usize::from(q.amount).min(limit.saturating_sub(queued));
+        let can_pay = |count: usize| -> Result<bool, Unsupported> {
+            let mut ok = true;
+            for &(resource, each, _) in cost.iter().filter(|c| 0 <= c.0 && c.0 != POPULATION) {
+                let held = owner
+                    .resources
+                    .get(resource as usize)
+                    .ok_or(Unsupported("a cost in a resource the slice does not track"))?;
+                // the game compares in f32: (float)amount * (float)count
+                ok &= f32::from(each) * count as f32 <= *held;
+            }
+            Ok(ok)
+        };
+        while amount > 0 && !can_pay(amount)? {
+            amount -= 1;
         }
+        let action = self.streams.get(Stream::Action);
+        let masters: Vec<i16> = (0..amount)
+            .map(|_| match q.unit {
+                VILLAGER | VILLAGER_ANY => villager(action.raw64()),
+                other => other,
+            })
+            .collect();
+        let owner = &mut self.players[player];
         for master in masters.into_iter().rev() {
             let mut can_pay = true;
             for &(resource, amount, _) in cost.iter().filter(|c| 0 <= c.0 && c.0 != POPULATION) {
@@ -8200,25 +8232,55 @@ mod tests {
 
     #[test]
     fn a_queue_the_player_cannot_pay_queues_nothing_and_a_missing_building_stops_the_player() {
-        // as at 2730: too little food for the villager (46 here): no entry, no cost, the draw
-        // stays
+        // too little food for the villager (46 here): no entry, no cost, no draw (records/
+        // 425906646's update 31: player 5's refused QUEUE leaves player 6's draws alone)
         let mut poor = one_player(vec![town_centre(9)], [40.0, 0.0, 0.0, 0.0]);
         poor.tick_with(104, &[queue(9, 83, 1)]);
         assert!(poor.players[0].unsupported.is_none());
         assert_eq!(poor.players[0].resources[0], 40.0);
         let tc = &poor.players[0].objects[0];
         assert!(tc.production.as_ref().is_none_or(|p| p.queue.is_empty()));
-        // the male or female draw as a paid queue's
-        let mut paid = one_player(vec![town_centre(9)], [46.0, 0.0, 0.0, 0.0]);
-        paid.tick_with(104, &[queue(9, 83, 1)]);
-        assert_eq!(paid.players[0].resources[0], 0.0);
+        let mut idle = one_player(vec![town_centre(9)], [40.0, 0.0, 0.0, 0.0]);
+        idle.tick_with(104, &[]);
         assert_eq!(
             poor.streams.get(Stream::Action).draws,
-            paid.streams.get(Stream::Action).draws
+            idle.streams.get(Stream::Action).draws
         );
         let mut missing = one_player(vec![town_centre(9)], [200.0; 4]);
-        missing.tick_with(104, &[queue(8, 83, 1)]);
+        missing.tick_with(104, &[queue(9 - 1, 83, 1)]);
         assert!(missing.players[0].unsupported.is_some());
+    }
+
+    #[test]
+    fn a_queue_takes_as_many_as_the_room_and_the_resources_allow() {
+        // food for two of three: two entries, two draws
+        let mut two = one_player(vec![town_centre(9)], [100.0, 0.0, 0.0, 0.0]);
+        two.tick_with(104, &[queue(9, 83, 3)]);
+        let mut one = one_player(vec![town_centre(9)], [100.0, 0.0, 0.0, 0.0]);
+        one.tick_with(104, &[queue(9, 83, 1)]);
+        let queued = |t: &Turns| {
+            t.players[0].objects[0]
+                .production
+                .as_ref()
+                .unwrap()
+                .queue
+                .len()
+        };
+        assert_eq!(queued(&two), 2);
+        assert_eq!(two.players[0].resources[0], 100.0 - 2.0 * 46.0);
+        assert_eq!(
+            two.streams.get(Stream::Action).draws,
+            one.streams.get(Stream::Action).draws + 1
+        );
+        // 14 queued: room for one of five
+        let mut full = one_player(vec![town_centre(9)], [1000.0; 4]);
+        full.tick_with(104, &[queue(9, 99, 14), queue(9, 99, 5)]);
+        assert_eq!(queued(&full), 15);
+        // a computer player fills to 2
+        let mut computer = one_player(vec![town_centre(9)], [1000.0; 4]);
+        computer.players[0].computer = true;
+        computer.tick_with(104, &[queue(9, 99, 5)]);
+        assert_eq!(queued(&computer), 2);
     }
 
     #[test]

@@ -861,9 +861,10 @@ impl Turns {
     /// unit that is due spawns ([`Turns::spawn`]); its action ends (state 1, its destructor
     /// `FUN_140ace3f0` notifies the building's unit AI 506 with 619 again) and the queue lets it
     /// go (attribute 80 lowers by its population). A building whose population test fails
-    /// (housed) is not modelled, nor is the computer players' list, a research in the queue or
-    /// the work-rate bonuses of `0x140ad0490` (`FUN_140c884c0`'s game mode, the AI difficulty
-    /// under `FUN_141659cf0`).
+    /// ([`housed`]) waits without a make action. Not modelled: a computer player's housed
+    /// building (it cancels its queue, `FUN_1411cff00`), the computer players' list, a research
+    /// in the queue or the work-rate bonuses of `0x140ad0490` (`FUN_140c884c0`'s game mode, the
+    /// AI difficulty under `FUN_141659cf0`).
     pub(crate) fn produce(
         &mut self,
         p: usize,
@@ -889,7 +890,14 @@ impl Turns {
         let pop = population(&self.master_of(p, master)?.storage);
         if !production.action {
             if housed(&self.players[p].attributes, pop)? {
-                return Err(Unsupported("a housed building's make action (it waits)"));
+                // the building waits: its reason (`+0xc02`, 0x20 or 4) and the events 0x7c and
+                // 0x7d are the interface's; a computer player's cancels its queue
+                if self.players[p].computer {
+                    return Err(Unsupported(
+                        "a computer player's housed building cancels its queue (FUN_1411cff00)",
+                    ));
+                }
+                return Ok(());
             }
             let unit = &mut self.players[p].objects[i];
             if let Some(ai) = unit.ai.as_mut() {

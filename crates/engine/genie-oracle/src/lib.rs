@@ -2978,7 +2978,7 @@ fn queue_command(packet: &de::command::MultiQueue, sections: &[PlayerSection<'_>
     };
     // the generic villager becomes the villager before anything is read (FUN_1411cbc40)
     let master_id = if unit == 0x712 { 0x53 } else { unit };
-    match queue_data(section, master_id, button, building) {
+    match queue_data(section, (unit, master_id), button, building) {
         Ok(QueueData {
             train_time,
             rate,
@@ -3007,7 +3007,7 @@ struct QueueData {
 /// QUEUE's train time, the building's work rate and the unit's cost, from the save.
 fn queue_data(
     section: &PlayerSection<'_>,
-    master_id: i16,
+    (raw_id, master_id): (i16, i16),
     button: i32,
     building: i32,
 ) -> Result<QueueData, Unsupported> {
@@ -3053,6 +3053,13 @@ fn queue_data(
         let female = combat(0x125).ok_or(Unsupported("no female villager master"))?;
         if female.build_inventory != unit.build_inventory || train_time(female) != Some(time) {
             return Err(Unsupported("villager sexes that cost or train differently"));
+        }
+    }
+    // the player's part tests the cost of the packet's master, the generic villager's for 0x712
+    if raw_id == 0x712 {
+        let generic = combat(0x712).ok_or(Unsupported("no generic villager master"))?;
+        if generic.build_inventory != unit.build_inventory {
+            return Err(Unsupported("a generic villager that costs differently"));
         }
     }
     // the three entries as the master holds them: the queue entry keeps them all
