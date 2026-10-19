@@ -97,6 +97,9 @@ pub struct BuildingMaster {
     pub annexes: [i16; 4],
     /// `+0x9b8`, `head_unit`: the building it is an annex of (−1 for none).
     pub head_unit: i16,
+    /// `+0x9ba`, `transform_unit`: the master it transforms into (−1 for none); a gate with one
+    /// is in its player's gate list (`+0x1360`, `FUN_141616200`).
+    pub transform_unit: i16,
 }
 
 /// The master values the task finder and the work command read.

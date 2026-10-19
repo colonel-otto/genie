@@ -961,6 +961,7 @@ mod tests {
                 garrison_type: 0,
                 annexes: [-1; 4],
                 head_unit: -1,
+                transform_unit: -1,
             }),
             ..Master::default()
         };

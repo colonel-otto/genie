@@ -90,7 +90,10 @@ fn the_slice_s_tile_grid_is_the_game_s() {
         return eprintln!("GENIE_PLANNER / GENIE_SNAPSHOTS / GENIE_DAT are not set; skipping");
     };
     let game = game_planners(&std::fs::read_to_string(dump).unwrap());
-    let save = std::fs::read(std::path::Path::new(&dir).join("679.aoe2record")).unwrap();
+    // the save of the dump's tick (`GENIE_PLANNER_SAVE`, 679 by default)
+    let tick = std::env::var("GENIE_PLANNER_SAVE").unwrap_or_else(|_| "679".into());
+    let save =
+        std::fs::read(std::path::Path::new(&dir).join(format!("{tick}.aoe2record"))).unwrap();
     let dat = genie_dat::de::DatFile::read_from(std::fs::File::open(dat).unwrap()).unwrap();
     // World::load_world makes the planners of Gaia's villager (master 83) and of master 535
     for (unit, game) in [83usize, 535].into_iter().zip(&game) {

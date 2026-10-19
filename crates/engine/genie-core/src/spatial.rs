@@ -300,15 +300,25 @@ impl Tiles {
         }
     }
 
-    /// A static record leaves: its tiles keep only their terrain class (`FUN_141055980`).
-    fn unmark(&mut self, p: &Placed) {
+    /// A static record of object `me` leaves (`FUN_141055980`): tile by tile, row by row, over
+    /// the tiles it covers, a tile its player marked keeps only its terrain class; but at a tile
+    /// where another object (its centre on the tile) holds a static record (`static_record`:
+    /// kind 0, 1, 2, 11 or 13), the rest stays as it is and the planners hear nothing (false).
+    fn unmark(&mut self, p: &Placed, me: i32, static_record: impl Fn(i32) -> bool) -> bool {
         let (xs, ys) = self.covered(p);
+        let own = 1u64 << p.player;
         for y in ys {
             for x in xs.clone() {
                 let i = self.index(x, y).expect("covered tiles are on the map");
-                self.words[i] &= 0xff;
+                if self.lists[i].iter().any(|&o| o != me && static_record(o)) {
+                    return false;
+                }
+                if self.words[i] >> 23 == own {
+                    self.words[i] &= 0xff;
+                }
             }
         }
+        true
     }
 }
 
@@ -438,17 +448,31 @@ impl Spatial {
     }
 
     /// The object's obstruction record goes (`FUN_141055b40`'s record part): a static record's
-    /// tiles keep only their terrain class (`FUN_141055980`).
+    /// tiles keep only their terrain class ([`Spatial::unmark`]).
     pub fn drop_record(&mut self, id: i32) {
         let Some(p) = self.objects.get(&id).copied() else {
             return;
         };
         if p.obstruction.is_some_and(Obstruction::marks_tiles) {
-            self.tiles.unmark(&p);
-            self.changed.push(self.tiles.covered_rect(&p));
+            self.unmark(&p, id);
         }
         if let Some(o) = self.objects.get_mut(&id) {
             o.obstruction = None;
+        }
+    }
+
+    /// `FUN_141055980` for object `id`'s static record ([`Tiles::unmark`]): the planners hear of
+    /// the covered tiles unless another object's static record on one of them stopped it.
+    fn unmark(&mut self, p: &Placed, id: i32) {
+        let objects = &self.objects;
+        let static_record = |o: i32| {
+            objects
+                .get(&o)
+                .and_then(|q| q.obstruction)
+                .is_some_and(|r| matches!(r.kind, 0 | 1 | 2 | 10 | 11 | 13))
+        };
+        if self.tiles.unmark(p, id, static_record) {
+            self.changed.push(self.tiles.covered_rect(p));
         }
     }
 
@@ -651,8 +675,7 @@ impl Spatial {
             return self.insert(id, placed);
         }
         if old.obstruction.is_some_and(Obstruction::marks_tiles) {
-            self.tiles.unmark(&old);
-            self.changed.push(self.tiles.covered_rect(&old));
+            self.unmark(&old, id);
         }
         if let Some(o) = placed.obstruction.filter(|o| o.marks_tiles()) {
             self.tiles.mark(&placed, o);
@@ -700,8 +723,7 @@ impl Spatial {
                 self.recount(i);
             }
             if gone.obstruction.is_some_and(Obstruction::marks_tiles) {
-                self.tiles.unmark(&gone);
-                self.changed.push(self.tiles.covered_rect(&gone));
+                self.unmark(&gone, id);
             }
         }
     }
@@ -2004,7 +2026,7 @@ impl Spatial {
 }
 
 /// The class of a gate, which a player's allies may pass (slot 0x678, `FUN_1411d4a30`).
-const GATE_CLASS: i16 = 39;
+pub(crate) const GATE_CLASS: i16 = 39;
 
 /// `FUN_1410576a0`, Sedgewick's ccw: 1 when `p0`, `p1`, `p2` turn counter-clockwise (or lie in
 /// a line with `p2` beyond `p1`), -1 clockwise (or `p0` between), 0 when `p2` lies on the segment.
@@ -2193,6 +2215,28 @@ mod tests {
         // which share only level 2's cells of 64 tiles
         bush.position = [31.6, 154.5, 0.0];
         assert_eq!(s.filed(&bush, 2), (2, 0, 2));
+    }
+
+    #[test]
+    fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
+        // records/425906646: Gaia's state-8 bush 0 shares tile (140, 3) with bush 808; its
+        // removal (FUN_141055980) stops at the tile, which stays marked, and the planners hear
+        // nothing
+        let mut s = Spatial::with_tiles([220, 220], Tiles::new(220, 220, vec![1; 220 * 220]));
+        let mut bush = villager(140.5, 3.5);
+        bush.radius = [0.5, 0.5];
+        bush.player = 0;
+        bush.obstruction = Some(Obstruction { kind: 2, class: 1 });
+        s.insert(808, bush);
+        s.insert(0, bush);
+        let _ = s.take_changes();
+        s.remove(0);
+        assert!(s.tiles().word(140, 3).is_some_and(|w| w & BLOCKED != 0));
+        assert_eq!(s.take_changes(), Vec::<[i16; 4]>::new());
+        // alone, it clears its tile
+        s.remove(808);
+        assert_eq!(s.tiles().word(140, 3), Some(1));
+        assert_eq!(s.take_changes(), vec![[140, 3, 140, 3]]);
     }
 
     #[test]

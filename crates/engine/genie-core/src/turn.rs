@@ -6976,6 +6976,123 @@ impl Turns {
         Ok(())
     }
 
+    /// Player `q`'s gate list (`+0x1360`, `FUN_141616200` adds to its front): its live objects
+    /// of class 39 whose master transforms ([`crate::masters::BuildingMaster::transform_unit`]),
+    /// newest first.
+    fn gate_list(&self, q: usize) -> Vec<usize> {
+        let masters = self.masters.get(q);
+        let owner = &self.players[q];
+        (0..owner.objects.len())
+            .rev()
+            .filter(|&i| {
+                masters
+                    .and_then(|m| m.get(owner.objects[i].life.master_id))
+                    .is_some_and(|m| {
+                        m.class == crate::spatial::GATE_CLASS
+                            && m.building.as_ref().is_some_and(|b| 0 <= b.transform_unit)
+                    })
+            })
+            .collect()
+    }
+
+    /// A gate's slot 0x678 (`FUN_1411d4a30`): player `p` may pass gate `i` of player `q` when the
+    /// gate stands (state below 3), is not locked (`mGateLocked`) and its owner and `p` count each
+    /// other as allies (`FUN_141663dc0`, `FUN_141663d90`; a player counts itself).
+    fn gate_passes(&self, q: usize, i: usize, p: usize) -> bool {
+        let gate = &self.players[q].objects[i];
+        gate.life.state < 3
+            && !gate.gate.is_some_and(|g| g.locked)
+            && self.spatial.allied_with(q, p)
+            && self.spatial.allied_with(p, q)
+    }
+
+    /// `BaseWorld::update` before player `p` updates (not Gaia): the gates of each player `q`
+    /// that is `p` or counts `p` an ally and is counted one by it, unless `q`'s are open already
+    /// (`open`, the update's flags), open for `p` (`q`'s slot 0x318, `FUN_14162faf0`): each gate
+    /// `p` may pass ([`Turns::gate_passes`]) loses its record, its tiles' marks and its mesh shape
+    /// (`FUN_141055b40`), so `p`'s units walk and plan through it.
+    fn open_gates(&mut self, p: usize, open: &mut [bool]) -> Result<(), Unsupported> {
+        if p == 0 {
+            return Ok(());
+        }
+        let players = self.players.len();
+        for (q, is_open) in open.iter_mut().enumerate().take(players).skip(1) {
+            if *is_open
+                || (q != p && !(self.spatial.allied_with(p, q) && self.spatial.allied_with(q, p)))
+            {
+                continue;
+            }
+            for i in self.gate_list(q) {
+                if !self.gate_passes(q, i, p) {
+                    continue;
+                }
+                let id = self.players[q].objects[i].id;
+                if self
+                    .spatial
+                    .get(id)
+                    .is_some_and(|g| g.obstruction.is_some_and(|o| o.kind == 10))
+                {
+                    return Err(Unsupported(
+                        "a gate of obstruction kind 10 opens (FUN_140f65580)",
+                    ));
+                }
+                self.spatial.drop_record(id);
+                self.pathing.removed(id);
+            }
+            *is_open = true;
+        }
+        self.pathing.tiles_changed(self.spatial.take_changes());
+        Ok(())
+    }
+
+    /// `BaseWorld::update` after player `p` updated (not Gaia): each open player `q`'s gates close
+    /// (`q`'s slot 0x320, `FUN_141619480`) unless the next player counts `q` an ally and is
+    /// counted one by it (they stay open for it): each gate `p` may pass gets its record, its
+    /// tiles' marks and its mesh shape again (`FUN_141056460`).
+    fn close_gates(&mut self, p: usize, open: &mut [bool]) {
+        if p == 0 {
+            return;
+        }
+        let (next, players) = (p + 1, self.players.len());
+        for (q, is_open) in open.iter_mut().enumerate().take(players).skip(1) {
+            if !*is_open {
+                continue;
+            }
+            if next < players
+                && self.spatial.allied_with(next, q)
+                && self.spatial.allied_with(q, next)
+            {
+                continue;
+            }
+            for i in self.gate_list(q) {
+                if !self.gate_passes(q, i, p) {
+                    continue;
+                }
+                let gate = &self.players[q].objects[i];
+                let (id, master) = (gate.id, gate.life.master_id);
+                let Some(m) = self.masters.get(q).and_then(|t| t.get(master)) else {
+                    continue;
+                };
+                let record = crate::spatial::Obstruction {
+                    kind: m.obstruction_type,
+                    class: m.obstruction_class,
+                };
+                if self
+                    .spatial
+                    .get(id)
+                    .is_some_and(|g| g.obstruction.is_none())
+                {
+                    self.spatial.add_record(id, record);
+                    if let Some(placed) = self.spatial.get(id).copied() {
+                        self.pathing.place_shape(id, &placed);
+                    }
+                }
+            }
+            *is_open = false;
+        }
+        self.pathing.tiles_changed(self.spatial.take_changes());
+    }
+
     /// `World::load_world`'s planners (`FUN_140f7d310`): the restrictions of Gaia's masters 83
     /// (the villager's) and 535 (the galley's), each unless one of the same values has one; any
     /// other restriction finds none (its units walk without the tile pathfinder).
@@ -7073,9 +7190,15 @@ impl Turns {
             self.run(command);
         }
         self.sync_moving();
+        // which players' gates are open (BaseWorld::update's flags)
+        let mut gates_open = vec![false; self.players.len()];
         for p in 0..self.players.len() {
             self.player_time[p] = self.player_time[p].wrapping_add(dt);
             let turn = (p == self.player_turn).then_some(self.player_time[p]);
+            if let Err(e) = self.open_gates(p, &mut gates_open) {
+                let tick = self.ticks;
+                self.players[p].stop(tick, e);
+            }
             self.pathing.tiles_changed(self.spatial.take_changes());
             // An object whose update is not modelled freezes, and so do all live objects of a
             // player a command stopped; dead objects still run their state steps, which draw
@@ -7376,6 +7499,7 @@ impl Turns {
                     }
                 }
             }
+            self.close_gates(p, &mut gates_open);
         }
         self.spatial.grow_unknown(seconds(dt));
         let s1 = self.streams.get(Stream::World).rand15();
@@ -8117,6 +8241,102 @@ mod tests {
             rate: 1.0,
             cost: vec![(0, 46, true), (4, 1, false)],
         }
+    }
+
+    #[test]
+    fn a_gate_opens_for_its_allies_while_they_update() {
+        // records/425906646's update 636: player 2's gate 27687 (master 64, class 39 with a
+        // transform unit) has no record, marks or shape while its team updates, so 27274's plan
+        // passes it; the next player, an enemy, finds it closed again
+        let gate = Unit {
+            id: 27687,
+            life: Lifecycle {
+                master_id: 64,
+                state: 2,
+                ..Lifecycle::default()
+            },
+            gate: Some(Gate { locked: false }),
+            ..Unit::default()
+        };
+        let player = |objects: Vec<Unit>, relations: Vec<u8>| Player {
+            objects,
+            relations,
+            attributes: vec![0.0; 250],
+            ..Player::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0; 4],
+            vec![
+                player(Vec::new(), vec![0, 3, 3, 3]),
+                player(Vec::new(), vec![3, 0, 0, 3]),
+                player(vec![gate], vec![3, 0, 0, 3]),
+                player(Vec::new(), vec![3, 3, 3, 0]),
+            ],
+        );
+        let master = Master {
+            id: 64,
+            class: 39,
+            obstruction_type: 2,
+            obstruction_class: 5,
+            building: Some(crate::masters::BuildingMaster {
+                transform_unit: 63,
+                ..crate::masters::BuildingMaster::default()
+            }),
+            ..Master::default()
+        };
+        t.masters = (0..4).map(|_| Masters::new([master.clone()])).collect();
+        t.spatial = Spatial::with_tiles([20, 20], crate::spatial::Tiles::new(20, 20, vec![1; 400]));
+        t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
+        let record = crate::spatial::Obstruction { kind: 2, class: 5 };
+        t.spatial.insert(
+            27687,
+            Placed {
+                position: [10.0, 10.5, 0.0],
+                radius: [1.0, 0.5],
+                class: 39,
+                player: 2,
+                master: 64,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(record),
+            },
+        );
+        let blocked = |t: &Turns| {
+            t.spatial
+                .tiles()
+                .word(9, 10)
+                .is_some_and(|w| w & crate::spatial::BLOCKED != 0)
+        };
+        assert!(blocked(&t));
+        let mut open = vec![false; 4];
+        // player 1, an ally, opens both its own and player 2's gates
+        t.open_gates(1, &mut open).unwrap();
+        assert_eq!(open, [false, true, true, false]);
+        assert!(t.spatial.get(27687).unwrap().obstruction.is_none());
+        assert!(!blocked(&t));
+        // player 2 is next and an ally of both: they stay open
+        t.close_gates(1, &mut open);
+        assert_eq!(open, [false, true, true, false]);
+        t.open_gates(2, &mut open).unwrap();
+        // player 3, next, is an enemy: they close
+        t.close_gates(2, &mut open);
+        assert_eq!(open, [false; 4]);
+        assert_eq!(t.spatial.get(27687).unwrap().obstruction, Some(record));
+        assert!(blocked(&t));
+        t.open_gates(3, &mut open).unwrap();
+        assert_eq!(open, [false, false, false, true]);
+        assert!(blocked(&t));
+        // a locked gate stays closed for its allies
+        t.close_gates(3, &mut open);
+        t.players[2].objects[0].gate = Some(Gate { locked: true });
+        t.open_gates(1, &mut open).unwrap();
+        assert!(blocked(&t));
     }
 
     #[test]
