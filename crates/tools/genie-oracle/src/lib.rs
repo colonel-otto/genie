@@ -1814,6 +1814,13 @@ const fn unmodelled_command(p: &de::command::Command) -> &'static str {
 /// The slice set up from the header save: every player's live objects in their saved order, and
 /// `BaseWorld`'s fields before the map, the frame seed (`mCurrentFrameRandomSeed`, world+0x7d0) and
 /// the turn order (`player_turn`, `player_time_delta[i]`).
+///
+/// Only for a save whose run-time state then comes from the tick oracle's dumps (a per-tick save:
+/// the registry, tiles, mesh owners …). A run from a recording's header takes [`header_slice`]:
+/// it adds what the game's own load builds, which the save does not hold (an empty
+/// objects-in-sight registry, FD-008-D72; the hunted animals' origins; the watched lists).
+/// Without it every unit-AI search stops as Unsupported: [`simulate_word9`] once used this and
+/// lost MarvinBlue/426048731 player 2's first checkpoint that way.
 fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     let victory = &header.world.base_world.victory_conditions;
     let players = header
@@ -3251,7 +3258,8 @@ pub fn simulate_word9(
         })
     });
     let sections = header.players();
-    let mut turns = slice(&header, masters);
+    // from the recording's header: the load's run-time state too, not the bare `slice`
+    let mut turns = header_slice(&header, masters);
     run(
         &mut turns,
         &mut Decoder::default(),
@@ -3344,7 +3352,8 @@ pub fn word9_terms(
     if sections.len() <= id as usize {
         return Err(Error::NoSuchPlayer(id));
     }
-    let mut turns = slice(&header, masters);
+    // from the recording's header: the load's run-time state too, not the bare `slice`
+    let mut turns = header_slice(&header, masters);
     run(
         &mut turns,
         &mut Decoder::default(),
