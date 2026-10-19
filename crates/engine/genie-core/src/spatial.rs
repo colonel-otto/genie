@@ -604,7 +604,8 @@ impl Spatial {
         records: bool,
         classes: Option<&[i32]>,
     ) -> Result<(), Unsupported> {
-        let near = self.objects.iter().any(|(&id, p)| {
+        // only a frozen object has an unknown place, and each is in `frozen_for`
+        let near = self.frozen().any(|(id, p)| {
             if records && p.obstruction.is_none() {
                 return false;
             }
@@ -628,7 +629,7 @@ impl Spatial {
 
     /// Whether a stopped player's unit may have reached the frozen object `id` within `rect`.
     fn touchable(&self, id: i32, rect: [f32; 4]) -> bool {
-        self.objects.iter().any(|(&other, q)| {
+        self.frozen().any(|(other, q)| {
             let Some(u) = q.unknown.filter(|_| other != id) else {
                 return false;
             };
@@ -650,10 +651,21 @@ impl Spatial {
         })
     }
 
+    /// The frozen objects (those with an unknown place), in id order.
+    fn frozen(&self) -> impl Iterator<Item = (i32, &Placed)> + '_ {
+        self.frozen_for
+            .keys()
+            .filter_map(|&id| self.objects.get(&id).map(|p| (id, p)))
+            .filter(|(_, p)| p.unknown.is_some())
+    }
+
     /// A new object, in the order the game adds them: a static record marks only the tiles no
     /// earlier record marked.
     pub fn insert(&mut self, id: i32, placed: Placed) {
         self.remove(id);
+        if placed.unknown.is_some() {
+            let _ = self.frozen_for.entry(id).or_insert(0.0);
+        }
         if let Some(o) = placed.obstruction.filter(|o| o.marks_tiles()) {
             self.tiles.mark(&placed, o);
             self.changed.push(self.tiles.covered_rect(&placed));
@@ -986,10 +998,25 @@ impl Spatial {
             grow + rect[3],
         ];
         let mut hits = Vec::new();
+        // a box that misses the step's rectangle even grown by the larger of the two grows cannot
+        // be hit (a smaller grow's box lies inside it): skip it before the grid's filing test,
+        // which costs the most. Without a player a moving object's test fails, so then all go
+        // through it
+        let reach = grow.max(ally_factor * grow);
+        let skip = |p: &Placed| {
+            let [x0, y0, x1, y1] = p.bounds();
+            !(rect[0] <= reach + x1
+                && x0 - reach <= rect[2]
+                && rect[1] <= reach + y1
+                && y0 - reach <= rect[3])
+        };
         for (&id, p) in &self.objects {
             let Some(o) = p.obstruction else {
                 continue;
             };
+            if player.is_some() && skip(p) {
+                continue;
+            }
             let kind = if o.kind == 10 { 2 } else { o.kind };
             if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) || !self.visits(p, kind, query)
             {
