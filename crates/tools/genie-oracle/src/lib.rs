@@ -2412,7 +2412,7 @@ fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<Placement> 
 /// positions and their masters' radii and class; the players' doppelgangers count on their tiles. An object has an obstruction record when its
 /// master has an obstruction kind and all three radii, unless it is a building marked desolid (a
 /// foundation no builder has started; the first builder's Build state 7 adds its record). Checked
-/// against the game's obstruction manager in `tests/obstructions.rs`.
+/// against the game's obstruction manager, dumped by the tick oracle.
 /// The map's terrain per tile from the save, with the `.dat`'s terrain records.
 fn map_terrain(header: &Header, terrain: &TerrainTable) -> genie_core::terrain::Terrain {
     let map = &header.world.base_world.map;
@@ -3181,6 +3181,15 @@ fn combat_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterC
     })
 }
 
+/// Whether the runs list each decoded command with the update it runs in ([`trace_commands`]).
+static TRACE_COMMANDS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Every run from now on lists each decoded command with the update it runs in, on standard
+/// error (`on`), or stops listing them.
+pub fn trace_commands(on: bool) {
+    TRACE_COMMANDS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Run the slice over `frames`, each tick with its commands.
 fn run(
     turns: &mut Turns,
@@ -3188,8 +3197,7 @@ fn run(
     frames: &[Frame<'_>],
     sections: &[PlayerSection<'_>],
 ) {
-    // GENIE_TRACE_COMMANDS lists each decoded command with the update it runs in
-    let trace = std::env::var_os("GENIE_TRACE_COMMANDS").is_some();
+    let trace = TRACE_COMMANDS.load(std::sync::atomic::Ordering::Relaxed);
     for frame in frames {
         let commands: Vec<Command> = frame
             .commands
@@ -5186,7 +5194,7 @@ pub fn unit_terrain(save: &[u8], id: i32) -> Result<Option<(f32, usize)>, Error>
 
 /// The tile pathfinder's planner for one terrain restriction (`passable`, its value per terrain),
 /// built from a save's map and the tiles its static obstructions block, as the game builds it at
-/// load (`FUN_140f7d310`). Checked against the game's grid in `tests/tile_path.rs`.
+/// load (`FUN_140f7d310`). Checked against the game's grid, dumped by the tick oracle.
 pub fn planner_from_save(
     save: &[u8],
     terrain: &TerrainTable,

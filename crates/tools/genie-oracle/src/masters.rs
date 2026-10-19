@@ -208,7 +208,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
 /// What the `.dat` says of terrain for passability: each terrain's class (`FUN_1413fbff0` of its
 /// `is_water` flags: 1 water, 2 shallows and beach, 4 land, 0 none) and each terrain restriction's
 /// mask, the classes it can pass (the obstruction manager's table, `FUN_141054630`). Checked
-/// against the game's in `tests/obstructions.rs`.
+/// against the game's table, dumped by the tick oracle.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TerrainTable {
     classes: Vec<u8>,
