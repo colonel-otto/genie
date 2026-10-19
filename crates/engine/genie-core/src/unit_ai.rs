@@ -66,6 +66,9 @@ pub const ACTION_INVALIDATED: i32 = crate::ai_kinds::NOTIFY_ACTION_INVALIDATED;
 pub const ACTION_FAILED: i32 = crate::ai_kinds::NOTIFY_ACTION_FAILED;
 /// `0x1fc`: a `MoveTo`'s target left its point and its path's end did not follow (p1..p3 0).
 pub const TARGET_MOVED: i32 = 0x1fc;
+/// `0x215` (no log line): the motion step met a unit of its walked target's master that neither
+/// player counts an ally (p1 its id).
+pub const IN_THE_WAY: i32 = 0x215;
 /// `0x200`: "`ActionExecuted`" (the soldier's log line), an attack's swing (p1 600, p2 the target).
 pub const ACTION_EXECUTED: i32 = 0x200;
 /// `0x20b`: the unit changed hands (p1 the new owner).
@@ -163,6 +166,9 @@ pub enum Effect {
     /// The queued order on a target (`0x2db`) the AI took: the unit's slot 0x128 on the target,
     /// then the order's priority becomes the AI's (the caller's, `Turns::order_on_target`).
     OrderOnTarget(QueuedOrder),
+    /// The full update's tail that reads what the order on a target before it gave the AI
+    /// ([`UnitAi::after_order`], the caller's once it ran the order).
+    AfterOrder(AfterOrder),
     /// The unit's explore (slot 0x398, `FUN_141084db0`, with its argument 4 set) to the point
     /// (x, y): its Explore takes the point (slot 0x48), else a new Explore to it (`FUN_140a87d30`
     /// at the unit's height) replaces its actions (`FUN_140a98620`, slot 0x808).
@@ -177,6 +183,15 @@ pub enum Effect {
         /// The range within which the `MoveTo` arrives.
         range: f32,
     },
+}
+
+/// What a full update that took an order on a target ([`Effect::OrderOnTarget`]) leaves for
+/// after it: the game runs the order inside the update (slot 0x230), so the retarget check's
+/// outcome and the idle part's end read the action, target and order it gave the AI.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AfterOrder {
+    /// The retarget check's timer ran out (it was redrawn): its outcome is to come.
+    pub retargeted: bool,
 }
 
 /// The first move among a full update's effects.
@@ -485,6 +500,23 @@ pub fn can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
     Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
 }
 
+/// The classes a lion attacks by its own choice (its slot 0xa0's list, `FUN_140c18d50`; the
+/// game's `+0x6b4` of 1, not met, adds 13, 18 and 55).
+const LION_ATTACKS: [i16; 19] = [
+    0, 4, 6, 9, 12, 23, 24, 25, 26, 28, 35, 36, 44, 45, 46, 47, 50, 56, 57,
+];
+
+/// The lion's slot 0xa0 (`FUN_140c18d50`) without its `any` flag: by the master's attack
+/// priority 1 and 2 anything, 3 the classes of [`PRIORITY_3_CLASSES`], any other the classes
+/// of [`LION_ATTACKS`].
+fn lion_may_attack(attack_priority: u8, class: i16) -> bool {
+    match attack_priority {
+        1 | 2 => true,
+        3 => PRIORITY_3_CLASSES.contains(&class),
+        _ => LION_ATTACKS.contains(&class),
+    }
+}
+
 /// What [`UnitSide::attack`] answers: the unit attacks the target, and the notifies the command
 /// posted to its unit AI (slot 0x328 with the kind and three parameters).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -628,6 +660,10 @@ pub struct Surroundings {
     pub player: usize,
     /// The unit's master's class (decoded).
     pub class: i16,
+    /// The master's `combat_level` (`+0x62c`).
+    pub combat_level: u8,
+    /// The master's `attack_priority` (`+0x92c`, `FUN_141202220`).
+    pub attack_priority: u8,
     /// The master's radii (`+0x5d8`, `+0x5dc`), line of sight (`+0x5d0`) and search radius
     /// (`+0x794`, the unit's slot 0x2c8).
     pub size: [f32; 2],
@@ -1614,13 +1650,57 @@ impl UnitAi {
         {
             self.run_orders(&mut fx)?;
         }
+        let ordered = fx.iter().any(|e| matches!(e, Effect::OrderOnTarget(_)));
+        let mut retargeted = false;
         if matches!(retarget, Retarget::Base) {
-            self.retarget_check(world_time, computer, at, ai, &mut fx)?;
+            retargeted = self.retarget_check(world_time, computer, at, ai, ordered, &mut fx)?;
         }
-        self.idle_part(busy, at, computer, ai, side, &mut fx)?;
+        if ordered {
+            self.idle_part_before_order(busy, at)?;
+        } else {
+            self.idle_part(busy, at, computer, ai, side, &mut fx)?;
+        }
         self.look_around(computer, ai)?;
         self.boar_tail(at, computer, ai, side, &mut fx)?;
+        if ordered {
+            fx.push(Effect::AfterOrder(AfterOrder { retargeted }));
+        }
         Ok(fx)
+    }
+
+    /// The full update's tail after the order on a target it took ([`AfterOrder`]), with what the
+    /// order gave the AI: processMisc's order part on a defend or follow order is not modelled;
+    /// a retarget check whose timer ran out decides on the order's target (`target`: its owner
+    /// and class) and the unit's weapon range ([`UnitAi::retarget_outcome`]); then the idle
+    /// part's end ([`UnitAi::idle_part`] past its slot 72): an action or a target keeps the idle
+    /// timer of a player above Gaia at 0.
+    ///
+    /// # Errors
+    ///
+    /// What the tail does not model.
+    pub fn after_order(
+        &mut self,
+        after: AfterOrder,
+        player: usize,
+        class: i16,
+        weapon_range: f32,
+        target: Option<(usize, i16)>,
+        computer: bool,
+    ) -> Result<(), Unsupported> {
+        let order = match (self.current_order, self.current_action) {
+            (-1, -1) => -1,
+            (-1, action) => action + 100,
+            (order, _) => order,
+        };
+        if matches!(order, DEFEND_ORDER | FOLLOW_ORDER) {
+            return Err(Unsupported(
+                "processMisc's defend or follow order after an order on a target",
+            ));
+        }
+        if after.retargeted {
+            self.retarget_outcome(target, weapon_range, computer)?;
+        }
+        self.idle_part_end(class, player)
     }
 
     /// The boar's slot 4 (`0x140c2c010`) after the base, however that ended: its second idle
@@ -1910,10 +1990,10 @@ impl UnitAi {
         };
         let villager = attacker.class == CLASS_VILLAGER;
         let furious = if self.current_action == ATTACK_ACTION {
-            let _ = self.attack_object(target, false, at, side)?;
+            let _ = self.attack_object(target, false, false, at, side)?;
             true
         } else {
-            let _ = self.attack_object(target, true, at, side)?;
+            let _ = self.attack_object(target, true, false, at, side)?;
             self.idle_timer = 0;
             villager
         };
@@ -2037,8 +2117,8 @@ impl UnitAi {
 
     /// `AttackObject` (slot 0xb8, `FUN_140c43720`): `+0x1d5` clears; not `force`d, an AI with an
     /// action fails (false). The target must be in the world's table ([`Surroundings::unit`]);
-    /// the boar's slot 0xa0 (`FUN_140c48400`) lets it attack anything (other factory types are not
-    /// modelled); then the unit's attack command ([`UnitSide::attack`]), on success the action is
+    /// its slot 0xa0 with `any` must let it attack the target: the boar's (`FUN_140c48400`)
+    /// anything, the lion's ([`lion_may_attack`]; other factory types are not modelled); then the unit's attack command ([`UnitSide::attack`]), on success the action is
     /// the attack (600, the last action keeping the old) and the target its point and class
     /// (`FUN_140c64c10`). The slice holds no unit groups (`+0x6d0`), whose members would attack
     /// too.
@@ -2046,6 +2126,7 @@ impl UnitAi {
         &mut self,
         target: i32,
         force: bool,
+        any: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
     ) -> Result<bool, Unsupported> {
@@ -2055,10 +2136,17 @@ impl UnitAi {
         let Some(t) = at.unit(target) else {
             return Ok(false);
         };
-        if self.ai_type != 4 {
-            return Err(Unsupported(
-                "AttackObject's slot 0xa0 of a unit AI other than a boar's",
-            ));
+        let may = match self.ai_type {
+            4 => true,
+            5 => any || lion_may_attack(at.attack_priority, t.class),
+            _ => {
+                return Err(Unsupported(
+                    "AttackObject's slot 0xa0 of a unit AI other than a boar's or a lion's",
+                ));
+            }
+        };
+        if !may {
+            return Ok(false);
         }
         let attacked = side.attack(target, force, self)?;
         // the unit's posts (slot 0x328 -> the AI's slot 0x38) while the AI processes its
@@ -2273,6 +2361,7 @@ impl UnitAi {
                 }
                 Ok(GO_ON)
             }
+            IN_THE_WAY => self.in_the_way(n, at, side),
             // "Unit #%d is no longer doing an action on me.": an attacker leaves the set
             NO_LONGER_ON_ME => {
                 if let Ok(i) = self.attackers.binary_search(&n.caller) {
@@ -2282,6 +2371,30 @@ impl UnitAi {
             }
             _ => Err(Unsupported("a notify kind the base handler does not model")),
         }
+    }
+
+    /// The base handler's case 0x215 ([`IN_THE_WAY`]): a unit not of a boar's master (class 10
+    /// of combat level 1, `FUN_140fde4f0`) attacks the unit in its way (`AttackObject`, slot
+    /// 0xb8, forced, its slot 0xa0 unforced, [`UnitAi::attack_object`]) when the world's table
+    /// holds it, retargeting is on (`+0x1d6` 0), its stance (`+0x1a9`) is 0 and it has no order;
+    /// the other unit's group (`+0x6d0`), which would let it attack with one, the slice does not
+    /// hold. Processing goes on.
+    fn in_the_way(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+    ) -> Result<u32, Unsupported> {
+        let boar = at.class == 10 && at.combat_level == 1;
+        if !boar
+            && at.unit(n.p[0]).is_some()
+            && self.retarget_disabled == 0
+            && self.current_order == -1
+            && self.stance == 0
+        {
+            let _ = self.attack_object(n.p[0], true, false, at, side)?;
+        }
+        Ok(GO_ON)
     }
 
     /// The action values of an explorer (the base handler's case 0x202): 605, 623 and 630, and
@@ -2831,16 +2944,43 @@ impl UnitAi {
             self.process_idle(at, computer, ai, side, fx)?;
             return Ok(());
         }
+        self.idle_part_end(at.class, at.player)
+    }
+
+    /// [`UnitAi::idle_part`] when the update took an order on a target, which in the game ran
+    /// before it: its end waits for the order ([`UnitAi::after_order`]); a timer past its timeout
+    /// would run slot 72 if the order gave the AI no action, which is not modelled.
+    const fn idle_part_before_order(
+        &self,
+        busy: bool,
+        at: &Surroundings,
+    ) -> Result<(), Unsupported> {
+        let class_20 = busy && at.class == CLASS_20;
+        if !class_20
+            && self.adjusted_idle_timeout < self.idle_timer
+            && (self.current_target == -1 || !busy)
+        {
+            return Err(Unsupported(
+                "an idle part past its timeout after an order on a target",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The idle part past slot 72: patrol orders, class 3's and 52's actions `0x26b`/`0x26c` and
+    /// action `0x2c0` are not modelled; an action or a target keeps the idle timer of a player
+    /// above Gaia at 0.
+    const fn idle_part_end(&mut self, class: i16, player: usize) -> Result<(), Unsupported> {
         if matches!(self.current_order, PATROL | PATROL_2) {
             return Err(Unsupported("a patrol order's idle part"));
         }
-        if matches!(at.class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
+        if matches!(class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
             return Err(Unsupported("a unit of class 3 or 52 on action 0x26b/0x26c"));
         }
         if self.current_action == 0x2c0 {
             return Err(Unsupported("the idle part of action 0x2c0"));
         }
-        if (self.current_action != -1 || self.current_target != -1) && 0 < at.player {
+        if (self.current_action != -1 || self.current_target != -1) && 0 < player {
             self.idle_timer = 0;
         }
         Ok(())
@@ -2860,14 +3000,19 @@ impl UnitAi {
     /// (classes 3, 27,
     /// 39, 49, 52) or a trebuchet's (51, 54), whose search for a better target (slot 0x538 with
     /// 9, then slot 0x520) is not modelled; nor is the attack order's search.
+    ///
+    /// With an order on a target taken (`ordered`), whose action, target and order the game's
+    /// check reads, the order part and the leash read the AI before it and the outcome after the
+    /// redraw is left for [`UnitAi::after_order`]. True when the timer ran out.
     fn retarget_check(
         &mut self,
         world_time: u32,
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
+        ordered: bool,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<bool, Unsupported> {
         let order = match (self.current_order, self.current_action) {
             (-1, -1) => -1,
             (-1, action) => action + 100,
@@ -2877,7 +3022,7 @@ impl UnitAi {
             return Err(Unsupported("a defend order's processMisc"));
         }
         if order == FOLLOW_ORDER && self.follow(at, fx)? {
-            return Ok(());
+            return Ok(false);
         }
         // the defend stance's leash (unless on orders 0x2c7, 0x2dd and 0x323; a unit group's
         // flags would skip it too, and the slice holds no unit groups): a unit more than 5
@@ -2904,22 +3049,40 @@ impl UnitAi {
             }
         }
         if self.retarget_disabled != 0 {
-            return Ok(());
+            return Ok(false);
         }
         if world_time.wrapping_sub(self.last_retarget_time) < self.retarget_timer {
-            return Ok(());
+            return Ok(false);
         }
         self.last_retarget_time = world_time;
         self.retarget_timer = 750 + ai.rand15() % 500;
+        if !ordered {
+            let target = at.target.map(|t| (t.owner, t.class));
+            self.retarget_outcome(target, at.weapon_range, computer)?;
+        }
+        Ok(true)
+    }
+
+    /// The retarget check after its timer's redraw: a human player's unit of a range above 3 on
+    /// the attack order stops there, as does a unit with a Gaia target or without one (or one
+    /// gone; `target` its owner and class as the world holds it), and one with a player's target
+    /// off the attack order but for a building, wall or trebuchet target, whose search for a
+    /// better target is not modelled.
+    fn retarget_outcome(
+        &self,
+        target: Option<(usize, i16)>,
+        weapon_range: f32,
+        computer: bool,
+    ) -> Result<(), Unsupported> {
         let attack_order = self.current_order == ATTACK_ORDER;
-        if attack_order && RETARGET_RANGE < at.weapon_range && !computer {
+        if attack_order && RETARGET_RANGE < weapon_range && !computer {
             return Ok(());
         }
         let mut search = false;
         if self.current_target != -1 {
-            match at.target {
-                Some(t) if t.owner == 0 => return Ok(()),
-                Some(t) if matches!(t.class, 3 | 27 | 39 | 49 | 52 | 51 | 54) => {
+            match target {
+                Some((0, _)) => return Ok(()),
+                Some((_, 3 | 27 | 39 | 49 | 52 | 51 | 54)) => {
                     if attack_order && !computer {
                         return Ok(());
                     }
@@ -3172,6 +3335,54 @@ mod tests {
         assert_eq!(u.current_target, 10049);
     }
 
+    /// The 4v4's boar 29823 in update 2917 walks to its villager and meets another of the same
+    /// master: a boar (class 10 of combat level 1) lets it be; a wolf (combat level 4) with no
+    /// order attacks it, forced, unless its stance is not aggressive.
+    #[test]
+    fn a_unit_in_the_way_is_attacked_by_a_wolf_not_by_a_boar() {
+        let at = |combat_level| Surroundings {
+            id: 29823,
+            class: CLASS_10,
+            combat_level,
+            units: vec![attacker(29001, 4, 1.0)],
+            ..Surroundings::default()
+        };
+        let n = Notify::own(29823, IN_THE_WAY, [29001, -1, -1]);
+        let mut side = Recorder::default();
+        let mut fx = Vec::new();
+        let mut boar = UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 29002,
+            ..hit_boar()
+        };
+        let r = boar.handle(n, 0, &at(1), false, &mut rng(), &mut side, &mut fx);
+        assert_eq!((r, side.attacks.clone()), (Ok(GO_ON), vec![]));
+        let mut wolf = UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 29002,
+            ..idle(5)
+        };
+        let r = wolf.handle(n, 0, &at(4), false, &mut rng(), &mut side, &mut fx);
+        assert_eq!((r, side.attacks.clone()), (Ok(GO_ON), vec![(29001, true)]));
+        assert_eq!(wolf.current_target, 29001);
+        let mut defensive = UnitAi {
+            stance: 1,
+            ..idle(5)
+        };
+        let mut side = Recorder::default();
+        let _ = defensive.handle(n, 0, &at(4), false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(side.attacks, []);
+    }
+
+    #[test]
+    fn a_lion_attacks_by_its_priority_or_its_classes() {
+        assert!(lion_may_attack(1, 3));
+        assert!(!lion_may_attack(3, 4));
+        assert!(lion_may_attack(3, 3));
+        assert!(lion_may_attack(0, 4));
+        assert!(!lion_may_attack(0, 13));
+    }
+
     /// MarvinBlue/426048731's villager 10041 in update 4839, hunting the boar 9731 (its Hunt in
     /// state 12) that hits it: the boar is its target, so it calls nobody for help; it is under
     /// attack, and the hunt order with a class-10 target and a Gaia attacker ignores the damage.
@@ -3405,12 +3616,18 @@ mod tests {
         let (mut u, at) = defender(15.4);
         let mut fx = Vec::new();
         let mut r = rng();
-        assert!(u.retarget_check(0, false, &at, &mut r, &mut fx).is_ok());
+        assert!(
+            u.retarget_check(0, false, &at, &mut r, false, &mut fx)
+                .is_ok()
+        );
         assert_eq!(fx, Vec::<Effect>::new());
         // 5.1 tiles off its footprint: it stops and forgets its target (the walk back is not
         // modelled)
         let (mut u, at) = defender(15.6);
-        assert!(u.retarget_check(0, false, &at, &mut r, &mut fx).is_err());
+        assert!(
+            u.retarget_check(0, false, &at, &mut r, false, &mut fx)
+                .is_err()
+        );
         assert_eq!(fx, vec![Effect::Stop]);
         assert_eq!((u.current_action, u.current_target), (-1, -1));
     }

@@ -571,6 +571,7 @@ fn path_level(d: &PathData, paths: &[Path]) -> Result<genie_core::movement::Path
         level: d.waypoint_level,
         linked_type: d.linked_path_type,
         points: path.map_or_else(Vec::new, |p| p.m_waypoints.iter().map(vec3).collect()),
+        has_path: path.is_some(),
         path_flags: path.map_or(0, |p| p.flags_m_bits),
         waypoint: d.waypoint,
         state: d.state,
@@ -746,6 +747,7 @@ fn mover(
         move_to_point: saved_move_to_point(object),
         speed_stopped: false,
         pauses: Vec::new(),
+        in_the_way: Vec::new(),
     }))
 }
 
@@ -3673,6 +3675,7 @@ impl Same for genie_core::movement::PathData {
         self.level == other.level
             && self.linked_type == other.linked_type
             && self.points.same(&other.points)
+            && self.has_path == other.has_path
             && self.path_flags == other.path_flags
             && self.waypoint == other.waypoint
             && self.state == other.state

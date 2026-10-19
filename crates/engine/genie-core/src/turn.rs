@@ -446,6 +446,8 @@ const BUILDING_TERRAIN: usize = 255;
 const EJECT_SHARE: f32 = crate::image::building::EJECT_SHARE;
 /// The monastery (master 104, `0x6104` raw), whose relics give goods every second.
 const MONASTERY: i16 = 104;
+/// The petard (master 440, `0x6254` raw), which a class-10 searcher passes (`FUN_140c488b0`).
+const PETARD: i16 = 440;
 /// The villager's class (4), which a building's repair by its garrison counts.
 const VILLAGER_CLASS: i16 = 4;
 /// The building masters `FUN_140fde180` counts as drop sites besides the drop-site table's:
@@ -584,8 +586,12 @@ struct Context<'a> {
     /// which the caller gives after the update ([`Turns::order_work`]).
     work_order: Option<crate::order::Work>,
     /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
-    /// runs after the update ([`Turns::order_on_target`]).
-    order_on_target: Option<crate::unit_ai::QueuedOrder>,
+    /// runs after the update ([`Turns::order_on_target`]), and the full update's tail that reads
+    /// what the order gave ([`crate::unit_ai::UnitAi::after_order`]).
+    order_on_target: Option<(
+        crate::unit_ai::QueuedOrder,
+        Option<crate::unit_ai::AfterOrder>,
+    )>,
     /// The map's zone maps, which an auto scout's search reads.
     zones: &'a mut crate::zones::Zones,
     /// The other players' lists, as they stand before the unit's update.
@@ -699,6 +705,16 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         };
         let (others, foreign) = (self.others, self.foreign);
         let moving = |id: i32| herded(others, foreign, id);
+        // a class-10 searcher passes master 440 and the masters with object flag 0x10
+        let shuns = |p: &Placed| {
+            let m = every
+                .get(p.player)
+                .and_then(|ms| ms.get(p.master))
+                .ok_or(Unsupported(
+                    "a found object of a master the slice does not have",
+                ))?;
+            Ok(p.master == PETARD || m.object_flags & 0x10 != 0)
+        };
         spatial.search(
             unit.id,
             self.player,
@@ -706,6 +722,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             &can_attack,
             &mut reach,
             &moving,
+            &shuns,
         )
     }
 
@@ -1551,9 +1568,15 @@ impl Unit {
                     self.ai_move(m, class)?;
                 }
                 Effect::OrderOnTarget(order) => {
-                    if c.order_on_target.replace(order).is_some() {
+                    if c.order_on_target.replace((order, None)).is_some() {
                         return Err(Unsupported("two orders on targets in one update"));
                     }
+                }
+                Effect::AfterOrder(after) => {
+                    let (_, tail) = c.order_on_target.as_mut().ok_or(Unsupported(
+                        "a unit AI's tail after an order it did not take",
+                    ))?;
+                    *tail = Some(after);
                 }
                 Effect::Explore(point) => self.explore_to(point, c)?,
                 Effect::MoveToObject { target, range } => self.move_to_object(target, range, c)?,
@@ -1722,7 +1745,12 @@ impl Unit {
         };
         let foreign = c.foreign;
         let moving = |id: i32| herded(others, foreign, id);
-        let result = spatial.search(self.id, c.player, &search, &no_attack, &mut reach, &moving)?;
+        let shuns = |_: &Placed| -> Result<bool, Unsupported> {
+            Err(Unsupported("a class-10 searcher in a hunt's search"))
+        };
+        let result = spatial.search(
+            self.id, c.player, &search, &no_attack, &mut reach, &moving, &shuns,
+        )?;
         if result.fresh {
             if result.enemies {
                 return Err(Unsupported(
@@ -2352,7 +2380,18 @@ impl Unit {
             .iter()
             .filter(|n| n.kind == crate::unit_ai::DAMAGED)
             .map(|n| n.caller);
-        let mut ids: Vec<i32> = ai.attackers.iter().copied().chain(damaged).collect();
+        let in_the_way = ai
+            .notifies
+            .iter()
+            .filter(|n| n.kind == crate::unit_ai::IN_THE_WAY)
+            .map(|n| n.p[0]);
+        let mut ids: Vec<i32> = ai
+            .attackers
+            .iter()
+            .copied()
+            .chain(damaged)
+            .chain(in_the_way)
+            .collect();
         ids.sort_unstable();
         ids.dedup();
         let mut seen = Vec::new();
@@ -2745,6 +2784,7 @@ impl Unit {
             move_to_point: None,
             speed_stopped: false,
             pauses: Vec::new(),
+            in_the_way: Vec::new(),
         };
         let mut position = mover.set_position(shot.at, c.spatial.map);
         if !flying {
@@ -4465,6 +4505,11 @@ impl Unit {
         }
         if let Some(m) = self.mover.as_mut() {
             c.pauses.append(&mut m.pauses);
+            if !m.in_the_way.is_empty() {
+                return Err(Unsupported(
+                    "a walk's unit in the way (notify 0x215) the action does not pass on",
+                ));
+            }
         }
         // RGE_Action_Object::update's end (FUN_141163080): an action object's shape
         if let Some(m) = c
@@ -4541,6 +4586,8 @@ impl Unit {
                     }
                     None => -1,
                 },
+                combat_level: master.map_or(0, |m| m.combat_level),
+                attack_priority: master.map_or(0, |m| m.attack_priority),
                 size: master.map_or([0.0; 2], |m| m.radius),
                 los: master.map_or(0.0, |m| m.line_of_sight),
                 search_radius: master.map_or(0.0, |m| m.search_radius),
@@ -7592,8 +7639,11 @@ impl Turns {
                         result = Err(e);
                     }
                 }
-                if let (Ok(Step::Stay), Some(order)) = (&result, ordered) {
-                    if let Err(e) = self.order_on_target(p, i, order) {
+                if let (Ok(Step::Stay), Some((order, tail))) = (&result, ordered) {
+                    let ran = self
+                        .order_on_target(p, i, order)
+                        .and_then(|()| tail.map_or(Ok(()), |after| self.after_order(p, i, after)));
+                    if let Err(e) = ran {
                         result = Err(e);
                     }
                 } else if ordered.is_some() && result.is_ok() {

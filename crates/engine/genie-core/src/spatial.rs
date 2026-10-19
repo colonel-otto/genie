@@ -381,6 +381,13 @@ struct SearchCache {
     last: Option<[Vec<Record>; 5]>,
 }
 
+/// [`Spatial::closest_object`]'s per-object checks: livestock that is moving, and the objects a
+/// class-10 searcher passes.
+type ClosestChecks<'a> = (
+    &'a dyn Fn(i32) -> bool,
+    &'a dyn Fn(&Placed) -> Result<bool, Unsupported>,
+);
+
 impl Spatial {
     /// A map without terrain: every tile's class is 0.
     #[must_use]
@@ -1072,7 +1079,9 @@ impl Spatial {
     /// [`SearchCache`] holds near the place (`fresh` false: the last answer stands); then its
     /// [`Pick`], an attack by the unit AI's attack check `can_attack` of an object, its master and
     /// its owner. A query that reads nothing leaves the last answer too (and so is not fresh). A
-    /// query near a frozen object, or a last answer the slice has not got, fails.
+    /// query near a frozen object, or a last answer the slice has not got, fails. `shuns`
+    /// answers for a found object whether a class-10 searcher passes it ([`Spatial::closest_object`]).
+    #[allow(clippy::too_many_arguments)]
     pub fn search(
         &self,
         me: i32,
@@ -1081,6 +1090,7 @@ impl Spatial {
         can_attack: &dyn Fn(&Placed, u8) -> Result<bool, Unsupported>,
         reach: &mut Reach<'_>,
         moving: &dyn Fn(i32) -> bool,
+        shuns: &dyn Fn(&Placed) -> Result<bool, Unsupported>,
     ) -> Result<Found, Unsupported> {
         let v = self
             .sight
@@ -1148,7 +1158,8 @@ impl Spatial {
                     master,
                     workers,
                 };
-                let id = self.closest_object(v, me, player, found, filter, reach, moving)?;
+                let checks = (moving, shuns);
+                let id = self.closest_object(v, me, player, found, filter, reach, checks)?;
                 Ok(Found {
                     id,
                     enemies: !found[4].is_empty(),
@@ -1181,10 +1192,11 @@ impl Spatial {
     /// `reach`) and nearer than the nearest so far (by the search's distance; a tie goes to the
     /// lower id) is the nearest. Livestock (class 58) counts when the searcher's player owns it or
     /// it is not in state 2, and not while its top action is the Artifact with a point
-    /// (`moving`: slot 0x288 not −1 and slot 0x530 107, "Sheep is moving"). Not modelled: a
-    /// workers cap (argument 6; the objects' `+0x644`), the unbuilt farm test of a search for
-    /// state 0, the pastures and farms (class 49), a searcher of class 10 (with its test of
-    /// master 440 and the object flag 0x10) and the game's `+0x6b4`. Nothing found answers −1.
+    /// (`moving`: slot 0x288 not −1 and slot 0x530 107, "Sheep is moving"). A searcher of class
+    /// 10 passes the objects `shuns` names (of master 440 or a master with object flag 0x10; the
+    /// game's `+0x6b4` of 1, not met, would let it take them). Not modelled: a workers cap
+    /// (argument 6; the objects' `+0x644`), the unbuilt farm test of a search for state 0, the
+    /// pastures and farms (class 49). Nothing found answers −1.
     #[allow(clippy::too_many_arguments)]
     fn closest_object(
         &self,
@@ -1194,8 +1206,9 @@ impl Spatial {
         found: &[Vec<Record>; 5],
         filter: Filter,
         reach: &mut Reach<'_>,
-        moving: &dyn Fn(i32) -> bool,
+        (moving, shuns): ClosestChecks<'_>,
     ) -> Result<i32, Unsupported> {
+        let class_10 = self.objects.get(&me).is_some_and(|m| m.class == 10);
         let mut best: Option<(i32, f32)> = None;
         for (kind, records) in found.iter().enumerate() {
             // the relation filter (`param_3`): 0 friends and itself, 1 neutrals, 2 enemies, 3
@@ -1241,8 +1254,8 @@ impl Spatial {
                 {
                     continue;
                 }
-                if self.objects.get(&me).is_some_and(|m| m.class == 10) {
-                    return Err(Unsupported("ClosestObject of a class-10 searcher"));
+                if class_10 && shuns(p)? {
+                    continue;
                 }
                 if !reach(record.id, CLOSEST_RANGE)? {
                     continue;
@@ -2129,9 +2142,10 @@ mod tests {
         let never = |_: &Placed, _: u8| Ok(false);
         let mut reach = |_: i32, _: f32| Ok(true);
         let still = |_: i32| false;
+        let none = |_: &Placed| Ok(false);
         let mut search = |s: &Spatial, at| {
             let f = s
-                .search(9, 2, &look(at), &never, &mut reach, &still)
+                .search(9, 2, &look(at), &never, &mut reach, &still, &none)
                 .unwrap();
             (f.enemies, f.fresh)
         };

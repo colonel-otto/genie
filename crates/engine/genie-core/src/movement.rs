@@ -37,6 +37,10 @@ pub struct PathData {
     pub linked_type: i32,
     /// The path's waypoints (`+0x18`, the path's `+0x438`..`+0x440`).
     pub points: Vec<Vec3>,
+    /// The level holds a path (`+0x18`, or the one the world's table finds by its id `+0x20`): a
+    /// reset level (id −1) holds none, nor does a bird's top level, and the motion step ends at
+    /// it.
+    pub has_path: bool,
     /// The path's own flags (`+0xc`).
     pub path_flags: u32,
     /// `+0x24`: the index of the waypoint the unit walks to.
@@ -168,6 +172,10 @@ pub struct Mover {
     /// The pauses its walk gave units it met (slot 0x5f0 on each: the met unit's walked level's
     /// `+0x34`), for the caller to hand on.
     pub pauses: Vec<(i32, f32)>,
+    /// The kept hits its walk met of the walked level's target's master, of a player neither
+    /// counts an ally: the motion step tells the unit AI of each (its slot 0x38 with
+    /// [`crate::unit_ai::IN_THE_WAY`] and the hit's id), which the caller passes on.
+    pub in_the_way: Vec<i32>,
 }
 
 /// The moving unit, as the motion step needs it besides its [`Mover`].
@@ -290,6 +298,7 @@ impl PathData {
             level: 0,
             linked_type: 0,
             points: Vec::new(),
+            has_path: true,
             path_flags: 6,
             waypoint: 0,
             state: 0,
@@ -651,7 +660,8 @@ impl Mover {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let mut plans = 0;
         loop {
-            let Some(level) = self.paths.first() else {
+            // a level without a path ends the step (`LAB_14115582c`), as no level does
+            let Some(level) = self.paths.first().filter(|l| l.has_path) else {
                 return Ok(Motion::Done);
             };
             let target = match level.target {
@@ -1096,6 +1106,7 @@ impl Mover {
         *level = PathData {
             repath_time: level.repath_time,
             created: 0,
+            has_path: false,
             path_flags: 0,
             ..PathData::new(0)
         };
@@ -1628,6 +1639,7 @@ impl Mover {
             // the walked level lets its path go (FUN_140f95b70): it holds none (path id -1),
             // which reads as no points, flags, length or time
             let level = &mut self.paths[0];
+            level.has_path = false;
             level.points.clear();
             level.path_flags = 0;
             level.length = 0.0;
@@ -2318,8 +2330,8 @@ impl Mover {
     /// level's target, a building's annex standing for it: one the walker outranks (as the
     /// pause loop of [`Mover::avoid`] ranks them; any Gaia hit of a walker of a player) pauses
     /// (slot 0x5f0: 0.1 for one of a player the walker's counts an ally, else 0.5), and one of
-    /// the target's master that neither player counts an ally would notify the walker's unit AI
-    /// (0x215, not modelled). Then the walked level goes and its parent asks for a path again
+    /// the target's master that neither player counts an ally notifies the walker's unit AI
+    /// (0x215, [`Mover::in_the_way`]). Then the walked level goes and its parent asks for a path again
     /// (state 2), which plans around the temporary shapes; without a parent the unit stops (slot
     /// 0x5d0).
     fn go_round(
@@ -2377,13 +2389,11 @@ impl Mover {
                 self.pauses.push((id, pause));
             }
             // a hit that neither counts the other an ally, of the walked level's target's
-            // master, would notify the walker's unit AI (0x215)
+            // master, notifies the walker's unit AI (0x215)
             if !allied && !world.allied_with(other.player, player) && 0 <= level.target {
                 let target = world.get(level.target).map(|t| t.master);
                 if target.is_some_and(|m| m == other.master) {
-                    return Err(Unsupported(
-                        "a kept hit of the target's master (the notify 0x215)",
-                    ));
+                    self.in_the_way.push(id);
                 }
             }
         }
@@ -2572,6 +2582,7 @@ mod tests {
             level,
             linked_type: i32::from(level == 0),
             points: points.iter().map(|&[x, y]| [x, 0.0, y]).collect(),
+            has_path: true,
             path_flags: if level == 0 { 6 } else { 4 },
             waypoint: 1,
             state,
@@ -2631,6 +2642,7 @@ mod tests {
             move_to_point: None,
             speed_stopped: false,
             pauses: Vec::new(),
+            in_the_way: Vec::new(),
         }
     }
 
@@ -2919,6 +2931,35 @@ mod tests {
         let mut m = builder_9177();
         m.paths.clear();
         assert_eq!(m.motion(&mut me, DT, &mut world(), None), Ok(Motion::Done));
+    }
+
+    /// The 4v4's hawk 30594 in update 2007: its level 0 arrived under a top level without a path
+    /// (a bird's); the parent takes the reached mark and the step ends there, the unit flying on.
+    #[test]
+    fn an_arrived_level_under_one_without_a_path_ends_the_step() {
+        let mut m = builder_9177();
+        m.velocity.as_mut().unwrap().velocity = [0.0, 0.0, 1.32];
+        m.paths = vec![
+            level(0, &[[28.0, 89.0], [30.0, 88.0]], 4),
+            PathData {
+                has_path: false,
+                path_flags: 0,
+                created: 0,
+                ..level(2, &[], 0)
+            },
+        ];
+        for l in &mut m.paths {
+            l.target = -1;
+        }
+        let mut me = Me {
+            id: 9177,
+            position: [30.0, 88.0, 0.0],
+            action_state: 0,
+        };
+        assert_eq!(m.motion(&mut me, DT, &mut world(), None), Ok(Motion::Done));
+        assert_eq!(m.paths.len(), 1);
+        assert_eq!((m.paths[0].flags, m.paths[0].state), (1, 0));
+        assert_eq!(m.velocity.as_ref().unwrap().velocity, [0.0, 0.0, 1.32]);
     }
 
     #[test]

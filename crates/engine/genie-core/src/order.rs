@@ -524,6 +524,33 @@ impl Turns {
         Ok(())
     }
 
+    /// The unit AI's full update after the order on a target it took
+    /// ([`crate::unit_ai::UnitAi::after_order`]), with the unit's master (its class and weapon
+    /// range) and the AI's target as the world holds it now (its owner and master's class).
+    pub(crate) fn after_order(
+        &mut self,
+        player: usize,
+        idx: usize,
+        after: crate::unit_ai::AfterOrder,
+    ) -> Result<(), Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let master = self.master_of(player, unit.life.master_id)?;
+        let (class, weapon_range) = (master.class, master.weapon_range);
+        let target = match unit.ai.as_ref().map_or(-1, |ai| ai.current_target) {
+            -1 => None,
+            id => match self.object(id) {
+                Some((owner, t)) => Some((owner, self.master_of(owner, t.life.master_id)?.class)),
+                None => None,
+            },
+        };
+        let computer = self.players[player].computer;
+        self.players[player].objects[idx]
+            .ai
+            .as_mut()
+            .ok_or(Unsupported("an order on a target without a unit AI"))?
+            .after_order(after, player, class, weapon_range, target, computer)
+    }
+
     /// MOVE (`FUN_140e67800`) to its units, after their unit AIs reset. One unit takes the order
     /// at the point (the loop of `LAB_140e6838c`). Several go through the splitter
     /// ([`Turns::loose_units`]); those of a human player whose box ([`centroid`]'s) is narrow

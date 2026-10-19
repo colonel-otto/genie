@@ -273,6 +273,19 @@ const GATE: i16 = 39;
 /// The villagers' class, whose attack ends on any dead target.
 const VILLAGER: i16 = 4;
 
+/// The units in the way the motion step told the unit AI of (its slot 0x38 with
+/// [`crate::unit_ai::IN_THE_WAY`], [`crate::movement::Mover::in_the_way`]), in the order of the
+/// Attack's posts; the walker is in state 2, which the unit's own post (slot 0x328) asks for.
+pub(crate) fn in_the_way(walk: &mut Walk<'_>, s: &mut Strike<'_>) {
+    if let Some(m) = walk.mover.as_deref_mut() {
+        s.posted.extend(
+            m.in_the_way
+                .drain(..)
+                .map(|id| (crate::unit_ai::IN_THE_WAY, [id, -1, -1])),
+        );
+    }
+}
+
 impl Attack {
     /// The constructor (`FUN_140a7c210`, from Hunt's `set_state` 12 with the master's weapon range,
     /// least range, missile and frame) and the start (slot 5 with 1, `0x140a7f8c0`): the target is
@@ -921,6 +934,7 @@ impl Attack {
                 self.move_to = Some(MoveTo::Moving);
                 let goal = Goal::Target(self.target);
                 let state = start_walk(walk.reborrow(), goal, self.range, false)?;
+                in_the_way(&mut walk, s);
                 if state == MoveTo::Arrived {
                     // in range at its start: the MoveTo, not quiet, shows the idle sprite and
                     // clears `+0x7b8`
@@ -951,6 +965,7 @@ impl Attack {
                     self.move_to = Some(MoveTo::Start);
                 } else {
                     self.move_to = Some(walk_on(walk.reborrow())?);
+                    in_the_way(&mut walk, s);
                 }
                 0
             }

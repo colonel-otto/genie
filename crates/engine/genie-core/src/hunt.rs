@@ -682,7 +682,9 @@ impl HuntAction {
                     self.move_to = Some(MoveTo::Moving);
                     let range = self.walk_range;
                     walk.me.action_state = self.state;
-                    self.move_to = Some(start_walk(walk, Goal::Target(self.target), range, true)?);
+                    let goal = Goal::Target(self.target);
+                    self.move_to = Some(start_walk(walk.reborrow(), goal, range, true)?);
+                    crate::attack::in_the_way(&mut walk, strike);
                     Ok(())
                 }
                 Some(MoveTo::Moving) => {
@@ -691,7 +693,9 @@ impl HuntAction {
                         return Ok(false);
                     }
                     walk.me.action_state = self.state;
-                    match walk_or_give_up(walk)? {
+                    let walked = walk_or_give_up(walk.reborrow())?;
+                    crate::attack::in_the_way(&mut walk, strike);
+                    match walked {
                         Some(m) => self.move_to = Some(m),
                         None => self.give_up(strike),
                     }
@@ -1044,6 +1048,7 @@ pub(crate) mod tests {
             move_to_point: None,
             speed_stopped: false,
             pauses: Vec::new(),
+            in_the_way: Vec::new(),
         }
     }
 
