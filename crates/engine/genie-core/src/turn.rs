@@ -7186,6 +7186,16 @@ impl Turns {
         }
         if self.spatial.relations.is_empty() {
             self.spatial.relations = self.players.iter().map(|p| p.relations.clone()).collect();
+            self.spatial.task_0x99 = self
+                .masters
+                .iter()
+                .map(|m| {
+                    m.iter()
+                        .filter(|m| m.tasks.iter().any(|t| t.action_type == 0x99))
+                        .map(|m| m.id)
+                        .collect()
+                })
+                .collect();
         }
     }
 

@@ -1731,9 +1731,68 @@ impl Turns {
     /// `FUN_140ace9c0` with a gather point (`+0xc30` 1) and a building whose unit AI holds no
     /// command queue location (its slot 0x218): the new unit waits to move (slot 0x2a0 with 1,
     /// `+0x7f9`) and takes the work command on the target at the point (slot 0x128: z 0, its
-    /// `+0xa14` 1, no carry test, any task). A target that is gone (a search for another of its
-    /// class), one on the building itself (a garrison), a building target (slot 0x7e8) and a
-    /// point without a target are not modelled.
+    /// `+0xa14` 1, no carry test, any task). A target that is gone is looked for again
+    /// ([`Turns::lost_gather_target`]); one on the building itself (a garrison) and a building
+    /// target (slot 0x7e8) are not modelled.
+    /// `FUN_140ace9c0`'s search for a gather point's target that is gone: the closest (by its
+    /// centre, the first of equals) of Gaia's live objects of the class of Gaia's master the
+    /// point names (`FUN_141166670` over `+0x30`), unless it lies farther than the new unit's
+    /// line of sight (squared) from the point, measured from its footprint (`FUN_140a847c0`);
+    /// then, but for the classes 5, 29 and 33 (the unit AI's slot 0x80, not modelled), the same
+    /// over Gaia's sleeping objects (`+0x38`). None found: the unit moves to the point.
+    fn lost_gather_target(
+        &self,
+        p: usize,
+        new: usize,
+        g: GatherPoint,
+    ) -> Result<Option<i32>, Unsupported> {
+        let class = self
+            .masters
+            .first()
+            .and_then(|m| m.get(g.target_master))
+            .map_or(-1, |m| m.class);
+        let los = self
+            .master_of(p, self.players[p].objects[new].life.master_id)?
+            .line_of_sight;
+        let [x, y, _] = g.point;
+        let gaia = self
+            .players
+            .first()
+            .ok_or(Unsupported("a world without Gaia"))?;
+        let closest = |list: &[Unit]| -> Result<Option<i32>, Unsupported> {
+            let mut best: Option<(&Unit, f32)> = None;
+            for u in list {
+                if self.master_of(0, u.life.master_id)?.class != class {
+                    continue;
+                }
+                let (dx, dy) = (x - u.position[0], y - u.position[1]);
+                let d = dy * dy + dx * dx;
+                if best.is_none_or(|(_, b)| d < b) {
+                    best = Some((u, d));
+                }
+            }
+            let Some((u, _)) = best else {
+                return Ok(None);
+            };
+            let [rx, ry] = self.master_of(0, u.life.master_id)?.radius;
+            let gap = |d: f32, r: f32| {
+                let g = d.abs() - r;
+                if 0.0 <= g { g } else { 0.0 }
+            };
+            let (gx, gy) = (gap(x - u.position[0], rx), gap(y - u.position[1], ry));
+            Ok((gy * gy + gx * gx <= los * los).then_some(u.id))
+        };
+        if let Some(id) = closest(&gaia.objects)? {
+            return Ok(Some(id));
+        }
+        if matches!(class, 5 | 29 | 33) {
+            return Err(Unsupported(
+                "a gather point's lost target of class 5, 29 or 33 (the unit AI's slot 0x80)",
+            ));
+        }
+        closest(&gaia.sleeping)
+    }
+
     pub(crate) fn gather(
         &mut self,
         p: usize,
@@ -1750,17 +1809,25 @@ impl Turns {
                 "a gather point on its own building (a garrison)",
             ));
         }
-        let (owner, target) = self.object(g.target).ok_or(Unsupported(
-            "a gather point's target that is gone (a search for another)",
-        ))?;
-        if self.master_of(owner, target.life.master_id)?.kind == BUILDING {
+        let target = if self.object(g.target).is_some() {
+            g.target
+        } else {
+            match self.lost_gather_target(p, new, g)? {
+                Some(id) => id,
+                None => return self.gather_move(p, new, [g.point[0], g.point[1], 0.0]),
+            }
+        };
+        let (owner, t) = self
+            .object(target)
+            .ok_or(Unsupported("unreachable: a gather point's target found"))?;
+        if self.master_of(owner, t.life.master_id)?.kind == BUILDING {
             return Err(Unsupported("a gather point on a building (slot 0x7e8)"));
         }
         if let Some(m) = self.players[p].objects[new].mover.as_mut() {
             m.waiting = 1;
         }
         let work = Work {
-            target: g.target,
+            target,
             point: [g.point[0], g.point[1], 0.0],
             carry_test: false,
             filter: -1,
@@ -1773,6 +1840,66 @@ impl Turns {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// records/425906646's update 1883: a TC's gather point on a tree that is gone; its new
+    /// villager takes the closest tree of Gaia's (by centre) within its sight of the point,
+    /// measured from the tree's footprint, else none (it walks to the point).
+    #[test]
+    fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
+        let unit = |id, master, x: f32, y: f32| Unit {
+            id,
+            position: [x, y, 0.0],
+            life: Lifecycle {
+                master_id: master,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0],
+            vec![
+                crate::turn::Player {
+                    sleeping: vec![unit(10, 349, 20.5, 20.5), unit(11, 349, 22.5, 20.5)],
+                    ..crate::turn::Player::default()
+                },
+                crate::turn::Player {
+                    objects: vec![unit(99, 83, 18.0, 18.0)],
+                    ..crate::turn::Player::default()
+                },
+            ],
+        );
+        let tree = crate::masters::Master {
+            id: 349,
+            class: 15,
+            radius: [0.5, 0.5],
+            ..crate::masters::Master::default()
+        };
+        let villager = crate::masters::Master {
+            id: 83,
+            class: 4,
+            line_of_sight: 4.0,
+            ..crate::masters::Master::default()
+        };
+        t.masters = vec![
+            crate::masters::Masters::new([tree.clone()]),
+            crate::masters::Masters::new([villager, tree]),
+        ];
+        let g = GatherPoint {
+            point: [21.0, 21.0, 0.0],
+            target: 5,
+            target_master: 349,
+        };
+        assert_eq!(t.lost_gather_target(1, 0, g).unwrap(), Some(10));
+        // 7 tiles from the closest tree's footprint, beyond the villager's sight of 4
+        let far = GatherPoint {
+            point: [30.0, 21.0, 0.0],
+            ..g
+        };
+        assert_eq!(t.lost_gather_target(1, 0, far).unwrap(), None);
+    }
 
     /// MarvinBlue/426048731's TC 9149 at (104, 47), radii 2: its gather point (107.2451,
     /// 46.075863) lies right and below, so the right side's lower half (6) comes first among the

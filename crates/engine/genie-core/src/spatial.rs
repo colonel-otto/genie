@@ -349,6 +349,10 @@ pub struct Spatial {
     annexes: BTreeMap<i32, i32>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
     pub relations: Vec<Vec<u8>>,
+    /// Each player's masters with a task of action type 0x99, which a building's slot 0x4f0
+    /// reads (`FUN_1411d4980` -> `FUN_1415c60b0`): a drop-off walker counts such a building
+    /// among the workers near it.
+    pub task_0x99: Vec<Vec<i16>>,
     /// What the players see, when the slice holds it: the objects' sight follows their tiles
     /// ([`Spatial::set_position`]).
     pub sight: Option<Visibility>,
@@ -400,6 +404,7 @@ impl Spatial {
             gaits: BTreeMap::new(),
             annexes: BTreeMap::new(),
             relations: Vec::new(),
+            task_0x99: Vec::new(),
             sight: None,
             vision: Vec::new(),
             terrain: None,

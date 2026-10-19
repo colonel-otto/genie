@@ -1639,8 +1639,8 @@ impl Mover {
     /// state 8 (a drop-off), the workers standing within its radius and a tenth (the records
     /// `FUN_141051900` finds; one whose current path level's path was made this update is
     /// passed, [`crate::spatial::Gait::path_made`]) of the classes 2, 4,
-    /// 19 and 21 (or whose slot 0x4f0 says so: 0 for a combat object, the mule cart's task 0x99
-    /// for a building, not modelled for the building classes 3, 27, 39, 49 and 52), when the
+    /// 19 and 21 (or whose slot 0x4f0 says so: 0 for a combat object, a task of action type 0x99
+    /// on the master for a building of the classes 3, 27, 39, 49 and 52), when the
     /// unit's start is blocked (`FUN_140fa0110`: [`short_path::Pather::start_blocked`] from its
     /// place to `to` with its radius, its weapon range and the target's radii, no shape
     /// ignored), allied with the unit and farther from the target than the unit's radius
@@ -1677,12 +1677,14 @@ impl Mover {
                     if gait.and_then(|g| g.path_made) == Some(now) {
                         continue;
                     }
-                    if !matches!(p.class, 2 | 4 | 19 | 21) {
-                        if matches!(p.class, 3 | 27 | 39 | 49 | 52) {
-                            return Err(Unsupported(
-                                "a building near a drop-off's walker (its slot 0x4f0)",
-                            ));
-                        }
+                    // slot 0x4f0: a building's master with a task of action type 0x99
+                    // (FUN_1415c60b0), 0 for anything else
+                    let worker_building = matches!(p.class, 3 | 27 | 39 | 49 | 52)
+                        && world
+                            .task_0x99
+                            .get(p.player)
+                            .is_some_and(|m| m.contains(&p.master));
+                    if !matches!(p.class, 2 | 4 | 19 | 21) && !worker_building {
                         continue;
                     }
                     let start_blocked = if let Some(b) = blocked {

@@ -2855,8 +2855,9 @@ impl UnitAi {
     /// with retargeting on (`+0x1d6` 0), a timer used up is redrawn (`750 + r % 500`); a human
     /// player's unit of a range above 3 on the attack order 700 stops there ("I have a range >
     /// 3.0 with an attack order, so I don't retarget."), as does a unit with a target of Gaia's
-    /// ("I have a GAIA target, so I can't retarget.") or without a target, and one with a
-    /// player's target off the attack order but for a building or wall target (classes 3, 27,
+    /// ("I have a GAIA target, so I can't retarget.") or without a target (or one gone), and
+    /// one with a player's target off the attack order but for a building or wall target
+    /// (classes 3, 27,
     /// 39, 49, 52) or a trebuchet's (51, 54), whose search for a better target (slot 0x538 with
     /// 9, then slot 0x520) is not modelled; nor is the attack order's search.
     fn retarget_check(
@@ -2924,8 +2925,8 @@ impl UnitAi {
                     }
                     search = true;
                 }
-                Some(_) => {}
-                None => return Err(Unsupported("a retarget with a target the world lacks")),
+                // a target gone from the world counts as none (FUN_1415417a0 finds nothing)
+                Some(_) | None => {}
             }
         }
         if !attack_order && !search {
