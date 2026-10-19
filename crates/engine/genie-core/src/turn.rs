@@ -538,6 +538,8 @@ struct Context<'a> {
     /// The owner's id and civ (`player+0x738`).
     player: usize,
     civ: u8,
+    /// The player shares its gathered resources with its allies (`+0x1426`).
+    sharing: bool,
     /// Every player's masters and attribute 97 (by player), for a capture.
     every_masters: &'a [Masters],
     attribute_97: &'a [f32],
@@ -1240,6 +1242,7 @@ impl Unit {
                 drop_sites: c.drop_sites,
                 attributes: c.attributes,
                 civ: c.civ,
+                sharing: c.sharing,
                 player: c.player,
                 attribute_adds: &mut c.attribute_adds,
                 firepower: 0.0,
@@ -1335,7 +1338,7 @@ impl Unit {
             };
             if let Some(resource) = resource {
                 give_load(
-                    &w.spatial.relations,
+                    (&w.spatial.relations, w.sharing),
                     w.player,
                     w.attribute_adds,
                     resource,
@@ -3913,11 +3916,10 @@ impl Unit {
             )? {
                 // the player's slot 0xf8 (FUN_141616820) with 1 and 1: the resource, and its
                 // gathered total (166 to 168; gold's 49 and 169); the statistics (slot 0xb8) and
-                // the local player's tracker (FUN_14097daf0) are not held. With 1 the resources
-                // would go to the allies too under +0x1426 (FUN_141626780): a player with allies
-                // is not modelled
+                // the local player's tracker (FUN_14097daf0) are not held; a sharing player's
+                // allies' share (+0x1426) is not modelled
                 give_load(
-                    &c.spatial.relations,
+                    (&c.spatial.relations, c.sharing),
                     c.player,
                     &mut c.attribute_adds,
                     kind,
@@ -4631,10 +4633,10 @@ impl Unit {
 /// The player's slot 0xf8 (`FUN_141616820`) with 1 and 1 on a unit's load: the resource and its
 /// gathered total (166 to 168; gold's 49 and 169), which the caller adds after the update; the
 /// statistics (slot 0xb8) and the local player's tracker (`FUN_14097daf0`) are not held. With 1
-/// the resources would go to the allies too under `+0x1426` (`FUN_141626780`): a player with
-/// allies is not modelled.
+/// the resources would go to the allies too when the player shares (`sharing`, `+0x1426`,
+/// `FUN_14165d040`): a sharing player with allies is not modelled.
 fn give_load(
-    relations: &[Vec<u8>],
+    (relations, sharing): (&[Vec<u8>], bool),
     player: usize,
     adds: &mut Vec<(i16, f32)>,
     kind: i16,
@@ -4642,7 +4644,7 @@ fn give_load(
 ) -> Result<(), Unsupported> {
     let own = relations.get(player).map_or(&[][..], |r| &r[..]);
     let allied = (1..own.len()).any(|q| q != player && crate::tasks::allied(own, player, q, true));
-    if allied {
+    if sharing && allied {
         return Err(Unsupported(
             "a load given to a player with allies (+0x1426)",
         ));
@@ -4678,6 +4680,8 @@ pub(crate) struct EnterWorld<'a> {
     pub attributes: &'a [f32],
     /// The owner's civ.
     pub civ: u8,
+    /// The owner shares its gathered resources (`+0x1426`).
+    pub sharing: bool,
     /// The owner.
     pub player: usize,
     /// The attributes the owner gains (a load), which the caller adds.
@@ -5086,6 +5090,9 @@ pub struct Player {
     /// `allied_LOS_Enable` (`+0x2cc`, saved): the player shares its mutual allies' sight
     /// ([`crate::vision`]).
     pub allied_vision: bool,
+    /// `mSharingIsCaring` (`+0x1426`, `FUN_141626780`, saved): the player's gathered resources go
+    /// to its allies too.
+    pub sharing: bool,
     /// The objects whose ghosts the player's list follows (`+0x78`, [`crate::ghost`]): not
     /// saved; the load builds it ([`Turns::build_watched`]).
     pub watched: Vec<crate::ghost::Watched>,
@@ -7265,6 +7272,7 @@ impl Turns {
                     mode_1: self.mode_680 == 1,
                     player: p,
                     civ: player.civ,
+                    sharing: player.sharing,
                     attributes: &player.attributes,
                     graphics: &self.graphics,
                     drop_sites: &self.drop_sites,
@@ -8241,6 +8249,16 @@ mod tests {
             rate: 1.0,
             cost: vec![(0, 46, true), (4, 1, false)],
         }
+    }
+
+    #[test]
+    fn a_load_goes_to_its_player_alone_unless_the_player_shares() {
+        // records/425906646's update 818: player 6, with allies, does not share (+0x1426 0)
+        let relations = vec![vec![0, 3, 3], vec![3, 0, 0], vec![3, 0, 0]];
+        let mut adds = Vec::new();
+        give_load((&relations, false), 1, &mut adds, 0, 10.0).unwrap();
+        assert_eq!(adds, [(0, 10.0), (166, 10.0)]);
+        assert!(give_load((&relations, true), 1, &mut adds, 3, 10.0).is_err());
     }
 
     #[test]

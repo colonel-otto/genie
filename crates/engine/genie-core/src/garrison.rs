@@ -318,6 +318,7 @@ impl Turns {
                 drop_sites: &self.drop_sites,
                 attributes: &owner.attributes,
                 civ: owner.civ,
+                sharing: owner.sharing,
                 player,
                 attribute_adds: &mut adds,
                 firepower: 0.0,

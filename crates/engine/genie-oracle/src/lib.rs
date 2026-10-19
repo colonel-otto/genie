@@ -1833,6 +1833,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 dropped: p.world_player().base.resigned & 2 != 0,
                 allied_victory: p.world_player().base.allied_victory != 0,
                 allied_vision: p.world_player().base.allied_los_enable != 0,
+                sharing: p.world_player().sharing_is_caring != 0,
                 victory: victory.get(i).map_or(0, |v| v.victory),
                 fealty: p.world_player().fealty as i16,
                 // the load sets it 0 (`FUN_14163e970`)
