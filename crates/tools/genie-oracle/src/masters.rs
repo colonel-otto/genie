@@ -375,7 +375,44 @@ fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef
     }
 }
 
+/// What stops [`MasterTable::read`].
+#[derive(Debug)]
+pub enum ReadError {
+    /// The data file could not be opened or read.
+    Dat(genie_dat::de::Error),
+    /// The drop-site table beside it is out of shape.
+    DropSites(serde_json::Error),
+}
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Dat(e) => write!(f, "the data file: {e}"),
+            Self::DropSites(e) => write!(f, "dropsites.json: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ReadError {}
+
 impl MasterTable {
+    /// The table of the data file at `path` (an `empires2_x2_p1.dat`), with the drop-site table
+    /// beside it (`dropsites.json`) when there is one.
+    ///
+    /// # Errors
+    ///
+    /// When the data file cannot be read, or the drop-site table is out of shape.
+    pub fn read(path: &std::path::Path) -> Result<Self, ReadError> {
+        let file =
+            std::fs::File::open(path).map_err(|e| ReadError::Dat(genie_dat::de::Error::Io(e)))?;
+        let dat = DatFile::read_from(file).map_err(ReadError::Dat)?;
+        let mut table = Self::from_dat(&dat);
+        if let Ok(json) = std::fs::read_to_string(path.with_file_name("dropsites.json")) {
+            table.drop_sites = crate::drop_sites(&json).map_err(ReadError::DropSites)?;
+        }
+        Ok(table)
+    }
+
     /// The rows of every unit every civ of `dat` has: decay (`resource_decay`), the undead flag
     /// (`undead_mode`) and the default action (the action part's default task).
     #[must_use]

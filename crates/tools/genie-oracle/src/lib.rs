@@ -41,8 +41,9 @@
 pub mod census;
 pub mod masters;
 pub mod tick_trace;
+pub mod views;
 
-pub use masters::{DefaultAction, MasterTable, TerrainTable};
+pub use masters::{DefaultAction, MasterTable, ReadError, TerrainTable};
 
 use genie_core::artifact::ARTIFACT_TYPE;
 use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
@@ -90,6 +91,10 @@ pub enum Error {
     BadTileDump,
     /// A recycled pools dump's line out of shape.
     BadPoolDump,
+    /// A recording without a chapter.
+    NoChapter,
+    /// A player the save does not have.
+    NoPlayer(usize),
 }
 
 impl From<de::Error> for Error {
@@ -109,6 +114,8 @@ impl std::fmt::Display for Error {
             Self::BadRegistryDump => write!(f, "the registry dump is out of shape"),
             Self::BadTileDump => write!(f, "the tile list dump is out of shape"),
             Self::BadPoolDump => write!(f, "the recycled pools dump is out of shape"),
+            Self::NoChapter => write!(f, "the recording has no chapter"),
+            Self::NoPlayer(p) => write!(f, "no player {p} in the save"),
         }
     }
 }
