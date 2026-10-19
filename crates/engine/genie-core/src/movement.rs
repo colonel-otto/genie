@@ -2316,11 +2316,12 @@ impl Mover {
     /// mesh shape of its own got a temporary one there (`FUN_141054fe0` with 1, not the object's:
     /// its `+0x64c` stays -1), which the step's every exit removes. Then each hit but the walked
     /// level's target, a building's annex standing for it: one the walker outranks (as the
-    /// pause loop of [`Mover::avoid`] ranks them; any Gaia hit of a walker of a player) would be
-    /// paused (slot 0x5f0, not modelled), and an enemy of the target's master would notify the
-    /// walker's unit AI (0x215; the slice reads only its own player's hits as allies). Then the
-    /// walked level goes and its parent asks for a path again (state 2), which plans around the
-    /// temporary shapes; without a parent the unit stops (slot 0x5d0).
+    /// pause loop of [`Mover::avoid`] ranks them; any Gaia hit of a walker of a player) pauses
+    /// (slot 0x5f0: 0.1 for one of a player the walker's counts an ally, else 0.5), and one of
+    /// the target's master that neither player counts an ally would notify the walker's unit AI
+    /// (0x215, not modelled). Then the walked level goes and its parent asks for a path again
+    /// (state 2), which plans around the temporary shapes; without a parent the unit stops (slot
+    /// 0x5d0).
     fn go_round(
         &mut self,
         me: &Me,
@@ -2368,19 +2369,16 @@ impl Mover {
             } else {
                 true
             };
-            if other.player != player && other.player != 0 {
-                return Err(Unsupported(
-                    "a kept hit of another player (its alliance, the notify 0x215)",
-                ));
-            }
-            // own units count as allies (a pause of 0.1), Gaia never does (0.5)
-            let allied = other.player == player;
+            // slot 0x5f0 with the walker's player's view of the hit's (FUN_141663d90 with the
+            // ally flag): an ally pauses 0.1, anyone else 0.5 (Gaia counts for no one)
+            let allied = world.allied_with(player, other.player);
             if outranks && world.gait(id).is_some_and(|g| g.pause.is_some()) {
                 let pause = if allied { ALLY_PAUSE } else { OTHER_PAUSE };
                 self.pauses.push((id, pause));
             }
-            // a Gaia hit of the target's master would notify the walker's unit AI (0x215)
-            if !allied && 0 <= level.target {
+            // a hit that neither counts the other an ally, of the walked level's target's
+            // master, would notify the walker's unit AI (0x215)
+            if !allied && !world.allied_with(other.player, player) && 0 <= level.target {
                 let target = world.get(level.target).map(|t| t.master);
                 if target.is_some_and(|m| m == other.master) {
                     return Err(Unsupported(
