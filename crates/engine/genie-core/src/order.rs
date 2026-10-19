@@ -724,10 +724,10 @@ impl Turns {
     /// (as 6 and 7): each unit the world holds in state 2 of a type above 39 that carries
     /// something (`+0x310` above 0) and whose top action is a Hunt (110) with a target or a
     /// point gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`], then `set_state(8)`,
-    /// [`Unit::drop_off_in`]). A Gather's or a Build's (5, 101), a top action without a target
-    /// (`FUN_141206a20`, `FUN_141205ac0` around it) and a unit without one of these actions (the
-    /// drop-site search from the unit, `FUN_1411671e0`, and the work command on it, slot 0x7e8)
-    /// are not modelled, nor are the other actions and another player's unit.
+    /// [`Unit::drop_off_in`]). A Gather's or a Build's (5, 101) and a top action without a target
+    /// (`FUN_141206a20`, `FUN_141205ac0` around it) are not modelled, nor are the other actions
+    /// and another player's unit; a unit without one of these actions:
+    /// [`Turns::drop_off_unasked`].
     pub(crate) fn unit_order(
         &mut self,
         player: usize,
@@ -762,9 +762,8 @@ impl Turns {
                 .as_ref()
                 .filter(|_| unit.top_action_kind() == Some(HUNT))
             else {
-                return Err(Unsupported(
-                    "a UNIT_ORDER drop-off of a unit without a Hunt (its drop-site search)",
-                ));
+                self.drop_off_unasked(p, idx)?;
+                continue;
             };
             if hunt.target == -1 && hunt.point[0] == -1.0 && hunt.point[1] == -1.0 {
                 return Err(Unsupported(
@@ -790,6 +789,35 @@ impl Turns {
             let result = unit.drop_off_in(world, &player.objects);
             self.players[p].objects[idx] = unit;
             result?;
+        }
+        Ok(())
+    }
+
+    /// `UNIT_ORDER`'s drop-off of a carrying unit without a gather action on top
+    /// (`FUN_14161e370`'s case 8, past the Gather, Hunt and Build): a master with drop sites
+    /// (`FUN_14109e210`) searches from the unit (`FUN_1411671e0`), which is not modelled; any
+    /// other asks the drop-site table (`FUN_141658e20` -> `FUN_140fdd950`) for buildings taking
+    /// its held resource from its class: entries of its class with resource types, for its civ.
+    /// With none the unit does nothing (a livestock with its food); a building found (the
+    /// player's closest in state 2, then the work command on it, slot 0x7e8) is not modelled.
+    fn drop_off_unasked(&self, p: usize, idx: usize) -> Result<(), Unsupported> {
+        let unit = &self.players[p].objects[idx];
+        let master = self.master_of(p, unit.life.master_id)?;
+        if master.drop_sites.iter().any(|&d| 0 <= d) {
+            return Err(Unsupported(
+                "a UNIT_ORDER drop-off of a unit with drop sites and no gather action (FUN_1411671e0)",
+            ));
+        }
+        let civ = self.players[p].civ;
+        let class = master.class;
+        if self
+            .drop_sites
+            .iter()
+            .any(|d| d.worker_class == class && (d.civs.is_empty() || d.civs.contains(&civ)))
+        {
+            return Err(Unsupported(
+                "a UNIT_ORDER drop-off at a building of the drop-site table (slot 0x7e8)",
+            ));
         }
         Ok(())
     }
@@ -2449,6 +2477,52 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// records/425906646's update 1641: player 6's drop-off order reaches its goose 28766 (class
+    /// 58, 100 food, no drop sites, its default task on top): no table entry takes class 58, so
+    /// it does nothing; an entry of its class would find a building.
+    #[test]
+    fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
+        let goose = Unit {
+            id: 28766,
+            life: crate::lifecycle::Lifecycle {
+                master_id: 1243,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0],
+            vec![crate::turn::Player {
+                objects: vec![goose],
+                ..crate::turn::Player::default()
+            }],
+        );
+        t.masters = vec![crate::masters::Masters::new([Master {
+            id: 1243,
+            class: 58,
+            ..Master::default()
+        }])];
+        let tc = crate::tasks::DropSite {
+            building: 109,
+            worker_class: 4,
+            ..crate::tasks::DropSite::default()
+        };
+        t.drop_sites = vec![tc.clone()];
+        assert!(t.drop_off_unasked(0, 0).is_ok());
+        t.drop_sites = vec![
+            tc,
+            crate::tasks::DropSite {
+                building: 1897,
+                worker_class: 58,
+                ..crate::tasks::DropSite::default()
+            },
+        ];
+        assert!(t.drop_off_unasked(0, 0).is_err());
+    }
 
     /// MarvinBlue/426048731's MOVE of 1569: player 2's villagers 9175 and 9177 (by id) take a
     /// grid of one cell a row, half a tile apart, from the order's point (their `MoveTos`' points in
