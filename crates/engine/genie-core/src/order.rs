@@ -1144,9 +1144,10 @@ impl Turns {
                 }
                 true
             }
-            // the Hunt's (0x140ac52c0) to a point: a task with a work range (`+0x48`'s `+0x30`)
-            // does not take it
-            (true, Some(HUNT)) if unit.hunt.is_some_and(|h| h.task.range != 0.0) => false,
+            // the Hunt's (0x140ac52c0, [`Turns::hunt_take_move`]) to a point: a task with a work
+            // range (`+0x48`'s `+0x30`) does not take it, else the hunt walks there (state 15)
+            // and lets its target go
+            (true, Some(HUNT)) => self.hunt_take_move(player, idx, None, point)?,
             // an Explore's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's
             (true, Some(t)) if t != crate::move_to::MOVE_TO && t != crate::explore::EXPLORE => {
                 return Err(Unsupported("a move of a unit with an action (its slot 8)"));
