@@ -5550,7 +5550,8 @@ mod tests {
         };
         let mut u = builder_done();
         let mut fx = Vec::new();
-        u.target_block(&standing, false, &mut fx).unwrap();
+        u.target_block(&standing, false, &mut Well512::default(), &mut fx)
+            .unwrap();
         assert_eq!((u.current_target, &fx[..]), (10028, &[][..]));
         // a target no longer in the world goes (its class and point stay); an attack action's
         // idle timer then takes its timeout
@@ -5562,7 +5563,8 @@ mod tests {
             current_action: ATTACK_ACTION,
             ..builder_done()
         };
-        u.target_block(&gone, false, &mut fx).unwrap();
+        u.target_block(&gone, false, &mut Well512::default(), &mut fx)
+            .unwrap();
         assert_eq!((u.current_target, u.target_type), (-1, 3));
         assert_eq!(u.idle_timer, 3000);
         // inside another, a unit drops its target before the lookup
@@ -5571,7 +5573,8 @@ mod tests {
             ..standing
         };
         let mut u = builder_done();
-        u.target_block(&inside, false, &mut fx).unwrap();
+        u.target_block(&inside, false, &mut Well512::default(), &mut fx)
+            .unwrap();
         assert_eq!(u.current_target, -1);
     }
 
@@ -5593,7 +5596,8 @@ mod tests {
             ..builder_done()
         };
         let mut fx = Vec::new();
-        u.target_block(&dead, false, &mut fx).unwrap();
+        u.target_block(&dead, false, &mut Well512::default(), &mut fx)
+            .unwrap();
         assert_eq!(fx, vec![Effect::Stop]);
         assert_eq!((u.current_target, u.last_target), (-1, 10028));
         assert_eq!((u.current_action, u.last_action), (-1, 0x25b));
@@ -5604,14 +5608,35 @@ mod tests {
             ..builder_done()
         };
         let mut fx = Vec::new();
-        u.target_block(&dead, false, &mut fx).unwrap();
+        u.target_block(&dead, false, &mut Well512::default(), &mut fx)
+            .unwrap();
         assert_eq!((u.current_target, fx), (10028, vec![]));
-        // an attack whose target died retargets, which is not modelled
-        let mut u = UnitAi {
+        // an attack whose target died waits while its Attack swings on the kill (state 2); past
+        // it a villager's processIdle is not modelled, nor is an Attack the slice does not hold
+        let attack = || UnitAi {
             current_action: ATTACK_ACTION,
             ..builder_done()
         };
-        assert!(u.target_block(&dead, false, &mut Vec::new()).is_err());
+        let swinging = Surroundings {
+            action_state: Some(2),
+            ..dead.clone()
+        };
+        let mut u = attack();
+        let mut fx = Vec::new();
+        u.target_block(&swinging, false, &mut Well512::default(), &mut fx)
+            .unwrap();
+        assert_eq!((u.current_target, fx), (10028, vec![]));
+        let over = Surroundings {
+            action_state: Some(1),
+            ..dead.clone()
+        };
+        for at in [&over, &dead] {
+            assert!(
+                attack()
+                    .target_block(at, false, &mut Well512::default(), &mut Vec::new())
+                    .is_err()
+            );
+        }
     }
 
     /// Player 1's scout 9183 following the deer 9655 (FOLLOW at 2604): order 712, action 612,
