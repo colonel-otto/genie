@@ -935,6 +935,15 @@ pub trait UnitSide {
     /// The unit's `+0x685`, `underAttackValue`, becomes `value` (`FUN_14119d2d0`).
     fn set_under_attack(&mut self, value: bool);
 
+    /// The unit's stopAction (slot 0x3c0) as the unit AI calls it, ahead of a command that
+    /// follows it while the AI processes its notifies (an [`Effect::Stop`] otherwise waits for
+    /// the AI's update to end).
+    ///
+    /// # Errors
+    ///
+    /// What the stop does not model.
+    fn stop(&mut self) -> Result<(), Unsupported>;
+
     /// `AttackObject`'s test of object `target` (`FUN_140c43720`): the world holds it and the unit
     /// AI's attack check (slot 0xa0, [`can_attack`], as `seeker` stands) passes; then its master's
     /// class and its place.
@@ -980,6 +989,10 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
     }
 
     fn set_under_attack(&mut self, _: bool) {}
+
+    fn stop(&mut self) -> Result<(), Unsupported> {
+        Err(Unsupported("a unit AI's stop without its unit"))
+    }
 
     fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
         Err(Unsupported("an attack test without the world"))
@@ -1817,7 +1830,7 @@ impl UnitAi {
         match self.ai_type {
             13 => return self.soldier_idle(at, computer, side),
             15 => {
-                if self.tower_idle(at, computer, side)? {
+                if self.tower_idle(at, computer, side, fx)? {
                     return Err(Unsupported(
                         "an idle tower's attack (processIdle 6 in the idle part)",
                     ));
@@ -1989,6 +2002,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
     ) -> Result<bool, Unsupported> {
         if self.stance == 3 {
             return Err(Unsupported("a tower's idle search in NoAttack (stance 3)"));
@@ -2008,7 +2022,7 @@ impl UnitAi {
             return Ok(false);
         }
         // slot 0xb8 with 1 (`+0x1d5` then 1, not held)
-        self.attack_object(found.id, true, false, at, side)
+        self.attack_object(found.id, true, false, at, side, fx)
     }
 
     /// What `bestUnitToAttack` reads of this unit AI ([`Seeker`]).
@@ -2448,10 +2462,10 @@ impl UnitAi {
         };
         let villager = attacker.class == CLASS_VILLAGER;
         let furious = if self.current_action == ATTACK_ACTION {
-            let _ = self.attack_object(target, false, false, at, side)?;
+            let _ = self.attack_object(target, false, false, at, side, fx)?;
             true
         } else {
-            let _ = self.attack_object(target, true, false, at, side)?;
+            let _ = self.attack_object(target, true, false, at, side, fx)?;
             self.idle_timer = 0;
             villager
         };
@@ -2574,7 +2588,7 @@ impl UnitAi {
                 fx,
             )?;
         } else {
-            let _ = self.attack_object(n.caller, true, false, at, side)?;
+            let _ = self.attack_object(n.caller, true, false, at, side, fx)?;
         }
         self.stop_after_kill = true;
         Ok(BREAK)
@@ -2683,7 +2697,8 @@ impl UnitAi {
     /// success the action is
     /// the attack (600, the last action keeping the old) and the target its point and class
     /// (`FUN_140c64c10`). The slice holds no unit groups (`+0x6d0`), whose members would attack
-    /// too.
+    /// too. A stop the processing made before (slot 0x3c0, a pending [`Effect::Stop`]) emptied
+    /// the action list before the command fills it: it runs first ([`UnitSide::stop`]).
     fn attack_object(
         &mut self,
         target: i32,
@@ -2691,6 +2706,7 @@ impl UnitAi {
         any: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
     ) -> Result<bool, Unsupported> {
         if !force && self.current_action != -1 {
             return Ok(false);
@@ -2718,6 +2734,15 @@ impl UnitAi {
             }
             (t.class, t.position)
         };
+        if fx.contains(&Effect::Stop) {
+            if fx.iter().any(|e| *e != Effect::Stop) {
+                return Err(Unsupported(
+                    "an attack command after a stop with other effects pending",
+                ));
+            }
+            fx.clear();
+            side.stop()?;
+        }
         let attacked = side.attack(target, force, self)?;
         // the unit's posts (slot 0x328 -> the AI's slot 0x38) while the AI processes its
         // notifies: into its queue, or the buffer when it is full
@@ -2932,7 +2957,7 @@ impl UnitAi {
                 }
                 Ok(GO_ON)
             }
-            IN_THE_WAY => self.in_the_way(n, at, side),
+            IN_THE_WAY => self.in_the_way(n, at, side, fx),
             // "Unit #%d is no longer doing an action on me.": an attacker leaves the set
             NO_LONGER_ON_ME => {
                 if let Ok(i) = self.attackers.binary_search(&n.caller) {
@@ -2955,6 +2980,7 @@ impl UnitAi {
         n: Notify,
         at: &Surroundings,
         side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         let boar = at.class == 10 && at.combat_level == 1;
         if !boar
@@ -2963,7 +2989,7 @@ impl UnitAi {
             && self.current_order == -1
             && self.stance == 0
         {
-            let _ = self.attack_object(n.p[0], true, false, at, side)?;
+            let _ = self.attack_object(n.p[0], true, false, at, side, fx)?;
         }
         Ok(GO_ON)
     }
@@ -3147,7 +3173,7 @@ impl UnitAi {
             let produced = match self.ai_type {
                 TOWER_AI => {
                     self.cap_human_order(fx);
-                    self.tower_idle(at, computer, side)?
+                    self.tower_idle(at, computer, side, fx)?
                 }
                 BOAR_AI => {
                     self.cap_human_order(fx);
@@ -3897,11 +3923,13 @@ mod tests {
         r
     }
 
-    /// A unit side that records the attack commands and the under-attack flag.
+    /// A unit side that records the attack commands, the under-attack flag and the stops (as
+    /// many attack commands as came before each).
     #[derive(Default)]
     struct Recorder {
         attacks: Vec<(i32, bool)>,
         under_attack: Option<bool>,
+        stops: Vec<usize>,
     }
 
     impl UnitSide for Recorder {
@@ -3924,6 +3952,11 @@ mod tests {
 
         fn set_under_attack(&mut self, value: bool) {
             self.under_attack = Some(value);
+        }
+
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            self.stops.push(self.attacks.len());
+            Ok(())
         }
 
         fn may_attack(
@@ -4002,6 +4035,38 @@ mod tests {
         assert_eq!(u.attackers, vec![10049, 10050]);
         assert_eq!(side.attacks, vec![(10049, true)]);
         assert_eq!(u.current_target, 10049);
+    }
+
+    /// The 4v4's boar 29825 in update 4599: its Attack on the villager 31126 completed (a stop,
+    /// slot 0x3c0) and the villager 27240's hit makes it attack again, forced. The stop empties
+    /// the action list before the attack command fills it, so it runs first, not after the AI.
+    #[test]
+    fn a_stop_before_an_attack_command_runs_first() {
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 31126,
+            ..hit_boar()
+        };
+        let at = Surroundings {
+            id: 29825,
+            units: vec![attacker(27240, 4, 1.0)],
+            ..Surroundings::default()
+        };
+        let mut side = Recorder::default();
+        let mut fx = Vec::new();
+        let done = Notify::own(29825, ACTION_COMPLETED, [600, 31126, 0]);
+        let r = u.handle(done, 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!((r, fx.clone()), (Ok(GO_ON), vec![Effect::Stop]));
+        let hit = Notify {
+            caller: 27240,
+            recipient: 29825,
+            kind: DAMAGED,
+            p: [27240, 3, 33],
+        };
+        let _ = u.handle(hit, 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!((side.stops, side.attacks), (vec![0], vec![(27240, true)]));
+        assert_eq!(fx, vec![]);
+        assert_eq!((u.current_action, u.current_target), (ATTACK_ACTION, 27240));
     }
 
     /// The 4v4's boar 29823 in update 2917 walks to its villager and meets another of the same

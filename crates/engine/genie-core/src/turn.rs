@@ -580,6 +580,9 @@ struct QueueAt {
 /// The villager master QUEUE draws a sex for (`0x53`), and the generic villager id that becomes
 /// 0x53 first (`0x712`), both in `FUN_1411cbc40`.
 const VILLAGER: i16 = 0x53;
+/// The farm, which BUILD places as the rice farm on mangrove or rice farm terrain.
+const FARM: i16 = 50;
+const RICE_FARM: i16 = 1187;
 const VILLAGER_ANY: i16 = 0x712;
 /// The female villager master (`0x125`).
 const VILLAGER_FEMALE: i16 = 0x125;
@@ -812,6 +815,8 @@ struct UnitView<'u> {
     graphics: &'u std::collections::BTreeMap<i16, Graphic>,
     /// The objects an action took (slot 0x178), the caller's.
     takes: &'u mut Vec<i32>,
+    /// The objects an action let go (slot 0x180), the caller's.
+    releases: &'u mut Vec<(i32, Releaser)>,
 }
 
 /// What `bestUnitToAttack` reads of the world for the unit whose AI runs
@@ -1085,6 +1090,21 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 "an attack command of a unit whose sprite the slice does not hold",
             ));
         }
+        // the action list's clearing (FUN_140a98620): an Attack on another target tears down (its
+        // MoveTo's stops the unit) and lets its targets go (slot 0x180)
+        if let Some(mut a) = unit.attack.take() {
+            a.tear_down(unit.mover.as_mut())?;
+            let by = Releaser {
+                id: unit.id,
+                class: master.class,
+                player: self.player,
+            };
+            for t in [a.target, a.target2] {
+                if t != -1 {
+                    self.releases.push((t, by));
+                }
+            }
+        }
         unit.clear_own_actions()?;
         unit.attack_count = 0;
         crate::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
@@ -1124,6 +1144,19 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     fn set_under_attack(&mut self, value: bool) {
         self.unit.under_attack = value;
+    }
+
+    fn stop(&mut self) -> Result<(), Unsupported> {
+        let masters = self.masters;
+        let by = Releaser {
+            id: self.unit.id,
+            class: masters
+                .and_then(|m| m.get(self.unit.life.master_id))
+                .map_or(-1, |m| m.class),
+            player: self.player,
+        };
+        self.unit
+            .stop_with(self.releases, by, masters, self.graphics, self.sprite)
     }
 
     fn seek_unexplored(
@@ -1760,12 +1793,27 @@ impl Unit {
     /// (`FUN_140aadbf0`), its own Attack and an Enter let their target go; other actions'
     /// teardowns are not modelled.
     fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        let by = self.releaser(c);
+        let sprite = c.streams.get(Stream::Sprite);
+        self.stop_with(&mut c.releases, by, c.masters, c.graphics, sprite)
+    }
+
+    /// [`Unit::stop_action`] on the parts of the world it changes: the targets its actions let
+    /// go (`by` the unit), its masters and sprites, and the Sprite stream.
+    fn stop_with(
+        &mut self,
+        releases: &mut Vec<(i32, Releaser)>,
+        by: Releaser,
+        masters: Option<&Masters>,
+        graphics: &std::collections::BTreeMap<i16, Graphic>,
+        sprite: &mut Well512,
+    ) -> Result<(), Unsupported> {
         // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
         if let Some(mut a) = self.attack.take() {
             a.tear_down(self.mover.as_mut())?;
             for t in [a.target, a.target2] {
                 if t != -1 {
-                    c.releases.push((t, self.releaser(c)));
+                    releases.push((t, by));
                 }
             }
         }
@@ -1774,7 +1822,7 @@ impl Unit {
         if let Some(mut h) = self.hunt.take() {
             h.tear_down(self.mover.as_mut())?;
             if h.target != -1 {
-                c.releases.push((h.target, self.releaser(c)));
+                releases.push((h.target, by));
             }
         }
         // the Enter's teardown: its MoveTo's stops the unit, and the base teardown
@@ -1785,7 +1833,7 @@ impl Unit {
             {
                 m.stop()?;
             }
-            c.releases.push((e.target, self.releaser(c)));
+            releases.push((e.target, by));
         }
         self.clear_own_actions()?;
         if self.life.state == 2
@@ -1794,13 +1842,12 @@ impl Unit {
             m.shows_standing();
         }
         if self.life.state == 2 && self.sprite.is_some() {
-            let standing = c
-                .masters
+            let standing = masters
                 .and_then(|m| m.get(self.life.master_id))
                 .map(|m| m.standing_sprite)
-                .and_then(|id| c.graphics.get(&id).copied())
+                .and_then(|id| graphics.get(&id).copied())
                 .ok_or(Unsupported("a stopped unit without its standing sprite"))?;
-            crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
+            crate::attack::set_sprite(&mut self.sprite, standing, sprite);
         }
         Ok(())
     }
@@ -1816,17 +1863,25 @@ impl Unit {
         {
             self.build = None;
         }
-        if self.artifact.is_some()
-            || self.build.is_some()
-            || self.fly.is_some()
-            || self.hunt.is_some()
-            || self.attack.is_some()
-            || self.enter.is_some()
-            || self.unmodelled_action.is_some()
-        {
-            return Err(Unsupported(
-                "a unit AI's stop of an action list the slice does not model",
-            ));
+        let held = [
+            (self.artifact.is_some(), "an Artifact"),
+            (self.build.is_some(), "a Build"),
+            (self.fly.is_some(), "a Fly"),
+            (self.hunt.is_some(), "a Hunt"),
+            (self.attack.is_some(), "an Attack"),
+            (self.enter.is_some(), "an Enter"),
+            (self.unmodelled_action.is_some(), "an action not held"),
+        ];
+        if let Some(&(_, what)) = held.iter().find(|(h, _)| *h) {
+            return Err(Unsupported(match what {
+                "an Artifact" => "a unit AI's stop of an action list with an Artifact",
+                "a Build" => "a unit AI's stop of an action list with a Build at work",
+                "a Fly" => "a unit AI's stop of an action list with a Fly",
+                "a Hunt" => "a unit AI's stop of an action list with a Hunt",
+                "an Attack" => "a unit AI's stop of an action list with an Attack",
+                "an Enter" => "a unit AI's stop of an action list with an Enter",
+                _ => "a unit AI's stop of an action list the slice does not model",
+            }));
         }
         // the Explore's teardown (0x140a87dd0): its MoveTo's stops the unit (slot 0x5d0)
         if self.explore.take().is_some_and(|e| e.move_to.is_some()) {
@@ -5283,6 +5338,7 @@ impl Unit {
                             masters: c.masters,
                             graphics: c.graphics,
                             takes: &mut c.takes,
+                            releases: &mut c.releases,
                         };
                         ai.update(dt, c.world_time, computer, &at, ai_stream, &mut side)
                     };
@@ -6622,6 +6678,7 @@ impl Turns {
                 queued,
                 commits,
             } => {
+                let master = self.farm_on_rice_terrain(master, position);
                 // the pending debit first (FUN_141630d10 with 0), then the placement test and
                 // the payment's: a refused BUILD places nothing
                 if let Err(e) = self.debit_listed(player, master) {
@@ -6979,6 +7036,21 @@ impl Turns {
         }
     }
 
+    /// BUILD's first step (`FUN_140e7a400`): a farm (master 50) whose point's tile (truncated) is
+    /// mangrove shallows or forest (terrains 54, 55, `FUN_1413fc100`) or a rice farm's (63 to 67,
+    /// `FUN_1413fc220`) is a rice farm (1187); a point off the map keeps the farm.
+    fn farm_on_rice_terrain(&self, master: i16, position: [f32; 3]) -> i16 {
+        if master != FARM {
+            return master;
+        }
+        let (x, y) = (position[0] as i32, position[1] as i32);
+        let terrain = self.spatial.terrain.as_ref().and_then(|t| t.kind(x, y));
+        match terrain {
+            Some(54 | 55 | 63..=67) => RICE_FARM,
+            _ => master,
+        }
+    }
+
     /// BUILD's pending debit (`FUN_141630d10` with 0, before its placement test): every cost
     /// entry of the master, paid or not, by resource, comes off the player's pending debit.
     fn debit_listed(&mut self, player: usize, master: i16) -> Result<(), Unsupported> {
@@ -7003,12 +7075,8 @@ impl Turns {
     /// placement test ([`crate::spawn::build_placement`], the master's slot 0x50), then the
     /// payment's (`FUN_14162fb60` -> `FUN_141618db0`: every cost entry of a resource, paid or
     /// not, at most what the player holds). A refused BUILD places, pays and draws nothing (the
-    /// player's slot 0x380 shows why). A farm (master 50) on the terrains that swap it for 1187
-    /// and a cost in population (attribute 4) are not modelled.
+    /// player's slot 0x380 shows why). A cost in population (attribute 4) is not modelled.
     fn build_allowed(&self, player: usize, master: i16, at: [f32; 2]) -> Result<bool, Unsupported> {
-        if master == 50 {
-            return Err(Unsupported("BUILD of a farm (its terrain's master swap)"));
-        }
         let site = self.master_of(player, master)?;
         if self.spatial.sight.is_none() {
             return Err(Unsupported(
