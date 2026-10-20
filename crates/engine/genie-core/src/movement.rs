@@ -1413,9 +1413,13 @@ impl Mover {
                             if level.waypoint == level.points.len() as i32 - 1
                                 && level.created == plan.now
                             {
-                                return Err(Unsupported(
-                                    "a new path in range stops the unit (slot 0x5d0)",
-                                ));
+                                // on the last waypoint of a path made this update: the unit
+                                // stops (slot 0x5d0), the level resets and takes state 6
+                                // (FUN_140f9b4b0) and the step returns 1
+                                self.stop()?;
+                                self.reset_level();
+                                self.paths[0].state = 6;
+                                return Ok(Step::GaveUp);
                             }
                             level.flags |= 1;
                         } else {

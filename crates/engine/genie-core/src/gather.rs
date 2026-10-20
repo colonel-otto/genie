@@ -14,7 +14,9 @@
 use crate::attack::set_sprite;
 use crate::damage::Victim;
 use crate::hunt::{HuntSprites, HuntTask, walk_sprite};
-use crate::move_to::{Goal, MoveTo, MoveWait, Walk, start_walk, target_moved, walk_or_give_up};
+use crate::move_to::{
+    Goal, MoveTo, MoveWait, Walk, start_walk, start_walk_or_give_up, target_moved, walk_or_give_up,
+};
 use crate::movement::Mover;
 use crate::rng::Well512;
 use crate::sprite::ActiveSprite;
@@ -475,15 +477,19 @@ impl GatherAction {
                 self.move_to = Some(MoveTo::Moving);
                 walk.me.action_state = self.state;
                 let range = self.task.range;
-                let state = start_walk(walk.reborrow(), Goal::Target(self.target), range, true)?;
+                let walked =
+                    start_walk_or_give_up(walk.reborrow(), Goal::Target(self.target), range, true)?;
                 self.post_in_the_way(&mut walk, g);
                 // the MoveTo's set_state(4) shows the walking sprite
-                if state == MoveTo::Moving
+                if walked.is_none_or(|w| w == MoveTo::Moving)
                     && let Some(s) = self.walk_sprite(g)
                 {
                     set_sprite(g.sprite, s, g.sprite_rng);
                 }
-                self.move_to = Some(state);
+                match walked {
+                    Some(state) => self.move_to = Some(state),
+                    None => self.give_up(g),
+                }
                 Ok(())
             }
             Some(MoveTo::Moving) => {
@@ -534,17 +540,11 @@ impl GatherAction {
         }
     }
 
-    /// The `MoveTo`'s answer to the motion step giving up (`0x140aa2a70` in state 4): a villager
-    /// that has not waited yet waits (`set_state` 2, `+0x6c` 1) a second with a stance below 2,
-    /// else two, then asks again; any other `MoveTo` fails (`set_state` 13, quiet).
+    /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]; quiet). The
+    /// computer player's test is not held: its villagers would fail at once.
     const fn give_up(&mut self, g: &Gatherer<'_>) {
-        if self.move_wait.state != 0 || g.class != VILLAGER_CLASS {
-            self.move_to = Some(MoveTo::Failed);
-            return;
-        }
-        self.move_wait.delay = if g.stance < 2 { 1.0 } else { 2.0 };
-        self.move_wait.state = 1;
-        self.move_to = Some(MoveTo::Waiting);
+        let waits = g.class == VILLAGER_CLASS;
+        self.move_to = Some(self.move_wait.give_up(waits, g.stance));
     }
 
     /// `set_state(6)` (case 6) on a target: a farm, masters 357 and 1188 and a target not yet

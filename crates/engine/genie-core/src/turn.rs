@@ -4958,10 +4958,13 @@ impl Unit {
                     c.mode_680,
                 ))
             });
-        // a hunt whose target went on the walk to it (state 4, its MoveTo quiet: code 5) and
-        // whose class is a tree's searches for the next tree (FUN_140ac4670)
+        // a hunt whose target went on the walk to it (state 4, its MoveTo quiet: code 5), or
+        // whose MoveTo failed (code 3), and whose class is a tree's searches for the next tree
+        // (FUN_140ac4670 with 8 and -1 both times)
         let tree_lost = self.hunt.as_ref().is_some_and(|h| {
-            h.state == crate::hunt::WALK && h.target == -1 && 0.0 <= h.timer && h.move_to.is_some()
+            h.state == crate::hunt::WALK
+                && 0.0 <= h.timer
+                && ((h.target == -1 && h.move_to.is_some()) || h.move_to == Some(MoveTo::Failed))
         }) && self.ai.as_ref().is_some_and(|ai| {
             let class = if ai.target_type == -1 {
                 self.hunt.map_or(-1, |h| i32::from(h.target_class))

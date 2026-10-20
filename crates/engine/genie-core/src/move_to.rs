@@ -41,6 +41,21 @@ pub struct MoveWait {
     pub delay: f32,
 }
 
+impl MoveWait {
+    /// The `MoveTo`'s answer to the motion step giving up (it returns 1, `0x140aa2a70` in state
+    /// 4): a human player's villager (`waits`) whose `MoveTo` has not waited yet (`+0x6c` 0) waits
+    /// (`set_state` 2, `+0x6c` 1) a second with a stance (`+0x1a9`) below 2, else two, then asks
+    /// again; any other `MoveTo` fails (`set_state` 13). Returns the `MoveTo`'s state.
+    pub const fn give_up(&mut self, waits: bool, stance: u8) -> MoveTo {
+        if self.state != 0 || !waits {
+            return MoveTo::Failed;
+        }
+        self.delay = if stance < 2 { 1.0 } else { 2.0 };
+        self.state = 1;
+        MoveTo::Waiting
+    }
+}
+
 impl MoveTo {
     /// The state's number, which word 9 adds.
     #[must_use]
@@ -108,6 +123,19 @@ pub fn start_walk(
     range: f32,
     quiet: bool,
 ) -> Result<MoveTo, Unsupported> {
+    start_walk_or_give_up(walk, goal, range, quiet)?
+        .ok_or(Unsupported("a MoveTo whose unit cannot move on"))
+}
+
+/// [`start_walk`] for a `MoveTo` that handles the motion step giving up in the update its
+/// `set_state(4)` runs: None then (the `MoveTo` is in state 4, its sprite shown; the owner's
+/// answer, [`walk_or_give_up`]'s, decides what follows).
+pub fn start_walk_or_give_up(
+    walk: Walk<'_>,
+    goal: Goal,
+    range: f32,
+    quiet: bool,
+) -> Result<Option<MoveTo>, Unsupported> {
     let (point, target, radius) = match goal {
         Goal::Target(id) => {
             let t = walk
@@ -132,13 +160,13 @@ pub fn start_walk(
         if !quiet {
             mover.shows_standing();
         }
-        return Ok(MoveTo::Arrived);
+        return Ok(Some(MoveTo::Arrived));
     }
     let now = walk.plan.as_ref().map_or(0, |p| p.now);
     mover.request_path(walk.me.position, point, range, target, now);
     // the MoveTo's point (`+0x38`): the target's place when it asks for the path
     mover.move_to_point = (target != -1).then_some(point);
-    walk_on(Walk {
+    walk_or_give_up(Walk {
         mover: Some(mover),
         ..walk
     })
@@ -431,6 +459,21 @@ impl MoveToAction {
 mod tests {
     use super::*;
     use crate::spatial::Placed;
+
+    /// The 4v4's woodcutter 31101 (a human player's villager, stance 0) whose Attack's `MoveTo`
+    /// the motion step gave up on in update 5101: it waits a second, `+0x6c` 1; once it waited it
+    /// fails, as a computer player's or another class's at once. A stance of 2 waits two.
+    #[test]
+    fn a_human_villager_s_moveto_waits_once_before_it_fails() {
+        let mut wait = MoveWait::default();
+        assert_eq!(wait.give_up(true, 0), MoveTo::Waiting);
+        assert_eq!((wait.state, wait.delay), (1, 1.0));
+        assert_eq!(wait.give_up(true, 0), MoveTo::Failed);
+        assert_eq!(MoveWait::default().give_up(false, 0), MoveTo::Failed);
+        let mut guarded = MoveWait::default();
+        assert_eq!(guarded.give_up(true, 2), MoveTo::Waiting);
+        assert_eq!(guarded.delay, 2.0);
+    }
 
     fn sheep(x: f32, y: f32) -> Placed {
         Placed {

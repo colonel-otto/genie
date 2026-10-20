@@ -13,7 +13,8 @@
 
 use crate::damage::{self, Victim};
 use crate::move_to::{
-    Follow, Goal, MoveTo, Walk, follow_path_end, start_walk, target_moved, walk_on,
+    Follow, Goal, MoveTo, MoveWait, Walk, follow_path_end, start_walk_or_give_up, target_moved,
+    walk_or_give_up,
 };
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::rng::Well512;
@@ -36,6 +37,8 @@ const ARRIVED: f32 = crate::image::attack::ARRIVED;
 const EPSILON: f32 = crate::image::attack::EPSILON;
 /// The point an attack on an object has none of (`DAT_14330ec20`).
 const NONE: f32 = crate::image::attack::NONE;
+/// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
+const VILLAGER_CLASS: i16 = 4;
 /// The milliseconds of a second the reload world time counts (`FUN_141089820`).
 const RELOAD_MS: f32 = crate::image::attack::RELOAD_MS;
 /// The hit chance's scale (`0x7fffffff`, the low word of a 64-bit Object-stream draw).
@@ -111,6 +114,8 @@ pub struct Attack {
     pub seen: [f32; 3],
     /// The `MoveTo` sub-action to the target, its range the attack's.
     pub move_to: Option<MoveTo>,
+    /// Its `MoveTo`'s wait after the motion step gave up.
+    pub move_wait: MoveWait,
     /// `+0x9e`: a hit is still to land in this swing.
     pub pending: bool,
     /// `+0xb0` and `+0xb4`: the time of a swing past its sprite's length; a melee swing counts
@@ -331,6 +336,7 @@ impl Attack {
             point: [NONE; 3],
             seen: e.target_position,
             move_to: None,
+            move_wait: MoveWait::default(),
             pending: false,
             swing: 0.0,
             rest: 0.0,
@@ -407,6 +413,7 @@ impl Attack {
             point: [NONE; 3],
             seen: e.target_position,
             move_to: None,
+            move_wait: MoveWait::default(),
             pending: false,
             swing: 0.0,
             rest: 0.0,
@@ -975,6 +982,12 @@ impl Attack {
         }
     }
 
+    /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]).
+    const fn give_up(&mut self, s: &Strike<'_>) {
+        let waits = !s.computer && s.own.class == VILLAGER_CLASS;
+        self.move_to = Some(self.move_wait.give_up(waits, s.stance));
+    }
+
     /// State 4 (cases 3, 4, 10): the `MoveTo` walks (`FUN_140a992b0`); a unit still farther than its
     /// reach goes on (code 0), one within it turns ready (`set_state` 6). The squared reach of a unit
     /// without a range is 0.01. A `MoveTo` that arrived returns 1: the list deletes it (its
@@ -988,6 +1001,10 @@ impl Attack {
     ) -> Result<u8, Unsupported> {
         let code = match self.move_to {
             Some(MoveTo::Start) => {
+                // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
+                if self.move_wait.state == 1 {
+                    self.move_wait.state = 2;
+                }
                 // the MoveTo's sprite sets the unit's speed: a running one the running speed
                 if self.runs
                     && let Some(m) = walk.mover.as_deref_mut()
@@ -996,14 +1013,24 @@ impl Attack {
                 }
                 self.move_to = Some(MoveTo::Moving);
                 let goal = Goal::Target(self.target);
-                let state = start_walk(walk.reborrow(), goal, self.range, false)?;
+                let walked = start_walk_or_give_up(walk.reborrow(), goal, self.range, false)?;
                 in_the_way(&mut walk, s);
                 // the MoveTo's set_state(4) shows its sprite (`+0x58`, the Attack's `+0x68`)
-                if state == MoveTo::Moving
+                if walked.is_none_or(|w| w == MoveTo::Moving)
                     && let Some(g) = self.arms.move_sprite
                 {
                     set_sprite(s.sprite, g, s.sprite_rng);
                 }
+                let Some(state) = walked else {
+                    // the motion step gave up in the update set_state(4) ran
+                    self.give_up(s);
+                    if self.move_to == Some(MoveTo::Failed) {
+                        return Err(Unsupported(
+                            "an Attack's MoveTo failing at its start (its idle sprite)",
+                        ));
+                    }
+                    return Ok(0);
+                };
                 if state == MoveTo::Arrived {
                     // in range at its start: the MoveTo, not quiet, shows the idle sprite and
                     // clears `+0x7b8`
@@ -1035,16 +1062,30 @@ impl Attack {
                         // and runs the motion step (`LAB_140aa320c`): moving on, it stays in
                         // state 3
                         s.posted.push((0x1fc, [0; 3]));
-                        let state = walk_on(walk.reborrow())?;
+                        let walked = walk_or_give_up(walk.reborrow())?;
                         in_the_way(&mut walk, s);
-                        self.move_to = Some(match state {
-                            MoveTo::Moving => MoveTo::Start,
-                            other => other,
-                        });
+                        match walked {
+                            Some(MoveTo::Moving) => self.move_to = Some(MoveTo::Start),
+                            Some(other) => self.move_to = Some(other),
+                            None => self.give_up(s),
+                        }
                     }
                 } else {
-                    self.move_to = Some(walk_on(walk.reborrow())?);
+                    let walked = walk_or_give_up(walk.reborrow())?;
                     in_the_way(&mut walk, s);
+                    match walked {
+                        Some(m) => self.move_to = Some(m),
+                        None => self.give_up(s),
+                    }
+                }
+                0
+            }
+            // case 2: the timer runs by dt; at its end the MoveTo asks again (set_state 3)
+            Some(MoveTo::Waiting) => {
+                self.move_wait.timer += walk.dt;
+                if self.move_wait.delay <= self.move_wait.timer {
+                    self.move_wait.timer = 0.0;
+                    self.move_to = Some(MoveTo::Start);
                 }
                 0
             }
@@ -1058,10 +1099,8 @@ impl Attack {
                 return Ok(0);
             }
             None => return Err(Unsupported("an Attack in state 4 without its MoveTo")),
-            Some(MoveTo::Waiting | MoveTo::Failed) => {
-                return Err(Unsupported(
-                    "an Attack's waiting or failed MoveTo (states 2, 13)",
-                ));
+            Some(MoveTo::Failed) => {
+                return Err(Unsupported("an Attack's failed MoveTo (state 13)"));
             }
         };
         let ground = walk

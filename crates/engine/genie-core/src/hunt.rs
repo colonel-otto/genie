@@ -9,7 +9,8 @@
 use crate::attack::{Arms, Attack, Engagement, Strike, set_sprite};
 use crate::damage::Victim;
 use crate::move_to::{
-    Goal, MoveTo, MoveWait, Walk, start_walk, target_moved, walk_on, walk_or_give_up,
+    Goal, MoveTo, MoveWait, Walk, start_walk, start_walk_or_give_up, target_moved, walk_on,
+    walk_or_give_up,
 };
 use crate::movement::{Mover, footprint_gap};
 use crate::sprite::Graphic;
@@ -771,7 +772,7 @@ impl HuntAction {
                     let range = self.walk_range;
                     walk.me.action_state = self.state;
                     let goal = Goal::Target(self.target);
-                    let state = start_walk(walk.reborrow(), goal, range, true)?;
+                    let walked = start_walk_or_give_up(walk.reborrow(), goal, range, true)?;
                     crate::attack::in_the_way(&mut walk, strike);
                     // the MoveTo's set_state(4) shows the hunt's walking sprite
                     let shows = walk_sprite(
@@ -785,8 +786,11 @@ impl HuntAction {
                         rng: strike.sprite_rng,
                         graphic: shows,
                     }
-                    .walking(state);
-                    self.move_to = Some(state);
+                    .walking(walked.unwrap_or(MoveTo::Moving));
+                    match walked {
+                        Some(state) => self.move_to = Some(state),
+                        None => self.give_up(strike),
+                    }
                     Ok(())
                 }
                 Some(MoveTo::Moving) => {
@@ -805,9 +809,9 @@ impl HuntAction {
                 }
                 // the failed MoveTo's update returns 3 (quiet: no notify): `FUN_140ac4670` with 8
                 // and -1 looks for another target only for a class the unit AI's slot 0x1b0 gives
-                // 0 (`FUN_140c1c4f0`: 15, trees; the class its unit AI targets, else the hunt's),
-                // which is not modelled; otherwise the hunt waits 3 seconds and the unit's
-                // animation stops (`FUN_141161850`)
+                // 0 (`FUN_140c1c4f0`: 15, trees; the class its unit AI targets, else the hunt's:
+                // the caller's search, `Unit::hunt_tree_search`, which found none); then the hunt
+                // waits 3 seconds and the unit's animation stops (`FUN_141161850`)
                 Some(MoveTo::Failed) => {
                     if let Some(class) = gather.ai_class {
                         let class = if class == -1 {
@@ -815,7 +819,7 @@ impl HuntAction {
                         } else {
                             class
                         };
-                        if class == TREE_CLASS {
+                        if class == TREE_CLASS && !gather.tree_searched {
                             return Err(Unsupported(
                                 "a hunt's search for another tree (FUN_140ac4670)",
                             ));
@@ -940,18 +944,11 @@ impl HuntAction {
         Ok(())
     }
 
-    /// The `MoveTo`'s answer to the motion step giving up (it returns 1, `0x140aa2a70` in state 4): a
-    /// human player's villager that has not waited yet waits (`set_state` 2, `+0x6c` 1) a second
-    /// with a stance below 2 (or without a unit AI), else two, then asks again; any other `MoveTo`
-    /// fails (`set_state` 13, quiet).
+    /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]; a stance below 2
+    /// without a unit AI; quiet).
     const fn give_up(&mut self, strike: &Strike<'_>) {
-        if self.move_wait.state != 0 || strike.own.class != VILLAGER_CLASS {
-            self.move_to = Some(MoveTo::Failed);
-            return;
-        }
-        self.move_wait.delay = if strike.stance < 2 { 1.0 } else { 2.0 };
-        self.move_wait.state = 1;
-        self.move_to = Some(MoveTo::Waiting);
+        let waits = !strike.computer && strike.own.class == VILLAGER_CLASS;
+        self.move_to = Some(self.move_wait.give_up(waits, strike.stance));
     }
 
     /// `set_state(4)` (`0x140ac60e0` case 4) after the target died: the sub-actions go, the target's

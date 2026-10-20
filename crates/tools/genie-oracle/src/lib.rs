@@ -1289,9 +1289,22 @@ fn saved_attack(
         let id = id as i16;
         (0 <= id).then(|| graphics.get(&id).copied()).flatten()
     };
-    let move_to = match b.sub_actions.entries().next() {
-        None => None,
-        Some((MOVE_TO, s2)) => Some(move_to_state(s2.base().map_or(0, |b| b.state))?),
+    let (move_to, move_wait) = match b.sub_actions.entries().next() {
+        None => (None, genie_core::move_to::MoveWait::default()),
+        Some((MOVE_TO, s2)) => (
+            Some(move_to_state(s2.base().map_or(0, |b| b.state))?),
+            // its wait (`+0x6c`, `+0x70`, `+0x74`)
+            s2.rge_action_by_type
+                .as_deref()
+                .and_then(|t| t.rge_action_move_to.as_deref())
+                .map_or_else(genie_core::move_to::MoveWait::default, |m| {
+                    genie_core::move_to::MoveWait {
+                        state: m.movement_wait_state,
+                        timer: m.timer,
+                        delay: f32::from_bits(m.k_default_wait_time),
+                    }
+                }),
+        ),
         Some(_) => return Err(Unsupported("a saved Attack with another sub-action")),
     };
     Ok(genie_core::attack::Attack {
@@ -1308,6 +1321,7 @@ fn saved_attack(
             a.last_target_position_z,
         ],
         move_to,
+        move_wait,
         pending: a.need_to_attack != 0,
         swing: 0.0,
         rest: 0.0,
