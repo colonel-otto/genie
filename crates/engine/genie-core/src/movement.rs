@@ -356,6 +356,12 @@ fn moved_far(a: [f32; 3], b: [f32; 3]) -> bool {
     (0..3).any(|i| EPSILON < (b[i] - a[i]).abs())
 }
 
+/// The motion step's start-test line for the ignore list (`FUN_141150f00`'s calls of
+/// `FUN_14114ece0`): from the unit's place to the waypoint, both on the ground (x, y).
+const fn ground_line(at: [f32; 3], waypoint: Vec3) -> ([f32; 2], [f32; 2]) {
+    ([at[0], at[1]], [waypoint[0], waypoint[2]])
+}
+
 /// The length on the ground from `a` to `b`.
 fn ground(a: Vec3, b: Vec3) -> f32 {
     let mut d = fmath::sub(a, b);
@@ -1301,8 +1307,9 @@ impl Mover {
                         }
                         if way <= TARGET_SHORT_REACH {
                             let near = self.near_goal(way, gap, to_end);
+                            let line = ground_line(me.position, waypoint);
                             let ignore =
-                                self.ignore_list(me, world, plan, target, target_id, waypoint)?;
+                                self.ignore_list(me, world, plan, target, target_id, line)?;
                             let r = self.short_path(
                                 me,
                                 world,
@@ -1371,7 +1378,8 @@ impl Mover {
                 if SHORT_PATHER && !failed && (way <= SHORT_REACH || near) {
                     planned = false;
                     path.points.clear();
-                    let ignore = self.ignore_list(me, world, plan, target, target_id, waypoint)?;
+                    let line = ground_line(me.position, waypoint);
+                    let ignore = self.ignore_list(me, world, plan, target, target_id, line)?;
                     let r = self.short_path(
                         me,
                         world,
@@ -1649,7 +1657,8 @@ impl Mover {
         Step::Walk
     }
 
-    /// The objects the short pather ignores (`FUN_14114ece0`, its path from the unit to `to`): the
+    /// The objects the short pather ignores (`FUN_14114ece0`, its path from the unit, `line` the two
+    /// points its arguments 3 to 6 give the start test): the
     /// unit, its target, the unit's own list but itself when its top path was made this update
     /// (`+0x858`'s path at `+0x8`), and, for a standing unit with a target whose action is in
     /// state 8 (a drop-off), the workers standing within its radius and a tenth (the records
@@ -1657,9 +1666,8 @@ impl Mover {
     /// passed, [`crate::spatial::Gait::path_made`]) of the classes 2, 4,
     /// 19 and 21 (or whose slot 0x4f0 says so: 0 for a combat object, a task of action type 0x99
     /// on the master for a building of the classes 3, 27, 39, 49 and 52), when the
-    /// unit's start is blocked (`FUN_140fa0110`: [`short_path::Pather::start_blocked`] from its
-    /// place to `to` with its radius, its weapon range and the target's radii, no shape
-    /// ignored), allied with the unit and farther from the target than the unit's radius
+    /// unit's start is blocked (`FUN_140fa0110`: [`short_path::Pather::start_blocked`] along
+    /// `line` with its radius, its weapon range and the target's radii, no shape ignored), allied with the unit and farther from the target than the unit's radius
     /// squared.
     fn ignore_list(
         &self,
@@ -1668,7 +1676,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         target: Option<&Placed>,
         target_id: i32,
-        to: Vec3,
+        line: ([f32; 2], [f32; 2]),
     ) -> Result<Vec<i32>, Unsupported> {
         let now = plan.now;
         let mut list = vec![me.id];
@@ -1706,7 +1714,7 @@ impl Mover {
                     let start_blocked = if let Some(b) = blocked {
                         b
                     } else {
-                        let b = self.start_blocked(me, world, plan, t, to)?;
+                        let b = self.start_blocked(world, plan, t, line)?;
                         blocked = Some(b);
                         b
                     };
@@ -1731,22 +1739,20 @@ impl Mover {
         Ok(list)
     }
 
-    /// `FUN_140fa0110`: whether the unit's start is blocked on its way from its place to `to` (in
-    /// fixed point by truncation), with its radius, its weapon range (slot 0x230) and the
-    /// target's radii (`FUN_140faa170`, [`short_path::Pather::start_blocked`]).
+    /// `FUN_140fa0110`: whether the unit's start is blocked on its way along `line` (its arguments
+    /// 3 to 6, in fixed point by truncation), with its radius, its weapon range (slot 0x230) and
+    /// the target's radii (`FUN_140faa170`, [`short_path::Pather::start_blocked`]).
     fn start_blocked(
         &self,
-        me: &Me,
         world: &Spatial,
         plan: &mut Planning<'_>,
         target: &Placed,
-        to: Vec3,
+        (from, to): ([f32; 2], [f32; 2]),
     ) -> Result<bool, Unsupported> {
         let fixed = |f: f32| (f * short_path::TO_FIXED) as i64 as i32;
-        let [x, y, _] = me.position;
         let query = short_path::Query {
-            from: [fixed(x), fixed(y)],
-            to: [fixed(to[0]), fixed(to[2])],
+            from: [fixed(from[0]), fixed(from[1])],
+            to: [fixed(to[0]), fixed(to[1])],
             radius: (self.stats.radius[0] * short_path::TO_FIXED) as i64 as u32 as i32,
             target_size: [fixed(target.radius[0]), fixed(target.radius[1])],
             range: fixed(self.stats.weapon_range),
@@ -2019,8 +2025,12 @@ impl Mover {
         let (dx, dy) = (to[0] - x, to[1] - y);
         if solid && fmath::sqrt(dx * dx + 0.0 + dy * dy) <= REACH_SHORT {
             let goal = [to[0], 0.0, to[1]];
+            // FUN_140fa0370 hands the start test both vectors' first two floats: x and the
+            // height, the unit's (`+0x824`) and the target's (slot 0x520), not x and y
+            let height = target.map_or(0.0, |(_, t)| t.position[2]);
+            let line = ([x, me.position[2]], [to[0], height]);
             let ignore =
-                self.ignore_list(me, world, plan, target.map(|(_, t)| t), target_id, goal)?;
+                self.ignore_list(me, world, plan, target.map(|(_, t)| t), target_id, line)?;
             if self.short_path(me, world, plan, goal, range, target_id, &ignore, &mut path)? < 2 {
                 return Ok(true);
             }
