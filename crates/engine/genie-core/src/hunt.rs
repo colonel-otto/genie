@@ -290,6 +290,35 @@ pub struct Gatherer<'a> {
     pub searches: bool,
 }
 
+/// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PointWalker {
+    /// The owner is a computer player (`FUN_141659cf0`).
+    pub computer: bool,
+    /// The unit is a villager (class 4): its `MoveTo` waits once when the motion step gives up.
+    pub villager: bool,
+    /// Its unit AI's stance (`+0x1a9`), 0 without one: the wait is a second below 2, else two.
+    pub stance: u8,
+}
+
+/// What a hunt's walk to its point did in an update ([`HuntAction::update_point_walk`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointWalk {
+    /// It walks on, or waits to ask again.
+    Walking,
+    /// State 15's walk ended or failed: the hunt is done ([`HuntAction::set_done`]), its target
+    /// and second target to release.
+    Done {
+        /// The target it let go, −1 for none.
+        target: i32,
+        /// The second target it let go, −1 for none.
+        second: i32,
+    },
+    /// State 11's walk ended or failed: the hunt searches (`set_state(3)`; the caller tells the
+    /// unit AI).
+    Search,
+}
+
 /// What the hunt reads of its target when it starts.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Quarry {
@@ -555,58 +584,96 @@ impl HuntAction {
     }
 
     /// State 15's and 11's update (`0x140ac7a00` cases 0xe and 0xa): the `MoveTo` to the point
-    /// walks; once it ended (its update returns 1, 2 or 5: the list deletes it, its destructor
-    /// stops the unit) a human player's hunt in state 15 is done (`set_state(2)`: the unit takes
-    /// its standing sprite, the caller's; a computer player's would end it, `set_state` 1); one in
-    /// state 11 would search (`set_state` 3), not modelled. A `MoveTo` that failed or waits
-    /// (codes 3 and 4) is not modelled. True when the walk ended.
+    /// walks; the motion step giving up turns it to its wait or its failure
+    /// ([`HuntAction::give_up_walk`]); a waiting one asks again after its wait (its case 2, its
+    /// update returns 0). Once it ended (its update returns 1, 2 or 5) or failed (3, quiet: no
+    /// notify), the `set_state` that follows tears it down (`FUN_140a98620`; its destructor stops
+    /// the unit, slot 0x5d0): a human player's hunt in state 11 searches (`set_state(3)`: the
+    /// state here, the rest the caller's), one in state 15 is done (`set_state(2)`: the target
+    /// goes, the point clears and the timer; the unit takes its standing sprite and the second
+    /// target goes, the caller's). A computer player's ended walk in state 15 (`set_state` 1) or
+    /// failed one (`set_state` 13) is not modelled; a point walk has no target to lose (code 4).
     pub fn update_point_walk(
         &mut self,
         mut walk: Walk<'_>,
-        computer: bool,
+        who: PointWalker,
         mut shown: Shown<'_>,
-    ) -> Result<bool, Unsupported> {
-        match self.move_to {
+    ) -> Result<PointWalk, Unsupported> {
+        let ended = match self.move_to {
             Some(MoveTo::Start) => {
+                // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
+                if self.move_wait.state == 1 {
+                    self.move_wait.state = 2;
+                }
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.walk_range;
                 walk.me.action_state = self.state;
-                let state = start_walk(walk, Goal::Point(self.point), range, true)?;
-                shown.walking(state);
-                self.move_to = Some(state);
-                Ok(false)
+                let walked = start_walk_or_give_up(walk, Goal::Point(self.point), range, true)?;
+                shown.walking(walked.unwrap_or(MoveTo::Moving));
+                match walked {
+                    Some(state) => self.move_to = Some(state),
+                    None => self.give_up_walk(who),
+                }
+                return Ok(PointWalk::Walking);
             }
             Some(MoveTo::Moving) => {
                 walk.me.action_state = self.state;
-                self.move_to = Some(walk_on(walk)?);
-                Ok(false)
-            }
-            Some(MoveTo::Arrived) => {
-                if self.state == WALK_SEARCH {
-                    return Err(Unsupported(
-                        "a hunt's search after its walk to the point (set_state 3)",
-                    ));
+                match walk_or_give_up(walk)? {
+                    Some(state) => self.move_to = Some(state),
+                    None => self.give_up_walk(who),
                 }
-                self.move_to = None;
-                walk.mover
-                    .as_deref_mut()
-                    .ok_or(Unsupported("a hunter without movement state"))?
-                    .stop()?;
-                if computer {
-                    return Err(Unsupported(
-                        "a computer player's hunt after its walk (set_state 1)",
-                    ));
-                }
-                self.state = IDLE;
-                self.point = [-1.0; 3];
-                self.timer = 0.0;
-                Ok(true)
+                return Ok(PointWalk::Walking);
             }
-            Some(MoveTo::Waiting | MoveTo::Failed) => Err(Unsupported(
-                "a hunt's walk to a point that waits or failed (codes 3, 4)",
-            )),
-            None => Err(Unsupported("a Hunt in state 15 without its MoveTo")),
+            Some(MoveTo::Waiting) => {
+                self.move_wait.timer += walk.dt;
+                if self.move_wait.delay <= self.move_wait.timer {
+                    self.move_wait.timer = 0.0;
+                    self.move_to = Some(MoveTo::Start);
+                }
+                return Ok(PointWalk::Walking);
+            }
+            Some(MoveTo::Arrived) => true,
+            Some(MoveTo::Failed) => false,
+            None => return Err(Unsupported("a Hunt's walk to a point without its MoveTo")),
+        };
+        if who.computer {
+            return Err(Unsupported(if ended {
+                "a computer player's hunt after its walk (set_state 1)"
+            } else {
+                "a computer player's hunt whose walk to a point failed (set_state 13)"
+            }));
         }
+        self.move_to = None;
+        walk.mover
+            .as_deref_mut()
+            .ok_or(Unsupported("a hunter without movement state"))?
+            .stop()?;
+        if self.state == WALK_SEARCH {
+            self.state = SEARCH;
+            return Ok(PointWalk::Search);
+        }
+        let [target, second] = self.set_done();
+        Ok(PointWalk::Done { target, second })
+    }
+
+    /// `set_state(2)` (`0x140ac60e0` case 2): the hunt is done. The unit takes the sprite it
+    /// stands with (slot 0x68 with `FUN_140ac5210`'s, the caller's), the target and the second
+    /// target go (slot 0x68 and `FUN_140a7a190` with none: returned in that order for the caller
+    /// to release), the point clears and the timer.
+    pub const fn set_done(&mut self) -> [i32; 2] {
+        self.state = IDLE;
+        let target = std::mem::replace(&mut self.target, -1);
+        let second = std::mem::replace(&mut self.carry_to, -1);
+        self.point = [-1.0; 3];
+        self.timer = 0.0;
+        [target, second]
+    }
+
+    /// The point walk's `MoveTo` answer to the motion step giving up ([`MoveWait::give_up`]: a
+    /// human player's villager waits once; quiet).
+    pub const fn give_up_walk(&mut self, who: PointWalker) {
+        let waits = !who.computer && who.villager;
+        self.move_to = Some(self.move_wait.give_up(waits, who.stance));
     }
 
     /// `set_state(8)` (`0x140ac60e0` case 8) with a load and its drop site (`carry_to`; without one
@@ -1496,6 +1563,109 @@ pub(crate) mod tests {
             (WALK_SEARCH, Some(MoveTo::Start), 0.0, 177.272_75)
         );
         assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
+    }
+
+    /// A hunt's walk to its point (states 11 and 15, `0x140ac7a00` cases 0xa and 0xe): an ended
+    /// `MoveTo` (code 1) stops the unit, after which state 11 searches (`set_state` 3) and state 15
+    /// is done (`set_state` 2); a failed one (code 3) does the same for a human player, a computer
+    /// player's would end the hunt (`set_state` 13). A human player's villager whose motion step
+    /// gave up waits first (425906646's p4 villagers 27238, 31018, 31034 and 31042 in update 5724).
+    #[test]
+    fn a_walk_to_the_point_ends_in_a_search_or_done() {
+        let hunt = |state, move_to| HuntAction {
+            target: -1,
+            state,
+            point: [177.272_75, 62.444_31, 0.0],
+            target_class: LIVESTOCK,
+            task: CHOP,
+            attack: None,
+            move_to: Some(move_to),
+            walk_range: CHOP.range,
+            drop_site: -1,
+            carry_to: -1,
+            timer: 0.0,
+            move_wait: MoveWait::default(),
+        };
+        let walker_at = PointWalker {
+            computer: false,
+            villager: true,
+            stance: 1,
+        };
+        let run = |h: &mut HuntAction, who: PointWalker| {
+            let mut mover = walker();
+            let mut world = crate::spatial::Spatial::default();
+            let (mut sprite, mut rng) = (None, crate::rng::Well512::default());
+            let walk = Walk {
+                mover: Some(&mut mover),
+                me: crate::movement::Me {
+                    id: 31110,
+                    position: [171.888_89, 59.053_39, 0.0],
+                    action_state: h.state,
+                },
+                dt: 0.5,
+                world: &mut world,
+                plan: None,
+            };
+            let got = h.update_point_walk(walk, who, shown(&mut sprite, &mut rng));
+            (got, mover.velocity.unwrap().velocity[2])
+        };
+        let done = PointWalk::Done {
+            target: -1,
+            second: -1,
+        };
+        for (state, ends) in [(WALK_SEARCH, PointWalk::Search), (WALK_POINT, done)] {
+            for code in [MoveTo::Arrived, MoveTo::Failed] {
+                let mut h = hunt(state, code);
+                let (got, speed) = run(&mut h, walker_at);
+                assert_eq!((got.unwrap(), h.move_to, speed), (ends, None, 0.0));
+                let after = if ends == PointWalk::Search {
+                    SEARCH
+                } else {
+                    IDLE
+                };
+                assert_eq!(h.state, after);
+            }
+            // a computer player's failed walk ends the hunt (set_state 13)
+            let computer = PointWalker {
+                computer: true,
+                ..walker_at
+            };
+            assert!(run(&mut hunt(state, MoveTo::Failed), computer).0.is_err());
+        }
+        // set_state(2) lets the target and the second target go, in that order
+        let mut h = hunt(SEARCH, MoveTo::Arrived);
+        (h.target, h.carry_to, h.timer) = (28813, 9156, -10.0);
+        assert_eq!(h.set_done(), [28813, 9156]);
+        assert_eq!(
+            (h.state, h.target, h.carry_to, h.point, h.timer),
+            (IDLE, -1, -1, [-1.0; 3], 0.0)
+        );
+        // the wait: a second for a stance below 2, then the MoveTo asks again
+        let mut h = hunt(WALK_SEARCH, MoveTo::Waiting);
+        h.move_wait = MoveWait {
+            state: 1,
+            timer: 0.0,
+            delay: 1.0,
+        };
+        assert_eq!(run(&mut h, walker_at).0.unwrap(), PointWalk::Walking);
+        assert_eq!((h.move_to, h.move_wait.timer), (Some(MoveTo::Waiting), 0.5));
+        assert_eq!(run(&mut h, walker_at).0.unwrap(), PointWalk::Walking);
+        assert_eq!((h.move_to, h.move_wait.timer), (Some(MoveTo::Start), 0.0));
+        // the MoveTo's answer to the motion step giving up: a human's villager waits once
+        let mut h = hunt(WALK_POINT, MoveTo::Moving);
+        h.give_up_walk(walker_at);
+        assert_eq!(
+            (h.move_to, h.move_wait.state, h.move_wait.delay),
+            (Some(MoveTo::Waiting), 1, 1.0)
+        );
+        h.give_up_walk(walker_at);
+        assert_eq!(h.move_to, Some(MoveTo::Failed));
+        let mut h = hunt(WALK_POINT, MoveTo::Moving);
+        h.give_up_walk(PointWalker {
+            villager: false,
+            ..walker_at
+        });
+        assert_eq!(h.move_to, Some(MoveTo::Failed));
     }
 
     /// MarvinBlue/426048731's lumberjack 9181 in update 1897: its `MoveTo` to the TC 9156 ended

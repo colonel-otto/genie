@@ -2442,7 +2442,8 @@ impl UnitAi {
 
     /// The units the update models after its target block ([`UnitAi::target_block`]): a target
     /// only on a villager's build, gather, hunt or garrison (702/602, 709/609, 713/613, 717/617), its attack back
-    /// as a hunt (700/613, [`UnitAi::hunt_object`]), on the follow
+    /// as a hunt (700/613, [`UnitAi::hunt_object`]), a hunt without an order (−1/613: `HuntObject`
+    /// after a stop that ended the order; the update has no case for the order), on the follow
     /// order (712 with its action 612, the move's 610 or none), on a boar's own attack (−1/600)
     /// or the attack order (700/600), or without an order and an action (a hunt ended by its
     /// queued orders); busy (`busy`, the actions left), only those or a unit on MOVE's order
@@ -2454,7 +2455,7 @@ impl UnitAi {
         let working = matches!(
             order,
             (BUILD_ORDER, BUILD_ACTION)
-                | (HUNT_ORDER | ATTACK_ORDER, HUNT_ACTION)
+                | (HUNT_ORDER | ATTACK_ORDER | -1, HUNT_ACTION)
                 | (crate::ai_kinds::ORDER_GATHER, GATHER_ACTION)
                 | (crate::garrison::ENTER_ORDER, crate::garrison::ENTER_ACTION)
                 | (FOLLOW_ORDER, FOLLOW_ACTION | MOVE_ACTION | -1)
@@ -5615,6 +5616,25 @@ mod tests {
             idle_timeout: 3000,
             ..idle(8)
         }
+    }
+
+    #[test]
+    fn a_hunt_without_an_order_after_hunt_object_is_modelled() {
+        // 5622, p5 31126: the villager's HuntObject after its stop ended order 713 leaves order
+        // -1 with the hunt action and its target; the full update has no case for the order
+        let hunting = UnitAi {
+            current_order: -1,
+            current_action: HUNT_ACTION,
+            ..builder_done()
+        };
+        assert!(hunting.check_busy_order(Retarget::Never, true).is_ok());
+        // another action without an order and with a target is not modelled
+        let other = UnitAi {
+            current_order: -1,
+            current_action: 0x25b,
+            ..builder_done()
+        };
+        assert!(other.check_busy_order(Retarget::Never, true).is_err());
     }
 
     #[test]

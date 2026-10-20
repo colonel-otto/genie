@@ -2035,22 +2035,39 @@ impl Unit {
     /// (`set_state` 2), not modelled.
     fn hunt_set_search(&mut self, c: &mut Context<'_>, others: &[Self]) -> Result<(), Unsupported> {
         let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let task = hunt.task;
         if hunt.target_class == 10 {
-            return Err(Unsupported("a hunt of class 10's search (set_state 2)"));
+            // a human player's hunt is done (set_state 2), a computer player's ends (1)
+            if c.computer {
+                return Err(Unsupported(
+                    "a computer player's hunt of class 10's search (set_state 1)",
+                ));
+            }
+            let released = hunt.set_done();
+            self.hunt_stand(c, &task)?;
+            self.hunt_release(c, released);
+            return Ok(());
         }
         let target = std::mem::replace(&mut hunt.target, -1);
-        let task = hunt.task;
         hunt.timer = SEARCH_AGAIN;
-        if target != -1 {
-            c.releases.push((target, self.releaser(c)));
-        }
+        self.hunt_release(c, [target]);
         self.hunt_search_notify(c, others)?;
+        self.hunt_stand(c, &task)
+    }
+
+    /// The hunter takes the sprite its hunt stands with (slot 0x68 with `FUN_140ac5210`'s, by the
+    /// task and what the unit carries; [`crate::hunt::stand_sprite`]).
+    fn hunt_stand(
+        &mut self,
+        c: &mut Context<'_>,
+        task: &crate::hunt::HuntTask,
+    ) -> Result<(), Unsupported> {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
         let stand = crate::hunt::stand_sprite(
-            &task,
+            task,
             master.standing_sprite,
             self.life.attribute_type,
             self.life.amount,
@@ -2060,6 +2077,13 @@ impl Unit {
             crate::attack::set_sprite(&mut self.sprite, s, c.streams.get(Stream::Sprite));
         }
         Ok(())
+    }
+
+    /// The objects a hunt let go (−1 for none), released in order after the update.
+    fn hunt_release<const N: usize>(&self, c: &mut Context<'_>, ids: [i32; N]) {
+        for id in ids.into_iter().filter(|&id| id != -1) {
+            c.releases.push((id, self.releaser(c)));
+        }
     }
 
     /// The Hunt in state 3 tells its unit AI to look for the next target (`0x140ac60e0` case 3,
@@ -5240,8 +5264,16 @@ impl Unit {
         {
             // states 15 and 11: the walk to a point; state 15's end is set_state(2): the unit
             // takes the hunt's sprite to stand with (slot 0x68 with FUN_140ac5210's), the target
-            // and the second target go
-            let computer = c.computer;
+            // and the second target go; state 11's is set_state(3), the search
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+            let who = crate::hunt::PointWalker {
+                computer: c.computer,
+                villager: master.class == 4,
+                stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            };
             let shows = hunt_walk_sprite(hunt, c.graphics, &self.life);
             let (walk, rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let shown = crate::hunt::Shown {
@@ -5249,25 +5281,13 @@ impl Unit {
                 rng,
                 graphic: shows,
             };
-            if hunt.update_point_walk(walk, computer, shown)? {
-                let task = hunt.task;
-                let second = std::mem::replace(&mut hunt.carry_to, -1);
-                let master = c
-                    .masters
-                    .and_then(|m| m.get(self.life.master_id))
-                    .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
-                let stand = crate::hunt::stand_sprite(
-                    &task,
-                    master.standing_sprite,
-                    self.life.attribute_type,
-                    self.life.amount,
-                    c.graphics,
-                );
-                if let Some(s) = stand {
-                    crate::attack::set_sprite(&mut self.sprite, s, c.streams.get(Stream::Sprite));
-                }
-                if second != -1 {
-                    c.releases.push((second, self.releaser(c)));
+            match hunt.update_point_walk(walk, who, shown)? {
+                crate::hunt::PointWalk::Walking => {}
+                crate::hunt::PointWalk::Search => self.hunt_set_search(c, others)?,
+                crate::hunt::PointWalk::Done { target, second } => {
+                    let task = hunt.task;
+                    self.hunt_stand(c, &task)?;
+                    self.hunt_release(c, [target, second]);
                 }
             }
         } else if let Some(hunt) = self
