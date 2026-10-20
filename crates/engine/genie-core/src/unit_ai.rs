@@ -95,6 +95,8 @@ const DEAD: u32 = 4;
 const PRODUCED: u32 = 0xd;
 /// The boar's unit-AI type (`TribePreditorUnitAIModule`).
 const BOAR_AI: u32 = 4;
+/// The tower's factory type (`TribeTowerUnitAIModule`, the town centre's too).
+const TOWER_AI: u32 = 15;
 
 /// The notify queue's capacity of a unit AI of `ai_type` holding `count` notifies: the
 /// factory's (`FUN_141215560`: 5 for the artifact's and the livestock's, types 14 and 19; 10
@@ -2348,7 +2350,7 @@ impl UnitAi {
         match n.kind {
             ACTION_COMPLETED => self.action_completed(n, at, fx),
             ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, fx),
-            ACTION_INVALIDATED => self.action_invalidated(n, at, fx),
+            ACTION_INVALIDATED => self.action_invalidated(n, at, computer, ai_rng, side, fx),
             crate::explore::WANTS_POINT if self.explorer() => {
                 self.seek_unexplored(at, ai_rng, side, fx)
             }
@@ -2564,23 +2566,66 @@ impl UnitAi {
     }
 
     /// The base handler's case `0x1fb` ("Action %d has been invalidated.", `FUN_140c589c0`): an
-    /// attack (600) invalidated on the attack order (700) or with `0x202` (its retarget, slot
-    /// 0x240) is not modelled. Without an order, the invalidation of the current action forgets
-    /// the target (`FUN_140c5e1e0`) and stops it (slot 0xb0 with 1; then slot 0x48 hands the
-    /// notify to the owner, not held); with one, so does the invalidation of the order's own
-    /// action (action + 100 = order); order `0x2d4` and `0x2bd` on action `0x262` are not
-    /// modelled; any other invalidated attack forgets the target and stops; the rest go on.
+    /// attack (600) invalidated on the attack order (700) or with `0x202` retargets: with
+    /// retargeting off (`+0x1d6`) a target still in the world breaks off (not modelled), else
+    /// processIdle (slot 0x240 with 0): the tower's (the base `FUN_140c564c0`, which skips the
+    /// order retry of slot 0x250 with 0; [`UnitAi::tower_idle`] after the cap) attacks what its
+    /// search finds (not modelled) or does nothing (5), the boar's ([`UnitAi::boar_idle`], after
+    /// the cap) may produce an action (6); the building's handler never passes the notify on
+    /// (`FUN_140c1e600` would do nothing either). Unless it is 5 the
+    /// notify goes on; with 5 a human player's unit forgets its target (`FUN_140c5e1e0`) and stops
+    /// (slot 0xb0 with 1); a computer player's tests (slot 0x130) are not modelled, nor are the
+    /// other factory types' slot 0x240 with 0. Without an order, the invalidation of the current
+    /// action forgets the target and stops it (slot 0xb0 with 1; then slot 0x48 hands the notify
+    /// to the owner, not held); with one, so does the invalidation of the order's own action
+    /// (action + 100 = order); order `0x2d4` and `0x2bd` on action `0x262` are not modelled; any
+    /// other invalidated attack forgets the target and stops; the rest go on.
+    #[allow(clippy::too_many_arguments)]
     fn action_invalidated(
         &mut self,
         n: Notify,
         at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
         if (order == 700 || n.p[2] == 0x202) && p0 == 600 {
-            return Err(Unsupported(
-                "an invalidated attack on the attack order (its retarget, slot 0x240)",
-            ));
+            if self.retarget_disabled != 0 {
+                return Err(Unsupported(
+                    "an invalidated attack with retargeting off (+0x1d6)",
+                ));
+            }
+            let produced = match self.ai_type {
+                TOWER_AI => {
+                    self.cap_human_order(fx);
+                    self.tower_idle(at, computer, side)?;
+                    false
+                }
+                BOAR_AI => {
+                    self.cap_human_order(fx);
+                    let (produced, moved) = self.boar_idle(at, ai);
+                    fx.extend(moved.map(Effect::Move));
+                    produced
+                }
+                _ => {
+                    return Err(Unsupported(
+                        "an invalidated attack on the attack order (its retarget, slot 0x240)",
+                    ));
+                }
+            };
+            if produced {
+                return Ok(GO_ON);
+            }
+            if computer {
+                return Err(Unsupported(
+                    "a computer player's invalidated attack (slot 0x130)",
+                ));
+            }
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
         }
         let own = if order == -1 {
             action == p0

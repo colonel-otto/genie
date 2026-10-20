@@ -474,6 +474,14 @@ pub enum Command {
         /// Its units.
         ids: Vec<i32>,
     },
+    /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`): the villagers of `ids` (at most 60, the decoder's)
+    /// seek shelter in the player's buildings ([`Turns::seek_shelter`]).
+    SeekShelter {
+        /// The player whose units seek shelter.
+        player: usize,
+        /// The units.
+        ids: Vec<i32>,
+    },
     /// `UNIT_AI_STATE` (0x12, `FUN_140e6a7c0`): the unit AIs of `ids` (at most 60, the decoder's)
     /// take the stance `state` ([`Turns::unit_ai_state`]).
     UnitAiState {
@@ -6284,6 +6292,8 @@ impl Turns {
                     turn.stopped = true;
                     None
                 });
+                // the combat setup's powerup offset (`+0xa54`, FUN_14121df60's "setup" draw)
+                let _ = self.streams.get(Stream::Object).rand15();
                 let owner = &mut self.players[player];
                 owner.objects.push(Unit {
                     id,
@@ -6502,6 +6512,12 @@ impl Turns {
             }
             Command::AutoScout { player, ref ids } => {
                 if let Err(e) = self.auto_scout(player, ids) {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
+                }
+            }
+            Command::SeekShelter { player, ref ids } => {
+                if let Err(e) = self.seek_shelter(player, ids) {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }

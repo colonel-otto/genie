@@ -239,6 +239,69 @@ fn sort_heap<T: Copy>(v: &mut [T], pred: &impl Fn(T, T) -> bool) {
     }
 }
 
+/// The buckets of a new `std::unordered_map` (`_Min_buckets`).
+const MIN_BUCKETS: usize = 8;
+/// Below this many buckets a rehash grows them eightfold (`0x1ff < buckets` grows to the need).
+const GROW_EIGHTFOLD_BELOW: usize = 512;
+
+/// The bucket of a 32-bit key: `std::hash<int>`, FNV-1a over its four bytes (little-endian), and
+/// the bucket mask.
+fn bucket(key: i32, mask: u64) -> u64 {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0100_0000_01b3;
+    let hash = key
+        .to_le_bytes()
+        .iter()
+        .fold(OFFSET, |h, &b| (h ^ u64::from(b)).wrapping_mul(PRIME));
+    hash & mask
+}
+
+/// A new key goes in front of its bucket's elements, or at the list's end when its bucket is
+/// empty (`_Find_last`'s insertion point, then `_Insert_new_node_before`).
+fn insert_in_bucket(list: &mut Vec<i32>, key: i32, mask: u64) {
+    let b = bucket(key, mask);
+    match list.iter().position(|&k| bucket(k, mask) == b) {
+        Some(lo) => list.insert(lo, key),
+        None => list.push(key),
+    }
+}
+
+/// The order in which a `std::unordered_map<int, …>` with the maximum load factor 1.0 lists its
+/// keys (its element list, which iteration follows) after `try_emplace` of `keys` in turn
+/// (`FUN_1415f0c40`; a key already in it is found, not inserted). An insertion that would pass
+/// the load factor first rehashes (`FUN_141615a30`): to eight times the buckets below 512, else
+/// to the need, then each element in list order goes in front of its new bucket's (where it
+/// already leads its bucket, it stays).
+#[must_use]
+pub fn unordered_map_order(keys: impl IntoIterator<Item = i32>) -> Vec<i32> {
+    let mut buckets = MIN_BUCKETS;
+    let mut list: Vec<i32> = Vec::new();
+    for key in keys {
+        if list.contains(&key) {
+            continue;
+        }
+        let size = list.len() + 1;
+        if 1.0 < size as f32 / buckets as f32 {
+            let need = MIN_BUCKETS.max(size);
+            if buckets < need {
+                buckets = if GROW_EIGHTFOLD_BELOW <= buckets || buckets * 8 < need {
+                    need
+                } else {
+                    buckets * 8
+                };
+            }
+            buckets = buckets.next_power_of_two();
+            let mask = buckets as u64 - 1;
+            let old = std::mem::take(&mut list);
+            for k in old {
+                insert_in_bucket(&mut list, k, mask);
+            }
+        }
+        insert_in_bucket(&mut list, key, buckets as u64 - 1);
+    }
+    list
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,6 +309,23 @@ mod tests {
     /// Pairs sorted by their key, descending, as the pathfinder sorts its open nodes.
     fn by_key(v: &mut [(u32, usize)]) {
         sort(v, &|a: (u32, usize), b: (u32, usize)| a.0 > b.0);
+    }
+
+    #[test]
+    fn a_map_lists_a_key_of_a_taken_bucket_in_front_of_it() {
+        // FNV-1a & 7: 1 -> bucket 4, 9 -> bucket 4 too, 2 -> bucket 7 (as the game's hash)
+        assert_eq!(bucket(1, 7), bucket(9, 7));
+        assert_ne!(bucket(1, 7), bucket(2, 7));
+        assert_eq!(unordered_map_order([1, 2, 9, 2]), [9, 1, 2]);
+    }
+
+    #[test]
+    fn a_rehash_keeps_every_key_once() {
+        let order = unordered_map_order((0..100).chain(0..10));
+        assert_eq!(order.len(), 100);
+        let mut sorted = order;
+        sorted.sort_unstable();
+        assert_eq!(sorted, (0..100).collect::<Vec<_>>());
     }
 
     #[test]

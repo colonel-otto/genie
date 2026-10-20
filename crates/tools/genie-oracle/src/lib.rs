@@ -2960,6 +2960,18 @@ impl Decoder {
                         .collect(),
                 });
             }
+            // SEEK_SHELTER: the units listed (at most a human player's 60), the count at +4
+            Packet::SeekShelter(c) => {
+                return Some(Command::SeekShelter {
+                    player: c.commp_id as usize,
+                    ids: c
+                        .ids
+                        .iter()
+                        .copied()
+                        .take(usize::from(c.num).min(MAX_UNITS))
+                        .collect(),
+                });
+            }
             // GAME's toggles of the automatic farm and fish trap queues; the player is at +8
             Packet::Game(g) if matches!(g.field_0x04, 0x10 | 0x13) => {
                 return Some(Command::AutoQueue {
