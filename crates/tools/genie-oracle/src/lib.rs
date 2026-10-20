@@ -2043,6 +2043,33 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     let none = TerrainTable::default();
     let terrain = masters.map_or(&none, |t| &t.terrain);
     turns.spatial = spatial(header, terrain);
+    // the players' scout maps (`mIsScoutMapEnabled` and its InfluenceMap, player+0x1370)
+    for (i, p) in header.players().iter().enumerate() {
+        let wp = p.world_player();
+        if wp.is_scout_map_enabled.unwrap_or_default() == 0 {
+            continue;
+        }
+        if let Some(m) = wp.tribe_information_aimodule.as_deref() {
+            let width = m.x_size_value.max(0) as usize;
+            let cells = m
+                .row_value
+                .iter()
+                .flat_map(|r| {
+                    let row = r.row_value.as_deref().unwrap_or(&[]);
+                    (0..width).map(move |x| row.get(x).copied().unwrap_or(0))
+                })
+                .collect();
+            turns.spatial.set_scout_map(
+                i,
+                genie_core::explore::InfluenceMap {
+                    size: [m.x_size_value, m.y_size_value],
+                    origin: [m.x_reference_point_value, m.y_reference_point_value],
+                    limit: m.unchangeable_limit_value,
+                    cells,
+                },
+            );
+        }
+    }
     let map = &world.map;
     turns.pathing = genie_core::pathing::Pathing::new(
         [map.map_width, map.map_height],

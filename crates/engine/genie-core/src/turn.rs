@@ -827,8 +827,8 @@ struct UnitView<'u> {
     player: usize,
     /// The owner is a computer player.
     computer: bool,
-    /// The world's objects.
-    spatial: &'u Spatial,
+    /// The world's objects (and the players' scout maps, which an auto scout makes and marks).
+    spatial: &'u mut Spatial,
     /// The planners and the mesh, which a reach test walks.
     pathing: &'u mut Pathing,
     /// The Object stream, which a reach test's new path draws from.
@@ -985,7 +985,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         } as i32;
         let (ux, uy) = (unit.position[0] as i32, unit.position[1] as i32);
         let (player, others, masters, spatial) =
-            (self.player, self.others, self.masters, self.spatial);
+            (self.player, self.others, self.masters, &*self.spatial);
         let foundation_on = |x: i32, y: i32| -> Option<i32> {
             spatial.objects_on(x, y).find_map(|(id, p)| {
                 if p.player != player {
@@ -1061,7 +1061,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             position: unit.position,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        let (mover, master_id, spatial) = (unit.mover.as_ref(), unit.life.master_id, self.spatial);
+        let (mover, master_id, spatial) =
+            (unit.mover.as_ref(), unit.life.master_id, &*self.spatial);
         let mut reach = |id: i32, range: f32| {
             let m = mover.ok_or(Unsupported("a reach test of a unit that does not move"))?;
             m.reaches_object(&walker, spatial, &mut plan, id, range, master_id)
@@ -1266,8 +1267,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     ) -> Result<Option<[i32; 2]>, Unsupported> {
         let tc = town_centre(self.others)?;
         let (at, computer) = (self.unit.position, self.computer);
+        // the search about the town centre only while the player has no scout map
+        let scout_map = self.spatial.scout_map(self.player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
-        if let Some(p) = crate::explore::unexplored_area(tc, map, &mut area)? {
+        if !scout_map && let Some(p) = crate::explore::unexplored_area(tc, map, &mut area)? {
             return Ok(Some(p));
         }
         // none about the town centre: the unit AI's own search (slot 0x90)
@@ -1282,9 +1285,34 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     }
 
     fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-        let at = self.unit.position;
+        let (at, player) = (self.unit.position, self.player);
+        let scouted = self.spatial.scout_map(player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
-        crate::explore::beyond_sight(&mut area, at, line_of_sight, map, rng)
+        area.scouted = scouted;
+        let found = crate::explore::beyond_sight(&mut area, at, line_of_sight, map, rng)?;
+        // the point found is marked in the scout map (FUN_140f4d5e0 with 1)
+        if let Some([x, y]) = found {
+            self.spatial.scout(player, x, y);
+        }
+        Ok(found)
+    }
+
+    /// The player's scout map (`FUN_140c589c0`'s case 0x202 when the auto scout found nothing):
+    /// a new `InfluenceMap` of 480 by 480 (`FUN_140f4a240`, the old one goes, `+0x1368` 1) marks
+    /// every tile the player sees now (its visible map's `FUN_141285350` 0xf) with 1.
+    fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+        let size = crate::explore::SCOUT_MAP_SIZE;
+        let mut m = crate::explore::InfluenceMap::new([size, size], 0);
+        let [w, h] = self.spatial.map;
+        for y in 0..h {
+            for x in 0..w {
+                if self.spatial.sees_tile(self.player, x, y) {
+                    m.set(x, y, 1);
+                }
+            }
+        }
+        self.spatial.set_scout_map(self.player, m);
+        Ok(())
     }
 }
 
@@ -1334,6 +1362,7 @@ impl UnitView<'_> {
             master: master.id,
             radius: master.radius,
             reach: master.line_of_sight - LOS_MARGIN,
+            scouted: false,
         };
         Ok((area, [w, h], master.line_of_sight))
     }
@@ -1446,10 +1475,20 @@ struct ScoutArea<'a> {
     radius: [f32; 2],
     /// The reach of slot 0x3d8: the line of sight less a tile.
     reach: f32,
+    /// The search reads the player's scout map for the tiles seen (`FUN_140c4b130` with one).
+    scouted: bool,
 }
 
 impl crate::explore::Area for ScoutArea<'_> {
     fn explored(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        if self.scouted {
+            return self
+                .spatial
+                .scout_map(self.player)
+                .and_then(|m| m.get(x, y))
+                .map(|v| v == 1)
+                .ok_or(Unsupported("a tile off the player's scout map"));
+        }
         self.spatial.explored(self.player, x, y)
     }
 

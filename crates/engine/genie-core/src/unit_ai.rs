@@ -995,6 +995,14 @@ pub trait UnitSide {
     /// What the search does not model.
     fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported>;
 
+    /// The player's scout map, made when the auto scout's last search found nothing
+    /// (`FUN_140c589c0`'s case 0x202).
+    ///
+    /// # Errors
+    ///
+    /// A unit without its player's sight.
+    fn make_scout_map(&mut self) -> Result<(), Unsupported>;
+
     /// The builder's search for another foundation (`FUN_140c1c7c0`): −1 for none.
     ///
     /// # Errors
@@ -1043,6 +1051,10 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
 
     fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
         Err(Unsupported("an explorer's search without its unit"))
+    }
+
+    fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+        Err(Unsupported("a scout map without the world"))
     }
 }
 
@@ -3125,7 +3137,7 @@ impl UnitAi {
             ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, fx),
             ACTION_INVALIDATED => self.action_invalidated(n, at, computer, ai_rng, side, fx),
             crate::explore::WANTS_POINT if self.explorer() => {
-                self.seek_unexplored(at, ai_rng, side, fx)
+                self.seek_unexplored(at, computer, ai_rng, side, fx)
             }
             OWNER_CHANGED => {
                 fx.push(Effect::Stop);
@@ -3212,7 +3224,9 @@ impl UnitAi {
     /// the auto scout order its last search ([`UnitSide::seek_beyond_sight`]) sends the auto scout
     /// to its point the same way (slot 0x100 with 1; the last action stays) and processing breaks;
     /// with no point left the player's scout map is made from the tiles it sees and the notify
-    /// posted again, which is not modelled. On the scout order (`0x2da`) the player's slot 0x2e8
+    /// posted to the owner (nothing for a human player), [`UnitSide::make_scout_map`]; with the
+    /// map made the search about the town centre is skipped and the last search reads the map.
+    /// On the scout order (`0x2da`) the player's slot 0x2e8
     /// with `0x211` is not modelled; on any other the unit AI forgets its target
     /// (`FUN_140c5e1e0`) and stops (slot 0xb0 with 1; slot 0x48 hands the notify to the owner,
     /// not held; the interface's flag a last auto scout order sets is not the sim's) and
@@ -3220,6 +3234,7 @@ impl UnitAi {
     fn seek_unexplored(
         &mut self,
         at: &Surroundings,
+        computer: bool,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
@@ -3242,9 +3257,17 @@ impl UnitAi {
             )),
             AUTO_SCOUT_ORDER => {
                 let Some([x, y]) = side.seek_beyond_sight(ai_rng)? else {
-                    return Err(Unsupported(
-                        "an auto scout with no undiscovered tile left (the scout map made)",
-                    ));
+                    // the player's scout map, from the tiles it sees; on the auto scout's action
+                    // the AI's slot 0x40 hands the notify to the owner (slot 0x2e8 with 0x202,
+                    // FUN_14162dab0: no case for it but the old short pather's hulled area, a
+                    // computer player's AI would hear it); processing breaks
+                    side.make_scout_map()?;
+                    if computer && self.current_action == AUTO_SCOUT_ACTION {
+                        return Err(Unsupported(
+                            "a computer player's AI told its scout found nothing (0x202)",
+                        ));
+                    }
+                    return Ok(BREAK);
                 };
                 if self.current_action == AUTO_SCOUT_ACTION {
                     let _ = self.explore_at(x, y, true, fx);
@@ -4243,6 +4266,10 @@ mod tests {
 
         fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
             Err(Unsupported("no search here"))
+        }
+
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
         }
     }
 

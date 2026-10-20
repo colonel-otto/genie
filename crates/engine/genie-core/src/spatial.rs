@@ -355,6 +355,8 @@ pub struct Spatial {
     pub reach: f32,
     /// What the walk reads of the moving objects it meets ([`Gait`]).
     gaits: BTreeMap<i32, Gait>,
+    /// Each player's scout map (`player+0x1370`, `mIsScoutMapEnabled` `+0x1368`), once made.
+    scout_maps: BTreeMap<usize, crate::explore::InfluenceMap>,
     /// Each annex's main building (`+0xbb8`), which the walk's avoidance takes for the annex.
     annexes: BTreeMap<i32, i32>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
@@ -419,6 +421,7 @@ impl Spatial {
             fastest: 0.0,
             reach: 0.0,
             gaits: BTreeMap::new(),
+            scout_maps: BTreeMap::new(),
             annexes: BTreeMap::new(),
             relations: Vec::new(),
             task_0x99: Vec::new(),
@@ -915,6 +918,24 @@ impl Spatial {
 
     /// The object moved: its record moves with it, and it changes tiles when its centre crosses
     /// a tile's edge (`RGE_Static_Object::new_position`, `0x1411a58b0`).
+    /// Player `player`'s scout map, once made (`player+0x1370`).
+    #[must_use]
+    pub fn scout_map(&self, player: usize) -> Option<&crate::explore::InfluenceMap> {
+        self.scout_maps.get(&player)
+    }
+
+    /// Player `player`'s scout map becomes `map` (the old one goes).
+    pub fn set_scout_map(&mut self, player: usize, map: crate::explore::InfluenceMap) {
+        let _ = self.scout_maps.insert(player, map);
+    }
+
+    /// Tile (`x`, `y`) of player `player`'s scout map, if it has one, takes 1 (`FUN_140f4d5e0`).
+    pub fn scout(&mut self, player: usize, x: i32, y: i32) {
+        if let Some(m) = self.scout_maps.get_mut(&player) {
+            m.set(x, y, 1);
+        }
+    }
+
     /// What the walk reads of a moving object now, None for one without movement state.
     pub fn set_gait(&mut self, id: i32, gait: Option<Gait>) {
         match gait {

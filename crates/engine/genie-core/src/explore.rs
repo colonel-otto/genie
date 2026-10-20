@@ -122,6 +122,57 @@ impl ExploreAction {
     }
 }
 
+/// The scout map's size, which `FUN_140c589c0` gives the `InfluenceMap` it makes (`0x1e0`).
+pub const SCOUT_MAP_SIZE: i32 = 0x1e0;
+
+/// An `InfluenceMap` (`FUN_140f4a240`): a byte per tile from a reference point (`+0x10`,
+/// `+0x14`), `size` wide and high (`+0x8`, `+0xc`), row by row (`+0x20`). A player's scout map
+/// (`player+0x1370`) is one, 1 marking a tile its auto scouts need not go to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InfluenceMap {
+    /// Its width and height.
+    pub size: [i32; 2],
+    /// The tile its first byte stands for.
+    pub origin: [i32; 2],
+    /// `unchangeableLimitValue` (`+0x18`), which the save keeps.
+    pub limit: u8,
+    /// The bytes, row by row.
+    pub cells: Vec<u8>,
+}
+
+impl InfluenceMap {
+    /// `FUN_140f4a240`: `size` wide and high, every byte `fill`, from tile (0, 0).
+    #[must_use]
+    pub fn new(size: [i32; 2], fill: u8) -> Self {
+        let n = (size[0].max(0) * size[1].max(0)) as usize;
+        Self {
+            size,
+            origin: [0, 0],
+            limit: 0,
+            cells: vec![fill; n],
+        }
+    }
+
+    fn index(&self, x: i32, y: i32) -> Option<usize> {
+        let (dx, dy) = (x - self.origin[0], y - self.origin[1]);
+        (0 <= dx && 0 <= dy && dx < self.size[0] && dy < self.size[1])
+            .then(|| (dy * self.size[0] + dx) as usize)
+    }
+
+    /// The byte of tile (`x`, `y`), None off the map (`FUN_140c4b130` reads it unchecked).
+    #[must_use]
+    pub fn get(&self, x: i32, y: i32) -> Option<u8> {
+        self.index(x, y).map(|i| self.cells[i])
+    }
+
+    /// `FUN_140f4d5e0`: tile (`x`, `y`) takes `value`; one off the map is let be.
+    pub fn set(&mut self, x: i32, y: i32, value: u8) {
+        if let Some(i) = self.index(x, y) {
+            self.cells[i] = value;
+        }
+    }
+}
+
 /// The search's rings around the town centre: 10, 15 and 20 tiles (`FUN_140c65490`).
 const RINGS: [i32; 3] = [10, 15, 20];
 
@@ -289,8 +340,9 @@ const SQUARE_PAST_SIGHT: i32 = 2;
 /// Else a flood from the unit's tile through the tiles the player saw (left, right, up and down,
 /// on the map, each once; the start tile is not marked and comes again) stops at the first
 /// unseen tile it meets that counts as above; unseen tiles that do not count end their branch.
-/// None when the flood runs out. The player's scout map (`player+0x1370`), which both would read
-/// instead of the seen tiles and mark the point found in, is never made in the slice.
+/// None when the flood runs out. With the player's scout map (`player+0x1370`) both read it
+/// instead of the seen tiles (a tile scouted is 1; [`Area::explored`] answers by it) and the point
+/// found is marked in it (the caller's).
 pub fn beyond_sight(
     area: &mut dyn Area,
     at: [f32; 3],
@@ -356,6 +408,31 @@ pub fn beyond_sight(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The scout map (`FUN_140f4a240`, `FUN_140f4d5e0`): 480 by 480 from tile (0, 0), each
+    /// byte the fill; a set off the map is let be, a read off it is none.
+    #[test]
+    fn an_influence_map_holds_a_byte_per_tile_from_its_reference_point() {
+        let mut m = InfluenceMap::new([SCOUT_MAP_SIZE, SCOUT_MAP_SIZE], 0);
+        assert_eq!(
+            (m.get(0, 0), m.get(479, 479), m.get(480, 0)),
+            (Some(0), Some(0), None)
+        );
+        m.set(12, 34, 1);
+        m.set(-1, 3, 1);
+        m.set(3, 480, 1);
+        assert_eq!((m.get(12, 34), m.get(34, 12)), (Some(1), Some(0)));
+        assert_eq!(m.cells.iter().filter(|&&c| c == 1).count(), 1);
+        // a reference point shifts the grid
+        let shifted = InfluenceMap {
+            origin: [10, 20],
+            ..InfluenceMap::new([4, 4], 7)
+        };
+        assert_eq!(
+            (shifted.get(10, 20), shifted.get(9, 20), shifted.get(13, 23)),
+            (Some(7), None, Some(7))
+        );
+    }
 
     #[test]
     fn an_explore_without_a_point_waits_for_one_then_walks() {
