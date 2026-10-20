@@ -24,8 +24,16 @@ const ENABLE_MASTER: u8 = 2;
 const MODE_TESTED_MASTER: i16 = 0x26d;
 const HIT_POINTS: i16 = 0;
 const ARMOR: i16 = 8;
-/// The `TRIBE_Effects` command kinds that change technologies (`'e'`, `'f'`, `'g'`).
+/// The `TRIBE_Effects` command kinds that change technologies (`'e'`, `'f'`, `'g'`): a cost, the
+/// disabling and a research time.
 const TECH_KINDS: std::ops::RangeInclusive<u8> = b'e'..=b'g';
+const TECH_COST: u8 = b'e';
+const TECH_DISABLE: u8 = b'f';
+const TECH_TIME: u8 = b'g';
+/// The technology type that a disable command makes available instead (`FUN_1413cdb00`: 0x21).
+const REENABLED_KIND: i16 = 0x21;
+/// A researched technology's state, which a disable command keeps (`FUN_1413cdb00`).
+const RESEARCHED: i16 = 3;
 /// The combat master type, whose attribute modifier (slot 0x20, `FUN_141266a60`) is modelled.
 const COMBAT: u8 = 70;
 
@@ -96,6 +104,37 @@ impl Turns {
             let _ = self.complete_research(p, t, None)?;
         }
         Ok(())
+    }
+
+    /// After a built building of `master` died (`FUN_1411dbb70`): unless another of player `p`'s
+    /// live objects of the master stands (state 2, `FUN_141166ab0`), the master's technology
+    /// `tech` in a state above 0 turns to 0 and its dependents are updated (`FUN_1413d4ec0`, then
+    /// `FUN_1413cce70`, [`Turns::update_dependents`]).
+    pub(crate) fn withdraw_tech(
+        &mut self,
+        p: usize,
+        master: i16,
+        tech: i16,
+    ) -> Result<(), Unsupported> {
+        let owner = &self.players[p];
+        if owner
+            .objects
+            .iter()
+            .any(|u| u.life.master_id == master && u.life.state == 2)
+        {
+            return Ok(());
+        }
+        let Some(t) = usize::try_from(tech)
+            .ok()
+            .filter(|&t| t < owner.techs.len())
+        else {
+            return Ok(());
+        };
+        if owner.techs[t].state <= 0 {
+            return Ok(());
+        }
+        self.players[p].techs[t].state = 0;
+        self.update_dependents(p, t)
     }
 
     /// `FUN_1413cce70` for player `p`'s technology `t`: each technology that requires it, by id
@@ -205,21 +244,37 @@ impl Turns {
         Ok(())
     }
 
-    /// `TRIBE_Effects::do_effect` (`FUN_141462440`) of the commands `effect` for player `p`: the
-    /// technology commands (`'e'` to `'g'`) are not modelled; then the base's
-    /// (`FUN_140ec2ac0`), of which the attribute modifier (kind 4,
-    /// [`Turns::attribute_add`]) is modelled.
+    /// `TRIBE_Effects::do_effect` (`FUN_141462440`) of the commands `effect` for player `p`: first
+    /// its technology commands in order, the cost modifier (`'e'`, [`Turns::tech_cost`]) and the
+    /// disable command (`'f'`, [`Turns::disable_tech`]; the research time modifier `'g'`,
+    /// `FUN_1413d1210`, is not modelled); then the base's (`FUN_140ec2ac0`), of which the
+    /// attribute modifier (kind 4, [`Turns::attribute_add`]) and the enable command (kind 2) are
+    /// modelled. The effect's object (`param_4`) is none: a research's.
     pub(crate) fn do_effect(
         &mut self,
         p: usize,
         effect: &[EffectCommand],
     ) -> Result<(), Unsupported> {
-        if effect.iter().any(|c| TECH_KINDS.contains(&c.kind)) {
-            return Err(Unsupported(
-                "an effect's technology commands (FUN_1413d10f0)",
-            ));
-        }
         for c in effect {
+            // the technology commands read the third argument's low byte as the mode
+            let mode = (c.c & 0xff) as u8;
+            match c.kind {
+                TECH_COST => self.tech_cost(p, c.a, c.b, c.d, mode),
+                TECH_DISABLE => {
+                    let tech = c.d as i32;
+                    if tech != -1 {
+                        self.disable_tech(p, tech);
+                    }
+                }
+                TECH_TIME => {
+                    return Err(Unsupported(
+                        "an effect's research time command ('g', FUN_1413d1210)",
+                    ));
+                }
+                _ => {}
+            }
+        }
+        for c in effect.iter().filter(|c| !TECH_KINDS.contains(&c.kind)) {
             match c.kind {
                 ATTRIBUTE_ADD => self.attribute_add(p, c.a, c.b, c.d, c.c)?,
                 ENABLE_MASTER if 0 <= c.a => self.enable_master(p, c.a, c.b, c.c)?,
@@ -228,6 +283,69 @@ impl Turns {
             }
         }
         Ok(())
+    }
+
+    /// The cost modifier (`'e'`, `FUN_1413d10f0`) of player `p`'s technology `tech`: each of its
+    /// `.dat` cost entries that is paid and takes `resource` (any for −1) changes its adjustment
+    /// (`+0x6`): mode 2 adds `(amount − 1) × the .dat's amount`, rounded half away from 1; mode
+    /// 0 sets it so the cost is `amount`; any other adds `amount`. A named resource changes only
+    /// its first entry. A technology out of the tree is let be.
+    fn tech_cost(&mut self, p: usize, tech: i16, resource: i16, amount: f32, mode: u8) {
+        let Some(t) = usize::try_from(tech)
+            .ok()
+            .filter(|&t| t < self.players[p].techs.len() && t < self.techs.len())
+        else {
+            return;
+        };
+        for i in 0..3 {
+            let cost = self.techs[t].costs[i];
+            if cost.paid == 0 || (cost.attribute != resource && resource != -1) {
+                continue;
+            }
+            let adj = &mut self.players[p].techs[t].cost_adj[i];
+            *adj = match mode {
+                2 => {
+                    let half = if amount < 1.0 { -0.5 } else { 0.5 };
+                    adj.wrapping_add(((amount - 1.0) * f32::from(cost.amount) + half) as i32 as i16)
+                }
+                0 => (amount as i32 as i16).wrapping_sub(cost.amount),
+                _ => adj.wrapping_add(amount as i32 as i16),
+            };
+            if resource != -1 {
+                return;
+            }
+        }
+    }
+
+    /// The disable command (`'f'`, `FUN_14163a500` without an object) of player `p`'s technology
+    /// `tech`: one of the shared kind (`FUN_1413d1020`) is a building's own, which a command
+    /// without the building lets be; any other goes through `FUN_1413cdb00`: a technology of type
+    /// 0x21 turns to 1 (it may be researched), any other but a researched one (state 3) to −1;
+    /// a negative id does so to every technology.
+    fn disable_tech(&mut self, p: usize, tech: i32) {
+        let count = self.players[p].techs.len().min(self.techs.len());
+        let held = usize::try_from(tech).ok().filter(|&t| t < count);
+        if held.is_some_and(|t| self.techs[t].kind == crate::tech::SHARED_KIND) {
+            return;
+        }
+        let disable =
+            |defs: &[crate::tech::TechDef], states: &mut [crate::tech::TechState], t: usize| {
+                if defs[t].kind == REENABLED_KIND {
+                    states[t].state = 1;
+                } else if states[t].state != RESEARCHED {
+                    states[t].state = -1;
+                }
+            };
+        let states = &mut self.players[p].techs;
+        match held {
+            Some(t) => disable(&self.techs, states, t),
+            None if tech < 0 => {
+                for t in 0..count {
+                    disable(&self.techs, states, t);
+                }
+            }
+            None => {}
+        }
     }
 
     /// The enable command (`FUN_1416665b0`) of player `p` on its master `master` (`enable`'s low
@@ -443,5 +561,91 @@ mod tests {
         assert_eq!(t.complete_research(0, 0, None), Ok(true));
         let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
         assert_eq!(states, [3, 3, 3, 0]);
+    }
+
+    /// The technology commands of an effect: the disable command (`'f'`, MarvinBlue/426048737's
+    /// civ effect disabling technology 238 in update 1) sets a technology to −1 but a researched
+    /// one, one of type 0x21 to 1, and leaves one of the shared kind (a building's own); the cost
+    /// modifier (`'e'`) adds to, sets or scales a paid cost entry's adjustment.
+    #[test]
+    fn the_technology_commands_disable_and_adjust_costs() {
+        use crate::tech::{Cost, TechDef, TechState};
+        let state = |s: i16| TechState {
+            state: s,
+            ..TechState::default()
+        };
+        let player = Player {
+            techs: vec![state(1), state(3), state(0), state(1)],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        let kind = |k: i16| TechDef {
+            kind: k,
+            costs: [
+                Cost {
+                    attribute: 0,
+                    amount: 150,
+                    paid: 1,
+                },
+                Cost {
+                    attribute: 3,
+                    amount: 50,
+                    paid: 1,
+                },
+                Cost::default(),
+            ],
+            ..TechDef::default()
+        };
+        t.techs = vec![kind(0), kind(0), kind(0x21), kind(crate::tech::SHARED_KIND)];
+        let command = |kind: u8, a: i16, b: i16, c: i16, d: f32| EffectCommand { kind, a, b, c, d };
+        for tech in 0..4 {
+            t.do_effect(0, &[command(b'f', -1, -1, -1, tech as f32)])
+                .unwrap();
+        }
+        let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
+        assert_eq!(states, [-1, 3, 1, 1]);
+        // gold of technology 0 costs 10 more; food set to 100; every paid cost scaled by 0.5
+        t.do_effect(0, &[command(b'e', 0, 3, 1, 10.0)]).unwrap();
+        assert_eq!(t.players[0].techs[0].cost_adj, [0, 10, 0]);
+        t.do_effect(0, &[command(b'e', 0, 0, 0, 100.0)]).unwrap();
+        assert_eq!(t.players[0].techs[0].cost_adj, [-50, 10, 0]);
+        t.do_effect(0, &[command(b'e', 1, -1, 2, 0.5)]).unwrap();
+        assert_eq!(t.players[0].techs[1].cost_adj, [-75, -25, 0]);
+        // the research time modifier is not modelled
+        assert!(t.do_effect(0, &[command(b'g', 0, -1, 1, 5.0)]).is_err());
+    }
+
+    /// A dead building's master technology goes back to 0 (`FUN_1413d4ec0`) when no other
+    /// building of the master stands, and only from a state above 0.
+    #[test]
+    fn the_last_building_of_a_master_withdraws_its_technology() {
+        use crate::tech::{TechDef, TechState};
+        let building = |id, state| {
+            let mut u = Unit {
+                id,
+                ..Unit::default()
+            };
+            u.life.master_id = 1640;
+            u.life.state = state;
+            u
+        };
+        let player = Player {
+            objects: vec![building(1, 3), building(2, 2)],
+            techs: vec![TechState {
+                state: 3,
+                ..TechState::default()
+            }],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        t.techs = vec![TechDef {
+            required: [-1; 6],
+            ..TechDef::default()
+        }];
+        t.withdraw_tech(0, 1640, 0).unwrap();
+        assert_eq!(t.players[0].techs[0].state, 3);
+        t.players[0].objects.truncate(1);
+        t.withdraw_tech(0, 1640, 0).unwrap();
+        assert_eq!(t.players[0].techs[0].state, 0);
     }
 }

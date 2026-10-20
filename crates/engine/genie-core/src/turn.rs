@@ -570,6 +570,26 @@ const BUILDING_KIND: u8 = 80;
 /// calls of `FUN_140f7d310`: Gaia's entries `+0x298` and `+0x10b8`).
 const PLANNED_MASTERS: [i16; 2] = [83, 535];
 
+/// The masters whose death lowers a count of their owner's (`FUN_1411dbb70`, raw `0x6104`,
+/// `0x61b0`, `0x60ee`): the monastery's ([`MONASTERY`]) in attribute 52, the wonder's in 42,
+/// the castle's in 134.
+const WONDER: i16 = 276;
+const CASTLE: i16 = 82;
+const MONASTERIES: i16 = 52;
+const WONDERS: i16 = 42;
+const CASTLES: i16 = 134;
+/// The foundation terrain a building's death covers with terrain 1 (`FUN_1411dbb70`: `0x1c`).
+const RESTORED_FOUNDATION: i16 = 28;
+
+/// What a built building's death leaves its owner's update to do after it
+/// ([`Unit::building_died`]): the count attribute it lowers, and its master with the master's
+/// technology.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BuildingDeath {
+    count: Option<i16>,
+    tech: Option<(i16, i16)>,
+}
+
 /// QUEUE's unit and building (the fields of [`Command::Queue`] but the cost).
 struct QueueAt {
     building: i32,
@@ -677,6 +697,11 @@ struct Context<'a> {
     /// owner takes back (attributes 98 and 164).
     remains: Option<(i16, [f32; 3], Option<u8>)>,
     refund: Option<f32>,
+    /// What a built building's death takes from its owner before its combat part's refund: the
+    /// counts of the monastery, the wonder and the castle (slot 0xf8, then slot 0xf0 with 0 for
+    /// a value below 0), and its master's technology (`+0x98c`) the caller withdraws when no
+    /// other building of the master stands ([`Turns::withdraw_tech`]).
+    building_death: Option<BuildingDeath>,
     /// The pauses the unit's walk gave units it met ([`Mover::pauses`]).
     pauses: Vec<(i32, f32)>,
     /// The gate's update asked its player to open or shut it ([`Turns::toggle_gate`], the
@@ -2972,11 +2997,19 @@ impl Unit {
 
     /// A built building's death (`FUN_1411dbb70`'s state 3 with `+0x640` 2), before the combat
     /// object's (`FUN_14121cc40`, the caller's): its owner's watched list lets it go
-    /// (`FUN_141091310`, the caller's); its pasture's workers (`+0xcb8`), its storage of kinds 4
-    /// and 0x10 (`FUN_1411e63f0`, `FUN_1411e6580`), the terrain under it (`+0x2e8`,
-    /// `FUN_140f65580`), the castle's, monastery's and wonder's attributes, its linked objects
-    /// (`+0xb78`, none held), the computer player's part (`FUN_1411e7ca0`) and the last building
-    /// of a master with a technology (`FUN_141166ab0`, `FUN_1413d4ec0`) are not modelled.
+    /// (`FUN_141091310`, the caller's); its tiles lose their links to its anchor
+    /// (`FUN_140f65580` over its footprint, the building on a tile and not an annex); the
+    /// storage of mode 4 (the population headroom of a house, a town centre or a castle) leaves
+    /// its owner (`FUN_1411e63f0`: slot 0xf8 with each amount negated); the
+    /// monastery (104), the wonder (276) and the castle (82) count one less in attributes 52, 42
+    /// and 134 (slot 0xf8 with −1, then slot 0xf0 with 0 below 0; the caller's); its master's
+    /// technology (`+0x98c`) goes when no other building of the master stands (the caller's,
+    /// [`Turns::withdraw_tech`]). A foundation terrain stays. Not modelled: its pasture's workers
+    /// (`+0xcb8`), its store of mode 16 (`FUN_1411e6580`), population it holds itself (`+0x308`
+    /// 4, `FUN_1411e63f0`'s end), the terrain
+    /// 1 a foundation terrain of 28 lays at the death (`FUN_1411ce250`), its linked objects
+    /// (`+0xb78`, none held) and the computer player's part (`FUN_1411e7ca0`); not held: `+0xca4`
+    /// and the damage sprites (`FUN_1413b9e20`).
     fn building_died(&self, c: &mut Context<'_>, master: &Master) -> Result<(), Unsupported> {
         let built = self
             .construction
@@ -2997,21 +3030,39 @@ impl Unit {
             || master
                 .storage
                 .iter()
-                .any(|&(kind, amount, flag)| 0 <= kind && 0.0 < amount && matches!(flag, 4 | 0x10))
+                .any(|&(kind, amount, flag)| 0 <= kind && 0.0 < amount && flag & 0x10 != 0)
         {
             return Err(Unsupported(
-                "a dying building of a computer player, with a pasture, units inside or a storage of kind 4 or 0x10",
+                "a dying building of a computer player, with a pasture, units inside, a store of mode 16 or held population",
             ));
         }
-        if 0 <= building.foundation_terrain
-            || 0 <= building.tech
-            || matches!(master.id, 82 | 104 | 276)
-        {
+        // FUN_1411e63f0: what its storage of mode 4 gave (a house's, a town centre's or a
+        // castle's population headroom) leaves its owner (slot 0xf8 with the amount negated)
+        for &(kind, amount, flag) in &master.storage {
+            if 0 <= kind && 0.0 < amount && flag == 4 {
+                c.attribute_adds.push((kind, -amount));
+            }
+        }
+        if building.foundation_terrain == RESTORED_FOUNDATION {
             return Err(Unsupported(
-                "a dying building with a foundation terrain or a technology, the castle, the monastery or the wonder",
+                "a dying building of foundation terrain 28 (its terrain 1, FUN_1411ce250)",
             ));
         }
         c.unwatched.push(self.id);
+        if let Some(v) = c.spatial.sight.as_mut() {
+            v.unlink_building(self.position, master.radius);
+        }
+        let counted = match master.id {
+            MONASTERY => Some(MONASTERIES),
+            WONDER => Some(WONDERS),
+            CASTLE => Some(CASTLES),
+            _ => None,
+        };
+        let tech = (0 <= building.tech).then_some((master.id, building.tech));
+        c.building_death = Some(BuildingDeath {
+            count: counted,
+            tech,
+        });
         Ok(())
     }
 
@@ -8287,9 +8338,9 @@ impl Turns {
     /// stacked technology. Each research is paid ([`crate::tech::TechState::pay`]) until one
     /// cannot be; those paid join the queue, as one entry, each with the research time of the
     /// building's location, and count in the technology's pending researches. True when any
-    /// did. Not held: the building's queue entries as the game groups them (the slice's queue
-    /// holds one item per research), their costs (`FUN_1411c81a0`, `FUN_1411c3190`) and serials
-    /// (`+0xcd8`).
+    /// did; a building that produced nothing yet gets its queue at its work rate. Not held: the
+    /// building's queue entries as the game groups them (the slice's queue holds one item per
+    /// research), their costs (`FUN_1411c81a0`, `FUN_1411c3190`) and serials (`+0xcd8`).
     fn queue_research(
         &mut self,
         player: usize,
@@ -8299,6 +8350,12 @@ impl Turns {
     ) -> Result<bool, Unsupported> {
         let t = tech as usize;
         let def = &self.techs[t];
+        // a building that produced nothing yet gets its queue now, at its work rate (its
+        // `mWorkRatePowerup` and its master's `work_rate`), which the research's update reads
+        let rate = {
+            let b = &self.players[player].objects[i];
+            b.work_rate_powerup + self.master_of(player, b.life.master_id)?.work_rate
+        };
         let owner = &mut self.players[player];
         let building = &owner.objects[i];
         let master = building.life.master_id;
@@ -8351,10 +8408,13 @@ impl Turns {
         let get = |k: i16| crate::tech::Attributes::get(&*owner, k);
         let costs = owner.techs[t].entry_costs(def, crate::tech::factors(tech, &get)?);
         let building = &mut owner.objects[i];
-        let production = building
-            .production
-            .as_mut()
-            .ok_or(Unsupported("RESEARCH at a building without its production"))?;
+        let production = building.production.get_or_insert_with(|| Production {
+            queue: std::collections::VecDeque::default(),
+            action: false,
+            make_paid: false,
+            progress: 0.0,
+            rate,
+        });
         for _ in 0..paid {
             production.queue.push_back(Queued {
                 master: -1,
@@ -8758,6 +8818,7 @@ impl Turns {
                     own_killed: None,
                     remains: None,
                     refund: None,
+                    building_death: None,
                     pauses: Vec::new(),
                     releases: Vec::new(),
                     takes: Vec::new(),
@@ -8805,6 +8866,7 @@ impl Turns {
                 let work_order = c.work_order.take();
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
                 let (remains, refund) = (c.remains.take(), c.refund.take());
+                let building_death = c.building_death.take();
                 let pauses = std::mem::take(&mut c.pauses);
                 let gate_toggle = std::mem::take(&mut c.gate_toggle);
                 let ai_resume = c.ai_resume.take();
@@ -8865,6 +8927,18 @@ impl Turns {
                         result = result.and(Err(e));
                     }
                 }
+                // a dead building's count leaves its attribute, at least 0 (FUN_1411dbb70)
+                if let Some(BuildingDeath {
+                    count: Some(kind), ..
+                }) = building_death
+                {
+                    let owner = &mut self.players[p];
+                    if let Err(e) = owner.add_attribute(kind, -1.0) {
+                        result = result.and(Err(e));
+                    } else if owner.attributes[kind as usize] < 0.0 {
+                        owner.attributes[kind as usize] = 0.0;
+                    }
+                }
                 // a dead unit's paid cost leaves attributes 98 and 164, each at least 0
                 // (FUN_14121cc40: slots 0xf8, then 0xf0 with 0)
                 if let Some(cost) = refund.filter(|&c| c != 0.0) {
@@ -8876,6 +8950,16 @@ impl Turns {
                             owner.attributes[kind as usize] = 0.0;
                         }
                     }
+                }
+                // the last building of a master with a technology withdraws it (FUN_141166ab0,
+                // FUN_1413d4ec0), after the combat part's state 3
+                if let Some(BuildingDeath {
+                    tech: Some((master, tech)),
+                    ..
+                }) = building_death
+                    && let Err(e) = self.withdraw_tech(p, master, tech)
+                {
+                    result = result.and(Err(e));
                 }
                 // the remains of a dying sprite's end, a new object of the owner (FUN_1411a4e90)
                 if let Some((master, at, facet)) = remains
