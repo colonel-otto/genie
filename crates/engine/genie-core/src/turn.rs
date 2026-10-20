@@ -609,9 +609,12 @@ const COMPUTER_QUEUE_LIMIT: usize = 2;
 /// The game type whose QUEUE trains one unit in the first age (`FUN_141614450`, the settings'
 /// `+0x34`).
 const ONE_UNIT_GAME: u8 = 0x10;
-/// The notify a Build waiting without work posts (0x202) with its action value
-/// ([`BUILD_ACTION`]).
-const BUILD_IDLE: i32 = 0x202;
+/// The Hunt's search timer: it tells its unit AI again every 10 seconds (`0xc1200000`, in
+/// `0x140ac60e0` and `0x140ac7a00`).
+const SEARCH_AGAIN: f32 = -10.0;
+/// The notify "Action %d has been invalidated or requires a search." (0x202) with the action's
+/// value: a Build waiting without work posts it ([`BUILD_ACTION`]), a searching Hunt too.
+const SEARCH_NEEDED: i32 = 0x202;
 /// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
 const SPEED_EPSILON: f32 = crate::image::turn::SPEED_EPSILON;
 /// A building attacks with a firepower above this (`FUN_14120ea30`).
@@ -2025,6 +2028,82 @@ impl Unit {
         Ok(())
     }
 
+    /// The Hunt's `set_state(3)` (`0x140ac60e0` case 3) after its target went empty when it faced
+    /// it: the target goes (slot 0x68 with none: its slot 0x180), the unit AI is told
+    /// ([`Unit::hunt_search_notify`]), the unit takes the sprite it stands with (slot 0x68 with
+    /// `FUN_140ac5210`'s) and the timer starts at −10 s. A hunt of class 10 would end its search
+    /// (`set_state` 2), not modelled.
+    fn hunt_set_search(&mut self, c: &mut Context<'_>, others: &[Self]) -> Result<(), Unsupported> {
+        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        if hunt.target_class == 10 {
+            return Err(Unsupported("a hunt of class 10's search (set_state 2)"));
+        }
+        let target = std::mem::replace(&mut hunt.target, -1);
+        let task = hunt.task;
+        hunt.timer = SEARCH_AGAIN;
+        if target != -1 {
+            c.releases.push((target, self.releaser(c)));
+        }
+        self.hunt_search_notify(c, others)?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+        let stand = crate::hunt::stand_sprite(
+            &task,
+            master.standing_sprite,
+            self.life.attribute_type,
+            self.life.amount,
+            c.graphics,
+        );
+        if let Some(s) = stand {
+            crate::attack::set_sprite(&mut self.sprite, s, c.streams.get(Stream::Sprite));
+        }
+        Ok(())
+    }
+
+    /// The Hunt in state 3 tells its unit AI to look for the next target (`0x140ac60e0` case 3,
+    /// `0x140ac7a00` case 2): notify 0x202 with the hunt action (0x265), its target class (`+0x68`)
+    /// and its drop site: the second target; −1 for a master without drop sites (`+0x7a0`); else
+    /// the closest (`FUN_1411671e0` as `set_state(8)` searches, [`Unit::drop_site`]), with none
+    /// found 0, and the hunt's class goes (−1).
+    fn hunt_search_notify(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+    ) -> Result<(), Unsupported> {
+        let hunt = self.hunt.as_ref().expect("the caller's hunt");
+        let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+        let site = if carry_to != -1 {
+            carry_to
+        } else if master.drop_sites.first().is_none_or(|&d| d == -1) {
+            -1
+        } else {
+            let mut w = DropWorld {
+                masters: c.masters,
+                spatial: c.spatial,
+                zones: c.zones,
+                pathing: c.pathing,
+                object: c.streams.get(Stream::Object),
+                world_time: c.world_time,
+                computer: c.computer,
+                construction_rate: c.construction_rate,
+            };
+            let (site, _) = self.drop_site(&mut w, others, -1, crate::hunt::SEARCH)?;
+            if site == -1 {
+                self.hunt.as_mut().expect("the caller's hunt").target_class = -1;
+                0
+            } else {
+                site
+            }
+        };
+        self.post_own(SEARCH_NEEDED, [crate::unit_ai::HUNT_ACTION, class, site])
+    }
+
     /// The hunt's state 8 after its load went (`0x140ac7a00` case 7, after `FUN_14119d310`): a
     /// hunt with a target walks back to it (`set_state` 4), not modelled. One without asks its unit
     /// AI: the queued orders (gather, hunt, on a target) whose target is gone or dead go
@@ -2152,12 +2231,8 @@ impl Unit {
                 .mover
                 .as_ref()
                 .ok_or(Unsupported("a hunter without movement state"))?;
-            let sight = master.line_of_sight + 1.0;
-            let radius = if sight <= master.search_radius {
-                master.search_radius
-            } else {
-                sight
-            } + crate::unit_ai::CIVILIAN_SEARCH_GROWTH;
+            let radius =
+                crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
             let search = Search {
                 at: [self.position[0], self.position[1]],
                 radius,
@@ -4853,7 +4928,7 @@ impl Unit {
             }
             if step.released {
                 release_own(others, masters, target, by)?;
-                self.post_own(BUILD_IDLE, [BUILD_ACTION, 0, 0])?;
+                self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
             }
             if step.search {
                 let built =
@@ -4865,7 +4940,7 @@ impl Unit {
                         b.no_more_work()?;
                     }
                     release_own(others, masters, target, by)?;
-                    self.post_own(BUILD_IDLE, [BUILD_ACTION, 0, 0])?;
+                    self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
                 }
             }
         }
@@ -5195,6 +5270,20 @@ impl Unit {
                     c.releases.push((second, self.releaser(c)));
                 }
             }
+        } else if let Some(hunt) = self
+            .hunt
+            .as_mut()
+            .filter(|h| h.state == crate::hunt::SEARCH)
+        {
+            // state 3 (case 2): the timer runs by dt; at its end it starts again at −10 s and the
+            // unit AI is told again (notify 0x202)
+            if hunt.timer < 0.0 {
+                hunt.timer += c.dt_seconds;
+                if 0.0 <= hunt.timer {
+                    hunt.timer = SEARCH_AGAIN;
+                    self.hunt_search_notify(c, others)?;
+                }
+            }
         } else if self
             .hunt
             .as_ref()
@@ -5253,6 +5342,7 @@ impl Unit {
                 ai_class: self.ai.as_ref().map(|ai| ai.target_type),
                 sprites,
                 tree_searched: tree_lost,
+                searches: false,
             };
             // what set_state(6) on live livestock reads (0x140ac60e0 case 6)
             let herd = if hunt.state == crate::hunt::WALK
@@ -5364,6 +5454,7 @@ impl Unit {
                 sends_home: false,
             };
             let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
+            let searches = gather.searches;
             let fired = strike.fire.map(|target| {
                 let v = &*strike.victim;
                 Aimed {
@@ -5385,6 +5476,9 @@ impl Unit {
             c.own_killed = self.hit_back(own)?;
             if full {
                 self.hunt_drop_off(c, others)?;
+            }
+            if searches {
+                self.hunt_set_search(c, others)?;
             }
         } else if let Some(attack) = self.attack.as_mut().filter(|a| a.target == -1) {
             // the unit's own Attack after its target went ([`Attack::lost`])

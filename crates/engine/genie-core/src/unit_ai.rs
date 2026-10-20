@@ -358,6 +358,19 @@ pub const CIVILIAN_CARED: [i32; 39] = [
 /// search adds to its radius (`FUN_140c63e20`).
 pub const CIVILIAN_SEARCH_GROWTH: f32 = 7.0;
 
+/// The civilian's search radius (`FUN_140c63e20`): its line of sight plus a tile, at least its
+/// search radius, plus [`CIVILIAN_SEARCH_GROWTH`].
+#[must_use]
+pub fn civilian_search_radius(los: f32, search_radius: f32) -> f32 {
+    let sight = los + 1.0;
+    let radius = if sight <= search_radius {
+        search_radius
+    } else {
+        sight
+    };
+    radius + CIVILIAN_SEARCH_GROWTH
+}
+
 /// The civilian's slot 0x1b0 (`FUN_140c1c4f0`): the kind of a target class (0 for 15, 1 for 7, 2
 /// for 5, 31 and 33, 3 for 8, 4 for 32 and 63), −1 for any other.
 #[must_use]
@@ -2319,6 +2332,71 @@ impl UnitAi {
         Ok(())
     }
 
+    /// The villager's case 0x202 on its hunt (`FUN_140c22bf0`, action 0x265): the class to hunt is
+    /// the notify's (its second parameter), else the AI's target class, else its last; with none
+    /// the target goes and the action stops (slot 0xb0 with 1; slot 0x48 hands the notify to the
+    /// owner, not held). Of a class the civilian's slot 0x1b0 gives no kind, `ClosestObject`
+    /// (every relation, below one worker for class 49) over the civilian's search
+    /// ([`civilian_search_radius`]) names the next target, which it hunts (`HuntObject`, slot 0xc8
+    /// with 1, [`UnitAi::hunt_object`]) and the processing breaks; finding none, a human player's
+    /// villager does nothing more. The search by kind (slot 0x80, `ClosestResourceObject` with the
+    /// notify's drop site), a farm found (class 49) and a computer player's villager are not
+    /// modelled.
+    fn hunter_search(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let mut class = n.p[1];
+        if class == -1 {
+            class = self.target_type;
+        }
+        if class == -1 {
+            class = self.last_target_type;
+        }
+        if class == -1 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        if civilian_kind(class) != -1 {
+            return Err(Unsupported(
+                "a hunter's search by kind (ClosestResourceObject, slot 0x80)",
+            ));
+        }
+        let found = side.closest(&Search {
+            at: [at.position[0], at.position[1]],
+            radius: civilian_search_radius(at.los, at.search_radius),
+            classes: &CIVILIAN_CARED,
+            size: at.size,
+            pick: Pick::Closest {
+                group: class,
+                relation: -1,
+                state: -1,
+                master: -1,
+                workers: if class == 49 { 1 } else { -1 },
+            },
+        })?;
+        self.alert(found, at.dt_seconds);
+        if found.id == -1 {
+            if computer {
+                return Err(Unsupported("a computer player's hunter that found nothing"));
+            }
+            return Ok(GO_ON);
+        }
+        if class == 49 {
+            return Err(Unsupported("a hunter's search finding a farm"));
+        }
+        let point = found
+            .position
+            .ok_or(Unsupported("a found object without its place"))?;
+        self.hunt_object(found.id, class, point, at, fx)?;
+        Ok(BREAK)
+    }
+
     /// The target block's attack whose target died (`0x140c66b10`): processIdle (slot 0x240 with
     /// 0; the boar's [`UnitAi::boar_idle`] after the cap) may find the next thing to do (6); with
     /// nothing (5) the AI moves to its old target's point within the unit's weapon range (slot
@@ -2927,6 +3005,9 @@ impl UnitAi {
             // breaks; finding none, or not reaching it, a human player's villager stops (slot
             // 0x3c0) and the processing breaks
             8 => match n.kind {
+                0x202 if self.current_action == HUNT_ACTION => {
+                    self.hunter_search(n, at, computer, side, fx)
+                }
                 0x202 if self.current_action == BUILD_ACTION => {
                     let found = side.foundation_search()?;
                     if found != -1 && side.reaches(found, FOUNDATION_REACH)? {

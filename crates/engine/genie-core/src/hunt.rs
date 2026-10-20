@@ -35,6 +35,9 @@ pub const FAILED: u8 = 13;
 /// State 2: the hunt is done with its target; it waits (a tree's target class would search
 /// again, `set_state` 3).
 pub const IDLE: u8 = 2;
+/// State 3: searching: it told its unit AI to look for the next target (notify 0x202), again
+/// every 10 seconds.
+pub const SEARCH: u8 = 3;
 /// State 15 (`0xf`): walking to a point a move gave it (its slot 0x40).
 pub const WALK_POINT: u8 = 15;
 /// State 11 (`0xb`): walking to the point after the target went on the way to it; its end
@@ -282,6 +285,9 @@ pub struct Gatherer<'a> {
     pub tree_searched: bool,
     /// The sprites the hunt shows.
     pub sprites: HuntSprites,
+    /// Out: the hunt let its target go and asks for `set_state(3)`'s search (the caller's: the
+    /// drop site, the notify, the sprite, the timer).
+    pub searches: bool,
 }
 
 /// What the hunt reads of its target when it starts.
@@ -884,12 +890,12 @@ impl HuntAction {
                 }
                 if 0.0 < strike.victim.amount {
                     self.set_gather(strike, gather);
-                    Ok(())
                 } else {
-                    Err(Unsupported(
-                        "a hunt's target empty when faced (set_state 3)",
-                    ))
+                    // the target goes (slot 0x68 with none, the caller's) and set_state(3)
+                    self.state = SEARCH;
+                    gather.searches = true;
                 }
+                Ok(())
             }
             // case 6 without a target (or a task): set_state(8) to carry the load off, set_state(3)
             // with none
@@ -1351,6 +1357,7 @@ pub(crate) mod tests {
                 ai_class: None,
                 sprites: HuntSprites::default(),
                 tree_searched: false,
+                searches: false,
             };
             hunt.gather(0.02, tree, &mut g)
         };
@@ -1475,6 +1482,7 @@ pub(crate) mod tests {
             ai_class: Some(15),
             sprites: HuntSprites::default(),
             tree_searched: false,
+            searches: false,
         };
         assert!(hunt.clone().lost_on_the_way(&mut walk, &gather).is_err());
         // the caller's search for the next tree found none: the hunt walks to its point

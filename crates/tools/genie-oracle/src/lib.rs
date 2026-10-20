@@ -1002,7 +1002,7 @@ fn saved_actions(
         }
         genie_core::hunt::HUNT => {
             use genie_core::hunt::{
-                ATTACK, DROP, FACE, GATHER, HuntAction, HuntTask, IDLE, WALK, WALK_POINT,
+                ATTACK, DROP, FACE, GATHER, HuntAction, HuntTask, IDLE, SEARCH, WALK, WALK_POINT,
                 WALK_SEARCH,
             };
             let part = action
@@ -1011,7 +1011,7 @@ fn saved_actions(
                 .ok_or(Unsupported("a saved Hunt without its own part"))?;
             if !matches!(
                 base.state,
-                IDLE | WALK | FACE | GATHER | DROP | ATTACK | WALK_SEARCH | WALK_POINT
+                IDLE | SEARCH | WALK | FACE | GATHER | DROP | ATTACK | WALK_SEARCH | WALK_POINT
             ) {
                 return Err(Unsupported(
                     "a saved Hunt in a state the slice does not model",
