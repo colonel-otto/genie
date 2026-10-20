@@ -423,7 +423,6 @@ impl MoveToAction {
                     }
                 }
                 self.ended(&mut walk);
-                Ok(step)
             }
             MoveTo::Start => {
                 // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
@@ -449,12 +448,8 @@ impl MoveToAction {
                     None => step.gave_up = true,
                 }
                 self.ended(&mut walk);
-                Ok(step)
             }
-            MoveTo::Arrived => {
-                step.done = true;
-                Ok(step)
-            }
+            MoveTo::Arrived => step.done = true,
             // case 2: the timer runs by dt; at its end the MoveTo asks again (set_state 3)
             MoveTo::Waiting => {
                 self.wait.timer += walk.dt;
@@ -462,14 +457,11 @@ impl MoveToAction {
                     self.wait.timer = 0.0;
                     self.state = MoveTo::Start;
                 }
-                Ok(step)
             }
             // 0x140aa2a70's state 13: the notify (the caller's), then code 3
-            MoveTo::Failed => {
-                step.failed = true;
-                Ok(step)
-            }
+            MoveTo::Failed => step.failed = true,
         }
+        Ok(step)
     }
 }
 
