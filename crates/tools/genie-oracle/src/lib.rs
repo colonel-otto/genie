@@ -2960,6 +2960,22 @@ impl Decoder {
                         .collect(),
                 });
             }
+            // STOP: the units listed (at most a human player's 60), the count at +4; a count past
+            // the ids the packet holds fails the command's check (`FUN_140e55a30`)
+            Packet::Stop(c) => {
+                if c.ids.len() < usize::from(c.num) {
+                    return None;
+                }
+                return Some(Command::Stop {
+                    player: c.commp_id as usize,
+                    ids: c
+                        .ids
+                        .iter()
+                        .copied()
+                        .take(usize::from(c.num).min(MAX_UNITS))
+                        .collect(),
+                });
+            }
             // SEEK_SHELTER: the units listed (at most a human player's 60), the count at +4
             Packet::SeekShelter(c) => {
                 return Some(Command::SeekShelter {

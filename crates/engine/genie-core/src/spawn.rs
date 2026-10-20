@@ -1372,9 +1372,10 @@ impl Turns {
     /// (`FUN_14152fd70`), its place, record and mesh shape (slot 0x58), its sight and its storage
     /// (flags 1, 2 and 32 to its owner, `FUN_141193860`; the last entry of flag 0 held,
     /// `FUN_141193710`); it takes the dead object's facet (`FUN_14119d490`, `FUN_14114d780`). It
-    /// joins the owner's list and updates later in the same tick. Only remains of types 20 to 39
-    /// without hit points are modelled (with hit points it would sleep); not held: its facet,
-    /// angle and sprite.
+    /// joins the owner's list and updates later in the same tick. Only remains of type 10 (a
+    /// static object, `FUN_141126300` -> `FUN_141169580`: no moving setup, its death on the
+    /// sprite after it with a random facet) and of types 20 to 39 without hit points are modelled
+    /// (with hit points it would sleep); not held: its facet, angle and sprite.
     pub(crate) fn remains(
         &mut self,
         p: usize,
@@ -1386,8 +1387,8 @@ impl Turns {
         if made.kind == BUILDING {
             return self.new_building(p, &made, at);
         }
-        if !(20..40).contains(&made.kind) {
-            return Err(Unsupported("remains of a type other than 20 to 39"));
+        if made.kind != 10 && !(20..40).contains(&made.kind) {
+            return Err(Unsupported("remains of a type other than 10 and 20 to 39"));
         }
         if 0 < made.hit_points {
             return Err(Unsupported("remains with hit points (the sleeping list)"));
@@ -1487,11 +1488,30 @@ impl Turns {
                 held = (kind, amount);
             }
         }
+        // a static object (type 10) dies on its sprite after its death (the dying one, else its
+        // standing one), which may start on a random facet
+        let death_facets = if made.kind == 10 {
+            let after = if 0 <= made.death_sprite {
+                made.death_sprite
+            } else {
+                made.standing_sprite
+            };
+            self.graphics
+                .get(&after)
+                .filter(|g| g.flags & 4 != 0 && 1 < g.facets)
+                .map(|g| g.facets)
+        } else {
+            None
+        };
         owner.objects.push(Unit {
             id,
             position: at,
             life: Lifecycle {
-                class: Class::Animated,
+                class: if made.kind == 10 {
+                    Class::Static
+                } else {
+                    Class::Animated
+                },
                 state: 2,
                 hp: f32::from(made.hit_points),
                 attribute_type: held.0,
@@ -1499,7 +1519,7 @@ impl Turns {
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
                 death_spawn: 0 <= made.death_spawns[0],
                 remains: made.death_spawns[1],
-                death_facets: None,
+                death_facets,
                 inside: None,
                 goto_sleep: false,
                 master_id: master,

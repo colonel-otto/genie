@@ -1034,6 +1034,61 @@ impl Turns {
         Ok(())
     }
 
+    /// STOP (0x01, `RGE_Command::do_command` case 1, `FUN_14161e200`) of the player's units
+    /// `ids` (the lookup `FUN_140e6b750`, in the packet's order, an id the world does not hold
+    /// left out; the command's check `FUN_140e558b0`'s twin `FUN_140e55a30` drops another
+    /// player's unit unless the game setting `+0x1074`, which the slice does not hold: it stops
+    /// there). First each unit AI's saved patrol goes (`FUN_140c68de0`) and it resets as for an
+    /// order (`FUN_141631040`, [`crate::unit_ai::UnitAi::reset_for_order`]); several units
+    /// forming exactly one unit group would stop as the group (`FUN_14152ec80`,
+    /// `FUN_1410110c0`), and the slice holds no groups. Then each unit leaves its group (none),
+    /// its unit AI's order queue empties (`FUN_140c5e010`) and its idle timer takes its adjusted
+    /// timeout (`+0x160` = `+0x164`), its ignore list empties (`FUN_141197da0`), the object stops
+    /// (slot 0x148, [`Turns::object_stop`]) and its movement stands (slot 0x560,
+    /// `FUN_1411616f0`: slot 0x5d0, then `FUN_140f98e80` on its walked level).
+    pub(crate) fn stop_command(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
+        let mut units = Vec::with_capacity(ids.len());
+        for &id in ids {
+            match self.place(id) {
+                None => {}
+                Some(Place::Live(p, idx)) if p == player => units.push(idx),
+                Some(Place::Live(..)) => {
+                    return Err(Unsupported(
+                        "a STOP of another player's unit (the setting +0x1074)",
+                    ));
+                }
+                Some(Place::Sleeping(..)) => {
+                    return Err(Unsupported("a STOP of a sleeping object"));
+                }
+            }
+        }
+        for &idx in &units {
+            let rng = self.streams.get(Stream::Ai);
+            if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
+                ai.patrol_path = false;
+                ai.reset_for_order(rng);
+            }
+        }
+        for &idx in &units {
+            let unit = &mut self.players[player].objects[idx];
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.orders.clear();
+                ai.idle_timer = ai.adjusted_idle_timeout;
+            }
+            if let Some(m) = unit.mover.as_mut() {
+                m.ignore_units.clear();
+            }
+            self.object_stop(player, idx)?;
+            if let Some(m) = self.players[player].objects[idx].mover.as_mut() {
+                m.stop()?;
+                if !m.paths.is_empty() {
+                    m.reset_level();
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: the action list empties
     /// (`FUN_140a98620`) and a unit in state 2 takes its standing sprite where the slice holds
     /// its sprite. An Explore goes, its `MoveTo` stopping the unit; an own `MoveTo` goes, its

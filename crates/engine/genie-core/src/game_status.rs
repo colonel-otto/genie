@@ -272,7 +272,7 @@ impl Turns {
     /// 0xb0 with 0: the order ends, and stopAction, slot 0x3c0) and forgets its target and its
     /// last target (`FUN_140c4dcb0`) — its top action was a gather (0x6f) of a load it holds
     /// only when the list stayed.
-    fn object_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+    pub(crate) fn object_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
         let unit = &self.players[p].objects[idx];
         let master = self.master_of(p, unit.life.master_id)?;
         let class = master.class;

@@ -225,6 +225,13 @@ pub fn unit_ais(data: &[u8], player: usize, ids: &[i32]) -> Result<String, Error
             "  actions {actions:?} notifies {} orders {}",
             ai.number_notifies, ai.number_orders
         );
+        for order in &ai.temp_order {
+            let _ = writeln!(
+                out,
+                "    order {:?}",
+                genie_core::unit_ai::QueuedOrder::from_bytes(order)
+            );
+        }
     }
     Ok(out)
 }

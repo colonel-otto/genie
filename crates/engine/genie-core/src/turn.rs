@@ -474,6 +474,14 @@ pub enum Command {
         /// Its units.
         ids: Vec<i32>,
     },
+    /// STOP (0x01, `FUN_14161e200`): the units `ids` (at most 60, the decoder's) stop
+    /// ([`Turns::stop_command`]).
+    Stop {
+        /// The player whose units stop.
+        player: usize,
+        /// The units.
+        ids: Vec<i32>,
+    },
     /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`): the villagers of `ids` (at most 60, the decoder's)
     /// seek shelter in the player's buildings ([`Turns::seek_shelter`]).
     SeekShelter {
@@ -6665,6 +6673,12 @@ impl Turns {
             }
             Command::AutoScout { player, ref ids } => {
                 if let Err(e) = self.auto_scout(player, ids) {
+                    let owner = &mut self.players[player];
+                    owner.stop(self.ticks, e);
+                }
+            }
+            Command::Stop { player, ref ids } => {
+                if let Err(e) = self.stop_command(player, ids) {
                     let owner = &mut self.players[player];
                     owner.stop(self.ticks, e);
                 }
