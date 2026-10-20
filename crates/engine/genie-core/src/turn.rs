@@ -1095,8 +1095,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// Attack ([`crate::attack::Attack::command`]): the constructor takes its target (slot 0x178,
     /// the caller's), the action list clears (the old actions' teardowns), and the install's start
     /// clears `+0x900`, puts the unit on its standing sprite (slot 0x68 with `+0x80`) and runs the
-    /// range test. A `MoveTo` that starts arrived and a notify posted while the AI runs (its
-    /// buffer, `FUN_140c55270`) are not modelled.
+    /// range test; a `MoveTo` that starts arrived shows the standing sprite. A notify posted while
+    /// the AI runs (its buffer, `FUN_140c55270`) is not modelled.
     fn attack(
         &mut self,
         target: i32,
@@ -1201,7 +1201,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             ));
         }
         if arrived {
-            return Err(Unsupported("an attack command whose MoveTo starts arrived"));
+            // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): the master's standing
+            // sprite with its speed, `+0x7b8` cleared; the next update's state 4 ends the MoveTo
+            mover.shows_standing();
+            unit.shows_standing_sprite(self.masters, self.graphics, self.sprite)?;
         }
         unit.attack = Some(attack);
         self.takes.push(target);
@@ -1486,6 +1489,7 @@ impl Unit {
                 .velocity
                 .as_ref()
                 .is_some_and(|v| 0.0 < crate::fmath::length(v.velocity)),
+            waits: m.waiting != 0 && !self.top_action().is_some_and(|a| matches!(a.state, 6 | 7)),
             last_move: m.last_move,
             pause: m.paths.first().map(|l| l.pause_time),
             human_order: self.last_human_order,
@@ -5509,7 +5513,18 @@ impl Unit {
                     "an attacker of a master the slice does not have",
                 ))?;
             let armed = armed(master, self.firepower);
-            let code = attack.update_targetless(c.dt_seconds, armed, &mut self.anim_speed)?;
+            let (code, disarmed) =
+                attack.update_targetless(c.dt_seconds, armed, &mut self.anim_speed)?;
+            if disarmed {
+                let posted = attack.disarmed(
+                    &mut self.sprite,
+                    &mut self.anim_speed,
+                    c.streams.get(Stream::Sprite),
+                )?;
+                if let Some((kind, p)) = posted {
+                    self.post_own(kind, p)?;
+                }
+            }
             if matches!(code, 1 | 3) {
                 self.delete_attack(c)?;
             }
@@ -5727,6 +5742,8 @@ impl Unit {
                 garrisoned: self.life.inside.is_some(),
                 state: self.life.state,
                 kind: master.map_or(0, |m| m.kind),
+                ranged: master.is_some_and(|m| 0 <= m.missile),
+                firepower: self.firepower,
                 capture: c
                     .spatial
                     .sight

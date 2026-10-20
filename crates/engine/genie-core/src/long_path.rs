@@ -18,13 +18,18 @@
 //! its static record, not past a tall object), it counts as reached at once within the range of
 //! its footprint (`FUN_14118f680`), and a unit already in range (`FUN_14118f8c0`) needs no search.
 //!
-//! Not modelled: the path the search can write (`FUN_140f9d770`; the reachability test asks for
-//! none), an allied gate on the way (the tile's record of class 5, slot 0x678; another player's
-//! gate is closed) and the search
+//! The path the search writes when asked ([`path`], `FUN_140f9d770`) runs back from the tile it
+//! ended on along the directions it entered each tile by; a search that ran out writes the path
+//! to the tile it came nearest the goal on and answers no.
+//!
+//! Not modelled: an allied gate on the way (the tile's record of class 5, slot 0x678; another
+//! player's gate is closed) and the search
 //! beside a player's objects when the caller names one (argument 11, `FUN_14152f790`). The pather's flag at `+0x2db638` (terrain the unit
 //! may cross anyway, `FUN_1413fc2b0`) is never set in this build: no instruction writes it.
 
+use crate::fmath::Vec3;
 use crate::spatial::{BLOCKED, Tiles};
+use crate::tile_path::Path;
 use crate::unit_ai::Unsupported;
 
 /// The search expands at most this many tiles (`FUN_140f9eb70`: `20000 < n` breaks).
@@ -51,6 +56,9 @@ const EPSILON: f32 = crate::image::long_path::EPSILON;
 
 /// A target's footprint ends this short of its far edges (`DAT_142eb99cc`).
 const EDGE_GAP: f32 = crate::image::long_path::EDGE_GAP;
+
+/// A path point lies at its tile's centre: the tile plus this on both axes (`DAT_142e7f384`).
+const TILE_CENTRE: f32 = crate::image::long_path::TILE_CENTRE;
 
 /// The record class whose tiles an allied unit may pass when its gate lets it (`0x500` in the
 /// obstruction manager's word, bits 8 to 13).
@@ -206,22 +214,103 @@ impl Heap {
     }
 }
 
+/// How a search ended ([`search`]).
+enum Searched {
+    /// An end outside the pather's map, or a unit that does not move: no, and no path.
+    Refused,
+    /// The goal within the range before the search: yes, and no path.
+    InRange,
+    /// The search ran: it reached the goal on `end` (`reached`), or ran out with `end` the tile
+    /// it came nearest the goal on; `entered` holds the direction each tile was entered by.
+    Ran {
+        reached: bool,
+        end: [i32; 2],
+        entered: Vec<Option<u8>>,
+    },
+}
+
 /// `FUN_140f9eb70` for a goal point without a path to write: whether the unit reaches it.
 pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, Unsupported> {
+    Ok(match search(tiles, map, req)? {
+        Searched::Refused => false,
+        Searched::InRange => true,
+        Searched::Ran { reached, .. } => reached,
+    })
+}
+
+/// `FUN_140f9eb70` with a path to write (its argument 12): whether the unit reaches the goal, and
+/// the path ([`trace`] from the tile the search ended on, at the unit's height `z`; empty when the
+/// search did not run). A path the trace cannot write (a point equal to the one beside it) is
+/// emptied and answers no.
+///
+/// # Errors
+///
+/// What the search does not model.
+pub fn path(
+    tiles: &Tiles,
+    map: [i32; 2],
+    req: &LongRequest,
+    z: f32,
+) -> Result<(bool, Path), Unsupported> {
+    Ok(match search(tiles, map, req)? {
+        Searched::Refused => (false, Path::default()),
+        Searched::InRange => (true, Path::default()),
+        Searched::Ran {
+            reached,
+            end,
+            entered,
+        } => trace(req.from, end, &entered, map[0], z)
+            .map_or_else(|| (false, Path::default()), |path| (reached, path)),
+    })
+}
+
+/// `FUN_140f9d770`: the path from `from` to `end`, traced back from `end` along the direction
+/// each tile was entered by: a tile whose direction differs from the one after it on the way back
+/// (the end's always) puts its centre (x + 0.5, `z`, y + 0.5, the paths' layout) in front
+/// (`FUN_140f95a50`), the start tile's last. None when a point equals the one beside it
+/// (`FUN_140f95060` refuses it).
+fn trace(
+    from: [i32; 2],
+    end: [i32; 2],
+    entered: &[Option<u8>],
+    width: i32,
+    z: f32,
+) -> Option<Path> {
+    let direction = |[x, y]: [i32; 2]| entered[(y * width + x) as usize].unwrap_or(0xff);
+    let centre = |[x, y]: [i32; 2]| -> Vec3 { [x as f32 + TILE_CENTRE, z, y as f32 + TILE_CENTRE] };
+    let mut path = Path::default();
+    let mut at = end;
+    let mut came = direction(at);
+    let mut before = 0xff;
+    while at != from {
+        if came != before && !path.insert(0, centre(at)) {
+            return None;
+        }
+        // back along the step it was entered by
+        let step = STEPS.get(usize::from(came))?;
+        at = [at[0] - step[0], at[1] - step[1]];
+        before = came;
+        came = direction(at);
+    }
+    path.insert(0, centre(at)).then_some(path)
+}
+
+/// The search of `FUN_140f9eb70` ([`reaches`], [`path`]).
+fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, Unsupported> {
     let [w, h] = map;
     let [x0, y0] = req.from;
     let [x1, y1] = req.to;
     // every end is held to the pather's width (`+0x8`), the far edge included
     let held = |v: i32| 0 <= v && v <= w;
     if !(held(x0) && held(y0) && held(x1) && held(y1)) {
-        return Ok(false);
+        return Ok(Searched::Refused);
     }
     let (dx, dy) = (x1 - x0, y1 - y0);
     let gap2 = dy.wrapping_mul(dy).wrapping_add(dx.wrapping_mul(dx));
     if let Some(t) = req.target
         && t.gap_squared <= req.range * req.range
     {
-        return Ok(true);
+        return Ok(Searched::InRange);
     }
     // the goal: the target's tile and footprint, else the goal tile
     let (goal, rect) = req
@@ -229,10 +318,10 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
         .map_or(([x1, y1], [x1, y1, x1, y1]), |t| (t.tile, t.rect));
     let in_rect = |x: i32, y: i32| rect[0] <= x && x <= rect[2] && rect[1] <= y && y <= rect[3];
     if REACHED < req.range && req.target.is_none() && (gap2 as f32) < req.range * req.range {
-        return Ok(true);
+        return Ok(Searched::InRange);
     }
     if !req.moves {
-        return Ok(false);
+        return Ok(Searched::Refused);
     }
     let blocked_terrain = u64::from(req.mask ^ 0xff);
     let blocked = blocked_terrain | BLOCKED;
@@ -265,6 +354,9 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
     } else {
         straight.wrapping_mul(HUMAN_PERCENT) / 100
     };
+    // the popped tile nearest the goal (`local_52c`, its distance `local_4f8`: the start's own
+    // in quarter tiles squared, a popped tile's a quarter of that)
+    let mut nearest = ([x0, y0], start_cost);
     let mut expansions = 0;
     while 0 < heap.count() {
         if budget < expansions || MOST_EXPANSIONS < expansions {
@@ -279,7 +371,15 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
             None => d < REACHED,
         };
         if in_rect(cx, cy) || reached {
-            return Ok(true);
+            return Ok(Searched::Ran {
+                reached: true,
+                end: [cx, cy],
+                entered,
+            });
+        }
+        let near = quad(y1 - cy).wrapping_add(quad(x1 - cx)) >> 2;
+        if near < nearest.1 {
+            nearest = ([cx, cy], near);
         }
         heap.pop();
         let came = entered[index(cx, cy)];
@@ -369,13 +469,22 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
                 entered[index(nx, ny)] = Some(dir);
                 heap.push([nx, ny], c);
                 if at_goal {
-                    return Ok(true);
+                    return Ok(Searched::Ran {
+                        reached: true,
+                        end: [nx, ny],
+                        entered,
+                    });
                 }
             }
         }
         expansions += 1;
     }
-    Ok(false)
+    // the nearest tile goes on the heap with cost 0, so the path runs to it
+    Ok(Searched::Ran {
+        reached: false,
+        end: nearest.0,
+        entered,
+    })
 }
 
 #[cfg(test)]
@@ -420,6 +529,68 @@ mod tests {
             near_player: false,
             allies: 0b10,
         }
+    }
+
+    #[test]
+    fn the_path_runs_from_the_start_over_its_turns_to_the_goal() {
+        // around the wall: from (1, 2) up past its end and down to (8, 2); each point a tile's
+        // centre at the unit's height, where the direction changes
+        let (t, map) = tiles(&[
+            "..........",
+            ".....#....",
+            ".....#....",
+            ".....#....",
+            "..........",
+        ]);
+        let (reached, walk) = path(&t, map, &request([1, 2], [8, 2]), 0.25).unwrap();
+        assert!(reached);
+        let first = walk.points[0];
+        let last = *walk.points.last().unwrap();
+        assert_eq!((first, last), ([1.5, 0.25, 2.5], [8.5, 0.25, 2.5]));
+        // every stretch between two points is a straight or diagonal run of tiles
+        for w in walk.points.windows(2) {
+            let (dx, dy) = (w[1][0] - w[0][0], w[1][2] - w[0][2]);
+            assert!(dx == 0.0 || dy == 0.0 || dx.abs() == dy.abs(), "{w:?}");
+        }
+        assert!(
+            walk.points
+                .iter()
+                .all(|p| p[2] != 2.5 || p[0] < 5.0 || 6.0 < p[0])
+        );
+        // behind a closed wall the search runs out: the path to the tile nearest the goal
+        let (t, map) = tiles(&[
+            ".....#....",
+            ".....#....",
+            ".....#....",
+            ".....#....",
+            ".....#....",
+        ]);
+        let (reached, walk) = path(&t, map, &request([1, 2], [8, 2]), 0.0).unwrap();
+        assert!(!reached);
+        assert_eq!(walk.points.first(), Some(&[1.5, 0.0, 2.5]));
+        assert_eq!(walk.points.last(), Some(&[4.5, 0.0, 2.5]));
+        // a goal within the range: yes, and no path
+        let mut req = request([0, 1], [4, 1]);
+        req.range = 4.5;
+        assert_eq!(path(&t, map, &req, 0.0).unwrap(), (true, Path::default()));
+    }
+
+    #[test]
+    fn a_trace_puts_a_point_where_the_direction_changes() {
+        // entered: (1, 0) from (0, 0) by step 3 ([1, 0]), (2, 0) by 3, (3, 1) by 4 ([1, 1])
+        let w = 4;
+        let mut entered = vec![None; 8];
+        entered[1] = Some(3);
+        entered[2] = Some(3);
+        entered[w + 3] = Some(4);
+        let p = trace([0, 0], [3, 1], &entered, w as i32, 0.0).unwrap();
+        assert_eq!(
+            p.points,
+            [[0.5, 0.0, 0.5], [2.5, 0.0, 0.5], [3.5, 0.0, 1.5]]
+        );
+        // the end on the start: its centre only
+        let p = trace([0, 0], [0, 0], &entered, w as i32, 0.0).unwrap();
+        assert_eq!(p.points, [[0.5, 0.0, 0.5]]);
     }
 
     #[test]

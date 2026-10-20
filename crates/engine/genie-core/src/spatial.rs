@@ -53,6 +53,9 @@ const TESTED_KINDS: [u8; 5] = [2, 3, 5, 11, 13];
 pub struct Gait {
     /// It moves: its velocity (`+0x868`) is not 0 (slot 0x5c8).
     pub moving: bool,
+    /// Slot 0x2a8 (`FUN_141163100`): it waits to move (`+0x7f9`) and its top action is in a state
+    /// other than 6 and 7.
+    pub waits: bool,
     /// Its last move time (`+0x870`, slot 0x5e8).
     pub last_move: u32,
     /// Its current path level's pause time (slot 0x528), none without a level.
@@ -939,6 +942,27 @@ impl Spatial {
                 let _ = self.annexes.remove(&id);
             }
         }
+    }
+
+    /// The obstruction query's ignore list for `ids` (−1 for none), as `FUN_14114e8a0` adds each
+    /// object: its id, then a building's annexes (`+0xbc0`..`+0xbd8`, in id order).
+    #[must_use]
+    pub fn query_ignore(&self, ids: &[i32]) -> Vec<i32> {
+        let mut ignore = Vec::new();
+        for &id in ids.iter().filter(|&&id| id != -1) {
+            ignore.push(id);
+            ignore.extend(self.annexes_of(id));
+        }
+        ignore
+    }
+
+    /// The annexes of the building `main`, in id order.
+    pub fn annexes_of(&self, main: i32) -> Vec<i32> {
+        self.annexes
+            .iter()
+            .filter(|&(_, &m)| m == main)
+            .map(|(&a, _)| a)
+            .collect()
     }
 
     /// The main building of the annex `id`, if it is one.

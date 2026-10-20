@@ -845,25 +845,46 @@ impl Attack {
 
     /// The update of an Attack whose target is gone (its target −1 after [`Attack::lost`]): the
     /// timer runs and, past the target's checks, state 1 (case 0) stops the unit's animation and
-    /// returns 1: the list deletes the Attack. A building that cannot attack (its end with
-    /// 0x1fb) and the other states without a target are not modelled.
+    /// returns 1: the list deletes the Attack. A building that cannot attack (`armed` false,
+    /// `FUN_14120ea30`) ends instead (`set_state(1)`: the caller's [`Attack::disarmed`]) and
+    /// returns 1, true. The other states without a target are not modelled.
     pub fn update_targetless(
         &mut self,
         dt: f32,
         armed: bool,
         anim_speed: &mut Option<f32>,
-    ) -> Result<u8, Unsupported> {
+    ) -> Result<(u8, bool), Unsupported> {
         self.timer += dt;
         if !armed {
-            return Err(Unsupported(
-                "a building that cannot attack, its Attack without a target",
-            ));
+            self.state = DONE;
+            return Ok((1, true));
         }
         if self.state != DONE {
             return Err(Unsupported("an Attack without a target in a state but 1"));
         }
         *anim_speed = Some(0.0);
-        Ok(1)
+        Ok((1, false))
+    }
+
+    /// The end of a building's Attack that cannot attack (`0x140a82ae0` at `LAB_140a83711`):
+    /// `set_state(1)` shows the standing sprite at speed 1 (its sub-actions none), then a unit's
+    /// own Attack (not quiet, `+0x60` 0) posts 0x1fb with 600 and its target (`+0x30`).
+    pub(crate) fn disarmed(
+        &self,
+        sprite: &mut Option<ActiveSprite>,
+        anim_speed: &mut Option<f32>,
+        rng: &mut Well512,
+    ) -> Result<Option<(i32, [i32; 3])>, Unsupported> {
+        if self.move_to.is_some() {
+            return Err(Unsupported("a building's Attack with a MoveTo"));
+        }
+        *anim_speed = Some(1.0);
+        let idle = self
+            .arms
+            .idle_sprite
+            .ok_or(Unsupported("an Attack's unit without a standing sprite"))?;
+        set_sprite(sprite, idle, rng);
+        Ok((!self.sub_action).then_some((0x1fb, [600, self.target, 0])))
     }
 
     /// One update (slot 6, `0x140a82ae0`): the timer runs, the target is still there and where it
@@ -1477,5 +1498,64 @@ mod tests {
         assert_eq!(squared_reach(0.0).to_bits(), 0x3c23_d70b);
         assert_eq!(squared_reach(NO_RANGE).to_bits(), 0x3c23_d70b);
         assert_eq!(squared_reach(2.0), 4.0);
+    }
+
+    /// 425906646's town centre 27171 (player 6) in update 6224: its Attack lost the boar 29826
+    /// and the town centre cannot attack (no missile, a firepower of at most 1): the Attack ends
+    /// (`set_state(1)`, the standing sprite at speed 1) and posts 0x1fb with 600 and its target,
+    /// −1.
+    #[test]
+    fn a_disarmed_building_s_targetless_attack_ends_with_its_notify() {
+        let standing = Graphic {
+            id: 418,
+            frames: 1,
+            facets: 1,
+            speed_multiplier: 1.0,
+            frame_duration: 0.0,
+            replay_delay: 0.0,
+            flags: 0,
+        };
+        let mut a = Attack {
+            target: -1,
+            target2: -1,
+            state: READY,
+            timer: 0.0,
+            range: 6.0,
+            min_range: 0.0,
+            point: [NONE; 3],
+            seen: [NONE; 3],
+            move_to: None,
+            move_wait: MoveWait::default(),
+            pending: false,
+            swing: 0.0,
+            rest: 0.0,
+            arms: Arms {
+                move_sprite: None,
+                sprite: None,
+                second_sprite: None,
+                idle_sprite: Some(standing),
+                idle_attack_sprite: None,
+                missile: -1,
+                fire_frame: 0,
+                interrupt_frame: -1,
+            },
+            sub_action: false,
+            repaths: false,
+            runs: false,
+        };
+        let mut anim = Some(0.5);
+        assert_eq!(
+            a.clone().update_targetless(0.028, true, &mut anim),
+            Err(Unsupported("an Attack without a target in a state but 1"))
+        );
+        assert_eq!(a.update_targetless(0.028, false, &mut anim), Ok((1, true)));
+        assert_eq!(a.state, DONE);
+        let (mut sprite, mut rng) = (None, Well512::default());
+        let posted = a.disarmed(&mut sprite, &mut anim, &mut rng).unwrap();
+        assert_eq!(posted, Some((0x1fb, [600, -1, 0])));
+        assert_eq!((anim, sprite.map(|s| s.graphic.id)), (Some(1.0), Some(418)));
+        // the Hunt's Attack, a sub-action, posts nothing
+        a.sub_action = true;
+        assert_eq!(a.disarmed(&mut sprite, &mut anim, &mut rng).unwrap(), None);
     }
 }

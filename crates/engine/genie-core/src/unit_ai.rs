@@ -1171,6 +1171,10 @@ pub struct Surroundings {
     pub state: u8,
     /// The unit's type (`+0xf`).
     pub kind: u8,
+    /// Its master has a missile (`+0x83c` 0 or more, `FUN_1410bfca0`).
+    pub ranged: bool,
+    /// Its missiles per volley (`+0xa00`, `FUN_1412136d0`), 0 for a unit without volleys.
+    pub firepower: f32,
     /// The unit's `+0x924`.
     pub capture: u8,
     /// The unit's master.
@@ -1263,6 +1267,11 @@ const PATROL_2: i32 = 0x2dd;
 /// Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
 /// `-0xe78` raw).
 const CLASS_3: i16 = 3;
+/// A building's master type (`'P'`, `FUN_1411942c0`).
+const BUILDING_KIND: u8 = 80;
+/// A building on its make action without a missile and with at most this firepower forgets its
+/// target (`DAT_14330eb8c`).
+const SINGLE_VOLLEY: f32 = crate::image::unit_ai::SINGLE_VOLLEY;
 const CLASS_52: i16 = 52;
 
 /// A move the unit AI gives its unit (unit-AI slot 0x130, `FUN_140c55620`, to the unit's slot
@@ -2466,9 +2475,12 @@ impl UnitAi {
         let scouting = order == (AUTO_SCOUT_ORDER, AUTO_SCOUT_ACTION) && self.current_target == -1;
         let following = order.0 == FOLLOW_ORDER;
         // a boar's own attack on its attacker ([`UnitAi::attack_object`]), or a work command's
-        // attack (the attack order and action, notify kind 9)
+        // attack (the attack order and action, notify kind 9); a building's make action that
+        // started during it takes the action value (619, its constructor `FUN_140acb140`) while
+        // the Attack goes on
         let attacking = (self.ai_type == 4 && order == (-1, ATTACK_ACTION))
-            || order == (ATTACK_ORDER, ATTACK_ACTION);
+            || order == (ATTACK_ORDER, ATTACK_ACTION)
+            || order == (ATTACK_ORDER, crate::spawn::MAKE_ACTION);
         // a move to an object (the work command's without a task, slot 0x138)
         let moving_to = order == (MOVE_ORDER, MOVE_ACTION);
         // without an order and an action the target is a stale one: the order queue's next order
@@ -3820,7 +3832,41 @@ impl UnitAi {
             self.process_idle(at, computer, ai, side, fx)?;
             return Ok(());
         }
+        if !matches!(self.current_order, PATROL | PATROL_2)
+            && matches!(at.class, CLASS_3 | CLASS_52)
+            && matches!(self.current_action, 0x26b | 0x26c)
+        {
+            return self.making_idle_part(at, computer, ai, side, fx);
+        }
         self.idle_part_end(at.class, at.player)
+    }
+
+    /// The idle part past slot 72's test of a unit of class 3 or 52 on the make action (`0x26b`,
+    /// `0x26c`): a building (`FUN_1411942c0`; `FUN_1411206a0` rules out classes 51 and 54) whose
+    /// master has no missile (`+0x83c` below 0, `FUN_1410bfca0`) and whose firepower (`+0xa00`)
+    /// is at most 1 (`DAT_14330eb8c`) forgets its target (`FUN_140c5e1e0`). With no target and its
+    /// idle timer past its timeout, the timer restarts and processIdle runs (slot 0x240 with 1,
+    /// [`UnitAi::process_idle`]); the idle timer is not reset otherwise.
+    fn making_idle_part(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        if self.current_target != -1
+            && at.kind == BUILDING_KIND
+            && !at.ranged
+            && at.firepower <= SINGLE_VOLLEY
+        {
+            self.remove_target();
+        }
+        if self.idle_timer <= self.adjusted_idle_timeout || self.current_target != -1 {
+            return Ok(());
+        }
+        self.idle_timer = 0;
+        self.process_idle(at, computer, ai, side, fx)
     }
 
     /// [`UnitAi::idle_part`] when the update took an order on a target, which in the game ran
@@ -3843,9 +3889,9 @@ impl UnitAi {
         Ok(())
     }
 
-    /// The idle part past slot 72: patrol orders, class 3's and 52's actions `0x26b`/`0x26c` and
-    /// action `0x2c0` are not modelled; an action or a target keeps the idle timer of a player
-    /// above Gaia at 0.
+    /// The idle part past slot 72: patrol orders, class 3's and 52's actions `0x26b`/`0x26c` (but
+    /// in [`UnitAi::idle_part`], [`UnitAi::making_idle_part`]) and action `0x2c0` are not
+    /// modelled; an action or a target keeps the idle timer of a player above Gaia at 0.
     const fn idle_part_end(&mut self, class: i16, player: usize) -> Result<(), Unsupported> {
         if matches!(self.current_order, PATROL | PATROL_2) {
             return Err(Unsupported("a patrol order's idle part"));
@@ -5616,6 +5662,82 @@ mod tests {
             idle_timeout: 3000,
             ..idle(8)
         }
+    }
+
+    #[test]
+    fn a_making_building_runs_process_idle_only_without_a_target() {
+        // a town centre (type 15, class 3) on its make action: with a target, or within its idle
+        // timeout, the idle part does nothing and keeps the timer
+        let tc = |target| UnitAi {
+            ai_type: 15,
+            current_order: ATTACK_ORDER,
+            current_action: crate::spawn::MAKE_ACTION,
+            current_target: target,
+            idle_timer: 4000,
+            adjusted_idle_timeout: 1080,
+            ..UnitAi::default()
+        };
+        let at = Surroundings {
+            class: CLASS_3,
+            kind: BUILDING_KIND,
+            ranged: true,
+            busy: true,
+            ..Surroundings::default()
+        };
+        let run = |u: &mut UnitAi, at: &Surroundings| {
+            u.idle_part(
+                true,
+                at,
+                false,
+                &mut Well512::default(),
+                &mut Recorder::default(),
+                &mut Vec::new(),
+            )
+        };
+        let mut u = tc(29826);
+        run(&mut u, &at).unwrap();
+        assert_eq!(u.idle_timer, 4000);
+        let mut u = UnitAi {
+            idle_timer: 900,
+            ..tc(-1)
+        };
+        run(&mut u, &at).unwrap();
+        assert_eq!(u.idle_timer, 900);
+        // past it without a target the timer restarts and processIdle runs: the tower's search
+        let mut u = tc(-1);
+        assert_eq!(run(&mut u, &at), Err(Unsupported("no search here")));
+        assert_eq!(u.idle_timer, 0);
+        // a building without a missile and a single volley forgets its target, then searches
+        let single = Surroundings {
+            ranged: false,
+            firepower: 1.0,
+            ..at
+        };
+        let mut u = tc(29826);
+        assert_eq!(run(&mut u, &single), Err(Unsupported("no search here")));
+        assert_eq!((u.current_target, u.last_target), (-1, 29826));
+        // with units inside it shoots more and keeps it
+        let manned = Surroundings {
+            firepower: 3.0,
+            ..single
+        };
+        let mut u = tc(29826);
+        run(&mut u, &manned).unwrap();
+        assert_eq!((u.current_target, u.idle_timer), (29826, 4000));
+    }
+
+    #[test]
+    fn a_building_s_attack_order_with_its_make_action_is_modelled() {
+        // 6091, p6's town centre 27171: on the attack order against the boar 29826, the
+        // villager it starts making takes the action value (619) while its Attack goes on
+        let making = UnitAi {
+            ai_type: 15,
+            current_order: ATTACK_ORDER,
+            current_action: crate::spawn::MAKE_ACTION,
+            current_target: 29826,
+            ..UnitAi::default()
+        };
+        assert!(making.check_busy_order(Retarget::Base, true).is_ok());
     }
 
     #[test]

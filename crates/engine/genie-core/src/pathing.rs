@@ -42,6 +42,9 @@ pub struct Pathing {
     temporary: Vec<u32>,
     /// The short pather.
     pub pather: Pather,
+    /// The ignore list the tile planner's smoothing hands the obstruction manager
+    /// (`DAT_143f0db50`, six ids, a static the game never clears: zero at the load).
+    smoothing_ignore: [i32; 6],
 }
 
 /// A shape's rectangle for an object (`FUN_141056460`): its box grown by half a tile, in fixed
@@ -91,6 +94,38 @@ impl Pathing {
             game_type,
             ..Self::default()
         }
+    }
+
+    /// The ignore list of the tile planner's smoothing for `unit` and its level's `target`, as
+    /// `FUN_140f7dbb0` fills its static (`DAT_143f0db50`): the unit; the target; a building
+    /// target that is not an annex puts its `annexes` (in their slots' order) from the target's
+    /// slot on, overwriting it, and counts one more slot than it writes, whose id an earlier
+    /// list left there (zero, object 0, until a list writes it). Without a target only the unit.
+    /// The list is written only when the smoothing runs ([`Pathing::smoothing_ran`]).
+    #[must_use]
+    pub fn smoothing_ignore(
+        &self,
+        unit: i32,
+        target: Option<(i32, &[i32])>,
+    ) -> ([i32; 6], Vec<i32>) {
+        let mut slots = self.smoothing_ignore;
+        slots[0] = unit;
+        let Some((target, annexes)) = target else {
+            return (slots, vec![unit]);
+        };
+        slots[1] = target;
+        let mut count = 2;
+        for (i, &a) in annexes.iter().take(4).enumerate() {
+            slots[1 + i] = a;
+            count = 3 + i;
+        }
+        (slots, slots[..count].to_vec())
+    }
+
+    /// The smoothing ran with the ignore list `slots` ([`Pathing::smoothing_ignore`]): the static
+    /// keeps it.
+    pub const fn smoothing_ran(&mut self, slots: [i32; 6]) {
+        self.smoothing_ignore = slots;
     }
 
     /// An empty mesh for a map `width` tiles wide, as the game's load starts it.
@@ -272,6 +307,26 @@ impl Pathing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 425906646's villagers walking to player 6's town centre 27171 (annexes 27172, 27173,
+    /// 27175) in update 6292: the smoothing ignores the unit and the annexes, the target's slot
+    /// overwritten, and one slot more than written, here never written: object 0.
+    #[test]
+    fn the_smoothing_ignores_a_main_building_s_annexes_over_its_own_slot() {
+        let mut p = Pathing::default();
+        assert_eq!(p.smoothing_ignore(31128, None).1, [31128]);
+        assert_eq!(
+            p.smoothing_ignore(31128, Some((9156, &[]))).1,
+            [31128, 9156]
+        );
+        let (slots, ignore) = p.smoothing_ignore(31128, Some((27171, &[27172, 27173, 27175])));
+        assert_eq!(ignore, [31128, 27172, 27173, 27175, 0]);
+        // the static keeps the list once the smoothing ran: a later one-annex list's extra slot
+        // holds the second annex
+        p.smoothing_ran(slots);
+        let (_, ignore) = p.smoothing_ignore(31143, Some((5000, &[5001])));
+        assert_eq!(ignore, [31143, 5001, 27173]);
+    }
     use crate::spatial::Obstruction;
 
     fn villager(x: f32, y: f32) -> Placed {

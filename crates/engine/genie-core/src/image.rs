@@ -238,6 +238,8 @@ pub mod long_path {
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
     /// 1.0
     pub const REACHED: f32 = f32::from_bits(0x3f80_0000);
+    /// 0.5
+    pub const TILE_CENTRE: f32 = f32::from_bits(0x3f00_0000);
 }
 
 /// The values `crate::missile`'s port reads.
@@ -292,6 +294,8 @@ pub mod movement {
     pub const FAR: f32 = f32::from_bits(0x7f7f_ffff);
     /// 100.0
     pub const FAST_TURN: f32 = f32::from_bits(0x42c8_0000);
+    /// 0.6000000238418579
+    pub const LONG_PATH_GROW: f32 = f32::from_bits(0x3f19_999a);
     /// 100.0
     pub const LOOK_AHEAD: f32 = f32::from_bits(0x42c8_0000);
     /// 0.5
@@ -472,6 +476,8 @@ pub mod unit_ai {
     pub const FOUNDATION_REACH: f32 = f32::from_bits(0x3dcc_cccd);
     /// 3.0
     pub const RETARGET_RANGE: f32 = f32::from_bits(0x4040_0000);
+    /// 1.0
+    pub const SINGLE_VOLLEY: f32 = f32::from_bits(0x3f80_0000);
     /// 0.5
     pub const STANCE_RANGE_GROWTH: f32 = f32::from_bits(0x3f00_0000);
 }

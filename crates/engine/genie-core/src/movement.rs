@@ -229,6 +229,16 @@ const WIDE_CLASS: i16 = 33;
 const WIDE_RANGE: f32 = crate::image::movement::WIDE_RANGE;
 /// The trade cart's class (19), whose path requests the owner's budget limits (`FUN_14165d6f0`).
 const TRADE_CART: i16 = 19;
+/// The classes a long path's stretch may not cross (`0x141150f00` after `FUN_140f9eb70`, raw
+/// `-0xe91`, `-0xe78`, `-0xea9`): walls, towers, and buildings that do not move; gates
+/// ([`GATE`]) too. A villager's (`-0xea8`) path crosses them.
+const WALL_CLASS: i16 = 27;
+const TOWER_CLASS: i16 = 52;
+const BUILDING_CLASS: i16 = 3;
+const VILLAGER_CLASS: i16 = 4;
+/// A long path's stretch is checked for walls with the unit's radius times this
+/// (`DAT_142e85190`).
+const LONG_PATH_GROW: f32 = crate::image::movement::LONG_PATH_GROW;
 /// No distance (`DAT_14330ebf4`).
 const FAR: f32 = crate::image::movement::FAR;
 /// The motion step's switches (`DAT_1439e3cc0`, `DAT_1439e3cc4`, `DAT_1439e3cc8`): the short
@@ -503,7 +513,7 @@ enum Step {
     Again,
     /// On to the walk (`LAB_141153bd1`).
     Walk,
-    /// The unit paused itself and stopped: the step returns 0.
+    /// The unit stopped (and may have paused itself): the step returns 0.
     Paused,
     /// The level gave up and the unit stopped: the step returns 1.
     GaveUp,
@@ -990,7 +1000,8 @@ impl Mover {
     /// `FUN_141142750` with its last argument 1: whether the unit walks straight to `p`. The point
     /// must lie within the map less the unit's radii (the game takes the height radius for the
     /// low edge in y); then the walk's query (`FUN_14114cc60` with the tiles' records, flags
-    /// `0x190`, its radius times 0.5) must find nothing but the unit and its target: no tile its
+    /// `0x190`, its radius times 0.5) must find nothing but the unit and its target with their
+    /// annexes ([`Spatial::query_ignore`]): no tile its
     /// terrain mask lacks, no static record (kinds 2, 11, 13) ([`Spatial::segment_blocked`]).
     /// The game also writes the straight path into a scratch path, which it drops.
     fn straight(
@@ -1006,10 +1017,7 @@ impl Mover {
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
             return Ok(false);
         }
-        let mut ignore = vec![me.id];
-        if target != -1 {
-            ignore.push(target);
-        }
+        let ignore = world.query_ignore(&[me.id, target]);
         let (from, to) = self.query_ends(vector(me.position), p, world.map);
         let grow = rx * STRAIGHT_GROW;
         world.check_known_records([
@@ -1040,10 +1048,7 @@ impl Mover {
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
             return Ok(false);
         }
-        let mut ignore = vec![me.id];
-        if target != -1 {
-            ignore.push(target);
-        }
+        let ignore = world.query_ignore(&[me.id, target]);
         let (from, to) = self.query_ends(vector(me.position), p, world.map);
         let rect = [
             from[0].min(to[0]),
@@ -1190,9 +1195,9 @@ impl Mover {
     /// pathfinder's (`FUN_140f7c530`; a top level's plan becomes a level of its own, whose
     /// stretches the next pass serves). The new level goes under the walked one, which waits
     /// (state 0). A waypoint or target nearer than a tile takes the close-in path when the short
-    /// pather found none ([`Mover::close_in`]). The long pather (`FUN_140f9eb70`), the escape from
-    /// a game type 12 tile, a trade cart's budget and the exits that stop the unit
-    /// (slot 0x5d0) are not modelled.
+    /// pather found none ([`Mover::close_in`]); a far waypoint takes the long pather's path
+    /// ([`Mover::long_plan`]). The escape from a game type 12 tile, a trade cart's budget and the
+    /// other exits that stop the unit (slot 0x5d0) are not modelled.
     fn request(
         &mut self,
         me: &Me,
@@ -1455,17 +1460,26 @@ impl Mover {
             };
             if tail && LONG_PATHER && (trade_cart || SHORT_REACH < way) {
                 // LAB_141152ec1: a far waypoint takes the long pather
-                match target {
-                    None if CLOSE <= way => {
-                        return Err(Unsupported("the long pather (FUN_140f9eb70)"));
-                    }
-                    Some(_) if CLOSE <= gap => {
-                        return Err(Unsupported("the long pather (FUN_140f9eb70)"));
-                    }
+                let far = match target {
+                    None => CLOSE <= way,
+                    Some(_) if CLOSE <= gap => true,
                     Some(_) => {
                         return Err(Unsupported("a near target's master test (0x60c9)"));
                     }
-                    None => {}
+                };
+                if far {
+                    planned = false;
+                    let target = target.map(|t| (target_id, t));
+                    let Some((reached, farther)) =
+                        self.long_plan(me, world, plan, waypoint, way, range, target, &mut path)?
+                    else {
+                        return Ok(Step::Paused);
+                    };
+                    new.created = plan.now;
+                    found = reached;
+                    if let Some(end) = farther {
+                        end_gap = end;
+                    }
                 }
             }
             // a failed or short path: the tile pathfinder once more, on a path of its own
@@ -1527,6 +1541,145 @@ impl Mover {
             return self.no_path(found, target, to_end);
         }
         Ok(self.link(new, path, found, partial, planned, solid))
+    }
+
+    /// The long pather's plan for a far waypoint (`0x141150f00` at `LAB_141152f9c`): the new path
+    /// empties and the long pather writes it (`FUN_140f9eb70` from the unit's tile to the
+    /// waypoint's, the level's range and target; [`crate::long_path::path`]), made now. Its tall
+    /// counts leave out the unit, its ignored units that wait to move or move (slots 0x2a8 and
+    /// 0x5c8; not the target) and the target (`FUN_140f60440`). A path shorter than `EPSILON`
+    /// stops the unit (slot 0x5d0; the new level and its path go, `FUN_14152f540` and
+    /// `FUN_140f8f7f0`) and the step returns 0: None. A path ending farther from the waypoint
+    /// than the unit is (on the ground) empties, its end's gap to the waypoint returned; else
+    /// its stretches are checked for walls ([`Mover::walled_off`]). Returns whether it reached
+    /// the goal and that gap.
+    #[allow(clippy::too_many_arguments)]
+    fn long_plan(
+        &mut self,
+        me: &Me,
+        world: &Spatial,
+        plan: &Planning<'_>,
+        waypoint: Vec3,
+        way: f32,
+        range: f32,
+        target: Option<(i32, &Placed)>,
+        path: &mut Path,
+    ) -> Result<Option<(bool, Option<f32>)>, Unsupported> {
+        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
+        let target_id = target.map_or(-1, |(id, _)| id);
+        let long_target = target.map(|(_, t)| {
+            let gap2 = footprint_gap_squared(me.position, ground_radius, t.position, t.radius);
+            let gap = footprint_gap(me.position, ground_radius, t.position, t.radius);
+            crate::long_path::LongTarget::new(t.position, t.radius, gap, gap2)
+        });
+        let ignored = self.ignore_units.iter().copied().filter(|&id| {
+            id != me.id
+                && id != target_id
+                && world.get(id).is_some()
+                && world.gait(id).is_some_and(|g| g.waits || g.moving)
+        });
+        let lowered = std::iter::once(me.id)
+            .chain(ignored)
+            .chain(target.map(|(id, _)| id))
+            .filter_map(|id| world.get(id))
+            .filter(|p| p.tall)
+            .map(|p| [p.position[0] as i32, p.position[1] as i32])
+            .collect();
+        let master = world.get(me.id).map_or(-1, |p| p.master);
+        let req = crate::long_path::LongRequest {
+            from: [me.position[0] as i32, me.position[1] as i32],
+            to: [waypoint[0] as i32, waypoint[2] as i32],
+            range,
+            target: long_target,
+            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            mask: self.stats.restriction_mask,
+            computer: plan.computer,
+            lowered,
+            within_range: false,
+            near_player: false,
+            allies: world.get(me.id).map_or(0, |p| world.allies_of(p.player)),
+        };
+        let (mut found, long) =
+            crate::long_path::path(world.tiles(), world.map, &req, me.position[2])?;
+        *path = long;
+        path.measure();
+        if path.length < EPSILON {
+            self.stop()?;
+            return Ok(None);
+        }
+        let end = ground(waypoint, point_or_zero(path, path.points.len() as i32 - 1));
+        if way < end {
+            path.points.clear();
+            path.length = 0.0;
+            return Ok(Some((found, Some(end))));
+        }
+        if !self.walled_off(me, world, target_id, path)? {
+            found = false;
+        }
+        Ok(Some((found, None)))
+    }
+
+    /// The long path's stretches (`0x141150f00` after `FUN_140f9eb70`, for a unit with a
+    /// footprint and a height, `FUN_141194060` with 1): each stretch's obstruction query
+    /// (`FUN_14114cc60` as the walk's, grown by the radius times `LONG_PATH_GROW`; the unit and
+    /// the target ignored with their annexes, `FUN_14114e8a0`) that meets a wall, a gate, a tower
+    /// or a building that does not move (classes 27, 39, 52, and 3 at speed 0, slot 0x208) ends
+    /// the path before that stretch (`FUN_140f98dd0`), or, on the first one, empties it (its
+    /// length kept) and false; a villager's path is never cut.
+    fn walled_off(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        target_id: i32,
+        path: &mut Path,
+    ) -> Result<bool, Unsupported> {
+        let me_at = world.get(me.id);
+        if me_at.is_some_and(|p| p.class == VILLAGER_CLASS) {
+            return Ok(true);
+        }
+        let player = me_at.map(|p| p.player);
+        let ignore = world.query_ignore(&[me.id, target_id]);
+        let grow = self.stats.radius[0] * LONG_PATH_GROW;
+        for i in 0..path.points.len().saturating_sub(1) {
+            let (from, to) = self.query_ends(path.points[i], path.points[i + 1], world.map);
+            let rect = [
+                from[0].min(to[0]),
+                from[1].min(to[1]),
+                from[0].max(to[0]),
+                from[1].max(to[1]),
+            ];
+            world.check_known_records([
+                rect[0] - grow,
+                rect[1] - grow,
+                rect[2] + grow,
+                rect[3] + grow,
+            ])?;
+            let hits = world.walk_hits(
+                from,
+                to,
+                rect,
+                grow,
+                self.stats.min_collision,
+                player,
+                &ignore,
+            )?;
+            let walled = hits.iter().any(|&h| {
+                world.get(h).is_some_and(|p| {
+                    matches!(p.class, WALL_CLASS | GATE | TOWER_CLASS)
+                        || (p.class == BUILDING_CLASS && p.speed <= 0.0)
+                })
+            });
+            if walled {
+                if i == 0 {
+                    path.points.clear();
+                    return Ok(false);
+                }
+                path.points.truncate(i + 1);
+                path.measure();
+                return Ok(true);
+            }
+        }
+        Ok(true)
     }
 
     /// Whether the unit's restriction has a planner (`FUN_140f7cb30`); the slice builds one for
@@ -1851,8 +2004,8 @@ impl Mover {
     }
 
     /// The tile pathfinder (`FUN_140f7c530`) from the unit to `to`, appended to `out`, smoothed
-    /// with the obstruction manager's segment test for the unit (its own and its target's records
-    /// ignored); None without a planner. The planner reads the first byte of the target's record
+    /// with the obstruction manager's segment test for the unit (the records of the smoothing's
+    /// ignore list ignored, [`Pathing::smoothing_ignore`]); None without a planner. The planner reads the first byte of the target's record
     /// (`+0x658`): 3, a box, for the obstruction types 2, 10, 11 and 13 (`FUN_141056460`).
     #[allow(clippy::too_many_arguments)]
     fn tile_plan(
@@ -1878,17 +2031,33 @@ impl Mover {
             closed: Vec::new(),
             full: !plan.computer,
         };
-        let mut ignore = vec![me.id];
-        if let Some(t) = self.paths.first().map(|l| l.target).filter(|&t| t != -1) {
-            ignore.push(t);
-        }
+        // the smoothing's ignore list: the unit and the level's target object (the planner's
+        // argument 12, the object the world holds), a main building's annexes over it
+        let level_target = self
+            .paths
+            .first()
+            .map(|l| l.target)
+            .filter(|&t| t != -1 && world.get(t).is_some());
+        let annexes = level_target
+            .filter(|&t| world.annex_of(t).is_none())
+            .map(|t| world.annexes_of(t))
+            .unwrap_or_default();
+        let (slots, ignore) = plan
+            .pathing
+            .smoothing_ignore(me.id, level_target.map(|t| (t, annexes.as_slice())));
         let (radius, mask) = (self.stats.radius[0], self.stats.restriction_mask);
         let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) else {
             return Ok(None);
         };
-        let mut blocked =
-            |a: [f32; 2], b: [f32; 2]| Ok(world.segment_blocked(a, b, radius, mask, &ignore));
+        let smoothed = std::cell::Cell::new(false);
+        let mut blocked = |a: [f32; 2], b: [f32; 2]| {
+            smoothed.set(true);
+            Ok(world.segment_blocked(a, b, radius, mask, &ignore))
+        };
         let found = planner.plan(&req, target_box, out, Some(&mut blocked))?;
+        if smoothed.get() {
+            plan.pathing.smoothing_ran(slots);
+        }
         Ok(Some(found.code()))
     }
 
