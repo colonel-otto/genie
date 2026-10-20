@@ -19,7 +19,8 @@
 //! its footprint (`FUN_14118f680`), and a unit already in range (`FUN_14118f8c0`) needs no search.
 //!
 //! Not modelled: the path the search can write (`FUN_140f9d770`; the reachability test asks for
-//! none), an allied gate on the way (the tile's record of class 5, slot 0x678) and the search
+//! none), an allied gate on the way (the tile's record of class 5, slot 0x678; another player's
+//! gate is closed) and the search
 //! beside a player's objects when the caller names one (argument 11, `FUN_14152f790`). The pather's flag at `+0x2db638` (terrain the unit
 //! may cross anyway, `FUN_1413fc2b0`) is never set in this build: no instruction writes it.
 
@@ -135,6 +136,9 @@ pub struct LongRequest {
     pub within_range: bool,
     /// Argument 11 is not −1: a blocked tile with no object of the player around counts as open.
     pub near_player: bool,
+    /// The players the unit's player counts as allies (`FUN_141663dc0` with the ally flag), one
+    /// bit each: a gate's tile of another player is closed.
+    pub allies: u64,
 }
 
 /// The open tiles: a binary heap from slot 1, slot 0 the sentinel (`+0x119420`, count
@@ -329,9 +333,16 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
             let open = if word(nx, ny) & blocked == 0 {
                 passes()
             } else if word(nx, ny) & 0x3f00 == GATE_CLASS_BITS {
-                return Err(Unsupported(
-                    "the long pather at a gate's tile (the alliance test, slot 0x678)",
-                ));
+                // a gate's record: its owner (bits 16 to 22) an ally of the unit's player
+                // (`FUN_141663dc0` with the ally flag) asks the gate on the tile's anchor (slot
+                // 0x678); another's gate is closed
+                let owner = (word(nx, ny) >> 16) & 0x7f;
+                if req.allies & (1 << owner) != 0 {
+                    return Err(Unsupported(
+                        "the long pather at an allied gate's tile (slot 0x678)",
+                    ));
+                }
+                false
             } else {
                 // the target's own tiles pass their static record
                 at_goal && req.target.is_some() && passes()
@@ -371,7 +382,8 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
 mod tests {
     use super::*;
 
-    /// A map of `rows` ('#' a blocked tile, 'T' a tall object, '.' open), class 1 everywhere.
+    /// A map of `rows` ('#' a blocked tile, 'T' a tall object, 'G' player 4's gate record, '.'
+    /// open), class 1 everywhere.
     fn tiles(rows: &[&str]) -> (Tiles, [i32; 2]) {
         let (w, h) = (rows[0].len() as i32, rows.len() as i32);
         let mut classes = Vec::new();
@@ -385,6 +397,9 @@ mod tests {
             for (x, c) in r.chars().enumerate() {
                 if c == 'T' {
                     t.add_tall_for_test(x as i32, y as i32);
+                }
+                if c == 'G' {
+                    t.mark_for_test(x as i32, y as i32, BLOCKED | GATE_CLASS_BITS | 4 << 16);
                 }
             }
         }
@@ -403,6 +418,7 @@ mod tests {
             lowered: Vec::new(),
             within_range: false,
             near_player: false,
+            allies: 0b10,
         }
     }
 
@@ -433,6 +449,24 @@ mod tests {
             ".....#....",
         ]);
         assert_eq!(reaches(&t, map, &request([1, 2], [8, 2])), Ok(false));
+    }
+
+    /// The 4v4's scout 27272 (player 1) in update 4627 tests a goal across the wall of its enemy,
+    /// player 4, whose gate's tiles hold their record: the gate is closed to it; an ally's gate
+    /// asks the gate (slot 0x678, not modelled).
+    #[test]
+    fn an_enemy_gate_is_closed() {
+        let (t, map) = tiles(&[
+            ".....#....",
+            ".....#....",
+            ".....G....",
+            ".....#....",
+            ".....#....",
+        ]);
+        assert_eq!(reaches(&t, map, &request([1, 2], [8, 2])), Ok(false));
+        let mut req = request([1, 2], [8, 2]);
+        req.allies |= 1 << 4;
+        assert!(reaches(&t, map, &req).is_err());
     }
 
     #[test]

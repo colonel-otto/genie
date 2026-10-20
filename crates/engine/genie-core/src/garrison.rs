@@ -418,15 +418,18 @@ impl Turns {
         Ok(())
     }
 
-    /// `FUN_14118a610`: whether UNLOAD's `flag` and `unit_type` pick the unit `id`: flag 0 every
-    /// unit but class 42. The other flags (a player, a group of classes, an object, a master
-    /// and its class) are not modelled.
+    /// `FUN_14118a610`: whether UNLOAD's `flag` and `unit_type` (`param`) pick the unit `id`, by
+    /// its master's class and id: flag 0 every unit but class 42; 1 the units of player `param`;
+    /// 2 a group of classes ([`unload_group_takes`]); 3 the object `param`; with the object
+    /// `param` of the world (`FUN_1415417a0`; the unit's player's or none), 4 the units of its
+    /// master (a villager: any villager for a villager), 5 every unit but it and class 42, 6 the
+    /// units not of its master (no villager for a villager, never class 42). Other flags pick none.
     fn unload_picks(
         &self,
         player: usize,
         id: i32,
         flag: u8,
-        _unit_type: i32,
+        param: i32,
     ) -> Result<bool, Unsupported> {
         let unit = self.players[player]
             .objects
@@ -435,11 +438,42 @@ impl Turns {
             .ok_or(Unsupported(
                 "a unit inside a building outside its player's list",
             ))?;
-        let class = self.master_of(player, unit.life.master_id)?.class;
-        match flag {
-            0 => Ok(class != WHOLE_SHARE_CLASS),
-            _ => Err(Unsupported("an unload of some units (its flag above 0)")),
-        }
+        let master = self.master_of(player, unit.life.master_id)?;
+        let class = master.class;
+        // the object `param` names, for flags 4 to 6: its master, and whether it is the unit's
+        // player's (or the world does not hold it)
+        let named = if matches!(flag, 4..=6) {
+            self.object(param)
+                .map(|(p, o)| self.master_of(p, o.life.master_id).map(|m| (p, m)))
+                .transpose()?
+        } else {
+            None
+        };
+        let same_player = named.is_none_or(|(p, _)| p == player);
+        let named = named.map(|(_, m)| m);
+        Ok(match flag {
+            0 => class != WHOLE_SHARE_CLASS,
+            1 => player as i32 == param,
+            2 => unload_group_takes(param, class),
+            3 => id == param,
+            4 => match named.filter(|_| same_player) {
+                Some(m) if m.id == master.id => true,
+                Some(m) => class == VILLAGER_CLASS && m.class == VILLAGER_CLASS,
+                None => false,
+            },
+            5 => same_player && id != param && class != WHOLE_SHARE_CLASS,
+            6 => match named.filter(|_| same_player) {
+                Some(m) if m.id != master.id => {
+                    if class == VILLAGER_CLASS {
+                        m.class != VILLAGER_CLASS
+                    } else {
+                        class != WHOLE_SHARE_CLASS
+                    }
+                }
+                _ => false,
+            },
+            _ => false,
+        })
     }
 
     /// `FUN_1411e7220`: the unit `id` leaves the building at `building` of player `player`
@@ -1091,9 +1125,34 @@ impl EnterAction {
     }
 }
 
+/// UNLOAD's flag 2 (`FUN_14118a610`): the classes of group `group` (1 villagers and class 19;
+/// 2 classes 6, 45, 46, 50 and 56; 3 classes 12, 23, 36, 47 and 57; 5 classes 0 and 44; 6
+/// classes 18, 42 and 43; no other group).
+const fn unload_group_takes(group: i32, class: i16) -> bool {
+    match group {
+        1 => matches!(class, VILLAGER_CLASS | 19),
+        2 => matches!(class, 6 | 45 | 46 | 50 | 56),
+        3 => matches!(class, 12 | 23 | 36 | 47 | 57),
+        5 => matches!(class, 0 | 44),
+        6 => matches!(class, 18 | WHOLE_SHARE_CLASS | 43),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UNLOAD's class groups (flag 2) as `FUN_14118a610` tests them; group 3 is the bit mask
+    /// `0x200801000801000` over classes below 58.
+    #[test]
+    fn the_unload_groups() {
+        let group = |g| (0..64).filter(|&c| unload_group_takes(g, c)).collect::<Vec<_>>();
+        assert_eq!(group(1), [4, 19]);
+        assert_eq!(group(3), [12, 23, 36, 47, 57]);
+        assert_eq!(group(6), [18, 42, 43]);
+        assert_eq!(group(4), [0i16; 0]);
+    }
 
     #[test]
     fn an_enter_walks_to_its_building_unless_it_is_in_reach() {

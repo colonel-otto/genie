@@ -253,6 +253,13 @@ impl Tiles {
         }
     }
 
+    /// Marks (`bits`) on tile (`x`, `y`)'s word, for a test's map.
+    #[cfg(test)]
+    pub(crate) fn mark_for_test(&mut self, x: i32, y: i32, bits: u64) {
+        let i = self.index(x, y).expect("a tile on the map");
+        self.words[i] |= bits;
+    }
+
     /// A tall object on tile (`x`, `y`), for a test's map.
     #[cfg(test)]
     pub(crate) fn add_tall_for_test(&mut self, x: i32, y: i32) {
@@ -942,6 +949,13 @@ impl Spatial {
     /// `FUN_141663dc0` with the ally flag ([`Spatial::allied`]), for the walk's avoidance.
     pub fn allied_with(&self, from: usize, to: usize) -> bool {
         self.allied(from, to)
+    }
+
+    /// The players `from` counts as allies ([`Spatial::allied_with`]), one bit each.
+    pub fn allies_of(&self, from: usize) -> u64 {
+        (0..64usize)
+            .filter(|&to| self.allied(from, to))
+            .fold(0, |bits, to| bits | (1 << to))
     }
 
     /// `FUN_141663dc0` with the ally flag: `to` counts for `from` when it is `from`, or `from`
