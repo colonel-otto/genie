@@ -336,7 +336,7 @@ impl HuntAction {
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
-    ) -> Result<Self, Unsupported> {
+    ) -> Result<(Self, bool), Unsupported> {
         let mut hunt = Self {
             target: target.id,
             state: 0,
@@ -374,10 +374,10 @@ impl HuntAction {
             hunt.target_class = -1;
             hunt.carry_to = target.id;
             hunt.set_drop(attack.gap, mover)?;
-            return Ok(hunt);
+            return Ok((hunt, false));
         }
-        hunt.chase(target, player, attack, arms, mover)?;
-        Ok(hunt)
+        let arrived = hunt.chase(target, player, attack, arms, mover)?;
+        Ok((hunt, arrived))
     }
 
     /// `set_state(4)` (`0x140ac60e0` case 4): the sub-actions go (an Attack's `MoveTo` stops the
@@ -394,7 +394,7 @@ impl HuntAction {
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<bool, Unsupported> {
         self.tear_down(Some(mover))?;
         self.state = 4;
         self.timer = 0.0;
@@ -415,24 +415,19 @@ impl HuntAction {
             } else {
                 MoveTo::Arrived
             });
-            return Ok(());
+            return Ok(false);
         }
         if target.class != CLASS_49 && target.allied {
             // LAB_140ac679d: set_state(13): the timer clears; the unit's sprite (slot 0x68 with
             // FUN_140ac5210's) is the caller's
             self.state = FAILED;
             self.timer = 0.0;
-            return Ok(());
+            return Ok(false);
         }
         self.state = ATTACK;
         let (a, arrived) = Attack::start(target.id, attack, arms, mover)?;
-        if arrived {
-            return Err(Unsupported(
-                "a hunt's Attack whose MoveTo starts arrived on a new target",
-            ));
-        }
         self.attack = Some(a);
-        Ok(())
+        Ok(arrived)
     }
 
     /// Slot 9 (`0x140ac97c0`), the work command's new target for the hunt it keeps: true when the
@@ -472,7 +467,11 @@ impl HuntAction {
         self.target = target.id;
         self.target_class = target.class;
         self.carry_to = -1;
-        self.chase(target, player, attack, arms, mover)?;
+        if self.chase(target, player, attack, arms, mover)? {
+            return Err(Unsupported(
+                "a hunt's Attack whose MoveTo starts arrived on a new target",
+            ));
+        }
         Ok(true)
     }
 
@@ -1251,7 +1250,7 @@ pub(crate) mod tests {
     fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
         let mut mover = walker();
         let mut held = (-1, 0.0);
-        let hunt = HuntAction::start(
+        let (hunt, _) = HuntAction::start(
             CHOP,
             &tree(),
             2,
@@ -1374,7 +1373,7 @@ pub(crate) mod tests {
             ..tree()
         };
         let mut held = (-1, 0.0);
-        let hunt = HuntAction::start(
+        let (hunt, _) = HuntAction::start(
             CHOP,
             &ally,
             2,
@@ -1405,7 +1404,7 @@ pub(crate) mod tests {
         };
         for (q, range) in [(dead, CHOP.range), (sheep, 1.5)] {
             let mut held = (-1, 0.0);
-            let hunt = HuntAction::start(
+            let (hunt, _) = HuntAction::start(
                 CHOP,
                 &q,
                 2,

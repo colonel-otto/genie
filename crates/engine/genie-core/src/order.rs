@@ -1752,12 +1752,91 @@ impl Turns {
                 },
                 point,
                 clears,
+                true,
             ),
             crate::build::BUILD => self.start_build(player, idx, target, &task, point, clears),
             _ => Err(Unsupported(
                 "the action factory for a task the slice does not model",
             )),
         }
+    }
+
+    /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::Effect::HuntObject`], after the
+    /// unit's update): its stopAction (slot 0x3c0: the action list cleared,
+    /// [`Turns::clear_actions`], and in state 2 the standing sprite), then its hunt command (object
+    /// slot 0x360, `FUN_1412151f0`, forced): with no action left slot 0x820 finds the task as the
+    /// work command does ([`crate::masters::Masters::work_master`] with any filter; the master
+    /// switch, slot 0x90) and a Hunt task installs a new Hunt ([`Turns::start_hunt`] without the
+    /// unit AI's notify: `HuntObject` set the AI itself). A target the world does not hold, no task,
+    /// another task's action or a task not enabled would fail the command, which the unit AI took
+    /// as done: not modelled.
+    pub(crate) fn hunt_command(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+    ) -> Result<(), Unsupported> {
+        self.clear_actions(player, idx)?;
+        if self.players[player].objects[idx].life.state == 2 {
+            self.standing_sprite(player, idx)?;
+        }
+        let (tp, t) = self.object(target).ok_or(Unsupported(
+            "a hunt command on an object the world does not hold",
+        ))?;
+        let point = t.position;
+        let _ = tp;
+        let unit = &self.players[player].objects[idx];
+        let found = {
+            let masters = self
+                .masters
+                .get(player)
+                .ok_or(Unsupported("a hunt command: no master table"))?;
+            let owner = &self.players[player];
+            let actor = Actor {
+                id: unit.id,
+                master: self.master_of(player, unit.life.master_id)?,
+                player,
+                held: (unit.life.attribute_type, unit.life.amount),
+                attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+                civ: owner.civ,
+            };
+            let world = World {
+                players: &self.players,
+                drop_sites: &self.drop_sites,
+            };
+            let t = self.task_target(target, 1)?;
+            let general = self.task_target(target, 2)?;
+            masters
+                .work_master(&actor, &t, &general, -1, &world)?
+                .map(|(with, task)| (with, *task))
+        };
+        let (with, task) = found.ok_or(Unsupported("a hunt command without a task"))?;
+        if task.action_type != HUNT {
+            return Err(Unsupported("a hunt command whose task is not a Hunt"));
+        }
+        if self.players[player].objects[idx].life.master_id != with {
+            self.change_master(player, idx, with)?;
+        }
+        if !enabled(&self.players[player].attributes, task.enablement) {
+            return Err(Unsupported("a hunt command whose task is not enabled"));
+        }
+        self.start_hunt(
+            player,
+            idx,
+            target,
+            HuntTask {
+                id: task.id,
+                range: task.work_range,
+                resource: task.attribute_type,
+                sprites: task.sprites,
+                work_value: task.work_val1,
+                productivity: task.attribute_type2,
+                kind4: task.attribute_type4,
+            },
+            point,
+            false,
+            false,
+        )
     }
 
     /// The work command's Build (its task of action type 101, the factory `FUN_140aca4b0` case
@@ -2248,8 +2327,9 @@ impl Turns {
     }
 
     /// The Hunt from the factory (`FUN_140aca4b0` case 0x6e): the action takes its target (slot
-    /// 0x178); the unit AI's notify (`FUN_14106e4e0`) sets the hunt order; the install
-    /// (`FUN_14106e990`) clears the action list and starts the hunt.
+    /// 0x178); the work command's unit AI notify (`FUN_14106e4e0`, `notify`) sets the hunt order;
+    /// the install (`FUN_14106e990`) clears the action list and starts the hunt.
+    #[allow(clippy::too_many_arguments)]
     fn start_hunt(
         &mut self,
         player: usize,
@@ -2258,12 +2338,13 @@ impl Turns {
         task: HuntTask,
         point: [f32; 3],
         clears: bool,
+        notify: bool,
     ) -> Result<(), Unsupported> {
         let mut quarry = self.quarry(player, target)?;
         quarry.drop_site = self.drops_at_main(player, idx, target)?;
         self.take(target);
         let unit = &mut self.players[player].objects[idx];
-        if let Some(ai) = unit.ai.as_mut() {
+        if let Some(ai) = unit.ai.as_mut().filter(|_| notify) {
             ai.notify_work(
                 HUNT_ORDER,
                 HUNT_ACTION,
@@ -2284,7 +2365,7 @@ impl Turns {
             .as_mut()
             .ok_or(Unsupported("a hunter without movement state"))?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
-        let hunt = HuntAction::start(
+        let (hunt, arrived) = HuntAction::start(
             task,
             &quarry,
             player,
@@ -2296,6 +2377,17 @@ impl Turns {
             mover,
         )?;
         (unit.life.attribute_type, unit.life.amount) = held;
+        // an Attack whose MoveTo started arrived: the unit shows the idle sprite (slot 0x68) and
+        // its `+0x7b8` clears (`Attack::arrived_sprite`)
+        if arrived {
+            let g = arms
+                .idle_sprite
+                .ok_or(Unsupported("an attacker without its standing sprite"))?;
+            crate::attack::set_sprite(&mut unit.sprite, g, self.streams.get(Stream::Sprite));
+            if let Some(a) = unit.anim_speed.as_mut() {
+                *a = 0.0;
+            }
+        }
         let drops = hunt.target == -1 && hunt.carry_to == target;
         unit.hunt = Some(hunt);
         // a load to its own drop site: the target taken as the second (FUN_140a7a190), then let

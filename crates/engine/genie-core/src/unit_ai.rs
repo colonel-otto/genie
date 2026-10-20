@@ -182,6 +182,10 @@ pub enum Effect {
     /// (x, y): its Explore takes the point (slot 0x48), else a new Explore to it (`FUN_140a87d30`
     /// at the unit's height) replaces its actions (`FUN_140a98620`, slot 0x808).
     Explore([f32; 2]),
+    /// `HuntObject`'s unit part (`FUN_140c4e220`): the unit's `stopAction` (the AI's slot 0xb0 with
+    /// 1, slot 0x3c0), then its hunt command on the target (object slot 0x360,
+    /// `FUN_1412151f0`, forced; the caller's, `Turns::hunt_command`, after the update).
+    HuntObject(i32),
     /// The AI's move to an object (slot 0x138, `FUN_140c55490`, with its fourth argument 1): the
     /// unit's slot 0x348 (`FUN_141086440`, forced) replaces its actions (`FUN_140a98620`) with a
     /// `MoveTo` to the target within `range` showing the master's running sprite (the walking one
@@ -2101,7 +2105,7 @@ impl UnitAi {
             && self.can_order(at)?
             && !at.garrisoned
         {
-            self.run_orders(&mut fx)?;
+            self.run_orders(at, &mut fx)?;
         }
         let ordered = fx.iter().any(|e| matches!(e, Effect::OrderOnTarget(_)));
         let mut retargeted = false;
@@ -2472,8 +2476,13 @@ impl UnitAi {
     /// (slot 0x1f8 above 0), the attack or the repair order; on the hunt, gather and boar luring
     /// orders with its top action in state 12 (slot 0x2b0), a target of class 10 the world holds
     /// and a Gaia attacker; or on those orders from a class-10 attacker of combat level 1 with its
-    /// top action in state 4, 8, 12 or 15 (`0x9110`). Its attack back on a Gaia attacker and its
-    /// evade are not modelled.
+    /// top action in state 4, 8, 12 or 15 (`0x9110`). A Gaia attacker it attacks back: with an
+    /// order not on the attacker, its current order goes back into the queue at once
+    /// ([`UnitAi::requeue_current`]) and the order becomes the attack (700, the last order kept)
+    /// at priority 100; then the civilian's `AttackObject` (slot 0xb8, `FUN_140c17370`, forced):
+    /// `HuntObject` ([`UnitAi::hunt_object`]) on classes 9, 10 and 15, else `AttackObject`; then
+    /// `+0x1a8` is set and it breaks off. Its evade from another player's attacker is not
+    /// modelled.
     fn villager_damaged(
         &mut self,
         n: Notify,
@@ -2537,11 +2546,37 @@ impl UnitAi {
         if ignores {
             return Ok(GO_ON);
         }
-        Err(Unsupported(if attacker.owner == 0 {
-            "a villager attacking back a Gaia attacker"
+        if attacker.owner != 0 {
+            return Err(Unsupported("a villager evading its attackers"));
+        }
+        // "I have a GAIA attacker": with an order not on the attacker, the current order goes back
+        // into the queue at once (slot 0x30) and the order becomes the attack (700,
+        // `FUN_140c64b60` with 0: the last order kept) at priority 100
+        if self.current_order != -1 && n.caller != self.current_target {
+            self.requeue_current(at, fx)?;
+            if matches!(self.current_order, PATROL | PATROL_2) {
+                return Err(Unsupported(
+                    "a villager leaving a patrol order to attack back",
+                ));
+            }
+            self.current_order = crate::ai_kinds::ORDER_ATTACK;
+            self.order_priority = 100;
+        }
+        // slot 0xb8 forced, the civilian's (`FUN_140c17370`): HuntObject on an animal or a tree
+        // (classes 9, 10, 15), else AttackObject
+        if matches!(attacker.class, 9 | 10 | 15) {
+            self.hunt_object(
+                n.caller,
+                i32::from(attacker.class),
+                attacker.position,
+                at,
+                fx,
+            )?;
         } else {
-            "a villager evading its attackers"
-        }))
+            let _ = self.attack_object(n.caller, true, false, at, side)?;
+        }
+        self.stop_after_kill = true;
+        Ok(BREAK)
     }
 
     /// `ClosestValidAttacker` (`FUN_140c158d0`): over the attackers in their order, those the
@@ -2566,6 +2601,77 @@ impl UnitAi {
             best = (d, id);
         }
         best.1
+    }
+
+    /// `HuntObject` (slot 0xc8, `FUN_140c4e220`) forced on `target` (its master's `class` and its
+    /// `point`): the current action stops (slot 0xb0 with 1) and the unit's hunt command runs on the
+    /// target ([`Effect::HuntObject`], which carries the stop); taken as done (the caller stops on
+    /// a failure): the hunt action value (`0x265`) becomes current, the stopped one the last, the
+    /// target with its class and point (the last ones kept), and the AI counts as commanded.
+    fn hunt_object(
+        &mut self,
+        target: i32,
+        class: i32,
+        point: [f32; 3],
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        self.stop_current(true, at, fx)?;
+        // the unit's stopAction goes with its hunt command, which runs it first
+        if fx.pop() != Some(Effect::Stop) {
+            return Err(Unsupported(
+                "a HuntObject whose stop the slice did not make",
+            ));
+        }
+        fx.push(Effect::HuntObject(target));
+        self.set_action(HUNT_ACTION);
+        self.set_target(target, class, point);
+        self.commanded = true;
+        Ok(())
+    }
+
+    /// Slot 0x30 with the current order, immediate and in front (`FUN_140c55c90` as the
+    /// civilian's damage notify calls it: the issuer the unit, the order, target and its class,
+    /// owner −1, the target point, the range `+0x5c`, the priority `+0x40`, the point shown,
+    /// ready): a unit above state 2 or without an order takes none. The current order goes in
+    /// front of the queue (`FUN_140c42640`), then the given one, the same record, in front too;
+    /// then (an order other than `0x2d9`) the target goes (`FUN_140c5e1e0`) and the action stops
+    /// (slot 0xb0 with 1, which ends an order of its action), the notifies end
+    /// (`FUN_140c5dc10` with 0), the queue's first order runs at once (slot 0x230,
+    /// [`UnitAi::process_order`]) and, unless it was not ready, leaves the queue
+    /// (`FUN_140c5e280`).
+    fn requeue_current(
+        &mut self,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        if 2 < at.state || self.current_order == -1 {
+            return Ok(());
+        }
+        let record = QueuedOrder {
+            issuer: at.id,
+            order: self.current_order,
+            priority: self.order_priority,
+            target: self.current_target,
+            target_owner: -1,
+            point: self.target_point,
+            range: self.desired_distance,
+            shown: [self.target_point[0], self.target_point[1]],
+            ready: true,
+            target_type: self.target_type,
+        };
+        self.orders.insert(0, record);
+        self.orders.insert(0, record);
+        if record.order != crate::ai_kinds::ORDER_ATTACK_ROUNDUP {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        self.clear_notifies(0)?;
+        let front = self.orders[0];
+        if self.process_order(&front, Some(at), fx)? != 0xe {
+            let _ = self.orders.remove(0);
+        }
+        Ok(())
     }
 
     /// `AttackObject` (slot 0xb8, `FUN_140c43720`): `+0x1d5` clears; not `force`d, an AI with an
@@ -3257,7 +3363,7 @@ impl UnitAi {
             return Ok(fx);
         }
         if self.can_order(at)? {
-            self.run_orders(&mut fx)?;
+            self.run_orders(at, &mut fx)?;
         }
         Ok(fx)
     }
@@ -3301,14 +3407,18 @@ impl UnitAi {
     /// 100 waits; each order runs through slot 0x230 ([`UnitAi::process_order`]): one that is not
     /// ready (0xe) stays and the next is tried, any other result removes it, and 1 (taken) ends
     /// the queue's turn.
-    pub fn run_orders(&mut self, fx: &mut Vec<Effect>) -> Result<(), Unsupported> {
+    pub fn run_orders(
+        &mut self,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
         let mut k = 0;
         while k < self.orders.len() {
             if self.current_action != -1 && self.orders[k].priority < 100 {
                 return Ok(());
             }
             let order = self.orders[k];
-            let r = self.process_order(&order, fx)?;
+            let r = self.process_order(&order, Some(at), fx)?;
             if r == 0xe {
                 k += 1;
                 continue;
@@ -3326,8 +3436,14 @@ impl UnitAi {
     /// and the unit's slot 0x2d8 shows its points (`+0x7c0`..`+0x7cc`, not held); once taken
     /// (1) the order and its priority become the AI's (leaving a patrol order caps the secondary
     /// timer). An order on a target (`0x2db`) goes to the unit ([`Effect::OrderOnTarget`]) and is
-    /// taken. Other orders are not modelled.
-    fn process_order(&mut self, o: &QueuedOrder, fx: &mut Vec<Effect>) -> Result<u32, Unsupported> {
+    /// taken; a hunt order (`0x2c9`) runs `HuntObject` ([`UnitAi::hunt_object`]) and is taken. Other
+    /// orders are not modelled.
+    fn process_order(
+        &mut self,
+        o: &QueuedOrder,
+        at: Option<&Surroundings>,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
         if !o.ready {
             return Ok(0xe);
         }
@@ -3339,6 +3455,24 @@ impl UnitAi {
             if !taken {
                 return Ok(0);
             }
+            return self.take_order(o);
+        }
+        if o.order == HUNT_ORDER {
+            // case 0x2c9: HuntObject (slot 0xc8) forced on the target; the tail takes the order
+            let at = at.ok_or(Unsupported("a hunt order run outside the unit AI's update"))?;
+            let (class, point) = if o.target == self.current_target {
+                (self.target_type, self.target_point)
+            } else if let Some(t) = at.target.filter(|_| o.target == self.last_target) {
+                // the target the AI held when its update began (an immediate requeue forgot it)
+                (i32::from(t.class), t.position)
+            } else if let Some(u) = at.unit(o.target) {
+                (i32::from(u.class), u.position)
+            } else {
+                return Err(Unsupported(
+                    "a hunt order on an object the unit AI does not name",
+                ));
+            };
+            self.hunt_object(o.target, class, point, at, fx)?;
             return self.take_order(o);
         }
         if o.order == STOP_ORDER {
@@ -3440,7 +3574,7 @@ impl UnitAi {
         self.remove_target();
         self.stop_with(true, Some(place), fx)?;
         self.clear_notifies(0)?;
-        if self.process_order(&order, fx)? != 0xe {
+        if self.process_order(&order, None, fx)? != 0xe {
             let _ = self.orders.remove(0);
         }
         Ok(())

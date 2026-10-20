@@ -742,6 +742,9 @@ struct Context<'a> {
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
+    /// The targets of the unit AI's `HuntObject`s, in order, whose unit part (the stop, then the
+    /// hunt command) the caller runs after the update ([`Turns::hunt_command`]).
+    hunt_objects: Vec<i32>,
     /// The map's zone maps, which an auto scout's search reads.
     zones: &'a mut crate::zones::Zones,
     /// The other players' lists, as they stand before the unit's update.
@@ -1766,6 +1769,14 @@ impl Unit {
                 }
             }
         }
+        // the Hunt's teardown: its sub-actions go (an Attack's or MoveTo's stops the unit) and the
+        // base teardown lets its target go
+        if let Some(mut h) = self.hunt.take() {
+            h.tear_down(self.mover.as_mut())?;
+            if h.target != -1 {
+                c.releases.push((h.target, self.releaser(c)));
+            }
+        }
         // the Enter's teardown: its MoveTo's stops the unit, and the base teardown
         // (FUN_140a73fc0) lets the building go (slot 0x180; its `+0x60` is 0)
         if let Some(e) = self.enter.take() {
@@ -1864,6 +1875,7 @@ impl Unit {
                     ))?;
                     *tail = Some(after);
                 }
+                Effect::HuntObject(target) => c.hunt_objects.push(target),
                 Effect::Explore(point) => self.explore_to(point, c)?,
                 Effect::MoveToObject { target, range } => self.move_to_object(target, range, c)?,
             }
@@ -1939,7 +1951,11 @@ impl Unit {
                 return Err(Unsupported("a hunter without its hunt or movement state"));
             };
             hunt.carry_to = -1;
-            hunt.chase(&quarry, c.player, &engagement, arms, mover)?;
+            if hunt.chase(&quarry, c.player, &engagement, arms, mover)? {
+                return Err(Unsupported(
+                    "a hunt's Attack whose MoveTo starts arrived after its drop-off",
+                ));
+            }
             if hunt.state == crate::hunt::FAILED {
                 return Err(Unsupported(
                     "a hunt failing on its target after its drop-off",
@@ -1981,78 +1997,83 @@ impl Unit {
                 "slot 0x1b0 of another unit AI than the civilian's",
             ));
         }
-        if crate::unit_ai::civilian_kind(class) != -1 {
-            return Err(Unsupported("a hunt's search by kind (slot 0x80)"));
-        }
-        if hunt.target_class == 10 {
-            return Err(Unsupported("a hunt of class 10 after its drop-off"));
-        }
-        if self.my_pasture != -1 {
-            return Err(Unsupported("a hunter tending a pasture (FUN_1411c7670)"));
-        }
-        let mover = self
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("a hunter without movement state"))?;
-        let sight = master.line_of_sight + 1.0;
-        let radius = if sight <= master.search_radius {
-            master.search_radius
-        } else {
-            sight
-        } + crate::unit_ai::CIVILIAN_SEARCH_GROWTH;
-        let search = Search {
-            at: [self.position[0], self.position[1]],
-            radius,
-            classes: &crate::unit_ai::CIVILIAN_CARED,
-            size: master.radius,
-            pick: crate::unit_ai::Pick::Closest {
-                group: class,
-                relation: -1,
-                state: -1,
-                master: -1,
-                workers: if class == 49 { 1 } else { -1 },
-            },
-        };
-        let me = Me {
-            id: self.id,
-            position: self.position,
-            action_state: hunt.state,
-        };
-        let mut plan = Planning {
-            pathing: c.pathing,
-            now: c.world_time,
-            computer: c.computer,
-            object: c.streams.get(Stream::Object),
-            construction_rate: c.construction_rate,
-        };
-        let master_id = self.life.master_id;
-        let mut reach = |id: i32, range: f32| {
-            mover.reaches_object(&me, spatial, &mut plan, id, range, master_id)
-        };
-        let mut no_attack = crate::unit_ai::NoAttack;
-        let foreign = c.foreign;
-        let moving = |id: i32| herded(others, foreign, id);
-        let shuns = |_: &Placed| -> Result<bool, Unsupported> {
-            Err(Unsupported("a class-10 searcher in a hunt's search"))
-        };
-        let result = spatial.search(
-            self.id,
-            c.player,
-            &search,
-            &mut no_attack,
-            &mut reach,
-            &moving,
-            &shuns,
-        )?;
-        if result.fresh {
-            if result.enemies {
-                return Err(Unsupported(
-                    "a hunt's search after its drop-off finding enemies",
-                ));
+        let kind = crate::unit_ai::civilian_kind(class);
+        let found = if kind == -1 {
+            if hunt.target_class == 10 {
+                return Err(Unsupported("a hunt of class 10 after its drop-off"));
             }
-            ai.alert_mode = false;
-        }
-        let found = result.id;
+            if self.my_pasture != -1 {
+                return Err(Unsupported("a hunter tending a pasture (FUN_1411c7670)"));
+            }
+            let mover = self
+                .mover
+                .as_ref()
+                .ok_or(Unsupported("a hunter without movement state"))?;
+            let sight = master.line_of_sight + 1.0;
+            let radius = if sight <= master.search_radius {
+                master.search_radius
+            } else {
+                sight
+            } + crate::unit_ai::CIVILIAN_SEARCH_GROWTH;
+            let search = Search {
+                at: [self.position[0], self.position[1]],
+                radius,
+                classes: &crate::unit_ai::CIVILIAN_CARED,
+                size: master.radius,
+                pick: crate::unit_ai::Pick::Closest {
+                    group: class,
+                    relation: -1,
+                    state: -1,
+                    master: -1,
+                    workers: if class == 49 { 1 } else { -1 },
+                },
+            };
+            let me = Me {
+                id: self.id,
+                position: self.position,
+                action_state: hunt.state,
+            };
+            let mut plan = Planning {
+                pathing: c.pathing,
+                now: c.world_time,
+                computer: c.computer,
+                object: c.streams.get(Stream::Object),
+                construction_rate: c.construction_rate,
+            };
+            let master_id = self.life.master_id;
+            let mut reach = |id: i32, range: f32| {
+                mover.reaches_object(&me, spatial, &mut plan, id, range, master_id)
+            };
+            let mut no_attack = crate::unit_ai::NoAttack;
+            let foreign = c.foreign;
+            let moving = |id: i32| herded(others, foreign, id);
+            let shuns = |_: &Placed| -> Result<bool, Unsupported> {
+                Err(Unsupported("a class-10 searcher in a hunt's search"))
+            };
+            let result = spatial.search(
+                self.id,
+                c.player,
+                &search,
+                &mut no_attack,
+                &mut reach,
+                &moving,
+                &shuns,
+            )?;
+            if result.fresh {
+                if result.enemies {
+                    return Err(Unsupported(
+                        "a hunt's search after its drop-off finding enemies",
+                    ));
+                }
+                ai.alert_mode = false;
+            }
+            result.id
+        } else {
+            // the unit AI's ClosestResourceObject (slot 0x80) of the kind, at most 2 workers for
+            // wood, no drop site, state 2, no point (the probe of 4533's call)
+            let cap = if kind == 0 { 2 } else { -1 };
+            self.resource_search(c, others, kind as u8, cap)?
+        };
         if found == -1 {
             return Err(Unsupported("a hunt that found nothing after its drop-off"));
         }
@@ -8172,6 +8193,7 @@ impl Turns {
                     gate_toggle: false,
                     ai_resume: resume.take(),
                     order_on_target: None,
+                    hunt_objects: Vec::new(),
                     zones: &mut self.zones,
                     foreign: Foreign { before, after },
                 };
@@ -8180,6 +8202,7 @@ impl Turns {
                     std::mem::take(&mut c.attribute_adds),
                     c.order_on_target.take(),
                 );
+                let hunt_objects = std::mem::take(&mut c.hunt_objects);
                 let techs_done = std::mem::take(&mut c.techs_done);
                 let work_order = c.work_order.take();
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
@@ -8276,6 +8299,18 @@ impl Turns {
                             "a builder's work order of a unit that leaves its list",
                         )));
                     } else if let Err(e) = self.order_work(p, i, &work) {
+                        result = Err(e);
+                    }
+                }
+                // the unit AI's HuntObjects: each the unit's stop, then its hunt command
+                for target in hunt_objects {
+                    if !matches!(result, Ok(Step::Stay)) {
+                        result = result.and(Err(Unsupported(
+                            "a HuntObject of a unit that leaves its list",
+                        )));
+                        break;
+                    }
+                    if let Err(e) = self.hunt_command(p, i, target) {
                         result = Err(e);
                     }
                 }
