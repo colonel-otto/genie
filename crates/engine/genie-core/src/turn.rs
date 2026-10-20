@@ -752,6 +752,9 @@ struct Context<'a> {
     /// The targets of the unit AI's `HuntObject`s, in order, whose unit part (the stop, then the
     /// hunt command) the caller runs after the update ([`Turns::hunt_command`]).
     hunt_objects: Vec<i32>,
+    /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
+    /// ([`Turns::build_object`]).
+    build_object: Option<i32>,
     /// The map's zone maps, which an auto scout's search reads.
     zones: &'a mut crate::zones::Zones,
     /// The other players' lists, as they stand before the unit's update.
@@ -934,6 +937,65 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
 }
 
 impl crate::unit_ai::UnitSide for UnitView<'_> {
+    /// `FUN_140c1c7c0`: the flood ([`crate::unit_ai::flood_search`]) from the unit's tile over the
+    /// larger of its search radius (slot 0x2c8) and its line of sight, truncated, testing each tile
+    /// it reaches (`FUN_140c2b950`: the first object of its tile's list, in order, of type 80 or
+    /// more in state 0 of the unit's player); −1 for none.
+    fn foundation_search(&mut self) -> Result<i32, Unsupported> {
+        let unit = &*self.unit;
+        let master = self
+            .masters
+            .and_then(|m| m.get(unit.life.master_id))
+            .ok_or(Unsupported("a builder of a master the slice does not have"))?;
+        let r = if master.search_radius <= master.line_of_sight {
+            master.line_of_sight
+        } else {
+            master.search_radius
+        } as i32;
+        let (ux, uy) = (unit.position[0] as i32, unit.position[1] as i32);
+        let (player, others, masters, spatial) =
+            (self.player, self.others, self.masters, self.spatial);
+        let foundation_on = |x: i32, y: i32| -> Option<i32> {
+            spatial.objects_on(x, y).find_map(|(id, p)| {
+                if p.player != player {
+                    return None;
+                }
+                let u = others.iter().find(|u| u.id == id)?;
+                let kind = masters.and_then(|m| m.get(u.life.master_id))?.kind;
+                (80 <= kind && u.life.state == 0).then_some(id)
+            })
+        };
+        Ok(crate::unit_ai::flood_search((ux, uy), r, foundation_on).unwrap_or(-1))
+    }
+
+    fn reaches(&mut self, target: i32, range: f32) -> Result<bool, Unsupported> {
+        let mut plan = Planning {
+            pathing: self.pathing,
+            now: self.world_time,
+            computer: self.computer,
+            object: self.object,
+            construction_rate: self.construction_rate,
+        };
+        let unit = &*self.unit;
+        let walker = Me {
+            id: unit.id,
+            position: unit.position,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let mover = unit
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("a reach test of a unit that does not move"))?;
+        mover.reaches_object(
+            &walker,
+            self.spatial,
+            &mut plan,
+            target,
+            range,
+            unit.life.master_id,
+        )
+    }
+
     fn closest(&mut self, search: &Search<'_>) -> Result<crate::unit_ai::Found, Unsupported> {
         let seeker = match search.pick {
             crate::unit_ai::Pick::Attack { seeker, .. } => Some(seeker),
@@ -1951,6 +2013,11 @@ impl Unit {
                     *tail = Some(after);
                 }
                 Effect::HuntObject(target) => c.hunt_objects.push(target),
+                Effect::BuildObject(target) => {
+                    if c.build_object.replace(target).is_some() {
+                        return Err(Unsupported("two BuildObjects in one update"));
+                    }
+                }
                 Effect::Explore(point) => self.explore_to(point, c)?,
                 Effect::MoveToObject { target, range } => self.move_to_object(target, range, c)?,
             }
@@ -5525,21 +5592,6 @@ impl Unit {
                 interruptible,
                 task_0x99: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x99)),
                 garrisoned: self.life.inside.is_some(),
-                foundations: master.is_some_and(|m| {
-                    let reach = m.search_radius.max(m.line_of_sight) as i32;
-                    let (x, y) = (self.position[0] as i32, self.position[1] as i32);
-                    others.iter().any(|u| {
-                        let (ux, uy) = (u.position[0] as i32, u.position[1] as i32);
-                        u.life.state == 0
-                            && c.masters
-                                .and_then(|ms| ms.get(u.life.master_id))
-                                .is_some_and(|um| 80 <= um.kind)
-                            && x - reach <= ux
-                            && ux < x + reach
-                            && y - reach <= uy
-                            && uy < y + reach
-                    })
-                }),
                 state: self.life.state,
                 kind: master.map_or(0, |m| m.kind),
                 capture: c
@@ -7762,26 +7814,58 @@ impl Turns {
         Ok(())
     }
 
-    /// The build order (`0x2be`) a unit AI's queue runs (slot 0x230's case: slot 0xf0,
-    /// `FUN_140c47d80`, with 1) on its foundation: the unit's slot 0x380 (`FUN_14120d410`) finds
-    /// the task through slot 0x820 (the work command's master switch,
-    /// [`Masters::work_master`]) and installs its Build action (the action list cleared); then
-    /// the AI's action becomes the build action (602; the last one kept), its target the
-    /// foundation (the last one kept) at its place with its master's class, and the tail takes
-    /// the order (702) with its priority. Unlike BUILD's own path neither the town-bell record nor
-    /// the work's notify. A unit already building (its Build kept or retargeted, slot 0x48) is
-    /// not modelled.
+    /// The build order (`0x2be`) a unit AI's queue runs (slot 0x230's case: slot 0xf0 with 1 on its
+    /// foundation, [`Turns::build_object`]), then the tail takes the order (702) with its
+    /// priority.
     pub(crate) fn build_order(
         &mut self,
         player: usize,
         idx: usize,
         order: crate::unit_ai::QueuedOrder,
     ) -> Result<(), Unsupported> {
-        let foundation = order.target;
-        if self.players[player].objects[idx].build.is_some() {
-            return Err(Unsupported(
-                "a build order of a unit already building (slot 0x48)",
-            ));
+        self.build_object(player, idx, order.target)?;
+        let ai = self.players[player].objects[idx]
+            .ai
+            .as_mut()
+            .ok_or(Unsupported("a build order without a unit AI"))?;
+        // the tail (`LAB_140c5d432`)
+        ai.current_order = BUILD_ORDER;
+        ai.order_priority = order.priority;
+        Ok(())
+    }
+
+    /// `BuildObject` (the unit AI's slot 0xf0, `FUN_140c47d80`, with 1) on `foundation`: the
+    /// unit's slot 0x380 (`FUN_14120d410`) with a Build on top hands it the foundation (its slot
+    /// 0x48, [`Turns::build_take`]); without one it finds the task through slot 0x820 (the work
+    /// command's master switch, [`Masters::work_master`]) and installs its Build action (the
+    /// action list cleared). Then the AI's action becomes the build action (602; the last one
+    /// kept) and its target the foundation (the last one kept) at its place with its master's
+    /// class. Unlike BUILD's own path neither the town-bell record nor the work's notify. A
+    /// foundation that is gone or without a Build task (slot 0x380's 0) is not modelled.
+    pub(crate) fn build_object(
+        &mut self,
+        player: usize,
+        idx: usize,
+        foundation: i32,
+    ) -> Result<(), Unsupported> {
+        if self.players[player].objects[idx].top_action_kind() == Some(BUILD) {
+            let class = self.build_take(player, idx, foundation)?;
+            let f_at = self
+                .object(foundation)
+                .map(|(_, f)| f.position)
+                .ok_or(Unsupported("a BuildObject on a foundation that is gone"))?;
+            let ai = self.players[player].objects[idx]
+                .ai
+                .as_mut()
+                .ok_or(Unsupported("a BuildObject without a unit AI"))?;
+            ai.last_action = ai.current_action;
+            ai.current_action = BUILD_ACTION;
+            ai.target_point = f_at;
+            ai.last_target = ai.current_target;
+            ai.last_target_type = ai.target_type;
+            ai.current_target = foundation;
+            ai.target_type = class;
+            return Ok(());
         }
         let (fp, f) = self
             .object(foundation)
@@ -7866,7 +7950,7 @@ impl Turns {
         let ai = unit
             .ai
             .as_mut()
-            .ok_or(Unsupported("a build order without a unit AI"))?;
+            .ok_or(Unsupported("a BuildObject without a unit AI"))?;
         // FUN_140c47d80
         ai.last_action = ai.current_action;
         ai.current_action = BUILD_ACTION;
@@ -7875,9 +7959,6 @@ impl Turns {
         ai.last_target_type = ai.target_type;
         ai.current_target = foundation;
         ai.target_type = class;
-        // the tail (`LAB_140c5d432`)
-        ai.current_order = BUILD_ORDER;
-        ai.order_priority = order.priority;
         Ok(())
     }
 
@@ -8542,6 +8623,7 @@ impl Turns {
                     ai_resume: resume.take(),
                     order_on_target: None,
                     hunt_objects: Vec::new(),
+                    build_object: None,
                     zones: &mut self.zones,
                     foreign: Foreign { before, after },
                 };
@@ -8551,6 +8633,7 @@ impl Turns {
                     c.order_on_target.take(),
                 );
                 let hunt_objects = std::mem::take(&mut c.hunt_objects);
+                let build_object = c.build_object.take();
                 let techs_done = std::mem::take(&mut c.techs_done);
                 let work_order = c.work_order.take();
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
@@ -8659,6 +8742,16 @@ impl Turns {
                         break;
                     }
                     if let Err(e) = self.hunt_command(p, i, target) {
+                        result = Err(e);
+                    }
+                }
+                // the unit AI's BuildObject on a foundation its builder's search found
+                if let Some(foundation) = build_object {
+                    if !matches!(result, Ok(Step::Stay)) {
+                        result = result.and(Err(Unsupported(
+                            "a BuildObject of a unit that leaves its list",
+                        )));
+                    } else if let Err(e) = self.build_object(p, i, foundation) {
                         result = Err(e);
                     }
                 }

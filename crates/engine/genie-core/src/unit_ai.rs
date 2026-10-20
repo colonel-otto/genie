@@ -196,6 +196,10 @@ pub enum Effect {
         /// The range within which the `MoveTo` arrives.
         range: f32,
     },
+    /// `BuildObject` (the AI's slot 0xf0, `FUN_140c47d80`, with 1) on the foundation: the unit's
+    /// slot 0x380 builds it, then the AI's action becomes the build action and its target the
+    /// foundation (the caller's, `Turns::build_object`, after the update).
+    BuildObject(i32),
 }
 
 /// What a full update that took an order on a target ([`Effect::OrderOnTarget`]) leaves for
@@ -977,6 +981,24 @@ pub trait UnitSide {
     ///
     /// What the search does not model.
     fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported>;
+
+    /// The builder's search for another foundation (`FUN_140c1c7c0`): −1 for none.
+    ///
+    /// # Errors
+    ///
+    /// What the search does not model.
+    fn foundation_search(&mut self) -> Result<i32, Unsupported> {
+        Err(Unsupported("a builder's search without the world"))
+    }
+
+    /// Slot 0x3d0: whether the unit reaches object `target` within `range`.
+    ///
+    /// # Errors
+    ///
+    /// What the reach test does not model.
+    fn reaches(&mut self, _target: i32, _range: f32) -> Result<bool, Unsupported> {
+        Err(Unsupported("a reach test without the world"))
+    }
 }
 
 impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
@@ -1034,6 +1056,41 @@ impl Found {
         position: None,
         fresh: true,
     };
+}
+
+/// The builder's flood of `FUN_140c1c7c0` from tile `at` with reach `r`: the start is tested
+/// first; then each tile it reached, the first queued first, tries its neighbours left, right,
+/// below and above (x − 1, x + 1, y − 1, y + 1) while it lies less than `r − 1` from the start on
+/// both axes, and a neighbour not yet reached is tested and queued. The first tile `test` names
+/// an object on answers it.
+pub fn flood_search(
+    at: (i32, i32),
+    r: i32,
+    mut test: impl FnMut(i32, i32) -> Option<i32>,
+) -> Option<i32> {
+    let (ux, uy) = at;
+    let mut reached = std::collections::HashSet::from([at]);
+    if let Some(id) = test(ux, uy) {
+        return Some(id);
+    }
+    let mut queue = vec![at];
+    let mut next = 0;
+    while let Some(&(qx, qy)) = queue.get(next) {
+        next += 1;
+        if (ux - qx).abs() >= r - 1 || (uy - qy).abs() >= r - 1 {
+            continue;
+        }
+        for (x, y) in [(qx - 1, qy), (qx + 1, qy), (qx, qy - 1), (qx, qy + 1)] {
+            if !reached.insert((x, y)) {
+                continue;
+            }
+            if let Some(id) = test(x, y) {
+                return Some(id);
+            }
+            queue.push((x, y));
+        }
+    }
+    None
 }
 
 /// A search that never runs (units without a search).
@@ -1097,11 +1154,6 @@ pub struct Surroundings {
     pub task_0x99: bool,
     /// An object of type 70 or more inside another (`+0x2f0`): it runs no queued order.
     pub garrisoned: bool,
-    /// A building of the owner's in state 0 (a foundation) stands on a tile of the builder's
-    /// search square (`FUN_140c1c7c0`: the larger of the line of sight and the search radius,
-    /// truncated, each way from the unit's tile), whose search the slice does not run: without one
-    /// it finds nothing.
-    pub foundations: bool,
     /// The unit's state (`+0x640`), type (`+0xf`), `+0x924` and master id.
     pub state: u8,
     /// The unit's type (`+0xf`).
@@ -1270,6 +1322,9 @@ pub const AUTO_SCOUT_ACTION: i32 = 0x2bd;
 pub const EXPLORE_ACTION: i32 = crate::explore::EXPLORE_ACTION;
 /// The height of the explore's target point (`FUN_140c4d910`, `DAT_14330eb8c`).
 const EXPLORE_Z: f32 = crate::image::unit_ai::EXPLORE_Z;
+/// The villager's reach test of the foundation its search found (slot 0x3d0 in
+/// `FUN_140c22bf0`, `DAT_142eb5690`).
+const FOUNDATION_REACH: f32 = crate::image::unit_ai::FOUNDATION_REACH;
 /// The move action value (`0x262`).
 pub const MOVE_ACTION: i32 = 0x262;
 /// The follow order (`0x2c8`, "I have a follow order for Unit #%d" in slot 73) and its action
@@ -2818,14 +2873,16 @@ impl UnitAi {
             // a completion or failure of its action stops it, and slot 0x48
             // passes the notify to its owner's slot 0x2e8 (not held); a failed build (0x202, its
             // Build waiting without work, action 0x25a) looks for another foundation to build
-            // (FUN_140c1c7c0, when the player's +0x613 is 0: unsaved, 0 in this game) and, finding
-            // none, a human player's villager stops (slot 0x3c0) and the processing breaks
+            // (FUN_140c1c7c0, when the player's +0x613 is 0: unsaved, 0 in this game): one the
+            // unit reaches within 0.1 (slot 0x3d0) it builds (slot 0xf0 with 1) and the processing
+            // breaks; finding none, or not reaching it, a human player's villager stops (slot
+            // 0x3c0) and the processing breaks
             8 => match n.kind {
                 0x202 if self.current_action == BUILD_ACTION => {
-                    if at.foundations {
-                        return Err(Unsupported(
-                            "a builder's search that finds another foundation (FUN_140c1c7c0)",
-                        ));
+                    let found = side.foundation_search()?;
+                    if found != -1 && side.reaches(found, FOUNDATION_REACH)? {
+                        fx.push(Effect::BuildObject(found));
+                        return Ok(BREAK);
                     }
                     if computer {
                         return Err(Unsupported("a computer builder without a foundation"));
@@ -3933,6 +3990,35 @@ mod tests {
         attacks: Vec<(i32, bool)>,
         under_attack: Option<bool>,
         stops: Vec<usize>,
+    }
+
+    /// The builder's flood: of two foundations two tiles off, the one left of the unit comes before
+    /// the one above it (the neighbours go left, right, below, above); one at the edge of the reach
+    /// (`r − 1` tiles) is tested but its tile is not spread from, one beyond is never reached.
+    #[test]
+    fn the_builder_s_flood_tests_left_right_below_above() {
+        let at = (50, 50);
+        let found = flood_search(at, 8, |x, y| match (x, y) {
+            (48, 50) => Some(1),
+            (50, 52) => Some(2),
+            _ => None,
+        });
+        assert_eq!(found, Some(1));
+        let mut tested = Vec::new();
+        assert_eq!(
+            flood_search(at, 3, |x, y| {
+                tested.push((x, y));
+                None
+            }),
+            None
+        );
+        // r = 3: tiles less than 2 from the start spread: the 3x3 square, then its neighbours
+        assert_eq!(tested.len(), 1 + 4 + 4 + 12);
+        assert!(tested.contains(&(52, 50)) && !tested.contains(&(53, 50)));
+        assert_eq!(
+            &tested[..5],
+            &[(50, 50), (49, 50), (51, 50), (50, 49), (50, 51)]
+        );
     }
 
     impl UnitSide for Recorder {

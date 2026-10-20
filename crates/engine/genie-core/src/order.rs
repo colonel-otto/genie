@@ -1934,6 +1934,29 @@ impl Turns {
         point: [f32; 3],
         clears: bool,
     ) -> Result<(), Unsupported> {
+        let class = self.build_take(player, idx, target)?;
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                crate::unit_ai::BUILD_ORDER,
+                crate::unit_ai::BUILD_ACTION,
+                Some((target, class)),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// The Build's slot 0x48 (`FUN_140ab1b30`) on `target` ([`Turns::retake_build`]'s part
+    /// before the notify): returns the target's master class.
+    pub(crate) fn build_take(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+    ) -> Result<i32, Unsupported> {
         let (tp, t) = self
             .object(target)
             .ok_or(Unsupported("a Build's foundation the slice does not hold"))?;
@@ -1964,17 +1987,7 @@ impl Turns {
                 return Err(Unsupported("a Build's retarget without its Build"));
             };
             build.retarget(target, gap, mover)?;
-            if let Some(ai) = unit.ai.as_mut() {
-                ai.notify_work(
-                    crate::unit_ai::BUILD_ORDER,
-                    crate::unit_ai::BUILD_ACTION,
-                    Some((target, class)),
-                    point,
-                    clears,
-                    self.streams.get(Stream::Ai),
-                )?;
-            }
-            return Ok(());
+            return Ok(class);
         }
         let computer = self.players[player].computer;
         let Some(Place::Live(fp, fi)) = self.place(target) else {
@@ -1992,17 +2005,7 @@ impl Turns {
         let unit = &mut self.players[player].objects[idx];
         (unit.build, unit.mover) = (build, mover);
         r?;
-        if let Some(ai) = unit.ai.as_mut() {
-            ai.notify_work(
-                crate::unit_ai::BUILD_ORDER,
-                crate::unit_ai::BUILD_ACTION,
-                Some((target, class)),
-                point,
-                clears,
-                self.streams.get(Stream::Ai),
-            )?;
-        }
-        Ok(())
+        Ok(class)
     }
 
     /// `FUN_140aaddb0` and the builder count: the foundation `id` a Build counted its builder

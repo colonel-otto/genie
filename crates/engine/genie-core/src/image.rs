@@ -468,6 +468,8 @@ pub mod unit_ai {
     pub const FOLLOW_SLACK_HIGH: f32 = f32::from_bits(0x3f80_0000);
     /// -1.0
     pub const FOLLOW_SLACK_LOW: f32 = f32::from_bits(0xbf80_0000);
+    /// 0.10000000149011612
+    pub const FOUNDATION_REACH: f32 = f32::from_bits(0x3dcc_cccd);
     /// 3.0
     pub const RETARGET_RANGE: f32 = f32::from_bits(0x4040_0000);
     /// 0.5
