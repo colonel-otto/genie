@@ -783,6 +783,9 @@ struct Context<'a> {
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
     /// ([`Turns::build_object`]).
     build_object: Option<i32>,
+    /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
+    /// update ([`Turns::lead_herd`]).
+    leads: Option<(i32, i32)>,
     /// The map's zone maps, which an auto scout's search reads.
     zones: &'a mut crate::zones::Zones,
     /// The other players' lists, as they stand before the unit's update.
@@ -1526,6 +1529,30 @@ impl Unit {
         })
     }
 
+    /// Its top action's slots 0x190 and 0x288 (`FUN_14106d090`, `FUN_141082dc0`): the action has
+    /// neither a target nor a point (`+0x30`, `+0x38` −1), or there is none. An Artifact holds
+    /// them while it walks a move ([`crate::artifact::Artifact::idle`]); a `MoveTo` always holds
+    /// its point.
+    ///
+    /// # Errors
+    ///
+    /// A top action the slice does not model.
+    pub fn top_action_idle(&self) -> Result<bool, Unsupported> {
+        if self.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "slots 0x190 and 0x288 of an action the slice does not model",
+            ));
+        }
+        match self.top_action_kind() {
+            None => Ok(true),
+            Some(crate::artifact::ARTIFACT_TYPE) => Ok(self.artifact.is_some_and(|a| a.idle())),
+            Some(crate::move_to::MOVE_TO) => Ok(false),
+            Some(_) => Err(Unsupported(
+                "slots 0x190 and 0x288 of an action the slice does not model",
+            )),
+        }
+    }
+
     /// The type of its top action, if it has one.
     #[must_use]
     pub fn top_action_kind(&self) -> Option<i16> {
@@ -1563,11 +1590,12 @@ impl Unit {
     }
 
     /// The target of its top action ([`Unit::top_action`]), −1 for an action without one (an
-    /// Artifact, a Fly, an Explore); None without an action the slice holds.
+    /// Artifact not moving to an object, a Fly, an Explore); None without an action the slice
+    /// holds.
     #[must_use]
     pub fn top_target(&self) -> Option<i32> {
-        if self.artifact.is_some() {
-            return Some(-1);
+        if let Some(a) = self.artifact {
+            return Some(a.target);
         }
         None.or_else(|| self.build.map(|b| b.target))
             .or_else(|| self.move_to.map(|m| m.target))
@@ -5379,6 +5407,14 @@ impl Unit {
             if 0.0 <= hunt.timer {
                 return Err(Unsupported("a hunt's set_state 11 after its wait"));
             }
+        } else if self
+            .hunt
+            .as_ref()
+            .is_some_and(|h| h.state == crate::hunt::LEAD && h.target == -1)
+        {
+            // state 10 without its target (0x140ac7a00 case 9): set_state(3), the search
+            self.hunt.as_mut().expect("above").state = crate::hunt::SEARCH;
+            self.hunt_set_search(c, others)?;
         } else if tree_lost && self.hunt_tree_search(c, others)? {
             // the hunt took the next tree (slot 0x48): its MoveTo's code 5 ends the update
         } else if let Some(hunt) = self.hunt.as_mut() {
@@ -5418,10 +5454,12 @@ impl Unit {
                 sprites,
                 tree_searched: tree_lost,
                 searches: false,
+                leads: None,
             };
-            // what set_state(6) on live livestock reads (0x140ac60e0 case 6)
-            let herd = if hunt.state == crate::hunt::WALK
-                && hunt.move_to == Some(MoveTo::Arrived)
+            // what set_state(6) on live livestock reads (0x140ac60e0 case 6), and the lead's
+            // update (state 10)
+            let faces = hunt.state == crate::hunt::WALK && hunt.move_to == Some(MoveTo::Arrived);
+            let herd = if (faces || hunt.state == crate::hunt::LEAD)
                 && victim.class == crate::hunt::LIVESTOCK
                 && victim.state <= 2
             {
@@ -5479,11 +5517,29 @@ impl Unit {
                         })
                         .transpose()?
                 };
+                // the animal's top action without a target or a point (slots 0x190, 0x288)
+                let idle = match others.iter().find(|u| u.id == hunt.target) {
+                    Some(u) => u.top_action_idle()?,
+                    None => false,
+                };
                 Some(crate::hunt::Herd {
                     own,
                     drop_site,
                     engagement,
                     arms,
+                    idle,
+                    special_graphic: if master.kind == 70 && master.special_graphic {
+                        Some(
+                            c.graphics
+                                .get(&master.special_sprite)
+                                .copied()
+                                .ok_or(Unsupported(
+                                    "a special graphic the data file does not have",
+                                ))?,
+                        )
+                    } else {
+                        None
+                    },
                 })
             } else {
                 None
@@ -5530,6 +5586,7 @@ impl Unit {
             };
             let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let searches = gather.searches;
+            let leads = gather.leads.map(|site| (hunt.target, site));
             let fired = strike.fire.map(|target| {
                 let v = &*strike.victim;
                 Aimed {
@@ -5555,6 +5612,7 @@ impl Unit {
             if searches {
                 self.hunt_set_search(c, others)?;
             }
+            c.leads = leads;
         } else if let Some(attack) = self.attack.as_mut().filter(|a| a.target == -1) {
             // the unit's own Attack after its target went ([`Attack::lost`])
             let master = c
@@ -8852,6 +8910,7 @@ impl Turns {
                     order_on_target: None,
                     hunt_objects: Vec::new(),
                     build_object: None,
+                    leads: None,
                     zones: &mut self.zones,
                     foreign: Foreign { before, after },
                 };
@@ -8861,6 +8920,7 @@ impl Turns {
                     c.order_on_target.take(),
                 );
                 let hunt_objects = std::mem::take(&mut c.hunt_objects);
+                let leads = c.leads.take();
                 let build_object = c.build_object.take();
                 let techs_done = std::mem::take(&mut c.techs_done);
                 let work_order = c.work_order.take();
@@ -8985,6 +9045,13 @@ impl Turns {
                     }
                 }
                 // the unit AI's HuntObjects: each the unit's stop, then its hunt command
+                // a hunt's set_state(6) on its own livestock: the animal's slot 0x138 to the drop
+                // site and the herd around it (FUN_140ac4c60)
+                if let Some((sheep, site)) = leads
+                    && let Err(e) = self.lead_herd(p, sheep, site)
+                {
+                    result = Err(e);
+                }
                 for target in hunt_objects {
                     if !matches!(result, Ok(Step::Stay)) {
                         result = result.and(Err(Unsupported(

@@ -12,7 +12,7 @@ use crate::move_to::{
     Goal, MoveTo, MoveWait, Walk, start_walk, start_walk_or_give_up, target_moved, walk_on,
     walk_or_give_up,
 };
-use crate::movement::{Mover, footprint_gap};
+use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::sprite::Graphic;
 use crate::unit_ai::Unsupported;
 
@@ -28,6 +28,9 @@ pub const FACE: u8 = 6;
 pub const GATHER: u8 = 7;
 /// State 8: taking the load to its drop site.
 pub const DROP: u8 = 8;
+/// State 10 (`0xa`): leading its own livestock to the drop site, it waits for the animal to stop
+/// there.
+pub const LEAD: u8 = 10;
 /// State 12 (`0xc`): attacking it.
 pub const ATTACK: u8 = 12;
 /// State 13: the hunt failed; its next update tells its unit AI (notify 0x1f9) and ends it.
@@ -54,6 +57,14 @@ const ARRIVED: f32 = 0.01;
 /// Own livestock farther than this squared from its drop site is led there first
 /// (`DAT_142ecccc4`).
 const HERD_REACH: f32 = crate::image::hunt::HERD_REACH;
+/// Own livestock this far squared from its drop site or farther is slaughtered where it stands
+/// (`DAT_142eb0f64`).
+const HERD_FAR: f32 = 900.0;
+/// A herder within this squared gap of the livestock it leads waits for it again
+/// (`DAT_142ed7180`).
+const LEAD_REACH: f32 = 2.25;
+/// The wait of a herder leading livestock (`set_state(10)`'s timer, `0xbf800000`).
+const LEAD_WAIT: f32 = -1.0;
 /// A face on dead livestock beyond the task's range plus this walks again (`DAT_142eb5690`).
 const GAP: f32 = crate::image::hunt::GAP;
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
@@ -104,6 +115,20 @@ pub struct HuntAction {
     pub timer: f32,
     /// Its `MoveTo`'s wait after the motion step gave up.
     pub move_wait: MoveWait,
+    /// What it keeps of the livestock it leads to its drop site.
+    pub lead: Lead,
+}
+
+/// What a hunt keeps of the livestock it leads to its drop site (`TRIBE_Action_Hunt`'s
+/// `moved_sheep` `+0x6c`, `sheep_still_time` `+0x74` and `sheep_start_x`, `_y` `+0x78`, `+0x7c`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Lead {
+    /// `moved_sheep`: the hunt sent its livestock off once.
+    pub moved: bool,
+    /// `sheep_still_time`, which `set_state(10)` clears.
+    pub still_time: i16,
+    /// `sheep_start_x`, `_y`: where the animal stood when the hunt last looked.
+    pub start: [f32; 2],
 }
 
 /// What the drop-off reads of its drop site on arrival: that the site takes what the unit carries
@@ -128,6 +153,12 @@ pub struct Herd {
     pub engagement: Engagement,
     /// The Attack's sprites and frames.
     pub arms: Arms,
+    /// The target's top action has neither a target nor a point (its slots 0x190 and 0x288,
+    /// `FUN_14106d090`, `FUN_141082dc0`): it stands where it was sent.
+    pub idle: bool,
+    /// The hunter is of type 70 and its master has a special graphic (`+0x8e8`): the sprite
+    /// leading shows.
+    pub special_graphic: Option<Graphic>,
 }
 
 /// What the hunt reads of its task (`+0x48`): its id in the master's list (`+0xa`; the work command
@@ -288,6 +319,9 @@ pub struct Gatherer<'a> {
     /// Out: the hunt let its target go and asks for `set_state(3)`'s search (the caller's: the
     /// drop site, the notify, the sprite, the timer).
     pub searches: bool,
+    /// Out: the hunt sends its livestock to this drop site (the target's slot 0x138) with the
+    /// herd around it (`FUN_140ac4c60`), the caller's.
+    pub leads: Option<i32>,
 }
 
 /// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).
@@ -386,6 +420,7 @@ impl HuntAction {
             carry_to: -1,
             timer: 0.0,
             move_wait: MoveWait::default(),
+            lead: Lead::default(),
         };
         if 0.0 < target.amount {
             let kind = task.resource;
@@ -831,7 +866,8 @@ impl HuntAction {
                     0 | 6.. => Ok(()),
                     5 => {
                         self.decay_check(gather, strike.victim)?;
-                        self.set_walk(&mut walk, strike.victim)
+                        let player = strike.own.player;
+                        self.set_walk(&mut walk, strike.victim, player)
                     }
                     _ => Err(Unsupported("a Hunt whose Attack ended")),
                 }
@@ -934,6 +970,7 @@ impl HuntAction {
                 }
                 None => Err(Unsupported("a Hunt in state 4 without its MoveTo")),
             },
+            LEAD => self.update_lead(walk, strike, gather, herd),
             FACE => {
                 // case 5: FUN_141162db0 turns the unit to face its target; a unit without a turn
                 // time turns at once, by the facets between
@@ -1014,6 +1051,119 @@ impl HuntAction {
         self.set_point_walk(WALK_SEARCH, mover)
     }
 
+    /// `set_state(12)` on live livestock: the Attack of the master's ranges starts (with its
+    /// target in reach its point and the facing, [`Attack::start`]), showing the idle sprite when
+    /// its `MoveTo` starts arrived.
+    fn start_attack(
+        &mut self,
+        walk: Walk<'_>,
+        strike: &mut Strike<'_>,
+        herd: &Herd,
+    ) -> Result<(), Unsupported> {
+        let mover = walk
+            .mover
+            .ok_or(Unsupported("a hunter without movement state"))?;
+        self.move_to = None;
+        self.state = ATTACK;
+        let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover)?;
+        if arrived {
+            a.arrived_sprite(strike)?;
+        }
+        self.attack = Some(a);
+        Ok(())
+    }
+
+    /// `set_state(10)` (`0x140ac60e0` case 10): `sheep_still_time` clears, the animal's place
+    /// becomes the start (`+0x78`, `+0x7c`), the hunter faces it (`FUN_141162db0`, at once; one
+    /// that turns over time is not modelled), a hunter of type 70 with a special graphic shows
+    /// it (slot 0x68 with master `+0x8e8`) and the timer starts at −1 s.
+    fn set_lead(
+        &mut self,
+        mut walk: Walk<'_>,
+        strike: &mut Strike<'_>,
+        herd: &Herd,
+    ) -> Result<(), Unsupported> {
+        self.tear_down(walk.mover.as_deref_mut())?;
+        self.state = LEAD;
+        self.lead.still_time = 0;
+        let at = strike.victim.position;
+        self.lead.start = [at[0], at[1]];
+        self.face_animal(&mut walk, strike)?;
+        if let Some(g) = herd.special_graphic {
+            set_sprite(strike.sprite, g, strike.sprite_rng);
+        }
+        self.timer = LEAD_WAIT;
+        Ok(())
+    }
+
+    /// `FUN_141162db0` on the target at once (a unit without a turn time turns by the facets
+    /// between).
+    fn face_animal(&self, walk: &mut Walk<'_>, strike: &Strike<'_>) -> Result<(), Unsupported> {
+        let at = walk
+            .world
+            .get(walk.me.id)
+            .map_or(walk.me.position, |p| p.position);
+        let mover = walk
+            .mover
+            .as_deref_mut()
+            .ok_or(Unsupported("a hunter without movement state"))?;
+        if !crate::attack::face_target(mover, at, strike.victim.position, strike.world_time)? {
+            return Err(Unsupported(
+                "a hunter that turns over time to face its target",
+            ));
+        }
+        Ok(())
+    }
+
+    /// State 10's update (`0x140ac7a00` case 9): without its target the hunt searches
+    /// (`set_state(3)`, the caller's). An animal that stands where it was sent (`Herd::idle`) is
+    /// slaughtered (`set_state(12)`); else the timer runs by dt and at its end an animal on the
+    /// start is slaughtered too; one that moved but stays within 1.5 tiles (`LEAD_REACH`
+    /// squared, `FUN_14118f8c0`) becomes the start again, the hunter faces it and waits another
+    /// second; one farther is walked to (`set_state(4)`).
+    fn update_lead(
+        &mut self,
+        mut walk: Walk<'_>,
+        strike: &mut Strike<'_>,
+        gather: &mut Gatherer<'_>,
+        herd: Option<Herd>,
+    ) -> Result<(), Unsupported> {
+        if self.target == -1 {
+            self.state = SEARCH;
+            gather.searches = true;
+            return Ok(());
+        }
+        let herd = herd.ok_or(Unsupported("a hunt leading livestock unprepared"))?;
+        if herd.idle {
+            return self.start_attack(walk, strike, &herd);
+        }
+        self.timer += walk.dt;
+        if self.timer < 0.0 {
+            return Ok(());
+        }
+        let v = strike.victim.position;
+        if v[0] == self.lead.start[0] && v[1] == self.lead.start[1] {
+            return self.start_attack(walk, strike, &herd);
+        }
+        let at = walk
+            .world
+            .get(walk.me.id)
+            .map_or(walk.me.position, |p| p.position);
+        let ground = walk
+            .mover
+            .as_deref()
+            .map(|m| [m.stats.radius[0], m.stats.radius[1]])
+            .ok_or(Unsupported("a hunter without movement state"))?;
+        if footprint_gap_squared(at, ground, v, strike.victim.radius) <= LEAD_REACH {
+            self.lead.start = [v[0], v[1]];
+            self.face_animal(&mut walk, strike)?;
+            self.timer = LEAD_WAIT;
+            return Ok(());
+        }
+        let player = strike.own.player;
+        self.set_walk(&mut walk, strike.victim, player)
+    }
+
     /// `FUN_140ac44b0`: a task whose `attribute_type4` is 0x124, with its player's attribute 292
     /// at 1, stops its target's decay: a target whose master decays (`+0x620` above 0) gets a
     /// master of its own (`FUN_141186d10`) with the decay negated, which the slice does not
@@ -1034,14 +1184,23 @@ impl HuntAction {
         self.move_to = Some(self.move_wait.give_up(waits, strike.stance));
     }
 
-    /// `set_state(4)` (`0x140ac60e0` case 4) after the target died: the sub-actions go, the target's
-    /// place becomes the point, and a quiet `MoveTo` to the target within the task's range starts
-    /// (`FUN_140aa0df0`, its start `0x140aa2100`: a unit within 0.01 of the target's footprint is
-    /// there already, state 1; else state 3).
-    fn set_walk(&mut self, walk: &mut Walk<'_>, victim: &Victim) -> Result<(), Unsupported> {
+    /// `set_state(4)` (`0x140ac60e0` case 4) after the target died, or for live livestock of the
+    /// hunter's `player`: the sub-actions go, the timer clears, the target's place becomes the
+    /// point, and a quiet `MoveTo` to the target within the task's range (`OWN_LIVESTOCK_RANGE`
+    /// to own livestock) starts (`FUN_140aa0df0`, its start `0x140aa2100`: a unit within 0.01 of
+    /// the target's footprint is there already, state 1; else state 3). Another live target is
+    /// not modelled.
+    fn set_walk(
+        &mut self,
+        walk: &mut Walk<'_>,
+        victim: &Victim,
+        player: usize,
+    ) -> Result<(), Unsupported> {
         self.tear_down(walk.mover.as_deref_mut())?;
         self.state = WALK;
-        if victim.state <= 2 {
+        self.timer = 0.0;
+        let own_livestock = victim.class == LIVESTOCK && victim.player == player;
+        if victim.state <= 2 && !own_livestock {
             return Err(Unsupported(
                 "a hunt's set_state 4 on a live target after its attack",
             ));
@@ -1051,7 +1210,11 @@ impl HuntAction {
             .get_known(self.target)?
             .ok_or(Unsupported("a hunt's target without a place"))?;
         self.point = t.position;
-        self.walk_range = self.task.range;
+        self.walk_range = if victim.state <= 2 {
+            OWN_LIVESTOCK_RANGE
+        } else {
+            self.task.range
+        };
         self.move_wait = MoveWait::default();
         let mover = walk
             .mover
@@ -1082,7 +1245,7 @@ impl HuntAction {
         &mut self,
         walk: Walk<'_>,
         strike: &mut Strike<'_>,
-        gather: &Gatherer<'_>,
+        gather: &mut Gatherer<'_>,
         herd: Option<Herd>,
     ) -> Result<(), Unsupported> {
         if gather.target_class == CLASS_49 {
@@ -1093,25 +1256,21 @@ impl HuntAction {
         if gather.target_class == LIVESTOCK {
             if strike.victim.state <= 2 {
                 let herd = herd.ok_or(Unsupported("a hunt facing live livestock unprepared"))?;
+                // own livestock more than 3 tiles from its drop site is led there: once sent
+                // (`moved_sheep`) the hunt waits for it; nearer than 30 tiles an animal that
+                // stands is sent (its slot 0x138) with the herd around it (`FUN_140ac4c60`, the
+                // caller's); either way `moved_sheep` and `set_state(10)`
                 if let (true, Some((site, gap_squared))) = (herd.own, herd.drop_site) {
                     self.drop_site = site;
-                    if HERD_REACH < gap_squared {
-                        return Err(Unsupported(
-                            "a hunt that leads its livestock to a drop site (set_state 10)",
-                        ));
+                    if HERD_REACH < gap_squared && (self.lead.moved || gap_squared < HERD_FAR) {
+                        if !self.lead.moved && herd.idle {
+                            gather.leads = Some(site);
+                        }
+                        self.lead.moved = true;
+                        return self.set_lead(walk, strike, &herd);
                     }
                 }
-                let mover = walk
-                    .mover
-                    .ok_or(Unsupported("a hunter without movement state"))?;
-                self.move_to = None;
-                self.state = ATTACK;
-                let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover)?;
-                if arrived {
-                    a.arrived_sprite(strike)?;
-                }
-                self.attack = Some(a);
-                return Ok(());
+                return self.start_attack(walk, strike, &herd);
             }
             let t = walk
                 .world
@@ -1125,7 +1284,8 @@ impl HuntAction {
                 .ok_or(Unsupported("a hunter without movement state"))?;
             if self.task.range + GAP < footprint_gap(me, ground, t.position, t.radius) {
                 let mut walk = walk;
-                return self.set_walk(&mut walk, strike.victim);
+                let player = strike.own.player;
+                return self.set_walk(&mut walk, strike.victim, player);
             }
         }
         self.move_to = None;
@@ -1409,6 +1569,7 @@ pub(crate) mod tests {
             carry_to: -1,
             timer: 0.0,
             move_wait: MoveWait::default(),
+            lead: Lead::default(),
         };
         let (mut kind, mut held) = (1, 0.0f32);
         let gather = |held: &mut f32, kind: &mut i16, tree: &mut Victim| {
@@ -1425,6 +1586,7 @@ pub(crate) mod tests {
                 sprites: HuntSprites::default(),
                 tree_searched: false,
                 searches: false,
+                leads: None,
             };
             hunt.gather(0.02, tree, &mut g)
         };
@@ -1522,6 +1684,7 @@ pub(crate) mod tests {
             carry_to: -1,
             timer: 0.0,
             move_wait: MoveWait::default(),
+            lead: Lead::default(),
         };
         let mut mover = walker();
         let mut world = crate::spatial::Spatial::default();
@@ -1550,6 +1713,7 @@ pub(crate) mod tests {
             sprites: HuntSprites::default(),
             tree_searched: false,
             searches: false,
+            leads: None,
         };
         assert!(hunt.clone().lost_on_the_way(&mut walk, &gather).is_err());
         // the caller's search for the next tree found none: the hunt walks to its point
@@ -1585,6 +1749,7 @@ pub(crate) mod tests {
             carry_to: -1,
             timer: 0.0,
             move_wait: MoveWait::default(),
+            lead: Lead::default(),
         };
         let walker_at = PointWalker {
             computer: false,
@@ -1699,6 +1864,7 @@ pub(crate) mod tests {
             carry_to: 9156,
             timer: 0.0,
             move_wait: MoveWait::default(),
+            lead: Lead::default(),
         };
         let mut mover = walker();
         let mut world = crate::spatial::Spatial::default();

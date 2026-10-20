@@ -22,8 +22,13 @@ pub struct Artifact {
     /// The `MoveTo` sub-action of a move its player gave the animal, and the action's point
     /// (`+0x38`..`+0x40`) it walks to.
     pub move_to: Option<MoveTo>,
-    /// The point its `MoveTo` walks to (`+0x38`..`+0x40`).
+    /// The action's point (`+0x38`..`+0x40`): where its `MoveTo` walks, or its target's place.
     pub goal: Option<[f32; 3]>,
+    /// The target of a move to an object (`+0x20`, its id at `+0x30`), −1 for none.
+    pub target: i32,
+    /// Its `MoveTo` to an object (`set_state(5)`): the goal, the range and that it is quiet
+    /// (`+0x60` set: its end posts no notify); None for a `MoveTo` to the point.
+    pub walk_to: Option<(Goal, f32)>,
 }
 
 /// The action type the checkpoint adds for an Artifact action.
@@ -31,6 +36,9 @@ pub const ARTIFACT_TYPE: i16 = 107;
 
 const CHECK: u8 = 6;
 const WAIT: u8 = 10;
+/// Livestock's `MoveTo` to a town centre walks to its place less this on both axes
+/// (`FUN_140aa0df0`, `DAT_142eae8d0`).
+const TOWN_CENTRE_OFFSET: f32 = crate::image::artifact::TOWN_CENTRE_OFFSET;
 
 impl Artifact {
     /// A new action, about to check for a new owner.
@@ -42,7 +50,50 @@ impl Artifact {
             gaia,
             move_to: None,
             goal: None,
+            target: -1,
+            walk_to: None,
         }
+    }
+
+    /// Slot 0x190 and slot 0x288 on the animal with this as its top action (`FUN_14106d090`,
+    /// `FUN_141082dc0`): no target (`+0x30` −1) and no point (`+0x38` −1). A herder waits for this
+    /// before it slaughters.
+    #[must_use]
+    pub const fn idle(&self) -> bool {
+        self.target == -1 && self.goal.is_none()
+    }
+
+    /// Slot 8 (`FUN_140aaca30`) on a move to the object `target` at `at`: the target goes and the
+    /// new one comes (slot 0x68), then `set_state(5)` (`0x140aace30`): its sub-actions go
+    /// (`FUN_140a98620`: a walked `MoveTo`'s teardown stops the unit, the caller's), the point
+    /// takes the target's place, and a quiet `MoveTo` (`FUN_140aa0df0` with `+0x60` 1) to the
+    /// target starts, within 1 for livestock going to a building (`to_building`), else 0 (the
+    /// unit's slot 0x268, 0); one of livestock to a town centre (master 109, `to_town_centre`)
+    /// walks to the point 0.2 below the centre's on both axes instead, without the target. Then
+    /// the action checks again (`set_state(6)`). Returns whether a `MoveTo` went.
+    pub fn take_object(
+        &mut self,
+        target: i32,
+        at: [f32; 3],
+        to_building: bool,
+        to_town_centre: bool,
+    ) -> bool {
+        self.target = target;
+        self.goal = Some(at);
+        let range = if to_building { 1.0 } else { 0.0 };
+        let goal = if to_town_centre {
+            Goal::Point([
+                at[0] - TOWN_CENTRE_OFFSET,
+                at[1] - TOWN_CENTRE_OFFSET,
+                at[2],
+            ])
+        } else {
+            Goal::Target(target)
+        };
+        self.walk_to = Some((goal, range));
+        let walked = self.move_to.replace(MoveTo::Start).is_some();
+        self.state = CHECK;
+        walked
     }
 
     /// Slot 8 (`FUN_140aaca30`) on a move to a point, which the action takes: the point, then
@@ -53,6 +104,7 @@ impl Artifact {
     /// went, whose teardown (`0x140aa1f30`) stops the unit (slot 0x5d0, the caller's).
     pub const fn take_point(&mut self, point: [f32; 3]) -> bool {
         self.goal = Some(point);
+        self.walk_to = None;
         let walked = self.move_to.replace(MoveTo::Start).is_some();
         self.state = CHECK;
         walked
@@ -69,6 +121,7 @@ impl Artifact {
             ));
         }
         self.goal = None;
+        self.target = -1;
         self.state = CHECK;
         Ok(())
     }
@@ -93,39 +146,41 @@ impl Artifact {
 
     /// The update's first part: its `MoveTo` sub-action (`FUN_140a992b0`). Some notify kind when the
     /// `MoveTo` ended, which the caller sends to the unit AI with the move action value (the
-    /// Artifact's `MoveTo` is not quiet): its completion (0x1fa) from its update in state 1, or its
-    /// failure (0x1f9) from state 13. A `MoveTo` whose motion step gave up fails (`set_state` 13: an
-    /// animal never waits as a villager may); the failed one's update returns 3. On either code
-    /// the Artifact drops it (`FUN_140a98620`: its teardown stops the unit, slot 0x5d0, the
-    /// caller's) and its point (−1). A waiting `MoveTo` is not modelled.
+    /// `MoveTo` to the point is not quiet): its completion (0x1fa) from its update in state 1, or
+    /// its failure (0x1f9) from state 13; a quiet one (to an object) posts none. A `MoveTo` whose
+    /// motion step gave up fails (`set_state` 13: an animal never waits as a villager may); the
+    /// failed one's update returns 3. On either code the Artifact drops it (`FUN_140a98620`: its
+    /// teardown stops the unit, slot 0x5d0, the caller's), its point (−1) and its target (slot
+    /// 0x68 with none). A waiting `MoveTo` is not modelled.
     pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<Option<i32>, Unsupported> {
         let need = || Unsupported("a walking animal without its walk");
         match self.move_to {
             Some(MoveTo::Start) => {
-                let goal = self
-                    .goal
-                    .ok_or(Unsupported("an Artifact MoveTo without its point"))?;
+                let (goal, range, quiet) = match self.walk_to {
+                    Some((goal, range)) => (goal, range, true),
+                    None => (
+                        Goal::Point(
+                            self.goal
+                                .ok_or(Unsupported("an Artifact MoveTo without its point"))?,
+                        ),
+                        0.0,
+                        false,
+                    ),
+                };
                 self.move_to = Some(MoveTo::Moving);
-                self.move_to = Some(start_walk(
-                    walk.ok_or_else(need)?,
-                    Goal::Point(goal),
-                    0.0,
-                    false,
-                )?);
+                self.move_to = Some(start_walk(walk.ok_or_else(need)?, goal, range, quiet)?);
             }
             Some(MoveTo::Moving) => {
                 let state = walk_or_give_up(walk.ok_or_else(need)?)?;
                 self.move_to = Some(state.unwrap_or(MoveTo::Failed));
             }
             Some(MoveTo::Arrived) => {
-                self.move_to = None;
-                self.goal = None;
-                return Ok(Some(crate::unit_ai::ACTION_COMPLETED));
+                let quiet = self.end_walk();
+                return Ok((!quiet).then_some(crate::unit_ai::ACTION_COMPLETED));
             }
             Some(MoveTo::Failed) => {
-                self.move_to = None;
-                self.goal = None;
-                return Ok(Some(crate::unit_ai::ACTION_FAILED));
+                let quiet = self.end_walk();
+                return Ok((!quiet).then_some(crate::unit_ai::ACTION_FAILED));
             }
             Some(MoveTo::Waiting) => {
                 return Err(Unsupported("an Artifact's waiting MoveTo (state 2)"));
@@ -133,6 +188,15 @@ impl Artifact {
             None => {}
         }
         Ok(None)
+    }
+
+    /// The `MoveTo` ended (codes 1 to 5): it goes with the point and the target; true when it was
+    /// quiet.
+    const fn end_walk(&mut self) -> bool {
+        self.move_to = None;
+        self.goal = None;
+        self.target = -1;
+        self.walk_to.take().is_some()
     }
 
     /// The update's second part: the state's step.

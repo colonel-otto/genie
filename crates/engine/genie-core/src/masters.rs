@@ -220,6 +220,9 @@ pub struct Master {
     pub friendly_fire: f32,
     /// It has a special graphic (`+0x8e8`).
     pub special_graphic: bool,
+    /// The special graphic's sprite (the `.dat`'s `special_graphic`), −1 for none: a herder
+    /// leading livestock shows it.
+    pub special_sprite: i16,
     /// `area_effect_object_level` (`+0x62b`): the blasts that reach it.
     pub blast_defense: u8,
     /// `area_effect_range` (`+0x82c`): its blast's radius.

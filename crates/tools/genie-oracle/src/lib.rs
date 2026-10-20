@@ -856,21 +856,52 @@ fn saved_actions(
     }
     match kind {
         ARTIFACT_TYPE => {
-            let move_to = match base.sub_actions.entries().next() {
+            let sub = match base.sub_actions.entries().next() {
                 None => None,
-                Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
+                Some((MOVE_TO, sub)) => Some(sub),
                 Some(_) => {
                     return Err(Unsupported(
                         "a saved Artifact action with another sub-action",
                     ));
                 }
             };
+            let move_to = sub
+                .map(|sub| move_to_state(sub.base().map_or(0, |b| b.state)))
+                .transpose()?;
+            // a move to an object (set_state 5): the target, and its quiet MoveTo's goal, a
+            // town centre's point or the target, with its range
+            let walk_to = match sub {
+                Some(sub) if base.target_id != -1 => {
+                    let b = sub
+                        .base()
+                        .ok_or(Unsupported("a saved MoveTo without its base"))?;
+                    let goal = if b.target_id == -1 {
+                        genie_core::move_to::Goal::Point(
+                            point(b).ok_or(Unsupported("a saved MoveTo without its point"))?,
+                        )
+                    } else {
+                        genie_core::move_to::Goal::Target(b.target_id)
+                    };
+                    let range = sub
+                        .move_to_range()
+                        .ok_or(Unsupported("a saved MoveTo without its range"))?;
+                    Some((goal, range))
+                }
+                _ => None,
+            };
             unit.artifact = Some(genie_core::artifact::Artifact {
                 state: base.state,
                 timer: base.timer,
                 gaia: s.owner == 0,
                 move_to,
-                goal: move_to.and_then(|_| point(base)),
+                goal: if base.target_id == -1 {
+                    move_to.and_then(|_| point(base))
+                } else {
+                    // the target's place, `+0x38`
+                    (base.target_x != -1.0).then_some([base.target_x, base.target_y, base.target_z])
+                },
+                target: base.target_id,
+                walk_to,
             });
             Ok(())
         }
@@ -1002,8 +1033,8 @@ fn saved_actions(
         }
         genie_core::hunt::HUNT => {
             use genie_core::hunt::{
-                ATTACK, DROP, FACE, GATHER, HuntAction, HuntTask, IDLE, SEARCH, WALK, WALK_POINT,
-                WALK_SEARCH,
+                ATTACK, DROP, FACE, GATHER, HuntAction, HuntTask, IDLE, LEAD, SEARCH, WALK,
+                WALK_POINT, WALK_SEARCH,
             };
             let part = action
                 .tribe_action_hunt
@@ -1011,7 +1042,15 @@ fn saved_actions(
                 .ok_or(Unsupported("a saved Hunt without its own part"))?;
             if !matches!(
                 base.state,
-                IDLE | SEARCH | WALK | FACE | GATHER | DROP | ATTACK | WALK_SEARCH | WALK_POINT
+                IDLE | SEARCH
+                    | WALK
+                    | FACE
+                    | GATHER
+                    | DROP
+                    | LEAD
+                    | ATTACK
+                    | WALK_SEARCH
+                    | WALK_POINT
             ) {
                 return Err(Unsupported(
                     "a saved Hunt in a state the slice does not model",
@@ -1040,6 +1079,14 @@ fn saved_actions(
                 carry_to: base.target2_id,
                 timer: base.timer,
                 move_wait: genie_core::move_to::MoveWait::default(),
+                lead: genie_core::hunt::Lead {
+                    moved: part.moved_sheep != 0,
+                    still_time: part.sheep_still_time as i16,
+                    start: [
+                        f32::from_bits(part.sheep_start_x),
+                        f32::from_bits(part.sheep_start_y),
+                    ],
+                },
             };
             match base.sub_actions.entries().next() {
                 None => {}

@@ -4,6 +4,12 @@
 //! (`image::<module>::<NAME>`); the table holds where each is, so a new build regenerates this
 //! file and leaves the ports alone.
 
+/// The values `crate::artifact`'s port reads.
+pub mod artifact {
+    /// 0.20000000298023224
+    pub const TOWN_CENTRE_OFFSET: f32 = f32::from_bits(0x3e4c_cccd);
+}
+
 /// The values `crate::attack`'s port reads.
 pub mod attack {
     /// 0.009999999776482582

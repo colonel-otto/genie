@@ -69,6 +69,12 @@ const VILLAGER: i16 = 4;
 const CLASS_51: i16 = 51;
 const CLASS_54: i16 = 54;
 const LIVESTOCK: i16 = 58;
+/// The town centre (master 109, `0x6109` raw), to which livestock's `MoveTo` goes as to a point
+/// (`FUN_140aa0df0`).
+const TOWN_CENTRE: i16 = 109;
+/// A hunt sends at most this many animals of a herd to its drop site (`FUN_140ac4c60`'s list,
+/// `DAT_143e55e20`).
+const HERD_MOST: usize = 16;
 const MASTER_84: i16 = 84;
 const MASTER_1808: i16 = 1808;
 const MASTER_1893: i16 = 1893;
@@ -719,8 +725,9 @@ impl Turns {
                         return Ok(());
                     }
                 }
+                // the Artifact's slot 8 (FUN_140aaca30) takes the target: set_state(5)
                 Some(crate::artifact::ARTIFACT_TYPE) => {
-                    return Err(Unsupported("an Artifact taking a move's target"));
+                    return self.artifact_take_object(player, idx, target);
                 }
                 Some(_) => {
                     return Err(Unsupported(
@@ -756,6 +763,130 @@ impl Turns {
         }
         unit.move_to = Some(move_to);
         Ok(())
+    }
+
+    /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
+    /// [`crate::artifact::Artifact::take_object`]): livestock (class 58) goes to a building
+    /// within 1, to the town centre (master 109) at its point; a `MoveTo` it walked goes, whose
+    /// teardown stops the unit (slot 0x5d0).
+    pub(crate) fn artifact_take_object(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+    ) -> Result<(), Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let livestock = self.master_of(player, unit.life.master_id)?.class == LIVESTOCK;
+        let (tp, t) = self.object(target).ok_or(Unsupported(
+            "an Artifact's move to an object the slice does not hold",
+        ))?;
+        let t_master = self.master_of(tp, t.life.master_id)?;
+        let to_building = livestock && t_master.kind == BUILDING;
+        let to_town_centre = livestock && t_master.id == TOWN_CENTRE;
+        let at = self
+            .spatial
+            .get(target)
+            .map(|p| p.position)
+            .ok_or(Unsupported(
+                "an Artifact's move to an object without a place",
+            ))?;
+        let unit = &mut self.players[player].objects[idx];
+        let walked = unit
+            .artifact
+            .as_mut()
+            .is_some_and(|a| a.take_object(target, at, to_building, to_town_centre));
+        if walked {
+            unit.mover
+                .as_mut()
+                .ok_or(Unsupported("a walker without movement state"))?
+                .stop()?;
+        }
+        Ok(())
+    }
+
+    /// A hunt's own livestock `sheep` sent to the drop site `site` (`0x140ac60e0` case 6): the
+    /// animal's slot 0x138 to the site ([`Turns::move_to_object`]), then `FUN_140ac4c60` from it
+    /// ([`Turns::herd_from`]).
+    ///
+    /// # Errors
+    ///
+    /// What the moves do not model.
+    pub(crate) fn lead_herd(&mut self, p: usize, sheep: i32, site: i32) -> Result<(), Unsupported> {
+        self.send_to_site(p, sheep, site)?;
+        let mut listed = Vec::new();
+        self.herd_from(p, sheep, site, &mut listed)
+    }
+
+    /// `FUN_140ac4c60` from the animal `sheep` (`listed` the animals sent so far, a static list of
+    /// 16): it joins the list; while it holds fewer than 16, the tiles within 3 of the animal's
+    /// (x outer, y inner, held to the map) that player `p` sees (`FUN_141663500` 0xf), each in its
+    /// list's order, give the next: livestock (class 58) of the player in state 2 whose top action
+    /// has neither a target nor a point ([`Unit::top_action_idle`]) and not listed yet is sent to
+    /// the site (slot 0x138) and herds from it in turn; once 16 are listed it ends.
+    fn herd_from(
+        &mut self,
+        p: usize,
+        sheep: i32,
+        site: i32,
+        listed: &mut Vec<i32>,
+    ) -> Result<(), Unsupported> {
+        listed.push(sheep);
+        if HERD_MOST <= listed.len() {
+            return Ok(());
+        }
+        let at = self
+            .spatial
+            .get(sheep)
+            .map(|q| q.position)
+            .ok_or(Unsupported("a herded animal without a place"))?;
+        let (x, y) = (at[0] as i32, at[1] as i32);
+        let [w, h] = self.spatial.map;
+        let (x0, x1) = ((x - 3).max(0), if x + 3 < w { x + 3 } else { w - 1 });
+        let (y0, y1) = ((y - 3).max(0), if y + 3 < h { y + 3 } else { h - 1 });
+        for tx in x0..=x1 {
+            for ty in y0..=y1 {
+                if !self.spatial.sees_tile(p, tx, ty) {
+                    continue;
+                }
+                let ids = self.spatial.tiles().list(tx, ty).to_vec();
+                for id in ids {
+                    let Some(Place::Live(q, i)) = self.place(id) else {
+                        continue;
+                    };
+                    let u = &self.players[q].objects[i];
+                    if q != p
+                        || u.life.state != 2
+                        || self.master_of(q, u.life.master_id)?.class != LIVESTOCK
+                        || !u.top_action_idle()?
+                        || listed.contains(&id)
+                    {
+                        continue;
+                    }
+                    self.send_to_site(p, id, site)?;
+                    self.herd_from(p, id, site, listed)?;
+                    if HERD_MOST <= listed.len() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Slot 0x138 of player `p`'s animal `sheep` to the drop site `site` at its place.
+    fn send_to_site(&mut self, p: usize, sheep: i32, site: i32) -> Result<(), Unsupported> {
+        let Some(Place::Live(q, idx)) = self.place(sheep) else {
+            return Err(Unsupported("a led animal the slice does not hold live"));
+        };
+        if q != p {
+            return Err(Unsupported("a led animal of another player"));
+        }
+        let point = self
+            .spatial
+            .get(site)
+            .map(|s| s.position)
+            .ok_or(Unsupported("a drop site without a place"))?;
+        self.move_to_object(p, idx, site, point)
     }
 
     /// `UNIT_ORDER`'s action 4 (`FUN_14161e370` case 4) to the objects `ids`: each the world

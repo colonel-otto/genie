@@ -176,6 +176,10 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .creatable
             .as_ref()
             .is_some_and(|c| 0 <= c.special_graphic),
+        special_sprite: unit
+            .creatable
+            .as_ref()
+            .map_or(-1, |c| i16::try_from(c.special_graphic).unwrap_or(-1)),
         death_sprite: unit.dying_graphic,
         death_spawns: [unit.dead_unit_id, unit.blood_unit_id],
         garrison_firepower: unit
