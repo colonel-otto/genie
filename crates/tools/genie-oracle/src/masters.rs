@@ -219,19 +219,6 @@ pub struct TerrainTable {
     passable: Vec<Vec<f32>>,
 }
 
-/// The class bit of a terrain's flags.
-const fn terrain_class(flags: u8) -> u8 {
-    if flags == 0 {
-        0
-    } else if flags & 7 != 0 {
-        1
-    } else if flags & 0x18 != 0 {
-        2
-    } else {
-        (flags >> 3) & 4
-    }
-}
-
 impl TerrainTable {
     /// The terrain table of `dat`: each terrain's restrictions and the restrictions' passability.
     #[must_use]
@@ -240,7 +227,7 @@ impl TerrainTable {
             .terrain_block
             .terrains
             .iter()
-            .map(|t| terrain_class(t.is_water))
+            .map(|t| genie_core::terrain::terrain_class(t.is_water))
             .collect();
         let masks = dat
             .terrain_restrictions

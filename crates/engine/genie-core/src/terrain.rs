@@ -89,7 +89,39 @@ pub struct Foundation {
     pub mode_680: i32,
 }
 
+/// The class bit of a terrain's flags (the `.dat`'s `is_water` byte) in the terrain
+/// restrictions' masks (the load's table `FUN_141054630` reads): none for 0, 1 for bits 0 to 2,
+/// 2 for bits 3 and 4, else bit 5 as 4.
+#[must_use]
+pub const fn terrain_class(flags: u8) -> u8 {
+    if flags == 0 {
+        0
+    } else if flags & 7 != 0 {
+        1
+    } else if flags & 0x18 != 0 {
+        2
+    } else {
+        (flags >> 3) & 4
+    }
+}
+
 impl Terrain {
+    /// The terrain classes restriction `restriction` lets an object stand on
+    /// (`FUN_141054630`'s table): the class bits ([`terrain_class`]) of the terrains whose value
+    /// in it is above 0; none for a restriction the table lacks.
+    #[must_use]
+    pub fn restriction_mask(&self, restriction: usize) -> u8 {
+        self.restrictions.get(restriction).map_or(0, |values| {
+            values
+                .iter()
+                .enumerate()
+                .filter(|&(_, &v)| 0.0 < v)
+                .fold(0, |m, (t, _)| {
+                    m | self.terrains.get(t).map_or(0, |k| terrain_class(k.flags))
+                })
+        })
+    }
+
     /// The map's terrain from its tiles, the terrain table and the restrictions.
     #[must_use]
     pub fn new(

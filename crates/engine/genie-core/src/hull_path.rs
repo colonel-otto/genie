@@ -576,6 +576,35 @@ pub struct HullPather<'w> {
     bounds: [f32; 4],
 }
 
+/// `canQuickPath` (object slot 0x3e0, `FUN_1411506e0`) of object `me` (its master's terrain
+/// `mask` and `radius` on x) to object `target` within `range`: the old short pather's quick path
+/// alone ([`HullPather::find_quick`]) from its place to the target's, ignoring both, finds it
+/// there or reaches it (a result below 2); false for a target the world does not hold.
+///
+/// # Errors
+///
+/// Where the pather meets what the slice does not model.
+pub fn quick_reach(
+    world: &Spatial,
+    me: i32,
+    target: i32,
+    mask: u8,
+    radius: f32,
+    range: f32,
+) -> Result<bool, Unsupported> {
+    let Some(t) = world.get_known(target)? else {
+        return Ok(false);
+    };
+    let from = world
+        .get(me)
+        .ok_or(Unsupported("a quick path of an object without a place"))?
+        .position;
+    let mut pather = HullPather::new(world, me, target, mask, radius);
+    let to = [t.position[0], t.position[1]];
+    let (result, _) = pather.find_quick([from[0], from[1]], to, target, range)?;
+    Ok(result < 2)
+}
+
 impl<'w> HullPather<'w> {
     /// The pather for unit `unit` (terrain `mask`, `radius`) with the ignore list slot 0x3e8 sets
     /// (`FUN_140f89e40` with the unit and `target`): both objects, and the tile under a target of
@@ -1622,13 +1651,40 @@ impl<'w> HullPather<'w> {
     /// # Errors
     ///
     /// Where the pather meets what the slice does not model.
-    #[allow(clippy::too_many_lines)]
     pub fn find(
         &mut self,
         from: Point,
         to: Point,
         target_id: i32,
         range: f32,
+    ) -> Result<(u8, Waypoints), Unsupported> {
+        self.find_with(from, to, target_id, range, false)
+    }
+
+    /// [`HullPather::find`] as slot 0x3e0 calls it (its last argument 1): the quick path alone,
+    /// none (3) when it is blocked.
+    ///
+    /// # Errors
+    ///
+    /// Where the pather meets what the slice does not model.
+    pub fn find_quick(
+        &mut self,
+        from: Point,
+        to: Point,
+        target_id: i32,
+        range: f32,
+    ) -> Result<(u8, Waypoints), Unsupported> {
+        self.find_with(from, to, target_id, range, true)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn find_with(
+        &mut self,
+        from: Point,
+        to: Point,
+        target_id: i32,
+        range: f32,
+        quick_only: bool,
     ) -> Result<(u8, Waypoints), Unsupported> {
         let r = self.radius;
         let [w, h] = self.world.map;
@@ -1706,6 +1762,9 @@ impl<'w> HullPather<'w> {
         let quick_target = (target_id != -1).then_some(target_id);
         if self.quick_path(from, quick, quick_target, &mut path)? {
             return Ok((1, path));
+        }
+        if quick_only {
+            return Ok((3, path));
         }
         // the area: the walk's tiles and two more each way, on the map
         let (lo_x, hi_x) = (

@@ -97,6 +97,9 @@ const PRODUCED: u32 = 0xd;
 const BOAR_AI: u32 = 4;
 /// The tower's factory type (`TribeTowerUnitAIModule`, the town centre's too).
 const TOWER_AI: u32 = 15;
+/// The seconds without a sighting after which enemies found are the owner's news
+/// (`DAT_142eb0f4c`).
+const ENEMY_SIGHTING_GAP: f32 = crate::image::unit_ai::ENEMY_SIGHTING_GAP;
 
 /// The notify queue's capacity of a unit AI of `ai_type` holding `count` notifies: the
 /// factory's (`FUN_141215560`: 5 for the artifact's and the livestock's, types 14 and 19; 10
@@ -394,7 +397,7 @@ pub struct Search<'a> {
 }
 
 /// What a [`Search`] picks.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Pick {
     /// `ClosestObject` (`FUN_140c488b0`) with its reachability check: the closest object of
     /// master class `group`, of relation `relation` (0 itself or friends, 1 neutrals, 2 enemies,
@@ -421,35 +424,70 @@ pub enum Pick {
     Attack {
         /// The lowest relation it looks at (0 Gaia, 2 in a scenario).
         lowest: usize,
+        /// What the pick reads of the searching unit AI.
+        seeker: Seeker,
     },
     /// The search alone (slot 0x50 as a `NoAttack` soldier's idle check calls it): no object, and
     /// whether it found enemies (the alert mode).
     Look,
 }
 
-/// What a unit AI's attack check (its slot 0xa0) reads of itself: its owner's id, its state
-/// (`+0x640`) and its master's class, `attack_priority` (`+0x92c`) and `missile_id` (`+0x83c`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What a unit AI's attack check (its slot 0xa0) and `bestUnitToAttack` read of the unit: its
+/// owner's id, its state (`+0x640`), what it holds (`+0x308`) and its top action, and its
+/// master's id, type, class, `attack_priority` (`+0x92c`), `missile_id` (`+0x83c`), weapon and
+/// least ranges (slots 0x230, 0x240), charge type, blast (`+0x82c`, `+0x830`) and line of sight;
+/// its place and top speed (slot 0x208).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Attacker {
     /// The unit AI's type.
     pub ai_type: u32,
     /// The unit's player.
     pub player: usize,
+    /// The owner is a computer player (`FUN_141659cf0`).
+    pub computer: bool,
     /// The unit's state.
     pub state: u8,
+    /// The kind it holds (`attribute_type_held`, `+0x308`).
+    pub held: i16,
+    /// Its top action's type, if any.
+    pub top_action: Option<i32>,
+    /// Its master's id.
+    pub master: i16,
+    /// Its master's type.
+    pub kind: u8,
     /// Its master's class.
     pub class: i16,
     /// Its master's `attack_priority`.
     pub attack_priority: u8,
     /// Its master's missile, −1 for none.
     pub missile: i16,
+    /// Its master's weapon range (slot 0x230, `+0x828`).
+    pub range: f32,
+    /// Its master's least range (slot 0x240, `+0x850`).
+    pub min_range: f32,
+    /// Its master's charge type: 6 and 7 add to the range against a target (slot 0x2f8).
+    pub charge_type: i16,
+    /// Its master's `area_effect_range` (`+0x82c`).
+    pub area_effect: f32,
+    /// Its master's `area_effect_level` (`+0x830`).
+    pub blast_level: u8,
+    /// Its master's line of sight (`+0x5d0`).
+    pub los: f32,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its master's radii.
+    pub radius: [f32; 2],
+    /// Its top speed (slot 0x208).
+    pub speed: f32,
     /// The game mode is a scenario's.
     pub scenario: bool,
 }
 
-/// What a unit AI's attack check reads of an object it found: the owner's id, the master's class,
-/// type, id and `combat_level` (`+0x62c`), and the object's `+0x924`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What a unit AI's attack check and `bestUnitToAttack` read of an object it found: the owner's
+/// id, the master's class, type, id and `combat_level` (`+0x62c`), and the object's `+0x924`,
+/// unit AI (`+0x6b0`), container (`+0x2f0`), targeting and attackable flags (`+0x689`,
+/// `+0x68a`), `desolid_flag` (`+0xc60`), place and master's radii.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Target {
     /// The object's player.
     pub owner: usize,
@@ -463,6 +501,52 @@ pub struct Target {
     pub combat_level: u8,
     /// The object's `+0x924`.
     pub capture: u8,
+    /// It has a unit AI (`+0x6b0`).
+    pub has_ai: bool,
+    /// It is inside another (`+0x2f0`).
+    pub inside: bool,
+    /// `+0x689`, `unit_targeting_flag`.
+    pub targeting: bool,
+    /// `+0x68a`, `unit_attackable_flag`.
+    pub attackable: bool,
+    /// `+0xc60`, `desolid_flag`: a foundation no builder has started.
+    pub desolid: bool,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its master's radii.
+    pub radius: [f32; 2],
+}
+
+/// What `bestUnitToAttack` reads of the unit AI that searches: its stance (`+0x1a9`), state
+/// position (`+0x1ac`), order (`+0x3c`), action (`+0x44`), target (`+0x48`), the current and last
+/// target's classes (`+0x4c`, `+0x70`) and whether it holds a patrol path (`+0x1c0`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Seeker {
+    /// `+0x1a9`.
+    pub stance: u8,
+    /// `+0x1ac`, `+0x1b0`.
+    pub state_position: [f32; 2],
+    /// `+0x3c`.
+    pub order: i32,
+    /// `+0x44`.
+    pub action: i32,
+    /// `+0x48`.
+    pub target: i32,
+    /// `+0x4c`.
+    pub target_type: i32,
+    /// `+0x70`.
+    pub last_target_type: i32,
+    /// `+0x1c0` holds a patrol path.
+    pub patrol_path: bool,
+}
+
+impl Seeker {
+    /// `canMoveToAttack` with no target (slot 0x1d0 with −1, `FUN_140c48420`; the slice holds no
+    /// unit groups): with an order, or without one in a stance below 2.
+    #[must_use]
+    pub const fn can_move(&self) -> bool {
+        self.order != -1 || self.stance <= 1
+    }
 }
 
 /// The classes an attacker of `attack_priority` 3 may attack (`FUN_140fddf10`).
@@ -471,19 +555,27 @@ const PRIORITY_3_CLASSES: [i16; 6] = [3, 27, 39, 49, 52, 60];
 /// The masters a tower never attacks (`FUN_140c1a760`, raw `0x60ce`, `0x653f`).
 const TOWER_SPARED: [i16; 2] = [50, 1187];
 
-/// Slot 0xa0 of `me`'s unit AI, `CanAttack`: whether it may attack `t`. The tower's
-/// (`FUN_140c1a760`): never for Gaia's own tower nor the classes 1 and 42; Gaia's objects only of
-/// the classes 9 and 10, unless they are of the combat type with `+0x924` 0 outside the scenario
-/// modes; a building's `desolid_flag` (`+0xc60`) is not held; never masters 50 and 1187, nor
-/// from a tower in a state below 2. Class 10 with an attack priority below 3 only of combat
-/// level 4 (`FUN_140fde120`); else when the tower is armed (`FUN_14120ea30`: classes 51 and 54,
-/// or a missile; without one the object's `+0xa00` decides, not held) and its attack priority
-/// is not 3 or the class one of [`PRIORITY_3_CLASSES`]. The soldier's (`FUN_140c19a20`) is not
+/// Slot 0xa0 of `me`'s unit AI with 0, `CanAttack`: whether it may attack `t`: the tower's
+/// ([`tower_can_attack`]) or the soldier's ([`soldier_can_attack`]); the other types' are not
 /// modelled.
-pub fn can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
-    if me.ai_type != 15 {
-        return Err(Unsupported("a soldier's attack check (slot 0xa0)"));
+pub fn can_attack(me: &Attacker, seeker: &Seeker, t: &Target) -> Result<bool, Unsupported> {
+    match me.ai_type {
+        15 => tower_can_attack(me, t),
+        13 => soldier_can_attack(me, seeker, t),
+        _ => Err(Unsupported(
+            "an attack check (slot 0xa0) of a unit-AI type not modelled",
+        )),
     }
+}
+
+/// The tower's attack check (`FUN_140c1a760`): never for Gaia's own tower nor the classes 1 and
+/// 42; Gaia's objects only of the classes 9 and 10, unless they are of the combat type with
+/// `+0x924` 0 outside the scenario modes; a building's `desolid_flag` (`+0xc60`) is not held;
+/// never masters 50 and 1187, nor from a tower in a state below 2. Class 10 with an attack
+/// priority below 3 only of combat level 4 (`FUN_140fde120`); else when the tower is armed
+/// (`FUN_14120ea30`: classes 51 and 54, or a missile; without one the object's `+0xa00` decides,
+/// not held) and its attack priority is not 3 or the class one of [`PRIORITY_3_CLASSES`].
+pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
     if me.player == 0 || matches!(t.class, 1 | 42) {
         return Ok(false);
     }
@@ -504,6 +596,288 @@ pub fn can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
         return Err(Unsupported("an unarmed attacker's +0xa00 (FUN_14120ea30)"));
     }
     Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
+}
+
+/// A soldier never attacks with this master (raw `0x6258`).
+const SOLDIER_NEVER: i16 = 444;
+/// The master and class whose packed state (top action 124 or 125) attacks nothing (raw
+/// `0x6109`; class 54).
+const PACKED_MASTER: i16 = 109;
+const PACKED_CLASS: i16 = 54;
+/// What a unit carrying it never attacks with (`+0x308`).
+const HELD_NO_ATTACK: i16 = 57;
+/// The soldier's range against a target grows by this for its stance checks
+/// (`DAT_142e7f384`).
+const STANCE_RANGE_GROWTH: f32 = crate::image::unit_ai::STANCE_RANGE_GROWTH;
+/// And the defend stance's by this more (`DAT_14330ebb8`).
+const DEFEND_GROWTH: f32 = crate::image::unit_ai::DEFEND_GROWTH;
+
+/// The squared gap between a point and an object's footprint (`FUN_140a847c0`: per axis the
+/// distance less the radius, at least 0).
+fn point_gap_squared(point: [f32; 2], at: [f32; 3], radius: [f32; 2]) -> f32 {
+    let gap = |d: f32, r: f32| {
+        let g = d.abs() - r;
+        if 0.0 <= g { g } else { 0.0 }
+    };
+    let x = gap(point[0] - at[0], radius[0]);
+    let y = gap(point[1] - at[1], radius[1]);
+    y * y + x * x
+}
+
+impl Attacker {
+    /// The weapon range against a target (slot 0x238, `FUN_14108d9b0`): the master's (slot
+    /// 0x230); a charge of type 6 or 7 adds to it (slot 0x2f8), which is not modelled.
+    ///
+    /// # Errors
+    ///
+    /// A charge of type 6 or 7.
+    pub const fn range_against(&self) -> Result<f32, Unsupported> {
+        if matches!(self.charge_type, 6 | 7) {
+            return Err(Unsupported(
+                "an attacker whose charge adds to its range (slot 0x2f8)",
+            ));
+        }
+        Ok(self.range)
+    }
+}
+
+/// The soldier's attack check (`FUN_140c19a20`): never class 64; a Gaia soldier only objects of
+/// the combat type with `+0x924` 0 outside the scenario modes (`FUN_141302540`, those it takes on
+/// by sight), and of Gaia's objects only classes 9 and 10 or those; never an object whose
+/// targeting flag (`+0x689`) is off. A computer player's tests (its priorities, ranges) are not
+/// modelled. Never from class 51, master 444, a packed class 54 or master 109 (top action 124 or
+/// 125), or a unit holding kind 57; never the classes 1, 42 and 60, nor a building no builder has
+/// started (`+0xc60`); never in `NoAttack`. In `StandGround` (stance 2) only within its range
+/// against the target plus 0.5 of its state position (by the squared footprint gap,
+/// `FUN_140a847c0`), but on order `0x2bd`; in Defend (1) within 5 more, the patrol orders' and a
+/// patrol path's tests not modelled. Then an attack priority of 3 takes only
+/// [`PRIORITY_3_CLASSES`].
+pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool, Unsupported> {
+    if t.class == 64 {
+        return Ok(false);
+    }
+    let gaia_combat = !me.scenario && 70 <= t.kind && t.capture == 0;
+    if me.player == 0 && !gaia_combat {
+        return Ok(false);
+    }
+    if t.owner == 0 && !matches!(t.class, 9 | 10) && !gaia_combat {
+        return Ok(false);
+    }
+    if !t.targeting {
+        return Ok(false);
+    }
+    if me.computer {
+        return Err(Unsupported("a computer player's soldier's attack check"));
+    }
+    if me.class == 51 || me.master == SOLDIER_NEVER {
+        return Ok(false);
+    }
+    if (me.class == PACKED_CLASS || me.master == PACKED_MASTER)
+        && matches!(me.top_action, Some(124 | 125))
+    {
+        return Ok(false);
+    }
+    if me.held == HELD_NO_ATTACK || matches!(t.class, 1 | 42 | 60) {
+        return Ok(false);
+    }
+    if t.kind == 80 && t.desolid {
+        return Ok(false);
+    }
+    if s.stance == 3 {
+        return Ok(false);
+    }
+    let d2 = point_gap_squared(s.state_position, t.position, t.radius);
+    let reach = me.range_against()? + STANCE_RANGE_GROWTH;
+    match s.stance {
+        2 if s.order != 0x2bd && reach * reach < d2 => return Ok(false),
+        1 => {
+            if matches!(s.order, 0x2c7 | 0x2dd) || s.patrol_path {
+                return Err(Unsupported(
+                    "a defending soldier's patrol range (slot 0x470, FUN_140f95e10)",
+                ));
+            }
+            let reach = reach + DEFEND_GROWTH;
+            if reach * reach < d2 {
+                return Ok(false);
+            }
+        }
+        _ => {}
+    }
+    Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
+}
+
+/// `FUN_14120e4e0` for an attacker of type 70: one of attack priority 3 attacks only
+/// [`PRIORITY_3_CLASSES`]; a ranged one (range above 1) with a blast (`+0x82c` above 0) whose
+/// `area_effect_level` has neither bit 2 nor 3 (`FUN_1410bf160`, `FUN_1410bfcb0`) scans the tiles
+/// of the blast around the target for its own or allied objects (not modelled).
+fn spares_friends(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
+    if me.attack_priority == 3 && !PRIORITY_3_CLASSES.contains(&t.class) {
+        return Ok(false);
+    }
+    let ranged = 1.0 < me.range;
+    if ranged && me.blast_level & 8 == 0 && 0.0 < me.area_effect && me.blast_level & 4 == 0 {
+        return Err(Unsupported(
+            "a blast attacker's scan for friends near its target (FUN_14120e4e0)",
+        ));
+    }
+    Ok(true)
+}
+
+/// An object in `bestUnitToAttack`'s statistics (`FUN_140c66590`): its id, its footprints' gap
+/// to the unit and whether it moves (its slot 0x208 above 0).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AttackStat {
+    /// The object.
+    pub id: i32,
+    /// The gap between its footprint and the unit's (`FUN_14118f680`).
+    pub gap: f32,
+    /// Its speed (slot 0x208) is above 0.
+    pub moving: bool,
+}
+
+/// What `bestUnitToAttack` asks of the world while its unit AI runs: the tests of an object it
+/// found ([`attack_candidate`] with what the world holds of it) and the choice among those that
+/// went into the statistics ([`choose_attack`] with the unit's path tests).
+pub trait AttackPicker {
+    /// The object `id` of relation list `list` (`None`: the unit AI's current target) goes into
+    /// the statistics.
+    ///
+    /// # Errors
+    ///
+    /// What the tests do not model.
+    fn candidate(&self, id: i32, list: Option<usize>) -> Result<Option<AttackStat>, Unsupported>;
+
+    /// The object to attack among the statistics, −1 for none.
+    ///
+    /// # Errors
+    ///
+    /// What the choice does not model.
+    fn choose(&mut self, stats: &[AttackStat]) -> Result<i32, Unsupported>;
+}
+
+/// An [`AttackPicker`] for searches that pick no attack: a test of an object fails.
+#[derive(Clone, Copy, Debug)]
+pub struct NoAttack;
+
+impl AttackPicker for NoAttack {
+    fn candidate(&self, _: i32, _: Option<usize>) -> Result<Option<AttackStat>, Unsupported> {
+        Err(Unsupported(
+            "an attack test in a search that picks no attack",
+        ))
+    }
+
+    fn choose(&mut self, _: &[AttackStat]) -> Result<i32, Unsupported> {
+        Err(Unsupported(
+            "an attack choice in a search that picks no attack",
+        ))
+    }
+}
+
+/// `bestUnitToAttack`'s choice (`FUN_140c44680` after its statistics) as the idle checks call it
+/// (an idle check, path tests on, not in an attack work state): none without statistics. One
+/// object needs no scoring (`FUN_140c48150`) nor sort (`FUN_140c41830`, `FUN_140c41b40`): it
+/// passes the first test of the first three (it moves, or none of the objects moves) and is the
+/// choice when the unit reaches it by the quick path (`quick`, slot 0x3e0, within the unit's range
+/// against it); else the path test (slot 0x3d0) follows, whose failure gives the object an
+/// ignored retry entry (`FUN_140c42320`), not modelled. Several objects are not modelled.
+///
+/// # Errors
+///
+/// What the choice does not model.
+pub fn choose_attack(
+    stats: &[AttackStat],
+    quick: &mut dyn FnMut(i32) -> Result<bool, Unsupported>,
+) -> Result<i32, Unsupported> {
+    match stats {
+        [] => Ok(-1),
+        [one] => {
+            if quick(one.id)? {
+                Ok(one.id)
+            } else {
+                Err(Unsupported(
+                    "bestUnitToAttack's path test after its quick path (slot 0x3d0)",
+                ))
+            }
+        }
+        _ => Err(Unsupported(
+            "bestUnitToAttack's scoring of several candidates (FUN_140c48150)",
+        )),
+    }
+}
+
+/// The classes slot 0xa8 of the soldier's unit AI (`FUN_140c1ae60`) passes among neutral objects:
+/// those of the mask `0x200200800838001c` (2, 3, 4, 15, 16, 17, 21, 27, 35, 49, 53, 61) never.
+const NEUTRAL_SPARED: u64 = 0x2002_0080_0838_001c;
+
+/// `bestUnitToAttack`'s (`FUN_140c44680`, as the idle checks call it: no reference distance, an
+/// idle check, path checks on, no extra objects, the class filter off) tests of an object it
+/// found in relation list `list` (4 enemies down), or of its current target (`None`): whether it
+/// goes into the statistics, and its gap. An object without a unit AI (`+0x6b0`), inside another
+/// (`+0x2f0`) or one the attack check passes ([`can_attack`]) is left; an attacker of type 70 also
+/// asks [`spares_friends`]; a neutral one slot 0xa8 (the soldier's: not [`NEUTRAL_SPARED`] nor,
+/// at attack priority 3, outside [`PRIORITY_3_CLASSES`]); a Gaia unit of the combat type taken by
+/// sight is left outside the scenario modes, as are an object with its targeting flag off
+/// (`+0x689`) and, while the attack action (600) is current, one not attackable (`+0x68a`). A
+/// computer player's tests (`FUN_140c41690`, the ship and priority rules) are not modelled. Then
+/// the footprints' gap (`FUN_14118f680`) must be at least the least range, within the weapon
+/// range unless the unit moves (slot 0x208), and within twice the line of sight
+/// (`FUN_140c47f90`, a human player's). Walls (27) and gates (39) count only for a unit that
+/// attacks walls (its current or last target one), which is not modelled.
+pub fn attack_candidate(
+    me: &Attacker,
+    s: &Seeker,
+    t: &Target,
+    list: Option<usize>,
+) -> Result<Option<f32>, Unsupported> {
+    if me.computer {
+        return Err(Unsupported("a computer player's bestUnitToAttack"));
+    }
+    let gap = crate::movement::footprint_gap(me.position, me.radius, t.position, t.radius);
+    let Some(list) = list else {
+        // the current target: in the statistics when in range or the unit moves
+        let range = me.range_against()?;
+        return Ok((gap <= range || 0.0 < me.speed).then_some(gap));
+    };
+    if !t.has_ai || t.inside || !can_attack(me, s, t)? {
+        return Ok(None);
+    }
+    if me.kind == 70 && !spares_friends(me, t)? {
+        return Ok(None);
+    }
+    if list == 3 {
+        if me.ai_type != 13 {
+            return Err(Unsupported(
+                "a neutral object's test (slot 0xa8) of a unit-AI type not modelled",
+            ));
+        }
+        let class = t.class as u16;
+        let spared = class < 0x3e && NEUTRAL_SPARED >> class & 1 != 0;
+        if spared || (me.attack_priority == 3 && !PRIORITY_3_CLASSES.contains(&t.class)) {
+            return Ok(None);
+        }
+    }
+    let gaia_unit = !me.scenario && t.owner == 0 && 70 <= t.kind;
+    if gaia_unit && t.capture != 0 {
+        return Ok(None);
+    }
+    if !t.targeting || (!t.attackable && s.action == 600) {
+        return Ok(None);
+    }
+    let sight = me.los + me.los;
+    let in_range = me.min_range <= gap && (gap <= me.range || me.speed != 0.0);
+    if !in_range || !(s.can_move() || gap <= sight) || sight < gap {
+        return Ok(None);
+    }
+    if matches!(t.class, 27 | 39) {
+        let walls = matches!(s.target_type, 27 | 39) || matches!(s.last_target_type, 27 | 39);
+        if walls {
+            return Err(Unsupported(
+                "bestUnitToAttack of a unit that attacks walls (the closest wall)",
+            ));
+        }
+        return Ok(None);
+    }
+    Ok(Some(gap))
 }
 
 /// The classes a lion attacks by its own choice (its slot 0xa0's list, `FUN_140c18d50`; the
@@ -557,6 +931,19 @@ pub trait UnitSide {
     /// The unit's `+0x685`, `underAttackValue`, becomes `value` (`FUN_14119d2d0`).
     fn set_under_attack(&mut self, value: bool);
 
+    /// `AttackObject`'s test of object `target` (`FUN_140c43720`): the world holds it and the unit
+    /// AI's attack check (slot 0xa0, [`can_attack`], as `seeker` stands) passes; then its master's
+    /// class and its place.
+    ///
+    /// # Errors
+    ///
+    /// What the attack check does not model.
+    fn may_attack(
+        &mut self,
+        target: i32,
+        seeker: &Seeker,
+    ) -> Result<Option<(i16, [f32; 3])>, Unsupported>;
+
     /// The explorer's point to explore (the base handler's case 0x202 for the auto scout): the
     /// search around its town centre (`FUN_140c65490`), else its unit AI's (`ai`) slot 0x90 with
     /// a draw of the AI stream (`rng`); None when neither finds one.
@@ -589,6 +976,10 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
     }
 
     fn set_under_attack(&mut self, _: bool) {}
+
+    fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+        Err(Unsupported("an attack test without the world"))
+    }
 
     fn seek_unexplored(
         &mut self,
@@ -1421,7 +1812,14 @@ impl UnitAi {
         }
         match self.ai_type {
             13 => return self.soldier_idle(at, computer, side),
-            15 => return self.tower_idle(at, computer, side),
+            15 => {
+                if self.tower_idle(at, computer, side)? {
+                    return Err(Unsupported(
+                        "an idle tower's attack (processIdle 6 in the idle part)",
+                    ));
+                }
+                return Ok(());
+            }
             _ => {}
         }
         let moved = match self.ai_type {
@@ -1484,15 +1882,14 @@ impl UnitAi {
             size: at.size,
             pick: Pick::Attack {
                 lowest: if at.scenario { 2 } else { 0 },
+                seeker: self.seeker(),
             },
         })?;
+        self.attack_search_alert(found, computer)?;
         if found.id != -1 {
             return Err(Unsupported(
                 "a soldier attacking what its idle search found (slot 0xb8)",
             ));
-        }
-        if found.fresh {
-            self.alert_mode = false;
         }
         if matches!(self.current_order, PATROL | PATROL_2) {
             return Ok(());
@@ -1580,15 +1977,15 @@ impl UnitAi {
     /// as the idle part calls it, after the cap of [`UnitAi::process_idle`] (slot 0x250 first
     /// retries no order, the tower's slot 0x60 taking none as retryable). In `NoAttack` (stance 3)
     /// it only searches, which is not modelled; else `bestUnitToAttack` from its place
-    /// ([`Pick::Attack`], as [`UnitAi::soldier_idle`]'s): an object found would be attacked
-    /// (slot 0xb8, which sets `+0x1d5`), which is not modelled. The search leaves the alert mode
-    /// clear.
+    /// ([`Pick::Attack`], as [`UnitAi::soldier_idle`]'s), then an object found is attacked
+    /// ([`UnitAi::attack_object`] forced, slot 0xb8, which then sets `+0x1d5`, not held). True
+    /// when it attacks (processIdle's 6).
     fn tower_idle(
         &mut self,
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<bool, Unsupported> {
         if self.stance == 3 {
             return Err(Unsupported("a tower's idle search in NoAttack (stance 3)"));
         }
@@ -1599,15 +1996,48 @@ impl UnitAi {
             size: at.size,
             pick: Pick::Attack {
                 lowest: if at.scenario && !computer { 2 } else { 0 },
+                seeker: self.seeker(),
             },
         })?;
-        if found.id != -1 {
-            return Err(Unsupported(
-                "a tower attacking what its idle search found (slot 0xb8)",
-            ));
+        self.attack_search_alert(found, computer)?;
+        if found.id == -1 {
+            return Ok(false);
         }
-        if found.fresh {
-            self.alert_mode = false;
+        // slot 0xb8 with 1 (`+0x1d5` then 1, not held)
+        self.attack_object(found.id, true, false, at, side)
+    }
+
+    /// What `bestUnitToAttack` reads of this unit AI ([`Seeker`]).
+    const fn seeker(&self) -> Seeker {
+        Seeker {
+            stance: self.stance,
+            state_position: self.state_position,
+            order: self.current_order,
+            action: self.current_action,
+            target: self.current_target,
+            target_type: self.target_type,
+            last_target_type: self.last_target_type,
+            patrol_path: self.patrol_path,
+        }
+    }
+
+    /// The alert mode after `bestUnitToAttack`'s search (`FUN_140c63e20` with its fourth argument
+    /// 1): a query that ran sets it to whether it found enemies (`+0x1b8`); with enemies, after
+    /// more than 10 s without a sighting (`+0x1b4`) the owner hears of it (its slot 0x2e8 with
+    /// `0x210`, `FUN_14162dab0`: no case for it, only the reset of the old short pather's hulled
+    /// area, and a computer player's AI's notify, not modelled), and the time restarts.
+    fn attack_search_alert(&mut self, found: Found, computer: bool) -> Result<(), Unsupported> {
+        if !found.fresh {
+            return Ok(());
+        }
+        self.alert_mode = found.enemies;
+        if found.enemies {
+            if ENEMY_SIGHTING_GAP < self.time_since_enemy && computer {
+                return Err(Unsupported(
+                    "a computer player's notify of enemies sighted (0x210, slot 0x3c8)",
+                ));
+            }
+            self.time_since_enemy = 0.0;
         }
         Ok(())
     }
@@ -2139,9 +2569,11 @@ impl UnitAi {
     }
 
     /// `AttackObject` (slot 0xb8, `FUN_140c43720`): `+0x1d5` clears; not `force`d, an AI with an
-    /// action fails (false). The target must be in the world's table ([`Surroundings::unit`]);
-    /// its slot 0xa0 with `any` must let it attack the target: the boar's (`FUN_140c48400`)
-    /// anything, the lion's ([`lion_may_attack`]; other factory types are not modelled); then the unit's attack command ([`UnitSide::attack`]), on success the action is
+    /// action fails (false). The target must be in the world; its slot 0xa0 with `any` must let it
+    /// attack the target: the boar's (`FUN_140c48400`) anything, the lion's
+    /// ([`lion_may_attack`]), the soldier's and the tower's ([`UnitSide::may_attack`]; the other
+    /// factory types' are not modelled); then the unit's attack command ([`UnitSide::attack`]), on
+    /// success the action is
     /// the attack (600, the last action keeping the old) and the target its point and class
     /// (`FUN_140c64c10`). The slice holds no unit groups (`+0x6d0`), whose members would attack
     /// too.
@@ -2156,21 +2588,29 @@ impl UnitAi {
         if !force && self.current_action != -1 {
             return Ok(false);
         }
-        let Some(t) = at.unit(target) else {
-            return Ok(false);
-        };
-        let may = match self.ai_type {
-            4 => true,
-            5 => any || lion_may_attack(at.attack_priority, t.class),
-            _ => {
-                return Err(Unsupported(
-                    "AttackObject's slot 0xa0 of a unit AI other than a boar's or a lion's",
-                ));
+        let (class, position) = if matches!(self.ai_type, 13 | 15) {
+            match side.may_attack(target, &self.seeker())? {
+                Some(t) => t,
+                None => return Ok(false),
             }
+        } else {
+            let Some(t) = at.unit(target) else {
+                return Ok(false);
+            };
+            let may = match self.ai_type {
+                4 => true,
+                5 => any || lion_may_attack(at.attack_priority, t.class),
+                _ => {
+                    return Err(Unsupported(
+                        "AttackObject's slot 0xa0 of a unit AI type not modelled",
+                    ));
+                }
+            };
+            if !may {
+                return Ok(false);
+            }
+            (t.class, t.position)
         };
-        if !may {
-            return Ok(false);
-        }
         let attacked = side.attack(target, force, self)?;
         // the unit's posts (slot 0x328 -> the AI's slot 0x38) while the AI processes its
         // notifies: into its queue, or the buffer when it is full
@@ -2182,7 +2622,7 @@ impl UnitAi {
         }
         self.commanded = true;
         self.set_action(ATTACK_ACTION);
-        self.set_target(target, i32::from(t.class), t.position);
+        self.set_target(target, i32::from(class), position);
         Ok(true)
     }
 
@@ -2600,8 +3040,7 @@ impl UnitAi {
             let produced = match self.ai_type {
                 TOWER_AI => {
                     self.cap_human_order(fx);
-                    self.tower_idle(at, computer, side)?;
-                    false
+                    self.tower_idle(at, computer, side)?
                 }
                 BOAR_AI => {
                     self.cap_human_order(fx);
@@ -3350,6 +3789,14 @@ mod tests {
 
         fn set_under_attack(&mut self, value: bool) {
             self.under_attack = Some(value);
+        }
+
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Err(Unsupported("no world here"))
         }
 
         fn seek_unexplored(
@@ -4960,7 +5407,10 @@ mod tests {
             .unwrap();
         assert_eq!(fx, vec![Effect::CapHumanOrder(5000)]);
         // the search radius: its line of sight plus 1; Gaia's objects too (not a scenario)
-        assert_eq!(searched, vec![(5.0, 39, Pick::Attack { lowest: 0 })]);
+        assert!(matches!(
+            searched[..],
+            [(5.0, 39, Pick::Attack { lowest: 0, .. })]
+        ));
         assert_eq!(u.idle_timer, 0);
         // something found would be attacked, which is not modelled
         let (mut u, at) = idle_scout();
@@ -4994,43 +5444,205 @@ mod tests {
         assert_eq!(fx, vec![Effect::CapHumanOrder(5000)]);
     }
 
+    /// Player 2's town centre 9156 in MarvinBlue/426048731's update 1506.
+    const TC: Attacker = Attacker {
+        ai_type: 15,
+        player: 2,
+        computer: false,
+        state: 2,
+        held: -1,
+        top_action: None,
+        master: 109,
+        kind: 80,
+        class: 3,
+        attack_priority: 0,
+        missile: 54,
+        range: 6.0,
+        min_range: 0.0,
+        charge_type: 0,
+        area_effect: 0.0,
+        blast_level: 0,
+        los: 8.0,
+        position: [29.0, 94.0, 0.0],
+        radius: [2.0, 2.0],
+        speed: 0.0,
+        scenario: false,
+    };
+
+    /// Gaia's boar 9731 (master 48, class 10).
+    const BOAR: Target = Target {
+        owner: 0,
+        class: 10,
+        kind: 70,
+        master: 48,
+        combat_level: 0,
+        capture: 0,
+        has_ai: true,
+        inside: false,
+        targeting: true,
+        attackable: true,
+        desolid: false,
+        position: [30.0, 98.0, 0.0],
+        radius: [0.5, 0.5],
+    };
+
+    /// A unit AI without an order or a target, in the aggressive stance.
+    const IDLE: Seeker = Seeker {
+        stance: 0,
+        state_position: [0.0, 0.0],
+        order: -1,
+        action: -1,
+        target: -1,
+        target_type: -1,
+        last_target_type: -1,
+        patrol_path: false,
+    };
+
     #[test]
     fn a_tower_passes_a_boar_but_not_a_wolf() {
-        // player 2's TC 9156 in update 1506 and Gaia's boar 9731 (master 48, class 10)
-        let tc = Attacker {
-            ai_type: 15,
-            player: 2,
-            state: 2,
-            class: 3,
-            attack_priority: 0,
-            missile: 54,
-            scenario: false,
-        };
-        let boar = Target {
-            owner: 0,
-            class: 10,
-            kind: 70,
-            master: 48,
-            combat_level: 0,
-            capture: 0,
-        };
-        assert_eq!(can_attack(&tc, &boar), Ok(false));
+        assert_eq!(can_attack(&TC, &IDLE, &BOAR), Ok(false));
         let wolf = Target {
             combat_level: 4,
-            ..boar
+            ..BOAR
         };
-        assert_eq!(can_attack(&tc, &wolf), Ok(true));
+        assert_eq!(can_attack(&TC, &IDLE, &wolf), Ok(true));
         // Gaia's tower attacks nothing; a Gaia object outside classes 9 and 10 that takes owners
         // by sight neither
-        assert_eq!(can_attack(&Attacker { player: 0, ..tc }, &wolf), Ok(false));
+        assert_eq!(
+            can_attack(&Attacker { player: 0, ..TC }, &IDLE, &wolf),
+            Ok(false)
+        );
         let sheep = Target {
             class: 58,
             capture: 3,
-            ..boar
+            ..BOAR
         };
-        assert_eq!(can_attack(&tc, &sheep), Ok(false));
-        // the soldier's check is not modelled
-        assert!(can_attack(&Attacker { ai_type: 13, ..tc }, &boar).is_err());
+        assert_eq!(can_attack(&TC, &IDLE, &sheep), Ok(false));
+        // a type whose attack check is not modelled
+        assert!(can_attack(&Attacker { ai_type: 5, ..TC }, &IDLE, &BOAR).is_err());
+    }
+
+    /// A scout cavalry (master 448, class 12) of player 1 in `StandGround` at its state position,
+    /// as records/425906646's 27272 at update 4268.
+    const SCOUT: Attacker = Attacker {
+        ai_type: 13,
+        player: 1,
+        kind: 70,
+        class: 12,
+        master: 448,
+        missile: -1,
+        range: 0.0,
+        los: 4.0,
+        position: [118.5, 183.5, 0.0],
+        radius: [0.4, 0.4],
+        speed: 1.2,
+        ..TC
+    };
+    const STAND_GROUND: Seeker = Seeker {
+        stance: 2,
+        state_position: [118.5, 183.5],
+        ..IDLE
+    };
+
+    #[test]
+    fn a_soldier_standing_its_ground_attacks_within_its_range_of_its_state_position() {
+        let villager = |x: f32| Target {
+            owner: 2,
+            class: 4,
+            master: 83,
+            position: [x, 183.5, 0.0],
+            radius: [0.2, 0.2],
+            ..BOAR
+        };
+        // the range against it plus 0.5 from the state position to its footprint
+        let reach = |s: &Seeker, x: f32| soldier_can_attack(&SCOUT, s, &villager(x));
+        assert_eq!(reach(&STAND_GROUND, 119.2), Ok(true));
+        assert_eq!(reach(&STAND_GROUND, 119.3), Ok(false));
+        // on order 0x2bd anywhere; in Defend 5 more
+        let ordered = Seeker {
+            order: 0x2bd,
+            ..STAND_GROUND
+        };
+        assert_eq!(reach(&ordered, 130.0), Ok(true));
+        let defend = Seeker {
+            stance: 1,
+            ..STAND_GROUND
+        };
+        assert_eq!(reach(&defend, 124.2), Ok(true));
+        assert_eq!(reach(&defend, 124.3), Ok(false));
+        // never in NoAttack, never an object its targeting flag leaves out, never class 1
+        let no_attack = Seeker {
+            stance: 3,
+            ..STAND_GROUND
+        };
+        assert_eq!(reach(&no_attack, 119.0), Ok(false));
+        let untargeted = Target {
+            targeting: false,
+            ..villager(119.0)
+        };
+        assert_eq!(
+            soldier_can_attack(&SCOUT, &STAND_GROUND, &untargeted),
+            Ok(false)
+        );
+        let relic = Target {
+            class: 1,
+            ..villager(119.0)
+        };
+        assert_eq!(soldier_can_attack(&SCOUT, &STAND_GROUND, &relic), Ok(false));
+    }
+
+    #[test]
+    fn best_unit_to_attack_takes_an_enemy_within_twice_the_line_of_sight() {
+        let aggressive = Seeker {
+            stance: 0,
+            ..STAND_GROUND
+        };
+        let enemy = |x: f32| Target {
+            owner: 2,
+            class: 6,
+            master: 74,
+            position: [x, 183.5, 0.0],
+            radius: [0.2, 0.2],
+            ..BOAR
+        };
+        // the footprints' gap: 0.4 + 0.2 off the centres' distance
+        let gap = attack_candidate(&SCOUT, &aggressive, &enemy(126.0), Some(4)).unwrap();
+        assert!(gap.is_some_and(|g| (g - 6.9).abs() < 1e-4));
+        assert_eq!(
+            attack_candidate(&SCOUT, &aggressive, &enemy(127.2), Some(4)),
+            Ok(None)
+        );
+        // one without a unit AI or inside another is none
+        let no_ai = Target {
+            has_ai: false,
+            ..enemy(120.0)
+        };
+        assert_eq!(
+            attack_candidate(&SCOUT, &aggressive, &no_ai, Some(4)),
+            Ok(None)
+        );
+        let inside = Target {
+            inside: true,
+            ..enemy(120.0)
+        };
+        assert_eq!(
+            attack_candidate(&SCOUT, &aggressive, &inside, Some(4)),
+            Ok(None)
+        );
+        // a wall counts only for a unit that attacks walls
+        let wall = Target {
+            class: 27,
+            ..enemy(120.0)
+        };
+        assert_eq!(
+            attack_candidate(&SCOUT, &aggressive, &wall, Some(4)),
+            Ok(None)
+        );
+        let at_walls = Seeker {
+            last_target_type: 27,
+            ..aggressive
+        };
+        assert!(attack_candidate(&SCOUT, &at_walls, &wall, Some(4)).is_err());
     }
 
     #[test]

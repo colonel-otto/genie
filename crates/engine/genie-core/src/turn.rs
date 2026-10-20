@@ -803,29 +803,137 @@ struct UnitView<'u> {
     takes: &'u mut Vec<i32>,
 }
 
+/// What `bestUnitToAttack` reads of the world for the unit whose AI runs
+/// ([`crate::unit_ai::AttackPicker`]): the objects it found, by what the world holds of them, and
+/// the unit's quick path to them.
+struct WorldPicker<'a> {
+    /// What the tests read of the unit.
+    attacker: &'a crate::unit_ai::Attacker,
+    /// What they read of its unit AI; None outside `bestUnitToAttack`.
+    seeker: Option<crate::unit_ai::Seeker>,
+    /// The unit.
+    me: i32,
+    /// Its owner.
+    player: usize,
+    /// The owner's other objects.
+    others: &'a [Unit],
+    /// The other players' lists.
+    foreign: Foreign<'a>,
+    /// The world's objects.
+    spatial: &'a Spatial,
+    /// Every player's masters.
+    every: &'a [Masters],
+    /// The unit's master's terrain restriction (`+0x606`).
+    restriction: i16,
+}
+
+impl WorldPicker<'_> {
+    /// The object `id` as the attack tests read it, and whether it moves (slot 0x208 above 0).
+    fn target(&self, id: i32) -> Result<(crate::unit_ai::Target, bool), Unsupported> {
+        let (owner, t) = self
+            .foreign
+            .find(id)
+            .or_else(|| {
+                self.others
+                    .iter()
+                    .find(|u| u.id == id)
+                    .map(|u| (self.player, u))
+            })
+            .ok_or(Unsupported("a found object the slice does not hold"))?;
+        let m = self
+            .every
+            .get(owner)
+            .and_then(|ms| ms.get(t.life.master_id))
+            .ok_or(Unsupported(
+                "a found object of a master the slice does not have",
+            ))?;
+        let placed = self
+            .spatial
+            .get_known(id)?
+            .ok_or(Unsupported("a found object without a place"))?;
+        let capture = self
+            .spatial
+            .sight
+            .as_ref()
+            .and_then(|v| v.seer(id))
+            .map_or(0, |s| s.capture);
+        let target = crate::unit_ai::Target {
+            owner,
+            class: m.class,
+            kind: m.kind,
+            master: t.life.master_id,
+            combat_level: m.combat_level,
+            capture,
+            has_ai: t.ai.is_some(),
+            inside: t.life.inside.is_some(),
+            targeting: !t.untargetable,
+            attackable: t.attackable,
+            desolid: t.construction.as_ref().is_some_and(|c| c.desolid),
+            position: placed.position,
+            radius: placed.radius,
+        };
+        let moving = 0.0 < t.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        Ok((target, moving))
+    }
+}
+
+impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
+    fn candidate(
+        &self,
+        id: i32,
+        list: Option<usize>,
+    ) -> Result<Option<crate::unit_ai::AttackStat>, Unsupported> {
+        let seeker = self
+            .seeker
+            .ok_or(Unsupported("an attack test outside bestUnitToAttack"))?;
+        let (target, moving) = self.target(id)?;
+        let gap = crate::unit_ai::attack_candidate(self.attacker, &seeker, &target, list)?;
+        Ok(gap.map(|gap| crate::unit_ai::AttackStat { id, gap, moving }))
+    }
+
+    /// The quick path (slot 0x3e0) within the unit's range against the object (slot 0x238), with
+    /// its master's terrain mask and radius on x.
+    fn choose(&mut self, stats: &[crate::unit_ai::AttackStat]) -> Result<i32, Unsupported> {
+        if stats.is_empty() {
+            return Ok(-1);
+        }
+        let range = self.attacker.range_against()?;
+        let terrain = self
+            .spatial
+            .terrain
+            .as_ref()
+            .ok_or(Unsupported("a quick path without the map's terrain"))?;
+        let restriction = usize::try_from(self.restriction)
+            .map_err(|_| Unsupported("a quick path of a master without a terrain restriction"))?;
+        let mask = terrain.restriction_mask(restriction);
+        let (spatial, me, radius) = (self.spatial, self.me, self.attacker.radius[0]);
+        crate::unit_ai::choose_attack(stats, &mut |id| {
+            crate::hull_path::quick_reach(spatial, me, id, mask, radius, range)
+        })
+    }
+}
+
 impl crate::unit_ai::UnitSide for UnitView<'_> {
     fn closest(&mut self, search: &Search<'_>) -> Result<crate::unit_ai::Found, Unsupported> {
-        let every = self.every;
-        let attacker = &self.attacker;
-        let can_attack = |p: &Placed, capture: u8| {
-            let m = every
-                .get(p.player)
-                .and_then(|ms| ms.get(p.master))
-                .ok_or(Unsupported(
-                    "a found object of a master the slice does not have",
-                ))?;
-            crate::unit_ai::can_attack(
-                attacker,
-                &crate::unit_ai::Target {
-                    owner: p.player,
-                    class: m.class,
-                    kind: m.kind,
-                    master: p.master,
-                    combat_level: m.combat_level,
-                    capture,
-                },
-            )
+        let seeker = match search.pick {
+            crate::unit_ai::Pick::Attack { seeker, .. } => Some(seeker),
+            _ => None,
         };
+        let mut picker = WorldPicker {
+            attacker: &self.attacker,
+            seeker,
+            me: self.unit.id,
+            player: self.player,
+            others: self.others,
+            foreign: self.foreign,
+            spatial: self.spatial,
+            every: self.every,
+            restriction: self
+                .masters
+                .and_then(|m| m.get(self.unit.life.master_id))
+                .map_or(-1, |m| m.terrain_restriction),
+        };
+        let (others, foreign, every) = (self.others, self.foreign, self.every);
         // ClosestObject's reachability check (slot 0x3d0) walks the unit's paths
         let mut plan = Planning {
             pathing: self.pathing,
@@ -845,7 +953,6 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             let m = mover.ok_or(Unsupported("a reach test of a unit that does not move"))?;
             m.reaches_object(&walker, spatial, &mut plan, id, range, master_id)
         };
-        let (others, foreign) = (self.others, self.foreign);
         let moving = |id: i32| herded(others, foreign, id);
         // a class-10 searcher passes master 440 and the masters with object flag 0x10
         let shuns = |p: &Placed| {
@@ -861,10 +968,38 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             unit.id,
             self.player,
             search,
-            &can_attack,
+            &mut picker,
             &mut reach,
             &moving,
             &shuns,
+        )
+    }
+
+    fn may_attack(
+        &mut self,
+        target: i32,
+        seeker: &crate::unit_ai::Seeker,
+    ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+        let picker = WorldPicker {
+            attacker: &self.attacker,
+            seeker: Some(*seeker),
+            me: self.unit.id,
+            player: self.player,
+            others: self.others,
+            foreign: self.foreign,
+            spatial: self.spatial,
+            every: self.every,
+            restriction: -1,
+        };
+        let held =
+            self.foreign.find(target).is_some() || self.others.iter().any(|u| u.id == target);
+        if !held {
+            return Ok(None);
+        }
+        let (t, _) = picker.target(target)?;
+        Ok(
+            crate::unit_ai::can_attack(&self.attacker, seeker, &t)?
+                .then_some((t.class, t.position)),
         )
     }
 
@@ -1886,16 +2021,20 @@ impl Unit {
         let mut reach = |id: i32, range: f32| {
             mover.reaches_object(&me, spatial, &mut plan, id, range, master_id)
         };
-        let no_attack = |_: &Placed, _: u8| -> Result<bool, Unsupported> {
-            Err(Unsupported("an attack check in a closest search"))
-        };
+        let mut no_attack = crate::unit_ai::NoAttack;
         let foreign = c.foreign;
         let moving = |id: i32| herded(others, foreign, id);
         let shuns = |_: &Placed| -> Result<bool, Unsupported> {
             Err(Unsupported("a class-10 searcher in a hunt's search"))
         };
         let result = spatial.search(
-            self.id, c.player, &search, &no_attack, &mut reach, &moving, &shuns,
+            self.id,
+            c.player,
+            &search,
+            &mut no_attack,
+            &mut reach,
+            &moving,
+            &shuns,
         )?;
         if result.fresh {
             if result.enemies {
@@ -4896,10 +5035,24 @@ impl Unit {
                     let attacker = crate::unit_ai::Attacker {
                         ai_type: ai.ai_type,
                         player,
+                        computer,
                         state: self.life.state,
+                        held: self.life.attribute_type,
+                        top_action: self.top_action_kind().map(i32::from),
+                        master: self.life.master_id,
+                        kind: master.map_or(0, |m| m.kind),
                         class: master.map_or(-1, |m| m.class),
                         attack_priority: master.map_or(0, |m| m.attack_priority),
                         missile: master.map_or(-1, |m| m.missile),
+                        range: master.map_or(0.0, |m| m.weapon_range),
+                        min_range: master.map_or(0.0, |m| m.min_range),
+                        charge_type: master.map_or(0, |m| m.charge_type),
+                        area_effect: master.map_or(0.0, |m| m.area_effect),
+                        blast_level: master.map_or(0, |m| m.blast_level),
+                        los: master.map_or(0.0, |m| m.line_of_sight),
+                        position: self.position,
+                        radius: master.map_or([0.0; 2], |m| m.radius),
+                        speed: self.mover.as_ref().map_or(0.0, |m| m.stats.speed),
                         scenario: c.scenario,
                     };
                     let [ai_stream, object, sprite] =

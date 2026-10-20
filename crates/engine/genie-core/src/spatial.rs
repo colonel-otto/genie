@@ -1104,8 +1104,7 @@ impl Spatial {
     /// A unit AI's search ([`Search`]) for object `me` of `player` (`FUN_140c63e20`): the query
     /// over the player's registry ([`crate::registry::Registry::visible_units`]) unless the
     /// [`SearchCache`] holds near the place (`fresh` false: the last answer stands); then its
-    /// [`Pick`], an attack by the unit AI's attack check `can_attack` of an object, its master and
-    /// its owner. A query that reads nothing leaves the last answer too (and so is not fresh). A
+    /// [`Pick`], an attack by `attack`'s tests of the objects found and its choice among them. A query that reads nothing leaves the last answer too (and so is not fresh). A
     /// query near a frozen object, or a last answer the slice has not got, fails. `shuns`
     /// answers for a found object whether a class-10 searcher passes it ([`Spatial::closest_object`]).
     #[allow(clippy::too_many_arguments)]
@@ -1114,7 +1113,7 @@ impl Spatial {
         me: i32,
         player: usize,
         search: &Search<'_>,
-        can_attack: &dyn Fn(&Placed, u8) -> Result<bool, Unsupported>,
+        attack: &mut dyn crate::unit_ai::AttackPicker,
         reach: &mut Reach<'_>,
         moving: &dyn Fn(i32) -> bool,
         shuns: &dyn Fn(&Placed) -> Result<bool, Unsupported>,
@@ -1200,11 +1199,12 @@ impl Spatial {
                 position: None,
                 fresh,
             }),
-            Pick::Attack { lowest } => {
-                let id = self.best_unit_to_attack(v, own, player, found, lowest, can_attack)?;
+            Pick::Attack { lowest, seeker } => {
+                let id =
+                    self.best_unit_to_attack(v, own, player, found, lowest, seeker.target, attack)?;
                 Ok(Found {
                     id,
-                    enemies: false,
+                    enemies: !found[4].is_empty(),
                     position: self.objects.get(&id).map(|p| p.position),
                     fresh,
                 })
@@ -1301,15 +1301,14 @@ impl Spatial {
     }
 
     /// `bestUnitToAttack` (`FUN_140c44680`) for a unit of `player` (diplomacy `own`, its
-    /// `player+0x260`) without a current target or extra objects, over what its search `found`
-    /// (which sets the alert mode on enemies found: not modelled, nor any enemy record). The
-    /// relations from enemies down to `lowest`, each record in order: an object that is gone, dead
-    /// (state 3 and up), allied (`FUN_141663d90` with the ally flag) or one the unit AI may not
-    /// attack (slot 0xa0, `can_attack` with the object's `+0x924`) is passed; so would be one
-    /// without a unit AI (`+0x6b0`) or inside another (`+0x2f0`), or in the unit AI's retarget
-    /// entries (not held, the save's: empty in every unit probed). The checks after those (the
-    /// classes, the distances, the statistics, the paths) are not modelled. Nothing found answers
-    /// −1 (no wall to fall back on).
+    /// `player+0x260`) without extra objects, over what its search `found`: its statistics take
+    /// the unit AI's current target (`current`, `+0x48`) when the world holds it in state 2 or
+    /// below and it is not allied, then the relations from enemies down to `lowest`, each record
+    /// in order but the current target: an object that is gone, dead (state 3 and up) or allied
+    /// (`FUN_141663d90` with the ally flag) is passed, and `attack` tests the others
+    /// ([`crate::unit_ai::AttackPicker::candidate`]); the unit AI's retarget entries are not held
+    /// (the save's: empty in every unit probed). `attack` then chooses among the statistics.
+    #[allow(clippy::too_many_arguments)]
     fn best_unit_to_attack(
         &self,
         v: &Visibility,
@@ -1317,14 +1316,26 @@ impl Spatial {
         player: usize,
         found: &[Vec<Record>; 5],
         lowest: usize,
-        can_attack: &dyn Fn(&Placed, u8) -> Result<bool, Unsupported>,
+        current: i32,
+        attack: &mut dyn crate::unit_ai::AttackPicker,
     ) -> Result<i32, Unsupported> {
-        if !found[4].is_empty() {
-            return Err(Unsupported("a search that finds enemies (the alert mode)"));
+        let mut stats = Vec::new();
+        if current != -1
+            && let (Some(seer), Some(p)) = (v.seer(current), self.objects.get(&current))
+            && seer.state <= 2
+            && !crate::tasks::allied(own, player, p.player, true)
+        {
+            stats.extend(attack.candidate(current, None)?);
         }
-        for records in found[lowest.min(4)..].iter().rev() {
+        let lowest = lowest.min(4);
+        for (list, records) in found.iter().enumerate().skip(lowest).rev() {
             for record in records {
-                let (Some(seer), Some(p)) = (v.seer(record.id), self.objects.get(&record.id))
+                if record.id == current {
+                    continue;
+                }
+                let Some(seer) = v
+                    .seer(record.id)
+                    .filter(|_| self.objects.contains_key(&record.id))
                 else {
                     continue;
                 };
@@ -1332,15 +1343,10 @@ impl Spatial {
                 if 3 <= seer.state || crate::tasks::allied(own, player, owner, true) {
                     continue;
                 }
-                if !can_attack(p, seer.capture)? {
-                    continue;
-                }
-                return Err(Unsupported(
-                    "bestUnitToAttack's checks of an object it may attack",
-                ));
+                stats.extend(attack.candidate(record.id, Some(list))?);
             }
         }
-        Ok(-1)
+        attack.choose(&stats)
     }
 
     /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects
@@ -2166,13 +2172,13 @@ mod tests {
             size: [0.2, 0.2],
             pick: Pick::Look,
         };
-        let never = |_: &Placed, _: u8| Ok(false);
+        let mut never = crate::unit_ai::NoAttack;
         let mut reach = |_: i32, _: f32| Ok(true);
         let still = |_: i32| false;
         let none = |_: &Placed| Ok(false);
         let mut search = |s: &Spatial, at| {
             let f = s
-                .search(9, 2, &look(at), &never, &mut reach, &still, &none)
+                .search(9, 2, &look(at), &mut never, &mut reach, &still, &none)
                 .unwrap();
             (f.enemies, f.fresh)
         };

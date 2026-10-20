@@ -440,8 +440,12 @@ pub mod unit_ai {
     pub const ATTACKER_FAR: f32 = f32::from_bits(0x7f7f_ffff);
     /// 0.0625
     pub const ATTACKER_TIE: f32 = f32::from_bits(0x3d80_0000);
+    /// 5.0
+    pub const DEFEND_GROWTH: f32 = f32::from_bits(0x40a0_0000);
     /// 25.0
     pub const DEFEND_LEASH: f32 = f32::from_bits(0x41c8_0000);
+    /// 10.0
+    pub const ENEMY_SIGHTING_GAP: f32 = f32::from_bits(0x4120_0000);
     /// 1.0
     pub const EVADE_EDGE: f32 = f32::from_bits(0x3f80_0000);
     /// 3.0
@@ -454,6 +458,8 @@ pub mod unit_ai {
     pub const FOLLOW_SLACK_LOW: f32 = f32::from_bits(0xbf80_0000);
     /// 3.0
     pub const RETARGET_RANGE: f32 = f32::from_bits(0x4040_0000);
+    /// 0.5
+    pub const STANCE_RANGE_GROWTH: f32 = f32::from_bits(0x3f00_0000);
 }
 
 /// The values `crate::visibility`'s port reads.
