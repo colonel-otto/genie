@@ -432,6 +432,8 @@ pub mod turn {
     pub const SHORT_DROP_REACH: f32 = f32::from_bits(0x4120_0000);
     /// 1.0000000116860974e-07
     pub const SPEED_EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 8.0
+    pub const TREE_SEARCH_WITHIN: f32 = f32::from_bits(0x4100_0000);
 }
 
 /// The values `crate::unit_ai`'s port reads.

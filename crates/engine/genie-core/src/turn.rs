@@ -2532,7 +2532,7 @@ impl Unit {
             .mover
             .as_ref()
             .ok_or(Unsupported("a builder without movement state"))?;
-        let (restriction, mask) = (mover.stats.restriction, mover.stats.restriction_mask);
+        let restriction = mover.stats.restriction;
         let (player, me_id, foreign, every) = (c.player, self.id, c.foreign, c.every_masters);
         let candidate = |id: i32, owner: usize, u: &Self, position: [f32; 3]| {
             let m = every
@@ -2594,10 +2594,189 @@ impl Unit {
             ));
         }
         let (kind, cap) = gather_search::gather_group(found.attribute);
+        let target = self.resource_search(c, others, kind, cap)?;
+        let spatial: &Spatial = c.spatial;
+        let target = if target != -1 && spatial.get(target).is_some() {
+            target
+        } else {
+            found.id
+        };
+        let point = spatial
+            .get(target)
+            .ok_or(Unsupported("a builder's new work without a place"))?
+            .position;
+        Ok(Some(crate::order::Work {
+            target,
+            point,
+            carry_test: false,
+            filter: -1,
+            notified: true,
+        }))
+    }
+
+    /// The hunt's search for another target (`FUN_140ac4670` with 8 and −1) when its target went
+    /// on the walk to it and the class its unit AI targets (else the hunt's) is one the AI's slot
+    /// 0x1b0 gives 0 (the civilian's `FUN_140c1c4f0`: trees, 15): within 8 of the hunt's point
+    /// (the 3D distance, its components summed x, height, y) the unit AI's
+    /// `ClosestResourceObject` with gather group 0, no drop site (the target is gone), at most 2
+    /// workers ([`Unit::resource_search`]) names the next tree, which the hunt takes (slot 0x48:
+    /// [`crate::hunt::HuntAction::retarget`], the new target taken). True when it found one.
+    fn hunt_tree_search(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+    ) -> Result<bool, Unsupported> {
+        /// `FUN_140ac4670`'s first argument at this call (`DAT_142eb9430`).
+        const WITHIN: f32 = crate::image::turn::TREE_SEARCH_WITHIN;
+        let hunt = self.hunt.as_ref().expect("the caller's");
+        let [px, py, pz] = hunt.point;
+        let [ux, uy, uz] = self.position;
+        let (dx, dz, dy) = (px - ux, pz - uz, py - uy);
+        let d = crate::fmath::sqrt(dx * dx + dz * dz + dy * dy);
+        // NaN compares false as the game's `comiss` does
+        if d.partial_cmp(&WITHIN) != Some(std::cmp::Ordering::Less) {
+            return Ok(false);
+        }
+        let found = self.resource_search(c, others, 0, 2)?;
+        if found == -1 {
+            return Ok(false);
+        }
+        let (tp, t) = others
+            .iter()
+            .find(|u| u.id == found)
+            .map(|u| (c.player, u))
+            .or_else(|| c.foreign.find(found))
+            .ok_or(Unsupported("a hunt's next tree the slice does not hold"))?;
+        let t_master = c
+            .every_masters
+            .get(tp)
+            .and_then(|m| m.get(t.life.master_id))
+            .ok_or(Unsupported(
+                "a hunt's next tree of a master the slice lacks",
+            ))?;
+        let own = c
+            .spatial
+            .relations
+            .get(c.player)
+            .ok_or(Unsupported("a hunter's player without relations"))?;
+        let quarry = crate::hunt::Quarry {
+            id: found,
+            position: t.position,
+            class: t_master.class,
+            kind: t_master.kind,
+            state: t.life.state,
+            player: tp,
+            amount: t.life.amount,
+            allied: crate::tasks::allied(own, c.player, tp, true),
+            top_action: t.top_action_kind(),
+            drop_site: false,
+        };
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+        let drops_here = master.drop_sites.contains(&t.life.master_id);
+        let at = |id| {
+            c.spatial
+                .get_known(id)?
+                .ok_or(Unsupported("a hunt's object without a place"))
+        };
+        let (me_at, them) = (at(self.id)?, at(found)?);
+        let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        let engagement =
+            crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them, c.world_time)?;
+        let hunt = self.hunt.as_mut().expect("the caller's");
+        let moving = hunt
+            .task
+            .walk_sprite_id(self.life.attribute_type, self.life.amount);
+        let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites, moving);
+        let mover = self
+            .mover
+            .as_mut()
+            .ok_or(Unsupported("a hunter without movement state"))?;
+        if hunt.retarget(
+            &quarry,
+            c.player,
+            self.life.amount,
+            drops_here,
+            &engagement,
+            arms,
+            mover,
+        )? {
+            c.takes.push(found);
+        }
+        Ok(true)
+    }
+
+    /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) with no drop site, no
+    /// point and `param_6` 2 ([`crate::gather_search::closest_resource`]): the closest object of
+    /// gather group `kind` with fewer than `cap` workers (−1 any) the unit reaches (slot 0x3d0
+    /// with range 0), from the tiles the player explored that the unit's restriction lets it
+    /// stand on; −1 for none.
+    fn resource_search(
+        &self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        kind: u8,
+        cap: i32,
+    ) -> Result<i32, Unsupported> {
+        use crate::gather_search::{self, Candidate};
+        let masters = c.masters.ok_or(Unsupported(
+            "a resource search without its player's masters",
+        ))?;
+        let master = masters.get(self.life.master_id).ok_or(Unsupported(
+            "a searcher of a master the slice does not have",
+        ))?;
+        let mover = self
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("a resource search without movement state"))?;
+        let mask = mover.stats.restriction_mask;
+        let (player, me_id, foreign, every) = (c.player, self.id, c.foreign, c.every_masters);
+        let candidate = |id: i32, owner: usize, u: &Self, position: [f32; 3]| {
+            let m = every
+                .get(owner)
+                .and_then(|m| m.get(u.life.master_id))
+                .ok_or(Unsupported("an object of a master the slice does not have"))?;
+            Ok(Candidate {
+                id,
+                player: owner,
+                class: m.class,
+                master: m.id,
+                state: u.life.state,
+                workers: u.workers,
+                position,
+                pasture: u.pasture,
+                untargetable: u.untargetable,
+                attribute: u.life.attribute_type,
+                amount: u.life.amount,
+                auto_gather: m.auto_gather,
+                gather_group: m.gather_group,
+            })
+        };
+        let me = candidate(me_id, player, self, self.position)?;
+        let spatial: &Spatial = c.spatial;
+        let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, Unsupported> {
+            spatial
+                .objects_on(x, y)
+                .map(|(id, p)| {
+                    if id == me_id {
+                        return Ok(me);
+                    }
+                    let (owner, u) = others
+                        .iter()
+                        .find(|u| u.id == id)
+                        .map(|u| (player, u))
+                        .or_else(|| foreign.find(id))
+                        .ok_or(Unsupported("an object on a tile the slice does not hold"))?;
+                    candidate(id, owner, u, p.position)
+                })
+                .collect()
+        };
         let ai = self
             .ai
             .as_ref()
-            .ok_or(Unsupported("a builder without a unit AI"))?;
+            .ok_or(Unsupported("a resource search without a unit AI"))?;
         let seeker = gather_search::Seeker {
             player,
             position: self.position,
@@ -2620,7 +2799,7 @@ impl Unit {
             construction_rate: c.construction_rate,
         };
         let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
-        let target = gather_search::closest_resource(
+        gather_search::closest_resource(
             &seeker,
             kind,
             cap,
@@ -2629,23 +2808,7 @@ impl Unit {
             &|x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
             &objects,
             &mut |id| mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id),
-        )?;
-        let target = if target != -1 && spatial.get(target).is_some() {
-            target
-        } else {
-            found.id
-        };
-        let point = spatial
-            .get(target)
-            .ok_or(Unsupported("a builder's new work without a place"))?
-            .position;
-        Ok(Some(crate::order::Work {
-            target,
-            point,
-            carry_test: false,
-            filter: -1,
-            notified: true,
-        }))
+        )
     }
 
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
@@ -4450,6 +4613,18 @@ impl Unit {
                     c.mode_680,
                 ))
             });
+        // a hunt whose target went on the walk to it (state 4, its MoveTo quiet: code 5) and
+        // whose class is a tree's searches for the next tree (FUN_140ac4670)
+        let tree_lost = self.hunt.as_ref().is_some_and(|h| {
+            h.state == crate::hunt::WALK && h.target == -1 && 0.0 <= h.timer && h.move_to.is_some()
+        }) && self.ai.as_ref().is_some_and(|ai| {
+            let class = if ai.target_type == -1 {
+                self.hunt.map_or(-1, |h| i32::from(h.target_class))
+            } else {
+                ai.target_type
+            };
+            class == crate::hunt::TREE_CLASS
+        });
         if let Some(hunt) = self
             .hunt
             .as_mut()
@@ -4606,6 +4781,8 @@ impl Unit {
             if 0.0 <= hunt.timer {
                 return Err(Unsupported("a hunt's set_state 11 after its wait"));
             }
+        } else if tree_lost && self.hunt_tree_search(c, others)? {
+            // the hunt took the next tree (slot 0x48): its MoveTo's code 5 ends the update
         } else if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;
             let master = c
@@ -4641,6 +4818,7 @@ impl Unit {
                 stops_decay: c.attributes.get(292) == Some(&1.0),
                 ai_class: self.ai.as_ref().map(|ai| ai.target_type),
                 sprites,
+                tree_searched: tree_lost,
             };
             // what set_state(6) on live livestock reads (0x140ac60e0 case 6)
             let herd = if hunt.state == crate::hunt::WALK

@@ -39,6 +39,9 @@ pub const WALK_POINT: u8 = 15;
 /// State 11 (`0xb`): walking to the point after the target went on the way to it; its end
 /// searches (`set_state` 3).
 pub const WALK_SEARCH: u8 = 11;
+/// The class of trees, for which the civilian unit AI's slot 0x1b0 (`FUN_140c1c4f0`) gives 0: a
+/// hunt whose target went searches for the next one (`FUN_140ac4670`).
+pub const TREE_CLASS: i32 = 15;
 /// A building whose top action is this (a farm at work) takes a hunt sent to it to `set_state` 15.
 const FARM_AT_WORK: i16 = 0x7d;
 
@@ -273,6 +276,9 @@ pub struct Gatherer<'a> {
     pub stops_decay: bool,
     /// The unit AI's target class (`+0x4c`, `FUN_140c4cc50`), None for a unit without one.
     pub ai_class: Option<i32>,
+    /// The caller ran the search for the next tree a lost target asks ([`HuntAction::update`]'s
+    /// `FUN_140ac4670`, `Unit::hunt_tree_search`) and found none.
+    pub tree_searched: bool,
     /// The sprites the hunt shows.
     pub sprites: HuntSprites,
 }
@@ -810,7 +816,7 @@ impl HuntAction {
                         } else {
                             class
                         };
-                        if class == 15 {
+                        if class == TREE_CLASS {
                             return Err(Unsupported(
                                 "a hunt's search for another tree (FUN_140ac4670)",
                             ));
@@ -895,9 +901,9 @@ impl HuntAction {
     }
 
     /// State 4's answer to its `MoveTo` losing the target (codes 4 and 5): `FUN_140ac4670` with 8
-    /// and -1 would look for another target of a class the unit AI's slot 0x1b0 gives 0 (trees,
-    /// not modelled); then the target goes (slot 0x68 with none) and the hunt walks to its point
-    /// (`set_state` 11).
+    /// and -1 looks for another target of a class the unit AI's slot 0x1b0 gives 0 (trees: the
+    /// caller's search, `Unit::hunt_tree_search`, which found none); then the target goes (slot
+    /// 0x68 with none) and the hunt walks to its point (`set_state` 11).
     fn lost_on_the_way(
         &mut self,
         walk: &mut Walk<'_>,
@@ -909,7 +915,7 @@ impl HuntAction {
             } else {
                 class
             };
-            if class == 15 {
+            if class == TREE_CLASS && !gather.tree_searched {
                 return Err(Unsupported(
                     "a hunt's search for another tree (FUN_140ac4670)",
                 ));
@@ -1338,6 +1344,7 @@ pub(crate) mod tests {
                 stops_decay: false,
                 ai_class: None,
                 sprites: HuntSprites::default(),
+                tree_searched: false,
             };
             hunt.gather(0.02, tree, &mut g)
         };
@@ -1461,8 +1468,13 @@ pub(crate) mod tests {
             stops_decay: false,
             ai_class: Some(15),
             sprites: HuntSprites::default(),
+            tree_searched: false,
         };
         assert!(hunt.clone().lost_on_the_way(&mut walk, &gather).is_err());
+        // the caller's search for the next tree found none: the hunt walks to its point
+        gather.tree_searched = true;
+        hunt.clone().lost_on_the_way(&mut walk, &gather).unwrap();
+        gather.tree_searched = false;
         gather.ai_class = Some(-1);
         hunt.lost_on_the_way(&mut walk, &gather).unwrap();
         assert_eq!(
