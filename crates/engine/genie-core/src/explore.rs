@@ -422,7 +422,7 @@ mod tests {
         m.set(-1, 3, 1);
         m.set(3, 480, 1);
         assert_eq!((m.get(12, 34), m.get(34, 12)), (Some(1), Some(0)));
-        assert_eq!(m.cells.iter().filter(|&&c| c == 1).count(), 1);
+        assert_eq!(m.cells.iter().map(|&c| u32::from(c)).sum::<u32>(), 1);
         // a reference point shifts the grid
         let shifted = InfluenceMap {
             origin: [10, 20],
