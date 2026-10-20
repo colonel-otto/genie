@@ -485,13 +485,15 @@ impl Turns {
     /// and lets it out of its list, `FUN_141197e10`; the building's sight lets the circle of 5
     /// go, slot 0x1d8 with 5) and goes on the map there (slot 0x58: its tile's list, its
     /// obstruction record, the mesh, its sight). With a gather point (`+0xc30` 1) not on the
-    /// building and no point, it then goes to work on the gather point's target (its unit AI
-    /// forgets its target, `FUN_140c5e1e0`; [`Turns::gather`]). False when no spot is free. Not
-    /// modelled: the work given (slot 0x128 with a target), a point without a gather point (the
-    /// unit AI's stop, or the move there), class 42's and livestock's counts in a building of a
-    /// player with `+0x88`, a siege building's (class 13) slot 0x1b0; not held: the building's
-    /// villager count (`+0xba8`), its sound (slot 0x4c0), its garrison sprite, the unit's
-    /// `+0x9a0`. Its work command (slot 0x128) has `+0xa14` 0: the unit AI keeps its notifies.
+    /// building and no point, it then goes to work on the gather point's target when the world
+    /// holds it (its unit AI forgets its target, `FUN_140c5e1e0`; [`Turns::gather`]); else, or
+    /// with a point, it moves there ([`Turns::gather_move`] after the same forgetting). False
+    /// when no spot is free. Not modelled: the work given (slot 0x128 with a target), neither a
+    /// point nor a gather point (the unit AI's slots 0xb0 and 0x1c0), a gather point of kind 0xff,
+    /// class 42's and livestock's counts in a building of a player with `+0x88`, a siege
+    /// building's (class 13) slot 0x1b0; not held: the building's villager count (`+0xba8`), its
+    /// sound (slot 0x4c0), its garrison sprite, the unit's `+0x9a0`. Its work command (slot
+    /// 0x128) has `+0xa14` 0: the unit AI keeps its notifies and its queued orders.
     pub(crate) fn let_out(
         &mut self,
         player: usize,
@@ -600,21 +602,33 @@ impl Turns {
         if let Some(e) = self.spatial.take_sight_unsupported() {
             return Err(e);
         }
-        // the gather point's work
-        match gather {
-            Some(g) if point[0] == NO_POINT && g.target != bid && g.target != -1 => {
-                if let Some(ai) = self.players[player].objects[ui].ai.as_mut() {
-                    ai.remove_target();
+        // the gather point (`+0xc30` 1, not on the building) gives a unit without a point its
+        // target, when the world holds it, else its point
+        let to = match gather {
+            Some(g) if point[0] == NO_POINT && g.target != bid => {
+                if g.target != -1 && self.object(g.target).is_some() {
+                    if let Some(ai) = self.players[player].objects[ui].ai.as_mut() {
+                        ai.remove_target();
+                    }
+                    // slot 0x128 with `+0xa14` 0: the unit AI keeps its notifies
+                    self.gather(player, ui, g, bid, false, false)?;
+                    return Ok(true);
                 }
-                // slot 0x128 with `+0xa14` 0: the unit AI keeps its notifies
-                self.gather(player, ui, g, bid, false, false)?;
+                [g.point[0], g.point[1]]
             }
-            _ => {
-                return Err(Unsupported(
-                    "an unloaded unit's order without a gather point's target",
-                ));
-            }
+            _ => point,
+        };
+        if to[0] == NO_POINT || to[1] == NO_POINT {
+            return Err(Unsupported(
+                "an unloaded unit without a point (its unit AI's slots 0xb0 and 0x1c0)",
+            ));
         }
+        // a move to the point: the unit AI forgets its target (`FUN_140c5e1e0`), then slot 0x2a0
+        // and slot 0x128 with no target, `+0xa14` 0
+        if let Some(ai) = self.players[player].objects[ui].ai.as_mut() {
+            ai.remove_target();
+        }
+        self.gather_move(player, ui, [to[0], to[1], 0.0], false)?;
         Ok(true)
     }
 

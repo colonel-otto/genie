@@ -1702,17 +1702,29 @@ impl Turns {
         self.watch_started(p, id)
     }
 
-    /// `FUN_140ace9c0` with a gather point without a target: the new unit waits to move (slot
-    /// 0x2a0 with 1) and takes slot 0x128 with no target at the point (z 0; its `+0xa14` 1: the
-    /// unit AI's order queue empties, `FUN_140c5e010`); slot 0x7e8 (`FUN_141227190`) runs the work
-    /// command (`FUN_14106ff70`), which finds no task: a unit with speed in state 2 notifies its
-    /// unit AI with the `MoveTo`'s order and action, no target and the point, its notifies cleared
-    /// ([`UnitAi::notify_work`], slot 0x828), and moves (slot 0x138, `FUN_141216f10`: the order
-    /// queue empties again; `FUN_14106d340`: the notifies cleared with the world time, then, the
-    /// unit holding no action, the `MoveTo` to the point, range 0, installed). A villager's
-    /// town-bell flag (`+0x9dc`, `FUN_1412067f0`) is not held.
-    fn gather_move(&mut self, p: usize, new: usize, point: [f32; 3]) -> Result<(), Unsupported> {
+    /// `FUN_140ace9c0` with a gather point without a target, and an unloaded unit's move
+    /// (`FUN_1411e7220`): the unit waits to move (slot 0x2a0 with 1) and takes slot 0x128
+    /// (`FUN_141211b80`) with no target at the point (z 0; its `+0xa14` `notified`: 1 for a new
+    /// unit, whose unit AI's order queue empties, `FUN_140c5e010`; 0 for an unloaded one); slot
+    /// 0x7e8 (`FUN_141227190`) runs the work command (`FUN_14106ff70`), which finds no task: a
+    /// unit with speed in state 2 notifies its unit AI with the `MoveTo`'s order and action, no
+    /// target and the point, its notifies cleared with `+0xa14` ([`UnitAi::notify_work`], slot
+    /// 0x828), and moves (slot 0x138, `FUN_141216f10`: a villager is no longer under the town bell,
+    /// `+0x9dc`; with `+0xa14` the order queue empties again; `FUN_14106d340`: the notifies
+    /// cleared with the world time, then, the unit holding no action, the `MoveTo` to the point,
+    /// range 0, installed). The command count (`+0x888`) is not held.
+    pub(crate) fn gather_move(
+        &mut self,
+        p: usize,
+        new: usize,
+        point: [f32; 3],
+        notified: bool,
+    ) -> Result<(), Unsupported> {
         let world_time = self.world_time;
+        let villager = self
+            .master_of(p, self.players[p].objects[new].life.master_id)?
+            .class
+            == VILLAGER;
         let unit = &mut self.players[p].objects[new];
         if let Some(m) = unit.mover.as_mut() {
             m.waiting = 1;
@@ -1732,17 +1744,24 @@ impl Turns {
             ));
         }
         if let Some(ai) = unit.ai.as_mut() {
-            ai.orders.clear();
+            if notified {
+                ai.orders.clear();
+            }
             ai.notify_work(
                 crate::unit_ai::MOVE_ORDER,
                 crate::unit_ai::MOVE_ACTION,
                 None,
                 point,
-                true,
+                notified,
                 self.streams.get(Stream::Ai),
             )?;
-            ai.orders.clear();
+            if notified {
+                ai.orders.clear();
+            }
             ai.clear_notifies(world_time)?;
+        }
+        if villager {
+            unit.town_bell.flag = false;
         }
         unit.move_to = Some(crate::move_to::MoveToAction {
             run: false,
@@ -1837,7 +1856,7 @@ impl Turns {
         finder: bool,
     ) -> Result<(), Unsupported> {
         if g.target == -1 {
-            return self.gather_move(p, new, [g.point[0], g.point[1], 0.0]);
+            return self.gather_move(p, new, [g.point[0], g.point[1], 0.0], notified);
         }
         if g.target == building {
             return Err(Unsupported(
@@ -1849,7 +1868,9 @@ impl Turns {
         } else {
             match self.lost_gather_target(p, new, g)? {
                 Some(id) => id,
-                None => return self.gather_move(p, new, [g.point[0], g.point[1], 0.0]),
+                None => {
+                    return self.gather_move(p, new, [g.point[0], g.point[1], 0.0], notified);
+                }
             }
         };
         let (owner, t) = self

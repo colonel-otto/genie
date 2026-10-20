@@ -78,6 +78,11 @@ pub(crate) const BUILDING: u8 = 80;
 const MOVING: u8 = 30;
 /// The task filter of garrisoning (3).
 pub(crate) const GARRISON: i16 = 3;
+/// The action type of a building packing or unpacking (0x7d), whose target a gather drops
+/// (`FUN_140a903a0`).
+const PACK_ACTION: i16 = 0x7d;
+/// A master's object flag 0x20: a building a gather takes as its target as any other.
+const GATHERED_BUILDING: u32 = 0x20;
 /// A task's action type of attacking (7), whose factory makes an Attack (type 9).
 const ATTACK_TASK: i16 = 7;
 
@@ -1488,6 +1493,7 @@ impl Turns {
         });
         let target_type = match unit.top_action_kind() {
             Some(HUNT) => unit.hunt.map_or(-1, |h| i32::from(h.target_class)),
+            Some(crate::gather::GATHER) => unit.gather.map_or(-1, |g| g.target_type),
             _ => -1,
         };
         let ai = unit.ai.as_ref().ok_or(Unsupported(
@@ -1712,6 +1718,31 @@ impl Turns {
                 }
                 self.retake_build(player, idx, target, point, clears)?;
                 true
+            }
+            _ if top == Some(crate::gather::GATHER)
+                && task.action_type == crate::gather::GATHER
+                && unit.gather.is_some_and(|g| g.task.id == task.id) =>
+            {
+                let t = self.task_target(target, 0)?;
+                if t.master.id == MASTER_84 && t.player == player {
+                    return Err(Unsupported("a gather sent to its player's master 84"));
+                }
+                let class = i32::from(t.master.class);
+                let took = self.retarget_gather(player, idx, target)?;
+                if took {
+                    let unit = &mut self.players[player].objects[idx];
+                    if let Some(ai) = unit.ai.as_mut() {
+                        ai.notify_work(
+                            crate::ai_kinds::ORDER_GATHER,
+                            crate::unit_ai::GATHER_ACTION,
+                            Some((target, class)),
+                            point,
+                            clears,
+                            self.streams.get(Stream::Ai),
+                        )?;
+                    }
+                }
+                took
             }
             _ if top == Some(task.action_type) && top != Some(HUNT) => {
                 return Err(Unsupported("a work command on the unit's current task"));
@@ -2240,6 +2271,87 @@ impl Turns {
             self.take(target);
         }
         Ok(())
+    }
+
+    /// The Gather's slot 0x48 (`0x140a903a0`) on the work command's new target
+    /// ([`crate::gather::GatherAction::retarget`]): false when it does not take it, for a building
+    /// (type 80 without object flag 0x20) other than a farm, so the work command makes a new
+    /// action. The targets that changed are let go (slot 0x180) and taken (slot 0x178). Not
+    /// modelled: a building packing or unpacking (its top action 0x7d), a foundation or master
+    /// 1893 or 1897 of the unit's player (slots 0x808 and 0x7e8: its build).
+    fn retarget_gather(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+    ) -> Result<bool, Unsupported> {
+        let (tp, t) = self
+            .object(target)
+            .ok_or(Unsupported("a gather's target the slice does not hold"))?;
+        let tm = self.master_of(tp, t.life.master_id)?;
+        if tm.kind == BUILDING {
+            if t.top_action_kind() == Some(PACK_ACTION) || t.unmodelled_action.is_some() {
+                return Err(Unsupported(
+                    "a gather retargeted to a building with an action (packing)",
+                ));
+            }
+            if tm.object_flags & GATHERED_BUILDING == 0 {
+                let (mp, main) = match t.annex_of {
+                    Some(m) => self
+                        .object(m)
+                        .ok_or(Unsupported("an annex whose main building is gone"))?,
+                    None => (tp, t),
+                };
+                let main_master = self.master_of(mp, main.life.master_id)?.id;
+                if (main.life.state < 2 || matches!(main_master, MASTER_1893 | MASTER_1897))
+                    && mp == player
+                {
+                    return Err(Unsupported(
+                        "a gather retargeted to its player's foundation (its build)",
+                    ));
+                }
+                if tm.class != crate::gather::FARM_CLASS {
+                    return Ok(false);
+                }
+            }
+        }
+        let (t_at, t_radius) = (t.position, tm.radius);
+        let unit = &self.players[player].objects[idx];
+        let me = self.master_of(player, unit.life.master_id)?;
+        let resource = crate::gather::Resource {
+            id: target,
+            position: t_at,
+            class: tm.class,
+            master: tm.id,
+            player: tp,
+            workers: t.workers,
+            drop_site: self.drops_at_main(player, idx, target)?,
+            gap: crate::movement::footprint_gap(unit.position, me.radius, t_at, t_radius),
+        };
+        let computer = self.players[player].computer;
+        let farm_stops = self.farm_stops;
+        let by = self.releaser(player, idx);
+        let unit = &mut self.players[player].objects[idx];
+        let held = unit.life.amount;
+        let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.mover.as_mut()) else {
+            return Err(Unsupported(
+                "a gatherer without its gather or movement state",
+            ));
+        };
+        let (old_target, old_second) = (gather.target, gather.carry_to);
+        let took = gather.retarget(&resource, player, computer, held, farm_stops, mover)?;
+        let (new_target, new_second) = (gather.target, gather.carry_to);
+        for (old, new) in [(old_target, new_target), (old_second, new_second)] {
+            if old != new {
+                if old != -1 {
+                    self.release(old, by)?;
+                }
+                if new != -1 {
+                    self.take(new);
+                }
+            }
+        }
+        Ok(took)
     }
 
     /// `FUN_14109d4f0` of the unit at `idx` on `target`, or on a building annex's main building

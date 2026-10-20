@@ -41,7 +41,7 @@ const LAST_BIT: f32 = crate::image::gather::LAST_BIT;
 /// A drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
 const DROP_REACH: f32 = crate::image::gather::DROP_REACH;
 /// The farm class, whose gather the slice does not model yet.
-const FARM_CLASS: i16 = 49;
+pub const FARM_CLASS: i16 = 49;
 /// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
 const VILLAGER_CLASS: i16 = 4;
 /// The masters a gatherer may gather from while they hold nothing (the combat object's slot
@@ -243,6 +243,68 @@ impl GatherAction {
             return self.set_drop(target.gap, mover);
         }
         self.set_walk(target.position, target.gap, mover)
+    }
+
+    /// Slot 0x48 (`0x140a903a0`) on the work command's new `target` (one the world holds that is
+    /// no building, or a farm; the caller's tests): its present target in state 6, 7 or 15, or in
+    /// 4 or 11 for a computer player, it keeps as it is. A loaded gatherer (`held`) sent to one of
+    /// its player's drop sites carries its load there: the timer clears, the target goes (slot
+    /// 0x68 with none) with the point, the drop site becomes the second target (`FUN_140a7a190`)
+    /// and `set_state(8)` walks there. Any other target becomes the target (slot 0x68) with its
+    /// place as the point and its class as the target type, the second target goes and
+    /// `set_state(4)` walks to it; the caller takes and lets go the targets that changed. With
+    /// the game's farm setting a fish trap (master 199) keeps its place as the farm's. Always
+    /// true: the gather took the target. Not modelled: a farm of master 50 or 1187 with the farm
+    /// setting (its four stops) and a farm another farmer works (slots 0x80 and 0x68).
+    ///
+    /// # Errors
+    ///
+    /// What it does not model; a unit that cannot move.
+    pub fn retarget(
+        &mut self,
+        target: &Resource,
+        player: usize,
+        computer: bool,
+        held: f32,
+        farm_stops: bool,
+        mover: &mut Mover,
+    ) -> Result<bool, Unsupported> {
+        if target.id == self.target {
+            match self.state {
+                FACE | WORK | 15 => return Ok(true),
+                WALK | 11 if computer => return Ok(true),
+                _ => {}
+            }
+        }
+        if target.player == player && target.drop_site && 0.0 < held {
+            self.timer = 0.0;
+            self.target = -1;
+            self.point = [-1.0; 3];
+            self.carry_to = target.id;
+            self.set_drop(target.gap, mover)?;
+            return Ok(true);
+        }
+        // slot 0x68 takes the target: its workers count it once it is new
+        let workers = target.workers + i32::from(target.id != self.target);
+        self.target = target.id;
+        self.point = target.position;
+        self.target_type = i32::from(target.class);
+        if farm_stops {
+            if matches!(target.master, 50 | 1187) {
+                return Err(Unsupported("a gather retargeted to a farm in stops"));
+            }
+            if target.master == 199 {
+                self.farm = [target.position[0], target.position[1]];
+            }
+        }
+        if target.class == FARM_CLASS && 1 < workers {
+            return Err(Unsupported(
+                "a gather retargeted to a farm another farmer works",
+            ));
+        }
+        self.carry_to = -1;
+        self.set_walk(target.position, target.gap, mover)?;
+        Ok(true)
     }
 
     /// `set_state(4)` (`0x140a8cd40` case 4) with its target at `position`, `gap` from the unit:
@@ -726,6 +788,56 @@ mod tests {
         g.start(&bush(), 7, false, false, &mut held, &mut mover)
             .unwrap();
         assert_eq!(held, (17, 3.0));
+    }
+
+    /// Slot 0x48 on the work command's target: the 4v4's forager 31156 walking to bush 28222 (state
+    /// 4) is sent to it again in update 5026 and walks to it anew (`set_state(4)`); facing or
+    /// gathering it, it keeps on; a computer player's walking one too. A loaded one sent to its
+    /// player's drop site takes its load there (`set_state(8)`, the site its second target).
+    #[test]
+    fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
+        let mut mover = crate::hunt::tests::walker();
+        let walking = |state| GatherAction {
+            state,
+            move_to: Some(MoveTo::Moving),
+            ..GatherAction::new(task(), &bush(), true).unwrap()
+        };
+        let mut g = walking(WALK);
+        assert_eq!(
+            g.retarget(&bush(), 7, false, 0.0, true, &mut mover),
+            Ok(true)
+        );
+        assert_eq!(
+            (
+                g.state,
+                g.move_to,
+                g.target,
+                g.carry_to,
+                g.point,
+                g.target_type
+            ),
+            (WALK, Some(MoveTo::Start), 28222, -1, [23.5, 93.5, 0.0], 7)
+        );
+        for (state, computer) in [(FACE, false), (WORK, false), (WALK, true)] {
+            let mut g = walking(state);
+            assert_eq!(
+                g.retarget(&bush(), 7, computer, 0.0, true, &mut mover),
+                Ok(true)
+            );
+            assert_eq!((g.state, g.move_to), (state, Some(MoveTo::Moving)));
+        }
+        let mill = Resource {
+            id: 500,
+            player: 7,
+            drop_site: true,
+            ..bush()
+        };
+        let mut g = walking(WALK);
+        assert_eq!(g.retarget(&mill, 7, false, 3.0, true, &mut mover), Ok(true));
+        assert_eq!(
+            (g.state, g.target, g.carry_to, g.point),
+            (DROP, -1, 500, [-1.0; 3])
+        );
     }
 
     /// The forager's gathering: `(work rate) × work_val1 × dt` a tick into its load, the bush
