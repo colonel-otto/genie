@@ -2031,15 +2031,16 @@ impl Unit {
     /// (`FUN_140c5de60`); orders left end the hunt (the AI's order and action clear, `set_state`
     /// 1, the action list removes it; its teardown's release of the drop site is not held, as its
     /// take is not). The target class (the AI's target's, else the hunt's `+0x68`) the
-    /// civilian's slot 0x1b0 knows (`FUN_140c1c4f0`) takes the search by kind (slot 0x80), not
-    /// modelled; a hunt of class 10, a unit in a pasture (`FUN_1411c7670`) and a farm found are
-    /// not modelled either. Else `ClosestObject` (`FUN_140c488b0`, every relation, below one
-    /// worker for class 49) of the class over the AI's search (`FUN_140c63e20`: its sight plus a
-    /// tile, at least its search radius, plus the civilian's growth; enemies found are not
-    /// modelled, else the alert mode clears). The object found becomes the hunt's target (slot
-    /// 0x48, [`HuntAction::retarget`], which takes it: its workers count one more); finding none
-    /// is not modelled (the hunt's point, then its own search). A hunt that fails at once takes
-    /// the standing sprite (slot 0x68 with `FUN_140ac5210`'s: the unit carries nothing now).
+    /// civilian's slot 0x1b0 knows (`FUN_140c1c4f0`) takes the search by kind (slot 0x80); a hunt
+    /// of class 10 searches nothing; a unit in a pasture (`FUN_1411c7670`) and a farm found are
+    /// not modelled. Else `ClosestObject` (`FUN_140c488b0`, every relation, below one worker for
+    /// class 49) of the class over the AI's search (`FUN_140c63e20`: its sight plus a tile, at
+    /// least its search radius, plus the civilian's growth; enemies found are not modelled, else
+    /// the alert mode clears). The object found becomes the hunt's target (slot 0x48,
+    /// [`HuntAction::retarget`], which takes it: its workers count one more); with none a human
+    /// player's hunt walks to its point to search again (`set_state(11)`,
+    /// [`HuntAction::search_walk`]). A hunt that fails at once takes the standing sprite (slot
+    /// 0x68 with `FUN_140ac5210`'s: the unit carries nothing now).
     fn hunt_after_drop(
         &mut self,
         c: &mut Context<'_>,
@@ -2140,10 +2141,10 @@ impl Unit {
             ));
         }
         let kind = crate::unit_ai::civilian_kind(class);
-        let found = if kind == -1 {
-            if hunt.target_class == 10 {
-                return Err(Unsupported("a hunt of class 10 after its drop-off"));
-            }
+        let found = if kind == -1 && hunt.target_class == 10 {
+            // a hunt of class 10 searches nothing
+            -1
+        } else if kind == -1 {
             if self.my_pasture != -1 {
                 return Err(Unsupported("a hunter tending a pasture (FUN_1411c7670)"));
             }
@@ -2217,7 +2218,26 @@ impl Unit {
             self.resource_search(c, others, kind as u8, cap)?
         };
         if found == -1 {
-            return Err(Unsupported("a hunt that found nothing after its drop-off"));
+            // LAB_140ac9509 with nothing found: a computer player's hunt of a kind but wood
+            // would end (set_state 1); one with its point walks there to search again
+            // (set_state 11, its second target kept); without a point it would wait
+            // (set_state 2)
+            if c.computer && kind != 0 {
+                return Err(Unsupported(
+                    "a computer player's hunt that found nothing after its drop-off (set_state 1)",
+                ));
+            }
+            let hunt = self.hunt.as_mut().expect("the caller's hunt");
+            if hunt.point[0] == -1.0 || hunt.point[1] == -1.0 {
+                return Err(Unsupported(
+                    "a hunt without a point that found nothing after its drop-off (set_state 2)",
+                ));
+            }
+            let mover = self
+                .mover
+                .as_mut()
+                .ok_or(Unsupported("a hunter without movement state"))?;
+            return hunt.search_walk(mover);
         }
         let foreign = c.foreign;
         let (owner, t) = match others.iter().find(|u| u.id == found) {

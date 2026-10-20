@@ -522,6 +522,16 @@ impl HuntAction {
         Ok(true)
     }
 
+    /// `set_state(11)` after a drop-off that found no next target: the walk to the hunt's point
+    /// ([`HuntAction::set_point_walk`]), whose end searches again.
+    ///
+    /// # Errors
+    ///
+    /// A unit without speed.
+    pub fn search_walk(&mut self, mover: &mut Mover) -> Result<(), Unsupported> {
+        self.set_point_walk(WALK_SEARCH, mover)
+    }
+
     /// `set_state` 11 and 15 (`0x140ac60e0` case 0xb): the sub-actions go, the timer clears and a
     /// quiet `MoveTo` to the point within the task's range starts (`FUN_140aa0d30`, showing the
     /// walking sprite of [`walk_sprite`]).
