@@ -1926,6 +1926,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                     .map(|o| unit(o, p.objects(), &header.world.base_world.path, civ, masters))
                     .collect(),
                 computer: false,
+                kind: p.player.type_,
                 resources: [resource(0), resource(1), resource(2), resource(3)],
                 construction_rate: resource(CONSTRUCTION_RATE),
                 attributes: attributes.clone(),

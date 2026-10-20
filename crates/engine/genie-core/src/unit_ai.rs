@@ -2143,7 +2143,7 @@ impl UnitAi {
         // the full update's start: the time since the last enemy sighting grows by the world's dt
         self.time_since_enemy += at.dt_seconds;
         let mut fx = Vec::new();
-        self.target_block(at, computer, &mut fx)?;
+        self.target_block(at, computer, ai, &mut fx)?;
         self.keep_attackers(at, side);
         self.check_busy_order(retarget, at.busy && fx.is_empty())?;
         if self.current_order != -1 {
@@ -2255,15 +2255,17 @@ impl UnitAi {
     /// (`+0x2f0`) drops its target, as does one whose target no longer exists (an attack action's
     /// idle timer then takes its timeout; `FUN_140c5e1e0` finds no target left). A dead target (a
     /// state above 2, not a building) of a live unit ends an action that needs a live one
-    /// ([`LIVE_TARGET_ACTIONS`]) or any action with `+0x1a8` set: `+0x1a8` clears and, but for a
-    /// hunt or `0x2be`, the target goes and the action stops (slot 0xb0 with 1). An attack's next
-    /// target (slots 0x2b0, 0x240), the patrol range (`FUN_140c41690`), a computer's priority by
-    /// the target's distance and action `0x2be`'s check (`FUN_140c40f10`) are not modelled; the
-    /// slice holds no unit groups (`+0x6d0`).
+    /// ([`LIVE_TARGET_ACTIONS`]), an attack whose top action is no longer in its state 2 (slot
+    /// 0x2b0: the swing on the kill) or any action with `+0x1a8` set: `+0x1a8` clears; an attack
+    /// looks for its next target ([`UnitAi::next_after_kill`]); but for a hunt or `0x2be`, any
+    /// other action loses its target and stops (slot 0xb0 with 1). The patrol range
+    /// (`FUN_140c41690`), a computer's priority by the target's distance and action `0x2be`'s check
+    /// (`FUN_140c40f10`) are not modelled; the slice holds no unit groups (`+0x6d0`).
     fn target_block(
         &mut self,
         at: &Surroundings,
         computer: bool,
+        ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         if self.current_target != -1 && at.garrisoned {
@@ -2282,12 +2284,16 @@ impl UnitAi {
             }
             Some(t) => {
                 if at.state == 2 && 2 < t.state && t.kind != 80 {
-                    if action == ATTACK_ACTION {
-                        return Err(Unsupported("an attack action whose target died"));
-                    }
-                    if self.stop_after_kill || LIVE_TARGET_ACTIONS.contains(&action) {
+                    let attack_over = action == ATTACK_ACTION
+                        && at.action_state.ok_or(Unsupported(
+                            "an attack whose target died, its top action not held",
+                        ))? != 2;
+                    if self.stop_after_kill || LIVE_TARGET_ACTIONS.contains(&action) || attack_over
+                    {
                         self.stop_after_kill = false;
-                        if action != HUNT_ACTION && action != BUILD_ORDER {
+                        if action == ATTACK_ACTION {
+                            self.next_after_kill(at, ai, fx)?;
+                        } else if action != HUNT_ACTION && action != BUILD_ORDER {
                             self.remove_target();
                             self.stop_current(true, at, fx)?;
                         }
@@ -2310,6 +2316,49 @@ impl UnitAi {
         if self.current_action == BUILD_ORDER {
             return Err(Unsupported("action 0x2be's target check"));
         }
+        Ok(())
+    }
+
+    /// The target block's attack whose target died (`0x140c66b10`): processIdle (slot 0x240 with
+    /// 0; the boar's [`UnitAi::boar_idle`] after the cap) may find the next thing to do (6); with
+    /// nothing (5) the AI moves to its old target's point within the unit's weapon range (slot
+    /// 0x130, forced, running: it always takes it). Then the order ends: it becomes the last order,
+    /// the order and its priority −1. The other factory types' slot 0x240 and a patrol order's
+    /// part (orders 711, 733) are not modelled.
+    fn next_after_kill(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        let produced = match self.ai_type {
+            BOAR_AI => {
+                self.cap_human_order(fx);
+                let (produced, moved) = self.boar_idle(at, ai);
+                fx.extend(moved.map(Effect::Move));
+                produced
+            }
+            _ => {
+                return Err(Unsupported(
+                    "an attack whose target died: processIdle of another unit AI (slot 0x240)",
+                ));
+            }
+        };
+        if !produced {
+            let m = self.move_to(AiMove {
+                point: self.target_point,
+                range: at.weapon_range,
+                force: true,
+                walk: false,
+            });
+            fx.extend(m.map(Effect::Move));
+        }
+        if matches!(self.current_order, PATROL | PATROL_2) {
+            return Err(Unsupported("a patrol's attack whose target died"));
+        }
+        self.last_order = self.current_order;
+        self.current_order = -1;
+        self.order_priority = -1;
         Ok(())
     }
 

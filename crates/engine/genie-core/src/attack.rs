@@ -963,9 +963,6 @@ impl Attack {
                 Ok(0)
             }
             SWING => self.swing(&mut walk, s),
-            KILLED if !self.sub_action => Err(Unsupported(
-                "a unit's own Attack after its target died (notify 0x1fb, code 2)",
-            )),
             KILLED => {
                 // case 1: once the swing's sprite looped (or there is none, or it does not
                 // animate) the attack lets its target go and ends; the hunt reads code 5
@@ -975,8 +972,18 @@ impl Attack {
                 if !done {
                     return Ok(0);
                 }
+                if self.sub_action {
+                    self.finish(&mut walk, s)?;
+                    return Ok(5);
+                }
+                // a unit's own Attack (not quiet, `+0x60` 0): the target goes (slot 0x68 with
+                // none), it posts 0x1fb with 600 and 0x202, ends (set_state 1) and returns 2,
+                // which keeps it in the list
+                s.let_go = Some(self.target);
+                self.target = -1;
+                s.posted.push((0x1fb, [600, 0, 0x202]));
                 self.finish(&mut walk, s)?;
-                Ok(5)
+                Ok(2)
             }
             _ => Err(Unsupported("an Attack in a state the slice does not model")),
         }

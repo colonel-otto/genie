@@ -4562,13 +4562,14 @@ impl Unit {
             }
         }
         if self.life.is_alive() && self.life.hp < 1.0 {
-            // set_state(3)'s storage (FUN_1411a56c0 with 0: kinds 2 and 16) leaves the player
-            let stores = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .is_some_and(|m| m.storage.iter().any(|&(_, _, kind)| matches!(kind, 2 | 16)));
-            if stores {
-                return Err(Unsupported("a dying object's storage leaves its player"));
+            // set_state(3)'s storage (FUN_1411a56c0 with 0): each of kinds 2 and 16 of an
+            // attribute leaves the player (its slot 0xf8 with the amount negated)
+            if let Some(m) = c.masters.and_then(|m| m.get(self.life.master_id)) {
+                for &(attribute, amount, kind) in &m.storage {
+                    if matches!(kind, 2 | 16) && 0 <= attribute {
+                        c.attribute_adds.push((attribute, -amount));
+                    }
+                }
             }
         }
         let before = self.life.state;
@@ -6301,6 +6302,9 @@ pub struct Player {
     pub objects: Vec<Unit>,
     /// `player+0x10 == 3`.
     pub computer: bool,
+    /// `player+0x10`, the player's type (the save's class byte): 1 human, 2 Gaia, 3 computer
+    /// (0 the scenario editor's phantom).
+    pub kind: u8,
     /// Food, wood, stone and gold (the player's attributes 0 to 3).
     pub resources: [f32; 4],
     /// Attribute 195, the construction rate modifier, which builders' work reads.
@@ -6517,8 +6521,9 @@ impl Turns {
     /// counts a kill (attribute 20) and its owner a loss (154); the attacker's player counts it
     /// against the owner (300 + the owner) and the owner against the attacker (325 + the
     /// attacker's player); both count its paid cost (170 and 152, and 400 + the owner). A killed
-    /// villager's statistics (attributes 226 to 229 by the attacker's class and player type) are
-    /// not modelled. Gaia takes a player's livestock (slot 0x70): its place and sight, its Artifact's
+    /// villager first counts for its owner (`FUN_141082e80`): an attacker of class 9 or 10 (an
+    /// animal) in attribute 227, and by the attacker's player type a human's in 229, Gaia's in
+    /// 226, a computer's in 228. Gaia takes a player's livestock (slot 0x70): its place and sight, its Artifact's
     /// wait, its unit AI's notifies (cleared, then 0x20b), its storage (the old owner loses flags 2,
     /// 16 and 32, Gaia gains 1, 2 and 32) and its list (the old owner's last object takes its
     /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
@@ -6542,12 +6547,24 @@ impl Turns {
                 "a killed object of a master the slice does not have",
             ))?
             .clone();
-        if master.class == 4 {
-            return Err(Unsupported(
-                "a killed villager's statistics (attributes 226 to 229)",
-            ));
-        }
         let ap = kill.attacker_player;
+        if master.class == 4 {
+            let (bp, by) = self.object(kill.attacker).ok_or(Unsupported(
+                "a killed villager's attacker the slice does not hold",
+            ))?;
+            if matches!(self.master_of(bp, by.life.master_id)?.class, 9 | 10) {
+                self.players[q].add_attribute(227, 1.0)?;
+            }
+            let by_kind = match self.players[ap].kind {
+                1 => Some(229),
+                2 => Some(226),
+                3 => Some(228),
+                _ => None,
+            };
+            if let Some(kind) = by_kind {
+                self.players[q].add_attribute(kind, 1.0)?;
+            }
+        }
         if !PEACEFUL.contains(&master.class) {
             self.players[ap].add_attribute(20, 1.0)?;
             self.players[q].add_attribute(154, 1.0)?;
