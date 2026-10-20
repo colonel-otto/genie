@@ -1329,6 +1329,7 @@ impl Turns {
                 goal: Some(point),
                 target: -1,
                 range: 0.0,
+                wait: crate::move_to::MoveWait::default(),
             });
         }
         // the order handler's notify: a unit that took the move as a MoveTo gets the move order

@@ -4893,18 +4893,16 @@ impl Unit {
             None => crate::move_to::MoveStep::default(),
         };
         if step.gave_up {
-            // LAB_140aa320c: a human's villager waits (set_state 2, 1 s or 2 s by its stance);
-            // any other unit's MoveTo fails (set_state 13), which its unit AI's check between
-            // turns may interrupt with its next order the same update
+            // LAB_140aa320c: a human's villager waits once (set_state 2, 1 s or 2 s by its
+            // stance); any other unit's MoveTo fails (set_state 13), which its unit AI's check
+            // between turns may interrupt with its next order the same update
             let villager = c
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
                 .is_some_and(|m| m.class == 4);
-            if villager && !c.computer {
-                return Err(Unsupported("a villager's own MoveTo waits (set_state 2)"));
-            }
+            let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             if let Some(m) = self.move_to.as_mut() {
-                m.state = MoveTo::Failed;
+                m.state = m.wait.give_up(villager && !c.computer, stance);
             }
         }
         if step.target_moved {
@@ -5827,6 +5825,7 @@ impl Unit {
             target: -1,
             range: m.range,
             run: !m.walk,
+            wait: crate::move_to::MoveWait::default(),
         });
         Ok(())
     }

@@ -891,6 +891,18 @@ fn saved_actions(
                             && m.run_sprite_id != m.move_sprite_id
                             && base.short_val_2 == m.run_sprite_id
                     }),
+                // its wait (`+0x6c`, `+0x70`, `+0x74`)
+                wait: action
+                    .rge_action_by_type
+                    .as_deref()
+                    .and_then(|b| b.rge_action_move_to.as_deref())
+                    .map_or_else(genie_core::move_to::MoveWait::default, |m| {
+                        genie_core::move_to::MoveWait {
+                            state: m.movement_wait_state,
+                            timer: m.timer,
+                            delay: f32::from_bits(m.k_default_wait_time),
+                        }
+                    }),
             });
             Ok(())
         }

@@ -313,6 +313,8 @@ pub struct MoveToAction {
     /// It shows the master's running sprite (an AI move that does not walk, slot 0x340 with
     /// its seventh argument 0), else its walking one.
     pub run: bool,
+    /// Its wait after the motion step gave up.
+    pub wait: MoveWait,
 }
 
 /// A `MoveTo`'s start counts the unit at its target within this gap (`0x140aa2100`,
@@ -369,6 +371,7 @@ impl MoveToAction {
             target,
             range,
             run,
+            wait: MoveWait::default(),
         })
     }
 
@@ -423,6 +426,10 @@ impl MoveToAction {
                 Ok(step)
             }
             MoveTo::Start => {
+                // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
+                if self.wait.state == 1 {
+                    self.wait.state = 2;
+                }
                 let goal = match (self.target, self.goal) {
                     (-1, Some(point)) => Goal::Point(point),
                     (-1, None) => return Err(Unsupported("a MoveTo of its own without a goal")),
@@ -437,7 +444,10 @@ impl MoveToAction {
                     };
                 }
                 self.state = MoveTo::Moving;
-                self.state = start_walk(walk.reborrow(), goal, self.range, false)?;
+                match start_walk_or_give_up(walk.reborrow(), goal, self.range, false)? {
+                    Some(state) => self.state = state,
+                    None => step.gave_up = true,
+                }
                 self.ended(&mut walk);
                 Ok(step)
             }
@@ -445,7 +455,15 @@ impl MoveToAction {
                 step.done = true;
                 Ok(step)
             }
-            MoveTo::Waiting => Err(Unsupported("a waiting MoveTo of its own (state 2)")),
+            // case 2: the timer runs by dt; at its end the MoveTo asks again (set_state 3)
+            MoveTo::Waiting => {
+                self.wait.timer += walk.dt;
+                if self.wait.delay <= self.wait.timer {
+                    self.wait.timer = 0.0;
+                    self.state = MoveTo::Start;
+                }
+                Ok(step)
+            }
             // 0x140aa2a70's state 13: the notify (the caller's), then code 3
             MoveTo::Failed => {
                 step.failed = true;
