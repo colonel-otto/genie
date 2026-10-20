@@ -18,6 +18,10 @@ const ATTRIBUTE_39: usize = 39;
 /// it is modelled for: the hit points (0) and the armor (8, the class in the amount's high byte,
 /// the amount in its low byte).
 const ATTRIBUTE_ADD: u8 = 4;
+/// The effect command kind that enables or disables a master (2, `FUN_1416665b0`).
+const ENABLE_MASTER: u8 = 2;
+/// The master whose enabling first asks the game's mode (`0x26d`, `FUN_1416665b0`).
+const MODE_TESTED_MASTER: i16 = 0x26d;
 const HIT_POINTS: i16 = 0;
 const ARMOR: i16 = 8;
 /// The `TRIBE_Effects` command kinds that change technologies (`'e'`, `'f'`, `'g'`).
@@ -218,8 +222,39 @@ impl Turns {
         for c in effect {
             match c.kind {
                 ATTRIBUTE_ADD => self.attribute_add(p, c.a, c.b, c.d, c.c)?,
+                ENABLE_MASTER if 0 <= c.a => self.enable_master(p, c.a, c.b, c.c)?,
+                ENABLE_MASTER => {}
                 _ => return Err(Unsupported("an effect command the slice does not model")),
             }
+        }
+        Ok(())
+    }
+
+    /// The enable command (`FUN_1416665b0`) of player `p` on its master `master` (`enable`'s low
+    /// byte 1 or 0): a master the player does not have is let be (its id check against `+0x260`
+    /// is taken to hold); otherwise the master's slot 0x58 (`FUN_141126280`) sets `available`
+    /// unless it is `disabled`. Its sprites' loading on an enable (slot 0xa8) is not simulation.
+    /// Not modelled: the enabling of master `0x26d` (it asks the game's mode) and a command for
+    /// one building (`which` 1 with the object, `FUN_1411c69f0`, `FUN_1411c6a50`).
+    fn enable_master(
+        &mut self,
+        p: usize,
+        master: i16,
+        enable: i16,
+        which: i16,
+    ) -> Result<(), Unsupported> {
+        let Some(m) = self.masters.get_mut(p).and_then(|m| m.get_mut(master)) else {
+            return Ok(());
+        };
+        let enable = enable as u8;
+        if enable == 1 && master == MODE_TESTED_MASTER {
+            return Err(Unsupported("the enabling of master 0x26d (the game's mode)"));
+        }
+        if which == 1 {
+            return Err(Unsupported("an enable command for one building"));
+        }
+        if !m.disabled {
+            m.available = enable != 0;
         }
         Ok(())
     }

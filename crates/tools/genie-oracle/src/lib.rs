@@ -2169,6 +2169,8 @@ fn work_masters(
         work.obstruction_class = s.obstruction_class;
         work.object_flags = s.object_flags;
         work.hit_points = s.read_temp_6;
+        work.available = s.available != 0;
+        work.disabled = s.disabled != 0;
         work.line_of_sight = s.los;
         work.capacity = s.attribute_max_amount;
         work.blast_defense = s.area_effect_object_level;

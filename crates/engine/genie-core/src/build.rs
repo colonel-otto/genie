@@ -520,6 +520,30 @@ impl BuildAction {
         Ok(())
     }
 
+    /// Slot 0x48 (`FUN_140ab1b30`) on another foundation of the builder's player: slot 0x68
+    /// (`FUN_140ab0300`) takes it (the caller's builder count, release and take; the Build is no
+    /// longer among the builders) and `set_state(4)` starts over: its `MoveTo` goes (the unit
+    /// stops, slot 0x5d0) and a new one to the foundation starts, arrived when the footprints
+    /// touch (`gap`).
+    ///
+    /// # Errors
+    ///
+    /// The unit's stop that the motion step does not model.
+    pub fn retarget(
+        &mut self,
+        target: i32,
+        gap: f32,
+        mover: Option<&mut crate::movement::Mover>,
+    ) -> Result<(), Unsupported> {
+        if self.move_to.is_some()
+            && let Some(m) = mover
+        {
+            m.stop()?;
+        }
+        *self = Self::start(target, gap, self.task);
+        Ok(())
+    }
+
     /// The search for more work found nothing (`0x140ab0f00`): slot 0x68 with none lets the
     /// foundation go (the caller's) and `set_state(3)` waits.
     ///
@@ -1013,6 +1037,23 @@ mod tests {
         assert_eq!(finish(16, true), Some((0, 6.881_128)));
         assert_eq!(finish(1, false), None);
         assert_eq!(finish(-1, true), None);
+    }
+
+    /// records/425906646's update 4804: builders of players 4 and 5 told to build another
+    /// foundation: even one at work (state 6) starts over on the new one (state 4), no longer
+    /// among builders, its `MoveTo` arrived when the footprints touch.
+    #[test]
+    fn a_builder_sent_to_another_foundation_starts_over() {
+        let mut b = BuildAction {
+            state: WORK,
+            move_to: None,
+            added: true,
+            timer: 0.5,
+            ..BuildAction::start(31148, 0.0, TASK)
+        };
+        b.retarget(31150, 0.0, None).unwrap();
+        assert_eq!(b, BuildAction::start(31150, 0.0, TASK));
+        assert_eq!((b.state, b.added, b.move_to), (MOVE, false, Some(MoveTo::Arrived)));
     }
 
     /// records/425906646's update 673: builders 27232 and 27234, at work on house 31011 (state

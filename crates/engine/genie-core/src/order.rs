@@ -1886,10 +1886,14 @@ impl Turns {
     }
 
     /// The work command's target for the Build the unit runs (`LAB_1410706a8`: its task is the
-    /// one found, slot 0x48 takes the target, [`crate::build::BuildAction::retake`]), then the
-    /// notify of the Build (slot 0x828: order 702, action 602, the target with its class). Only
-    /// the Build's own foundation again is modelled: another foundation (slot 0x68 lets the old
-    /// one go and takes the new) and another player's object (`set_state(11)`) are not.
+    /// one found, slot 0x48 takes the target, `FUN_140ab1b30`), then the notify of the Build
+    /// (slot 0x828: order 702, action 602, the target with its class). Its own foundation again
+    /// is [`crate::build::BuildAction::retake`]; another foundation of the player's (slot 0x68,
+    /// `FUN_140ab0300`: a builder counted among the old one's builders leaves them, through
+    /// `FUN_140aaddb0`, an annex's main building's; `FUN_140a7a230` lets the old one go, slot
+    /// 0x180, and takes the new, slot 0x178) starts over in `set_state(4)`
+    /// ([`crate::build::BuildAction::retarget`]). Another player's object (`set_state(11)`) is
+    /// not modelled.
     fn retake_build(
         &mut self,
         player: usize,
@@ -1909,11 +1913,37 @@ impl Turns {
         let tm = self.master_of(tp, t.life.master_id)?;
         let (t_at, t_radius, class) = (t.position, tm.radius, i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
-        if unit.build.is_none_or(|b| b.target != target) {
-            return Err(Unsupported("a Build retargeted to another foundation"));
-        }
+        let old = unit
+            .build
+            .ok_or(Unsupported("a Build's retarget without its Build"))?;
         let builder = self.master_of(player, unit.life.master_id)?;
         let gap = crate::movement::footprint_gap(unit.position, builder.radius, t_at, t_radius);
+        if old.target != target {
+            if old.added {
+                self.leave_builders(old.target)?;
+            }
+            if old.target != -1 {
+                let by = self.releaser(player, idx);
+                self.release(old.target, by)?;
+            }
+            self.take(target);
+            let unit = &mut self.players[player].objects[idx];
+            let (Some(build), mover) = (unit.build.as_mut(), unit.mover.as_mut()) else {
+                return Err(Unsupported("a Build's retarget without its Build"));
+            };
+            build.retarget(target, gap, mover)?;
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.notify_work(
+                    crate::unit_ai::BUILD_ORDER,
+                    crate::unit_ai::BUILD_ACTION,
+                    Some((target, class)),
+                    point,
+                    clears,
+                    self.streams.get(Stream::Ai),
+                )?;
+            }
+            return Ok(());
+        }
         let computer = self.players[player].computer;
         let Some(Place::Live(fp, fi)) = self.place(target) else {
             return Err(Unsupported("a Build's foundation that sleeps"));
@@ -1940,6 +1970,30 @@ impl Turns {
                 self.streams.get(Stream::Ai),
             )?;
         }
+        Ok(())
+    }
+
+    /// `FUN_140aaddb0` and the builder count: the foundation `id` a Build counted its builder
+    /// among (an annex of type 80 its main building, `+0xbb8`), when the world still holds it,
+    /// counts one builder less (`+0x9e8`).
+    fn leave_builders(&mut self, id: i32) -> Result<(), Unsupported> {
+        let Some((p, f)) = self.object(id) else {
+            return Ok(());
+        };
+        let kind = self.master_of(p, f.life.master_id)?.kind;
+        let site = if kind == BUILDING {
+            f.annex_of.unwrap_or(id)
+        } else {
+            id
+        };
+        let Some(Place::Live(sp, si)) = self.place(site) else {
+            return Err(Unsupported("a Build's foundation that sleeps"));
+        };
+        let c = self.players[sp].objects[si]
+            .construction
+            .as_mut()
+            .ok_or(Unsupported("a Build's foundation without its construction"))?;
+        c.builders = c.builders.wrapping_sub(1);
         Ok(())
     }
 

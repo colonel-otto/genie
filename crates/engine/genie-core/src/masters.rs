@@ -249,6 +249,11 @@ pub struct Master {
     /// `+0x605`, `fog_visibility`: an object of it the player only explored stays a target
     /// (the Attack's update).
     pub fog_visibility: u8,
+    /// `+0x5f0`, `available`: the player may make it (an effect's enable command, kind 2,
+    /// changes it).
+    pub available: bool,
+    /// `+0x5f1`, `disabled`: an enable command leaves `available` as it is.
+    pub disabled: bool,
     /// `+0x682`, `create_doppelganger_on_death`: 2 leaves ghosts of an object of it for the
     /// players who explored its tile but do not see it, at its death and once they lose sight
     /// of it ([`crate::ghost`]).
@@ -357,6 +362,11 @@ impl Masters {
     /// Every master, by id, to change (a technology's effect).
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Master> {
         self.by_id.iter_mut().flatten()
+    }
+
+    /// The master `id` to change, if the player has it.
+    pub fn get_mut(&mut self, id: i16) -> Option<&mut Master> {
+        self.by_id.get_mut(usize::try_from(id).ok()?)?.as_mut()
     }
 
     /// The work command's choice of master and task (`FUN_14106ff70` up to the task's
