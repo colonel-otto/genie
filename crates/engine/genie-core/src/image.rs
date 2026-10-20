@@ -130,6 +130,16 @@ pub mod garrison {
     pub const RATE_RANGE: f32 = f32::from_bits(0x3f80_0000);
 }
 
+/// The values `crate::gather`'s port reads.
+pub mod gather {
+    /// 1.0
+    pub const DROP_REACH: f32 = f32::from_bits(0x3f80_0000);
+    /// 0.0010000000474974513
+    pub const LAST_BIT: f32 = f32::from_bits(0x3a83_126f);
+    /// 0.10000000149011612
+    pub const REMAINDER: f32 = f32::from_bits(0x3dcc_cccd);
+}
+
 /// The values `crate::gather_search`'s port reads.
 pub mod gather_search {
     /// 20.0

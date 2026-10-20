@@ -45,6 +45,7 @@ pub mod fly;
 pub mod fmath;
 pub mod game_status;
 pub mod garrison;
+pub mod gather;
 pub mod gather_search;
 pub mod ghost;
 pub mod hull_path;

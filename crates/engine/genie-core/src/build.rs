@@ -1053,7 +1053,10 @@ mod tests {
         };
         b.retarget(31150, 0.0, None).unwrap();
         assert_eq!(b, BuildAction::start(31150, 0.0, TASK));
-        assert_eq!((b.state, b.added, b.move_to), (MOVE, false, Some(MoveTo::Arrived)));
+        assert_eq!(
+            (b.state, b.added, b.move_to),
+            (MOVE, false, Some(MoveTo::Arrived))
+        );
     }
 
     /// records/425906646's update 673: builders 27232 and 27234, at work on house 31011 (state

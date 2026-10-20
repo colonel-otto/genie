@@ -1147,7 +1147,11 @@ mod tests {
     /// `0x200801000801000` over classes below 58.
     #[test]
     fn the_unload_groups() {
-        let group = |g| (0..64).filter(|&c| unload_group_takes(g, c)).collect::<Vec<_>>();
+        let group = |g| {
+            (0..64)
+                .filter(|&c| unload_group_takes(g, c))
+                .collect::<Vec<_>>()
+        };
         assert_eq!(group(1), [4, 19]);
         assert_eq!(group(3), [12, 23, 36, 47, 57]);
         assert_eq!(group(6), [18, 42, 43]);

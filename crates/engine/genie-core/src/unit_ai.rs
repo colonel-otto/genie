@@ -2259,7 +2259,7 @@ impl UnitAi {
     }
 
     /// The units the update models after its target block ([`UnitAi::target_block`]): a target
-    /// only on a villager's build, hunt or garrison (702/602, 713/613, 717/617), its attack back
+    /// only on a villager's build, gather, hunt or garrison (702/602, 709/609, 713/613, 717/617), its attack back
     /// as a hunt (700/613, [`UnitAi::hunt_object`]), on the follow
     /// order (712 with its action 612, the move's 610 or none), on a boar's own attack (−1/600)
     /// or the attack order (700/600), or without an order and an action (a hunt ended by its
@@ -2273,6 +2273,7 @@ impl UnitAi {
             order,
             (BUILD_ORDER, BUILD_ACTION)
                 | (HUNT_ORDER | ATTACK_ORDER, HUNT_ACTION)
+                | (crate::ai_kinds::ORDER_GATHER, GATHER_ACTION)
                 | (crate::garrison::ENTER_ORDER, crate::garrison::ENTER_ACTION)
                 | (FOLLOW_ORDER, FOLLOW_ACTION | MOVE_ACTION | -1)
         );
@@ -3880,6 +3881,8 @@ pub const BUILD_ACTION: i32 = 602;
 pub const HUNT_ORDER: i32 = 713;
 /// The hunt action value (`0x265`).
 pub const HUNT_ACTION: i32 = 613;
+/// The gather action value (`0x261`), which a Gather's notifies carry.
+pub const GATHER_ACTION: i32 = 0x261;
 
 #[cfg(test)]
 mod tests {

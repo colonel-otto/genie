@@ -91,6 +91,8 @@ pub struct Unit {
     pub hp_powerups: [f32; 2],
     /// A villager's Hunt action, its top action.
     pub hunt: Option<HuntAction>,
+    /// A forager's Gather action, its top action.
+    pub gather: Option<crate::gather::GatherAction>,
     /// Its own Attack (type 9, not a Hunt's), its top action: a boar's on its attacker.
     pub attack: Option<crate::attack::Attack>,
     /// An auto scout's Explore action, its top action.
@@ -715,6 +717,8 @@ struct Context<'a> {
     civ: u8,
     /// The player shares its gathered resources with its allies (`+0x1426`).
     sharing: bool,
+    /// The game's farm setting ([`Turns::farm_stops`]).
+    farm_stops: bool,
     /// Every player's masters and attribute 97 (by player), for a capture.
     every_masters: &'a [Masters],
     attribute_97: &'a [f32],
@@ -1397,6 +1401,7 @@ impl Unit {
     fn attack_target(&self) -> Option<i32> {
         self.hunt
             .map(|h| h.target)
+            .or_else(|| self.gather.map(|g| g.target).filter(|&t| t != -1))
             .or_else(|| self.attack.map(|a| a.target))
             .or_else(|| {
                 self.missile
@@ -1448,6 +1453,7 @@ impl Unit {
         })
         .or_else(|| self.fly.map(|f| action(crate::fly::FLY, f.state)))
         .or_else(|| self.hunt.map(|h| action(crate::hunt::HUNT, h.state)))
+        .or_else(|| self.gather.map(|g| action(crate::gather::GATHER, g.state)))
         .or_else(|| self.attack.map(|a| action(crate::attack::ATTACK, a.state)))
         .or_else(|| {
             self.explore
@@ -1473,6 +1479,7 @@ impl Unit {
             .or_else(|| self.move_to.map(|m| m.target))
             .or_else(|| self.fly.map(|_| -1))
             .or_else(|| self.hunt.map(|h| h.target))
+            .or_else(|| self.gather.map(|g| g.target))
             .or_else(|| self.attack.map(|a| a.target))
             .or_else(|| self.explore.map(|_| -1))
             .or_else(|| self.enter.map(|e| e.target))
@@ -1485,12 +1492,13 @@ impl Unit {
     }
 
     /// The second target of its top action (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's
-    /// drop site, a missile's shooter; the slice's other actions hold none (an import checks the
+    /// or a Gather's drop site, a missile's shooter; the slice's other actions hold none (an import checks the
     /// save's). None without an action the slice holds.
     #[must_use]
     pub fn top_second_target(&self) -> Option<i32> {
         match self.top_action_kind()? {
             crate::hunt::HUNT => self.hunt.map(|h| h.carry_to),
+            crate::gather::GATHER => self.gather.map(|g| g.carry_to),
             crate::missile::MISSILE => self
                 .missile
                 .as_ref()
@@ -1825,6 +1833,16 @@ impl Unit {
                 releases.push((h.target, by));
             }
         }
+        // the Gather's teardown: its MoveTo's stops the unit and the base teardown lets its
+        // target, then its second target go
+        if let Some(mut g) = self.gather.take() {
+            g.tear_down(self.mover.as_mut())?;
+            for t in [g.target, g.carry_to] {
+                if t != -1 {
+                    releases.push((t, by));
+                }
+            }
+        }
         // the Enter's teardown: its MoveTo's stops the unit, and the base teardown
         // (FUN_140a73fc0) lets the building go (slot 0x180; its `+0x60` is 0)
         if let Some(e) = self.enter.take() {
@@ -1868,6 +1886,7 @@ impl Unit {
             (self.build.is_some(), "a Build"),
             (self.fly.is_some(), "a Fly"),
             (self.hunt.is_some(), "a Hunt"),
+            (self.gather.is_some(), "a Gather"),
             (self.attack.is_some(), "an Attack"),
             (self.enter.is_some(), "an Enter"),
             (self.unmodelled_action.is_some(), "an action not held"),
@@ -1878,6 +1897,7 @@ impl Unit {
                 "a Build" => "a unit AI's stop of an action list with a Build at work",
                 "a Fly" => "a unit AI's stop of an action list with a Fly",
                 "a Hunt" => "a unit AI's stop of an action list with a Hunt",
+                "a Gather" => "a unit AI's stop of an action list with a Gather",
                 "an Attack" => "a unit AI's stop of an action list with an Attack",
                 "an Enter" => "a unit AI's stop of an action list with an Enter",
                 _ => "a unit AI's stop of an action list the slice does not model",
@@ -2247,10 +2267,233 @@ impl Unit {
         self.drop_off_in(w, others)
     }
 
+    /// The Gather's update (slot 6, `0x140a8e1d0`). It first checks its targets: a target gone
+    /// from the world's table goes (slot 0x68 with none), one past state 6 is let go (slot 0x180)
+    /// and goes; a second target gone goes (`FUN_140a7a190` with none). Then state 8 walks the
+    /// load to its drop site ([`crate::gather::GatherAction::update_drop`]): the load goes to the
+    /// player, the drop site goes (`FUN_140a7a190` with none) and the gather walks back to its
+    /// target (`set_state(4)`); without a target the unit AI's search is not modelled. The other
+    /// states ([`crate::gather::GatherAction::update`]) may ask for the drop-off
+    /// ([`Unit::gather_drop_off`]).
+    fn gather_update(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        me: Me,
+    ) -> Result<(), Unsupported> {
+        let by = self.releaser(c);
+        let gather = self.gather.as_mut().expect("the caller's gather");
+        if gather.target != -1 {
+            let state = c
+                .victim
+                .as_deref()
+                .filter(|v| v.id == gather.target)
+                .map(|v| v.state);
+            let gone = match state {
+                Some(s) => 6 < s,
+                None if c.spatial.get(gather.target).is_some() => {
+                    return Err(Unsupported("a gather's target the slice cannot read"));
+                }
+                None => true,
+            };
+            if gone {
+                if state.is_some() {
+                    c.releases.push((gather.target, by));
+                }
+                gather.target = -1;
+            }
+        }
+        if gather.carry_to != -1 && c.spatial.get(gather.carry_to).is_none() {
+            gather.carry_to = -1;
+        }
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported(
+                "a gatherer of a master the slice does not have",
+            ))?;
+        let g = |id: i16| (0 <= id).then(|| c.graphics.get(&id).copied()).flatten();
+        let task = gather.task;
+        let sprites = HuntSprites {
+            moving: g(task.sprites[0]),
+            working: g(task.sprites[2]),
+            carrying: g(task.sprites[3]),
+            standing: g(master.standing_sprite),
+        };
+        // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
+        let productivity = usize::try_from(task.productivity)
+            .ok()
+            .and_then(|i| c.attributes.get(i))
+            .copied()
+            .filter(|&v| 0.0 < v)
+            .unwrap_or(1.0);
+        let (work_rate, capacity, class) = (
+            self.work_rate_powerup + master.work_rate,
+            f32::from(master.capacity),
+            master.class,
+        );
+        let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
+        let (world_time, farm_stops, dt) = (c.world_time, c.farm_stops, c.dt_seconds);
+        if gather.state == crate::gather::DROP {
+            let me_at = c
+                .spatial
+                .get_known(self.id)?
+                .ok_or(Unsupported("a gatherer without a place"))?;
+            let (me_position, me_radius) = (me_at.position, me_at.radius);
+            let site = match c.spatial.get_known(gather.carry_to)? {
+                Some(s) => {
+                    let actor = Actor {
+                        id: self.id,
+                        master,
+                        player: c.player,
+                        held: (self.life.attribute_type, self.life.amount),
+                        attribute_95: c.attributes.get(95).copied().unwrap_or(0.0),
+                        civ: c.civ,
+                    };
+                    Some(crate::hunt::DropOff {
+                        takes: crate::tasks::drops_at(c.drop_sites, s.master, &actor),
+                        gap_squared: footprint_gap_squared(
+                            me_position,
+                            me_radius,
+                            s.position,
+                            s.radius,
+                        ),
+                    })
+                }
+                None => None,
+            };
+            let attributes = c.attributes.len();
+            let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+            let mut work = crate::gather::Gatherer {
+                held_kind: &mut self.life.attribute_type,
+                held: &mut self.life.amount,
+                work_rate,
+                capacity,
+                productivity,
+                sprites,
+                sprite: &mut self.sprite,
+                sprite_rng,
+                class,
+                stance,
+                world_time,
+                farm_stops,
+                posted: Vec::new(),
+            };
+            let load = gather.update_drop(walk, &mut work, attributes, site)?;
+            let posted = std::mem::take(&mut work.posted);
+            for (kind, p) in posted {
+                self.post_own(kind, p)?;
+            }
+            let Some((kind, amount)) = load else {
+                return Ok(());
+            };
+            // the player's slot 0xf8 (FUN_141616820) with 1 and 1, as the hunt's drop-off
+            give_load(
+                (&c.spatial.relations, c.sharing),
+                c.player,
+                &mut c.attribute_adds,
+                kind,
+                amount,
+            )?;
+            let gather = self.gather.as_mut().expect("the caller's gather");
+            if gather.target == -1 {
+                return Err(Unsupported(
+                    "a gather after its drop-off without a target (the unit AI's search)",
+                ));
+            }
+            // back to the target: the drop site goes (FUN_140a7a190 with none), set_state(4)
+            c.releases.push((gather.carry_to, by));
+            gather.carry_to = -1;
+            let t = c
+                .spatial
+                .get_known(gather.target)?
+                .ok_or(Unsupported("a gather's target without a place"))?;
+            let gap = footprint_gap(
+                self.position,
+                [me_radius[0], me_radius[1]],
+                t.position,
+                t.radius,
+            );
+            let mover = self
+                .mover
+                .as_mut()
+                .ok_or(Unsupported("a gatherer without movement state"))?;
+            return gather.set_walk(t.position, gap, mover);
+        }
+        // the target the caller holds, back in the context once the update is done
+        let mut victim = c.victim.take();
+        let (next, posted) = {
+            let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+            let mut work = crate::gather::Gatherer {
+                held_kind: &mut self.life.attribute_type,
+                held: &mut self.life.amount,
+                work_rate,
+                capacity,
+                productivity,
+                sprites,
+                sprite: &mut self.sprite,
+                sprite_rng,
+                class,
+                stance,
+                world_time,
+                farm_stops,
+                posted: Vec::new(),
+            };
+            let target = victim.as_deref_mut().filter(|v| v.id == gather.target);
+            let next = gather.update(walk, target, &mut work, dt);
+            (next, std::mem::take(&mut work.posted))
+        };
+        c.victim = victim;
+        let next = next?;
+        for (kind, p) in posted {
+            self.post_own(kind, p)?;
+        }
+        if next == crate::gather::Next::Drop {
+            self.gather_drop_off(c, others)?;
+        }
+        Ok(())
+    }
+
+    /// The Gather's `set_state(8)` (`0x140a8cd40` case 8): the current stop clears; a gatherer
+    /// carrying nothing would search (`set_state` 3, not modelled); else its drop site
+    /// ([`Unit::drop_site`]) becomes its second target (`FUN_140a7a190`: slot 0x178) and a quiet
+    /// `MoveTo` walks there ([`crate::gather::GatherAction::set_drop`]). Without one the unit AI's
+    /// part (notify 0x203) is not modelled.
+    fn gather_drop_off(&mut self, c: &mut Context<'_>, others: &[Self]) -> Result<(), Unsupported> {
+        if self.life.amount <= 0.0 {
+            return Err(Unsupported(
+                "a gather's drop-off carrying nothing (set_state 3)",
+            ));
+        }
+        let gather = self.gather.as_ref().expect("the caller's gather");
+        let (carry_to, state) = (gather.carry_to, gather.state);
+        let mut w = DropWorld {
+            masters: c.masters,
+            spatial: c.spatial,
+            zones: c.zones,
+            pathing: c.pathing,
+            object: c.streams.get(Stream::Object),
+            world_time: c.world_time,
+            computer: c.computer,
+            construction_rate: c.construction_rate,
+        };
+        let (site, gap) = self.drop_site(&mut w, others, carry_to, state)?;
+        if site != carry_to && site != -1 {
+            c.takes.push(site);
+        }
+        let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut()) else {
+            return Err(Unsupported(
+                "a gatherer without its gather or movement state",
+            ));
+        };
+        gather.carry_to = site;
+        gather.set_drop(gap, mover)
+    }
+
     /// [`Unit::hunt_drop_off`] in `w`, from the update or a command.
     pub(crate) fn drop_off_in(
         &mut self,
-        c: DropWorld<'_>,
+        mut c: DropWorld<'_>,
         others: &[Self],
     ) -> Result<(), Unsupported> {
         if self.life.amount <= 0.0 {
@@ -2258,16 +2501,43 @@ impl Unit {
                 "a hunt's drop-off carrying nothing (set_state 3)",
             ));
         }
+        let hunt = self.hunt.as_ref().expect("the caller's hunt");
+        let (carry_to, state) = (hunt.carry_to, hunt.state);
+        let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
+        if site == -1 {
+            return Err(Unsupported(
+                "a hunt without a drop site (notify 0x203, set_state 2)",
+            ));
+        }
+        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+            return Err(Unsupported("a hunter without its hunt or movement state"));
+        };
+        hunt.carry_to = site;
+        hunt.set_drop(gap, mover)
+    }
+
+    /// The drop site a gatherer's `set_state(8)` walks to, its second target `carry_to` or, with
+    /// none and a master with drop sites (`+0x7a0`), the closest of them (`FUN_1411671e0`: first
+    /// one it reaches, [`drop_site_search`] with the unit as the seeker, then any); −1 for none.
+    /// With the footprint gap to it (`FUN_14118f680`).
+    fn drop_site(
+        &self,
+        c: &mut DropWorld<'_>,
+        others: &[Self],
+        carry_to: i32,
+        state: u8,
+    ) -> Result<(i32, f32), Unsupported> {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+            .ok_or(Unsupported(
+                "a gatherer of a master the slice does not have",
+            ))?;
         let mover = self
             .mover
             .as_ref()
-            .ok_or(Unsupported("a hunter without movement state"))?;
-        let hunt = self.hunt.as_ref().expect("the caller's hunt");
-        let mut site = hunt.carry_to;
+            .ok_or(Unsupported("a gatherer without movement state"))?;
+        let mut site = carry_to;
         if site == -1 && master.drop_sites.first().is_some_and(|&d| d != -1) {
             let masters = c
                 .masters
@@ -2286,13 +2556,13 @@ impl Unit {
             let me = Me {
                 id: self.id,
                 position: self.position,
-                action_state: hunt.state,
+                action_state: state,
             };
             let mut plan = Planning {
-                pathing: c.pathing,
+                pathing: &mut *c.pathing,
                 now: c.world_time,
                 computer: c.computer,
-                object: c.object,
+                object: &mut *c.object,
                 construction_rate: c.construction_rate,
             };
             let seeker = Seeker {
@@ -2315,21 +2585,17 @@ impl Unit {
                 .unwrap_or(-1);
         }
         if site == -1 {
-            return Err(Unsupported(
-                "a hunt without a drop site (notify 0x203, set_state 2)",
-            ));
+            return Ok((-1, 0.0));
         }
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let s = c
             .spatial
             .get_known(site)?
             .ok_or(Unsupported("a drop site without a place"))?;
-        let gap = footprint_gap(self.position, ground, s.position, s.radius);
-        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
-            return Err(Unsupported("a hunter without its hunt or movement state"));
-        };
-        hunt.carry_to = site;
-        hunt.set_drop(gap, mover)
+        Ok((
+            site,
+            footprint_gap(self.position, ground, s.position, s.radius),
+        ))
     }
 
     /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at
@@ -4649,6 +4915,9 @@ impl Unit {
                 )?;
             }
         }
+        if self.gather.is_some() {
+            self.gather_update(c, others, me)?;
+        }
         // the Hunt's update (0x140ac7a00) first checks its target: one gone from the world's table
         // is dropped (slot 0x68 with none), one past state 6 is let go (slot 0x180, its `+0x60`
         // being 0) and dropped; the drop site's checks (`+0x34`) are not modelled
@@ -6570,6 +6839,11 @@ pub struct Turns {
     /// `+0x9c`): a hunter drops another resource it carries. The tick oracle read the flag as 0 in
     /// MarvinBlue/426048731; where the save or the lobby holds it is not known yet.
     pub carry_rule: bool,
+    /// The game's setting at `FUN_140c87b90()`'s `+0x69`: farmers walk their farm's stops (a
+    /// farm's Gather of four stops), and a Gather's `set_state(7)` leaves `mGatherX`, `mGatherY`
+    /// at −1. The tick oracle shows it set in records/425906646 (the forager 31139's `+0x8c`
+    /// stays −1); where the save or the lobby holds it is not known yet.
+    pub farm_stops: bool,
     /// The game's setting that `FUN_140ec0cd0` reads at its `+0x680` (a value and a kind); a boar
     /// does not wander when it is 1. The tick oracle reads 0 in MarvinBlue/426048731; where the
     /// save or the lobby holds it is not known yet (the save's `mGameMode` sits elsewhere).
@@ -6653,6 +6927,7 @@ impl Turns {
             graphics: std::collections::BTreeMap::default(),
             drop_sites: Vec::new(),
             carry_rule: false,
+            farm_stops: false,
             mode_680: 0,
             game_mode: 0,
             game_state: 0,
@@ -6761,6 +7036,7 @@ impl Turns {
                     annex_of: None,
                     hp_powerups: [0.0; 2],
                     hunt: None,
+                    gather: None,
                     attack: None,
                     explore: None,
                     enter: None,
@@ -8244,6 +8520,7 @@ impl Turns {
                     player: p,
                     civ: player.civ,
                     sharing: player.sharing,
+                    farm_stops: self.farm_stops,
                     attributes: &player.attributes,
                     graphics: &self.graphics,
                     drop_sites: &self.drop_sites,

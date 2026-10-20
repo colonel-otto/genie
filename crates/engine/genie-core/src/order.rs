@@ -1755,6 +1755,7 @@ impl Turns {
                 true,
             ),
             crate::build::BUILD => self.start_build(player, idx, target, &task, point, clears),
+            crate::gather::GATHER => self.start_gather(player, idx, target, &task, point, clears),
             _ => Err(Unsupported(
                 "the action factory for a task the slice does not model",
             )),
@@ -2345,6 +2346,81 @@ impl Turns {
         })
     }
 
+    /// The work command's Gather (its task of action type 5, the base factory `FUN_140a97e00`
+    /// case 5 with a target): the constructor ([`crate::gather::GatherAction::new`]) takes its
+    /// target (slot 0x178); the unit AI's notify (slot 0x828: the gather order and action, the
+    /// target with its class, the work's point); the install (slot 0x808) clears the action list
+    /// and starts the Gather ([`crate::gather::GatherAction::start`]). A load to its own drop
+    /// site takes the target as the second target, then lets it go as the first.
+    fn start_gather(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        task: &crate::masters::Task,
+        point: [f32; 3],
+        clears: bool,
+    ) -> Result<(), Unsupported> {
+        let (tp, t) = self
+            .object(target)
+            .ok_or(Unsupported("a gather's target the slice does not hold"))?;
+        let tm = self.master_of(tp, t.life.master_id)?;
+        let (t_at, t_radius) = (t.position, tm.radius);
+        let unit = &self.players[player].objects[idx];
+        let me = self.master_of(player, unit.life.master_id)?;
+        let resource = crate::gather::Resource {
+            id: target,
+            position: t_at,
+            class: tm.class,
+            master: tm.id,
+            player: tp,
+            workers: t.workers,
+            drop_site: self.drops_at_main(player, idx, target)?,
+            gap: crate::movement::footprint_gap(unit.position, me.radius, t_at, t_radius),
+        };
+        let task = HuntTask {
+            id: task.id,
+            range: task.work_range,
+            resource: task.attribute_type,
+            sprites: task.sprites,
+            work_value: task.work_val1,
+            productivity: task.attribute_type2,
+            kind4: task.attribute_type4,
+        };
+        let mut gather = crate::gather::GatherAction::new(task, &resource, self.farm_stops)?;
+        self.take(target);
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                crate::ai_kinds::ORDER_GATHER,
+                crate::unit_ai::GATHER_ACTION,
+                Some((target, i32::from(resource.class))),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+        }
+        self.clear_actions(player, idx)?;
+        let computer = self.players[player].computer;
+        let carry_rule = self.carry_rule;
+        let unit = &mut self.players[player].objects[idx];
+        let mover = unit
+            .mover
+            .as_mut()
+            .ok_or(Unsupported("a gatherer without movement state"))?;
+        let mut held = (unit.life.attribute_type, unit.life.amount);
+        gather.start(&resource, player, computer, carry_rule, &mut held, mover)?;
+        (unit.life.attribute_type, unit.life.amount) = held;
+        let drops = gather.target == -1 && gather.carry_to == target;
+        unit.gather = Some(gather);
+        if drops {
+            self.take(target);
+            let by = self.releaser(player, idx);
+            self.release(target, by)?;
+        }
+        Ok(())
+    }
+
     /// [`crate::attack::arms`] of the unit at `idx` for its hunt's Attack (Hunt's `set_state` 12:
     /// the `MoveTo` shows the hunt's walking sprite, [`HuntTask::walk_sprite_id`]).
     fn arms(&self, player: usize, idx: usize, task: &HuntTask) -> Result<Arms, Unsupported> {
@@ -2545,6 +2621,10 @@ impl Turns {
         if let Some(mut h) = hunt {
             h.tear_down(mover.as_deref_mut())?;
         }
+        let gather = unit.gather.take();
+        if let Some(mut g) = gather {
+            g.tear_down(mover.as_deref_mut())?;
+        }
         // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
         let attack = unit.attack.take();
         if let Some(mut a) = attack {
@@ -2572,6 +2652,13 @@ impl Turns {
             self.release(h.target, by)?;
         }
         // the base teardown (FUN_140a73fc0) lets the target, then the second target go
+        if let Some(g) = gather {
+            for t in [g.target, g.carry_to] {
+                if t != -1 {
+                    self.release(t, by)?;
+                }
+            }
+        }
         if let Some(a) = attack {
             for t in [a.target, a.target2] {
                 if t != -1 {

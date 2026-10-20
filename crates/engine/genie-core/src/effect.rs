@@ -248,7 +248,9 @@ impl Turns {
         };
         let enable = enable as u8;
         if enable == 1 && master == MODE_TESTED_MASTER {
-            return Err(Unsupported("the enabling of master 0x26d (the game's mode)"));
+            return Err(Unsupported(
+                "the enabling of master 0x26d (the game's mode)",
+            ));
         }
         if which == 1 {
             return Err(Unsupported("an enable command for one building"));

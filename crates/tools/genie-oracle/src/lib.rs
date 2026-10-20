@@ -841,12 +841,15 @@ fn saved_actions(
     let base = action
         .base()
         .ok_or(Unsupported("a saved action without its base"))?;
-    // the second target (+0x34): only the Hunt (its drop site), the missile (its shooter) and the
-    // Attack hold one in the slice
+    // the second target (+0x34): only the Hunt and the Gather (their drop site), the missile (its
+    // shooter) and the Attack hold one in the slice
     if base.target2_id != -1
         && !matches!(
             kind,
-            genie_core::hunt::HUNT | genie_core::missile::MISSILE | genie_core::attack::ATTACK
+            genie_core::hunt::HUNT
+                | genie_core::gather::GATHER
+                | genie_core::missile::MISSILE
+                | genie_core::attack::ATTACK
         )
     {
         return Err(Unsupported("a saved action with a second target"));
@@ -1068,6 +1071,74 @@ fn saved_actions(
                 Some(_) => return Err(Unsupported("a saved Hunt with another sub-action")),
             }
             unit.hunt = Some(hunt);
+            Ok(())
+        }
+        genie_core::gather::GATHER => {
+            use genie_core::gather::{DROP, FACE, GatherAction, WALK, WORK};
+            let part = action
+                .rge_action_by_type
+                .as_deref()
+                .and_then(|b| b.rge_action_gather.as_deref())
+                .ok_or(Unsupported("a saved Gather without its own part"))?;
+            if !matches!(base.state, WALK | FACE | WORK | DROP) {
+                return Err(Unsupported(
+                    "a saved Gather in a state the slice does not model",
+                ));
+            }
+            let t = task_at(s.master_obj, base.short_val)?;
+            let task = genie_core::hunt::HuntTask {
+                id: t.id,
+                range: t.work_range,
+                resource: t.attribute_type,
+                sprites: t.sprites,
+                work_value: t.work_val1,
+                productivity: t.attribute_type2,
+                kind4: t.attribute_type4,
+            };
+            let mut gather = GatherAction {
+                target: base.target_id,
+                carry_to: base.target2_id,
+                state: base.state,
+                point: [base.target_x, base.target_y, base.target_z],
+                timer: base.timer,
+                task,
+                target_type: part.target_type,
+                stops: part.number_stops,
+                current_stop: part.current_stop,
+                time_per_stop: part.time_per_stop,
+                time_at_stop: part.time_at_current_stop,
+                last_stop: [part.last_stop_x, part.last_stop_y],
+                // `+0x80` is not saved: set_state(7) set it
+                worked: base.state == WORK,
+                farm: [part.farm_x, part.farm_y],
+                gather_at: [part.gather_x, part.gather_y],
+                move_to: None,
+                move_wait: genie_core::move_to::MoveWait::default(),
+            };
+            match base.sub_actions.entries().next() {
+                None => {}
+                Some((MOVE_TO, sub)) => {
+                    gather.move_to = Some(move_to_state(sub.base().map_or(0, |b| b.state))?);
+                    if sub.move_to_range() != Some(task.range) {
+                        return Err(Unsupported(
+                            "a saved Gather's MoveTo of another range than its task's",
+                        ));
+                    }
+                    if let Some(m) = sub
+                        .rge_action_by_type
+                        .as_deref()
+                        .and_then(|b| b.rge_action_move_to.as_deref())
+                    {
+                        gather.move_wait = genie_core::move_to::MoveWait {
+                            state: m.movement_wait_state,
+                            timer: m.timer,
+                            delay: f32::from_bits(m.k_default_wait_time),
+                        };
+                    }
+                }
+                Some(_) => return Err(Unsupported("a saved Gather with another sub-action")),
+            }
+            unit.gather = Some(gather);
             Ok(())
         }
         genie_core::garrison::ENTER => {
@@ -1910,6 +1981,8 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     );
     // a statistics flag the tick oracle reads as 1 in MarvinBlue/426048731 (Turns::unit_cost_246)
     turns.unit_cost_246 = true;
+    // the farm setting the tick oracle shows set in records/425906646 (Turns::farm_stops)
+    turns.farm_stops = true;
     turns.game_mode = header.file_header.game_options_read.game_options.game_mode;
     turns.game_state = u32::from(world.temp_game_state);
     turns.victory_conquest = world.tribe_scenario.base_scenario.victory_conquest != 0;
