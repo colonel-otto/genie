@@ -840,6 +840,9 @@ struct Context<'a> {
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
     /// ([`Turns::build_object`]).
     build_object: Option<i32>,
+    /// The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on
+    /// a target not built yet), which the caller runs after the update ([`Turns::build_command`]).
+    build_command: Option<i32>,
     /// The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller
     /// runs after the update ([`Turns::move_aside`]).
     move_aside: Vec<AiMove>,
@@ -1296,6 +1299,14 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 ))?;
             Ok(p.master == PETARD || m.object_flags & 0x10 != 0)
         };
+        // a farm's workers (`+0x644`) and its pasture (`+0x790`)
+        let farm = |id: i32| {
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .or_else(|| foreign.find(id).map(|(_, u)| u))
+                .map(|u| (u.workers, u.pasture))
+        };
         spatial.search(
             unit.id,
             self.player,
@@ -1304,6 +1315,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             &mut reach,
             &moving,
             &shuns,
+            &farm,
         )
     }
 
@@ -2630,6 +2642,7 @@ impl Unit {
                     state: -1,
                     master: -1,
                     workers: if class == 49 { 1 } else { -1 },
+                    spared: -1,
                 },
             };
             let me = Me {
@@ -2654,6 +2667,13 @@ impl Unit {
             let shuns = |_: &Placed| -> Result<bool, Unsupported> {
                 Err(Unsupported("a class-10 searcher in a hunt's search"))
             };
+            let farm = |id: i32| {
+                others
+                    .iter()
+                    .find(|u| u.id == id)
+                    .or_else(|| foreign.find(id).map(|(_, u)| u))
+                    .map(|u| (u.workers, u.pasture))
+            };
             let result = spatial.search(
                 self.id,
                 c.player,
@@ -2662,6 +2682,7 @@ impl Unit {
                 &mut reach,
                 &moving,
                 &shuns,
+                &farm,
             )?;
             if result.fresh {
                 if result.enemies {
@@ -3072,6 +3093,12 @@ impl Unit {
         match next {
             crate::gather::Next::Drop => self.gather_drop_off(c, others)?,
             crate::gather::Next::Search => self.gather_search(c, others)?,
+            crate::gather::Next::Build => {
+                let target = self.gather.as_ref().map_or(-1, |g| g.target);
+                if c.build_command.replace(target).is_some() {
+                    return Err(Unsupported("two build commands in one update"));
+                }
+            }
             crate::gather::Next::Stay | crate::gather::Next::Done => {}
         }
         Ok(())
@@ -3259,6 +3286,14 @@ impl Unit {
             radius: t_master.radius,
         };
         let (computer, farm_stops, held) = (c.computer, c.farm_stops, self.life.amount);
+        let rate = crate::gather::StopRate {
+            work_rate: self.work_rate_powerup + master.work_rate,
+            capacity: f32::from(master.capacity),
+            productivity: crate::gather::productivity_of(
+                self.gather.map_or(-1, |g| g.task.productivity),
+                c.attributes,
+            ),
+        };
         let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut()) else {
             return Err(Unsupported(
                 "a gatherer without its gather or movement state",
@@ -3266,7 +3301,15 @@ impl Unit {
         };
         let (old_target, old_second) = (gather.target, gather.carry_to);
         let rng = c.streams.get(Stream::Action);
-        let _ = gather.retarget(&resource, c.player, computer, held, farm_stops, mover, rng)?;
+        let _ = gather.retarget(
+            &resource,
+            c.player,
+            computer,
+            held,
+            (farm_stops, rate),
+            mover,
+            rng,
+        )?;
         let (new_target, new_second) = (gather.target, gather.carry_to);
         for (old, new) in [(old_target, new_target), (old_second, new_second)] {
             if old != new {
@@ -9459,37 +9502,51 @@ impl Turns {
     }
 
     /// `BuildObject` (the unit AI's slot 0xf0, `FUN_140c47d80`, with 1) on `foundation`: the
-    /// unit's slot 0x380 (`FUN_14120d410`) with a Build on top hands it the foundation (its slot
-    /// 0x48, [`Turns::build_take`]); without one it finds the task through slot 0x820 (the work
-    /// command's master switch, [`Masters::work_master`]) and installs its Build action (the
-    /// action list cleared). Then the AI's action becomes the build action (602; the last one
-    /// kept) and its target the foundation (the last one kept) at its place with its master's
-    /// class. Unlike BUILD's own path neither the town-bell record nor the work's notify. A
-    /// foundation that is gone or without a Build task (slot 0x380's 0) is not modelled.
+    /// unit's build command ([`Turns::build_command`]), then the AI's action becomes the build
+    /// action (602; the last one kept) and its target the foundation (the last one kept) at its
+    /// place with its master's class. Unlike BUILD's own path neither the town-bell record nor
+    /// the work's notify.
     pub(crate) fn build_object(
         &mut self,
         player: usize,
         idx: usize,
         foundation: i32,
     ) -> Result<(), Unsupported> {
+        let (class, f_at) = self.build_command(player, idx, foundation)?;
+        let ai = self.players[player].objects[idx]
+            .ai
+            .as_mut()
+            .ok_or(Unsupported("a BuildObject without a unit AI"))?;
+        // FUN_140c47d80
+        ai.last_action = ai.current_action;
+        ai.current_action = BUILD_ACTION;
+        ai.target_point = f_at;
+        ai.last_target = ai.current_target;
+        ai.last_target_type = ai.target_type;
+        ai.current_target = foundation;
+        ai.target_type = class;
+        Ok(())
+    }
+
+    /// The unit's build command (slot 0x380, `FUN_14120d410`, forced) on `foundation`: a Build on
+    /// top takes the foundation (its slot 0x48, [`Turns::build_take`]); without one it finds the
+    /// task through slot 0x820 (the work command's master switch, [`Masters::work_master`]) and
+    /// installs its Build action (the action list cleared). The foundation's master's class and
+    /// its place, for the unit AI. A foundation that is gone or without a Build task (slot
+    /// 0x380's 0) is not modelled.
+    pub(crate) fn build_command(
+        &mut self,
+        player: usize,
+        idx: usize,
+        foundation: i32,
+    ) -> Result<(i32, [f32; 3]), Unsupported> {
         if self.players[player].objects[idx].top_action_kind() == Some(BUILD) {
             let class = self.build_take(player, idx, foundation)?;
             let f_at = self
                 .object(foundation)
                 .map(|(_, f)| f.position)
                 .ok_or(Unsupported("a BuildObject on a foundation that is gone"))?;
-            let ai = self.players[player].objects[idx]
-                .ai
-                .as_mut()
-                .ok_or(Unsupported("a BuildObject without a unit AI"))?;
-            ai.last_action = ai.current_action;
-            ai.current_action = BUILD_ACTION;
-            ai.target_point = f_at;
-            ai.last_target = ai.current_target;
-            ai.last_target_type = ai.target_type;
-            ai.current_target = foundation;
-            ai.target_type = class;
-            return Ok(());
+            return Ok((class, f_at));
         }
         let (fp, f) = self
             .object(foundation)
@@ -9569,21 +9626,8 @@ impl Turns {
         }
         self.take(foundation);
         self.clear_actions(player, idx)?;
-        let unit = &mut self.players[player].objects[idx];
-        unit.build = Some(build);
-        let ai = unit
-            .ai
-            .as_mut()
-            .ok_or(Unsupported("a BuildObject without a unit AI"))?;
-        // FUN_140c47d80
-        ai.last_action = ai.current_action;
-        ai.current_action = BUILD_ACTION;
-        ai.target_point = f_at;
-        ai.last_target = ai.current_target;
-        ai.last_target_type = ai.target_type;
-        ai.current_target = foundation;
-        ai.target_type = class;
-        Ok(())
+        self.players[player].objects[idx].build = Some(build);
+        Ok((class, f_at))
     }
 
     /// SET GATHER POINT's handler ([`Command::GatherPoint`]).
@@ -10378,6 +10422,7 @@ impl Turns {
                     hunt_objects: Vec::new(),
                     gather_objects: Vec::new(),
                     build_object: None,
+                    build_command: None,
                     move_aside: Vec::new(),
                     leads: None,
                     zones: &mut self.zones,
@@ -10395,6 +10440,7 @@ impl Turns {
                 let gather_objects = std::mem::take(&mut c.gather_objects);
                 let leads = c.leads.take();
                 let build_object = c.build_object.take();
+                let build_command = c.build_command.take();
                 let move_aside = std::mem::take(&mut c.move_aside);
                 let techs_done = std::mem::take(&mut c.techs_done);
                 let work_order = c.work_order.take();
@@ -10556,6 +10602,16 @@ impl Turns {
                             "a move off a footprint of a unit that leaves its list",
                         )));
                     } else if let Err(e) = self.move_aside(p, i, m) {
+                        result = Err(e);
+                    }
+                }
+                // a Gather's build command on its target not built yet (slot 0x380)
+                if let Some(foundation) = build_command {
+                    if !matches!(result, Ok(Step::Stay)) {
+                        result = result.and(Err(Unsupported(
+                            "a build command of a unit that leaves its list",
+                        )));
+                    } else if let Err(e) = self.build_command(p, i, foundation) {
                         result = Err(e);
                     }
                 }

@@ -2264,8 +2264,9 @@ impl Turns {
     /// the unit's top Gather on the task found takes the target (its slot 0x48 with the target's
     /// place, [`Turns::retarget_gather`]; what it answers the command passes over); else a new
     /// Gather on the task replaces the unit's actions (`FUN_140a88310`, `FUN_140a98620`, slot
-    /// 0x808: [`Turns::start_gather`] without the unit AI's notify). A target the world does not
-    /// hold or no task would fail the command, which the unit AI took as done: not modelled.
+    /// 0x808: [`Turns::start_gather`] without the unit AI's notify), whatever the task's action
+    /// type (a farm's foundation: the builder's Build task). A target the world does not hold or
+    /// no task would fail the command, which the unit AI took as done: not modelled.
     pub(crate) fn gather_command(
         &mut self,
         player: usize,
@@ -2313,9 +2314,8 @@ impl Turns {
             let _ = self.retarget_gather(player, idx, target)?;
             return Ok(());
         }
-        if task.action_type != crate::gather::GATHER {
-            return Err(Unsupported("a gather command whose task is not a Gather"));
-        }
+        // FUN_140a88310 makes a Gather on whatever task it found (a farm's foundation gives the
+        // builder's Build task)
         self.start_gather(player, idx, target, &task, None)
     }
 
@@ -2791,6 +2791,17 @@ impl Turns {
         let computer = self.players[player].computer;
         let farm_stops = self.farm_stops;
         let by = self.releaser(player, idx);
+        // a stop farm's time per stop: the gatherer's work rate (its master's plus its powerup),
+        // capacity and the task's productivity attribute (none: 1.0)
+        let productivity = unit.gather.map_or(-1, |g| g.task.productivity);
+        let rate = crate::gather::StopRate {
+            work_rate: unit.work_rate_powerup + me.work_rate,
+            capacity: f32::from(me.capacity),
+            productivity: crate::gather::productivity_of(
+                productivity,
+                &self.players[player].attributes,
+            ),
+        };
         let unit = &mut self.players[player].objects[idx];
         let held = unit.life.amount;
         let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.mover.as_mut()) else {
@@ -2800,8 +2811,18 @@ impl Turns {
         };
         let (old_target, old_second) = (gather.target, gather.carry_to);
         let rng = self.streams.get(Stream::Action);
-        let took = gather.retarget(&resource, player, computer, held, farm_stops, mover, rng)?;
+        let took = gather.retarget(
+            &resource,
+            player,
+            computer,
+            held,
+            (farm_stops, rate),
+            mover,
+            rng,
+        )?;
         let (new_target, new_second) = (gather.target, gather.carry_to);
+        // a farm another farmer works: taken (slot 0x68) and let go again (set_state 11)
+        let waits = gather.state == crate::gather::WALK_BACK && new_target == -1;
         for (old, new) in [(old_target, new_target), (old_second, new_second)] {
             if old != new {
                 if old != -1 {
@@ -2811,6 +2832,10 @@ impl Turns {
                     self.take(new);
                 }
             }
+        }
+        if waits && old_target != target {
+            self.take(target);
+            self.release(target, by)?;
         }
         Ok(took)
     }
@@ -3051,9 +3076,13 @@ impl Turns {
         )?;
         (unit.life.attribute_type, unit.life.amount) = held;
         let drops = gather.target == -1 && gather.carry_to == target;
+        // a farm another farmer works: the start let it go (set_state 11, then slot 0x68)
+        let waits = gather.target == -1 && gather.carry_to != target;
         unit.gather = Some(gather);
         if drops {
             self.take(target);
+        }
+        if drops || waits {
             let by = self.releaser(player, idx);
             self.release(target, by)?;
         }

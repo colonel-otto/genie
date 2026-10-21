@@ -40,7 +40,20 @@ struct Filter {
     state: i32,
     master: i32,
     workers: i32,
+    /// The relation passed over (argument 9, `FUN_140c32b50`: 0 friends, 1 neutrals, 2
+    /// enemies, 3 itself; −1 none).
+    spared: i32,
 }
+
+/// The pastures, whose workers and livestock `ClosestObject` counts (`FUN_140c488b0`, raw
+/// `0x6801`, `0x6805`).
+const PASTURES: [i16; 2] = [1893, 1897];
+/// The fish trap (raw `0x6163`), which only the fishing ships gather from (`FUN_1411945a0`).
+const FISH_TRAP: i16 = 199;
+/// The fishing ships' masters (`FUN_1411945a0`: 13, 2356, 2171).
+const TRAPPERS: [i16; 3] = [13, 2356, 2171];
+/// The villagers' class, which gathers from farms (`FUN_141195750`).
+const FARMER_CLASS: i16 = 4;
 
 /// Obstruction kinds the query tests (`FUN_141051e00`): boxes (2, 3, 11, 13) and circles (5).
 const TESTED_KINDS: [u8; 5] = [2, 3, 5, 11, 13];
@@ -409,7 +422,12 @@ struct SearchCache {
 type ClosestChecks<'a> = (
     &'a dyn Fn(i32) -> bool,
     &'a dyn Fn(&Placed) -> Result<bool, Unsupported>,
+    &'a FarmLook<'a>,
 );
+
+/// What `ClosestObject` reads of a farm it found: its workers (`+0x644`) and the pasture it is in
+/// (`+0x790`, `parent_pasture_id`, −1 for none); None for an object the caller does not hold.
+pub type FarmLook<'a> = dyn Fn(i32) -> Option<(i32, i32)> + 'a;
 
 impl Spatial {
     /// A map without terrain: every tile's class is 0.
@@ -1201,6 +1219,7 @@ impl Spatial {
         reach: &mut Reach<'_>,
         moving: &dyn Fn(i32) -> bool,
         shuns: &dyn Fn(&Placed) -> Result<bool, Unsupported>,
+        farm: &FarmLook<'_>,
     ) -> Result<Found, Unsupported> {
         let v = self
             .sight
@@ -1260,6 +1279,7 @@ impl Spatial {
                 state,
                 master,
                 workers,
+                spared,
             } => {
                 let filter = Filter {
                     group,
@@ -1267,8 +1287,9 @@ impl Spatial {
                     state,
                     master,
                     workers,
+                    spared,
                 };
-                let checks = (moving, shuns);
+                let checks = (moving, shuns, farm);
                 let id = self.closest_object(v, me, player, found, filter, reach, checks)?;
                 Ok(Found {
                     id,
@@ -1317,9 +1338,25 @@ impl Spatial {
         found: &[Vec<Record>; 5],
         filter: Filter,
         reach: &mut Reach<'_>,
-        (moving, shuns): ClosestChecks<'_>,
+        (moving, shuns, farm): ClosestChecks<'_>,
     ) -> Result<i32, Unsupported> {
         let class_10 = self.objects.get(&me).is_some_and(|m| m.class == 10);
+        let farmer = self
+            .objects
+            .get(&me)
+            .is_some_and(|m| m.class == FARMER_CLASS);
+        let trapper = self
+            .objects
+            .get(&me)
+            .is_some_and(|m| TRAPPERS.contains(&m.master));
+        // FUN_140c32b50: the relation argument 9 passes over, as a list
+        let spared = match filter.spared {
+            0 => Some(2),
+            1 => Some(3),
+            2 => Some(4),
+            3 => Some(1),
+            _ => None,
+        };
         let mut best: Option<(i32, f32)> = None;
         for (kind, records) in found.iter().enumerate() {
             // the relation filter (`param_3`): 0 friends and itself, 1 neutrals, 2 enemies, 3
@@ -1339,7 +1376,7 @@ impl Spatial {
                 else {
                     continue;
                 };
-                if 7 <= seer.state || !related {
+                if 7 <= seer.state || !related || spared == Some(kind) {
                     continue;
                 }
                 if filter.group != -1 && i32::from(p.class) != filter.group {
@@ -1357,8 +1394,31 @@ impl Spatial {
                 if filter.state == 0 {
                     return Err(Unsupported("ClosestObject's unbuilt farm test"));
                 }
+                // a farm (class 49): not a pasture's livestock (`+0x790`); a pasture is not
+                // modelled; without a master asked for, one without workers that the unit
+                // gathers from (a fish trap for a fishing ship, any other for a villager)
                 if filter.group == PASTURE_CLASS {
-                    return Err(Unsupported("ClosestObject over pastures or farms"));
+                    let (workers, parent) = farm(record.id)
+                        .ok_or(Unsupported("a found farm the slice does not hold"))?;
+                    if parent != -1 {
+                        continue;
+                    }
+                    if PASTURES.contains(&p.master) {
+                        return Err(Unsupported(
+                            "ClosestObject over pastures (their workers and livestock)",
+                        ));
+                    }
+                    if filter.master == -1 {
+                        if 1 <= workers {
+                            continue;
+                        }
+                        if !trapper && p.master == FISH_TRAP {
+                            continue;
+                        }
+                        if !farmer && p.master != FISH_TRAP {
+                            continue;
+                        }
+                    }
                 }
                 if filter.group == LIVESTOCK_CLASS
                     && ((p.player != player && seer.state == 2) || moving(record.id))
@@ -2314,9 +2374,19 @@ mod tests {
         let mut reach = |_: i32, _: f32| Ok(true);
         let still = |_: i32| false;
         let none = |_: &Placed| Ok(false);
+        let no_farm = |_: i32| None;
         let mut search = |s: &Spatial, at| {
             let f = s
-                .search(9, 2, &look(at), &mut never, &mut reach, &still, &none)
+                .search(
+                    9,
+                    2,
+                    &look(at),
+                    &mut never,
+                    &mut reach,
+                    &still,
+                    &none,
+                    &no_farm,
+                )
                 .unwrap();
             (f.enemies, f.fresh)
         };

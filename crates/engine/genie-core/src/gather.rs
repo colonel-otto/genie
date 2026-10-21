@@ -45,6 +45,8 @@ pub const MOVED: u8 = 15;
 /// State 3: without a target or a load, it asks the unit AI for another (notify 0x202) and asks
 /// again every 10 seconds.
 pub const SEARCH: u8 = 3;
+/// State 11: walking to its point, to search from there (a farm another farmer works).
+pub const WALK_BACK: u8 = 11;
 
 /// `set_state(3)`'s timer: the search asks again once it counted up to 0 (`0xc1200000`, an
 /// immediate in `0x140a8cd40`).
@@ -248,6 +250,10 @@ pub enum Next {
     /// The update returned 1 (state 1): the action list removes the Gather, whose teardown lets
     /// its targets go.
     Done,
+    /// `set_state(6)` on a target not built yet (state below 2): the unit's build command on it
+    /// (slot 0x380 forced, `FUN_14120d410`; the caller's, after the update), which replaces the
+    /// Gather.
+    Build,
     /// `set_state(3)` or its 10 seconds past: the caller posts the unit AI's notify 0x202 (the
     /// gather action `0x261`, the target type, the drop site: the second target, else the one
     /// `FUN_1411671e0` finds, 0 for none, −1 for a master without drop sites).
@@ -375,7 +381,8 @@ impl GatherAction {
     /// player's carrying nothing. A loaded gatherer sent to one of its own drop sites carries the
     /// load there: the target becomes the second target (the caller takes it, then releases it as
     /// the first), the point clears and `set_state(8)` walks there. Else `set_state(4)` walks to
-    /// the target. A farm another farmer works (`set_state` 11) is not modelled.
+    /// the target. A farm another farmer works (with this one, two or more) is walked to only as
+    /// a point (`set_state(11)`, [`GatherAction::set_walk_back`]) and let go.
     ///
     /// # Errors
     ///
@@ -401,8 +408,18 @@ impl GatherAction {
         } else {
             *held = (kind, 0.0);
         }
-        if self.target_type == i32::from(FARM_CLASS) && 1 < target.workers {
-            return Err(Unsupported("a farm another farmer works (set_state 11)"));
+        // a farm another farmer works (`+0x644` above 1 with this one, which the constructor
+        // took): set_state(11) to its point, then the farm goes (slot 0x68 with none; the caller
+        // lets it go)
+        if self.target_type == i32::from(FARM_CLASS) && 1 < target.workers + 1 {
+            let radius = if STOP_FARMS.contains(&target.master) {
+                0.0
+            } else {
+                target.radius[0]
+            };
+            self.set_walk_back(radius, mover)?;
+            self.target = -1;
+            return Ok(());
         }
         if target.player == player && target.drop_site && 0.0 < held.1 {
             self.target = -1;
@@ -421,9 +438,12 @@ impl GatherAction {
     /// and `set_state(8)` walks there. Any other target becomes the target (slot 0x68) with its
     /// place as the point and its class as the target type, the second target goes and
     /// `set_state(4)` walks to it; the caller takes and lets go the targets that changed. With
-    /// the game's farm setting a fish trap (master 199) keeps its place as the farm's. Always
-    /// true: the gather took the target. Not modelled: a farm of master 50 or 1187 with the farm
-    /// setting (its four stops) and a farm another farmer works (slots 0x80 and 0x68).
+    /// the game's farm setting a fish trap (master 199) keeps its place as the farm's, and a stop
+    /// farm (masters 50, 1187) too, with its four stops from the first and the time per stop of
+    /// `rate`, its time at the stop cleared. A farm another farmer works (with this one, two or
+    /// more) is walked to as a point (`set_state(11)`) and let go again (slot 0x68 with none, then
+    /// `FUN_140a7a190` with none): the caller takes it and lets it go. Always true: the gather
+    /// took the target.
     ///
     /// # Errors
     ///
@@ -435,7 +455,7 @@ impl GatherAction {
         player: usize,
         computer: bool,
         held: f32,
-        farm_stops: bool,
+        (farm_stops, rate): (bool, StopRate),
         mover: &mut Mover,
         rng: &mut Well512,
     ) -> Result<bool, Unsupported> {
@@ -460,17 +480,26 @@ impl GatherAction {
         self.point = target.position;
         self.target_type = i32::from(target.class);
         if farm_stops {
-            if matches!(target.master, 50 | 1187) {
-                return Err(Unsupported("a gather retargeted to a farm in stops"));
-            }
-            if target.master == 199 {
+            if STOP_FARMS.contains(&target.master) {
+                self.farm = [target.position[0], target.position[1]];
+                self.stops = FARM_STOPS;
+                self.current_stop = 0;
+                self.time_per_stop = rate.time_per_stop(self.task.work_value, FARM_STOPS);
+                self.time_at_stop = 0.0;
+            } else if target.master == 199 {
                 self.farm = [target.position[0], target.position[1]];
             }
         }
         if target.class == FARM_CLASS && 1 < workers {
-            return Err(Unsupported(
-                "a gather retargeted to a farm another farmer works",
-            ));
+            let radius = if STOP_FARMS.contains(&target.master) {
+                0.0
+            } else {
+                target.radius[0]
+            };
+            self.set_walk_back(radius, mover)?;
+            self.target = -1;
+            self.carry_to = -1;
+            return Ok(true);
         }
         self.carry_to = -1;
         self.set_walk(target.position, target.radius, target.gap, mover, rng)?;
@@ -631,6 +660,47 @@ impl GatherAction {
         self.point = [-1.0; 3];
     }
 
+    /// `set_state(11)` (`0x140a8cd40` case 0xb) with its target's radius on x (`+0x5d8`; none
+    /// for a stop farm, masters 50 and 1187): the sub-actions go, the timer clears and a quiet
+    /// `MoveTo` to the point within that radius plus the task's range starts (`FUN_140aa0d30`).
+    ///
+    /// # Errors
+    ///
+    /// A unit that cannot move (`set_state(13)`).
+    fn set_walk_back(&mut self, radius: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+        self.tear_down(Some(mover))?;
+        self.state = WALK_BACK;
+        self.timer = 0.0;
+        if mover.stats.speed == 0.0 {
+            return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+        }
+        self.move_wait = MoveWait::default();
+        self.walk_to = Some(self.point);
+        self.walk_range = radius + self.task.range;
+        self.move_to = Some(MoveTo::Start);
+        Ok(())
+    }
+
+    /// State 11's update (`0x140a8e1d0` case 10): its `MoveTo` walks; once it ended, arrived or
+    /// failed (codes 1, 2, 3, 5), the gatherer searches from there (`set_state(3)`,
+    /// [`GatherAction::begin_search`]).
+    fn update_walk_back(
+        &mut self,
+        mut walk: Walk<'_>,
+        g: &mut Gatherer<'_>,
+    ) -> Result<Next, Unsupported> {
+        match self.move_to {
+            Some(MoveTo::Arrived | MoveTo::Failed) => {
+                self.begin_search(walk.mover.as_deref_mut(), g)
+            }
+            Some(_) => {
+                self.step_move(walk.reborrow(), g)?;
+                Ok(Next::Stay)
+            }
+            None => Err(Unsupported("a Gather in state 11 without its MoveTo")),
+        }
+    }
+
     /// `set_state(3)` (case 3; `FUN_140a98620` first: the `MoveTo` goes and stops the unit): the
     /// caller posts the unit AI's notify ([`Next::Search`]), the timer waits 10 seconds and the
     /// unit stands ([`GatherAction::stand_sprite`]).
@@ -763,6 +833,7 @@ impl GatherAction {
             DONE => return Ok(Next::Done),
             IDLE => return Ok(Next::Stay),
             MOVED => return self.update_moved(walk, g),
+            WALK_BACK => return self.update_walk_back(walk, g),
             // case 2: the timer counts up by the world's dt; at 0 it waits again and asks again
             SEARCH => {
                 if self.timer < 0.0 {
@@ -799,15 +870,14 @@ impl GatherAction {
         };
         match self.state {
             WALK if self.timer < 0.0 => Err(Unsupported("a gather's wait after a failed walk")),
-            WALK => self.update_walk(walk, target, g).map(|()| Next::Stay),
+            WALK => self.update_walk(walk, target, g),
             FACE => {
                 // case 5: a farm not built yet is searched past (set_state 3), a pasture short of
-                // its animals or a farm another farmer works waits for another (0xf3)
+                // its animals or a farm another farmer works waits for another (0xf3); the
+                // search's notify is the caller's
                 if target.class == FARM_CLASS {
                     if target.state < 2 {
-                        return Err(Unsupported(
-                            "a gather facing a farm not built yet (set_state 3)",
-                        ));
+                        return self.begin_search(walk.mover.as_deref_mut(), g);
                     }
                     if (target.master_id - 0x765) & !4 == 0 {
                         return Err(Unsupported(
@@ -880,9 +950,11 @@ impl GatherAction {
         mut walk: Walk<'_>,
         target: &Victim,
         g: &mut Gatherer<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<Next, Unsupported> {
         match self.move_to {
-            Some(MoveTo::Start | MoveTo::Moving | MoveTo::Waiting) => self.step_move(walk, g),
+            Some(MoveTo::Start | MoveTo::Moving | MoveTo::Waiting) => {
+                self.step_move(walk, g).map(|()| Next::Stay)
+            }
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
                 self.walk_to = None;
@@ -976,7 +1048,7 @@ impl GatherAction {
     /// built (state below 2, the unit's slot 0x380) are not modelled; the timer clears and the
     /// unit takes the walking sprite (`FUN_140a8b660`; slot 0x68 takes the standing one for
     /// none).
-    fn set_face(&mut self, target: &Victim, g: &mut Gatherer<'_>) -> Result<(), Unsupported> {
+    fn set_face(&mut self, target: &Victim, g: &mut Gatherer<'_>) -> Result<Next, Unsupported> {
         self.state = FACE;
         // another player's farm is the gatherer's to take (FUN_141185360, FUN_1411858f0)
         if target.class == FARM_CLASS && target.player != g.player {
@@ -988,9 +1060,7 @@ impl GatherAction {
             return Err(Unsupported("a gather's set_state 6 on master 357 or 1188"));
         }
         if target.state < 2 {
-            return Err(Unsupported(
-                "a gather's target not built yet (the unit's slot 0x380)",
-            ));
+            return Ok(Next::Build);
         }
         if (target.master_id - 0x765) & !4 == 0 {
             return Err(Unsupported("a gather's set_state 6 on master 1893 or 1897"));
@@ -999,7 +1069,7 @@ impl GatherAction {
         if let Some(s) = self.walk_sprite(g).or(g.sprites.standing) {
             set_sprite(g.sprite, s, g.sprite_rng);
         }
-        Ok(())
+        Ok(Next::Stay)
     }
 
     /// `set_state(7)` (case 7): the gathering starts (`+0x80`), the timer clears; without the
@@ -1579,7 +1649,7 @@ mod tests {
                 7,
                 false,
                 0.0,
-                true,
+                (true, rate()),
                 &mut mover,
                 &mut Well512::default()
             ),
@@ -1604,7 +1674,7 @@ mod tests {
                     7,
                     computer,
                     0.0,
-                    true,
+                    (true, rate()),
                     &mut mover,
                     &mut Well512::default()
                 ),
@@ -1625,7 +1695,7 @@ mod tests {
                 7,
                 false,
                 3.0,
-                true,
+                (true, rate()),
                 &mut mover,
                 &mut Well512::default()
             ),

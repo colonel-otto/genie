@@ -480,6 +480,9 @@ pub enum Pick {
         master: i32,
         /// The workers cap (−1 none).
         workers: i32,
+        /// The relation passed over (argument 9: 0 friends, 1 neutrals, 2 enemies, 3 itself;
+        /// −1 none).
+        spared: i32,
     },
     /// `bestUnitToAttack` (`FUN_140c44680`) with no current target and no extra objects, as the
     /// idle checks call it: of the relations from enemies down to `lowest` (2 in the scenario
@@ -1968,6 +1971,7 @@ impl UnitAi {
                 state: -1,
                 master: -1,
                 workers: -1,
+                spared: -1,
             },
         })?;
         self.alert(found, at.dt_seconds);
@@ -2037,6 +2041,7 @@ impl UnitAi {
                 state: 2,
                 master: -1,
                 workers: -1,
+                spared: -1,
             },
         };
         let mut reach = if at.mode_1 {
@@ -2585,6 +2590,7 @@ impl UnitAi {
                 state: -1,
                 master: -1,
                 workers: if class == 49 { 1 } else { -1 },
+                spared: -1,
             },
         })?;
         self.alert(found, at.dt_seconds);
@@ -2613,8 +2619,8 @@ impl UnitAi {
     /// without a group takes `ClosestObject` (every relation, any workers) over the civilian's
     /// search ([`civilian_search_radius`]). What it finds it gathers (`GatherObject`, slot 0xd0
     /// with 1, [`UnitAi::gather_object`]) and the processing breaks; finding nothing, a human
-    /// player's villager does nothing more, a computer player's stops as above. A farm searched
-    /// for (the notify's class 49: `ClosestObject`'s ninth argument 0) is not modelled.
+    /// player's villager does nothing more, a computer player's stops as above. For a farm (the
+    /// notify's class 49) `ClosestObject`'s ninth argument is 0: friends' farms pass.
     fn gatherer_search(
         &mut self,
         n: Notify,
@@ -2637,11 +2643,12 @@ impl UnitAi {
         }
         let kind = civilian_kind(class);
         let found = if kind == -1 {
-            if n.p[1] == 49 {
-                return Err(Unsupported(
-                    "a gatherer's search for a farm (ClosestObject's ninth argument 0)",
-                ));
-            }
+            // "Calling closest object for a farm that's alive": the friends' pass over
+            let spared = if n.p[1] == i32::from(crate::gather::FARM_CLASS) {
+                0
+            } else {
+                -1
+            };
             let found = side.closest(&Search {
                 at: [at.position[0], at.position[1]],
                 radius: civilian_search_radius(at.los, at.search_radius),
@@ -2653,6 +2660,7 @@ impl UnitAi {
                     state: -1,
                     master: -1,
                     workers: -1,
+                    spared,
                 },
             })?;
             self.alert(found, at.dt_seconds);
