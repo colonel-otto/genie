@@ -2444,6 +2444,7 @@ fn work_masters(
                 .collect();
             work.charge_type = c.charge_type;
             work.formation_category = c.temp_formation_category;
+            work.hero_flag = c.hero_flag;
             work.volley_fire = c.volley_fire_amount;
             work.max_volley = c.max_attacks_in_volley;
             work.volley_spread = [

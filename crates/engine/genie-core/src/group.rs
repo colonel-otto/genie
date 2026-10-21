@@ -48,6 +48,77 @@ impl UnitGroups {
         }
         self.groups.iter().find(|g| g.id == id)
     }
+
+    /// The group of id `id`, to change (`FUN_14152ff40`).
+    pub fn get_mut(&mut self, id: i32) -> Option<&mut UnitGroup> {
+        if id == -1 {
+            return None;
+        }
+        self.groups.iter_mut().find(|g| g.id == id)
+    }
+
+    /// A new group at the world list's end with the next id (`FUN_14152efc0` with 1: the
+    /// constructor, `FUN_141039640`'s id, then the count and the counter up by one); its state
+    /// is the constructor's (`FUN_140fe1550`) and `owner`'s.
+    pub fn create(&mut self, owner: u32) -> &mut UnitGroup {
+        let id = self.counter;
+        self.counter += 1;
+        let at = self.groups.len();
+        self.groups.push(UnitGroup {
+            id,
+            owner,
+            ..UnitGroup::default()
+        });
+        &mut self.groups[at]
+    }
+}
+
+/// The group that every listed unit is in (`FUN_14152ece0`), from each unit's group link
+/// (`group_of`, None for a unit the world does not hold, which is passed over): -1 for an empty
+/// list, for a unit in no group, for two groups, and when the first unit is gone (the others
+/// are then compared with no group).
+pub fn common_group(ids: &[i32], group_of: impl Fn(i32) -> Option<i32>) -> i32 {
+    let Some(&first) = ids.first() else {
+        return -1;
+    };
+    let first_held = group_of(first).is_some();
+    let mut common = -1;
+    for &id in ids {
+        let Some(group) = group_of(id) else {
+            continue;
+        };
+        if group == -1 {
+            return -1;
+        }
+        if id == first && first_held {
+            common = group;
+        } else if common != group {
+            return -1;
+        }
+    }
+    common
+}
+
+/// A unit's sub-formation in its group (`FUN_141011300`), from its master's type, `hero_flag`
+/// (`+0x8d9`) and formation category (`+0x8bc`): none below type 70; a combat master (70) with
+/// a hero flag of bit 0 or 4 but not both 4 and 7 is 5; categories 1 to 4 are themselves, 0 and
+/// 5 are 5, 6 is 0, any other (255) none ("Invalid formation category"). The rams' rule (class
+/// 13 of masters 1258, 35, 422 and 548 of a human, ordered at a building: 0) holds only while the
+/// byte `DAT_143f01837` is 1, and no code writes it.
+#[must_use]
+pub const fn sub_formation(kind: u8, hero_flag: u8, formation_category: u8) -> Option<i32> {
+    if kind < 70 {
+        return None;
+    }
+    if kind == 70 && hero_flag & 0x11 != 0 && hero_flag & 0x90 != 0x90 {
+        return Some(5);
+    }
+    match formation_category {
+        0 | 5 => Some(5),
+        c @ 1..=4 => Some(c as i32),
+        6 => Some(0),
+        _ => None,
+    }
 }
 
 /// A group's motion (`BMotion`, read by `FUN_141046660`): where the group stands and faces, its
@@ -361,5 +432,59 @@ impl UnitGroup {
     #[must_use]
     pub fn has(&self, id: i32) -> bool {
         self.members.iter().any(|m| m.id == id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `FUN_14152ece0` over units 1, 2 (group 7), 3 (group 8), 4 (no group), 9 (gone).
+    #[test]
+    fn the_common_group_needs_every_held_unit_in_one_group_and_the_first_held() {
+        let group_of = |id| match id {
+            1 | 2 => Some(7),
+            3 => Some(8),
+            4 => Some(-1),
+            _ => None,
+        };
+        assert_eq!(common_group(&[1, 2], group_of), 7);
+        assert_eq!(common_group(&[1, 9, 2], group_of), 7);
+        assert_eq!(common_group(&[1, 3], group_of), -1);
+        assert_eq!(common_group(&[1, 4], group_of), -1);
+        // the first unit gone: the others are compared with no group
+        assert_eq!(common_group(&[9, 1, 2], group_of), -1);
+        assert_eq!(common_group(&[], group_of), -1);
+    }
+
+    #[test]
+    fn a_unit_s_sub_formation_follows_its_category_and_its_hero_flag() {
+        assert_eq!(sub_formation(60, 0, 3), None);
+        assert_eq!(sub_formation(70, 0, 3), Some(3));
+        assert_eq!(sub_formation(70, 0, 0), Some(5));
+        assert_eq!(sub_formation(70, 0, 6), Some(0));
+        assert_eq!(sub_formation(70, 0, 255), None);
+        assert_eq!(sub_formation(70, 1, 3), Some(5));
+        assert_eq!(sub_formation(70, 0x90, 3), Some(3));
+        assert_eq!(sub_formation(80, 1, 3), Some(3));
+    }
+
+    #[test]
+    fn a_new_group_takes_the_next_id_at_the_list_s_end() {
+        let mut groups = UnitGroups {
+            counter: 4,
+            ..UnitGroups::default()
+        };
+        assert_eq!(groups.create(2).id, 4);
+        assert_eq!(groups.create(1).id, 5);
+        assert_eq!(groups.counter, 6);
+        assert_eq!(
+            groups
+                .groups
+                .iter()
+                .map(|g| (g.id, g.owner))
+                .collect::<Vec<_>>(),
+            [(4, 2), (5, 1)]
+        );
     }
 }
