@@ -182,6 +182,10 @@ pub mod group {
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
     /// 2.5
     pub const FLANK_SPACING: f32 = f32::from_bits(0x4020_0000);
+    /// 0.10000000149011612
+    pub const MAP_EDGE: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 1.5707963705062866
+    pub const RIGHT_ANGLE: f32 = f32::from_bits(0x3fc9_0fdb);
     /// 1.2000000476837158
     pub const SLOW_GROUP_FACTOR: f32 = f32::from_bits(0x3f99_999a);
     /// 2.0

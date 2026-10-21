@@ -167,6 +167,9 @@ pub struct Motion {
     pub maximum_velocity_forward: f32,
     /// `mNumberWaitDelays`.
     pub number_wait_delays: i32,
+    /// `+0xc4` (not saved): the group's lead unit (-1 from the constructor), which a formation's
+    /// transform tests the slots' places with (`FUN_1410465d0`).
+    pub lead: i32,
 }
 
 /// A member's own move (`mSpecificMoves[i]`).
@@ -464,6 +467,7 @@ impl Motion {
             maximum_yaw_per_second_stationary: f32::MAX,
             paths: vec![PathData::without_path()],
             flags: 3,
+            lead: -1,
             ..Self::default()
         }
     }

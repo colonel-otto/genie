@@ -430,6 +430,14 @@ impl crate::turn::Turns {
             any
         };
         let world_time = self.world_time;
+        let map = self.spatial.map;
+        let held: Vec<i32> = self
+            .players
+            .iter()
+            .flat_map(|p| p.objects.iter().chain(&p.sleeping))
+            .map(|u| u.id)
+            .collect();
+        let held = move |id: i32| id != -1 && held.contains(&id);
         let g = self.groups.get_mut(group).expect("the group read above");
         if g.current_formation.is_none() {
             g.current_formation = Some(Formation::new());
@@ -468,17 +476,243 @@ impl crate::turn::Turns {
                     (kind == STAGGERED, kind == FLANKED),
                     world_time,
                 );
+                let result = match laid {
+                    Ok(true) => {
+                        // a line after a column keeps the units' slots (`FUN_141009060`)
+                        let after_column = kind != COLUMN
+                            && g.previous_formation.as_ref().is_some_and(|p| p.kind == COLUMN);
+                        lay_units(&mut f, g, after_column, (world_time, map), &held)
+                    }
+                    Ok(false) => Ok(()),
+                    Err(e) => Err(e),
+                };
                 g.current_formation = Some(f);
-                if laid? {
-                    return Err(Unsupported("a formation's transform (FUN_14103a1f0)"));
-                }
-                Ok(())
+                result
             }
             _ => Err(Unsupported(
                 "a horde, phalanx, box or user defined formation (FUN_14103fd00)",
             )),
         }
     }
+}
+
+/// A turn of more than this (`DAT_142eb0c64`, π/2) makes a formation of fewer than two
+/// sub-formations take its units anew (`FUN_14103a1f0`).
+const RIGHT_ANGLE: f32 = crate::image::group::RIGHT_ANGLE;
+/// A slot's place kept this far inside the map's far edges (`FUN_14100b760`, `DAT_142eb5690`).
+const MAP_EDGE: f32 = crate::image::group::MAP_EDGE;
+
+impl super::Motion {
+    /// `BMotion::calculateYawAngle` (`FUN_141046270`) without its clamp (`param_5` 0): the angle
+    /// from `canon` to `dir` (`FUN_14087e650`), negative when their cross product `dir × canon`
+    /// points up.
+    #[must_use]
+    pub fn yaw_angle(canon: Vec3, dir: Vec3) -> f32 {
+        let angle = crate::fmath::angle_between(dir, canon);
+        if 0.0 < crate::fmath::cross(dir, canon)[1] {
+            -angle
+        } else {
+            angle
+        }
+    }
+}
+
+/// `FUN_14100b760`: a place kept on the map: below 0 it is 0, from the map's width on it is the
+/// width less [`MAP_EDGE`], on both axes (the y test against the height, its value the width's).
+fn on_map(mut p: Vec3, map: [i32; 2]) -> Vec3 {
+    if p[0] < 0.0 {
+        p[0] = 0.0;
+    }
+    if p[2] < 0.0 {
+        p[2] = 0.0;
+    }
+    let (w, h) = (map[0] as f32, map[1] as f32);
+    if w <= p[0] {
+        p[0] = w - MAP_EDGE;
+    }
+    if h <= p[2] {
+        p[2] = w - MAP_EDGE;
+    }
+    p
+}
+
+/// `FUN_14103cfe0`: slot `index` of `formation` placed at `point` plus its offset (turned by
+/// `rotation` but for the transform types 2 and 3) as its transform and desired transform
+/// positions, kept on the map, with the world's time; once per transform (`+0x44`). Nothing for
+/// a slot outside the slots in use or a point at the origin (shorter than 1e-7).
+fn transform_slot(
+    formation: &mut Formation,
+    rotation: &[Vec3; 3],
+    point: Vec3,
+    index: i32,
+    transform_type: i32,
+    (world_time, map): (u32, [i32; 2]),
+) -> bool {
+    if index < 0 || formation.slots.len() as i32 <= index {
+        return false;
+    }
+    if crate::fmath::sqrt(crate::fmath::dot(point, point)).abs() < EPSILON {
+        return false;
+    }
+    let slot = &mut formation.slots[index as usize];
+    if slot.transformed != 1 {
+        let offset = if matches!(transform_type, 2 | 3) {
+            slot.offset
+        } else {
+            crate::fmath::rotate(rotation, slot.offset)
+        };
+        let at = add(point, offset);
+        slot.transform_position = on_map(at, map);
+        slot.desired_transform_position = on_map(at, map);
+        slot.transformed = 1;
+        slot.time = world_time;
+    }
+    true
+}
+
+/// `FormationTransform` (`FUN_14103a1f0`) of `formation` for `group`, `flag` (`param_4`) the
+/// column-to-line change: nothing without slots. The group's yaw from the canon forward (x, or
+/// -x about faced) and the formation's last one (`calculateYawAngle`) give the rotation about
+/// the group's up; the formation takes the group's forward as its orientation, every slot's
+/// transform mark clears and none counts as transformed. The line transform (type 0) takes each
+/// line's point behind the group (its distance back, or its index times the group's spacing):
+/// the stored positions' point there (`FUN_141016990`, none below two points), else the group's
+/// place less its forward times the distance; each of the line's slots is placed there
+/// ([`transform_slot`]) and the line counts as transformed (below 256 places). A turn of more
+/// than [`RIGHT_ANGLE`] with fewer than two sub-formations takes the units anew (not modelled),
+/// as are the other transform types, a group whose stored positions hold two points or more,
+/// and the slots' passability against the group's lead unit (`+0xc4`, else the first slot's
+/// unit). Returns whether the slots took their units anew (`*param_3`).
+pub(crate) fn formation_transform(
+    formation: &mut Formation,
+    group: &UnitGroup,
+    _flag: bool,
+    (world_time, map): (u32, [i32; 2]),
+    unit_held: &dyn Fn(i32) -> bool,
+) -> Result<bool, Unsupported> {
+    if formation.slots.is_empty() {
+        return Ok(false);
+    }
+    let canon = [if formation.about_faced == 0 { 1.0 } else { -1.0 }, 0.0, 0.0];
+    let [position, forward, up, _right] = group.motion.position;
+    let yaw = super::Motion::yaw_angle(canon, forward);
+    let old = super::Motion::yaw_angle(canon, formation.transform_orientation);
+    let flips = RIGHT_ANGLE < (yaw - old).abs() && group.unit_types.len() < 2;
+    let rotation = crate::fmath::rotation(yaw, up);
+    formation.transform_orientation = forward;
+    for s in formation.every_slot_mut() {
+        s.transformed = 0;
+    }
+    formation.number_transformed_slots = 0;
+    let capacity = formation.slot_capacity() as i32;
+    match formation.transform_type {
+        0 => {
+            for i in 0..formation.number_lines.max(0) {
+                if capacity <= formation.number_transformed_slots {
+                    break;
+                }
+                let line = formation
+                    .lines
+                    .get(i as usize)
+                    .ok_or(Unsupported("a formation line past the lines' array"))?;
+                let mut back = 0.0;
+                if 0 < i {
+                    back = line.distance_back;
+                    if back <= 0.0 {
+                        back = i as f32 * group.desired_spacing;
+                    }
+                }
+                if 2 <= group.stored_positions.points.len() {
+                    return Err(Unsupported(
+                        "a formation line's point on the stored positions (FUN_141016990)",
+                    ));
+                }
+                let point = sub(position, scale(back, forward));
+                let indices = line.indices.clone();
+                let width = indices.len() as i32;
+                for k in indices {
+                    let _ = transform_slot(
+                        formation,
+                        &rotation,
+                        point,
+                        k as i32,
+                        0,
+                        (world_time, map),
+                    );
+                }
+                if width < 0x100 {
+                    formation.number_transformed_slots += width;
+                }
+            }
+        }
+        _ => {
+            return Err(Unsupported(
+                "a formation transform of the group, target or horde type (FUN_14103a1f0)",
+            ));
+        }
+    }
+    if flips {
+        return Err(Unsupported(
+            "a formation turned past a right angle that takes its units anew",
+        ));
+    }
+    let lead = group.motion.lead;
+    let has_unit = unit_held(lead)
+        || formation
+            .slots
+            .iter()
+            .any(|s| s.active != 0 && unit_held(s.unit_id));
+    if has_unit {
+        return Err(Unsupported(
+            "a formation's slots tested against its lead unit (FUN_141185690)",
+        ));
+    }
+    Ok(false)
+}
+
+/// createColumnLine's end (`FUN_141012280` after its layout): the transform
+/// ([`formation_transform`]); unless it took the units anew, every slot of the array loses its
+/// unit and its filled mark, and the units take their slots ([`populate_slots`]; after a column,
+/// with slots transformed, from the previous formation's: `FUN_141009060`, not modelled).
+fn lay_units(
+    formation: &mut Formation,
+    group: &UnitGroup,
+    after_column: bool,
+    world: (u32, [i32; 2]),
+    held: &dyn Fn(i32) -> bool,
+) -> Result<(), Unsupported> {
+    if formation_transform(formation, group, after_column, world, held)? {
+        return Ok(());
+    }
+    for s in formation.every_slot_mut() {
+        s.unit_id = -1;
+        s.position_filled = 0;
+    }
+    if formation.number_transformed_slots < 1 || group.previous_formation.is_none() || !after_column
+    {
+        populate_slots(formation)
+    } else {
+        Err(Unsupported(
+            "a line's slots taken from the previous column's (FUN_141009060)",
+        ))
+    }
+}
+
+/// `FUN_141009760` (the settings' flag `DAT_143f01834` 0, as every load of the recordings sets
+/// it): the transformed and active slots take the closest units of their sub-formation and type
+/// (`FUN_14100e370`, two orders tried, the shorter sum kept), not modelled; with no such slot
+/// nothing changes.
+fn populate_slots(formation: &Formation) -> Result<(), Unsupported> {
+    if formation
+        .slots
+        .iter()
+        .any(|s| s.transformed != 0 && s.active != 0)
+    {
+        return Err(Unsupported(
+            "the slots' closest units (ClosestUnit, FUN_14100e370)",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -54,6 +54,8 @@ fn motion(m: &saved::Motion, paths: &[saved::Path]) -> Result<Motion, Unsupporte
         flags: m.motion_flags_m_bits,
         maximum_velocity_forward: m.maximum_velocity_forward,
         number_wait_delays: m.number_wait_delays,
+        // not saved: the constructor's
+        lead: -1,
     })
 }
 
