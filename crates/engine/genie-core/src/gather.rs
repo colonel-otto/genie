@@ -36,6 +36,12 @@ pub const FACE: u8 = 6;
 pub const WORK: u8 = 7;
 /// State 8: taking the load to its drop site.
 pub const DROP: u8 = 8;
+/// State 1: done; its update returns 1 and the action list removes it.
+pub const DONE: u8 = 1;
+/// State 2: idle, without a target, a drop site or a point; its update does nothing.
+pub const IDLE: u8 = 2;
+/// State 15: walking to the point the unit was moved to (slot 0x40).
+pub const MOVED: u8 = 15;
 
 /// A `MoveTo` starts in place within this gap of its target (`0x140aa2100`).
 const ARRIVED: f32 = 0.01;
@@ -108,9 +114,12 @@ pub struct GatherAction {
     /// The sub-action of states 4 and 8: a `MoveTo` to the target or the drop site within the
     /// task's range, quiet (its `+0x60` and `+0x61` set).
     pub move_to: Option<MoveTo>,
-    /// The point that `MoveTo` walks to instead (a farm's stop, `FUN_140aa0d30`), None when it
-    /// walks to the target or the drop site.
+    /// The point that `MoveTo` walks to instead (a farm's stop, the point a move gave,
+    /// `FUN_140aa0d30`), None when it walks to the target or the drop site.
     pub walk_to: Option<[f32; 3]>,
+    /// That `MoveTo`'s range (`+0x68`): the task's, or for a walk to a point (states 11, 15 and
+    /// 0xf2) the target's radius plus the task's.
+    pub walk_range: f32,
     /// Its `MoveTo`'s wait after the motion step gave up.
     pub move_wait: MoveWait,
 }
@@ -174,6 +183,8 @@ pub struct Gatherer<'a> {
     pub action_rng: &'a mut Well512,
     /// The gatherer's player.
     pub player: usize,
+    /// That player is a computer (`FUN_141659cf0`): its moved gatherer is done at the point.
+    pub computer: bool,
     /// The player's attribute the task's `attribute_type2` names (none: 1.0), as the time per
     /// stop reads it.
     pub stop_productivity: f32,
@@ -214,6 +225,23 @@ pub enum Next {
     /// `set_state(8)`: the drop site search, then the walk there
     /// ([`GatherAction::set_drop`]).
     Drop,
+    /// The update returned 1 (state 1): the action list removes the Gather, whose teardown lets
+    /// its targets go.
+    Done,
+}
+
+/// What slot 0x40 reads of a move's target object.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MoveTarget {
+    /// The object.
+    pub id: i32,
+    /// Its owner.
+    pub player: usize,
+    /// The gatherer's master drops its loads there (its main building's master for an annex,
+    /// `+0xbb8`; `FUN_14109d4f0`).
+    pub drop_site: bool,
+    /// The footprint gap from the gatherer to it.
+    pub gap: f32,
 }
 
 /// Food and the food kinds (0, 15 to 17): a gatherer keeps a load of one for another.
@@ -312,6 +340,7 @@ impl GatherAction {
             gather_at: [-1.0; 2],
             move_to: None,
             walk_to: None,
+            walk_range: task.range,
             move_wait: MoveWait::default(),
         })
     }
@@ -461,6 +490,7 @@ impl GatherAction {
                 return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
             }
             self.walk_to = Some([x, y, position[2]]);
+            self.walk_range = self.task.range;
             self.move_to = Some(MoveTo::Start);
             return Ok(());
         }
@@ -490,6 +520,7 @@ impl GatherAction {
     fn start_move(&mut self, gap: f32, mover: &Mover) -> Result<(), Unsupported> {
         self.move_wait = MoveWait::default();
         self.walk_to = None;
+        self.walk_range = self.task.range;
         self.move_to = Some(if ARRIVED < gap {
             if mover.stats.speed == 0.0 {
                 return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
@@ -499,6 +530,132 @@ impl GatherAction {
             MoveTo::Arrived
         });
         Ok(())
+    }
+
+    /// Slot 0x40 (`0x140a8b740`) on a move to `point`, `target` the object moved to, if any: a
+    /// loaded gatherer moved to one of its player's drop sites carries its load there (nothing
+    /// changes when that is already the drop site it walks to in state 8): the target goes (slot
+    /// 0x68 with none) with the point, the site becomes the second target (`FUN_140a7a190`) and
+    /// `set_state(8)` walks there. Any other move becomes the point: the target goes and
+    /// `set_state(15)` walks there ([`GatherAction::set_moved`]). Always taken (it returns 1); the
+    /// caller takes and lets go the targets that changed.
+    ///
+    /// # Errors
+    ///
+    /// A unit that cannot move.
+    pub fn take_move(
+        &mut self,
+        target: Option<MoveTarget>,
+        point: [f32; 3],
+        player: usize,
+        held: f32,
+        mover: &mut Mover,
+    ) -> Result<(), Unsupported> {
+        match target.filter(|t| t.player == player && t.drop_site && 0.0 < held) {
+            Some(t) if t.id == self.carry_to && self.state == DROP => Ok(()),
+            Some(t) => {
+                self.target = -1;
+                self.point = [-1.0; 3];
+                self.carry_to = t.id;
+                self.set_drop(t.gap, mover)
+            }
+            None => {
+                self.point = point;
+                self.target = -1;
+                self.set_moved(mover)
+            }
+        }
+    }
+
+    /// `set_state(15)` (`0x140a8cd40` case 0xf, as 11): the sub-actions go, the timer clears and
+    /// a `MoveTo` to the point (`FUN_140aa0d30`, quiet: `+0x60`) within the target's radius plus
+    /// the task's range starts; with no target (a move lets it go) the radius is 0.
+    ///
+    /// # Errors
+    ///
+    /// A unit that cannot move.
+    pub fn set_moved(&mut self, mover: &mut Mover) -> Result<(), Unsupported> {
+        self.tear_down(Some(mover))?;
+        self.state = MOVED;
+        self.timer = 0.0;
+        if self.target != -1 {
+            return Err(Unsupported(
+                "a gather's walk to a point with a target (its radius)",
+            ));
+        }
+        if mover.stats.speed == 0.0 {
+            return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+        }
+        self.move_wait = MoveWait::default();
+        self.walk_to = Some(self.point);
+        self.walk_range = self.task.range;
+        self.move_to = Some(MoveTo::Start);
+        Ok(())
+    }
+
+    /// `set_state(2)` (case 2): the timer clears, the unit stands ([`GatherAction::stand_sprite`]),
+    /// the target and the second target go (slot 0x68, `FUN_140a7a190` with none; the caller
+    /// lets them go) and the point is −1.
+    fn set_idle(&mut self, g: &mut Gatherer<'_>) {
+        self.state = IDLE;
+        self.timer = 0.0;
+        if let Some(s) = self.stand_sprite(g) {
+            set_sprite(g.sprite, s, g.sprite_rng);
+        }
+        self.target = -1;
+        self.carry_to = -1;
+        self.point = [-1.0; 3];
+    }
+
+    /// `set_state(1)` (case 1): the timer clears and the unit stands.
+    fn set_done(&mut self, g: &mut Gatherer<'_>) {
+        self.state = DONE;
+        self.timer = 0.0;
+        if let Some(s) = self.stand_sprite(g) {
+            set_sprite(g.sprite, s, g.sprite_rng);
+        }
+    }
+
+    /// The sprite the gatherer stands with (`FUN_140a8b6b0`): the task's carrying sprite while
+    /// it carries at least 1 of the task's resource, else its master's standing sprite.
+    const fn stand_sprite(&self, g: &Gatherer<'_>) -> Option<crate::sprite::Graphic> {
+        let r = self.task.resource;
+        match g.sprites.carrying {
+            Some(c) if r != -1 && *g.held_kind == r && 1 <= *g.held as i32 => Some(c),
+            _ => g.sprites.standing,
+        }
+    }
+
+    /// State 15's update (`0x140a8e1d0` case 0xe): its `MoveTo` walks; once it ended (arrived,
+    /// codes 1 and 2) a computer player's gatherer is done (`set_state(1)`), a human's idles
+    /// (`set_state(2)`); a failed walk (code 3) idles both.
+    fn update_moved(
+        &mut self,
+        mut walk: Walk<'_>,
+        g: &mut Gatherer<'_>,
+    ) -> Result<Next, Unsupported> {
+        match self.move_to {
+            Some(MoveTo::Arrived | MoveTo::Failed) => {
+                let arrived = self.move_to == Some(MoveTo::Arrived);
+                self.move_to = None;
+                self.walk_to = None;
+                walk.mover
+                    .as_deref_mut()
+                    .ok_or(Unsupported("a gatherer without movement state"))?
+                    .stop()?;
+                if arrived && g.computer {
+                    self.set_done(g);
+                } else {
+                    self.set_idle(g);
+                }
+                Ok(Next::Stay)
+            }
+            Some(_) => {
+                self.step_move(walk, g)?;
+                Ok(Next::Stay)
+            }
+            None => Err(Unsupported("a Gather in state 15 without its MoveTo")),
+        }
     }
 
     /// The teardown (`FUN_140a73fc0`) and `set_state`'s first step (`FUN_140a98620`): the
@@ -550,6 +707,12 @@ impl GatherAction {
                 productivity: g.stop_productivity,
             }
             .time_per_stop(self.task.work_value, self.stops);
+        }
+        match self.state {
+            DONE => return Ok(Next::Done),
+            IDLE => return Ok(Next::Stay),
+            MOVED => return self.update_moved(walk, g),
+            _ => {}
         }
         let Some(target) = target.filter(|_| self.target != -1) else {
             if matches!(self.state, WALK | FACE | WORK) {
@@ -649,13 +812,36 @@ impl GatherAction {
         g: &mut Gatherer<'_>,
     ) -> Result<(), Unsupported> {
         match self.move_to {
+            Some(MoveTo::Start | MoveTo::Moving | MoveTo::Waiting) => self.step_move(walk, g),
+            Some(MoveTo::Arrived) => {
+                self.move_to = None;
+                self.walk_to = None;
+                walk.mover
+                    .as_deref_mut()
+                    .ok_or(Unsupported("a gatherer without movement state"))?
+                    .stop()?;
+                self.set_face(target, g)
+            }
+            Some(MoveTo::Failed) => Err(Unsupported(
+                "a gather's failed walk (its wait or its search, set_state 3)",
+            )),
+            None => Err(Unsupported("a Gather in state 4 without its MoveTo")),
+        }
+    }
+
+    /// A walking `MoveTo`'s update, its state 3, 4 or 2 (`FUN_140a992b0` on the sub-actions):
+    /// it starts (a target's or a point's, within [`GatherAction::walk_range`]), walks, waits
+    /// after the motion step gave up (a villager once); a `MoveTo` to the target asks again
+    /// when the target left its point.
+    fn step_move(&mut self, mut walk: Walk<'_>, g: &mut Gatherer<'_>) -> Result<(), Unsupported> {
+        match self.move_to {
             Some(MoveTo::Start) => {
                 if self.move_wait.state == 1 {
                     self.move_wait.state = 2;
                 }
                 self.move_to = Some(MoveTo::Moving);
                 walk.me.action_state = self.state;
-                let range = self.task.range;
+                let range = self.walk_range;
                 let goal = self.walk_to.map_or(Goal::Target(self.target), Goal::Point);
                 let walked = start_walk_or_give_up(walk.reborrow(), goal, range, true)?;
                 self.post_in_the_way(&mut walk, g);
@@ -694,19 +880,7 @@ impl GatherAction {
                 }
                 Ok(())
             }
-            Some(MoveTo::Arrived) => {
-                self.move_to = None;
-                self.walk_to = None;
-                walk.mover
-                    .as_deref_mut()
-                    .ok_or(Unsupported("a gatherer without movement state"))?
-                    .stop()?;
-                self.set_face(target, g)
-            }
-            Some(MoveTo::Failed) => Err(Unsupported(
-                "a gather's failed walk (its wait or its search, set_state 3)",
-            )),
-            None => Err(Unsupported("a Gather in state 4 without its MoveTo")),
+            _ => Ok(()),
         }
     }
 
@@ -1059,6 +1233,7 @@ mod tests {
             posted: Vec::new(),
             action_rng: &mut action,
             player: 1,
+            computer: false,
             stop_productivity: 1.0,
             food_sold: 1.0,
             sold: 0.0,
@@ -1073,6 +1248,106 @@ mod tests {
             (gatherer.sold, *gatherer.held, field.amount),
             (0.25, 0.0, 14.75)
         );
+    }
+
+    #[test]
+    fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
+        let mut mover = crate::hunt::tests::walker();
+        let gatherer = || GatherAction {
+            state: WORK,
+            ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
+        };
+        // a move to a point (or an object that is no drop site): state 15 to the point
+        let mut g = gatherer();
+        g.take_move(None, [30.0, 40.0, 0.0], 7, 5.0, &mut mover)
+            .unwrap();
+        assert_eq!(
+            (g.state, g.target, g.point, g.walk_to, g.move_to),
+            (
+                MOVED,
+                -1,
+                [30.0, 40.0, 0.0],
+                Some([30.0, 40.0, 0.0]),
+                Some(MoveTo::Start)
+            )
+        );
+        // a loaded gatherer moved to its own mill carries the load there
+        let mill = MoveTarget {
+            id: 500,
+            player: 7,
+            drop_site: true,
+            gap: 3.0,
+        };
+        let mut g = gatherer();
+        g.take_move(Some(mill), [1.0; 3], 7, 5.0, &mut mover)
+            .unwrap();
+        assert_eq!(
+            (g.state, g.target, g.carry_to, g.point),
+            (DROP, -1, 500, [-1.0; 3])
+        );
+        // already on its way there, nothing changes; empty-handed it walks to the point
+        let walking = g.move_to;
+        g.take_move(Some(mill), [1.0; 3], 7, 5.0, &mut mover)
+            .unwrap();
+        assert_eq!((g.state, g.move_to), (DROP, walking));
+        let mut g = gatherer();
+        g.take_move(Some(mill), [1.0; 3], 7, 0.0, &mut mover)
+            .unwrap();
+        assert_eq!((g.state, g.carry_to), (MOVED, -1));
+    }
+
+    #[test]
+    fn at_its_point_a_human_s_moved_gatherer_idles_and_a_computer_s_is_done() {
+        let run = |computer: bool| {
+            let mut mover = crate::hunt::tests::walker();
+            let mut g = GatherAction {
+                state: MOVED,
+                target: -1,
+                move_to: Some(MoveTo::Arrived),
+                walk_to: Some([30.0, 40.0, 0.0]),
+                ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
+            };
+            let mut world = crate::spatial::Spatial::default();
+            let walk = Walk {
+                mover: Some(&mut mover),
+                me: crate::movement::Me {
+                    id: 1,
+                    position: [30.0, 40.0, 0.0],
+                    action_state: MOVED,
+                },
+                dt: 0.1,
+                world: &mut world,
+                plan: None,
+            };
+            let (mut kind, mut held) = (17i16, 0.0f32);
+            let mut sprite = None;
+            let (mut rng, mut action) = (Well512::default(), Well512::default());
+            let mut gatherer = Gatherer {
+                held_kind: &mut kind,
+                held: &mut held,
+                work_rate: 0.31,
+                capacity: 10.0,
+                productivity: 1.0,
+                sprites: HuntSprites::default(),
+                sprite: &mut sprite,
+                sprite_rng: &mut rng,
+                class: 4,
+                stance: 0,
+                world_time: 0,
+                farm_stops: true,
+                posted: Vec::new(),
+                action_rng: &mut action,
+                player: 7,
+                computer,
+                stop_productivity: 1.0,
+                food_sold: 0.0,
+                sold: 0.0,
+            };
+            assert_eq!(g.update_moved(walk, &mut gatherer), Ok(Next::Stay));
+            (g.state, g.point, g.move_to)
+        };
+        assert_eq!(run(false), (IDLE, [-1.0; 3], None));
+        assert_eq!(run(true).0, DONE);
     }
 
     #[test]
@@ -1216,6 +1491,7 @@ mod tests {
             posted: Vec::new(),
             action_rng: &mut action,
             player: 7,
+            computer: false,
             stop_productivity: 1.0,
             food_sold: 0.0,
             sold: 0.0,

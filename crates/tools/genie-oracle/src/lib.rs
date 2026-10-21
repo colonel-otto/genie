@@ -1155,13 +1155,13 @@ fn saved_actions(
             Ok(())
         }
         genie_core::gather::GATHER => {
-            use genie_core::gather::{DROP, FACE, GatherAction, WALK, WORK};
+            use genie_core::gather::{DONE, DROP, FACE, GatherAction, IDLE, MOVED, WALK, WORK};
             let part = action
                 .rge_action_by_type
                 .as_deref()
                 .and_then(|b| b.rge_action_gather.as_deref())
                 .ok_or(Unsupported("a saved Gather without its own part"))?;
-            if !matches!(base.state, WALK | FACE | WORK | DROP) {
+            if !matches!(base.state, WALK | FACE | WORK | DROP | DONE | IDLE | MOVED) {
                 return Err(Unsupported(
                     "a saved Gather in a state the slice does not model",
                 ));
@@ -1195,6 +1195,7 @@ fn saved_actions(
                 gather_at: [part.gather_x, part.gather_y],
                 move_to: None,
                 walk_to: None,
+                walk_range: task.range,
                 move_wait: genie_core::move_to::MoveWait::default(),
             };
             match base.sub_actions.entries().next() {
@@ -1206,11 +1207,9 @@ fn saved_actions(
                         .base()
                         .filter(|b| b.target_id == -1)
                         .map(|b| [b.target_x, b.target_y, b.target_z]);
-                    if sub.move_to_range() != Some(task.range) {
-                        return Err(Unsupported(
-                            "a saved Gather's MoveTo of another range than its task's",
-                        ));
-                    }
+                    gather.walk_range = sub
+                        .move_to_range()
+                        .ok_or(Unsupported("a saved MoveTo without its range"))?;
                     if let Some(m) = sub
                         .rge_action_by_type
                         .as_deref()

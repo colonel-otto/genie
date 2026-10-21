@@ -2659,7 +2659,7 @@ impl Unit {
             .get(crate::gather::FARM_FOOD_SOLD)
             .copied()
             .unwrap_or(0.0);
-        let player = c.player;
+        let (player, computer) = (c.player, c.computer);
         if gather.state == crate::gather::DROP {
             let me_at = c
                 .spatial
@@ -2706,6 +2706,7 @@ impl Unit {
                 posted: Vec::new(),
                 action_rng,
                 player,
+                computer,
                 stop_productivity,
                 food_sold,
                 sold: 0.0,
@@ -2754,6 +2755,7 @@ impl Unit {
         }
         // the target the caller holds, back in the context once the update is done
         let mut victim = c.victim.take();
+        let (old_target, old_second) = (gather.target, gather.carry_to);
         let (next, posted, sold) = {
             let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.mover.as_mut(), me);
             let mut work = crate::gather::Gatherer {
@@ -2772,6 +2774,7 @@ impl Unit {
                 posted: Vec::new(),
                 action_rng,
                 player,
+                computer,
                 stop_productivity,
                 food_sold,
                 sold: 0.0,
@@ -2794,6 +2797,24 @@ impl Unit {
                 0,
                 sold,
             )?;
+        }
+        // the targets an end or an idle let go (slot 0x68, FUN_140a7a190 with none); state 1's
+        // update returns 1: the action list removes the Gather, whose teardown lets its targets go
+        if next == crate::gather::Next::Done {
+            let g = self.gather.take().expect("the caller's gather");
+            for t in [g.target, g.carry_to] {
+                if t != -1 {
+                    c.releases.push((t, by));
+                }
+            }
+            return Ok(());
+        }
+        if let Some(g) = self.gather.as_ref() {
+            for (old, new) in [(old_target, g.target), (old_second, g.carry_to)] {
+                if old != new && old != -1 {
+                    c.releases.push((old, by));
+                }
+            }
         }
         if next == crate::gather::Next::Drop {
             self.gather_drop_off(c, others)?;

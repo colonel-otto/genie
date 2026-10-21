@@ -725,6 +725,20 @@ impl Turns {
                         return Ok(());
                     }
                 }
+                // the Gather's (0x140a8b740) always takes it
+                Some(crate::gather::GATHER) => {
+                    let _ = self.gather_take_move(player, idx, Some(target), point)?;
+                    return Ok(());
+                }
+                // the base slot 0x40 (FUN_140a78490) takes nothing: an Attack's, an Enter's, a
+                // Fly's, a missile's, a Make's
+                Some(
+                    crate::attack::ATTACK
+                    | crate::garrison::ENTER
+                    | crate::fly::FLY
+                    | crate::missile::MISSILE
+                    | crate::make::MAKE,
+                ) => {}
                 // the Artifact's slot 8 (FUN_140aaca30) takes the target: set_state(5)
                 Some(crate::artifact::ARTIFACT_TYPE) => {
                     return self.artifact_take_object(player, idx, target);
@@ -1438,12 +1452,24 @@ impl Turns {
             // range (`+0x48`'s `+0x30`) does not take it, else the hunt walks there (state 15)
             // and lets its target go
             (true, Some(HUNT)) => self.hunt_take_move(player, idx, None, point)?,
-            // an Explore's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's and a
-            // Build's (0x140aade60)
+            // the Gather's (0x140a8b740) walks to the point (set_state 15)
+            (true, Some(crate::gather::GATHER)) => {
+                self.gather_take_move(player, idx, None, point)?
+            }
+            // an Explore's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's, a Build's
+            // (0x140aade60), an Attack's, an Enter's, a Fly's, a missile's and a Make's
             (true, Some(t))
-                if t != crate::move_to::MOVE_TO
-                    && t != crate::explore::EXPLORE
-                    && t != crate::build::BUILD =>
+                if !matches!(
+                    t,
+                    crate::move_to::MOVE_TO
+                        | crate::explore::EXPLORE
+                        | crate::build::BUILD
+                        | crate::attack::ATTACK
+                        | crate::garrison::ENTER
+                        | crate::fly::FLY
+                        | crate::missile::MISSILE
+                        | crate::make::MAKE
+                ) =>
             {
                 return Err(Unsupported("a move of a unit with an action (its slot 8)"));
             }
@@ -2489,6 +2515,58 @@ impl Turns {
             }
         }
         Ok(took)
+    }
+
+    /// The Gather's slot 0x40 (`0x140a8b740`, [`crate::gather::GatherAction::take_move`]) on a
+    /// move of the gatherer at `idx` to `point`, toward the object `target` if any: always taken;
+    /// the targets that changed are let go and taken.
+    pub(crate) fn gather_take_move(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: Option<i32>,
+        point: [f32; 3],
+    ) -> Result<bool, Unsupported> {
+        let moved_to = match target {
+            Some(t) => {
+                let (tp, o) = self
+                    .object(t)
+                    .ok_or(Unsupported("a move to an object the slice does not hold"))?;
+                let tm = self.master_of(tp, o.life.master_id)?;
+                let (at, radius) = (o.position, tm.radius);
+                let unit = &self.players[player].objects[idx];
+                let me = self.master_of(player, unit.life.master_id)?;
+                Some(crate::gather::MoveTarget {
+                    id: t,
+                    player: tp,
+                    drop_site: self.drops_at_main(player, idx, t)?,
+                    gap: crate::movement::footprint_gap(unit.position, me.radius, at, radius),
+                })
+            }
+            None => None,
+        };
+        let by = self.releaser(player, idx);
+        let unit = &mut self.players[player].objects[idx];
+        let held = unit.life.amount;
+        let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.mover.as_mut()) else {
+            return Err(Unsupported(
+                "a gatherer without its gather or movement state",
+            ));
+        };
+        let (old_target, old_second) = (gather.target, gather.carry_to);
+        gather.take_move(moved_to, point, player, held, mover)?;
+        let (new_target, new_second) = (gather.target, gather.carry_to);
+        for (old, new) in [(old_target, new_target), (old_second, new_second)] {
+            if old != new {
+                if old != -1 {
+                    self.release(old, by)?;
+                }
+                if new != -1 {
+                    self.take(new);
+                }
+            }
+        }
+        Ok(true)
     }
 
     /// `FUN_14109d4f0` of the unit at `idx` on `target`, or on a building annex's main building
