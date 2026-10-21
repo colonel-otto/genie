@@ -61,7 +61,7 @@ pub struct Lifecycle {
     pub inside: Option<i32>,
     /// `+0x643`: the next update moves the object to the sleeping list.
     pub goto_sleep: bool,
-    /// The master's id: the static update has a special case for 61.
+    /// The master's id.
     pub master_id: i16,
     /// What the dead-object steps read of the master.
     pub master: Option<MasterData>,
@@ -157,9 +157,10 @@ impl Lifecycle {
         if self.inside.is_some() {
             return Err(Unsupported("an object inside another dies"));
         }
-        if self.master_id == 61 {
-            return Err(Unsupported("the static update's case for master 61"));
-        }
+        // master 61 (the marlin) of Gaia, without a dying sprite and first holding fish (17),
+        // goes to state 5 at once in its state-2 update (`FUN_14118ad50`, `set_state(5)`): the
+        // same end as this death of an animated object without a dying sprite, whose
+        // hit points (0) bring it here in the same update
         self.state = 3;
         if let Some(facets) = self.death_facets.filter(|_| self.class == Class::Static) {
             let facet = (object.rand15() as i32 * i32::from(facets)) / 0x7fff;
@@ -290,15 +291,27 @@ mod tests {
         assert_eq!(sheep.state, 5);
     }
 
+    /// The marlin (master 61) without a dying sprite, at 0 hit points, ends in state 5 in the
+    /// update it dies, as the game's direct `set_state(5)` leaves it.
+    #[test]
+    fn a_marlin_goes_to_state_5_at_once() {
+        let mut marlin = Lifecycle {
+            master_id: 61,
+            dying_sprite: None,
+            ..dead(Class::Animated)
+        };
+        marlin.state = 2;
+        let _ = marlin
+            .update(0.025, &mut Well512::default(), false)
+            .unwrap();
+        assert_eq!(marlin.state, 5);
+    }
+
     #[test]
     fn the_paths_not_modelled_are_unsupported() {
         let cases = [
             Lifecycle {
                 inside: Some(1),
-                ..dead(Class::Static)
-            },
-            Lifecycle {
-                master_id: 61,
                 ..dead(Class::Static)
             },
             Lifecycle {
