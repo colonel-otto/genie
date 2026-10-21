@@ -625,6 +625,22 @@ impl HuntAction {
         Ok(())
     }
 
+    /// State 4's wait after its `MoveTo` failed (`0x140ac7a00` case 3, its timer below 0): the
+    /// timer runs by `dt`; at its end it clears and the hunt walks to its point (`set_state(11)`,
+    /// the target kept), whose end searches.
+    ///
+    /// # Errors
+    ///
+    /// A unit that cannot move.
+    pub fn wait_then_walk(&mut self, dt: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+        self.timer += dt;
+        if self.timer < 0.0 {
+            return Ok(());
+        }
+        self.timer = 0.0;
+        self.set_point_walk(WALK_SEARCH, mover)
+    }
+
     /// State 15's and 11's update (`0x140ac7a00` cases 0xe and 0xa): the `MoveTo` to the point
     /// walks; the motion step giving up turns it to its wait or its failure
     /// ([`HuntAction::give_up_walk`]); a waiting one asks again after its wait (its case 2, its
@@ -928,12 +944,11 @@ impl HuntAction {
             }
             // case 3: a hunt that gave up on its MoveTo waits (its timer below 0), then set_state 11
             WALK if self.timer < 0.0 => {
-                self.timer += walk.dt;
-                if self.timer < 0.0 {
-                    return Ok(false);
-                }
-                self.timer = 0.0;
-                Err(Unsupported("a hunt's set_state 11 after its wait"))
+                let mover = walk
+                    .mover
+                    .as_deref_mut()
+                    .ok_or(Unsupported("a hunter without movement state"))?;
+                self.wait_then_walk(walk.dt, mover)
             }
             WALK => match self.move_to {
                 Some(MoveTo::Start) => {

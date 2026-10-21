@@ -394,6 +394,8 @@ pub mod spatial {
 
 /// The values `crate::spawn`'s port reads.
 pub mod spawn {
+    /// 8.0
+    pub const BUILD_SCAN: f32 = f32::from_bits(0x4100_0000);
     /// 0.10000000149011612
     pub const GAP: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.0010000000474974513

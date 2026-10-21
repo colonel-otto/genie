@@ -334,6 +334,9 @@ pub struct Near {
     pub moving: bool,
     /// Its master's `fog_visibility` (`+0x605`).
     pub fog_visibility: u8,
+    /// A building's visibility mask (`+0x8f8`, the registry's) when its footprint has a UMV entry
+    /// (`+0x904` not 0); None otherwise.
+    pub fog_mask: Option<u64>,
     /// It holds an amount (`+0x310` above 0) of food, wood, stone or gold (its attribute,
     /// `+0x308`, through `FUN_140fdd470` below 4: 0 to 3 and the meats 15 to 17).
     pub holds: bool,
@@ -396,6 +399,8 @@ pub trait PlaceMap {
     fn explored(&self, player: usize, x: i32, y: i32) -> bool;
     /// The player sees the tile now (its mask `+0x2a8` meets the tile's visible bits).
     fn visible(&self, player: usize, x: i32, y: i32) -> bool;
+    /// The player's masks: what it sees (`+0x2a8`) and what it explored (`+0x2a0`).
+    fn vision(&self, player: usize) -> [u64; 2];
     /// A tile's elevation (`+0x14`), when the map holds it.
     fn elevation(&self, x: i32, y: i32) -> Option<u8>;
     /// A tile's shape (`+0x8`, [`crate::terrain::Terrain::set_elevations`]), when the map holds
@@ -515,8 +520,8 @@ fn hill_fails(
 /// or a mutual ally, not a felled tree off a forest (at most 1 hit point; `+0x2e8` taken as its
 /// own tile), not buildable on, whose box with a
 /// height overlaps the clearance box: 6. Not modelled: the placement terrains, hill modes, the
-/// zone test (`FUN_1415c6400`), the editor (game mode 4), a fogged object of fog visibility 3 or
-/// a fogged building with its visibility mask (`+0x8f8`), game type 7's test of allies, the
+/// zone test (`FUN_1415c6400`), the editor (game mode 4), a fogged object of fog visibility 3,
+/// game type 7's test of allies, the
 /// outline radii of
 /// obstruction types 11 to 13.
 pub fn build_placement(
@@ -594,13 +599,15 @@ pub fn build_placement(
                             "a fogged object of fog visibility 3 near a BUILD",
                         ));
                     }
+                    // without a fog visibility only the player's own objects count, and a
+                    // building (not a farm) whose visibility mask meets both the player's masks
                     if fog == 0 {
-                        if o.class != 49 && 50 <= o.kind {
-                            return Err(Unsupported(
-                                "a fogged building near a BUILD (its visibility mask)",
-                            ));
-                        }
-                        if o.player != player || !map.allied(o.player, player, true) {
+                        let [sees, explored] = map.vision(player);
+                        let shown = o.class != 49
+                            && 50 <= o.kind
+                            && o.fog_mask
+                                .is_some_and(|m| m & explored != 0 && m & sees != 0);
+                        if !shown && (o.player != player || !map.allied(o.player, player, true)) {
                             continue;
                         }
                     }
@@ -657,8 +664,8 @@ pub fn build_placement(
     Ok(0)
 }
 
-/// How far BUILD's placement scan looks around the point (`FUN_14123aee0`'s 8.0).
-const BUILD_SCAN: f32 = 8.0;
+/// How far BUILD's placement scan looks around the point (`FUN_14123aee0`, `DAT_142eb9430`).
+const BUILD_SCAN: f32 = crate::image::spawn::BUILD_SCAN;
 
 /// The first object of a scan, which the game reports as the blocker. Objects on one tile come
 /// in its list's order, which the slice does not hold: several there must agree on staying.
@@ -822,6 +829,10 @@ impl PlaceMap for WorldMap<'_> {
         self.turns.spatial.visible(player, x, y)
     }
 
+    fn vision(&self, player: usize) -> [u64; 2] {
+        self.turns.spatial.vision(player)
+    }
+
     fn elevation(&self, x: i32, y: i32) -> Option<u8> {
         let t = self.turns.spatial.terrain.as_ref()?;
         let [w, h] = self.turns.spatial.map;
@@ -872,6 +883,15 @@ impl PlaceMap for WorldMap<'_> {
                     player: owner,
                     moving: master.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
                     fog_visibility: master.fog_visibility,
+                    fog_mask: t.spatial.sight.as_ref().and_then(|v| {
+                        let umv = v.seer(id).map_or(0, |s| s.umv);
+                        (50 <= master.kind && umv != 0).then(|| {
+                            v.registry
+                                .as_ref()
+                                .and_then(|r| r.entry(id))
+                                .map_or(0, |e| e.mask)
+                        })
+                    }),
                     holds: 0.0 < unit.life.amount
                         && matches!(unit.life.attribute_type, 0..=3 | 15..=17),
                     hp: unit.life.hp,
@@ -2087,6 +2107,9 @@ mod tests {
         fn visible(&self, _: usize, _: i32, _: i32) -> bool {
             true
         }
+        fn vision(&self, _: usize) -> [u64; 2] {
+            [0; 2]
+        }
         fn elevation(&self, _: i32, _: i32) -> Option<u8> {
             Some(self.1)
         }
@@ -2178,6 +2201,7 @@ mod tests {
             player: 0,
             moving: true,
             fog_visibility: 0,
+            fog_mask: None,
             holds: false,
             hp: 7.0,
             forest_tile: false,
@@ -2197,6 +2221,98 @@ mod tests {
         assert!(Near { state: 3, ..tree }.stays());
     }
 
+    /// A map the player explored but does not see now, with its masks.
+    struct Fogged(Vec<Near>, [u64; 2]);
+
+    impl PlaceMap for Fogged {
+        fn size(&self) -> [i32; 2] {
+            [120, 120]
+        }
+        fn terrain(&self, _: i32, _: i32) -> Result<u8, Unsupported> {
+            Ok(0)
+        }
+        fn explored(&self, _: usize, _: i32, _: i32) -> bool {
+            true
+        }
+        fn visible(&self, _: usize, _: i32, _: i32) -> bool {
+            false
+        }
+        fn vision(&self, _: usize) -> [u64; 2] {
+            self.1
+        }
+        fn elevation(&self, _: i32, _: i32) -> Option<u8> {
+            Some(0)
+        }
+        fn shape(&self, _: i32, _: i32) -> Option<u8> {
+            Some(0)
+        }
+        fn allied(&self, a: usize, b: usize, _: bool) -> bool {
+            a == b
+        }
+        fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, Unsupported> {
+            Ok(self
+                .0
+                .iter()
+                .filter(|o| o.position[0] as i32 == x && o.position[1] as i32 == y)
+                .copied()
+                .collect())
+        }
+    }
+
+    /// In the fog, of the objects without a fog visibility only the player's own block a BUILD,
+    /// and another player's building whose visibility mask meets both the player's masks.
+    #[test]
+    fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
+        let house = Near {
+            id: 500,
+            position: [20.5, 20.5, 0.0],
+            radius: [1.0, 1.0],
+            kind: 80,
+            class: 3,
+            master: 70,
+            obstruction_type: 2,
+            moving: false,
+            player: 2,
+            state: 2,
+            fog_mask: Some((1 << 1) | (1 << 33)),
+            ..sheep(2)
+        };
+        let site = BuildSite {
+            player: 1,
+            human: true,
+            clearance: [1.0, 1.0],
+            class: 3,
+            obstructs: true,
+            restriction: &[1.0],
+            hill_mode: 0,
+            placement_terrains: false,
+            zones: false,
+        };
+        let test = |o: Near, masks: [u64; 2]| {
+            build_placement(&site, &Fogged(vec![o], masks), [21.0, 21.0]).unwrap()
+        };
+        // the house's mask meets what player 1 sees and explored: it blocks
+        assert_eq!(test(house, [1 << 1, 1 << 33]), 6);
+        // not what it sees: another player's house in the fog passes
+        assert_eq!(test(house, [1 << 2, 1 << 33]), 0);
+        // without a UMV entry neither, but its own does
+        let unmasked = Near {
+            fog_mask: None,
+            ..house
+        };
+        assert_eq!(test(unmasked, [1 << 1, 1 << 33]), 0);
+        assert_eq!(
+            test(
+                Near {
+                    player: 1,
+                    ..unmasked
+                },
+                [0, 0]
+            ),
+            6
+        );
+    }
+
     struct Flat(Vec<Near>);
 
     impl PlaceMap for Flat {
@@ -2211,6 +2327,9 @@ mod tests {
         }
         fn visible(&self, _: usize, _: i32, _: i32) -> bool {
             true
+        }
+        fn vision(&self, _: usize) -> [u64; 2] {
+            [0; 2]
         }
         fn elevation(&self, _: i32, _: i32) -> Option<u8> {
             Some(0)

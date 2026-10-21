@@ -5861,7 +5861,7 @@ impl Unit {
             };
             match hunt.update_point_walk(walk, who, shown)? {
                 crate::hunt::PointWalk::Walking => {}
-                crate::hunt::PointWalk::Search => self.hunt_set_search(c, others)?,
+                crate::hunt::PointWalk::Search => self.hunt_search_state(c, others)?,
                 crate::hunt::PointWalk::Done { target, second } => {
                     let task = hunt.task;
                     self.hunt_stand(c, &task)?;
@@ -5897,11 +5897,13 @@ impl Unit {
             .as_mut()
             .filter(|h| h.target == -1 && h.state == crate::hunt::WALK && h.timer < 0.0)
         {
-            // case 3 waiting after a given-up MoveTo, its target gone: the timer runs by dt
-            hunt.timer += c.dt_seconds;
-            if 0.0 <= hunt.timer {
-                return Err(Unsupported("a hunt's set_state 11 after its wait"));
-            }
+            // case 3 waiting after a given-up MoveTo, its target gone: the timer runs by dt,
+            // then the walk to the point (set_state 11)
+            let mover = self
+                .mover
+                .as_mut()
+                .ok_or(Unsupported("a hunter without movement state"))?;
+            hunt.wait_then_walk(c.dt_seconds, mover)?;
         } else if self
             .hunt
             .as_ref()
