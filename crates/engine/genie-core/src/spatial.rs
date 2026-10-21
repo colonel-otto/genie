@@ -1720,19 +1720,48 @@ impl Spatial {
     }
 
     /// The tile beside `site`'s footprint a unit at `from` with terrain mask `mask` goes to
-    /// (`FUN_1411566b0`, closest): a flood over passable tiles from the footprint's own, at most
-    /// `(int)(rx + ry) + 1` tiles from its centre; of the tiles found outside the footprint, the
-    /// first empty one, else the closest to the unit, nearer ones replacing it in the flood's
-    /// order. Returns its centre.
+    /// (`FUN_1411566b0`, closest): [`Spatial::spot_off`] with the site's place and radii.
+    ///
+    /// # Errors
+    ///
+    /// As [`Spatial::spot_off`].
     pub fn spot_beside(
+        &self,
+        from: [f32; 3],
+        me: (i32, f32),
+        mask: u8,
+        site: &Placed,
+    ) -> Result<Option<[f32; 2]>, Unsupported> {
+        self.spot_off(from, me, mask, (site.position, site.radius), false)
+    }
+
+    /// `FUN_1411566b0`: the tile beside a footprint at `at` of radii `radius` a unit at `from`
+    /// with terrain mask `mask` goes to: a flood over passable tiles from the footprint's own
+    /// (`(int)(x - rx)` to `(int)(x + rx - 0.001)`, columns first), at most `(int)(rx + ry) + 1`
+    /// tiles from its centre; of the tiles found outside the footprint, the first empty one, else
+    /// by the 3D distance of its centre (at the unit's height) from the unit the closest, or with
+    /// `farthest` (`param_7` 1) the farthest, later ones replacing it in the flood's order once
+    /// they beat it (an empty tile found, only empty ones). Returns its centre.
+    ///
+    /// # Errors
+    ///
+    /// A tile whose objects the slice does not know.
+    pub fn spot_off(
         &self,
         from: [f32; 3],
         (me, radius_x): (i32, f32),
         mask: u8,
-        site: &Placed,
+        (at, radius): ([f32; 3], [f32; 2]),
+        farthest: bool,
     ) -> Result<Option<[f32; 2]>, Unsupported> {
-        let [tx, ty, _] = site.position;
-        let [rx, ry] = site.radius;
+        /// The footprint's last tile stops short of its edge by this (`DAT_142eb1e9c`).
+        const EDGE: f32 = crate::image::spatial::FOOTPRINT_EDGE;
+        /// A tile's centre (`DAT_142e7f384`).
+        const CENTRE: f32 = crate::image::spatial::TILE_CENTRE;
+        /// The closest search's first best (`DAT_14330ebf4`).
+        const NO_SPOT: f32 = crate::image::spatial::NO_SPOT;
+        let [tx, ty, _] = at;
+        let [rx, ry] = radius;
         let size = (((ry + rx) as i32) + 2).max(1) * 2;
         let half = size / 2;
         let (cx, cy) = (tx as i32, ty as i32);
@@ -1740,7 +1769,7 @@ impl Spatial {
         self.check_known([fx, fy, fx + size as f32, fy + size as f32])?;
         let (ox, oy) = (half - cx, half - cy);
         let (x0, y0) = ((tx - rx) as i32, (ty - ry) as i32);
-        let (x1, y1) = (((rx + tx) - 0.001) as i32, ((ry + ty) - 0.001) as i32);
+        let (x1, y1) = (((rx + tx) - EDGE) as i32, ((ry + ty) - EDGE) as i32);
         let mut list: Vec<(i32, i32)> = (x0..=x1)
             .flat_map(|x| (y0..=y1).map(move |y| (x, y)))
             .collect();
@@ -1760,7 +1789,7 @@ impl Spatial {
             }
             i += 1;
         }
-        let mut best = f32::MAX;
+        let mut best = if farthest { 0.0 } else { NO_SPOT };
         let mut spot = None;
         let mut empty = false;
         for &(x, y) in &list {
@@ -1775,14 +1804,19 @@ impl Spatial {
             if count == Some(0) {
                 empty = true;
             }
-            let centre = [x as f32 + 0.5, from[2], y as f32 + 0.5];
+            let centre = [x as f32 + CENTRE, from[2], y as f32 + CENTRE];
             let d = [
                 from[0] - centre[0],
                 from[2] - centre[1],
                 from[1] - centre[2],
             ];
             let distance = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-            if (empty && !was_empty) || distance < best {
+            let beats = if farthest {
+                best < distance
+            } else {
+                distance < best
+            };
+            if (empty && !was_empty) || beats {
                 spot = Some([centre[0], centre[2]]);
                 best = distance;
             }

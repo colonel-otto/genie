@@ -388,8 +388,14 @@ pub mod short_path {
 pub mod spatial {
     /// 0.10000000149011612
     pub const CLOSEST_RANGE: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 0.0010000000474974513
+    pub const FOOTPRINT_EDGE: f32 = f32::from_bits(0x3a83_126f);
+    /// 3.4028234663852886e+38
+    pub const NO_SPOT: f32 = f32::from_bits(0x7f7f_ffff);
     /// 25.0
     pub const SEARCH_REUSE_SQUARED: f32 = f32::from_bits(0x41c8_0000);
+    /// 0.5
+    pub const TILE_CENTRE: f32 = f32::from_bits(0x3f00_0000);
 }
 
 /// The values `crate::spawn`'s port reads.
@@ -500,6 +506,8 @@ pub mod unit_ai {
     pub const FOLLOW_SLACK_LOW: f32 = f32::from_bits(0xbf80_0000);
     /// 0.10000000149011612
     pub const FOUNDATION_REACH: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 100.0
+    pub const RADIUS_SCALE: f32 = f32::from_bits(0x42c8_0000);
     /// 3.0
     pub const RETARGET_RANGE: f32 = f32::from_bits(0x4040_0000);
     /// 1.0

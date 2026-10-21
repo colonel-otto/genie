@@ -82,6 +82,25 @@ pub const NO_LONGER_ON_ME: i32 = crate::ai_kinds::NOTIFY_NO_LONGER_ON_ME;
 /// `0x2db`: the order an INTERACT queues on its target (slot 0x230 runs it as the unit's slot
 /// 0x128 on the target, case `0x2db`/`0x325` of `FUN_140c5c170`, which logs no line to name it).
 pub const ORDER_ON_TARGET: i32 = 0x2db;
+/// A unit sent off a foundation's footprint (`FUN_14123bb20`): the foundation master's radii
+/// times 100 and the foundation ([`UnitAi::sent_off`]).
+pub const SENT_OFF: i32 = 0x216;
+/// A unit sent off a footprint with a group (`FUN_14123bb20`'s group move).
+pub const SENT_OFF_GROUP: i32 = 0x21b;
+/// The action value of a unit moving off a footprint (slot 0x148, `FUN_140c4d0d0`), and of one
+/// moving off with a group (the base handler's case 0x21b).
+pub const MOVE_ASIDE_ACTION: i32 = 0x2bf;
+/// The action value of a unit moving off a footprint with a group.
+pub const GROUP_ASIDE_ACTION: i32 = 0x2c0;
+/// The order on a foundation a villager sent off its footprint takes up again (slot 0x108,
+/// `FUN_140c5c170` case 0x2de).
+pub const FOUNDATION_ORDER: i32 = 0x2de;
+/// [`SENT_OFF`]'s radii are hundredths (`DAT_14330ebcc`).
+const RADIUS_SCALE: f32 = crate::image::unit_ai::RADIUS_SCALE;
+/// The prey animals' class, whose move off a footprint runs (slot 0x148's seventh argument).
+const PREY_CLASS: i16 = 9;
+/// The villagers' class.
+const VILLAGER_CLASS: i16 = 4;
 
 /// What a notify handler (unit-AI slot 0x238) returns: go on with the next notify.
 const GO_ON: u32 = 2;
@@ -170,6 +189,9 @@ pub enum Effect {
     Stop,
     /// The AI's move (slot 0x130), which the unit takes (its slot 0x340).
     Move(AiMove),
+    /// Slot 0x148 (`FUN_140c4d0d0`) forced: the unit's slot 0x340 to the point, which the caller
+    /// runs after the update ([`crate::turn::Turns::move_aside`]).
+    MoveAside(AiMove),
     /// `FUN_140c41e50`: the unit's last human order time (`+0x650`) is at most this.
     CapHumanOrder(u32),
     /// The queued order on a target (`0x2db`) the AI took: the unit's slot 0x128 on the target,
@@ -1020,6 +1042,54 @@ pub trait UnitSide {
     fn reaches(&mut self, _target: i32, _range: f32) -> Result<bool, Unsupported> {
         Err(Unsupported("a reach test without the world"))
     }
+
+    /// What the base handler's case 0x216 reads ([`OffFootprint`]) for a unit sent off the
+    /// footprint of `site` (its master's radii `radius`).
+    ///
+    /// # Errors
+    ///
+    /// What the spot's search does not model.
+    fn off_footprint(
+        &mut self,
+        _site: i32,
+        _radius: [f32; 2],
+    ) -> Result<OffFootprint, Unsupported> {
+        Err(Unsupported("a unit sent off a footprint without the world"))
+    }
+}
+
+/// An object as an order in the queue names it: its id, master, owner and the first two parts
+/// of its slot 0x520 vector (its x and its height).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Named {
+    /// The object.
+    pub id: i32,
+    /// Its master.
+    pub master: i32,
+    /// Its owner.
+    pub owner: i32,
+    /// Its slot 0x520 vector's x and second part (the height).
+    pub vector: [f32; 2],
+}
+
+/// What a unit sent off a footprint finds (the base handler's case 0x216).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OffFootprint {
+    /// The closest spot beside the footprint (`FUN_1411566b0` with 0), None when there is none
+    /// (or no foundation).
+    pub spot: Option<[f32; 2]>,
+    /// The unit's height.
+    pub z: f32,
+    /// Its master's class.
+    pub class: i16,
+    /// Its owner is a computer player (`FUN_141659cf0`).
+    pub computer: bool,
+    /// Its owner's id.
+    pub player: i32,
+    /// The foundation, while the world holds it.
+    pub site: Option<Named>,
+    /// The target of its current action (`FUN_140a986f0`, `FUN_140a78450`).
+    pub action_target: Option<Named>,
 }
 
 impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
@@ -2481,7 +2551,10 @@ impl UnitAi {
                 | (crate::garrison::ENTER_ORDER, crate::garrison::ENTER_ACTION)
                 | (FOLLOW_ORDER, FOLLOW_ACTION | MOVE_ACTION | -1)
         );
-        let moving = matches!(order, (MOVE_ORDER | -1, MOVE_ACTION)) && self.current_target == -1;
+        // a move, or a move off a footprint (slot 0x148's 0x2bf, which keeps the order)
+        let moving = (matches!(order, (MOVE_ORDER | -1, MOVE_ACTION))
+            || order.1 == MOVE_ASIDE_ACTION)
+            && self.current_target == -1;
         // a move whose action ended (the action value reset) while the default action runs
         let moved = order == (MOVE_ORDER, -1) && self.current_target == -1;
         let scouting = order == (AUTO_SCOUT_ORDER, AUTO_SCOUT_ACTION) && self.current_target == -1;
@@ -3102,10 +3175,14 @@ impl UnitAi {
                 0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, computer, ai_rng, side, fx),
                 _ => Ok(GO_ON),
             },
-            // livestock (FUN_140c26ac0): any notify but 0x202 and 0x216 drops the action value
-            // (FUN_140c64b50) and breaks off
+            // livestock (FUN_140c26ac0): a unit sent off a footprint (0x216, with the new
+            // sending-off `DAT_1439e60e2` 1) is the base handler's; any notify but 0x202 drops
+            // the action value (FUN_140c64b50) and breaks off
             19 => match n.kind {
-                0x202 | 0x216 => Err(Unsupported("a livestock's notify 0x202 or 0x216")),
+                SENT_OFF => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+                0x202 => Err(Unsupported(
+                    "a livestock's notify 0x202 (its settings' test)",
+                )),
                 _ => {
                     self.set_action(-1);
                     Ok(BREAK)
@@ -3171,6 +3248,12 @@ impl UnitAi {
                 Ok(GO_ON)
             }
             IN_THE_WAY => self.in_the_way(n, at, side, fx),
+            SENT_OFF => self.sent_off(n, side, fx),
+            // a unit of a group sent off a footprint: the action value 0x2c0
+            SENT_OFF_GROUP => {
+                self.set_action(GROUP_ASIDE_ACTION);
+                Ok(GO_ON)
+            }
             // "Unit #%d is no longer doing an action on me.": an attacker leaves the set
             NO_LONGER_ON_ME => {
                 if let Ok(i) = self.attackers.binary_search(&n.caller) {
@@ -3203,6 +3286,58 @@ impl UnitAi {
             && self.stance == 0
         {
             let _ = self.attack_object(n.p[0], true, false, at, side, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// The base handler's case 0x216 ([`SENT_OFF`]): the closest spot beside the foundation's
+    /// footprint (`FUN_1411566b0` with the notify's radii, 0) takes the unit's move off it (slot
+    /// 0x148 forced, range 0, walking unless it is prey: the unit's slot 0x340, then the action
+    /// value 0x2bf, the old one the last). A human player's villager whose current action has a
+    /// target then queues the foundation's order in front (`FUN_140c42640` with 1: order 0x2de,
+    /// priority 100, ready) and the work on that target behind (0x2db); the orders' points are
+    /// the objects' slot 0x520 vectors' first two parts (x and the height) and 0, as the game
+    /// passes them. Processing goes on.
+    fn sent_off(
+        &mut self,
+        n: Notify,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let radius = [n.p[0] as f32 / RADIUS_SCALE, n.p[1] as f32 / RADIUS_SCALE];
+        let off = side.off_footprint(n.p[2], radius)?;
+        if let Some([x, y]) = off.spot {
+            self.set_action(MOVE_ASIDE_ACTION);
+            fx.push(Effect::MoveAside(AiMove {
+                point: [x, y, off.z],
+                range: 0.0,
+                force: true,
+                walk: off.class != PREY_CLASS,
+            }));
+        }
+        if !off.computer
+            && off.class == VILLAGER_CLASS
+            && let (Some(site), Some(target)) = (off.site, off.action_target)
+        {
+            let order = |o: &Named, order: i32| QueuedOrder {
+                issuer: off.player,
+                order,
+                priority: 100,
+                target: o.id,
+                target_owner: o.owner,
+                point: [o.vector[0], o.vector[1], 0.0],
+                range: 0.0,
+                shown: o.vector,
+                ready: true,
+                target_type: o.master,
+            };
+            let first = order(&site, FOUNDATION_ORDER);
+            if self.orders.is_empty() {
+                self.orders.push(first);
+            } else {
+                self.orders.insert(0, first);
+            }
+            self.orders.push(order(&target, ORDER_ON_TARGET));
         }
         Ok(GO_ON)
     }
@@ -4271,6 +4406,118 @@ mod tests {
         fn make_scout_map(&mut self) -> Result<(), Unsupported> {
             Err(Unsupported("no world here"))
         }
+    }
+
+    /// A unit sent off a footprint: what [`UnitSide::off_footprint`] answers.
+    struct OffSide(OffFootprint, Vec<(i32, [f32; 2])>);
+
+    impl UnitSide for OffSide {
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
+            Err(Unsupported("no attack here"))
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn off_footprint(
+            &mut self,
+            site: i32,
+            radius: [f32; 2],
+        ) -> Result<OffFootprint, Unsupported> {
+            self.1.push((site, radius));
+            Ok(self.0)
+        }
+    }
+
+    /// Notify 0x216 (`FUN_14123bb20`'s, the base handler's case): the radii come back from the
+    /// hundredths, the unit walks to the spot (action 0x2bf, the old one the last); a human
+    /// villager whose action has a target queues the foundation's order in front and that work
+    /// behind, the points the vectors' x and height.
+    #[test]
+    fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
+        let site = Named {
+            id: 10028,
+            master: 70,
+            owner: 1,
+            vector: [30.0, 2.0],
+        };
+        let tree = Named {
+            id: 600,
+            master: 349,
+            owner: 0,
+            vector: [33.5, 2.0],
+        };
+        let off = OffFootprint {
+            spot: Some([29.5, 89.5]),
+            z: 2.0,
+            class: VILLAGER_CLASS,
+            computer: false,
+            player: 1,
+            site: Some(site),
+            action_target: Some(tree),
+        };
+        let mut ai = UnitAi {
+            current_action: GATHER_ACTION,
+            orders: vec![QueuedOrder {
+                order: MOVE_ORDER,
+                ..QueuedOrder::default()
+            }],
+            ..UnitAi::default()
+        };
+        let mut side = OffSide(off, Vec::new());
+        let mut fx = Vec::new();
+        let n = Notify::own(9175, SENT_OFF, [100, 150, 10028]);
+        assert_eq!(ai.sent_off(n, &mut side, &mut fx), Ok(GO_ON));
+        assert_eq!(side.1, vec![(10028, [1.0, 1.5])]);
+        assert_eq!(
+            fx,
+            vec![Effect::MoveAside(AiMove {
+                point: [29.5, 89.5, 2.0],
+                range: 0.0,
+                force: true,
+                walk: true,
+            })]
+        );
+        assert_eq!(
+            (ai.current_action, ai.last_action),
+            (MOVE_ASIDE_ACTION, GATHER_ACTION)
+        );
+        let orders: Vec<_> = ai
+            .orders
+            .iter()
+            .map(|o| (o.order, o.target, o.point, o.priority, o.ready))
+            .collect();
+        assert_eq!(
+            orders,
+            vec![
+                (FOUNDATION_ORDER, 10028, [30.0, 2.0, 0.0], 100, true),
+                (MOVE_ORDER, 0, [0.0; 3], 0, false),
+                (ORDER_ON_TARGET, 600, [33.5, 2.0, 0.0], 100, true),
+            ]
+        );
     }
 
     fn hit_boar() -> UnitAi {

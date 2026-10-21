@@ -1517,6 +1517,74 @@ impl Turns {
         Ok(taken)
     }
 
+    /// The unit's slot 0x340 (`FUN_141216c50`) forced, from its unit AI's move off a footprint
+    /// (slot 0x148): a unit of class 51 or 54 (packing) is not modelled; any other runs
+    /// `FUN_1410866e0`: its current action's slot 0x40 may take the point (the Artifact's,
+    /// the Hunt's and the Gather's, as [`Turns::move_to_point`]'s), else a `MoveTo` to the point
+    /// within the move's range, walking or running, replaces its actions.
+    pub(crate) fn move_aside(
+        &mut self,
+        player: usize,
+        idx: usize,
+        m: crate::unit_ai::AiMove,
+    ) -> Result<(), Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let class = self.master_of(player, unit.life.master_id)?.class;
+        if matches!(class, CLASS_51 | CLASS_54) {
+            return Err(Unsupported(
+                "a move off a footprint of a unit of class 51 or 54",
+            ));
+        }
+        let top = unit.top_action_kind();
+        let point = m.point;
+        let taken = match top {
+            Some(crate::artifact::ARTIFACT_TYPE) => {
+                let unit = &mut self.players[player].objects[idx];
+                let walked = unit.artifact.as_mut().is_some_and(|a| a.take_point(point));
+                if walked {
+                    unit.mover
+                        .as_mut()
+                        .ok_or(Unsupported("a walker without movement state"))?
+                        .stop()?;
+                }
+                true
+            }
+            Some(HUNT) => self.hunt_take_move(player, idx, None, point)?,
+            Some(crate::gather::GATHER) => self.gather_take_move(player, idx, None, point)?,
+            Some(t)
+                if !matches!(
+                    t,
+                    crate::move_to::MOVE_TO
+                        | crate::explore::EXPLORE
+                        | crate::build::BUILD
+                        | crate::attack::ATTACK
+                        | crate::garrison::ENTER
+                        | crate::fly::FLY
+                        | crate::missile::MISSILE
+                        | crate::make::MAKE
+                ) =>
+            {
+                return Err(Unsupported(
+                    "a move off a footprint of a unit with an action (its slot 0x40)",
+                ));
+            }
+            _ => false,
+        };
+        if !taken {
+            self.clear_actions(player, idx)?;
+            let unit = &mut self.players[player].objects[idx];
+            unit.move_to = Some(crate::move_to::MoveToAction {
+                run: !m.walk,
+                state: crate::move_to::MoveTo::Start,
+                goal: Some(point),
+                target: -1,
+                range: m.range,
+                wait: crate::move_to::MoveWait::default(),
+            });
+        }
+        Ok(())
+    }
+
     /// Slot 0x7e8 (`FUN_141227190`) of a unit on a target object: a unit in state 3 or later
     /// ignores it; against an unallied target the unit's least range must not exceed the gap
     /// (`FUN_1410862c0`); a villager drops its town-bell flag (`FUN_1412067f0`); then the work

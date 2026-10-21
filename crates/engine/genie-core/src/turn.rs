@@ -822,6 +822,9 @@ struct Context<'a> {
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
     /// ([`Turns::build_object`]).
     build_object: Option<i32>,
+    /// The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller
+    /// runs after the update ([`Turns::move_aside`]).
+    move_aside: Vec<AiMove>,
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
     /// update ([`Turns::lead_herd`]).
     leads: Option<(i32, i32)>,
@@ -1007,6 +1010,67 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
 }
 
 impl crate::unit_ai::UnitSide for UnitView<'_> {
+    /// The base handler's case 0x216: the unit's closest spot beside the foundation `site`
+    /// ([`Spatial::spot_off`] with the notify's radii; none without the foundation), its height
+    /// and class, its owner, the foundation and its current action's target as orders name them.
+    fn off_footprint(
+        &mut self,
+        site: i32,
+        radius: [f32; 2],
+    ) -> Result<crate::unit_ai::OffFootprint, Unsupported> {
+        let unit = &*self.unit;
+        let master = self
+            .masters
+            .and_then(|m| m.get(unit.life.master_id))
+            .ok_or(Unsupported(
+                "a unit sent off of a master the slice does not have",
+            ))?;
+        let (player, others, foreign) = (self.player, self.others, &self.foreign);
+        let named = |id: i32| {
+            let found = if id == unit.id {
+                Some((player, unit))
+            } else {
+                others
+                    .iter()
+                    .find(|u| u.id == id)
+                    .map(|u| (player, u))
+                    .or_else(|| foreign.find(id))
+            };
+            found.map(|(p, u)| crate::unit_ai::Named {
+                id,
+                master: i32::from(u.life.master_id),
+                owner: p as i32,
+                vector: [u.position[0], u.position[2]],
+            })
+        };
+        let spot = match self.spatial.get(site) {
+            Some(placed) => {
+                let mover = unit
+                    .mover
+                    .as_ref()
+                    .ok_or(Unsupported("a unit sent off without movement state"))?;
+                self.spatial.spot_off(
+                    unit.position,
+                    (unit.id, mover.stats.radius[0]),
+                    mover.stats.restriction_mask,
+                    (placed.position, radius),
+                    false,
+                )?
+            }
+            None => None,
+        };
+        let target = unit.top_target().filter(|&t| t != -1);
+        Ok(crate::unit_ai::OffFootprint {
+            spot,
+            z: unit.position[2],
+            class: master.class,
+            computer: self.computer,
+            player: player as i32,
+            site: (site != -1).then(|| named(site)).flatten(),
+            action_target: target.and_then(named),
+        })
+    }
+
     /// `FUN_140c1c7c0`: the flood ([`crate::unit_ai::flood_search`]) from the unit's tile over the
     /// larger of its search radius (slot 0x2c8) and its line of sight, truncated, testing each tile
     /// it reaches (`FUN_140c2b950`: the first object of its tile's list, in order, of type 80 or
@@ -2170,6 +2234,7 @@ impl Unit {
                     ))?;
                     self.ai_move(m, class)?;
                 }
+                Effect::MoveAside(m) => c.move_aside.push(m),
                 Effect::OrderOnTarget(order) => {
                     if c.order_on_target.replace((order, None)).is_some() {
                         return Err(Unsupported("two orders on targets in one update"));
@@ -8375,11 +8440,25 @@ impl Turns {
     /// `FUN_14123bb20`'s sending off (with `DAT_1439e60e2` 1) of the units on `foundation`'s
     /// footprint: each of type 30 or more in state 2 whose top action is not on the foundation,
     /// that stands (`FUN_14114f740`: Gaia's of classes 9 and 10, or not walking, its animation
-    /// speed `+0x7b8` at most 0, and its path level `+0x858` absent or in state 0 or 6) and whose
-    /// unit AI's action is not 0x2bf or 0x2c0, would be sent off (the foundation owner's own of
-    /// type 70 and more with master `+0x8bc` by a group move to a spot beside it, `FUN_1416123a0`,
-    /// any other by notify 0x216), which is not modelled.
-    fn evacuate(&self, foundation: i32, units: &[i32]) -> Result<(), Unsupported> {
+    /// speed `+0x7b8` at most 0, and its path level `+0x858` absent or in state 0 or 6) and
+    /// whose unit AI's action is not 0x2bf or 0x2c0 (moving off already) is sent off: its unit AI
+    /// gets notify 0x216 (slot 0x38) with the foundation master's radii times 100 (truncated) and
+    /// the foundation ([`crate::unit_ai::SENT_OFF`]). The foundation owner's own units of type 70
+    /// and more of a formation category (`+0x8bc`) would go together to its farthest free spot
+    /// (`FUN_1411566b0` with 1, `FUN_1416123a0`'s group move, then 0x21b each), which is not
+    /// modelled.
+    fn evacuate(&mut self, foundation: i32, units: &[i32]) -> Result<(), Unsupported> {
+        /// The notify's radii are hundredths (`DAT_14330ebcc`).
+        const RADIUS_SCALE: f32 = crate::image::unit_ai::RADIUS_SCALE;
+        let (site_owner, site) = self.object(foundation).ok_or(Unsupported(
+            "a footprint's foundation the slice does not hold",
+        ))?;
+        let radius = self.master_of(site_owner, site.life.master_id)?.radius;
+        let p = [
+            (radius[0] * RADIUS_SCALE) as i32,
+            (radius[1] * RADIUS_SCALE) as i32,
+            foundation,
+        ];
         for &id in units {
             let Some((owner, u)) = self.object(id) else {
                 continue;
@@ -8396,13 +8475,26 @@ impl Turns {
                 .map(|l| l.state);
             let stands = (owner == 0 && matches!(master.class, 9 | 10))
                 || (!walking && level.is_none_or(|s| matches!(s, 0 | 6)));
-            let busy =
-                u.ai.as_ref()
-                    .is_none_or(|ai| matches!(ai.current_action, 0x2bf | 0x2c0));
-            if stands && !busy {
+            let busy = u.ai.as_ref().is_none_or(|ai| {
+                matches!(
+                    ai.current_action,
+                    crate::unit_ai::MOVE_ASIDE_ACTION | crate::unit_ai::GROUP_ASIDE_ACTION
+                )
+            });
+            if !stands || busy {
+                continue;
+            }
+            if owner == site_owner && 70 <= master.kind && master.formation_category != 0 {
                 return Err(Unsupported(
-                    "a unit sent off a foundation's footprint (FUN_14123bb20)",
+                    "a group sent off a foundation's footprint (FUN_1416123a0)",
                 ));
+            }
+            let state = u.life.state;
+            let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
+                return Err(Unsupported("a sleeping unit sent off a footprint"));
+            };
+            if let Some(ai) = self.players[q].objects[i].ai.as_mut() {
+                ai.post(Notify::own(id, crate::unit_ai::SENT_OFF, p), state)?;
             }
         }
         Ok(())
@@ -9568,6 +9660,7 @@ impl Turns {
                     order_on_target: None,
                     hunt_objects: Vec::new(),
                     build_object: None,
+                    move_aside: Vec::new(),
                     leads: None,
                     zones: &mut self.zones,
                     foreign: Foreign { before, after },
@@ -9583,6 +9676,7 @@ impl Turns {
                 let hunt_objects = std::mem::take(&mut c.hunt_objects);
                 let leads = c.leads.take();
                 let build_object = c.build_object.take();
+                let move_aside = std::mem::take(&mut c.move_aside);
                 let techs_done = std::mem::take(&mut c.techs_done);
                 let work_order = c.work_order.take();
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
@@ -9721,6 +9815,16 @@ impl Turns {
                         break;
                     }
                     if let Err(e) = self.hunt_command(p, i, target) {
+                        result = Err(e);
+                    }
+                }
+                // the unit AI's moves off footprints (slot 0x148)
+                for m in move_aside {
+                    if !matches!(result, Ok(Step::Stay)) {
+                        result = result.and(Err(Unsupported(
+                            "a move off a footprint of a unit that leaves its list",
+                        )));
+                    } else if let Err(e) = self.move_aside(p, i, m) {
                         result = Err(e);
                     }
                 }
