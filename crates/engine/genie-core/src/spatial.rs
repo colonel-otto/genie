@@ -1562,6 +1562,22 @@ impl Spatial {
             .unwrap_or_else(|| crate::vision::own_masks(player, false))
     }
 
+    /// The map revealed to player `player` (`FUN_141639860` -> `FUN_1412847b0` with
+    /// `0x4000000040000000`): every word of the unified map takes the ended bits 30 and 62, and
+    /// the player's masks (`+0x2a8`, `+0x2a0`) too.
+    pub fn reveal_to(&mut self, player: usize) {
+        use crate::vision::{ENDED, ENDED_EXPLORED};
+        if let Some(v) = self.sight.as_mut() {
+            for w in &mut v.unified {
+                *w |= ENDED | ENDED_EXPLORED;
+            }
+        }
+        if let Some(m) = self.vision.get_mut(player) {
+            m[0] |= ENDED;
+            m[1] |= ENDED_EXPLORED;
+        }
+    }
+
     /// Whether player `player` sees tile (`x`, `y`) (`FUN_141663500` returning 0xf): its mask
     /// `+0x2a8` meets the unified map's visible bits there (bits 29 and 61, which a tile has only
     /// when the map is revealed, are not held).
@@ -2542,6 +2558,22 @@ mod tests {
         tree.obstruction = Some(Obstruction { kind: 2, class: 1 });
         s.insert(48, tree);
         assert_eq!(s.passable(29, 90, 6, 1, 0.2), Ok(false));
+    }
+
+    /// A player who lost while the game goes on sees the map revealed: its masks take the ended
+    /// bits (and the unified map's every word, here without the players' sight).
+    #[test]
+    fn a_revealed_map_gives_the_player_the_ended_bits() {
+        let mut s = Spatial {
+            vision: vec![
+                crate::vision::own_masks(0, false),
+                crate::vision::own_masks(1, false),
+            ],
+            ..Spatial::default()
+        };
+        s.reveal_to(1);
+        assert_eq!(s.vision[1], crate::vision::own_masks(1, true));
+        assert_eq!(s.vision[0], crate::vision::own_masks(0, false));
     }
 
     #[test]

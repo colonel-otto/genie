@@ -123,8 +123,9 @@ impl Turns {
     /// The status setter (slot 1, `FUN_141639860`) of player `p`: `FUN_1416768e0` takes the new
     /// status unless the player resigned (a defeat it always takes; one without a resignation
     /// would tell the comm handler, which the slice does not hold). A status that turned won or
-    /// lost while the game goes on reveals the map to the player (`FUN_1412847b0`), which is not
-    /// modelled, nor is the battle royale's. A lost player's objects stop
+    /// lost while the game goes on reveals the map to the player (`FUN_1412847b0`, with no lobby
+    /// settings object or its setting `FUN_141300cd0`, as the playback holds it,
+    /// [`Spatial::reveal_to`]); the battle royale's is not modelled. A lost player's objects stop
     /// ([`Turns::stop_everything`]) once the game is a minute old; its fealty (`+0x12f8`) would
     /// give its resources and units away while the game goes on, which is not modelled. The
     /// history's event (`FUN_141560ae0`) is not held.
@@ -140,9 +141,10 @@ impl Turns {
         }
         let now = self.players[p].game_status;
         if now != old && matches!(now, WON | LOST) && !self.game_ended() {
-            return Err(Unsupported(
-                "a status change while the game goes on (the map revealed, FUN_1412847b0)",
-            ));
+            // the map revealed to the player (FUN_1412847b0 with 0x4000000040000000): every
+            // tile of the unified map and the player's masks take the ended bits; the view's
+            // refresh (FUN_140c80bb0) is not held
+            self.spatial.reveal_to(p);
         }
         if self.game_mode == BATTLE_ROYALE {
             return Err(Unsupported(
