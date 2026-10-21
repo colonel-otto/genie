@@ -214,30 +214,83 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Unsup
 }
 
 /// The world's unit groups of a save (`saveUnitGroups`), each group's paths from the world's
-/// path table.
+/// path table. The process globals are a load's: the command counter past every group's
+/// `mDifferentiatorID` (`FUN_14101d350`), the scratch array zero; the tick oracle's `globals`
+/// dump gives the game's ([`globals_from_dump`]).
 ///
 /// # Errors
 ///
 /// When a group's path data names a path the world's table does not hold.
 pub fn unit_groups(world: &saved::BaseWorld) -> Result<UnitGroups, Unsupported> {
     let g = &world.unit_groups;
+    let groups: Vec<UnitGroup> = g
+        .unit_group
+        .iter()
+        .map(|u| group(u, &world.path))
+        .collect::<Result<_, _>>()?;
+    let mut commands = 0;
+    for u in &groups {
+        if commands < u.differentiator_id {
+            commands = u.differentiator_id + 1;
+        }
+    }
     Ok(UnitGroups {
-        groups: g
-            .unit_group
-            .iter()
-            .map(|u| group(u, &world.path))
-            .collect::<Result<_, _>>()?,
+        groups,
         counter: g.unit_group_counter,
+        commands,
+        unit_types_scratch: Vec::new(),
     })
+}
+
+/// The tick oracle's `globals` dump (one line `NAME WORD…` per global of the build data):
+/// `group_commands` and `unit_types_scratch` into the world's groups; other lines are left.
+pub fn globals_from_dump(text: &str, groups: &mut UnitGroups) {
+    for line in text.lines() {
+        let mut words = line.split_whitespace();
+        let name = words.next();
+        let values: Vec<i32> = words.filter_map(|w| w.parse().ok()).collect();
+        match name {
+            Some("group_commands") => {
+                if let Some(&v) = values.first() {
+                    groups.commands = v;
+                }
+            }
+            Some("unit_types_scratch") => {
+                groups.unit_types_scratch = values.iter().map(|&v| v as u32).collect();
+            }
+            _ => {}
+        }
+    }
 }
 
 /// The differences of the slice's unit groups from the game's, one line per field that differs:
 /// `group ID: FIELD slice A game B`, every field named by its path in the group's state
 /// (`motion.velocity[1]`, `members[2].specific_move.timer`; a list's length is its `len`), each
-/// float in full; a group only one side holds shows in the list of ids.
+/// float in full; a group only one side holds shows in the list of ids. With `globals` (the
+/// game's process globals were dumped) the command counter and the scratch array count too.
 #[must_use]
-pub fn group_differences(slice: &UnitGroups, game: &UnitGroups) -> Vec<String> {
+pub fn group_differences(slice: &UnitGroups, game: &UnitGroups, globals: bool) -> Vec<String> {
     let mut out = Vec::new();
+    if globals {
+        if slice.commands != game.commands {
+            out.push(format!(
+                "group commands slice {} game {}",
+                slice.commands, game.commands
+            ));
+        }
+        let words = |g: &UnitGroups| {
+            let mut w = g.unit_types_scratch.clone();
+            w.resize(50, 0);
+            w
+        };
+        if words(slice) != words(game) {
+            out.push(format!(
+                "group unit types scratch slice {:?} game {:?}",
+                words(slice),
+                words(game)
+            ));
+        }
+    }
     if slice.counter != game.counter {
         out.push(format!(
             "unit group counter slice {} game {}",
@@ -395,7 +448,11 @@ mod tests {
     use super::*;
 
     fn world(groups: Vec<UnitGroup>) -> UnitGroups {
-        UnitGroups { groups, counter: 7 }
+        UnitGroups {
+            groups,
+            counter: 7,
+            ..UnitGroups::default()
+        }
     }
 
     fn group(id: i32) -> UnitGroup {
@@ -412,7 +469,7 @@ mod tests {
 
     #[test]
     fn equal_groups_have_no_differences() {
-        let d = group_differences(&world(vec![group(3)]), &world(vec![group(3)]));
+        let d = group_differences(&world(vec![group(3)]), &world(vec![group(3)]), false);
         assert_eq!(d, Vec::<String>::new());
     }
 
@@ -421,7 +478,7 @@ mod tests {
         let mut theirs = group(3);
         theirs.motion.velocity[1] = 0.1;
         theirs.members[0].specific_move.timer = -0.0;
-        let d = group_differences(&world(vec![group(3)]), &world(vec![theirs]));
+        let d = group_differences(&world(vec![group(3)]), &world(vec![theirs]), false);
         assert_eq!(
             d,
             [
@@ -435,7 +492,7 @@ mod tests {
     fn a_list_of_another_length_shows_its_length_and_the_entries_one_side_holds() {
         let mut theirs = group(3);
         theirs.waypoints.push([1.5, 2.5, 0.0]);
-        let d = group_differences(&world(vec![group(3)]), &world(vec![theirs]));
+        let d = group_differences(&world(vec![group(3)]), &world(vec![theirs]), false);
         assert_eq!(
             d,
             [
@@ -451,7 +508,7 @@ mod tests {
     fn groups_only_one_side_holds_and_the_counter_show_in_the_world_lines() {
         let mut theirs = world(vec![group(3), group(4)]);
         theirs.counter = 8;
-        let d = group_differences(&world(vec![group(3)]), &theirs);
+        let d = group_differences(&world(vec![group(3)]), &theirs, false);
         assert_eq!(
             d,
             [

@@ -37,6 +37,15 @@ pub struct UnitGroups {
     pub groups: Vec<UnitGroup>,
     /// The id the next group takes (`mUnitGroupCounter`, `world+0x5c`).
     pub counter: i32,
+    /// The commands that ran the order splitter so far (`DAT_143f10134`, a process global no
+    /// save holds): each group a command forms or orders takes it as `mDifferentiatorID`, then it
+    /// counts up. A group's load raises it past the group's (`FUN_14101d350`).
+    pub commands: i32,
+    /// The scratch array of a group's unit types (`DAT_143f23b70`, 50 words, a process global):
+    /// each count of a sub-formation's unit types (`FUN_1410116c0`) writes its types from the
+    /// front and copies the whole array into the group's `mUnitTypes`, so the words past the
+    /// types are an earlier count's. Empty is all zero, as the process starts.
+    pub unit_types_scratch: Vec<u32>,
 }
 
 impl UnitGroups {

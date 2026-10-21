@@ -10550,6 +10550,23 @@ impl Turns {
         self.tick_with(dt, &[]);
     }
 
+    /// An update's start up to the end of its command phase (`BaseWorld::update` up to
+    /// `RGE_Command__do_commands`, before `FUN_141552990`): the update's count and the world's
+    /// time go on by `dt`, the streams take the frame seed and `commands` run; no player updates.
+    /// For a check of the commands against the game's state there (the tick oracle's
+    /// `snapshot_at` at `0x141552990`); [`Turns::tick_with`] runs it first.
+    pub fn command_phase(&mut self, dt: u32, commands: &[Command]) {
+        self.ticks += 1;
+        self.world_time = self.world_time.wrapping_add(dt);
+        self.streams.seed_all(self.frame_seed);
+        self.sync_moving();
+        for command in commands {
+            tracing::debug!(target: crate::trace::UPDATE, ?command, "command");
+            self.run(command);
+        }
+        self.sync_moving();
+    }
+
     /// Tell the world which objects move now and how the players stand to each other, for the
     /// walk's query ([`Spatial::walk_hits`]), as each update does first: for a look at the
     /// world between updates.
@@ -10587,22 +10604,14 @@ impl Turns {
     ///
     /// Never: each player updates in turn, so the one it splits off exists.
     pub fn tick_with(&mut self, dt: u32, commands: &[Command]) {
-        self.ticks += 1;
-        self.world_time = self.world_time.wrapping_add(dt);
         let _update = tracing::debug_span!(
             target: crate::trace::UPDATE,
             "update",
-            tick = self.ticks,
-            world_time = self.world_time
+            tick = self.ticks + 1,
+            world_time = self.world_time.wrapping_add(dt)
         )
         .entered();
-        self.streams.seed_all(self.frame_seed);
-        self.sync_moving();
-        for command in commands {
-            tracing::debug!(target: crate::trace::UPDATE, ?command, "command");
-            self.run(command);
-        }
-        self.sync_moving();
+        self.command_phase(dt, commands);
         // which players' gates are open (BaseWorld::update's flags)
         let mut gates_open = vec![false; self.players.len()];
         // the Empire Wars start's pass, once (the world's +0x6c6 set before the players update)

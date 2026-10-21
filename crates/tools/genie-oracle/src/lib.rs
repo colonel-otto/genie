@@ -4405,6 +4405,10 @@ pub struct Dumps<'a> {
     /// The objects' inside lists in the game's order ([`inside_lists_from_dump`]); without it
     /// the slice keeps the order of the objects, as a game loaded from the save does.
     pub inside: Option<&'a str>,
+    /// The process globals the game reads and no save holds ([`groups::globals_from_dump`]);
+    /// without it the slice takes what a load gives (the group command counter past the saved
+    /// groups', the scratch array zero).
+    pub globals: Option<&'a str>,
 }
 
 /// The objects' inside lists as the tick oracle dumps them (`state_dumps.inside_lists_text`):
@@ -4728,7 +4732,48 @@ pub fn forced_ticks(
         ticks,
         ..TickReport::default()
     };
-    compare_players(&turns, &SavedStep::of(after, masters)?, None, &mut report)?;
+    let saved = SavedStep::of(after, masters)?;
+    compare_players(&turns, &saved, None, &mut report)?;
+    if let Some(g) = saved.game.groups.as_ref() {
+        for d in groups::group_differences(&turns.groups, g, false) {
+            report
+                .differences
+                .push((group_owner(&turns, &saved.game, &d), d));
+        }
+    }
+    Ok(report)
+}
+
+/// The command phase of the update after save `start` against the game's state at its end
+/// (`after`, the tick oracle's `snapshot_at` at `0x141552990`): every player's objects and the
+/// world's unit groups, as [`forced_ticks`] reports them. Dev only.
+///
+/// # Errors
+///
+/// When a save or the recording does not parse.
+pub fn command_phase(
+    save: &[u8],
+    after: &[u8],
+    recording: &[u8],
+    start: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+) -> Result<TickReport, Error> {
+    let turns = command_phase_from_save(save, recording, start, masters, dumps)?;
+    let mut report = TickReport {
+        start,
+        ticks: 1,
+        ..TickReport::default()
+    };
+    let saved = SavedStep::of(after, masters)?;
+    compare_players(&turns, &saved, None, &mut report)?;
+    if let Some(g) = saved.game.groups.as_ref() {
+        for d in groups::group_differences(&turns.groups, g, false) {
+            report
+                .differences
+                .push((group_owner(&turns, &saved.game, &d), d));
+        }
+    }
     Ok(report)
 }
 
@@ -4774,6 +4819,9 @@ pub fn forced_run(
     }
     if let Some(text) = dumps.inside {
         let _ = turns.force_garrisons(&inside_lists_from_dump(text)?);
+    }
+    if let Some(text) = dumps.globals {
+        groups::globals_from_dump(text, &mut turns.groups);
     }
     watch_at_load(&mut turns);
     let played = de::chapters(recording)?[0];
@@ -4906,12 +4954,18 @@ pub fn forced_run(
                         ),
                     ));
                 }
-                // the world's unit groups, by their owners
+                // the world's unit groups, by their owners; the process globals the tick
+                // oracle dumped beside the save are the game's
+                let mut after = after;
+                let globals = dump_after(start + k + 1, "globals");
+                if let (Some(text), Some(g)) = (globals.as_deref(), after.game.groups.as_mut()) {
+                    groups::globals_from_dump(text, g);
+                }
                 let group_differences = after
                     .game
                     .groups
                     .as_ref()
-                    .map(|g| groups::group_differences(&turns.groups, g))
+                    .map(|g| groups::group_differences(&turns.groups, g, globals.is_some()))
                     .unwrap_or_default();
                 let groups_differ = !group_differences.is_empty();
                 for d in group_differences {
@@ -5230,6 +5284,36 @@ pub fn run_from_save(
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
 ) -> Result<Turns, Error> {
+    from_save(save, recording, start_tick, ticks, masters, dumps, false)
+}
+
+/// The slice from a save after the command phase of the next update alone
+/// ([`genie_core::turn::Turns::command_phase`]), for a check against the game's save taken
+/// there (the tick oracle's `snapshot_at` at `0x141552990`). Dev only.
+///
+/// # Errors
+///
+/// When a save or the recording does not parse.
+pub fn command_phase_from_save(
+    save: &[u8],
+    recording: &[u8],
+    start_tick: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+) -> Result<Turns, Error> {
+    from_save(save, recording, start_tick, 1, masters, dumps, true)
+}
+
+/// [`run_from_save`]'s run; with `commands_only` the first update stops after its commands.
+fn from_save(
+    save: &[u8],
+    recording: &[u8],
+    start_tick: usize,
+    ticks: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+    commands_only: bool,
+) -> Result<Turns, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
     let sections = header.players();
@@ -5251,6 +5335,9 @@ pub fn run_from_save(
     if let Some(text) = dumps.inside {
         let _ = turns.force_garrisons(&inside_lists_from_dump(text)?);
     }
+    if let Some(text) = dumps.globals {
+        groups::globals_from_dump(text, &mut turns.groups);
+    }
     watch_at_load(&mut turns);
     let played = de::chapters(recording)?[0];
     hunted_origins(&mut turns, &played.header()?);
@@ -5260,6 +5347,17 @@ pub fn run_from_save(
     let next = all.get(updates..).unwrap_or_default();
     let mut decoder = Decoder::default();
     decoder.prime(&all[..updates.min(all.len())], &sections);
+    if commands_only {
+        if let Some(frame) = next.first() {
+            let commands: Vec<Command> = frame
+                .commands
+                .iter()
+                .filter_map(|p| decoder.command(p, &sections))
+                .collect();
+            turns.command_phase(frame.dt, &commands);
+        }
+        return Ok(turns);
+    }
     run(&mut turns, &mut decoder, next, &sections);
     Ok(turns)
 }
