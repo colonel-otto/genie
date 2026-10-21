@@ -716,10 +716,6 @@ impl Turns {
         let top = unit.top_action_kind();
         if unit.ai.is_some() && !stop_after_kill {
             match top {
-                // a Build's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's
-                None
-                | Some(crate::move_to::MOVE_TO | crate::explore::EXPLORE | crate::build::BUILD) => {
-                }
                 Some(HUNT) => {
                     if self.hunt_take_move(player, idx, Some(target), point)? {
                         return Ok(());
@@ -730,10 +726,14 @@ impl Turns {
                     let _ = self.gather_take_move(player, idx, Some(target), point)?;
                     return Ok(());
                 }
-                // the base slot 0x40 (FUN_140a78490) takes nothing: an Attack's, an Enter's, a
-                // Fly's, a missile's, a Make's
-                Some(
-                    crate::attack::ATTACK
+                // the base slot 0x40 (FUN_140a78490) takes nothing: a MoveTo's, an Explore's, a
+                // Build's, an Attack's, an Enter's, a Fly's, a missile's, a Make's
+                None
+                | Some(
+                    crate::move_to::MOVE_TO
+                    | crate::explore::EXPLORE
+                    | crate::build::BUILD
+                    | crate::attack::ATTACK
                     | crate::garrison::ENTER
                     | crate::fly::FLY
                     | crate::missile::MISSILE
