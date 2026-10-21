@@ -46,9 +46,12 @@ fn motion(m: &saved::Motion, paths: &[saved::Path]) -> Result<Motion, Unsupporte
         maximum_yaw_per_second_moving: m.maximum_yaw_per_second_moving,
         stationary_yaw_revolution_time: m.stationary_yaw_revolution_time,
         maximum_yaw_per_second_stationary: m.maximum_yaw_per_second_stationary,
+        // the save writes the top level first; genie-core keeps the walked level first, as a
+        // unit's (the unit mapping's reverse)
         paths: m
             .temp_path_data
             .iter()
+            .rev()
             .map(|d| path_level(d, paths))
             .collect::<Result<_, _>>()?,
         flags: m.motion_flags_m_bits,

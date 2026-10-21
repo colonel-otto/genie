@@ -1943,6 +1943,15 @@ impl Spatial {
         differ
     }
 
+    /// `FUN_141185690`: tile (`x`, `y`) lies on the obstruction manager's map, its terrain class
+    /// is in `mask` and no static record blocks it.
+    #[must_use]
+    pub fn standable(&self, x: i32, y: i32, mask: u8) -> bool {
+        self.tiles
+            .word(x, y)
+            .is_some_and(|w| w & (u64::from(mask ^ 0xff) | BLOCKED) == 0)
+    }
+
     /// Whether unit `me` (its x radius `radius_x`) with terrain mask `mask` can stand on tile
     /// (`x`, `y`) (`FUN_14114d460`): the tile is on the map, its class is in the mask and no
     /// static record blocks it; on a tile with two tall objects or more, the obstruction

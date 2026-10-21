@@ -17,6 +17,7 @@ use crate::movement::PathData;
 mod command;
 mod create;
 pub mod formation;
+mod motion;
 mod place;
 mod stats;
 mod update;
@@ -205,7 +206,9 @@ pub struct Motion {
     pub stationary_yaw_revolution_time: u32,
     /// `mMaximumYawPerSecondStationary`.
     pub maximum_yaw_per_second_stationary: f32,
-    /// The path levels (`numPathDatas`, `tempPathData`).
+    /// The path levels (`numPathDatas`, `tempPathData`): the level the group walks first, each
+    /// next one its parent (`+8`), the top level last, as a unit's (the save writes them top
+    /// first).
     pub paths: Vec<PathData>,
     /// `mMotionFlags`.
     pub flags: u32,

@@ -177,6 +177,8 @@ pub mod gather_search {
 /// The values `crate::group`'s port reads.
 pub mod group {
     /// 1.0
+    pub const CLOSE: f32 = f32::from_bits(0x3f80_0000);
+    /// 1.0
     pub const DEFAULT_FORWARD: f32 = f32::from_bits(0x3f80_0000);
     /// 0.5
     pub const DEFAULT_RADIUS: f32 = f32::from_bits(0x3f00_0000);
@@ -186,8 +188,20 @@ pub mod group {
     pub const FLANK_SPACING: f32 = f32::from_bits(0x4020_0000);
     /// 0.10000000149011612
     pub const MAP_EDGE: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 0.10000000149011612
+    pub const NEAR: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 4.0
+    pub const PULL_DISTANCE: f32 = f32::from_bits(0x4080_0000);
+    /// 0.800000011920929
+    pub const PULL_KEEP: f32 = f32::from_bits(0x3f4c_cccd);
+    /// 0.20000000298023224
+    pub const PULL_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
     /// 1.5707963705062866
     pub const RIGHT_ANGLE: f32 = f32::from_bits(0x3fc9_0fdb);
+    /// 0.009999999776482582
+    pub const SHORT_LENGTH: f32 = f32::from_bits(0x3c23_d70a);
+    /// 10.0
+    pub const SHORT_REACH: f32 = f32::from_bits(0x4120_0000);
     /// 1.2000000476837158
     pub const SLOW_GROUP_FACTOR: f32 = f32::from_bits(0x3f99_999a);
     /// 2.0

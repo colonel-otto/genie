@@ -232,7 +232,7 @@ const REACH_SHORT: f32 = crate::image::movement::REACH_SHORT;
 /// short pather did not reach it (`FUN_140fa0370`, `DAT_14330eb8c`).
 const REACH_NEAR: f32 = crate::image::movement::REACH_NEAR;
 /// The master the long pather lets move without a speed (`FUN_140f9eb70`, raw id `0x2a`).
-const LONG_PATH_MOVER: i16 = 42;
+pub(crate) const LONG_PATH_MOVER: i16 = 42;
 /// A target of this master (raw `0x60c9`) or class gives the tile planner of a reach test this
 /// much more range (`FUN_140fa0370`, `DAT_142eb1c98`).
 const WIDE_MASTER: i16 = 45;
