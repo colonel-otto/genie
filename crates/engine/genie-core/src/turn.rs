@@ -10885,6 +10885,8 @@ mod tests {
                 build_time: 25,
                 // a house's clearance, which BUILD's placement test reads
                 clearance: [1.0, 1.0],
+                // built by the villagers (the builders' test, FUN_141262270)
+                trained_at: vec![118],
                 ..Master::default()
             },
         ])
@@ -11021,7 +11023,8 @@ mod tests {
     #[test]
     fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_units() {
         // MarvinBlue/426048731 tick 281: player 1's BUILD draws three AI values in the command
-        // phase, so player 2's units, on their turn, get the draws after them
+        // phase, so player 2's units, on their turn, get the draws after them (a computer's
+        // BUILD here: it needs no builder that can build it)
         let world = |objects: Vec<Unit>| {
             let mut t = Turns::new(
                 0,
@@ -11031,6 +11034,7 @@ mod tests {
                 vec![
                     Player {
                         resources: [0.0, 100.0, 0.0, 0.0],
+                        computer: true,
                         ..Player::default()
                     },
                     Player {
