@@ -90,7 +90,7 @@ impl Well512 {
         /// The top (`DAT_14330eb8c`).
         const MAX: f32 = crate::image::rng::FLOAT_MAX;
         let v = (f64::from(self.raw()) * SCALE) as f32;
-        if 0.0 <= v && v <= MAX {
+        if (0.0..=MAX).contains(&v) {
             v
         } else if 0.0 <= v {
             MAX
