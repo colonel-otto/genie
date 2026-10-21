@@ -3127,6 +3127,7 @@ impl Decoder {
                     queued: c.field_0x13 != 0,
                     direct: c.field_0x14 != 0,
                     human: c.field_0x15 == 1,
+                    control: c.field_0x12 != 0,
                 };
                 let order = genie_core::turn::Order::Move(order);
                 (c.commp_id, c.num, c.ids, true, Some(order))

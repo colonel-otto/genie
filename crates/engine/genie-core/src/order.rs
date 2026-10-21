@@ -47,6 +47,9 @@ pub struct MoveOrder {
     pub direct: bool,
     /// `+0x15`: the last human order time is set.
     pub human: bool,
+    /// `+0x12` (`cade_api`'s `controlHeld`): the splitter makes each unit it may group a group of
+    /// its own ([`Turns::split`]).
+    pub control: bool,
 }
 
 /// What a unit's slot 0x7e8 (`FUN_141227190`) is given through slot 0x128: the target, the point
@@ -106,6 +109,7 @@ pub(crate) enum Place {
 #[derive(Clone, Copy, Debug)]
 struct Splittable {
     id: i32,
+    group: i32,
     kind: u8,
     grouped: bool,
     flag_1: bool,
@@ -115,6 +119,26 @@ struct Splittable {
     state: u8,
     radius: f32,
     restriction: Option<usize>,
+}
+
+/// What the order splitter makes of an order's units (`FUN_140fd76d0`'s result at
+/// `DAT_143f11960`): the units that move alone, in the order the splitter leaves them, and its
+/// groups, each its first unit first.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Split {
+    pub(crate) loose: Vec<i32>,
+    pub(crate) groups: Vec<Vec<i32>>,
+}
+
+impl Split {
+    /// The splitter keeps a group while it holds fewer than 60 and the group has at most 60
+    /// units (`+0x20` below `0x3c`, the count below `0x3d`); else the group and its units are
+    /// dropped.
+    fn keep(&mut self, units: Vec<i32>) {
+        if self.groups.len() < 60 && units.len() <= 60 {
+            self.groups.push(units);
+        }
+    }
 }
 
 /// The splitter's path from one unit to another (`FUN_140f7cb30` -> `FUN_140f7c530`): the
@@ -250,6 +274,9 @@ impl Turns {
             _ => {}
         }
         let loose = self.loose_units(units)?;
+        for &id in &loose {
+            self.leave_group(id)?;
+        }
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
         if 1 < loose.len() && self.players[player].computer {
             return Err(Unsupported(
@@ -273,12 +300,8 @@ impl Turns {
         Ok(())
     }
 
-    /// The order splitter (`FUN_140fd9dc0` -> `FUN_140fd9ae0` -> `FUN_140fd76d0`) on units that
-    /// form no group: it sorts them by id (`FUN_140fd7280` with `LAB_140fd89b0`), takes at most
-    /// 60, drops an id the next one repeats, and leaves out of any group a unit above type 69 whose
-    /// master's formation category is 0 (villagers). An order whose first unit is gone splits into
-    /// nothing (`FUN_140fd9ae0` reads the owner of the first). A unit in a group (`+0x6d0`), one it
-    /// may group and an order to more than 60 units are not modelled.
+    /// The units of an order that move alone ([`Turns::split`] without Ctrl held); a group it
+    /// makes is not modelled.
     pub(crate) fn loose_units(&mut self, units: &[i32]) -> Result<Vec<i32>, Unsupported> {
         self.loose_units_kept(units, &|_| true)
     }
@@ -290,13 +313,46 @@ impl Turns {
         units: &[i32],
         kept: &dyn Fn(i32) -> bool,
     ) -> Result<Vec<i32>, Unsupported> {
+        let split = self.split(units, kept, false)?;
+        if !split.groups.is_empty() {
+            return Err(Unsupported("a unit group the order splitter forms"));
+        }
+        Ok(split.loose)
+    }
+
+    /// The order splitter (`FUN_140fd9dc0` -> `FUN_140fd9ae0` -> `FUN_140fd76d0`): it sorts the
+    /// units by id (`FUN_140fd7280` with `LAB_140fd89b0`), drops those `kept` refuses (the
+    /// garrison command's test, `FUN_140fd9ae0` for command `0x2713`), takes at most 60 and drops
+    /// an id the next one repeats. An order whose first unit is gone splits into nothing
+    /// (`FUN_140fd9ae0` reads the owner of the first).
+    ///
+    /// Then, in this order (each pass in the list's order, the loose units in the order the
+    /// passes leave them):
+    /// - a unit in a group the world holds (`+0x6d0`, `FUN_14152ff40`) takes the order's other
+    ///   members of that group (`FUN_1410112b0`): two or more are a group of the split, one alone
+    ///   moves loose;
+    /// - without the owner's auto formations (`+0x6c0`) every other unit moves loose;
+    /// - a unit above type 69 whose master's formation category is 0 (villagers) moves loose (the
+    ///   dock test `FUN_141158210` is 1 only on an `E` tile in game type 12);
+    /// - of the rest, the unit with the most others that join it ([`splits_together`]), the first
+    ///   of equals, takes those that join it and are in a state of 2 or more: two or more are a
+    ///   group, one alone moves loose; with Ctrl held (`control`) it is a group of its own.
+    ///
+    /// The split keeps at most 60 groups of at most 60 units: a group past them is dropped with
+    /// its units. An order to more than 60 units (`FUN_140fd9ae0`'s runs of 60) is not modelled.
+    pub(crate) fn split(
+        &mut self,
+        units: &[i32],
+        kept: &dyn Fn(i32) -> bool,
+        control: bool,
+    ) -> Result<Split, Unsupported> {
         if 60 < units.len() {
             return Err(Unsupported("an order to more than 60 units"));
         }
         // FUN_140fd9ae0 splits only when the list's first unit exists (its owner): else no unit
         // takes the order
         let Some((owner, _)) = units.first().and_then(|&id| self.object(id)) else {
-            return Ok(Vec::new());
+            return Ok(Split::default());
         };
         let mut sorted = units.to_vec();
         sorted.sort_unstable();
@@ -312,6 +368,7 @@ impl Turns {
             let master = self.master_of(p, u.life.master_id)?;
             left.push(Splittable {
                 id,
+                group: u.group.id,
                 kind: master.kind,
                 grouped: master.formation_category != 0,
                 flag_1: master.object_flags & 2 != 0,
@@ -328,16 +385,46 @@ impl Turns {
                 restriction: u.mover.as_ref().map(|m| m.stats.restriction),
             });
         }
+        let mut split = Split::default();
+        // the units in a group the world holds, with the order's other members of their group
+        let mut taken = vec![false; left.len()];
+        for i in 0..left.len() {
+            if taken[i] {
+                continue;
+            }
+            let Some(group) = self.groups.get(left[i].group) else {
+                continue;
+            };
+            taken[i] = true;
+            let mut members = vec![left[i].id];
+            for (j, u) in left.iter().enumerate() {
+                if !taken[j] && group.has(u.id) {
+                    members.push(u.id);
+                    taken[j] = true;
+                }
+            }
+            match members[..] {
+                [alone] => split.loose.push(alone),
+                _ => split.keep(members),
+            }
+        }
+        let mut left: Vec<Splittable> = left
+            .into_iter()
+            .zip(taken)
+            .filter_map(|(u, taken)| (!taken).then_some(u))
+            .collect();
         let formations = self.players[owner].formations;
         if !formations.auto {
-            return Ok(left.iter().map(|u| u.id).collect());
+            split.loose.extend(left.iter().map(|u| u.id));
+            return Ok(split);
         }
-        // the first pass: units above type 69 of formation category 0 stay loose (the dock test
-        // FUN_141158210 is 1 only on an `E` tile in game type 12)
-        let (loose, mut left): (Vec<Splittable>, Vec<Splittable>) = left
+        // units above type 69 of formation category 0 stay loose (the dock test FUN_141158210 is
+        // 1 only on an `E` tile in game type 12)
+        let (loose, rest): (Vec<Splittable>, Vec<Splittable>) = left
             .into_iter()
             .partition(|u| MAX_UNGROUPED < u.kind && !u.grouped);
-        let mut loose: Vec<i32> = loose.into_iter().map(|u| u.id).collect();
+        split.loose.extend(loose.into_iter().map(|u| u.id));
+        left = rest;
         // the path between two near units: the tile planner of the second's restriction, from
         // it to the first (FUN_140f7c530, its result and the measured path's length)
         let tiles = self.spatial.tiles();
@@ -376,20 +463,35 @@ impl Turns {
             }
             let chosen = left.remove(best.0);
             let mut group = vec![chosen.id];
-            let mut i = 0;
-            while i < left.len() {
-                if splits_together(&chosen, &left[i], formations, true, &mut path)? {
-                    group.push(left.remove(i).id);
-                } else {
-                    i += 1;
+            if !control {
+                let mut i = 0;
+                while i < left.len() {
+                    if splits_together(&chosen, &left[i], formations, true, &mut path)? {
+                        group.push(left.remove(i).id);
+                    } else {
+                        i += 1;
+                    }
+                }
+                if group.len() < 2 {
+                    split.loose.push(chosen.id);
+                    continue;
                 }
             }
-            if 1 < group.len() {
-                return Err(Unsupported("a unit group the order splitter forms"));
-            }
-            loose.push(chosen.id);
+            split.keep(group);
         }
-        Ok(loose)
+        Ok(split)
+    }
+
+    /// A loose unit of an order leaves its group (`FUN_14102c160` on the group of its `+0x6d0`
+    /// that the world holds): not modelled.
+    fn leave_group(&self, id: i32) -> Result<(), Unsupported> {
+        let group = self.object(id).map_or(-1, |(_, u)| u.group.id);
+        if self.groups.get(group).is_some() {
+            return Err(Unsupported(
+                "a unit in a group that an order moves alone (FUN_14102c160)",
+            ));
+        }
+        Ok(())
     }
 
     /// The centroid of an order's loose units ([`centroid`]) over those that move (above type 29
@@ -631,8 +733,20 @@ impl Turns {
     ) -> Result<(), Unsupported> {
         let loose = match units {
             [] => return Ok(()),
-            &[id] => return self.move_unit(player, id, &[], None, order),
-            _ => self.loose_units(units)?,
+            &[id] if !order.control => {
+                self.leave_group(id)?;
+                return self.move_unit(player, id, &[], None, order);
+            }
+            _ => {
+                let split = self.split(units, &|_| true, order.control)?;
+                if !split.groups.is_empty() {
+                    return Err(Unsupported("a unit group the order splitter forms"));
+                }
+                for &id in &split.loose {
+                    self.leave_group(id)?;
+                }
+                split.loose
+            }
         };
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
         if 1 < loose.len() && self.players[player].computer {
@@ -3756,6 +3870,116 @@ mod tests {
         assert!(t.drop_off_unasked(0, 0).is_err());
     }
 
+    /// A world of player 1's soldiers (master 4, formation category 3) and villagers (master 83,
+    /// category 0) at `units`' places, auto formations on with an influence of 3 tiles, and one
+    /// group of id 5 holding `members`.
+    fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
+        let objects = units
+            .iter()
+            .map(|&(id, master, [x, y])| Unit {
+                id,
+                position: [x, y, 0.0],
+                group: crate::group::GroupLink {
+                    id: if members.contains(&id) { 5 } else { -1 },
+                    flag: -2,
+                },
+                life: crate::lifecycle::Lifecycle {
+                    master_id: master,
+                    state: 2,
+                    ..crate::lifecycle::Lifecycle::default()
+                },
+                ..Unit::default()
+            })
+            .collect();
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0],
+            vec![
+                crate::turn::Player::default(),
+                crate::turn::Player {
+                    objects,
+                    formations: crate::turn::Formations {
+                        auto: true,
+                        influence: 3.0,
+                        by_speed: false,
+                    },
+                    ..crate::turn::Player::default()
+                },
+            ],
+        );
+        let master = |id, formation_category| Master {
+            id,
+            kind: 70,
+            formation_category,
+            ..Master::default()
+        };
+        t.masters = vec![
+            crate::masters::Masters::new([]),
+            crate::masters::Masters::new([master(4, 3), master(83, 0)]),
+        ];
+        if !members.is_empty() {
+            t.groups.groups.push(crate::group::UnitGroup {
+                id: 5,
+                members: members
+                    .iter()
+                    .map(|&id| crate::group::Member {
+                        id,
+                        ..crate::group::Member::default()
+                    })
+                    .collect(),
+                ..crate::group::UnitGroup::default()
+            });
+        }
+        t
+    }
+
+    /// `FUN_140fd76d0`: villagers move loose, soldiers within the influence distance of each
+    /// other form a group (the one with the most joiners first, by id), one too far moves loose;
+    /// with Ctrl held each soldier is a group of its own.
+    #[test]
+    fn the_splitter_groups_soldiers_near_each_other_and_leaves_villagers_loose() {
+        let units = [
+            (10, 83, [10.0, 10.0]),
+            (11, 4, [20.0, 20.0]),
+            (12, 4, [21.0, 20.0]),
+            (13, 4, [23.5, 20.0]),
+            (14, 4, [40.0, 20.0]),
+        ];
+        let mut t = soldiers(&units, &[]);
+        let split = t.split(&[14, 13, 12, 11, 10], &|_| true, false).unwrap();
+        // 12 has two to join it (11 and 13), 11 and 13 one each
+        assert_eq!(split.groups, [vec![12, 11, 13]]);
+        assert_eq!(split.loose, [10, 14]);
+        let split = t.split(&[14, 13, 12, 11, 10], &|_| true, true).unwrap();
+        assert_eq!(split.loose, [10]);
+        assert_eq!(split.groups.len(), 4);
+        // without auto formations every unit moves loose
+        t.players[1].formations.auto = false;
+        let split = t.split(&[14, 13, 12, 11, 10], &|_| true, false).unwrap();
+        assert_eq!(split.loose, [10, 11, 12, 13, 14]);
+        assert_eq!(split.groups, Vec::<Vec<i32>>::new());
+    }
+
+    /// `FUN_140fd76d0`'s first pass: units in a group the world holds keep their group with the
+    /// order's other members, auto formations or not; a member ordered alone moves loose.
+    #[test]
+    fn the_splitter_keeps_the_order_s_members_of_an_existing_group_together() {
+        let units = [
+            (11, 4, [20.0, 20.0]),
+            (12, 4, [60.0, 20.0]),
+            (13, 4, [21.0, 20.0]),
+        ];
+        let mut t = soldiers(&units, &[11, 12]);
+        t.players[1].formations.auto = false;
+        let split = t.split(&[13, 12, 11], &|_| true, false).unwrap();
+        assert_eq!(split.groups, [vec![11, 12]]);
+        assert_eq!(split.loose, [13]);
+        let split = t.split(&[12, 13], &|_| true, false).unwrap();
+        assert_eq!(split.loose, [12, 13]);
+    }
+
     /// MarvinBlue/426048731's MOVE of 1569: player 2's villagers 9175 and 9177 (by id) take a
     /// grid of one cell a row, half a tile apart, from the order's point (their `MoveTos`' points in
     /// the save after 1568).
@@ -3806,6 +4030,7 @@ mod tests {
         };
         let unit = |id, grouped, position: [f32; 3]| Splittable {
             id,
+            group: -1,
             kind: 70,
             grouped,
             flag_1: false,
