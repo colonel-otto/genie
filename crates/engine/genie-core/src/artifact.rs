@@ -111,19 +111,17 @@ impl Artifact {
     }
 
     /// Slot 0x38 (`FUN_140aad1a0`), as the unit's stop (`FUN_14106fa60`) calls it before a new
-    /// owner takes the animal: its sub-actions go (a `MoveTo`'s teardown would stop the unit, which
-    /// is not modelled), with the point and the target, and it checks again (`set_state` 6). The
-    /// unit's standing sprite (slot 0x68) is not held.
-    pub const fn stop(&mut self) -> Result<(), Unsupported> {
-        if self.move_to.is_some() {
-            return Err(Unsupported(
-                "a captured animal walking its MoveTo (its teardown)",
-            ));
-        }
+    /// owner takes the animal: its sub-actions go, with the point and the target, and it checks
+    /// again (`set_state` 6). Returns whether a `MoveTo` went, whose teardown (`0x140aa1f30`)
+    /// stops the unit (slot 0x5d0, the caller's). The unit's standing sprite (slot 0x68) is not
+    /// held.
+    pub const fn stop(&mut self) -> bool {
+        let walked = self.move_to.take().is_some();
+        self.walk_to = None;
         self.goal = None;
         self.target = -1;
         self.state = CHECK;
-        Ok(())
+        walked
     }
 
     /// One update (`0x140aad250`) with the tick's `dt_ms`. Its `MoveTo` goes first: it starts its
@@ -209,11 +207,8 @@ impl Artifact {
         match self.state {
             CHECK => {
                 if searches && let Some(new) = owner()? {
-                    if self.move_to.is_some() {
-                        return Err(Unsupported(
-                            "a captured animal walking its MoveTo (its teardown)",
-                        ));
-                    }
+                    // its sub-actions go (FUN_140a98620) with the caller's conversion, whose stop
+                    // ([`Artifact::stop`]) tears a running MoveTo down and stops the unit
                     self.goal = None;
                     return Ok(Some(new));
                 }
@@ -310,8 +305,13 @@ mod tests {
         let mut b = Artifact::new(true);
         let found = b.update(None, 50, false, &mut || Ok(Some(2))).unwrap();
         assert_eq!((found, b.state), (None, 10));
-        // the conversion's stop: the check again
-        b.stop().unwrap();
+        // the conversion's stop: the check again, no MoveTo went
+        assert!(!b.stop());
         assert_eq!(b.state, 6);
+        // a walking animal's MoveTo goes (its teardown stops the unit)
+        let mut walking = Artifact::new(false);
+        let _ = walking.take_point([28.5, 94.5, 0.0]);
+        assert!(walking.stop());
+        assert_eq!((walking.move_to, walking.goal), (None, None));
     }
 }

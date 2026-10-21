@@ -6735,8 +6735,11 @@ impl Unit {
         if class != LIVESTOCK && self.ai.is_some() {
             return Err(Unsupported("a captured unit's unit AI stop (slot 0xb0)"));
         }
-        if let Some(a) = self.artifact.as_mut() {
-            a.stop()?;
+        if self.artifact.as_mut().is_some_and(Artifact::stop) {
+            self.mover
+                .as_mut()
+                .ok_or(Unsupported("a walking animal without movement state"))?
+                .stop()?;
         }
         self.change_owner(c, new)?;
         let mut taken = Vec::new();
@@ -7002,8 +7005,11 @@ fn scan_livestock(
                 [k] => {
                     let mut unit = std::mem::take(&mut others[k]);
                     let done = (|| {
-                        if let Some(a) = unit.artifact.as_mut() {
-                            a.stop()?;
+                        if unit.artifact.as_mut().is_some_and(Artifact::stop) {
+                            unit.mover
+                                .as_mut()
+                                .ok_or(Unsupported("a walking animal without movement state"))?
+                                .stop()?;
                         }
                         unit.change_owner(c, new)
                     })();
