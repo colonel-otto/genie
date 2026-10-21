@@ -404,7 +404,8 @@ impl crate::turn::Turns {
     /// formation the previous one and a new one the current; then the type's layout: a line,
     /// staggered or flanked line or a column by createColumnLine ([`create_column_line`], its
     /// transform after it); a horde, a phalanx, a box and a user defined formation are not
-    /// modelled, nor the transform of a formation that keeps its type.
+    /// modelled. A formation already of its type with a slot per member, or of a type the switch
+    /// does not know, only transforms ([`formation_transform`], `param_4` 0).
     ///
     /// # Panics
     ///
@@ -461,13 +462,9 @@ impl crate::turn::Turns {
             let f = g.current_formation.as_ref().expect("made above");
             f.kind == k && f.slots.len() == g.members.len()
         };
+        let keeps = same(kind);
         match kind {
-            LINE | STAGGERED | FLANKED | COLUMN => {
-                if same(kind) {
-                    return Err(Unsupported(
-                        "the transform of a formation that keeps its type (FUN_14103a1f0)",
-                    ));
-                }
+            LINE | STAGGERED | FLANKED | COLUMN if !keeps => {
                 let mut f = g.current_formation.take().expect("made above");
                 let laid = create_column_line(
                     &mut f,
@@ -480,7 +477,9 @@ impl crate::turn::Turns {
                     Ok(true) => {
                         // a line after a column keeps the units' slots (`FUN_141009060`)
                         let after_column = kind != COLUMN
-                            && g.previous_formation.as_ref().is_some_and(|p| p.kind == COLUMN);
+                            && g.previous_formation
+                                .as_ref()
+                                .is_some_and(|p| p.kind == COLUMN);
                         lay_units(&mut f, g, after_column, (world_time, map), &held)
                     }
                     Ok(false) => Ok(()),
@@ -489,9 +488,16 @@ impl crate::turn::Turns {
                 g.current_formation = Some(f);
                 result
             }
-            _ => Err(Unsupported(
+            HORDE | PHALANX | BOX | USER_DEFINED if !keeps => Err(Unsupported(
                 "a horde, phalanx, box or user defined formation (FUN_14103fd00)",
             )),
+            // already in its type, or a type the switch does not know: the transform alone
+            _ => {
+                let mut f = g.current_formation.take().expect("made above");
+                let result = formation_transform(&mut f, g, false, (world_time, map), &held);
+                g.current_formation = Some(f);
+                result.map(|_| ())
+            }
         }
     }
 }
@@ -519,7 +525,7 @@ impl super::Motion {
 
 /// `FUN_14100b760`: a place kept on the map: below 0 it is 0, from the map's width on it is the
 /// width less [`MAP_EDGE`], on both axes (the y test against the height, its value the width's).
-fn on_map(mut p: Vec3, map: [i32; 2]) -> Vec3 {
+pub(super) fn on_map(mut p: Vec3, map: [i32; 2]) -> Vec3 {
     if p[0] < 0.0 {
         p[0] = 0.0;
     }
@@ -593,7 +599,15 @@ pub(crate) fn formation_transform(
     if formation.slots.is_empty() {
         return Ok(false);
     }
-    let canon = [if formation.about_faced == 0 { 1.0 } else { -1.0 }, 0.0, 0.0];
+    let canon = [
+        if formation.about_faced == 0 {
+            1.0
+        } else {
+            -1.0
+        },
+        0.0,
+        0.0,
+    ];
     let [position, forward, up, _right] = group.motion.position;
     let yaw = super::Motion::yaw_angle(canon, forward);
     let old = super::Motion::yaw_angle(canon, formation.transform_orientation);
@@ -631,14 +645,8 @@ pub(crate) fn formation_transform(
                 let indices = line.indices.clone();
                 let width = indices.len() as i32;
                 for k in indices {
-                    let _ = transform_slot(
-                        formation,
-                        &rotation,
-                        point,
-                        k as i32,
-                        0,
-                        (world_time, map),
-                    );
+                    let _ =
+                        transform_slot(formation, &rotation, point, k as i32, 0, (world_time, map));
                 }
                 if width < 0x100 {
                     formation.number_transformed_slots += width;

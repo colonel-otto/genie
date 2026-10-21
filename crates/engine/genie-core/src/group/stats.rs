@@ -234,8 +234,8 @@ impl Turns {
     /// those below 9) counted, the most common the type (the first of equals); one below 3 unlocks
     /// the group (`mFormationLockedType` 0) and makes its formation anew
     /// ([`Turns::update_desired_positions`] with -1), the members' stances its state and their
-    /// formation types 0 ([`Turns::stances_state`]); a higher one is the lock's
-    /// (`FUN_141024e70`, not modelled).
+    /// formation types 0 ([`Turns::stances_state`]); a higher one locks the group to it
+    /// ([`Turns::lock_formation`]).
     pub fn calc_formation_type(&mut self, group: i32) -> Result<(), Unsupported> {
         let ids: Vec<i32> = self
             .groups
@@ -262,9 +262,7 @@ impl Turns {
             }
         }
         if 3 <= best {
-            return Err(Unsupported(
-                "a group's formation type locked by its members (FUN_141024e70)",
-            ));
+            return self.lock_formation(group, best as i32);
         }
         if let Some(g) = self.groups.get_mut(group) {
             g.formation_locked_type = 0;
@@ -278,6 +276,53 @@ impl Turns {
                 ai.formation_type = 0;
             }
         }
+        Ok(())
+    }
+
+    /// `LockFormation` (`FUN_141024e70`) of group `group` to type `kind`: a group without a
+    /// spacing yet (`mDesiredSpacing` 0) takes its held members' widest radius twice
+    /// ([`FormationUnit`]); a column or a line (1, 2) unlocks it (`mFormationLockedType` 0) to
+    /// its own choice ([`Turns::update_desired_positions`] with -1), any other type locks it to
+    /// that type and lays it; then the members' stances give its state and their formation
+    /// types are the lock's ([`Turns::stances_state`]). The analytics event it sends (each
+    /// member's master counted, `FUN_140986b60`) changes nothing in the world.
+    ///
+    /// # Errors
+    ///
+    /// A group the world does not hold, or what [`Turns::update_desired_positions`] does not
+    /// model.
+    ///
+    /// # Panics
+    ///
+    /// Never: the group is the one found first.
+    pub fn lock_formation(&mut self, group: i32, kind: i32) -> Result<(), Unsupported> {
+        let g = self.groups.get(group).ok_or(Unsupported(
+            "LockFormation of a group the world does not hold",
+        ))?;
+        if g.desired_spacing == 0.0 {
+            let mut spacing = 0.0f32;
+            for m in &g.members {
+                if let Some((p, u)) = self.object(m.id) {
+                    let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
+                    let s = unit.radius * crate::image::group::SPACING_FACTOR;
+                    if spacing < s {
+                        spacing = s;
+                    }
+                }
+            }
+            self.groups
+                .get_mut(group)
+                .expect("the group found above")
+                .desired_spacing = spacing;
+        }
+        let own_choice = matches!(kind, 1 | 2);
+        let locked = if own_choice { 0 } else { kind };
+        self.groups
+            .get_mut(group)
+            .expect("the group found above")
+            .formation_locked_type = locked;
+        self.update_desired_positions(group, if own_choice { -1 } else { kind })?;
+        self.stances_state(group, locked as u8);
         Ok(())
     }
 

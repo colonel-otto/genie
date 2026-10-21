@@ -16,6 +16,7 @@ use crate::movement::PathData;
 
 mod create;
 pub mod formation;
+mod place;
 mod stats;
 
 /// An object's link to its group: `mGroupID` (`+0x6d0`) and `mGroupFlag` (`+0x6d4`), -1 and -2

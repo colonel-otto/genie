@@ -2071,25 +2071,59 @@ impl Spatial {
         if word & u64::from(mask ^ 0xff) != 0 {
             return Ok(false);
         }
+        Ok(!self.point_hit(point, grow, &[me], false)?)
+    }
+
+    /// The obstruction manager's point query (`FUN_141051900` with flags 0x20, any player, the
+    /// point test `FUN_141052160`) at `point` with the manager's buffer `grow` (`+0x57`, `+0x58`)
+    /// and ignore list `ignore` (`+0x2c`, `FUN_1410562e0`): whether a record holds the point
+    /// within its box grown by `grow`, edges included, of the records of every kind in the cells
+    /// the query visits ([`Spatial::visits`]); with `still` (flag 0x40) an object that moves (the
+    /// record's `+3` bit 0x10, [`Gait::moving`]) is left out. A grown point beyond the map's edge
+    /// meets the edge's records ([`Spatial::edge_records`]).
+    ///
+    /// # Errors
+    ///
+    /// A record whose place the slice does not know near the point.
+    pub fn point_hit(
+        &self,
+        point: [f32; 2],
+        grow: f32,
+        ignore: &[i32],
+        still: bool,
+    ) -> Result<bool, Unsupported> {
+        let [x, y] = point;
         let [w, h] = self.map;
         let rect = [x - grow, y - grow, grow + x, grow + y];
         if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
             && !self.edge_records(rect).is_empty()
         {
-            return Ok(false);
+            return Ok(true);
         }
         self.check_known_records(rect)?;
-        let hit = self.objects.iter().any(|(&id, p)| {
-            let Some(o) = p.obstruction.filter(|_| id != me) else {
+        Ok(self.objects.iter().any(|(id, p)| {
+            let Some(o) = p.obstruction.filter(|_| !ignore.contains(id)) else {
                 return false;
             };
+            if still && self.gaits.get(id).is_some_and(|g| g.moving) {
+                return false;
+            }
             if !self.visits(p, o.kind, rect) {
                 return false;
             }
             let [x0, y0, x1, y1] = p.bounds();
             x <= x1 + grow && x0 - grow <= x && y <= grow + y1 && y0 - grow <= y
-        });
-        Ok(!hit)
+        }))
+    }
+
+    /// Whether `FUN_141052b90` over the tile under `point` alone puts a temporary record on it
+    /// (`FUN_1410510c0`): the tile is on the map and its word holds neither a terrain class of
+    /// `mask` nor a temporary record's bit 0x80 (`mask & 0x7f | 0x80`).
+    #[must_use]
+    pub fn makes_tile_record(&self, point: [f32; 2], mask: u8) -> bool {
+        self.tiles
+            .word(point[0] as i32, point[1] as i32)
+            .is_some_and(|w| w & u64::from(mask & 0x7f | 0x80) == 0)
     }
 
     /// The records a move query could report (`FUN_14114cc60` -> `FUN_141051900`): those of a
