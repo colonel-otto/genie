@@ -3055,12 +3055,21 @@ impl Unit {
             };
             let target = victim.as_deref_mut().filter(|v| v.id == gather.target);
             let next = gather.update(walk, target, &mut work, dt);
-            (next, std::mem::take(&mut work.posted), work.sold)
+            (
+                next,
+                std::mem::take(&mut work.posted),
+                (work.sold, work.anim_stopped),
+            )
         };
+        let (sold, anim_stopped) = sold;
         c.victim = victim;
         let next = next?;
         for (kind, p) in posted {
             self.post_own(kind, p)?;
+        }
+        // a random wait stops the unit's animation (FUN_141161850: its +0x7b8 0)
+        if anim_stopped && let Some(a) = self.anim_speed.as_mut() {
+            *a = 0.0;
         }
         // a farm's food sold at once: the player's slot 0xf8 with 1 (food), as a drop-off's
         if 0.0 < sold {

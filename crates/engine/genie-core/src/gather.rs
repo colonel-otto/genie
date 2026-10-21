@@ -68,6 +68,11 @@ const LAST_BIT: f32 = crate::image::gather::LAST_BIT;
 const DROP_REACH: f32 = crate::image::gather::DROP_REACH;
 /// A random wait's shift (`DAT_142e7f384`).
 const WAIT_SHIFT: f32 = crate::image::gather::WAIT_SHIFT;
+/// A failed walk to a target with at most this many workers waits (`0x140a8e1d0` case 3,
+/// `DAT_142eb1c98`), as one to a target at least `WAIT_GAP` away (the squared footprint gap,
+/// `DAT_142ec9ec0`); else the gatherer searches.
+const WAIT_WORKERS: f32 = crate::image::gather::WAIT_WORKERS;
+const WAIT_GAP: f32 = crate::image::gather::WAIT_GAP;
 /// The farm class, whose gather the slice does not model yet.
 pub const FARM_CLASS: i16 = 49;
 /// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
@@ -869,7 +874,30 @@ impl GatherAction {
             ));
         };
         match self.state {
-            WALK if self.timer < 0.0 => Err(Unsupported("a gather's wait after a failed walk")),
+            // case 3's wait after a failed walk: at its end a gatherer of one stop walks to its
+            // point to search there (set_state 11), one of a farm's stops to the next (4)
+            WALK if self.timer < 0.0 => {
+                self.timer += dt;
+                if self.timer < 0.0 {
+                    return Ok(Next::Stay);
+                }
+                self.timer = 0.0;
+                let mover = walk
+                    .mover
+                    .as_deref_mut()
+                    .ok_or(Unsupported("a gatherer without movement state"))?;
+                if self.stops < 2 {
+                    let radius = if STOP_FARMS.contains(&target.master_id) {
+                        0.0
+                    } else {
+                        target.radius[0]
+                    };
+                    self.set_walk_back(radius, mover)?;
+                } else {
+                    self.set_walk(target.position, target.radius, 0.0, mover, g.action_rng)?;
+                }
+                Ok(Next::Stay)
+            }
             WALK => self.update_walk(walk, target, g),
             FACE => {
                 // case 5: a farm not built yet is searched past (set_state 3), a pasture short of
@@ -964,9 +992,26 @@ impl GatherAction {
                     .stop()?;
                 self.set_face(target, g)
             }
-            Some(MoveTo::Failed) => Err(Unsupported(
-                "a gather's failed walk (its wait or its search, set_state 3)",
-            )),
+            // code 3: near a target with more than 3 workers it searches (set_state 3), else it
+            // waits a random while (LAB_140a8ef80)
+            Some(MoveTo::Failed) => {
+                let mover = walk
+                    .mover
+                    .as_deref()
+                    .ok_or(Unsupported("a gatherer without movement state"))?;
+                let me = [mover.stats.radius[0], mover.stats.radius[1]];
+                let at = walk
+                    .world
+                    .get(walk.me.id)
+                    .map_or(walk.me.position, |p| p.position);
+                let gap =
+                    crate::movement::footprint_gap_squared(at, me, target.position, target.radius);
+                if target.workers as f32 <= WAIT_WORKERS || WAIT_GAP <= gap {
+                    self.random_wait(g);
+                    return Ok(Next::Stay);
+                }
+                self.begin_search(walk.mover.as_deref_mut(), g)
+            }
             None => Err(Unsupported("a Gather in state 4 without its MoveTo")),
         }
     }

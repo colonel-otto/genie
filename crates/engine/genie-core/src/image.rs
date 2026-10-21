@@ -148,8 +148,12 @@ pub mod gather {
     pub const REMAINDER: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.5
     pub const STOP_CENTRE: f32 = f32::from_bits(0x3f00_0000);
+    /// 16.0
+    pub const WAIT_GAP: f32 = f32::from_bits(0x4180_0000);
     /// 0.5
     pub const WAIT_SHIFT: f32 = f32::from_bits(0x3f00_0000);
+    /// 3.0
+    pub const WAIT_WORKERS: f32 = f32::from_bits(0x4040_0000);
 }
 
 /// The values `crate::gather_search`'s port reads.
