@@ -202,6 +202,18 @@ pub mod group {
     pub const MAP_EDGE: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.10000000149011612
     pub const NEAR: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 10000.0
+    pub const PASS_FAR: f32 = f32::from_bits(0x461c_4000);
+    /// 0.5
+    pub const PASS_HALF: f32 = f32::from_bits(0x3f00_0000);
+    /// 25.0
+    pub const PASS_HALF_MARGIN: f32 = f32::from_bits(0x41c8_0000);
+    /// 50.0
+    pub const PASS_MARGIN: f32 = f32::from_bits(0x4248_0000);
+    /// 1.0
+    pub const PASS_ONE: f32 = f32::from_bits(0x3f80_0000);
+    /// 0.20000000298023224
+    pub const PASS_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
     /// 4.0
     pub const PULL_DISTANCE: f32 = f32::from_bits(0x4080_0000);
     /// 0.800000011920929
@@ -214,6 +226,20 @@ pub mod group {
     pub const SHORT_LENGTH: f32 = f32::from_bits(0x3c23_d70a);
     /// 10.0
     pub const SHORT_REACH: f32 = f32::from_bits(0x4120_0000);
+    /// 0.0, 0.25, -0.25, 0.0
+    pub const SLOT_NUDGE_X: [f32; 4] = [
+        f32::from_bits(0x0),
+        f32::from_bits(0x3e80_0000),
+        f32::from_bits(0xbe80_0000),
+        f32::from_bits(0x0),
+    ];
+    /// 0.0, 0.0, 0.0, 0.25
+    pub const SLOT_NUDGE_Z: [f32; 4] = [
+        f32::from_bits(0x0),
+        f32::from_bits(0x0),
+        f32::from_bits(0x0),
+        f32::from_bits(0x3e80_0000),
+    ];
     /// 1.2000000476837158
     pub const SLOW_GROUP_FACTOR: f32 = f32::from_bits(0x3f99_999a);
     /// 2.0

@@ -1248,6 +1248,76 @@ impl Spatial {
         Ok(hits)
     }
 
+    /// `FormationTransform`'s line query (`FUN_141051900` with flags 0x40, any player, no grow:
+    /// the segment test `FUN_141051e00`): whether the line `from` -> `to` meets a record, the
+    /// `ignore`d objects' and the moving objects' (flag 0x40, [`Gait::moving`]; the game's list
+    /// of moving objects still tested holds only ignored ones here) left out. The records: the
+    /// map edge's where the line's rectangle leaves the map ([`Spatial::edge_records`]), the
+    /// temporary ones `FUN_141052b90` put over `temporary`'s rectangle (`x0, y0, x1, y1`) on the
+    /// tiles whose terrain class its mask lacks (`mask & 0x7f | 0x80`, kind 3, the tile's box;
+    /// removed after the transform), and the objects' of a tested kind (kind 10 filed as 2) in
+    /// the cells the query visits; a record counts when its box meets the line's rectangle and
+    /// the line (`FUN_1410512f0`; a circle's alike).
+    ///
+    /// # Errors
+    ///
+    /// A record whose place the slice does not know near the line.
+    pub fn still_line_hit(
+        &self,
+        from: [f32; 2],
+        to: [f32; 2],
+        temporary: ([f32; 4], u8),
+        ignore: &[i32],
+    ) -> Result<bool, Unsupported> {
+        let rect = [
+            if to[0] <= from[0] { to[0] } else { from[0] },
+            if to[1] <= from[1] { to[1] } else { from[1] },
+            if from[0] <= to[0] { to[0] } else { from[0] },
+            if from[1] <= to[1] { to[1] } else { from[1] },
+        ];
+        let [w, h] = self.map;
+        if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
+            && !self.edge_records(rect).is_empty()
+        {
+            return Ok(true);
+        }
+        self.check_known_records(rect)?;
+        let walk = [from[0], from[1], to[0], to[1]];
+        let meets = |bx: [f32; 4]| {
+            rect[0] <= bx[2]
+                && bx[0] <= rect[2]
+                && rect[1] <= bx[3]
+                && bx[1] <= rect[3]
+                && box_meets_segment(bx, 0.0, walk)
+        };
+        let ([x0, y0, x1, y1], mask) = temporary;
+        let impassable = u64::from(mask & 0x7f | 0x80);
+        let tx1 = if (x1 as i32) < w { x1 as i32 } else { w - 1 };
+        let ty1 = if (y1 as i32) < h { y1 as i32 } else { h - 1 };
+        for y in (y0 as i32).max(0)..=ty1 {
+            for x in (x0 as i32).max(0)..=tx1 {
+                let Some(word) = self.tiles.word(x, y) else {
+                    continue;
+                };
+                let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
+                if word & impassable == 0 && meets(bx) {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(self.objects.iter().any(|(&id, p)| {
+            let Some(o) = p.obstruction else {
+                return false;
+            };
+            let kind = if o.kind == 10 { 2 } else { o.kind };
+            TESTED_KINDS.contains(&kind)
+                && !ignore.contains(&id)
+                && !self.gaits.get(&id).is_some_and(|g| g.moving)
+                && self.visits(p, kind, rect)
+                && meets(p.bounds())
+        }))
+    }
+
     /// The object's new place (`new_position`, `0x1411a58b0`): its tile's counts and, on a new
     /// tile, its sight follow.
     pub fn set_position(&mut self, id: i32, position: [f32; 3]) {
@@ -2641,6 +2711,44 @@ mod tests {
         // a unit of radius 0.3 cannot stand 0.2 from the edge
         assert!(!s.point_clear(1, [0.2, 50.0], 0.3, 0xff).unwrap());
         assert!(s.point_clear(1, [0.4, 50.0], 0.3, 0xff).unwrap());
+    }
+
+    /// `FormationTransform`'s line query: a standing villager on the line is hit, but not when
+    /// ignored or moving; a tile the mask lacks inside the temporary rectangle is hit, outside it
+    /// not; a line leaving the map meets the edge.
+    #[test]
+    fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
+        let mut classes = vec![1u8; 100];
+        classes[2 * 10 + 7] = 2;
+        let mut s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
+        s.insert(7, villager(4.0, 5.0));
+        let none = ([0.0, 0.0, 0.0, 0.0], 1);
+        let line = |s: &Spatial, ignore: &[i32], temporary| {
+            s.still_line_hit([1.0, 5.0], [8.0, 5.0], temporary, ignore)
+                .unwrap()
+        };
+        assert!(line(&s, &[], none));
+        assert!(!line(&s, &[7], none));
+        s.set_gait(
+            7,
+            Some(Gait {
+                moving: true,
+                ..Gait::default()
+            }),
+        );
+        assert!(!line(&s, &[], none));
+        // the class-2 tile (7, 2) only inside the temporary rectangle
+        let across = |temporary| {
+            s.still_line_hit([7.5, 1.0], [7.5, 4.0], temporary, &[])
+                .unwrap()
+        };
+        assert!(!across(none));
+        assert!(across(([6.0, 1.0, 8.0, 3.0], 1)));
+        assert!(!across(([6.0, 1.0, 8.0, 3.0], 3)));
+        assert!(
+            s.still_line_hit([1.0, 5.0], [10.5, 5.0], none, &[])
+                .unwrap()
+        );
     }
 
     /// `FUN_141158940`: a villager's record holds (4, 5.5) for anyone but the ignored, and an
