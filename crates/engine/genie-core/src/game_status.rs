@@ -245,10 +245,7 @@ impl Turns {
                 }
                 self.object_stop(p, idx)?;
                 if let Some(m) = self.players[p].objects[idx].mover.as_mut() {
-                    m.stop()?;
-                    if !m.paths.is_empty() {
-                        m.reset_level();
-                    }
+                    m.stand()?;
                 }
             }
             if class == crate::garrison::BUILDING_CLASS {

@@ -1509,10 +1509,7 @@ impl Turns {
             }
             self.object_stop(player, idx)?;
             if let Some(m) = self.players[player].objects[idx].mover.as_mut() {
-                m.stop()?;
-                if !m.paths.is_empty() {
-                    m.reset_level();
-                }
+                m.stand()?;
             }
         }
         Ok(())

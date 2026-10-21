@@ -104,6 +104,131 @@ impl UnitGroup {
     }
 }
 
+impl UnitGroup {
+    /// `FUN_14102c480` for unit `id` of sub-formation `category` (None for a unit the world does
+    /// not hold): it leaves the first statistic of that category (none for -1), or, for a unit
+    /// the world does not hold, the first statistic that holds it (`FUN_14102c320`: its units
+    /// close up and its unit types are counted again, [`count_unit_types`]). False when none held
+    /// it.
+    fn leave_statistic(
+        &mut self,
+        id: i32,
+        category: Option<i32>,
+        masters_of: &dyn Fn(i32) -> Option<i16>,
+        scratch: &mut Vec<u32>,
+    ) -> bool {
+        let leave = |stat: &mut UnitTypeStatistic, scratch: &mut Vec<u32>| {
+            let Some(i) = stat.units.iter().position(|&u| u == id) else {
+                return false;
+            };
+            let _ = stat.units.remove(i);
+            count_unit_types(stat, masters_of, scratch);
+            true
+        };
+        match category {
+            Some(-1) => false,
+            Some(c) => self
+                .unit_types
+                .iter_mut()
+                .find(|s| s.formation_category == c)
+                .is_some_and(|stat| leave(stat, scratch)),
+            None => self.unit_types.iter_mut().any(|stat| leave(stat, scratch)),
+        }
+    }
+}
+
+impl Turns {
+    /// `removeUnit` (`FUN_14102c160`) of unit `id` from group `group`, `target` (`param_3`) the
+    /// object its sub-formation is reckoned against (`FUN_141011300`'s rams rule, which no code
+    /// enables) and `keep_moving` (`param_4`): false for a unit not a member. A member the world
+    /// holds whose group link names the group stands (slot 0x560, [`crate::movement::Mover::
+    /// stand`], unless `keep_moving`) and its link clears (`+0x6d0` -1). The members' ids and
+    /// own moves close up; `mSecondsSinceAttacking` keeps its places (the last member's value
+    /// goes to the spare ones). It leaves its sub-formation's statistic (`FUN_14102c480`); a
+    /// lead that leaves gives way to the member nearest the target (`FUN_141016870`,
+    /// [`Turns::nearest_to_target`]); the flags take `0x10002`.
+    ///
+    /// # Errors
+    ///
+    /// A member of a master the slice does not have, or a stand the slice does not model.
+    ///
+    /// # Panics
+    ///
+    /// Never: the group is the one found first.
+    pub fn remove_unit(
+        &mut self,
+        group: i32,
+        id: i32,
+        target: i32,
+        keep_moving: bool,
+    ) -> Result<bool, Unsupported> {
+        let _ = target;
+        let Some(g) = self.groups.get(group) else {
+            return Ok(false);
+        };
+        let Some(index) = g.members.iter().position(|m| m.id == id) else {
+            return Ok(false);
+        };
+        let group_id = g.id;
+        let category = match self.object(id) {
+            Some((p, u)) => {
+                let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
+                Some(
+                    sub_formation(unit.kind, unit.hero_flag, unit.formation_category).unwrap_or(-1),
+                )
+            }
+            None => None,
+        };
+        if let Some(place) = self.place(id) {
+            let u = match place {
+                crate::order::Place::Live(p, i) => &mut self.players[p].objects[i],
+                crate::order::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
+            };
+            if u.group.id == group_id {
+                if !keep_moving && let Some(m) = u.mover.as_mut() {
+                    m.stand()?;
+                }
+                u.group.id = -1;
+            }
+        }
+        let masters: Vec<(i32, i16)> = self
+            .players
+            .iter()
+            .flat_map(|q| q.objects.iter().chain(&q.sleeping))
+            .map(|u| (u.id, u.life.master_id))
+            .collect();
+        let masters_of = |id: i32| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
+        let mut scratch = std::mem::take(&mut self.groups.unit_types_scratch);
+        let g = self.groups.get_mut(group).expect("the group found above");
+        let seconds: Vec<f32> = g
+            .members
+            .iter()
+            .map(|m| m.seconds_since_attacking)
+            .collect();
+        let _ = g.members.remove(index);
+        for (m, &s) in g.members.iter_mut().zip(&seconds) {
+            m.seconds_since_attacking = s;
+        }
+        g.spare_seconds.insert(0, seconds[seconds.len() - 1]);
+        let _ = g.leave_statistic(id, category, &masters_of, &mut scratch);
+        self.groups.unit_types_scratch = scratch;
+        let g = self.groups.get(group).expect("the group found above");
+        if g.motion.lead == id {
+            let lead = self.nearest_to_target(group);
+            self.groups
+                .get_mut(group)
+                .expect("the group found above")
+                .motion
+                .lead = lead;
+        }
+        self.groups
+            .get_mut(group)
+            .expect("the group found above")
+            .flags |= 0x1_0002;
+        Ok(true)
+    }
+}
+
 /// `FUN_1410116c0`: a sub-formation's unit types in the order its units first have them, each with
 /// its count, counted in the process's scratch arrays (`DAT_143f23b70`, `DAT_143f23c40`: the counts
 /// are cleared first, the types not), whose 50 words each the statistic takes whole. A unit the
@@ -149,7 +274,7 @@ impl Turns {
     /// members with no move of its own (active 0, path and reason -1), its sub-formation's
     /// statistic and the group's spacing (its two radii, the widest); the group's flags take bit
     /// 1, and bit 16 too when its motion's bit 1 is clear. A unit in another group the world holds
-    /// leaves it first (`FUN_14102c160`), not modelled.
+    /// leaves it first ([`Turns::remove_unit`] with -1).
     ///
     /// # Panics
     ///
@@ -174,9 +299,8 @@ impl Turns {
             return Ok(false);
         }
         if old != -1 && self.groups.get(old).is_some() {
-            return Err(Unsupported(
-                "AddUnit of a unit in another group (FUN_14102c160)",
-            ));
+            // the unit leaves its old group first (removeUnit with -1, moving stopped)
+            let _ = self.remove_unit(old, id, -1, false)?;
         }
         let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
             return Err(Unsupported("AddUnit of a sleeping unit"));
@@ -223,5 +347,133 @@ impl Turns {
         }
         self.groups.unit_types_scratch = scratch;
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::group::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
+    use crate::masters::{Master, Masters};
+    use crate::turn::{Player, Turns, Unit};
+
+    /// Group 1 of player 1's units 10, 11 (master 4, category 1) and 12 (master 6, category 3),
+    /// their seconds since attacking 1, 2 and 3, 11 the lead and walking.
+    fn three() -> Turns {
+        let unit = |id: i32, master: i16, x: f32| {
+            let mut u = Unit {
+                id,
+                position: [x, 0.0, 0.0],
+                ..Unit::default()
+            };
+            u.life.master_id = master;
+            u.group.id = 1;
+            u
+        };
+        let mut walking = unit(11, 4, 2.0);
+        let mut mover = crate::hunt::tests::walker();
+        mover.paths = vec![
+            mover
+                .paths
+                .first()
+                .cloned()
+                .unwrap_or(crate::movement::PathData::without_path()),
+        ];
+        mover.paths[0].state = 3;
+        walking.mover = Some(mover);
+        let player = Player {
+            objects: vec![unit(10, 4, 1.0), walking, unit(12, 6, 3.0)],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
+        let master = |id: i16, category: u8| Master {
+            id,
+            kind: 70,
+            formation_category: category,
+            ..Master::default()
+        };
+        let masters = Masters::new([master(4, 1), master(6, 3)]);
+        t.masters = vec![masters.clone(), masters];
+        let mut g = UnitGroup::new(1);
+        g.members = [(10, 1.0), (11, 2.0), (12, 3.0)]
+            .iter()
+            .map(|&(id, s)| Member {
+                id,
+                seconds_since_attacking: s,
+                ..Member::default()
+            })
+            .collect();
+        g.spare_seconds = vec![f32::MAX];
+        g.unit_types = vec![
+            UnitTypeStatistic {
+                formation_category: 1,
+                units: vec![10, 11],
+                ..UnitTypeStatistic::default()
+            },
+            UnitTypeStatistic {
+                formation_category: 3,
+                units: vec![12],
+                ..UnitTypeStatistic::default()
+            },
+        ];
+        g.motion.lead = 11;
+        t.groups = UnitGroups {
+            groups: vec![g],
+            ..UnitGroups::default()
+        };
+        t
+    }
+
+    /// `FUN_14102c160`: 11 leaves: the ids close up, the seconds keep their places (11's 2 now
+    /// 12's, 12's 3 the first spare); its statistic counts 10 alone; it stands and its link
+    /// clears; the lead becomes the member nearest the target (the origin: 10); flags `0x10002`.
+    #[test]
+    fn a_removed_member_leaves_its_slot_statistic_and_lead() {
+        let mut t = three();
+        assert!(t.remove_unit(1, 11, -1, false).unwrap());
+        let g = t.groups.get(1).unwrap();
+        let members: Vec<(i32, f32)> = g
+            .members
+            .iter()
+            .map(|m| (m.id, m.seconds_since_attacking))
+            .collect();
+        assert_eq!(members, [(10, 1.0), (12, 2.0)]);
+        assert_eq!(g.spare_seconds, [3.0, f32::MAX]);
+        assert_eq!(g.unit_types[0].units, [10]);
+        assert_eq!(
+            (
+                g.unit_types[0].number_unit_types,
+                g.unit_types[0].unit_type_counts[0]
+            ),
+            (1, 1)
+        );
+        assert_eq!(g.unit_types[1].units, [12]);
+        assert_eq!((g.motion.lead, g.flags & 0x1_0002), (10, 0x1_0002));
+        let u = &t.players[1].objects[1];
+        assert_eq!(u.group.id, -1);
+        let m = u.mover.as_ref().unwrap();
+        assert_eq!(m.paths[0].state, 0);
+        // not a member, or a group the world does not hold
+        assert!(!t.remove_unit(1, 11, -1, false).unwrap());
+        assert!(!t.remove_unit(2, 10, -1, false).unwrap());
+    }
+
+    /// Kept moving, the unit's walk stays; a unit the world does not hold leaves the first
+    /// statistic that holds it.
+    #[test]
+    fn a_unit_kept_moving_walks_on_and_a_gone_one_leaves_its_statistic() {
+        let mut t = three();
+        assert!(t.remove_unit(1, 11, -1, true).unwrap());
+        assert_eq!(
+            t.players[1].objects[1].mover.as_ref().unwrap().paths[0].state,
+            3
+        );
+        let mut t = three();
+        let _ = t.players[1].objects.remove(2);
+        assert!(t.remove_unit(1, 12, -1, false).unwrap());
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(
+            (g.unit_types[0].units.len(), g.unit_types[1].units.len()),
+            (2, 0)
+        );
     }
 }

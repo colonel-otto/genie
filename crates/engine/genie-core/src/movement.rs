@@ -1200,6 +1200,20 @@ impl Mover {
         }
     }
 
+    /// Slot 0x560 (`FUN_1411616f0`): the unit stops ([`Mover::stop`], slot 0x5d0) and its walked
+    /// level, if any, resets (`FUN_140f98e80`, [`Mover::reset_level`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Mover::stop`].
+    pub(crate) fn stand(&mut self) -> Result<(), Unsupported> {
+        self.stop()?;
+        if !self.paths.is_empty() {
+            self.reset_level();
+        }
+        Ok(())
+    }
+
     /// Slot 0x5d0 (`FUN_14108c2f0` -> `FUN_141161730`): the unit stops: its speed and its
     /// acceleration along its forward vector go to 0 (slots 0x598 and 0x5a8, on velocity data it
     /// has), it stops waiting to move (`+0x7f9`, slot 0x2a0) and its own ignore list (`+0x678`)
