@@ -152,10 +152,20 @@ pub mod gather {
 
 /// The values `crate::gather_search`'s port reads.
 pub mod gather_search {
+    /// 1.399999976158142
+    pub const DIAGONAL: f32 = f32::from_bits(0x3fb3_3333);
     /// 20.0
     pub const REACH_CAP: f32 = f32::from_bits(0x41a0_0000);
     /// 4.0
     pub const REACH_FLOOR: f32 = f32::from_bits(0x4080_0000);
+    /// 0.6100000143051147
+    pub const ROUNDING: f32 = f32::from_bits(0x3f1c_28f6);
+    /// 0.75
+    pub const SITE_SHARE: f32 = f32::from_bits(0x3f40_0000);
+    /// 0.5
+    pub const TILE_CENTRE: f32 = f32::from_bits(0x3f00_0000);
+    /// 0.25
+    pub const UNIT_SHARE: f32 = f32::from_bits(0x3e80_0000);
 }
 
 /// The values `crate::hull_path`'s port reads.
@@ -238,6 +248,8 @@ pub mod hunt {
     pub const OWN_LIVESTOCK_RANGE: f32 = f32::from_bits(0x3fc0_0000);
     /// 0.10000000149011612
     pub const REMAINDER: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 5.0
+    pub const TREE_NEAR: f32 = f32::from_bits(0x40a0_0000);
 }
 
 /// The values `crate::long_path`'s port reads.

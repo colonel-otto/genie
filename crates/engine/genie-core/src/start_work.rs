@@ -201,6 +201,7 @@ impl Turns {
         let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
         gather_search::closest_resource_at(
             &seeker,
+            None,
             kind,
             -1,
             spatial.map,

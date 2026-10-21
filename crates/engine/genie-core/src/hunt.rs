@@ -83,6 +83,8 @@ const OWN_LIVESTOCK_RANGE: f32 = crate::image::hunt::OWN_LIVESTOCK_RANGE;
 const VILLAGER_CLASS: i16 = 4;
 /// Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
 pub const LIVESTOCK: i16 = 58;
+/// The predators' class, whose hunt ends on its own terms (`-0xea2` raw, `0x140ac85fd`).
+const PREDATOR: i16 = 10;
 const CLASS_49: i16 = 49;
 
 /// The Hunt action of a gatherer (`TRIBE_Action_Hunt`, type 110).
@@ -314,6 +316,8 @@ pub struct Gatherer<'a> {
     /// The caller ran the search for the next tree a lost target asks ([`HuntAction::update`]'s
     /// `FUN_140ac4670`, `Unit::hunt_tree_search`) and found none.
     pub tree_searched: bool,
+    /// The game's setting [`crate::turn::Turns::predator_hunts_end`].
+    pub predator_hunts_end: bool,
     /// The sprites the hunt shows.
     pub sprites: HuntSprites,
     /// Out: the hunt let its target go and asks for `set_state(3)`'s search (the caller's: the
@@ -322,6 +326,12 @@ pub struct Gatherer<'a> {
     /// Out: the hunt sends its livestock to this drop site (the target's slot 0x138) with the
     /// herd around it (`FUN_140ac4c60`), the caller's.
     pub leads: Option<i32>,
+    /// Out: the Attack's `MoveTo` failed (code 3 in state 12): `FUN_140ac4670` with −1 and 5
+    /// takes the next tree for a tree's class (the caller's, `Unit::hunt_tree_search`), else (or
+    /// with none found) `set_state(3)` with the target kept (the caller's search).
+    pub attack_failed: bool,
+    /// Out: the target the hunt let go (slot 0x68 with none), which the caller releases.
+    pub let_go: Option<i32>,
 }
 
 /// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).
@@ -508,7 +518,9 @@ impl HuntAction {
     /// (slot 0x68 with none; the caller releases it), the timer and the point clear, the drop site
     /// becomes the second target (`FUN_140a7a190`) with its class, and `set_state(8)`. Another target
     /// becomes the hunt's (slot 0x68, `FUN_140ac7980`; the caller releases the old target and takes
-    /// the new) and the hunt starts over at `set_state(4)`. Its own target changes nothing.
+    /// the new) and the hunt starts over at `set_state(4)`. Its own target changes nothing. Some
+    /// when it took the target, true when its Attack's `MoveTo` starts arrived (the caller shows
+    /// the idle sprite, [`crate::attack::show_arrived`]).
     #[allow(clippy::too_many_arguments)]
     pub fn retarget(
         &mut self,
@@ -519,7 +531,7 @@ impl HuntAction {
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<Option<bool>, Unsupported> {
         if target.kind == BUILDING && target.top_action == Some(FARM_AT_WORK) {
             return Err(Unsupported("a hunt sent to a farm at work (set_state 15)"));
         }
@@ -530,20 +542,15 @@ impl HuntAction {
             self.carry_to = target.id;
             self.target_class = target.class;
             self.set_drop(attack.gap, mover)?;
-            return Ok(true);
+            return Ok(Some(false));
         }
         if target.id == self.target {
-            return Ok(false);
+            return Ok(None);
         }
         self.target = target.id;
         self.target_class = target.class;
         self.carry_to = -1;
-        if self.chase(target, player, attack, arms, mover)? {
-            return Err(Unsupported(
-                "a hunt's Attack whose MoveTo starts arrived on a new target",
-            ));
-        }
-        Ok(true)
+        self.chase(target, player, attack, arms, mover).map(Some)
     }
 
     /// Slot 0x40 (`FUN_140ac52c0`): the hunt takes a move's `target` (None for a point) and
@@ -819,6 +826,19 @@ impl HuntAction {
         Ok(true)
     }
 
+    /// Slot 0x68 with none (`FUN_140ac7980`): the target goes and the lead's fields clear (its
+    /// start −1); the old target, which the caller releases (slot 0x180).
+    pub const fn let_go(&mut self) -> i32 {
+        let target = self.target;
+        self.target = -1;
+        self.lead = Lead {
+            moved: false,
+            still_time: 0,
+            start: [-1.0, -1.0],
+        };
+        target
+    }
+
     /// The teardown (`FUN_140a73fc0`): the sub-actions go; the caller releases the target (slot
     /// 0x180).
     pub fn tear_down(&mut self, mut mover: Option<&mut Mover>) -> Result<(), Unsupported> {
@@ -864,12 +884,46 @@ impl HuntAction {
                     .ok_or(Unsupported("a Hunt in state 12 without its Attack"))?;
                 match attack.update(walk.reborrow(), strike)? {
                     0 | 6.. => Ok(()),
-                    5 => {
+                    // the Attack ended (1, 2, 5): with no target left set_state(3); a predator
+                    // (class 10) of a unit AI with orders queued (`FUN_140c564a0` above 0) ends
+                    // the hunt (set_state 1) under the game's setting `+0x98`, not modelled;
+                    // else `FUN_140ac44b0` and `set_state(4)`
+                    1 | 2 | 5 if self.target == -1 => {
+                        self.tear_down(walk.mover.as_deref_mut())?;
+                        self.state = SEARCH;
+                        gather.searches = true;
+                        Ok(())
+                    }
+                    1 | 2 | 5
+                        if gather.predator_hunts_end
+                            && strike.victim.class == PREDATOR
+                            && !strike.queue_empty =>
+                    {
+                        Err(Unsupported(
+                            "a hunt that ends with its Attack on a predator (set_state 1)",
+                        ))
+                    }
+                    1 | 2 | 5 => {
                         self.decay_check(gather, strike.victim)?;
                         let player = strike.own.player;
                         self.set_walk(&mut walk, strike.victim, player)
                     }
-                    _ => Err(Unsupported("a Hunt whose Attack ended")),
+                    // it failed (its MoveTo did; its update in state 13 says so again each
+                    // time): the search for the next tree, else set_state(3), the caller's
+                    3 => {
+                        gather.attack_failed = true;
+                        Ok(())
+                    }
+                    // the target went inside another (`LAB_140ac7ecd`): it goes (slot 0x68 with
+                    // none) and the hunt walks to its point to search there (set_state 11)
+                    _ => {
+                        gather.let_go = Some(self.let_go());
+                        let mover = walk
+                            .mover
+                            .as_deref_mut()
+                            .ok_or(Unsupported("a hunter without movement state"))?;
+                        self.set_point_walk(WALK_SEARCH, mover)
+                    }
                 }
             }
             // case 3: a hunt that gave up on its MoveTo waits (its timer below 0), then set_state 11
@@ -1517,6 +1571,51 @@ pub(crate) mod tests {
         assert_eq!(held, (-1, 0.0));
     }
 
+    /// Slot 0x48 on another tree: the hunt takes it and its Attack starts over; one within 0.01
+    /// starts arrived, which the caller shows (records/425906646's 31110 in update 7967). Its own
+    /// target it does not take.
+    #[test]
+    fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
+        let mut mover = walker();
+        let mut held = (-1, 0.0);
+        let (mut hunt, _) = HuntAction::start(
+            CHOP,
+            &tree(),
+            2,
+            false,
+            false,
+            &mut held,
+            &engagement(),
+            ARMS,
+            &mut mover,
+        )
+        .unwrap();
+        let retarget = |hunt: &mut HuntAction, q: &Quarry, e: &Engagement, m: &mut Mover| {
+            hunt.retarget(q, 2, 0.0, false, e, ARMS, m).unwrap()
+        };
+        assert_eq!(
+            retarget(&mut hunt, &tree(), &engagement(), &mut mover),
+            None
+        );
+        let beside = Quarry {
+            id: 9366,
+            position: [20.78, 97.5, 0.0],
+            ..tree()
+        };
+        let close = Engagement {
+            gap_squared: 0.005 * 0.005,
+            gap: 0.005,
+            target_position: beside.position,
+            ..engagement()
+        };
+        assert_eq!(retarget(&mut hunt, &beside, &close, &mut mover), Some(true));
+        let attack = hunt.attack.unwrap();
+        assert_eq!(
+            (hunt.target, hunt.state, attack.state, attack.move_to),
+            (9366, ATTACK, 4, Some(MoveTo::Arrived))
+        );
+    }
+
     #[test]
     fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
         let start = |held: (i16, f32), carry_rule: bool| {
@@ -1587,8 +1686,11 @@ pub(crate) mod tests {
                 ai_class: None,
                 sprites: HuntSprites::default(),
                 tree_searched: false,
+                predator_hunts_end: false,
                 searches: false,
                 leads: None,
+                attack_failed: false,
+                let_go: None,
             };
             hunt.gather(0.02, tree, &mut g)
         };
@@ -1714,8 +1816,11 @@ pub(crate) mod tests {
             ai_class: Some(15),
             sprites: HuntSprites::default(),
             tree_searched: false,
+            predator_hunts_end: false,
             searches: false,
             leads: None,
+            attack_failed: false,
+            let_go: None,
         };
         assert!(hunt.clone().lost_on_the_way(&mut walk, &gather).is_err());
         // the caller's search for the next tree found none: the hunt walks to its point

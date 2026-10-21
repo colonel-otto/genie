@@ -277,6 +277,24 @@ pub(crate) fn volleys(master: &crate::masters::Master, masters: &crate::masters:
 
 /// Slot 0x68 (`FUN_141217000`): the unit's sprite becomes `g` unless it is already; a new sprite
 /// starts a new instance (`FUN_1413b2ef0`).
+/// [`Attack::arrived_sprite`] for a caller that holds the unit's sprite and animation speed: the
+/// idle sprite of `arms` (slot 0x68), the speed `+0x7b8` cleared.
+pub(crate) fn show_arrived(
+    arms: &Arms,
+    sprite: &mut Option<ActiveSprite>,
+    anim_speed: &mut Option<f32>,
+    rng: &mut Well512,
+) -> Result<(), Unsupported> {
+    let g = arms
+        .idle_sprite
+        .ok_or(Unsupported("an attacker without its standing sprite"))?;
+    set_sprite(sprite, g, rng);
+    if let Some(a) = anim_speed.as_mut() {
+        *a = 0.0;
+    }
+    Ok(())
+}
+
 pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mut Well512) {
     if sprite.is_some_and(|s| s.graphic.id == g.id) {
         return;
@@ -1005,6 +1023,13 @@ impl Attack {
                 s.posted.push((0x1fb, [600, 0, 0x202]));
                 self.finish(&mut walk, s)?;
                 Ok(2)
+            }
+            // case 0xc: a failed attack posts 0x1f9 with 600 every update (quiet or not), the
+            // unit's animation stops and the update returns 3
+            FAILED => {
+                s.posted.push((crate::unit_ai::ACTION_FAILED, [600, 0, 0]));
+                *s.anim_speed = Some(0.0);
+                Ok(3)
             }
             _ => Err(Unsupported("an Attack in a state the slice does not model")),
         }

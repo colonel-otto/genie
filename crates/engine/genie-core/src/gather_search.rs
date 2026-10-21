@@ -241,10 +241,35 @@ struct Cell {
 /// The most objects whose reach a search tests before it settles for what it has (`0x1e`).
 const TESTED: i32 = 30;
 
-/// `ClosestResourceObject` (`FUN_140c49760`) with no drop site (`param_3` −1), no point
-/// (`param_7`, `param_8` −1: the unit's place) and `param_6` 2: the closest object of gather
-/// group `kind` that the unit reaches (`reach`, slot 0x3d0 with the range 0: `FUN_14152b6e0` holds
-/// in the games the slice runs), −1 for none. A unit below state 2 is not modelled.
+/// The drop site a resource search starts from (`ClosestResourceObject`'s `param_3`).
+#[derive(Clone, Copy, Debug)]
+pub struct SearchSite {
+    /// The site's place.
+    pub position: [f32; 3],
+    /// Its master's radii (`+0x5d8`, `+0x5dc`).
+    pub radius: [f32; 2],
+    /// Its master's line of sight (`+0x5d0`).
+    pub line_of_sight: f32,
+    /// The search starts from the site's footprint: the site's tile lies in the unit's zone (its
+    /// restriction's zone of the tile, `FUN_1411958c0`, is the unit's own, `FUN_14118eea0`), or
+    /// the site's master is 45 or 2172 (the docks). Else it starts from the site's tile alone.
+    pub footprint: bool,
+}
+
+/// The tiles a pass of the search starts from and how far it goes.
+struct Pass {
+    /// The tile the steps' distance counts from (the search's point, truncated).
+    origin: (i32, i32),
+    /// The farthest distance a tile may lie from the origin.
+    max_steps: i32,
+    /// The queue's first cells, sorted.
+    seeds: Vec<Cell>,
+}
+
+/// `ClosestResourceObject` (`FUN_140c49760`) with no point (`param_7`, `param_8` −1: the unit's
+/// place), no drop site (`param_3` −1) and `param_6` 2: the closest object of gather group `kind`
+/// that the unit reaches (`reach`, slot 0x3d0 with the range 0: `FUN_14152b6e0` holds in the
+/// games the slice runs), −1 for none. A unit below state 2 is not modelled.
 ///
 /// A breadth-first walk over the tiles from the unit's tile, its queue after the tile in hand kept
 /// sorted by the distance of the tiles' centres from the unit ([`msvc::sort`]): a tile the player
@@ -275,6 +300,7 @@ pub fn closest_resource(
 ) -> Result<i32, Unsupported> {
     closest_resource_at(
         seeker,
+        None,
         kind,
         max_workers,
         map,
@@ -286,9 +312,21 @@ pub fn closest_resource(
     .map(|(id, _)| id)
 }
 
-/// [`closest_resource`] with what its out argument (`param_5`) takes: the distance of the
-/// answer's tile (the search's 1.4-per-diagonal measure, truncated), None for no answer (the
-/// argument keeps its value).
+/// [`closest_resource`] from a drop site (`param_3`, None for −1 or a site not found), with what
+/// its out argument (`param_5`) takes: the distance of the answer's tile from the pass's origin
+/// (the search's 1.4-per-diagonal measure, truncated), None for no answer (the argument keeps its
+/// value).
+///
+/// With a site the search's point is the site's place, and the queue sorts by the distance from
+/// a point a quarter of the way from the site to the unit (`0.75` of the site's place plus `0.25`
+/// of the unit's). From the site's footprint ([`SearchSite::footprint`]) the first pass starts
+/// from every tile of the footprint the unit can stand on (its x from the site's x less its
+/// radius, truncated, at least 1, less 1, to the site's x plus its radius, truncated, at most the
+/// map's last column; y alike; row by row), reaches the site's line of sight plus 10 and walks a
+/// box of the larger line of sight of the two; when it finds nothing a second pass starts from
+/// the unit's tile as the search without a site does, its tests counted on from the first pass
+/// unless that one stopped after 30, its queue still sorted by the point between. Otherwise the
+/// one pass starts from the site's tile and reaches the unit's line of sight plus 5.
 ///
 /// # Errors
 ///
@@ -296,6 +334,7 @@ pub fn closest_resource(
 #[allow(clippy::too_many_arguments)]
 pub fn closest_resource_at(
     seeker: &Seeker,
+    site: Option<&SearchSite>,
     kind: u8,
     max_workers: i32,
     map: [i32; 2],
@@ -304,6 +343,13 @@ pub fn closest_resource_at(
     objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, Unsupported>,
     reach: &mut dyn FnMut(i32) -> Result<bool, Unsupported>,
 ) -> Result<(i32, Option<i32>), Unsupported> {
+    /// The fallback's steps before it has one (`1000000`).
+    const NO_STEPS: i32 = 1_000_000;
+    const DIAGONAL: f32 = crate::image::gather_search::DIAGONAL;
+    const ROUNDING: f32 = crate::image::gather_search::ROUNDING;
+    const SITE_SHARE: f32 = crate::image::gather_search::SITE_SHARE;
+    const UNIT_SHARE: f32 = crate::image::gather_search::UNIT_SHARE;
+    const TILE_CENTRE: f32 = crate::image::gather_search::TILE_CENTRE;
     if seeker.state < 2 {
         return Err(Unsupported("a resource search by a unit below state 2"));
     }
@@ -312,89 +358,150 @@ pub fn closest_resource_at(
             "a resource search by a unit with a pasture of its own",
         ));
     }
-    let [cx, cy, _] = seeker.position;
+    let [ux, uy, _] = seeker.position;
     let los = seeker.line_of_sight as i32;
-    let max_steps = los + 5;
-    let side = (los + 10) * 3;
-    let half = side / 2;
-    let (ox, oy) = (half - cx as i32, half - cy as i32);
-    let mut seen = vec![false; (side * side) as usize];
-    let at = |x: i32, y: i32| ((y + oy) * side + x + ox) as usize;
-    let start = Cell {
-        x: cx as i32,
-        y: cy as i32,
-        steps: 0,
+    let unit_tile = (ux as i32, uy as i32);
+    let single = |at: (i32, i32)| Pass {
+        origin: at,
+        max_steps: los + 5,
+        seeds: vec![Cell {
+            x: at.0,
+            y: at.1,
+            steps: 0,
+        }],
     };
-    seen[at(start.x, start.y)] = true;
-    let mut queue = vec![start];
+    // the sort's point, and the box's side (fixed for both passes)
+    let (sort_at, side) = site.map_or(((ux, uy), (los + 10) * 3), |s| {
+        let [sx, sy, _] = s.position;
+        let at = (
+            sx * SITE_SHARE + ux * UNIT_SHARE,
+            sy * SITE_SHARE + uy * UNIT_SHARE,
+        );
+        let site_los = s.line_of_sight as i32;
+        let wide = if site_los + 10 <= los + 10 {
+            los
+        } else {
+            site_los
+        };
+        (
+            at,
+            if s.footprint {
+                (wide + 10) * 3
+            } else {
+                (los + 10) * 3
+            },
+        )
+    });
+    let half = side / 2;
+    let nearer = |a: Cell, b: Cell| {
+        let d = |c: Cell| {
+            let dx = sort_at.0 - (c.x as f32 + TILE_CENTRE);
+            let dy = sort_at.1 - (c.y as f32 + TILE_CENTRE);
+            dy * dy + dx * dx
+        };
+        d(a) < d(b)
+    };
+    let mut passes = Vec::with_capacity(2);
+    match site {
+        Some(s) if s.footprint => {
+            let [sx, sy, _] = s.position;
+            let [rx, ry] = s.radius;
+            let x0 = ((sx - rx) as i32).max(1) - 1;
+            let x1 = ((sx + rx) as i32).min(map[0] - 1);
+            let y0 = ((sy - ry) as i32).max(1) - 1;
+            let y1 = ((sy + ry) as i32).min(map[1] - 1);
+            let mut seeds = Vec::new();
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    if passable(x, y) {
+                        seeds.push(Cell { x, y, steps: 0 });
+                    }
+                }
+            }
+            msvc::sort(&mut seeds, &nearer);
+            passes.push(Pass {
+                origin: (sx as i32, sy as i32),
+                max_steps: s.line_of_sight as i32 + 10,
+                seeds,
+            });
+            passes.push(single(unit_tile));
+        }
+        Some(s) => passes.push(single((s.position[0] as i32, s.position[1] as i32))),
+        None => passes.push(single(unit_tile)),
+    }
     let cap = if max_workers == -1 {
         i32::MAX
     } else {
         max_workers
     };
-    let nearer = |a: Cell, b: Cell| {
-        let d = |c: Cell| {
-            let dx = cx - (c.x as f32 + 0.5);
-            let dy = cy - (c.y as f32 + 0.5);
-            dy * dy + dx * dx
-        };
-        d(a) < d(b)
-    };
-    let (mut fallback, mut fallback_steps, mut fallback_d, mut tested) = (-1, 1_000_000, 0, 0);
-    let mut i = 0;
-    while i < queue.len() {
-        let Cell { x, y, steps } = queue[i];
-        i += 1;
-        if !explored(x, y)? {
-            continue;
+    let (mut fallback, mut fallback_steps, mut fallback_d, mut tested) = (-1, NO_STEPS, 0, 0);
+    for pass in passes {
+        let (ox, oy) = (half - pass.origin.0, half - pass.origin.1);
+        let mut seen = vec![false; (side * side) as usize];
+        let at = |x: i32, y: i32| ((y + oy) * side + x + ox) as usize;
+        for c in &pass.seeds {
+            seen[at(c.x, c.y)] = true;
         }
-        let (dx, dy) = ((start.x - x).abs(), (start.y - y).abs());
-        let d = if dy < dx {
-            ((dy as f32 * 1.4 + 0.61) as i32 - dy) + dx
-        } else {
-            ((dx as f32 * 1.4 + 0.61) as i32 - dx) + dy
-        };
-        if max_steps < d || x < 0 || y < 0 || map[0] <= x || map[1] <= y {
-            continue;
-        }
-        if passable(x, y) {
-            for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
-                let c = at(nx, ny);
-                if !seen[c] {
-                    seen[c] = true;
-                    if 0 <= nx && nx < map[0] && 0 <= ny && ny < map[1] {
-                        queue.push(Cell {
-                            x: nx,
-                            y: ny,
-                            steps: steps + 1,
-                        });
+        let mut queue = pass.seeds;
+        let mut i = 0;
+        while i < queue.len() {
+            let Cell { x, y, steps } = queue[i];
+            i += 1;
+            if !explored(x, y)? {
+                continue;
+            }
+            let (dx, dy) = ((pass.origin.0 - x).abs(), (pass.origin.1 - y).abs());
+            let d = if dy < dx {
+                ((dy as f32 * DIAGONAL + ROUNDING) as i32 - dy) + dx
+            } else {
+                ((dx as f32 * DIAGONAL + ROUNDING) as i32 - dx) + dy
+            };
+            if pass.max_steps < d || x < 0 || y < 0 || map[0] <= x || map[1] <= y {
+                continue;
+            }
+            if passable(x, y) {
+                for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+                    let c = at(nx, ny);
+                    if !seen[c] {
+                        seen[c] = true;
+                        if 0 <= nx && nx < map[0] && 0 <= ny && ny < map[1] {
+                            queue.push(Cell {
+                                x: nx,
+                                y: ny,
+                                steps: steps + 1,
+                            });
+                        }
                     }
                 }
+                msvc::sort(&mut queue[i..], &nearer);
             }
-            msvc::sort(&mut queue[i..], &nearer);
-        }
-        let on_tile = objects(x, y)?;
-        let Some(o) = first_resource(&on_tile, kind)? else {
-            continue;
-        };
-        tested += 1;
-        if o.id == seeker.current_target {
-            continue;
-        }
-        if o.workers < cap {
-            if reach(o.id)? {
-                return Ok((o.id, Some(d)));
+            let on_tile = objects(x, y)?;
+            let Some(o) = first_resource(&on_tile, kind)? else {
+                continue;
+            };
+            tested += 1;
+            if o.id == seeker.current_target {
+                continue;
             }
-        } else if steps < fallback_steps && reach(o.id)? {
-            fallback = o.id;
-            fallback_steps = steps;
-            fallback_d = d;
+            if o.workers < cap {
+                if reach(o.id)? {
+                    return Ok((o.id, Some(d)));
+                }
+            } else if steps < fallback_steps && reach(o.id)? {
+                fallback = o.id;
+                fallback_steps = steps;
+                fallback_d = d;
+            }
+            if TESTED < tested {
+                tested = 0;
+                break;
+            }
         }
-        if TESTED < tested {
-            break;
+        if fallback != -1 {
+            return Ok((fallback, Some(fallback_d)));
         }
     }
-    Ok((fallback, (fallback != -1).then_some(fallback_d)))
+    Ok((-1, None))
 }
 
 /// The object of a tile's list `ClosestResourceObject` takes: the first in a pasture or
@@ -615,6 +722,71 @@ mod tests {
         )
         .unwrap();
         assert_eq!(found, 1);
+    }
+
+    #[test]
+    fn a_search_from_a_drop_site_starts_from_its_footprint_then_from_the_unit() {
+        let seeker = Seeker {
+            player: 1,
+            position: [10.2, 10.7, 0.0],
+            line_of_sight: 4.0,
+            state: 2,
+            current_target: -1,
+            my_pasture: -1,
+        };
+        // a 2x2 site at (14, 10): its own tiles are blocked
+        let site = SearchSite {
+            position: [14.0, 10.0, 0.0],
+            radius: [1.0, 1.0],
+            line_of_sight: 6.0,
+            footprint: true,
+        };
+        let search = |trees: &[Candidate], site: Option<&SearchSite>| {
+            let objects = |x: i32, y: i32| {
+                Ok(trees
+                    .iter()
+                    .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                    .copied()
+                    .collect())
+            };
+            let blocked = |x: i32, y: i32| {
+                (13..=14).contains(&x) && (9..=10).contains(&y)
+                    || trees
+                        .iter()
+                        .any(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+            };
+            closest_resource_at(
+                &seeker,
+                site,
+                0,
+                2,
+                [40, 40],
+                &|_, _| Ok(true),
+                &|x, y| !blocked(x, y),
+                &objects,
+                &mut |_| Ok(true),
+            )
+            .unwrap()
+        };
+        // a tree by the unit and one by the site: without the site the unit's, with it the site's
+        // (3 from the site's tile)
+        let trees = [tree(1, 8.5, 11.5), tree(2, 17.5, 10.5)];
+        assert_eq!(search(&trees, None).0, 1);
+        assert_eq!(search(&trees, Some(&site)), (2, Some(3)));
+        // the site's tile outside the unit's zone: one pass from the site's tile alone, which is
+        // blocked, so nothing
+        let apart = SearchSite {
+            footprint: false,
+            ..site
+        };
+        assert_eq!(search(&trees, Some(&apart)), (-1, None));
+        // nothing within the site's line of sight plus 10 of it: the second pass from the unit
+        // finds the tree 8 columns and a row off (its distance from the unit's tile)
+        let blind = SearchSite {
+            line_of_sight: 0.0,
+            ..site
+        };
+        assert_eq!(search(&[tree(3, 2.5, 11.5)], Some(&blind)), (3, Some(9)));
     }
 
     #[test]

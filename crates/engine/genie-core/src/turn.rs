@@ -638,6 +638,12 @@ const ONE_UNIT_GAME: u8 = 0x10;
 /// The Hunt's search timer: it tells its unit AI again every 10 seconds (`0xc1200000`, in
 /// `0x140ac60e0` and `0x140ac7a00`).
 const SEARCH_AGAIN: f32 = -10.0;
+/// `FUN_140ac4670`'s first argument when a hunt's target went on the walk to it, or its `MoveTo`
+/// failed (`DAT_142eb9430`): the hunt searches within this of its point.
+const TREE_SEARCH_WITHIN: f32 = crate::image::turn::TREE_SEARCH_WITHIN;
+/// `FUN_140ac4670`'s second argument when a hunt's Attack failed (`DAT_14330ebb8`): the tree
+/// found counts within this of the unit.
+const TREE_NEAR: f32 = crate::image::hunt::TREE_NEAR;
 /// The notify "Action %d has been invalidated or requires a search." (0x202) with the action's
 /// value: a Build waiting without work posts it ([`BUILD_ACTION`]), a searching Hunt too.
 const SEARCH_NEEDED: i32 = 0x202;
@@ -753,6 +759,8 @@ struct Context<'a> {
     sharing: bool,
     /// The game's farm setting ([`Turns::farm_stops`]).
     farm_stops: bool,
+    /// The game's setting [`Turns::predator_hunts_end`].
+    predator_hunts_end: bool,
     /// Every player's masters and attribute 97 (by player), for a capture.
     every_masters: &'a [Masters],
     attribute_97: &'a [f32],
@@ -2168,6 +2176,23 @@ impl Unit {
     /// (`set_state` 2), not modelled.
     fn hunt_set_search(&mut self, c: &mut Context<'_>, others: &[Self]) -> Result<(), Unsupported> {
         let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        if hunt.target_class != 10 {
+            let target = std::mem::replace(&mut hunt.target, -1);
+            self.hunt_release(c, [target]);
+        }
+        self.hunt_search_state(c, others)
+    }
+
+    /// The Hunt's `set_state(3)` itself (`0x140ac60e0` case 3; its target stays): the unit AI is
+    /// told ([`Unit::hunt_search_notify`]), the unit takes the sprite it stands with and the timer
+    /// starts at −10 s. A human player's hunt of class 10 is done instead (`set_state` 2: the
+    /// target and the second target go), a computer player's would end (1), not modelled.
+    fn hunt_search_state(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+    ) -> Result<(), Unsupported> {
+        let hunt = self.hunt.as_mut().expect("the caller's hunt");
         let task = hunt.task;
         if hunt.target_class == 10 {
             // a human player's hunt is done (set_state 2), a computer player's ends (1)
@@ -2181,9 +2206,7 @@ impl Unit {
             self.hunt_release(c, released);
             return Ok(());
         }
-        let target = std::mem::replace(&mut hunt.target, -1);
         hunt.timer = SEARCH_AGAIN;
-        self.hunt_release(c, [target]);
         self.hunt_search_notify(c, others)?;
         self.hunt_stand(c, &task)
     }
@@ -2528,7 +2551,7 @@ impl Unit {
         let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
             return Err(Unsupported("a hunter without its hunt or movement state"));
         };
-        if hunt.retarget(
+        if let Some(arrived) = hunt.retarget(
             &quarry,
             c.player,
             held,
@@ -2537,6 +2560,14 @@ impl Unit {
             arms,
             mover,
         )? {
+            if arrived {
+                crate::attack::show_arrived(
+                    &arms,
+                    &mut self.sprite,
+                    &mut self.anim_speed,
+                    c.streams.get(Stream::Sprite),
+                )?;
+            }
             if owner == c.player {
                 let u = others
                     .iter_mut()
@@ -3525,30 +3556,37 @@ impl Unit {
         }))
     }
 
-    /// The hunt's search for another target (`FUN_140ac4670` with 8 and −1) when its target went
-    /// on the walk to it and the class its unit AI targets (else the hunt's) is one the AI's slot
-    /// 0x1b0 gives 0 (the civilian's `FUN_140c1c4f0`: trees, 15): within 8 of the hunt's point
-    /// (the 3D distance, its components summed x, height, y) the unit AI's
-    /// `ClosestResourceObject` with gather group 0, no drop site (the target is gone), at most 2
-    /// workers ([`Unit::resource_search`]) names the next tree, which the hunt takes (slot 0x48:
-    /// [`crate::hunt::HuntAction::retarget`], the new target taken). True when it found one.
+    /// The hunt's search for another target (`FUN_140ac4670`) when the class its unit AI targets
+    /// (else the hunt's) is one the AI's slot 0x1b0 gives 0 (the civilian's `FUN_140c1c4f0`:
+    /// trees, 15): with `within` (its first argument above 0; 8 when the target went on the walk
+    /// to it) only a hunt within it of its point searches (the 3D distance, its components summed
+    /// x, height, y); the unit AI's `ClosestResourceObject` with gather group 0, the hunt's second
+    /// target as the drop site, at most 2 workers ([`Unit::resource_search_from`]) names the next
+    /// tree; with `near` (its second argument above 0; 5 when the Attack's `MoveTo` failed) a tree
+    /// farther than it from the unit (the same 3D distance) does not count. The hunt takes it
+    /// (slot 0x48: [`crate::hunt::HuntAction::retarget`], the new target taken). True when it
+    /// found one.
     fn hunt_tree_search(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
+        within: Option<f32>,
+        near: Option<f32>,
     ) -> Result<bool, Unsupported> {
-        /// `FUN_140ac4670`'s first argument at this call (`DAT_142eb9430`).
-        const WITHIN: f32 = crate::image::turn::TREE_SEARCH_WITHIN;
-        let hunt = self.hunt.as_ref().expect("the caller's");
-        let [px, py, pz] = hunt.point;
-        let [ux, uy, uz] = self.position;
-        let (dx, dz, dy) = (px - ux, pz - uz, py - uy);
-        let d = crate::fmath::sqrt(dx * dx + dz * dz + dy * dy);
         // NaN compares false as the game's `comiss` does
-        if d.partial_cmp(&WITHIN) != Some(std::cmp::Ordering::Less) {
+        let beyond = |a: [f32; 3], b: [f32; 3], limit: f32| {
+            let (dx, dz, dy) = (a[0] - b[0], a[2] - b[2], a[1] - b[1]);
+            let d = crate::fmath::sqrt(dx * dx + dz * dz + dy * dy);
+            d.partial_cmp(&limit) != Some(std::cmp::Ordering::Less)
+        };
+        let hunt = self.hunt.as_ref().expect("the caller's");
+        if let Some(within) = within
+            && beyond(hunt.point, self.position, within)
+        {
             return Ok(false);
         }
-        let found = self.resource_search(c, others, 0, 2)?;
+        let site = hunt.carry_to;
+        let found = self.resource_search_from(c, others, 0, 2, site)?;
         if found == -1 {
             return Ok(false);
         }
@@ -3558,6 +3596,16 @@ impl Unit {
             .map(|u| (c.player, u))
             .or_else(|| c.foreign.find(found))
             .ok_or(Unsupported("a hunt's next tree the slice does not hold"))?;
+        if let Some(near) = near {
+            let (dx, dz, dy) = (
+                self.position[0] - t.position[0],
+                self.position[2] - t.position[2],
+                self.position[1] - t.position[1],
+            );
+            if near < crate::fmath::sqrt(dx * dx + dz * dz + dy * dy) {
+                return Ok(false);
+            }
+        }
         let t_master = c
             .every_masters
             .get(tp)
@@ -3597,6 +3645,7 @@ impl Unit {
         let engagement =
             crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them, c.world_time)?;
         let hunt = self.hunt.as_mut().expect("the caller's");
+        let old = hunt.target;
         let moving = hunt
             .task
             .walk_sprite_id(self.life.attribute_type, self.life.amount);
@@ -3605,7 +3654,7 @@ impl Unit {
             .mover
             .as_mut()
             .ok_or(Unsupported("a hunter without movement state"))?;
-        if hunt.retarget(
+        if let Some(arrived) = hunt.retarget(
             &quarry,
             c.player,
             self.life.amount,
@@ -3614,6 +3663,16 @@ impl Unit {
             arms,
             mover,
         )? {
+            if arrived {
+                crate::attack::show_arrived(
+                    &arms,
+                    &mut self.sprite,
+                    &mut self.anim_speed,
+                    c.streams.get(Stream::Sprite),
+                )?;
+            }
+            // slot 0x68 (FUN_140a7a230): the old target goes, the new one is taken
+            self.hunt_release(c, [old]);
             c.takes.push(found);
         }
         Ok(true)
@@ -3631,7 +3690,70 @@ impl Unit {
         kind: u8,
         cap: i32,
     ) -> Result<i32, Unsupported> {
+        self.resource_search_from(c, others, kind, cap, -1)
+    }
+
+    /// [`Unit::resource_search`] from the drop site `site` (−1 for none;
+    /// [`crate::gather_search::closest_resource_at`]): the site's place, its master's radii and
+    /// line of sight, and whether the search starts from its footprint (the site's tile in the
+    /// unit's zone of its restriction, or a dock: masters 45 and 2172, `0x140c49d17`).
+    fn resource_search_from(
+        &self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        kind: u8,
+        cap: i32,
+        site: i32,
+    ) -> Result<i32, Unsupported> {
         use crate::gather_search::{self, Candidate};
+        /// The site masters whose search starts from their footprint in any zone.
+        const DOCKS: [i16; 2] = [45, 2172];
+        let site = if site == -1 {
+            None
+        } else {
+            let (sp, s) = others
+                .iter()
+                .find(|u| u.id == site)
+                .map(|u| (c.player, u))
+                .or_else(|| c.foreign.find(site))
+                .ok_or(Unsupported(
+                    "a resource search's drop site the slice does not hold",
+                ))?;
+            let m = c
+                .every_masters
+                .get(sp)
+                .and_then(|m| m.get(s.life.master_id))
+                .ok_or(Unsupported(
+                    "a resource search's drop site of a master the slice lacks",
+                ))?;
+            let footprint = DOCKS.contains(&m.id) || {
+                let restriction = self
+                    .mover
+                    .as_ref()
+                    .ok_or(Unsupported("a resource search without movement state"))?
+                    .stats
+                    .restriction;
+                let [w, h] = c.spatial.map;
+                let terrain = c
+                    .spatial
+                    .terrain
+                    .as_ref()
+                    .ok_or(Unsupported("the map's zones without its terrain"))?;
+                let values = terrain
+                    .restrictions
+                    .get(restriction)
+                    .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+                let zones = c.zones.of(w, h, &terrain.kinds, values);
+                let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
+                zone(s.position) == zone(self.position)
+            };
+            Some(gather_search::SearchSite {
+                position: s.position,
+                radius: m.radius,
+                line_of_sight: m.line_of_sight,
+                footprint,
+            })
+        };
         let masters = c.masters.ok_or(Unsupported(
             "a resource search without its player's masters",
         ))?;
@@ -3710,8 +3832,9 @@ impl Unit {
             construction_rate: c.construction_rate,
         };
         let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
-        gather_search::closest_resource(
+        gather_search::closest_resource_at(
             &seeker,
+            site.as_ref(),
             kind,
             cap,
             spatial.map,
@@ -3720,6 +3843,7 @@ impl Unit {
             &objects,
             &mut |id| mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id),
         )
+        .map(|(id, _)| id)
     }
 
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
@@ -5786,7 +5910,7 @@ impl Unit {
             // state 10 without its target (0x140ac7a00 case 9): set_state(3), the search
             self.hunt.as_mut().expect("above").state = crate::hunt::SEARCH;
             self.hunt_set_search(c, others)?;
-        } else if tree_lost && self.hunt_tree_search(c, others)? {
+        } else if tree_lost && self.hunt_tree_search(c, others, Some(TREE_SEARCH_WITHIN), None)? {
             // the hunt took the next tree (slot 0x48): its MoveTo's code 5 ends the update
         } else if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;
@@ -5824,8 +5948,11 @@ impl Unit {
                 ai_class: self.ai.as_ref().map(|ai| ai.target_type),
                 sprites,
                 tree_searched: tree_lost,
+                predator_hunts_end: c.predator_hunts_end,
                 searches: false,
                 leads: None,
+                attack_failed: false,
+                let_go: None,
             };
             // what set_state(6) on live livestock reads (0x140ac60e0 case 6), and the lead's
             // update (state 10)
@@ -5957,6 +6084,8 @@ impl Unit {
             };
             let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let searches = gather.searches;
+            let (attack_failed, let_go) = (gather.attack_failed, gather.let_go);
+            let posted = std::mem::take(&mut strike.posted);
             let leads = gather.leads.map(|site| (hunt.target, site));
             let fired = strike.fire.map(|target| {
                 let v = &*strike.victim;
@@ -5976,12 +6105,37 @@ impl Unit {
             if let Some(target) = executed {
                 self.post_own(ACTION_EXECUTED, [600, target, 0])?;
             }
+            for (kind, p) in posted {
+                self.post_own(kind, p)?;
+            }
             c.own_killed = self.hit_back(own)?;
             if full {
                 self.hunt_drop_off(c, others)?;
             }
             if searches {
                 self.hunt_set_search(c, others)?;
+            }
+            if let Some(target) = let_go {
+                self.hunt_release(c, [target]);
+            }
+            if attack_failed {
+                // FUN_140ac4670 with -1 and 5: the class its unit AI targets (else the hunt's)
+                // that the civilian's slot 0x1b0 gives 0 (trees) takes the next tree within 5
+                // of the unit; else set_state(3) with the target kept
+                let tree = self.ai.as_ref().is_some_and(|ai| {
+                    let class = if ai.target_type == -1 {
+                        self.hunt.map_or(-1, |h| i32::from(h.target_class))
+                    } else {
+                        ai.target_type
+                    };
+                    class == crate::hunt::TREE_CLASS
+                });
+                if !(tree && self.hunt_tree_search(c, others, None, Some(TREE_NEAR))?) {
+                    let hunt = self.hunt.as_mut().expect("above");
+                    hunt.tear_down(self.mover.as_mut())?;
+                    hunt.state = crate::hunt::SEARCH;
+                    self.hunt_search_state(c, others)?;
+                }
             }
             c.leads = leads;
         } else if let Some(attack) = self.attack.as_mut().filter(|a| a.target == -1) {
@@ -7555,6 +7709,11 @@ pub struct Turns {
     /// at −1. The tick oracle shows it set in records/425906646 (the forager 31139's `+0x8c`
     /// stays −1); where the save or the lobby holds it is not known yet.
     pub farm_stops: bool,
+    /// The game's setting that `FUN_140ec0cd0` reads at `FUN_140c87b90()`'s `+0x98` is 1: a hunt
+    /// whose Attack on a predator (class 10) ended ends too (`set_state` 1) when its unit AI has
+    /// orders queued. records/425906646 shows it unset (its 31118 walks to the wolf in update
+    /// 4461); where the save or the lobby holds it is not known yet.
+    pub predator_hunts_end: bool,
     /// The game's setting that `FUN_140ec0cd0` reads at its `+0x680` (a value and a kind); a boar
     /// does not wander when it is 1. The tick oracle reads 0 in MarvinBlue/426048731; where the
     /// save or the lobby holds it is not known yet (the save's `mGameMode` sits elsewhere).
@@ -7646,6 +7805,7 @@ impl Turns {
             drop_sites: Vec::new(),
             carry_rule: false,
             farm_stops: false,
+            predator_hunts_end: false,
             start_work_due: false,
             allied_control: false,
             mode_680: 0,
@@ -9344,6 +9504,7 @@ impl Turns {
                     civ: player.civ,
                     sharing: player.sharing,
                     farm_stops: self.farm_stops,
+                    predator_hunts_end: self.predator_hunts_end,
                     attributes: &player.attributes,
                     graphics: &self.graphics,
                     drop_sites: &self.drop_sites,

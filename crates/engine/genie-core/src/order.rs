@@ -2525,7 +2525,7 @@ impl Turns {
             return Err(Unsupported("a hunter without its hunt or movement state"));
         };
         let unit_player = player;
-        if hunt.retarget(
+        if let Some(arrived) = hunt.retarget(
             &quarry,
             unit_player,
             held,
@@ -2534,6 +2534,14 @@ impl Turns {
             arms,
             mover,
         )? {
+            if arrived {
+                crate::attack::show_arrived(
+                    &arms,
+                    &mut unit.sprite,
+                    &mut unit.anim_speed,
+                    self.streams.get(Stream::Sprite),
+                )?;
+            }
             if let Some(old) = old {
                 let by = self.releaser(player, idx);
                 self.release(old, by)?;
