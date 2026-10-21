@@ -36,11 +36,21 @@ pub fn groups(data: &[u8], full: bool) -> Result<String, Error> {
         "{} unit groups, counter {}",
         g.number_unit_groups, g.unit_group_counter
     );
-    for u in &g.unit_group {
-        if full {
-            let _ = writeln!(out, "{u:#?}");
-            continue;
+    if full {
+        // the state as genie-core holds it, every vector decoded
+        match crate::groups::unit_groups(&header.world.base_world) {
+            Ok(groups) => {
+                for u in &groups.groups {
+                    let _ = writeln!(out, "{u:#?}");
+                }
+            }
+            Err(e) => {
+                let _ = writeln!(out, "the groups do not import: {}", e.0);
+            }
         }
+        return Ok(out);
+    }
+    for u in &g.unit_group {
         let _ = writeln!(
             out,
             "group {} owner {} state {} flags {:#x} centroid {:?} hibernating {} idle {}",

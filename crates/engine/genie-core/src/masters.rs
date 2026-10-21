@@ -217,6 +217,9 @@ pub struct Master {
     /// `+0x8d9`, `hero_flag`: a combat master with bit 0 or 4 set and not both 4 and 7 joins a
     /// group's fifth sub-formation (`FUN_141011300`).
     pub hero_flag: u8,
+    /// `+0x8b8`, `mSpacingModifier`: with the radius on x the unit's radius in a group's
+    /// formation (`FUN_141025920`). The player's masters copy it from the data file's.
+    pub spacing_modifier: f32,
     /// `+0x688`, `+0x68c`: the `.dat`'s `outline_size` (x, y), an obstruction-type-11 object's
     /// shape radii (`FUN_141054fe0`).
     pub outline: [f32; 2],

@@ -1495,13 +1495,17 @@ pub struct Creatable {
         args { inner: (v,) }
     )]
     pub train_locations: Vec<TrainLocation>,
-    /// Damage multiplier for attacks from behind.
+    /// Damage multiplier for attacks from behind (the name of earlier games); DE's master loads
+    /// it to `+0x8b4`, the save's `regeneration_rate`.
     pub rear_attack_modifier: f32,
-    /// Damage multiplier for attacks from the side.
+    /// Damage multiplier for attacks from the side (the name of earlier games); DE's master loads
+    /// it to `+0x8b8`, `mSpacingModifier`: a unit's radius in a group's formation is its
+    /// `collision_size` on x times this (build 158041, `FUN_141025920`).
     pub flank_attack_modifier: f32,
-    /// Kind of creatable unit (e.g. villager, soldier); its values are not all known yet.
+    /// Kind of creatable unit; DE's `mFormationCategory` (`+0x8bc`): the sub-formation of a
+    /// group the unit joins, 0 for units the order splitter never groups (villagers).
     pub creatable_type: u8,
-    /// Hero bit flags (e.g. no conversion, healing); not all known yet.
+    /// Hero bit flags (e.g. no conversion, healing); DE's `hero_flag` (`+0x8d9`).
     pub hero_mode: u8,
     /// Graphic shown while units are garrisoned.
     pub garrison_graphic: i32,

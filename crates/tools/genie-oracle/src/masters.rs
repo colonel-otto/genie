@@ -198,6 +198,11 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .and_then(|t| t.garrison_firepower)
             .unwrap_or(0.0),
         volley_fire: unit.creatable.as_ref().map_or(0.0, |c| c.total_projectiles),
+        // the DE master's mSpacingModifier (+0x8b8), the data file's "flank attack modifier"
+        spacing_modifier: unit
+            .creatable
+            .as_ref()
+            .map_or(0.0, |c| c.flank_attack_modifier),
         max_volley: unit
             .creatable
             .as_ref()
