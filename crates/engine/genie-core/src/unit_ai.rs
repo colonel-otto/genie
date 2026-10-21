@@ -3609,7 +3609,7 @@ impl UnitAi {
     ) -> Result<u32, Unsupported> {
         match n.kind {
             ACTION_COMPLETED => self.action_completed(n, at, fx),
-            ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, fx),
+            ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, side, fx),
             ACTION_INVALIDATED => self.action_invalidated(n, at, computer, ai_rng, side, fx),
             crate::explore::WANTS_POINT if self.explorer() => {
                 self.seek_unexplored(at, computer, ai_rng, side, fx)
@@ -3834,6 +3834,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         ai: &mut Well512,
+        side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
@@ -3846,14 +3847,27 @@ impl UnitAi {
             }
         }
         if p0 == 600 && (order == 700 || action == 600) {
-            if self.ai_type != BOAR_AI {
-                return Err(Unsupported(
-                    "a failed attack on the attack order or action (processIdle, slot 0x240)",
-                ));
-            }
-            self.cap_human_order(fx);
-            let (produced, moved) = self.boar_idle(at, ai);
-            fx.extend(moved.map(Effect::Move));
+            let produced = match self.ai_type {
+                BOAR_AI => {
+                    self.cap_human_order(fx);
+                    let (produced, moved) = self.boar_idle(at, ai);
+                    fx.extend(moved.map(Effect::Move));
+                    produced
+                }
+                TOWER_AI => {
+                    self.cap_human_order(fx);
+                    self.tower_idle(at, computer, side, fx)?
+                }
+                SOLDIER_AI => {
+                    self.cap_human_order(fx);
+                    self.soldier_idle(at, computer, side, fx)?
+                }
+                _ => {
+                    return Err(Unsupported(
+                        "a failed attack on the attack order or action (processIdle, slot 0x240)",
+                    ));
+                }
+            };
             if produced {
                 return Ok(PRODUCED);
             }
@@ -6472,8 +6486,15 @@ mod tests {
         let mut fx = Vec::new();
         let n = Notify::own(9183, ACTION_FAILED, [MOVE_ACTION, 0, 0]);
         assert_eq!(
-            u.action_failed(n, &at([10.0, 10.0, 0.0]), false, &mut rng(), &mut fx)
-                .unwrap(),
+            u.action_failed(
+                n,
+                &at([10.0, 10.0, 0.0]),
+                false,
+                &mut rng(),
+                &mut Recorder::default(),
+                &mut fx
+            )
+            .unwrap(),
             GO_ON
         );
         assert_eq!((u.current_action, u.last_action), (-1, MOVE_ACTION));
@@ -6486,7 +6507,14 @@ mod tests {
         };
         let mut fx = Vec::new();
         let _ = u
-            .action_failed(n, &at([10.0, 12.0, 0.0]), false, &mut rng(), &mut fx)
+            .action_failed(
+                n,
+                &at([10.0, 12.0, 0.0]),
+                false,
+                &mut rng(),
+                &mut Recorder::default(),
+                &mut fx,
+            )
             .unwrap();
         assert_eq!((u.current_order, u.current_action), (-1, -1));
         assert_eq!(u.state_position, [10.0, 12.0]);
@@ -6498,7 +6526,14 @@ mod tests {
             ..UnitAi::default()
         };
         let _ = u
-            .action_failed(n, &at([10.0, 12.0, 0.0]), false, &mut rng(), &mut fx)
+            .action_failed(
+                n,
+                &at([10.0, 12.0, 0.0]),
+                false,
+                &mut rng(),
+                &mut Recorder::default(),
+                &mut fx,
+            )
             .unwrap();
         assert_eq!(u.current_action, 0x25a);
         let mut u = UnitAi {
@@ -6507,8 +6542,15 @@ mod tests {
         };
         let attack = Notify::own(9183, ACTION_FAILED, [600, 0, 0]);
         assert!(
-            u.action_failed(attack, &at([10.0, 12.0, 0.0]), false, &mut rng(), &mut fx)
-                .is_err()
+            u.action_failed(
+                attack,
+                &at([10.0, 12.0, 0.0]),
+                false,
+                &mut rng(),
+                &mut Recorder::default(),
+                &mut fx
+            )
+            .is_err()
         );
     }
 
@@ -6533,14 +6575,28 @@ mod tests {
         let attack = Notify::own(29827, ACTION_FAILED, [600, 0, 0]);
         let mut u = boar(home(true, false));
         let mut fx = Vec::new();
-        let r = u.action_failed(attack, &at([169.5, 50.6, 0.0]), false, &mut rng(), &mut fx);
+        let r = u.action_failed(
+            attack,
+            &at([169.5, 50.6, 0.0]),
+            false,
+            &mut rng(),
+            &mut Recorder::default(),
+            &mut fx,
+        );
         assert_eq!(r, Ok(PRODUCED));
         assert_eq!(first_move(&fx).map(|m| m.point), Some([171.5, 51.5, 0.0]));
         assert_eq!((u.current_action, u.last_action), (MOVE_ACTION, 600));
         assert!(u.home.is_some_and(|h| !h.go_home));
         let mut u = boar(home(false, true));
         let mut fx = Vec::new();
-        let r = u.action_failed(attack, &at([169.5, 50.6, 0.0]), false, &mut rng(), &mut fx);
+        let r = u.action_failed(
+            attack,
+            &at([169.5, 50.6, 0.0]),
+            false,
+            &mut rng(),
+            &mut Recorder::default(),
+            &mut fx,
+        );
         assert_eq!(r, Ok(GO_ON));
         assert_eq!((u.current_target, u.last_target), (-1, 31110));
         assert!(first_move(&fx).is_none());

@@ -2790,6 +2790,7 @@ impl Turns {
             arrived,
             posted,
             ready,
+            failed,
         } = crate::attack::Attack::command(target, &e, arms, visible, tp, mover)?;
         if arrived {
             return Err(Unsupported("an attack task whose MoveTo starts arrived"));
@@ -2799,6 +2800,13 @@ impl Turns {
             if let Some(ai) = unit.ai.as_mut() {
                 ai.post(crate::unit_ai::Notify::own(id, kind, p), state)?;
             }
+        }
+        if failed {
+            attack.fail_at_start(
+                &mut unit.sprite,
+                &mut unit.anim_speed,
+                self.streams.get(Stream::Sprite),
+            )?;
         }
         if ready {
             let me = crate::movement::Me {

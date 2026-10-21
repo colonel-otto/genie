@@ -1468,11 +1468,15 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             self.world_time,
         )?;
         let crate::attack::Commanded {
-            attack,
+            mut attack,
             arrived,
             posted,
             ready,
+            failed,
         } = crate::attack::Attack::command(target, &e, arms, visible, t.player, mover)?;
+        if failed {
+            attack.fail_at_start(&mut unit.sprite, &mut unit.anim_speed, self.sprite)?;
+        }
         if ready {
             return Err(Unsupported(
                 "an attack command of a unit that cannot move (its set_state 6)",

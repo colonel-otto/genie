@@ -149,6 +149,9 @@ pub struct Commanded {
     /// A unit that cannot move in reach of its target: its start's `set_state(6)` (READY) is the
     /// caller's ([`Attack::enter_ready`]), with what the swing reads.
     pub ready: bool,
+    /// A unit that cannot move out of reach of its target: its start's `set_state(13)` is the
+    /// caller's ([`Attack::fail_at_start`]).
+    pub failed: bool,
 }
 
 /// What the Attack reads of its unit and its target when it starts.
@@ -481,16 +484,18 @@ impl Attack {
         // the start's end (0x140a7f8c0): a unit that cannot move goes ready (set_state 6) when
         // readyToAttack reached its ready end (in reach), else stops (13)
         if !movable {
-            if a.state == 5 || a.reach() < e.gap {
+            if a.state == 5 {
                 return Err(Unsupported(
-                    "an attack command of a unit that cannot move out of reach (set_state 13)",
+                    "an attack command of a unit that cannot move to where its target was seen",
                 ));
             }
+            let failed = a.reach() < e.gap;
             return Ok(Commanded {
                 attack: a,
                 arrived: false,
                 posted,
-                ready: true,
+                ready: !failed,
+                failed,
             });
         }
         let arrived = a.set_move(e, mover)?;
@@ -499,7 +504,32 @@ impl Attack {
             arrived,
             posted,
             ready: false,
+            failed: false,
         })
+    }
+
+    /// The start's `set_state(13)` for a unit that cannot move out of reach of its target
+    /// ([`Commanded::failed`]), as [`Attack::finish_in`]: the state, the unit's animation at speed
+    /// 1 and its standing sprite (a unit that cannot move has no `MoveTo` to stop). Its next update
+    /// posts 0x1f9 and removes it.
+    ///
+    /// # Errors
+    ///
+    /// When the unit's master has no standing sprite.
+    pub fn fail_at_start(
+        &mut self,
+        sprite: &mut Option<ActiveSprite>,
+        anim_speed: &mut Option<f32>,
+        rng: &mut Well512,
+    ) -> Result<(), Unsupported> {
+        self.state = FAILED;
+        *anim_speed = Some(1.0);
+        let idle = self
+            .arms
+            .idle_sprite
+            .ok_or(Unsupported("an Attack's unit without a standing sprite"))?;
+        set_sprite(sprite, idle, rng);
+        Ok(())
     }
 
     /// The start's `set_state(6)` for a unit that cannot move ([`Commanded::ready`]): the range
