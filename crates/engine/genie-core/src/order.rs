@@ -688,7 +688,7 @@ impl Turns {
     /// 0x808, [`MoveToAction::to_target`]). Its `command_flag` (`+0x888`) is not held.
     ///
     /// [`MoveToAction::to_target`]: crate::move_to::MoveToAction::to_target
-    fn move_to_object(
+    pub(crate) fn move_to_object(
         &mut self,
         player: usize,
         idx: usize,

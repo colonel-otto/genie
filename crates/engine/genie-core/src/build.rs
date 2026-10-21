@@ -141,8 +141,9 @@ pub struct Built {
     /// last (`FUN_1413cdcd0` without a building): the caller's.
     pub tech: Option<i16>,
     /// The building's master has a task of action type 0x99 (a mule cart, `FUN_1415c60b0`): its
-    /// unit AI's search for resources follows (`FUN_1411c6bd0`'s tail, the caller's).
-    pub cart: bool,
+    /// unit AI's search for resources follows (`FUN_1411c6bd0`'s tail, the caller's), in the
+    /// state the building had before the completion (`set_state(2)` puts it in 2 after).
+    pub cart: Option<u8>,
 }
 
 /// What a builder brings to its Build action's update besides its walk.
@@ -983,12 +984,17 @@ impl Construction {
             .sum();
         attributes.push((98, paid as f32));
         attributes.push((165, paid as f32));
+        let before = site.life.state;
         site.life.state = 2;
         world.sight_state(id, 2);
         Ok(Built {
             attributes,
             tech: (0 <= building.tech).then_some(building.tech),
-            cart: master.tasks.iter().any(|t| t.action_type == CART_TASK),
+            cart: master
+                .tasks
+                .iter()
+                .any(|t| t.action_type == CART_TASK)
+                .then_some(before),
         })
     }
 
@@ -1244,7 +1250,7 @@ mod tests {
             Ok(Worked::Completed(Built {
                 attributes: vec![(4, 5.0), (98, 25.0), (165, 25.0)],
                 tech: None,
-                cart: false,
+                cart: None,
             }))
         );
         assert_eq!((life.state, c.progress, c.snow), (2, 25.0, true));

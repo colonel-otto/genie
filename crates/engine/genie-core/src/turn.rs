@@ -823,7 +823,7 @@ struct Context<'a> {
     techs_done: Vec<i16>,
     /// The mule carts the object's update completed, whose search for resources the caller runs
     /// after it ([`Turns::cart_search`]).
-    carts: Vec<i32>,
+    carts: Vec<(i32, u8)>,
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
     /// which the caller gives after the update ([`Turns::order_work`]).
     work_order: Option<crate::order::Work>,
@@ -5284,8 +5284,8 @@ impl Unit {
         let built = Construction::complete(&mut site, c.spatial)?;
         c.attribute_adds.extend(built.attributes);
         c.techs_done.extend(built.tech);
-        if built.cart {
-            c.carts.push(self.id);
+        if let Some(state) = built.cart {
+            c.carts.push((self.id, state));
         }
         Ok(())
     }
@@ -5784,8 +5784,8 @@ impl Unit {
             if let Some(built) = step.completed {
                 c.attribute_adds.extend(built.attributes);
                 c.techs_done.extend(built.tech);
-                if built.cart {
-                    c.carts.push(target);
+                if let Some(state) = built.cart {
+                    c.carts.push((target, state));
                 }
             }
             // the load dropped at the end of the work (FUN_140aadc50: the player's slot 0xf8 with
@@ -8781,6 +8781,38 @@ impl Turns {
                 owner.add_attribute(kind, amount)?;
             }
         }
+        // a building that moves (a mule cart: its master's speed above 0) gets the moving
+        // object's init (FUN_1411580a0: facing x, its right -z, not waiting); the other
+        // buildings' movement state is never read
+        let moving = self
+            .masters
+            .get(player)
+            .and_then(|m| m.get(master))
+            .and_then(|m| m.moving)
+            .filter(|m| 0.0 < m.speed);
+        let world_time = self.world_time;
+        let mover = moving.map(|stats| Mover {
+            forward: [1.0, 0.0, 0.0],
+            right: [0.0, 0.0, crate::spawn::START_RIGHT_Z],
+            velocity: None,
+            paths: Vec::new(),
+            factor: 1.0,
+            stats,
+            waiting: 0,
+            wait_delays: 0,
+            attack_moving: false,
+            last_move: world_time,
+            moved_at: position,
+            substitute_count: 0,
+            ignore_units: Vec::new(),
+            last_turn: 0.0,
+            angle: 0.0,
+            move_to_point: None,
+            speed_stopped: false,
+            pauses: Vec::new(),
+            in_the_way: Vec::new(),
+            sprite_facets: None,
+        });
         let owner = &mut self.players[player];
         owner.objects.push(Unit {
             id,
@@ -8805,7 +8837,7 @@ impl Turns {
             production: None,
             gather_point: None,
             build: None,
-            mover: None,
+            mover,
             move_to: None,
             fly: None,
             construction: self
@@ -9678,7 +9710,7 @@ impl Turns {
     /// below 99999, `DAT_142ef9008`); then slot 0x140 (`FUN_141070c90`): the work command toward
     /// it at its place, else at the cart's own (slot 0x7e8: no carried-resource test, any task;
     /// `+0x888`'s count is not held). A cart with a target moves to it (slot 0x138): not modelled.
-    pub(crate) fn cart_search(&mut self, p: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn cart_search(&mut self, p: usize, id: i32, state: u8) -> Result<(), Unsupported> {
         const CART_REACH: f32 = crate::image::turn::CART_REACH;
         let Some(idx) = self.players[p].objects.iter().position(|u| u.id == id) else {
             return Ok(());
@@ -9769,23 +9801,34 @@ impl Turns {
         } else {
             None
         };
-        if let Some((target, point)) = found {
-            let work = crate::order::Work {
-                target,
-                point,
-                carry_test: false,
-                filter: -1,
-                notified: true,
-            };
-            self.order_work(p, idx, &work)?;
-        }
-        let unit = &self.players[p].objects[idx];
-        if unit.ai.as_ref().is_some_and(|ai| ai.current_target != -1) {
-            return Err(Unsupported(
-                "a mule cart's move to its unit AI's target (slot 0x138)",
-            ));
-        }
-        Ok(())
+        // all of it runs inside the completion's set_state(2), before the cart is in state 2
+        let built = std::mem::replace(&mut self.players[p].objects[idx].life.state, state);
+        let result = (|| {
+            if let Some((target, point)) = found {
+                let work = crate::order::Work {
+                    target,
+                    point,
+                    carry_test: false,
+                    filter: -1,
+                    notified: true,
+                };
+                self.order_work(p, idx, &work)?;
+            }
+            // with a target (the one the work command gave the unit AI) the cart moves to it
+            // (slot 0x138 at its place)
+            let target = self.players[p].objects[idx]
+                .ai
+                .as_ref()
+                .map_or(-1, |ai| ai.current_target);
+            if target != -1
+                && let Some(at) = self.spatial.get(target).map(|o| o.position)
+            {
+                self.move_to_object(p, idx, target, at)?;
+            }
+            Ok::<_, Unsupported>(())
+        })();
+        self.players[p].objects[idx].life.state = built;
+        result
     }
 
     /// SET GATHER POINT's handler ([`Command::GatherPoint`]).
@@ -10635,8 +10678,8 @@ impl Turns {
                 }
                 // a completed mule cart's search for resources (FUN_1411c6bd0's tail, before
                 // the completion's technology)
-                for cart in carts {
-                    if let Err(e) = self.cart_search(p, cart) {
+                for (cart, state) in carts {
+                    if let Err(e) = self.cart_search(p, cart, state) {
                         result = result.and(Err(e));
                     }
                 }
