@@ -11090,6 +11090,10 @@ impl Turns {
                     }
                 }
             }
+            // the player's groups (BaseWorld::update at 0x141551796), before its gates close
+            if let Err(e) = self.update_groups(p) {
+                self.stop_player(p, e);
+            }
             self.close_gates(p, &mut gates_open);
         }
         self.spatial.grow_unknown(seconds(dt));

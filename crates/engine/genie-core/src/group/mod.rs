@@ -19,6 +19,7 @@ mod create;
 pub mod formation;
 mod place;
 mod stats;
+mod update;
 
 /// An object's link to its group: `mGroupID` (`+0x6d0`) and `mGroupFlag` (`+0x6d4`), -1 and -2
 /// from the object's setup (`FUN_141196df0`) and in every object of a save in no group.
@@ -311,6 +312,45 @@ pub struct PointLine {
     pub length: f32,
     /// `mDesiredLength`.
     pub desired_length: f32,
+}
+
+impl PointLine {
+    /// `AddPointAtFront` (`FUN_141008040`): `p` with its height 0 goes before the newest point;
+    /// the first point's length is 0, any other adds its distance to the point after it. A line
+    /// of two points or more longer than its desired length then drops its oldest points while
+    /// it stays longer without the last stretch.
+    pub fn add_at_front(&mut self, mut p: LinePoint) {
+        p.point[1] = 0.0;
+        self.points.insert(0, p);
+        if self.points.len() == 1 {
+            self.length = 0.0;
+        } else {
+            self.length += stretch(&self.points[0], &self.points[1]);
+        }
+        if self.desired_length < self.length && 1 < self.points.len() {
+            let n = self.points.len();
+            let mut d = stretch(&self.points[n - 1], &self.points[n - 2]);
+            while self.desired_length < self.length - d {
+                if self.points.len() < 2 {
+                    break;
+                }
+                let _ = self.points.pop();
+                self.length -= d;
+                // one point left: the game's next pass breaks at once
+                let n = self.points.len();
+                if n < 2 {
+                    break;
+                }
+                d = stretch(&self.points[n - 1], &self.points[n - 2]);
+            }
+        }
+    }
+}
+
+/// The 3D distance between two stored points (`FUN_14087e560`, `FUN_14099ef70`).
+fn stretch(a: &LinePoint, b: &LinePoint) -> f32 {
+    let d = crate::fmath::sub(a.point, b.point);
+    crate::fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
 }
 
 /// The members of one formation category (`FUN_141023570`).
