@@ -412,6 +412,8 @@ pub mod sprite {
 pub mod terrain {
     /// 0.0010000000474974513
     pub const INSIDE: f32 = f32::from_bits(0x3a83_126f);
+    /// 1.0
+    pub const TILE: f32 = f32::from_bits(0x3f80_0000);
 }
 
 /// The values `crate::tile_path`'s port reads.

@@ -1089,7 +1089,8 @@ impl Turns {
 
     /// `FUN_140ad0240`: the unit of `master` spawns beside the building at `i`. The spawn point
     /// ([`spawn_point`], from `FUN_140ace630`), then the master's slot 0x40 at the building's
-    /// height ([`Turns::combat_object`]). Then attribute 81 lowers by its population, the building notifies its unit AI 506
+    /// height (the ground's then, [`Turns::combat_object`]). Then attribute 81 lowers by its
+    /// population, the building notifies its unit AI 506
     /// with 619, and the gather point's work comes (`FUN_140ace9c0`): `+0x7f9` (waiting to move)
     /// set, the work command on the gather point's target at the point (slot 0x128 with 1). A
     /// building without a gather point (`+0xc30` 0) spawns the unit idle, its spot facing nothing;
@@ -1098,8 +1099,7 @@ impl Turns {
     /// Not held: its facet and angle, its sprite (the slice holds sprites from an attack on), its
     /// powerup offset, the building's `+0xc1c` group (unsaved), the game's events
     /// (`FUN_140c898a0`), the player's queue counts (`+0x18`, `FUN_14104f330`) and per-master
-    /// counts (slot 0x398's `+0x13b0`), the sounds and particles (`FUN_1411a52e0`). The unit's
-    /// height is the building's (the map's elevation is not held).
+    /// counts (slot 0x398's `+0x13b0`), the sounds and particles (`FUN_1411a52e0`).
     fn spawn(&mut self, p: usize, i: usize, master: i16, pop: f32) -> Result<(), Unsupported> {
         if self.players[p].computer {
             return Err(Unsupported(
@@ -1165,10 +1165,11 @@ impl Turns {
     /// random first frame and several facets), the standing sprite ([`ActiveSprite::start`],
     /// Sprite stream), the angle (Object stream, sequence flag 2), the unit AI
     /// ([`UnitAi::constructed`], three AI-stream draws) and the powerup offset (Object stream).
-    /// The object takes its place, its record and mesh shape, its sight and its storage (flags 1,
-    /// 2 and 32, `FUN_141193860`); its player's attributes 98 and 164 (and 246 under
-    /// [`Turns::unit_cost_246`]) grow by its paid cost and a villager's (class 4) attribute 248 by
-    /// one. It joins its player's list last; its index there.
+    /// The object takes its place (its height the ground's, by its master's fly mode), its record
+    /// and mesh shape, its sight and its storage (flags 1, 2 and 32, `FUN_141193860`); its
+    /// player's attributes 98 and 164 (and 246 under [`Turns::unit_cost_246`]) grow by its paid
+    /// cost and a villager's (class 4) attribute 248 by one. It joins its player's list last; its
+    /// index there.
     pub(crate) fn combat_object(
         &mut self,
         p: usize,
@@ -1192,6 +1193,17 @@ impl Turns {
         let moving = made
             .moving
             .ok_or(Unsupported("a new unit of a master that does not move"))?;
+        // the constructor's new_position: the ground's height by the master's fly mode (slot
+        // 0x60, FUN_141193a10)
+        let position = self.spatial.terrain.as_ref().map_or(position, |t| {
+            t.ground(position[0], position[1]).map_or(position, |g| {
+                [
+                    position[0],
+                    position[1],
+                    crate::missile::grounded(position[2], g, false, made.fly_mode),
+                ]
+            })
+        });
         let ai_type = factory_type(made.class, master, made.missile)?
             .ok_or(Unsupported("a new combat unit without a unit AI"))?;
         let standing = (0 <= made.standing_sprite)

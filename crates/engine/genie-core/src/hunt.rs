@@ -1398,6 +1398,7 @@ pub(crate) mod tests {
             paths: vec![],
             factor: 1.0,
             stats: MoveStats {
+                fly_mode: 0,
                 speed: 0.8,
                 turn_rate: f32::MAX,
                 turn_radius: 0.0,

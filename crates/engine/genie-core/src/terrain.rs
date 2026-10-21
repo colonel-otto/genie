@@ -65,6 +65,81 @@ pub struct Terrain {
     pub restrictions: Vec<Vec<f32>>,
     /// Per tile, its elevation (`+0x14`, the save's `t->m_elevation`); empty when not known.
     pub elevations: Vec<u8>,
+    /// Per tile, its shape (`+0x8`, not saved): what the map's load (`FUN_140f733f0` over the
+    /// whole map) makes of the elevations about it ([`Terrain::set_elevations`]).
+    pub shapes: Vec<u8>,
+}
+
+/// A tile's side (`DAT_14330eb8c`), which the slope shares measure against.
+const TILE: f32 = crate::image::terrain::TILE;
+
+/// `FUN_140f69470` (HD's `RGE_Map::get_tile_type`): the shape of the tile of elevation `e` from
+/// its neighbours' (`n`orth is `y − 1`, `e`ast `x + 1`; a neighbour off the map counts as the
+/// tile's own): a side or corner one step up decides it, in the routine's order; 0 is flat.
+#[allow(clippy::many_single_char_names)]
+fn tile_shape(e: u8, [n, e_, w, s]: [u8; 4], [ne, sw, nw, se]: [u8; 4]) -> u8 {
+    let (up, down) = (i32::from(e) + 1, i32::from(e) - 1);
+    let is = |v: u8, w: i32| i32::from(v) == w;
+    if is(n, up) && is(e_, up) {
+        14
+    } else if is(w, up) && is(s, up) {
+        13
+    } else if is(n, up) && is(w, up) {
+        16
+    } else if is(e_, up) && is(s, up) {
+        15
+    } else if is(n, up) {
+        6
+    } else if is(e_, up) {
+        8
+    } else if is(w, up) {
+        5
+    } else if is(s, up) {
+        7
+    } else if is(ne, up) {
+        if is(w, down) && is(s, down) { 2 } else { 10 }
+    } else if is(sw, up) {
+        if is(n, down) && is(e_, down) { 1 } else { 9 }
+    } else if is(nw, up) {
+        if is(e_, down) && is(s, down) { 3 } else { 11 }
+    } else if is(se, up) {
+        if is(n, down) && is(w, down) { 4 } else { 12 }
+    } else {
+        0
+    }
+}
+
+/// The static `new_position`'s slope share (`0x1411a58b0`, the switch on the tile's shape): how
+/// far up the tile's slope the point `fx`, `fy` (its place within the tile) lies. The arms follow
+/// the switch's cases one by one.
+#[allow(clippy::match_same_arms)]
+fn slope_share(shape: u8, fx: f32, fy: f32) -> f32 {
+    let sum = fy + fx;
+    match shape {
+        1 if TILE <= sum => TILE - fx,
+        1 | 7 => fy,
+        2 if TILE <= sum => TILE - fy,
+        2 | 8 => fx,
+        3 if fx <= fy => TILE - fy,
+        3 => TILE - fx,
+        4 if fx <= fy => fx,
+        4 => fy,
+        5 => TILE - fx,
+        6 => TILE - fy,
+        9 if fx - fy < 0.0 => -(fx - fy),
+        10 if 0.0 < fx - fy => fx - fy,
+        11 if sum < TILE => TILE - sum,
+        12 if TILE < sum => sum - TILE,
+        13 if sum < TILE => TILE - fx,
+        13 => fy,
+        14 if sum < TILE => TILE - fy,
+        14 => fx,
+        15 if fx <= fy => fy,
+        15 => fx,
+        16 if fx <= fy => TILE - fx,
+        16 => TILE - fy,
+        _ => 0.0,
+    }
 }
 
 /// What a completed building's foundation reads of it (`FUN_1411ddd90`).
@@ -140,7 +215,59 @@ impl Terrain {
             terrains,
             restrictions,
             elevations: Vec::new(),
+            shapes: Vec::new(),
         }
+    }
+
+    /// The tiles' elevations, row by row, and the shapes the map's load makes of them
+    /// (`FUN_140f733f0`: [`tile_shape`] on every tile).
+    pub fn set_elevations(&mut self, elevations: Vec<u8>) {
+        self.elevations = elevations;
+        let at = |x: i32, y: i32, own: u8| {
+            self.index(x, y)
+                .and_then(|i| self.elevations.get(i).copied())
+                .unwrap_or(own)
+        };
+        let mut shapes = Vec::with_capacity(self.elevations.len());
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let Some(e) = self
+                    .index(x, y)
+                    .and_then(|i| self.elevations.get(i).copied())
+                else {
+                    shapes.push(0);
+                    continue;
+                };
+                let (w_last, h_last) = (self.width - 1, self.height - 1);
+                // FUN_140f69470's reads: a neighbour past the map's edge is the tile itself
+                let n = if 0 < y { at(x, y - 1, e) } else { e };
+                let east = if x < w_last { at(x + 1, y, e) } else { e };
+                let west = if 0 < x { at(x - 1, y, e) } else { e };
+                let s = if y < h_last { at(x, y + 1, e) } else { e };
+                let ne = if 0 < y && x < w_last {
+                    at(x + 1, y - 1, e)
+                } else {
+                    e
+                };
+                let sw = if 0 < x && y < h_last {
+                    at(x - 1, y + 1, e)
+                } else {
+                    e
+                };
+                let nw = if 0 < y && 0 < x {
+                    at(x - 1, y - 1, e)
+                } else {
+                    e
+                };
+                let se = if y < h_last && x < w_last {
+                    at(x + 1, y + 1, e)
+                } else {
+                    e
+                };
+                shapes.push(tile_shape(e, [n, east, west, s], [ne, sw, nw, se]));
+            }
+        }
+        self.shapes = shapes;
     }
 
     fn index(&self, x: i32, y: i32) -> Option<usize> {
@@ -156,29 +283,17 @@ impl Terrain {
 
     /// The ground's height under (`x`, `y`) on the map (the static `new_position`'s,
     /// `0x1411a58b0`, which slot 0x60 takes): the tile's elevation plus its slope's share by the
-    /// tile's shape (`+0x8`, made at the map's load from the elevations about it). A tile whose
-    /// eight neighbours on the map share its elevation is flat; a slope's share is not modelled.
+    /// tile's shape ([`slope_share`] of the place within the tile).
     pub fn ground(&self, x: f32, y: f32) -> Result<f32, Unsupported> {
         let (tx, ty) = (x as i32, y as i32);
         let i = self
             .index(tx, ty)
-            .filter(|_| !self.elevations.is_empty())
+            .filter(|&i| i < self.elevations.len() && i < self.shapes.len())
             .ok_or(Unsupported(
                 "the ground's height where the elevations are not known",
             ))?;
-        let e = self.elevations[i];
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                if let Some(j) = self.index(tx + dx, ty + dy)
-                    && self.elevations[j] != e
-                {
-                    return Err(Unsupported(
-                        "the ground's height on a slope (the tile's shape)",
-                    ));
-                }
-            }
-        }
-        Ok(f32::from(e))
+        let (fx, fy) = (x - tx as f32, y - ty as f32);
+        Ok(f32::from(self.elevations[i]) + slope_share(self.shapes[i], fx, fy))
     }
 
     /// The terrain defense of an object on tile (`x`, `y`) whose master has `defense_terrain_bonus`
@@ -346,15 +461,49 @@ mod tests {
             terrains,
             restrictions: vec![vec![0.0; 40]; 5],
             elevations: vec![0; n],
+            shapes: vec![0; n],
         }
     }
 
     #[test]
-    fn the_ground_is_a_flat_tile_s_elevation_and_a_slope_is_not_modelled() {
+    fn the_ground_is_the_tile_s_elevation_plus_its_slope_s_share() {
+        // two columns, four rows: (0, 3) is one up, so (0, 2) slopes up to the south (shape 7)
+        // and (1, 2) up to the south-west corner (9); (1, 3) slopes up to the west (5)
         let mut t = map(vec![0; 8], vec![-1; 8]);
-        t.elevations = vec![1, 1, 1, 1, 1, 1, 2, 1];
+        t.set_elevations(vec![1, 1, 1, 1, 1, 1, 2, 1]);
+        assert_eq!(t.shapes, [0, 0, 0, 0, 7, 9, 0, 5]);
         assert_eq!(t.ground(0.5, 0.5), Ok(1.0));
-        assert!(t.ground(1.5, 2.5).is_err());
+        assert_eq!(t.ground(0.5, 2.25), Ok(1.25));
+        assert_eq!(t.ground(1.25, 2.75), Ok(1.5));
+        assert_eq!(t.ground(1.75, 2.25), Ok(1.0));
+        let mut unknown = map(vec![0; 8], vec![-1; 8]);
+        unknown.elevations.clear();
+        assert!(unknown.ground(0.5, 0.5).is_err());
+    }
+
+    #[test]
+    fn a_tile_s_shape_follows_its_sides_then_its_corners_one_step_up() {
+        let flat = [1; 4];
+        assert_eq!(tile_shape(1, flat, flat), 0);
+        assert_eq!(tile_shape(1, [2, 2, 1, 1], flat), 14);
+        assert_eq!(tile_shape(1, [2, 1, 1, 1], flat), 6);
+        assert_eq!(tile_shape(1, [1, 1, 1, 2], flat), 7);
+        // a corner up with the far sides down is a saddle (2), else a corner slope (10)
+        assert_eq!(tile_shape(1, [1, 1, 0, 0], [2, 1, 1, 1]), 2);
+        assert_eq!(tile_shape(1, flat, [2, 1, 1, 1]), 10);
+        assert_eq!(tile_shape(0, flat.map(|_| 0), [0, 0, 0, 1]), 12);
+    }
+
+    #[test]
+    fn a_slope_s_share_is_how_far_up_the_tile_the_point_lies() {
+        assert_eq!(slope_share(5, 0.25, 0.5), 0.75);
+        assert_eq!(slope_share(6, 0.25, 0.5), 0.5);
+        assert_eq!(slope_share(9, 0.25, 0.5), 0.25);
+        assert_eq!(slope_share(9, 0.5, 0.25), 0.0);
+        assert_eq!(slope_share(11, 0.25, 0.25), 0.5);
+        assert_eq!(slope_share(13, 0.75, 0.5), 0.5);
+        assert_eq!(slope_share(16, 0.25, 0.5), 0.75);
+        assert_eq!(slope_share(0, 0.25, 0.5), 0.0);
     }
 
     /// MarvinBlue/426048731's house 10026 at (104, 38): its tiles 103..104 x 37..38 were snow (32)

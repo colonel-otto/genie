@@ -79,6 +79,9 @@ pub struct PathData {
 /// What movement reads of the unit's master.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MoveStats {
+    /// The master's `fly_mode` (`+0x608`): how its place takes the ground's height
+    /// ([`Mover::grounded`]).
+    pub fly_mode: u8,
     /// The top speed (object slot 65, `0x141202c70` -> `FUN_14114d1d0`): the master's speed
     /// (`+0x740`), times the current sprite's speed factor when that is above 0.
     pub speed: f32,
@@ -557,6 +560,7 @@ impl Mover {
         position: [f32; 3],
         dt: f32,
         map: [i32; 2],
+        terrain: Option<&crate::terrain::Terrain>,
         now: u32,
     ) -> [f32; 3] {
         let Some(v) = self.velocity.as_mut() else {
@@ -575,8 +579,28 @@ impl Mover {
         let Some(at) = self.move_forward(dt * speed, position, map) else {
             return position;
         };
+        let at = self.grounded(at, terrain);
         self.mark_move(at, now);
         at
+    }
+
+    /// The static `new_position`'s end (`0x1411a58b0`, slot 0x60: `FUN_141158000` ->
+    /// `FUN_141193a10`): the place takes the ground's height ([`crate::terrain::Terrain::ground`])
+    /// by the master's fly mode: 0 puts it on the ground, 1 lifts it to the ground when below,
+    /// others keep it. Without the map's elevations the height stays; `+0x7f8` (the place is on
+    /// the ground) is not held.
+    #[must_use]
+    pub fn grounded(
+        &self,
+        [x, y, z]: [f32; 3],
+        terrain: Option<&crate::terrain::Terrain>,
+    ) -> [f32; 3] {
+        let z = terrain
+            .and_then(|t| t.ground(x, y).ok())
+            .map_or(z, |ground| {
+                crate::missile::grounded(z, ground, false, self.stats.fly_mode)
+            });
+        [x, y, z]
     }
 
     /// The position setter's end (`FUN_141161950`): a place `at` more than 1e-7 off where it
@@ -884,6 +908,7 @@ impl Mover {
             if level.waypoint < level.points.len() as i32 {
                 let p = level.point(level.waypoint);
                 let at = self.set_position(map_position(p), world.map);
+                let at = self.grounded(at, world.terrain.as_ref());
                 self.moved_to(me, at, world, pathing, now);
             }
             self.paths[0].flags &= !2;
@@ -2751,6 +2776,7 @@ mod tests {
 
     fn stats() -> MoveStats {
         MoveStats {
+            fly_mode: 0,
             speed: 0.8,
             turn_rate: f32::MAX,
             turn_radius: 0.0,
@@ -2948,7 +2974,7 @@ mod tests {
 
     /// One tick of the walker: the velocity step, then the motion step from where it got.
     fn tick(m: &mut Mover, at: [f32; 3], world: &mut Spatial) -> ([f32; 3], Motion) {
-        let at = m.step_velocity(at, DT, world.map, 0);
+        let at = m.step_velocity(at, DT, world.map, None, 0);
         world.set_position(9177, at);
         let motion = m
             .motion(

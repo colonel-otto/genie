@@ -715,6 +715,7 @@ fn mover(
         paths: levels,
         factor: 1.0,
         stats: MoveStats {
+            fly_mode: table.fly_mode(civ, s.master_obj).unwrap_or(0),
             speed,
             turn_rate: genie_core::movement::turn_rate(turn_speed, facets),
             turn_radius: 0.0,
@@ -2110,6 +2111,9 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     // the farm setting the tick oracle shows set in records/425906646 (Turns::farm_stops)
     turns.farm_stops = true;
     turns.game_mode = header.file_header.game_options_read.game_options.game_mode;
+    // the Empire Wars start's pass, once in the game's first update (the world's +0x6c6)
+    turns.start_work_due =
+        turns.game_mode == genie_core::start_work::EMPIRE_WARS && turns.world_time == 0;
     turns.game_state = u32::from(world.temp_game_state);
     turns.victory_conquest = world.tribe_scenario.base_scenario.victory_conquest != 0;
     if let Some(table) = masters {
@@ -2518,6 +2522,7 @@ fn moving_stats(
     let restriction = usize::try_from(s.terrain_restriction_mask_id).ok()?;
     let facets = table.graphics.get(&moving.move_sprite_id).map(|g| g.facets);
     Some(genie_core::movement::MoveStats {
+        fly_mode: table.fly_mode(civ, s.id()).unwrap_or(0),
         speed: if 0.0 < factor { base * factor } else { base },
         turn_rate: genie_core::movement::turn_rate(moving.turn_speed, facets),
         turn_radius: 0.0,
@@ -2651,11 +2656,12 @@ fn map_terrain(header: &Header, terrain: &TerrainTable) -> genie_core::terrain::
         terrain.kinds().to_vec(),
         terrain.passable().to_vec(),
     );
-    t.elevations = map
-        .rows
-        .iter()
-        .flat_map(|r| r.tiles.iter().map(|t| t.t_m_elevation))
-        .collect();
+    t.set_elevations(
+        map.rows
+            .iter()
+            .flat_map(|r| r.tiles.iter().map(|t| t.t_m_elevation))
+            .collect(),
+    );
     t
 }
 

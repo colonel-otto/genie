@@ -70,6 +70,7 @@ pub mod short_path;
 pub mod spatial;
 pub mod spawn;
 pub mod sprite;
+pub mod start_work;
 pub mod tasks;
 pub mod tech;
 pub mod terrain;

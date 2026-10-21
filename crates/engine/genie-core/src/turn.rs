@@ -1712,7 +1712,7 @@ impl Unit {
     /// 0xd and 0xe may, 2 unless an Attack (9); in any other state only an Artifact (`0x6b`)
     /// without a target or a point (`+0x30`, `+0x38` = −1). A trade (`0x6f`) in state 4 is not
     /// modelled, nor is an action the slice does not hold.
-    fn interruptible(&self) -> Result<bool, Unsupported> {
+    pub(crate) fn interruptible(&self) -> Result<bool, Unsupported> {
         if self.unmodelled_action.is_some() {
             return Err(Unsupported(
                 "slot 0x2d0 of an action the slice does not model",
@@ -4833,7 +4833,13 @@ impl Unit {
             self.reload_worldtime = 0;
         }
         if let Some(mover) = self.mover.as_mut() {
-            let at = mover.step_velocity(self.position, c.dt_seconds, c.spatial.map, c.world_time);
+            let at = mover.step_velocity(
+                self.position,
+                c.dt_seconds,
+                c.spatial.map,
+                c.spatial.terrain.as_ref(),
+                c.world_time,
+            );
             if at != self.position {
                 self.position = at;
                 c.spatial.set_position(self.id, at);
@@ -7359,6 +7365,9 @@ pub struct Turns {
     pub mode_680: i32,
     /// The game mode (the save's `mGameMode`, options `+0x34`).
     pub game_mode: i32,
+    /// The Empire Wars start's pass is due ([`crate::start_work`]): the world's `+0x6c6` is
+    /// clear in game mode 13, which a game's start has.
+    pub start_work_due: bool,
     /// The world's game state (`+0x88`, the save's `tempGameState`): 1 once the game is over.
     pub game_state: u32,
     /// The scenario's `victory_conquest` (`world+0x7e0`'s `+0x2c0`, `FUN_140ca4d20`): the game
@@ -7437,6 +7446,7 @@ impl Turns {
             drop_sites: Vec::new(),
             carry_rule: false,
             farm_stops: false,
+            start_work_due: false,
             mode_680: 0,
             game_mode: 0,
             game_state: 0,
@@ -8989,12 +8999,17 @@ impl Turns {
         self.sync_moving();
         // which players' gates are open (BaseWorld::update's flags)
         let mut gates_open = vec![false; self.players.len()];
+        // the Empire Wars start's pass, once (the world's +0x6c6 set before the players update)
+        let start_work = std::mem::take(&mut self.start_work_due);
         for p in 0..self.players.len() {
             let _player =
                 tracing::debug_span!(target: crate::trace::UPDATE, "player", player = p).entered();
             self.player_time[p] = self.player_time[p].wrapping_add(dt);
             let turn = (p == self.player_turn).then_some(self.player_time[p]);
             if let Err(e) = self.open_gates(p, &mut gates_open) {
+                self.stop_player(p, e);
+            }
+            if start_work && let Err(e) = self.start_work(p) {
                 self.stop_player(p, e);
             }
             self.pathing.tiles_changed(self.spatial.take_changes());
@@ -9851,7 +9866,7 @@ mod tests {
             ],
             vec![vec![1.0]],
         );
-        terrain.elevations = vec![0; n];
+        terrain.set_elevations(vec![0; n]);
         t.spatial.terrain = Some(terrain);
         let players = t.players.len();
         let seen = (0..players).fold(0u64, |b, p| b | (1 << p) | (1 << (32 + p)));

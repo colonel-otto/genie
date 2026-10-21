@@ -273,6 +273,37 @@ pub fn closest_resource(
     objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, Unsupported>,
     reach: &mut dyn FnMut(i32) -> Result<bool, Unsupported>,
 ) -> Result<i32, Unsupported> {
+    closest_resource_at(
+        seeker,
+        kind,
+        max_workers,
+        map,
+        explored,
+        passable,
+        objects,
+        reach,
+    )
+    .map(|(id, _)| id)
+}
+
+/// [`closest_resource`] with what its out argument (`param_5`) takes: the distance of the
+/// answer's tile (the search's 1.4-per-diagonal measure, truncated), None for no answer (the
+/// argument keeps its value).
+///
+/// # Errors
+///
+/// As [`closest_resource`].
+#[allow(clippy::too_many_arguments)]
+pub fn closest_resource_at(
+    seeker: &Seeker,
+    kind: u8,
+    max_workers: i32,
+    map: [i32; 2],
+    explored: &dyn Fn(i32, i32) -> Result<bool, Unsupported>,
+    passable: &dyn Fn(i32, i32) -> bool,
+    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, Unsupported>,
+    reach: &mut dyn FnMut(i32) -> Result<bool, Unsupported>,
+) -> Result<(i32, Option<i32>), Unsupported> {
     if seeker.state < 2 {
         return Err(Unsupported("a resource search by a unit below state 2"));
     }
@@ -309,7 +340,7 @@ pub fn closest_resource(
         };
         d(a) < d(b)
     };
-    let (mut fallback, mut fallback_steps, mut tested) = (-1, 1_000_000, 0);
+    let (mut fallback, mut fallback_steps, mut fallback_d, mut tested) = (-1, 1_000_000, 0, 0);
     let mut i = 0;
     while i < queue.len() {
         let Cell { x, y, steps } = queue[i];
@@ -352,17 +383,18 @@ pub fn closest_resource(
         }
         if o.workers < cap {
             if reach(o.id)? {
-                return Ok(o.id);
+                return Ok((o.id, Some(d)));
             }
         } else if steps < fallback_steps && reach(o.id)? {
             fallback = o.id;
             fallback_steps = steps;
+            fallback_d = d;
         }
         if TESTED < tested {
             break;
         }
     }
-    Ok(fallback)
+    Ok((fallback, (fallback != -1).then_some(fallback_d)))
 }
 
 /// The object of a tile's list `ClosestResourceObject` takes: the first in a pasture or
