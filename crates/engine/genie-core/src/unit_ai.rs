@@ -2275,7 +2275,7 @@ impl UnitAi {
         if self.current_action == -1
             && (!busy || interruptible)
             && result != 0xd
-            && self.can_order(at)?
+            && self.can_order(at)
             && !at.garrisoned
         {
             self.run_orders(at, &mut fx)?;
@@ -3714,12 +3714,12 @@ impl UnitAi {
 
     /// The order check of a unit that is not busy: an order of these values the unit can give up
     /// (`FUN_140c4eea0` with 0) ends, its target removed (`FUN_140c5e1e0`); its priority stays.
-    fn check_order(&mut self, at: &Surroundings) -> Result<(), Unsupported> {
+    const fn check_order(&mut self, at: &Surroundings) -> Result<(), Unsupported> {
         let ends = matches!(
             self.current_order,
             0x269 | 700 | 0x2c5 | 0x2c6 | 0x2c9 | 0x2cf | 0x2d0 | 0x2dd | 0x322
         );
-        if ends && self.can_order(at)? {
+        if ends && self.can_order(at) {
             if self.current_order == PATROL_2 {
                 return Err(Unsupported("the end of a patrol order 733"));
             }
@@ -3732,8 +3732,8 @@ impl UnitAi {
     /// `FUN_140c4eea0` with 0: a unit takes orders unless its master has a task of action type
     /// 0x99 (`FUN_1415c60b0`) and its target exists in the world (`FUN_1415417a0` on `+0x48`) or
     /// it has an action value (`+0x44`).
-    const fn can_order(&self, at: &Surroundings) -> Result<bool, Unsupported> {
-        Ok(!(at.task_0x99 && (at.target.is_some() || self.current_action != -1)))
+    const fn can_order(&self, at: &Surroundings) -> bool {
+        !(at.task_0x99 && (at.target.is_some() || self.current_action != -1))
     }
 
     /// The unit AI between its owner's turns (`FUN_140c68980`, from `RGE_Combat_Object::update`
@@ -3748,7 +3748,7 @@ impl UnitAi {
         if (self.current_action != -1 || at.busy) && !at.interruptible {
             return Ok(fx);
         }
-        if self.can_order(at)? {
+        if self.can_order(at) {
             self.run_orders(at, &mut fx)?;
         }
         Ok(fx)
