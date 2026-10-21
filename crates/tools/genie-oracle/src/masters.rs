@@ -138,6 +138,9 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .as_ref()
             .and_then(|c| c.train_locations.first())
             .map_or(0, |t| t.queue_time),
+        trained_at: unit.creatable.as_ref().map_or_else(Vec::new, |c| {
+            c.train_locations.iter().map(|t| t.location_id).collect()
+        }),
         attack_sprite2: unit
             .type50
             .as_ref()

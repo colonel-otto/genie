@@ -82,4 +82,5 @@ pub mod turn;
 pub mod unit_ai;
 pub mod visibility;
 pub mod vision;
+pub mod wall;
 pub mod zones;

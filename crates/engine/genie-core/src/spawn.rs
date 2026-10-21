@@ -995,7 +995,9 @@ impl Turns {
     /// The production step for a research at the front of the queue of the building at `i` of
     /// player `p` (`FUN_1411e7dc0`). Without a make action the research's comes
     /// (`TRIBE_Action_Make_Tech`, constructor `FUN_140ad0700`; its effect's first preparation,
-    /// `FUN_1413d1530`, loads graphics, and an effect that marks an upgrade is not modelled) and
+    /// `FUN_1413d1530`, loads graphics and marks the masters an upgrade turns into, `+0x330`:
+    /// the save does not hold the mark, and its readers, the object search `FUN_1411650e0` and
+    /// the masters' slot 0xc0, are not modelled) and
     /// starts (slot 0x28, `0x140ad1d80`): its start test
     /// ([`crate::tech::TechState::start_test`] against
     /// what the queue entry paid) puts the technology in state 2 at the building's master, the
@@ -1036,11 +1038,6 @@ impl Turns {
         let get = |k: i16| owner.get(k);
         let factors = crate::tech::factors(tech, &get)?;
         if !production.action {
-            if def.marks_upgrade() {
-                return Err(Unsupported(
-                    "a research whose effect marks an upgrade (FUN_140ec4540, +0x330)",
-                ));
-            }
             if !owner.techs[t].start_test(def, factors, &front.costs, &get)? {
                 return Err(Unsupported(
                     "a research whose start test fails (its refund)",

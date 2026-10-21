@@ -2421,6 +2421,11 @@ fn work_masters(
         if let Some(c) = combat {
             work.cost = build_cost(&c.build_inventory);
             work.build_time = c.train_location.first().map_or(0, |t| t.train_time);
+            work.trained_at = c
+                .train_location
+                .iter()
+                .map(|t| t.train_location_id)
+                .collect();
             work.charge_type = c.charge_type;
             work.formation_category = c.temp_formation_category;
             work.volley_fire = c.volley_fire_amount;
@@ -3146,6 +3151,7 @@ impl Decoder {
                     point: [c.x, c.y],
                 });
             }
+            Packet::BuildWall(c) => return Some(build_wall_command(&c, sections)),
             Packet::CancelBuild(c) => {
                 return Some(Command::Delete {
                     player: c.commp_id as usize,
@@ -3442,6 +3448,42 @@ fn build_command(packet: &de::command::Build, sections: &[PlayerSection<'_>]) ->
         queued: packet.field_0x1e != 0,
         commits: packet.field_0x1f == 0,
     }
+}
+
+/// `BUILD_WALL` (0x69): the wall's master at `+0x10`, the line's tiles at `+0x8`..`+0xe`, the
+/// target at `+0x14`, the queue flags at `+0x1a` and `+0x1b`, the builders (at most a human
+/// player's 60, `FUN_140e6b250`).
+fn build_wall_command(packet: &de::command::BuildWall, sections: &[PlayerSection<'_>]) -> Command {
+    let player = packet.commp_id as usize;
+    let master = packet.o_id as i16;
+    if packet.num == LAST_COMMANDED {
+        return Command::Unmodelled {
+            player,
+            why: Unsupported("BUILD_WALL by the last commanded units"),
+        };
+    }
+    let unit_ai = sections.get(player).map_or(
+        Err(Unsupported(
+            "BUILD_WALL names a player the save does not have",
+        )),
+        |section| new_unit_ai(section.objects(), master),
+    );
+    Command::BuildWall(genie_core::wall::Wall {
+        player,
+        master,
+        unit_ai,
+        from: [packet.x1, packet.y1],
+        to: [packet.x2, packet.y2],
+        target: packet.q_id,
+        builders: packet
+            .ids
+            .iter()
+            .copied()
+            .take((packet.num as usize).min(MAX_UNITS))
+            .collect(),
+        queued: packet.field_0x1a != 0,
+        commits: packet.field_0x1b == 0,
+    })
 }
 
 /// The unit AI a new object of `master` gets, by its class (`FUN_141215a90`): the building AI

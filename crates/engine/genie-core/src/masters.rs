@@ -198,6 +198,9 @@ pub struct Master {
     pub hit_points: i16,
     /// The build time: the first train location's train time, 0 without one.
     pub build_time: i16,
+    /// The train locations' ids (`+0x898`, each entry's first short): the units that build a
+    /// building, the buildings that train a unit (`FUN_141263610`).
+    pub trained_at: Vec<i16>,
     /// The combat master's `weapon_range` (`+0x828`, object slot 0x230) and
     /// `minimum_weapon_range` (`+0x850`, slot 0x240).
     pub weapon_range: f32,

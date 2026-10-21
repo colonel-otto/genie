@@ -353,6 +353,9 @@ pub enum Command {
         /// too, and the queue's orders become ready after (`FUN_140c42b60`).
         commits: bool,
     },
+    /// `BUILD_WALL` (0x69, `FUN_140e7b2e0`): a line of the player's wall foundations and its
+    /// builders shared out over them ([`crate::wall`]).
+    BuildWall(crate::wall::Wall),
     /// SET GATHER POINT (0x78, `FUN_140e7e9a0`): each of the player's objects of `ids` that takes
     /// a gather point (its master garrisons, `+0x5d4`; the list of units it trains,
     /// `FUN_141625a20`, is not modelled) takes `point` and `target` with its master, or with
@@ -8080,163 +8083,18 @@ impl Turns {
                         return;
                     }
                 }
-                // the new object's new_position: the ground's height (slot 0x60)
-                let position = self.on_ground(player, master, position);
-                let id = self.next_object_id;
-                self.next_object_id += 1;
-                // what its first update as a built building starts (slot 0x7f0)
-                let (default_make, default_task) = self
-                    .masters
-                    .get(player)
-                    .and_then(|m| m.get(master))
-                    .map_or((false, None), Master::default_start);
-                let ai = unit_ai.and_then(|t| {
-                    t.map(|t| UnitAi::constructed(t, position, self.streams.get(Stream::Ai)))
-                        .transpose()
-                });
-                let ai = ai.unwrap_or_else(|e| {
-                    // the constructor's draws are unknown, so the turn player's are too
-                    crate::trace::player_unsupported(self.ticks, self.player_turn, e);
-                    let turn = &mut self.players[self.player_turn];
-                    let at = turn.objects.len();
-                    let _ = turn.unsupported.get_or_insert((self.ticks, at, e));
-                    turn.stopped = true;
-                    None
-                });
-                // the combat setup's powerup offset (`+0xa54`, FUN_14121df60's "setup" draw)
-                let _ = self.streams.get(Stream::Object).rand15();
-                // the static init (FUN_1411a45a0): the last storage entry of flag 0 is held
-                // (FUN_141193710), those of flags 1, 2 and 32 go to the owner (FUN_141193860)
-                let storage = self
-                    .masters
-                    .get(player)
-                    .and_then(|m| m.get(master))
-                    .map(|m| m.storage.clone())
-                    .unwrap_or_default();
-                let mut held = (-1, 0.0);
-                for &(kind, amount, flag) in &storage {
-                    if flag == 0 && kind != -1 {
-                        held = (kind, amount);
-                    }
-                }
-                let owner = &mut self.players[player];
-                for &(kind, amount, flag) in &storage {
-                    if 0 <= kind
-                        && matches!(flag, 1 | 2 | 32)
-                        && let Err(e) = owner.add_attribute(kind, amount)
-                    {
-                        self.stop_player(player, e);
-                        return;
-                    }
-                }
-                let owner = &mut self.players[player];
-                owner.objects.push(Unit {
-                    id,
-                    footprint_waits: 0,
-                    position,
-                    life: Lifecycle {
-                        class: Class::Animated,
-                        state: 0,
-                        hp: 1.0,
-                        master_id: master,
-                        attribute_type: held.0,
-                        amount: held.1,
-                        ..Lifecycle::default()
-                    },
-                    ai,
-                    artifact: None,
-                    unmodelled_action: None,
-                    production: None,
-                    gather_point: None,
-                    build: None,
-                    mover: None,
-                    move_to: None,
-                    fly: None,
-                    construction: self
-                        .masters
-                        .get(player)
-                        .and_then(|m| m.get(master))
-                        .map(|m| Construction {
-                            progress: 0.0,
-                            desolid: true,
-                            builders: 0,
-                            hit_points: m.hit_points,
-                            build_time: m.build_time,
-                            record: crate::spatial::Obstruction {
-                                kind: m.obstruction_type,
-                                class: m.obstruction_class,
-                            },
-                            snow: false,
-                            sprite_override: false,
-                            started: false,
-                        }),
-                    work_rate_powerup: 0.0,
-                    attackable: true,
-                    untargetable: false,
-                    under_attack: false,
-                    last_human_order: 0,
-                    town_bell: crate::town_bell::TownBell::default(),
-                    pasture: -1,
-                    my_pasture: -1,
-                    undeletable: false,
-                    capture_flag: 0,
-                    annex_of: None,
-                    hp_powerups: [0.0; 2],
-                    hunt: None,
-                    gather: None,
-                    attack: None,
-                    explore: None,
-                    enter: None,
-                    missile: None,
-                    attack_count: 0,
-                    // the TRIBE combat setup (FUN_14121df60): the master's volley fire
-                    firepower: self
-                        .masters
-                        .get(player)
-                        .and_then(|m| m.get(master))
-                        .map_or(0.0, |m| m.volley_fire),
-                    next_volley: 0,
-                    reload_worldtime: 0,
-                    garrison: Vec::new(),
-                    garrison_time: 0,
-                    relics: [0; 2],
-                    raider_countdown: 0,
-                    // every building holds a gate's lock, open
-                    gate: Some(Gate {
-                        first_update: true,
-                        ..Gate::default()
-                    }),
-                    workers: 0,
-                    combat: true,
-                    default_task,
-                    default_fly: None,
-                    default_make,
-                    make: None,
-                    stopped: false,
-                    sprite: None,
-                    anim_speed: None,
-                    attack_timer: 0.0,
-                    reload_stinger: 0.0,
-                    reload_powerup: 0.0,
-                    attack_powerup: 0.0,
-                    armor_powerups: [0; 2],
-                    armor_removed: [0; 2],
-                    charge: 0.0,
-                    charge_hit: false,
-                });
-                let built = self
-                    .construction_terrain(player, master, position)
-                    .and_then(|()| self.clear_footprint(player, master, [position[0], position[1]]))
-                    .and_then(|()| {
-                        self.task_builders(
-                            player,
-                            id,
-                            master,
-                            position,
-                            builders,
-                            (queued, commits),
-                        )
-                    });
+                let built =
+                    self.found(player, master, unit_ai, position)
+                        .and_then(|(id, position)| {
+                            self.task_builders(
+                                player,
+                                id,
+                                master,
+                                position,
+                                builders,
+                                (queued, commits),
+                            )
+                        });
                 if let Err(e) = built {
                     self.stop_player(player, e);
                 }
@@ -8308,6 +8166,11 @@ impl Turns {
             } => {
                 if let Err(e) = self.command_queue(player, ids, target, point) {
                     self.stop_player(player, e);
+                }
+            }
+            Command::BuildWall(ref w) => {
+                if let Err(e) = self.build_wall(w) {
+                    self.stop_player(w.player, e);
                 }
             }
             Command::Delete { player, id } => {
@@ -8493,7 +8356,7 @@ impl Turns {
     /// The command check's units (`FUN_140e553f0`, `FUN_140e55250`): each unit the world holds
     /// that is the player's own, or any while players may order each other's units
     /// ([`Turns::allied_control`]); −1 for the others.
-    fn checked_units(&self, player: usize, units: &[i32]) -> Vec<i32> {
+    pub(crate) fn checked_units(&self, player: usize, units: &[i32]) -> Vec<i32> {
         units
             .iter()
             .map(|&id| match self.object(id) {
@@ -8518,6 +8381,181 @@ impl Turns {
                 self.spatial.set_gait(u.id, u.gait());
             }
         }
+    }
+
+    /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108, the building
+    /// constructor `FUN_1411de5f0`): a new object of `master` for `player` at `position` (state
+    /// 0, hit points 1, the ground's height), with a unit AI of the given type if its class gets
+    /// one, its construction terrain ([`Turns::construction_terrain`]) and its footprint cleared
+    /// ([`Turns::clear_footprint`]); then the player pays the master's cost and the foundation,
+    /// desolid, takes its place and its sight ([`Turns::foundation_place`]). Its id and position.
+    pub(crate) fn found(
+        &mut self,
+        player: usize,
+        master: i16,
+        unit_ai: Result<Option<u32>, Unsupported>,
+        position: [f32; 3],
+    ) -> Result<(i32, [f32; 3]), Unsupported> {
+        // the new object's new_position: the ground's height (slot 0x60)
+        let position = self.on_ground(player, master, position);
+        let id = self.next_object_id;
+        self.next_object_id += 1;
+        // what its first update as a built building starts (slot 0x7f0)
+        let (default_make, default_task) = self
+            .masters
+            .get(player)
+            .and_then(|m| m.get(master))
+            .map_or((false, None), Master::default_start);
+        let ai = unit_ai.and_then(|t| {
+            t.map(|t| UnitAi::constructed(t, position, self.streams.get(Stream::Ai)))
+                .transpose()
+        });
+        let ai = ai.unwrap_or_else(|e| {
+            // the constructor's draws are unknown, so the turn player's are too
+            crate::trace::player_unsupported(self.ticks, self.player_turn, e);
+            let turn = &mut self.players[self.player_turn];
+            let at = turn.objects.len();
+            let _ = turn.unsupported.get_or_insert((self.ticks, at, e));
+            turn.stopped = true;
+            None
+        });
+        // the combat setup's powerup offset (`+0xa54`, FUN_14121df60's "setup" draw)
+        let _ = self.streams.get(Stream::Object).rand15();
+        // the static init (FUN_1411a45a0): the last storage entry of flag 0 is held
+        // (FUN_141193710), those of flags 1, 2 and 32 go to the owner (FUN_141193860)
+        let storage = self
+            .masters
+            .get(player)
+            .and_then(|m| m.get(master))
+            .map(|m| m.storage.clone())
+            .unwrap_or_default();
+        let mut held = (-1, 0.0);
+        for &(kind, amount, flag) in &storage {
+            if flag == 0 && kind != -1 {
+                held = (kind, amount);
+            }
+        }
+        // what its death reads of the master: its dying sprite, death spawns and decay
+        let death = self.masters.get(player).and_then(|m| m.get(master)).map_or(
+            (None, false, -1, None),
+            |m| {
+                (
+                    (0 <= m.death_sprite).then_some(m.death_sprite),
+                    0 <= m.death_spawns[0],
+                    m.death_spawns[1],
+                    m.life,
+                )
+            },
+        );
+        let owner = &mut self.players[player];
+        for &(kind, amount, flag) in &storage {
+            if 0 <= kind && matches!(flag, 1 | 2 | 32) {
+                owner.add_attribute(kind, amount)?;
+            }
+        }
+        let owner = &mut self.players[player];
+        owner.objects.push(Unit {
+            id,
+            footprint_waits: 0,
+            position,
+            life: Lifecycle {
+                class: Class::Animated,
+                state: 0,
+                hp: 1.0,
+                master_id: master,
+                attribute_type: held.0,
+                amount: held.1,
+                dying_sprite: death.0,
+                death_spawn: death.1,
+                remains: death.2,
+                master: death.3,
+                ..Lifecycle::default()
+            },
+            ai,
+            artifact: None,
+            unmodelled_action: None,
+            production: None,
+            gather_point: None,
+            build: None,
+            mover: None,
+            move_to: None,
+            fly: None,
+            construction: self
+                .masters
+                .get(player)
+                .and_then(|m| m.get(master))
+                .map(|m| Construction {
+                    progress: 0.0,
+                    desolid: true,
+                    builders: 0,
+                    hit_points: m.hit_points,
+                    build_time: m.build_time,
+                    record: crate::spatial::Obstruction {
+                        kind: m.obstruction_type,
+                        class: m.obstruction_class,
+                    },
+                    snow: false,
+                    sprite_override: false,
+                    started: false,
+                }),
+            work_rate_powerup: 0.0,
+            attackable: true,
+            untargetable: false,
+            under_attack: false,
+            last_human_order: 0,
+            town_bell: crate::town_bell::TownBell::default(),
+            pasture: -1,
+            my_pasture: -1,
+            undeletable: false,
+            capture_flag: 0,
+            annex_of: None,
+            hp_powerups: [0.0; 2],
+            hunt: None,
+            gather: None,
+            attack: None,
+            explore: None,
+            enter: None,
+            missile: None,
+            attack_count: 0,
+            // the TRIBE combat setup (FUN_14121df60): the master's volley fire
+            firepower: self
+                .masters
+                .get(player)
+                .and_then(|m| m.get(master))
+                .map_or(0.0, |m| m.volley_fire),
+            next_volley: 0,
+            reload_worldtime: 0,
+            garrison: Vec::new(),
+            garrison_time: 0,
+            relics: [0; 2],
+            raider_countdown: 0,
+            // every building holds a gate's lock, open
+            gate: Some(Gate {
+                first_update: true,
+                ..Gate::default()
+            }),
+            workers: 0,
+            combat: true,
+            default_task,
+            default_fly: None,
+            default_make,
+            make: None,
+            stopped: false,
+            sprite: None,
+            anim_speed: None,
+            attack_timer: 0.0,
+            reload_stinger: 0.0,
+            reload_powerup: 0.0,
+            attack_powerup: 0.0,
+            armor_powerups: [0; 2],
+            armor_removed: [0; 2],
+            charge: 0.0,
+            charge_hit: false,
+        });
+        self.construction_terrain(player, master, position)?;
+        self.clear_footprint(player, master, [position[0], position[1]])?;
+        self.foundation_place(player, id, master, position)?;
+        Ok((id, position))
     }
 
     /// BUILD's first step (`FUN_140e7a400`): a farm (master 50) whose point's tile (truncated) is
@@ -8561,6 +8599,23 @@ impl Turns {
     /// not, at most what the player holds). A refused BUILD places, pays and draws nothing (the
     /// player's slot 0x380 shows why). A cost in population (attribute 4) is not modelled.
     fn build_allowed(&self, player: usize, master: i16, at: [f32; 2]) -> Result<bool, Unsupported> {
+        let human = !self.players[player].computer;
+        if self.placement_code(player, master, at, human)? != 0 {
+            return Ok(false);
+        }
+        self.affords(player, master)
+    }
+
+    /// The master's placement test (slot 0x50, [`crate::spawn::build_placement`]) of a
+    /// foundation of `master` for `player` at `at`, `human` its explored test (`p6`): 0 when it
+    /// may go there, else the game's code.
+    pub(crate) fn placement_code(
+        &self,
+        player: usize,
+        master: i16,
+        at: [f32; 2],
+        human: bool,
+    ) -> Result<u8, Unsupported> {
         let site = self.master_of(player, master)?;
         if self.spatial.sight.is_none() {
             return Err(Unsupported(
@@ -8581,7 +8636,7 @@ impl Turns {
             ))?;
         let build = crate::spawn::BuildSite {
             player,
-            human: !self.players[player].computer,
+            human,
             clearance: site.clearance,
             class: site.class,
             obstructs: !matches!(site.obstruction_type, 0 | 12),
@@ -8591,9 +8646,14 @@ impl Turns {
             zones: false,
         };
         let map = crate::spawn::WorldMap { turns: self };
-        if crate::spawn::build_placement(&build, &map, at)? != 0 {
-            return Ok(false);
-        }
+        crate::spawn::build_placement(&build, &map, at)
+    }
+
+    /// The payment's test of a foundation of `master` for `player` (`FUN_14162fb60` ->
+    /// `FUN_141618db0`): every cost entry of a resource, paid or not, at most what the player
+    /// holds. A cost in population (attribute 4) is not modelled.
+    pub(crate) fn affords(&self, player: usize, master: i16) -> Result<bool, Unsupported> {
+        let site = self.master_of(player, master)?;
         let owner = &self.players[player];
         for &(resource, amount, _) in &site.cost {
             let Ok(r) = usize::try_from(resource) else {
@@ -8813,34 +8873,23 @@ impl Turns {
         Ok(())
     }
 
-    /// BUILD's part for its own player: the cost, paid when the foundation is placed (the
-    /// pending debit came before, [`Turns::debit_listed`]), and per
-    /// builder its ignore list emptied (`FUN_141197da0`), then slot 0x128 on the foundation (its
-    /// slot 0x7e8 with task filter −1: the town-bell record, [`Turns::town_bell_order`]), then
-    /// the work command (slot 37, `FUN_14106ff70`): the master it builds with
-    /// ([`Masters::work_master`]), then the Build action from that master's task. A builder with
-    /// a unit AI takes a queued BUILD, or one that `commits` while its AI holds an order not
-    /// ready (`FUN_140c4dfa0`), as the build order in its queue instead (slot 0x30 into slot 0x28:
-    /// order 0x2be on the foundation at BUILD's point, priority 100, the point shown, ready, as
-    /// the game's saves hold it; [`Turns::build_order`] runs it). The readiness pass of a committing BUILD with
-    /// orders queued (`FUN_140c42b60`) is not modelled.
-    fn task_builders(
+    /// A new foundation's part after its constructor: the player pays the master's cost (each
+    /// entry flagged paid), and the foundation, desolid, takes its place on the map (its
+    /// obstruction record comes with its first builder) and its sight, which waits for its
+    /// construction to start (its place links its tiles to its anchor, `FUN_1411e6780`, and its
+    /// desolid flag unlinks them, `FUN_1411cf770`).
+    fn foundation_place(
         &mut self,
         player: usize,
         foundation: i32,
         master: i16,
         position: [f32; 3],
-        builders: &[i32],
-        (queued, commits): (bool, bool),
     ) -> Result<(), Unsupported> {
-        let masters = self
+        let site = self
             .masters
             .get(player)
-            .ok_or(Unsupported("BUILD tasks the builders: no master table"))?;
-        let site = masters
-            .get(master)
+            .and_then(|m| m.get(master))
             .ok_or(Unsupported("BUILD of a master the player does not have"))?;
-        let site_class = i32::from(site.class);
         let owner = &mut self.players[player];
         for &(resource, amount, paid) in &site.cost {
             let slot = usize::try_from(resource)
@@ -8851,7 +8900,6 @@ impl Turns {
                 *slot -= f32::from(amount);
             }
         }
-        // a new foundation is desolid: its obstruction record comes with its first builder
         self.spatial.insert(
             foundation,
             Placed {
@@ -8868,8 +8916,6 @@ impl Turns {
                 obstruction: None,
             },
         );
-        // its sight waits for its construction to start; its place links its tiles to its anchor
-        // (FUN_1411e6780) and its desolid flag unlinks them (FUN_1411cf770)
         if let Some(v) = self.spatial.sight.as_mut() {
             let umv = v.link_building(position, site.radius);
             v.unlink_building(position, site.radius);
@@ -8888,6 +8934,97 @@ impl Turns {
                 },
             );
         }
+        Ok(())
+    }
+
+    /// BUILD's builders (the cost was paid with the foundation, [`Turns::found`]; the pending
+    /// debit came before, [`Turns::debit_listed`]): per
+    /// builder its ignore list emptied (`FUN_141197da0`), then slot 0x128 on the foundation (its
+    /// slot 0x7e8 with task filter −1: the town-bell record, [`Turns::town_bell_order`]), then
+    /// the work command (slot 37, `FUN_14106ff70`): the master it builds with
+    /// ([`Masters::work_master`]), then the Build action from that master's task. A builder with
+    /// a unit AI takes a queued BUILD, or one that `commits` while its AI holds an order not
+    /// ready (`FUN_140c4dfa0`), as the build order in its queue instead (slot 0x30 into slot 0x28:
+    /// order 0x2be on the foundation at BUILD's point, priority 100, the point shown, ready, as
+    /// the game's saves hold it; [`Turns::build_order`] runs it). The readiness pass of a committing BUILD with
+    /// orders queued (`FUN_140c42b60`) is not modelled.
+    fn task_builders(
+        &mut self,
+        player: usize,
+        foundation: i32,
+        master: i16,
+        position: [f32; 3],
+        builders: &[i32],
+        (queued, commits): (bool, bool),
+    ) -> Result<(), Unsupported> {
+        let mut chosen = Vec::new();
+        let mut ordered = Vec::new();
+        for &id in builders {
+            let unit = self.players[player]
+                .objects
+                .iter()
+                .find(|o| o.id == id)
+                .ok_or(Unsupported("a builder the slice does not have"))?;
+            // the unit AI's queue path (the handler's last loop)
+            if let Some(ai) = unit.ai.as_ref()
+                && (queued || (commits && ai.has_unready_order()))
+            {
+                ordered.push(id);
+                continue;
+            }
+            chosen.push((
+                id,
+                self.build_task(player, id, foundation, master, position)?,
+            ));
+        }
+        if !ordered.is_empty() && !chosen.is_empty() {
+            return Err(Unsupported(
+                "a BUILD whose builders take both paths (their order in the packet)",
+            ));
+        }
+        for id in ordered {
+            let idx = self.players[player]
+                .objects
+                .iter()
+                .position(|o| o.id == id)
+                .expect("found above");
+            self.queue_build(player, idx, foundation, master, position)?;
+            if commits {
+                return Err(Unsupported(
+                    "the readiness pass of a committing BUILD with orders queued (FUN_140c42b60)",
+                ));
+            }
+        }
+        for (id, (with, build)) in chosen {
+            let idx = self.players[player]
+                .objects
+                .iter()
+                .position(|o| o.id == id)
+                .expect("found above");
+            self.build_directly(player, idx, (with, build), (foundation, master), position)?;
+        }
+        Ok(())
+    }
+
+    /// What slot 0x128 on `foundation` (of `master`, at `position`) takes for the builder `id`
+    /// of `player`: the master it builds with ([`Masters::work_master`]) and the Build action of
+    /// that master's task. A builder whose action would be replaced, without a Build task for it
+    /// or with one not enabled, is not modelled.
+    pub(crate) fn build_task(
+        &self,
+        player: usize,
+        id: i32,
+        foundation: i32,
+        master: i16,
+        position: [f32; 3],
+    ) -> Result<(i16, BuildAction), Unsupported> {
+        let masters = self
+            .masters
+            .get(player)
+            .ok_or(Unsupported("BUILD tasks the builders: no master table"))?;
+        let site = masters
+            .get(master)
+            .ok_or(Unsupported("BUILD of a master the player does not have"))?;
         let target = TaskTarget {
             id: foundation,
             master: site,
@@ -8904,129 +9041,128 @@ impl Turns {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        let mut chosen = Vec::new();
-        let mut ordered = Vec::new();
-        for &id in builders {
-            let owner = &world.players[player];
-            let unit = owner
-                .objects
-                .iter()
-                .find(|o| o.id == id)
-                .ok_or(Unsupported("a builder the slice does not have"))?;
-            // the unit AI's queue path (the handler's last loop)
-            if let Some(ai) = unit.ai.as_ref()
-                && (queued || (commits && ai.has_unready_order()))
-            {
-                ordered.push(id);
-                continue;
-            }
-            if unit.artifact.is_some() || unit.production.is_some() || unit.fly.is_some() {
-                return Err(Unsupported("a builder with an action (its replacement)"));
-            }
-            let actor = Actor {
-                id,
-                master: masters
-                    .get(unit.life.master_id)
-                    .ok_or(Unsupported("a unit of a master the player does not have"))?,
-                player,
-                held: (unit.life.attribute_type, unit.life.amount),
-                attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
-                civ: owner.civ,
-            };
-            let (with, task) = masters
-                .work_master(&actor, &target, &target, -1, &world)?
-                .ok_or(Unsupported("a builder with no task for its foundation"))?;
-            if task.action_type != BUILD {
-                return Err(Unsupported(
-                    "a builder whose task for its foundation is not Build",
-                ));
-            }
-            if !crate::tasks::enabled(&owner.attributes, task.enablement) {
-                return Err(Unsupported("a builder whose Build task is not enabled"));
-            }
-            let builder = masters
-                .get(with)
-                .expect("work_master returns a master the player has");
-            let gap = footprint_gap(unit.position, builder.radius, position, site.radius);
-            let task = BuildTask {
-                range: task.work_range,
-                work_value: task.work_val1,
-                work_rate: builder.work_rate + unit.work_rate_powerup,
-            };
-            chosen.push((id, with, BuildAction::start(foundation, gap, task)));
+        let owner = &world.players[player];
+        let unit = owner
+            .objects
+            .iter()
+            .find(|o| o.id == id)
+            .ok_or(Unsupported("a builder the slice does not have"))?;
+        if unit.artifact.is_some() || unit.production.is_some() || unit.fly.is_some() {
+            return Err(Unsupported("a builder with an action (its replacement)"));
         }
-        if !ordered.is_empty() && !chosen.is_empty() {
+        let actor = Actor {
+            id,
+            master: masters
+                .get(unit.life.master_id)
+                .ok_or(Unsupported("a unit of a master the player does not have"))?,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+            civ: owner.civ,
+        };
+        let (with, task) = masters
+            .work_master(&actor, &target, &target, -1, &world)?
+            .ok_or(Unsupported("a builder with no task for its foundation"))?;
+        if task.action_type != BUILD {
             return Err(Unsupported(
-                "a BUILD whose builders take both paths (their order in the packet)",
+                "a builder whose task for its foundation is not Build",
             ));
         }
-        for id in ordered {
-            let idx = self.players[player]
-                .objects
-                .iter()
-                .position(|o| o.id == id)
-                .expect("found above");
-            let unit = &mut self.players[player].objects[idx];
-            if let Some(m) = unit.mover.as_mut() {
-                m.ignore_units.clear();
-            }
-            let state = unit.life.state;
-            let order = crate::unit_ai::QueuedOrder {
-                issuer: player as i32,
-                order: BUILD_ORDER,
-                priority: 100,
-                target: foundation,
-                target_owner: player as i32,
-                point: [position[0], position[1], 0.0],
-                range: 0.0,
-                shown: [position[0], position[1]],
-                ready: true,
-                target_type: i32::from(master),
-            };
-            let ai = unit.ai.as_mut().expect("chosen with a unit AI");
-            let _ = ai.queue_order(state, order, false, false)?;
-            if commits {
-                return Err(Unsupported(
-                    "the readiness pass of a committing BUILD with orders queued (FUN_140c42b60)",
-                ));
-            }
+        if !crate::tasks::enabled(&owner.attributes, task.enablement) {
+            return Err(Unsupported("a builder whose Build task is not enabled"));
         }
-        for (id, with, build) in chosen {
-            let idx = self.players[player]
-                .objects
-                .iter()
-                .position(|o| o.id == id)
-                .expect("found above");
-            if let Some(m) = self.players[player].objects[idx].mover.as_mut() {
-                m.ignore_units.clear();
-            }
-            // slot 0x128 -> slot 0x7e8 (task filter -1): the villager's town-bell record, its
-            // flag cleared (FUN_1412067f0)
-            self.town_bell_order(player, idx, foundation, -1)?;
-            // the work command (FUN_14106ff70): the master changes (slot 0x90, its action list
-            // cleared); the Build action takes its foundation (FUN_140a7a230, slot 0x178)
-            if self.players[player].objects[idx].life.master_id != with {
-                self.change_master(player, idx, with)?;
-            }
-            self.take(foundation);
-            // the work command's notify (slot 0x828): the build order and the foundation, with
-            // the point slot 0x128 passes (BUILD's x and y, on the ground)
-            let unit = &mut self.players[player].objects[idx];
-            if let Some(ai) = unit.ai.as_mut() {
-                ai.notify_work(
-                    BUILD_ORDER,
-                    BUILD_ACTION,
-                    Some((foundation, site_class)),
-                    [position[0], position[1], 0.0],
-                    true,
-                    self.streams.get(Stream::Ai),
-                )?;
-            }
-            // the install (slot 0x808): the action list clears (its actions' teardowns), then
-            // holds the Build
-            self.clear_actions(player, idx)?;
-            self.players[player].objects[idx].build = Some(build);
+        let builder = masters
+            .get(with)
+            .expect("work_master returns a master the player has");
+        let gap = footprint_gap(unit.position, builder.radius, position, site.radius);
+        let task = BuildTask {
+            range: task.work_range,
+            work_value: task.work_val1,
+            work_rate: builder.work_rate + unit.work_rate_powerup,
+        };
+        Ok((with, BuildAction::start(foundation, gap, task)))
+    }
+
+    /// The queue path of a builder at `idx` of `player` (slot 0x30 into slot 0x28): its ignore
+    /// list empties (`FUN_141197da0`) and its unit AI's queue takes the build order on
+    /// `foundation` (of `master`) at `position`, priority 100, the point shown, ready, as the
+    /// game's saves hold it ([`Turns::build_order`] runs it).
+    pub(crate) fn queue_build(
+        &mut self,
+        player: usize,
+        idx: usize,
+        foundation: i32,
+        master: i16,
+        position: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(m) = unit.mover.as_mut() {
+            m.ignore_units.clear();
         }
+        let state = unit.life.state;
+        let order = crate::unit_ai::QueuedOrder {
+            issuer: player as i32,
+            order: BUILD_ORDER,
+            priority: 100,
+            target: foundation,
+            target_owner: player as i32,
+            point: [position[0], position[1], 0.0],
+            range: 0.0,
+            shown: [position[0], position[1]],
+            ready: true,
+            target_type: i32::from(master),
+        };
+        let ai = unit
+            .ai
+            .as_mut()
+            .ok_or(Unsupported("a queued build order without a unit AI"))?;
+        let _ = ai.queue_order(state, order, false, false)?;
+        Ok(())
+    }
+
+    /// The direct path of a builder at `idx` of `player`, slot 0x128 on `foundation` at
+    /// `position` with what [`Turns::build_task`] found: its ignore list empties
+    /// (`FUN_141197da0`), the town-bell record (slot 0x7e8 with task filter −1), then the work
+    /// command (`FUN_14106ff70`): the master changes, the Build takes its foundation, the unit
+    /// AI's notify, the action list clears and holds the Build.
+    pub(crate) fn build_directly(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (with, build): (i16, BuildAction),
+        (foundation, master): (i32, i16),
+        position: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        let site_class = i32::from(self.master_of(player, master)?.class);
+        if let Some(m) = self.players[player].objects[idx].mover.as_mut() {
+            m.ignore_units.clear();
+        }
+        // slot 0x128 -> slot 0x7e8 (task filter -1): the villager's town-bell record, its
+        // flag cleared (FUN_1412067f0)
+        self.town_bell_order(player, idx, foundation, -1)?;
+        // the work command (FUN_14106ff70): the master changes (slot 0x90, its action list
+        // cleared); the Build action takes its foundation (FUN_140a7a230, slot 0x178)
+        if self.players[player].objects[idx].life.master_id != with {
+            self.change_master(player, idx, with)?;
+        }
+        self.take(foundation);
+        // the work command's notify (slot 0x828): the build order and the foundation, with
+        // the point slot 0x128 passes (BUILD's x and y, on the ground)
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                BUILD_ORDER,
+                BUILD_ACTION,
+                Some((foundation, site_class)),
+                [position[0], position[1], 0.0],
+                true,
+                self.streams.get(Stream::Ai),
+            )?;
+        }
+        // the install (slot 0x808): the action list clears (its actions' teardowns), then
+        // holds the Build
+        self.clear_actions(player, idx)?;
+        self.players[player].objects[idx].build = Some(build);
         Ok(())
     }
 

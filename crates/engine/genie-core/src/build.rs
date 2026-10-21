@@ -873,9 +873,10 @@ impl Construction {
     /// base `set_state` (`FUN_14121cc40`, `FUN_14119d710`) puts it in state 2. The local player's
     /// sound (slot 0x4c0), the event 0x69 (`FUN_140c898a0`) and the owner's AI (slot 0x388) are
     /// not held. Last, the master's technology is researched (`FUN_1413cdcd0` with `param_3` 0
-    /// and no building; [`Built::tech`], the caller's). Walls and gates (`adjacent_mode`), a stack
-    /// unit, a building that disappears when built, own stores (mode 16), the castle (82), the
-    /// monastery (104), the wonder (276) and masters with object flag 0x40 are not modelled.
+    /// and no building; [`Built::tech`], the caller's). A stack unit, a building that disappears
+    /// when built, own stores (mode 16), the castle (82), the monastery (104), the wonder (276)
+    /// and masters with object flag 0x40 are not modelled; a wall's (`adjacent_mode`) facets, its
+    /// own and its neighbours' (`FUN_1411ce890`), are not held.
     pub fn complete(site: &mut Site<'_>, world: &mut Spatial) -> Result<Built, Unsupported> {
         let id = site.id;
         let done = &site.completion;
@@ -918,10 +919,10 @@ impl Construction {
                 attributes.push((resource as i16, amount));
             }
         }
-        if building.adjacent_mode != 0 || building.stack_unit >= 0 || building.disappears_when_built
-        {
+        // a wall's (adjacent mode) facets and its neighbours' (FUN_1411ce890) are not held
+        if building.stack_unit >= 0 || building.disappears_when_built {
             return Err(Unsupported(
-                "a completion of walls, a stack unit or a vanishing building",
+                "a completion of a stack unit or a vanishing building",
             ));
         }
         if matches!(master.id, 82 | 104 | 276) || master.object_flags & 0x40 != 0 {

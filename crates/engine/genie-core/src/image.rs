@@ -535,3 +535,13 @@ pub mod visibility {
     /// 0.009999999776482582
     pub const EDGE: f32 = f32::from_bits(0x3c23_d70a);
 }
+
+/// The values `crate::wall`'s port reads.
+pub mod wall {
+    /// 0.5
+    pub const HALF: f32 = f32::from_bits(0x3f00_0000);
+    /// 9.999999747378752e-06
+    pub const MAP_MARGIN: f32 = f32::from_bits(0x3727_c5ac);
+    /// 1.0
+    pub const ONE: f32 = f32::from_bits(0x3f80_0000);
+}

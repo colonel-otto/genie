@@ -95,8 +95,8 @@ pub fn movement(data: &[u8], player: usize, ids: &[i32]) -> Result<String, Error
         }
         let _ = writeln!(
             out,
-            "{} master {} at ({}, {}, {})",
-            s.id, s.master_obj, s.t_x, s.t_y, s.t_z
+            "{} master {} at ({}, {}, {}) facet {} sprite {}",
+            s.id, s.master_obj, s.t_x, s.t_y, s.t_z, s.facet, s.sprite
         );
         let _ = writeln!(
             out,
