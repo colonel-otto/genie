@@ -1620,42 +1620,24 @@ impl Mover {
         target: Option<(i32, &Placed)>,
         path: &mut Path,
     ) -> Result<Option<(bool, Option<f32>)>, Unsupported> {
-        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
-        let target_id = target.map_or(-1, |(id, _)| id);
-        let long_target = target.map(|(_, t)| {
-            let gap2 = footprint_gap_squared(me.position, ground_radius, t.position, t.radius);
-            let gap = footprint_gap(me.position, ground_radius, t.position, t.radius);
-            crate::long_path::LongTarget::new(t.position, t.radius, gap, gap2)
-        });
-        let ignored = self.ignore_units.iter().copied().filter(|&id| {
-            id != me.id
-                && id != target_id
-                && world.get(id).is_some()
-                && world.gait(id).is_some_and(|g| g.waits || g.moving)
-        });
-        let lowered = std::iter::once(me.id)
-            .chain(ignored)
-            .chain(target.map(|(id, _)| id))
-            .filter_map(|id| world.get(id))
-            .filter(|p| p.tall)
-            .map(|p| [p.position[0] as i32, p.position[1] as i32])
-            .collect();
         let master = world.get(me.id).map_or(-1, |p| p.master);
-        let req = crate::long_path::LongRequest {
-            from: [me.position[0] as i32, me.position[1] as i32],
-            to: [waypoint[0] as i32, waypoint[2] as i32],
-            range,
-            target: long_target,
-            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+        let walker = LongWalker {
+            id: me.id,
+            position: me.position,
+            radius: [self.stats.radius[0], self.stats.radius[1]],
             mask: self.stats.restriction_mask,
-            computer: plan.computer,
-            lowered,
-            within_range: false,
-            near_player: false,
-            allies: world.get(me.id).map_or(0, |p| world.allies_of(p.player)),
+            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            ignore_units: &self.ignore_units,
         };
-        let (mut found, long) =
-            crate::long_path::path(world.tiles(), world.map, &req, me.position[2])?;
+        let target_id = target.map_or(-1, |(id, _)| id);
+        let (mut found, long) = long_path_for(
+            &walker,
+            [me.position[0], me.position[1]],
+            world,
+            plan.computer,
+            (waypoint, range),
+            target,
+        )?;
         *path = long;
         path.measure();
         if path.length < EPSILON {
@@ -2002,62 +1984,27 @@ impl Mover {
         ignore: &[i32],
         out: &mut Path,
     ) -> Result<u8, Unsupported> {
-        let [x, y, _] = me.position;
-        let target = match target {
-            -1 => None,
-            id => world.get_known(id)?.map(|t| short_path::Target {
-                id,
-                position: [t.position[0], t.position[1]],
-                half_size: t.radius,
-            }),
-        };
-        let listed = ignore
-            .iter()
-            .map(|&id| Listed {
-                id,
-                shape: plan.pathing.shape(id),
-            })
-            .collect();
-        let call = Call {
-            from: [x, y],
-            to: [to[0], to[2]],
-            radius: self.stats.radius[0],
-            range,
-            target,
-            listed,
-            map: world.map,
-            mask: self.stats.restriction_mask,
-        };
-        // the search's box: four tiles around its ends
-        let reach = 4.0 + self.stats.radius[0];
-        world.check_known_records([
-            x.min(to[0]) - reach,
-            y.min(to[2]) - reach,
-            x.max(to[0]) + reach,
-            y.max(to[2]) + reach,
-        ])?;
-        match call.entry() {
-            Entry::InRange => {
-                out.points.clear();
-                Ok(0)
-            }
-            Entry::Invalid => Ok(4),
-            Entry::Search { query, ignore } => {
-                let tiles = world.tiles();
-                let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);
-                let (mesh, pather) = plan
-                    .pathing
-                    .mesh_and_pather()
-                    .ok_or(Unsupported("a short path without the game's mesh"))?;
-                let found = pather.search(mesh, &words, &query, &ignore)?;
-                for p in short_path::to_path(&found.points).points {
-                    let _ = out.push(p);
-                }
-                Ok(found.result)
-            }
-        }
+        let walker = self.walker(me.id);
+        short_path_for(
+            walker,
+            [me.position[0], me.position[1]],
+            world,
+            plan,
+            (to, range, target),
+            ignore,
+            out,
+        )
     }
 
+    /// What the planners read of this unit ([`Walker`]).
+    pub(crate) const fn walker(&self, id: i32) -> Walker {
+        Walker {
+            id,
+            radius: self.stats.radius[0],
+            restriction: self.stats.restriction,
+            mask: self.stats.restriction_mask,
+        }
+    }
     /// The tile pathfinder (`FUN_140f7c530`) from the unit to `to`, appended to `out`, smoothed
     /// with the obstruction manager's segment test for the unit (the records of the smoothing's
     /// ignore list ignored, [`Pathing::smoothing_ignore`]); None without a planner. The planner reads the first byte of the target's record
@@ -2074,46 +2021,23 @@ impl Mover {
         target: Option<&Placed>,
         out: &mut Path,
     ) -> Result<Option<u8>, Unsupported> {
-        let target_box = target
-            .and_then(|t| t.obstruction)
-            .is_some_and(|o| matches!(o.kind, 2 | 10 | 11 | 13));
-        let [x, y, _] = me.position;
-        let req = Request {
-            from: [x, y],
-            to: [to[0], to[2]],
-            radii,
-            range,
-            closed: Vec::new(),
-            full: !plan.computer,
-        };
         // the smoothing's ignore list: the unit and the level's target object (the planner's
-        // argument 12, the object the world holds), a main building's annexes over it
+        // argument 12, the object the world holds)
         let level_target = self
             .paths
             .first()
             .map(|l| l.target)
             .filter(|&t| t != -1 && world.get(t).is_some());
-        let annexes = level_target
-            .filter(|&t| world.annex_of(t).is_none())
-            .map(|t| world.annexes_of(t))
-            .unwrap_or_default();
-        let (slots, ignore) = plan
-            .pathing
-            .smoothing_ignore(me.id, level_target.map(|t| (t, annexes.as_slice())));
-        let (radius, mask) = (self.stats.radius[0], self.stats.restriction_mask);
-        let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) else {
-            return Ok(None);
-        };
-        let smoothed = std::cell::Cell::new(false);
-        let mut blocked = |a: [f32; 2], b: [f32; 2]| {
-            smoothed.set(true);
-            Ok(world.segment_blocked(a, b, radius, mask, &ignore))
-        };
-        let found = planner.plan(&req, target_box, out, Some(&mut blocked))?;
-        if smoothed.get() {
-            plan.pathing.smoothing_ran(slots);
-        }
-        Ok(Some(found.code()))
+        tile_plan_for(
+            self.walker(me.id),
+            [me.position[0], me.position[1]],
+            level_target,
+            world,
+            plan,
+            (to, radii, range),
+            target,
+            out,
+        )
     }
 
     /// Slot 0x3d8 of the unit (`FUN_14114ffc0` -> `FUN_140fa0370` without a target object):
@@ -2781,6 +2705,245 @@ fn reach(waypoint: Vec3, position: Vec3, projected: Vec3) -> Reach {
     Reach::Reached
 }
 
+/// What the long pather reads of its unit (`FUN_140f9eb70`'s argument 6): its id, its own place
+/// (the target's gaps are from it), its radii on the ground, its restriction's mask, whether it
+/// moves (its speed, slot 0x208, is not 0, or its master is 42) and its ignore units (`+0x670`).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LongWalker<'a> {
+    pub(crate) id: i32,
+    pub(crate) position: [f32; 3],
+    pub(crate) radius: [f32; 2],
+    pub(crate) mask: u8,
+    pub(crate) moves: bool,
+    pub(crate) ignore_units: &'a [i32],
+}
+
+/// The units whose tiles the long pather lowers (`FUN_140f9eb70`'s list for `FUN_140f60440`):
+/// the walker and its ignore units that wait to move or move (slots 0x2a8 and 0x5c8), not the
+/// target, at most 254; for a walker in a group the units of the group's differentiator groups
+/// instead ([`Spatial::group_list`]); then the target.
+pub(crate) fn lowered_units(
+    walker: &LongWalker<'_>,
+    world: &Spatial,
+    target: Option<i32>,
+) -> Vec<i32> {
+    /// The list's room for the walker's ignore units (`0xfe < lVar26` breaks).
+    const IGNORED: usize = 254;
+    let target_id = target.unwrap_or(-1);
+    let own = || {
+        std::iter::once(walker.id)
+            .chain(
+                walker
+                    .ignore_units
+                    .iter()
+                    .copied()
+                    .filter(|&id| {
+                        id != walker.id
+                            && id != target_id
+                            && world.get(id).is_some()
+                            && world.gait(id).is_some_and(|g| g.waits || g.moving)
+                    })
+                    .take(IGNORED),
+            )
+            .collect()
+    };
+    let mut listed: Vec<i32> = world
+        .group_list(walker.id)
+        .map_or_else(own, <[i32]>::to_vec);
+    if let Some(id) = target {
+        listed.push(id);
+    }
+    listed
+}
+
+/// The long pather (`FUN_140f9eb70`) for `walker` from `from` (x, y on the map, as tiles) to the
+/// tile of `to` within `range` of `target`: whether it reaches the goal, and the path at the
+/// walker's height. The search lowers the tall counts of the tiles of its list
+/// (`FUN_140f60440`): the walker and its ignore units that wait to move or move (slots 0x2a8 and
+/// 0x5c8; not the target, at most 254), or, for a walker in a group, the units of the group's
+/// differentiator groups instead (`FUN_14100bbe0` with 255, [`Spatial::group_list`]); then the
+/// target. Each listed object the world holds whose master has a height lowers its tile.
+///
+/// # Errors
+///
+/// What the search does not model.
+pub(crate) fn long_path_for(
+    walker: &LongWalker<'_>,
+    from: [f32; 2],
+    world: &Spatial,
+    computer: bool,
+    (to, range): (Vec3, f32),
+    target: Option<(i32, &Placed)>,
+) -> Result<(bool, Path), Unsupported> {
+    let long_target = target.map(|(_, t)| {
+        let gap2 = footprint_gap_squared(walker.position, walker.radius, t.position, t.radius);
+        let gap = footprint_gap(walker.position, walker.radius, t.position, t.radius);
+        crate::long_path::LongTarget::new(t.position, t.radius, gap, gap2)
+    });
+    let listed = lowered_units(walker, world, target.map(|(id, _)| id));
+    let lowered = listed
+        .into_iter()
+        .filter_map(|id| world.get(id))
+        .filter(|p| p.tall)
+        .map(|p| [p.position[0] as i32, p.position[1] as i32])
+        .collect();
+    let req = crate::long_path::LongRequest {
+        from: [from[0] as i32, from[1] as i32],
+        to: [to[0] as i32, to[2] as i32],
+        range,
+        target: long_target,
+        moves: walker.moves,
+        mask: walker.mask,
+        computer,
+        lowered,
+        within_range: false,
+        near_player: false,
+        allies: world
+            .get(walker.id)
+            .map_or(0, |p| world.allies_of(p.player)),
+    };
+    crate::long_path::path(world.tiles(), world.map, &req, walker.position[2])
+}
+
+/// The tile pathfinder (`FUN_140f7c530`) for `walker` from `from` (x, y on the map) to `to`,
+/// its walker's and the target's radii `radii` added, within `range`; appended to `out`,
+/// smoothed with the obstruction manager's segment test for the walker (the records of the
+/// smoothing's ignore list ignored, [`Pathing::smoothing_ignore`]: the walker and
+/// `level_target`, the object the world holds, with a main building's annexes over it); None
+/// without a planner for the walker's restriction. The planner reads the first byte of the
+/// target's record (`+0x658`): 3, a box, for the obstruction types 2, 10, 11 and 13
+/// (`FUN_141056460`). A computer's plan (`plan.computer`) is not full.
+///
+/// # Errors
+///
+/// What the planner does not model.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn tile_plan_for(
+    walker: Walker,
+    from: [f32; 2],
+    level_target: Option<i32>,
+    world: &Spatial,
+    plan: &mut Planning<'_>,
+    (to, radii, range): (Vec3, f32, f32),
+    target: Option<&Placed>,
+    out: &mut Path,
+) -> Result<Option<u8>, Unsupported> {
+    let target_box = target
+        .and_then(|t| t.obstruction)
+        .is_some_and(|o| matches!(o.kind, 2 | 10 | 11 | 13));
+    let req = Request {
+        from,
+        to: [to[0], to[2]],
+        radii,
+        range,
+        closed: Vec::new(),
+        full: !plan.computer,
+    };
+    let annexes = level_target
+        .filter(|&t| world.annex_of(t).is_none())
+        .map(|t| world.annexes_of(t))
+        .unwrap_or_default();
+    let (slots, ignore) = plan
+        .pathing
+        .smoothing_ignore(walker.id, level_target.map(|t| (t, annexes.as_slice())));
+    let (radius, mask) = (walker.radius, walker.mask);
+    let Some(planner) = plan.pathing.planner(walker.restriction, world.tiles()) else {
+        return Ok(None);
+    };
+    let smoothed = std::cell::Cell::new(false);
+    let mut blocked = |a: [f32; 2], b: [f32; 2]| {
+        smoothed.set(true);
+        Ok(world.segment_blocked(a, b, radius, mask, &ignore))
+    };
+    let found = planner.plan(&req, target_box, out, Some(&mut blocked))?;
+    if smoothed.get() {
+        plan.pathing.smoothing_ran(slots);
+    }
+    Ok(Some(found.code()))
+}
+
+/// What the planners read of the walking unit (the unit, or a group's lead): its id, radius on
+/// x (master `+0x5d8`), terrain restriction (`+0x606`) and that restriction's mask.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Walker {
+    pub(crate) id: i32,
+    pub(crate) radius: f32,
+    pub(crate) restriction: usize,
+    pub(crate) mask: u8,
+}
+
+/// The short pather (`FUN_140f9e540`) for `walker` from `from` (x, y on the map) to `to` within
+/// `range` of `target` (-1 for none), `ignore` its ignore list; its points appended to `out`.
+/// Returns its result (0 in range, 1 reached, 2 partial, 3 blocked, 4 invalid).
+///
+/// # Errors
+///
+/// What the short pather does not model, or a short path without the game's mesh.
+pub(crate) fn short_path_for(
+    walker: Walker,
+    from: [f32; 2],
+    world: &Spatial,
+    plan: &mut Planning<'_>,
+    (to, range, target): (Vec3, f32, i32),
+    ignore: &[i32],
+    out: &mut Path,
+) -> Result<u8, Unsupported> {
+    let [x, y] = from;
+    let target = match target {
+        -1 => None,
+        id => world.get_known(id)?.map(|t| short_path::Target {
+            id,
+            position: [t.position[0], t.position[1]],
+            half_size: t.radius,
+        }),
+    };
+    let listed = ignore
+        .iter()
+        .map(|&id| Listed {
+            id,
+            shape: plan.pathing.shape(id),
+        })
+        .collect();
+    let call = Call {
+        from: [x, y],
+        to: [to[0], to[2]],
+        radius: walker.radius,
+        range,
+        target,
+        listed,
+        map: world.map,
+        mask: walker.mask,
+    };
+    // the search's box: four tiles around its ends
+    let reach = 4.0 + walker.radius;
+    world.check_known_records([
+        x.min(to[0]) - reach,
+        y.min(to[2]) - reach,
+        x.max(to[0]) + reach,
+        y.max(to[2]) + reach,
+    ])?;
+    match call.entry() {
+        Entry::InRange => {
+            out.points.clear();
+            Ok(0)
+        }
+        Entry::Invalid => Ok(4),
+        Entry::Search { query, ignore } => {
+            let tiles = world.tiles();
+            let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);
+            let (mesh, pather) = plan
+                .pathing
+                .mesh_and_pather()
+                .ok_or(Unsupported("a short path without the game's mesh"))?;
+            let found = pather.search(mesh, &words, &query, &ignore)?;
+            for p in short_path::to_path(&found.points).points {
+                let _ = out.push(p);
+            }
+            Ok(found.result)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2959,6 +3122,39 @@ mod tests {
         );
         assert_eq!(m.look_ahead(&me, &w), Ok(false));
         assert_eq!(m.paths.len(), 2);
+    }
+
+    /// `FUN_140f9eb70`'s list for `FUN_140f60440`: a walker in no group lists itself and its
+    /// ignore units that move (not one that stands, not the target, not one the world lacks),
+    /// then the target; a walker in a group lists its group's differentiator units instead.
+    #[test]
+    fn the_long_pather_lowers_the_walker_or_its_groups_units_and_the_target() {
+        let mut s = world();
+        let moving = Gait {
+            moving: true,
+            ..Gait::default()
+        };
+        s.set_gait(9175, Some(moving));
+        s.set_gait(10028, Some(moving));
+        let ignore = [9175, 9177, 10028, 4242];
+        let walker = LongWalker {
+            id: 9177,
+            position: [28.0, 89.0, 0.0],
+            radius: [0.2, 0.2],
+            mask: 1,
+            moves: true,
+            ignore_units: &ignore,
+        };
+        // 10028 moves but is the target: it comes last, once
+        assert_eq!(lowered_units(&walker, &s, Some(10028)), [9177, 9175, 10028]);
+        assert_eq!(lowered_units(&walker, &s, None), [9177, 9175, 10028]);
+        let mut lists = std::collections::BTreeMap::new();
+        let _ = lists.insert(9177, vec![9177, 31, 32]);
+        s.set_group_lists(lists);
+        assert_eq!(
+            lowered_units(&walker, &s, Some(10028)),
+            [9177, 31, 32, 10028]
+        );
     }
 
     fn world() -> Spatial {

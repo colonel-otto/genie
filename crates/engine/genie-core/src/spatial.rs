@@ -383,6 +383,10 @@ pub struct Spatial {
     scout_maps: BTreeMap<usize, crate::explore::InfluenceMap>,
     /// Each annex's main building (`+0xbb8`), which the walk's avoidance takes for the annex.
     annexes: BTreeMap<i32, i32>,
+    /// Each unit in a group the world holds, with the units of its group's differentiator
+    /// groups (`FUN_14100bbe0` with 255: the long pather's list of the units it lowers,
+    /// `FUN_140f9eb70`); [`crate::turn::Turns::sync_group_lists`] keeps it.
+    group_lists: BTreeMap<i32, Vec<i32>>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
     pub relations: Vec<Vec<u8>>,
     /// Each player's masters with a task of action type 0x99, which a building's slot 0x4f0
@@ -453,6 +457,7 @@ impl Spatial {
             gaits: BTreeMap::new(),
             scout_maps: BTreeMap::new(),
             annexes: BTreeMap::new(),
+            group_lists: BTreeMap::new(),
             relations: Vec::new(),
             task_0x99: Vec::new(),
             sight: None,
@@ -996,6 +1001,18 @@ impl Spatial {
         self.gaits.get(&id).copied()
     }
 
+    /// Each grouped unit's differentiator groups' units ([`Spatial::group_list`]).
+    pub fn set_group_lists(&mut self, lists: BTreeMap<i32, Vec<i32>>) {
+        self.group_lists = lists;
+    }
+
+    /// The units of unit `id`'s group's differentiator groups, when it is in a group the world
+    /// holds ([`Spatial::set_group_lists`]).
+    #[must_use]
+    pub fn group_list(&self, id: i32) -> Option<&[i32]> {
+        self.group_lists.get(&id).map(Vec::as_slice)
+    }
+
     /// An annex's main building, or none.
     pub fn set_annex(&mut self, id: i32, main: Option<i32>) {
         match main {
@@ -1069,8 +1086,8 @@ impl Spatial {
     /// (`FUN_1410512f0`; a circle's, kind 5, `FUN_141051630`, alike). A moving object of
     /// `player` or an ally grows by `grow × ally_factor` instead (`+0x84`, the walker's master's
     /// `min_collision_size_multiplier`). The ids hit, in id order; the game's are in its grid's,
-    /// which no caller reads yet. A rectangle that, grown, leaves the map adds the map edge's
-    /// records (`FUN_141057290`), which is not modelled.
+    /// which no caller reads yet. A rectangle that, grown, leaves the map meets the map edge's
+    /// records first ([`Spatial::edge_records`], `FUN_141057290`).
     #[allow(clippy::too_many_arguments)]
     pub fn walk_hits(
         &self,
@@ -1083,15 +1100,6 @@ impl Spatial {
         ignore: &[i32],
     ) -> Result<Vec<i32>, Unsupported> {
         let [w, h] = self.map;
-        if rect[0] - grow < 0.0
-            || rect[1] - grow < 0.0
-            || (w as f32) < grow + rect[2]
-            || (h as f32) < grow + rect[3]
-        {
-            return Err(Unsupported(
-                "a walk query beyond the map's edge (FUN_141057290)",
-            ));
-        }
         let walk = [from[0], from[1], to[0], to[1]];
         let query = [
             rect[0] - grow,
@@ -1099,7 +1107,13 @@ impl Spatial {
             grow + rect[2],
             grow + rect[3],
         ];
-        let mut hits = Vec::new();
+        // a query beyond the map's edge meets the edge's records first (FUN_141057290)
+        let mut hits: Vec<i32> =
+            if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
+                self.edge_records(query).iter().map(|e| e.id).collect()
+            } else {
+                Vec::new()
+            };
         // a box that misses the step's rectangle even grown by the larger of the two grows cannot
         // be hit (a smaller grow's box lies inside it): skip it before the grid's filing test,
         // which costs the most. Without a player a moving object's test fails, so then all go
@@ -1143,6 +1157,109 @@ impl Spatial {
                 && box_meets_segment([x0, y0, x1, y1], g, walk)
             {
                 hits.push(id);
+            }
+        }
+        Ok(hits)
+    }
+
+    /// `FUN_1411570c0`'s query (`FUN_141051900` with flags 0x10, any player; the caller holds the
+    /// ends inside the map): the records the line `from` -> `to` meets, each box grown by `grow`
+    /// (the manager's buffer, `FUN_1410562d0`), but the `ignore`d objects' (`FUN_1410562e0`), at
+    /// most 25 (the query stops there). First the map edge's records when the grown rectangle
+    /// leaves the map ([`Spatial::edge_records`]); with `mask` the temporary records
+    /// (`FUN_141052b90`, kind 3, the tile's box; `FUN_1410561f0` removes them after) of the tiles
+    /// of the grown rectangle whose terrain class the mask lacks (`mask & 0x7f | 0x80`), in the
+    /// tiles' row order; then the objects' records of a tested kind (kind 10 filed as 2) in the
+    /// cells the query visits whose grown box meets the line's rectangle and the line
+    /// (`FUN_1410512f0`; a circle's alike), in id order. Ids: an object's, a tile record's
+    /// ([`tile_record_id`]) or an edge record's.
+    ///
+    /// # Errors
+    ///
+    /// A record whose place the slice does not know near the line.
+    pub fn line_hits(
+        &self,
+        from: [f32; 2],
+        to: [f32; 2],
+        grow: f32,
+        mask: Option<u8>,
+        ignore: &[i32],
+    ) -> Result<Vec<i32>, Unsupported> {
+        const MOST_HITS: usize = 25;
+        let rect = [
+            from[0].min(to[0]),
+            from[1].min(to[1]),
+            from[0].max(to[0]),
+            from[1].max(to[1]),
+        ];
+        let query = [
+            rect[0] - grow,
+            rect[1] - grow,
+            grow + rect[2],
+            grow + rect[3],
+        ];
+        let [w, h] = self.map;
+        let mut hits: Vec<i32> = Vec::new();
+        if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
+            hits.extend(self.edge_records(query).iter().map(|e| e.id));
+            if MOST_HITS <= hits.len() {
+                hits.truncate(MOST_HITS);
+                return Ok(hits);
+            }
+        }
+        self.check_known_records(query)?;
+        let walk = [from[0], from[1], to[0], to[1]];
+        let meets = |bx: [f32; 4]| {
+            let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
+            rect[0] <= grown[2]
+                && grown[0] <= rect[2]
+                && rect[1] <= grown[3]
+                && grown[1] <= rect[3]
+                && box_meets_segment(bx, grow, walk)
+        };
+        if let Some(mask) = mask {
+            let impassable = u64::from(mask & 0x7f | 0x80);
+            let tx1 = if (query[2] as i32) < w {
+                query[2] as i32
+            } else {
+                w - 1
+            };
+            let ty1 = if (query[3] as i32) < h {
+                query[3] as i32
+            } else {
+                h - 1
+            };
+            for y in (query[1] as i32).max(0)..=ty1 {
+                for x in (query[0] as i32).max(0)..=tx1 {
+                    let Some(word) = self.tiles.word(x, y) else {
+                        continue;
+                    };
+                    let id = tile_record_id(x, y);
+                    let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
+                    if word & impassable == 0 && !ignore.contains(&id) && meets(bx) {
+                        hits.push(id);
+                        if MOST_HITS <= hits.len() {
+                            return Ok(hits);
+                        }
+                    }
+                }
+            }
+        }
+        for (&id, p) in &self.objects {
+            let Some(o) = p.obstruction else {
+                continue;
+            };
+            let kind = if o.kind == 10 { 2 } else { o.kind };
+            if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) || !self.visits(p, kind, query)
+            {
+                continue;
+            }
+            if !meets(p.bounds()) {
+                continue;
+            }
+            hits.push(id);
+            if MOST_HITS <= hits.len() {
+                break;
             }
         }
         Ok(hits)
@@ -2504,6 +2621,46 @@ mod tests {
         // a unit of radius 0.3 cannot stand 0.2 from the edge
         assert!(!s.point_clear(1, [0.2, 50.0], 0.3, 0xff).unwrap());
         assert!(s.point_clear(1, [0.4, 50.0], 0.3, 0xff).unwrap());
+    }
+
+    /// `FUN_1411570c0`'s query with its tile records: on a 10 by 10 map of terrain class 1 with
+    /// a tile of class 2 at (5, 5), the line (2, 5.5) -> (8, 5.5) of a unit whose mask holds only
+    /// class 1 meets the tile's temporary record and the villager on its way; without the mask
+    /// and with the villager ignored it meets nothing; a line whose grown rectangle leaves the
+    /// map meets the map edge's record first.
+    #[test]
+    fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
+        let mut classes = vec![1u8; 100];
+        classes[5 * 10 + 5] = 2;
+        let mut s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
+        s.insert(7, villager(4.0, 5.5));
+        let hits = s
+            .line_hits([2.0, 5.5], [8.0, 5.5], 0.2, Some(1), &[])
+            .unwrap();
+        assert_eq!(hits, [tile_record_id(5, 5), 7]);
+        let none = s
+            .line_hits([2.0, 5.5], [8.0, 5.5], 0.2, None, &[7])
+            .unwrap();
+        assert_eq!(none, Vec::<i32>::new());
+        let edge = s
+            .line_hits([0.1, 5.5], [3.0, 5.5], 0.2, None, &[7])
+            .unwrap();
+        assert_eq!(edge.len(), 1);
+        assert_eq!(edge[0] as u32 & 0xff00_0000, 0xff00_0000);
+    }
+
+    /// The walk's query beyond the map's edge meets the edge's record first (`FUN_141057290`),
+    /// then the objects as before.
+    #[test]
+    fn a_walk_past_the_maps_edge_meets_its_record_first() {
+        let mut s = Spatial::new([10, 10]);
+        s.insert(7, villager(1.0, 5.5));
+        let (from, to) = ([0.1, 5.5], [2.0, 5.5]);
+        let rect = [0.1, 5.5, 2.0, 5.5];
+        let hits = s.walk_hits(from, to, rect, 0.2, 1.0, Some(2), &[]).unwrap();
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0] as u32 & 0xff00_0000, 0xff00_0000);
+        assert_eq!(hits[1], 7);
     }
 
     #[test]

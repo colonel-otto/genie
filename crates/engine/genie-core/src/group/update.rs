@@ -5,6 +5,23 @@ use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
 impl Turns {
+    /// The world's view of each grouped unit's differentiator groups' units (at most 255,
+    /// [`super::UnitGroups::differentiator_units`]), which the long pather lowers for a unit in a
+    /// group (`FUN_140f9eb70`): after the commands and after each player's groups updated.
+    pub(crate) fn sync_group_lists(&mut self) {
+        /// The long pather's list holds this many (`FUN_14100bbe0` with `0xff`).
+        const LOWERED: usize = 255;
+        let mut lists = std::collections::BTreeMap::new();
+        for p in &self.players {
+            for u in p.objects.iter().chain(&p.sleeping) {
+                if let Some(g) = self.groups.get(u.group.id) {
+                    let _ = lists.insert(u.id, self.groups.differentiator_units(g, LOWERED));
+                }
+            }
+        }
+        self.spatial.set_group_lists(lists);
+    }
+
     /// The groups player `p` owns update after its objects (`BaseWorld::update` at
     /// `0x141551796`): `BUnitGroup::update` ([`Turns::group_update`]) for each group of the
     /// world's list the player owns; a group whose update returns 0 is deleted, any other runs
@@ -180,5 +197,106 @@ impl Turns {
             }
         }
         lead
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::group::{GroupLink, Member, UnitGroup, UnitGroups};
+    use crate::turn::{Player, Turns, Unit};
+
+    fn unit(id: i32, group: i32) -> Unit {
+        Unit {
+            id,
+            group: GroupLink {
+                id: group,
+                flag: -2,
+            },
+            ..Unit::default()
+        }
+    }
+
+    /// `FUN_141016870`: the lead is the held member nearest (in 3D, where it last moved to) the
+    /// target's place, the first of equals; -1 without a held member.
+    #[test]
+    fn the_lead_is_the_member_nearest_the_targets_place() {
+        let at = |id, x: f32, y: f32| Unit {
+            id,
+            position: [x, y, 0.0],
+            ..Unit::default()
+        };
+        let player = Player {
+            objects: vec![at(10, 5.0, 5.0), at(11, 2.0, 1.0), at(12, 1.0, 2.0)],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
+        let member = |id| Member {
+            id,
+            ..Member::default()
+        };
+        let mut g = UnitGroup::new(1);
+        // 99 is not held; 11 and 12 are as near (1, 1) as each other: 11 comes first
+        g.members = vec![member(99), member(10), member(11), member(12)];
+        g.current_target.original_position = [1.0, 0.0, 1.0];
+        t.groups = UnitGroups {
+            groups: vec![g],
+            ..UnitGroups::default()
+        };
+        assert_eq!(t.nearest_to_target(1), 11);
+        t.groups.groups[0].members = vec![member(99)];
+        assert_eq!(t.nearest_to_target(1), -1);
+        assert_eq!(t.nearest_to_target(2), -1);
+    }
+
+    /// `FUN_14102bb40`: the command queue empties; a hibernating group (1) wakes with flags
+    /// `0x4c000`, any other hibernation value wakes without them.
+    #[test]
+    fn emptying_the_command_queue_wakes_a_hibernating_group() {
+        let mut g = UnitGroup::new(1);
+        g.command_queue = vec![crate::group::GroupCommand::default()];
+        g.hibernating = 1;
+        g.clear_command_queue();
+        assert_eq!(g.command_queue, Vec::new());
+        assert_eq!((g.hibernating, g.flags), (0, 0x100 | 0x4_c000));
+        let mut g = UnitGroup::new(1);
+        g.hibernating = 2;
+        g.clear_command_queue();
+        assert_eq!((g.hibernating, g.flags), (0, 0x100));
+    }
+
+    /// The world's view of the grouped units' lists: unit 10 of group 1 (whose differentiator
+    /// groups are 1 and 2) lists 10, 11 and 12; unit 13 of a group the world does not hold, and
+    /// unit 14 of none, list nothing.
+    #[test]
+    fn each_grouped_unit_lists_its_groups_differentiator_units() {
+        let player = Player {
+            objects: vec![
+                unit(10, 1),
+                unit(11, 1),
+                unit(12, 2),
+                unit(13, 9),
+                unit(14, -1),
+            ],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
+        let member = |id| Member {
+            id,
+            ..Member::default()
+        };
+        let mut one = UnitGroup::new(1);
+        one.members = vec![member(10), member(11)];
+        one.differentiator_groups = vec![1, 2];
+        let mut two = UnitGroup::new(2);
+        two.members = vec![member(12)];
+        t.groups = UnitGroups {
+            groups: vec![one, two],
+            ..UnitGroups::default()
+        };
+        t.sync_group_lists();
+        assert_eq!(t.spatial.group_list(10), Some(&[10, 11, 12][..]));
+        assert_eq!(t.spatial.group_list(12), Some(&[][..]));
+        assert_eq!(t.spatial.group_list(13), None);
+        assert_eq!(t.spatial.group_list(14), None);
     }
 }

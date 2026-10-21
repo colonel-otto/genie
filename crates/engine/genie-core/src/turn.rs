@@ -10595,6 +10595,7 @@ impl Turns {
                 self.spatial.set_annex(u.id, u.annex_of);
             }
         }
+        self.sync_group_lists();
         if self.spatial.relations.is_empty() {
             self.spatial.relations = self.players.iter().map(|p| p.relations.clone()).collect();
             self.spatial.task_0x99 = self
@@ -11094,6 +11095,7 @@ impl Turns {
             if let Err(e) = self.update_groups(p) {
                 self.stop_player(p, e);
             }
+            self.sync_group_lists();
             self.close_gates(p, &mut gates_open);
         }
         self.spatial.grow_unknown(seconds(dt));
