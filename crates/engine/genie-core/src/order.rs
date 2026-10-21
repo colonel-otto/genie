@@ -1425,11 +1425,36 @@ impl Turns {
             point: point2,
             ..*order
         };
+        let taken = self.move_to_point(player, idx, [order.point[0], order.point[1], 0.0])?;
+        // the order handler's notify: a unit that took the move as a MoveTo gets the move order
+        // and action, its target forgotten (FUN_140c4dcb0); every unit then the point
+        // (FUN_140c64be0); in a grid every unit gets the order, the action and its cell, its
+        // target kept; slot 0x2d8's walk and show targets are not held
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            let ai_stream = self.streams.get(Stream::Ai);
+            match cell {
+                None => ai.notify_move(!taken, None, order.point, ai_stream),
+                Some(c) => ai.notify_grid_move(c, ai_stream),
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_14106d340` on a move of the unit at `idx` to `point`: a unit with a unit AI
+    /// (`FUN_140c5dc10` clears its notifies with the world time) lets its current action's slot
+    /// 8 take the point (`FUN_140a97730`) unless it stops after a kill (`FUN_140c41c10`); else a
+    /// `MoveTo` to the point replaces its actions. True when the action took it.
+    pub(crate) fn move_to_point(
+        &mut self,
+        player: usize,
+        idx: usize,
+        point: [f32; 3],
+    ) -> Result<bool, Unsupported> {
         // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
         // current action's slot 8 take the point (FUN_140a97730) unless it stops after a kill
         // (FUN_140c41c10): an Artifact action's does (FUN_140aaca30), a MoveTo's
         // (`FUN_140a78490`) never
-        let point = [order.point[0], order.point[1], 0.0];
         let world_time = self.world_time;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
@@ -1489,19 +1514,7 @@ impl Turns {
                 wait: crate::move_to::MoveWait::default(),
             });
         }
-        // the order handler's notify: a unit that took the move as a MoveTo gets the move order
-        // and action, its target forgotten (FUN_140c4dcb0); every unit then the point
-        // (FUN_140c64be0); in a grid every unit gets the order, the action and its cell, its
-        // target kept; slot 0x2d8's walk and show targets are not held
-        let unit = &mut self.players[player].objects[idx];
-        if let Some(ai) = unit.ai.as_mut() {
-            let ai_stream = self.streams.get(Stream::Ai);
-            match cell {
-                None => ai.notify_move(!taken, None, order.point, ai_stream),
-                Some(c) => ai.notify_grid_move(c, ai_stream),
-            }
-        }
-        Ok(())
+        Ok(taken)
     }
 
     /// Slot 0x7e8 (`FUN_141227190`) of a unit on a target object: a unit in state 3 or later
@@ -1548,24 +1561,106 @@ impl Turns {
                 return Err(Unsupported("an order to a unit of class 51"));
             }
         }
+        // livestock (class 58) takes the enter command (slot 0x3a0); where it enters nothing, the
+        // work command goes to the target's place without a target
+        let mut order = *order;
         if master.class == LIVESTOCK {
-            return Err(Unsupported("an order to livestock"));
+            if self.livestock_enters(player, idx, order.target)? {
+                return Err(Unsupported(
+                    "livestock entering its target (slot 0x3a0's Enter)",
+                ));
+            }
+            let at = self
+                .spatial
+                .get_known(order.target)?
+                .ok_or(Unsupported("a target without a place"))?
+                .position;
+            (order.point[0], order.point[1], order.target) = (at[0], at[1], -1);
         }
+        let order = &order;
         self.town_bell_order(player, idx, order.target, order.filter)?;
         self.work_command(player, idx, order)?;
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
-        let target = self.task_target(order.target, 0)?;
-        if master.class == VILLAGER
-            && target.master.kind == BUILDING
-            && matches!(target.master.id, MASTER_1893 | MASTER_1897)
-        {
-            return Err(Unsupported("a villager's order on master 1893 or 1897"));
+        if order.target != -1 {
+            let target = self.task_target(order.target, 0)?;
+            if master.class == VILLAGER
+                && target.master.kind == BUILDING
+                && matches!(target.master.id, MASTER_1893 | MASTER_1897)
+            {
+                return Err(Unsupported("a villager's order on master 1893 or 1897"));
+            }
         }
         let unit = &mut self.players[player].objects[idx];
         if unit.my_pasture != -1 {
             return Err(Unsupported("a unit that leaves its pasture"));
         }
+        Ok(())
+    }
+
+    /// Slot 0x3a0 (`FUN_1410847e0`, the enter command, with 0) of the unit at `idx` on `target`:
+    /// true when it enters, false when nothing comes of it. It is entering the target already
+    /// (its top action an Enter on it); else slot 0x820 (`FUN_14106c6a0`) looks for a task on
+    /// the target with the garrison filter (3), without the master's change, whose Enter it would
+    /// take.
+    fn livestock_enters(
+        &self,
+        player: usize,
+        idx: usize,
+        target: i32,
+    ) -> Result<bool, Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        if unit.top_action_kind() == Some(crate::garrison::ENTER)
+            && unit.top_target() == Some(target)
+        {
+            return Ok(true);
+        }
+        let masters = self
+            .masters
+            .get(player)
+            .ok_or(Unsupported("an enter command: no master table"))?;
+        let owner = &self.players[player];
+        let actor = Actor {
+            id: unit.id,
+            master: self.master_of(player, unit.life.master_id)?,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+            civ: owner.civ,
+        };
+        let world = World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let t = self.task_target(target, 1)?;
+        let general = self.task_target(target, 2)?;
+        Ok(masters
+            .work_master(&actor, &t, &general, GARRISON, &world)?
+            .is_some())
+    }
+
+    /// Slot 0x138 (`FUN_141216f10`) without a target, the no-task end of a work command on a
+    /// point: a villager drops its town-bell flag (not held otherwise), the unit AI's order queue
+    /// empties (`+0xa14` 1, `FUN_140c5e010`), then the move to the point
+    /// ([`Turns::move_to_point`], `FUN_14106d340`).
+    fn move_point_order(
+        &mut self,
+        player: usize,
+        idx: usize,
+        point: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        let villager = self
+            .master_of(player, self.players[player].objects[idx].life.master_id)?
+            .class
+            == VILLAGER;
+        let unit = &mut self.players[player].objects[idx];
+        if villager {
+            unit.town_bell.flag = false;
+        }
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.orders.clear();
+        }
+        let _ = self.move_to_point(player, idx, point)?;
         Ok(())
     }
 
@@ -1768,7 +1863,10 @@ impl Turns {
         }
         // FUN_140c64e50: a unit of a type below 70 always clears its AI's notifies
         let clears = notified || self.master_of(player, unit.life.master_id)?.kind < 70;
-        let found = {
+        // a work command on a point (no target) finds no task
+        let found = if target == -1 {
+            None
+        } else {
             let masters = self
                 .masters
                 .get(player)
@@ -1811,10 +1909,17 @@ impl Turns {
             // another; then the move to the target (slot 0x138) for a unit in state 2 or of
             // class 51
             let (alive, class) = (unit.life.state == 2, master.class);
-            let (tp, t) = self.object(target).ok_or(Unsupported(
-                "a work command's target the slice does not hold",
-            ))?;
-            let target_class = i32::from(self.master_of(tp, t.life.master_id)?.class);
+            let named = if target == -1 {
+                None
+            } else {
+                let (tp, t) = self.object(target).ok_or(Unsupported(
+                    "a work command's target the slice does not hold",
+                ))?;
+                Some((
+                    target,
+                    i32::from(self.master_of(tp, t.life.master_id)?.class),
+                ))
+            };
             let (order, action) = if alive {
                 (MOVE_ORDER, crate::unit_ai::MOVE_ACTION)
             } else {
@@ -1825,14 +1930,18 @@ impl Turns {
                 ai.notify_work(
                     order,
                     action,
-                    Some((target, target_class)),
+                    named,
                     point,
                     clears,
                     self.streams.get(Stream::Ai),
                 )?;
             }
             if alive || class == 51 {
-                self.move_to_object(player, idx, target, point)?;
+                if target == -1 {
+                    self.move_point_order(player, idx, point)?;
+                } else {
+                    self.move_to_object(player, idx, target, point)?;
+                }
             }
             return Ok(());
         };

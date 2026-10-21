@@ -398,6 +398,9 @@ pub trait PlaceMap {
     fn visible(&self, player: usize, x: i32, y: i32) -> bool;
     /// A tile's elevation (`+0x14`), when the map holds it.
     fn elevation(&self, x: i32, y: i32) -> Option<u8>;
+    /// A tile's shape (`+0x8`, [`crate::terrain::Terrain::set_elevations`]), when the map holds
+    /// it.
+    fn shape(&self, x: i32, y: i32) -> Option<u8>;
     /// Player `a` counts player `b` as an ally (`FUN_141663dc0`): itself; never Gaia; relation 0,
     /// or with `with_4` relation 4 too (the zone mode's relation 1 is not modelled).
     fn allied(&self, a: usize, b: usize, with_4: bool) -> bool;
@@ -467,13 +470,43 @@ pub struct BuildSite<'a> {
     pub zones: bool,
 }
 
+/// The hill mode's test of a tile of the box (`FUN_141123f80`'s `p7` part, the master's
+/// `hill_mode` `+0x604`): mode 1 takes flat ground and the four side slopes (shapes 0 and 5 to
+/// 8), mode 2 flat ground alone, mode 3 a tile of the box's first column or last row within one
+/// step of the `base` elevation; the other modes take any. True when the tile fails (code 3).
+fn hill_fails(
+    mode: u8,
+    map: &dyn PlaceMap,
+    (tx, ty): (i32, i32),
+    (x0, y1): (i32, i32),
+    base: Option<u8>,
+) -> Result<bool, Unsupported> {
+    let shape = || {
+        map.shape(tx, ty).ok_or(Unsupported(
+            "a hill mode where the tiles' shapes are not known",
+        ))
+    };
+    Ok(match mode {
+        1 => !matches!(shape()?, 0 | 5..=8),
+        2 => shape()? != 0,
+        3 if tx == x0 || ty == y1 => {
+            let e = i32::from(map.elevation(tx, ty).ok_or(Unsupported(
+                "a hill mode where the elevations are not known",
+            ))?);
+            let b = i32::from(base.unwrap_or(0));
+            e < b - 1 || b + 1 < e
+        }
+        _ => false,
+    })
+}
+
 /// BUILD's placement test (`FUN_140e7a400`'s call of the master's slot 0x50, the building
 /// master's `FUN_14123aee0` with BUILD's flags: `p6` human, `p7`, `p8`, `p9` 1, `p10` 0, `p11` 1,
 /// no object of its own, `p13` 0, `p14` 1): 0 when the foundation may go to `p`, else the game's
 /// code. First the static test (`FUN_141123f80` through `FUN_141264db0`, whose scans are off)
 /// over the clearance box: off the map 7; per tile, columns then rows, a terrain the
 /// restriction forbids 2 (`DAT_142eb7e5c`'s threshold, the spawn's); a human who explored none of
-/// the tiles 5; a hill mode's slope 3 (passed on flat ground). Then the building master's scan of the tiles within 8 (rows, then columns; each
+/// the tiles 5; a hill mode's tile ([`hill_fails`]) 3. Then the building master's scan of the tiles within 8 (rows, then columns; each
 /// tile's objects in its list's order): an object the player sees, or on a tile it never
 /// explored (the test's explored flag `+0x730` is set by then), or in the fog with a fog
 /// visibility, and only its own in the fog without one, that is below state 3 (another type
@@ -485,7 +518,7 @@ pub struct BuildSite<'a> {
 /// zone test (`FUN_1415c6400`), the editor (game mode 4), a fogged object of fog visibility 3 or
 /// a fogged building with its visibility mask (`+0x8f8`), game type 7's test of allies, the
 /// outline radii of
-/// obstruction types 11 to 13 and a hill mode on uneven ground (the tiles' slopes `+8`).
+/// obstruction types 11 to 13.
 pub fn build_placement(
     site: &BuildSite<'_>,
     map: &dyn PlaceMap,
@@ -504,8 +537,17 @@ pub fn build_placement(
         return Ok(7);
     }
     let mut explored = false;
-    for tx in (x - rx) as i32..=far_x as i32 {
-        for ty in (y - ry) as i32..=far_y as i32 {
+    let (x0, x1, y0, y1) = ((x - rx) as i32, far_x as i32, (y - ry) as i32, far_y as i32);
+    // hill mode 3 measures the box's edge against the elevation of its first column's last row
+    let base = if site.hill_mode == 3 {
+        Some(map.elevation(x0, y1).ok_or(Unsupported(
+            "a hill mode where the elevations are not known",
+        ))?)
+    } else {
+        None
+    };
+    for tx in x0..=x1 {
+        for ty in y0..=y1 {
             let t = map.terrain(tx, ty)?;
             let value = site
                 .restriction
@@ -515,22 +557,9 @@ pub fn build_placement(
                 return Ok(2);
             }
             explored = explored || (site.human && map.explored(site.player, tx, ty));
-        }
-    }
-    // the hill modes read each tile's slope (`+8`, which a load computes from the elevations):
-    // on a flat area (the box and the tiles beside it of one elevation) every slope is 0, which
-    // each of them passes
-    if site.hill_mode != 0 {
-        let base = map.elevation((x - rx) as i32, (y - ry) as i32);
-        let flat = ((x - rx) as i32 - 1..=far_x as i32 + 1).all(|tx| {
-            ((y - ry) as i32 - 1..=far_y as i32 + 1).all(|ty| {
-                !(0 <= tx && 0 <= ty && tx < w && ty < h) || map.elevation(tx, ty) == base
-            })
-        });
-        if base.is_none() || !flat {
-            return Err(Unsupported(
-                "BUILD's placement test of a hill mode on uneven ground (the tiles' slopes)",
-            ));
+            if hill_fails(site.hill_mode, map, (tx, ty), (x0, y1), base)? {
+                return Ok(3);
+            }
         }
     }
     if site.human && !explored {
@@ -798,6 +827,14 @@ impl PlaceMap for WorldMap<'_> {
         let [w, h] = self.turns.spatial.map;
         (0 <= x && 0 <= y && x < w && y < h)
             .then(|| t.elevations.get((y * w + x) as usize).copied())
+            .flatten()
+    }
+
+    fn shape(&self, x: i32, y: i32) -> Option<u8> {
+        let t = self.turns.spatial.terrain.as_ref()?;
+        let [w, h] = self.turns.spatial.map;
+        (0 <= x && 0 <= y && x < w && y < h)
+            .then(|| t.shapes.get((y * w + x) as usize).copied())
             .flatten()
     }
 
@@ -2034,6 +2071,53 @@ mod tests {
     /// sides the first pass tries; the villager (radius 0.2) steps by 0.5 from (106.5, 47.5).
     /// The sheep 9520 at (106.68, 47.15) blocks the first two candidates and stays (livestock in
     /// state 2), so each ends its spot; (106.5, 46.5) is free.
+    /// A map of one tile's shape and elevation for the hill test.
+    struct Hill(u8, u8);
+
+    impl PlaceMap for Hill {
+        fn size(&self) -> [i32; 2] {
+            [10, 10]
+        }
+        fn terrain(&self, _: i32, _: i32) -> Result<u8, Unsupported> {
+            Ok(0)
+        }
+        fn explored(&self, _: usize, _: i32, _: i32) -> bool {
+            true
+        }
+        fn visible(&self, _: usize, _: i32, _: i32) -> bool {
+            true
+        }
+        fn elevation(&self, _: i32, _: i32) -> Option<u8> {
+            Some(self.1)
+        }
+        fn shape(&self, _: i32, _: i32) -> Option<u8> {
+            Some(self.0)
+        }
+        fn allied(&self, a: usize, b: usize, _: bool) -> bool {
+            a == b
+        }
+        fn objects(&self, _: i32, _: i32) -> Result<Vec<Near>, Unsupported> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[test]
+    fn a_hill_mode_takes_flat_ground_side_slopes_or_an_edge_within_one_step() {
+        let fails = |mode, shape, elevation, at| {
+            hill_fails(mode, &Hill(shape, elevation), at, (2, 5), Some(3)).unwrap()
+        };
+        // mode 1: flat and the four side slopes (5 to 8) pass, corners and saddles fail
+        assert!(!fails(1, 0, 3, (3, 3)) && !fails(1, 5, 3, (3, 3)) && !fails(1, 8, 3, (3, 3)));
+        assert!(fails(1, 2, 3, (3, 3)) && fails(1, 9, 3, (3, 3)));
+        // mode 2: flat alone
+        assert!(!fails(2, 0, 3, (3, 3)) && fails(2, 6, 3, (3, 3)));
+        // mode 3: the first column and the last row within one step of the corner's elevation
+        assert!(!fails(3, 9, 4, (2, 3)) && fails(3, 0, 5, (2, 3)) && fails(3, 0, 1, (4, 5)));
+        assert!(!fails(3, 0, 7, (4, 4)));
+        // the other modes take any tile
+        assert!(!fails(0, 12, 9, (3, 3)));
+    }
+
     #[test]
     fn the_tc_spawns_its_villager_below_the_sheep_on_its_right() {
         let site = Site {
@@ -2129,6 +2213,9 @@ mod tests {
             true
         }
         fn elevation(&self, _: i32, _: i32) -> Option<u8> {
+            Some(0)
+        }
+        fn shape(&self, _: i32, _: i32) -> Option<u8> {
             Some(0)
         }
         fn allied(&self, a: usize, b: usize, _: bool) -> bool {

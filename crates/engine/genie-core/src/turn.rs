@@ -7389,6 +7389,10 @@ pub struct Turns {
     /// The Empire Wars start's pass is due ([`crate::start_work`]): the world's `+0x6c6` is
     /// clear in game mode 13, which a game's start has.
     pub start_work_due: bool,
+    /// The game setting `+0x1074` (`FUN_1412ffe00`): players may order each other's units. The
+    /// tick oracle reads 0 in MarvinBlue/426049433; where the save or the lobby holds it is not
+    /// known yet.
+    pub allied_control: bool,
     /// The world's game state (`+0x88`, the save's `tempGameState`): 1 once the game is over.
     pub game_state: u32,
     /// The scenario's `victory_conquest` (`world+0x7e0`'s `+0x2c0`, `FUN_140ca4d20`): the game
@@ -7468,6 +7472,7 @@ impl Turns {
             carry_rule: false,
             farm_stops: false,
             start_work_due: false,
+            allied_control: false,
             mode_680: 0,
             game_mode: 0,
             game_state: 0,
@@ -7508,6 +7513,8 @@ impl Turns {
                         return;
                     }
                 }
+                // the new object's new_position: the ground's height (slot 0x60)
+                let position = self.on_ground(player, master, position);
                 let id = self.next_object_id;
                 self.next_object_id += 1;
                 // what its first update as a built building starts (slot 0x7f0)
@@ -7783,6 +7790,19 @@ impl Turns {
                 ref units,
                 order,
             } => {
+                // the command's check (MOVE's FUN_140e553f0, INTERACT's FUN_140e55250): a unit the
+                // world does not hold, or of another player without the setting +0x1074, becomes
+                // -1; a human player's command left without a unit does nothing
+                let checked: Vec<i32>;
+                let units: &[i32] = if matches!(order, Some(Order::Move(_) | Order::Interact(_))) {
+                    checked = self.checked_units(player, units);
+                    if checked.iter().all(|&id| id == -1) && !self.players[player].computer {
+                        return;
+                    }
+                    &checked
+                } else {
+                    units
+                };
                 // FOLLOW (FUN_140e66a60) of a target the world lacks does nothing
                 if let Some(Order::Follow(target)) = order
                     && self.object(target).is_none()
@@ -7825,6 +7845,41 @@ impl Turns {
                 }
             }
         }
+    }
+
+    /// A new object of player `p`'s `master` placed at `at` (the static `new_position`,
+    /// `0x1411a58b0`, slot 0x60's `FUN_141193a10`): its height the ground's by the master's fly
+    /// mode; without the map's elevations the height stays.
+    pub(crate) fn on_ground(&self, p: usize, master: i16, at: [f32; 3]) -> [f32; 3] {
+        let fly_mode = self
+            .masters
+            .get(p)
+            .and_then(|m| m.get(master))
+            .map_or(0, |m| m.fly_mode);
+        self.spatial
+            .terrain
+            .as_ref()
+            .and_then(|t| t.ground(at[0], at[1]).ok())
+            .map_or(at, |g| {
+                [
+                    at[0],
+                    at[1],
+                    crate::missile::grounded(at[2], g, false, fly_mode),
+                ]
+            })
+    }
+
+    /// The command check's units (`FUN_140e553f0`, `FUN_140e55250`): each unit the world holds
+    /// that is the player's own, or any while players may order each other's units
+    /// ([`Turns::allied_control`]); −1 for the others.
+    fn checked_units(&self, player: usize, units: &[i32]) -> Vec<i32> {
+        units
+            .iter()
+            .map(|&id| match self.object(id) {
+                Some((p, _)) if p == player || self.allied_control => id,
+                _ => -1,
+            })
+            .collect()
     }
 
     /// `FUN_140e5e780`: each unit of `ids` with a unit AI takes the world time as its last human
