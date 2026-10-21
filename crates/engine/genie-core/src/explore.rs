@@ -57,6 +57,8 @@ pub struct ExploreAction {
     /// Its `MoveTo` to the point (state 11's sub-action, quiet: `+0x60` set, range 0, the master's
     /// moving sprite `+0x748` as no task names one).
     pub move_to: Option<MoveTo>,
+    /// Its `MoveTo`'s wait after the motion step gave up.
+    pub move_wait: crate::move_to::MoveWait,
 }
 
 impl ExploreAction {
@@ -68,6 +70,7 @@ impl ExploreAction {
             state: 0,
             point,
             move_to: None,
+            move_wait: crate::move_to::MoveWait::default(),
         };
         let state = if a.point[0] == NO_POINT { WAIT } else { WALK };
         let owner = a.set_state(state);
@@ -90,6 +93,11 @@ impl ExploreAction {
             DONE | FAILED | 14 => Owner::Standing,
             WALK => {
                 self.move_to = Some(MoveTo::Start);
+                self.move_wait = crate::move_to::MoveWait {
+                    state: 0,
+                    timer: 0.0,
+                    delay: 0.0,
+                };
                 Owner::Nothing
             }
             _ => Owner::Nothing,

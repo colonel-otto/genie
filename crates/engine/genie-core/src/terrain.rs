@@ -30,6 +30,8 @@ const SNOW_FOUNDATION: u8 = 6;
 const SNOW_LAYER: i16 = 32;
 const SNOW_SKIPPED: u8 = 36;
 
+/// The class whose foundation terrain always goes into the terrain (`FUN_1411ddd90`).
+const CLASS_14: i16 = 14;
 /// Terrains a foundation never covers (`FUN_1411ddd90`: 47 and 69).
 const UNCOVERED: [u8; 2] = [47, 69];
 
@@ -353,9 +355,11 @@ impl Terrain {
     /// layer is none, one of those or a farm's; on snow it covers every tile but 36's with
     /// terrain 6 and layer 32; any other foundation covers the tiles of other terrains. A covered
     /// tile's layer goes to the snow layer (or none, `FUN_140f640f0`), then its terrain to the
-    /// foundation's (`FUN_140f64170`), or with no snow layer and setting `+0x680` at 1 its layer.
-    /// The deferred covering under `DAT_143f69454` (0 when probed), farms, master 109's gaps,
-    /// masters 357 and 1188 and class 14 are not modelled.
+    /// foundation's (`FUN_140f64170`), or with no snow layer and setting `+0x680` at 1 its layer
+    /// (a farm's terrain and a building of class 14 always take the terrain). The deferred
+    /// covering of farm terrains under `DAT_143f69454` (0 when probed), master 109's gaps and
+    /// masters 357 and 1188 are not modelled; the local player's own farm's view (`FUN_140f640a0`)
+    /// is not held.
     ///
     /// # Panics
     ///
@@ -363,9 +367,6 @@ impl Terrain {
     pub fn cover(&mut self, f: &Foundation) -> Result<(), Unsupported> {
         /// `DAT_142eb1e9c`.
         const INSIDE: f32 = crate::image::terrain::INSIDE;
-        if f.class == 49 || f.class == 14 {
-            return Err(Unsupported("a foundation terrain of a farm or of class 14"));
-        }
         if matches!(f.master, 109 | 357 | 1188) {
             return Err(Unsupported(
                 "a foundation terrain of master 109, 357 or 1188",
@@ -399,9 +400,8 @@ impl Terrain {
             })
             .transpose()?
             .cloned();
-        if is_farm_terrain(wanted) {
-            return Err(Unsupported("a foundation of a farm's terrain"));
-        }
+        // a farm's terrain, or a building of class 14, always goes into the terrain
+        let into_terrain = is_farm_terrain(wanted) || f.class == CLASS_14;
         for ty in y0..=y1 {
             for tx in x0..=x1 {
                 let i = self.index(tx, ty).expect("clamped to the map");
@@ -426,7 +426,7 @@ impl Terrain {
                     continue;
                 }
                 self.layers[i] = layer;
-                if layer != -1 || f.mode_680 != 1 {
+                if into_terrain || layer != -1 || f.mode_680 != 1 {
                     self.kinds[i] = kind;
                 } else {
                     self.layers[i] = i16::from(kind);
@@ -545,5 +545,34 @@ mod tests {
         })
         .unwrap();
         assert_eq!(t.kinds, [27, 2, 27, 47]);
+    }
+
+    /// A farm's foundation (terrain 29, then its stages 30 and 31) covers every tile of another
+    /// terrain but 47 and 69, into the terrain even where setting `+0x680` at 1 would put another
+    /// foundation into the layer (records/425906646's farm 31311 from update 8654).
+    #[test]
+    fn a_farm_s_foundation_lays_its_terrain_into_the_terrain() {
+        let mut t = map(vec![0, 3, 29, 47], vec![-1, -1, -1, -1]);
+        let farm = Foundation {
+            position: [1.0, 1.0, 0.0],
+            clearance: [1.0, 1.0],
+            terrain: 29,
+            snow: false,
+            master: 50,
+            class: 49,
+            terrain_bonus: -1,
+            mode_680: 1,
+        };
+        t.cover(&farm).unwrap();
+        assert_eq!(
+            (t.kinds.clone(), t.layers.clone()),
+            (vec![29, 29, 29, 47], vec![-1; 4])
+        );
+        t.cover(&Foundation {
+            terrain: 30,
+            ..farm
+        })
+        .unwrap();
+        assert_eq!(t.kinds, [30, 30, 30, 47]);
     }
 }

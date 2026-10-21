@@ -1277,10 +1277,23 @@ fn saved_actions(
                     "a saved Explore in a state the slice does not model",
                 ));
             }
+            let move_wait = base
+                .sub_actions
+                .entries()
+                .next()
+                .and_then(|(_, sub)| sub.rge_action_by_type.as_deref())
+                .and_then(|b| b.rge_action_move_to.as_deref())
+                .map(|m| genie_core::move_to::MoveWait {
+                    state: m.movement_wait_state,
+                    timer: m.timer,
+                    delay: f32::from_bits(m.k_default_wait_time),
+                })
+                .unwrap_or_default();
             unit.explore = Some(genie_core::explore::ExploreAction {
                 state: base.state,
                 point: [base.target_x, base.target_y, base.target_z],
                 move_to,
+                move_wait,
             });
             Ok(())
         }

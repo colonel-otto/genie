@@ -1825,12 +1825,15 @@ impl Spatial {
     }
 
     /// The objects whose centre is on `site`'s footprint, edges included, and that the game counts
-    /// as occupying it (`FUN_14123bb20` for a site whose master obstructs): objects with all three
-    /// radii, other than the site, unless the site may be built over them (`can_be_built_on` 1).
+    /// as occupying it (`FUN_14123bb20`): objects with all three radii, other than the site,
+    /// unless the site may be built over them (`can_be_built_on` 1); for a site whose master
+    /// does not obstruct (`FUN_1411205c0`: obstruction type 0 or 12, `obstructs` false) only
+    /// those that do not move (speed 0, slot 0xe8).
     pub fn footprint_occupants(
         &self,
         site_id: i32,
         site: &Placed,
+        obstructs: bool,
     ) -> Result<Vec<i32>, Unsupported> {
         let [sx, sy, _] = site.position;
         let [rx, ry] = site.radius;
@@ -1841,6 +1844,7 @@ impl Spatial {
             .filter(|&(&id, o)| {
                 id != site_id
                     && o.buildable_on != 1
+                    && (obstructs || o.speed <= 0.0)
                     && o.tall
                     && o.radius.iter().all(|&r| 0.0 < r)
                     && (o.position[0] - sx).abs() <= rx
@@ -2553,9 +2557,9 @@ mod tests {
     #[test]
     fn the_footprint_s_occupants_are_the_objects_whose_centre_is_on_it() {
         let (mut s, house) = site();
-        assert_eq!(s.footprint_occupants(10028, &house), Ok(vec![9175]));
+        assert_eq!(s.footprint_occupants(10028, &house, true), Ok(vec![9175]));
         s.insert(9177, villager(28.0, 89.0));
-        assert_eq!(s.footprint_occupants(10028, &house), Ok(vec![9175]));
+        assert_eq!(s.footprint_occupants(10028, &house, true), Ok(vec![9175]));
         assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![]));
         let mut flower = villager(30.5, 87.5);
         flower.buildable_on = 1;
@@ -2601,13 +2605,13 @@ mod tests {
         s.insert(9656, deer);
         s.freeze(9656);
         // frozen at once, the deer is where the save has it
-        assert!(s.footprint_occupants(10028, &house).is_ok());
+        assert!(s.footprint_occupants(10028, &house, true).is_ok());
         assert!(s.get_known(9656).is_ok());
         // its box reaches x 33.8; 3 s later it may stand on the footprint, which ends at 31
         s.grow_unknown(2.5);
-        assert!(s.footprint_occupants(10028, &house).is_ok());
+        assert!(s.footprint_occupants(10028, &house, true).is_ok());
         s.grow_unknown(0.5);
-        assert!(s.footprint_occupants(10028, &house).is_err());
+        assert!(s.footprint_occupants(10028, &house, true).is_err());
         assert!(s.get_known(9656).is_err());
     }
 

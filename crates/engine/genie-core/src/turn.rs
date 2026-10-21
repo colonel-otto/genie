@@ -5043,6 +5043,49 @@ impl Unit {
         Ok((units.len(), allied))
     }
 
+    /// `TRIBE_Building_Object::update`'s farm part for a foundation (state 0) with a build time
+    /// (`0x1411ca2ef`): its stage, its build points times 3 over its build time (truncated, at
+    /// most 2), lays terrain 29 plus the stage under a farm (master 50) each update
+    /// (`FUN_1411ce250` -> `FUN_1411ddd90`, [`crate::terrain::Terrain::cover`]); the rice farms'
+    /// (1187, 1889: their foundation terrain plus 2, or 65, plus the stage by `+0xcd0`) are not
+    /// modelled.
+    fn farm_stage(&self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        /// The stages over the build time (`DAT_142eb1c98`).
+        const STAGES: f32 = crate::image::turn::FARM_STAGES;
+        /// A farm's first stage terrain (`0x1d`).
+        const FIRST_STAGE: u8 = 29;
+        let Some(cons) = self
+            .construction
+            .filter(|k| self.life.state == 0 && 0 < k.build_time)
+        else {
+            return Ok(());
+        };
+        let Some(m) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+            return Ok(());
+        };
+        match m.id {
+            50 => {}
+            1187 | 1889 => return Err(Unsupported("a rice farm's stage terrain (+0xcd0)")),
+            _ => return Ok(()),
+        }
+        let stage = ((cons.progress * STAGES) / f32::from(cons.build_time)) as i32 as u8;
+        let f = crate::terrain::Foundation {
+            position: self.position,
+            clearance: m.clearance,
+            terrain: FIRST_STAGE + stage.min(2),
+            snow: false,
+            master: m.id,
+            class: m.class,
+            terrain_bonus: m.terrain_bonus,
+            mode_680: c.mode_680,
+        };
+        c.spatial
+            .terrain
+            .as_mut()
+            .ok_or(Unsupported("a farm's foundation without the map's terrain"))?
+            .cover(&f)
+    }
+
     /// `TRIBE_Building_Object::update` (`0x1411c9000`) before its combat update: a building in
     /// state 0 whose build points (`+0xc50`, the construction's progress) reached its build time
     /// (its master's first train time, `FUN_140ace5e0`) completes (`set_state(2)`,
@@ -5056,6 +5099,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<(), Unsupported> {
+        self.farm_stage(c)?;
         let due = self.life.state == 0
             && self
                 .construction
@@ -5690,26 +5734,51 @@ impl Unit {
                         .ai
                         .as_ref()
                         .is_some_and(|ai| !matches!(ai.current_order, 711 | 733));
+                    // the motion step giving up: a human player's villager waits once, any
+                    // other unit's MoveTo fails (LAB_140aa320c)
+                    let villager = c
+                        .masters
+                        .and_then(|m| m.get(self.life.master_id))
+                        .is_some_and(|m| m.class == 4);
+                    let waits = villager && !c.computer;
+                    let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
                     let code = match explore.move_to {
                         Some(MoveTo::Start) => {
+                            if explore.move_wait.state == 1 {
+                                explore.move_wait.state = 2;
+                            }
                             explore.move_to = Some(MoveTo::Moving);
                             let goal = crate::move_to::Goal::Point(explore.point);
                             let walk = c.walk(self.mover.as_mut(), me);
-                            explore.move_to =
-                                Some(crate::move_to::start_walk(walk, goal, 0.0, quiet)?);
+                            explore.move_to = Some(
+                                match crate::move_to::start_walk_or_give_up(walk, goal, 0.0, quiet)?
+                                {
+                                    Some(state) => state,
+                                    None => explore.move_wait.give_up(waits, stance),
+                                },
+                            );
                             0
                         }
                         Some(MoveTo::Moving) => {
                             let walk = c.walk(self.mover.as_mut(), me);
-                            explore.move_to = Some(crate::move_to::walk_on(walk)?);
+                            explore.move_to = Some(match crate::move_to::walk_or_give_up(walk)? {
+                                Some(state) => state,
+                                None => explore.move_wait.give_up(waits, stance),
+                            });
                             0
                         }
-                        Some(MoveTo::Arrived) | None => 1,
-                        Some(MoveTo::Waiting | MoveTo::Failed) => {
-                            return Err(Unsupported(
-                                "an Explore's waiting or failed MoveTo (states 2, 13)",
-                            ));
+                        // case 2: the wait runs by dt, then the MoveTo asks again (set_state 3)
+                        Some(MoveTo::Waiting) => {
+                            explore.move_wait.timer += c.dt_seconds;
+                            if explore.move_wait.delay <= explore.move_wait.timer {
+                                explore.move_wait.timer = 0.0;
+                                explore.move_to = Some(MoveTo::Start);
+                            }
+                            0
                         }
+                        // its update in state 13 returns 3 (quiet: no notify)
+                        Some(MoveTo::Failed) => 3,
+                        Some(MoveTo::Arrived) | None => 1,
                     };
                     let walked = explore.move_to.is_some();
                     let owner = explore.after_walk(code)?;
@@ -8001,6 +8070,30 @@ impl Turns {
                 });
                 // the combat setup's powerup offset (`+0xa54`, FUN_14121df60's "setup" draw)
                 let _ = self.streams.get(Stream::Object).rand15();
+                // the static init (FUN_1411a45a0): the last storage entry of flag 0 is held
+                // (FUN_141193710), those of flags 1, 2 and 32 go to the owner (FUN_141193860)
+                let storage = self
+                    .masters
+                    .get(player)
+                    .and_then(|m| m.get(master))
+                    .map(|m| m.storage.clone())
+                    .unwrap_or_default();
+                let mut held = (-1, 0.0);
+                for &(kind, amount, flag) in &storage {
+                    if flag == 0 && kind != -1 {
+                        held = (kind, amount);
+                    }
+                }
+                let owner = &mut self.players[player];
+                for &(kind, amount, flag) in &storage {
+                    if 0 <= kind
+                        && matches!(flag, 1 | 2 | 32)
+                        && let Err(e) = owner.add_attribute(kind, amount)
+                    {
+                        self.stop_player(player, e);
+                        return;
+                    }
+                }
                 let owner = &mut self.players[player];
                 owner.objects.push(Unit {
                     id,
@@ -8011,6 +8104,8 @@ impl Turns {
                         state: 0,
                         hp: 1.0,
                         master_id: master,
+                        attribute_type: held.0,
+                        amount: held.1,
                         ..Lifecycle::default()
                     },
                     ai,
@@ -8095,7 +8190,8 @@ impl Turns {
                     charge_hit: false,
                 });
                 let built = self
-                    .clear_footprint(player, master, [position[0], position[1]])
+                    .construction_terrain(player, master, position)
+                    .and_then(|()| self.clear_footprint(player, master, [position[0], position[1]]))
                     .and_then(|()| {
                         self.task_builders(
                             player,
@@ -8534,6 +8630,42 @@ impl Turns {
             }
         }
         Ok(())
+    }
+
+    /// The building constructor's terrain (`FUN_1411de5f0`, for a master with a build time, not
+    /// of class 51 or 54, nor 357 or 1188): a farm (master 50) lays terrain 29 under its
+    /// clearance, a rice farm (1187) terrain 65 (`FUN_1411ce250` -> `FUN_1411ddd90`,
+    /// [`crate::terrain::Terrain::cover`]), before the footprint clearing.
+    fn construction_terrain(
+        &mut self,
+        player: usize,
+        master: i16,
+        position: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        /// The farms and the terrain their foundations lay (`0x1d`, `0x41`).
+        const LAID: [(i16, u8); 2] = [(50, 29), (1187, 65)];
+        let Some(&(_, laid)) = LAID.iter().find(|(m, _)| *m == master) else {
+            return Ok(());
+        };
+        let m = self.master_of(player, master)?;
+        if m.build_time <= 0 {
+            return Ok(());
+        }
+        let f = crate::terrain::Foundation {
+            position,
+            clearance: m.clearance,
+            terrain: laid,
+            snow: false,
+            master,
+            class: m.class,
+            terrain_bonus: m.terrain_bonus,
+            mode_680: self.mode_680,
+        };
+        self.spatial
+            .terrain
+            .as_mut()
+            .ok_or(Unsupported("a farm's foundation without the map's terrain"))?
+            .cover(&f)
     }
 
     /// A new building's footprint clearing (`FUN_1415c3620` from the building's constructor

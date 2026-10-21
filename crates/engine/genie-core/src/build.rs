@@ -601,10 +601,8 @@ impl BuildAction {
         if !world.footprint_clearing(self.target, site)?.is_empty() {
             return Err(Unsupported("a foundation clears objects off its footprint"));
         }
-        if site.obstruction_type == 0 || site.obstruction_type == 12 {
-            return Err(Unsupported("a foundation whose master does not obstruct"));
-        }
-        let occupants = world.footprint_occupants(self.target, site)?;
+        let obstructs = !matches!(site.obstruction_type, 0 | 12);
+        let occupants = world.footprint_occupants(self.target, site, obstructs)?;
         step.occupants = occupants
             .iter()
             .copied()
@@ -964,7 +962,10 @@ impl Construction {
         if let Some(v) = world.sight.as_mut() {
             v.construction_started(id, placed.position, placed.radius);
         }
-        world.add_record(id, c.record);
+        // a master without an obstruction type gets no record
+        if c.record.kind != 0 {
+            world.add_record(id, c.record);
+        }
         pathing.tiles_changed(world.take_changes());
         if let Some(p) = world.get(id) {
             pathing.moved(id, p, false);
