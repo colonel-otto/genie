@@ -3804,31 +3804,42 @@ mod tests {
             influence: 3.0,
             by_speed: false,
         };
-        let unit = |id, grouped, position| Splittable {
+        let unit = |id, grouped, position: [f32; 3]| Splittable {
             id,
             kind: 70,
             grouped,
             flag_1: false,
             speed: 1.2,
             position,
+            moved_at: [position[0], position[1]],
             state: 2,
+            radius: 0.2,
+            restriction: Some(1),
         };
+        // no planner: the distance decides
+        let mut none = |_: &Splittable, _: &Splittable| Ok(None);
         let scout = unit(9185, true, [42.047_367, 94.338_486, 0.0]);
         let sheep = unit(9529, false, [45.5, 93.5, 0.0]);
-        assert!(!splits_together(&scout, &sheep, f, false).unwrap());
-        // nearer than 20 tiles the game measures a path
+        assert!(!splits_together(&scout, &sheep, f, false, &mut none).unwrap());
+        // nearer than 20 tiles the planner's path decides: its goal reached (1) within the
+        // influence distance
         let other = unit(9186, true, [44.0, 94.0, 0.0]);
-        assert!(splits_together(&scout, &other, f, false).is_err());
+        let mut short = |_: &Splittable, _: &Splittable| Ok(Some((1, 2.5)));
+        assert!(splits_together(&scout, &other, f, false, &mut short).unwrap());
+        let mut long = |_: &Splittable, _: &Splittable| Ok(Some((1, 3.5)));
+        assert!(!splits_together(&scout, &other, f, false, &mut long).unwrap());
+        let mut nearest = |_: &Splittable, _: &Splittable| Ok(Some((2, 2.5)));
+        assert!(!splits_together(&scout, &other, f, false, &mut nearest).unwrap());
         let far = unit(9187, true, [80.0, 94.0, 0.0]);
-        assert!(!splits_together(&scout, &far, f, false).unwrap());
+        assert!(!splits_together(&scout, &far, f, false, &mut none).unwrap());
         let wide = crate::turn::Formations {
             influence: 40.0,
             ..f
         };
-        assert!(splits_together(&scout, &far, wide, false).unwrap());
+        assert!(splits_together(&scout, &far, wide, false, &mut none).unwrap());
         // a member must stand in state 2 or more
         let born = Splittable { state: 0, ..far };
-        assert!(!splits_together(&scout, &born, wide, true).unwrap());
+        assert!(!splits_together(&scout, &born, wide, true, &mut none).unwrap());
     }
 
     #[test]
