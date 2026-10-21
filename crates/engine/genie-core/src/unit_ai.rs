@@ -3730,12 +3730,10 @@ impl UnitAi {
     }
 
     /// `FUN_140c4eea0` with 0: a unit takes orders unless its master has a task of action type
-    /// 0x99 and it has a target or an action (not modelled).
+    /// 0x99 (`FUN_1415c60b0`) and its target exists in the world (`FUN_1415417a0` on `+0x48`) or
+    /// it has an action value (`+0x44`).
     const fn can_order(&self, at: &Surroundings) -> Result<bool, Unsupported> {
-        if at.task_0x99 {
-            return Err(Unsupported("a unit with a task of action type 0x99"));
-        }
-        Ok(true)
+        Ok(!(at.task_0x99 && (at.target.is_some() || self.current_action != -1)))
     }
 
     /// The unit AI between its owner's turns (`FUN_140c68980`, from `RGE_Combat_Object::update`
