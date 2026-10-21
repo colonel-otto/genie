@@ -1308,6 +1308,7 @@ mod tests {
             speed_stopped: false,
             pauses: Vec::new(),
             in_the_way: Vec::new(),
+            sprite_facets: None,
         };
         let mut build = BuildAction {
             target: 10028,

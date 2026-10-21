@@ -2462,6 +2462,7 @@ impl Turns {
             workers: t.workers,
             drop_site: self.drops_at_main(player, idx, target)?,
             gap: crate::movement::footprint_gap(unit.position, me.radius, t_at, t_radius),
+            radius: t_radius,
         };
         let computer = self.players[player].computer;
         let farm_stops = self.farm_stops;
@@ -2474,7 +2475,8 @@ impl Turns {
             ));
         };
         let (old_target, old_second) = (gather.target, gather.carry_to);
-        let took = gather.retarget(&resource, player, computer, held, farm_stops, mover)?;
+        let rng = self.streams.get(Stream::Action);
+        let took = gather.retarget(&resource, player, computer, held, farm_stops, mover, rng)?;
         let (new_target, new_second) = (gather.target, gather.carry_to);
         for (old, new) in [(old_target, new_target), (old_second, new_second)] {
             if old != new {
@@ -2624,6 +2626,7 @@ impl Turns {
             workers: t.workers,
             drop_site: self.drops_at_main(player, idx, target)?,
             gap: crate::movement::footprint_gap(unit.position, me.radius, t_at, t_radius),
+            radius: t_radius,
         };
         let task = HuntTask {
             id: task.id,
@@ -2634,7 +2637,17 @@ impl Turns {
             productivity: task.attribute_type2,
             kind4: task.attribute_type4,
         };
-        let mut gather = crate::gather::GatherAction::new(task, &resource, self.farm_stops)?;
+        // the constructor's time per stop: the gatherer's work rate (its master's plus its
+        // powerup, slot 0x6e8), capacity and productivity attribute (none: 1.0)
+        let rate = crate::gather::StopRate {
+            work_rate: unit.work_rate_powerup + me.work_rate,
+            capacity: f32::from(me.capacity),
+            productivity: crate::gather::productivity_of(
+                task.productivity,
+                &self.players[player].attributes,
+            ),
+        };
+        let mut gather = crate::gather::GatherAction::new(task, &resource, self.farm_stops, rate)?;
         self.take(target);
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
@@ -2656,7 +2669,10 @@ impl Turns {
             .as_mut()
             .ok_or(Unsupported("a gatherer without movement state"))?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
-        gather.start(&resource, player, computer, carry_rule, &mut held, mover)?;
+        let rng = self.streams.get(Stream::Action);
+        gather.start(
+            &resource, player, computer, carry_rule, &mut held, mover, rng,
+        )?;
         (unit.life.attribute_type, unit.life.amount) = held;
         let drops = gather.target == -1 && gather.carry_to == target;
         unit.gather = Some(gather);

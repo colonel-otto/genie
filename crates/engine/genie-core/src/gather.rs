@@ -6,8 +6,11 @@
 //! `0x140a8e1d0`, `set_state` (slot 16) `0x140a8cd40`; slot 0x40 `0x140a8b740`, slot 0x48
 //! `0x140a903a0`.
 //!
-//! Not modelled yet: a farm's stops (`mNumberStops` above 1: the walk to the next stop's random
-//! point, the time per stop), the searches (`set_state` 3, 0xf3), the walks to a point (11, 15),
+//! A farm under the game's farm setting has four stops (`mNumberStops`): the farmer walks to a
+//! random point on the farm (`set_state(4)`, the Action stream's `"set_state"` draws), gathers
+//! there for the time per stop, then walks to the next.
+//!
+//! Not modelled yet: the searches (`set_state` 3, 0xf3), the walks to a point (11, 15, 0xf2),
 //! the waits after a failed walk or a drop-off out of reach (the Action stream's `"update"`
 //! draws) and a gather left without a target and a load.
 
@@ -51,6 +54,21 @@ const VILLAGER_CLASS: i16 = 4;
 const REGATHERED: [i16; 3] = [50, 1187, 45];
 /// Masters the constructor and `set_state(6)` treat apart (357 and 1188, `FUN_140a8b140`).
 const SPECIAL_TARGETS: [i16; 2] = [357, 1188];
+/// The farms whose gather goes in stops under the game's farm setting, and whose time per stop
+/// each update renews: the farm and the rice farm (the constructor's and the update's masters).
+const STOP_FARMS: [i16; 2] = [50, 1187];
+/// A farm's stops under the game's farm setting (the constructor's `mNumberStops`).
+const FARM_STOPS: u8 = 4;
+/// A stop's point lies this far into its tile (`DAT_142e7f384`).
+const STOP_CENTRE: f32 = crate::image::gather::STOP_CENTRE;
+/// The productivity of a task without a productivity attribute (`DAT_14330eb8c`).
+const DEFAULT_PRODUCTIVITY: f32 = crate::image::gather::DEFAULT_PRODUCTIVITY;
+/// The draws a stop's point takes at most (`set_state(4)`'s loop).
+const STOP_DRAWS: u32 = 10;
+/// The player's attribute that sells a farm's food at once (`player+0x100` at `+0x300`).
+pub(crate) const FARM_FOOD_SOLD: usize = 96;
+/// The food kind a farm holds (`+0x308` 16): the food sold at once.
+const FARM_FOOD_KIND: i16 = 16;
 
 /// The Gather action of a gatherer (`RGE_Action_Gather`, type 5), with the save's fields.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -90,6 +108,9 @@ pub struct GatherAction {
     /// The sub-action of states 4 and 8: a `MoveTo` to the target or the drop site within the
     /// task's range, quiet (its `+0x60` and `+0x61` set).
     pub move_to: Option<MoveTo>,
+    /// The point that `MoveTo` walks to instead (a farm's stop, `FUN_140aa0d30`), None when it
+    /// walks to the target or the drop site.
+    pub walk_to: Option<[f32; 3]>,
     /// Its `MoveTo`'s wait after the motion step gave up.
     pub move_wait: MoveWait,
 }
@@ -115,6 +136,8 @@ pub struct Resource {
     /// The footprint gap between the gatherer and it (`FUN_14118f680`), which the `MoveTo`'s start
     /// reads.
     pub gap: f32,
+    /// Its master's radii (`+0x5d8`, `+0x5dc`), over which a farm's stops spread.
+    pub radius: [f32; 2],
 }
 
 /// What the gathering reads of its unit and changes.
@@ -147,6 +170,40 @@ pub struct Gatherer<'a> {
     pub farm_stops: bool,
     /// The notifies the walk posts to the unit AI (the units in its way).
     pub posted: Vec<(i32, [i32; 3])>,
+    /// The Action stream, which a farm stop's point draws from.
+    pub action_rng: &'a mut Well512,
+    /// The gatherer's player.
+    pub player: usize,
+    /// The player's attribute the task's `attribute_type2` names (none: 1.0), as the time per
+    /// stop reads it.
+    pub stop_productivity: f32,
+    /// The player's attribute 96: a farm's food is sold at once.
+    pub food_sold: f32,
+    /// The food the gathering sold at once, which the caller gives to the player (slot 0xf8 with
+    /// 1, [`crate::turn`]'s `give_load`).
+    pub sold: f32,
+}
+
+/// What the constructor reads to time a farm's stops: the gatherer's work rate (its master's
+/// `+0x798` plus its powerup, slot 0x6e8), its capacity (`+0x61c`) and the player's attribute the
+/// task's `attribute_type2` names (none: 1.0).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StopRate {
+    /// The work rate.
+    pub work_rate: f32,
+    /// The capacity.
+    pub capacity: f32,
+    /// The productivity.
+    pub productivity: f32,
+}
+
+impl StopRate {
+    /// The time per stop (`+0x70`): the capacity times the productivity over the work a second,
+    /// shared out over the stops.
+    #[must_use]
+    pub fn time_per_stop(self, work_value: f32, stops: u8) -> f32 {
+        ((self.capacity * self.productivity) / (self.work_rate * work_value)) / f32::from(stops)
+    }
 }
 
 /// What an update asks of the caller.
@@ -164,25 +221,79 @@ const fn food(kind: i16) -> bool {
     kind == 0 || (15 <= kind && kind <= 17)
 }
 
+/// The productivity the time per stop reads (the constructor's and the update's): the player's
+/// attribute the task's `attribute_type2` names, as it is, or 1.0 for none (`DAT_14330eb8c`).
+#[must_use]
+pub fn productivity_of(attribute_type2: i16, attributes: &[f32]) -> f32 {
+    if attribute_type2 == -1 {
+        return DEFAULT_PRODUCTIVITY;
+    }
+    usize::try_from(attribute_type2)
+        .ok()
+        .and_then(|i| attributes.get(i))
+        .copied()
+        .unwrap_or(0.0)
+}
+
+/// `set_state(4)`'s point of a farm's next stop (`0x140a8cd40` case 4): a tile of the farm's
+/// footprint (its place `position` less its radii `radius`, plus a draw of the Action stream
+/// modulo twice each radius, its centre 0.5 in), drawn again while it is the last stop's, at
+/// most ten times.
+#[must_use]
+pub fn stop_point(
+    position: [f32; 3],
+    radius: [f32; 2],
+    last: [f32; 2],
+    rng: &mut Well512,
+) -> [f32; 2] {
+    let (mut ix, mut iy) = (
+        (radius[0] + radius[0]) as i32,
+        (radius[1] + radius[1]) as i32,
+    );
+    if ix == 0 || iy == 0 {
+        (ix, iy) = (1, 1);
+    }
+    let (left, bottom) = (
+        (position[0] - radius[0]) as i32,
+        (position[1] - radius[1]) as i32,
+    );
+    let [mut x, mut y] = last;
+    let mut draws = 0;
+    while x == last[0] && y == last[1] && draws < STOP_DRAWS {
+        x = ((rng.rand15() as i32) % ix + left) as f32 + STOP_CENTRE;
+        y = ((rng.rand15() as i32) % iy + bottom) as f32 + STOP_CENTRE;
+        draws += 1;
+    }
+    [x, y]
+}
+
 impl GatherAction {
     /// The factory's constructor with a target (`FUN_140a88310`; the target's add, slot 0x178, is
     /// the caller's): the target's place is the point and its class the target type; a farm (class
     /// 49) or masters 357 and 1188 keep their place as the farm's. One stop, `mGatherX` and
     /// `mGatherY` at −1. A farm of master 50 or 1187 with the game's farm setting has four stops,
-    /// which the slice does not model yet.
+    /// each [`StopRate::time_per_stop`] long.
     ///
     /// # Errors
     ///
-    /// The farm's stops.
-    pub fn new(task: HuntTask, target: &Resource, farm_stops: bool) -> Result<Self, Unsupported> {
+    /// None yet.
+    pub fn new(
+        task: HuntTask,
+        target: &Resource,
+        farm_stops: bool,
+        rate: StopRate,
+    ) -> Result<Self, Unsupported> {
         let farm = if target.class == FARM_CLASS || SPECIAL_TARGETS.contains(&target.master) {
             [target.position[0], target.position[1]]
         } else {
             [0.0; 2]
         };
-        if farm_stops && target.class == FARM_CLASS && matches!(target.master, 50 | 1187) {
-            return Err(Unsupported("a farm's gather in stops (mNumberStops 4)"));
-        }
+        let (stops, time_per_stop) =
+            if farm_stops && target.class == FARM_CLASS && STOP_FARMS.contains(&target.master) {
+                (FARM_STOPS, rate.time_per_stop(task.work_value, FARM_STOPS))
+            } else {
+                (1, 0.0)
+            };
         Ok(Self {
             target: target.id,
             carry_to: -1,
@@ -191,15 +302,16 @@ impl GatherAction {
             timer: 0.0,
             task,
             target_type: i32::from(target.class),
-            stops: 1,
+            stops,
             current_stop: 0,
-            time_per_stop: 0.0,
+            time_per_stop,
             time_at_stop: 0.0,
             last_stop: [0.0; 2],
             worked: false,
             farm,
             gather_at: [-1.0; 2],
             move_to: None,
+            walk_to: None,
             move_wait: MoveWait::default(),
         })
     }
@@ -224,6 +336,7 @@ impl GatherAction {
         carry_rule: bool,
         held: &mut (i16, f32),
         mover: &mut Mover,
+        rng: &mut Well512,
     ) -> Result<(), Unsupported> {
         let kind = self.task.resource;
         let both_food = food(kind) && food(held.0);
@@ -244,7 +357,7 @@ impl GatherAction {
             self.carry_to = target.id;
             return self.set_drop(target.gap, mover);
         }
-        self.set_walk(target.position, target.gap, mover)
+        self.set_walk(target.position, target.radius, target.gap, mover, rng)
     }
 
     /// Slot 0x48 (`0x140a903a0`) on the work command's new `target` (one the world holds that is
@@ -262,6 +375,7 @@ impl GatherAction {
     /// # Errors
     ///
     /// What it does not model; a unit that cannot move.
+    #[allow(clippy::too_many_arguments)]
     pub fn retarget(
         &mut self,
         target: &Resource,
@@ -270,6 +384,7 @@ impl GatherAction {
         held: f32,
         farm_stops: bool,
         mover: &mut Mover,
+        rng: &mut Well512,
     ) -> Result<bool, Unsupported> {
         if target.id == self.target {
             match self.state {
@@ -305,24 +420,29 @@ impl GatherAction {
             ));
         }
         self.carry_to = -1;
-        self.set_walk(target.position, target.gap, mover)?;
+        self.set_walk(target.position, target.radius, target.gap, mover, rng)?;
         Ok(true)
     }
 
-    /// `set_state(4)` (`0x140a8cd40` case 4) with its target at `position`, `gap` from the unit:
-    /// the sub-actions go (a `MoveTo`'s teardown stops the unit), the timer clears and the target's
-    /// place becomes the point; with one stop a quiet `MoveTo` to the target within the task's
-    /// range starts (`FUN_140aa0df0`, its start `0x140aa2100`: a unit within 0.01 of the target's
-    /// footprint is there already, state 1; else state 3).
+    /// `set_state(4)` (`0x140a8cd40` case 4) with its target at `position` (its master's radii
+    /// `radius`), `gap` from the unit: the sub-actions go (a `MoveTo`'s teardown stops the unit),
+    /// the timer clears and the target's place becomes the point. With one stop a quiet `MoveTo`
+    /// to the target within the task's range starts (`FUN_140aa0df0`, its start `0x140aa2100`: a
+    /// unit within 0.01 of the target's footprint is there already, state 1; else state 3). A
+    /// farm's stops (the game's `+0xc14` being 0) walk to a point of the farm instead
+    /// ([`stop_point`]), which becomes the last stop: a quiet `MoveTo` to it within the task's
+    /// range (`FUN_140aa0d30`, state 3).
     ///
     /// # Errors
     ///
-    /// A farm's stops; a unit that cannot move (the `MoveTo`'s state 13).
+    /// A gather without its target (the `MoveTo`'s state 13); a unit that cannot move.
     pub fn set_walk(
         &mut self,
         position: [f32; 3],
+        radius: [f32; 2],
         gap: f32,
         mover: &mut Mover,
+        rng: &mut Well512,
     ) -> Result<(), Unsupported> {
         self.tear_down(Some(mover))?;
         self.state = WALK;
@@ -334,7 +454,15 @@ impl GatherAction {
         }
         self.point = position;
         if 1 < self.stops {
-            return Err(Unsupported("a farm's walk to its next stop (set_state 4)"));
+            let [x, y] = stop_point(position, radius, self.last_stop, rng);
+            self.last_stop = [x, y];
+            self.move_wait = MoveWait::default();
+            if mover.stats.speed == 0.0 {
+                return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+            }
+            self.walk_to = Some([x, y, position[2]]);
+            self.move_to = Some(MoveTo::Start);
+            return Ok(());
         }
         self.start_move(gap, mover)
     }
@@ -361,6 +489,7 @@ impl GatherAction {
     /// A new quiet `MoveTo` within the task's range: arrived within 0.01 of its goal's footprint.
     fn start_move(&mut self, gap: f32, mover: &Mover) -> Result<(), Unsupported> {
         self.move_wait = MoveWait::default();
+        self.walk_to = None;
         self.move_to = Some(if ARRIVED < gap {
             if mover.stats.speed == 0.0 {
                 return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
@@ -379,6 +508,7 @@ impl GatherAction {
     ///
     /// The unit's stop that the motion step does not model.
     pub fn tear_down(&mut self, mover: Option<&mut Mover>) -> Result<(), Unsupported> {
+        self.walk_to = None;
         if self.move_to.take().is_some()
             && let Some(m) = mover
         {
@@ -409,6 +539,18 @@ impl GatherAction {
         g: &mut Gatherer<'_>,
         dt: f32,
     ) -> Result<Next, Unsupported> {
+        // a farm's time per stop follows the gatherer's work rate, every update
+        if target
+            .as_deref()
+            .is_some_and(|t| STOP_FARMS.contains(&t.master_id))
+        {
+            self.time_per_stop = StopRate {
+                work_rate: g.work_rate,
+                capacity: g.capacity,
+                productivity: g.stop_productivity,
+            }
+            .time_per_stop(self.task.work_value, self.stops);
+        }
         let Some(target) = target.filter(|_| self.target != -1) else {
             if matches!(self.state, WALK | FACE | WORK) {
                 if 0.0 < *g.held {
@@ -426,10 +568,26 @@ impl GatherAction {
             WALK if self.timer < 0.0 => Err(Unsupported("a gather's wait after a failed walk")),
             WALK => self.update_walk(walk, target, g).map(|()| Next::Stay),
             FACE => {
+                // case 5: a farm not built yet is searched past (set_state 3), a pasture short of
+                // its animals or a farm another farmer works waits for another (0xf3)
                 if target.class == FARM_CLASS {
-                    return Err(Unsupported("a gather facing a farm"));
+                    if target.state < 2 {
+                        return Err(Unsupported(
+                            "a gather facing a farm not built yet (set_state 3)",
+                        ));
+                    }
+                    if (target.master_id - 0x765) & !4 == 0 {
+                        return Err(Unsupported(
+                            "a gather facing a pasture (its animals, slot 0x780)",
+                        ));
+                    }
+                    if 1 < target.workers {
+                        return Err(Unsupported(
+                            "a gather facing a farm another farmer works (set_state 0xf3)",
+                        ));
+                    }
                 }
-                // case 5: FUN_141162db0 turns the unit to face its target
+                // FUN_141162db0 turns the unit to face its target
                 let at = walk
                     .world
                     .get(walk.me.id)
@@ -452,7 +610,28 @@ impl GatherAction {
                     "a gather's target empty when faced (set_state 3)",
                 ))
             }
-            WORK => self.gather(target, g, dt),
+            WORK => {
+                // case 6 on a farm's stops (the game's +0xc14 being 0): the time at the stop runs;
+                // past the time per stop with a stop left the farmer walks to the next (unless
+                // the food is sold at once, attribute 96, the stop's count stays)
+                if 1 < self.stops {
+                    self.time_at_stop += dt;
+                    if self.time_per_stop <= self.time_at_stop
+                        && u32::from(self.current_stop) + 1 < u32::from(self.stops)
+                    {
+                        if g.food_sold <= 0.0 {
+                            self.current_stop += 1;
+                        }
+                        let mover = walk
+                            .mover
+                            .as_deref_mut()
+                            .ok_or(Unsupported("a gatherer without movement state"))?;
+                        self.set_walk(target.position, target.radius, 0.0, mover, g.action_rng)?;
+                        return Ok(Next::Stay);
+                    }
+                }
+                Ok(self.gather(target, g, dt))
+            }
             _ => Err(Unsupported(
                 "a Gather action in a state the slice does not model",
             )),
@@ -477,8 +656,8 @@ impl GatherAction {
                 self.move_to = Some(MoveTo::Moving);
                 walk.me.action_state = self.state;
                 let range = self.task.range;
-                let walked =
-                    start_walk_or_give_up(walk.reborrow(), Goal::Target(self.target), range, true)?;
+                let goal = self.walk_to.map_or(Goal::Target(self.target), Goal::Point);
+                let walked = start_walk_or_give_up(walk.reborrow(), goal, range, true)?;
                 self.post_in_the_way(&mut walk, g);
                 // the MoveTo's set_state(4) shows the walking sprite
                 if walked.is_none_or(|w| w == MoveTo::Moving)
@@ -493,7 +672,8 @@ impl GatherAction {
                 Ok(())
             }
             Some(MoveTo::Moving) => {
-                if target_moved(&walk, self.target, true)?.again() {
+                // a MoveTo to a point has no target to follow
+                if self.walk_to.is_none() && target_moved(&walk, self.target, true)?.again() {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(());
                 }
@@ -516,6 +696,7 @@ impl GatherAction {
             }
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
+                self.walk_to = None;
                 walk.mover
                     .as_deref_mut()
                     .ok_or(Unsupported("a gatherer without movement state"))?
@@ -553,8 +734,14 @@ impl GatherAction {
     /// none).
     fn set_face(&mut self, target: &Victim, g: &mut Gatherer<'_>) -> Result<(), Unsupported> {
         self.state = FACE;
-        if target.class == FARM_CLASS || SPECIAL_TARGETS.contains(&target.master_id) {
-            return Err(Unsupported("a gather's set_state 6 on a farm"));
+        // another player's farm is the gatherer's to take (FUN_141185360, FUN_1411858f0)
+        if target.class == FARM_CLASS && target.player != g.player {
+            return Err(Unsupported(
+                "a gather's set_state 6 on another player's farm (FUN_141185360)",
+            ));
+        }
+        if SPECIAL_TARGETS.contains(&target.master_id) {
+            return Err(Unsupported("a gather's set_state 6 on master 357 or 1188"));
         }
         if target.state < 2 {
             return Err(Unsupported(
@@ -597,19 +784,11 @@ impl GatherAction {
     /// target holds, times the productivity. A load that would pass the capacity ends the
     /// gathering ([`Next::Drop`]); else the target loses the work, its last bit (above 0, below
     /// 0.1) going with a thousandth of its master's first storage amount, the unit gains, and a
-    /// remainder below 0.1 of the capacity rounds the load up. A full load, or an empty target
-    /// that cannot be gathered empty (the combat object's slot 0x2b8), ends it. Not modelled: a
-    /// farm's food sold at once (the player's attribute 96 on class 49 and food kind 16) and the
-    /// game's `+0xc14` (`FUN_140c884c0`, 0 as the tick oracle holds it).
-    fn gather(
-        &self,
-        target: &mut Victim,
-        g: &mut Gatherer<'_>,
-        dt: f32,
-    ) -> Result<Next, Unsupported> {
-        if 1 < self.stops {
-            return Err(Unsupported("a farm's gathering in stops"));
-        }
+    /// remainder below 0.1 of the capacity rounds the load up. A farm's food under the player's
+    /// attribute 96 is sold at once ([`Gatherer::sold`]); else a full load, or an empty target
+    /// that cannot be gathered empty (the combat object's slot 0x2b8), ends it. The game's
+    /// `+0xc14` (`FUN_140c884c0`) is 0, as the tick oracle holds it.
+    fn gather(&self, target: &mut Victim, g: &mut Gatherer<'_>, dt: f32) -> Next {
         let work = (g.work_rate * self.task.work_value) * dt;
         let take = if work <= target.amount {
             work
@@ -619,7 +798,7 @@ impl GatherAction {
         let capacity = g.capacity;
         let mut gain = g.productivity * take;
         if capacity < gain + *g.held {
-            return Ok(Next::Drop);
+            return Next::Drop;
         }
         target.amount += -take;
         if target.amount < REMAINDER && 0.0 < target.amount {
@@ -632,17 +811,19 @@ impl GatherAction {
             target.amount += -over;
             *g.held += over;
         }
-        if target.class == FARM_CLASS && *g.held_kind == 16 {
-            return Err(Unsupported(
-                "a farm's food sold at once (the player's attribute 96)",
-            ));
+        // a farm's food sold at once (attribute 96): the load goes to the player as food (slot
+        // 0xf8 with 1, the caller's), the unit holds none, and the gathering goes on
+        if 0.0 < g.food_sold && target.class == FARM_CLASS && *g.held_kind == FARM_FOOD_KIND {
+            g.sold += *g.held;
+            *g.held = 0.0;
+            return Next::Stay;
         }
         let empty = target.amount <= 0.0 && !REGATHERED.contains(&target.master_id);
-        Ok(if over < REMAINDER || empty {
+        if over < REMAINDER || empty {
             Next::Drop
         } else {
             Next::Stay
-        })
+        }
     }
 
     /// State 8's update (case 7): the `MoveTo` to the drop site walks; once it ended (its update
@@ -755,6 +936,16 @@ mod tests {
             workers: 0,
             drop_site: false,
             gap: 1.2,
+            radius: [0.5, 0.5],
+        }
+    }
+
+    /// A villager's rate (work rate 1, capacity 10, no productivity attribute).
+    const fn rate() -> StopRate {
+        StopRate {
+            work_rate: 1.0,
+            capacity: 10.0,
+            productivity: 1.0,
         }
     }
 
@@ -770,23 +961,153 @@ mod tests {
         }
     }
 
+    /// A farm of master 50 (class 49, radii 1.5) at MarvinBlue/426049433's 12557.
+    fn farm() -> Resource {
+        Resource {
+            id: 12557,
+            position: [112.5, 173.5, 3.0],
+            class: FARM_CLASS,
+            master: 50,
+            player: 1,
+            workers: 0,
+            drop_site: false,
+            gap: 0.0,
+            radius: [1.5, 1.5],
+        }
+    }
+
+    #[test]
+    fn a_farm_s_stop_is_a_tile_centre_of_its_footprint_other_than_the_last() {
+        let mut rng = Well512::default();
+        rng.set_seed(29910);
+        let mut last = [0.0; 2];
+        for _ in 0..50 {
+            let [x, y] = stop_point([112.5, 173.5, 3.0], [1.5, 1.5], last, &mut rng);
+            assert!([111.5, 112.5, 113.5].contains(&x) && [172.5, 173.5, 174.5].contains(&y));
+            assert_ne!([x, y], last);
+            last = [x, y];
+        }
+        // no footprint: the farm's own tile, drawn ten times when it is the last stop's
+        let mut rng = Well512::default();
+        let at = stop_point([10.0, 20.0, 0.0], [0.0, 0.0], [10.5, 20.5], &mut rng);
+        assert_eq!((at, rng.draws), ([10.5, 20.5], 20));
+    }
+
+    #[test]
+    fn under_the_farm_setting_a_farm_s_gather_goes_in_four_timed_stops() {
+        let rate = StopRate {
+            work_rate: 0.33,
+            capacity: 10.0,
+            productivity: 1.0,
+        };
+        let g = GatherAction::new(task(), &farm(), true, rate).unwrap();
+        assert_eq!(
+            (g.stops, g.time_per_stop, g.farm),
+            (4, ((10.0f32 * 1.0) / (0.33 * 1.0)) / 4.0, [112.5, 173.5])
+        );
+        // without the setting, or on a fish trap, one stop
+        let one = GatherAction::new(task(), &farm(), false, rate).unwrap();
+        let trap = Resource {
+            master: 199,
+            ..farm()
+        };
+        let trap = GatherAction::new(task(), &trap, true, rate).unwrap();
+        assert_eq!((one.stops, one.time_per_stop, trap.stops), (1, 0.0, 1));
+    }
+
+    #[test]
+    fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
+        let mut mover = crate::hunt::tests::walker();
+        let mut g = GatherAction {
+            state: WORK,
+            time_per_stop: 1.0,
+            time_at_stop: 0.95,
+            ..GatherAction::new(task(), &farm(), true, rate()).unwrap()
+        };
+        let mut rng = Well512::default();
+        let at = stop_point([112.5, 173.5, 3.0], [1.5, 1.5], [0.0; 2], &mut rng.clone());
+        g.set_walk([112.5, 173.5, 3.0], [1.5, 1.5], 0.0, &mut mover, &mut rng)
+            .unwrap();
+        assert_eq!(
+            (g.state, g.last_stop, g.walk_to, g.move_to),
+            (WALK, at, Some([at[0], at[1], 3.0]), Some(MoveTo::Start))
+        );
+    }
+
+    #[test]
+    fn a_farm_s_food_sold_at_once_goes_to_the_player_and_the_gathering_goes_on() {
+        let g = GatherAction {
+            state: WORK,
+            ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
+        };
+        let (mut kind, mut held) = (FARM_FOOD_KIND, 0.0f32);
+        let mut sprite = None;
+        let (mut rng, mut action) = (Well512::default(), Well512::default());
+        let mut gatherer = Gatherer {
+            held_kind: &mut kind,
+            held: &mut held,
+            work_rate: 0.5,
+            capacity: 10.0,
+            productivity: 1.0,
+            sprites: HuntSprites::default(),
+            sprite: &mut sprite,
+            sprite_rng: &mut rng,
+            class: 4,
+            stance: 0,
+            world_time: 0,
+            farm_stops: false,
+            posted: Vec::new(),
+            action_rng: &mut action,
+            player: 1,
+            stop_productivity: 1.0,
+            food_sold: 1.0,
+            sold: 0.0,
+        };
+        let mut field = Victim {
+            class: FARM_CLASS,
+            master_id: 50,
+            ..target(15.0)
+        };
+        assert_eq!(g.gather(&mut field, &mut gatherer, 0.5), Next::Stay);
+        assert_eq!(
+            (gatherer.sold, *gatherer.held, field.amount),
+            (0.25, 0.0, 14.75)
+        );
+    }
+
     #[test]
     fn a_forager_walks_to_its_bush() {
         let mut mover = crate::hunt::tests::walker();
-        let mut g = GatherAction::new(task(), &bush(), true).unwrap();
+        let mut g = GatherAction::new(task(), &bush(), true, rate()).unwrap();
         assert_eq!((g.stops, g.gather_at, g.target_type), (1, [-1.0; 2], 7));
         let mut held = (2, 0.0);
-        g.start(&bush(), 7, false, false, &mut held, &mut mover)
-            .unwrap();
+        g.start(
+            &bush(),
+            7,
+            false,
+            false,
+            &mut held,
+            &mut mover,
+            &mut Well512::default(),
+        )
+        .unwrap();
         assert_eq!(
             (g.state, g.move_to, held),
             (WALK, Some(MoveTo::Start), (2, 0.0))
         );
         // a load of another food becomes the task's kind
-        let mut g = GatherAction::new(task(), &bush(), true).unwrap();
+        let mut g = GatherAction::new(task(), &bush(), true, rate()).unwrap();
         let mut held = (15, 3.0);
-        g.start(&bush(), 7, false, false, &mut held, &mut mover)
-            .unwrap();
+        g.start(
+            &bush(),
+            7,
+            false,
+            false,
+            &mut held,
+            &mut mover,
+            &mut Well512::default(),
+        )
+        .unwrap();
         assert_eq!(held, (17, 3.0));
     }
 
@@ -800,11 +1121,19 @@ mod tests {
         let walking = |state| GatherAction {
             state,
             move_to: Some(MoveTo::Moving),
-            ..GatherAction::new(task(), &bush(), true).unwrap()
+            ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
         };
         let mut g = walking(WALK);
         assert_eq!(
-            g.retarget(&bush(), 7, false, 0.0, true, &mut mover),
+            g.retarget(
+                &bush(),
+                7,
+                false,
+                0.0,
+                true,
+                &mut mover,
+                &mut Well512::default()
+            ),
             Ok(true)
         );
         assert_eq!(
@@ -821,7 +1150,15 @@ mod tests {
         for (state, computer) in [(FACE, false), (WORK, false), (WALK, true)] {
             let mut g = walking(state);
             assert_eq!(
-                g.retarget(&bush(), 7, computer, 0.0, true, &mut mover),
+                g.retarget(
+                    &bush(),
+                    7,
+                    computer,
+                    0.0,
+                    true,
+                    &mut mover,
+                    &mut Well512::default()
+                ),
                 Ok(true)
             );
             assert_eq!((g.state, g.move_to), (state, Some(MoveTo::Moving)));
@@ -833,7 +1170,18 @@ mod tests {
             ..bush()
         };
         let mut g = walking(WALK);
-        assert_eq!(g.retarget(&mill, 7, false, 3.0, true, &mut mover), Ok(true));
+        assert_eq!(
+            g.retarget(
+                &mill,
+                7,
+                false,
+                3.0,
+                true,
+                &mut mover,
+                &mut Well512::default()
+            ),
+            Ok(true)
+        );
         assert_eq!(
             (g.state, g.target, g.carry_to, g.point),
             (DROP, -1, 500, [-1.0; 3])
@@ -847,11 +1195,11 @@ mod tests {
     fn a_forager_gathers_until_its_load_is_full() {
         let g = GatherAction {
             state: WORK,
-            ..GatherAction::new(task(), &bush(), true).unwrap()
+            ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
         };
         let (mut kind, mut held) = (17i16, 0.0f32);
         let mut sprite = None;
-        let mut rng = Well512::default();
+        let (mut rng, mut action) = (Well512::default(), Well512::default());
         let mut gatherer = Gatherer {
             held_kind: &mut kind,
             held: &mut held,
@@ -866,21 +1214,23 @@ mod tests {
             world_time: 0,
             farm_stops: true,
             posted: Vec::new(),
+            action_rng: &mut action,
+            player: 7,
+            stop_productivity: 1.0,
+            food_sold: 0.0,
+            sold: 0.0,
         };
         let mut bush = target(100.0);
-        assert_eq!(g.gather(&mut bush, &mut gatherer, 0.5), Ok(Next::Stay));
+        assert_eq!(g.gather(&mut bush, &mut gatherer, 0.5), Next::Stay);
         assert_eq!((*gatherer.held, bush.amount), (0.155, 100.0 - 0.155));
         // 0.2 less the work leaves a last bit below 0.1: it goes with the storage's thousandth
         let mut bush = target(0.2);
         let last = 0.2f32 - 0.155;
-        assert_eq!(g.gather(&mut bush, &mut gatherer, 0.5), Ok(Next::Drop));
+        assert_eq!(g.gather(&mut bush, &mut gatherer, 0.5), Next::Drop);
         assert_eq!(bush.amount, 0.0);
         assert_eq!(*gatherer.held, 0.155 + (0.155 + 125.0 * LAST_BIT + last));
         *gatherer.held = 9.9;
-        assert_eq!(
-            g.gather(&mut target(100.0), &mut gatherer, 0.5),
-            Ok(Next::Drop)
-        );
+        assert_eq!(g.gather(&mut target(100.0), &mut gatherer, 0.5), Next::Drop);
         assert_eq!(*gatherer.held, 9.9);
     }
 }

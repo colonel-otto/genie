@@ -208,10 +208,15 @@ mod tests {
         fn exit(&self, _: &Id) {}
     }
 
-    /// The lines a subscriber hears while `run` runs.
+    /// The lines a subscriber hears while `run` runs. The interest cache is rebuilt inside the
+    /// scope: a callsite another test registered at the same time, with no subscriber yet, may
+    /// hold a stale "never".
     fn heard(run: impl FnOnce()) -> Vec<String> {
         let recorder = Recorder::default();
-        tracing::subscriber::with_default(recorder.clone(), run);
+        tracing::subscriber::with_default(recorder.clone(), || {
+            tracing::callsite::rebuild_interest_cache();
+            run();
+        });
         recorder.lines()
     }
 

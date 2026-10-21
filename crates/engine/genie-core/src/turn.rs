@@ -1400,6 +1400,34 @@ impl Context<'_> {
         )
     }
 
+    /// A walk with the Sprite and the Action streams (a farmer's stops draw from the second).
+    fn walk_sprites_action<'b>(
+        &'b mut self,
+        mover: Option<&'b mut Mover>,
+        me: Me,
+    ) -> (Walk<'b>, &'b mut Well512, &'b mut Well512) {
+        let [object, sprite, action] =
+            self.streams
+                .three(Stream::Object, Stream::Sprite, Stream::Action);
+        (
+            Walk {
+                mover,
+                me,
+                dt: self.dt_seconds,
+                world: self.spatial,
+                plan: Some(Planning {
+                    pathing: self.pathing,
+                    now: self.world_time,
+                    computer: self.computer,
+                    object,
+                    construction_rate: self.construction_rate,
+                }),
+            },
+            sprite,
+            action,
+        )
+    }
+
     /// A walk and another stream than the walk's Object stream.
     fn walk_with<'b>(
         &'b mut self,
@@ -2625,6 +2653,13 @@ impl Unit {
         );
         let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
         let (world_time, farm_stops, dt) = (c.world_time, c.farm_stops, c.dt_seconds);
+        let stop_productivity = crate::gather::productivity_of(task.productivity, c.attributes);
+        let food_sold = c
+            .attributes
+            .get(crate::gather::FARM_FOOD_SOLD)
+            .copied()
+            .unwrap_or(0.0);
+        let player = c.player;
         if gather.state == crate::gather::DROP {
             let me_at = c
                 .spatial
@@ -2654,7 +2689,7 @@ impl Unit {
                 None => None,
             };
             let attributes = c.attributes.len();
-            let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+            let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.mover.as_mut(), me);
             let mut work = crate::gather::Gatherer {
                 held_kind: &mut self.life.attribute_type,
                 held: &mut self.life.amount,
@@ -2669,6 +2704,11 @@ impl Unit {
                 world_time,
                 farm_stops,
                 posted: Vec::new(),
+                action_rng,
+                player,
+                stop_productivity,
+                food_sold,
+                sold: 0.0,
             };
             let load = gather.update_drop(walk, &mut work, attributes, site)?;
             let posted = std::mem::take(&mut work.posted);
@@ -2709,12 +2749,13 @@ impl Unit {
                 .mover
                 .as_mut()
                 .ok_or(Unsupported("a gatherer without movement state"))?;
-            return gather.set_walk(t.position, gap, mover);
+            let rng = c.streams.get(Stream::Action);
+            return gather.set_walk(t.position, t.radius, gap, mover, rng);
         }
         // the target the caller holds, back in the context once the update is done
         let mut victim = c.victim.take();
-        let (next, posted) = {
-            let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+        let (next, posted, sold) = {
+            let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.mover.as_mut(), me);
             let mut work = crate::gather::Gatherer {
                 held_kind: &mut self.life.attribute_type,
                 held: &mut self.life.amount,
@@ -2729,15 +2770,30 @@ impl Unit {
                 world_time,
                 farm_stops,
                 posted: Vec::new(),
+                action_rng,
+                player,
+                stop_productivity,
+                food_sold,
+                sold: 0.0,
             };
             let target = victim.as_deref_mut().filter(|v| v.id == gather.target);
             let next = gather.update(walk, target, &mut work, dt);
-            (next, std::mem::take(&mut work.posted))
+            (next, std::mem::take(&mut work.posted), work.sold)
         };
         c.victim = victim;
         let next = next?;
         for (kind, p) in posted {
             self.post_own(kind, p)?;
+        }
+        // a farm's food sold at once: the player's slot 0xf8 with 1 (food), as a drop-off's
+        if 0.0 < sold {
+            give_load(
+                (&c.spatial.relations, c.sharing),
+                c.player,
+                &mut c.attribute_adds,
+                0,
+                sold,
+            )?;
         }
         if next == crate::gather::Next::Drop {
             self.gather_drop_off(c, others)?;
@@ -3905,6 +3961,7 @@ impl Unit {
             speed_stopped: false,
             pauses: Vec::new(),
             in_the_way: Vec::new(),
+            sprite_facets: facets,
         };
         let mut position = mover.set_position(shot.at, c.spatial.map);
         if !flying {
@@ -4750,6 +4807,13 @@ impl Unit {
             }
             self.life.goto_sleep = false;
             return Ok(Step::Sleep);
+        }
+        // the yaw and the facing read the current sprite's facets
+        if let (Some(m), Some(s)) = (self.mover.as_mut(), self.sprite) {
+            m.sprite_facets = Some(crate::facing::SpriteFacets {
+                count: s.graphic.facets,
+                flag_1: s.graphic.flags & 2 != 0,
+            });
         }
         self.gate_update(c, others)?;
         self.complete_on_update(c, others)?;
@@ -9406,6 +9470,7 @@ pub(crate) fn victim_of(
         height: master.height,
         storage: master.storage.first().map_or(0.0, |s| s.1),
         capacity: master.capacity,
+        workers: u.workers,
         blast_defense: master.blast_defense,
         fog_visibility: master.fog_visibility,
         goto_sleep: u.life.goto_sleep,

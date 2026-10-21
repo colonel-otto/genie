@@ -176,6 +176,11 @@ pub struct Mover {
     /// counts an ally: the motion step tells the unit AI of each (its slot 0x38 with
     /// [`crate::unit_ai::IN_THE_WAY`] and the hit's id), which the caller passes on.
     pub in_the_way: Vec<i32>,
+    /// The facets of the unit's current sprite (`+0x140` -> `+0xa`, and its sequence flag bit
+    /// 1), which the yaw and the facing read: the sprite the slice holds as the unit's update
+    /// starts ([`crate::turn::Unit`]'s), or a new unit's standing sprite; None for neither (the
+    /// master's [`MoveStats::facets`] then).
+    pub sprite_facets: Option<crate::facing::SpriteFacets>,
 }
 
 /// The moving unit, as the motion step needs it besides its [`Mover`].
@@ -2602,6 +2607,13 @@ impl Mover {
         )
     }
 
+    /// The facets of the unit's current sprite ([`Mover::sprite_facets`]), else its master's when
+    /// every sprite it shows has the same.
+    #[must_use]
+    pub fn facets(&self) -> Option<crate::facing::SpriteFacets> {
+        self.sprite_facets.or(self.stats.facets)
+    }
+
     /// Turn toward `direction` (slot 195, `0x14114f630`, then the yaw, slot 184, `0x141163140`):
     /// by the angle between the flat forward vector and the direction, at most the turn rate times
     /// dt (a hundred times dt for a master whose object flags have bit 1), about the up axis; then
@@ -2633,7 +2645,7 @@ impl Mover {
         let forward = fmath::normalize(fmath::rotate(&m, self.forward));
         self.forward = forward;
         self.right = fmath::normalize(fmath::cross(UP, forward));
-        let facets = self.stats.facets.ok_or(Unsupported(
+        let facets = self.facets().ok_or(Unsupported(
             "the yaw of a unit whose sprites differ in their facets",
         ))?;
         let facet = crate::facing::facet_of_forward(forward, facets);
@@ -2827,6 +2839,7 @@ mod tests {
             speed_stopped: false,
             pauses: Vec::new(),
             in_the_way: Vec::new(),
+            sprite_facets: None,
         }
     }
 

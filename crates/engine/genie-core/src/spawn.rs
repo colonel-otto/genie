@@ -1320,6 +1320,7 @@ impl Turns {
                 speed_stopped: false,
                 pauses: Vec::new(),
                 in_the_way: Vec::new(),
+                sprite_facets: Some(facets),
             }),
             attackable: true,
             pasture: -1,
@@ -1600,6 +1601,10 @@ impl Turns {
                 speed_stopped: false,
                 pauses: Vec::new(),
                 in_the_way: Vec::new(),
+                sprite_facets: standing.map(|g| crate::facing::SpriteFacets {
+                    count: g.facets,
+                    flag_1: g.flags & 2 != 0,
+                }),
             }),
             attackable: true,
             pasture: -1,

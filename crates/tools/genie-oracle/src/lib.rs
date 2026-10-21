@@ -762,6 +762,8 @@ fn mover(
         speed_stopped: false,
         pauses: Vec::new(),
         in_the_way: Vec::new(),
+        // the current sprite's, which the unit's update takes from its sprite
+        sprite_facets: None,
     }))
 }
 
@@ -1191,12 +1193,18 @@ fn saved_actions(
                 farm: [part.farm_x, part.farm_y],
                 gather_at: [part.gather_x, part.gather_y],
                 move_to: None,
+                walk_to: None,
                 move_wait: genie_core::move_to::MoveWait::default(),
             };
             match base.sub_actions.entries().next() {
                 None => {}
                 Some((MOVE_TO, sub)) => {
                     gather.move_to = Some(move_to_state(sub.base().map_or(0, |b| b.state))?);
+                    // a MoveTo without a target walks to its point (a farm's stop)
+                    gather.walk_to = sub
+                        .base()
+                        .filter(|b| b.target_id == -1)
+                        .map(|b| [b.target_x, b.target_y, b.target_z]);
                     if sub.move_to_range() != Some(task.range) {
                         return Err(Unsupported(
                             "a saved Gather's MoveTo of another range than its task's",

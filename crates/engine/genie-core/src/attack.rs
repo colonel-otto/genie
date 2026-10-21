@@ -1449,15 +1449,15 @@ pub fn gaps(a: [f32; 3], a_radius: [f32; 2], b: [f32; 3], b_radius: [f32; 2]) ->
 
 /// `FUN_141162db0`: the unit at `at` turns to face `to` with its sprites' facets, at once for a
 /// unit without a turn time ([`crate::facing::face`]), else a facet a turn time
-/// ([`crate::facing::turn_toward`] by the world time); returns whether it faces. A unit whose
-/// sprites differ in their facets is not modelled.
+/// ([`crate::facing::turn_toward`] by the world time); returns whether it faces. The facets are
+/// its current sprite's ([`Mover::facets`]).
 pub(crate) fn face_target(
     mover: &mut Mover,
     at: [f32; 3],
     to: [f32; 3],
     world_time: u32,
 ) -> Result<bool, Unsupported> {
-    let facets = mover.stats.facets.ok_or(Unsupported(
+    let facets = mover.facets().ok_or(Unsupported(
         "a unit facing a target whose sprites differ in their facets",
     ))?;
     let (at, to) = ([at[0], at[1]], [to[0], to[1]]);
