@@ -100,7 +100,9 @@ pub(crate) enum Place {
 }
 
 /// What the order splitter reads of a unit: its master's type, formation category (not 0),
-/// object flags' bit 1, its top speed (slot 0x208), place and state.
+/// object flags' bit 1, its top speed (slot 0x208), its place and where it last moved to (slot
+/// 0x520's ground part), its state, and for the path between two units its master's radius on
+/// x (`+0x5d8`) and its terrain restriction.
 #[derive(Clone, Copy, Debug)]
 struct Splittable {
     id: i32,
@@ -109,8 +111,16 @@ struct Splittable {
     flag_1: bool,
     speed: f32,
     position: [f32; 3],
+    moved_at: [f32; 2],
     state: u8,
+    radius: f32,
+    restriction: Option<usize>,
 }
+
+/// The splitter's path from one unit to another (`FUN_140f7cb30` -> `FUN_140f7c530`): the
+/// planner's result code and the path's length; None without a planner for the restriction.
+type SplitPath<'a> =
+    dyn FnMut(&Splittable, &Splittable) -> Result<Option<(u8, f32)>, Unsupported> + 'a;
 
 /// The splitter groups units of a type above this (`0x45`).
 const MAX_UNGROUPED: u8 = 69;
@@ -125,15 +135,18 @@ const SPLIT_BY_PATH: bool = true;
 /// `FUN_140fd76d0`'s test whether `b` joins `a`: both above type 69, both of formation category
 /// 0 or neither, the same object flags' bit 1, speeds within [`SPLIT_SPEED_GAP`] where the player
 /// breaks formations by speed, then (`member`: for the chosen unit's group, also `b` in a state
-/// of 2 or more) within the player's influence distance on the ground (`FUN_14087e560` with the
-/// height zeroed). Within [`SPLIT_PATH_REACH`] the game measures a path instead (the planner of
-/// `b`'s restriction, `FUN_140f7cb30` -> `FUN_140f7c530`, from `b` to `a`), which is not
-/// modelled.
+/// of 2 or more) within the player's influence distance on the ground (between where each last
+/// moved to, slot 0x520: `FUN_14087e560` with the height zeroed). Within [`SPLIT_PATH_REACH`]
+/// the game measures a path instead, when the planner of `b`'s restriction exists: from `b`'s
+/// place to `a`'s (`FUN_140f7c530` with `a`'s radius on x as the radii and `b`'s as the range,
+/// no tile search), which joins `b` when it reaches the goal (result 1) no longer than the
+/// influence distance.
 fn splits_together(
     a: &Splittable,
     b: &Splittable,
     f: crate::turn::Formations,
     member: bool,
+    path: &mut SplitPath<'_>,
 ) -> Result<bool, Unsupported> {
     if a.kind <= MAX_UNGROUPED || b.kind <= MAX_UNGROUPED {
         return Ok(false);
@@ -147,10 +160,13 @@ fn splits_together(
     if member && b.state < 2 {
         return Ok(false);
     }
-    let (dx, dy) = (a.position[0] - b.position[0], a.position[1] - b.position[1]);
+    let (dx, dy) = (a.moved_at[0] - b.moved_at[0], a.moved_at[1] - b.moved_at[1]);
     let d = crate::fmath::sqrt(dx * dx + 0.0 + dy * dy);
-    if SPLIT_BY_PATH && d < SPLIT_PATH_REACH {
-        return Err(Unsupported("the order splitter's path between two units"));
+    if SPLIT_BY_PATH
+        && d < SPLIT_PATH_REACH
+        && let Some((code, length)) = path(a, b)?
+    {
+        return Ok(code == 1 && length <= f.influence);
     }
     Ok(d <= f.influence)
 }
@@ -263,16 +279,16 @@ impl Turns {
     /// master's formation category is 0 (villagers). An order whose first unit is gone splits into
     /// nothing (`FUN_140fd9ae0` reads the owner of the first). A unit in a group (`+0x6d0`), one it
     /// may group and an order to more than 60 units are not modelled.
-    pub(crate) fn loose_units(&self, units: &[i32]) -> Result<Vec<i32>, Unsupported> {
-        self.loose_units_kept(units, &|_| Ok(true))
+    pub(crate) fn loose_units(&mut self, units: &[i32]) -> Result<Vec<i32>, Unsupported> {
+        self.loose_units_kept(units, &|_| true)
     }
 
     /// [`Turns::loose_units`] where, after the sort, `kept` drops units (the garrison command's
     /// test, `FUN_140fd9ae0` for command `0x2713`).
     pub(crate) fn loose_units_kept(
-        &self,
+        &mut self,
         units: &[i32],
-        kept: &dyn Fn(i32) -> Result<bool, Unsupported>,
+        kept: &dyn Fn(i32) -> bool,
     ) -> Result<Vec<i32>, Unsupported> {
         if 60 < units.len() {
             return Err(Unsupported("an order to more than 60 units"));
@@ -290,7 +306,7 @@ impl Turns {
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
-            if !kept(id)? {
+            if !kept(id) {
                 continue;
             }
             let master = self.master_of(p, u.life.master_id)?;
@@ -301,7 +317,15 @@ impl Turns {
                 flag_1: master.object_flags & 2 != 0,
                 speed: u.mover.as_ref().map_or(0.0, |m| m.stats.speed),
                 position: u.position,
+                moved_at: u
+                    .mover
+                    .as_ref()
+                    .map_or([u.position[0], u.position[1]], |m| {
+                        [m.moved_at[0], m.moved_at[1]]
+                    }),
                 state: u.life.state,
+                radius: master.radius[0],
+                restriction: u.mover.as_ref().map(|m| m.stats.restriction),
             });
         }
         let formations = self.players[owner].formations;
@@ -314,13 +338,37 @@ impl Turns {
             .into_iter()
             .partition(|u| MAX_UNGROUPED < u.kind && !u.grouped);
         let mut loose: Vec<i32> = loose.into_iter().map(|u| u.id).collect();
+        // the path between two near units: the tile planner of the second's restriction, from
+        // it to the first (FUN_140f7c530, its result and the measured path's length)
+        let tiles = self.spatial.tiles();
+        let pathing = &mut self.pathing;
+        let mut path = |a: &Splittable, b: &Splittable| -> Result<Option<(u8, f32)>, Unsupported> {
+            let Some(restriction) = b.restriction else {
+                return Ok(None);
+            };
+            let Some(planner) = pathing.planner(restriction, tiles) else {
+                return Ok(None);
+            };
+            let req = crate::tile_path::Request {
+                from: [b.position[0], b.position[1]],
+                to: [a.position[0], a.position[1]],
+                radii: a.radius,
+                range: b.radius,
+                closed: Vec::new(),
+                full: false,
+            };
+            let mut p = crate::tile_path::Path::default();
+            let found = planner.plan::<Unsupported>(&req, false, &mut p, None)?;
+            p.measure();
+            Ok(Some((found.code(), p.length)))
+        };
         // then the unit with the most others that join it, the first of equals, with them
         while !left.is_empty() {
             let mut best = (0, 0);
             for (i, a) in left.iter().enumerate() {
                 let mut n = 1;
                 for b in left.iter().filter(|b| b.id != a.id) {
-                    n += usize::from(splits_together(a, b, formations, false)?);
+                    n += usize::from(splits_together(a, b, formations, false, &mut path)?);
                 }
                 if best.1 < n {
                     best = (i, n);
@@ -330,7 +378,7 @@ impl Turns {
             let mut group = vec![chosen.id];
             let mut i = 0;
             while i < left.len() {
-                if splits_together(&chosen, &left[i], formations, true)? {
+                if splits_together(&chosen, &left[i], formations, true, &mut path)? {
                     group.push(left.remove(i).id);
                 } else {
                     i += 1;

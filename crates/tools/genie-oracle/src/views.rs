@@ -12,7 +12,111 @@ fn chapter(data: &[u8]) -> Result<de::Chapter<'_>, Error> {
     de::chapters(data)?.first().copied().ok_or(Error::NoChapter)
 }
 
-/// A player's live objects, one tab-separated row each.
+/// Three little-endian f32s of a saved vector (`[u8; 12]`).
+fn vec3(b: &[u8; 12]) -> [f32; 3] {
+    let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+    [f(0), f(4), f(8)]
+}
+
+/// The world's unit groups (`saveUnitGroups`: `world+0x50`'s list, as genie-save's generated
+/// reader of the build holds it): the count and the id counter, then per group its id, owner,
+/// state and flags, its units with their specific moves, its formations, centroid, waypoints,
+/// current command and target and its queues; with `full`, every saved field as read.
+///
+/// # Errors
+///
+/// When the save cannot be read.
+pub fn groups(data: &[u8], full: bool) -> Result<String, Error> {
+    let chapter = chapter(data)?;
+    let header = chapter.header()?;
+    let g = &header.world.base_world.unit_groups;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "{} unit groups, counter {}",
+        g.number_unit_groups, g.unit_group_counter
+    );
+    for u in &g.unit_group {
+        if full {
+            let _ = writeln!(out, "{u:#?}");
+            continue;
+        }
+        let _ = writeln!(
+            out,
+            "group {} owner {} state {} flags {:#x} centroid {:?} hibernating {} idle {}",
+            u.id,
+            u.owner.to_bits(),
+            u.state,
+            u.group_flags_m_bits,
+            vec3(&u.centroid),
+            u.hibernating,
+            u.idle_timer
+        );
+        for e in &u.units {
+            let _ = writeln!(
+                out,
+                "  unit {} move active {} path {} reason {} goal {:?} timer {} failures {} distance {} last {:?} since attack {}",
+                e.units,
+                e.specific_moves_active,
+                e.specific_moves_path_id,
+                e.specific_moves_reason,
+                vec3(&e.specific_moves_goal),
+                e.specific_moves_timer,
+                e.specific_moves_consecutive_move_failures,
+                e.specific_moves_distance,
+                vec3(&e.specific_moves_last_position),
+                e.seconds_since_attacking
+            );
+        }
+        for (name, f) in [
+            ("previous", u.previous_formation.as_deref()),
+            ("current", u.current_formation.as_deref()),
+        ] {
+            if let Some(f) = f {
+                let _ = writeln!(
+                    out,
+                    "  {name} formation type {} slots {} lines {} transform {} orientation {:?}",
+                    f.type_,
+                    f.number_slots,
+                    f.number_lines,
+                    f.transform_type,
+                    vec3(&f.transform_orientation)
+                );
+                for slot in &f.slots {
+                    let _ = writeln!(
+                        out,
+                        "    slot unit {} offset {:?} position {:?} state {} depth {} desired {:?} filled {} category {}/{} active {}",
+                        slot.slots_unit_id,
+                        vec3(&slot.slots_offset),
+                        vec3(&slot.slots_transform_position),
+                        slot.slots_state,
+                        slot.slots_depth,
+                        vec3(&slot.slots_desired_transform_position),
+                        slot.slots_position_filled,
+                        slot.slots_desired_category,
+                        slot.slots_desired_sub_category,
+                        slot.slots_active
+                    );
+                }
+            }
+        }
+        let waypoints: Vec<[f32; 3]> = u.waypoints.iter().map(vec3).collect();
+        let _ = writeln!(
+            out,
+            "  command {} target {} type {} range {} waypoints {waypoints:?} orders {} commands {} spacing {}",
+            u.current_command,
+            u.current_target.target,
+            u.current_target.type_,
+            u.current_target.range,
+            u.order_queue.len(),
+            u.command_queue.len(),
+            u.desired_spacing
+        );
+    }
+    Ok(out)
+}
+
+/// A player's live objects, one tab-separated row each./// A player's live objects, one tab-separated row each.
 ///
 /// A row holds the id, master, object state, hit points, position, the top action (type and
 /// state) and the unit AI's retarget timer; with `actions_of`, that object's whole action list

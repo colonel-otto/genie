@@ -1029,8 +1029,14 @@ impl Turns {
             }
             self.takes_in(building, p, u.life.master_id)
         };
-        let loose = self.loose_units_kept(going, &keeps)?;
         let point = b.position;
+        let mut kept = Vec::with_capacity(going.len());
+        for &id in going {
+            if self.object(id).is_some() && keeps(id)? {
+                kept.push(id);
+            }
+        }
+        let loose = self.loose_units_kept(going, &|id| kept.contains(&id))?;
         for id in loose {
             let Some(crate::order::Place::Live(p, idx)) = self.place(id) else {
                 return Err(Unsupported(
