@@ -2597,7 +2597,7 @@ impl Unit {
     fn gather_update(
         &mut self,
         c: &mut Context<'_>,
-        others: &[Self],
+        others: &mut [Self],
         me: Me,
     ) -> Result<(), Unsupported> {
         let by = self.releaser(c);
@@ -2729,9 +2729,7 @@ impl Unit {
             )?;
             let gather = self.gather.as_mut().expect("the caller's gather");
             if gather.target == -1 {
-                return Err(Unsupported(
-                    "a gather after its drop-off without a target (the unit AI's search)",
-                ));
+                return self.gather_after_drop(c, others);
             }
             // back to the target: the drop site goes (FUN_140a7a190 with none), set_state(4)
             c.releases.push((gather.carry_to, by));
@@ -2818,6 +2816,183 @@ impl Unit {
         }
         if next == crate::gather::Next::Drop {
             self.gather_drop_off(c, others)?;
+        }
+        Ok(())
+    }
+
+    /// The Gather's state 8 after the deposit without a target (`0x140a8e1d0` case 7; its drop
+    /// site stays): the unit AI drops the queued orders on targets gone (`FUN_140c5de60`) and,
+    /// with orders left (`FUN_140c564a0`), ends its order and action (`FUN_140c64b60`,
+    /// `FUN_140c64b50`) and the Gather is done (`set_state(1)`: its update returns 1, the list
+    /// removes it). Else the gather group of its target class (the AI's `+0x58`, else the
+    /// Gather's `mTargetType`; slot 0x1b0, the civilian's) names the unit AI's
+    /// `ClosestResourceObject` (slot 0x80: no drop site, any workers, state 2, no point), and the
+    /// Gather takes what it finds (slot 0x48, [`crate::gather::GatherAction::retarget`]). Without
+    /// one a Gather with its point would walk there to search again (`set_state(11)`, not
+    /// modelled, or 0xf3 for a farmer); without a point a computer player's Gather is done, a
+    /// human's idles (`set_state(2)`).
+    fn gather_after_drop(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+    ) -> Result<(), Unsupported> {
+        let by = self.releaser(c);
+        let spatial: &Spatial = c.spatial;
+        let gone = |id: i32| match spatial.get(id) {
+            None => true,
+            Some(_) => spatial
+                .sight
+                .as_ref()
+                .and_then(|v| v.seer(id))
+                .is_some_and(|s| 5 < s.state),
+        };
+        if let Some(ai) = self.ai.as_mut() {
+            ai.orders
+                .retain(|o| !(matches!(o.order, 0x2c5 | 0x2c9 | 0x2db) && gone(o.target)));
+            if !ai.orders.is_empty() {
+                ai.end_order_and_action()?;
+                let mut gather = self.gather.take().expect("the caller's gather");
+                gather.tear_down(self.mover.as_mut())?;
+                if gather.carry_to != -1 {
+                    c.releases.push((gather.carry_to, by));
+                }
+                return Ok(());
+            }
+        }
+        let gather = self.gather.as_ref().expect("the caller's gather");
+        let found = match self.ai.as_ref() {
+            Some(ai) => {
+                let class = if ai.target_type == -1 {
+                    gather.target_type
+                } else {
+                    ai.target_type
+                };
+                if ai.ai_type != crate::unit_ai::CIVILIAN {
+                    return Err(Unsupported(
+                        "slot 0x1b0 of another unit AI than the civilian's",
+                    ));
+                }
+                let kind = crate::unit_ai::civilian_kind(class);
+                if kind == -1 {
+                    -1
+                } else {
+                    self.resource_search(c, others, kind as u8, -1)?
+                }
+            }
+            None => -1,
+        };
+        if found == -1 {
+            let gather = self.gather.as_mut().expect("the caller's gather");
+            if gather.point[0] != -1.0 && gather.point[1] != -1.0 {
+                return Err(Unsupported(
+                    "a gather that found nothing after its drop-off (set_state 11 or 0xf3)",
+                ));
+            }
+            // LAB_140a8ed55: a computer player's Gather is done, a human's idles
+            let carry_to = gather.carry_to;
+            if c.computer {
+                let mut gather = self.gather.take().expect("the caller's gather");
+                gather.tear_down(self.mover.as_mut())?;
+            } else {
+                let master =
+                    c.masters
+                        .and_then(|m| m.get(self.life.master_id))
+                        .ok_or(Unsupported(
+                            "a gatherer of a master the slice does not have",
+                        ))?;
+                let standing = (0 <= master.standing_sprite)
+                    .then(|| c.graphics.get(&master.standing_sprite).copied())
+                    .flatten();
+                let carrying = (0 <= gather.task.sprites[3])
+                    .then(|| c.graphics.get(&gather.task.sprites[3]).copied())
+                    .flatten();
+                let shows = match carrying {
+                    Some(g)
+                        if gather.task.resource != -1
+                            && self.life.attribute_type == gather.task.resource
+                            && 1 <= self.life.amount as i32 =>
+                    {
+                        Some(g)
+                    }
+                    _ => standing,
+                };
+                gather.tear_down(self.mover.as_mut())?;
+                gather.state = crate::gather::IDLE;
+                gather.timer = 0.0;
+                gather.target = -1;
+                gather.carry_to = -1;
+                gather.point = [-1.0; 3];
+                if let Some(g) = shows {
+                    crate::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
+                }
+            }
+            if carry_to != -1 {
+                c.releases.push((carry_to, by));
+            }
+            return Ok(());
+        }
+        // slot 0x48 on what it found
+        let foreign = c.foreign;
+        let (owner, t) = match others.iter().find(|u| u.id == found) {
+            Some(t) => (c.player, t),
+            None => foreign
+                .find(found)
+                .ok_or(Unsupported("a gather's new target the slice does not hold"))?,
+        };
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported(
+                "a gatherer of a master the slice does not have",
+            ))?;
+        let t_master = c
+            .every_masters
+            .get(owner)
+            .and_then(|m| m.get(t.life.master_id))
+            .ok_or(Unsupported(
+                "a gather's target of a master the slice does not have",
+            ))?;
+        let resource = crate::gather::Resource {
+            id: found,
+            position: t.position,
+            class: t_master.class,
+            master: t_master.id,
+            player: owner,
+            workers: t.workers,
+            drop_site: master.drop_sites.contains(&t.life.master_id),
+            gap: footprint_gap(self.position, master.radius, t.position, t_master.radius),
+            radius: t_master.radius,
+        };
+        let (computer, farm_stops, held) = (c.computer, c.farm_stops, self.life.amount);
+        let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut()) else {
+            return Err(Unsupported(
+                "a gatherer without its gather or movement state",
+            ));
+        };
+        let (old_target, old_second) = (gather.target, gather.carry_to);
+        let rng = c.streams.get(Stream::Action);
+        let _ = gather.retarget(&resource, c.player, computer, held, farm_stops, mover, rng)?;
+        let (new_target, new_second) = (gather.target, gather.carry_to);
+        for (old, new) in [(old_target, new_target), (old_second, new_second)] {
+            if old != new {
+                if old != -1 {
+                    c.releases.push((old, by));
+                }
+                if new != -1 {
+                    if owner == c.player && new == found {
+                        let u = others
+                            .iter_mut()
+                            .find(|u| u.id == found)
+                            .expect("found above");
+                        if u.workers < 550 {
+                            u.workers += 1;
+                        }
+                        u.life.goto_sleep = false;
+                    } else {
+                        c.takes.push(new);
+                    }
+                }
+            }
         }
         Ok(())
     }
