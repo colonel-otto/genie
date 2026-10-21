@@ -279,6 +279,15 @@ pub struct MoveTarget {
     pub gap: f32,
 }
 
+/// Whether a gatherer of `master` whose Gather has the target class `target_type` waits for
+/// another farm where another would search (`set_state(0xf3)`, `0x140a8e1d0`): the farmers'
+/// masters, and the fishing ships' on a farm-class target (a fish trap).
+#[must_use]
+pub fn waits_for_a_farm(master: i16, target_type: i32) -> bool {
+    FARM_WAITERS.contains(&master)
+        || (TRAP_WAITERS.contains(&master) && target_type == i32::from(FARM_CLASS))
+}
+
 /// Food and the food kinds (0, 15 to 17): a gatherer keeps a load of one for another.
 const fn food(kind: i16) -> bool {
     kind == 0 || (15 <= kind && kind <= 17)
@@ -673,6 +682,16 @@ impl GatherAction {
     ///
     /// A unit that cannot move (`set_state(13)`).
     fn set_walk_back(&mut self, radius: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+        self.walk_back(radius, mover)
+    }
+
+    /// [`GatherAction::set_walk_back`] for the caller (state 8's end without a target: no
+    /// target's radius).
+    ///
+    /// # Errors
+    ///
+    /// A unit that cannot move (`set_state(13)`).
+    pub fn walk_back(&mut self, radius: f32, mover: &mut Mover) -> Result<(), Unsupported> {
         self.tear_down(Some(mover))?;
         self.state = WALK_BACK;
         self.timer = 0.0;
@@ -859,10 +878,7 @@ impl GatherAction {
                 if 0.0 < *g.held {
                     return Ok(Next::Drop);
                 }
-                if FARM_WAITERS.contains(&g.master)
-                    || (TRAP_WAITERS.contains(&g.master)
-                        && self.target_type == i32::from(FARM_CLASS))
-                {
+                if waits_for_a_farm(g.master, self.target_type) {
                     return Err(Unsupported(
                         "a farmer's gather without a target (set_state 0xf3)",
                     ));

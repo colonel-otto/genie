@@ -3213,11 +3213,23 @@ impl Unit {
             None => -1,
         };
         if found == -1 {
+            let farm_waits = crate::gather::waits_for_a_farm(
+                self.life.master_id,
+                self.gather.as_ref().map_or(-1, |g| g.target_type),
+            );
             let gather = self.gather.as_mut().expect("the caller's gather");
             if gather.point[0] != -1.0 && gather.point[1] != -1.0 {
-                return Err(Unsupported(
-                    "a gather that found nothing after its drop-off (set_state 11 or 0xf3)",
-                ));
+                if farm_waits {
+                    return Err(Unsupported(
+                        "a farmer that found nothing after its drop-off (set_state 0xf3)",
+                    ));
+                }
+                // set_state(11) without a target: to the point within the task's range
+                let mover = self
+                    .mover
+                    .as_mut()
+                    .ok_or(Unsupported("a gatherer without movement state"))?;
+                return gather.walk_back(0.0, mover);
             }
             // LAB_140a8ed55: a computer player's Gather is done, a human's idles
             let carry_to = gather.carry_to;
