@@ -1225,6 +1225,38 @@ impl Spatial {
             .sight
             .as_ref()
             .ok_or(Unsupported("a search without the players' sight"))?;
+        let own = self
+            .relations
+            .get(player)
+            .ok_or(Unsupported("a search of a player without relations"))?;
+        let fresh = self.search_query(player, search)?;
+        let cache = self.search_cache.borrow();
+        let found = cache.last.as_ref().ok_or(Unsupported(
+            "a search that reads the registry's last answer (before any query)",
+        ))?;
+        self.pick_found(
+            v,
+            own,
+            (me, player),
+            search,
+            found,
+            fresh,
+            attack,
+            reach,
+            moving,
+            shuns,
+            farm,
+        )
+    }
+
+    /// The query of a unit AI's search (`FUN_140c63e20`'s first part): over the player's
+    /// registry unless the [`SearchCache`] holds near the place; true when it queried afresh. The
+    /// lists it leaves are [`Spatial::searched`]'s.
+    pub fn search_query(&self, player: usize, search: &Search<'_>) -> Result<bool, Unsupported> {
+        let v = self
+            .sight
+            .as_ref()
+            .ok_or(Unsupported("a search without the players' sight"))?;
         let r = v.registry.as_ref().ok_or(Unsupported(
             "a search without the objects-in-sight registry",
         ))?;
@@ -1268,10 +1300,31 @@ impl Spatial {
                 }
             }
         }
-        let cache = self.search_cache.borrow();
-        let found = cache.last.as_ref().ok_or(Unsupported(
-            "a search that reads the registry's last answer (before any query)",
-        ))?;
+        Ok(fresh)
+    }
+
+    /// The lists the last search left (`DAT_143f69178`, by relation kind; 4 the enemies), as
+    /// [`Spatial::search_query`] left them.
+    pub fn searched(&self) -> Option<[Vec<Record>; 5]> {
+        self.search_cache.borrow().last.clone()
+    }
+
+    /// The search's pick of what it found ([`Spatial::search`]).
+    #[allow(clippy::too_many_arguments)]
+    fn pick_found(
+        &self,
+        v: &Visibility,
+        own: &[u8],
+        (me, player): (i32, usize),
+        search: &Search<'_>,
+        found: &[Vec<Record>; 5],
+        fresh: bool,
+        attack: &mut dyn crate::unit_ai::AttackPicker,
+        reach: &mut Reach<'_>,
+        moving: &dyn Fn(i32) -> bool,
+        shuns: &dyn Fn(&Placed) -> Result<bool, Unsupported>,
+        farm: &FarmLook<'_>,
+    ) -> Result<Found, Unsupported> {
         match search.pick {
             Pick::Closest {
                 group,

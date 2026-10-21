@@ -118,7 +118,7 @@ const PRODUCED: u32 = 0xd;
 /// The boar's unit-AI type (`TribePreditorUnitAIModule`).
 const BOAR_AI: u32 = 4;
 /// The soldier's factory type (`TribeSoldierUnitAIModule`).
-const SOLDIER_AI: u32 = 13;
+pub(crate) const SOLDIER_AI: u32 = 13;
 /// The tower's factory type (`TribeTowerUnitAIModule`, the town centre's too).
 const TOWER_AI: u32 = 15;
 /// The seconds without a sighting after which enemies found are the owner's news
@@ -298,6 +298,9 @@ pub struct UnitAi {
     pub retarget_timer: u32,
     /// `+0x1a9`: 1 and 2 add leash checks to slot 73.
     pub stance: u8,
+    /// `+0x1d4`, `mFormationType`: the formation the unit's group last took for it, which its
+    /// next group's type counts (`FUN_14100b940`).
+    pub formation_type: u8,
     /// `+0x1ac`, `+0x1b0`, `state_position`: where a unit with an order last updated, which a
     /// stance's leash measures from.
     pub state_position: [f32; 2],
@@ -1565,9 +1568,15 @@ const LIVE_TARGET_ACTIONS: [i32; 6] = [0x259, 0x25b, 0x25c, 0x264, 0x26a, 0x277]
 /// search radius (slot 0x2c8) and its line of sight plus 1, plus `+0x1e8`, which no save holds (0
 /// in every unit probed).
 fn attack_search_radius(at: &Surroundings) -> f32 {
-    let sight = at.los + HUNTED_SIGHT_GROWTH;
-    if sight <= at.search_radius {
-        at.search_radius
+    search_radius(at.los, at.search_radius)
+}
+
+/// A unit AI's search radius (`FUN_140c63e20`'s, slot 0x2c8 against the line of sight): its
+/// master's line of sight plus [`HUNTED_SIGHT_GROWTH`], or its search radius if that is as far.
+pub(crate) fn search_radius(los: f32, search_radius: f32) -> f32 {
+    let sight = los + HUNTED_SIGHT_GROWTH;
+    if sight <= search_radius {
+        search_radius
     } else {
         sight
     }
@@ -1644,6 +1653,8 @@ impl UnitAi {
             // the base's two bytes at `+0x1a8` (0x300), whose stance byte the type's own
             // constructor clears
             stance: 0,
+            // the constructor's word at +0x1d4 (0x140c2e080)
+            formation_type: 0,
             // the object's place
             state_position: [position[0], position[1]],
             retarget_disabled: 0,
@@ -5895,6 +5906,7 @@ mod tests {
                 last_retarget_time: a % 500,
                 retarget_timer: 750 + c % 500,
                 stance: 0,
+                formation_type: 0,
                 state_position: [30.0, 88.0],
                 retarget_disabled: 0,
                 alert_mode: false,

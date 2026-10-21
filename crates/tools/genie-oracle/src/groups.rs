@@ -210,6 +210,8 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Unsup
         differentiator_groups: g.differentiator_groups.clone(),
         total_spacing: g.total_spacing,
         non_retarget_units: g.non_retarget_units.clone(),
+        // a load's arrays hold the members alone
+        spare_seconds: Vec::new(),
     })
 }
 

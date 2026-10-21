@@ -96,6 +96,8 @@ pub enum Error {
     NoChapter,
     /// A player the save does not have.
     NoPlayer(usize),
+    /// What the slice does not model of the save.
+    Unmodelled(Unsupported),
 }
 
 impl From<de::Error> for Error {
@@ -116,6 +118,7 @@ impl std::fmt::Display for Error {
             Self::BadTileDump => write!(f, "the tile list dump is out of shape"),
             Self::BadPoolDump => write!(f, "the recycled pools dump is out of shape"),
             Self::NoChapter => write!(f, "the recording has no chapter"),
+            Self::Unmodelled(u) => write!(f, "not modelled: {}", u.0),
             Self::NoPlayer(p) => write!(f, "no player {p} in the save"),
         }
     }
@@ -1835,6 +1838,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         last_retarget_time: ai.last_retarget_time,
         retarget_timer: ai.randomized_retarget_timer,
         stance: ai.state_value,
+        formation_type: ai.formation_type,
         state_position: [ai.state_position_xvalue, ai.state_position_yvalue],
         retarget_disabled: ai.disable_retargeting,
         alert_mode: ai.alert_mode_value != 0,
@@ -3938,6 +3942,7 @@ impl AiRow {
                 ("attackers", f(&ai.attackers)),
                 ("under_attack", f(&under_attack)),
                 ("furious", f(&ai.home.map(|h| h.furious))),
+                ("formation_type", f(&ai.formation_type)),
             ],
         }
     }
@@ -4009,6 +4014,7 @@ impl AiRow {
                 ("attackers", f(&ai.temp_int)),
                 ("under_attack", f(&under_attack)),
                 ("furious", f(&elephant.map(|e| e.furious != 0))),
+                ("formation_type", f(&ai.formation_type)),
             ],
         }
     }
@@ -5289,6 +5295,24 @@ pub fn run_from_save(
     dumps: Dumps<'_>,
 ) -> Result<Turns, Error> {
     from_save(save, recording, start_tick, ticks, masters, dumps, false)
+}
+
+/// The world's unit groups of a save, with the process globals dumped beside it when given.
+///
+/// # Errors
+///
+/// When the save does not parse or its groups do not import.
+pub fn saved_groups(
+    save: &[u8],
+    globals: Option<&str>,
+) -> Result<genie_core::group::UnitGroups, Error> {
+    let chapter = de::chapters(save)?[0];
+    let header = chapter.header()?;
+    let mut g = groups::unit_groups(&header.world.base_world).map_err(Error::Unmodelled)?;
+    if let Some(text) = globals {
+        groups::globals_from_dump(text, &mut g);
+    }
+    Ok(g)
 }
 
 /// The slice from a save after the command phase of the next update alone

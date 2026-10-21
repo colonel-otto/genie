@@ -14,6 +14,9 @@
 
 use crate::movement::PathData;
 
+mod create;
+mod stats;
+
 /// An object's link to its group: `mGroupID` (`+0x6d0`) and `mGroupFlag` (`+0x6d4`), -1 and -2
 /// from the object's setup (`FUN_141196df0`) and in every object of a save in no group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,16 +71,15 @@ impl UnitGroups {
 
     /// A new group at the world list's end with the next id (`FUN_14152efc0` with 1: the
     /// constructor, `FUN_141039640`'s id, then the count and the counter up by one); its state
-    /// is the constructor's (`FUN_140fe1550`) and `owner`'s.
+    /// is the constructor's ([`UnitGroup::new`]) and `owner`'s, which the order's handler sets
+    /// (`+0xdc`).
     pub fn create(&mut self, owner: u32) -> &mut UnitGroup {
         let id = self.counter;
         self.counter += 1;
         let at = self.groups.len();
-        self.groups.push(UnitGroup {
-            id,
-            owner,
-            ..UnitGroup::default()
-        });
+        let mut g = UnitGroup::new(id);
+        g.owner = owner;
+        self.groups.push(g);
         &mut self.groups[at]
     }
 }
@@ -434,9 +436,55 @@ pub struct UnitGroup {
     pub total_spacing: f32,
     /// `mNonRetargetUnits`.
     pub non_retarget_units: Vec<u32>,
+    /// The members' `mSecondsSinceAttacking` slots past the members (not saved): the array's
+    /// capacity beyond its count, which the next members take in order (`AddUnit`'s
+    /// `FUN_14102d710`).
+    pub spare_seconds: Vec<f32>,
+}
+
+impl Motion {
+    /// `BMotion`'s constructor (`FUN_141041850`): at the origin facing x (forward (1, 0, 0), up
+    /// (0, 1, 0), right their cross product (0, 0, -1)), no speed, the turn limits at `f32::MAX`
+    /// (the constructor's `0x7f7fffff`), one level of path data without a path (`FUN_140f8f670`),
+    /// flags 3.
+    #[must_use]
+    pub fn new() -> Self {
+        let frame = [[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]];
+        Self {
+            position: frame,
+            new_position: frame,
+            turn_radius_speed: f32::MAX,
+            maximum_yaw_per_second_moving: f32::MAX,
+            maximum_yaw_per_second_stationary: f32::MAX,
+            paths: vec![PathData::without_path()],
+            flags: 3,
+            ..Self::default()
+        }
+    }
 }
 
 impl UnitGroup {
+    /// `BUnitGroup`'s constructor (`FUN_140fe1550` after [`Motion::new`]) with id `id`
+    /// (`FUN_141039640`): state -1, no formation, flags `0x100`, no command (-1), no target (-1,
+    /// type -1), differentiator -1; every other field 0 or empty.
+    #[must_use]
+    pub fn new(id: i32) -> Self {
+        Self {
+            motion: Motion::new(),
+            id,
+            state: -1,
+            flags: 0x100,
+            current_command: -1,
+            current_target: TargetData {
+                target: -1,
+                kind: -1,
+                ..TargetData::default()
+            },
+            differentiator_id: -1,
+            ..Self::default()
+        }
+    }
+
     /// Whether unit `id` is a member (`FUN_1410112b0`).
     #[must_use]
     pub fn has(&self, id: i32) -> bool {

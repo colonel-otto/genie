@@ -333,6 +333,31 @@ impl PathData {
         }
     }
 
+    /// A new level without a path (`FUN_140f8f670` alone): target -1, the plans
+    /// [`CONTINUE`], everything else 0.
+    #[must_use]
+    pub const fn without_path() -> Self {
+        Self {
+            level: 0,
+            linked_type: 0,
+            points: Vec::new(),
+            has_path: false,
+            path_flags: 0,
+            waypoint: 0,
+            state: 0,
+            range: 0.0,
+            target: -1,
+            pause_time: 0.0,
+            flags: 0,
+            length: 0.0,
+            created: 0,
+            continue_counter: CONTINUE,
+            repath_time: 0.0,
+            ignore: Vec::new(),
+            ignored: Vec::new(),
+        }
+    }
+
     /// The waypoint at `index` (`FUN_140f9bcd0`); outside the path the game returns its static
     /// point `DAT_143f0dc88` ([`OUTSIDE_PATH`]).
     fn point(&self, index: i32) -> Vec3 {

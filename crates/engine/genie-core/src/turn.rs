@@ -8319,6 +8319,8 @@ pub struct Turns {
     pub techs: Vec<crate::tech::TechDef>,
     /// The world's unit groups ([`crate::group`]).
     pub groups: crate::group::UnitGroups,
+    /// The current update's time in seconds (`world+0x164`, set before the commands run).
+    pub dt_seconds: f32,
 }
 
 /// The objects of recyclable masters (`+0x680`, the `.dat`'s `recyclable`): a new one takes the
@@ -8395,6 +8397,7 @@ impl Turns {
             streams: Streams::default(),
             techs: Vec::new(),
             groups: crate::group::UnitGroups::default(),
+            dt_seconds: 0.0,
         }
     }
 
@@ -10558,6 +10561,7 @@ impl Turns {
     pub fn command_phase(&mut self, dt: u32, commands: &[Command]) {
         self.ticks += 1;
         self.world_time = self.world_time.wrapping_add(dt);
+        self.dt_seconds = seconds(dt);
         self.streams.seed_all(self.frame_seed);
         self.sync_moving();
         for command in commands {
