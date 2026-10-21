@@ -3745,7 +3745,7 @@ impl Turns {
             let moving = unit
                 .mover
                 .as_ref()
-                .is_some_and(super::movement::Mover::is_moving);
+                .is_some_and(crate::movement::Mover::is_moving);
             if let Some(m) = unit.mover.as_mut() {
                 m.stats = next
                     .moving

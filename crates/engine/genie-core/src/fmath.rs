@@ -145,7 +145,13 @@ mod tests {
     /// `FUN_14087e710`: (3, 4, 0) lies 4 from the x axis, whatever the direction's length.
     #[test]
     fn a_points_distance_from_a_line() {
-        assert_eq!(line_distance([3.0, 4.0, 0.0], [0.0; 3], [2.0, 0.0, 0.0]), 4.0);
-        assert_eq!(line_distance([3.0, 0.0, 0.0], [0.0; 3], [1.0, 0.0, 0.0]), 0.0);
+        assert_eq!(
+            line_distance([3.0, 4.0, 0.0], [0.0; 3], [2.0, 0.0, 0.0]),
+            4.0
+        );
+        assert_eq!(
+            line_distance([3.0, 0.0, 0.0], [0.0; 3], [1.0, 0.0, 0.0]),
+            0.0
+        );
     }
 }

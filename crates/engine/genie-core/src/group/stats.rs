@@ -2,7 +2,7 @@
 //! speed of the members, the objects their searches list, and the formation's type after a
 //! change of members (`FUN_14100b940`).
 
-use super::create::FormationUnit;
+use crate::group::create::FormationUnit;
 use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 

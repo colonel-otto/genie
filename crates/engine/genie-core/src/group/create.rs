@@ -1,7 +1,7 @@
 //! A group's members (FD-036): `AddUnit` (`FUN_1410083c0`) with its sub-formation statistics
 //! (`FUN_141008d90`, `FUN_1410116c0`) and a unit's radius in a formation (`FUN_141025920`).
 
-use super::{Member, SpecificMove, UnitGroup, UnitTypeStatistic, sub_formation};
+use crate::group::{Member, SpecificMove, UnitGroup, UnitTypeStatistic, sub_formation};
 use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 

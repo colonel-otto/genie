@@ -2,10 +2,10 @@
 //! clear point of a spiral round the centroid (`FUN_141007630`), `SetInitialOrientation`
 //! (`FUN_141039680`) and the motion's orientation (`FUN_141049e10`).
 
-use super::Motion;
-use super::formation::on_map;
-use super::motion::moved_vector;
 use crate::fmath::{self, Vec3, cross, normalize};
+use crate::group::Motion;
+use crate::group::formation::on_map;
+use crate::group::motion::moved_vector;
 use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
@@ -231,7 +231,7 @@ impl Turns {
     /// staggered lock, type 7) of the line along the forward through that place (on the
     /// ground, [`fmath::line_distance`]) are in front: of them the one nearest the point ahead
     /// on the ground (the only one, however far), else the member nearest that point. The
-    /// group's stored positions lose their points ([`super::PointLine::clear_points`]) and it
+    /// group's stored positions lose their points ([`crate::group::PointLine::clear_points`]) and it
     /// stands on the chosen member's place (slot 0x520, height included). Nothing changes when
     /// the world holds no member.
     ///
@@ -265,7 +265,7 @@ impl Turns {
             let n = g.members.len() as f32;
             [c[0] / n, c[1] / n, c[2] / n]
         };
-        if g.formation_locked_type == super::formation::FLANKED
+        if g.formation_locked_type == crate::group::formation::FLANKED
             && let Some((p, u)) = self.object(m.lead)
         {
             let master = self.master_of(p, u.life.master_id)?;
@@ -284,7 +284,7 @@ impl Turns {
                 return Ok(());
             }
         }
-        let limit = if g.formation_locked_type == super::formation::STAGGERED {
+        let limit = if g.formation_locked_type == crate::group::formation::STAGGERED {
             g.desired_spacing
         } else {
             g.desired_spacing * FRONT_SHARE
@@ -315,7 +315,8 @@ impl Turns {
             let d = ground_squared(p, front);
             if d < chosen_d {
                 chosen = id;
-                beside = (p[2] - centre[2]) * (p[2] - centre[2]) + (p[0] - centre[0]) * (p[0] - centre[0]);
+                beside = (p[2] - centre[2]) * (p[2] - centre[2])
+                    + (p[0] - centre[0]) * (p[0] - centre[0]);
                 chosen_d = d;
             }
         }
@@ -538,7 +539,11 @@ mod tests {
     /// (13, 12.2) lies on it, 10 at (6, 10.1) on the group's own line.
     #[test]
     fn with_flags_bit_1_the_line_runs_through_the_members_centre() {
-        let units = vec![unit(10, 6.0, 10.1), unit(11, 13.0, 12.2), unit(12, 20.0, 13.7)];
+        let units = vec![
+            unit(10, 6.0, 10.1),
+            unit(11, 13.0, 12.2),
+            unit(12, 20.0, 13.7),
+        ];
         let mut t = front_world(units.clone());
         t.groups.groups[0].motion.flags = 2;
         t.move_position_to_front(1, 100.0).unwrap();

@@ -3,8 +3,8 @@
 //! group's lead from the group's place, the walk toward the walked level's waypoint with its turn
 //! (`FUN_141046270`, `FUN_14104c150`), then the velocity along the vectors.
 
-use super::Motion;
 use crate::fmath::{self, Vec3};
+use crate::group::Motion;
 use crate::movement::{
     LongWalker, PathData, Planning, Walker, footprint_gap, footprint_gap_squared, long_path_for,
     short_path_for, tile_plan_for,

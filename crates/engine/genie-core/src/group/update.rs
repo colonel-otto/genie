@@ -35,7 +35,7 @@ impl Turns {
 
     /// The group's vtable slot 8 after its update (`BUnitGroup::updateEnd`, `FUN_141040b50`): a
     /// group whose motion moved (motion flags bit 0) adds its new position to the front of its
-    /// stored positions ([`super::PointLine::add_at_front`]); the motion's flags lose bit 0, and
+    /// stored positions ([`crate::group::PointLine::add_at_front`]); the motion's flags lose bit 0, and
     /// bit 1 with it when set, which sets the group's flags bit 1 (`FUN_14104a240`).
     ///
     /// # Errors
@@ -47,7 +47,7 @@ impl Turns {
         ))?;
         if g.motion.flags & 1 != 0 {
             let [point, forward, up, right] = g.motion.new_position;
-            g.stored_positions.add_at_front(super::LinePoint {
+            g.stored_positions.add_at_front(crate::group::LinePoint {
                 point,
                 forward,
                 up,
@@ -140,7 +140,7 @@ impl Turns {
         let horde = g
             .current_formation
             .as_ref()
-            .is_some_and(|f| f.kind == super::formation::HORDE);
+            .is_some_and(|f| f.kind == crate::group::formation::HORDE);
         if (g.motion.flags & 2 != 0 && g.flags & 0x400 == 0 && !horde) || g.flags & 0x8000 != 0 {
             self.set_initial_position(group)?;
             self.groups.get_mut(group).expect("found above").flags &= !0x8000;
