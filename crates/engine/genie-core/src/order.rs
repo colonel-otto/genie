@@ -1760,7 +1760,7 @@ impl Turns {
     /// point: a villager drops its town-bell flag (not held otherwise), the unit AI's order queue
     /// empties (`+0xa14` 1, `FUN_140c5e010`), then the move to the point
     /// ([`Turns::move_to_point`], `FUN_14106d340`).
-    fn move_point_order(
+    pub(crate) fn move_point_order(
         &mut self,
         player: usize,
         idx: usize,

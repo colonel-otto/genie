@@ -9091,6 +9091,7 @@ impl Turns {
             (radius[1] * RADIUS_SCALE) as i32,
             foundation,
         ];
+        let mut together = Vec::new();
         for &id in units {
             let Some((owner, u)) = self.object(id) else {
                 continue;
@@ -9117,9 +9118,8 @@ impl Turns {
                 continue;
             }
             if owner == site_owner && 70 <= master.kind && master.formation_category != 0 {
-                return Err(Unsupported(
-                    "a group sent off a foundation's footprint (FUN_1416123a0)",
-                ));
+                together.push(id);
+                continue;
             }
             let state = u.life.state;
             let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
@@ -9127,6 +9127,74 @@ impl Turns {
             };
             if let Some(ai) = self.players[q].objects[i].ai.as_mut() {
                 ai.post(Notify::own(id, crate::unit_ai::SENT_OFF, p), state)?;
+            }
+        }
+        if !together.is_empty() {
+            self.evacuate_together(foundation, radius, &together)?;
+        }
+        Ok(())
+    }
+
+    /// `FUN_14123bb20`'s owner's units of a formation category (`+0x8bc`) on `foundation`'s
+    /// footprint (master radii `radius`), in the tiles' order: the farthest free spot beside the
+    /// footprint from the first of them (`FUN_1411566b0` with 1, [`Spatial::spot_off`]); then, with
+    /// one, `FUN_1416123a0`: the order splitter on them ([`Turns::loose_units`]: a unit group it
+    /// forms, its group move `FUN_14100efd0`, is not modelled) and each unit it leaves loose takes
+    /// the action of moving off a footprint (`0x2bf`) and moves to the spot at its own height
+    /// (slot 0x138 without a target); last each of them whose unit AI's action is not `0x2bf` gets
+    /// notify `0x21b` ([`crate::unit_ai::SENT_OFF_GROUP`]).
+    fn evacuate_together(
+        &mut self,
+        foundation: i32,
+        radius: [f32; 2],
+        units: &[i32],
+    ) -> Result<(), Unsupported> {
+        let site_at = self
+            .spatial
+            .get(foundation)
+            .ok_or(Unsupported("a footprint's foundation without a place"))?
+            .position;
+        let (_, first) = self
+            .object(units[0])
+            .ok_or(Unsupported("a unit sent off that is gone"))?;
+        let mover = first
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("a unit sent off without movement state"))?;
+        let spot = self.spatial.spot_off(
+            first.position,
+            (first.id, mover.stats.radius[0]),
+            mover.stats.restriction_mask,
+            (site_at, radius),
+            true,
+        )?;
+        let Some([x, y]) = spot else {
+            return Ok(());
+        };
+        let loose = self.loose_units(units)?;
+        for id in loose {
+            let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
+                continue;
+            };
+            let z = self.players[q].objects[i].position[2];
+            if let Some(ai) = self.players[q].objects[i].ai.as_mut() {
+                ai.set_action(crate::unit_ai::MOVE_ASIDE_ACTION);
+            }
+            self.move_point_order(q, i, [x, y, z])?;
+        }
+        for &id in units {
+            let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
+                continue;
+            };
+            let unit = &mut self.players[q].objects[i];
+            let state = unit.life.state;
+            if let Some(ai) = unit.ai.as_mut()
+                && ai.current_action != crate::unit_ai::MOVE_ASIDE_ACTION
+            {
+                ai.post(
+                    Notify::own(id, crate::unit_ai::SENT_OFF_GROUP, [0, 0, 0]),
+                    state,
+                )?;
             }
         }
         Ok(())
