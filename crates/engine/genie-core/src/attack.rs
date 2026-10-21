@@ -1127,8 +1127,16 @@ impl Attack {
                 return Ok(0);
             }
             None => return Err(Unsupported("an Attack in state 4 without its MoveTo")),
+            // case 3, the quiet MoveTo's failure (its update returns 3 without a notify):
+            // set_state(13); a unit's own Attack (`+0x60` 0) posts 0x1f9 with 600; the update
+            // returns 3 and the list removes the Attack
             Some(MoveTo::Failed) => {
-                return Err(Unsupported("an Attack's failed MoveTo (state 13)"));
+                self.move_to = None;
+                self.finish_in(FAILED, &mut walk, s)?;
+                if !self.sub_action {
+                    s.posted.push((crate::unit_ai::ACTION_FAILED, [600, 0, 0]));
+                }
+                return Ok(3);
             }
         };
         let ground = walk
