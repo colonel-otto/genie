@@ -1,7 +1,7 @@
 //! A group's orders (FD-036): `BUnitGroup::command` (`FUN_14100efd0`), `commandMoveTo`
 //! (`FUN_141010a80`) and `stopAllUnits` (`FUN_14103a0d0`), the HD PDB's names.
 
-use super::SpecificMove;
+use crate::group::SpecificMove;
 use crate::movement::PathData;
 use crate::order::Place;
 use crate::tile_path::Path;
@@ -50,6 +50,15 @@ impl Turns {
         let g = self.groups.get(group).ok_or(Unsupported(
             "allHordeUnits of a group the world does not hold",
         ))?;
+        self.horde_units_only(g)
+    }
+
+    /// [`Turns::all_horde_units`] of group `g`.
+    ///
+    /// # Errors
+    ///
+    /// A member of a master the slice does not have.
+    pub fn horde_units_only(&self, g: &crate::group::UnitGroup) -> Result<bool, Unsupported> {
         for m in &g.members {
             if let Some((p, u)) = self.object(m.id) {
                 let master = self.master_of(p, u.life.master_id)?;
@@ -67,7 +76,7 @@ impl Turns {
     /// 0), flags bit 5 clears, and the first member the world holds with at least 1 hit point
     /// names the task on the target (slot 0x130, `FUN_14106b8b0`: none without one). A group of
     /// horde units moves as a horde (`commandHorde`, `FUN_141010180`, not modelled); any other
-    /// notes whether the command was queued (`+0x13d`, [`super::UnitGroup::replaces_queue`]) and,
+    /// notes whether the command was queued (`+0x13d`, [`crate::group::UnitGroup::replaces_queue`]) and,
     /// without a task, moves ([`Turns::command_move_to`] with its target forgotten); a move begun
     /// stops the members (`stopAllUnits` with 0, [`Turns::stop_all_units`]), and flags bit 17
     /// clears. True when the move began. A task on a target is not modelled.
@@ -125,7 +134,7 @@ impl Turns {
     /// `commandMoveTo` (`FUN_141010a80`) of group `group` to `point` (`target` -1 for none): flags
     /// bits 5 and 12 clear. A queued move, and one behind queued commands without `direct`, go into
     /// the command queue (`queueOrder`, `FUN_14102b640`, not modelled). A group whose last command
-    /// was not queued empties its command queue ([`super::UnitGroup::clear_command_queue`]);
+    /// was not queued empties its command queue ([`crate::group::UnitGroup::clear_command_queue`]);
     /// `forget_target` clears its target (`mCurrentTarget`: -1 and type -1, its place, range,
     /// radius and retargeting byte 0); a changed target resets the attack plan's entries
     /// (`FUN_140fd76a0` on `+0x3b0`, `mCurrentAttackPlan`, which no save holds, every load
@@ -288,9 +297,9 @@ impl Turns {
             self.update_desired_positions(
                 group,
                 if column {
-                    super::formation::COLUMN
+                    crate::group::formation::COLUMN
                 } else {
-                    super::formation::LINE
+                    crate::group::formation::LINE
                 },
             )?;
         }

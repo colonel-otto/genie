@@ -176,6 +176,12 @@ pub mod gather_search {
 
 /// The values `crate::group`'s port reads.
 pub mod group {
+    /// 0.5
+    pub const BOX_HALF: f32 = f32::from_bits(0x3f00_0000);
+    /// 4.0
+    pub const BOX_SIDES: f32 = f32::from_bits(0x4080_0000);
+    /// 0.25
+    pub const BOX_SIDE_SHARE: f32 = f32::from_bits(0x3e80_0000);
     /// 1.0
     pub const CLOSE: f32 = f32::from_bits(0x3f80_0000);
     /// 1.0
@@ -190,6 +196,8 @@ pub mod group {
     pub const FLANK_SPACING: f32 = f32::from_bits(0x4020_0000);
     /// 0.5
     pub const FRONT_SHARE: f32 = f32::from_bits(0x3f00_0000);
+    /// 5.0
+    pub const HORDE_REACH: f32 = f32::from_bits(0x40a0_0000);
     /// 0.10000000149011612
     pub const MAP_EDGE: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.10000000149011612
@@ -226,6 +234,8 @@ pub mod group {
     pub const SQUARE_MIN: f32 = f32::from_bits(0xbd4c_cccd);
     /// 4.0
     pub const STAGGER_SHARE: f32 = f32::from_bits(0x4080_0000);
+    /// 0.5
+    pub const USER_DEFINED_BACK: f32 = f32::from_bits(0x3f00_0000);
 }
 
 /// The values `crate::hull_path`'s port reads.

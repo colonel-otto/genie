@@ -1,8 +1,12 @@
 //! A group's formation (FD-036): `BFormation`, its slots and lines, and the layouts that fill
 //! them (createColumnLine `FUN_141012280`, ...).
 
-use super::{Formation, FormationLine, Slot, UnitGroup};
 use crate::fmath::{Vec3, add, scale, sub};
+use crate::group::create::FormationUnit;
+use crate::group::layout::{MemberPlace, create_box, create_by_place, create_phalanx};
+use crate::group::motion::moved_vector;
+use crate::group::{Formation, FormationLine, Slot, UnitGroup, sub_formation};
+use crate::movement::PathData;
 use crate::unit_ai::Unsupported;
 
 /// The formation types (`mType`; the log names of `FUN_14103fd00`).
@@ -77,7 +81,7 @@ impl Formation {
     }
 
     /// The slot at `i` of the whole array (in use or spare).
-    fn slot_mut(&mut self, i: usize) -> &mut Slot {
+    pub(super) fn slot_mut(&mut self, i: usize) -> &mut Slot {
         let used = self.slots.len();
         if i < used {
             &mut self.slots[i]
@@ -92,7 +96,7 @@ impl Formation {
     }
 
     /// `mNumberSlots` (`+0x4`) set to `n`: the array's first `n` slots are the ones in use.
-    fn use_slots(&mut self, n: usize) {
+    pub(super) fn use_slots(&mut self, n: usize) {
         let mut all: Vec<Slot> = std::mem::take(&mut self.slots);
         all.append(&mut self.spare_slots);
         let n = n.min(all.len());
@@ -393,42 +397,177 @@ pub(crate) fn create_column_line(
     Ok(true)
 }
 
+/// `FUN_140f96030`: the walked level's top ancestor (the paths are walked first), none for a
+/// level without a parent.
+const fn top_level(paths: &[PathData]) -> Option<&PathData> {
+    if 2 <= paths.len() { paths.last() } else { None }
+}
+
+/// `OnLastHighLevelWP` (`FUN_141048180`): the walked level's top ancestor holds a path whose last
+/// waypoint (its points less one) the level has reached.
+#[must_use]
+pub fn on_last_high_level_waypoint(paths: &[PathData]) -> bool {
+    top_level(paths)
+        .filter(|t| t.has_path)
+        .is_some_and(|t| t.points.len() as i32 - 1 <= t.waypoint)
+}
+
+/// `FUN_141046500`: the path of the walked level's top ancestor, or, without one, the walked
+/// level's own.
+fn top_path(paths: &[PathData]) -> Option<&PathData> {
+    top_level(paths).map_or_else(
+        || paths.first().filter(|w| w.has_path),
+        |top| Some(top).filter(|t| t.has_path),
+    )
+}
+
+/// The path `UpdateDesiredPositions` measures its way along: the top ancestor's (found by its id
+/// `+0x20`, `FUN_1415419d0`), else the walked level's own (`+0x18`); a level whose path the
+/// game holds by pointer holds its id too (`FUN_140f9b7c0` sets both), so
+/// [`PathData::has_path`] stands for either.
+fn measured_path(paths: &[PathData]) -> Option<&PathData> {
+    top_level(paths)
+        .filter(|t| t.has_path)
+        .or_else(|| paths.first().filter(|w| w.has_path))
+}
+
 impl crate::turn::Turns {
+    /// The type `UpdateDesiredPositions` (`FUN_14103fd00`) chooses itself for group
+    /// `g` (given none and its lock -1 or 0): a line (2), unless its path (the top level's, else the
+    /// walked level's, [`measured_path`]) makes it a column (1): off the last high waypoint
+    /// ([`on_last_high_level_waypoint`]) or on a patrol (the top path's flags bit 0,
+    /// `FUN_141046500`) always; on the last waypoint, beyond both the owner's minimum column
+    /// distance (`+0x6b8`) and its column-to-line distance (`+0x6bc`, plus the target's radius
+    /// and range when the group has a target), measured on the ground from the group's place to
+    /// the path's last point (the origin for a path of fewer than two points); the game tests a
+    /// current column against the one and any other type against the other first, which the
+    /// outcome does not depend on. Flags bit 2 (`MinAutoDistanceLock`) make it a line, a group of horde units
+    /// only ([`Turns::horde_units_only`]) a horde (0).
+    ///
+    /// # Errors
+    ///
+    /// A member of a master the slice does not have.
+    pub fn own_formation_type(&self, g: &UnitGroup) -> Result<i32, Unsupported> {
+        let current = g.current_formation.as_ref().map_or(HORDE, |f| f.kind);
+        let mut kind = LINE;
+        if let Some(path) = measured_path(&g.motion.paths) {
+            let end = if 1 < path.points.len() {
+                path.points[path.points.len() - 1]
+            } else {
+                [0.0; 3]
+            };
+            let mut d = sub(end, g.motion.position[0]);
+            d[1] = 0.0;
+            let formations = usize::try_from(g.owner)
+                .ok()
+                .and_then(|p| self.players.get(p))
+                .map(|p| p.formations)
+                .unwrap_or_default();
+            let mut column_to_line = formations.column_to_line_distance as f32;
+            let min_column = formations.min_column_distance as f32;
+            if g.current_target.target != -1 {
+                column_to_line =
+                    column_to_line + g.current_target.target_radius + g.current_target.range;
+            }
+            let remaining = crate::fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+            let patrol = top_path(&g.motion.paths).is_some_and(|p| p.path_flags & 1 != 0);
+            if on_last_high_level_waypoint(&g.motion.paths) && !patrol {
+                if (current != COLUMN || column_to_line <= remaining)
+                    && (current == COLUMN || min_column <= remaining)
+                    && min_column < remaining
+                    && column_to_line < remaining
+                {
+                    kind = COLUMN;
+                }
+            } else {
+                kind = COLUMN;
+            }
+        }
+        if g.flags & 4 != 0 {
+            kind = LINE;
+        }
+        if self.horde_units_only(g)? {
+            kind = HORDE;
+        }
+        Ok(kind)
+    }
+
+    /// The type `UpdateDesiredPositions` (`FUN_14103fd00`) lays group `g` out in for the type
+    /// `given`: the given one, else (-1) the group's lock (`mFormationLockedType`), or with a
+    /// lock of -1 or 0 its own choice ([`Turns::own_formation_type`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Turns::own_formation_type`].
+    pub fn formation_type(&self, g: &UnitGroup, given: i32) -> Result<i32, Unsupported> {
+        Ok(if given != -1 {
+            given
+        } else if matches!(g.formation_locked_type, -1 | 0) {
+            self.own_formation_type(g)?
+        } else {
+            g.formation_locked_type
+        })
+    }
+
     /// `UpdateDesiredPositions` (`FUN_14103fd00`) of group `group` with the type `given` (-1 for
-    /// the group's own choice): nothing without members. A group without a formation gets an
-    /// empty one ([`Formation::new`]). Its own choice, while it is unlocked (`mFormationLocked
-    /// Type` -1 or 0), is a line (2), a column (1) from the distances to its path's last high
-    /// waypoint (not modelled: a group whose motion has a path), a line again with flags bit 2
-    /// (`MinAutoDistanceLock`), and a horde (0) when no member is a soldier of a formation
-    /// category (`FUN_141008e50`). A type other than the formation's (or a given one) makes the
-    /// formation the previous one and a new one the current; then the type's layout: a line,
+    /// none): nothing without members. A group without a formation gets an empty one
+    /// ([`Formation::new`]); the type is [`Turns::formation_type`]'s. A type other
+    /// than the formation's, or a given one, makes the formation the previous one and a new one
+    /// the current. A formation not yet of the type with a slot per member is laid out: a line,
     /// staggered or flanked line or a column by createColumnLine ([`create_column_line`], its
-    /// transform after it); a horde, a phalanx, a box and a user defined formation are not
-    /// modelled. A formation already of its type with a slot per member, or of a type the switch
-    /// does not know, only transforms ([`formation_transform`], `param_4` 0).
+    /// transform and units after it, [`lay_units`]), a phalanx and a box by their own
+    /// ([`crate::group::layout::create_phalanx`], [`crate::group::layout::create_box`], then
+    /// [`lay_units`]), a horde and a user defined formation from the members' places
+    /// ([`crate::group::layout::create_by_place`]) and then transformed
+    /// ([`formation_transform`], `param_4` 0); a formation already laid out, or of a type the
+    /// switch does not know (6), is only transformed.
+    ///
+    /// # Errors
+    ///
+    /// A group the world does not hold, a member of a master the slice does not have, and the
+    /// layouts' and the transform's.
     ///
     /// # Panics
     ///
     /// Never: the group is the one found first.
     pub fn update_desired_positions(&mut self, group: i32, given: i32) -> Result<(), Unsupported> {
-        let soldiers = {
-            let g = self.groups.get(group).ok_or(Unsupported(
-                "the formation of a group the world does not hold",
-            ))?;
-            if g.members.is_empty() {
-                return Ok(());
-            }
-            let mut any = false;
+        let g = self.groups.get(group).ok_or(Unsupported(
+            "the formation of a group the world does not hold",
+        ))?;
+        if g.members.is_empty() {
+            return Ok(());
+        }
+        let kind = self.formation_type(g, given)?;
+        let current_kind = g.current_formation.as_ref().map_or(HORDE, |f| f.kind);
+        let renew = current_kind != kind || given != -1;
+        let laid_out = !renew
+            && g.current_formation
+                .as_ref()
+                .is_some_and(|f| f.kind == kind && f.slots.len() == g.members.len());
+        let places = if !laid_out && matches!(kind, HORDE | USER_DEFINED) {
+            let mut places = Vec::with_capacity(g.members.len());
             for m in &g.members {
-                if let Some((p, u)) = self.object(m.id) {
-                    let master = self.master_of(p, u.life.master_id)?;
-                    if 69 < master.kind && master.formation_category != 0 {
-                        any = true;
-                        break;
+                let place = match self.object(m.id) {
+                    Some((p, u)) => {
+                        let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
+                        Some(MemberPlace {
+                            id: m.id,
+                            at: moved_vector(u),
+                            category: sub_formation(
+                                unit.kind,
+                                unit.hero_flag,
+                                unit.formation_category,
+                            )
+                            .unwrap_or(-1),
+                        })
                     }
-                }
+                    None => None,
+                };
+                places.push(place);
             }
-            any
+            places
+        } else {
+            Vec::new()
         };
         let world_time = self.world_time;
         let map = self.spatial.map;
@@ -443,62 +582,55 @@ impl crate::turn::Turns {
         if g.current_formation.is_none() {
             g.current_formation = Some(Formation::new());
         }
-        let mut kind = given;
-        if given == -1 && matches!(g.formation_locked_type, -1 | 0) {
-            if g.motion.paths.first().is_some_and(|p| p.has_path) {
-                return Err(Unsupported(
-                    "a group's own formation type along its path (FUN_141048180)",
-                ));
-            }
-            // a line, then flags bit 2 (MinAutoDistanceLock) a line too
-            kind = if soldiers { LINE } else { HORDE };
-        }
-        let current_kind = g.current_formation.as_ref().map_or(HORDE, |f| f.kind);
-        if current_kind != kind || given != -1 {
+        if renew {
             g.previous_formation = g.current_formation.take();
             g.current_formation = Some(Formation::new());
         }
-        let same = |k: i32| {
-            let f = g.current_formation.as_ref().expect("made above");
-            f.kind == k && f.slots.len() == g.members.len()
-        };
-        let keeps = same(kind);
-        match kind {
-            LINE | STAGGERED | FLANKED | COLUMN if !keeps => {
-                let mut f = g.current_formation.take().expect("made above");
-                let laid = create_column_line(
+        let mut f = g.current_formation.take().expect("made above");
+        let world = (world_time, map);
+        let result = match kind {
+            LINE | STAGGERED | FLANKED | COLUMN if !laid_out => {
+                match create_column_line(
                     &mut f,
                     g,
                     kind == COLUMN,
                     (kind == STAGGERED, kind == FLANKED),
                     world_time,
-                );
-                let result = match laid {
+                ) {
                     Ok(true) => {
                         // a line after a column keeps the units' slots (`FUN_141009060`)
                         let after_column = kind != COLUMN
                             && g.previous_formation
                                 .as_ref()
                                 .is_some_and(|p| p.kind == COLUMN);
-                        lay_units(&mut f, g, after_column, (world_time, map), &held)
+                        lay_units(&mut f, g, after_column, world, &held)
                     }
                     Ok(false) => Ok(()),
                     Err(e) => Err(e),
-                };
-                g.current_formation = Some(f);
-                result
+                }
             }
-            HORDE | PHALANX | BOX | USER_DEFINED if !keeps => Err(Unsupported(
-                "a horde, phalanx, box or user defined formation (FUN_14103fd00)",
-            )),
-            // already in its type, or a type the switch does not know: the transform alone
-            _ => {
-                let mut f = g.current_formation.take().expect("made above");
-                let result = formation_transform(&mut f, g, false, (world_time, map), &held);
-                g.current_formation = Some(f);
-                result.map(|_| ())
+            PHALANX if !laid_out => {
+                if create_phalanx(&mut f, g, world_time) {
+                    lay_units(&mut f, g, false, world, &held)
+                } else {
+                    Ok(())
+                }
             }
-        }
+            BOX if !laid_out => match create_box(&mut f, g, world_time) {
+                Ok(true) => lay_units(&mut f, g, false, world, &held),
+                Ok(false) => Ok(()),
+                Err(e) => Err(e),
+            },
+            HORDE | USER_DEFINED if !laid_out => {
+                // true: the group has members
+                let _ = create_by_place(&mut f, g, &places, kind == USER_DEFINED, world_time);
+                formation_transform(&mut f, g, false, world, &held).map(|_| ())
+            }
+            // laid out already, or a type the switch does not know: the transform alone
+            _ => formation_transform(&mut f, g, false, world, &held).map(|_| ()),
+        };
+        g.current_formation = Some(f);
+        result
     }
 }
 
@@ -508,7 +640,7 @@ const RIGHT_ANGLE: f32 = crate::image::group::RIGHT_ANGLE;
 /// A slot's place kept this far inside the map's far edges (`FUN_14100b760`, `DAT_142eb5690`).
 const MAP_EDGE: f32 = crate::image::group::MAP_EDGE;
 
-impl super::Motion {
+impl crate::group::Motion {
     /// `BMotion::calculateYawAngle` (`FUN_141046270`) without its clamp (`param_5` 0): the angle
     /// from `canon` to `dir` (`FUN_14087e650`), negative when their cross product `dir × canon`
     /// points up.
@@ -609,8 +741,8 @@ pub(crate) fn formation_transform(
         0.0,
     ];
     let [position, forward, up, _right] = group.motion.position;
-    let yaw = super::Motion::yaw_angle(canon, forward);
-    let old = super::Motion::yaw_angle(canon, formation.transform_orientation);
+    let yaw = crate::group::Motion::yaw_angle(canon, forward);
+    let old = crate::group::Motion::yaw_angle(canon, formation.transform_orientation);
     let flips = RIGHT_ANGLE < (yaw - old).abs() && group.unit_types.len() < 2;
     let rotation = crate::fmath::rotation(yaw, up);
     formation.transform_orientation = forward;
@@ -727,6 +859,155 @@ fn populate_slots(formation: &Formation) -> Result<(), Unsupported> {
 mod tests {
     use super::*;
 
+    /// A path level of `points` points at waypoint `waypoint` (none without points).
+    fn level(points: &[Vec3], waypoint: i32, flags: u32) -> PathData {
+        PathData {
+            level: 0,
+            linked_type: 0,
+            points: points.to_vec(),
+            has_path: !points.is_empty(),
+            path_flags: flags,
+            waypoint,
+            state: 0,
+            range: 0.0,
+            target: -1,
+            pause_time: 0.0,
+            flags: 0,
+            length: 0.0,
+            created: 0,
+            continue_counter: 10,
+            repath_time: 0.0,
+            ignore: Vec::new(),
+            ignored: Vec::new(),
+        }
+    }
+
+    /// Player 1 (minimum column distance 10, column-to-line 5) with unit 7 of a soldier master
+    /// (type 70, category 1) in group 1 at the origin along `paths` (walked first).
+    fn type_world(paths: Vec<PathData>) -> crate::turn::Turns {
+        let mut u = crate::turn::Unit {
+            id: 7,
+            ..crate::turn::Unit::default()
+        };
+        u.life.master_id = 4;
+        let player = crate::turn::Player {
+            objects: vec![u],
+            formations: crate::turn::Formations {
+                min_column_distance: 10,
+                column_to_line_distance: 5,
+                ..crate::turn::Formations::default()
+            },
+            ..crate::turn::Player::default()
+        };
+        let mut t = crate::turn::Turns::new(
+            0,
+            0,
+            0,
+            vec![0, 0],
+            vec![crate::turn::Player::default(), player],
+        );
+        let masters = crate::masters::Masters::new([crate::masters::Master {
+            id: 4,
+            kind: 70,
+            formation_category: 1,
+            ..crate::masters::Master::default()
+        }]);
+        t.masters = vec![masters.clone(), masters];
+        let mut g = UnitGroup::new(1);
+        g.owner = 1;
+        g.members = vec![crate::group::Member {
+            id: 7,
+            ..crate::group::Member::default()
+        }];
+        g.motion.paths = paths;
+        t.groups = crate::group::UnitGroups {
+            groups: vec![g],
+            ..crate::group::UnitGroups::default()
+        };
+        t
+    }
+
+    fn own(t: &crate::turn::Turns) -> i32 {
+        t.own_formation_type(t.groups.get(1).unwrap()).unwrap()
+    }
+
+    /// `FUN_141048180`: the top ancestor (the last level) on its last waypoint; a lone level has
+    /// no ancestor, a top without a path is not on it.
+    #[test]
+    fn the_last_high_level_waypoint_is_the_top_levels_last_point() {
+        let top = level(&[[0.0; 3], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]], 2, 0);
+        let walked = level(&[[0.0; 3], [1.0, 0.0, 0.0]], 0, 0);
+        assert!(on_last_high_level_waypoint(&[walked.clone(), top.clone()]));
+        assert!(!on_last_high_level_waypoint(std::slice::from_ref(&top)));
+        let mut early = top;
+        early.waypoint = 1;
+        assert!(!on_last_high_level_waypoint(&[walked.clone(), early]));
+        assert!(!on_last_high_level_waypoint(&[walked, level(&[], 5, 0)]));
+    }
+
+    /// `UpdateDesiredPositions`'s own choice for a soldier: a line without a path, a column off
+    /// the last high waypoint or on a patrol, and on it a column only beyond both distances
+    /// (measured on the ground to the path's last point): 30 is beyond 10 and 5, 8 within the
+    /// minimum column distance, whatever the current type; a target's radius and range lengthen
+    /// the column-to-line distance.
+    #[test]
+    fn a_group_chooses_a_column_far_along_its_path_and_a_line_near_its_end() {
+        assert_eq!(own(&type_world(Vec::new())), LINE);
+        let walked = level(&[[0.0; 3], [1.0, 0.0, 0.0]], 0, 0);
+        let path_to = |x: f32, waypoint: i32, flags: u32| {
+            vec![
+                walked.clone(),
+                level(&[[0.0; 3], [x, 9.0, 0.0]], waypoint, flags),
+            ]
+        };
+        assert_eq!(own(&type_world(path_to(30.0, 0, 0))), COLUMN);
+        assert_eq!(own(&type_world(path_to(30.0, 1, 1))), COLUMN);
+        assert_eq!(own(&type_world(path_to(30.0, 1, 0))), COLUMN);
+        assert_eq!(own(&type_world(path_to(8.0, 1, 0))), LINE);
+        // a column (whose type the game tests first) turns to a line within 10 too; at 12 it
+        // stays one until a target's radius and range lengthen 5 past 12
+        let mut t = type_world(path_to(8.0, 1, 0));
+        let mut column = Formation::new();
+        column.kind = COLUMN;
+        t.groups.groups[0].current_formation = Some(column);
+        assert_eq!(own(&t), LINE);
+        t.groups.groups[0].motion.paths = path_to(12.0, 1, 0);
+        assert_eq!(own(&t), COLUMN);
+        let g = &mut t.groups.groups[0];
+        g.current_target.target = 3;
+        g.current_target.target_radius = 5.0;
+        g.current_target.range = 2.5;
+        assert_eq!(own(&t), LINE);
+        // a lone level measures its own path; one point measures to the origin
+        let mut t = type_world(vec![level(&[[30.0, 0.0, 0.0]], 0, 0)]);
+        t.groups.groups[0].motion.position[0] = [40.0, 0.0, 0.0];
+        assert_eq!(own(&t), COLUMN);
+    }
+
+    /// Flags bit 2 (`MinAutoDistanceLock`) choose a line, horde units only a horde; given a
+    /// type, or locked to one (not -1 or 0), the group takes it.
+    #[test]
+    fn a_lock_or_a_given_type_overrides_the_groups_own_choice() {
+        let walked = level(&[[0.0; 3], [1.0, 0.0, 0.0]], 0, 0);
+        let far = vec![walked, level(&[[0.0; 3], [30.0, 0.0, 0.0]], 1, 0)];
+        let mut t = type_world(far);
+        t.groups.groups[0].flags |= 4;
+        assert_eq!(own(&t), LINE);
+        t.masters[1] = crate::masters::Masters::new([crate::masters::Master {
+            id: 4,
+            kind: 70,
+            ..crate::masters::Master::default()
+        }]);
+        assert_eq!(own(&t), HORDE);
+        let g = t.groups.get(1).unwrap().clone();
+        assert_eq!(t.formation_type(&g, BOX).unwrap(), BOX);
+        let mut locked = g;
+        locked.formation_locked_type = STAGGERED;
+        assert_eq!(t.formation_type(&locked, -1).unwrap(), STAGGERED);
+        locked.formation_locked_type = 0;
+        assert_eq!(t.formation_type(&locked, -1).unwrap(), HORDE);
+    }
+
     /// createColumnLine's sizes: a line at least twice as wide as it is deep, a column the other
     /// way round.
     #[test]
@@ -749,19 +1030,19 @@ mod tests {
         }
         UnitGroup {
             members: (0..count)
-                .map(|i| super::super::Member {
+                .map(|i| crate::group::Member {
                     id: i as i32,
-                    ..super::super::Member::default()
+                    ..crate::group::Member::default()
                 })
                 .collect(),
-            unit_types: vec![super::super::UnitTypeStatistic {
+            unit_types: vec![crate::group::UnitTypeStatistic {
                 formation_category: category,
                 units: (0..count as i32).collect(),
                 desired_spacing: spacing,
                 number_unit_types: types.len() as i32,
                 unit_types,
                 unit_type_counts: counts,
-                ..super::super::UnitTypeStatistic::default()
+                ..crate::group::UnitTypeStatistic::default()
             }],
             ..UnitGroup::default()
         }

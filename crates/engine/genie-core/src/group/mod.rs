@@ -17,6 +17,7 @@ use crate::movement::PathData;
 mod command;
 mod create;
 pub mod formation;
+mod layout;
 mod motion;
 mod place;
 mod stats;
