@@ -6251,11 +6251,10 @@ impl Unit {
                 let_go: None,
             };
             // what set_state(6) on live livestock reads (0x140ac60e0 case 6), and the lead's
-            // update (state 10)
+            // update (state 10, 0x140ac7a00 case 9: whatever the target, a dead one too)
             let faces = hunt.state == crate::hunt::WALK && hunt.move_to == Some(MoveTo::Arrived);
-            let herd = if (faces || hunt.state == crate::hunt::LEAD)
-                && victim.class == crate::hunt::LIVESTOCK
-                && victim.state <= 2
+            let herd = if (faces && victim.class == crate::hunt::LIVESTOCK && victim.state <= 2)
+                || hunt.state == crate::hunt::LEAD
             {
                 let at = |id| {
                     c.spatial
@@ -6312,7 +6311,11 @@ impl Unit {
                         .transpose()?
                 };
                 // the animal's top action without a target or a point (slots 0x190, 0x288)
-                let idle = match others.iter().find(|u| u.id == hunt.target) {
+                let animal = others
+                    .iter()
+                    .find(|u| u.id == hunt.target)
+                    .or_else(|| c.foreign.find(hunt.target).map(|(_, u)| u));
+                let idle = match animal {
                     Some(u) => u.top_action_idle()?,
                     None => false,
                 };
