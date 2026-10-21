@@ -1258,8 +1258,7 @@ impl Turns {
     /// building without a gather point (`+0xc30` 0) spawns the unit idle, its spot facing nothing;
     /// one whose unit AI holds a command queue (slot 0x218) is not modelled.
     ///
-    /// Not held: its facet and angle, its sprite (the slice holds sprites from an attack on), its
-    /// powerup offset, the building's `+0xc1c` group (unsaved), the game's events
+    /// Not held: its facet and angle, its powerup offset, the building's `+0xc1c` group (unsaved), the game's events
     /// (`FUN_140c898a0`), the player's queue counts (`+0x18`, `FUN_14104f330`) and per-master
     /// counts (slot 0x398's `+0x13b0`), the sounds and particles (`FUN_1411a52e0`).
     fn spawn(&mut self, p: usize, i: usize, master: i16, pop: f32) -> Result<(), Unsupported> {
@@ -1442,7 +1441,7 @@ impl Turns {
         if standing.flags & 4 != 0 && 1 < standing.facets {
             let _ = self.streams.get(Stream::Object).rand15();
         }
-        let _ = ActiveSprite::start(standing, self.streams.get(Stream::Sprite));
+        let sprite = ActiveSprite::start(standing, self.streams.get(Stream::Sprite));
         let facets = crate::facing::SpriteFacets {
             count: standing.facets,
             flag_1: standing.flags & 2 != 0,
@@ -1564,6 +1563,7 @@ impl Turns {
             combat: true,
             // the TRIBE combat setup (FUN_14121df60): the master's volley fire
             firepower: made.volley_fire,
+            sprite: Some(sprite),
             ..Unit::default()
         });
         Ok(owner.objects.len() - 1)
