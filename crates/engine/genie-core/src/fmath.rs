@@ -95,6 +95,16 @@ pub fn angle_between(a: Vec3, b: Vec3) -> f32 {
     }
 }
 
+/// The distance of `p` from the line through `a` along `dir` (`FUN_14087e710`): the cross
+/// product of `p - a` and `dir`, its length over `dir`'s, each sum in the game's order.
+#[must_use]
+pub fn line_distance(p: Vec3, a: Vec3, dir: Vec3) -> f32 {
+    let x = (p[1] - a[1]) * dir[2] - (p[2] - a[2]) * dir[1];
+    let z = (p[0] - a[0]) * dir[1] - (p[1] - a[1]) * dir[0];
+    let y = (p[2] - a[2]) * dir[0] - (p[0] - a[0]) * dir[2];
+    sqrt((y * y + x * x + z * z) / (dir[1] * dir[1] + dir[0] * dir[0] + dir[2] * dir[2]))
+}
+
 /// The rotation by `angle` about the unit `axis` (`FUN_14087e350`): the 3×3 part of the game's
 /// 3×4 matrix, rows as it stores them.
 #[must_use]
@@ -126,4 +136,16 @@ pub fn rotate(m: &[Vec3; 3], v: Vec3) -> Vec3 {
 #[must_use]
 pub fn atan2(y: f32, x: f32) -> f32 {
     libm::atan2f(y, x)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `FUN_14087e710`: (3, 4, 0) lies 4 from the x axis, whatever the direction's length.
+    #[test]
+    fn a_points_distance_from_a_line() {
+        assert_eq!(line_distance([3.0, 4.0, 0.0], [0.0; 3], [2.0, 0.0, 0.0]), 4.0);
+        assert_eq!(line_distance([3.0, 0.0, 0.0], [0.0; 3], [1.0, 0.0, 0.0]), 0.0);
+    }
 }

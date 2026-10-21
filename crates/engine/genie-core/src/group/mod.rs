@@ -348,6 +348,11 @@ pub struct PointLine {
 }
 
 impl PointLine {
+    /// `FUN_14102bae0`: the points go; the length stays.
+    pub fn clear_points(&mut self) {
+        self.points.clear();
+    }
+
     /// `AddPointAtFront` (`FUN_141008040`): `p` with its height 0 goes before the newest point;
     /// the first point's length is 0, any other adds its distance to the point after it. A line
     /// of two points or more longer than its desired length then drops its oldest points while
@@ -660,6 +665,25 @@ mod tests {
     /// `AddPointAtFront` (`FUN_141008040`) on a line of desired length 2: the newest point goes
     /// first with its height 0, the length grows by each stretch, and past the desired length the
     /// oldest points go while the line without its last stretch stays longer.
+    /// `FUN_14102bae0`: the points go, the lengths stay.
+    #[test]
+    fn clearing_a_lines_points_keeps_its_lengths() {
+        let mut line = PointLine {
+            points: vec![LinePoint::default(); 3],
+            length: 2.5,
+            desired_length: 4.0,
+        };
+        line.clear_points();
+        assert_eq!(
+            line,
+            PointLine {
+                points: Vec::new(),
+                length: 2.5,
+                desired_length: 4.0,
+            }
+        );
+    }
+
     #[test]
     fn the_stored_positions_keep_their_desired_length() {
         let at = |x: f32, h: f32| LinePoint {

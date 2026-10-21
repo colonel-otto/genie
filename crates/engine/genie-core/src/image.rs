@@ -184,8 +184,12 @@ pub mod group {
     pub const DEFAULT_RADIUS: f32 = f32::from_bits(0x3f00_0000);
     /// 1.0000000116860974e-07
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 3.4028234663852886e+38
+    pub const FARTHEST: f32 = f32::from_bits(0x7f7f_ffff);
     /// 2.5
     pub const FLANK_SPACING: f32 = f32::from_bits(0x4020_0000);
+    /// 0.5
+    pub const FRONT_SHARE: f32 = f32::from_bits(0x3f00_0000);
     /// 0.10000000149011612
     pub const MAP_EDGE: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.10000000149011612

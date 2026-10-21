@@ -2183,6 +2183,34 @@ impl Spatial {
         Ok(!self.point_hit(point, grow, &[me], false)?)
     }
 
+    /// Slot 0x270 of unit `me` (`FUN_141158940`): whether it could stand at `point` among the
+    /// objects of `ignore` (`me` itself for an empty list): the point's tile is on the
+    /// obstruction manager's map and its terrain class in the unit's `mask` (its restriction's,
+    /// `FUN_141054630`), and no record but the ignored ones holds the point within its box grown
+    /// by `grow` (the unit's radius times the caller's factor), the query of
+    /// [`Spatial::point_hit`] with 25 hits.
+    ///
+    /// # Errors
+    ///
+    /// As [`Spatial::point_hit`].
+    pub fn point_clear_among(
+        &self,
+        me: i32,
+        point: [f32; 2],
+        grow: f32,
+        mask: u8,
+        ignore: &[i32],
+    ) -> Result<bool, Unsupported> {
+        let Some(word) = self.tiles.word(point[0] as i32, point[1] as i32) else {
+            return Ok(false);
+        };
+        if word & u64::from(mask ^ 0xff) != 0 {
+            return Ok(false);
+        }
+        let ignore = if ignore.is_empty() { &[me][..] } else { ignore };
+        Ok(!self.point_hit(point, grow, ignore, false)?)
+    }
+
     /// The obstruction manager's point query (`FUN_141051900` with flags 0x20, any player, the
     /// point test `FUN_141052160`) at `point` with the manager's buffer `grow` (`+0x57`, `+0x58`)
     /// and ignore list `ignore` (`+0x2c`, `FUN_1410562e0`): whether a record holds the point
@@ -2613,6 +2641,25 @@ mod tests {
         // a unit of radius 0.3 cannot stand 0.2 from the edge
         assert!(!s.point_clear(1, [0.2, 50.0], 0.3, 0xff).unwrap());
         assert!(s.point_clear(1, [0.4, 50.0], 0.3, 0xff).unwrap());
+    }
+
+    /// `FUN_141158940`: a villager's record holds (4, 5.5) for anyone but the ignored, and an
+    /// empty list ignores the unit itself; a tile of a class outside the mask, or off the map,
+    /// is never clear.
+    #[test]
+    fn a_point_is_clear_among_the_ignored_objects() {
+        let mut classes = vec![1u8; 100];
+        classes[5 * 10 + 4] = 2;
+        let mut s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
+        s.insert(7, villager(4.0, 6.5));
+        assert!(!s.point_clear_among(1, [4.0, 6.5], 0.1, 1, &[]).unwrap());
+        assert!(s.point_clear_among(1, [4.0, 6.5], 0.1, 1, &[3, 7]).unwrap());
+        assert!(s.point_clear_among(7, [4.0, 6.5], 0.1, 1, &[]).unwrap());
+        assert!(!s.point_clear_among(7, [4.0, 6.5], 0.1, 1, &[3]).unwrap());
+        // the class-2 tile (4, 5) and a point off the map
+        assert!(!s.point_clear_among(7, [4.5, 5.5], 0.1, 1, &[]).unwrap());
+        assert!(s.point_clear_among(7, [4.5, 5.5], 0.1, 3, &[]).unwrap());
+        assert!(!s.point_clear_among(7, [-0.5, 5.5], 0.1, 3, &[]).unwrap());
     }
 
     /// `FUN_1411570c0`'s query with its tile records: on a 10 by 10 map of terrain class 1 with
