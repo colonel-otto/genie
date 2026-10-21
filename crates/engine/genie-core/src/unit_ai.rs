@@ -2538,9 +2538,9 @@ impl UnitAi {
     /// order (712 with its action 612, the move's 610 or none), on a boar's own attack (−1/600)
     /// or the attack order (700/600), or without an order and an action (a hunt ended by its
     /// queued orders); busy (`busy`, the actions left), only those or a unit on MOVE's order
-    /// without a target (710/610, or an animal's own wander), and for the types that never
-    /// retarget also one whose move ended (710 with no action value); the attacks only for the
-    /// types that do.
+    /// (710/610: without a target, or an animal's own wander; with one, the work command's move to
+    /// an object), and for the types that never retarget also one whose move ended (710 with no
+    /// action value); the attacks only for the types that do.
     fn check_busy_order(&self, retarget: Retarget, busy: bool) -> Result<(), Unsupported> {
         let order = (self.current_order, self.current_action);
         let working = matches!(
@@ -2578,7 +2578,9 @@ impl UnitAi {
         }
         match retarget {
             Retarget::Never if working || moving || moving_to || moved => Ok(()),
-            Retarget::Base if moving || scouting || following || attacking => Ok(()),
+            // a move to an object: the retarget check passes over its target unless it is a
+            // building, wall or trebuchet, whose search is not modelled
+            Retarget::Base if moving || moving_to || scouting || following || attacking => Ok(()),
             _ => Err(Unsupported(
                 "a busy unit AI on an order the slice does not model",
             )),
