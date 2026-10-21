@@ -90,6 +90,8 @@ pub struct Unit {
     pub capture_flag: u8,
     /// An annex's main building (`+0xbb8`, the save's linked owner).
     pub annex_of: Option<i32>,
+    /// Its unit group, if any ([`crate::group::GroupLink`]).
+    pub group: crate::group::GroupLink,
     /// `mHitpointsPowerup` and `mHitpointsMaxPowerup` (`+0xa38`, `+0xa3c`), which the task finder
     /// adds to the hit points.
     pub hp_powerups: [f32; 2],
@@ -7996,6 +7998,8 @@ pub struct GameState {
     pub missile_pool: Option<Vec<(i32, bool)>>,
     /// The world's pool of recycled ghosts, when the oracle dumped it.
     pub ghost_pool: Option<Vec<i32>>,
+    /// The world's unit groups, when the slice's differ.
+    pub groups: Option<crate::group::UnitGroups>,
 }
 
 impl Turns {
@@ -8043,6 +8047,9 @@ impl Turns {
         }
         if let Some(pool) = game.missile_pool.as_ref() {
             self.recycling.missiles.clone_from(pool);
+        }
+        if let Some(groups) = game.groups.as_ref() {
+            self.groups.clone_from(groups);
         }
         if let (Some((maps, unified)), Some(sight)) =
             (game.sight.as_ref(), self.spatial.sight.as_mut())
@@ -8306,6 +8313,8 @@ pub struct Turns {
     pub(crate) streams: Streams,
     /// The `.dat`'s technologies, by id.
     pub techs: Vec<crate::tech::TechDef>,
+    /// The world's unit groups ([`crate::group`]).
+    pub groups: crate::group::UnitGroups,
 }
 
 /// The objects of recyclable masters (`+0x680`, the `.dat`'s `recyclable`): a new one takes the
@@ -8381,6 +8390,7 @@ impl Turns {
             recycling: Recycling::default(),
             streams: Streams::default(),
             techs: Vec::new(),
+            groups: crate::group::UnitGroups::default(),
         }
     }
 
@@ -8883,6 +8893,7 @@ impl Turns {
             undeletable: false,
             capture_flag: 0,
             annex_of: None,
+            group: crate::group::GroupLink::default(),
             hp_powerups: [0.0; 2],
             hunt: None,
             gather: None,

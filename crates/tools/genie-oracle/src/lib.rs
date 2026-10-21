@@ -39,6 +39,7 @@
 )]
 
 pub mod census;
+pub mod groups;
 pub mod masters;
 pub mod tick_trace;
 pub mod views;
@@ -286,6 +287,7 @@ fn unit(
             .as_deref()
             .map(|b| b.mupt_linked_object_references_linked_owner_id)
             .filter(|&owner| owner != -1),
+        group: group_link(s),
         hp_powerups: object
             .combat()
             .map_or([0.0; 2], |c| [c.hitpoints_powerup, c.hitpoints_max_powerup]),
@@ -2148,6 +2150,15 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         turns.game_mode == genie_core::start_work::EMPIRE_WARS && turns.world_time == 0;
     turns.game_state = u32::from(world.temp_game_state);
     turns.victory_conquest = world.tribe_scenario.base_scenario.victory_conquest != 0;
+    match groups::unit_groups(world) {
+        Ok(g) => turns.groups = g,
+        Err(e) => {
+            for p in &mut turns.players {
+                let _ = p.unsupported.get_or_insert((0, 0, e));
+                p.stopped = true;
+            }
+        }
+    }
     if let Some(table) = masters {
         turns.drop_sites.clone_from(&table.drop_sites);
         turns.linked_techs.clone_from(&table.linked_techs);
@@ -3883,6 +3894,8 @@ pub struct ObjectRow {
     /// A combat object's `next_volley` (the missiles of its volley under way already fired) and
     /// `mReloadWorldtime` (when it may attack again).
     pub volley: Option<(u8, u32)>,
+    /// Its unit group (`mGroupID`, `mGroupFlag`).
+    pub group: genie_core::group::GroupLink,
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
@@ -4150,6 +4163,7 @@ impl Same for ObjectRow {
             && self.gate == other.gate
             && self.town_bell.same(&other.town_bell)
             && self.volley == other.volley
+            && self.group == other.group
     }
 }
 
@@ -4233,6 +4247,7 @@ impl ObjectRow {
             volley: unit
                 .combat
                 .then_some((unit.next_volley, unit.reload_worldtime)),
+            group: unit.group,
         }
     }
 }
@@ -4357,8 +4372,17 @@ fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
                     c.rge_combat_object.reload_worldtime.unwrap_or(0),
                 )
             }),
+            group: group_link(s),
         })
         .collect())
+}
+
+/// An object's unit group link as saved (`mGroupID`, `mGroupFlag`).
+const fn group_link(s: &RgeStaticObject) -> genie_core::group::GroupLink {
+    genie_core::group::GroupLink {
+        id: s.group_id,
+        flag: s.group_flag,
+    }
 }
 
 /// What the tick oracle dumps of the game at a save's tick that the save does not hold.
@@ -4880,6 +4904,19 @@ pub fn forced_run(
                         ),
                     ));
                 }
+                // the world's unit groups, by their owners
+                let group_differences = after
+                    .game
+                    .groups
+                    .as_ref()
+                    .map(|g| groups::group_differences(&turns.groups, g))
+                    .unwrap_or_default();
+                let groups_differ = !group_differences.is_empty();
+                for d in group_differences {
+                    report
+                        .differences
+                        .push((group_owner(&turns, &after.game, &d), d));
+                }
                 // the next frame seed: a free run draws the game's
                 if turns.frame_seed != after.game.frame_seed {
                     report.differences.push((
@@ -4902,6 +4939,10 @@ pub fn forced_run(
                 game.tile_lists = tiles;
                 game.missile_pool = pool;
                 game.ghost_pool = ghost_pool;
+                // the groups take the game's state only where they differ
+                if !groups_differ {
+                    game.groups = None;
+                }
                 // what the slice got wrong takes the game's state too: each update's differences are
                 // its own, not an earlier update's carried on
                 game.resync = report
@@ -4934,6 +4975,25 @@ pub fn forced_run(
         run_all()
     })?;
     Ok((reports, times))
+}
+
+/// The player a group difference (`group ID: …`) goes with: the group's owner in the game or the
+/// slice, Gaia for the world's list and counter.
+fn group_owner(turns: &Turns, game: &genie_core::turn::GameState, difference: &str) -> u32 {
+    let id = difference
+        .strip_prefix("group ")
+        .and_then(|d| d.split(':').next())
+        .and_then(|d| d.parse::<i32>().ok());
+    let owner = id.and_then(|id| {
+        game.groups
+            .as_ref()
+            .and_then(|g| g.get(id))
+            .or_else(|| turns.groups.get(id))
+            .map(|g| g.owner)
+    });
+    owner
+        .filter(|&o| (o as usize) < turns.players.len())
+        .unwrap_or(0)
 }
 
 /// The game's saves parsed ahead of a forced run ([`forced_run`]): the pool's tasks put them by
@@ -4991,6 +5051,7 @@ fn game_state(header: &Header, masters: Option<&MasterTable>) -> genie_core::tur
         frame_seed: world.current_frame_random_seed,
         next_reusable_id: world.next_reusable_object_id,
         game_state: u32::from(world.temp_game_state),
+        groups: groups::unit_groups(world).ok(),
         ..Default::default()
     };
     for p in header.players() {
@@ -5719,6 +5780,11 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
             "next volley, reload world time",
             format!("{:?}", s.volley),
             format!("{:?}", g.volley),
+        );
+        field(
+            "unit group",
+            format!("{:?}", s.group),
+            format!("{:?}", g.group),
         );
         match (&s.ai, &g.ai) {
             (Some(a), Some(b)) => {
