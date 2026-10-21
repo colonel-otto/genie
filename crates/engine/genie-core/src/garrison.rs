@@ -400,7 +400,7 @@ impl Turns {
                 if !self.unload_picks(player, inside, flag, unit_type)? {
                     continue;
                 }
-                let _ = self.let_out(player, idx, inside, point, sound)?;
+                let _ = self.let_out(player, idx, inside, point, (None, sound))?;
                 let ui = self.players[player]
                     .objects
                     .iter()
@@ -418,6 +418,97 @@ impl Turns {
                     ai.orders.clear();
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// `GO_BACK_TO_WORK` (`do_command` 0x80 with one object, 0x86 with several:
+    /// `FUN_141625590`) on the player's objects `ids` (another player's only while players may
+    /// order each other's, [`Turns::allied_control`]; the cheat `+0xb12` is not held): a building
+    /// lets out, from the last in, each unit inside of type 70 or more that is a villager (class
+    /// 4) or of master 1808, back to its work ([`Turns::back_to_work`]).
+    pub(crate) fn go_back_to_work(
+        &mut self,
+        player: usize,
+        ids: &[i32],
+    ) -> Result<(), Unsupported> {
+        for id in self.checked_units(player, ids) {
+            let Some((p, _)) = self.object(id) else {
+                continue;
+            };
+            let Some(idx) = self.players[p].objects.iter().position(|u| u.id == id) else {
+                return Err(Unsupported("a GO_BACK_TO_WORK of a sleeping object"));
+            };
+            let b = &self.players[p].objects[idx];
+            if self.master_of(p, b.life.master_id)?.kind != BUILDING {
+                continue;
+            }
+            let mut i = b.garrison.len();
+            while 0 < i {
+                i -= 1;
+                let Some(&inside) = self.players[p].objects[idx].garrison.get(i) else {
+                    continue;
+                };
+                let Some(u) = self.players[p].objects.iter().find(|u| u.id == inside) else {
+                    return Err(Unsupported(
+                        "a unit inside a building outside its player's list",
+                    ));
+                };
+                let m = self.master_of(p, u.life.master_id)?;
+                if 70 <= m.kind && (m.class == VILLAGER_CLASS || m.id == MASTER_1808) {
+                    self.back_to_work(p, idx, inside)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_1412081e0` for the unit `id` inside the building at `building` of player `p`: the
+    /// work to go back to ([`TownBell::back_to_work`]: the town-bell records' object the world
+    /// holds); with none but a record of an action and a target class, the unit AI takes the
+    /// action (`FUN_140c64b50`) and the unit tells it to search (notify 0x202 with the action,
+    /// the class and the old target). Then the unit leaves the building toward the record's point
+    /// with the object to work on ([`Turns::let_out`], `FUN_1411e7220` with its sound); out, it
+    /// is no longer under the town bell (`+0x9dc`; `+0xa14` takes 1, not held).
+    ///
+    /// [`TownBell::back_to_work`]: crate::town_bell::TownBell::back_to_work
+    fn back_to_work(&mut self, p: usize, building: usize, id: i32) -> Result<(), Unsupported> {
+        use crate::town_bell::RecordTarget;
+        let ui = self.players[p]
+            .objects
+            .iter()
+            .position(|u| u.id == id)
+            .ok_or(Unsupported(
+                "a unit inside a building outside its player's list",
+            ))?;
+        let mut bell = self.players[p].objects[ui].town_bell;
+        let lookup = |t: i32| -> Option<RecordTarget> {
+            let (op, o) = self.object(t)?;
+            let m = self.master_of(op, o.life.master_id).ok()?;
+            Some(RecordTarget {
+                id: t,
+                building: m.kind == BUILDING,
+                class: m.class,
+                built: o
+                    .construction
+                    .is_some_and(|c| f32::from(m.build_time) <= c.progress),
+            })
+        };
+        let (found, record) = bell.back_to_work(&lookup);
+        self.players[p].objects[ui].town_bell = bell;
+        if found.is_none() && 0 <= record.target_type && 0 <= record.action {
+            let unit = &mut self.players[p].objects[ui];
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.set_action(record.action);
+            }
+            unit.post_own(
+                crate::unit_ai::REQUIRES_SEARCH,
+                [record.action, record.target_type, record.target],
+            )?;
+        }
+        let out = self.let_out(p, building, id, record.point, (found.map(|f| f.id), true))?;
+        if out && let Some(u) = self.players[p].objects.iter_mut().find(|u| u.id == id) {
+            u.town_bell.flag = false;
         }
         Ok(())
     }
@@ -504,7 +595,7 @@ impl Turns {
         building: usize,
         id: i32,
         point: [f32; 2],
-        _sound: bool,
+        (work_on, _sound): (Option<i32>, bool),
     ) -> Result<bool, Unsupported> {
         let b = &self.players[player].objects[building];
         let bid = b.id;
@@ -605,6 +696,19 @@ impl Turns {
         }
         if let Some(e) = self.spatial.take_sight_unsupported() {
             return Err(e);
+        }
+        // an object to work on (GO_BACK_TO_WORK's): slot 0x128 on it at the point, the unit's
+        // `+0xa14` 0 (its unit AI keeps its notifies)
+        if let Some(target) = work_on {
+            let work = Work {
+                target,
+                point: [point[0], point[1], 0.0],
+                carry_test: false,
+                filter: -1,
+                notified: false,
+            };
+            self.order_work(player, ui, &work)?;
+            return Ok(true);
         }
         // the gather point (`+0xc30` 1, not on the building) gives a unit without a point its
         // target, when the world holds it, else its point

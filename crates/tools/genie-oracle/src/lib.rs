@@ -3163,6 +3163,34 @@ impl Decoder {
                     id: c.u_id,
                 });
             }
+            // GO_BACK_TO_WORK: one building (+4); GO_BACK_TO_WORK2: a count (+4, a short) and
+            // the ids from +8
+            Packet::GoBackToWork(c) => {
+                return Some(Command::GoBackToWork {
+                    player: c.commp_id as usize,
+                    ids: vec![c.u_id],
+                });
+            }
+            Packet::GoBackToWork2(c) => {
+                let count = c
+                    .rest
+                    .get(..2)
+                    .map_or(0, |b| usize::from(u16::from_le_bytes([b[0], b[1]])));
+                let ids = c
+                    .rest
+                    .get(4..)
+                    .unwrap_or_default()
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .take(count.min(MAX_UNITS))
+                    .map(|b| i32::from_le_bytes(*b))
+                    .collect();
+                return Some(Command::GoBackToWork {
+                    player: c.commp_id as usize,
+                    ids,
+                });
+            }
             Packet::Flare(c) => {
                 return Some(Command::Flare {
                     player: c.commp_id as usize,

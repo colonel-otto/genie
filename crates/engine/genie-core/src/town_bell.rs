@@ -78,6 +78,88 @@ impl TownBell {
     }
 }
 
+/// The unit AI's actions whose record a finished building ends: building (`0x25a`), gathering
+/// (`0x261`) and hunting (`0x265`) (`FUN_1411f8fa0`'s mask `0x881`).
+const ENDED_ON_A_BUILDING: [i32; 3] = [0x25a, 0x261, 0x265];
+
+/// What a back-to-work record's check (`FUN_1411f8fa0`) reads of an object the world holds:
+/// whether it is a building (type 80), its master's class, and its build points (`+0xc50`)
+/// against its master's build time (the first train location's train time).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecordTarget {
+    /// The object.
+    pub id: i32,
+    /// Its master is of type 80.
+    pub building: bool,
+    /// Its master's class.
+    pub class: i16,
+    /// It has had its master's build time of work (`build_time <= +0xc50`).
+    pub built: bool,
+}
+
+/// `FUN_1411f8fa0`: the object a record names, its target, else its second target, the world
+/// holds (`lookup`); for the actions of [`ENDED_ON_A_BUILDING`] a building other than a farm
+/// that is built ends the record (no object, both targets −1 in the copy returned).
+fn record_object(
+    record: BackToWork,
+    lookup: &dyn Fn(i32) -> Option<RecordTarget>,
+) -> (Option<RecordTarget>, BackToWork) {
+    let mut out = record;
+    let mut found = (0 <= record.target)
+        .then(|| lookup(record.target))
+        .flatten();
+    if found.is_none() {
+        if record.target2 < 0 {
+            return (None, out);
+        }
+        found = lookup(record.target2);
+    }
+    if let Some(o) = found
+        && ENDED_ON_A_BUILDING.contains(&record.action)
+        && o.building
+        && o.class != FARM_CLASS
+        && o.built
+    {
+        out.target = -1;
+        out.target2 = -1;
+        return (None, out);
+    }
+    (found, out)
+}
+
+/// The farms' class, whose records a built farm does not end.
+const FARM_CLASS: i16 = 49;
+
+impl TownBell {
+    /// `FUN_1412035a0`: the work to go back to and the object it is on. The first record's
+    /// object ([`record_object`]) wins; else the second's, which then becomes the first (the
+    /// second cleared); else no object and the first record as it is, or the second when the
+    /// first has no point. The record returned keeps the point of the one whose object was
+    /// found.
+    pub fn back_to_work(
+        &mut self,
+        lookup: &dyn Fn(i32) -> Option<RecordTarget>,
+    ) -> (Option<RecordTarget>, BackToWork) {
+        let (found, out) = record_object(self.work, lookup);
+        if found.is_some() {
+            return (found, out);
+        }
+        let before = self.before_building;
+        let (found, out) = record_object(before, lookup);
+        if found.is_some() {
+            self.work = before;
+            self.before_building = BackToWork::NONE;
+            return (found, out);
+        }
+        let none = [-1.0, -1.0];
+        if self.work.point == none {
+            (None, before)
+        } else {
+            (None, self.work)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

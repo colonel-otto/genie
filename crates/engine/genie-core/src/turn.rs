@@ -449,6 +449,15 @@ pub enum Command {
         /// Its point.
         point: [f32; 2],
     },
+    /// `GO_BACK_TO_WORK` (0x80 with one object, `+4`; 0x86 with a list, its count at `+4`, the ids
+    /// from `+8`): the player's buildings let their villagers back out to work
+    /// ([`Turns::go_back_to_work`]).
+    GoBackToWork {
+        /// The player.
+        player: usize,
+        /// Its buildings.
+        ids: Vec<i32>,
+    },
     /// `CANCEL_BUILD` (0x6a, `do_command` case 0x6a): the player deletes its object `id`
     /// ([`Turns::delete`]).
     Delete {
@@ -4182,7 +4191,7 @@ impl Unit {
         Ok(seen)
     }
 
-    fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), Unsupported> {
+    pub(crate) fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), Unsupported> {
         let (id, state) = (self.id, self.life.state);
         self.ai
             .as_mut()
@@ -8503,6 +8512,11 @@ impl Turns {
             }
             Command::Delete { player, id } => {
                 if let Err(e) = self.delete(player, id) {
+                    self.stop_player(player, e);
+                }
+            }
+            Command::GoBackToWork { player, ref ids } => {
+                if let Err(e) = self.go_back_to_work(player, ids) {
                     self.stop_player(player, e);
                 }
             }
