@@ -498,6 +498,8 @@ pub mod turn {
 
 /// The values `crate::unit_ai`'s port reads.
 pub mod unit_ai {
+    /// 1.0
+    pub const ARMED_FIREPOWER: f32 = f32::from_bits(0x3f80_0000);
     /// 3.4028234663852886e+38
     pub const ATTACKER_FAR: f32 = f32::from_bits(0x7f7f_ffff);
     /// 0.0625
@@ -522,6 +524,10 @@ pub mod unit_ai {
     pub const FOLLOW_SLACK_LOW: f32 = f32::from_bits(0xbf80_0000);
     /// 0.10000000149011612
     pub const FOUNDATION_REACH: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 3.0
+    pub const LION_SIGHT_DIVISOR: f32 = f32::from_bits(0x4040_0000);
+    /// 0.5
+    pub const LION_SIGHT_SHARE: f32 = f32::from_bits(0x3f00_0000);
     /// 100.0
     pub const RADIUS_SCALE: f32 = f32::from_bits(0x42c8_0000);
     /// 3.0

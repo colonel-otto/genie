@@ -117,6 +117,8 @@ const DEAD: u32 = 4;
 const PRODUCED: u32 = 0xd;
 /// The boar's unit-AI type (`TribePreditorUnitAIModule`).
 const BOAR_AI: u32 = 4;
+/// The soldier's factory type (`TribeSoldierUnitAIModule`).
+const SOLDIER_AI: u32 = 13;
 /// The tower's factory type (`TribeTowerUnitAIModule`, the town centre's too).
 const TOWER_AI: u32 = 15;
 /// The seconds without a sighting after which enemies found are the owner's news
@@ -545,6 +547,8 @@ pub struct Attacker {
     pub speed: f32,
     /// The game mode is a scenario's.
     pub scenario: bool,
+    /// Its firepower (`+0xa00`): the units inside a building add theirs.
+    pub firepower: f32,
 }
 
 /// What a unit AI's attack check and `bestUnitToAttack` read of an object it found: the owner's
@@ -637,8 +641,8 @@ pub fn can_attack(me: &Attacker, seeker: &Seeker, t: &Target) -> Result<bool, Un
 /// `+0x924` 0 outside the scenario modes; a building's `desolid_flag` (`+0xc60`) is not held;
 /// never masters 50 and 1187, nor from a tower in a state below 2. Class 10 with an attack
 /// priority below 3 only of combat level 4 (`FUN_140fde120`); else when the tower is armed
-/// (`FUN_14120ea30`: classes 51 and 54, or a missile; without one the object's `+0xa00` decides,
-/// not held) and its attack priority is not 3 or the class one of [`PRIORITY_3_CLASSES`].
+/// (`FUN_14120ea30`: classes 51 and 54, or a missile, or else a firepower, `+0xa00`, above 1)
+/// and its attack priority is not 3 or the class one of [`PRIORITY_3_CLASSES`].
 pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
     if me.player == 0 || matches!(t.class, 1 | 42) {
         return Ok(false);
@@ -656,12 +660,15 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> 
     if t.class == 10 && me.attack_priority < 3 {
         return Ok(t.combat_level == 4);
     }
-    if !matches!(me.class, 51 | 54) && me.missile == -1 {
-        return Err(Unsupported("an unarmed attacker's +0xa00 (FUN_14120ea30)"));
+    if !matches!(me.class, 51 | 54) && me.missile == -1 && me.firepower <= ARMED_FIREPOWER {
+        return Ok(false);
     }
     Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
 }
 
+/// An attacker without a missile is armed with a firepower above this (`FUN_14120ea30`,
+/// `DAT_14330eb8c`).
+const ARMED_FIREPOWER: f32 = crate::image::unit_ai::ARMED_FIREPOWER;
 /// A soldier never attacks with this master (raw `0x6258`).
 const SOLDIER_NEVER: i16 = 444;
 /// The master and class whose packed state (top action 124 or 125) attacks nothing (raw
@@ -1085,6 +1092,16 @@ pub trait UnitSide {
     /// What the test does not model.
     fn can_stand(&mut self, _point: [f32; 2]) -> Result<bool, Unsupported> {
         Err(Unsupported("a stand test without the world"))
+    }
+
+    /// The object `id` as the unit AI reads it ([`UnitSeen`]): None when the world does not
+    /// hold it (`FUN_1415417a0`).
+    ///
+    /// # Errors
+    ///
+    /// An object the slice does not hold.
+    fn seen_unit(&mut self, _id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+        Err(Unsupported("an object's look without the world"))
     }
 
     /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) of gather group `kind`
@@ -1517,6 +1534,12 @@ pub const HUMAN_ORDER_CAP: u32 = 5000;
 const SOLDIER_IDLE_MASTER: i16 = 706;
 /// The lion's idle timeout (`FUN_140c1fb70`, as its constructor `FUN_140c11bd0`).
 const LION_IDLE_TIMEOUT: u32 = 6000;
+/// Outside mode 1 the lion attacks within this share of its line of sight (`FUN_140c1fb70`,
+/// `DAT_142e7f384`).
+const LION_SIGHT_SHARE: f32 = crate::image::unit_ai::LION_SIGHT_SHARE;
+/// Finding no villager outside mode 1 it attacks within its line of sight over this
+/// (`FUN_140c1fb70`, `DAT_142eb1c98`).
+const LION_SIGHT_DIVISOR: f32 = crate::image::unit_ai::LION_SIGHT_DIVISOR;
 /// The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
 const CLASS_KING: i16 = 59;
 
@@ -1983,13 +2006,17 @@ impl UnitAi {
     /// `FUN_140c41e50` first (not held, as for the hunted animal); its idle timeout becomes 6000,
     /// redrawn (`FUN_140c41bc0`, slot 0x1a8: one draw). Its search looks for an enemy villager
     /// (class 4) in state 2, then for any enemy in state 2, from the same place (the second reads
-    /// the first's answer). A found one it would attack (slot 0xb8, within half its line of sight
-    /// outside mode 1), which is not modelled.
+    /// the first's answer). A found one within its reach (the footprints' squared gap,
+    /// `FUN_14118f8c0`, against the reach squared) it attacks (`AttackObject`, slot 0xb8, not
+    /// forced, [`UnitAi::attack_object`]): the reach is its line of sight, outside mode 1 half
+    /// of it, or a third of it when it found no villager. The scenario modes' reach (a third by
+    /// a setting's `+0x10` of 4) is not modelled.
     fn lion_idle(
         &mut self,
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
     ) -> Result<Option<AiMove>, Unsupported> {
         self.idle_timeout = LION_IDLE_TIMEOUT;
         self.update_adjusted_idle_timeout(ai);
@@ -2012,18 +2039,34 @@ impl UnitAi {
                 workers: -1,
             },
         };
+        let mut reach = if at.mode_1 {
+            at.los
+        } else {
+            at.los * LION_SIGHT_SHARE
+        };
+        if at.scenario {
+            return Err(Unsupported("a lion's reach in the scenario modes"));
+        }
         // each search that queries sets the alert mode (`FUN_140c63e20`)
         let mut found = side.closest(&search(4))?;
         self.alert(found, at.dt_seconds);
         if found.id < 0 {
             found = side.closest(&search(-1))?;
             self.alert(found, at.dt_seconds);
+            if !at.mode_1 {
+                reach = at.los / LION_SIGHT_DIVISOR;
+            }
         }
-        if found.id != -1 {
-            return Err(Unsupported(
-                "a lion attacking an object it sees (slot 0xb8)",
-            ));
+        if found.id == -1 {
+            return Ok(None);
         }
+        let Some(t) = side.seen_unit(found.id)? else {
+            return Ok(None);
+        };
+        if 0.0 <= reach && reach * reach < t.gap_squared {
+            return Ok(None);
+        }
+        let _ = self.attack_object(found.id, false, false, at, side, fx)?;
         Ok(None)
     }
 
@@ -2046,7 +2089,7 @@ impl UnitAi {
             self.cap_human_order(fx);
         }
         match self.ai_type {
-            13 => return self.soldier_idle(at, computer, side),
+            13 => return self.soldier_idle(at, computer, side, fx).map(|_| ()),
             15 => {
                 if self.tower_idle(at, computer, side, fx)? {
                     return Err(Unsupported(
@@ -2060,7 +2103,7 @@ impl UnitAi {
         let moved = match self.ai_type {
             2 => self.hunted_idle(at, ai, side)?,
             BOAR_AI => self.boar_idle(at, ai).1,
-            5 => self.lion_idle(at, ai, side)?,
+            5 => self.lion_idle(at, ai, side, fx)?,
             _ => None,
         };
         fx.extend(moved.map(Effect::Move));
@@ -2076,8 +2119,10 @@ impl UnitAi {
     /// state position ([`UnitAi::no_attack_idle`]); master 706 stops. Its target is the target of its top action
     /// within its range (slot 400, slot 0x1e8) with retargeting on (`+0x1d6` 0), else its current
     /// target; neither is modelled, nor a computer's branches (patrol data, priorities, evasion).
-    /// Without one, `bestUnitToAttack` from its place ([`Pick::Attack`]): an object found would be
-    /// attacked (slot 0xb8), which is not modelled. A patrol order then stops. The search leaves the alert mode clear, so `+0x1bc`
+    /// Without one, `bestUnitToAttack` from its place ([`Pick::Attack`]): an object found it attacks
+    /// (slot 0xb8 forced, [`UnitAi::attack_object`]; then, with retargeting on and off order
+    /// 0x2bd, the order goes) and processIdle produced (true); a patrol order's saved patrol data
+    /// is not modelled. Else a patrol order stops. The search leaves the alert mode clear, so `+0x1bc`
     /// stays. In Defend or `StandGround` (stance 1, 2) a unit more than a tile from its state
     /// position (the squared footprint gap, `FUN_140a847c0`) would walk back (`FUN_140c5e7d0`,
     /// not modelled); a patrol path (`+0x1c0`) and the healer's ally search (`FUN_140c16f00`, for
@@ -2087,16 +2132,17 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
-    ) -> Result<(), Unsupported> {
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
         let searches = !at.scenario && 70 <= at.kind && at.capture == 0;
         if at.player == 0 && !searches {
-            return Ok(());
+            return Ok(false);
         }
         if self.stance == 3 {
-            return self.no_attack_idle(at, computer, side);
+            return self.no_attack_idle(at, computer, side).map(|()| false);
         }
         if at.master == SOLDIER_IDLE_MASTER {
-            return Ok(());
+            return Ok(false);
         }
         if self.retarget_disabled == 0 {
             if at.busy {
@@ -2122,12 +2168,22 @@ impl UnitAi {
         })?;
         self.attack_search_alert(found, computer)?;
         if found.id != -1 {
-            return Err(Unsupported(
-                "a soldier attacking what its idle search found (slot 0xb8)",
-            ));
+            if matches!(self.current_order, PATROL | PATROL_2) {
+                return Err(Unsupported(
+                    "a patrolling soldier's attack from its idle search (FUN_140c63d20)",
+                ));
+            }
+            // slot 0xb8 forced (FUN_140c17550: the base's, then the unit's group, not held);
+            // with retargeting on and off order 0x2bd the order goes (FUN_140c64b60 with -1, 0)
+            if self.attack_object(found.id, true, false, at, side, fx)? {
+                if self.retarget_disabled == 0 && self.current_order != 0x2bd {
+                    self.current_order = -1;
+                }
+                return Ok(true);
+            }
         }
         if matches!(self.current_order, PATROL | PATROL_2) {
-            return Ok(());
+            return Ok(false);
         }
         if matches!(self.stance, 1 | 2) {
             let gap = |d: f32, r: f32| {
@@ -2148,7 +2204,7 @@ impl UnitAi {
         if at.task_0x69 {
             return Err(Unsupported("a healer's search for an ally to heal"));
         }
-        Ok(())
+        Ok(false)
     }
 
     /// The soldier's idle check in `NoAttack` (stance 3, `FUN_140c20db0`: "searching and returning
@@ -2306,7 +2362,7 @@ impl UnitAi {
         // the full update's start: the time since the last enemy sighting grows by the world's dt
         self.time_since_enemy += at.dt_seconds;
         let mut fx = Vec::new();
-        self.target_block(at, computer, ai, &mut fx)?;
+        self.target_block(at, computer, ai, side, &mut fx)?;
         self.keep_attackers(at, side);
         self.check_busy_order(retarget, at.busy && fx.is_empty())?;
         if self.current_order != -1 {
@@ -2387,7 +2443,7 @@ impl UnitAi {
             ));
         }
         if after.retargeted {
-            self.retarget_outcome(target, weapon_range, computer)?;
+            self.retarget_outcome(target, weapon_range, computer, None)?;
         }
         self.idle_part_end(class, player)
     }
@@ -2429,6 +2485,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         ai: &mut Well512,
+        side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         if self.current_target != -1 && at.garrisoned {
@@ -2455,7 +2512,7 @@ impl UnitAi {
                     {
                         self.stop_after_kill = false;
                         if action == ATTACK_ACTION {
-                            self.next_after_kill(at, ai, fx)?;
+                            self.next_after_kill(at, computer, ai, side, fx)?;
                         } else if action != HUNT_ACTION && action != BUILD_ORDER {
                             self.remove_target();
                             self.stop_current(true, at, fx)?;
@@ -2645,7 +2702,9 @@ impl UnitAi {
     fn next_after_kill(
         &mut self,
         at: &Surroundings,
+        computer: bool,
         ai: &mut Well512,
+        side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         let produced = match self.ai_type {
@@ -2654,6 +2713,11 @@ impl UnitAi {
                 let (produced, moved) = self.boar_idle(at, ai);
                 fx.extend(moved.map(Effect::Move));
                 produced
+            }
+            // the soldier's processIdle with 0 (FUN_140c20db0: its cap, then as the idle part's)
+            SOLDIER_AI => {
+                self.cap_human_order(fx);
+                self.soldier_idle(at, computer, side, fx)?
             }
             _ => {
                 return Err(Unsupported(
@@ -3317,8 +3381,12 @@ impl UnitAi {
                 None => return Ok(false),
             }
         } else {
-            let Some(t) = at.unit(target) else {
-                return Ok(false);
+            let t = match at.unit(target) {
+                Some(t) => *t,
+                None => match side.seen_unit(target)? {
+                    Some(t) => t,
+                    None => return Ok(false),
+                },
             };
             let may = match self.ai_type {
                 4 => true,
@@ -3825,7 +3893,8 @@ impl UnitAi {
     /// processIdle (slot 0x240 with 0): the tower's (the base `FUN_140c564c0`, which skips the
     /// order retry of slot 0x250 with 0; [`UnitAi::tower_idle`] after the cap) attacks what its
     /// search finds (not modelled) or does nothing (5), the boar's ([`UnitAi::boar_idle`], after
-    /// the cap) may produce an action (6); the building's handler never passes the notify on
+    /// the cap) may produce an action (6), as may the soldier's ([`UnitAi::soldier_idle`], after
+    /// the cap); the building's handler never passes the notify on
     /// (`FUN_140c1e600` would do nothing either). Unless it is 5 the
     /// notify goes on; with 5 a human player's unit forgets its target (`FUN_140c5e1e0`) and stops
     /// (slot 0xb0 with 1); a computer player's tests (slot 0x130) are not modelled, nor are the
@@ -3861,6 +3930,10 @@ impl UnitAi {
                     let (produced, moved) = self.boar_idle(at, ai);
                     fx.extend(moved.map(Effect::Move));
                     produced
+                }
+                SOLDIER_AI => {
+                    self.cap_human_order(fx);
+                    self.soldier_idle(at, computer, side, fx)?
                 }
                 _ => {
                     return Err(Unsupported(
@@ -4458,7 +4531,7 @@ impl UnitAi {
         self.retarget_timer = 750 + ai.rand15() % 500;
         if !ordered {
             let target = at.target.map(|t| (t.owner, t.class));
-            self.retarget_outcome(target, at.weapon_range, computer)?;
+            self.retarget_outcome(target, at.weapon_range, computer, at.action_state)?;
         }
         Ok(true)
     }
@@ -4466,13 +4539,17 @@ impl UnitAi {
     /// The retarget check after its timer's redraw: a human player's unit of a range above 3 on
     /// the attack order stops there, as does a unit with a Gaia target or without one (or one
     /// gone; `target` its owner and class as the world holds it), and one with a player's target
-    /// off the attack order but for a building, wall or trebuchet target, whose search for a
-    /// better target is not modelled.
+    /// off the attack order but for a building, wall or trebuchet target. Then a unit in stand
+    /// ground or no attack (stance above 1) with an order stops, and one whose top action is in
+    /// an attack's work state (6 or 7, slot 0x2b0: `action_state`, None when not held) without a
+    /// building target. The search for a better target that follows (slot 0x538 with 9, then
+    /// `bestUnitToAttack` from the target's slot 0x520 place) is not modelled.
     fn retarget_outcome(
         &self,
         target: Option<(usize, i16)>,
         weapon_range: f32,
         computer: bool,
+        action_state: Option<u8>,
     ) -> Result<(), Unsupported> {
         let attack_order = self.current_order == ATTACK_ORDER;
         if attack_order && RETARGET_RANGE < weapon_range && !computer {
@@ -4494,6 +4571,21 @@ impl UnitAi {
         }
         if !attack_order && !search {
             return Ok(());
+        }
+        // slot 0x538 with 9 (an Attack in the action list) comes first; either way a unit in
+        // stand ground or no attack with an order goes no further
+        if 1 < self.stance && self.current_order != -1 {
+            return Ok(());
+        }
+        // "I have an game attack action without an order ... inAttackWorkState"
+        match action_state {
+            Some(6 | 7) if !search => return Ok(()),
+            Some(_) => {}
+            None => {
+                return Err(Unsupported(
+                    "a retarget check of an action the slice does not hold (slot 0x2b0)",
+                ));
+            }
         }
         Err(Unsupported(
             "a unit AI's search for a better target (slot 0x538 with 9, then slot 0x520)",
@@ -5064,6 +5156,251 @@ mod tests {
         let mut side = Recorder::default();
         let _ = defensive.handle(n, 0, &at(4), false, &mut rng(), &mut side, &mut fx);
         assert_eq!(side.attacks, []);
+    }
+
+    /// A lion's world: the answers of its two searches (a villager, then any enemy), the object
+    /// it then reads, and the attack commands it gave.
+    struct LionSide {
+        found: [i32; 2],
+        searches: usize,
+        seen: UnitSeen,
+        attacks: Vec<(i32, bool)>,
+    }
+
+    impl UnitSide for LionSide {
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+            let id = self.found[self.searches];
+            self.searches += 1;
+            Ok(Found {
+                id,
+                enemies: id != -1,
+                position: Some([0.0; 3]),
+                fresh: true,
+            })
+        }
+        fn attack(
+            &mut self,
+            target: i32,
+            force: bool,
+            _: &UnitAi,
+        ) -> Result<Attacked, Unsupported> {
+            self.attacks.push((target, force));
+            Ok(Attacked {
+                attacks: true,
+                posted: Vec::new(),
+            })
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+            Ok((id == self.seen.id).then_some(self.seen))
+        }
+    }
+
+    /// The lion's idle check (`FUN_140c1fb70`): a villager it finds within half its line of
+    /// sight (outside mode 1) it attacks, not forced; finding none, any enemy within a third.
+    #[test]
+    fn an_idle_lion_attacks_what_it_finds_within_its_reach() {
+        let run = |found: [i32; 2], gap_squared: f32| {
+            let mut lion = idle(5);
+            let at = Surroundings {
+                los: 4.0,
+                search_radius: 1.0,
+                ..Surroundings::default()
+            };
+            let mut side = LionSide {
+                found,
+                searches: 0,
+                seen: UnitSeen {
+                    id: found[0].max(found[1]),
+                    class: 4,
+                    owner: 1,
+                    state: 2,
+                    gap_squared,
+                    ..UnitSeen::default()
+                },
+                attacks: Vec::new(),
+            };
+            let mut fx = Vec::new();
+            let moved = lion.lion_idle(&at, &mut rng(), &mut side, &mut fx).unwrap();
+            assert_eq!(moved, None);
+            (side.attacks, lion.current_action, lion.current_target)
+        };
+        // a villager: the reach is 2 (half of 4)
+        assert_eq!(
+            run([700, -1], 3.9),
+            (vec![(700, false)], ATTACK_ACTION, 700)
+        );
+        assert_eq!(run([700, -1], 4.1), (vec![], -1, -1));
+        // any enemy: a third of 4
+        assert_eq!(
+            run([-1, 701], 1.7),
+            (vec![(701, false)], ATTACK_ACTION, 701)
+        );
+        assert_eq!(run([-1, 701], 1.8), (vec![], -1, -1));
+    }
+
+    /// A soldier's world: what its `bestUnitToAttack` finds and the attack commands it gave.
+    struct SoldierSide {
+        found: i32,
+        attacks: Vec<(i32, bool)>,
+    }
+
+    impl UnitSide for SoldierSide {
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+            Ok(Found {
+                id: self.found,
+                enemies: self.found != -1,
+                position: Some([10.0, 11.0, 0.0]),
+                fresh: true,
+            })
+        }
+        fn attack(
+            &mut self,
+            target: i32,
+            force: bool,
+            _: &UnitAi,
+        ) -> Result<Attacked, Unsupported> {
+            self.attacks.push((target, force));
+            Ok(Attacked {
+                attacks: true,
+                posted: Vec::new(),
+            })
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Ok(Some((58, [10.0, 11.0, 0.0])))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+    }
+
+    /// A scout (master 448) in stand ground whose sheep died (census v4's blocker): its
+    /// processIdle with 0 (`FUN_140c20db0`) attacks the next sheep `bestUnitToAttack` finds,
+    /// forced, and its order goes; finding none, it moves to the dead sheep's point.
+    #[test]
+    fn a_scout_whose_sheep_died_attacks_the_next_or_walks_to_its_point() {
+        let run = |found: i32| {
+            let mut scout = UnitAi {
+                current_order: ATTACK_ORDER,
+                current_action: ATTACK_ACTION,
+                current_target: 25954,
+                target_type: 58,
+                target_point: [5.0, 6.0, 0.0],
+                stance: 2,
+                ..idle(13)
+            };
+            let at = Surroundings {
+                player: 1,
+                kind: 70,
+                master: 448,
+                class: 47,
+                weapon_range: 0.0,
+                action_state: Some(0),
+                ..Surroundings::default()
+            };
+            let mut side = SoldierSide {
+                found,
+                attacks: Vec::new(),
+            };
+            let mut fx = Vec::new();
+            scout
+                .next_after_kill(&at, false, &mut rng(), &mut side, &mut fx)
+                .unwrap();
+            (scout, side.attacks, fx)
+        };
+        let (scout, attacks, _) = run(26000);
+        assert_eq!(attacks, vec![(26000, true)]);
+        assert_eq!(
+            (
+                scout.current_action,
+                scout.current_target,
+                scout.current_order
+            ),
+            (ATTACK_ACTION, 26000, -1)
+        );
+        assert_eq!((scout.last_order, scout.order_priority), (-1, -1));
+        let (scout, attacks, fx) = run(-1);
+        assert_eq!(attacks, vec![]);
+        assert!(
+            fx.iter()
+                .any(|e| matches!(e, Effect::Move(m) if m.point == [5.0, 6.0, 0.0]))
+        );
+        assert_eq!((scout.current_order, scout.last_order), (-1, ATTACK_ORDER));
+    }
+
+    /// processMisc's retarget check past its timer (`0x140c567c0`): a scout on the attack order
+    /// against an enemy's sheep looks no further in stand ground, nor while it swings (its Attack
+    /// in state 6 or 7); otherwise the search for a better target follows.
+    #[test]
+    fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
+        let scout = |stance: u8| UnitAi {
+            current_order: ATTACK_ORDER,
+            current_action: ATTACK_ACTION,
+            current_target: 25954,
+            stance,
+            ..idle(13)
+        };
+        let sheep = Some((1, 58));
+        assert_eq!(
+            scout(2).retarget_outcome(sheep, 0.0, false, Some(4)),
+            Ok(())
+        );
+        assert_eq!(
+            scout(0).retarget_outcome(sheep, 0.0, false, Some(6)),
+            Ok(())
+        );
+        assert!(
+            scout(0)
+                .retarget_outcome(sheep, 0.0, false, Some(4))
+                .is_err()
+        );
+        // a building target is searched past even while attacking
+        assert!(
+            scout(0)
+                .retarget_outcome(Some((1, 3)), 0.0, true, Some(6))
+                .is_err()
+        );
     }
 
     #[test]
@@ -6465,8 +6802,14 @@ mod tests {
         };
         let mut u = builder_done();
         let mut fx = Vec::new();
-        u.target_block(&standing, false, &mut Well512::default(), &mut fx)
-            .unwrap();
+        u.target_block(
+            &standing,
+            false,
+            &mut Well512::default(),
+            &mut Recorder::default(),
+            &mut fx,
+        )
+        .unwrap();
         assert_eq!((u.current_target, &fx[..]), (10028, &[][..]));
         // a target no longer in the world goes (its class and point stay); an attack action's
         // idle timer then takes its timeout
@@ -6478,8 +6821,14 @@ mod tests {
             current_action: ATTACK_ACTION,
             ..builder_done()
         };
-        u.target_block(&gone, false, &mut Well512::default(), &mut fx)
-            .unwrap();
+        u.target_block(
+            &gone,
+            false,
+            &mut Well512::default(),
+            &mut Recorder::default(),
+            &mut fx,
+        )
+        .unwrap();
         assert_eq!((u.current_target, u.target_type), (-1, 3));
         assert_eq!(u.idle_timer, 3000);
         // inside another, a unit drops its target before the lookup
@@ -6488,8 +6837,14 @@ mod tests {
             ..standing
         };
         let mut u = builder_done();
-        u.target_block(&inside, false, &mut Well512::default(), &mut fx)
-            .unwrap();
+        u.target_block(
+            &inside,
+            false,
+            &mut Well512::default(),
+            &mut Recorder::default(),
+            &mut fx,
+        )
+        .unwrap();
         assert_eq!(u.current_target, -1);
     }
 
@@ -6511,8 +6866,14 @@ mod tests {
             ..builder_done()
         };
         let mut fx = Vec::new();
-        u.target_block(&dead, false, &mut Well512::default(), &mut fx)
-            .unwrap();
+        u.target_block(
+            &dead,
+            false,
+            &mut Well512::default(),
+            &mut Recorder::default(),
+            &mut fx,
+        )
+        .unwrap();
         assert_eq!(fx, vec![Effect::Stop]);
         assert_eq!((u.current_target, u.last_target), (-1, 10028));
         assert_eq!((u.current_action, u.last_action), (-1, 0x25b));
@@ -6523,8 +6884,14 @@ mod tests {
             ..builder_done()
         };
         let mut fx = Vec::new();
-        u.target_block(&dead, false, &mut Well512::default(), &mut fx)
-            .unwrap();
+        u.target_block(
+            &dead,
+            false,
+            &mut Well512::default(),
+            &mut Recorder::default(),
+            &mut fx,
+        )
+        .unwrap();
         assert_eq!((u.current_target, fx), (10028, vec![]));
         // an attack whose target died waits while its Attack swings on the kill (state 2); past
         // it a villager's processIdle is not modelled, nor is an Attack the slice does not hold
@@ -6538,8 +6905,14 @@ mod tests {
         };
         let mut u = attack();
         let mut fx = Vec::new();
-        u.target_block(&swinging, false, &mut Well512::default(), &mut fx)
-            .unwrap();
+        u.target_block(
+            &swinging,
+            false,
+            &mut Well512::default(),
+            &mut Recorder::default(),
+            &mut fx,
+        )
+        .unwrap();
         assert_eq!((u.current_target, fx), (10028, vec![]));
         let over = Surroundings {
             action_state: Some(1),
@@ -6548,7 +6921,13 @@ mod tests {
         for at in [&over, &dead] {
             assert!(
                 attack()
-                    .target_block(at, false, &mut Well512::default(), &mut Vec::new())
+                    .target_block(
+                        at,
+                        false,
+                        &mut Well512::default(),
+                        &mut Recorder::default(),
+                        &mut Vec::new()
+                    )
                     .is_err()
             );
         }
@@ -6745,6 +7124,7 @@ mod tests {
         radius: [2.0, 2.0],
         speed: 0.0,
         scenario: false,
+        firepower: 0.0,
     };
 
     /// Gaia's boar 9731 (master 48, class 10).
@@ -6798,15 +7178,28 @@ mod tests {
         assert_eq!(can_attack(&TC, &IDLE, &sheep), Ok(false));
         // a type whose attack check is not modelled
         assert!(can_attack(&Attacker { ai_type: 5, ..TC }, &IDLE, &BOAR).is_err());
+        // a tower without a missile is armed only by the firepower of the units inside it
+        let bare = Attacker { missile: -1, ..TC };
+        let enemy = Target {
+            owner: 1,
+            class: 6,
+            ..BOAR
+        };
+        assert_eq!(can_attack(&bare, &IDLE, &enemy), Ok(false));
+        let manned = Attacker {
+            firepower: 2.0,
+            ..bare
+        };
+        assert_eq!(can_attack(&manned, &IDLE, &enemy), Ok(true));
     }
 
-    /// A scout cavalry (master 448, class 12) of player 1 in `StandGround` at its state position,
+    /// A scout cavalry (master 448, class 47) of player 1 in `StandGround` at its state position,
     /// as records/425906646's 27272 at update 4268.
     const SCOUT: Attacker = Attacker {
         ai_type: 13,
         player: 1,
         kind: 70,
-        class: 12,
+        class: 47,
         master: 448,
         missile: -1,
         range: 0.0,

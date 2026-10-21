@@ -1136,6 +1136,40 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         Ok(crate::unit_ai::flood_search((ux, uy), r, foundation_on).unwrap_or(-1))
     }
 
+    fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, Unsupported> {
+        let Some(p) = self.spatial.get(id) else {
+            return Ok(None);
+        };
+        let (owner, u) = self
+            .others
+            .iter()
+            .find(|u| u.id == id)
+            .map(|u| (self.player, u))
+            .or_else(|| self.foreign.find(id))
+            .ok_or(Unsupported("an object the slice does not hold"))?;
+        let m = self
+            .every
+            .get(owner)
+            .and_then(|ms| ms.get(u.life.master_id))
+            .ok_or(Unsupported("an object of a master the slice does not have"))?;
+        let me = self
+            .masters
+            .and_then(|ms| ms.get(self.unit.life.master_id))
+            .ok_or(Unsupported(
+                "a unit AI's unit of a master the slice does not have",
+            ))?;
+        Ok(Some(crate::unit_ai::UnitSeen {
+            id,
+            class: m.class,
+            owner,
+            combat_level: m.combat_level,
+            state: u.life.state,
+            target: u.ai.as_ref().map(|a| a.current_target),
+            gap_squared: footprint_gap_squared(self.unit.position, me.radius, p.position, p.radius),
+            position: p.position,
+        }))
+    }
+
     fn closest_resource(
         &mut self,
         kind: u8,
@@ -6686,6 +6720,7 @@ impl Unit {
                         radius: master.map_or([0.0; 2], |m| m.radius),
                         speed: self.mover.as_ref().map_or(0.0, |m| m.stats.speed),
                         scenario: c.scenario,
+                        firepower: self.firepower,
                     };
                     let [ai_stream, object, sprite] =
                         c.streams.three(Stream::Ai, Stream::Object, Stream::Sprite);
