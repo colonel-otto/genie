@@ -821,6 +821,9 @@ struct Context<'a> {
     /// The technologies the owner researches from the object's update (a completed building's),
     /// which the caller completes after the attributes ([`Turns::complete_research`]).
     techs_done: Vec<i16>,
+    /// The mule carts the object's update completed, whose search for resources the caller runs
+    /// after it ([`Turns::cart_search`]).
+    carts: Vec<i32>,
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
     /// which the caller gives after the update ([`Turns::order_work`]).
     work_order: Option<crate::order::Work>,
@@ -1195,8 +1198,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 construction_rate: self.construction_rate,
             },
         };
-        let (id, _) =
-            closest_resource_of(self.unit, &mut w, self.others, (kind, cap, site), current)?;
+        let (id, _) = closest_resource_of(
+            self.unit,
+            &mut w,
+            self.others,
+            (kind, cap, site),
+            (current, 2),
+        )?;
         if id == -1 {
             return Ok(None);
         }
@@ -4093,7 +4101,7 @@ impl Unit {
                 construction_rate: c.construction_rate,
             },
         };
-        closest_resource_of(self, &mut w, others, (kind, cap, site), current).map(|(id, _)| id)
+        closest_resource_of(self, &mut w, others, (kind, cap, site), (current, 2)).map(|(id, _)| id)
     }
 
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
@@ -5276,6 +5284,9 @@ impl Unit {
         let built = Construction::complete(&mut site, c.spatial)?;
         c.attribute_adds.extend(built.attributes);
         c.techs_done.extend(built.tech);
+        if built.cart {
+            c.carts.push(self.id);
+        }
         Ok(())
     }
 
@@ -5773,6 +5784,9 @@ impl Unit {
             if let Some(built) = step.completed {
                 c.attribute_adds.extend(built.attributes);
                 c.techs_done.extend(built.tech);
+                if built.cart {
+                    c.carts.push(target);
+                }
             }
             // the load dropped at the end of the work (FUN_140aadc50: the player's slot 0xf8 with
             // 1 and 1, then the builder carries nothing, FUN_14119d310)
@@ -7287,7 +7301,7 @@ fn closest_resource_of(
     c: &mut ResourceWorld<'_, '_>,
     others: &[Unit],
     (kind, cap, site): (u8, i32, i32),
-    current: i32,
+    (current, min_state): (i32, u8),
 ) -> Result<(i32, Option<i32>), Unsupported> {
     use crate::gather_search::{self, Candidate};
     /// The site masters whose search starts from their footprint in any zone.
@@ -7295,8 +7309,9 @@ fn closest_resource_of(
     let site = if site == -1 || c.spatial.get(site).is_none() {
         None
     } else {
-        let (sp, s) = others
-            .iter()
+        // the unit itself (a mule cart searches from its own place) or another object
+        let (sp, s) = std::iter::once(unit)
+            .chain(others.iter())
             .find(|u| u.id == site)
             .map(|u| (c.player, u))
             .or_else(|| c.foreign.find(site))
@@ -7397,6 +7412,7 @@ fn closest_resource_of(
         state: unit.life.state,
         current_target: current,
         my_pasture: unit.my_pasture,
+        min_state,
     };
     let me_walk = Me {
         id: unit.id,
@@ -9651,6 +9667,127 @@ impl Turns {
         Ok((class, f_at))
     }
 
+    /// A mule cart's completion (`FUN_1411c6bd0`'s tail, a building whose master has a task of
+    /// action type 0x99, [`crate::build::Built::cart`]) with a unit AI: with no current target a
+    /// human player's runs its AI's slot 0x1e8 (`FUN_140c16240`; its world test `FUN_141533b60`
+    /// and the game mode's, `FUN_140c87f20` not 4, hold in every recording probed): per task of
+    /// its master in order, the target class of the last of type 0x99 so far names a gather group
+    /// (`FUN_140fdd5c0` with 1: 1 for 7, 3 for 8, 0 for 15, 4 for 32 and 63), each searched by
+    /// `ClosestResourceObject` (slot 0x80) from the cart as the drop site, any workers, from
+    /// state 0 on; of those found, the nearest by the squared footprint gap (`FUN_14118f8c0`,
+    /// below 99999, `DAT_142ef9008`); then slot 0x140 (`FUN_141070c90`): the work command toward
+    /// it at its place, else at the cart's own (slot 0x7e8: no carried-resource test, any task;
+    /// `+0x888`'s count is not held). A cart with a target moves to it (slot 0x138): not modelled.
+    pub(crate) fn cart_search(&mut self, p: usize, id: i32) -> Result<(), Unsupported> {
+        const CART_REACH: f32 = crate::image::turn::CART_REACH;
+        let Some(idx) = self.players[p].objects.iter().position(|u| u.id == id) else {
+            return Ok(());
+        };
+        let Some(current) = self.players[p].objects[idx]
+            .ai
+            .as_ref()
+            .map(|ai| ai.current_target)
+        else {
+            return Ok(());
+        };
+        let found = if current == -1 && !self.players[p].computer {
+            if self.players[p].objects[idx].mover.is_none() {
+                return Err(Unsupported(
+                    "a mule cart's search without its movement state (a moving building's setup)",
+                ));
+            }
+            let master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
+            let mut kinds = Vec::new();
+            let mut class = -1;
+            for t in &master.tasks {
+                if t.action_type == crate::build::CART_TASK {
+                    class = t.object_group;
+                }
+                let kind = match class {
+                    7 => 1,
+                    8 => 3,
+                    15 => 0,
+                    32 | 63 => 4,
+                    _ => continue,
+                };
+                kinds.push(kind);
+            }
+            let cart = std::mem::take(&mut self.players[p].objects[idx]);
+            let result = (|| {
+                let (before, rest) = self.players.split_at_mut(p);
+                let (player, after) = rest.split_first_mut().expect("p is a player");
+                let mut w = ResourceWorld {
+                    player: p,
+                    spatial: &self.spatial,
+                    zones: &mut self.zones,
+                    foreign: Foreign {
+                        before: &*before,
+                        after: &*after,
+                    },
+                    every: &self.masters,
+                    masters: self.masters.get(p),
+                    plan: Planning {
+                        pathing: &mut self.pathing,
+                        now: self.world_time,
+                        computer: player.computer,
+                        object: self.streams.get(Stream::Object),
+                        construction_rate: player.construction_rate,
+                    },
+                };
+                let mut found = Vec::new();
+                for kind in kinds {
+                    let (f, _) = closest_resource_of(
+                        &cart,
+                        &mut w,
+                        &player.objects,
+                        (kind, -1, id),
+                        (current, 0),
+                    )?;
+                    if f != -1 {
+                        found.push(f);
+                    }
+                }
+                Ok::<_, Unsupported>(found)
+            })();
+            self.players[p].objects[idx] = cart;
+            let found = result?;
+            let cart_master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
+            let at = self.players[p].objects[idx].position;
+            let mut best: Option<(i32, [f32; 3])> = None;
+            let mut best_d = CART_REACH;
+            for f in found {
+                let Some(o) = self.spatial.get(f) else {
+                    continue;
+                };
+                let d = footprint_gap_squared(at, cart_master.radius, o.position, o.radius);
+                if d < best_d {
+                    best = Some((f, o.position));
+                    best_d = d;
+                }
+            }
+            Some(best.unwrap_or((-1, at)))
+        } else {
+            None
+        };
+        if let Some((target, point)) = found {
+            let work = crate::order::Work {
+                target,
+                point,
+                carry_test: false,
+                filter: -1,
+                notified: true,
+            };
+            self.order_work(p, idx, &work)?;
+        }
+        let unit = &self.players[p].objects[idx];
+        if unit.ai.as_ref().is_some_and(|ai| ai.current_target != -1) {
+            return Err(Unsupported(
+                "a mule cart's move to its unit AI's target (slot 0x138)",
+            ));
+        }
+        Ok(())
+    }
+
     /// SET GATHER POINT's handler ([`Command::GatherPoint`]).
     fn gather_point(
         &mut self,
@@ -10436,6 +10573,7 @@ impl Turns {
                     scenario: scenario_mode(self.game_mode),
                     attribute_adds: Vec::new(),
                     techs_done: Vec::new(),
+                    carts: Vec::new(),
                     work_order: None,
                     gate_toggle: false,
                     ai_resume: resume.take(),
@@ -10464,6 +10602,7 @@ impl Turns {
                 let build_command = c.build_command.take();
                 let move_aside = std::mem::take(&mut c.move_aside);
                 let techs_done = std::mem::take(&mut c.techs_done);
+                let carts = std::mem::take(&mut c.carts);
                 let work_order = c.work_order.take();
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
                 let (remains, refund) = (c.remains.take(), c.refund.take());
@@ -10491,6 +10630,13 @@ impl Turns {
                 }
                 for (kind, amount) in adds {
                     if let Err(e) = self.players[p].add_attribute(kind, amount) {
+                        result = result.and(Err(e));
+                    }
+                }
+                // a completed mule cart's search for resources (FUN_1411c6bd0's tail, before
+                // the completion's technology)
+                for cart in carts {
+                    if let Err(e) = self.cart_search(p, cart) {
                         result = result.and(Err(e));
                     }
                 }

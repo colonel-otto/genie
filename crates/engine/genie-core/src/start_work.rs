@@ -143,6 +143,7 @@ impl Turns {
             state: unit.life.state,
             current_target: ai.current_target,
             my_pasture: unit.my_pasture,
+            min_state: 2,
         };
         let me_walk = Me {
             id: unit.id,

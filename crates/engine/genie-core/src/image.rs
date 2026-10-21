@@ -478,6 +478,8 @@ pub mod tile_path {
 pub mod turn {
     /// 1.0
     pub const ARMED_FIREPOWER: f32 = f32::from_bits(0x3f80_0000);
+    /// 99999.0
+    pub const CART_REACH: f32 = f32::from_bits(0x47c3_4f80);
     /// 0.10000000149011612
     pub const DROP_REACH: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.20000000298023224

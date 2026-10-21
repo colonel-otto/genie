@@ -128,6 +128,10 @@ pub enum Worked {
     Completed(Built),
 }
 
+/// The action type of the mule cart's tasks (its moves to resources, `0x99`): the action
+/// factory makes no action of it.
+pub const CART_TASK: i16 = 0x99;
+
 /// What a completion gives its owner ([`Construction::complete`]).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Built {
@@ -136,6 +140,9 @@ pub struct Built {
     /// The master's technology (`+0x98c`, the building's `tech`), which the completion researches
     /// last (`FUN_1413cdcd0` without a building): the caller's.
     pub tech: Option<i16>,
+    /// The building's master has a task of action type 0x99 (a mule cart, `FUN_1415c60b0`): its
+    /// unit AI's search for resources follows (`FUN_1411c6bd0`'s tail, the caller's).
+    pub cart: bool,
 }
 
 /// What a builder brings to its Build action's update besides its walk.
@@ -894,10 +901,8 @@ impl Construction {
                 "a completion with a player's attribute 204 (FUN_14152bcb0)",
             ));
         }
-        if site.construction.sprite_override || master.tasks.iter().any(|t| t.action_type == 0x99) {
-            return Err(Unsupported(
-                "a completion of an overridden sprite or a task of action type 0x99",
-            ));
+        if site.construction.sprite_override {
+            return Err(Unsupported("a completion of an overridden sprite"));
         }
         let mut attributes = Vec::new();
         // FUN_1411c6bd0's part for a farm (class 49) built: FUN_1411c66a0 with the owner's
@@ -983,6 +988,7 @@ impl Construction {
         Ok(Built {
             attributes,
             tech: (0 <= building.tech).then_some(building.tech),
+            cart: master.tasks.iter().any(|t| t.action_type == CART_TASK),
         })
     }
 
@@ -1237,7 +1243,8 @@ mod tests {
             worked,
             Ok(Worked::Completed(Built {
                 attributes: vec![(4, 5.0), (98, 25.0), (165, 25.0)],
-                tech: None
+                tech: None,
+                cart: false,
             }))
         );
         assert_eq!((life.state, c.progress, c.snow), (2, 25.0, true));

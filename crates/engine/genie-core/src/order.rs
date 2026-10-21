@@ -2017,50 +2017,7 @@ impl Turns {
             if self.keep_attack(player, idx, target, filter, point, clears)? {
                 return Ok(());
             }
-            let unit = &self.players[player].objects[idx];
-            let master = self.master_of(player, unit.life.master_id)?;
-            if !master.moving.is_some_and(|m| 0.0 < m.speed) {
-                return Ok(());
-            }
-            // slot 0x828 with 1 (the move's order and action) for a unit in state 2, -1 for
-            // another; then the move to the target (slot 0x138) for a unit in state 2 or of
-            // class 51
-            let (alive, class) = (unit.life.state == 2, master.class);
-            let named = if target == -1 {
-                None
-            } else {
-                let (tp, t) = self.object(target).ok_or(Unsupported(
-                    "a work command's target the slice does not hold",
-                ))?;
-                Some((
-                    target,
-                    i32::from(self.master_of(tp, t.life.master_id)?.class),
-                ))
-            };
-            let (order, action) = if alive {
-                (MOVE_ORDER, crate::unit_ai::MOVE_ACTION)
-            } else {
-                (-1, -1)
-            };
-            let unit = &mut self.players[player].objects[idx];
-            if let Some(ai) = unit.ai.as_mut() {
-                ai.notify_work(
-                    order,
-                    action,
-                    named,
-                    point,
-                    clears,
-                    self.streams.get(Stream::Ai),
-                )?;
-            }
-            if alive || class == 51 {
-                if target == -1 {
-                    self.move_point_order(player, idx, point)?;
-                } else {
-                    self.move_to_object(player, idx, target, point)?;
-                }
-            }
-            return Ok(());
+            return self.work_move(player, idx, target, point, clears);
         };
         // a new master's task is another than the one the unit's action holds
         let same_master = with == self.players[player].objects[idx].life.master_id;
@@ -2170,6 +2127,8 @@ impl Turns {
                 true,
             ),
             crate::build::BUILD => self.start_build(player, idx, target, &task, point, clears),
+            // the factory makes no action of a mule cart's task: the move without one
+            crate::build::CART_TASK => self.work_move(player, idx, target, point, clears),
             crate::gather::GATHER => {
                 self.start_gather(player, idx, target, &task, Some((point, clears)))
             }
@@ -2177,6 +2136,64 @@ impl Turns {
                 "the action factory for a task the slice does not model",
             )),
         }
+    }
+
+    /// The work command without an action (`FUN_14106ff70`: no task, or one the action list's
+    /// factory makes no action of, the mule cart's 0x99): a unit whose master moves (slot 0xe8,
+    /// its speed `+0x740`) is told of a move (slot 0x828) and, in state 2 or of class 51, moves to
+    /// the target or the point (slot 0x138); one that does not move does nothing.
+    fn work_move(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        point: [f32; 3],
+        clears: bool,
+    ) -> Result<(), Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let master = self.master_of(player, unit.life.master_id)?;
+        if !master.moving.is_some_and(|m| 0.0 < m.speed) {
+            return Ok(());
+        }
+        // slot 0x828 with 1 (the move's order and action) for a unit in state 2, -1 for
+        // another; then the move to the target (slot 0x138) for a unit in state 2 or of
+        // class 51
+        let (alive, class) = (unit.life.state == 2, master.class);
+        let named = if target == -1 {
+            None
+        } else {
+            let (tp, t) = self.object(target).ok_or(Unsupported(
+                "a work command's target the slice does not hold",
+            ))?;
+            Some((
+                target,
+                i32::from(self.master_of(tp, t.life.master_id)?.class),
+            ))
+        };
+        let (order, action) = if alive {
+            (MOVE_ORDER, crate::unit_ai::MOVE_ACTION)
+        } else {
+            (-1, -1)
+        };
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                order,
+                action,
+                named,
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+        }
+        if alive || class == 51 {
+            if target == -1 {
+                self.move_point_order(player, idx, point)?;
+            } else {
+                self.move_to_object(player, idx, target, point)?;
+            }
+        }
+        Ok(())
     }
 
     /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::Effect::HuntObject`], after the

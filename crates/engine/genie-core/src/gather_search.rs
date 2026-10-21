@@ -228,6 +228,9 @@ pub struct Seeker {
     pub current_target: i32,
     /// `+0x794`, `my_pasture_id`.
     pub my_pasture: i32,
+    /// `param_6`: below this state the unit finds nothing (2 for the unit AIs' searches, 0 for
+    /// a mule cart's).
+    pub min_state: u8,
 }
 
 /// One cell of the search's queue: a tile and its steps from the start.
@@ -350,8 +353,8 @@ pub fn closest_resource_at(
     const SITE_SHARE: f32 = crate::image::gather_search::SITE_SHARE;
     const UNIT_SHARE: f32 = crate::image::gather_search::UNIT_SHARE;
     const TILE_CENTRE: f32 = crate::image::gather_search::TILE_CENTRE;
-    if seeker.state < 2 {
-        return Err(Unsupported("a resource search by a unit below state 2"));
+    if seeker.state < seeker.min_state {
+        return Ok((-1, None));
     }
     if seeker.my_pasture != -1 {
         return Err(Unsupported(
@@ -674,6 +677,7 @@ mod tests {
             state: 2,
             current_target: -1,
             my_pasture: -1,
+            min_state: 2,
         };
         // trees at (12, 10) and (8, 11): the second is nearer the unit's place
         let trees = [tree(1, 12.5, 10.5), tree(2, 8.5, 11.5)];
@@ -733,6 +737,7 @@ mod tests {
             state: 2,
             current_target: -1,
             my_pasture: -1,
+            min_state: 2,
         };
         // a 2x2 site at (14, 10): its own tiles are blocked
         let site = SearchSite {
