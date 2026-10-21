@@ -84,6 +84,10 @@ pub struct Unit {
     pub pasture: i32,
     /// `+0x794`, `my_pasture_id`: the pasture it tends, −1 for none.
     pub my_pasture: i32,
+    /// `mDeletionEnabled` (`+0x687`, 1 from its constructor) is 0: no delete takes it.
+    pub undeletable: bool,
+    /// `capture_flag` (`+0x924`).
+    pub capture_flag: u8,
     /// An annex's main building (`+0xbb8`, the save's linked owner).
     pub annex_of: Option<i32>,
     /// `mHitpointsPowerup` and `mHitpointsMaxPowerup` (`+0xa38`, `+0xa3c`), which the task finder
@@ -429,6 +433,14 @@ pub enum Command {
     Posture {
         /// The player.
         player: usize,
+    },
+    /// `CANCEL_BUILD` (0x6a, `do_command` case 0x6a): the player deletes its object `id`
+    /// ([`Turns::delete`]).
+    Delete {
+        /// The player.
+        player: usize,
+        /// The object.
+        id: i32,
     },
     /// FLARE (0x73, `0x140e7bfd0`): every player from 1 below `players` (`+0x10`, at most the
     /// world's) gets a flare at `target`'s place (`+4`, −1 for none) or at `point` (`+8`, `+0xc`)
@@ -7935,6 +7947,8 @@ impl Turns {
                     town_bell: crate::town_bell::TownBell::default(),
                     pasture: -1,
                     my_pasture: -1,
+                    undeletable: false,
+                    capture_flag: 0,
                     annex_of: None,
                     hp_powerups: [0.0; 2],
                     hunt: None,
@@ -8051,6 +8065,11 @@ impl Turns {
             }
             Command::Gate { player, id } => {
                 if let Err(e) = self.gate(player, id) {
+                    self.stop_player(player, e);
+                }
+            }
+            Command::Delete { player, id } => {
+                if let Err(e) = self.delete(player, id) {
                     self.stop_player(player, e);
                 }
             }

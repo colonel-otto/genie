@@ -708,14 +708,13 @@ impl BuildAction {
             Worked::Done => None,
             Worked::Completed(built) => Some(built),
         };
-        // a finished foundation with hit points ends the work (its `+0x278`, decoded)
+        // a finished foundation with hit points ends the work (its `+0x278`, decoded); one
+        // without (deleted, it dies in its own update) leaves the Build as it is
         if 0.0 < site.life.hp {
             let dropped = self.finish(&mut walk, Some(&mut *site.construction), load)?;
             Ok((completed, dropped))
         } else {
-            Err(Unsupported(
-                "work on a finished foundation without hit points",
-            ))
+            Ok((completed, None))
         }
     }
 

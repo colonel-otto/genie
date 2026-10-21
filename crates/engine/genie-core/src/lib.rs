@@ -38,6 +38,7 @@ pub mod attack;
 pub mod build;
 pub mod checkpoint;
 pub mod damage;
+pub mod delete;
 pub mod effect;
 pub mod explore;
 pub mod facing;

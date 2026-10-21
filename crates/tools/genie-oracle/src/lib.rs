@@ -277,6 +277,10 @@ fn unit(
         under_attack: s.under_attack_value != 0,
         pasture: s.parent_pasture_id,
         my_pasture: s.my_pasture_id,
+        undeletable: s.deletion_enabled == 0,
+        capture_flag: object
+            .combat()
+            .map_or(0, |c| c.rge_combat_object.capture_flag),
         annex_of: object
             .tribe_building_object
             .as_deref()
@@ -3100,6 +3104,12 @@ impl Decoder {
                     player: c.commp_id as usize,
                     id: c.field_0x08 as i32,
                     master: c.field_0x04 as i16,
+                });
+            }
+            Packet::CancelBuild(c) => {
+                return Some(Command::Delete {
+                    player: c.commp_id as usize,
+                    id: c.u_id,
                 });
             }
             Packet::Flare(c) => {
