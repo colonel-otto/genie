@@ -680,9 +680,14 @@ fn mover(
             }
         };
     let table = masters.ok_or(Unsupported("no master table: turning is unknown"))?;
-    let factor = table
-        .sprite_speed(s.sprite)
-        .ok_or(Unsupported("a sprite the data file does not have"))?;
+    // without a sprite (−1: the empty town-centre annex 890, say) no factor
+    let factor = if s.sprite == -1 {
+        0.0
+    } else {
+        table
+            .sprite_speed(s.sprite)
+            .ok_or(Unsupported("a sprite the data file does not have"))?
+    };
     let speed = if 0.0 < factor { base * factor } else { base };
     let turning = table
         .turning(civ, s.master_obj)
