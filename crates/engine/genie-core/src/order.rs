@@ -260,8 +260,9 @@ impl Turns {
     /// The order splitter (`FUN_140fd9dc0` -> `FUN_140fd9ae0` -> `FUN_140fd76d0`) on units that
     /// form no group: it sorts them by id (`FUN_140fd7280` with `LAB_140fd89b0`), takes at most
     /// 60, drops an id the next one repeats, and leaves out of any group a unit above type 69 whose
-    /// master's formation category is 0 (villagers). A unit in a group (`+0x6d0`), one it may
-    /// group and an order to more than 60 units are not modelled.
+    /// master's formation category is 0 (villagers). An order whose first unit is gone splits into
+    /// nothing (`FUN_140fd9ae0` reads the owner of the first). A unit in a group (`+0x6d0`), one it
+    /// may group and an order to more than 60 units are not modelled.
     pub(crate) fn loose_units(&self, units: &[i32]) -> Result<Vec<i32>, Unsupported> {
         self.loose_units_kept(units, &|_| Ok(true))
     }
@@ -276,10 +277,10 @@ impl Turns {
         if 60 < units.len() {
             return Err(Unsupported("an order to more than 60 units"));
         }
+        // FUN_140fd9ae0 splits only when the list's first unit exists (its owner): else no unit
+        // takes the order
         let Some((owner, _)) = units.first().and_then(|&id| self.object(id)) else {
-            return Err(Unsupported(
-                "an order whose first unit is gone (the splitter stops)",
-            ));
+            return Ok(Vec::new());
         };
         let mut sorted = units.to_vec();
         sorted.sort_unstable();
