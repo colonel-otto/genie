@@ -206,6 +206,23 @@ pub(crate) fn stand_sprite(
     }
 }
 
+/// Slot 0x78 (`FUN_140a78060`, the base action's; `UNIT_ORDER`'s drop-off) of an action whose
+/// task takes `resource` (`+0x20`, any with −1) for a unit carrying some of `held_kind` (`+0x310`
+/// above 0, the caller's test): a load of the task's resource (compared by [`resource_kind`])
+/// asks the caller for `set_state(8)` (true). A load of another resource would post notify 0x21c
+/// to the unit AI, which is not modelled.
+pub(crate) fn asked_drop_off(
+    resource: i16,
+    held_kind: i16,
+    attributes: usize,
+) -> Result<bool, Unsupported> {
+    if resource != -1 && resource_kind(held_kind, attributes) != resource_kind(resource, attributes)
+    {
+        return Err(Unsupported("a drop-off of another resource (notify 0x21c)"));
+    }
+    Ok(true)
+}
+
 /// The player's resource of what a unit carries (`FUN_140fdd4f0`): the kinds 0 to 3, 9 and 56
 /// themselves, the foods 15 to 17 food (0), any other none (−1); then 0 for a kind beyond the
 /// player's `attributes` (`FUN_140efe5b0`).
@@ -879,11 +896,7 @@ impl HuntAction {
     /// [`resource_kind`]) asks the caller for `set_state(8)` (true). A load of another resource
     /// would post notify 0x21c to the unit AI, which is not modelled.
     pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, Unsupported> {
-        let kind = self.task.resource;
-        if kind != -1 && resource_kind(held_kind, attributes) != resource_kind(kind, attributes) {
-            return Err(Unsupported("a drop-off of another resource (notify 0x21c)"));
-        }
-        Ok(true)
+        asked_drop_off(self.task.resource, held_kind, attributes)
     }
 
     /// Slot 0x68 with none (`FUN_140ac7980`): the target goes and the lead's fields clear (its

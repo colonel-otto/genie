@@ -834,6 +834,9 @@ struct Context<'a> {
     /// The targets of the unit AI's `HuntObject`s, in order, whose unit part (the stop, then the
     /// hunt command) the caller runs after the update ([`Turns::hunt_command`]).
     hunt_objects: Vec<i32>,
+    /// The targets of the unit AI's `GatherObject`s, in order, whose gather command the caller
+    /// runs after the update ([`Turns::gather_command`]).
+    gather_objects: Vec<i32>,
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
     /// ([`Turns::build_object`]).
     build_object: Option<i32>,
@@ -1131,6 +1134,53 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             })
         };
         Ok(crate::unit_ai::flood_search((ux, uy), r, foundation_on).unwrap_or(-1))
+    }
+
+    fn closest_resource(
+        &mut self,
+        kind: u8,
+        cap: i32,
+        site: i32,
+        current: i32,
+    ) -> Result<Option<crate::unit_ai::Gatherable>, Unsupported> {
+        let mut w = ResourceWorld {
+            player: self.player,
+            spatial: self.spatial,
+            zones: self.zones,
+            foreign: self.foreign,
+            every: self.every,
+            masters: self.masters,
+            plan: Planning {
+                pathing: self.pathing,
+                now: self.world_time,
+                computer: self.computer,
+                object: self.object,
+                construction_rate: self.construction_rate,
+            },
+        };
+        let (id, _) =
+            closest_resource_of(self.unit, &mut w, self.others, (kind, cap, site), current)?;
+        if id == -1 {
+            return Ok(None);
+        }
+        let (owner, u) = self
+            .others
+            .iter()
+            .find(|u| u.id == id)
+            .map(|u| (self.player, u))
+            .or_else(|| self.foreign.find(id))
+            .ok_or(Unsupported("a resource found that the slice does not hold"))?;
+        let class = self
+            .every
+            .get(owner)
+            .and_then(|m| m.get(u.life.master_id))
+            .ok_or(Unsupported("a resource found of a master the slice lacks"))?
+            .class;
+        Ok(Some(crate::unit_ai::Gatherable {
+            id,
+            position: u.position,
+            class,
+        }))
     }
 
     fn reaches(&mut self, target: i32, range: f32) -> Result<bool, Unsupported> {
@@ -2278,6 +2328,7 @@ impl Unit {
                     *tail = Some(after);
                 }
                 Effect::HuntObject(target) => c.hunt_objects.push(target),
+                Effect::GatherObject(target) => c.gather_objects.push(target),
                 Effect::BuildObject(target) => {
                     if c.build_object.replace(target).is_some() {
                         return Err(Unsupported("two BuildObjects in one update"));
@@ -2852,6 +2903,7 @@ impl Unit {
                 sprite: &mut self.sprite,
                 sprite_rng,
                 class,
+                master: self.life.master_id,
                 stance,
                 world_time,
                 farm_stops,
@@ -2933,6 +2985,7 @@ impl Unit {
                 sprite: &mut self.sprite,
                 sprite_rng,
                 class,
+                master: self.life.master_id,
                 stance,
                 world_time,
                 farm_stops,
@@ -2982,10 +3035,50 @@ impl Unit {
                 }
             }
         }
-        if next == crate::gather::Next::Drop {
-            self.gather_drop_off(c, others)?;
+        match next {
+            crate::gather::Next::Drop => self.gather_drop_off(c, others)?,
+            crate::gather::Next::Search => self.gather_search(c, others)?,
+            crate::gather::Next::Stay | crate::gather::Next::Done => {}
         }
         Ok(())
+    }
+
+    /// The Gather's search in state 3 (`0x140a8cd40` case 3 and its repeat, `0x140a8e1d0` case
+    /// 2): the unit's notify 0x202 to its unit AI (slot 0x328) with the gather action (`0x261`),
+    /// the Gather's target type (`+0x68`) and a drop site: the second target's, else for a master
+    /// with drop sites (`+0x7a0`) the one `FUN_1411671e0` finds from the unit (inside others too:
+    /// [`Unit::drop_site_from`]), 0 when it finds none; −1 for a master without.
+    fn gather_search(&mut self, c: &mut Context<'_>, others: &[Self]) -> Result<(), Unsupported> {
+        let gather = self.gather.as_ref().expect("the caller's gather");
+        let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(Unsupported(
+                "a gatherer of a master the slice does not have",
+            ))?;
+        let site = if carry_to != -1 {
+            carry_to
+        } else if master.drop_sites.first().is_some_and(|&d| d != -1) {
+            let mut w = DropWorld {
+                masters: c.masters,
+                spatial: c.spatial,
+                zones: c.zones,
+                pathing: c.pathing,
+                object: c.streams.get(Stream::Object),
+                world_time: c.world_time,
+                computer: c.computer,
+                construction_rate: c.construction_rate,
+            };
+            self.drop_site_from(&mut w, others, state, false)?
+                .unwrap_or(0)
+        } else {
+            -1
+        };
+        self.post_own(
+            crate::unit_ai::REQUIRES_SEARCH,
+            [crate::unit_ai::GATHER_ACTION, target_type, site],
+        )
     }
 
     /// The Gather's state 8 after the deposit without a target (`0x140a8e1d0` case 7; its drop
@@ -3171,14 +3264,7 @@ impl Unit {
     /// `MoveTo` walks there ([`crate::gather::GatherAction::set_drop`]). Without one the unit AI's
     /// part (notify 0x203) is not modelled.
     fn gather_drop_off(&mut self, c: &mut Context<'_>, others: &[Self]) -> Result<(), Unsupported> {
-        if self.life.amount <= 0.0 {
-            return Err(Unsupported(
-                "a gather's drop-off carrying nothing (set_state 3)",
-            ));
-        }
-        let gather = self.gather.as_ref().expect("the caller's gather");
-        let (carry_to, state) = (gather.carry_to, gather.state);
-        let mut w = DropWorld {
+        let w = DropWorld {
             masters: c.masters,
             spatial: c.spatial,
             zones: c.zones,
@@ -3188,17 +3274,35 @@ impl Unit {
             computer: c.computer,
             construction_rate: c.construction_rate,
         };
-        let (site, gap) = self.drop_site(&mut w, others, carry_to, state)?;
-        if site != carry_to && site != -1 {
+        if let Some(site) = self.gather_drop_off_in(w, others)? {
             c.takes.push(site);
         }
+        Ok(())
+    }
+
+    /// [`Unit::gather_drop_off`] in `w`, from the update or a command: the drop site it took
+    /// when it is a new second target (the caller's to take, slot 0x178).
+    pub(crate) fn gather_drop_off_in(
+        &mut self,
+        mut c: DropWorld<'_>,
+        others: &[Self],
+    ) -> Result<Option<i32>, Unsupported> {
+        if self.life.amount <= 0.0 {
+            return Err(Unsupported(
+                "a gather's drop-off carrying nothing (set_state 3)",
+            ));
+        }
+        let gather = self.gather.as_ref().expect("the caller's gather");
+        let (carry_to, state) = (gather.carry_to, gather.state);
+        let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
         let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut()) else {
             return Err(Unsupported(
                 "a gatherer without its gather or movement state",
             ));
         };
         gather.carry_to = site;
-        gather.set_drop(gap, mover)
+        gather.set_drop(gap, mover)?;
+        Ok((site != carry_to && site != -1).then_some(site))
     }
 
     /// [`Unit::hunt_drop_off`] in `w`, from the update or a command.
@@ -3229,7 +3333,7 @@ impl Unit {
 
     /// The drop site a gatherer's `set_state(8)` walks to, its second target `carry_to` or, with
     /// none and a master with drop sites (`+0x7a0`), the closest of them (`FUN_1411671e0`: first
-    /// one it reaches, [`drop_site_search`] with the unit as the seeker, then any); −1 for none.
+    /// one it reaches, [`Unit::drop_site_from`] outside other objects, then any); −1 for none.
     /// With the footprint gap to it (`FUN_14118f680`).
     fn drop_site(
         &self,
@@ -3253,47 +3357,12 @@ impl Unit {
             let masters = c
                 .masters
                 .ok_or(Unsupported("a drop-off of a player without masters"))?;
-            let [w, h] = c.spatial.map;
-            let terrain = c
-                .spatial
-                .terrain
-                .as_ref()
-                .ok_or(Unsupported("the map's zones without its terrain"))?;
-            let values = terrain
-                .restrictions
-                .get(mover.stats.restriction)
-                .ok_or(Unsupported("a restriction the slice's data has not got"))?;
-            let zones = c.zones.of(w, h, &terrain.kinds, values);
-            let me = Me {
-                id: self.id,
-                position: self.position,
-                action_state: state,
-            };
-            let mut plan = Planning {
-                pathing: &mut *c.pathing,
-                now: c.world_time,
-                computer: c.computer,
-                object: &mut *c.object,
-                construction_rate: c.construction_rate,
-            };
-            let seeker = Seeker {
-                me,
-                mover,
-                plan: &mut plan,
-                spatial: c.spatial,
-                zones,
-                class: master.class,
-            };
             let sites = &master.drop_sites;
-            site = drop_site_search(others, masters, sites, self.position, Some(seeker))?
-                .or(drop_site_search(
-                    others,
-                    masters,
-                    sites,
-                    self.position,
-                    None,
-                )?)
-                .unwrap_or(-1);
+            site = match self.drop_site_from(c, others, state, true)? {
+                Some(s) => Some(s),
+                None => drop_site_search(others, masters, sites, self.position, None, true)?,
+            }
+            .unwrap_or(-1);
         }
         if site == -1 {
             return Ok((-1, 0.0));
@@ -3307,6 +3376,70 @@ impl Unit {
             site,
             footprint_gap(self.position, ground, s.position, s.radius),
         ))
+    }
+
+    /// `FUN_1411671e0` from the unit (`state` its action's, which the planner reads) over its
+    /// master's drop sites (`+0x7a0`): [`drop_site_search`] with the unit as the seeker, by path
+    /// for a human player (its argument 9, `FUN_141659cf0` false), skipping objects inside others
+    /// when `outside` (its argument 10).
+    fn drop_site_from(
+        &self,
+        c: &mut DropWorld<'_>,
+        others: &[Self],
+        state: u8,
+        outside: bool,
+    ) -> Result<Option<i32>, Unsupported> {
+        let masters = c
+            .masters
+            .ok_or(Unsupported("a drop-off of a player without masters"))?;
+        let master = masters.get(self.life.master_id).ok_or(Unsupported(
+            "a gatherer of a master the slice does not have",
+        ))?;
+        let mover = self
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("a gatherer without movement state"))?;
+        let [w, h] = c.spatial.map;
+        let terrain = c
+            .spatial
+            .terrain
+            .as_ref()
+            .ok_or(Unsupported("the map's zones without its terrain"))?;
+        let values = terrain
+            .restrictions
+            .get(mover.stats.restriction)
+            .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+        let zones = c.zones.of(w, h, &terrain.kinds, values);
+        let me = Me {
+            id: self.id,
+            position: self.position,
+            action_state: state,
+        };
+        let by_path = !c.computer;
+        let mut plan = Planning {
+            pathing: &mut *c.pathing,
+            now: c.world_time,
+            computer: c.computer,
+            object: &mut *c.object,
+            construction_rate: c.construction_rate,
+        };
+        let seeker = Seeker {
+            me,
+            mover,
+            plan: &mut plan,
+            spatial: c.spatial,
+            zones,
+            class: master.class,
+            by_path,
+        };
+        drop_site_search(
+            others,
+            masters,
+            &master.drop_sites,
+            self.position,
+            Some(seeker),
+            outside,
+        )
     }
 
     /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at
@@ -3842,145 +3975,27 @@ impl Unit {
         cap: i32,
         site: i32,
     ) -> Result<i32, Unsupported> {
-        use crate::gather_search::{self, Candidate};
-        /// The site masters whose search starts from their footprint in any zone.
-        const DOCKS: [i16; 2] = [45, 2172];
-        let site = if site == -1 {
-            None
-        } else {
-            let (sp, s) = others
-                .iter()
-                .find(|u| u.id == site)
-                .map(|u| (c.player, u))
-                .or_else(|| c.foreign.find(site))
-                .ok_or(Unsupported(
-                    "a resource search's drop site the slice does not hold",
-                ))?;
-            let m = c
-                .every_masters
-                .get(sp)
-                .and_then(|m| m.get(s.life.master_id))
-                .ok_or(Unsupported(
-                    "a resource search's drop site of a master the slice lacks",
-                ))?;
-            let footprint = DOCKS.contains(&m.id) || {
-                let restriction = self
-                    .mover
-                    .as_ref()
-                    .ok_or(Unsupported("a resource search without movement state"))?
-                    .stats
-                    .restriction;
-                let [w, h] = c.spatial.map;
-                let terrain = c
-                    .spatial
-                    .terrain
-                    .as_ref()
-                    .ok_or(Unsupported("the map's zones without its terrain"))?;
-                let values = terrain
-                    .restrictions
-                    .get(restriction)
-                    .ok_or(Unsupported("a restriction the slice's data has not got"))?;
-                let zones = c.zones.of(w, h, &terrain.kinds, values);
-                let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
-                zone(s.position) == zone(self.position)
-            };
-            Some(gather_search::SearchSite {
-                position: s.position,
-                radius: m.radius,
-                line_of_sight: m.line_of_sight,
-                footprint,
-            })
-        };
-        let masters = c.masters.ok_or(Unsupported(
-            "a resource search without its player's masters",
-        ))?;
-        let master = masters.get(self.life.master_id).ok_or(Unsupported(
-            "a searcher of a master the slice does not have",
-        ))?;
-        let mover = self
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("a resource search without movement state"))?;
-        let mask = mover.stats.restriction_mask;
-        let (player, me_id, foreign, every) = (c.player, self.id, c.foreign, c.every_masters);
-        let candidate = |id: i32, owner: usize, u: &Self, position: [f32; 3]| {
-            let m = every
-                .get(owner)
-                .and_then(|m| m.get(u.life.master_id))
-                .ok_or(Unsupported("an object of a master the slice does not have"))?;
-            Ok(Candidate {
-                id,
-                player: owner,
-                class: m.class,
-                master: m.id,
-                state: u.life.state,
-                workers: u.workers,
-                position,
-                pasture: u.pasture,
-                untargetable: u.untargetable,
-                attribute: u.life.attribute_type,
-                amount: u.life.amount,
-                auto_gather: m.auto_gather,
-                gather_group: m.gather_group,
-            })
-        };
-        let me = candidate(me_id, player, self, self.position)?;
-        let spatial: &Spatial = c.spatial;
-        let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, Unsupported> {
-            spatial
-                .objects_on(x, y)
-                .map(|(id, p)| {
-                    if id == me_id {
-                        return Ok(me);
-                    }
-                    let (owner, u) = others
-                        .iter()
-                        .find(|u| u.id == id)
-                        .map(|u| (player, u))
-                        .or_else(|| foreign.find(id))
-                        .ok_or(Unsupported("an object on a tile the slice does not hold"))?;
-                    candidate(id, owner, u, p.position)
-                })
-                .collect()
-        };
-        let ai = self
+        let current = self
             .ai
             .as_ref()
-            .ok_or(Unsupported("a resource search without a unit AI"))?;
-        let seeker = gather_search::Seeker {
-            player,
-            position: self.position,
-            line_of_sight: master.line_of_sight,
-            state: self.life.state,
-            current_target: ai.current_target,
-            my_pasture: self.my_pasture,
+            .ok_or(Unsupported("a resource search without a unit AI"))?
+            .current_target;
+        let mut w = ResourceWorld {
+            player: c.player,
+            spatial: c.spatial,
+            zones: c.zones,
+            foreign: c.foreign,
+            every: c.every_masters,
+            masters: c.masters,
+            plan: Planning {
+                pathing: c.pathing,
+                now: c.world_time,
+                computer: c.computer,
+                object: c.streams.get(Stream::Object),
+                construction_rate: c.construction_rate,
+            },
         };
-        let me_walk = Me {
-            id: self.id,
-            position: self.position,
-            action_state: self.top_action().map_or(0, |a| a.state),
-        };
-        let master_id = self.life.master_id;
-        let mut plan = Planning {
-            pathing: c.pathing,
-            now: c.world_time,
-            computer: c.computer,
-            object: c.streams.get(Stream::Object),
-            construction_rate: c.construction_rate,
-        };
-        let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
-        gather_search::closest_resource_at(
-            &seeker,
-            site.as_ref(),
-            kind,
-            cap,
-            spatial.map,
-            &|x, y| spatial.explored(player, x, y),
-            &|x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
-            &objects,
-            &mut |id| mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id),
-        )
-        .map(|(id, _)| id)
+        closest_resource_of(self, &mut w, others, (kind, cap, site), current).map(|(id, _)| id)
     }
 
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
@@ -7060,25 +7075,30 @@ struct Seeker<'a, 'b> {
     zones: &'a crate::zones::ZoneMap,
     /// Its master's class.
     class: i16,
+    /// The nearest is by path (`FUN_1411671e0`'s argument 9: a human player's); else by the
+    /// squared distance of the centres, of the objects the planner reaches.
+    by_path: bool,
 }
 
-/// A search for drop sites (`FUN_1411671e0` as `set_state(8)` calls it: in state 2, not at work
-/// on task `0x7d` or `0x7c` (an object of type 40 up whose top action is one), not inside
-/// another): of the player's live objects (`units`, in list order) of a master in `sites`, the
-/// nearest to `at`. With the `seeker`, only objects in its zone count (its restriction's zone of
-/// its tile against each object's tile) and the nearest is by path: the tile planner's path
-/// length (radii the seeker's and the object's, [`Mover::plan_length`]) when it reaches the goal
-/// or its range, then within 10 tiles the shorter of it and the seeker's short path (slot 0x3e8
-/// within 0.1, [`Mover::short_reach`]); for any other result the game keeps the distance it last
-/// measured (of an earlier object, else the largest float), as the slice does. Without one, by
-/// the squared distance of the centres. The seeker's class 21 (its gap test) and a villager
-/// tending a pasture (its pasture's place) are not modelled. The first of equals wins.
+/// A search for drop sites (`FUN_1411671e0` as the Gather's `set_state` 8 and 3 call it: in state
+/// 2, not at work on task `0x7d` or `0x7c` (an object of type 40 up whose top action is one), not
+/// inside another when `outside`): of the player's live objects (`units`, in list order) of a
+/// master in `sites`, the nearest to `at`. With the `seeker`, only objects in its zone count (its
+/// restriction's zone of its tile against each object's tile) and only those the tile planner
+/// reaches (its goal or its range; radii the seeker's and the object's, [`Mover::plan_length`]),
+/// the nearest by path ([`Seeker::by_path`]): the path's length, within 10 tiles the shorter of
+/// it and the seeker's short path (slot 0x3e8 within 0.1, [`Mover::short_reach`]); else by the
+/// squared distance of the centres. Without a planner the game keeps the distance it last
+/// measured (of an earlier object, else the largest float) by path. Without a seeker, by the
+/// squared distance of the centres. The seeker's class 21 (its gap test) and a villager tending
+/// a pasture (its pasture's place) are not modelled. The first of equals wins.
 fn drop_site_search(
     units: &[Unit],
     masters: &Masters,
     sites: &[i16],
     at: [f32; 3],
     mut seeker: Option<Seeker<'_, '_>>,
+    outside: bool,
 ) -> Result<Option<i32>, Unsupported> {
     const AT_WORK: [i16; 2] = [0x7d, 0x7c];
     let [x, y, _] = at;
@@ -7103,30 +7123,37 @@ fn drop_site_search(
         }
         let at_work =
             40 <= master.kind && o.top_action_kind().is_some_and(|k| AT_WORK.contains(&k));
-        if at_work || o.life.inside.is_some() {
+        if at_work || (outside && o.life.inside.is_some()) {
             continue;
         }
+        let (dx, dy) = (x - o.position[0], y - o.position[1]);
+        let squared = dy * dy + dx * dx;
         let d = if let Some(s) = seeker.as_mut() {
             let radii = s.mover.stats.radius[0] + master.radius[0];
             let to = [o.position[0], o.position[1]];
             match s.mover.plan_length(&s.me, s.spatial, s.plan, to, radii)? {
                 Some((code, length)) if code < 2 => {
-                    last = length;
-                    if length <= SHORT_DROP_REACH
-                        && let Some(short) =
-                            s.mover.short_reach(&s.me, s.spatial, o.id, DROP_REACH)?
-                        && short < length
-                    {
-                        last = short;
+                    if s.by_path {
+                        last = length;
+                        if length <= SHORT_DROP_REACH
+                            && let Some(short) =
+                                s.mover.short_reach(&s.me, s.spatial, o.id, DROP_REACH)?
+                            && short < length
+                        {
+                            last = short;
+                        }
+                        last
+                    } else {
+                        squared
                     }
-                    last
                 }
-                Some((code, _)) if 3 <= code => last,
-                _ => last,
+                // the planner's other results pass the object over
+                Some(_) => continue,
+                None if s.by_path => last,
+                None => squared,
             }
         } else {
-            let (dx, dy) = (x - o.position[0], y - o.position[1]);
-            dy * dy + dx * dx
+            squared
         };
         if d < best_d {
             best = Some(o.id);
@@ -7134,6 +7161,160 @@ fn drop_site_search(
         }
     }
     Ok(best)
+}
+
+/// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
+struct ResourceWorld<'a, 'b> {
+    player: usize,
+    spatial: &'a Spatial,
+    zones: &'a mut crate::zones::Zones,
+    foreign: Foreign<'a>,
+    every: &'a [Masters],
+    masters: Option<&'a Masters>,
+    plan: Planning<'b>,
+}
+
+/// [`crate::gather_search::closest_resource_at`] for `unit` of gather group `kind` with fewer
+/// than `cap` workers (−1 any) from the drop site `site` (−1 for none; one the world does not hold
+/// counts as none, `FUN_1415417a0`), its unit AI's current target `current` passed over: the
+/// site's place, its master's radii and line of sight, and whether the search starts from its
+/// footprint (the site's tile in the unit's zone of its restriction, or a dock: masters 45 and
+/// 2172, `0x140c49d17`); the answer and the out argument's steps.
+fn closest_resource_of(
+    unit: &Unit,
+    c: &mut ResourceWorld<'_, '_>,
+    others: &[Unit],
+    (kind, cap, site): (u8, i32, i32),
+    current: i32,
+) -> Result<(i32, Option<i32>), Unsupported> {
+    use crate::gather_search::{self, Candidate};
+    /// The site masters whose search starts from their footprint in any zone.
+    const DOCKS: [i16; 2] = [45, 2172];
+    let site = if site == -1 || c.spatial.get(site).is_none() {
+        None
+    } else {
+        let (sp, s) = others
+            .iter()
+            .find(|u| u.id == site)
+            .map(|u| (c.player, u))
+            .or_else(|| c.foreign.find(site))
+            .ok_or(Unsupported(
+                "a resource search's drop site the slice does not hold",
+            ))?;
+        let m = c
+            .every
+            .get(sp)
+            .and_then(|m| m.get(s.life.master_id))
+            .ok_or(Unsupported(
+                "a resource search's drop site of a master the slice lacks",
+            ))?;
+        let footprint = DOCKS.contains(&m.id) || {
+            let restriction = unit
+                .mover
+                .as_ref()
+                .ok_or(Unsupported("a resource search without movement state"))?
+                .stats
+                .restriction;
+            let [w, h] = c.spatial.map;
+            let terrain = c
+                .spatial
+                .terrain
+                .as_ref()
+                .ok_or(Unsupported("the map's zones without its terrain"))?;
+            let values = terrain
+                .restrictions
+                .get(restriction)
+                .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+            let zones = c.zones.of(w, h, &terrain.kinds, values);
+            let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
+            zone(s.position) == zone(unit.position)
+        };
+        Some(gather_search::SearchSite {
+            position: s.position,
+            radius: m.radius,
+            line_of_sight: m.line_of_sight,
+            footprint,
+        })
+    };
+    let masters = c.masters.ok_or(Unsupported(
+        "a resource search without its player's masters",
+    ))?;
+    let master = masters.get(unit.life.master_id).ok_or(Unsupported(
+        "a searcher of a master the slice does not have",
+    ))?;
+    let mover = unit
+        .mover
+        .as_ref()
+        .ok_or(Unsupported("a resource search without movement state"))?;
+    let mask = mover.stats.restriction_mask;
+    let (player, me_id, foreign, every) = (c.player, unit.id, c.foreign, c.every);
+    let candidate = |id: i32, owner: usize, u: &Unit, position: [f32; 3]| {
+        let m = every
+            .get(owner)
+            .and_then(|m| m.get(u.life.master_id))
+            .ok_or(Unsupported("an object of a master the slice does not have"))?;
+        Ok(Candidate {
+            id,
+            player: owner,
+            class: m.class,
+            master: m.id,
+            state: u.life.state,
+            workers: u.workers,
+            position,
+            pasture: u.pasture,
+            untargetable: u.untargetable,
+            attribute: u.life.attribute_type,
+            amount: u.life.amount,
+            auto_gather: m.auto_gather,
+            gather_group: m.gather_group,
+        })
+    };
+    let me = candidate(me_id, player, unit, unit.position)?;
+    let spatial: &Spatial = c.spatial;
+    let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, Unsupported> {
+        spatial
+            .objects_on(x, y)
+            .map(|(id, p)| {
+                if id == me_id {
+                    return Ok(me);
+                }
+                let (owner, u) = others
+                    .iter()
+                    .find(|u| u.id == id)
+                    .map(|u| (player, u))
+                    .or_else(|| foreign.find(id))
+                    .ok_or(Unsupported("an object on a tile the slice does not hold"))?;
+                candidate(id, owner, u, p.position)
+            })
+            .collect()
+    };
+    let seeker = gather_search::Seeker {
+        player,
+        position: unit.position,
+        line_of_sight: master.line_of_sight,
+        state: unit.life.state,
+        current_target: current,
+        my_pasture: unit.my_pasture,
+    };
+    let me_walk = Me {
+        id: unit.id,
+        position: unit.position,
+        action_state: unit.top_action().map_or(0, |a| a.state),
+    };
+    let master_id = unit.life.master_id;
+    let plan = &mut c.plan;
+    let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
+    gather_search::closest_resource_at(
+        &seeker,
+        site.as_ref(),
+        kind,
+        cap,
+        spatial.map,
+        &|x, y| spatial.explored(player, x, y),
+        &|x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
+        &objects,
+        &mut |id| mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id),
+    )
 }
 
 /// A drop site within this path length is measured by the short path too (`FUN_1411671e0`,
@@ -10157,6 +10338,7 @@ impl Turns {
                     ai_resume: resume.take(),
                     order_on_target: None,
                     hunt_objects: Vec::new(),
+                    gather_objects: Vec::new(),
                     build_object: None,
                     move_aside: Vec::new(),
                     leads: None,
@@ -10172,6 +10354,7 @@ impl Turns {
                     c.order_on_target.take(),
                 );
                 let hunt_objects = std::mem::take(&mut c.hunt_objects);
+                let gather_objects = std::mem::take(&mut c.gather_objects);
                 let leads = c.leads.take();
                 let build_object = c.build_object.take();
                 let move_aside = std::mem::take(&mut c.move_aside);
@@ -10313,6 +10496,18 @@ impl Turns {
                         break;
                     }
                     if let Err(e) = self.hunt_command(p, i, target) {
+                        result = Err(e);
+                    }
+                }
+                // the unit AI's GatherObjects: each the unit's gather command
+                for target in gather_objects {
+                    if !matches!(result, Ok(Step::Stay)) {
+                        result = result.and(Err(Unsupported(
+                            "a GatherObject of a unit that leaves its list",
+                        )));
+                        break;
+                    }
+                    if let Err(e) = self.gather_command(p, i, target) {
                         result = Err(e);
                     }
                 }

@@ -1164,13 +1164,18 @@ fn saved_actions(
             Ok(())
         }
         genie_core::gather::GATHER => {
-            use genie_core::gather::{DONE, DROP, FACE, GatherAction, IDLE, MOVED, WALK, WORK};
+            use genie_core::gather::{
+                DONE, DROP, FACE, GatherAction, IDLE, MOVED, SEARCH, WALK, WORK,
+            };
             let part = action
                 .rge_action_by_type
                 .as_deref()
                 .and_then(|b| b.rge_action_gather.as_deref())
                 .ok_or(Unsupported("a saved Gather without its own part"))?;
-            if !matches!(base.state, WALK | FACE | WORK | DROP | DONE | IDLE | MOVED) {
+            if !matches!(
+                base.state,
+                WALK | FACE | WORK | DROP | DONE | IDLE | MOVED | SEARCH
+            ) {
                 return Err(Unsupported(
                     "a saved Gather in a state the slice does not model",
                 ));

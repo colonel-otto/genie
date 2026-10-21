@@ -71,6 +71,9 @@ pub const TARGET_MOVED: i32 = 0x1fc;
 pub const IN_THE_WAY: i32 = 0x215;
 /// `0x200`: "`ActionExecuted`" (the soldier's log line), an attack's swing (p1 600, p2 the target).
 pub const ACTION_EXECUTED: i32 = 0x200;
+/// `0x202` ("Action %d has been invalidated or requires a search.", the villager's log line): an
+/// action asks for another target (p1 its action value, p2 the target class, p3 a drop site).
+pub const REQUIRES_SEARCH: i32 = 0x202;
 /// `0x20b`: the unit changed hands (p1 the new owner).
 pub const OWNER_CHANGED: i32 = 0x20b;
 /// `500`: the unit took damage.
@@ -208,6 +211,10 @@ pub enum Effect {
     /// 1, slot 0x3c0), then its hunt command on the target (object slot 0x360,
     /// `FUN_1412151f0`, forced; the caller's, `Turns::hunt_command`, after the update).
     HuntObject(i32),
+    /// `GatherObject`'s unit part (slot 0xd0, `FUN_140c4dd50`, forced): the unit's gather command
+    /// on the target (object slot 0x368, `FUN_141085030`, forced; the caller's,
+    /// `Turns::gather_command`, after the update).
+    GatherObject(i32),
     /// The AI's move to an object (slot 0x138, `FUN_140c55490`, with its fourth argument 1): the
     /// unit's slot 0x348 (`FUN_141086440`, forced) replaces its actions (`FUN_140a98620`) with a
     /// `MoveTo` to the target within `range` showing the master's running sprite (the walking one
@@ -1079,6 +1086,35 @@ pub trait UnitSide {
     fn can_stand(&mut self, _point: [f32; 2]) -> Result<bool, Unsupported> {
         Err(Unsupported("a stand test without the world"))
     }
+
+    /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) of gather group `kind`
+    /// with fewer than `cap` workers (−1 any) from the drop site `site` (−1 none), `param_6` 2 and
+    /// no point, passing over the AI's current target `current`: what it found, None for nothing.
+    ///
+    /// # Errors
+    ///
+    /// What the search does not model.
+    fn closest_resource(
+        &mut self,
+        _kind: u8,
+        _cap: i32,
+        _site: i32,
+        _current: i32,
+    ) -> Result<Option<Gatherable>, Unsupported> {
+        Err(Unsupported("a resource search without the world"))
+    }
+}
+
+/// What the unit AI's `ClosestResourceObject` found ([`UnitSide::closest_resource`]): the object,
+/// its place and its master's class.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Gatherable {
+    /// The object.
+    pub id: i32,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its master's class.
+    pub class: i16,
 }
 
 /// An object as an order in the queue names it: its id, master, owner and the first two parts
@@ -2511,6 +2547,95 @@ impl UnitAi {
         Ok(BREAK)
     }
 
+    /// The villager's case 0x202 on its gather (`FUN_140c22bf0`, action 0x261): the class to
+    /// gather is the AI's target class, else its last, else the notify's (its second parameter);
+    /// with none the target goes and the action stops (slot 0xb0 with 1; slot 0x48 hands the
+    /// notify to the owner, not held). The civilian's slot 0x1b0 names its gather group: by it
+    /// `ClosestResourceObject` (slot 0x80, [`UnitSide::closest_resource`]) from the notify's drop
+    /// site (its third parameter), below 4 workers for stone and gold (groups 3 and 4); a class
+    /// without a group takes `ClosestObject` (every relation, any workers) over the civilian's
+    /// search ([`civilian_search_radius`]). What it finds it gathers (`GatherObject`, slot 0xd0
+    /// with 1, [`UnitAi::gather_object`]) and the processing breaks; finding nothing, a human
+    /// player's villager does nothing more, a computer player's stops as above. A farm searched
+    /// for (the notify's class 49: `ClosestObject`'s ninth argument 0) is not modelled.
+    fn gatherer_search(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let mut class = self.target_type;
+        if class == -1 {
+            class = self.last_target_type;
+        }
+        if class == -1 {
+            class = n.p[1];
+        }
+        if class == -1 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        let kind = civilian_kind(class);
+        let found = if kind == -1 {
+            if n.p[1] == 49 {
+                return Err(Unsupported(
+                    "a gatherer's search for a farm (ClosestObject's ninth argument 0)",
+                ));
+            }
+            let found = side.closest(&Search {
+                at: [at.position[0], at.position[1]],
+                radius: civilian_search_radius(at.los, at.search_radius),
+                classes: &CIVILIAN_CARED,
+                size: at.size,
+                pick: Pick::Closest {
+                    group: class,
+                    relation: -1,
+                    state: -1,
+                    master: -1,
+                    workers: -1,
+                },
+            })?;
+            self.alert(found, at.dt_seconds);
+            match found.position {
+                Some(position) if found.id != -1 => Some(Gatherable {
+                    id: found.id,
+                    position,
+                    class: class as i16,
+                }),
+                None if found.id != -1 => {
+                    return Err(Unsupported("a found object without its place"));
+                }
+                _ => None,
+            }
+        } else {
+            let cap = if matches!(kind, 3 | 4) { 4 } else { -1 };
+            side.closest_resource(kind as u8, cap, n.p[2], self.current_target)?
+        };
+        let Some(found) = found else {
+            if computer {
+                self.remove_target();
+                self.stop_current(true, at, fx)?;
+            }
+            return Ok(GO_ON);
+        };
+        self.gather_object(found, fx);
+        Ok(BREAK)
+    }
+
+    /// `GatherObject` (slot 0xd0, `FUN_140c4dd50`) forced on what the search found: the unit's
+    /// gather command runs on it ([`Effect::GatherObject`]); taken as done (the caller stops on a
+    /// failure): the gather action value (`0x261`) becomes current, the last the one before, the
+    /// target with its class and place (the last ones kept), and the AI counts as commanded.
+    fn gather_object(&mut self, found: Gatherable, fx: &mut Vec<Effect>) {
+        fx.push(Effect::GatherObject(found.id));
+        self.set_action(GATHER_ACTION);
+        self.set_target(found.id, i32::from(found.class), found.position);
+        self.commanded = true;
+    }
+
     /// The target block's attack whose target died (`0x140c66b10`): processIdle (slot 0x240 with
     /// 0; the boar's [`UnitAi::boar_idle`] after the cap) may find the next thing to do (6); with
     /// nothing (5) the AI moves to its old target's point within the unit's weapon range (slot
@@ -3299,6 +3424,9 @@ impl UnitAi {
             8 => match n.kind {
                 0x202 if self.current_action == HUNT_ACTION => {
                     self.hunter_search(n, at, computer, side, fx)
+                }
+                0x202 if self.current_action == GATHER_ACTION => {
+                    self.gatherer_search(n, at, computer, side, fx)
                 }
                 0x202 if self.current_action == BUILD_ACTION => {
                     let found = side.foundation_search()?;
@@ -4710,6 +4838,104 @@ mod tests {
                 (ORDER_ON_TARGET, 600, [33.5, 2.0, 0.0], 100, true),
             ]
         );
+    }
+
+    /// What [`UnitSide::closest_resource`] answers, and the searches asked (group, workers cap,
+    /// drop site, current target).
+    struct ResourceSide(Option<Gatherable>, Vec<(u8, i32, i32, i32)>);
+
+    impl UnitSide for ResourceSide {
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
+            Err(Unsupported("no attack here"))
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn closest_resource(
+            &mut self,
+            kind: u8,
+            cap: i32,
+            site: i32,
+            current: i32,
+        ) -> Result<Option<Gatherable>, Unsupported> {
+            self.1.push((kind, cap, site, current));
+            Ok(self.0)
+        }
+    }
+
+    /// The villager's notify 0x202 on its gather (the 4v4's forager 31237 after update 10822):
+    /// its target class (7, a bush: gather group 1) names the search from the notify's drop
+    /// site, any workers; what it finds it gathers, the AI's target and action taken.
+    #[test]
+    fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
+        let bush = Gatherable {
+            id: 28200,
+            position: [111.5, 16.5, 0.0],
+            class: 7,
+        };
+        let mut ai = UnitAi {
+            ai_type: CIVILIAN,
+            current_order: crate::ai_kinds::ORDER_GATHER,
+            current_action: GATHER_ACTION,
+            current_target: 28202,
+            target_type: 7,
+            ..UnitAi::default()
+        };
+        let mut side = ResourceSide(Some(bush), Vec::new());
+        let mut fx = Vec::new();
+        let at = Surroundings::default();
+        let n = Notify::own(31237, REQUIRES_SEARCH, [GATHER_ACTION, 7, 31247]);
+        assert_eq!(
+            ai.gatherer_search(n, &at, false, &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(side.1, vec![(1, -1, 31247, 28202)]);
+        assert_eq!(fx, vec![Effect::GatherObject(28200)]);
+        assert_eq!(
+            (ai.current_target, ai.last_target, ai.target_point),
+            (28200, 28202, [111.5, 16.5, 0.0])
+        );
+        // gold is searched below 4 workers; finding nothing a human's villager stays as it is
+        let mut ai = UnitAi {
+            ai_type: CIVILIAN,
+            current_action: GATHER_ACTION,
+            target_type: 32,
+            ..UnitAi::default()
+        };
+        let mut side = ResourceSide(None, Vec::new());
+        let mut fx = Vec::new();
+        let n = Notify::own(31237, REQUIRES_SEARCH, [GATHER_ACTION, 32, 0]);
+        assert_eq!(
+            ai.gatherer_search(n, &at, false, &mut side, &mut fx),
+            Ok(GO_ON)
+        );
+        assert_eq!((side.1[0].0, side.1[0].1), (4, 4));
+        assert_eq!(fx, Vec::new());
+        assert_eq!(ai.current_action, GATHER_ACTION);
     }
 
     fn hit_boar() -> UnitAi {

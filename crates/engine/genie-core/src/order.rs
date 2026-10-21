@@ -931,12 +931,12 @@ impl Turns {
 
     /// `UNIT_ORDER`'s order `action` to the units `ids` (`FUN_14161e370`). Action 8, the drop-off
     /// (as 6 and 7): each unit the world holds in state 2 of a type above 39 that carries
-    /// something (`+0x310` above 0) and whose top action is a Hunt (110) with a target or a
-    /// point gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`], then `set_state(8)`,
-    /// [`Unit::drop_off_in`]). A Gather's or a Build's (5, 101) and a top action without a target
-    /// (`FUN_141206a20`, `FUN_141205ac0` around it) are not modelled, nor are the other actions
-    /// and another player's unit; a unit without one of these actions:
-    /// [`Turns::drop_off_unasked`].
+    /// something (`+0x310` above 0) and whose top action is a Hunt (110) or a Gather (5) with a
+    /// target or a point gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`], then
+    /// `set_state(8)`: [`Unit::drop_off_in`], [`Unit::gather_drop_off_in`]). A Build's (101) and
+    /// a top action without a target (`FUN_141206a20`, `FUN_141205ac0` around it) are not
+    /// modelled, nor are the other actions and another player's unit; a unit without one of
+    /// these actions: [`Turns::drop_off_unasked`].
     pub(crate) fn unit_order(
         &mut self,
         player: usize,
@@ -965,6 +965,42 @@ impl Turns {
             }
             if unit.unmodelled_action.is_some() {
                 return Err(Unsupported("a UNIT_ORDER drop-off of an action not held"));
+            }
+            if let Some(gather) = unit
+                .gather
+                .as_ref()
+                .filter(|_| unit.top_action_kind() == Some(crate::gather::GATHER))
+            {
+                if gather.target == -1 && gather.point[0] == -1.0 && gather.point[1] == -1.0 {
+                    return Err(Unsupported(
+                        "a UNIT_ORDER drop-off of a Gather without a target (FUN_141206a20)",
+                    ));
+                }
+                let attributes = self.players[p].attributes.len();
+                if !gather.drop_off_asked(unit.life.attribute_type, attributes)? {
+                    continue;
+                }
+                let mut unit = std::mem::take(&mut self.players[p].objects[idx]);
+                let player = &self.players[p];
+                let world = crate::turn::DropWorld {
+                    masters: self.masters.get(p),
+                    spatial: &self.spatial,
+                    zones: &mut self.zones,
+                    pathing: &mut self.pathing,
+                    object: self.streams.get(Stream::Object),
+                    world_time: self.world_time,
+                    computer: player.computer,
+                    construction_rate: player.construction_rate,
+                };
+                let result = unit.gather_drop_off_in(world, &player.objects);
+                self.players[p].objects[idx] = unit;
+                if let Some(site) = result? {
+                    self.take(site);
+                }
+                continue;
+            }
+            if unit.top_action_kind() == Some(crate::build::BUILD) {
+                return Err(Unsupported("a UNIT_ORDER drop-off of a Build (slot 0x78)"));
             }
             let Some(hunt) = unit
                 .hunt
@@ -2134,7 +2170,9 @@ impl Turns {
                 true,
             ),
             crate::build::BUILD => self.start_build(player, idx, target, &task, point, clears),
-            crate::gather::GATHER => self.start_gather(player, idx, target, &task, point, clears),
+            crate::gather::GATHER => {
+                self.start_gather(player, idx, target, &task, Some((point, clears)))
+            }
             _ => Err(Unsupported(
                 "the action factory for a task the slice does not model",
             )),
@@ -2217,6 +2255,68 @@ impl Turns {
             false,
             false,
         )
+    }
+
+    /// The unit's gather command (object slot 0x368, `FUN_141085030`) forced on `target`, as the
+    /// unit AI's `GatherObject` runs it ([`crate::unit_ai::Effect::GatherObject`], after the
+    /// unit's update): slot 0x820 (`FUN_14106c6a0`) finds the task as the work command does
+    /// ([`crate::masters::Masters::work_master`] with any filter; the master switch, slot 0x90);
+    /// the unit's top Gather on the task found takes the target (its slot 0x48 with the target's
+    /// place, [`Turns::retarget_gather`]; what it answers the command passes over); else a new
+    /// Gather on the task replaces the unit's actions (`FUN_140a88310`, `FUN_140a98620`, slot
+    /// 0x808: [`Turns::start_gather`] without the unit AI's notify). A target the world does not
+    /// hold or no task would fail the command, which the unit AI took as done: not modelled.
+    pub(crate) fn gather_command(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+    ) -> Result<(), Unsupported> {
+        if self.object(target).is_none() {
+            return Err(Unsupported(
+                "a gather command on an object the world does not hold",
+            ));
+        }
+        let unit = &self.players[player].objects[idx];
+        let found = {
+            let masters = self
+                .masters
+                .get(player)
+                .ok_or(Unsupported("a gather command: no master table"))?;
+            let owner = &self.players[player];
+            let actor = Actor {
+                id: unit.id,
+                master: self.master_of(player, unit.life.master_id)?,
+                player,
+                held: (unit.life.attribute_type, unit.life.amount),
+                attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+                civ: owner.civ,
+            };
+            let world = World {
+                players: &self.players,
+                drop_sites: &self.drop_sites,
+            };
+            let t = self.task_target(target, 1)?;
+            let general = self.task_target(target, 2)?;
+            masters
+                .work_master(&actor, &t, &general, -1, &world)?
+                .map(|(with, task)| (with, *task))
+        };
+        let (with, task) = found.ok_or(Unsupported("a gather command without a task"))?;
+        if self.players[player].objects[idx].life.master_id != with {
+            self.change_master(player, idx, with)?;
+        }
+        let unit = &self.players[player].objects[idx];
+        if unit.top_action_kind() == Some(crate::gather::GATHER)
+            && unit.gather.is_some_and(|g| g.task.id == task.id)
+        {
+            let _ = self.retarget_gather(player, idx, target)?;
+            return Ok(());
+        }
+        if task.action_type != crate::gather::GATHER {
+            return Err(Unsupported("a gather command whose task is not a Gather"));
+        }
+        self.start_gather(player, idx, target, &task, None)
     }
 
     /// The work command's Build (its task of action type 101, the factory `FUN_140aca4b0` case
@@ -2874,17 +2974,17 @@ impl Turns {
     /// The work command's Gather (its task of action type 5, the base factory `FUN_140a97e00`
     /// case 5 with a target): the constructor ([`crate::gather::GatherAction::new`]) takes its
     /// target (slot 0x178); the unit AI's notify (slot 0x828: the gather order and action, the
-    /// target with its class, the work's point); the install (slot 0x808) clears the action list
-    /// and starts the Gather ([`crate::gather::GatherAction::start`]). A load to its own drop
-    /// site takes the target as the second target, then lets it go as the first.
+    /// target with its class, the work's point; `notify`'s point and clearing, None for the gather
+    /// command's, which has none); the install (slot 0x808) clears the action list and starts the
+    /// Gather ([`crate::gather::GatherAction::start`]). A load to its own drop site takes the
+    /// target as the second target, then lets it go as the first.
     fn start_gather(
         &mut self,
         player: usize,
         idx: usize,
         target: i32,
         task: &crate::masters::Task,
-        point: [f32; 3],
-        clears: bool,
+        notify: Option<([f32; 3], bool)>,
     ) -> Result<(), Unsupported> {
         let (tp, t) = self
             .object(target)
@@ -2926,7 +3026,7 @@ impl Turns {
         let mut gather = crate::gather::GatherAction::new(task, &resource, self.farm_stops, rate)?;
         self.take(target);
         let unit = &mut self.players[player].objects[idx];
-        if let Some(ai) = unit.ai.as_mut() {
+        if let (Some(ai), Some((point, clears))) = (unit.ai.as_mut(), notify) {
             ai.notify_work(
                 crate::ai_kinds::ORDER_GATHER,
                 crate::unit_ai::GATHER_ACTION,

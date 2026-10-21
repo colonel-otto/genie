@@ -42,6 +42,19 @@ pub const DONE: u8 = 1;
 pub const IDLE: u8 = 2;
 /// State 15: walking to the point the unit was moved to (slot 0x40).
 pub const MOVED: u8 = 15;
+/// State 3: without a target or a load, it asks the unit AI for another (notify 0x202) and asks
+/// again every 10 seconds.
+pub const SEARCH: u8 = 3;
+
+/// `set_state(3)`'s timer: the search asks again once it counted up to 0 (`0xc1200000`, an
+/// immediate in `0x140a8cd40`).
+const SEARCH_WAIT: f32 = -10.0;
+/// The gatherers whose gather without a target waits for another farm (`set_state(0xf3)`,
+/// `0x140a8e1d0`'s cases 3, 5 and 6: masters 259, 214, 1891 and 1892).
+const FARM_WAITERS: [i16; 4] = [259, 214, 1891, 1892];
+/// The gatherers that wait so on a target of the farm class (masters 13, 2356 and 2171, the raw
+/// `0x60a9`, `0x69d0`, `0x6917` of the same cases).
+const TRAP_WAITERS: [i16; 3] = [13, 2356, 2171];
 
 /// A `MoveTo` starts in place within this gap of its target (`0x140aa2100`).
 const ARRIVED: f32 = 0.01;
@@ -172,6 +185,9 @@ pub struct Gatherer<'a> {
     pub sprite_rng: &'a mut Well512,
     /// The unit's master's class: a villager's `MoveTo` waits once when the motion step gives up.
     pub class: i16,
+    /// The unit's master: a farmer's gather without a target waits for another farm
+    /// (`set_state(0xf3)`, [`FARM_WAITERS`]).
+    pub master: i16,
     /// The unit AI's stance (`+0x1a9`), 0 without a unit AI.
     pub stance: u8,
     /// The world's time.
@@ -232,6 +248,10 @@ pub enum Next {
     /// The update returned 1 (state 1): the action list removes the Gather, whose teardown lets
     /// its targets go.
     Done,
+    /// `set_state(3)` or its 10 seconds past: the caller posts the unit AI's notify 0x202 (the
+    /// gather action `0x261`, the target type, the drop site: the second target, else the one
+    /// `FUN_1411671e0` finds, 0 for none, −1 for a master without drop sites).
+    Search,
 }
 
 /// What slot 0x40 reads of a move's target object.
@@ -611,6 +631,23 @@ impl GatherAction {
         self.point = [-1.0; 3];
     }
 
+    /// `set_state(3)` (case 3; `FUN_140a98620` first: the `MoveTo` goes and stops the unit): the
+    /// caller posts the unit AI's notify ([`Next::Search`]), the timer waits 10 seconds and the
+    /// unit stands ([`GatherAction::stand_sprite`]).
+    fn begin_search(
+        &mut self,
+        mover: Option<&mut Mover>,
+        g: &mut Gatherer<'_>,
+    ) -> Result<Next, Unsupported> {
+        self.tear_down(mover)?;
+        self.state = SEARCH;
+        self.timer = SEARCH_WAIT;
+        if let Some(s) = self.stand_sprite(g) {
+            set_sprite(g.sprite, s, g.sprite_rng);
+        }
+        Ok(Next::Search)
+    }
+
     /// `set_state(1)` (case 1): the timer clears and the unit stands.
     fn set_done(&mut self, g: &mut Gatherer<'_>) {
         self.state = DONE;
@@ -660,6 +697,16 @@ impl GatherAction {
             }
             None => Err(Unsupported("a Gather in state 15 without its MoveTo")),
         }
+    }
+
+    /// Slot 0x78 (`FUN_140a78060`, the base action's, [`crate::hunt::asked_drop_off`] on the
+    /// task's resource): true when the unit's load asks for `set_state(8)`.
+    ///
+    /// # Errors
+    ///
+    /// A load of another resource (notify 0x21c).
+    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, Unsupported> {
+        crate::hunt::asked_drop_off(self.task.resource, held_kind, attributes)
     }
 
     /// The teardown (`FUN_140a73fc0`) and `set_state`'s first step (`FUN_140a98620`): the
@@ -716,16 +763,35 @@ impl GatherAction {
             DONE => return Ok(Next::Done),
             IDLE => return Ok(Next::Stay),
             MOVED => return self.update_moved(walk, g),
+            // case 2: the timer counts up by the world's dt; at 0 it waits again and asks again
+            SEARCH => {
+                if self.timer < 0.0 {
+                    self.timer += dt;
+                    if 0.0 <= self.timer {
+                        self.timer = SEARCH_WAIT;
+                        return Ok(Next::Search);
+                    }
+                }
+                return Ok(Next::Stay);
+            }
             _ => {}
         }
         let Some(target) = target.filter(|_| self.target != -1) else {
+            // cases 3, 5 and 6 without a target: a load goes to its drop site (set_state 8); a
+            // farmer waits for another farm (0xf3); else the search (set_state 3)
             if matches!(self.state, WALK | FACE | WORK) {
                 if 0.0 < *g.held {
                     return Ok(Next::Drop);
                 }
-                return Err(Unsupported(
-                    "a gather without a target or a load (set_state 3)",
-                ));
+                if FARM_WAITERS.contains(&g.master)
+                    || (TRAP_WAITERS.contains(&g.master)
+                        && self.target_type == i32::from(FARM_CLASS))
+                {
+                    return Err(Unsupported(
+                        "a farmer's gather without a target (set_state 0xf3)",
+                    ));
+                }
+                return self.begin_search(walk.mover.as_deref_mut(), g);
             }
             return Err(Unsupported(
                 "a Gather action in a state the slice does not model",
@@ -1264,6 +1330,7 @@ mod tests {
             sprite: &mut sprite,
             sprite_rng: &mut rng,
             class: 4,
+            master: 83,
             stance: 0,
             world_time: 0,
             farm_stops: false,
@@ -1370,6 +1437,7 @@ mod tests {
                 sprite: &mut sprite,
                 sprite_rng: &mut rng,
                 class: 4,
+                master: 83,
                 stance: 0,
                 world_time: 0,
                 farm_stops: true,
@@ -1387,6 +1455,73 @@ mod tests {
         };
         assert_eq!(run(false), (IDLE, [-1.0; 3], None));
         assert_eq!(run(true).0, DONE);
+    }
+
+    #[test]
+    fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
+        // the 4v4's forager 31237 at update 10820: its bush went while it walked there
+        let run = |master: i16, g: &mut GatherAction, dt: f32| {
+            let mut mover = crate::hunt::tests::walker();
+            let mut world = crate::spatial::Spatial::default();
+            let walk = Walk {
+                mover: Some(&mut mover),
+                me: crate::movement::Me {
+                    id: 1,
+                    position: [30.0, 40.0, 0.0],
+                    action_state: g.state,
+                },
+                dt: 0.1,
+                world: &mut world,
+                plan: None,
+            };
+            let (mut kind, mut held) = (-1i16, 0.0f32);
+            let mut sprite = None;
+            let (mut rng, mut action) = (Well512::default(), Well512::default());
+            let mut gatherer = Gatherer {
+                held_kind: &mut kind,
+                held: &mut held,
+                work_rate: 0.31,
+                capacity: 10.0,
+                productivity: 1.0,
+                sprites: HuntSprites::default(),
+                sprite: &mut sprite,
+                sprite_rng: &mut rng,
+                class: 4,
+                master,
+                stance: 0,
+                world_time: 0,
+                farm_stops: false,
+                posted: Vec::new(),
+                action_rng: &mut action,
+                player: 7,
+                computer: false,
+                stop_productivity: 1.0,
+                food_sold: 0.0,
+                sold: 0.0,
+                anim_stopped: false,
+            };
+            g.update(walk, None, &mut gatherer, dt)
+        };
+        let mut g = GatherAction {
+            state: WALK,
+            target: -1,
+            move_to: Some(MoveTo::Moving),
+            ..GatherAction::new(task(), &bush(), false, rate()).unwrap()
+        };
+        assert_eq!(run(120, &mut g, 0.02), Ok(Next::Search));
+        assert_eq!((g.state, g.timer, g.move_to), (SEARCH, -10.0, None));
+        // state 3 counts the world's dt up to 0, then waits 10 seconds again and asks again
+        g.timer = -0.03;
+        assert_eq!(run(120, &mut g, 0.02), Ok(Next::Stay));
+        assert_eq!(run(120, &mut g, 0.02), Ok(Next::Search));
+        assert_eq!(g.timer, -10.0);
+        // a farmer waits for another farm instead (set_state 0xf3)
+        let mut g = GatherAction {
+            state: WORK,
+            target: -1,
+            ..GatherAction::new(task(), &bush(), false, rate()).unwrap()
+        };
+        assert!(run(259, &mut g, 0.02).is_err());
     }
 
     #[test]
@@ -1524,6 +1659,7 @@ mod tests {
             sprite: &mut sprite,
             sprite_rng: &mut rng,
             class: 4,
+            master: 83,
             stance: 0,
             world_time: 0,
             farm_stops: true,
