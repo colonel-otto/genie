@@ -1683,6 +1683,36 @@ impl Turns {
         Ok(())
     }
 
+    /// FLARE's objects (`0x140e7bfd0`): with `players` at most the world's players, each player
+    /// from 1 below `players` makes a flare (master 274, its slot 0x1c0 `FUN_14162ce00` with the
+    /// footprint left alone, then the master's slot 0x40 as [`Turns::remains`] makes it) at
+    /// `target`'s place, or at `point` on the ground when `target` is −1 or gone; its workers
+    /// (`+0x644`) are 0. Not held: the sender's flare's workers 1 when the local player is among
+    /// the recipients (`+0x11`..), a computer player's AI memory of it (`+0x7a8`'s `+0xbc00`),
+    /// the sound and the minimap.
+    pub(crate) fn flare(
+        &mut self,
+        target: i32,
+        point: [f32; 2],
+        players: u8,
+    ) -> Result<(), Unsupported> {
+        /// The flare's master (`0x112`, FLARE2).
+        const FLARE: i16 = 274;
+        if self.players.len() < usize::from(players) {
+            return Ok(());
+        }
+        let at = if target == -1 {
+            None
+        } else {
+            self.spatial.get(target).map(|p| p.position)
+        };
+        let at = at.unwrap_or([point[0], point[1], 0.0]);
+        for p in 1..usize::from(players) {
+            self.remains(p, FLARE, at, None)?;
+        }
+        Ok(())
+    }
+
     /// A death spawn or the remains of a building master: its slot 0x40 (`FUN_14123d1a0`) makes a
     /// building at `at` (`FUN_1411ac5c0` with 1, so its init `FUN_1411de5f0`): the combat setup
     /// (`FUN_14121df60`) with its draws, the unit AI's three ([`UnitAi::constructed`]; the

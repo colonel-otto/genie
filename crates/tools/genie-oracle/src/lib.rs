@@ -3102,6 +3102,14 @@ impl Decoder {
                     master: c.field_0x04 as i16,
                 });
             }
+            Packet::Flare(c) => {
+                return Some(Command::Flare {
+                    player: c.commp_id as usize,
+                    target: c.field_0x04.cast_signed(),
+                    point: [c.field_0x08, c.field_0x0c],
+                    players: c.field_0x10,
+                });
+            }
             Packet::Gate(c) => {
                 return Some(Command::Gate {
                     player: c.commp_id as usize,

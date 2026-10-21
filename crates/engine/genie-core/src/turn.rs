@@ -430,6 +430,19 @@ pub enum Command {
         /// The player.
         player: usize,
     },
+    /// FLARE (0x73, `0x140e7bfd0`): every player from 1 below `players` (`+0x10`, at most the
+    /// world's) gets a flare at `target`'s place (`+4`, −1 for none) or at `point` (`+8`, `+0xc`)
+    /// ([`Turns::flare`]).
+    Flare {
+        /// The player who sent it.
+        player: usize,
+        /// The object it is on, −1 for none.
+        target: i32,
+        /// Its point without a target.
+        point: [f32; 2],
+        /// The players the command counts (`+0x10`).
+        players: u8,
+    },
     /// GATE (0x72, `do_command` case 0x72): the player's building `id` toggles its gate lock
     /// ([`Turns::gate`]).
     Gate {
@@ -8038,6 +8051,16 @@ impl Turns {
             }
             Command::Gate { player, id } => {
                 if let Err(e) = self.gate(player, id) {
+                    self.stop_player(player, e);
+                }
+            }
+            Command::Flare {
+                player,
+                target,
+                point,
+                players,
+            } => {
+                if let Err(e) = self.flare(target, point, players) {
                     self.stop_player(player, e);
                 }
             }
