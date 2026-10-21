@@ -14,6 +14,7 @@
 
 use crate::movement::PathData;
 
+mod command;
 mod create;
 pub mod formation;
 mod place;
@@ -54,6 +55,19 @@ pub struct UnitGroups {
 }
 
 impl UnitGroups {
+    /// A command ran the order splitter to its end (`DAT_143f10134` up by one): MOVE
+    /// (`FUN_140e67800`) every time, INTERACT (`FUN_140e68b90`) with a unit and a single unit
+    /// held, FOLLOW (`FUN_14161c920`) with its target, BUILD (`FUN_140e7a400`) past its
+    /// placement tests, after the groups took the old count as their differentiator; the shelter
+    /// garrison (`FUN_141621220`) once per group its splitter makes. WORK (2), PATROL (0x15,
+    /// 0x21, 0x22, `FUN_14161b970`), `FORM_FORMATION` (0x17, `FUN_14161dba0`), command 0x1f
+    /// (`FUN_140e67150`) and REPAIR (0x6e, `FUN_140e7da90`) count too; make-way
+    /// (`FUN_140f88750`) would, but returns at once while `DAT_143f01836` is 0, as nothing
+    /// writes it.
+    pub const fn count_command(&mut self) {
+        self.commands = self.commands.wrapping_add(1);
+    }
+
     /// The group of id `id` (`FUN_14152ff40`): none for -1.
     #[must_use]
     pub fn get(&self, id: i32) -> Option<&UnitGroup> {
@@ -450,6 +464,14 @@ pub struct UnitGroup {
     /// capacity beyond its count, which the next members take in order (`AddUnit`'s
     /// `FUN_14102d710`).
     pub spare_seconds: Vec<f32>,
+    /// `+0x13c` (not saved; the constructor's 0): a queued order reached the group without a
+    /// command (`commandMoveTo`'s queue path, with `direct`), which the queue's emptying turns
+    /// into flags `0x4c000` ([`UnitGroup::clear_order_queue`]).
+    pub queued_start: u8,
+    /// `+0x13d` (not saved; the constructor's 1): the group's last command was not queued
+    /// (`BUnitGroup::command` sets it), so its next move empties the order queue first;
+    /// `checkQueuedOrders` (`FUN_14100d460`) clears it.
+    pub replaces_queue: u8,
 }
 
 impl Motion {
@@ -477,7 +499,8 @@ impl Motion {
 impl UnitGroup {
     /// `BUnitGroup`'s constructor (`FUN_140fe1550` after [`Motion::new`]) with id `id`
     /// (`FUN_141039640`): state -1, no formation, flags `0x100`, no command (-1), no target (-1,
-    /// type -1), differentiator -1; every other field 0 or empty.
+    /// type -1), differentiator -1, `+0x13d` 1 (its 16-bit `0x100` at `+0x13c`); every other
+    /// field 0 or empty.
     #[must_use]
     pub fn new(id: i32) -> Self {
         Self {
@@ -492,7 +515,20 @@ impl UnitGroup {
                 ..TargetData::default()
             },
             differentiator_id: -1,
+            replaces_queue: 1,
             ..Self::default()
+        }
+    }
+
+    /// `FUN_14102bb40`: the order queue empties; a queued start (`+0x13c`) of 1 sets flags
+    /// `0x4c000`, and it goes back to 0.
+    pub fn clear_order_queue(&mut self) {
+        self.order_queue.clear();
+        if self.queued_start != 0 {
+            if self.queued_start == 1 {
+                self.flags |= 0x4_c000;
+            }
+            self.queued_start = 0;
         }
     }
 

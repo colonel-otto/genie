@@ -273,7 +273,9 @@ impl Turns {
             &[id] if self.place(id).is_none() => return Ok(()),
             _ => {}
         }
-        let loose = self.loose_units(units)?;
+        let loose = self.loose_units(units);
+        self.groups.count_command();
+        let loose = loose?;
         for &id in &loose {
             self.leave_group(id)?;
         }
@@ -731,21 +733,27 @@ impl Turns {
         units: &[i32],
         order: &MoveOrder,
     ) -> Result<(), Unsupported> {
+        // the groups take the command count, which then counts up whatever the units do
         let loose = match units {
-            [] => return Ok(()),
+            [] => {
+                self.groups.count_command();
+                return Ok(());
+            }
             &[id] if !order.control => {
+                self.groups.count_command();
                 self.leave_group(id)?;
                 return self.move_unit(player, id, &[], None, order);
             }
             _ => {
-                let split = self.split(units, &|_| true, order.control)?;
-                if !split.groups.is_empty() {
-                    return Err(Unsupported("a unit group the order splitter forms"));
-                }
-                for &id in &split.loose {
+                let loose = self
+                    .split(units, &|_| true, order.control)
+                    .and_then(|s| self.move_groups(player, &s.groups, order).map(|()| s.loose));
+                self.groups.count_command();
+                let loose = loose?;
+                for &id in &loose {
                     self.leave_group(id)?;
                 }
-                split.loose
+                loose
             }
         };
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
@@ -769,6 +777,75 @@ impl Turns {
         Ok(())
     }
 
+    /// MOVE's groups (`FUN_140e67800`'s loop over the splitter's groups): the group all of a
+    /// split group's units are in (`FUN_14152ece0`, [`crate::group::common_group`]) takes the
+    /// order when it holds just them (a kept group, `FUN_140fd9f40`, not modelled); one the world
+    /// does not hold takes nothing; else a new group of the player's (`FUN_14152efc0`) takes them
+    /// ([`Turns::add_to_group`]), its statistics ([`Turns::group_statistics`]) and its place
+    /// ([`Turns::set_initial_position`]). Each listed group (60 at most) takes the command count
+    /// as its differentiator, with Ctrl held locks its formation to a line
+    /// ([`Turns::lock_formation`] with 2) and takes the command ([`Turns::group_command`]); a new
+    /// group of a queued MOVE first takes its first unit's target (not modelled). Then every
+    /// listed group lists them all as its differentiator groups (`setDifferentiatorGroups`,
+    /// `FUN_1410395a0`).
+    fn move_groups(
+        &mut self,
+        player: usize,
+        groups: &[Vec<i32>],
+        order: &MoveOrder,
+    ) -> Result<(), Unsupported> {
+        /// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
+        const LISTED: usize = 60;
+        let mut listed: Vec<i32> = Vec::new();
+        for units in groups {
+            let common =
+                crate::group::common_group(units, |id| self.object(id).map(|(_, u)| u.group.id));
+            let new = if common == -1 {
+                true
+            } else {
+                match self.groups.get(common) {
+                    None => continue,
+                    Some(g) => g.members.len() != units.len(),
+                }
+            };
+            if !new {
+                return Err(Unsupported(
+                    "a MOVE of a group the splitter keeps (FUN_140fd9f40)",
+                ));
+            }
+            let id = self.groups.create(player as u32).id;
+            for &unit in units {
+                let _ = self.add_to_group(id, unit)?;
+            }
+            self.group_statistics(id, false)?;
+            self.set_initial_position(id)?;
+            if listed.len() < LISTED {
+                listed.push(id);
+            }
+            let commands = self.groups.commands;
+            if let Some(g) = self.groups.get_mut(id) {
+                g.differentiator_id = commands;
+            }
+            if order.control {
+                self.lock_formation(id, crate::group::formation::LINE)?;
+            }
+            if order.queued {
+                return Err(Unsupported(
+                    "a queued MOVE's new group on its first unit's target (FUN_14100efd0)",
+                ));
+            }
+            let _ =
+                self.group_command(id, order.target, order.point, (order.queued, order.direct))?;
+        }
+        let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
+        for &id in &listed {
+            if let Some(g) = self.groups.get_mut(id) {
+                g.differentiator_groups.clone_from(&list);
+            }
+        }
+        Ok(())
+    }
+
     /// FOLLOW (0x14, `FUN_140e66a60` -> `FUN_14161c920`) of `target`, which the caller found in
     /// the world (else the command does nothing), after the resets: one unit forms no group
     /// (`FUN_140fd9ae0`) and takes the order ([`Turns::follow_unit`]); several units, which the
@@ -779,6 +856,7 @@ impl Turns {
         units: &[i32],
         target: i32,
     ) -> Result<(), Unsupported> {
+        self.groups.count_command();
         match units {
             [] => Ok(()),
             &[id] => self.follow_unit(player, id, target),
@@ -3912,6 +3990,7 @@ mod tests {
                         auto: true,
                         influence: 3.0,
                         by_speed: false,
+                        ..crate::turn::Formations::default()
                     },
                     ..crate::turn::Player::default()
                 },
@@ -4035,6 +4114,7 @@ mod tests {
             auto: true,
             influence: 3.0,
             by_speed: false,
+            ..crate::turn::Formations::default()
         };
         let unit = |id, grouped, position: [f32; 3]| Splittable {
             id,

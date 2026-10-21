@@ -217,6 +217,9 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Unsup
         non_retarget_units: g.non_retarget_units.clone(),
         // a load's arrays hold the members alone
         spare_seconds: Vec::new(),
+        // the constructor's, which the load keeps
+        queued_start: 0,
+        replaces_queue: 1,
     })
 }
 

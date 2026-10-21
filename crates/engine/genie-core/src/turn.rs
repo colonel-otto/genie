@@ -7624,6 +7624,12 @@ pub struct Formations {
     pub influence: f32,
     /// Units whose speeds differ by more than [`crate::order`]'s gap do not join (`+0x6c8` 1).
     pub by_speed: bool,
+    /// `mMinColumnDistance` (`+0x6b8`): a group's move along a longer path forms a column
+    /// (`commandMoveTo`).
+    pub min_column_distance: i32,
+    /// `mColumnToLineDistance` (`+0x6bc`): where a column on its last waypoint turns to a line
+    /// (`UpdateDesiredPositions`).
+    pub column_to_line_distance: i32,
 }
 
 /// One player's objects in live-list order.
@@ -9439,6 +9445,8 @@ impl Turns {
         builders: &[i32],
         (queued, commits): (bool, bool),
     ) -> Result<(), Unsupported> {
+        // the builders go through the order splitter, which counts the command
+        self.groups.count_command();
         let mut chosen = Vec::new();
         let mut ordered = Vec::new();
         for &id in builders {
