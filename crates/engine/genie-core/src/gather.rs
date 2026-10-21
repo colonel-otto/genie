@@ -16,9 +16,9 @@
 
 use crate::attack::set_sprite;
 use crate::damage::Victim;
-use crate::hunt::{HuntSprites, HuntTask, walk_sprite};
+use crate::hunt::{Dropped, HuntSprites, HuntTask, walk_sprite};
 use crate::move_to::{
-    Goal, MoveTo, MoveWait, Walk, start_walk, start_walk_or_give_up, target_moved, walk_or_give_up,
+    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
 };
 use crate::movement::Mover;
 use crate::rng::Well512;
@@ -51,6 +51,8 @@ const REMAINDER: f32 = crate::image::gather::REMAINDER;
 const LAST_BIT: f32 = crate::image::gather::LAST_BIT;
 /// A drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
 const DROP_REACH: f32 = crate::image::gather::DROP_REACH;
+/// A random wait's shift (`DAT_142e7f384`).
+const WAIT_SHIFT: f32 = crate::image::gather::WAIT_SHIFT;
 /// The farm class, whose gather the slice does not model yet.
 pub const FARM_CLASS: i16 = 49;
 /// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
@@ -193,6 +195,8 @@ pub struct Gatherer<'a> {
     /// The food the gathering sold at once, which the caller gives to the player (slot 0xf8 with
     /// 1, [`crate::turn`]'s `give_load`).
     pub sold: f32,
+    /// Out: the unit's animation stops (`FUN_141161850`: its `+0x7b8` 0).
+    pub anim_stopped: bool,
 }
 
 /// What the constructor reads to time a farm's stops: the gatherer's work rate (its master's
@@ -975,8 +979,9 @@ impl GatherAction {
             return Next::Drop;
         }
         target.amount += -take;
+        // the last bit and the storage's share summed first (`0x140a8f751`)
         if target.amount < REMAINDER && 0.0 < target.amount {
-            gain = gain + target.storage * LAST_BIT + target.amount;
+            gain += target.storage * LAST_BIT + target.amount;
             target.amount = 0.0;
         }
         *g.held += gain;
@@ -1018,35 +1023,64 @@ impl GatherAction {
         g: &mut Gatherer<'_>,
         attributes: usize,
         site: Option<crate::hunt::DropOff>,
-    ) -> Result<Option<(i16, f32)>, Unsupported> {
+    ) -> Result<Dropped, Unsupported> {
         if self.timer < 0.0 {
-            return Err(Unsupported("a gather's drop-off waiting to try again"));
+            self.timer += walk.dt;
+            if self.timer < 0.0 {
+                return Ok(Dropped::Going);
+            }
+            self.timer = 0.0;
+            return Ok(Dropped::Again);
         }
         match self.move_to {
             Some(MoveTo::Start) => {
                 self.move_to = Some(MoveTo::Moving);
                 walk.me.action_state = self.state;
                 let range = self.task.range;
-                let state = start_walk(walk.reborrow(), Goal::Target(self.carry_to), range, true)?;
-                if state == MoveTo::Moving
+                let walked = start_walk_or_give_up(
+                    walk.reborrow(),
+                    Goal::Target(self.carry_to),
+                    range,
+                    true,
+                )?;
+                if walked.is_none_or(|w| w == MoveTo::Moving)
                     && let Some(s) = self.walk_sprite(g)
                 {
                     set_sprite(g.sprite, s, g.sprite_rng);
                 }
-                self.move_to = Some(state);
-                return Ok(None);
+                match walked {
+                    Some(state) => self.move_to = Some(state),
+                    None => self.give_up(g),
+                }
+                return Ok(Dropped::Going);
             }
             Some(MoveTo::Moving) => {
                 if target_moved(&walk, self.carry_to, true)?.again() {
                     self.move_to = Some(MoveTo::Start);
-                    return Ok(None);
+                    return Ok(Dropped::Going);
                 }
                 walk.me.action_state = self.state;
-                self.move_to = Some(walk_or_give_up(walk.reborrow())?.ok_or(Unsupported(
-                    "a gather's drop-off walk the motion step gave up",
-                ))?);
+                let walked = walk_or_give_up(walk.reborrow())?;
                 self.post_in_the_way(&mut walk, g);
-                return Ok(None);
+                match walked {
+                    Some(m) => self.move_to = Some(m),
+                    None => self.give_up(g),
+                }
+                return Ok(Dropped::Going);
+            }
+            Some(MoveTo::Waiting) => {
+                self.move_wait.timer += walk.dt;
+                if self.move_wait.delay <= self.move_wait.timer {
+                    self.move_wait.timer = 0.0;
+                    self.move_to = Some(MoveTo::Start);
+                }
+                return Ok(Dropped::Going);
+            }
+            // codes 3 to 5: a wait of a random share of a second less a half (the Action
+            // stream's GetRandFloat0to1), the unit's animation stopped (FUN_141161850)
+            Some(MoveTo::Failed) => {
+                self.random_wait(g);
+                return Ok(Dropped::Going);
             }
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
@@ -1055,29 +1089,32 @@ impl GatherAction {
                     .ok_or(Unsupported("a gatherer without movement state"))?
                     .stop()?;
             }
-            Some(MoveTo::Waiting | MoveTo::Failed) => {
-                return Err(Unsupported(
-                    "a gather's drop-off whose MoveTo waits or failed",
-                ));
-            }
             None => return Err(Unsupported("a Gather in state 8 without its MoveTo")),
         }
-        let site = site.ok_or(Unsupported("a gather's drop-off whose drop site is gone"))?;
+        // the drop site gone: set_state(8) again
+        let Some(site) = site else {
+            return Ok(Dropped::Again);
+        };
         if !site.takes {
-            return Err(Unsupported(
-                "a drop site that does not take the gather's load (set_state 2)",
-            ));
+            self.set_idle(g);
+            return Ok(Dropped::Idle);
         }
         if DROP_REACH < site.gap_squared {
-            return Err(Unsupported(
-                "a gather's drop-off out of reach of its drop site (its wait)",
-            ));
+            self.random_wait(g);
+            return Ok(Dropped::Going);
         }
         let kind = crate::hunt::resource_kind(*g.held_kind, attributes);
         let amount = *g.held;
         *g.held_kind = -1;
         *g.held = 0.0;
-        Ok(Some((kind, amount)))
+        Ok(Dropped::Load(kind, amount))
+    }
+
+    /// `LAB_140a8ef80`: the timer takes a draw of the Action stream (`GetRandFloat0to1`) less a
+    /// half, and the unit's animation stops (`FUN_141161850`, the caller's).
+    fn random_wait(&mut self, g: &mut Gatherer<'_>) {
+        self.timer = g.action_rng.float01() - WAIT_SHIFT;
+        g.anim_stopped = true;
     }
 }
 
@@ -1237,6 +1274,7 @@ mod tests {
             stop_productivity: 1.0,
             food_sold: 1.0,
             sold: 0.0,
+            anim_stopped: false,
         };
         let mut field = Victim {
             class: FARM_CLASS,
@@ -1342,6 +1380,7 @@ mod tests {
                 stop_productivity: 1.0,
                 food_sold: 0.0,
                 sold: 0.0,
+                anim_stopped: false,
             };
             assert_eq!(g.update_moved(walk, &mut gatherer), Ok(Next::Stay));
             (g.state, g.point, g.move_to)
@@ -1495,6 +1534,7 @@ mod tests {
             stop_productivity: 1.0,
             food_sold: 0.0,
             sold: 0.0,
+            anim_stopped: false,
         };
         let mut bush = target(100.0);
         assert_eq!(g.gather(&mut bush, &mut gatherer, 0.5), Next::Stay);
@@ -1504,7 +1544,7 @@ mod tests {
         let last = 0.2f32 - 0.155;
         assert_eq!(g.gather(&mut bush, &mut gatherer, 0.5), Next::Drop);
         assert_eq!(bush.amount, 0.0);
-        assert_eq!(*gatherer.held, 0.155 + (0.155 + 125.0 * LAST_BIT + last));
+        assert_eq!(*gatherer.held, 0.155 + (0.155 + (125.0 * LAST_BIT + last)));
         *gatherer.held = 9.9;
         assert_eq!(g.gather(&mut target(100.0), &mut gatherer, 0.5), Next::Drop);
         assert_eq!(*gatherer.held, 9.9);

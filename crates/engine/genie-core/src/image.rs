@@ -148,6 +148,8 @@ pub mod gather {
     pub const REMAINDER: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.5
     pub const STOP_CENTRE: f32 = f32::from_bits(0x3f00_0000);
+    /// 0.5
+    pub const WAIT_SHIFT: f32 = f32::from_bits(0x3f00_0000);
 }
 
 /// The values `crate::gather_search`'s port reads.
@@ -238,6 +240,8 @@ pub mod hull_path {
 
 /// The values `crate::hunt`'s port reads.
 pub mod hunt {
+    /// 1.0
+    pub const DROP_REACH: f32 = f32::from_bits(0x3f80_0000);
     /// 0.10000000149011612
     pub const GAP: f32 = f32::from_bits(0x3dcc_cccd);
     /// 9.0
@@ -374,6 +378,14 @@ pub mod registry {
     pub const MARGIN: f32 = f32::from_bits(0x40e0_0000);
     /// 44.0
     pub const MOST_RADIUS: f32 = f32::from_bits(0x4230_0000);
+}
+
+/// The values `crate::rng`'s port reads.
+pub mod rng {
+    /// 1.0
+    pub const FLOAT_MAX: f32 = f32::from_bits(0x3f80_0000);
+    /// 2.3283064365386963e-10
+    pub const FLOAT_SCALE: f64 = f64::from_bits(0x3df0_0000_0000_0000);
 }
 
 /// The values `crate::short_path`'s port reads.

@@ -2831,14 +2831,29 @@ impl Unit {
                 stop_productivity,
                 food_sold,
                 sold: 0.0,
+                anim_stopped: false,
             };
-            let load = gather.update_drop(walk, &mut work, attributes, site)?;
-            let posted = std::mem::take(&mut work.posted);
+            let before = [gather.target, gather.carry_to];
+            let dropped = gather.update_drop(walk, &mut work, attributes, site)?;
+            let (posted, anim_stopped) = (std::mem::take(&mut work.posted), work.anim_stopped);
             for (kind, p) in posted {
                 self.post_own(kind, p)?;
             }
-            let Some((kind, amount)) = load else {
-                return Ok(());
+            if anim_stopped && let Some(a) = self.anim_speed.as_mut() {
+                *a = 0.0;
+            }
+            let (kind, amount) = match dropped {
+                crate::hunt::Dropped::Going => return Ok(()),
+                crate::hunt::Dropped::Load(kind, amount) => (kind, amount),
+                // set_state(8) again: the drop site kept or searched
+                crate::hunt::Dropped::Again => return self.gather_drop_off(c, others),
+                // set_state(2): the target, then the drop site go (slot 0x68, FUN_140a7a190)
+                crate::hunt::Dropped::Idle => {
+                    for id in before.into_iter().filter(|&id| id != -1) {
+                        c.releases.push((id, by));
+                    }
+                    return Ok(());
+                }
             };
             // the player's slot 0xf8 (FUN_141616820) with 1 and 1, as the hunt's drop-off
             give_load(
@@ -2897,6 +2912,7 @@ impl Unit {
                 stop_productivity,
                 food_sold,
                 sold: 0.0,
+                anim_stopped: false,
             };
             let target = victim.as_deref_mut().filter(|v| v.id == gather.target);
             let next = gather.update(walk, target, &mut work, dt);
@@ -5874,32 +5890,52 @@ impl Unit {
             };
             let attributes = c.attributes.len();
             let shows = hunt_walk_sprite(hunt, c.graphics, &self.life);
+            let who = crate::hunt::PointWalker {
+                computer: c.computer,
+                villager: master.class == 4,
+                stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            };
             let (walk, rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let shown = crate::hunt::Shown {
                 sprite: &mut self.sprite,
                 rng,
                 graphic: shows,
             };
-            if let Some((kind, amount)) = hunt.update_drop(
+            match hunt.update_drop(
                 walk,
                 &mut self.life.attribute_type,
                 &mut self.life.amount,
                 attributes,
                 site,
                 shown,
+                who,
+                &mut self.anim_speed,
             )? {
-                // the player's slot 0xf8 (FUN_141616820) with 1 and 1: the resource, and its
-                // gathered total (166 to 168; gold's 49 and 169); the statistics (slot 0xb8) and
-                // the local player's tracker (FUN_14097daf0) are not held; a sharing player's
-                // allies' share (+0x1426) is not modelled
-                give_load(
-                    (&c.spatial.relations, c.sharing),
-                    c.player,
-                    &mut c.attribute_adds,
-                    kind,
-                    amount,
-                )?;
-                self.hunt_after_drop(c, others)?;
+                crate::hunt::Dropped::Going => {}
+                crate::hunt::Dropped::Load(kind, amount) => {
+                    // the player's slot 0xf8 (FUN_141616820) with 1 and 1: the resource, and its
+                    // gathered total (166 to 168; gold's 49 and 169); the statistics (slot 0xb8)
+                    // and the local player's tracker (FUN_14097daf0) are not held; a sharing
+                    // player's allies' share (+0x1426) is not modelled
+                    give_load(
+                        (&c.spatial.relations, c.sharing),
+                        c.player,
+                        &mut c.attribute_adds,
+                        kind,
+                        amount,
+                    )?;
+                    self.hunt_after_drop(c, others)?;
+                }
+                crate::hunt::Dropped::Again => {
+                    // the drop site goes (FUN_140a7a190 with none), then set_state(8)
+                    let hunt = self.hunt.as_mut().expect("above");
+                    let site = std::mem::replace(&mut hunt.carry_to, -1);
+                    self.hunt_release(c, [site]);
+                    self.hunt_drop_off(c, others)?;
+                }
+                crate::hunt::Dropped::Idle => {
+                    return Err(Unsupported("a hunt's drop-off idling (set_state 2)"));
+                }
             }
         } else if let Some(hunt) = self
             .hunt

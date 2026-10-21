@@ -9,8 +9,7 @@
 use crate::attack::{Arms, Attack, Engagement, Strike, set_sprite};
 use crate::damage::Victim;
 use crate::move_to::{
-    Goal, MoveTo, MoveWait, Walk, start_walk, start_walk_or_give_up, target_moved, walk_on,
-    walk_or_give_up,
+    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
 };
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::sprite::Graphic;
@@ -333,6 +332,26 @@ pub struct Gatherer<'a> {
     /// Out: the target the hunt let go (slot 0x68 with none), which the caller releases.
     pub let_go: Option<i32>,
 }
+
+/// What a drop-off's update did ([`HuntAction::update_drop`],
+/// [`crate::gather::GatherAction::update_drop`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Dropped {
+    /// It walks or waits.
+    Going,
+    /// The load went to the player: its resource and amount, which the caller adds.
+    Load(i16, f32),
+    /// Its wait ended: it tries again (`set_state(8)`, the caller's).
+    Again,
+    /// The drop site does not take the load: the action idles (`set_state(2)`; the caller lets
+    /// the targets go).
+    Idle,
+}
+
+/// The wait of a hunt's drop-off that cannot go on (`0xc0400000`).
+const DROP_WAIT: f32 = -3.0;
+/// A hunt's drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
+const DROP_REACH: f32 = crate::image::hunt::DROP_REACH;
 
 /// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -757,16 +776,20 @@ impl HuntAction {
         Ok(())
     }
 
-    /// State 8's update (`0x140ac7a00` case 7): the `MoveTo` to the drop site walks (a `MoveTo` that
-    /// cannot go on, codes 3 to 5, would wait 3 seconds, not modelled; the timer's wait neither).
-    /// Once it ended (its update in state 1 returns 1: the list deletes it and its destructor stops
-    /// the unit) the load goes to the player at a drop site that takes it within a tile
-    /// (`site`; one that does not, `set_state` 2, or a farther one are not modelled): the resource
-    /// of what the unit carries (`FUN_140fdd4f0`: food for 15 to 17, nothing outside 0 to 3, 9 and
-    /// 56, then 0 beyond the player's attributes, `FUN_140efe5b0`), which the caller adds; the unit
-    /// carries nothing after (`FUN_14119d310` with -1). Returns the resource and the amount. A
-    /// hunt with a target walks back to it (`set_state` 4), one without searches for a new one
-    /// (the unit AI's slots 0x1b0 and 0x80, `FUN_140c488b0`): neither is modelled, after the load.
+    /// State 8's update (`0x140ac7a00` case 7): while its timer is below 0 the hunt waits (the
+    /// timer runs by dt); at its end the drop site goes (`FUN_140a7a190` with none) and the hunt
+    /// tries again (`set_state(8)`, [`Dropped::Again`], the caller's). Else the `MoveTo` to the
+    /// drop site walks, waits after the motion step gave up (a human player's villager once:
+    /// [`HuntAction::give_up_walk`]) or fails; a failed one (codes 3 to 5) makes the hunt wait 3
+    /// seconds and stops the unit's animation (`FUN_141161850`). Once it ended (its update in
+    /// state 1 returns 1: the list deletes it and its destructor stops the unit) the load goes to
+    /// the player at a drop site that takes it within a tile (`site`; one that does not,
+    /// `set_state` 2, is not modelled; a farther one makes the hunt wait 3 seconds too): the
+    /// resource of what the unit carries (`FUN_140fdd4f0`: food for 15 to 17, nothing outside 0
+    /// to 3, 9 and 56, then 0 beyond the player's attributes, `FUN_140efe5b0`), which the caller
+    /// adds; the unit carries nothing after (`FUN_14119d310` with -1). A hunt with a target walks
+    /// back to it (`set_state` 4), one without searches for a new one (the caller's).
+    #[allow(clippy::too_many_arguments)]
     pub fn update_drop(
         &mut self,
         mut walk: Walk<'_>,
@@ -775,28 +798,54 @@ impl HuntAction {
         attributes: usize,
         site: Option<DropOff>,
         mut shown: Shown<'_>,
-    ) -> Result<Option<(i16, f32)>, Unsupported> {
+        who: PointWalker,
+        anim_speed: &mut Option<f32>,
+    ) -> Result<Dropped, Unsupported> {
         if self.timer < 0.0 {
-            return Err(Unsupported("a drop-off waiting to try again (its timer)"));
+            self.timer += walk.dt;
+            if self.timer < 0.0 {
+                return Ok(Dropped::Going);
+            }
+            self.timer = 0.0;
+            return Ok(Dropped::Again);
         }
         match self.move_to {
             Some(MoveTo::Start) => {
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.walk_range;
                 walk.me.action_state = self.state;
-                let state = start_walk(walk, Goal::Target(self.carry_to), range, true)?;
-                shown.walking(state);
-                self.move_to = Some(state);
-                return Ok(None);
+                let walked = start_walk_or_give_up(walk, Goal::Target(self.carry_to), range, true)?;
+                shown.walking(walked.unwrap_or(MoveTo::Moving));
+                match walked {
+                    Some(state) => self.move_to = Some(state),
+                    None => self.give_up_walk(who),
+                }
+                return Ok(Dropped::Going);
             }
             Some(MoveTo::Moving) => {
                 if target_moved(&walk, self.carry_to, true)?.again() {
                     self.move_to = Some(MoveTo::Start);
-                    return Ok(None);
+                    return Ok(Dropped::Going);
                 }
                 walk.me.action_state = self.state;
-                self.move_to = Some(walk_on(walk)?);
-                return Ok(None);
+                match walk_or_give_up(walk)? {
+                    Some(m) => self.move_to = Some(m),
+                    None => self.give_up_walk(who),
+                }
+                return Ok(Dropped::Going);
+            }
+            Some(MoveTo::Waiting) => {
+                self.move_wait.timer += walk.dt;
+                if self.move_wait.delay <= self.move_wait.timer {
+                    self.move_wait.timer = 0.0;
+                    self.move_to = Some(MoveTo::Start);
+                }
+                return Ok(Dropped::Going);
+            }
+            Some(MoveTo::Failed) => {
+                self.timer = DROP_WAIT;
+                *anim_speed = Some(0.0);
+                return Ok(Dropped::Going);
             }
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
@@ -804,11 +853,6 @@ impl HuntAction {
                     .as_deref_mut()
                     .ok_or(Unsupported("a hunter without movement state"))?
                     .stop()?;
-            }
-            Some(MoveTo::Waiting | MoveTo::Failed) => {
-                return Err(Unsupported(
-                    "a drop-off's waiting or failed MoveTo (states 2, 13)",
-                ));
             }
             None => return Err(Unsupported("a Hunt in state 8 without its MoveTo")),
         }
@@ -818,16 +862,16 @@ impl HuntAction {
                 "a drop site that does not take the load (set_state 2)",
             ));
         }
-        if 1.0 < site.gap_squared {
-            return Err(Unsupported(
-                "a drop-off out of a tile of its drop site (its wait)",
-            ));
+        if DROP_REACH < site.gap_squared {
+            self.timer = DROP_WAIT;
+            *anim_speed = Some(0.0);
+            return Ok(Dropped::Going);
         }
         let kind = resource_kind(*held_kind, attributes);
         let amount = *held;
         *held_kind = -1;
         *held = 0.0;
-        Ok(Some((kind, amount)))
+        Ok(Dropped::Load(kind, amount))
     }
 
     /// Slot 0x78 (`FUN_140a78060`, the base action's; `UNIT_ORDER`'s drop-off) of a unit carrying
@@ -1419,8 +1463,9 @@ impl HuntAction {
             return Ok(true);
         }
         victim.amount -= take;
+        // the last bit and the storage's share summed first (`0x140ac8e04`)
         if victim.amount < REMAINDER {
-            gain = gain + g.target_storage * LAST_BIT + victim.amount;
+            gain += g.target_storage * LAST_BIT + victim.amount;
             victim.amount = 0.0;
         }
         *g.held += gain;
@@ -1996,6 +2041,12 @@ pub(crate) mod tests {
             takes: true,
             gap_squared: 0.5,
         };
+        let who = PointWalker {
+            computer: false,
+            villager: true,
+            stance: 0,
+        };
+        let mut anim = Some(1.0);
         let got = hunt
             .update_drop(
                 walk(&mut mover, &mut world),
@@ -2004,9 +2055,11 @@ pub(crate) mod tests {
                 230,
                 Some(site),
                 shown(&mut sprite, &mut rng),
+                who,
+                &mut anim,
             )
             .unwrap();
-        assert_eq!(got, Some((1, 7.057_053_6)));
+        assert_eq!(got, Dropped::Load(1, 7.057_053_6));
         assert_eq!((kind, held, hunt.move_to), (-1, 0.0, None));
         // carried food of a carcass (15) goes as food; a site that does not take it stops
         let mut kind = 15;
@@ -2020,9 +2073,11 @@ pub(crate) mod tests {
                 230,
                 Some(site),
                 shown(&mut sprite, &mut rng),
+                who,
+                &mut anim,
             )
             .unwrap();
-        assert_eq!(got, Some((0, 2.0)));
+        assert_eq!(got, Dropped::Load(0, 2.0));
         hunt.move_to = Some(MoveTo::Arrived);
         let refused = DropOff {
             takes: false,
@@ -2036,8 +2091,37 @@ pub(crate) mod tests {
                 230,
                 Some(refused),
                 shown(&mut sprite, &mut rng),
+                who,
+                &mut anim,
             )
             .is_err()
         );
+        // a site out of a tile's reach: the hunt waits 3 seconds, the unit's animation stopped;
+        // at the wait's end it tries again
+        hunt.move_to = Some(MoveTo::Arrived);
+        let far = DropOff {
+            gap_squared: 1.5,
+            ..site
+        };
+        let step = |hunt: &mut HuntAction, mover: &mut Mover, anim: &mut Option<f32>| {
+            let mut world = crate::spatial::Spatial::default();
+            let (mut sprite, mut rng) = (None, crate::rng::Well512::default());
+            hunt.update_drop(
+                walk(mover, &mut world),
+                &mut 15,
+                &mut 2.0,
+                230,
+                Some(far),
+                shown(&mut sprite, &mut rng),
+                who,
+                anim,
+            )
+            .unwrap()
+        };
+        assert_eq!(step(&mut hunt, &mut mover, &mut anim), Dropped::Going);
+        assert_eq!((hunt.timer, anim), (DROP_WAIT, Some(0.0)));
+        hunt.timer = -0.01;
+        assert_eq!(step(&mut hunt, &mut mover, &mut anim), Dropped::Again);
+        assert_eq!(hunt.timer, 0.0);
     }
 }

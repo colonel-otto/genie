@@ -82,6 +82,23 @@ impl Well512 {
         self.last
     }
 
+    /// `GetRandFloat0to1` (`FUN_1408115a0`): a step times `2^-32` (`DAT_142ea7c48`, in f64), as
+    /// f32, held to 0..1; `last` stays.
+    pub fn float01(&mut self) -> f32 {
+        /// The step's scale (`DAT_142ea7c48`).
+        const SCALE: f64 = crate::image::rng::FLOAT_SCALE;
+        /// The top (`DAT_14330eb8c`).
+        const MAX: f32 = crate::image::rng::FLOAT_MAX;
+        let v = (f64::from(self.raw()) * SCALE) as f32;
+        if 0.0 <= v && v <= MAX {
+            v
+        } else if 0.0 <= v {
+            MAX
+        } else {
+            0.0
+        }
+    }
+
     /// A step scaled to `0..n` (`FUN_140810cb0`): `step × n >> 32`; `last` stays.
     pub fn below(&mut self, n: u32) -> u32 {
         ((u64::from(self.raw()) * u64::from(n)) >> 32) as u32
