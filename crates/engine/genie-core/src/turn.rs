@@ -434,6 +434,18 @@ pub enum Command {
         /// The player.
         player: usize,
     },
+    /// `BUILDING_COMMAND_QUEUE` (0x2d, `0x140e64310`): the objects `ids` (at most a human
+    /// player's 60) queue a step to `target` (−1 for none) or `point` ([`Turns::command_queue`]).
+    CommandQueue {
+        /// The player.
+        player: usize,
+        /// The objects of the packet.
+        ids: Vec<i32>,
+        /// The object the step is on, −1 for none.
+        target: i32,
+        /// Its point.
+        point: [f32; 2],
+    },
     /// `CANCEL_BUILD` (0x6a, `do_command` case 0x6a): the player deletes its object `id`
     /// ([`Turns::delete`]).
     Delete {
@@ -8284,6 +8296,16 @@ impl Turns {
                     self.stop_player(player, e);
                 }
             }
+            Command::CommandQueue {
+                player,
+                ref ids,
+                target,
+                point,
+            } => {
+                if let Err(e) = self.command_queue(player, ids, target, point) {
+                    self.stop_player(player, e);
+                }
+            }
             Command::Delete { player, id } => {
                 if let Err(e) = self.delete(player, id) {
                     self.stop_player(player, e);
@@ -9195,7 +9217,95 @@ impl Turns {
                     target_master,
                 })
             };
-            self.players[player].objects[i].gather_point = gather;
+            let unit = &mut self.players[player].objects[i];
+            unit.gather_point = gather;
+            // the unit AI's slot 0x210 (FUN_140c16790): its command queue empties
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.building_orders.clear();
+            }
+        }
+        Ok(())
+    }
+
+    /// `BUILDING_COMMAND_QUEUE`'s handler (`0x140e64310`) for `player`: each object of `ids`
+    /// the world holds with a unit AI queues the step (its slot 0x208, `FUN_140c15740`: the
+    /// player, the order `0x2db` on a target or `0x2c6` on the point, priority −1, the target,
+    /// its owner and class, the point with height −1, range 0, not ready). A building first puts
+    /// its gather point in the queue when it has one, the queue is empty (slot 0x218) and the
+    /// point is not on itself, then the gather point clears (`FUN_1411c7ff0` with −1). A target
+    /// the world does not hold queues the point alone. The view's marker (`FUN_1414cd6d0`) is not
+    /// held.
+    pub(crate) fn command_queue(
+        &mut self,
+        player: usize,
+        ids: &[i32],
+        target: i32,
+        [x, y]: [f32; 2],
+    ) -> Result<(), Unsupported> {
+        let step = |turns: &Self,
+                    t: i32,
+                    at: [f32; 2]|
+         -> Result<crate::unit_ai::QueuedOrder, Unsupported> {
+            let named = if t == -1 { None } else { turns.object(t) };
+            let (target, owner, class) = match named {
+                Some((tp, u)) => (
+                    t,
+                    tp as i32,
+                    i32::from(turns.master_of(tp, u.life.master_id)?.class),
+                ),
+                None => (-1, -1, -1),
+            };
+            Ok(crate::unit_ai::QueuedOrder {
+                issuer: player as i32,
+                order: if target < 0 {
+                    crate::unit_ai::MOVE_ORDER
+                } else {
+                    crate::unit_ai::ORDER_ON_TARGET
+                },
+                priority: -1,
+                target,
+                target_owner: owner,
+                point: [at[0], at[1], -1.0],
+                range: 0.0,
+                shown: [-1.0, -1.0],
+                ready: false,
+                target_type: class,
+            })
+        };
+        for &id in ids {
+            let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
+                if self.place(id).is_some() {
+                    return Err(Unsupported("a command queue on a sleeping object"));
+                }
+                continue;
+            };
+            let unit = &self.players[p].objects[i];
+            let Some(ai) = unit.ai.as_ref() else {
+                continue;
+            };
+            let building = self.master_of(p, unit.life.master_id)?.kind == crate::order::BUILDING;
+            let mut queued = Vec::new();
+            if building
+                && let Some(g) = unit.gather_point
+                && ai.building_orders.is_empty()
+                && g.target != unit.id
+            {
+                // the gather point's own target id stays even when the world lost it
+                let mut first = step(self, g.target, [g.point[0], g.point[1]])?;
+                if first.target == -1 && g.target != -1 {
+                    first.target = g.target;
+                    first.order = crate::unit_ai::ORDER_ON_TARGET;
+                }
+                queued.push(first);
+            }
+            queued.push(step(self, target, [x, y])?);
+            let unit = &mut self.players[p].objects[i];
+            if building {
+                unit.gather_point = None;
+            }
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.building_orders.extend(queued);
+            }
         }
         Ok(())
     }
@@ -11453,6 +11563,69 @@ mod tests {
             t.players[0].objects[0].gather_point.map(|g| g.target),
             Some(9149)
         );
+    }
+
+    /// `BUILDING_COMMAND_QUEUE` on a town centre with a gather point: the gather point goes
+    /// into the queue first and clears, then the packet's step; a second packet adds its step
+    /// alone; SET GATHER POINT empties the queue.
+    #[test]
+    fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
+        let mut tc = town_centre(9149);
+        tc.life.master_id = 109;
+        tc.ai = Some(UnitAi {
+            ai_type: 17,
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            last_target: -1,
+            ..UnitAi::default()
+        });
+        tc.gather_point = Some(GatherPoint {
+            point: [30.5, 40.5, 0.0],
+            target: -1,
+            target_master: -1,
+        });
+        let mut t = one_player(vec![tc], [200.0; 4]);
+        t.masters = vec![Masters::new([Master {
+            id: 109,
+            kind: 80,
+            garrison: 15,
+            ..Master::default()
+        }])];
+        let step = |point| Command::CommandQueue {
+            player: 0,
+            ids: vec![9149],
+            target: -1,
+            point,
+        };
+        t.tick_with(25, &[step([50.0, 60.0])]);
+        t.tick_with(25, &[step([70.0, 80.0])]);
+        assert_eq!(t.players[0].unsupported, None);
+        let tc = &t.players[0].objects[0];
+        assert_eq!(tc.gather_point, None);
+        let steps: Vec<_> = tc
+            .ai
+            .as_ref()
+            .unwrap()
+            .building_orders
+            .iter()
+            .map(|o| (o.order, o.target, o.point, o.priority, o.ready))
+            .collect();
+        let at = |x, y| (crate::unit_ai::MOVE_ORDER, -1, [x, y, -1.0], -1, false);
+        assert_eq!(steps, vec![at(30.5, 40.5), at(50.0, 60.0), at(70.0, 80.0)]);
+        t.tick_with(
+            25,
+            &[Command::GatherPoint {
+                player: 0,
+                ids: vec![9149],
+                point: [-1.0, -1.0],
+                target: -1,
+                target_master: -1,
+                own: false,
+            }],
+        );
+        let left = &t.players[0].objects[0].ai.as_ref().unwrap().building_orders;
+        assert_eq!(left.len(), 0);
     }
 
     #[test]

@@ -382,7 +382,11 @@ impl Turns {
                     "an unload of a unit with units inside (a transport)",
                 ));
             }
-            if unit.ai.as_ref().is_some_and(|ai| ai.building_orders != 0) {
+            if unit
+                .ai
+                .as_ref()
+                .is_some_and(|ai| !ai.building_orders.is_empty())
+            {
                 return Err(Unsupported(
                     "an unload toward a building's command queue location",
                 ));

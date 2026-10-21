@@ -313,9 +313,9 @@ pub struct UnitAi {
     pub last_update_time: u32,
     /// The order queue, oldest first.
     pub orders: Vec<QueuedOrder>,
-    /// A building's or tower's command queue (`+0x1f0`..`+0x1f8`, 0x34-byte orders: the
-    /// building command queue a gather point of several steps fills), its length.
-    pub building_orders: usize,
+    /// A building's or tower's command queue (`+0x1f0`..`+0x1f8`, 0x34-byte orders the
+    /// building command queue fills, saved as `savedOrder`), which each unit it trains takes.
+    pub building_orders: Vec<QueuedOrder>,
     /// The notify queue (`+0x28` count, `+0x30` array), oldest first.
     pub notifies: Vec<Notify>,
     /// Its capacity (`+0x2c`, not saved): the factory's 10 (5 for the artifact's and the
@@ -1570,7 +1570,7 @@ impl UnitAi {
             hunted: None,
             last_update_time: 0,
             orders: Vec::new(),
-            building_orders: 0,
+            building_orders: Vec::new(),
             notifies: Vec::new(),
             notify_capacity: notify_capacity(ai_type, 0),
             processing: false,
@@ -5129,7 +5129,7 @@ mod tests {
                 order_priority: -1,
                 last_update_time: 0,
                 orders: Vec::new(),
-                building_orders: 0,
+                building_orders: Vec::new(),
                 notifies: Vec::new(),
                 notify_capacity: 10,
                 processing: false,

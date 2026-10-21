@@ -1848,14 +1848,20 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         building_orders: combat
             .tribe_tower_unit_ai_module
             .as_deref()
-            .map(|t| t.saved_order.len())
+            .map(|t| &t.saved_order)
             .or_else(|| {
                 combat
                     .tribe_building_unit_ai_module
                     .as_deref()
-                    .map(|b| b.saved_order.len())
+                    .map(|b| &b.saved_order)
             })
-            .unwrap_or(0),
+            .map(|orders| {
+                orders
+                    .iter()
+                    .map(genie_core::unit_ai::QueuedOrder::from_bytes)
+                    .collect()
+            })
+            .unwrap_or_default(),
         notifies: ai
             .temp_notify
             .iter()
@@ -3117,6 +3123,21 @@ impl Decoder {
                     player: c.commp_id as usize,
                     id: c.field_0x08 as i32,
                     master: c.field_0x04 as i16,
+                });
+            }
+            // BUILDING_COMMAND_QUEUE: the objects listed (at most a human player's 60), the
+            // count at +0x10
+            Packet::BuildingCommandQueue(c) => {
+                return Some(Command::CommandQueue {
+                    player: c.commp_id as usize,
+                    ids: c
+                        .ids
+                        .iter()
+                        .copied()
+                        .take((c.num as usize).min(MAX_UNITS))
+                        .collect(),
+                    target: c.t_id,
+                    point: [c.x, c.y],
                 });
             }
             Packet::CancelBuild(c) => {

@@ -1173,18 +1173,21 @@ impl Turns {
                 "a new object of a recyclable master (a negative id)",
             ));
         }
-        // the building unit AI's command queue (`+0x1f0`, saved as `savedOrder`): its first
-        // location takes the gather point's place
-        if building.ai.as_ref().is_some_and(|a| a.building_orders != 0) {
-            return Err(Unsupported(
-                "a spawn at a building with a command queue (its first location, slot 0x220)",
-            ));
-        }
+        // the building unit AI's command queue (`+0x1f0`, saved as `savedOrder`): without a
+        // gather point its first location is the spot's goal (FUN_1411d12d0, slot 0x220)
+        let queue = building
+            .ai
+            .as_ref()
+            .map(|a| a.building_orders.clone())
+            .unwrap_or_default();
         let gather = building.gather_point;
         let position = building.position;
-        let toward = gather
-            .filter(|g| g.target != building.id)
-            .map(|g| [g.point[0], g.point[1]]);
+        let toward = match (gather, queue.first()) {
+            (None, Some(first)) => Some([first.point[0], first.point[1]]),
+            _ => gather
+                .filter(|g| g.target != building.id)
+                .map(|g| [g.point[0], g.point[1]]),
+        };
         if made.moving.is_none() {
             return Err(Unsupported("a new unit of a master that does not move"));
         }
@@ -1199,7 +1202,11 @@ impl Turns {
                 state,
             )?;
         }
-        if let Some(gather) = gather {
+        if !queue.is_empty() {
+            // FUN_140ace9c0 with a command queue: the building unit AI's slot 0x200 hands it to
+            // the new unit (FUN_140c15e50), its gather point's work skipped
+            self.hand_queue(p, new, &queue, position[2])?;
+        } else if let Some(gather) = gather {
             self.gather(p, new, gather, building_id, true, true)?;
         }
         // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)
@@ -1211,6 +1218,61 @@ impl Turns {
             .any(|t| t.action_type == 0x9c)
         {
             return Err(Unsupported("a new unit's task that spawns more units"));
+        }
+        Ok(())
+    }
+
+    /// `FUN_140c15e50`: each order of a building's command queue goes into the unit AI's queue of
+    /// the new unit at `new` (slot 0x30 into slot 0x28: not immediate, behind, priority 100,
+    /// ready; its point the order's x and y at the building's height `z`, range 0). An order on
+    /// a monastery (master 104) of a unit whose AI already queues one of target type 42 keeps its
+    /// kind; on another object the unit may enter (`FUN_14118cd80`: type 70 and up with a
+    /// capacity, `FUN_14120eb10` with its room) it would become an enter order (`0x2cd`), not
+    /// modelled. The shown point (the game passes stack bytes there) is not held.
+    fn hand_queue(
+        &mut self,
+        p: usize,
+        new: usize,
+        queue: &[crate::unit_ai::QueuedOrder],
+        z: f32,
+    ) -> Result<(), Unsupported> {
+        /// The monastery, which a unit carrying a relic's order keeps (`FUN_141188e10`).
+        const MONASTERY: i16 = 104;
+        /// The target type whose queued order keeps a monastery's (`FUN_140c417f0` with 0x2a).
+        const RELIC_TYPE: i32 = 0x2a;
+        let master = self.players[p].objects[new].life.master_id;
+        for o in queue {
+            let target = (o.target != -1)
+                .then(|| self.object(o.target))
+                .flatten()
+                .map(|(tp, t)| (tp, t.life.master_id));
+            if let Some((tp, tm)) = target {
+                let ai = self.players[p].objects[new].ai.as_ref();
+                let keeps = tm == MONASTERY
+                    && ai.is_some_and(|ai| ai.orders.iter().any(|q| q.target_type == RELIC_TYPE));
+                let t_master = self.master_of(tp, tm)?;
+                if !keeps
+                    && 70 <= t_master.kind
+                    && t_master.garrison != 0
+                    && self.takes_in(o.target, p, master)?
+                {
+                    return Err(Unsupported(
+                        "a command queue's order on a building the unit may enter (its room, slot 0x198)",
+                    ));
+                }
+            }
+            let unit = &mut self.players[p].objects[new];
+            let state = unit.life.state;
+            if let Some(ai) = unit.ai.as_mut() {
+                let order = crate::unit_ai::QueuedOrder {
+                    priority: 100,
+                    point: [o.point[0], o.point[1], z],
+                    range: 0.0,
+                    ready: true,
+                    ..*o
+                };
+                let _ = ai.queue_order(state, order, false, false)?;
+            }
         }
         Ok(())
     }
