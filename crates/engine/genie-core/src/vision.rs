@@ -23,9 +23,13 @@ pub const ENDED_EXPLORED: u64 = 1 << 62;
 pub const REVEAL_ALLY: usize = 50;
 /// The attribute that shares every player's sight while it is not 0.
 pub const REVEAL_ALL: usize = 183;
-/// The attribute that reveals the other players' town centres (notify 0x2b9 to each of class
-/// 109), a one-time tile reveal recorded in `mTCFlared` ([`crate::turn::Player::tc_flared`]).
+/// The attribute that reveals the other players' town centres (`FUN_141552df0`): a flare of
+/// master 697 (FLARE4, slot 0x1c0) at each of their town centres (master 109, `FUN_141165d30`),
+/// each player's once, recorded in `mTCFlared` ([`crate::turn::Player::tc_flared`]).
 const REVEAL_CENTRES: usize = 209;
+/// The town centre the reveal finds (`0x6d`) and the flare it makes there (`0x2b9`).
+const TOWN_CENTRE: i16 = 109;
+const FLARE4: i16 = 697;
 /// The attributes that add a scenario's masks of visible and explored players, not modelled.
 const SHARED_MASKS: [usize; 2] = [285, 286];
 
@@ -55,6 +59,7 @@ impl Turns {
             .enumerate()
             .map(|(p, player)| own_masks(p, matches!(player.game_status, 1 | 2)))
             .collect();
+        let mut flares = Vec::new();
         for (p, me) in self.players.iter().enumerate().skip(1) {
             let attribute = |i: usize| me.attributes.get(i).copied().unwrap_or(0.0);
             if me.allied_vision {
@@ -74,15 +79,25 @@ impl Turns {
                     masks[p][1] |= 1 << (32 + q);
                 }
             }
-            // attribute 209 does not touch the masks: the reveal is a one-time tile reveal, in the
-            // saved map once `mTCFlared` records it. A reveal not yet recorded, genie cannot do.
-            if REVEAL_CENTRES < me.attributes.len()
-                && 0.0 < attribute(REVEAL_CENTRES)
-                && !me.tc_flared
-            {
-                return Err(Unsupported(
-                    "the other players' town centres to reveal (attribute 209, not yet flared)",
-                ));
+            // attribute 209 does not touch the masks: it flares the town centres of the players
+            // past Gaia it and who do not both count each other as allies, each player's once
+            // (`mTCFlared`), unless the screen's mode is 4 (`FUN_140c87f20`, the editor's: a
+            // playback has no such screen, the probe reads 0)
+            if REVEAL_CENTRES < me.attributes.len() && 0.0 < attribute(REVEAL_CENTRES) {
+                for q in 1..n {
+                    let allied = me.relations.get(q) == Some(&0)
+                        && self.players[q].relations.get(p) == Some(&0);
+                    if allied || me.tc_flared.get(q).copied().unwrap_or(false) {
+                        continue;
+                    }
+                    flares.extend(
+                        self.players[q]
+                            .objects
+                            .iter()
+                            .filter(|u| u.life.master_id == TOWN_CENTRE)
+                            .map(|u| (p, q, u.position)),
+                    );
+                }
             }
             if SHARED_MASKS[1] < me.attributes.len()
                 && SHARED_MASKS.iter().any(|&i| attribute(i) != 0.0)
@@ -93,6 +108,16 @@ impl Turns {
             }
         }
         self.spatial.vision = masks;
+        // the flares (slot 0x1c0 with master 697, [`Turns::remains`]), in the players' order, each
+        // town centre in its owner's list order; each flared player is recorded
+        for (p, q, at) in flares {
+            self.remains(p, FLARE4, at, None)?;
+            let flared = &mut self.players[p].tc_flared;
+            if flared.len() <= q {
+                flared.resize(q + 1, false);
+            }
+            flared[q] = true;
+        }
         Ok(())
     }
 }
@@ -161,17 +186,14 @@ mod tests {
         assert_eq!(own_masks(1, true), [0x6000_0002, 0x6000_0002_0000_0000]);
     }
 
-    /// Attribute 209 (reveal the enemies' town centres) does not touch the masks and is no stop
-    /// once `mTCFlared` records the reveal (MarvinBlue/426048737 p2 after its header load), only
-    /// before (a reveal genie cannot perform). It leaves the masks exactly the allies' sharing.
+    /// Attribute 209 (reveal the enemies' town centres) does not touch the masks: it leaves them
+    /// exactly the allies' sharing, and without a town centre to flare records no player.
     #[test]
-    fn attribute_209_stops_only_before_the_flare_is_recorded() {
+    fn attribute_209_leaves_the_masks_and_flares_only_town_centres() {
         let mut t = teams();
         t.players[2].attributes[REVEAL_CENTRES] = 5.0;
-        assert!(t.rebuild_vision().is_err());
-
-        t.players[2].tc_flared = true;
         t.rebuild_vision().unwrap();
         assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
+        assert!(!t.players[2].tc_flared.iter().any(|&f| f));
     }
 }

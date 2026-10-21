@@ -7369,10 +7369,9 @@ pub struct Player {
     /// `allied_LOS_Enable` (`+0x2cc`, saved): the player shares its mutual allies' sight
     /// ([`crate::vision`]).
     pub allied_vision: bool,
-    /// Whether the player's reveal of the enemies' town centres (attribute 209) has happened,
-    /// from any `mTCFlared[i]` set in the save ([`crate::vision`]). The reveal is a one-time tile
-    /// reveal, so once it is recorded the saved map already holds the revealed tiles.
-    pub tc_flared: bool,
+    /// The players whose town centres the player's reveal (attribute 209) flared
+    /// (`mTCFlared[i]`, saved; [`crate::vision`]).
+    pub tc_flared: Vec<bool>,
     /// `mSharingIsCaring` (`+0x1426`, `FUN_141626780`, saved): the player's gathered resources go
     /// to its allies too.
     pub sharing: bool,
