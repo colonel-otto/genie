@@ -230,12 +230,93 @@ impl Turns {
         Ok(g.flags >> 1 & 1 != 0)
     }
 
-    /// `CalcFormationType` (`FUN_14100b940`): not ported yet.
+    /// `CalcFormationType` (`FUN_14100b940`): the members' unit AIs' formation types (`+0x1d4`,
+    /// those below 9) counted, the most common the type (the first of equals); one below 3 unlocks
+    /// the group (`mFormationLockedType` 0) and makes its formation anew
+    /// ([`Turns::update_desired_positions`] with -1), the members' stances its state and their
+    /// formation types 0 ([`Turns::stances_state`]); a higher one is the lock's
+    /// (`FUN_141024e70`, not modelled).
     pub fn calc_formation_type(&mut self, group: i32) -> Result<(), Unsupported> {
-        let _ = self.groups.get(group).ok_or(Unsupported(
-            "the formation of a group the world does not hold",
-        ))?;
-        Err(Unsupported("a group's formation type (FUN_14100b940)"))
+        let ids: Vec<i32> = self
+            .groups
+            .get(group)
+            .ok_or(Unsupported(
+                "the formation of a group the world does not hold",
+            ))?
+            .members
+            .iter()
+            .map(|m| m.id)
+            .collect();
+        let mut counts = [0i32; 9];
+        for &id in &ids {
+            if let Some(ai) = self.object(id).and_then(|(_, u)| u.ai.as_ref())
+                && ai.formation_type < 9
+            {
+                counts[ai.formation_type as usize] += 1;
+            }
+        }
+        let mut best = 0;
+        for k in 1..9 {
+            if counts[best] < counts[k] {
+                best = k;
+            }
+        }
+        if 3 <= best {
+            return Err(Unsupported(
+                "a group's formation type locked by its members (FUN_141024e70)",
+            ));
+        }
+        if let Some(g) = self.groups.get_mut(group) {
+            g.formation_locked_type = 0;
+        }
+        self.update_desired_positions(group, -1)?;
+        self.stances_state(group, 0);
+        for &id in &ids {
+            if let Some(crate::order::Place::Live(q, i)) = self.place(id)
+                && let Some(ai) = self.players[q].objects[i].ai.as_mut()
+            {
+                ai.formation_type = 0;
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_14100d140` with 1: the group's state (`mState`) is the members' most common stance
+    /// (`+0x1a9`: 0 aggressive, 1 defensive, 2 stand ground, 3 no attack; on equal counts the
+    /// lower), 0 without members whose unit AI the world holds; each such member's formation
+    /// type (`+0x1d4`) becomes `formation_type`.
+    pub fn stances_state(&mut self, group: i32, formation_type: u8) {
+        let Some(g) = self.groups.get(group) else {
+            return;
+        };
+        let ids: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+        let mut n = [0i32; 4];
+        for &id in &ids {
+            if let Some(ai) = self.object(id).and_then(|(_, u)| u.ai.as_ref())
+                && ai.stance < 4
+            {
+                n[ai.stance as usize] += 1;
+            }
+        }
+        let state = if ids.is_empty() || (n[1] <= n[0] && n[2] <= n[0] && n[3] <= n[0]) {
+            0
+        } else if n[2] <= n[1] && n[3] <= n[1] {
+            1
+        } else if n[3] <= n[2] {
+            2
+        } else {
+            3
+        };
+        if let Some(g) = self.groups.get_mut(group) {
+            g.state = state;
+        }
+        for &id in &ids {
+            if let Some(crate::order::Place::Live(q, i)) = self.place(id)
+                && let Some(ai) = self.players[q].objects[i].ai.as_mut()
+            {
+                ai.formation_type = formation_type;
+            }
+        }
     }
 
     /// `FUN_140c65c60` with -1 and 70 for member `id`: its unit AI's search from its place (slot

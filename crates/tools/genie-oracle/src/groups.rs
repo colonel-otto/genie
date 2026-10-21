@@ -75,6 +75,7 @@ fn formation(f: &saved::Formation) -> Formation {
                 desired_category: s.slots_desired_category,
                 active: s.slots_active,
                 desired_sub_category: s.slots_desired_sub_category,
+                transformed: 0,
             })
             .collect(),
         number_transformed_slots: f.number_transformed_slots,
@@ -94,6 +95,8 @@ fn formation(f: &saved::Formation) -> Formation {
         transform_type: f.transform_type,
         number_lines: f.number_lines,
         transform_orientation: vec3(&f.transform_orientation),
+        // a load's array holds the saved slots alone
+        spare_slots: Vec::new(),
     }
 }
 

@@ -178,10 +178,16 @@ pub mod gather_search {
 pub mod group {
     /// 0.5
     pub const DEFAULT_RADIUS: f32 = f32::from_bits(0x3f00_0000);
+    /// 1.0000000116860974e-07
+    pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 2.5
+    pub const FLANK_SPACING: f32 = f32::from_bits(0x4020_0000);
     /// 1.2000000476837158
     pub const SLOW_GROUP_FACTOR: f32 = f32::from_bits(0x3f99_999a);
     /// 2.0
     pub const SPACING_FACTOR: f32 = f32::from_bits(0x4000_0000);
+    /// 4.0
+    pub const STAGGER_SHARE: f32 = f32::from_bits(0x4080_0000);
 }
 
 /// The values `crate::hull_path`'s port reads.

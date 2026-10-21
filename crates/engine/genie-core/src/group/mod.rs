@@ -15,6 +15,7 @@
 use crate::movement::PathData;
 
 mod create;
+pub mod formation;
 mod stats;
 
 /// An object's link to its group: `mGroupID` (`+0x6d0`) and `mGroupFlag` (`+0x6d4`), -1 and -2
@@ -225,6 +226,8 @@ pub struct Slot {
     pub active: u32,
     /// `mDesiredSubCategory`.
     pub desired_sub_category: i32,
+    /// `+0x44` (not saved): the formation's transform took the slot.
+    pub transformed: u32,
 }
 
 /// A formation's line (`FUN_14101b290`).
@@ -263,6 +266,9 @@ pub struct Formation {
     pub number_lines: i32,
     /// `mTransformOrientation`.
     pub transform_orientation: [f32; 3],
+    /// The slots' array past `mNumberSlots` (not saved): its capacity (`+0x8`) beyond the slots
+    /// in use, which a pass over the whole array reads too.
+    pub spare_slots: Vec<Slot>,
 }
 
 /// A point of the stored positions (`mPoint`, `mForward`, `mUp`, `mRight`).
