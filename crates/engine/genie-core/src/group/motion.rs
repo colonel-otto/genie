@@ -219,6 +219,41 @@ fn hold(p: Vec3, map: [i32; 2]) -> [f32; 2] {
 }
 
 impl Motion {
+    /// `FUN_141046600`: the motion moves (its velocity's length, `sqrt(x² + y² + z²)`, is above
+    /// 0).
+    #[must_use]
+    pub fn moving(&self) -> bool {
+        let v = self.velocity;
+        0.0 < fmath::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    }
+
+    /// `FUN_141046640`: the walked level waits for a path (its state 1 or 2); false without one.
+    #[must_use]
+    pub fn waits_to_move(&self) -> bool {
+        self.paths.first().is_some_and(|l| matches!(l.state, 1 | 2))
+    }
+
+    /// `FUN_1410481f0`: with a walked level below another, the levels below the first of level
+    /// 2 go (`FUN_140f98e80`, each alone); that level walks again from waypoint 1 in state 2 with
+    /// 10 tries; the top reached without one is reset ([`reset_level`]). A lone walked level
+    /// stays as it is.
+    pub fn drop_to_high_level(&mut self) {
+        if self.paths.len() < 2 {
+            return;
+        }
+        while self.paths[0].level != 2 && 1 < self.paths.len() {
+            let _ = self.paths.remove(0);
+        }
+        let level = &mut self.paths[0];
+        if level.level == 2 {
+            level.waypoint = 1;
+            level.state = 2;
+            level.continue_counter = 10;
+        } else {
+            reset_level(&mut self.paths);
+        }
+    }
+
     /// The walk's stop (`LAB_14104bd7e`): the forward speed and its acceleration go to 0.
     const fn stand(&mut self) {
         self.acceleration[2] = 0.0;
@@ -1049,6 +1084,50 @@ mod tests {
             state,
             ..PathData::without_path()
         }
+    }
+
+    /// `FUN_141046600` and `FUN_141046640`: a motion moves with any velocity, and waits to move
+    /// while its walked level wants a path (state 1 or 2).
+    #[test]
+    fn a_motion_moves_with_a_velocity_and_waits_for_a_path() {
+        let mut m = Motion::new();
+        assert!(!m.moving() && !m.waits_to_move());
+        m.velocity = [0.0, 0.0, -0.5];
+        assert!(m.moving());
+        m.paths = vec![level(0, &[], 0, 2)];
+        assert!(m.waits_to_move());
+        m.paths[0].state = 3;
+        assert!(!m.waits_to_move());
+    }
+
+    /// `FUN_1410481f0`: levels 0 and 1 below the top (2) go and the top walks from waypoint 1
+    /// (state 2, 10 tries); a top of another level resets; a lone level stays.
+    #[test]
+    fn the_walked_levels_below_the_high_level_go() {
+        let mut m = Motion::new();
+        let mut top = level(2, &[[0.0, 0.0], [5.0, 5.0], [9.0, 9.0]], 2, 4);
+        top.continue_counter = 3;
+        m.paths = vec![
+            level(0, &[[1.0, 1.0]], 1, 3),
+            level(1, &[[2.0, 2.0]], 1, 0),
+            top,
+        ];
+        m.drop_to_high_level();
+        assert_eq!(m.paths.len(), 1);
+        let l = &m.paths[0];
+        assert_eq!(
+            (l.level, l.waypoint, l.state, l.continue_counter),
+            (2, 1, 2, 10)
+        );
+        assert_eq!(l.points.len(), 3);
+        m.paths = vec![level(0, &[[1.0, 1.0]], 1, 3), level(1, &[[2.0, 2.0]], 1, 0)];
+        m.paths[0].repath_time = 4.0;
+        m.drop_to_high_level();
+        assert_eq!(m.paths, [PathData::without_path()]);
+        let lone = vec![level(0, &[[1.0, 1.0]], 1, 3)];
+        m.paths.clone_from(&lone);
+        m.drop_to_high_level();
+        assert_eq!(m.paths, lone);
     }
 
     /// `FUN_140f9b4d0`: a bit on or off the walked level; bit 2 also goes on for its parents.

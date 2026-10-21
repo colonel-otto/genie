@@ -183,6 +183,53 @@ impl Turns {
     }
 }
 
+impl Turns {
+    /// `FUN_141017630`: a member of group `group` the world holds (false for a group it does not
+    /// hold).
+    #[must_use]
+    pub fn any_member_held(&self, group: i32) -> bool {
+        self.groups
+            .get(group)
+            .is_some_and(|g| g.members.iter().any(|m| self.object(m.id).is_some()))
+    }
+
+    /// `resetIdleTimer` (`FUN_14102d370`): group `group`'s idle timer (`+0x3e4`) is a draw of the
+    /// World stream (`rand15`, `DAT_143f07040`) modulo [`IDLE_SPAN`]; nothing for a group the
+    /// world does not hold (the game draws for its own).
+    pub fn reset_idle_timer(&mut self, group: i32) {
+        if self.groups.get(group).is_none() {
+            return;
+        }
+        let draw = self.streams.get(crate::rng::Stream::World).rand15();
+        if let Some(g) = self.groups.get_mut(group) {
+            g.idle_timer = draw % IDLE_SPAN;
+        }
+    }
+
+    /// `IsIdle` (`FUN_141017ad0`) of group `group`: idle with flags bit 5 (`cConsiderIdle`), or on a
+    /// move (command 1) along a patrol (the top path's flags bit 0, `FUN_141046500`) or with
+    /// flags bit 11; else not while its motion moves or waits to move; else idle. False for a
+    /// group the world does not hold.
+    #[must_use]
+    pub fn is_idle(&self, group: i32) -> bool {
+        let Some(g) = self.groups.get(group) else {
+            return false;
+        };
+        if g.flags >> 5 & 1 != 0 {
+            return true;
+        }
+        let patrol = crate::group::formation::top_path(&g.motion.paths)
+            .is_some_and(|p| p.path_flags & 1 != 0);
+        if g.current_command == 1 && (patrol || g.flags >> 11 & 1 != 0) {
+            return true;
+        }
+        !(g.motion.moving() || g.motion.waits_to_move())
+    }
+}
+
+/// The idle timer's span (`FUN_14102d370`'s `% 0x2ee`, its division at `0x14102d395`).
+pub const IDLE_SPAN: u32 = 750;
+
 #[cfg(test)]
 mod tests {
     use crate::group::{Member, UnitGroup, UnitGroups};
@@ -220,7 +267,52 @@ mod tests {
         assert_eq!(t.nearest_to_target(2), -1);
     }
 
-    /// `FUN_14102bb40`: the command queue empties; a hibernating group (1) wakes with flags
+    /// `FUN_141017630`, `resetIdleTimer` (`FUN_14102d370`) and `IsIdle` (`FUN_141017ad0`).
+    #[test]
+    fn a_group_holds_members_draws_its_idle_timer_and_tells_when_it_is_idle() {
+        let held = Unit {
+            id: 10,
+            ..Unit::default()
+        };
+        let player = Player {
+            objects: vec![held],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
+        let member = |id| Member {
+            id,
+            ..Member::default()
+        };
+        let mut g = UnitGroup::new(1);
+        g.members = vec![member(99), member(10)];
+        t.groups = UnitGroups {
+            groups: vec![g],
+            ..UnitGroups::default()
+        };
+        assert!(t.any_member_held(1));
+        t.groups.groups[0].members = vec![member(99)];
+        assert!(!t.any_member_held(1));
+        assert!(!t.any_member_held(2));
+        // the World stream's next draw, modulo 750
+        let mut streams = t.streams.clone();
+        let draw = streams.get(crate::rng::Stream::World).rand15();
+        t.reset_idle_timer(1);
+        assert_eq!(t.groups.groups[0].idle_timer, draw % 750);
+        assert_eq!(t.streams, streams);
+        // idle: standing; not while moving or waiting for a path; idle again with bit 5, or on a
+        // move with bit 11
+        assert!(t.is_idle(1));
+        t.groups.groups[0].motion.velocity = [0.0, 0.0, 1.0];
+        assert!(!t.is_idle(1));
+        t.groups.groups[0].current_command = 1;
+        t.groups.groups[0].flags |= 0x800;
+        assert!(t.is_idle(1));
+        t.groups.groups[0].flags = 0x20;
+        assert!(t.is_idle(1));
+        assert!(!t.is_idle(2));
+    }
+
+    /// `FUN_14102bb40`: the command queue empties    /// `FUN_14102bb40`: the command queue empties; a hibernating group (1) wakes with flags
     /// `0x4c000`, any other hibernation value wakes without them.
     #[test]
     fn emptying_the_command_queue_wakes_a_hibernating_group() {

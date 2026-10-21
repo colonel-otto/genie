@@ -81,6 +81,15 @@ impl Formation {
         self.lines = vec![FormationLine::default(); n];
     }
 
+    /// `FUN_141041810`: every slot of the array (in use and spare) loses its unit and its filled
+    /// mark.
+    pub fn clear_units(&mut self) {
+        for s in self.every_slot_mut() {
+            s.unit_id = -1;
+            s.position_filled = 0;
+        }
+    }
+
     /// The slot at `i` of the whole array (in use or spare).
     pub(super) fn slot_mut(&mut self, i: usize) -> &mut Slot {
         let used = self.slots.len();
@@ -415,7 +424,7 @@ pub fn on_last_high_level_waypoint(paths: &[PathData]) -> bool {
 
 /// `FUN_141046500`: the path of the walked level's top ancestor, or, without one, the walked
 /// level's own.
-fn top_path(paths: &[PathData]) -> Option<&PathData> {
+pub(crate) fn top_path(paths: &[PathData]) -> Option<&PathData> {
     top_level(paths).map_or_else(
         || paths.first().filter(|w| w.has_path),
         |top| Some(top).filter(|t| t.has_path),
@@ -1096,10 +1105,7 @@ impl crate::turn::Turns {
         if self.formation_transform(formation, g, after_column)? {
             return Ok(());
         }
-        for s in formation.every_slot_mut() {
-            s.unit_id = -1;
-            s.position_filled = 0;
-        }
+        formation.clear_units();
         if formation.number_transformed_slots < 1 || g.previous_formation.is_none() || !after_column
         {
             self.populate_slots(formation, g)
@@ -1210,10 +1216,7 @@ impl crate::turn::Turns {
         }
         let mut took = false;
         if flips {
-            for s in formation.every_slot_mut() {
-                s.unit_id = -1;
-                s.position_filled = 0;
-            }
+            formation.clear_units();
             if column_to_line {
                 self.from_previous_column(formation, g)?;
             } else {
@@ -1812,6 +1815,26 @@ mod tests {
         t.passable_slots(&mut f, &g).unwrap();
         assert_eq!(f.slots[1].desired_transform_position, [6.5, 0.0, 6.5]);
         assert_eq!(f.slots[2].desired_transform_position, [6.5, 0.0, 7.5]);
+    }
+
+    /// `FUN_141041810`: every slot of the array, spare ones too, loses its unit and filled mark.
+    #[test]
+    fn clearing_the_units_empties_every_slot_of_the_array() {
+        let mut f = Formation::new();
+        let taken = Slot {
+            unit_id: 7,
+            position_filled: 1,
+            ..Slot::default()
+        };
+        f.slots = vec![taken];
+        f.spare_slots = vec![taken];
+        f.clear_units();
+        assert!(
+            f.slots
+                .iter()
+                .chain(&f.spare_slots)
+                .all(|s| (s.unit_id, s.position_filled) == (-1, 0))
+        );
     }
 
     /// The grid's count (bits 1 to 5) counts on and wraps, the other bits stay.
