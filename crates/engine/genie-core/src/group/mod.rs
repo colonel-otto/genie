@@ -464,12 +464,8 @@ pub struct UnitGroup {
     /// capacity beyond its count, which the next members take in order (`AddUnit`'s
     /// `FUN_14102d710`).
     pub spare_seconds: Vec<f32>,
-    /// `+0x13c` (not saved; the constructor's 0): a queued order reached the group without a
-    /// command (`commandMoveTo`'s queue path, with `direct`), which the queue's emptying turns
-    /// into flags `0x4c000` ([`UnitGroup::clear_order_queue`]).
-    pub queued_start: u8,
     /// `+0x13d` (not saved; the constructor's 1): the group's last command was not queued
-    /// (`BUnitGroup::command` sets it), so its next move empties the order queue first;
+    /// (`BUnitGroup::command` sets it), so its next move empties the command queue first;
     /// `checkQueuedOrders` (`FUN_14100d460`) clears it.
     pub replaces_queue: u8,
 }
@@ -499,8 +495,8 @@ impl Motion {
 impl UnitGroup {
     /// `BUnitGroup`'s constructor (`FUN_140fe1550` after [`Motion::new`]) with id `id`
     /// (`FUN_141039640`): state -1, no formation, flags `0x100`, no command (-1), no target (-1,
-    /// type -1), differentiator -1, `+0x13d` 1 (its 16-bit `0x100` at `+0x13c`); every other
-    /// field 0 or empty.
+    /// type -1), differentiator -1, `+0x13d` 1 (the 16-bit `0x100` at `+0x13c`, `mHibernating`
+    /// 0); every other field 0 or empty.
     #[must_use]
     pub fn new(id: i32) -> Self {
         Self {
@@ -520,15 +516,16 @@ impl UnitGroup {
         }
     }
 
-    /// `FUN_14102bb40`: the order queue empties; a queued start (`+0x13c`) of 1 sets flags
-    /// `0x4c000`, and it goes back to 0.
-    pub fn clear_order_queue(&mut self) {
-        self.order_queue.clear();
-        if self.queued_start != 0 {
-            if self.queued_start == 1 {
+    /// `FUN_14102bb40`: the command queue empties (`+0x420`, its size `+0x450`); a hibernating
+    /// group (`mHibernating`, `+0x13c`, which `commandMoveTo`'s queue path sets for a group
+    /// without a command) wakes, with flags `0x4c000` when it was 1.
+    pub fn clear_command_queue(&mut self) {
+        self.command_queue.clear();
+        if self.hibernating != 0 {
+            if self.hibernating == 1 {
                 self.flags |= 0x4_c000;
             }
-            self.queued_start = 0;
+            self.hibernating = 0;
         }
     }
 

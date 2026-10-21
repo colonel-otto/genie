@@ -123,9 +123,9 @@ impl Turns {
     }
 
     /// `commandMoveTo` (`FUN_141010a80`) of group `group` to `point` (`target` -1 for none): flags
-    /// bits 5 and 12 clear. A queued move, and one behind queued orders without `direct`, go into
-    /// the order queue (`queueOrder`, `FUN_14102b640`, not modelled). A group whose last command
-    /// was not queued empties its order queue ([`super::UnitGroup::clear_order_queue`]);
+    /// bits 5 and 12 clear. A queued move, and one behind queued commands without `direct`, go into
+    /// the command queue (`queueOrder`, `FUN_14102b640`, not modelled). A group whose last command
+    /// was not queued empties its command queue ([`super::UnitGroup::clear_command_queue`]);
     /// `forget_target` clears its target (`mCurrentTarget`: -1 and type -1, its place, range,
     /// radius and retargeting byte 0); a changed target resets the attack plan's entries
     /// (`FUN_140fd76a0` on `+0x3b0`, `mCurrentAttackPlan`, which no save holds, every load
@@ -178,13 +178,13 @@ impl Turns {
         } else {
             target != g.current_target.target
         };
-        if how.queued || (!how.direct && !g.order_queue.is_empty()) {
+        if how.queued || (!how.direct && !g.command_queue.is_empty()) {
             return Err(Unsupported(
                 "a group's queued move (queueOrder, FUN_14102b640)",
             ));
         }
         if g.replaces_queue != 0 {
-            g.clear_order_queue();
+            g.clear_command_queue();
         }
         if how.forget_target {
             let t = &mut g.current_target;
