@@ -1433,9 +1433,9 @@ impl Mover {
                         || path.length <= EPSILON
                             && (r != 0 || (1 < path.points.len() && EPSILON <= path.length));
                     if blocked {
-                        if LONG < to_end && to_end != FAR {
-                            return Err(Unsupported("a blocked unit's notice (FUN_140f8a230)"));
-                        }
+                        // far from its end (LONG < to_end) the game tells the units ahead to
+                        // make way (FUN_140f8a230, FUN_140f88750), which return at once: their
+                        // switch is a zeroed byte of .data that nothing writes (0x143f01836)
                     } else if path.length <= EPSILON {
                         // in range of the waypoint: the new level is dropped
                         let reach = if target.is_none() || 0.0 < range {
