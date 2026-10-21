@@ -71,6 +71,66 @@ impl Turns {
         }
     }
 
+    /// A construction start's clearing (`FUN_1411cd0d0`) for the foundation `id`: the tiles from 5
+    /// before its box to 5 past it (held on the map; rows, then columns), each tile's objects in
+    /// its list's order: a desolid foundation (type 80, `+0xc60`) other than it whose owner sees
+    /// and explored the tile ([`crate::spatial::Spatial::sees_and_explored`]) and whose box
+    /// overlaps its own (on each axis the gap below the two radii summed) is removed
+    /// ([`Turns::remove_building`]; its `mROOAlreadyCalled`, `+0x686`, is not held).
+    pub(crate) fn clear_foundations_under(&mut self, id: i32) -> Result<(), Unsupported> {
+        const AROUND: i32 = 5;
+        let Some(site) = self.spatial.get(id).copied() else {
+            return Ok(());
+        };
+        let [x, y, _] = site.position;
+        let [rx, ry] = site.radius;
+        let [w, h] = self.spatial.map;
+        let (x0, y0) = (
+            (((x - rx) as i32) - AROUND).max(0),
+            (((y - ry) as i32) - AROUND).max(0),
+        );
+        let x1 = if ((x + rx) as i32 + AROUND) < w {
+            (x + rx) as i32 + AROUND
+        } else {
+            w - 1
+        };
+        let y1 = if ((y + ry) as i32 + AROUND) < h {
+            (y + ry) as i32 + AROUND
+        } else {
+            h - 1
+        };
+        let mut gone = Vec::new();
+        for ty in y0..=y1 {
+            for tx in x0..=x1 {
+                for (oid, o) in self.spatial.objects_on(tx, ty) {
+                    if oid == id || gone.iter().any(|&(_, g)| g == oid) {
+                        continue;
+                    }
+                    let Some((owner, u)) = self.object(oid) else {
+                        continue;
+                    };
+                    let kind = self.master_of(owner, u.life.master_id)?.kind;
+                    let desolid = u.construction.is_some_and(|c| c.desolid);
+                    if kind != BUILDING
+                        || !desolid
+                        || !self.spatial.sees_and_explored(owner, tx, ty)
+                    {
+                        continue;
+                    }
+                    let dx = (o.position[0] - x).abs();
+                    let dy = (o.position[1] - y).abs();
+                    if dx < o.radius[0] + rx && dy < ry + o.radius[1] {
+                        gone.push((owner, oid));
+                    }
+                }
+            }
+        }
+        for (owner, oid) in gone {
+            self.remove_building(owner, oid)?;
+        }
+        Ok(())
+    }
+
     /// A unit's slot 0x8b8 (`FUN_14120f620`): a unit of a class other than [`UNDELETABLE`]'s is
     /// marked deleted (`+0xa0c`) and its slot 0xd8 (`FUN_141211340`) spares class 42 and
     /// livestock holding some, else `FUN_14118f580`: a sleeping unit wakes to the end of its
@@ -90,7 +150,8 @@ impl Turns {
         Ok(())
     }
 
-    /// A building's slot 0x8b8 (`FUN_1411cd780`, then `FUN_1411ccbb0`): it wakes; a foundation
+    /// A building's slot 0x8b8 (`FUN_1411cd780`, then `FUN_1411ccbb0`, [`Turns::remove_building`]):
+    /// it wakes; a foundation
     /// (below state 2) with at least 1 hit point gives its owner back the share of its paid cost
     /// (`+0x880`: each entry with a resource and the paid flag, slot 0xf8) its build time has
     /// still to go (`(build time - build points) / build time`, at most 1), all of it while no
@@ -107,6 +168,18 @@ impl Turns {
                 "a deleted town centre 621 (the world's +0x820)",
             ));
         }
+        self.remove_building(owner, id)
+    }
+
+    /// `FUN_1411ccbb0`, the core of a building's delete ([`Turns::delete_building`]) and of a
+    /// construction start's clearing ([`Turns::clear_foundations_under`]): the building wakes,
+    /// a foundation's paid cost comes back by the share its build time has still to go, its hit
+    /// points go to 0 and a desolid foundation is destroyed at once.
+    pub(crate) fn remove_building(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+        let (_, unit) = self
+            .object(id)
+            .ok_or(Unsupported("a removed building the slice does not hold"))?;
+        let master = self.master_of(owner, unit.life.master_id)?;
         let cost = master.cost.clone();
         let (state, hp) = (unit.life.state, unit.life.hp);
         let site = unit.construction;

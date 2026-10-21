@@ -352,6 +352,10 @@ pub struct Spatial {
     /// The tile rectangles (x0, y0, x1, y1) whose static marks changed, for the planners
     /// ([`Spatial::take_changes`]).
     changed: Vec<[i16; 4]>,
+    /// The foundations whose construction started this update, whose clearing of the desolid
+    /// foundations they overlap (`FUN_1411cd0d0`) the update runs after the builder's
+    /// ([`Spatial::take_started`]).
+    started: Vec<i32>,
     /// The seconds since each frozen object froze.
     frozen_for: BTreeMap<i32, f32>,
     /// What a stopped player's units may have done since: the fastest any of the players' unit
@@ -424,6 +428,7 @@ impl Spatial {
             inside: BTreeMap::new(),
             tiles,
             changed: Vec::new(),
+            started: Vec::new(),
             frozen_for: BTreeMap::new(),
             fastest: 0.0,
             reach: 0.0,
@@ -534,21 +539,34 @@ impl Spatial {
             .map(|(&id, o)| (id, o))
     }
 
-    /// Whether another foundation without its record (a master that obstructs, no record yet)
-    /// overlaps `site`'s box (`FUN_1411cd0d0`'s test, without its players' visibility).
-    pub fn foundations_overlapping(&self, site_id: i32, site: &Placed) -> bool {
-        self.objects.iter().any(|(&id, o)| {
-            id != site_id
-                && o.obstruction.is_none()
-                && o.obstruction_type != 0
-                && (o.position[0] - site.position[0]).abs() < o.radius[0] + site.radius[0]
-                && (o.position[1] - site.position[1]).abs() < o.radius[1] + site.radius[1]
-        })
-    }
-
     /// The tile rectangles whose static marks changed since the last call.
     pub fn take_changes(&mut self) -> Vec<[i16; 4]> {
         std::mem::take(&mut self.changed)
+    }
+
+    /// A foundation's construction started ([`crate::build::Construction`]'s start).
+    pub fn started(&mut self, id: i32) {
+        self.started.push(id);
+    }
+
+    /// The foundations whose construction started since the last call.
+    pub fn take_started(&mut self) -> Vec<i32> {
+        std::mem::take(&mut self.started)
+    }
+
+    /// Player `player`'s masks both meet the unified map's bits of tile (`x`, `y`): what it sees
+    /// (`+0x2a8`) and what it explored (`+0x2a0`). False off the map and without the players'
+    /// sight.
+    pub fn sees_and_explored(&self, player: usize, x: i32, y: i32) -> bool {
+        let Some(v) = self.sight.as_ref() else {
+            return false;
+        };
+        if x < 0 || y < 0 || v.width <= x || v.height <= y {
+            return false;
+        }
+        let word = v.unified[(y * v.width + x) as usize] & crate::registry::MASK;
+        let [seen, explored] = self.vision(player);
+        word & seen != 0 && word & explored != 0
     }
 
     /// The object `id`'s place, if the world holds it.

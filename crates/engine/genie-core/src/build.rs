@@ -986,8 +986,9 @@ impl Construction {
         })
     }
 
-    /// The construction starts (`FUN_1411cd0d0`, then `FUN_1411e5670`): other players' foundations
-    /// it overlaps would be removed (not modelled); it is no longer desolid, holds a sliver of
+    /// The construction starts (`FUN_1411cd0d0`, then `FUN_1411e5670`): the desolid foundations
+    /// it overlaps go (the world's started list, `Turns::clear_foundations_under`, after the
+    /// builder's update); it is no longer desolid, holds a sliver of
     /// progress, and gets its obstruction record (`FUN_141056460`: the tiles it marks, which the
     /// planners see, and its shape in the mesh); its footprint comes into its player's sight and
     /// its tiles link to its anchor again (`FUN_140f73900`); its last move time becomes the
@@ -1002,9 +1003,9 @@ impl Construction {
         let placed = *world
             .get(id)
             .ok_or(Unsupported("a foundation that is gone"))?;
-        if world.foundations_overlapping(id, &placed) {
-            return Err(Unsupported("a construction start over another foundation"));
-        }
+        // the desolid foundations it overlaps go after the builder's update (FUN_1411cd0d0,
+        // Turns::clear_foundations_under)
+        world.started(id);
         c.desolid = false;
         c.started = true;
         c.progress = f32::from_bits(STARTED);

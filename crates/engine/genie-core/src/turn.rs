@@ -10368,6 +10368,13 @@ impl Turns {
                         result = result.and(Err(e));
                     }
                 }
+                // a construction start's clearing of the desolid foundations it overlaps
+                // (FUN_1411cd0d0), after the builder's update
+                for id in self.spatial.take_started() {
+                    if let Err(e) = self.clear_foundations_under(id) {
+                        result = result.and(Err(e));
+                    }
+                }
                 self.pathing.tiles_changed(self.spatial.take_changes());
                 if matches!(result, Ok(Step::Stay)) && ai_resume.is_some() {
                     resume = ai_resume;
