@@ -51,6 +51,8 @@ indexmap = { version = "2", features = ["serde"] }
 rayon = "1"
 # the engine's spans and events (genie-core::trace); without the proc-macro attributes
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+# the binaries' subscribers for them (gsk, genie-oracle's examples); each adds its formatter
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "registry", "std"] }
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
 [profile.dev]

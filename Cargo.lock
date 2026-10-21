@@ -564,6 +564,8 @@ dependencies = [
  "genie-save",
  "rayon",
  "serde_json",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

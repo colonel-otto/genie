@@ -1,7 +1,7 @@
 //! What the engine tells a [`tracing`] subscriber while it runs, for debugging.
 //!
-//! The library installs no subscriber: a binary that runs the engine does (the harness's
-//! `census`, `slice` and `forced` print bunyan JSON lines to stderr once `RUST_LOG` is set).
+//! The library installs no subscriber: a binary that runs the engine does (genie-oracle's
+//! `census` and `checkpoints` examples print text lines to stderr once `RUST_LOG` is set).
 //! Without a subscriber, or with its filter below a span's or event's level, each costs one
 //! comparison with `tracing`'s maximum level, and the state watch is not taken.
 //!

@@ -3,8 +3,14 @@
 //! `(word, engine, game)`, or `ok`.
 //!
 //! `cargo run --release -p genie-oracle --example checkpoints -- REC DAT UPDATES`
+//!
+//! With `RUST_LOG` set, the engine's log goes to stderr as text lines
+//! (`RUST_LOG=genie_core::unsupported=warn` …, docs/DEBUGGING.md).
+
+mod support;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    support::install(std::env::var("RUST_LOG").ok().as_deref())?;
     let args: Vec<String> = std::env::args().collect();
     let [_, rec, dat, updates] = &args[..] else {
         return Err("usage: checkpoints REC DAT UPDATES".into());

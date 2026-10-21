@@ -6,11 +6,17 @@
 //!
 //! REC is an `.aoe2record` of build 158041, DAT the `empires2_x2_p1.dat` of that build's game
 //! (with `dropsites.json` beside it, if there is one).
+//!
+//! With `RUST_LOG` set, the engine's log goes to stderr as text lines
+//! (`RUST_LOG=genie_core::unsupported=warn` …, docs/DEBUGGING.md).
+
+mod support;
 
 use genie_oracle::MasterTable;
 use genie_oracle::census::census_run;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    support::install(std::env::var("RUST_LOG").ok().as_deref())?;
     let args: Vec<String> = std::env::args().collect();
     let (rec, dat, limit) = match &args[1..] {
         [rec, dat] => (rec, dat, None),

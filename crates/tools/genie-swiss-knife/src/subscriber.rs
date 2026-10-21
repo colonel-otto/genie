@@ -4,7 +4,7 @@
 //! and the state changes; this subscriber prints them as bunyan JSON lines on stderr. It listens
 //! only when `RUST_LOG` holds a filter (`RUST_LOG=genie_core::unsupported=warn`,
 //! `RUST_LOG=genie_core=trace` …) or the command runs with `--verbose` (`debug`). Else none is
-//! installed, and the engine's spans and events cost one comparison each. The harness's copy is the same, with its own name.
+//! installed, and the engine's spans and events cost one comparison each.
 
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt};

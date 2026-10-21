@@ -1,0 +1,70 @@
+name: Bug report
+description: genie plays a recording differently from the game, stops, panics, or cannot read a recording of build 158041.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        [docs/DEBUGGING.md](https://github.com/librematch/genie/blob/main/docs/DEBUGGING.md) shows how to play a recording with the census example and how to record the engine's log.
+
+        Use the stop reason, the difference or the panic message as the title, word for word. For example: `player 2 stops at update 1154: a command the slice does not model: TribeGiveAttributes`. The next person with the same problem then finds this issue.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What you found
+      options:
+        - A checkpoint differs, and the player did not stop before it
+        - A player stops (a case that genie does not model yet)
+        - genie panics
+        - A recording of build 158041 does not read
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: recording
+    attributes:
+      label: Recording
+      description: Attach the recording as a .zip, because GitHub does not accept .aoe2record files. You can also give a link. If you cannot share the recording, say so. If you know the game version of the recording, add it.
+    validations:
+      required: true
+  - type: textarea
+    id: commit
+    attributes:
+      label: genie commit
+      description: The output of `git rev-parse --short HEAD`. If you changed genie, say what you changed (`git status`, `git diff`).
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The command that you ran, with all its arguments.
+      placeholder: cargo run --release -p genie-oracle --example census -- REC DAT 3000
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The full output of the census or checkpoints example. For a panic, the backtrace of a run with `RUST_BACKTRACE=1`.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: If you recorded the engine's log, attach it as a file and give the `RUST_LOG` value that you used.
+      placeholder: RUST_LOG=genie_core::unsupported=warn,genie_core::state=debug
+  - type: textarea
+    id: game
+    attributes:
+      label: In the game
+      description: If you watched the recording in the game, describe what happened there at that point.
+  - type: checkboxes
+    id: duplicates
+    attributes:
+      label: Duplicates
+      options:
+        - label: I searched the issues for the stop reason, the difference or the panic message.
+          required: true
