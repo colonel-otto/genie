@@ -8686,7 +8686,7 @@ impl Turns {
             obstructs: !matches!(site.obstruction_type, 0 | 12),
             restriction,
             hill_mode: site.hill_mode,
-            placement_terrains: site.placement_terrains,
+            placement: site.placement,
             zones: false,
         };
         let map = crate::spawn::WorldMap { turns: self };

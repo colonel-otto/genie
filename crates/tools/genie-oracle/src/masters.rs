@@ -176,11 +176,12 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         available: unit.enabled != 0,
         disabled: unit.disabled != 0,
         ghost_on_death: unit.create_doppelganger_on_death,
-        placement_terrains: unit
-            .placement_side_terrain
-            .iter()
-            .chain(&unit.placement_terrain)
-            .any(|&t| 0 <= t),
+        placement: [
+            unit.placement_side_terrain[0],
+            unit.placement_side_terrain[1],
+            unit.placement_terrain[0],
+            unit.placement_terrain[1],
+        ],
         special_graphic: unit
             .creatable
             .as_ref()

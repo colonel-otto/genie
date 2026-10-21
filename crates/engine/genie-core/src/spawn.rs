@@ -383,10 +383,10 @@ pub struct Placing<'a> {
     pub class: i16,
     /// Its terrain restriction's value per terrain.
     pub restriction: &'a [f32],
-    /// `hill_mode` (`+0x604`) and whether the placement terrains (`+0x5f2`..`+0x5f8`) name one.
+    /// `hill_mode` (`+0x604`).
     pub hill_mode: u8,
-    /// The placement terrains (`+0x5f2`..`+0x5f8`) name a terrain.
-    pub placement_terrains: bool,
+    /// The placement terrains (`+0x5f2`..`+0x5f8`, [`placement_terrains`]).
+    pub placement: [i16; 4],
 }
 
 /// What the placement test reads of the map.
@@ -395,6 +395,15 @@ pub trait PlaceMap {
     fn size(&self) -> [i32; 2];
     /// A tile's terrain (the map tile's `+0x9`).
     fn terrain(&self, x: i32, y: i32) -> Result<u8, Unsupported>;
+    /// Terrain `t`'s flags (the `.dat`'s `is_water` byte, the map's terrain record `+2`), None
+    /// beyond the terrains.
+    fn terrain_flags(&self, _t: usize) -> Option<u8> {
+        None
+    }
+    /// How many terrains the map's table holds.
+    fn terrain_count(&self) -> usize {
+        0
+    }
     /// `FUN_141663500` is not 0: the player sees or saw the tile.
     fn explored(&self, player: usize, x: i32, y: i32) -> bool;
     /// The player sees the tile now (its mask `+0x2a8` meets the tile's visible bits).
@@ -469,8 +478,8 @@ pub struct BuildSite<'a> {
     pub restriction: &'a [f32],
     /// `hill_mode` (`+0x604`, `p7`).
     pub hill_mode: u8,
-    /// The placement terrains (`+0x5f2`..`+0x5f8`) name one.
-    pub placement_terrains: bool,
+    /// The placement terrains (`+0x5f2`..`+0x5f8`, [`placement_terrains`]).
+    pub placement: [i16; 4],
     /// The world's zone mode (`+0x820`, `FUN_1415e8e10`).
     pub zones: bool,
 }
@@ -505,6 +514,86 @@ fn hill_fails(
     })
 }
 
+/// `FUN_141123f80`'s placement terrains (`placement`: the master's side terrains `+0x5f2`,
+/// `+0x5f4`, then its terrains `+0x5f6`, `+0x5f8`; −1 for none) for a box of tiles `b` (x0, y0,
+/// x1, y1) around point `p`: false where they refuse it (the test's code 1). With a terrain,
+/// the point's tile must be of one of the two, or share the flag 4 or 8 (the terrains' `.dat`
+/// flags, [`PlaceMap::terrain_flags`]) with them, and the box shrinks to that tile. With a side
+/// terrain, one of the tiles beside the box (the row below, the column right, the row above and
+/// the column left) must be of a side terrain, or of a terrain with the flag 0x40 or 0x10 when a
+/// side terrain has it. A terrain of −1 beside one of 0 or more (its flags read past the table)
+/// is not modelled.
+///
+/// # Errors
+///
+/// Where the map cannot tell.
+pub fn placement_terrains(
+    placement: [i16; 4],
+    map: &dyn PlaceMap,
+    p: [f32; 2],
+    b: [i32; 4],
+) -> Result<bool, Unsupported> {
+    let [side1, side2, t1, t2] = placement;
+    let flags = |t: i16| {
+        usize::try_from(t)
+            .ok()
+            .and_then(|t| map.terrain_flags(t))
+            .ok_or(Unsupported(
+                "placement terrains with one of -1 or beyond the terrains",
+            ))
+    };
+    let mut b = b;
+    if 0 <= t1 || 0 <= t2 {
+        let (x, y) = (p[0] as i32, p[1] as i32);
+        let tile = i16::from(map.terrain(x, y)?);
+        if tile != t1 && tile != t2 {
+            let (f1, f2, ft) = (flags(t1)?, flags(t2)?, flags(tile)?);
+            let water = (f1 & 4 != 0 || f2 & 4 != 0) && ft & 4 != 0;
+            let shallow = (f1 & 8 != 0 || f2 & 8 != 0) && ft & 8 != 0;
+            if !water && !shallow {
+                return Ok(false);
+            }
+        }
+        b = [x, y, x, y];
+    }
+    if side1 < 0 && side2 < 0 {
+        return Ok(true);
+    }
+    let (f1, f2) = (flags(side1)?, flags(side2)?);
+    let mut sides: Vec<i16> = [side1, side2].into_iter().filter(|&t| 0 <= t).collect();
+    for bit in [0x40, 0x10] {
+        if f1 & bit != 0 || f2 & bit != 0 {
+            for t in 0..map.terrain_count() {
+                let t = i16::try_from(t).unwrap_or(i16::MAX);
+                if flags(t)? & bit != 0 && t != side1 && t != side2 {
+                    sides.push(t);
+                }
+            }
+        }
+    }
+    let [x0, y0, x1, y1] = b;
+    let [w, h] = map.size();
+    let mut beside = Vec::new();
+    if 0 < y0 {
+        beside.extend((x0..=x1).map(|x| (x, y0 - 1)));
+    }
+    if x1 + 1 < w {
+        beside.extend((y0..=y1).map(|y| (x1 + 1, y)));
+    }
+    if y1 + 1 < h {
+        beside.extend((x0..=x1).rev().map(|x| (x, y1 + 1)));
+    }
+    if 0 < x0 {
+        beside.extend((y0..=y1).rev().map(|y| (x0 - 1, y)));
+    }
+    for (x, y) in beside {
+        if sides.contains(&i16::from(map.terrain(x, y)?)) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// BUILD's placement test (`FUN_140e7a400`'s call of the master's slot 0x50, the building
 /// master's `FUN_14123aee0` with BUILD's flags: `p6` human, `p7`, `p8`, `p9` 1, `p10` 0, `p11` 1,
 /// no object of its own, `p13` 0, `p14` 1): 0 when the foundation may go to `p`, else the game's
@@ -529,11 +618,6 @@ pub fn build_placement(
     map: &dyn PlaceMap,
     p: [f32; 2],
 ) -> Result<u8, Unsupported> {
-    if site.placement_terrains {
-        return Err(Unsupported(
-            "BUILD's placement test with placement terrains",
-        ));
-    }
     let [x, y] = p;
     let [rx, ry] = site.clearance;
     let [w, h] = map.size();
@@ -543,6 +627,9 @@ pub fn build_placement(
     }
     let mut explored = false;
     let (x0, x1, y0, y1) = ((x - rx) as i32, far_x as i32, (y - ry) as i32, far_y as i32);
+    if !placement_terrains(site.placement, map, p, [x0, y0, x1, y1])? {
+        return Ok(1);
+    }
     // hill mode 3 measures the box's edge against the elevation of its first column's last row
     let base = if site.hill_mode == 3 {
         Some(map.elevation(x0, y1).ok_or(Unsupported(
@@ -697,16 +784,20 @@ pub fn placement(
     p: [f32; 2],
     zones: bool,
 ) -> Result<Tested, Unsupported> {
-    if me.placement_terrains {
-        return Err(Unsupported("a placement test with placement terrains"));
-    }
     let [x, y] = p;
     let [rx, ry] = me.radius;
     let [w, h] = map.size();
     let (far_x, far_y) = ((x + rx) - INSIDE, (y + ry) - INSIDE);
     // FUN_141123f80's own result: 0 free; the objects of its scan report the blocker (6)
     let mut base_blocker = None;
-    let base_free = if x - rx < 0.0 || w as f32 <= far_x || y - ry < 0.0 || h as f32 <= far_y {
+    let off_map = x - rx < 0.0 || w as f32 <= far_x || y - ry < 0.0 || h as f32 <= far_y;
+    let base_free = if off_map
+        || !placement_terrains(
+            me.placement,
+            map,
+            p,
+            [(x - rx) as i32, (y - ry) as i32, far_x as i32, far_y as i32],
+        )? {
         false
     } else {
         let (x0, y0, x1, y1) = ((x - rx) as i32, (y - ry) as i32, far_x as i32, far_y as i32);
@@ -805,6 +896,23 @@ pub(crate) struct WorldMap<'a> {
 }
 
 impl PlaceMap for WorldMap<'_> {
+    fn terrain_flags(&self, t: usize) -> Option<u8> {
+        self.turns
+            .spatial
+            .terrain
+            .as_ref()
+            .and_then(|m| m.terrains.get(t))
+            .map(|k| k.flags)
+    }
+
+    fn terrain_count(&self) -> usize {
+        self.turns
+            .spatial
+            .terrain
+            .as_ref()
+            .map_or(0, |m| m.terrains.len())
+    }
+
     fn size(&self) -> [i32; 2] {
         self.turns.spatial.map
     }
@@ -1513,7 +1621,7 @@ impl Turns {
             class: made.class,
             restriction,
             hill_mode: made.hill_mode,
-            placement_terrains: made.placement_terrains,
+            placement: made.placement,
         };
         let map = WorldMap { turns: self };
         let spatial = &self.spatial;
@@ -2374,7 +2482,7 @@ mod tests {
             obstructs: true,
             restriction: &[1.0],
             hill_mode: 0,
-            placement_terrains: false,
+            placement: [-1; 4],
             zones: false,
         };
         let test = |o: Near, masks: [u64; 2]| {
@@ -2448,7 +2556,7 @@ mod tests {
             class: 4,
             restriction: &[1.0],
             hill_mode: 0,
-            placement_terrains: false,
+            placement: [-1; 4],
         };
         let map = Flat(vec![sheep(2)]);
         let at = |x, y| placement(&villager, &map, [x, y], false).unwrap();
