@@ -1586,7 +1586,8 @@ impl Turns {
     }
 
     /// Slot 0x7e8 (`FUN_141227190`) of a unit on a target object: a unit in state 3 or later
-    /// ignores it; against an unallied target the unit's least range must not exceed the gap
+    /// ignores it; without a target the world holds (none, or one gone) the work command goes to
+    /// the point; against an unallied target the unit's least range must not exceed the gap
     /// (`FUN_1410862c0`); a villager drops its town-bell flag (`FUN_1412067f0`); then the work
     /// command; then it leaves the pasture it is in (`FUN_141189ca0`).
     pub(crate) fn order_work(
@@ -1603,9 +1604,20 @@ impl Turns {
         if 2 < unit.life.state {
             return Ok(());
         }
-        let (tp, _) = self.object(order.target).ok_or(Unsupported(
-            "an order to a point or to an object the slice does not hold",
-        ))?;
+        let Some((tp, _)) = self.object(order.target) else {
+            // no target, or one the world does not hold (slot 0x7e8 with none): the work command
+            // at the point
+            let order = Work {
+                target: -1,
+                ..*order
+            };
+            self.town_bell_order(player, idx, -1, order.filter)?;
+            self.work_command(player, idx, &order)?;
+            if self.players[player].objects[idx].my_pasture != -1 {
+                return Err(Unsupported("a unit that leaves its pasture"));
+            }
+            return Ok(());
+        };
         let world = World {
             players: &self.players,
             drop_sites: &self.drop_sites,
