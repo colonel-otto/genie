@@ -5121,8 +5121,12 @@ fn tech_differences(player: &Player, game: &genie_core::turn::GameState, p: usiz
     out
 }
 
-/// The slice from a save: [`objects_from_save`]'s run, every player's state after it.
-fn run_from_save(
+/// The slice from a save: [`objects_from_save`]'s run, every player's state after it. Dev only.
+///
+/// # Errors
+///
+/// When a save or the recording does not parse.
+pub fn run_from_save(
     save: &[u8],
     recording: &[u8],
     start_tick: usize,

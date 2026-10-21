@@ -110,6 +110,13 @@ pub struct Obstruction {
 }
 
 impl Obstruction {
+    /// `FUN_141056460`'s first test: a master of obstruction kind 0 or 12, or of class 0, gets
+    /// neither a record nor a mesh shape.
+    #[must_use]
+    pub const fn recorded(self) -> bool {
+        self.kind != 0 && self.kind != 12 && self.class != 0
+    }
+
     /// The kinds that mark the tiles under them (`FUN_141056460`: 0, 1, 2, 11, 13 and 10, which the
     /// game files as 2).
     const fn marks_tiles(self) -> bool {

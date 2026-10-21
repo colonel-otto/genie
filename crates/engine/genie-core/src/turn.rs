@@ -9826,7 +9826,8 @@ impl Turns {
     /// `BaseWorld::update` after player `p` updated (not Gaia): each open player `q`'s gates close
     /// (`q`'s slot 0x320, `FUN_141619480`) unless the next player counts `q` an ally and is
     /// counted one by it (they stay open for it): each gate `p` may pass gets its record, its
-    /// tiles' marks and its mesh shape again (`FUN_141056460`).
+    /// tiles' marks and its mesh shape again (`FUN_141056460`), but for a part of obstruction
+    /// kind 0 or 12 or of class 0 ([`crate::spatial::Obstruction::recorded`]).
     fn close_gates(&mut self, p: usize, open: &mut [bool]) {
         if p == 0 {
             return;
@@ -9855,10 +9856,12 @@ impl Turns {
                     kind: m.obstruction_type,
                     class: m.obstruction_class,
                 };
-                if self
-                    .spatial
-                    .get(id)
-                    .is_some_and(|g| g.obstruction.is_none())
+                // a gate part of obstruction kind 0 (the gate's middle, master 91) gets none
+                if record.recorded()
+                    && self
+                        .spatial
+                        .get(id)
+                        .is_some_and(|g| g.obstruction.is_none())
                 {
                     self.spatial.add_record(id, record);
                     if let Some(placed) = self.spatial.get(id).copied() {
