@@ -451,7 +451,7 @@ impl Turns {
             return Ok(());
         };
         if q.tech != -1 {
-            return Err(Unsupported("a cancelled research (FUN_1411d61e0)"));
+            return self.cancel_research(p, idx, index, all, &production);
         }
         if all {
             return Err(Unsupported(
@@ -470,6 +470,83 @@ impl Turns {
             if let Some(production) = self.players[p].objects[idx].production.as_mut() {
                 production.action = false;
                 production.progress = 0.0;
+            }
+        }
+        Ok(())
+    }
+
+    /// A research's cancel (`FUN_1411d66b0`'s branch for a technology, then `FUN_1411d61e0` with
+    /// it and one): the first item's research action, when it runs, loses its progress
+    /// (`+0x70`) and the technology its work done; the queue entry's payment comes back
+    /// (`FUN_1413d15e0`: each cost entry's amount to its attribute) and the technology is in state
+    /// 1 again with no work done; its researches queued (`+0x58`) lose one and the queue lets it
+    /// go. For the first item the research action goes (`FUN_140a98620`): its destructor
+    /// (`FUN_140ad0be0`, while the game is not over) finds nothing left to refund
+    /// (`FUN_1413ccc00` on a technology in state 1) and tells the building's unit AI the action
+    /// failed (`0x1f9` with `0x26c`). Not held: the building's list of its researches (`+0xd00`,
+    /// `FUN_1411c5250`), the interface's `+0xc02`; not modelled: costs the building paid (flag 2,
+    /// `FUN_1411c7a00`), the cancel of up to five (`all`), a repeatable technology's tail of the
+    /// destructor.
+    fn cancel_research(
+        &mut self,
+        p: usize,
+        idx: usize,
+        index: usize,
+        all: bool,
+        production: &crate::production::Production,
+    ) -> Result<(), Unsupported> {
+        if all {
+            return Err(Unsupported(
+                "a cancel of up to five researches (FUN_1411d61e0)",
+            ));
+        }
+        let q = production.queue[index];
+        let t = usize::try_from(q.tech)
+            .ok()
+            .filter(|&t| t < self.players[p].techs.len())
+            .ok_or(Unsupported("a cancelled research beyond the tech tree"))?;
+        let def = self
+            .techs
+            .get(t)
+            .ok_or(Unsupported("a technology the data file has not got"))?;
+        if def.costs.iter().any(|c| c.paid == 2) {
+            return Err(Unsupported(
+                "a cancelled research whose costs the building paid (FUN_1411c7a00)",
+            ));
+        }
+        let started = index == 0 && production.action;
+        // the player's +0x648, which the destructor's tail also reads, is 0 for every player probed
+        if started && self.players[p].techs[t].repeatable(def, false) {
+            return Err(Unsupported(
+                "a cancelled repeatable research (its action's destructor's tail)",
+            ));
+        }
+        for &(attribute, amount) in &q.costs {
+            if let Some(attribute) = i16::try_from(attribute).ok().filter(|&a| 0 <= a) {
+                self.players[p].add_attribute(attribute, amount)?;
+            }
+        }
+        let tech = &mut self.players[p].techs[t];
+        tech.research_done = 0.0;
+        tech.state = 1;
+        tech.pending -= 1;
+        let building = &mut self.players[p].objects[idx];
+        if let Some(production) = building.production.as_mut() {
+            let _ = production.queue.remove(index);
+            if started {
+                production.action = false;
+                production.progress = 0.0;
+            }
+        }
+        if started && self.game_state == 0 {
+            let (id, state) = (building.id, building.life.state);
+            if let Some(ai) = building.ai.as_mut() {
+                let n = crate::unit_ai::Notify::own(
+                    id,
+                    crate::unit_ai::ACTION_FAILED,
+                    [crate::turn::RESEARCH_ACTION, 0, 0],
+                );
+                ai.post(n, state)?;
             }
         }
         Ok(())
