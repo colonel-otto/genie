@@ -37,6 +37,8 @@ const INSIDE: f32 = crate::image::spawn::INSIDE;
 
 /// A building's master type (`'P'`).
 const BUILDING: u8 = 80;
+/// A combat unit's master type (`'F'`, `TRIBE_Master_Combat_Object`).
+const TRIBE_COMBAT: u8 = 70;
 /// The wall class, which the search checks the building's corners for (`FUN_1415417f0`).
 pub const WALL: i16 = 27;
 /// Classes the placement tests treat apart: a tree placed (15) passes over farms (49); buildings
@@ -1086,16 +1088,8 @@ impl Turns {
     }
 
     /// `FUN_140ad0240`: the unit of `master` spawns beside the building at `i`. The spawn point
-    /// ([`spawn_point`], from `FUN_140ace630`), then the master's slot 0x40 (`0x141266120`): the
-    /// combat object's setups in order (static `FUN_1411a45a0`, animated `FUN_141072690`, moving
-    /// `FUN_141161450`, combat `FUN_14121df60`) with their draws: the facet (Object stream, for a
-    /// standing sprite with a random first frame and several facets), the standing sprite
-    /// ([`ActiveSprite::start`], Sprite stream), the angle (Object stream, sequence flag 2), the
-    /// unit AI ([`UnitAi::constructed`], three AI-stream draws) and the powerup offset (Object
-    /// stream). The object takes its place, its record and mesh shape, its sight and its storage
-    /// (flags 1, 2 and 32, `FUN_141193860`); its player's attributes 98 and 164 (and 246 under
-    /// [`Turns::unit_cost_246`]) grow by its paid cost and a villager's (class 4) attribute 248 by
-    /// one. Then attribute 81 lowers by its population, the building notifies its unit AI 506
+    /// ([`spawn_point`], from `FUN_140ace630`), then the master's slot 0x40 at the building's
+    /// height ([`Turns::combat_object`]). Then attribute 81 lowers by its population, the building notifies its unit AI 506
     /// with 619, and the gather point's work comes (`FUN_140ace9c0`): `+0x7f9` (waiting to move)
     /// set, the work command on the gather point's target at the point (slot 0x128 with 1). A
     /// building without a gather point (`+0xc30` 0) spawns the unit idle, its spot facing nothing;
@@ -1134,10 +1128,70 @@ impl Turns {
         let toward = gather
             .filter(|g| g.target != building.id)
             .map(|g| [g.point[0], g.point[1]]);
+        if made.moving.is_none() {
+            return Err(Unsupported("a new unit of a master that does not move"));
+        }
+        let point = self.spot_beside(p, i, &made, toward)?;
+        let new = self.combat_object(p, master, &made, [point[0], point[1], position[2]])?;
+        let owner = &mut self.players[p];
+        owner.add_attribute(IN_PRODUCTION, -pop)?;
+        let (building_id, state) = (owner.objects[i].id, owner.objects[i].life.state);
+        if let Some(ai) = owner.objects[i].ai.as_mut() {
+            ai.post(
+                Notify::own(building_id, ACTION_COMPLETED, [MAKE_ACTION, 0, 0]),
+                state,
+            )?;
+        }
+        if let Some(gather) = gather {
+            self.gather(p, new, gather, building_id, true, true)?;
+        }
+        // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)
+        let now = self.players[p].objects[new].life.master_id;
+        if self
+            .master_of(p, now)?
+            .tasks
+            .iter()
+            .any(|t| t.action_type == 0x9c)
+        {
+            return Err(Unsupported("a new unit's task that spawns more units"));
+        }
+        Ok(())
+    }
+
+    /// The master's slot 0x40 for a combat unit (type 70, `0x141266120`, the constructor
+    /// `FUN_1411eae40` with its setups) of `master` for player `p` at `position`: the setups in
+    /// order (static `FUN_1411a45a0`, animated `FUN_141072690`, moving `FUN_141161450`, combat
+    /// `FUN_14121df60`) with their draws: the facet (Object stream, for a standing sprite with a
+    /// random first frame and several facets), the standing sprite ([`ActiveSprite::start`],
+    /// Sprite stream), the angle (Object stream, sequence flag 2), the unit AI
+    /// ([`UnitAi::constructed`], three AI-stream draws) and the powerup offset (Object stream).
+    /// The object takes its place, its record and mesh shape, its sight and its storage (flags 1,
+    /// 2 and 32, `FUN_141193860`); its player's attributes 98 and 164 (and 246 under
+    /// [`Turns::unit_cost_246`]) grow by its paid cost and a villager's (class 4) attribute 248 by
+    /// one. It joins its player's list last; its index there.
+    pub(crate) fn combat_object(
+        &mut self,
+        p: usize,
+        master: i16,
+        made: &crate::masters::Master,
+        position: [f32; 3],
+    ) -> Result<usize, Unsupported> {
+        if self.players[p].computer {
+            return Err(Unsupported(
+                "a computer player's new unit (its AI's slot 0x398)",
+            ));
+        }
+        if self.spatial.sight.is_none() {
+            return Err(Unsupported("a spawn without the players' sight"));
+        }
+        if made.recyclable {
+            return Err(Unsupported(
+                "a new object of a recyclable master (a negative id)",
+            ));
+        }
         let moving = made
             .moving
             .ok_or(Unsupported("a new unit of a master that does not move"))?;
-        let point = self.spot_beside(p, i, &made, toward)?;
         let ai_type = factory_type(made.class, master, made.missile)?
             .ok_or(Unsupported("a new combat unit without a unit AI"))?;
         let standing = (0 <= made.standing_sprite)
@@ -1148,7 +1202,6 @@ impl Turns {
             ))?;
         let id = self.next_object_id;
         self.next_object_id += 1;
-        let position = [point[0], point[1], position[2]];
         // the setups' draws
         if standing.flags & 4 != 0 && 1 < standing.facets {
             let _ = self.streams.get(Stream::Object).rand15();
@@ -1276,29 +1329,7 @@ impl Turns {
             firepower: made.volley_fire,
             ..Unit::default()
         });
-        let new = owner.objects.len() - 1;
-        owner.add_attribute(IN_PRODUCTION, -pop)?;
-        let (building_id, state) = (owner.objects[i].id, owner.objects[i].life.state);
-        if let Some(ai) = owner.objects[i].ai.as_mut() {
-            ai.post(
-                Notify::own(building_id, ACTION_COMPLETED, [MAKE_ACTION, 0, 0]),
-                state,
-            )?;
-        }
-        if let Some(gather) = gather {
-            self.gather(p, new, gather, building_id, true, true)?;
-        }
-        // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)
-        let now = self.players[p].objects[new].life.master_id;
-        if self
-            .master_of(p, now)?
-            .tasks
-            .iter()
-            .any(|t| t.action_type == 0x9c)
-        {
-            return Err(Unsupported("a new unit's task that spawns more units"));
-        }
-        Ok(())
+        Ok(owner.objects.len() - 1)
     }
 
     /// `FUN_1411d12d0` for a unit of `made` beside the building at `i` of player `p`, `toward`
@@ -1372,10 +1403,12 @@ impl Turns {
     /// (`FUN_14152fd70`), its place, record and mesh shape (slot 0x58), its sight and its storage
     /// (flags 1, 2 and 32 to its owner, `FUN_141193860`; the last entry of flag 0 held,
     /// `FUN_141193710`); it takes the dead object's facet (`FUN_14119d490`, `FUN_14114d780`). It
-    /// joins the owner's list and updates later in the same tick. Only remains of type 10 (a
-    /// static object, `FUN_141126300` -> `FUN_141169580`: no moving setup, its death on the
-    /// sprite after it with a random facet) and of types 20 to 39 without hit points are modelled
-    /// (with hit points it would sleep); not held: its facet, angle and sprite.
+    /// joins the owner's list and updates later in the same tick. Remains of type 10 (a static
+    /// object, `FUN_141126300` -> `FUN_141169580`: no moving setup, its death on the sprite after
+    /// it with a random facet), of types 20 to 39 without hit points (with hit points it would
+    /// sleep) and of type 70 (a combat unit, [`Turns::combat_object`]: a placeholder villager's
+    /// death spawn, masters 1875 and 1876, is a villager) are modelled; not held: its facet,
+    /// angle and sprite.
     pub(crate) fn remains(
         &mut self,
         p: usize,
@@ -1386,6 +1419,28 @@ impl Turns {
         let made = self.master_of(p, master)?.clone();
         if made.kind == BUILDING {
             return self.new_building(p, &made, at);
+        }
+        if made.kind == TRIBE_COMBAT {
+            let new = self.combat_object(p, master, &made, at)?;
+            // a moving dead object's override (FUN_14119d490, FUN_14114d780): the new unit takes
+            // its facet's angle
+            if let Some(facet) = facet {
+                let standing = self.graphics.get(&made.standing_sprite).copied();
+                let own = standing.map_or(
+                    crate::facing::SpriteFacets {
+                        count: 0,
+                        flag_1: false,
+                    },
+                    |g| crate::facing::SpriteFacets {
+                        count: g.facets,
+                        flag_1: g.flags & 2 != 0,
+                    },
+                );
+                if let Some(m) = self.players[p].objects[new].mover.as_mut() {
+                    m.angle = crate::facing::angle_of_facet(facet, own);
+                }
+            }
+            return Ok(());
         }
         if made.kind != 10 && !(20..40).contains(&made.kind) {
             return Err(Unsupported("remains of a type other than 10 and 20 to 39"));

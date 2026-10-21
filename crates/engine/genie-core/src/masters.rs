@@ -44,6 +44,9 @@ pub struct Task {
     pub work_val2: f32,
     /// `+0x30`: how near the target the work is done.
     pub work_range: f32,
+    /// `+0x34`, `work_flag` (the `.dat`'s `gather_type`): a Make adds to its player's attribute,
+    /// not to its object's holding ([`crate::make`]).
+    pub work_flag: i16,
     /// `+0x38`, `enablement_resource_id` (`enabled`): the resource that enables the task, -1 none.
     pub enablement: i16,
     /// `+0x40`..`+0x58`: the moving, proceeding, working and carrying sprites (graphic ids, -1 for
@@ -71,8 +74,42 @@ impl Default for Task {
             work_val1: 0.0,
             work_val2: 0.0,
             work_range: 0.0,
+            work_flag: 0,
             enablement: -1,
             sprites: [-1; 4],
+        }
+    }
+}
+
+/// The task types the action list's factory makes an action of: the TRIBE factory's
+/// (`FUN_140aca4b0`) and the RGE factory's it falls back on (`FUN_140a97e00`). A default task of
+/// any other type starts nothing (wild animals' Explore, type 6).
+pub const ACTION_FACTORY_TYPES: [i16; 28] = [
+    3, 0xc, 0xe, 0x65, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6e, 0x6f, 0x78, 0x79, 0x7a, 0x7b, 0x7d,
+    0x83, 0x84, 0x87, 0x88, 0x95, 0x9a, 4, 5, 7, 10, 0xd, 0x15,
+];
+
+impl Master {
+    /// Its default task (`FUN_14109e0c0`: the task list's entry at the default task's index,
+    /// `+0x788`), if it has one.
+    #[must_use]
+    pub fn default_task(&self) -> Option<&Task> {
+        self.tasks.get(usize::try_from(self.default_task?).ok()?)
+    }
+
+    /// What a new object of this master starts once its action list is empty in state 2
+    /// (`RGE_Action_Object::update`, slot 0x7f0): a Make ([`crate::make`]: true), or the
+    /// default task's action the slice does not model; nothing for a type the factory makes no
+    /// action of.
+    #[must_use]
+    pub fn default_start(&self) -> (bool, Option<Unsupported>) {
+        match self.default_task() {
+            Some(t) if t.action_type == crate::make::MAKE => (true, None),
+            Some(t) if ACTION_FACTORY_TYPES.contains(&t.action_type) => (
+                false,
+                Some(Unsupported("a new object's default task other than a Make")),
+            ),
+            _ => (false, None),
         }
     }
 }
@@ -144,6 +181,9 @@ pub struct Master {
     pub combat_level: u8,
     /// Its task list.
     pub tasks: Vec<Task>,
+    /// `+0x790`, `default_task`: the id of the task its object's empty action list starts in
+    /// state 2 (`RGE_Action_Object::update`, slot 0x7f0); None for the game's −1.
+    pub default_task: Option<i16>,
     /// The build cost `(resource, amount, paid)`.
     pub cost: Vec<(i16, i16, bool)>,
     /// `work_rate` (`+0x798`): what a builder of this master adds to the work per second.

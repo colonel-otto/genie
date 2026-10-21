@@ -54,6 +54,7 @@ pub mod image;
 pub mod lifecycle;
 pub mod long_path;
 pub mod los_tables;
+pub mod make;
 pub mod masters;
 pub mod mesh;
 pub mod missile;

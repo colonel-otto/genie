@@ -368,13 +368,14 @@ fn unit(
         default_task(object, s, objects, civ, masters).map(|d| match d {
             Some(DefaultStart::Artifact(a)) => unit.artifact = Some(a),
             Some(DefaultStart::Fly(task)) => unit.default_fly = Some(task),
+            Some(DefaultStart::Make) => unit.default_make = true,
             None => {}
         })
     };
     // what the default task starts once the action list empties: nothing, a Fly, the Artifact
     // (whose restart the slice does not model) or something not modelled
     unit.default_task = match default_task(object, s, objects, civ, masters) {
-        Ok(None | Some(DefaultStart::Fly(_))) => None,
+        Ok(None | Some(DefaultStart::Fly(_) | DefaultStart::Make)) => None,
         Ok(Some(DefaultStart::Artifact(_))) => Some(Unsupported(
             "the default task's restart (the Artifact action)",
         )),
@@ -800,8 +801,9 @@ fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
 
 /// The top action of a saved object as the slice models it: the Artifact action (107), the
 /// Build action (101) with its `MoveTo`, a `MoveTo` of its own (type 1), a bird's Fly action (10)
-/// with its `MoveTo` and the Hunt (110) with its Attack or `MoveTo` (and in state 8 its second
-/// target, the drop site). Any other saved action stops the object's player.
+/// with its `MoveTo`, the Hunt (110) with its Attack or `MoveTo` (and in state 8 its second
+/// target, the drop site) and a farm's Make (21). Any other saved action stops the object's
+/// player.
 #[allow(clippy::too_many_arguments)]
 fn saved_actions(
     object: &genie_save::Object,
@@ -981,6 +983,23 @@ fn saved_actions(
                     origin: genie_core::missile::Origin::from_bytes(&ma.projectile_data),
                     met: Vec::new(),
                 }),
+            });
+            Ok(())
+        }
+        genie_core::make::MAKE => {
+            let make = action
+                .rge_action_by_type
+                .as_deref()
+                .and_then(|t| t.rge_action_make.as_deref())
+                .ok_or(Unsupported("a saved Make without its part"))?;
+            if base.sub_actions.entries().next().is_some() {
+                return Err(Unsupported("a saved Make with a sub-action"));
+            }
+            unit.make = Some(genie_core::make::MakeAction {
+                state: base.state,
+                remaining: base.timer,
+                total: make.work_timer,
+                task: task_at(s.master_obj, base.short_val)?,
             });
             Ok(())
         }
@@ -1589,6 +1608,8 @@ enum DefaultStart {
     Artifact(genie_core::artifact::Artifact),
     /// A bird's Fly (type 10) with its task.
     Fly(genie_core::masters::Task),
+    /// A farm's or fish trap's Make (type 21).
+    Make,
 }
 
 /// What an object's first update starts of its master's default task (`RGE_Action_Object::update`,
@@ -1624,21 +1645,17 @@ fn default_task(
         DefaultAction::Type(genie_core::fly::FLY) => {
             fly_task(objects, civ, masters, s.master_obj).map(|t| Some(DefaultStart::Fly(t)))
         }
+        DefaultAction::Type(genie_core::make::MAKE) => Ok(Some(DefaultStart::Make)),
         // the action list's factory (`FUN_140aca4b0`, then the RGE one `FUN_140a97e00`) makes
         // no action of the other types: the default task starts nothing (wild animals' Explore,
         // type 6)
-        DefaultAction::Type(t) if !FACTORY_TYPES.contains(&t) => Ok(None),
+        DefaultAction::Type(t) if !ACTION_FACTORY_TYPES.contains(&t) => Ok(None),
         DefaultAction::Type(_) => Err(Unsupported("a default task other than the Artifact action")),
         DefaultAction::NoSuchTask => Err(Unsupported("a default task id that names no task")),
     }
 }
 
-/// The task types the action list's factory makes an action of: the TRIBE factory's
-/// (`FUN_140aca4b0`) and the RGE factory's it falls back on (`FUN_140a97e00`).
-const FACTORY_TYPES: [i16; 28] = [
-    3, 0xc, 0xe, 0x65, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6e, 0x6f, 0x78, 0x79, 0x7a, 0x7b, 0x7d,
-    0x83, 0x84, 0x87, 0x88, 0x95, 0x9a, 4, 5, 7, 10, 0xd, 0x15,
-];
+use genie_core::masters::ACTION_FACTORY_TYPES;
 
 /// Whether the object runs `RGE_Action_Object::update`: types 40 (action), 50 (combat), 60
 /// (missile), 70 (tribe combat) and 80 (building).
@@ -2316,6 +2333,7 @@ const fn core_task(t: &genie_save::generated::world::Task) -> genie_core::master
         work_val1: t.work_val1,
         work_val2: t.work_val2,
         work_range: t.work_range,
+        work_flag: t.work_flag,
         enablement: t.enablement_resource_id,
         sprites: [t.short_val, t.short_val_2, t.short_val_3, t.short_val_4],
     }

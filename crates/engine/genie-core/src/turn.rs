@@ -166,6 +166,12 @@ pub struct Unit {
     /// The Fly task its master's default task starts once its action list is empty (a bird at
     /// a game's start, before its first update).
     pub default_fly: Option<crate::masters::Task>,
+    /// Its master's default task is a Make, which starts once its action list is empty in
+    /// state 2 (a farm or fish trap before its first update as a built building), with the task
+    /// its master holds then.
+    pub default_make: bool,
+    /// A farm's or fish trap's Make action, its top action ([`crate::make`]).
+    pub make: Option<crate::make::MakeAction>,
     /// The slice could not model one of its updates: it freezes (its place is known only within
     /// its speed since) while the rest of its player's objects go on.
     pub stopped: bool,
@@ -1585,7 +1591,8 @@ impl Unit {
         match self.top_action_kind() {
             None => Ok(true),
             Some(crate::artifact::ARTIFACT_TYPE) => Ok(self.artifact.is_some_and(|a| a.idle())),
-            Some(crate::move_to::MOVE_TO) => Ok(false),
+            // a Make has no target, but its point (`+0x38`) is the base constructor's 0.0
+            Some(crate::move_to::MOVE_TO | crate::make::MAKE) => Ok(false),
             Some(_) => Err(Unsupported(
                 "slots 0x190 and 0x288 of an action the slice does not model",
             )),
@@ -1626,6 +1633,7 @@ impl Unit {
                 .and_then(|m| m.action.as_ref())
                 .map(|a| action(crate::missile::MISSILE, a.state))
         })
+        .or_else(|| self.make.map(|m| action(crate::make::MAKE, m.state)))
     }
 
     /// The target of its top action ([`Unit::top_action`]), −1 for an action without one (an
@@ -1650,6 +1658,7 @@ impl Unit {
                     .and_then(|m| m.action.as_ref())
                     .map(|a| a.target)
             })
+            .or_else(|| self.make.map(|_| -1))
     }
 
     /// The second target of its top action (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's
@@ -4891,6 +4900,8 @@ impl Unit {
             {
                 m.stop()?;
             }
+            // a Make's teardown is the base one's: it holds no target
+            self.make = None;
             // a MoveTo of its own: its teardown stops the unit, and the base teardown
             // (FUN_140a73fc0) lets its target go (slot 0x180; its `+0x60` is 0)
             if let Some(move_to) = self.move_to.take() {
@@ -4925,6 +4936,28 @@ impl Unit {
         {
             self.start_fly(c, task)?;
             flies_from_now = true;
+        }
+        let mut makes_from_now = false;
+        if self.life.state == 2
+            && self.top_action_kind().is_none()
+            && self.production.is_none()
+            && std::mem::take(&mut self.default_make)
+        {
+            let task = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .and_then(Master::default_task)
+                .copied()
+                .ok_or(Unsupported("a Make whose master the slice does not have"))?;
+            self.make = Some(crate::make::MakeAction::start(
+                task,
+                c.attributes,
+                &mut crate::make::Held {
+                    attribute_type: &mut self.life.attribute_type,
+                    amount: &mut self.life.amount,
+                },
+            ));
+            makes_from_now = true;
         }
         if self.life.state == 2
             && self.top_action_kind().is_none()
@@ -5220,6 +5253,39 @@ impl Unit {
                     crate::unit_ai::ACTION_FAILED,
                     [crate::unit_ai::MOVE_ACTION, 0, 0],
                 )?;
+            }
+        }
+        if let Some(make) = self.make.as_mut().filter(|_| !makes_from_now) {
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(Unsupported("a Make of a master the slice does not have"))?;
+            let farm = crate::make::Farm {
+                master_id: master.id,
+                kind: master.kind,
+                class: master.class,
+                work_rate: master.work_rate + self.work_rate_powerup,
+                capacity: master.capacity,
+                dt: c.dt_seconds,
+            };
+            let step = make.update(
+                &mut crate::make::Held {
+                    attribute_type: &mut self.life.attribute_type,
+                    amount: &mut self.life.amount,
+                },
+                farm,
+            );
+            if let Some(add) = step.to_player {
+                c.attribute_adds.push(add);
+            }
+            // slot 0xd8 (FUN_14118f580): no hit points left; the object is in its list, so not
+            // asleep, and the special-object list (+0x30c bit 0) is not held
+            if step.exhausted {
+                self.life.hp = 0.0;
+            }
+            // the action list's result 1 removes it (FUN_140a98e20)
+            if step.done {
+                self.make = None;
             }
         }
         if self.gather.is_some() {
@@ -7349,6 +7415,12 @@ impl Turns {
                 }
                 let id = self.next_object_id;
                 self.next_object_id += 1;
+                // what its first update as a built building starts (slot 0x7f0)
+                let (default_make, default_task) = self
+                    .masters
+                    .get(player)
+                    .and_then(|m| m.get(master))
+                    .map_or((false, None), Master::default_start);
                 let ai = unit_ai.and_then(|t| {
                     t.map(|t| UnitAi::constructed(t, position, self.streams.get(Stream::Ai)))
                         .transpose()
@@ -7439,8 +7511,10 @@ impl Turns {
                     }),
                     workers: 0,
                     combat: true,
-                    default_task: None,
+                    default_task,
                     default_fly: None,
+                    default_make,
+                    make: None,
                     stopped: false,
                     sprite: None,
                     anim_speed: None,
@@ -9976,6 +10050,89 @@ mod tests {
             ..Lifecycle::default()
         };
         assert_eq!(run(with_task(dying)), None);
+    }
+
+    /// Build 158041's farm (master 50): its default task 0 is a Make of the farm food kind 16
+    /// at `work_val1` 1.0, its work rate 0.4 a second, its capacity 15.
+    fn farm_master() -> Master {
+        Master {
+            id: 50,
+            kind: 80,
+            class: crate::gather::FARM_CLASS,
+            work_rate: 0.4,
+            capacity: 15,
+            default_task: Some(0),
+            tasks: vec![crate::masters::Task {
+                action_type: crate::make::MAKE,
+                attribute_type: crate::make::FARM_FOOD_KIND,
+                attribute_type2: 0,
+                work_val1: 1.0,
+                ..crate::masters::Task::default()
+            }],
+            ..Master::default()
+        }
+    }
+
+    #[test]
+    fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
+        let farm = Unit {
+            id: 40,
+            life: Lifecycle {
+                master_id: 50,
+                attribute_type: 0,
+                amount: 15.0,
+                ..Lifecycle::default()
+            },
+            default_make: true,
+            ..Unit::default()
+        };
+        let mut attributes = vec![0.0; 100];
+        attributes[crate::make::FARM_FOOD] = 175.0;
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0],
+            vec![Player {
+                objects: vec![farm],
+                attributes,
+                ..Player::default()
+            }],
+        );
+        t.masters = vec![Masters::new([farm_master()])];
+        t.tick(104);
+        let f = &t.players[0].objects[0];
+        let make = f.make.unwrap();
+        assert_eq!((make.state, make.remaining, make.total), (6, 175.0, 175.0));
+        assert_eq!((f.life.attribute_type, f.life.amount), (16, 0.0));
+        assert_eq!(
+            f.top_action(),
+            Some(TopAction {
+                kind: crate::make::MAKE,
+                state: 6
+            })
+        );
+        t.tick(104);
+        let f = &t.players[0].objects[0];
+        let made = 0.4f32 * 1.0 * seconds(104);
+        assert_eq!(
+            (f.life.amount, f.make.unwrap().remaining),
+            (made, 175.0 - made)
+        );
+        assert!(t.players[0].unsupported.is_none());
+    }
+
+    #[test]
+    fn a_built_farm_s_master_starts_a_make_and_another_default_task_is_reported() {
+        assert_eq!(farm_master().default_start(), (true, None));
+        let mut other = farm_master();
+        other.tasks[0].action_type = crate::fly::FLY;
+        assert!(other.default_start().1.is_some());
+        // a type the factories make nothing of starts nothing (a wild animal's Explore, 6)
+        other.tasks[0].action_type = 6;
+        assert_eq!(other.default_start(), (false, None));
+        other.default_task = None;
+        assert_eq!(other.default_start(), (false, None));
     }
 
     fn town_centre(id: i32) -> Unit {

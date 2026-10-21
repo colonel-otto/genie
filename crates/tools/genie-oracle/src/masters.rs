@@ -81,6 +81,7 @@ fn dat_task(t: &genie_dat::de::Task) -> work::Task {
         work_val1: t.work_value1,
         work_val2: t.work_value2,
         work_range: t.work_range,
+        work_flag: t.gather_type,
         enablement: t.enabled.unwrap_or(-1),
         sprites: [
             t.moving_graphic_id,
@@ -119,6 +120,11 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             .bird
             .as_ref()
             .map_or_else(Vec::new, |b| b.tasks.iter().map(dat_task).collect()),
+        default_task: unit
+            .bird
+            .as_ref()
+            .map(|b| b.default_task_id)
+            .filter(|&t| 0 <= t),
         cost,
         work_rate: unit.bird.as_ref().map_or(0.0, |b| b.work_rate),
         drop_sites: unit
