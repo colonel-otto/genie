@@ -1025,6 +1025,22 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
 }
 
 impl crate::unit_ai::UnitSide for UnitView<'_> {
+    /// Slot 0x278 (`FUN_141158720`, [`Spatial::point_clear`]): the unit, of its radius and its
+    /// restriction's terrain classes, could stand at `point`.
+    fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, Unsupported> {
+        let unit = &*self.unit;
+        let mover = unit
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("a stand test of a unit without movement state"))?;
+        self.spatial.point_clear(
+            unit.id,
+            point,
+            mover.stats.radius[0],
+            mover.stats.restriction_mask,
+        )
+    }
+
     /// The base handler's case 0x216: the unit's closest spot beside the foundation `site`
     /// ([`Spatial::spot_off`] with the notify's radii; none without the foundation), its height
     /// and class, its owner, the foundation and its current action's target as orders name them.

@@ -352,6 +352,20 @@ pub struct Hunted {
 /// The hunted animal evades by its speed times this (`FUN_140c1eea0`, `DAT_142eb1c98`), and a
 /// point at the map's far edge goes this far in (`FUN_140c4d140`, `DAT_14330eb8c`).
 const EVADE_REACH: f32 = crate::image::unit_ai::EVADE_REACH;
+/// `runAwayFromAttackers` (`FUN_140c5e900`): the run is the unit's speed times this
+/// (`DAT_142e8c150`); attackers closer together than `RUN_EPSILON` (`DAT_142eb0c60`) give a random
+/// direction, each part `2 r / RUN_DRAW_SCALE - RUN_ONE` (`DAT_142eb69cc`, `DAT_14330eb8c`); a
+/// defensive unit runs at most `RUN_LEASH` (`DAT_14330ebb8`) from its state position.
+const RUN_REACH: f32 = crate::image::unit_ai::RUN_REACH;
+const RUN_EPSILON: f32 = crate::image::unit_ai::RUN_EPSILON;
+const RUN_DRAW_SCALE: f32 = crate::image::unit_ai::RUN_DRAW_SCALE;
+const RUN_ONE: f32 = crate::image::unit_ai::RUN_ONE;
+const RUN_LEASH: f32 = crate::image::unit_ai::RUN_LEASH;
+/// `evasiveMoveTo` (`FUN_140c4d140`): a coordinate that is not a number becomes the unit's own
+/// plus one, or minus one above this (`DAT_14330ebb8`).
+const EVASIVE_NEAR: f32 = crate::image::unit_ai::EVASIVE_NEAR;
+/// The class whose attackers make a computer's unit warn its group (`FUN_140c5e900`: 22).
+const CLASS_22: i16 = 22;
 const EVADE_EDGE: f32 = crate::image::unit_ai::EVADE_EDGE;
 
 /// The classes a hunted animal cares about (`+0x190`, the constructor's list).
@@ -1055,6 +1069,15 @@ pub trait UnitSide {
         _radius: [f32; 2],
     ) -> Result<OffFootprint, Unsupported> {
         Err(Unsupported("a unit sent off a footprint without the world"))
+    }
+
+    /// The unit's slot 0x278: whether it could stand at `point`.
+    ///
+    /// # Errors
+    ///
+    /// What the test does not model.
+    fn can_stand(&mut self, _point: [f32; 2]) -> Result<bool, Unsupported> {
+        Err(Unsupported("a stand test without the world"))
     }
 }
 
@@ -2713,6 +2736,175 @@ impl UnitAi {
         }
     }
 
+    /// The hunted animal's damage notify (`FUN_140c26420`, case 500, "I took some damage from
+    /// Unit #%d"): at no hit points left (`p[1]` below 1) it gives up: the notifies end
+    /// (`FUN_140c5dc10`) and it returns 4. Else the attacker joins its attackers
+    /// (`FUN_140b43f30`), the unit is under attack (`FUN_14119d2d0` with 1) and it runs from its
+    /// attackers ([`UnitAi::run_away`]), unconditionally unless its action is 0x25f or 0x268 or
+    /// its class 59; it returns 3. The owner's alert (slot 0x2e8 with 0x201) of an animal that is
+    /// not Gaia's is not modelled.
+    #[allow(clippy::too_many_arguments)]
+    fn hunted_damaged(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        if n.p[1] < 1 {
+            self.end_notifies(time, at, fx)?;
+            return Ok(DEAD);
+        }
+        if at.player != 0 {
+            return Err(Unsupported(
+                "a player's hunted animal under attack (its owner's alert, slot 0x2e8)",
+            ));
+        }
+        if let Err(i) = self.attackers.binary_search(&n.caller) {
+            self.attackers.insert(i, n.caller);
+        }
+        side.set_under_attack(true);
+        let uncon = !(matches!(self.current_action, 0x25f | 0x268) || at.class == CLASS_KING);
+        let _ = self.run_away(uncon, at, computer, ai_rng, side, fx)?;
+        Ok(BREAK)
+    }
+
+    /// `runAwayFromAttackers` (`FUN_140c5e900`) with no unit to run from but its attackers: a
+    /// unit in stand ground or no attack (stances 2 and 3) of a player other than Gaia stays, and
+    /// so does one with an action value unless `uncon`. Else it runs away from the sum of the
+    /// vectors to its attackers the world holds (a random one when they cancel out: two draws of
+    /// the AI stream), by twice its speed, a defensive unit of a player at most 5 tiles from its
+    /// state position, through `evasiveMoveTo` with both its flags ([`UnitAi::evasive_move`]).
+    /// A computer's unit attacked by class 22 (its group's runs) and a computer's transport
+    /// ship are not modelled; neither are unit groups (`+0x6d0`). True when the unit moves.
+    fn run_away(
+        &mut self,
+        uncon: bool,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        if matches!(self.stance, 2 | 3) && at.player != 0 {
+            return Ok(false);
+        }
+        if !uncon && self.current_action != -1 {
+            return Ok(false);
+        }
+        let [x, y, z] = at.position;
+        let (mut vx, mut vy) = (0.0f32, 0.0f32);
+        let mut class_22 = false;
+        for &id in &self.attackers {
+            let Some(u) = at.unit(id) else {
+                continue;
+            };
+            vx += u.position[0] - x;
+            vy += u.position[1] - y;
+            class_22 |= u.class == CLASS_22;
+        }
+        if computer && class_22 && 0.0 < at.speed {
+            return Err(Unsupported(
+                "a computer's unit running from class 22 (its group's runs)",
+            ));
+        }
+        if computer && at.class == 20 {
+            return Err(Unsupported("a computer's transport ship running away"));
+        }
+        let reach = at.speed * RUN_REACH;
+        let mut d = crate::fmath::sqrt(vy * vy + vx * vx);
+        if d < RUN_EPSILON {
+            let r = ai.rand15() as i32 as f32;
+            vx = (r + r) / RUN_DRAW_SCALE - RUN_ONE;
+            let r = ai.rand15() as i32 as f32;
+            vy = (r + r) / RUN_DRAW_SCALE - RUN_ONE;
+            d = crate::fmath::sqrt(vy * vy + vx * vx);
+        }
+        let mut ex = x - (vx / d) * reach;
+        let mut ey = y - (vy / d) * reach;
+        if at.player != 0 && self.stance == 1 {
+            let gx = self.state_position[0] - ex;
+            let gy = self.state_position[1] - ey;
+            if RUN_LEASH < crate::fmath::sqrt(gy * gy + gx * gx) {
+                ex = self.state_position[0] - (vx / d) * RUN_LEASH;
+                ey = self.state_position[1] - (vy / d) * RUN_LEASH;
+            }
+        }
+        self.evasive_move([ex, ey, z], (true, true), at, ai, side, fx)
+    }
+
+    /// `evasiveMoveTo` (the unit AI's slot 0x150, `FUN_140c4d140`) to `point` with its flags
+    /// `(uncon, tries)`: without `uncon` a unit with an action value stays. A coordinate that is
+    /// not a number becomes the unit's own plus one (minus one above 5); the point is held on the
+    /// map (below 0 to 0, at the far edge one tile in). With `tries`, a point the unit could not
+    /// stand at (its slot 0x278) moves by up to 3 on each axis, five times at most, each move
+    /// four draws of the AI stream (the x sign, its amount, the y sign, its amount), held on the
+    /// map again. Then the unit's move there (slot 0x340, forced, running, range 0): the AI holds
+    /// the move action and the point without a target. True when it moves.
+    fn evasive_move(
+        &mut self,
+        point: [f32; 3],
+        (uncon, tries): (bool, bool),
+        at: &Surroundings,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        if !uncon && self.current_action != -1 {
+            return Ok(false);
+        }
+        let near = |p: f32, own: f32| {
+            if !p.is_nan() {
+                p
+            } else if own <= EVASIVE_NEAR {
+                own + RUN_ONE
+            } else {
+                own - RUN_ONE
+            }
+        };
+        let held = |v: f32, size: i32| {
+            if v < 0.0 {
+                0.0
+            } else if size as f32 <= v {
+                size as f32 - EVADE_EDGE
+            } else {
+                v
+            }
+        };
+        let mut x = held(near(point[0], at.position[0]), at.map[0]);
+        let mut y = held(near(point[1], at.position[1]), at.map[1]);
+        if tries {
+            for _ in 0..5 {
+                if side.can_stand([x, y])? {
+                    break;
+                }
+                let step = |ai: &mut Well512, v: f32| {
+                    let up = ai.rand15() & 1 != 0;
+                    let by = (ai.rand15() & 3) as f32;
+                    if up { v + by } else { v - by }
+                };
+                x = step(ai, x);
+                y = step(ai, y);
+                x = held(x, at.map[0]);
+                y = held(y, at.map[1]);
+            }
+        }
+        let m = self.move_to(AiMove {
+            point: [x, y, point[2]],
+            range: 0.0,
+            force: true,
+            walk: false,
+        });
+        fx.extend(m.map(Effect::Move));
+        // the move (slot 0x340) gives the unit its MoveTo at once: the update's later checks see
+        // it busy
+        self.commanded = true;
+        Ok(true)
+    }
+
     /// The boar's damage notify (`FUN_140c25770`, case 500): at no hit points left
     /// (`p[1]` below 1) it gives up: the notifies end (`FUN_140c5dc10`) and it returns 4. Else
     /// the attacker joins its attackers (`FUN_140b43f30`), the unit is under attack
@@ -3077,7 +3269,7 @@ impl UnitAi {
         match self.ai_type {
             // TribeHuntedAnimalUnitAIModule (FUN_140c26420): its damage notify evades
             2 => match n.kind {
-                DAMAGED => Err(Unsupported("a hunted animal's damage notify (its evade)")),
+                DAMAGED => self.hunted_damaged(n, time, at, computer, ai_rng, side, fx),
                 0x20f => Ok(GO_ON),
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },

@@ -512,6 +512,8 @@ pub mod unit_ai {
     pub const EVADE_EDGE: f32 = f32::from_bits(0x3f80_0000);
     /// 3.0
     pub const EVADE_REACH: f32 = f32::from_bits(0x4040_0000);
+    /// 5.0
+    pub const EVASIVE_NEAR: f32 = f32::from_bits(0x40a0_0000);
     /// 1.0
     pub const EXPLORE_Z: f32 = f32::from_bits(0x3f80_0000);
     /// 1.0
@@ -524,6 +526,16 @@ pub mod unit_ai {
     pub const RADIUS_SCALE: f32 = f32::from_bits(0x42c8_0000);
     /// 3.0
     pub const RETARGET_RANGE: f32 = f32::from_bits(0x4040_0000);
+    /// 32767.0
+    pub const RUN_DRAW_SCALE: f32 = f32::from_bits(0x46ff_fe00);
+    /// 1.0000000116860974e-07
+    pub const RUN_EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 5.0
+    pub const RUN_LEASH: f32 = f32::from_bits(0x40a0_0000);
+    /// 1.0
+    pub const RUN_ONE: f32 = f32::from_bits(0x3f80_0000);
+    /// 2.0
+    pub const RUN_REACH: f32 = f32::from_bits(0x4000_0000);
     /// 1.0
     pub const SINGLE_VOLLEY: f32 = f32::from_bits(0x3f80_0000);
     /// 0.5
