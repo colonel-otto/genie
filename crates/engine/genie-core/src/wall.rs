@@ -33,6 +33,8 @@ const BUILDER_TYPE: u8 = 0x27;
 const CIVILIAN: i16 = 4;
 /// The builder the train locations name for every villager (`FUN_141262270`: `0x76`).
 const BUILDER: i16 = 118;
+/// The action type of the task another unit builds with (`FUN_141262270`: `0x65`).
+const BUILD_TASK: i16 = 0x65;
 /// The builders the game's sort (`FUN_140e6eee0`) orders by insertion: 0x100 bytes of 8-byte
 /// entries. More go to its quicksort, which is not stable.
 const INSERTION_SORT_MAX: usize = 32;
@@ -183,7 +185,7 @@ pub fn share(i: usize, capable: usize, placed: usize) -> Option<usize> {
 impl Turns {
     /// `BUILD_WALL` ([`Wall`]) for its player: a target other than −1, a master the player has not
     /// got or not a building does nothing, and so does a human's line without a builder that can
-    /// build it ([`Turns::builds_wall`]). The foundations go down tile by tile (the placement
+    /// build it ([`Turns::builds`]). The foundations go down tile by tile (the placement
     /// test with the explored test on, then the payment's, [`Turns::found`]); then each builder
     /// the command check holds, sorted by its footprint's distance to the line's last tile
     /// (squared, the farthest first), takes its foundation ([`share`]) directly
@@ -212,7 +214,7 @@ impl Turns {
         };
         let mut capable = 0;
         for &id in builders {
-            if self.builds_wall(&trained_at, id)? {
+            if self.builds((w.master, &trained_at), id)? {
                 capable += 1;
             }
         }
@@ -292,11 +294,16 @@ impl Turns {
         Ok(())
     }
 
-    /// Whether object `id` can build a wall whose train locations are `trained_at`
+    /// Whether object `id` can build `building`, whose train locations are `trained_at`
     /// (`FUN_141262270`): it is an object the world holds of a master type above `0x27`, and a
-    /// villager (class 4) when the train locations name the builder 118 or its own master.
-    /// Another unit's Build task naming the wall (`FUN_14109e100` with 0x65) is not modelled.
-    fn builds_wall(&self, trained_at: &[i16], id: i32) -> Result<bool, Unsupported> {
+    /// villager (class 4) when the train locations name the builder 118 or its own master; any
+    /// other unit when its master's first task of action type 0x65 (`FUN_14109e100`) names the
+    /// building (`+0x12`, its object id).
+    pub(crate) fn builds(
+        &self,
+        (building, trained_at): (i16, &[i16]),
+        id: i32,
+    ) -> Result<bool, Unsupported> {
         if id == -1 {
             return Ok(false);
         }
@@ -308,9 +315,11 @@ impl Turns {
             return Ok(false);
         }
         if m.class != CIVILIAN {
-            return Err(Unsupported(
-                "a wall builder that is not a villager (its Build task, FUN_14109e100)",
-            ));
+            return Ok(m
+                .tasks
+                .iter()
+                .find(|t| t.action_type == BUILD_TASK)
+                .is_some_and(|t| t.object_id == building));
         }
         Ok(trained_at.contains(&BUILDER) || trained_at.contains(&m.id))
     }

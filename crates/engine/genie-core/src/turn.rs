@@ -8069,11 +8069,19 @@ impl Turns {
                 commits,
             } => {
                 let master = self.farm_on_rice_terrain(master, position);
-                // the pending debit first (FUN_141630d10 with 0), then the placement test and
-                // the payment's: a refused BUILD places nothing
+                // the pending debit first (FUN_141630d10 with 0), then the builders' test, the
+                // placement test and the payment's: a refused BUILD places nothing
                 if let Err(e) = self.debit_listed(player, master) {
                     self.stop_player(player, e);
                     return;
+                }
+                match self.build_has_builder(player, master, builders) {
+                    Ok(true) => {}
+                    Ok(false) => return,
+                    Err(e) => {
+                        self.stop_player(player, e);
+                        return;
+                    }
                 }
                 match self.build_allowed(player, master, [position[0], position[1]]) {
                     Ok(true) => {}
@@ -8593,6 +8601,27 @@ impl Turns {
         Ok(())
     }
 
+    /// BUILD's builders' test (`FUN_140e7a400` after the pending debit): a human player's BUILD
+    /// needs one unit of the packet that can build the master ([`Turns::builds`]; one the world
+    /// holds, `FUN_140e6bad0`, follows from it), else it places nothing; a computer's passes.
+    fn build_has_builder(
+        &self,
+        player: usize,
+        master: i16,
+        builders: &[i32],
+    ) -> Result<bool, Unsupported> {
+        if self.players[player].computer {
+            return Ok(true);
+        }
+        let trained_at = self.master_of(player, master)?.trained_at.clone();
+        for &id in builders {
+            if self.builds((master, &trained_at), id)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// Whether BUILD (`FUN_140e7a400`) places a foundation of `master` at `at` for `player`: its
     /// placement test ([`crate::spawn::build_placement`], the master's slot 0x50), then the
     /// payment's (`FUN_14162fb60` -> `FUN_141618db0`: every cost entry of a resource, paid or
@@ -8946,8 +8975,9 @@ impl Turns {
     /// a unit AI takes a queued BUILD, or one that `commits` while its AI holds an order not
     /// ready (`FUN_140c4dfa0`), as the build order in its queue instead (slot 0x30 into slot 0x28:
     /// order 0x2be on the foundation at BUILD's point, priority 100, the point shown, ready, as
-    /// the game's saves hold it; [`Turns::build_order`] runs it). The readiness pass of a committing BUILD with
-    /// orders queued (`FUN_140c42b60`) is not modelled.
+    /// the game's saves hold it; [`Turns::build_order`] runs it). A unit the world no longer
+    /// holds is passed over; another player's or a sleeping one, and the readiness pass of a
+    /// committing BUILD with orders queued (`FUN_140c42b60`), are not modelled.
     fn task_builders(
         &mut self,
         player: usize,
@@ -8960,11 +8990,13 @@ impl Turns {
         let mut chosen = Vec::new();
         let mut ordered = Vec::new();
         for &id in builders {
-            let unit = self.players[player]
-                .objects
-                .iter()
-                .find(|o| o.id == id)
-                .ok_or(Unsupported("a builder the slice does not have"))?;
+            // the last loop takes the units the world holds (FUN_1415417a0)
+            let Some(unit) = self.players[player].objects.iter().find(|o| o.id == id) else {
+                if self.object(id).is_some() {
+                    return Err(Unsupported("a builder of another player or a sleeping one"));
+                }
+                continue;
+            };
             // the unit AI's queue path (the handler's last loop)
             if let Some(ai) = unit.ai.as_ref()
                 && (queued || (commits && ai.has_unready_order()))
