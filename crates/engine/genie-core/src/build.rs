@@ -1080,6 +1080,7 @@ mod tests {
                 me: Me {
                     id: 1,
                     position: [0.0; 3],
+                    group: -1,
                     action_state: 0,
                 },
                 dt: 0.02,
@@ -1420,6 +1421,7 @@ mod tests {
                     me: Me {
                         id: 9175,
                         position: [30.0, 89.0, 0.0],
+                        group: -1,
                         action_state: 0,
                     },
                     dt: 0.02,
@@ -1453,6 +1455,7 @@ mod tests {
                 me: Me {
                     id,
                     position: [0.0; 3],
+                    group: -1,
                     action_state: 0,
                 },
                 dt: 0.02,

@@ -1549,6 +1549,7 @@ mod tests {
                 me: crate::movement::Me {
                     id: 1,
                     position: [30.0, 40.0, 0.0],
+                    group: -1,
                     action_state: MOVED,
                 },
                 dt: 0.1,
@@ -1599,6 +1600,7 @@ mod tests {
                 me: crate::movement::Me {
                     id: 1,
                     position: [30.0, 40.0, 0.0],
+                    group: -1,
                     action_state: g.state,
                 },
                 dt: 0.1,

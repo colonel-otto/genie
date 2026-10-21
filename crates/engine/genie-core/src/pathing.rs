@@ -45,6 +45,58 @@ pub struct Pathing {
     /// The ignore list the tile planner's smoothing hands the obstruction manager
     /// (`DAT_143f0db50`, six ids, a static the game never clears: zero at the load).
     smoothing_ignore: [i32; 6],
+    /// Each player's path budget (by player index): its plans this update and the caps the
+    /// save holds ([`PlanBudget`]).
+    pub budgets: Vec<PlanBudget>,
+}
+
+/// A player's path budget: `pathingAttemptCapValue` (`+0x674`), `pathingDelayCapValue`
+/// (`+0x678`), both saved, and the plans its units and groups made since its last update
+/// (`+0x67c`: `FUN_141663c50` counts one, `WorldPlayerBase::update` resets it, not saved).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PlanBudget {
+    /// `pathingAttemptCapValue`: -1 for no cap.
+    pub attempt_cap: i32,
+    /// `pathingDelayCapValue`: -1 for no cap.
+    pub delay_cap: i32,
+    /// The plans since the player's last update.
+    pub plans: i32,
+}
+
+impl PlanBudget {
+    /// `FUN_14165d6f0` for a walker that waited `delays` times: no budget left (false) once the
+    /// plans reached a set attempt cap, unless a set delay cap is below the delays.
+    #[must_use]
+    pub const fn allows(&self, delays: i32) -> bool {
+        let delay_ok = self.delay_cap == -1 || delays <= self.delay_cap;
+        !(delay_ok && self.attempt_cap != -1 && self.attempt_cap <= self.plans)
+    }
+}
+
+impl Pathing {
+    /// Player `player`'s budget, a default (no caps, no plans) for one the slice has none of.
+    #[must_use]
+    pub fn budget(&self, player: usize) -> PlanBudget {
+        self.budgets.get(player).copied().unwrap_or(PlanBudget {
+            attempt_cap: -1,
+            delay_cap: -1,
+            plans: 0,
+        })
+    }
+
+    /// `FUN_141663c50`: player `player` made a plan.
+    pub fn count_plan(&mut self, player: usize) {
+        if let Some(b) = self.budgets.get_mut(player) {
+            b.plans += 1;
+        }
+    }
+
+    /// `WorldPlayerBase::update` (`0x141677450`): the player's plans start over.
+    pub fn reset_plans(&mut self, player: usize) {
+        if let Some(b) = self.budgets.get_mut(player) {
+            b.plans = 0;
+        }
+    }
 }
 
 /// A shape's rectangle for an object (`FUN_141056460`): its box grown by half a tile, in fixed
@@ -307,6 +359,41 @@ impl Pathing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `FUN_14165d6f0`: no budget once the plans reached a set attempt cap, unless the walker
+    /// waited more often than a set delay cap allows; caps of -1 never stop a plan. A plan counts
+    /// for its player, and the player's update starts the count over.
+    #[test]
+    fn a_players_budget_ends_at_its_attempt_cap() {
+        let b = PlanBudget {
+            attempt_cap: 6,
+            delay_cap: 2,
+            plans: 6,
+        };
+        assert!(!b.allows(0));
+        assert!(!b.allows(2));
+        assert!(b.allows(3));
+        assert!(PlanBudget { plans: 5, ..b }.allows(0));
+        assert!(
+            PlanBudget {
+                attempt_cap: -1,
+                ..b
+            }
+            .allows(0)
+        );
+        assert!(!PlanBudget { delay_cap: -1, ..b }.allows(9));
+        let mut p = Pathing {
+            budgets: vec![PlanBudget::default(), b],
+            ..Pathing::default()
+        };
+        p.count_plan(1);
+        assert_eq!(p.budget(1).plans, 7);
+        p.reset_plans(1);
+        assert_eq!(p.budget(1).plans, 0);
+        // a player the slice holds no budget of: no caps
+        assert!(p.budget(5).allows(0));
+        p.count_plan(5);
+    }
 
     /// 425906646's villagers walking to player 6's town centre 27171 (annexes 27172, 27173,
     /// 27175) in update 6292: the smoothing ignores the unit and the annexes, the target's slot

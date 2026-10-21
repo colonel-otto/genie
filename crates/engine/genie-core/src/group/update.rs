@@ -5,23 +5,6 @@ use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
 impl Turns {
-    /// The world's view of each grouped unit's differentiator groups' units (at most 255,
-    /// [`super::UnitGroups::differentiator_units`]), which the long pather lowers for a unit in a
-    /// group (`FUN_140f9eb70`): after the commands and after each player's groups updated.
-    pub(crate) fn sync_group_lists(&mut self) {
-        /// The long pather's list holds this many (`FUN_14100bbe0` with `0xff`).
-        const LOWERED: usize = 255;
-        let mut lists = std::collections::BTreeMap::new();
-        for p in &self.players {
-            for u in p.objects.iter().chain(&p.sleeping) {
-                if let Some(g) = self.groups.get(u.group.id) {
-                    let _ = lists.insert(u.id, self.groups.differentiator_units(g, LOWERED));
-                }
-            }
-        }
-        self.spatial.set_group_lists(lists);
-    }
-
     /// The groups player `p` owns update after its objects (`BaseWorld::update` at
     /// `0x141551796`): `BUnitGroup::update` ([`Turns::group_update`]) for each group of the
     /// world's list the player owns; a group whose update returns 0 is deleted, any other runs
@@ -202,19 +185,8 @@ impl Turns {
 
 #[cfg(test)]
 mod tests {
-    use crate::group::{GroupLink, Member, UnitGroup, UnitGroups};
+    use crate::group::{Member, UnitGroup, UnitGroups};
     use crate::turn::{Player, Turns, Unit};
-
-    fn unit(id: i32, group: i32) -> Unit {
-        Unit {
-            id,
-            group: GroupLink {
-                id: group,
-                flag: -2,
-            },
-            ..Unit::default()
-        }
-    }
 
     /// `FUN_141016870`: the lead is the held member nearest (in 3D, where it last moved to) the
     /// target's place, the first of equals; -1 without a held member.
@@ -264,22 +236,10 @@ mod tests {
         assert_eq!((g.hibernating, g.flags), (0, 0x100));
     }
 
-    /// The world's view of the grouped units' lists: unit 10 of group 1 (whose differentiator
-    /// groups are 1 and 2) lists 10, 11 and 12; unit 13 of a group the world does not hold, and
-    /// unit 14 of none, list nothing.
+    /// The long pather's list of a unit in group 1 (whose differentiator groups are 1 and 2) is
+    /// 10, 11 and 12; a unit of no group, or of a group the world does not hold, has none.
     #[test]
-    fn each_grouped_unit_lists_its_groups_differentiator_units() {
-        let player = Player {
-            objects: vec![
-                unit(10, 1),
-                unit(11, 1),
-                unit(12, 2),
-                unit(13, 9),
-                unit(14, -1),
-            ],
-            ..Player::default()
-        };
-        let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
+    fn a_grouped_units_list_is_its_groups_differentiator_units() {
         let member = |id| Member {
             id,
             ..Member::default()
@@ -289,14 +249,13 @@ mod tests {
         one.differentiator_groups = vec![1, 2];
         let mut two = UnitGroup::new(2);
         two.members = vec![member(12)];
-        t.groups = UnitGroups {
+        let groups = UnitGroups {
             groups: vec![one, two],
             ..UnitGroups::default()
         };
-        t.sync_group_lists();
-        assert_eq!(t.spatial.group_list(10), Some(&[10, 11, 12][..]));
-        assert_eq!(t.spatial.group_list(12), Some(&[][..]));
-        assert_eq!(t.spatial.group_list(13), None);
-        assert_eq!(t.spatial.group_list(14), None);
+        assert_eq!(groups.group_units(1), Some(vec![10, 11, 12]));
+        assert_eq!(groups.group_units(2), Some(Vec::new()));
+        assert_eq!(groups.group_units(9), None);
+        assert_eq!(groups.group_units(-1), None);
     }
 }

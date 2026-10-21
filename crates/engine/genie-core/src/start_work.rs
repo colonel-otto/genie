@@ -148,6 +148,7 @@ impl Turns {
         let me_walk = Me {
             id: unit.id,
             position: unit.position,
+            group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let (mask, master_id) = (mover.stats.restriction_mask, unit.life.master_id);
@@ -198,6 +199,7 @@ impl Turns {
             computer: self.players[p].computer,
             object: self.streams.get(Stream::Object),
             construction_rate: self.players[p].construction_rate,
+            groups: &self.groups,
         };
         let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
         gather_search::closest_resource_at(

@@ -56,6 +56,17 @@ pub struct UnitGroups {
 }
 
 impl UnitGroups {
+    /// The long pather's list for a unit in group `group` (`FUN_140f9eb70`: `+0x6d0`, the group
+    /// by id `FUN_14152ff40`, then `FUN_14100bbe0` with 255): None for no group (-1) or one the
+    /// world does not hold.
+    #[must_use]
+    pub fn group_units(&self, group: i32) -> Option<Vec<i32>> {
+        /// The long pather's list holds this many (`0xff`).
+        const LOWERED: usize = 255;
+        self.get(group)
+            .map(|g| self.differentiator_units(g, LOWERED))
+    }
+
     /// `FUN_14100bbe0` of group `group` with `cap`: the members of each group of its
     /// differentiator groups the world holds (by id), in order, at most `cap`.
     #[must_use]

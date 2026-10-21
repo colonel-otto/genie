@@ -383,10 +383,6 @@ pub struct Spatial {
     scout_maps: BTreeMap<usize, crate::explore::InfluenceMap>,
     /// Each annex's main building (`+0xbb8`), which the walk's avoidance takes for the annex.
     annexes: BTreeMap<i32, i32>,
-    /// Each unit in a group the world holds, with the units of its group's differentiator
-    /// groups (`FUN_14100bbe0` with 255: the long pather's list of the units it lowers,
-    /// `FUN_140f9eb70`); [`crate::turn::Turns::sync_group_lists`] keeps it.
-    group_lists: BTreeMap<i32, Vec<i32>>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
     pub relations: Vec<Vec<u8>>,
     /// Each player's masters with a task of action type 0x99, which a building's slot 0x4f0
@@ -457,7 +453,6 @@ impl Spatial {
             gaits: BTreeMap::new(),
             scout_maps: BTreeMap::new(),
             annexes: BTreeMap::new(),
-            group_lists: BTreeMap::new(),
             relations: Vec::new(),
             task_0x99: Vec::new(),
             sight: None,
@@ -999,18 +994,6 @@ impl Spatial {
     /// What the walk reads of the moving object `id`.
     pub fn gait(&self, id: i32) -> Option<Gait> {
         self.gaits.get(&id).copied()
-    }
-
-    /// Each grouped unit's differentiator groups' units ([`Spatial::group_list`]).
-    pub fn set_group_lists(&mut self, lists: BTreeMap<i32, Vec<i32>>) {
-        self.group_lists = lists;
-    }
-
-    /// The units of unit `id`'s group's differentiator groups, when it is in a group the world
-    /// holds ([`Spatial::set_group_lists`]).
-    #[must_use]
-    pub fn group_list(&self, id: i32) -> Option<&[i32]> {
-        self.group_lists.get(&id).map(Vec::as_slice)
     }
 
     /// An annex's main building, or none.

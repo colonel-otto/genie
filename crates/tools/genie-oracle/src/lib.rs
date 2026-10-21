@@ -2146,6 +2146,19 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         terrain.passable().to_vec(),
         header.world.game_type,
     );
+    // the players' path caps (saved); their plans start over at each player's update
+    turns.pathing.budgets = header
+        .players()
+        .iter()
+        .map(|p| {
+            let b = &p.world_player().base;
+            genie_core::pathing::PlanBudget {
+                attempt_cap: b.pathing_attempt_cap_value,
+                delay_cap: b.pathing_delay_cap_value,
+                plans: 0,
+            }
+        })
+        .collect();
     // a statistics flag the tick oracle reads as 1 in MarvinBlue/426048731 (Turns::unit_cost_246)
     turns.unit_cost_246 = true;
     // the farm setting the tick oracle shows set in records/425906646 (Turns::farm_stops)

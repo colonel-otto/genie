@@ -726,6 +726,7 @@ pub(crate) struct DropWorld<'a> {
     pub world_time: u32,
     pub computer: bool,
     pub construction_rate: f32,
+    pub groups: &'a crate::group::UnitGroups,
 }
 
 struct Context<'a> {
@@ -743,6 +744,8 @@ struct Context<'a> {
     spatial: &'a mut Spatial,
     /// The planners and the mesh, which a walker's path request uses.
     pathing: &'a mut Pathing,
+    /// The world's unit groups, which a walker's long path reads.
+    groups: &'a crate::group::UnitGroups,
     /// The owner's construction rate (attribute 195).
     construction_rate: f32,
     /// The owner's masters, which an attack reads.
@@ -908,6 +911,8 @@ struct UnitView<'u> {
     spatial: &'u mut Spatial,
     /// The planners and the mesh, which a reach test walks.
     pathing: &'u mut Pathing,
+    /// The world's unit groups, which a reach test's long path reads.
+    groups: &'u crate::group::UnitGroups,
     /// The Object stream, which a reach test's new path draws from.
     object: &'u mut Well512,
     /// The Sprite stream, which a new sprite draws from.
@@ -1207,6 +1212,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 computer: self.computer,
                 object: self.object,
                 construction_rate: self.construction_rate,
+                groups: self.groups,
             },
         };
         let (id, _) = closest_resource_of(
@@ -1246,11 +1252,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             computer: self.computer,
             object: self.object,
             construction_rate: self.construction_rate,
+            groups: self.groups,
         };
         let unit = &*self.unit;
         let walker = Me {
             id: unit.id,
             position: unit.position,
+            group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let mover = unit
@@ -1294,11 +1302,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             computer: self.computer,
             object: self.object,
             construction_rate: self.construction_rate,
+            groups: self.groups,
         };
         let unit = &*self.unit;
         let walker = Me {
             id: unit.id,
             position: unit.position,
+            group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let (mover, master_id, spatial) =
@@ -1597,6 +1607,7 @@ impl UnitView<'_> {
         let me = Me {
             id: unit.id,
             position: unit.position,
+            group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let area = ScoutArea {
@@ -1608,6 +1619,7 @@ impl UnitView<'_> {
                 computer: self.computer,
                 object: self.object,
                 construction_rate: self.construction_rate,
+                groups: self.groups,
             },
             mover,
             me,
@@ -1641,6 +1653,7 @@ impl Context<'_> {
                     computer: self.computer,
                     object,
                     construction_rate: self.construction_rate,
+                    groups: self.groups,
                 }),
             },
             sprite,
@@ -1668,6 +1681,7 @@ impl Context<'_> {
                     computer: self.computer,
                     object,
                     construction_rate: self.construction_rate,
+                    groups: self.groups,
                 }),
             },
             sprite,
@@ -1695,6 +1709,7 @@ impl Context<'_> {
                     computer: self.computer,
                     object,
                     construction_rate: self.construction_rate,
+                    groups: self.groups,
                 }),
             },
             other,
@@ -1714,6 +1729,7 @@ impl Context<'_> {
                 computer: self.computer,
                 object: self.streams.get(Stream::Object),
                 construction_rate: self.construction_rate,
+                groups: self.groups,
             }),
         }
     }
@@ -2513,6 +2529,7 @@ impl Unit {
                 world_time: c.world_time,
                 computer: c.computer,
                 construction_rate: c.construction_rate,
+                groups: c.groups,
             };
             let (site, _) = self.drop_site(&mut w, others, -1, crate::hunt::SEARCH)?;
             if site == -1 {
@@ -2671,6 +2688,7 @@ impl Unit {
             let me = Me {
                 id: self.id,
                 position: self.position,
+                group: self.group.id,
                 action_state: hunt.state,
             };
             let mut plan = Planning {
@@ -2679,6 +2697,7 @@ impl Unit {
                 computer: c.computer,
                 object: c.streams.get(Stream::Object),
                 construction_rate: c.construction_rate,
+                groups: c.groups,
             };
             let master_id = self.life.master_id;
             let mut reach = |id: i32, range: f32| {
@@ -2863,6 +2882,7 @@ impl Unit {
             world_time: c.world_time,
             computer: c.computer,
             construction_rate: c.construction_rate,
+            groups: c.groups,
         };
         self.drop_off_in(w, others)
     }
@@ -3162,6 +3182,7 @@ impl Unit {
                 world_time: c.world_time,
                 computer: c.computer,
                 construction_rate: c.construction_rate,
+                groups: c.groups,
             };
             self.drop_site_from(&mut w, others, state, false)?
                 .unwrap_or(0)
@@ -3394,6 +3415,7 @@ impl Unit {
             world_time: c.world_time,
             computer: c.computer,
             construction_rate: c.construction_rate,
+            groups: c.groups,
         };
         if let Some(site) = self.gather_drop_off_in(w, others)? {
             c.takes.push(site);
@@ -3534,6 +3556,7 @@ impl Unit {
         let me = Me {
             id: self.id,
             position: self.position,
+            group: self.group.id,
             action_state: state,
         };
         let by_path = !c.computer;
@@ -3543,6 +3566,7 @@ impl Unit {
             computer: c.computer,
             object: &mut *c.object,
             construction_rate: c.construction_rate,
+            groups: c.groups,
         };
         let seeker = Seeker {
             me,
@@ -4114,6 +4138,7 @@ impl Unit {
                 computer: c.computer,
                 object: c.streams.get(Stream::Object),
                 construction_rate: c.construction_rate,
+                groups: c.groups,
             },
         };
         closest_resource_of(self, &mut w, others, (kind, cap, site), (current, 2)).map(|(id, _)| id)
@@ -5682,6 +5707,7 @@ impl Unit {
         let me = Me {
             id: self.id,
             position: self.position,
+            group: self.group.id,
             action_state: self.top_action().map_or(0, |a| a.state),
         };
         let mut captured = None;
@@ -6828,6 +6854,7 @@ impl Unit {
                             computer,
                             spatial: c.spatial,
                             pathing: c.pathing,
+                            groups: c.groups,
                             object,
                             sprite,
                             world_time: c.world_time,
@@ -7432,6 +7459,7 @@ fn closest_resource_of(
     let me_walk = Me {
         id: unit.id,
         position: unit.position,
+        group: unit.group.id,
         action_state: unit.top_action().map_or(0, |a| a.state),
     };
     let master_id = unit.life.master_id;
@@ -9872,6 +9900,7 @@ impl Turns {
                         computer: player.computer,
                         object: self.streams.get(Stream::Object),
                         construction_rate: player.construction_rate,
+                        groups: &self.groups,
                     },
                 };
                 let mut found = Vec::new();
@@ -10595,7 +10624,6 @@ impl Turns {
                 self.spatial.set_annex(u.id, u.annex_of);
             }
         }
-        self.sync_group_lists();
         if self.spatial.relations.is_empty() {
             self.spatial.relations = self.players.iter().map(|p| p.relations.clone()).collect();
             self.spatial.task_0x99 = self
@@ -10698,6 +10726,7 @@ impl Turns {
                     streams: &mut self.streams,
                     spatial: &mut self.spatial,
                     pathing: &mut self.pathing,
+                    groups: &self.groups,
                     construction_rate: player.construction_rate,
                     masters: self.masters.get(p),
                     victim: victim.as_mut(),
@@ -11095,7 +11124,8 @@ impl Turns {
             if let Err(e) = self.update_groups(p) {
                 self.stop_player(p, e);
             }
-            self.sync_group_lists();
+            // the player's own update (WorldPlayerBase::update): its plans start over
+            self.pathing.reset_plans(p);
             self.close_gates(p, &mut gates_open);
         }
         self.spatial.grow_unknown(seconds(dt));

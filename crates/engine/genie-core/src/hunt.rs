@@ -1871,6 +1871,7 @@ pub(crate) mod tests {
             me: crate::movement::Me {
                 id: 31110,
                 position: [171.888_89, 59.053_39, 0.0],
+                group: -1,
                 action_state: WALK,
             },
             dt: 0.028,
@@ -1945,6 +1946,7 @@ pub(crate) mod tests {
                 me: crate::movement::Me {
                     id: 31110,
                     position: [171.888_89, 59.053_39, 0.0],
+                    group: -1,
                     action_state: h.state,
                 },
                 dt: 0.5,
@@ -2024,6 +2026,7 @@ pub(crate) mod tests {
                 me: crate::movement::Me {
                     id: 9181,
                     position: [26.820_372, 94.718_056, 0.0],
+                    group: -1,
                     action_state: DROP,
                 },
                 dt: 0.028,

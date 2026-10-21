@@ -283,6 +283,7 @@ mod tests {
             me: Me {
                 id: 9925,
                 position: [57.845_688, 104.499_275, 9.0],
+                group: -1,
                 action_state: 0,
             },
             dt: 0.021,

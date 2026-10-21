@@ -11,7 +11,7 @@
 
 use crate::fmath::{self, Vec3};
 use crate::hull_path::HullPather;
-use crate::pathing::Pathing;
+use crate::pathing::{Pathing, PlanBudget};
 use crate::rng::Well512;
 use crate::short_path::{self, Call, Entry, Listed};
 use crate::spatial::{Placed, Spatial};
@@ -197,6 +197,9 @@ pub struct Me {
     /// which the short pather's ignore list reads: an action that walks after changing its state
     /// sets its own.
     pub action_state: u8,
+    /// Its group (`mGroupID`, `+0x6d0`; -1 for none), whose differentiator units the long pather
+    /// lowers (`FUN_140f9eb70`).
+    pub group: i32,
 }
 
 /// What the motion step returns to the `MoveTo` action.
@@ -515,6 +518,9 @@ pub struct Planning<'a> {
     pub object: &'a mut Well512,
     /// The owner's construction rate (attribute 195), which a builder's work reads.
     pub construction_rate: f32,
+    /// The world's unit groups as they are now, which the long pather reads for a unit in a
+    /// group (its group's differentiator units, `FUN_140f9eb70`).
+    pub groups: &'a crate::group::UnitGroups,
 }
 
 impl Planning<'_> {
@@ -526,6 +532,7 @@ impl Planning<'_> {
             computer: self.computer,
             object: &mut *self.object,
             construction_rate: self.construction_rate,
+            groups: self.groups,
         }
     }
 }
@@ -1293,17 +1300,20 @@ impl Mover {
         let solid = self.stats.radius.iter().all(|&r| 0.0 < r);
         let trade_cart = world.get(me.id).is_some_and(|p| p.class == TRADE_CART);
         if solid {
-            if trade_cart {
-                return Err(Unsupported("a trade cart's path budget (FUN_14165d6f0)"));
-            }
-            if PLANS <= *plans {
-                // a fourth plan in one step: the unit stops (slot 0x5d0), counts a wait delay
-                // (`+0x7fa`) and the step returns 0
+            // a trade cart plans only within its owner's budget (FUN_14165d6f0 on its wait
+            // delays); a fourth plan in one step, or no budget: the unit stops (slot 0x5d0),
+            // counts a wait delay (`+0x7fa`) and the step returns 0
+            let owner = world.get(me.id).map(|p| p.player);
+            let budget = owner.map(|o| plan.pathing.budget(o));
+            if !may_plan(trade_cart, budget, self.wait_delays, *plans) {
                 self.stop()?;
                 self.wait_delays = self.wait_delays.wrapping_add(1);
                 return Ok(Step::Paused);
             }
-            // the owner's count of plans (player +0x67c) only limits trade carts
+            // the owner's count of plans (player +0x67c, FUN_141663c50)
+            if let Some(o) = owner {
+                plan.pathing.count_plan(o);
+            }
             *plans += 1;
             self.wait_delays = 0;
         }
@@ -1628,6 +1638,7 @@ impl Mover {
             mask: self.stats.restriction_mask,
             moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
             ignore_units: &self.ignore_units,
+            group_units: plan.groups.group_units(me.group),
         };
         let target_id = target.map_or(-1, |(id, _)| id);
         let (mut found, long) = long_path_for(
@@ -2708,7 +2719,7 @@ fn reach(waypoint: Vec3, position: Vec3, projected: Vec3) -> Reach {
 /// What the long pather reads of its unit (`FUN_140f9eb70`'s argument 6): its id, its own place
 /// (the target's gaps are from it), its radii on the ground, its restriction's mask, whether it
 /// moves (its speed, slot 0x208, is not 0, or its master is 42) and its ignore units (`+0x670`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct LongWalker<'a> {
     pub(crate) id: i32,
     pub(crate) position: [f32; 3],
@@ -2716,12 +2727,15 @@ pub(crate) struct LongWalker<'a> {
     pub(crate) mask: u8,
     pub(crate) moves: bool,
     pub(crate) ignore_units: &'a [i32],
+    /// For a walker in a group the world holds (`+0x6d0`, `FUN_14152ff40`), its group's
+    /// differentiator units (`FUN_14100bbe0` with 255, [`crate::group::UnitGroups::group_units`]).
+    pub(crate) group_units: Option<Vec<i32>>,
 }
 
 /// The units whose tiles the long pather lowers (`FUN_140f9eb70`'s list for `FUN_140f60440`):
 /// the walker and its ignore units that wait to move or move (slots 0x2a8 and 0x5c8), not the
 /// target, at most 254; for a walker in a group the units of the group's differentiator groups
-/// instead ([`Spatial::group_list`]); then the target.
+/// instead ([`LongWalker::group_units`]); then the target.
 pub(crate) fn lowered_units(
     walker: &LongWalker<'_>,
     world: &Spatial,
@@ -2747,9 +2761,7 @@ pub(crate) fn lowered_units(
             )
             .collect()
     };
-    let mut listed: Vec<i32> = world
-        .group_list(walker.id)
-        .map_or_else(own, <[i32]>::to_vec);
+    let mut listed: Vec<i32> = walker.group_units.clone().unwrap_or_else(own);
     if let Some(id) = target {
         listed.push(id);
     }
@@ -2761,7 +2773,7 @@ pub(crate) fn lowered_units(
 /// walker's height. The search lowers the tall counts of the tiles of its list
 /// (`FUN_140f60440`): the walker and its ignore units that wait to move or move (slots 0x2a8 and
 /// 0x5c8; not the target, at most 254), or, for a walker in a group, the units of the group's
-/// differentiator groups instead (`FUN_14100bbe0` with 255, [`Spatial::group_list`]); then the
+/// differentiator groups instead ([`lowered_units`]); then the
 /// target. Each listed object the world holds whose master has a height lowers its tile.
 ///
 /// # Errors
@@ -2860,6 +2872,14 @@ pub(crate) fn tile_plan_for(
         plan.pathing.smoothing_ran(slots);
     }
     Ok(Some(found.code()))
+}
+
+/// `0x141150f00`'s test before a solid unit's plan: a trade cart needs its owner's budget
+/// (`FUN_14165d6f0` on its wait delays `+0x7fa`), and no unit makes more than [`PLANS`] plans in
+/// one step (`local_19a8 < 3`). A walker without an owner has no budget to test.
+fn may_plan(trade_cart: bool, budget: Option<PlanBudget>, wait_delays: u8, plans: u32) -> bool {
+    let allowed = !trade_cart || budget.is_none_or(|b| b.allows(i32::from(wait_delays)));
+    allowed && plans < PLANS
 }
 
 /// What the planners read of the walking unit (the unit, or a group's lead): its id, radius on
@@ -3083,6 +3103,7 @@ mod tests {
         let me = Me {
             id: 9517,
             position: [21.8, 92.2, 0.0],
+            group: -1,
             action_state: 0,
         };
         // land of a terrain class the unit's mask (6) has
@@ -3124,6 +3145,24 @@ mod tests {
         assert_eq!(m.paths.len(), 2);
     }
 
+    /// A trade cart plans only within its owner's budget; any unit at most three times a step.
+    #[test]
+    fn a_trade_cart_plans_within_its_owners_budget() {
+        let spent = PlanBudget {
+            attempt_cap: 6,
+            delay_cap: 2,
+            plans: 6,
+        };
+        assert!(!may_plan(true, Some(spent), 0, 0));
+        // a villager is not held to the budget
+        assert!(may_plan(false, Some(spent), 0, 0));
+        // past the delay cap the budget lets the cart plan again
+        assert!(may_plan(true, Some(spent), 3, 0));
+        assert!(may_plan(true, Some(PlanBudget { plans: 5, ..spent }), 0, 0));
+        assert!(may_plan(true, None, 0, 0));
+        assert!(!may_plan(false, None, 0, PLANS));
+    }
+
     /// `FUN_140f9eb70`'s list for `FUN_140f60440`: a walker in no group lists itself and its
     /// ignore units that move (not one that stands, not the target, not one the world lacks),
     /// then the target; a walker in a group lists its group's differentiator units instead.
@@ -3137,24 +3176,26 @@ mod tests {
         s.set_gait(9175, Some(moving));
         s.set_gait(10028, Some(moving));
         let ignore = [9175, 9177, 10028, 4242];
-        let walker = LongWalker {
+        let mut walker = LongWalker {
             id: 9177,
             position: [28.0, 89.0, 0.0],
             radius: [0.2, 0.2],
             mask: 1,
             moves: true,
             ignore_units: &ignore,
+            group_units: None,
         };
         // 10028 moves but is the target: it comes last, once
         assert_eq!(lowered_units(&walker, &s, Some(10028)), [9177, 9175, 10028]);
         assert_eq!(lowered_units(&walker, &s, None), [9177, 9175, 10028]);
-        let mut lists = std::collections::BTreeMap::new();
-        let _ = lists.insert(9177, vec![9177, 31, 32]);
-        s.set_group_lists(lists);
+        walker.group_units = Some(vec![9177, 31, 32]);
         assert_eq!(
             lowered_units(&walker, &s, Some(10028)),
             [9177, 31, 32, 10028]
         );
+        // a group whose differentiator groups are gone lists none, not even the walker
+        walker.group_units = Some(Vec::new());
+        assert_eq!(lowered_units(&walker, &s, None), Vec::<i32>::new());
     }
 
     fn world() -> Spatial {
@@ -3202,6 +3243,7 @@ mod tests {
                 &mut Me {
                     id: 9177,
                     position: at,
+                    group: -1,
                     action_state: 0,
                 },
                 DT,
@@ -3263,6 +3305,7 @@ mod tests {
         let mut me = Me {
             id: 9926,
             position: [28.0, 89.0, 0.0],
+            group: -1,
             action_state: 0,
         };
         assert_eq!(
@@ -3321,6 +3364,7 @@ mod tests {
         let mut me = Me {
             id: 9175,
             position: [29.51, 89.49, 0.0],
+            group: -1,
             action_state: 0,
         };
         assert_eq!(m.motion(&mut me, DT, &mut world, None), Ok(Motion::Moving));
@@ -3354,6 +3398,7 @@ mod tests {
         let mut me = Me {
             id: 9175,
             position: [30.0, 89.0, 0.0],
+            group: -1,
             action_state: 0,
         };
         assert_eq!(
@@ -3369,6 +3414,7 @@ mod tests {
         let mut me = Me {
             id: 9177,
             position: [28.0, 89.0, 0.0],
+            group: -1,
             action_state: 0,
         };
         assert_eq!(m.motion(&mut me, DT, &mut world(), None), Ok(Motion::Done));
@@ -3398,6 +3444,7 @@ mod tests {
         let mut me = Me {
             id: 9177,
             position: [30.0, 88.0, 0.0],
+            group: -1,
             action_state: 0,
         };
         assert_eq!(m.motion(&mut me, DT, &mut world(), None), Ok(Motion::Done));
@@ -3418,6 +3465,7 @@ mod tests {
         let me = Me {
             id: 9177,
             position: [28.0, 89.0, 0.0],
+            group: -1,
             action_state: 0,
         };
         let walker = |human_order| Gait {

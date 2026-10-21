@@ -1231,6 +1231,7 @@ impl Turns {
                     world_time: self.world_time,
                     computer: player.computer,
                     construction_rate: player.construction_rate,
+                    groups: &self.groups,
                 };
                 let result = unit.gather_drop_off_in(world, &player.objects);
                 self.players[p].objects[idx] = unit;
@@ -1270,6 +1271,7 @@ impl Turns {
                 world_time: self.world_time,
                 computer: player.computer,
                 construction_rate: player.construction_rate,
+                groups: &self.groups,
             };
             let result = unit.drop_off_in(world, &player.objects);
             self.players[p].objects[idx] = unit;
@@ -2890,6 +2892,7 @@ impl Turns {
             let me = crate::movement::Me {
                 id: unit.id,
                 position: unit.position,
+                group: unit.group.id,
                 action_state: crate::attack::READY,
             };
             let can_move = unit
