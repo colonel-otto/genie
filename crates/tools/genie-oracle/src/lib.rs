@@ -2145,6 +2145,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     turns.victory_conquest = world.tribe_scenario.base_scenario.victory_conquest != 0;
     if let Some(table) = masters {
         turns.drop_sites.clone_from(&table.drop_sites);
+        turns.linked_techs.clone_from(&table.linked_techs);
         turns.graphics = table.graphics.clone();
         turns.techs.clone_from(&table.techs);
         turns.masters = header
@@ -5416,6 +5417,25 @@ pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Err
             .collect(),
         drop_sites: table.drop_sites.clone(),
     })
+}
+
+/// The game's linked technologies (`resources/_common/dat/linkedTechs.json`): each group's
+/// technologies with the group's kind. A technology of a kind the game does not know, or out of
+/// the ids' range, is left out.
+pub fn linked_techs(
+    json: &str,
+) -> Result<std::collections::BTreeMap<i16, genie_core::tech::Linked>, serde_json::Error> {
+    let file: genie_json::LinkedTechs = serde_json::from_str(json)?;
+    Ok(file
+        .linked_techs
+        .iter()
+        .filter_map(|g| genie_core::tech::Linked::of(&g.kind).map(|k| (g, k)))
+        .flat_map(|(g, k)| {
+            g.techs
+                .iter()
+                .filter_map(move |&t| i16::try_from(t).ok().map(|t| (t, k)))
+        })
+        .collect())
 }
 
 /// The game's drop-site table (`resources/_common/dat/dropsites.json`): each entry's

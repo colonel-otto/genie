@@ -26,6 +26,31 @@ const GOLD: i16 = 3;
 /// The technology type whose research the buildings that may do it share (`FUN_1413d1020`).
 pub const SHARED_KIND: i16 = 0x20;
 
+/// How a group of the game's `linkedTechs.json` links its technologies: the `+4` byte of the
+/// record the game settings' table (`FUN_140f39f40`) holds for each of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Linked {
+    /// `MutuallyExclusive` (0).
+    MutuallyExclusive,
+    /// `Toggleable` (1): `FUN_140f39e80` asks the tech tree (`FUN_1413cc3d0`).
+    Toggleable,
+    /// `Cycle` (2): `FUN_140f39e80` holds it researchable in any state.
+    Cycle,
+}
+
+impl Linked {
+    /// The kind of the file's `Type`; None for one the game does not know.
+    #[must_use]
+    pub fn of(kind: &str) -> Option<Self> {
+        match kind {
+            "MutuallyExclusive" => Some(Self::MutuallyExclusive),
+            "Toggleable" => Some(Self::Toggleable),
+            "Cycle" => Some(Self::Cycle),
+            _ => None,
+        }
+    }
+}
+
 /// One cost entry of a technology in the `.dat`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cost {

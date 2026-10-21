@@ -331,6 +331,9 @@ pub struct MasterTable {
     /// The drop-site table (`dropsites.json` beside the `.dat`, [`crate::drop_sites`]); empty
     /// when not loaded.
     pub drop_sites: Vec<genie_core::tasks::DropSite>,
+    /// The linked technologies (`linkedTechs.json` beside the `.dat`, [`crate::linked_techs`]);
+    /// empty when not loaded.
+    pub linked_techs: std::collections::BTreeMap<i16, genie_core::tech::Linked>,
     /// The technologies, by id.
     pub techs: Vec<genie_core::tech::TechDef>,
 }
@@ -381,6 +384,8 @@ pub enum ReadError {
     Dat(genie_dat::de::Error),
     /// The drop-site table beside it is out of shape.
     DropSites(serde_json::Error),
+    /// The linked technologies beside it are out of shape.
+    LinkedTechs(serde_json::Error),
 }
 
 impl std::fmt::Display for ReadError {
@@ -388,6 +393,7 @@ impl std::fmt::Display for ReadError {
         match self {
             Self::Dat(e) => write!(f, "the data file: {e}"),
             Self::DropSites(e) => write!(f, "dropsites.json: {e}"),
+            Self::LinkedTechs(e) => write!(f, "linkedTechs.json: {e}"),
         }
     }
 }
@@ -396,11 +402,12 @@ impl std::error::Error for ReadError {}
 
 impl MasterTable {
     /// The table of the data file at `path` (an `empires2_x2_p1.dat`), with the drop-site table
-    /// beside it (`dropsites.json`) when there is one.
+    /// (`dropsites.json`) and the linked technologies (`linkedTechs.json`) beside it when there
+    /// are.
     ///
     /// # Errors
     ///
-    /// When the data file cannot be read, or the drop-site table is out of shape.
+    /// When the data file cannot be read, or a table beside it is out of shape.
     pub fn read(path: &std::path::Path) -> Result<Self, ReadError> {
         let file =
             std::fs::File::open(path).map_err(|e| ReadError::Dat(genie_dat::de::Error::Io(e)))?;
@@ -408,6 +415,9 @@ impl MasterTable {
         let mut table = Self::from_dat(&dat);
         if let Ok(json) = std::fs::read_to_string(path.with_file_name("dropsites.json")) {
             table.drop_sites = crate::drop_sites(&json).map_err(ReadError::DropSites)?;
+        }
+        if let Ok(json) = std::fs::read_to_string(path.with_file_name("linkedTechs.json")) {
+            table.linked_techs = crate::linked_techs(&json).map_err(ReadError::LinkedTechs)?;
         }
         Ok(table)
     }
@@ -516,6 +526,7 @@ impl MasterTable {
             graphics: std::collections::BTreeMap::default(),
             terrain: TerrainTable::default(),
             drop_sites: Vec::new(),
+            linked_techs: std::collections::BTreeMap::new(),
             techs: Vec::new(),
         }
     }
@@ -611,5 +622,28 @@ mod tests {
         assert_eq!(t.get(1, 332).map(|d| d.decay), Some(1.0));
         assert_eq!(t.default_action(2, 705), Some(DefaultAction::Type(107)));
         assert_eq!((t.get(2, 332), t.default_action(1, 705)), (None, None));
+    }
+
+    #[test]
+    fn linked_techs_take_their_groups_kind() {
+        use genie_core::tech::Linked;
+        // two groups of the 158041 file, and one of a kind the game does not know
+        let json = r#"{"LinkedTechs": [
+            {"NameId": 424008, "Comment": "Krypteia/Peloponnesian League",
+             "Type": "MutuallyExclusive", "Techs": [1131, 1133]},
+            {"NameId": 424010, "Comment": "Trade", "Type": "Cycle", "Techs": [1215, 1216],
+             "StartingTech": 1215, "Instant": true},
+            {"NameId": 1, "Comment": "", "Type": "Other", "Techs": [7]}
+        ]}"#;
+        let linked = crate::linked_techs(json).unwrap();
+        assert_eq!(
+            linked.into_iter().collect::<Vec<_>>(),
+            [
+                (1131, Linked::MutuallyExclusive),
+                (1133, Linked::MutuallyExclusive),
+                (1215, Linked::Cycle),
+                (1216, Linked::Cycle)
+            ]
+        );
     }
 }

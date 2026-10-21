@@ -7928,6 +7928,9 @@ pub struct Turns {
     pub graphics: std::collections::BTreeMap<i16, Graphic>,
     /// The game's drop-site table (`dropsites.json`).
     pub drop_sites: Vec<DropSite>,
+    /// The game's linked technologies (`linkedTechs.json`, the table at the game settings'
+    /// `+0x18` that `FUN_140f39f40` looks up), by technology; empty when not loaded.
+    pub linked_techs: std::collections::BTreeMap<i16, crate::tech::Linked>,
     /// The game settings' test `FUN_141302150` (their `+0x1070` flag, then a table entry's
     /// `+0x9c`): a hunter drops another resource it carries. The tick oracle read the flag as 0 in
     /// MarvinBlue/426048731; where the save or the lobby holds it is not known yet.
@@ -8031,6 +8034,7 @@ impl Turns {
             pathing: Pathing::default(),
             graphics: std::collections::BTreeMap::default(),
             drop_sites: Vec::new(),
+            linked_techs: std::collections::BTreeMap::new(),
             carry_rule: false,
             farm_stops: false,
             predator_hunts_end: false,
@@ -9317,10 +9321,10 @@ impl Turns {
     /// a building of master type 80 alive (state 2) whose master is among the technology's
     /// locations, with the technology in state 1 or repeatable, and without a top action of
     /// 0x7b to 0x7d (`FUN_141227a00`), queues it ([`Turns::queue_research`]); queued, its unit AI
-    /// takes the action value 0x26c. Not held: the interface's view and selection
-    /// (`FUN_140e6de20`), the game's per-technology overrides (`FUN_140f39f40`,
-    /// `FUN_140f39e80`: none, probed for Loom), the local player's statistics flag. Not
-    /// modelled: the computer players' parts (`player+0x7a8`, `FUN_1411d5520`), the player's
+    /// takes the action value 0x26c. A technology of `linkedTechs.json` ([`Turns::linked_techs`],
+    /// the game settings' table `FUN_140f39f40` looks up) is not modelled (`FUN_140f3a0f0`,
+    /// `FUN_140f39e80`). Not held: the interface's view and selection (`FUN_140e6de20`), the
+    /// local player's statistics flag. Not modelled: the computer players' parts (`player+0x7a8`, `FUN_1411d5520`), the player's
     /// `+0x648` (0 for every player probed), Castle Age's flag (tech 0x66, game type 0x10).
     fn research(&mut self, player: usize, r: &ResearchAt) -> Result<(), Unsupported> {
         let owner = &self.players[player];
@@ -9357,10 +9361,15 @@ impl Turns {
                 "RESEARCH at the least loaded of several buildings (FUN_1411d0e90)",
             ));
         }
-        if state.state != 1 && !repeatable {
+        if self.linked_techs.contains_key(&r.tech) {
             return Err(Unsupported(
-                "RESEARCH of a technology not in state 1 (FUN_140f39e80)",
+                "RESEARCH of a linked technology (FUN_140f3a0f0, FUN_140f39e80)",
             ));
+        }
+        // a technology that is not available (state 1) and may not be queued again is
+        // researchable only when it is linked (`FUN_140f39e80`): no building takes it
+        if state.state != 1 && !repeatable {
+            return Ok(());
         }
         let Some(i) = owner.objects.iter().position(|u| u.id == r.building) else {
             let elsewhere = self.players.iter().any(|q| {
