@@ -4745,15 +4745,16 @@ pub fn forced_ticks(
 }
 
 /// The command phase of the update after save `start` against the game's state at its end
-/// (`after`, the tick oracle's `snapshot_at` at `0x141552990`): every player's objects and the
-/// world's unit groups, as [`forced_ticks`] reports them. Dev only.
+/// (`after`, the tick oracle's `snapshot_at` at `0x141552990`, with the process globals dumped
+/// there when given): every player's objects and the world's unit groups, as [`forced_ticks`]
+/// reports them. Dev only.
 ///
 /// # Errors
 ///
 /// When a save or the recording does not parse.
 pub fn command_phase(
     save: &[u8],
-    after: &[u8],
+    (after, after_globals): (&[u8], Option<&str>),
     recording: &[u8],
     start: usize,
     masters: Option<&MasterTable>,
@@ -4765,10 +4766,13 @@ pub fn command_phase(
         ticks: 1,
         ..TickReport::default()
     };
-    let saved = SavedStep::of(after, masters)?;
+    let mut saved = SavedStep::of(after, masters)?;
     compare_players(&turns, &saved, None, &mut report)?;
+    if let (Some(text), Some(g)) = (after_globals, saved.game.groups.as_mut()) {
+        groups::globals_from_dump(text, g);
+    }
     if let Some(g) = saved.game.groups.as_ref() {
-        for d in groups::group_differences(&turns.groups, g, false) {
+        for d in groups::group_differences(&turns.groups, g, after_globals.is_some()) {
             report
                 .differences
                 .push((group_owner(&turns, &saved.game, &d), d));
