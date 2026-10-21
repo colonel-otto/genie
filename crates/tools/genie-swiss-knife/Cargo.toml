@@ -20,6 +20,11 @@ abscissa_core = "0.9.0"
 clap = "4"
 serde.workspace = true
 thiserror.workspace = true
+# the subscriber for the engine's spans and events (src/subscriber.rs): bunyan JSON lines, with
+# RUST_LOG set
+tracing.workspace = true
+tracing-bunyan-formatter = { version = "0.3", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "registry", "std"] }
 
 [dev-dependencies]
 abscissa_core = { version = "0.9.0", features = ["testing"] }

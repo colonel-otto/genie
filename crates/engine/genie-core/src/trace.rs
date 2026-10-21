@@ -1,0 +1,302 @@
+//! What the engine tells a [`tracing`] subscriber while it runs, for debugging.
+//!
+//! The library installs no subscriber: a binary that runs the engine does (the harness's
+//! `census`, `slice` and `forced` print bunyan JSON lines to stderr once `RUST_LOG` is set).
+//! Without a subscriber, or with its filter below a span's or event's level, each costs one
+//! comparison with `tracing`'s maximum level, and the state watch is not taken.
+//!
+//! Three targets, so a filter can pick (`RUST_LOG=genie_core::unsupported=warn` …):
+//!
+//! - `genie_core::update`: the span `update` (`tick`, `world_time`; DEBUG) of each world update,
+//!   inside it the event `command` (`player`, `command`; DEBUG) of each recorded command, the
+//!   span `player` (`player`; DEBUG) of each player's update and the span `object` (`id`,
+//!   `master`; TRACE) of each object's update.
+//! - `genie_core::unsupported` (WARN): where a case the engine does not model lands: an object
+//!   freezes (`object`) or a whole player stops, with the update (`tick`), the player and the
+//!   case (`why`, the text of its [`Unsupported`]).
+//! - `genie_core::state` (DEBUG): an object's update changed its state (the event `object_state`,
+//!   `from` and `to`), its top action (`action`: the type `from` and `to`, the state `from_state`
+//!   and `to_state`) or its unit AI (`unit_ai`: `from_order`, `to_order`, `from_ai_action`,
+//!   `to_ai_action`, `from_target`, `to_target`); −1 stands for none. Each carries `tick`,
+//!   `player` and `object`.
+
+use crate::turn::Unit;
+use crate::unit_ai::Unsupported;
+
+/// The target of the update, player and object spans and the command events.
+pub const UPDATE: &str = "genie_core::update";
+/// The target of the events where an unmodelled case lands.
+pub const UNSUPPORTED: &str = "genie_core::unsupported";
+/// The target of the state change events.
+pub const STATE: &str = "genie_core::state";
+
+/// An object's update meets a case the engine does not model: the object freezes.
+pub(crate) fn object_freezes(tick: u32, player: usize, object: i32, why: Unsupported) {
+    tracing::warn!(
+        target: UNSUPPORTED,
+        tick,
+        player,
+        object,
+        why = why.0,
+        "an object freezes"
+    );
+}
+
+/// A command or a pass meets a case the engine does not model: the whole player stops.
+pub(crate) fn player_stops(tick: u32, player: usize, why: Unsupported) {
+    tracing::warn!(
+        target: UNSUPPORTED,
+        tick,
+        player,
+        why = why.0,
+        "a player stops"
+    );
+}
+
+/// A case the engine does not model after an object's update (its leave, a capture's transfer,
+/// a new object's unit AI): the player's first unmodelled case, without a freeze.
+pub(crate) fn player_unsupported(tick: u32, player: usize, why: Unsupported) {
+    tracing::warn!(
+        target: UNSUPPORTED,
+        tick,
+        player,
+        why = why.0,
+        "a case not modelled"
+    );
+}
+
+/// What the state events compare of an object before and after its update.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Watch {
+    /// The object's state (`+0x640`).
+    object_state: u8,
+    /// Its top action's type and state.
+    action: Option<(i16, u8)>,
+    /// Its unit AI's order, action and target.
+    order: Option<[i32; 3]>,
+}
+
+impl Watch {
+    /// The watch of `u`, taken only while a subscriber listens to the state events.
+    pub(crate) fn of(u: &Unit) -> Option<Self> {
+        tracing::enabled!(target: STATE, tracing::Level::DEBUG).then(|| Self {
+            object_state: u.life.state,
+            action: u.top_action().map(|a| (a.kind, a.state)),
+            order: u
+                .ai
+                .as_ref()
+                .map(|ai| [ai.current_order, ai.current_action, ai.current_target]),
+        })
+    }
+
+    /// Tell the subscriber what changed from `self` to `u` in the update `tick` of `player`.
+    pub(crate) fn report(self, u: &Unit, tick: u32, player: usize) {
+        let Some(now) = Self::of(u) else {
+            return;
+        };
+        let object = u.id;
+        if now.object_state != self.object_state {
+            tracing::debug!(
+                target: STATE,
+                tick,
+                player,
+                object,
+                from = self.object_state,
+                to = now.object_state,
+                "object_state"
+            );
+        }
+        if now.action != self.action {
+            let field = |a: Option<(i16, u8)>| a.map_or(-1, |(kind, _)| i32::from(kind));
+            let state = |a: Option<(i16, u8)>| a.map_or(-1, |(_, state)| i32::from(state));
+            tracing::debug!(
+                target: STATE,
+                tick,
+                player,
+                object,
+                from = field(self.action),
+                to = field(now.action),
+                from_state = state(self.action),
+                to_state = state(now.action),
+                "action"
+            );
+        }
+        if now.order != self.order {
+            let part = |o: Option<[i32; 3]>, i: usize| o.map_or(-1, |o| o[i]);
+            tracing::debug!(
+                target: STATE,
+                tick,
+                player,
+                object,
+                from_order = part(self.order, 0),
+                to_order = part(now.order, 0),
+                from_ai_action = part(self.order, 1),
+                to_ai_action = part(now.order, 1),
+                from_target = part(self.order, 2),
+                to_target = part(now.order, 2),
+                "unit_ai"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lifecycle::{Class, Lifecycle, MasterData};
+    use crate::turn::{Command, Player, Turns};
+    use std::fmt::Write;
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing::span::{Attributes, Id, Record};
+    use tracing::{Event, Metadata};
+
+    /// A subscriber that writes down every span and event as `level target name field=value…`.
+    #[derive(Clone, Default)]
+    struct Recorder {
+        lines: Arc<Mutex<Vec<String>>>,
+    }
+
+    /// A span's name and fields, or an event's message and fields.
+    struct Line(String);
+
+    impl Visit for Line {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            let _ = if field.name() == "message" {
+                write!(self.0, " {value:?}")
+            } else {
+                write!(self.0, " {}={value:?}", field.name())
+            };
+        }
+    }
+
+    impl Recorder {
+        fn push(&self, meta: &Metadata<'_>, line: &Line) {
+            let head = format!("{} {}", meta.level(), meta.target());
+            self.lines.lock().unwrap().push(head + &line.0);
+        }
+
+        fn lines(&self) -> Vec<String> {
+            self.lines.lock().unwrap().clone()
+        }
+    }
+
+    impl tracing::Subscriber for Recorder {
+        fn enabled(&self, _: &Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, span: &Attributes<'_>) -> Id {
+            let mut line = Line(format!(" {}", span.metadata().name()));
+            span.record(&mut line);
+            self.push(span.metadata(), &line);
+            Id::from_u64(1)
+        }
+
+        fn record(&self, _: &Id, _: &Record<'_>) {}
+
+        fn record_follows_from(&self, _: &Id, _: &Id) {}
+
+        fn event(&self, event: &Event<'_>) {
+            let mut line = Line(String::new());
+            event.record(&mut line);
+            self.push(event.metadata(), &line);
+        }
+
+        fn enter(&self, _: &Id) {}
+
+        fn exit(&self, _: &Id) {}
+    }
+
+    /// The lines a subscriber hears while `run` runs.
+    fn heard(run: impl FnOnce()) -> Vec<String> {
+        let recorder = Recorder::default();
+        tracing::subscriber::with_default(recorder.clone(), run);
+        recorder.lines()
+    }
+
+    fn one(objects: Vec<Unit>) -> Turns {
+        let player = Player {
+            objects,
+            ..Player::default()
+        };
+        Turns::new(0, 1, 0, vec![0], vec![player])
+    }
+
+    #[test]
+    fn without_a_subscriber_no_watch_is_taken() {
+        assert_eq!(Watch::of(&Unit::default()), None);
+    }
+
+    #[test]
+    fn an_update_tells_its_span_its_players_and_its_objects() {
+        let mut t = one(vec![Unit {
+            id: 7,
+            ..Unit::default()
+        }]);
+        let lines = heard(|| t.tick(10));
+        assert_eq!(
+            lines[..3],
+            [
+                "DEBUG genie_core::update update tick=1 world_time=10",
+                "DEBUG genie_core::update player player=0",
+                "TRACE genie_core::update object id=7 master=-1",
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unmodelled_action_tells_why_its_object_freezes() {
+        let why = Unsupported("a default task the slice does not model");
+        let mut t = one(vec![Unit {
+            id: 5,
+            unmodelled_action: Some(why),
+            ..Unit::default()
+        }]);
+        let lines = heard(|| t.tick(10));
+        let warned: Vec<_> = lines.iter().filter(|l| l.starts_with("WARN")).collect();
+        assert_eq!(
+            warned,
+            [
+                "WARN genie_core::unsupported an object freezes tick=1 player=0 object=5 \
+                 why=\"a default task the slice does not model\""
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unmodelled_command_tells_the_command_and_why_its_player_stops() {
+        let why = Unsupported("QUEUE at two buildings");
+        let mut t = one(Vec::new());
+        let lines = heard(|| t.tick_with(104, &[Command::Unmodelled { player: 0, why }]));
+        assert!(lines[1].starts_with("DEBUG genie_core::update command command=Unmodelled"));
+        assert!(
+            lines.contains(
+                &"WARN genie_core::unsupported a player stops tick=1 player=0 \
+              why=\"QUEUE at two buildings\""
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn a_dying_object_tells_its_state_change() {
+        let mut t = one(vec![Unit {
+            id: 5,
+            life: Lifecycle {
+                class: Class::Animated,
+                hp: 0.0,
+                master: Some(MasterData::default()),
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        }]);
+        let before = t.players[0].objects[0].life.state;
+        let lines = heard(|| t.tick(10));
+        let after = t.players[0].objects[0].life.state;
+        assert_ne!(before, after, "{lines:#?}");
+        assert!(lines.contains(&format!(
+            "DEBUG genie_core::state object_state tick=1 player=0 object=5 from={before} to={after}"
+        )), "{lines:#?}");
+    }
+}

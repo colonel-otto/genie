@@ -74,6 +74,7 @@ pub mod tech;
 pub mod terrain;
 pub mod tile_path;
 pub mod town_bell;
+pub mod trace;
 pub mod turn;
 pub mod unit_ai;
 pub mod visibility;

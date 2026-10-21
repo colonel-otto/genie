@@ -7147,6 +7147,15 @@ impl crate::tech::Attributes for Player {
     }
 }
 
+impl Turns {
+    /// A command or a pass the slice does not model for player `p`: the player stops
+    /// ([`Player::stop`]), and a subscriber hears why ([`crate::trace`]).
+    pub(crate) fn stop_player(&mut self, p: usize, why: Unsupported) {
+        crate::trace::player_stops(self.ticks, p, why);
+        self.players[p].stop(self.ticks, why);
+    }
+}
+
 impl Player {
     /// A command the slice does not model for this player: the player stops.
     pub(crate) fn stop(&mut self, tick: u32, why: Unsupported) {
@@ -7327,16 +7336,14 @@ impl Turns {
                 // the pending debit first (FUN_141630d10 with 0), then the placement test and
                 // the payment's: a refused BUILD places nothing
                 if let Err(e) = self.debit_listed(player, master) {
-                    let tick = self.ticks;
-                    self.players[player].stop(tick, e);
+                    self.stop_player(player, e);
                     return;
                 }
                 match self.build_allowed(player, master, [position[0], position[1]]) {
                     Ok(true) => {}
                     Ok(false) => return,
                     Err(e) => {
-                        let tick = self.ticks;
-                        self.players[player].stop(tick, e);
+                        self.stop_player(player, e);
                         return;
                     }
                 }
@@ -7348,6 +7355,7 @@ impl Turns {
                 });
                 let ai = ai.unwrap_or_else(|e| {
                     // the constructor's draws are unknown, so the turn player's are too
+                    crate::trace::player_unsupported(self.ticks, self.player_turn, e);
                     let turn = &mut self.players[self.player_turn];
                     let at = turn.objects.len();
                     let _ = turn.unsupported.get_or_insert((self.ticks, at, e));
@@ -7458,8 +7466,7 @@ impl Turns {
                         )
                     });
                 if let Err(e) = built {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::Queue {
@@ -7479,8 +7486,7 @@ impl Turns {
                     rate,
                 };
                 if let Err(e) = self.queue(player, &queue, cost) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::Research {
@@ -7499,13 +7505,11 @@ impl Turns {
                     shift,
                 };
                 if let Err(e) = self.research(player, &r) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::Unmodelled { player, why } => {
-                let owner = &mut self.players[player];
-                owner.stop(self.ticks, why);
+                self.stop_player(player, why);
             }
             Command::AutoQueue { player, fishtrap } => {
                 let owner = &mut self.players[player];
@@ -7521,8 +7525,7 @@ impl Turns {
             }
             Command::Gate { player, id } => {
                 if let Err(e) = self.gate(player, id) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::Unload {
@@ -7534,8 +7537,7 @@ impl Turns {
                 sound,
             } => {
                 if let Err(e) = self.unload(player, ids, point, flag, unit_type, sound) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::UnitOrder {
@@ -7557,38 +7559,32 @@ impl Turns {
                     _ => self.unit_order(player, ids, action),
                 };
                 if let Err(e) = result {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::TransformObject { player, id, master } => {
                 if let Err(e) = self.transform_object(player, id, master) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::Resign { player, dropped } => {
                 if let Err(e) = self.resign(player, dropped) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::AutoScout { player, ref ids } => {
                 if let Err(e) = self.auto_scout(player, ids) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::Stop { player, ref ids } => {
                 if let Err(e) = self.stop_command(player, ids) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::SeekShelter { player, ref ids } => {
                 if let Err(e) = self.seek_shelter(player, ids) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::UnitAiState {
@@ -7597,8 +7593,7 @@ impl Turns {
                 state,
             } => {
                 if let Err(e) = self.unit_ai_state(player, ids, state) {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::GatherPoint {
@@ -7611,8 +7606,7 @@ impl Turns {
             } => {
                 if let Err(e) = self.gather_point(player, ids, point, (target, target_master), own)
                 {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
             Command::Order {
@@ -7658,8 +7652,7 @@ impl Turns {
                     None => Err(Unsupported("an order moves its units")),
                 };
                 if let Err(e) = result {
-                    let owner = &mut self.players[player];
-                    owner.stop(self.ticks, e);
+                    self.stop_player(player, e);
                 }
             }
         }
@@ -8842,20 +8835,29 @@ impl Turns {
     pub fn tick_with(&mut self, dt: u32, commands: &[Command]) {
         self.ticks += 1;
         self.world_time = self.world_time.wrapping_add(dt);
+        let _update = tracing::debug_span!(
+            target: crate::trace::UPDATE,
+            "update",
+            tick = self.ticks,
+            world_time = self.world_time
+        )
+        .entered();
         self.streams.seed_all(self.frame_seed);
         self.sync_moving();
         for command in commands {
+            tracing::debug!(target: crate::trace::UPDATE, ?command, "command");
             self.run(command);
         }
         self.sync_moving();
         // which players' gates are open (BaseWorld::update's flags)
         let mut gates_open = vec![false; self.players.len()];
         for p in 0..self.players.len() {
+            let _player =
+                tracing::debug_span!(target: crate::trace::UPDATE, "player", player = p).entered();
             self.player_time[p] = self.player_time[p].wrapping_add(dt);
             let turn = (p == self.player_turn).then_some(self.player_time[p]);
             if let Err(e) = self.open_gates(p, &mut gates_open) {
-                let tick = self.ticks;
-                self.players[p].stop(tick, e);
+                self.stop_player(p, e);
             }
             self.pathing.tiles_changed(self.spatial.take_changes());
             // An object whose update is not modelled freezes, and so do all live objects of a
@@ -8885,6 +8887,14 @@ impl Turns {
                     continue;
                 }
                 let mut unit = std::mem::take(&mut self.players[p].objects[i]);
+                let _object = tracing::trace_span!(
+                    target: crate::trace::UPDATE,
+                    "object",
+                    id = unit.id,
+                    master = unit.life.master_id
+                )
+                .entered();
+                let watch = crate::trace::Watch::of(&unit);
                 let mut victim = unit.attack_target().and_then(|t| self.victim(t, p));
                 let ai_target = unit
                     .ai
@@ -8954,6 +8964,9 @@ impl Turns {
                     foreign: Foreign { before, after },
                 };
                 let mut result = unit.update(&mut c, &mut player.objects);
+                if let Some(w) = watch {
+                    w.report(&unit, c.tick, p);
+                }
                 let (adds, ordered) = (
                     std::mem::take(&mut c.attribute_adds),
                     c.order_on_target.take(),
@@ -9159,6 +9172,7 @@ impl Turns {
                     Ok(Step::Leave) => {
                         let gone = player.objects.swap_remove(i);
                         if let Err(e) = self.spatial.leave(gone.id) {
+                            crate::trace::player_unsupported(self.ticks, p, e);
                             let _ = player.unsupported.get_or_insert((self.ticks, i, e));
                         }
                         // its owner's watched list lets it go (FUN_141091310 as it leaves)
@@ -9222,6 +9236,7 @@ impl Turns {
                             }
                         }
                         if let Some(e) = failed {
+                            crate::trace::player_unsupported(self.ticks, p, e);
                             let _ = self.players[p]
                                 .unsupported
                                 .get_or_insert((self.ticks, i, e));
@@ -9231,6 +9246,7 @@ impl Turns {
                     }
                     Ok(Step::Stay) => i += 1,
                     Err(e) => {
+                        crate::trace::object_freezes(self.ticks, p, player.objects[i].id, e);
                         player.freezes.push((self.ticks, player.objects[i].id, e));
                         let _ = player.unsupported.get_or_insert((self.ticks, i, e));
                         player.objects[i].stopped = true;
@@ -9248,14 +9264,12 @@ impl Turns {
         // draw) are the registry's, kept as the objects update
         for p in 0..self.players.len() {
             if let Err(e) = self.update_ghosts(p) {
-                let tick = self.ticks;
-                self.players[p].stop(tick, e);
+                self.stop_player(p, e);
             }
         }
         for p in 0..self.players.len() {
             if let Err(e) = self.watch_pass(p) {
-                let tick = self.ticks;
-                self.players[p].stop(tick, e);
+                self.stop_player(p, e);
             }
         }
         self.streams.seed_all(s1);

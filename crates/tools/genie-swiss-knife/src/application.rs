@@ -2,10 +2,10 @@
 
 use crate::{commands::EntryPoint, config::GenieSwissKnifeConfig};
 use abscissa_core::{
-    Application, FrameworkError, StandardPaths,
+    Application, Component, FrameworkError, FrameworkErrorKind, StandardPaths,
     application::{self, AppCell},
     config::{self, CfgCell},
-    trace,
+    terminal::component::Terminal,
 };
 
 /// Application state
@@ -54,6 +54,17 @@ impl Application for GenieSwissKnifeApp {
         &self.state
     }
 
+    /// The terminal; the tracing subscriber is gsk's own: bunyan JSON lines on stderr, and only
+    /// with `RUST_LOG` set or `--verbose` ([`crate::subscriber`]).
+    fn framework_components(
+        &mut self,
+        command: &Self::Cmd,
+    ) -> Result<Vec<Box<dyn Component<Self>>>, FrameworkError> {
+        crate::subscriber::install(command.verbose)
+            .map_err(|e| FrameworkErrorKind::ComponentError.context(e))?;
+        Ok(vec![Box::new(Terminal::new(self.term_colors(command)))])
+    }
+
     /// Register all components used by this application.
     ///
     /// If you would like to add additional components to your application
@@ -75,14 +86,5 @@ impl Application for GenieSwissKnifeApp {
         self.state.components_mut().after_config(&config)?;
         self.config.set_once(config);
         Ok(())
-    }
-
-    /// Get tracing configuration from command-line options
-    fn tracing_config(&self, command: &EntryPoint) -> trace::Config {
-        if command.verbose {
-            trace::Config::verbose()
-        } else {
-            trace::Config::default()
-        }
     }
 }

@@ -49,6 +49,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = { version = "2", features = ["serde"] }
 rayon = "1"
+# the engine's spans and events (genie-core::trace); without the proc-macro attributes
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
 [profile.dev]

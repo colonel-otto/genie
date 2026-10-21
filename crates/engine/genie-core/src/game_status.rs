@@ -192,8 +192,7 @@ impl Turns {
             let status = match self.own_victory(i) {
                 Ok(s) => s,
                 Err(e) => {
-                    let tick = self.ticks;
-                    self.players[i].stop(tick, e);
+                    self.stop_player(i, e);
                     return;
                 }
             };
@@ -215,8 +214,7 @@ impl Turns {
             if self.players[i].game_status == PLAYING
                 && let Err(e) = self.set_status(i, outcome)
             {
-                let tick = self.ticks;
-                self.players[i].stop(tick, e);
+                self.stop_player(i, e);
             }
         }
     }
