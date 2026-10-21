@@ -112,6 +112,9 @@ pub struct Completion<'a> {
     pub attribute_204: bool,
     /// The game's setting at `+0x680` ([`crate::turn::Turns::mode_680`]).
     pub mode_680: i32,
+    /// The owner's attributes 237, 238 and 239 (`player+0x768`..`+0x778`): a farm's bonus when
+    /// built, its amount, resource and technology ([`Construction::complete`]).
+    pub farm_bonus: [f32; 3],
 }
 
 /// What a builder's work did to its foundation ([`Construction::work`]).
@@ -140,6 +143,8 @@ pub struct Built {
 pub struct Builder<'a> {
     /// The builder's class (`+0x0a`, decoded).
     pub class: i16,
+    /// Its master's id.
+    pub master: i16,
     /// What it carries (`+0x310`).
     pub held: f32,
     /// The kind of what it carries (`+0x308`, −1 for none).
@@ -156,12 +161,29 @@ pub struct Builder<'a> {
     pub build_targets: &'a [(i32, Option<u8>)],
 }
 
+/// What the end of a Build's work leads to (case 0xdf).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AfterWork {
+    /// The Build ends (`set_state(1)`; the update returns 1).
+    Done,
+    /// The builder looks for more work around the building.
+    Search,
+    /// The builder works the building (slot 0x7e8).
+    WorksIt,
+}
+
+/// The fishing ships that work the fish traps they build (`FUN_1411945a0`: 13, 2356, 2171).
+const FISHING_SHIPS: [i16; 3] = [13, 2356, 2171];
+
 /// What a Build action's update leaves to its unit and player.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BuildStep {
     /// The update returned 1: the action list removes the action, whose destructor
     /// (`FUN_140aadbf0`) releases the foundation (slot 0x180).
     pub done: bool,
+    /// The builder works the building it built (a villager its farm, a fishing ship its fish
+    /// trap: slot 0x7e8 on it, the caller's).
+    pub works_it: bool,
     /// The work completed the building: what its owner gains.
     pub completed: Option<Built>,
     /// The work ended without more work: the action let its foundation go (slot 0x68 with none,
@@ -302,9 +324,9 @@ impl BuildAction {
         }
         if self.state == FINISHED {
             match self.after_work(&walk, site.as_ref(), computer, builder)? {
-                Some(true) => step.done = true,
-                Some(false) => step.search = true,
-                None => step.released = true,
+                AfterWork::Done => step.done = true,
+                AfterWork::Search => step.search = true,
+                AfterWork::WorksIt => step.works_it = true,
             }
             return Ok(step);
         }
@@ -445,21 +467,31 @@ impl BuildAction {
         site: Option<&Site<'_>>,
         computer: bool,
         builder: Builder<'_>,
-    ) -> Result<Option<bool>, Unsupported> {
+    ) -> Result<AfterWork, Unsupported> {
         if computer {
             return Err(Unsupported("a computer player's builder after its work"));
         }
         let master = site.and_then(|s| s.completion.master).ok_or(Unsupported(
             "the end of a Build on a foundation the slice does not read",
         ))?;
-        if master.class == FARM || master.id == FISH_TRAP || matches!(master.id, 1893 | 1897) {
+        // LAB_140ab09af: a villager works the farm it built (FUN_141194b20, FUN_141195750), a
+        // fishing ship its fish trap (FUN_141194640, FUN_1411945a0): its unit AI drops its build
+        // orders (FUN_140c5e020 with 0x2be), then slot 0x7e8 on the building (the caller's)
+        let farm = master.class == FARM && master.id != FISH_TRAP;
+        let works_it = (farm && builder.class == VILLAGER)
+            || (master.id == FISH_TRAP && FISHING_SHIPS.contains(&builder.master));
+        if matches!(master.id, 1893 | 1897) {
             return Err(Unsupported(
-                "the end of a Build on a farm, a fish trap or master 1893/1897",
+                "the end of a Build on a pasture (its animals, slot 0x780)",
             ));
         }
         let ai = builder
             .ai
             .ok_or(Unsupported("a builder without a unit AI after its work"))?;
+        if works_it {
+            ai.orders.retain(|o| o.order != BUILD_ORDER);
+            return Ok(AfterWork::WorksIt);
+        }
         // FUN_140c5dcd0: a build order whose foundation is gone or no longer in state 0 leaves
         // the queue (the building just completed is in state 2 now)
         let built = site.map(|s| (s.id, s.life.state));
@@ -478,11 +510,11 @@ impl BuildAction {
             state == Some(0)
         });
         if ai.orders.is_empty() {
-            return Ok(Some(false));
+            return Ok(AfterWork::Search);
         }
         ai.end_order_and_action()?;
         self.done(walk)?;
-        Ok(Some(true))
+        Ok(AfterWork::Done)
     }
 
     /// Slot 0x48 (`FUN_140ab1b30`), the work command's target for the Build's own task, here its
@@ -861,13 +893,30 @@ impl Construction {
                 "a completion with a player's attribute 204 (FUN_14152bcb0)",
             ));
         }
-        if master.class == FARM
-            || site.construction.sprite_override
-            || master.tasks.iter().any(|t| t.action_type == 0x99)
-        {
+        if site.construction.sprite_override || master.tasks.iter().any(|t| t.action_type == 0x99) {
             return Err(Unsupported(
-                "a completion of a farm, an overridden sprite or a task of action type 0x99",
+                "a completion of an overridden sprite or a task of action type 0x99",
             ));
+        }
+        let mut attributes = Vec::new();
+        // FUN_1411c6bd0's part for a farm (class 49) built: FUN_1411c66a0 with the owner's
+        // attributes 238 (a resource), 239 (a technology) and 237 (an amount): a resource of the
+        // player's gets the amount (slot 0xf8 with 1 and 1); the pastures' part (FUN_1411c8410)
+        // and a technology's test (FUN_141659d20, FUN_1411d3cd0) are not modelled
+        if master.class == FARM {
+            if matches!(master.id, 1893 | 1897) {
+                return Err(Unsupported("a pasture's completion (FUN_1411c8410)"));
+            }
+            let [amount, resource, tech] = done.farm_bonus;
+            let (resource, tech) = (resource as i32, tech as i32);
+            if 0 <= resource && 0 <= tech {
+                return Err(Unsupported(
+                    "a farm's bonus under a technology (FUN_141659d20)",
+                ));
+            }
+            if 0 <= resource {
+                attributes.push((resource as i16, amount));
+            }
         }
         if building.adjacent_mode != 0 || building.stack_unit >= 0 || building.disappears_when_built
         {
@@ -882,7 +931,6 @@ impl Construction {
         }
         let c = &mut *site.construction;
         c.progress = f32::from(c.build_time);
-        let mut attributes = Vec::new();
         for &(kind, amount, flag) in &master.storage {
             if kind < 0 || amount <= 0.0 {
                 continue;
@@ -1179,6 +1227,7 @@ mod tests {
                 annexed: false,
                 attribute_204: false,
                 mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
             },
         };
         let worked = Construction::work(&mut site, 0.02, &mut world, &mut Pathing::default(), 0);
@@ -1229,6 +1278,7 @@ mod tests {
                 annexed: false,
                 attribute_204: false,
                 mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
             },
         };
         let rate = 1.0f32 * 1.0 * 0.021;
@@ -1345,6 +1395,7 @@ mod tests {
                 annexed: false,
                 attribute_204: false,
                 mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
             },
         };
         let _ = build
@@ -1363,6 +1414,7 @@ mod tests {
                 Some(site),
                 Builder {
                     class: VILLAGER,
+                    master: 83,
                     held: 0.0,
                     held_kind: -1,
                     drop_site: false,
@@ -1402,6 +1454,7 @@ mod tests {
         let mut waits = waits.iter_mut();
         let mut builder = || Builder {
             class: VILLAGER,
+            master: 83,
             held: 0.0,
             held_kind: -1,
             drop_site: false,

@@ -5126,6 +5126,7 @@ impl Unit {
                 annexed,
                 attribute_204: c.attribute_204,
                 mode_680: c.mode_680,
+                farm_bonus: farm_bonus(c.attributes),
             },
         };
         let built = Construction::complete(&mut site, c.spatial)?;
@@ -5550,6 +5551,7 @@ impl Unit {
             let annexed = others.iter().any(|u| u.annex_of == Some(target));
             let masters = c.masters;
             let (attribute_204, mode_680) = (c.attribute_204, c.mode_680);
+            let farm_bonus = farm_bonus(c.attributes);
             let built = others
                 .iter()
                 .find(|u| u.id == target)
@@ -5581,6 +5583,7 @@ impl Unit {
                         annexed,
                         attribute_204,
                         mode_680,
+                        farm_bonus,
                     },
                 })
             });
@@ -5601,6 +5604,7 @@ impl Unit {
             let has_kind = usize::try_from(held_kind).is_ok_and(|k| k < c.attributes.len());
             let builder = Builder {
                 class,
+                master: self.life.master_id,
                 held: self.life.amount,
                 held_kind,
                 drop_site: drop_site && has_kind,
@@ -5648,6 +5652,21 @@ impl Unit {
             if step.released {
                 release_own(others, masters, target, by)?;
                 self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
+            }
+            if step.works_it {
+                // slot 0x7e8 on the building it built, at its place (the caller's work command)
+                let point = c
+                    .spatial
+                    .get(target)
+                    .ok_or(Unsupported("a builder's building without a place"))?
+                    .position;
+                c.work_order = Some(crate::order::Work {
+                    target,
+                    point,
+                    carry_test: false,
+                    filter: -1,
+                    notified: true,
+                });
             }
             if step.search {
                 let built =
@@ -10171,6 +10190,13 @@ impl Turns {
 #[must_use]
 pub const fn scenario_mode(game_mode: i32) -> bool {
     matches!(game_mode, 3 | 4 | 5 | 15)
+}
+
+/// The owner's attributes 237, 238 and 239: a built farm's bonus ([`Completion::farm_bonus`]);
+/// −1 for those the player has not got.
+fn farm_bonus(attributes: &[f32]) -> [f32; 3] {
+    let at = |i: usize| attributes.get(i).copied().unwrap_or(-1.0);
+    [at(237), at(238), at(239)]
 }
 
 pub(crate) fn victim_of(

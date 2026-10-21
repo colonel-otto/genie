@@ -1075,12 +1075,19 @@ impl Attack {
                     set_sprite(s.sprite, g, s.sprite_rng);
                 }
                 let Some(state) = walked else {
-                    // the motion step gave up in the update set_state(4) ran
+                    // the motion step gave up in the update set_state(4) ran; a MoveTo that fails
+                    // at once (set_state 13, not quiet: 0x140aa29e0) shows the idle sprite and
+                    // clears `+0x7b8` as an arrived one does
                     self.give_up(s);
                     if self.move_to == Some(MoveTo::Failed) {
-                        return Err(Unsupported(
-                            "an Attack's MoveTo failing at its start (its idle sprite)",
-                        ));
+                        let g = self
+                            .arms
+                            .idle_sprite
+                            .ok_or(Unsupported("an attacker without its standing sprite"))?;
+                        set_sprite(s.sprite, g, s.sprite_rng);
+                        if let Some(a) = s.anim_speed.as_mut() {
+                            *a = 0.0;
+                        }
                     }
                     return Ok(0);
                 };
