@@ -136,10 +136,13 @@ impl Turns {
     /// restriction, a map without its terrain, a centroid whose tile the first member's terrain
     /// lacks (`FUN_141052b90` puts a temporary record there that the routine never removes,
     /// `FUN_1410561f0`), and a point query near a record whose place the slice does not know.
+    ///
+    /// # Panics
+    ///
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn clear_spot(&self, group: i32, centroid: Vec3) -> Result<Vec3, Unsupported> {
-        let g = self.groups.get(group).ok_or(Unsupported(
-            "a clear spot for a group the world does not hold",
-        ))?;
+        let g = self.groups.get(group).expect("the caller holds the group");
         let Some(first) = g.members.first() else {
             return Ok(centroid);
         };
@@ -246,7 +249,8 @@ impl Turns {
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn move_position_to_front(&mut self, group: i32, ahead: f32) -> Result<(), Unsupported> {
         let Some(g) = self.groups.get(group) else {
             return Ok(());

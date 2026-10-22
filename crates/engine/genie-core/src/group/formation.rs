@@ -539,16 +539,15 @@ impl crate::turn::Turns {
     ///
     /// # Errors
     ///
-    /// A group the world does not hold, a member of a master the slice does not have, and the
+    /// A member of a master the slice does not have, and the
     /// layouts' and the transform's.
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn update_desired_positions(&mut self, group: i32, given: i32) -> Result<(), Unsupported> {
-        let g = self.groups.get(group).ok_or(Unsupported(
-            "the formation of a group the world does not hold",
-        ))?;
+        let g = self.groups.get(group).expect("the caller holds the group");
         if g.members.is_empty() {
             return Ok(());
         }

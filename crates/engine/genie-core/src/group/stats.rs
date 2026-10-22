@@ -64,7 +64,8 @@ impl Turns {
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn statistics_only(&mut self, group: i32, far: bool) -> Result<bool, Unsupported> {
         if far {
             return Err(Unsupported(
@@ -75,9 +76,7 @@ impl Turns {
         let ids: Vec<i32> = self
             .groups
             .get(group)
-            .ok_or(Unsupported(
-                "the statistics of a group the world does not hold",
-            ))?
+            .expect("the caller holds the group")
             .members
             .iter()
             .map(|m| m.id)
@@ -237,13 +236,16 @@ impl Turns {
     /// ([`Turns::update_desired_positions`] with -1), the members' stances its state and their
     /// formation types 0 ([`Turns::stances_state`]); a higher one locks the group to it
     /// ([`Turns::lock_formation`]).
+    ///
+    /// # Panics
+    ///
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn calc_formation_type(&mut self, group: i32) -> Result<(), Unsupported> {
         let ids: Vec<i32> = self
             .groups
             .get(group)
-            .ok_or(Unsupported(
-                "the formation of a group the world does not hold",
-            ))?
+            .expect("the caller holds the group")
             .members
             .iter()
             .map(|m| m.id)
@@ -290,16 +292,15 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A group the world does not hold, or what [`Turns::update_desired_positions`] does not
+    /// What [`Turns::update_desired_positions`] does not
     /// model.
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn lock_formation(&mut self, group: i32, kind: i32) -> Result<(), Unsupported> {
-        let g = self.groups.get(group).ok_or(Unsupported(
-            "LockFormation of a group the world does not hold",
-        ))?;
+        let g = self.groups.get(group).expect("the caller holds the group");
         // the spacing is read again for every member held (0x14102500a): the first whose
         // radius gives one above it sets it, and every later member finds it set
         let mut spacing = g.desired_spacing;

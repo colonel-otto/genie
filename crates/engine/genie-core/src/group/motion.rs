@@ -986,7 +986,8 @@ impl Turns {
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn motion_update(&mut self, group: i32, budget: bool) -> Result<(), Unsupported> {
         let Some(g) = self.groups.get(group) else {
             return Ok(());

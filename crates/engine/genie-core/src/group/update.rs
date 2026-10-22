@@ -93,12 +93,13 @@ impl Turns {
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn group_update(&mut self, group: i32) -> Result<bool, Unsupported> {
         let g = self
             .groups
             .get_mut(group)
-            .ok_or(Unsupported("the update of a group the world does not hold"))?;
+            .expect("the caller holds the group");
         g.flags &= !0x2000;
         let ids: Vec<i32> = g.members.iter().map(|m| m.id).collect();
         let owner = g.owner;

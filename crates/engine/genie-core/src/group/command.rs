@@ -45,11 +45,14 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A group the world does not hold, or a member of a master the slice does not have.
+    /// A member of a master the slice does not have.
+    ///
+    /// # Panics
+    ///
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn all_horde_units(&self, group: i32) -> Result<bool, Unsupported> {
-        let g = self.groups.get(group).ok_or(Unsupported(
-            "allHordeUnits of a group the world does not hold",
-        ))?;
+        let g = self.groups.get(group).expect("the caller holds the group");
         self.horde_units_only(g)
     }
 
@@ -83,11 +86,12 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A group the world does not hold, a target, a horde, or what the move does not model.
+    /// A target, a horde, or what the move does not model.
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn group_command(
         &mut self,
         group: i32,
@@ -98,7 +102,7 @@ impl Turns {
         let g = self
             .groups
             .get_mut(group)
-            .ok_or(Unsupported("a command of a group the world does not hold"))?;
+            .expect("the caller holds the group");
         g.flags &= !0x20;
         if target != -1 {
             return Err(Unsupported(
@@ -158,12 +162,13 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A group the world does not hold, a queued move, a horde, or what the members' stop and
+    /// A queued move, a horde, or what the members' stop and
     /// the formation do not model.
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn command_move_to(
         &mut self,
         group: i32,
@@ -180,7 +185,7 @@ impl Turns {
         let g = self
             .groups
             .get_mut(group)
-            .ok_or(Unsupported("a move of a group the world does not hold"))?;
+            .expect("the caller holds the group");
         g.flags &= !0x1020;
         let changed = if target == -1 {
             g.current_target.target != -1
@@ -315,19 +320,18 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A group the world does not hold, a member with an action the slice does not model or a
+    /// A member with an action the slice does not model or a
     /// sleeping one, or what the stop does not model.
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn stop_all_units(&mut self, group: i32, all: bool) -> Result<(), Unsupported> {
         let ids: Vec<i32> = self
             .groups
             .get(group)
-            .ok_or(Unsupported(
-                "stopAllUnits of a group the world does not hold",
-            ))?
+            .expect("the caller holds the group")
             .members
             .iter()
             .map(|m| m.id)

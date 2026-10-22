@@ -154,7 +154,8 @@ impl Turns {
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn remove_unit(
         &mut self,
         group: i32,
@@ -278,7 +279,8 @@ impl Turns {
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
     pub fn add_to_group(&mut self, group: i32, id: i32) -> Result<bool, Unsupported> {
         let Some((p, u)) = self.object(id) else {
             return Ok(false);
@@ -288,10 +290,7 @@ impl Turns {
         let Some(sub) = sub_formation(unit.kind, unit.hero_flag, unit.formation_category) else {
             return Ok(false);
         };
-        let g = self
-            .groups
-            .get(group)
-            .ok_or(Unsupported("AddUnit to a group the world does not hold"))?;
+        let g = self.groups.get(group).expect("the caller holds the group");
         if g.has(id) {
             return Ok(true);
         }
