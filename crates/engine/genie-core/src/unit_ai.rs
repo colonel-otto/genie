@@ -1554,6 +1554,8 @@ pub const HUMAN_ORDER_CAP: u32 = 5000;
 const SOLDIER_IDLE_MASTER: i16 = 706;
 /// The lion's idle timeout (`FUN_140c1fb70`, as its constructor `FUN_140c11bd0`).
 const LION_IDLE_TIMEOUT: u32 = 6000;
+/// The lion's idle timeout once its attack completed (`FUN_140c266f0`).
+const LION_ATTACKED_TIMEOUT: u32 = 1000;
 /// Outside mode 1 the lion attacks within this share of its line of sight (`FUN_140c1fb70`,
 /// `DAT_142e7f384`).
 const LION_SIGHT_SHARE: f32 = crate::image::unit_ai::LION_SIGHT_SHARE;
@@ -3275,6 +3277,40 @@ impl UnitAi {
         Ok(BREAK)
     }
 
+    /// The building's damage notify (`FUN_140c22610`, case 500): at no hit points left it gives
+    /// up ("I'm dead, I give up."): the owner's alert (slot 0x2e8 with 0x209), the notifies end
+    /// (`FUN_140c5dc10`) and it returns 4. Else the owner hears 0x201, as does each other owner
+    /// of the units inside it (`+0x2f8`); for a human player those are the alert list and the
+    /// old pather's hulled-area reset (`FUN_14162dab0`), not held, and a computer player's AI
+    /// hears them (slot 0x3c8), which is not modelled. A new attacker (`FUN_140bf4cb0`) that is
+    /// not its target makes a human player's building ask for help (`AskForHelp`,
+    /// `FUN_140c42ce0`), not modelled. Then the attacker joins the set (`FUN_140b43f30`), the
+    /// unit is under attack (`FUN_14119d2d0` with 1) and it returns 2.
+    fn building_damaged(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let new = self.attackers.binary_search(&n.caller).is_err();
+        let asks = n.p[1] >= 1 && new && self.current_target != n.caller;
+        if computer || asks {
+            return Err(Unsupported(
+                "a building's damage notify (its computer owner's AI, AskForHelp)",
+            ));
+        }
+        if n.p[1] < 1 {
+            self.end_notifies(time, at, fx)?;
+            return Ok(DEAD);
+        }
+        let _ = self.add_attacker(n.caller);
+        side.set_under_attack(true);
+        Ok(GO_ON)
+    }
+
     /// `ClosestValidAttacker` (`FUN_140c158d0`): over the attackers in their order, those the
     /// world holds but of classes 3, 13, 52 and 54, the one with the least squared gap
     /// (`FUN_14118f8c0`); one within `DAT_142ef9004` (0.0625) of the best so far takes over on a
@@ -3568,19 +3604,62 @@ impl UnitAi {
                 0x20f => Ok(GO_ON),
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
-            // the boar (FUN_140c25770): its damage notify attacks
+            // the boar (FUN_140c25770): its damage notify attacks; a completion while it moves
+            // off a footprint (0x2bf) makes its idle timeout the adjusted one plus 1, drops the
+            // target (FUN_140c5e1e0) and sends it home on its next idle check (slot 0x1f0,
+            // FUN_140c16d50: +0x1fd), then goes to the base handler
             4 => match n.kind {
                 DAMAGED => self.boar_damaged(n, time, at, ai_rng, side, fx),
-                ACTION_COMPLETED if self.current_action == 0x2bf => {
-                    Err(Unsupported("a boar's completion of action 0x2bf"))
+                ACTION_COMPLETED => {
+                    if self.current_action == MOVE_ASIDE_ACTION {
+                        self.idle_timeout = self.adjusted_idle_timeout.wrapping_add(1);
+                        self.remove_target();
+                        if let Some(home) = self.home.as_mut() {
+                            home.go_home = true;
+                        }
+                    }
+                    self.base_notify(n, time, at, computer, ai_rng, side, fx)
                 }
                 0x20f => Ok(GO_ON),
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
-            // the lion (FUN_140c266f0)
+            // the lion (FUN_140c266f0); both its cases go on to the base handler
             5 => match n.kind {
-                ACTION_COMPLETED if n.p[0] == 600 => Err(Unsupported("a lion's completed attack")),
-                0x1fc => Err(Unsupported("a lion's moved target")),
+                ACTION_COMPLETED => {
+                    if n.p[0] == ATTACK_ACTION {
+                        // FUN_140c41bc0 with 1000: the idle timeout, then slot 0x1a8
+                        self.idle_timeout = LION_ATTACKED_TIMEOUT;
+                        self.update_adjusted_idle_timeout(ai_rng);
+                        self.remove_target();
+                        self.stop_current(true, at, fx)?;
+                    }
+                    self.base_notify(n, time, at, computer, ai_rng, side, fx)
+                }
+                TARGET_MOVED => {
+                    // "Target is still visible, tracking.": a target the world holds within the
+                    // lion's line of sight (FUN_14118f8c0 against its sight squared: COMISS, JC)
+                    let gap = at.target.filter(|_| self.current_target != -1).map(|t| {
+                        crate::movement::footprint_gap_squared(
+                            at.position,
+                            at.size,
+                            t.position,
+                            t.radius,
+                        )
+                    });
+                    if let Some(gap) = gap
+                        && !crate::fmath::below_or_unordered(at.los * at.los, gap)
+                    {
+                        return Err(Unsupported(
+                            "a lion's moved target within its sight (its master's flag 0x10)",
+                        ));
+                    }
+                    // "Target is invalid or no longer visible, stopping pursuit.": the target
+                    // goes, the action stops (slot 0xb0 with 1) and slot 0x48 hands the notify
+                    // to the owner (not held)
+                    self.remove_target();
+                    self.stop_current(true, at, fx)?;
+                    self.base_notify(n, time, at, computer, ai_rng, side, fx)
+                }
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the villager (FUN_140c22bf0; the notifies it has no case for go to the base handler):
@@ -3647,7 +3726,18 @@ impl UnitAi {
             },
             // the tower (FUN_140c299f0)
             15 => match n.kind {
-                DAMAGED => Err(Unsupported("a tower's damage notify")),
+                // "I'm dead, I give up.": the owner's alert (slot 0x2e8 with 0x209: a human
+                // player's alert list and the old pather's hulled-area reset, not held; a
+                // computer player's AI hears it), the notifies end and it gives up. Alive, the
+                // other owners of the units inside it hear 0x201 and the base handler's damage
+                // case follows, which is not modelled
+                DAMAGED if n.p[1] < 1 && !computer => {
+                    self.end_notifies(time, at, fx)?;
+                    Ok(DEAD)
+                }
+                DAMAGED => Err(Unsupported(
+                    "a tower's damage notify (its computer owner's AI, the base handler's case)",
+                )),
                 // "I am a defensive building and my current target has been destroyed, purging
                 // attack order.": a target gone or dead (above state 2) is forgotten
                 // (`FUN_140c5e1e0`) and the current action stops (slot 0xb0 with 1)
@@ -3663,7 +3753,20 @@ impl UnitAi {
             },
             // the building (FUN_140c22610): most notifies end there
             17 => match n.kind {
-                DAMAGED | 600 | NO_LONGER_ON_ME => Err(Unsupported("a building's attack notify")),
+                DAMAGED => self.building_damaged(n, time, at, computer, side, fx),
+                // "Unit #%d is attacking me": it joins the attackers and the unit is under attack
+                600 => {
+                    let _ = self.add_attacker(n.caller);
+                    side.set_under_attack(true);
+                    Ok(GO_ON)
+                }
+                // "is no longer doing an action on me.": one in the set (FUN_140bf4cb0) leaves it
+                NO_LONGER_ON_ME => {
+                    if let Ok(i) = self.attackers.binary_search(&n.caller) {
+                        let _ = self.attackers.remove(i);
+                    }
+                    Ok(GO_ON)
+                }
                 0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, computer, ai_rng, side, fx),
                 _ => Ok(GO_ON),
             },
@@ -8187,5 +8290,162 @@ mod tests {
             let r = u.attack_object(9800, true, false, &at, &mut side, &mut Vec::new());
             assert_eq!(r, Ok(attacks), "type {ai_type}");
         }
+    }
+
+    /// A notify through the type's handler (slot 0x238) with a recording side and no world.
+    fn handled(
+        u: &mut UnitAi,
+        n: Notify,
+        at: &Surroundings,
+        computer: bool,
+    ) -> (Result<u32, Unsupported>, Vec<Effect>, Recorder) {
+        let mut side = Recorder::default();
+        let mut fx = Vec::new();
+        let r = u.handle(n, 0, at, computer, &mut rng(), &mut side, &mut fx);
+        (r, fx, side)
+    }
+
+    /// The boar's handler (`FUN_140c25770`) for the completion of its move off a footprint
+    /// (0x1fa on action 0x2bf): its idle timeout becomes the adjusted one plus 1, the target goes
+    /// (`FUN_140c5e1e0`), its slot 0x1f0 (`FUN_140c16d50`) sends it home on its next idle check,
+    /// then the base handler stops the completed action.
+    #[test]
+    fn a_boar_whose_move_aside_completed_heads_home_next() {
+        let mut u = UnitAi {
+            current_action: MOVE_ASIDE_ACTION,
+            current_target: 50,
+            target_type: 4,
+            adjusted_idle_timeout: 3100,
+            idle_timeout: 3000,
+            ..hit_boar()
+        };
+        let n = Notify::own(9729, ACTION_COMPLETED, [MOVE_ASIDE_ACTION, 0, 0]);
+        let (r, fx, _) = handled(&mut u, n, &Surroundings::default(), false);
+        assert_eq!(r, Ok(GO_ON));
+        assert_eq!(fx, vec![Effect::Stop]);
+        assert_eq!(u.idle_timeout, 3101);
+        assert_eq!((u.current_target, u.last_target), (-1, 50));
+        assert_eq!(u.current_action, -1);
+        assert!(u.home.is_some_and(|h| h.go_home));
+    }
+
+    /// The lion's handler (`FUN_140c266f0`): a completed attack (0x1fa with 600) sets its idle
+    /// timeout to 1000 and redraws the adjusted one (`FUN_140c41bc0`), drops the target and
+    /// stops (slot 0xb0 with 1); the base handler then stops on the attack's completion again.
+    #[test]
+    fn a_lion_s_completed_attack_resets_its_idle_timeout_and_stops() {
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 700,
+            idle_timeout: 6000,
+            ..idle(5)
+        };
+        let n = Notify::own(800, ACTION_COMPLETED, [ATTACK_ACTION, 0, 0]);
+        let mut r = rng();
+        let expected = adjusted_idle_timeout(1000, &mut rng());
+        let mut fx = Vec::new();
+        let result = u.handle(
+            n,
+            0,
+            &Surroundings::default(),
+            false,
+            &mut r,
+            &mut Recorder::default(),
+            &mut fx,
+        );
+        assert_eq!(result, Ok(GO_ON));
+        assert_eq!((u.idle_timeout, u.adjusted_idle_timeout), (1000, expected));
+        assert_eq!(r.draws, 1);
+        assert_eq!(fx, vec![Effect::Stop, Effect::Stop]);
+        assert_eq!(
+            (u.current_target, u.last_target, u.current_action),
+            (-1, 700, -1)
+        );
+    }
+
+    /// The lion's handler for a moved target (0x1fc): a target the world no longer holds, or
+    /// one beyond its line of sight (the footprints' squared gap against its sight squared,
+    /// `COMISS` then `JC`), is dropped and the lion stops before the base handler; one within
+    /// its sight it would track (its master's flag 0x10, not held).
+    #[test]
+    fn a_lion_drops_a_moved_target_out_of_its_sight() {
+        let lion = || UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 700,
+            ..idle(5)
+        };
+        let n = Notify::own(800, TARGET_MOVED, [0, 0, 0]);
+        let mut u = lion();
+        let (r, fx, _) = handled(&mut u, n, &Surroundings::default(), false);
+        assert_eq!((r, fx), (Ok(GO_ON), vec![Effect::Stop]));
+        assert_eq!((u.current_target, u.current_action), (-1, -1));
+        let at = |x: f32| Surroundings {
+            position: [10.0, 10.0, 0.0],
+            size: [0.5, 0.5],
+            los: 4.0,
+            target: Some(Seen {
+                state: 2,
+                position: [x, 10.0, 0.0],
+                radius: [0.5, 0.5],
+                ..Seen::default()
+            }),
+            ..Surroundings::default()
+        };
+        // 5 tiles apart, 4 between the footprints: at its sight, tracked (not modelled)
+        let mut u = lion();
+        assert!(handled(&mut u, n, &at(15.0), false).0.is_err());
+        // 6 apart, 5 between: beyond it
+        let mut u = lion();
+        let (r, fx, _) = handled(&mut u, n, &at(16.0), false);
+        assert_eq!((r, fx), (Ok(GO_ON), vec![Effect::Stop]));
+        assert_eq!(u.current_target, -1);
+    }
+
+    /// The building's handler (`FUN_140c22610`): an attack (600) adds its attacker and puts it
+    /// under attack; 699 drops one; damage (500) at no hit points ends the notifies (4), else
+    /// adds an attacker already known or its target; a new one makes a human player's building
+    /// ask for help (`FUN_140c42ce0`, not modelled), and a computer player's AI hears of it.
+    #[test]
+    fn a_building_counts_its_attackers() {
+        let mut u = idle(17);
+        let at = Surroundings::default();
+        let (r, _, side) = handled(&mut u, Notify::own(70, 600, [0; 3]), &at, false);
+        assert_eq!((r, side.under_attack), (Ok(GO_ON), Some(true)));
+        let _ = handled(&mut u, Notify::own(60, 600, [0; 3]), &at, false);
+        assert_eq!(u.attackers, vec![60, 70]);
+        let (r, _, _) = handled(&mut u, Notify::own(70, NO_LONGER_ON_ME, [0; 3]), &at, false);
+        assert_eq!((r, u.attackers.clone()), (Ok(GO_ON), vec![60]));
+        let (r, _, _) = handled(&mut u, Notify::own(99, NO_LONGER_ON_ME, [0; 3]), &at, false);
+        assert_eq!((r, u.attackers.clone()), (Ok(GO_ON), vec![60]));
+        let hit = |caller, hp| Notify::own(caller, DAMAGED, [caller, hp, 0]);
+        let (r, _, side) = handled(&mut u, hit(60, 5), &at, false);
+        assert_eq!((r, side.under_attack), (Ok(GO_ON), Some(true)));
+        u.current_target = 61;
+        let (r, _, _) = handled(&mut u, hit(61, 5), &at, false);
+        assert_eq!((r, u.attackers.clone()), (Ok(GO_ON), vec![60, 61]));
+        assert!(handled(&mut u, hit(62, 5), &at, false).0.is_err());
+        assert!(handled(&mut u, hit(60, 5), &at, true).0.is_err());
+        u.notifies = vec![hit(60, 0)];
+        let (r, _, _) = handled(&mut u, hit(60, 0), &at, false);
+        assert_eq!((r, u.notifies.len()), (Ok(DEAD), 0));
+    }
+
+    /// The tower's handler (`FUN_140c299f0`) for damage at no hit points: the owner's alert
+    /// (0x209, a human player's alert list), the notifies end and it gives up (4).
+    #[test]
+    fn a_destroyed_tower_gives_up() {
+        let mut u = UnitAi {
+            notifies: vec![Notify::own(60, DAMAGED, [60, 0, 0])],
+            ..idle(15)
+        };
+        let n = Notify::own(60, DAMAGED, [60, 0, 0]);
+        let (r, _, _) = handled(&mut u, n, &Surroundings::default(), false);
+        assert_eq!((r, u.notifies.len()), (Ok(DEAD), 0));
+        let mut u = idle(15);
+        assert!(
+            handled(&mut u, n, &Surroundings::default(), true)
+                .0
+                .is_err()
+        );
     }
 }
