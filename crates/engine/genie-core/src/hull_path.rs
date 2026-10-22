@@ -883,7 +883,8 @@ impl<'w> HullPather<'w> {
                 let n = o.points.len();
                 let overlaps = h.points.iter().any(|p| o.inside(*p))
                     || o.points.iter().any(|p| h.inside(*p))
-                    || (0..n.saturating_sub(2)).any(|k| {
+                    // the other's sides k = 0..n-1 (`cmp edi, esi; jl` at 0x140f8b2c4, esi = n - 1)
+                    || (0..n.saturating_sub(1)).any(|k| {
                         let prev = if k == 0 { n - 1 } else { k - 1 };
                         h.intersection(true, o.points[k], o.points[prev]).is_some()
                     });
@@ -2342,6 +2343,37 @@ mod tests {
         assert!((by[0] - 5.5).abs() < 1e-5 && (by[1] - (5.5 - 0.7 * SQRT_2)).abs() < 1e-5);
         // the goal moved on by the range
         assert!((end[0] - 10.6).abs() < 1e-5 && (end[1] - 5.5).abs() < 1e-6);
+    }
+
+    /// `FUN_140f8af60`'s merge scan tests the other hull's sides k = 0..n-1 (`cmp edi, esi; jl`
+    /// at 0x140f8b2c4 with esi = n - 1): a box hull whose bottom side alone crosses the grown
+    /// hull merges into it.
+    #[test]
+    fn a_hull_crossing_only_the_other_s_last_tested_side_merges() {
+        let w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
+        let mut pather = HullPather::new(&w, -1, -1, 6, 0.2);
+        // a thin strip across the box's corner at (0, 0), a vertex of neither inside the other
+        let strip = Hull {
+            points: vec![[-0.9, 2.1], [2.1, -0.9], [2.0, -1.0], [-1.0, 2.0]],
+            entrances: vec![-1; 4],
+            min: [-1.0, -1.0],
+            max: [2.1, 2.1],
+            objects: Vec::new(),
+        };
+        // a new hull's order: max-max, max-min, min-min, min-max; the side min-min to max-min
+        // (k = 2 of 4) is the only one the strip crosses that the scan tests
+        let square = Hull {
+            points: vec![[10.0, 10.0], [10.0, 0.0], [0.0, 0.0], [0.0, 10.0]],
+            entrances: vec![-1; 4],
+            min: [0.0, 0.0],
+            max: [10.0, 10.0],
+            objects: Vec::new(),
+        };
+        pather.hulls = vec![strip, square];
+        // a box at the strip's far end goes into the strip, which then meets the square
+        let hull = pather.add_shape([-1.2, 1.9], [-0.8, 2.3]);
+        assert_eq!((hull, pather.hulls.len()), (0, 1));
+        assert!(pather.hulls[0].points.contains(&[10.0, 10.0]));
     }
 
     #[test]

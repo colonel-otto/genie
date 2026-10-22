@@ -139,6 +139,12 @@ pub fn atan2(y: f32, x: f32) -> f32 {
     libm::atan2f(y, x)
 }
 
+/// `COMISS a, b` then `JC`: taken when `a` is less than `b` or either is NaN (unordered).
+#[must_use]
+pub fn below_or_unordered(a: f32, b: f32) -> bool {
+    a < b || a.is_nan() || b.is_nan()
+}
+
 /// `MINSS a, b`: `a` when it is less than `b`, else `b` (also when either is NaN).
 #[must_use]
 pub fn minss(a: f32, b: f32) -> f32 {
@@ -154,6 +160,13 @@ pub fn maxss(a: f32, b: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_jc_after_comiss_is_taken_below_and_unordered() {
+        assert!(below_or_unordered(1.0, 2.0));
+        assert!(!below_or_unordered(2.0, 2.0) && !below_or_unordered(3.0, 2.0));
+        assert!(below_or_unordered(f32::NAN, 2.0) && below_or_unordered(2.0, f32::NAN));
+    }
 
     #[test]
     fn minss_and_maxss_take_the_second_operand_when_either_is_nan() {

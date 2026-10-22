@@ -99,8 +99,8 @@ pub fn create_by_place(
     if user_defined {
         let mut ahead = 0.0f32;
         for s in &formation.slots {
-            let x = s.offset[0];
-            ahead = if x <= ahead { ahead } else { x };
+            // MAXSS at 0x141015208: a NaN offset keeps the farthest so far
+            ahead = fmath::maxss(s.offset[0], ahead);
         }
         let back = ahead + USER_DEFINED_BACK;
         for s in &mut formation.slots {
@@ -325,7 +325,8 @@ pub fn place_box_perimeter(
         let (x, z) = match state {
             0 => {
                 let z = prev[2] + step;
-                if z < max[2] {
+                // COMISS/JC (0x14102b17e): an unordered place stays on this side
+                if fmath::below_or_unordered(z, max[2]) {
                     (max[0], z)
                 } else {
                     state = 1;
@@ -335,7 +336,8 @@ pub fn place_box_perimeter(
             }
             1 => {
                 let x = prev[0] - step;
-                if min[0] < x {
+                // COMISS/JC (0x14102b132)
+                if fmath::below_or_unordered(min[0], x) {
                     (x, max[2])
                 } else {
                     state = 2;
@@ -344,7 +346,8 @@ pub fn place_box_perimeter(
             }
             2 => {
                 let z = prev[2] - step;
-                if min[2] < z {
+                // COMISS/JC (0x14102b0f1)
+                if fmath::below_or_unordered(min[2], z) {
                     (min[0], z)
                 } else {
                     state = 3;
@@ -598,6 +601,40 @@ mod tests {
 
     /// `FUN_1410147b0` for 4 members of spacing 2: lines of 1, 2 and the rest (1); an even line
     /// starts half a step forward; the slots take category 1's three units, then category 3's.
+    /// `MAXSS` at 0x141015208 skips a NaN offset in the search for the farthest slot ahead.
+    #[test]
+    fn a_user_defined_formation_s_search_ahead_skips_a_nan_offset() {
+        let g = group(2, 1.0, &[]);
+        let mut f = Formation::new();
+        let members = [
+            Some(place(9, 20.0, 10.0, 3)),
+            Some(place(7, f32::NAN, 10.0, 1)),
+        ];
+        assert!(create_by_place(&mut f, &g, &members, true, 640));
+        // the farthest ahead stays finite, so the finite member's offset moves back by it
+        assert!(f.slots[0].offset[0].is_finite(), "{:?}", f.slots[0].offset);
+    }
+
+    /// `FUN_14102ab30`'s walk tests are `COMISS`/`JC` (0x14102b17e, 0x14102b132, 0x14102b0f1):
+    /// an unordered place keeps walking the side it is on. An infinite spacing grows the box to
+    /// infinity, and the first step's `-inf + inf` stays on the first side.
+    #[test]
+    fn a_box_walk_on_a_nan_place_stays_on_its_side() {
+        let mut out = [[0.0f32; 3]; BOX_POSITIONS];
+        let (mut min, mut max) = ([-1.0, 0.0, -1.0], [1.0, 0.0, 1.0]);
+        assert!(place_box_perimeter(
+            9,
+            &mut out,
+            &mut min,
+            &mut max,
+            f32::INFINITY
+        ));
+        for p in &out[1..9] {
+            assert_eq!(p[0], f32::INFINITY, "{out:?}");
+            assert!(p[2].is_nan(), "{out:?}");
+        }
+    }
+
     #[test]
     fn a_phalanx_grows_by_a_slot_a_line() {
         let g = group(4, 2.0, &[(3, 1), (1, 3)]);
