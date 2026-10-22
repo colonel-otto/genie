@@ -264,24 +264,20 @@ impl Turns {
                 "a wall builder past the foundations the game shares out",
             ))?;
             let (foundation, at) = placed[k];
-            let idx = match self.place(id) {
-                Some(Place::Live(p, idx)) if p == player => idx,
-                Some(Place::Live(..)) => {
-                    return Err(Unsupported("a wall builder of another player"));
-                }
-                _ => return Err(Unsupported("a wall builder the slice does not have")),
+            let Some(Place::Live(q, idx)) = self.place(id) else {
+                return Err(Unsupported("a wall builder the slice does not have"));
             };
-            let direct = self.players[player].objects[idx]
+            let direct = self.players[q].objects[idx]
                 .ai
                 .as_ref()
                 .is_none_or(|ai| !w.queued && (!w.commits || !ai.has_unready_order()));
             if direct {
                 let task: (i16, BuildAction) =
-                    self.build_task(player, id, foundation, w.master, at)?;
-                self.build_directly(player, idx, task, (foundation, w.master), at)?;
+                    self.build_task(q, id, (player, foundation, w.master), at)?;
+                self.build_directly(q, idx, task, (player, foundation, w.master), at)?;
             } else {
                 for &(f, p) in &placed {
-                    self.queue_build(player, idx, f, w.master, p)?;
+                    self.queue_build(q, idx, (player, f, w.master), p)?;
                 }
                 if w.commits {
                     return Err(Unsupported(
