@@ -2345,15 +2345,19 @@ impl Mover {
             }
             None
         };
-        if !self.ignore_units.is_empty() {
-            return Err(Unsupported(
-                "the long pather's ignored units (slots 0x2a8, 0x5c8)",
-            ));
-        }
-        // FUN_140f60440 lowers the tall count under the unit and the target
-        let lowered = [Some(me.id), target.map(|(id, _)| id)]
+        // FUN_140f9eb70 lowers the tall counts under its list (FUN_140f60440): the unit and its
+        // ignore units that wait or move, or its group's differentiator units, then the target
+        let walker = LongWalker {
+            id: me.id,
+            position: me.position,
+            radius: ground,
+            mask: self.stats.restriction_mask,
+            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            ignore_units: &self.ignore_units,
+            group_units: plan.groups.group_units(me.group),
+        };
+        let lowered = lowered_units(&walker, world, target.map(|(id, _)| id))
             .into_iter()
-            .flatten()
             .filter_map(|id| world.get(id))
             .filter(|p| p.tall)
             .map(|p| [p.position[0] as i32, p.position[1] as i32])
@@ -3374,6 +3378,9 @@ mod tests {
         m.moved_at = [5.5, 5.5, 0.0];
         // 25 tiles away on open land: the long pather's answer
         let far = [30.5, 5.5];
+        assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(true));
+        // with ignore units the long pather lowers those that wait or move (none here)
+        m.ignore_units = vec![5, 6];
         assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(true));
         m.moved_at = [-1.0, 5.5, 0.0];
         assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(false));
