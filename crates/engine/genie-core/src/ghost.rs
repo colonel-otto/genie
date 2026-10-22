@@ -202,18 +202,25 @@ impl Turns {
         }
     }
 
-    /// `FUN_1411cc980`: a building its owner watches: not of class 51 or 54, not desolid, not an
-    /// annex (but a gate's), not master 1808.
+    /// `FUN_1411cc980`: a building its owner watches: not of class 51 or 54, not desolid
+    /// (`+0xc60`), not an annex (`+0xbb8`, but a gate's), not master 1808.
     fn watches_building(&self, p: usize, id: i32) -> bool {
+        self.watches_building_at(p, id, true)
+    }
+
+    /// [`Turns::watches_building`], with the annex link made (`linked`) or, during a load before
+    /// the rehook, not yet: then an annex passes too.
+    fn watches_building_at(&self, p: usize, id: i32, linked: bool) -> bool {
         let Some((_, u)) = self.object(id) else {
             return false;
         };
         let Some(m) = self.masters.get(p).and_then(|m| m.get(u.life.master_id)) else {
             return false;
         };
+        let annex = linked && u.annex_of.is_some();
         !UNWATCHED_CLASSES.contains(&m.class)
             && !u.construction.is_some_and(|c| c.desolid)
-            && (u.annex_of.is_none() || m.class == GATE_CLASS)
+            && (!annex || m.class == GATE_CLASS)
             && m.id != UNWATCHED_MASTER
     }
 
@@ -256,17 +263,14 @@ impl Turns {
                 };
                 let (state, kind, ghosts, position) =
                     (u.life.state, m.kind, m.ghost_on_death, u.position);
-                let (class, desolid, master) =
-                    (m.class, u.construction.is_some_and(|c| c.desolid), m.id);
                 let [x, y] = Self::tile_at(position);
+                // the static load's watch of a dead object (FUN_14119df60)
                 if ghosts == LEAVES_GHOSTS && 2 < state {
                     let _ = self.watch(p, id, x, y)?;
                 }
-                if kind == 80
-                    && !UNWATCHED_CLASSES.contains(&class)
-                    && !desolid
-                    && master != UNWATCHED_MASTER
-                {
+                // a building's load constructor (FUN_1411ac170, type 80 only): FUN_1411cc980
+                // before the rehook links its annexes
+                if kind == 80 && self.watches_building_at(p, id, false) {
                     let _ = self.watch(p, id, x, y)?;
                 }
             }
@@ -914,5 +918,88 @@ mod tests {
         t.watch_pass(0).unwrap();
         assert_eq!(t.players[0].watched.len(), 0);
         assert_eq!(t.players[1].ghosts.len(), 0);
+    }
+
+    #[test]
+    fn a_load_watches_dead_objects_that_leave_ghosts_and_buildings_but_their_annexes() {
+        // FUN_14119df60's dead objects, FUN_1411ac170's FUN_1411cc980 with no annex link yet,
+        // then the rehook drops every annex but a gate's
+        let mut t = world(true);
+        let gate = Master {
+            id: 88,
+            kind: 80,
+            class: GATE_CLASS,
+            ..Master::default()
+        };
+        let annex_master = Master {
+            id: 89,
+            kind: 80,
+            class: 3,
+            ..Master::default()
+        };
+        let wonder = Master {
+            id: 276,
+            kind: 80,
+            class: 51,
+            ..Master::default()
+        };
+        let skipped = Master {
+            id: UNWATCHED_MASTER,
+            kind: 80,
+            class: 3,
+            ..Master::default()
+        };
+        t.masters = (0..3)
+            .map(|_| {
+                Masters::new(masters(true).iter().cloned().chain([
+                    gate.clone(),
+                    annex_master.clone(),
+                    wonder.clone(),
+                    skipped.clone(),
+                ]))
+            })
+            .collect();
+        // Gaia's mine 5 dead (state 3), house 9's annexes 10 (a gate) and 11, a class-51
+        // building 12, master 1808's 13, a desolid foundation 14 in the sleeping list
+        t.players[0].objects[0].life.state = 3;
+        let mut g = object(10, 88, 2, [2.5, 2.5, 0.0]);
+        g.annex_of = Some(9);
+        let mut a = object(11, 89, 2, [3.5, 2.5, 0.0]);
+        a.annex_of = Some(9);
+        t.players[1].objects.extend([
+            g,
+            a,
+            object(12, 276, 2, [0.5, 0.5, 0.0]),
+            object(13, UNWATCHED_MASTER, 2, [0.5, 1.5, 0.0]),
+        ]);
+        let mut foundation = object(14, HOUSE, 2, [0.5, 3.5, 0.0]);
+        foundation.construction = Some(crate::build::Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 0,
+            hit_points: 0,
+            build_time: 0,
+            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        });
+        t.players[1].sleeping.push(foundation);
+        t.build_watched().unwrap();
+        let ids = |t: &Turns, p: usize| {
+            t.players[p]
+                .watched
+                .iter()
+                .map(|w| w.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&t, 0), [5]);
+        assert_eq!(ids(&t, 1), [9, 10]);
+        // the house follows its mask (its UMV entry), the gate its tile
+        assert_eq!(t.players[1].watched[0].cell, Cell::Mask(9));
+        assert_eq!(t.players[1].watched[1].cell, Cell::Tile(2 * 4 + 2));
+        // a building in the game, its annex linked, is not watched as an annex
+        assert!(!t.watches_building(1, 11));
+        assert!(t.watches_building(1, 10));
     }
 }
