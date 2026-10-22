@@ -363,11 +363,11 @@ pub(crate) fn create_column_line(
                 *formation.slot_mut(at) = Slot {
                     unit_id: -1,
                     offset,
-                    transform_position: [0.0; 3],
+                    desired_transform_position: [0.0; 3],
                     time: world_time,
                     state: 0,
                     depth: line_index,
-                    desired_transform_position: [0.0; 3],
+                    transform_position: [0.0; 3],
                     position_filled: 0,
                     desired_category: c,
                     active: 1,
@@ -709,8 +709,8 @@ fn transform_slot(
             crate::fmath::rotate(rotation, slot.offset)
         };
         let at = add(point, offset);
-        slot.transform_position = on_map(at, map);
         slot.desired_transform_position = on_map(at, map);
+        slot.transform_position = on_map(at, map);
         slot.transformed = 1;
         slot.time = world_time;
     }
@@ -878,7 +878,7 @@ impl crate::turn::Turns {
             .iter()
             .map(|s| {
                 (
-                    s.desired_transform_position,
+                    s.transform_position,
                     s.desired_category,
                     s.desired_sub_category,
                 )
@@ -1234,11 +1234,12 @@ impl crate::turn::Turns {
 
     /// `FormationTransform`'s passability (`FUN_14103a1f0` after the transform) of `formation`
     /// for group `g`, tested with the group's lead (`FUN_1410465d0`), else the first active slot's
-    /// unit the world holds (none: nothing). At the first active slot whose desired place's tile
+    /// unit the world holds (none: nothing). The slots' places are their transform positions
+    /// (`+0x1c`, the save's `mTransformPosition`). At the first active slot whose place's tile
     /// the tester cannot stand on (`FUN_141185690`, [`crate::spatial::Spatial::standable`] with
     /// its master's terrain mask): the active slot nearest the group's place (3D) must be
     /// standable, else it takes the group's place on x and y if that is (else nothing more).
-    /// The box around the tester's place and the active slots' desired places gets the
+    /// The box around the tester's place and the active slots' places gets the
     /// temporary records of the tiles its mask lacks (`FUN_141052b90`), the members are ignored
     /// (`FUN_1410562e0`), and each active slot is reachable when the line from the group's place
     /// to it meets nothing standing ([`crate::spatial::Spatial::still_line_hit`]). With fewer
@@ -1282,7 +1283,7 @@ impl crate::turn::Turns {
         let n = formation.slots.len();
         let Some(_) = (0..n).find(|&i| {
             let s = &formation.slots[i];
-            s.active != 0 && !stands(s.desired_transform_position)
+            s.active != 0 && !stands(s.transform_position)
         }) else {
             return Ok(());
         };
@@ -1295,13 +1296,13 @@ impl crate::turn::Turns {
             if t.active == 0 {
                 continue;
             }
-            let d3 = sub(t.desired_transform_position, position);
+            let d3 = sub(t.transform_position, position);
             let d = d3[0] * d3[0] + d3[1] * d3[1] + d3[2] * d3[2];
             let a = if min_x <= at[0] { min_x } else { at[0] };
             let b = if min_z <= at[2] { min_z } else { at[2] };
             let c = if at[0] <= max_x { max_x } else { at[0] };
             let e = if at[2] <= max_z { max_z } else { at[2] };
-            let p = t.desired_transform_position;
+            let p = t.transform_position;
             min_x = if a <= p[0] { a } else { p[0] };
             min_z = if b <= p[2] { b } else { p[2] };
             max_x = if p[0] <= c { c } else { p[0] };
@@ -1315,13 +1316,13 @@ impl crate::turn::Turns {
             }
         }
         let k = nearest.expect("an active slot lies at a finite distance");
-        if !stands(formation.slots[k].desired_transform_position) {
+        if !stands(formation.slots[k].transform_position) {
             if !stands(position) {
                 return Ok(());
             }
             let s = &mut formation.slots[k];
-            s.desired_transform_position[0] = position[0];
-            s.desired_transform_position[2] = position[2];
+            s.transform_position[0] = position[0];
+            s.transform_position[2] = position[2];
         }
         let temporary = ([min_x, min_z, max_x, max_z], mask);
         let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
@@ -1331,7 +1332,7 @@ impl crate::turn::Turns {
             if t.active == 0 {
                 continue;
             }
-            let p = t.desired_transform_position;
+            let p = t.transform_position;
             if self.spatial.still_line_hit(
                 [position[0], position[2]],
                 [p[0], p[2]],
@@ -1347,8 +1348,8 @@ impl crate::turn::Turns {
             unreachable.append(&mut reachable);
             reachable.push(k);
             let s = &mut formation.slots[k];
-            s.desired_transform_position[0] = position[0];
-            s.desired_transform_position[2] = position[2];
+            s.transform_position[0] = position[0];
+            s.transform_position[2] = position[2];
         }
         let w = ((max_x - min_x) + PASS_MARGIN + PASS_ONE) as i32;
         let h = ((max_z - min_z) + PASS_MARGIN + PASS_ONE) as i32;
@@ -1358,9 +1359,9 @@ impl crate::turn::Turns {
         let ox = (min_x - PASS_HALF_MARGIN) as i32;
         let oz = (min_z - PASS_HALF_MARGIN) as i32;
         let mut grid = vec![0u8; GRID_BYTES];
-        let near = formation.slots[k].desired_transform_position;
+        let near = formation.slots[k].transform_position;
         for &r in &reachable {
-            let p = formation.slots[r].desired_transform_position;
+            let p = formation.slots[r].transform_position;
             let gx = (p[0] - ox as f32) as i32;
             let gz = (p[2] - oz as f32) as i32;
             if !(0 <= gx && gx < w && 0 <= gz && gz < h) {
@@ -1441,7 +1442,7 @@ impl crate::turn::Turns {
                 continue;
             };
             let (mut x, mut y) = (fx, fy);
-            let near = formation.slots[k].desired_transform_position;
+            let near = formation.slots[k].transform_position;
             if near[0] as i32 != fx || near[2] as i32 != fy {
                 let (rx, ry) = (fx - ox, fy - oz);
                 let (ddx, ddy) = match grid[(w * ry + rx) as usize] >> 6 {
@@ -1471,11 +1472,11 @@ impl crate::turn::Turns {
             }
             let s = &mut formation.slots[u];
             if g.desired_spacing < PASS_ONE {
-                s.desired_transform_position[0] = x as f32 + PASS_HALF + SLOT_NUDGE[nudge][0];
-                s.desired_transform_position[2] = y as f32 + PASS_HALF + SLOT_NUDGE[nudge][1];
+                s.transform_position[0] = x as f32 + PASS_HALF + SLOT_NUDGE[nudge][0];
+                s.transform_position[2] = y as f32 + PASS_HALF + SLOT_NUDGE[nudge][1];
             } else {
-                s.desired_transform_position[0] = x as f32 + PASS_HALF;
-                s.desired_transform_position[2] = y as f32 + PASS_HALF;
+                s.transform_position[0] = x as f32 + PASS_HALF;
+                s.transform_position[2] = y as f32 + PASS_HALF;
             }
         }
         Ok(())
@@ -1612,7 +1613,7 @@ mod tests {
     fn slot_at(at: Vec3, category: i32) -> Slot {
         Slot {
             unit_id: -1,
-            desired_transform_position: at,
+            transform_position: at,
             desired_category: category,
             desired_sub_category: -1,
             active: 1,
@@ -1690,6 +1691,20 @@ mod tests {
         assert_eq!(run(5.0), [(10, 1), (11, 1)]);
     }
 
+    /// `FUN_141009760` measures from the slot's `+0x1c`, which the load fills from the save's
+    /// `mTransformPosition` (0x141018637), not from `+0x10` (`mDesiredTransformPosition`).
+    #[test]
+    fn a_slot_takes_the_unit_nearest_its_transform_position() {
+        let t = slot_world(&[(10, 4, 1.0, 0.0), (11, 4, 9.0, 0.0)], &[]);
+        let g = t.groups.get(1).unwrap().clone();
+        let mut f = Formation::new();
+        let mut s = slot_at([10.0, 0.0, 0.0], 1);
+        s.desired_transform_position = [0.0; 3];
+        f.slots = vec![s];
+        t.populate_slots(&mut f, &g).unwrap();
+        assert_eq!(f.slots[0].unit_id, 11);
+    }
+
     /// `FUN_141009060` after a column: a line of 3 takes its members (in order) into its places
     /// from the middle out (1, 0, 2), one of 4 into (2, 0, 1, 3); with a line part-transformed,
     /// or no column before, the slots take the closest units or none.
@@ -1745,7 +1760,7 @@ mod tests {
             let took = t.formation_transform(&mut f, &g, false).unwrap();
             (
                 took,
-                f.slots[0].desired_transform_position,
+                f.slots[0].transform_position,
                 f.number_transformed_slots,
             )
         };
@@ -1793,7 +1808,7 @@ mod tests {
             t.passable_slots(&mut f, &g).unwrap();
             f.slots
                 .iter()
-                .map(|s| s.desired_transform_position)
+                .map(|s| s.transform_position)
                 .collect::<Vec<_>>()
         };
         assert_eq!(run(2.0), [[5.5, 0.0, 5.5], [5.5, 0.0, 5.5]]);
@@ -1805,7 +1820,7 @@ mod tests {
         let mut f = Formation::new();
         f.slots = vec![slot_at([12.5, 0.0, 5.5], 1)];
         t.passable_slots(&mut f, &g).unwrap();
-        assert_eq!(f.slots[0].desired_transform_position, [12.5, 0.0, 5.5]);
+        assert_eq!(f.slots[0].transform_position, [12.5, 0.0, 5.5]);
     }
 
     /// The passability's extra step: slot 1's unit at (7.5, 7.5) finds slot 2's cell (6, 7)
@@ -1830,8 +1845,8 @@ mod tests {
             slot_at([6.5, 0.0, 7.5], 1),
         ];
         t.passable_slots(&mut f, &g).unwrap();
-        assert_eq!(f.slots[1].desired_transform_position, [6.5, 0.0, 6.5]);
-        assert_eq!(f.slots[2].desired_transform_position, [6.5, 0.0, 7.5]);
+        assert_eq!(f.slots[1].transform_position, [6.5, 0.0, 6.5]);
+        assert_eq!(f.slots[2].transform_position, [6.5, 0.0, 7.5]);
     }
 
     /// `FUN_141041810`: every slot of the array, spare ones too, loses its unit and filled mark.

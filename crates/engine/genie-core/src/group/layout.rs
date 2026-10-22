@@ -84,8 +84,8 @@ pub fn create_by_place(
         let s = formation.slot_mut(i);
         s.unit_id = m.id;
         s.offset = fmath::sub(m.at, position);
-        s.transform_position = m.at;
         s.desired_transform_position = m.at;
+        s.transform_position = m.at;
         s.transformed = 1;
         s.time = world_time;
         s.state = 0;
@@ -208,8 +208,8 @@ pub fn create_phalanx(formation: &mut Formation, group: &UnitGroup, world_time: 
             *formation.slot_mut(slot) = Slot {
                 unit_id: -1,
                 offset: at,
-                transform_position: [0.0; 3],
                 desired_transform_position: [0.0; 3],
+                transform_position: [0.0; 3],
                 time: world_time,
                 state: 0,
                 depth: line,
@@ -473,8 +473,8 @@ pub fn create_box(
             *formation.slot_mut(at) = Slot {
                 unit_id: -1,
                 offset: p,
-                transform_position: [0.0; 3],
                 desired_transform_position: [0.0; 3],
+                transform_position: [0.0; 3],
                 time: world_time,
                 state: 0,
                 depth: 0,
@@ -556,10 +556,10 @@ mod tests {
         assert_eq!(f.slots.len(), 3);
         let s = &f.slots[0];
         assert_eq!(
-            (s.unit_id, s.offset, s.transform_position),
+            (s.unit_id, s.offset, s.desired_transform_position),
             (7, [2.0, 0.0, 0.0], [12.0, 0.0, 10.0])
         );
-        assert_eq!(s.desired_transform_position, [12.0, 0.0, 10.0]);
+        assert_eq!(s.transform_position, [12.0, 0.0, 10.0]);
         assert_eq!(
             (
                 s.transformed,
