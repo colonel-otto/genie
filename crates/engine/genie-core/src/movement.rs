@@ -809,10 +809,12 @@ impl Mover {
                 v
             }
         };
+        // both clamps read the map's +0x18, its width (0x14116220d for y): on a map that is not
+        // square the y clamp takes the width
         let (x, y) = if EPSILON < self.stats.speed {
             (
                 inside(x, self.stats.radius[0], map[0]),
-                inside(y, self.stats.radius[1], map[1]),
+                inside(y, self.stats.radius[1], map[0]),
             )
         } else {
             (x, y)
@@ -3485,6 +3487,20 @@ mod tests {
         assert!(!far_waypoint(30.0, Some((0.5, 4))));
         assert!(far_waypoint(30.0, Some((0.5, WIDE_MASTER))));
         assert!(!far_waypoint(30.0, Some((f32::NAN, 4))));
+    }
+
+    /// `FUN_141161950`: a moving unit's footprint stays 0.01 inside the map, its y by the map's
+    /// width as its x (the game reads `+0x18` for both).
+    #[test]
+    fn the_position_setter_holds_y_by_the_map_s_width() {
+        let m = builder_9177();
+        // a map 40 wide and 120 high: y 100 lies beyond the width less the radius and the gap
+        let at = m.set_position([10.0, 100.0, 0.0], [40, 120]);
+        assert_eq!(at[1], (40.0f32 - 0.2) - EDGE_GAP);
+        // a unit that does not move is not held
+        let mut still = builder_9177();
+        still.stats.speed = 0.0;
+        assert_eq!(still.set_position([10.0, 100.0, 0.0], [40, 120])[1], 100.0);
     }
 
     /// `FUN_140f98bc0` with 1: a loop's next point or 0 past its end; a back-and-forth path turns
