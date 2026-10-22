@@ -3,6 +3,9 @@
 //! inputs of
 //! `fixtures/crt_math_158041.txt`: edge cases and seeded random inputs over the ranges movement
 //! uses, recorded in the tick oracle's emulator (`load_oracle/probes/crt_math.py`).
+//!
+//! The ignored sweeps run every f32 through a port and through the `libm` crate, which ports the
+//! same msun sources the game links (`cargo test --release -- --ignored`).
 
 use genie_core::fmath;
 
@@ -86,4 +89,147 @@ fn atan2_is_the_games_atan2f() {
         mismatches("atan2f", |a| fmath::atan2(a[0], a[1])),
         Vec::<String>::new()
     );
+}
+
+/// The f32 inputs (bits) where `ours` and `oracle` give other bits, over all 2^32 of them (at
+/// most 16 per thread).
+fn sweep(ours: fn(f32) -> f32, oracle: fn(f32) -> f32) -> Vec<u32> {
+    let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+    let threads = u32::try_from(threads).unwrap_or(4);
+    let span = u32::MAX / threads + 1;
+    std::thread::scope(|s| {
+        let mut workers = Vec::new();
+        for t in 0..threads {
+            let start = t * span;
+            let end = start.saturating_add(span - 1);
+            workers.push(s.spawn(move || {
+                (start..=end)
+                    .filter(|&b| {
+                        let x = f32::from_bits(b);
+                        ours(x).to_bits() != oracle(x).to_bits()
+                    })
+                    .take(16)
+                    .collect::<Vec<u32>>()
+            }));
+        }
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().expect("a sweep thread"))
+            .collect()
+    })
+}
+
+#[test]
+#[ignore = "all 2^32 inputs: run in release with --ignored"]
+fn acos_agrees_with_libm_on_every_f32() {
+    assert_eq!(sweep(fmath::acos, libm::acosf), Vec::<u32>::new());
+}
+
+#[test]
+#[ignore = "all 2^32 inputs: run in release with --ignored"]
+fn atan_agrees_with_libm_on_every_f32() {
+    assert_eq!(sweep(fmath::atan, libm::atanf), Vec::<u32>::new());
+}
+
+#[test]
+#[ignore = "2^30 pairs: run in release with --ignored"]
+fn atan2_agrees_with_libm_on_random_pairs() {
+    // libm returns `x + y` for a NaN, the game `y + x`: two NaNs may differ in payload only
+    let differ = |y: f32, x: f32| {
+        let (ours, theirs) = (fmath::atan2(y, x), libm::atan2f(y, x));
+        ours.to_bits() != theirs.to_bits() && !(ours.is_nan() && theirs.is_nan())
+    };
+    let threads = 16u64;
+    let bad: Vec<(u32, u32)> = std::thread::scope(|s| {
+        let mut workers = Vec::new();
+        for t in 0..threads {
+            workers.push(s.spawn(move || {
+                // a 64-bit LCG per thread, its high words the two arguments' bits
+                let mut state = 0x9e37_79b9_7f4a_7c15_u64 ^ t;
+                let mut bad = Vec::new();
+                for _ in 0..(1u64 << 30) / threads {
+                    state = state
+                        .wrapping_mul(6_364_136_223_846_793_005)
+                        .wrapping_add(1_442_695_040_888_963_407);
+                    let (y, x) = (
+                        (state >> 32) as u32,
+                        u32::try_from(state & 0xffff_ffff).expect("a word"),
+                    );
+                    if differ(f32::from_bits(y), f32::from_bits(x)) && bad.len() < 16 {
+                        bad.push((y, x));
+                    }
+                }
+                bad
+            }));
+        }
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().expect("a sweep thread"))
+            .collect()
+    });
+    assert_eq!(bad, Vec::new());
+}
+
+#[test]
+#[ignore = "all 2^32 inputs: run in release with --ignored"]
+fn cos_agrees_with_libm_on_every_f32() {
+    assert_eq!(sweep(fmath::cos, libm::cosf), Vec::<u32>::new());
+}
+
+#[test]
+#[ignore = "all 2^32 inputs: run in release with --ignored"]
+fn sin_agrees_with_libm_on_every_f32() {
+    assert_eq!(sweep(fmath::sin, libm::sinf), Vec::<u32>::new());
+}
+
+#[test]
+#[ignore = "2^30 pairs: run in release with --ignored"]
+fn fmod_is_the_exact_remainder_on_random_pairs() {
+    // the exact remainder of two floats is a float: the double's `%` (fmod) gives it; libm's
+    // fmodf is a second opinion; NaNs match any NaN
+    let differ = |x: f32, y: f32| {
+        let ours = fmath::fmod(x, y);
+        // the remainder is a float already: the cast does not round
+        #[allow(clippy::cast_possible_truncation)]
+        let exact = (f64::from(x) % f64::from(y)) as f32;
+        let theirs = libm::fmodf(x, y);
+        [exact, theirs]
+            .iter()
+            .any(|r| r.to_bits() != ours.to_bits() && !(r.is_nan() && ours.is_nan()))
+    };
+    let threads = 16u64;
+    let bad: Vec<(u32, u32)> = std::thread::scope(|s| {
+        let mut workers = Vec::new();
+        for t in 0..threads {
+            workers.push(s.spawn(move || {
+                let mut state = 0x2545_f491_4f6c_dd1d_u64 ^ t;
+                let mut bad = Vec::new();
+                for k in 0..(1u64 << 30) / threads {
+                    state = state
+                        .wrapping_mul(6_364_136_223_846_793_005)
+                        .wrapping_add(1_442_695_040_888_963_407);
+                    let (mut x, mut y) = (
+                        (state >> 32) as u32,
+                        u32::try_from(state & 0xffff_ffff).expect("a word"),
+                    );
+                    if k % 2 == 0 {
+                        // exponents close together, where the subtraction loop runs long
+                        y = (y & 0x807f_ffff)
+                            | (x & 0x7f80_0000)
+                                .saturating_sub(u32::try_from(k % 30).expect("below 30") << 23);
+                        x &= 0xff7f_ffff;
+                    }
+                    if differ(f32::from_bits(x), f32::from_bits(y)) && bad.len() < 16 {
+                        bad.push((x, y));
+                    }
+                }
+                bad
+            }));
+        }
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().expect("a sweep thread"))
+            .collect()
+    });
+    assert_eq!(bad, Vec::new());
 }
