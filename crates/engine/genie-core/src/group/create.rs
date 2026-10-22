@@ -457,6 +457,52 @@ mod tests {
         assert!(!t.remove_unit(2, 10, -1, false).unwrap());
     }
 
+    /// `FUN_14100bcb0`'s closing `CalcFormationType` is gated on the motion flags' bit 1
+    /// (`+0xb8`, `SHR EAX, 1; TEST AL, 1` at 0x14100c657), not the group flags'.
+    #[test]
+    fn the_statistics_call_for_the_formation_type_by_the_motion_flags() {
+        let mut t = three();
+        for u in &mut t.players[1].objects {
+            u.ai = Some(crate::unit_ai::UnitAi {
+                ai_type: crate::unit_ai::SOLDIER_AI,
+                ..crate::unit_ai::UnitAi::default()
+            });
+        }
+        // the members' searches find nothing: an empty registry, no relations
+        let mut v = crate::visibility::Visibility::new(20, 20, vec![], vec![], vec![], 0, vec![]);
+        v.registry = Some(crate::registry::Registry::new(2, 65));
+        t.spatial.sight = Some(v);
+        t.spatial.relations = vec![vec![0, 0], vec![0, 0]];
+        let g = t.groups.get_mut(1).unwrap();
+        g.flags |= 2;
+        g.motion.flags &= !2;
+        assert!(!t.statistics_only(1, false).unwrap());
+        let g = t.groups.get_mut(1).unwrap();
+        g.flags &= !2;
+        g.motion.flags |= 2;
+        assert!(t.statistics_only(1, false).unwrap());
+    }
+
+    /// `LockFormation` (`FUN_141024e70`) re-reads the spacing (`+0x15c`) for every member
+    /// (`MOVSS`/`UCOMISS` at 0x14102500a): the first held member with a radius sets it, the later
+    /// ones are skipped.
+    #[test]
+    fn lock_formation_takes_the_first_member_s_spacing() {
+        let mut t = three();
+        for masters in &mut t.masters {
+            for (id, r) in [(4, 0.2f32), (6, 0.5)] {
+                let m = masters.get_mut(id).unwrap();
+                m.radius = [r, r];
+                m.height = 1.0;
+                m.spacing_modifier = 1.0;
+            }
+        }
+        t.groups.get_mut(1).unwrap().desired_spacing = 0.0;
+        let _ = t.lock_formation(1, crate::group::formation::LINE);
+        let spacing = t.groups.get(1).unwrap().desired_spacing;
+        assert_eq!(spacing, 0.2 * crate::image::group::SPACING_FACTOR);
+    }
+
     /// Kept moving, the unit's walk stays; a unit the world does not hold leaves the first
     /// statistic that holds it.
     #[test]

@@ -59,8 +59,8 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::group_statistics`] up to the formation type: true when that follows (flags bit
-    /// 1).
+    /// [`Turns::group_statistics`] up to the formation type: true when that follows (motion
+    /// flags bit 1).
     ///
     /// # Panics
     ///
@@ -227,7 +227,8 @@ impl Turns {
                 "a group's attack plan that attacks again (FUN_14100f7f0)",
             ));
         }
-        Ok(g.flags >> 1 & 1 != 0)
+        // the motion flags' bit 1 (`+0xb8`, 0x14100c657), not the group flags'
+        Ok(g.motion.flags >> 1 & 1 != 0)
     }
 
     /// `CalcFormationType` (`FUN_14100b940`): the members' unit AIs' formation types (`+0x1d4`,
@@ -299,22 +300,25 @@ impl Turns {
         let g = self.groups.get(group).ok_or(Unsupported(
             "LockFormation of a group the world does not hold",
         ))?;
-        if g.desired_spacing == 0.0 {
-            let mut spacing = 0.0f32;
-            for m in &g.members {
-                if let Some((p, u)) = self.object(m.id) {
-                    let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
-                    let s = unit.radius * crate::image::group::SPACING_FACTOR;
-                    if spacing < s {
-                        spacing = s;
-                    }
+        // the spacing is read again for every member held (0x14102500a): the first whose
+        // radius gives one above it sets it, and every later member finds it set
+        let mut spacing = g.desired_spacing;
+        for m in &g.members {
+            if spacing != 0.0 {
+                break;
+            }
+            if let Some((p, u)) = self.object(m.id) {
+                let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
+                let s = unit.radius * crate::image::group::SPACING_FACTOR;
+                if spacing <= s && s != spacing {
+                    spacing = s;
                 }
             }
-            self.groups
-                .get_mut(group)
-                .expect("the group found above")
-                .desired_spacing = spacing;
         }
+        self.groups
+            .get_mut(group)
+            .expect("the group found above")
+            .desired_spacing = spacing;
         let own_choice = matches!(kind, 1 | 2);
         let locked = if own_choice { 0 } else { kind };
         self.groups
