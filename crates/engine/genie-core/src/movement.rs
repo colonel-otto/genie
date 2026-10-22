@@ -479,15 +479,64 @@ const TWO_PI: f32 = crate::image::movement::TWO_PI;
 /// the largest float. The `.dat`'s own turning values do not survive the copy.
 #[must_use]
 pub fn turn_rate(turn_speed: f32, walking_facets: Option<i16>) -> f32 {
-    let Some(facets) = walking_facets.filter(|_| turn_speed != 0.0) else {
-        return f32::MAX;
+    turning(turn_speed, walking_facets, Turning::PRESET).0.rate
+}
+
+/// A moving master's turning values (`+0x76c`..`+0x77c`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Turning {
+    /// `+0x76c`: the turn radius.
+    pub radius: f32,
+    /// `+0x770`: the speed at which the turn radius is its value.
+    pub radius_speed: f32,
+    /// `+0x774`: the most the unit turns per second.
+    pub rate: f32,
+    /// `+0x778`: a revolution's time (slot 0x98, `FUN_1410e39e0`).
+    pub revolution: f32,
+    /// `+0x77c`: 2π over the revolution's time.
+    pub revolution_rate: f32,
+}
+
+impl Turning {
+    /// What the master's three constructors (`FUN_1410d9440`, `FUN_1410d95b0`,
+    /// `FUN_1410d9790`) set: radius 0, the largest float, and the 8-byte stores
+    /// `0x7f7fffff` at `+0x774` and `+0x77c` (the largest float, then 0 above it).
+    pub const PRESET: Self = Self {
+        radius: 0.0,
+        radius_speed: f32::MAX,
+        rate: f32::MAX,
+        revolution: 0.0,
+        revolution_rate: f32::MAX,
+    };
+}
+
+/// `FUN_1410e3a70` (master slot 0x80) on a master's turning values `before`, with its answer: a
+/// turn speed (`+0x758`) of 0 resets them (radius 0, the largest float for the radius speed,
+/// the rate and the revolution's rate, the revolution time 0; false); with a walking sprite
+/// (`+0x748`) the facets times the turn speed are the revolution's time (`FUN_1410e39e0`: 2π
+/// over it, the largest float for 0) and the rate takes 2π over it (true); without one nothing
+/// changes (false).
+#[must_use]
+pub fn turning(turn_speed: f32, walking_facets: Option<i16>, before: Turning) -> (Turning, bool) {
+    if turn_speed == 0.0 {
+        return (Turning::PRESET, false);
+    }
+    let Some(facets) = walking_facets else {
+        return (before, false);
     };
     let revolution = f32::from(facets) * turn_speed;
-    if revolution == 0.0 {
+    let revolution_rate = if revolution == 0.0 {
         f32::MAX
     } else {
         TWO_PI / revolution
-    }
+    };
+    let after = Turning {
+        revolution,
+        revolution_rate,
+        rate: revolution_rate,
+        ..before
+    };
+    (after, true)
 }
 
 /// A path too short to walk: fewer than two points or shorter than 0.01.
@@ -3079,6 +3128,35 @@ mod tests {
         assert_eq!(rate.to_bits(), 7.853_982f32.to_bits());
         assert_eq!(turn_rate(0.0, Some(16)), f32::MAX);
         assert_eq!(turn_rate(0.05, None), f32::MAX);
+    }
+
+    /// `FUN_1410e3a70` writes all five turning values: a zero turn speed resets them, a walking
+    /// sprite sets the revolution and both rates, no sprite changes nothing.
+    #[test]
+    fn a_master_s_turning_values_follow_its_turn_speed_and_walking_sprite() {
+        let before = Turning {
+            radius: 1.0,
+            radius_speed: 2.0,
+            rate: 3.0,
+            revolution: 4.0,
+            revolution_rate: 5.0,
+        };
+        assert_eq!(turning(0.0, Some(16), before), (Turning::PRESET, false));
+        assert_eq!(turning(0.05, None, before), (before, false));
+        let (after, set) = turning(0.05, Some(16), before);
+        assert!(set);
+        let rate = TWO_PI / (16.0f32 * 0.05);
+        assert_eq!(
+            after,
+            Turning {
+                revolution: 16.0f32 * 0.05,
+                revolution_rate: rate,
+                rate,
+                ..before
+            }
+        );
+        // a sprite of no facets: a revolution of 0, the largest float
+        assert_eq!(turning(0.05, Some(0), before).0.rate, f32::MAX);
     }
 
     fn stats() -> MoveStats {
