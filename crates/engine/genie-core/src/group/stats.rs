@@ -545,7 +545,7 @@ const COMBAT_KINDS: [u8; 4] = [50, 60, 70, 80];
 
 /// Slot 0x230 of an object of `master`: a combat object's weapon range (`+0x828`,
 /// `FUN_14108d960`), any other's 0 (`FUN_14106ff50`).
-fn weapon_range(master: &crate::masters::Master) -> f32 {
+pub(crate) fn weapon_range(master: &crate::masters::Master) -> f32 {
     if COMBAT_KINDS.contains(&master.kind) {
         master.weapon_range
     } else {
