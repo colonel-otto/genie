@@ -106,6 +106,49 @@ pub struct Site<'a> {
     pub store: Option<&'a mut Vec<(i16, f32)>>,
     /// What its completion reads ([`Construction::complete`]).
     pub completion: Completion<'a>,
+    /// What its work (`FUN_1411cc430`) reaches besides it: its annexes of a building type,
+    /// which it starts first, and the main building that takes the work when it is an annex
+    /// ([`WorkChain`]).
+    pub chain: WorkChain<'a>,
+}
+
+/// What a foundation's work (`FUN_1411cc430`) reaches besides it ([`Construction::work`]).
+#[derive(Debug, Default)]
+pub struct WorkChain<'a> {
+    /// Its annexes (`+0xbc0`..`+0xbd8`) of a building type (above 0x4f), in their order.
+    pub annexes: Vec<AnnexStart<'a>>,
+    /// The building the work goes to instead while the foundation is an annex of a main
+    /// building in state 0 with at least 1 hit point (that one's own main alike).
+    pub main: Option<MainWork>,
+}
+
+/// An annex the work on its building starts first while it is desolid (`+0xc60`):
+/// `FUN_1411cd0d0` (after the builder's update, as the building's own), then `FUN_1411e5670`
+/// ([`Construction::begin`]; its missiles per volley become its master's).
+#[derive(Debug)]
+pub struct AnnexStart<'a> {
+    /// The annex.
+    pub id: i32,
+    /// Its construction.
+    pub construction: &'a mut Construction,
+    /// Its movement state, if the slice holds it.
+    pub mover: Option<&'a mut crate::movement::Mover>,
+    /// Its missiles per volley (`+0xa00`).
+    pub firepower: &'a mut f32,
+    /// Its master's volley fire.
+    pub volley: f32,
+}
+
+/// The main building an annex's work goes to: its construction and hit points as they stand,
+/// from which the work's result follows. The work itself (the annexes' starts on the way, the
+/// main building's start, work and completion) is the caller's after the builder's update
+/// ([`crate::turn::Turns::work_building`] on the annex, [`Worked::Main`]).
+#[derive(Clone, Copy, Debug)]
+pub struct MainWork {
+    /// Its construction.
+    pub construction: Construction,
+    /// Its hit points.
+    pub hp: f32,
 }
 
 /// What a building's completion reads besides its construction.
@@ -212,6 +255,15 @@ pub enum Worked {
     Done,
     /// This work completed it.
     Completed(Built),
+    /// The foundation is an annex whose main building takes the `amount` seconds of work, the
+    /// caller's after the update ([`WorkChain::main`]); `going` while its construction goes on
+    /// (the routine's 0).
+    Main {
+        /// The seconds of work.
+        amount: f32,
+        /// The main building's construction goes on.
+        going: bool,
+    },
 }
 
 /// The action type of the mule cart's tasks (its moves to resources, `0x99`): the action
@@ -335,6 +387,9 @@ pub struct BuildStep {
     /// builder gives its player (kind, amount; the food kinds 15 to 17 as 0), which it no longer
     /// carries (`FUN_14119d310` with −1 and 0): the caller's.
     pub dropped: Option<(i16, f32)>,
+    /// The seconds of work an annex's main building takes ([`Worked::Main`]): the caller's
+    /// after the update ([`crate::turn::Turns::work_building`] on the foundation).
+    pub main_work: Option<f32>,
 }
 
 /// A load a builder drops at the end of its work: kind and amount ([`BuildStep::dropped`]).
@@ -549,9 +604,10 @@ impl BuildAction {
                 self.timer = 0.0;
                 self.place(&mut walk, site, (builder.waits, builder.look), &mut step)
             }
-            (PLACE, _) => self.work(walk, site, load).map(|(c, d)| {
+            (PLACE, _) => self.work(walk, site, load).map(|(c, d, m)| {
                 step.completed = c;
                 step.dropped = d;
+                step.main_work = m;
             }),
             (CLEAR, Some(MoveTo::Start)) => {
                 self.move_to = Some(MoveTo::Moving);
@@ -956,7 +1012,7 @@ impl BuildAction {
         mut walk: Walk<'_>,
         site: Option<Site<'_>>,
         load: Load,
-    ) -> Result<(Option<Built>, Dropped), Unsupported> {
+    ) -> Result<(Option<Built>, Dropped, Option<f32>), Unsupported> {
         let mut site = site.ok_or(Unsupported("a foundation of another player"))?;
         let plan = walk
             .plan
@@ -976,18 +1032,23 @@ impl BuildAction {
         }
         let (pathing, now) = (&mut *plan.pathing, plan.now);
         let worked = Construction::work(&mut site, rate, walk.world, pathing, now)?;
-        let completed = match worked {
-            Worked::Going => return Ok((None, None)),
-            Worked::Done => None,
-            Worked::Completed(built) => Some(built),
+        let (completed, passed) = match worked {
+            Worked::Going => return Ok((None, None, None)),
+            Worked::Main {
+                amount,
+                going: true,
+            } => return Ok((None, None, Some(amount))),
+            Worked::Main { amount, .. } => (None, Some(amount)),
+            Worked::Done => (None, None),
+            Worked::Completed(built) => (Some(built), None),
         };
         // a finished foundation with hit points ends the work (its `+0x278`, decoded); one
         // without (deleted, it dies in its own update) leaves the Build as it is
         if 0.0 < site.life.hp {
             let dropped = self.finish(&mut walk, Some(&mut *site.construction), load)?;
-            Ok((completed, dropped))
+            Ok((completed, dropped, passed))
         } else {
-            Ok((completed, None))
+            Ok((completed, None, passed))
         }
     }
 
@@ -1434,6 +1495,7 @@ impl crate::turn::Turns {
                 now,
                 rice,
             },
+            chain: WorkChain::default(),
         };
         let built = Construction::complete(&mut site, &mut self.spatial, &mut self.pathing)?;
         self.built(p, id, built)
@@ -1651,11 +1713,14 @@ const fn beside_diagonal(bx: i32, by: i32, dx: i32, dy: i32) -> ([i32; 2], [i32;
 }
 
 impl Construction {
-    /// `FUN_1411cc430`: `amount` seconds of work on a foundation (state 0, at least 1 hit point;
-    /// else the work is done): the first starts it ([`Construction::start`]), each adds its share
-    /// of the master's hit points (all of them without a build time) up to the build time, and the
-    /// work that reaches it completes the building ([`Construction::complete`]). A building with
-    /// annexes is not modelled.
+    /// `FUN_1411cc430`: `amount` seconds of work on a foundation. An annex whose main building
+    /// takes the work leaves it all to the caller ([`WorkChain::main`], [`Worked::Main`]: the
+    /// main building's result, its start's build points first). Otherwise its annexes of a
+    /// building type that are desolid start first ([`AnnexStart`]); then a foundation in state 0
+    /// with at least 1 hit point (else the work is done) starts with the first work
+    /// ([`Construction::begin`]), each adds its share of the master's hit points (all of them
+    /// without a build time) up to the build time, and the work that reaches it completes the
+    /// building ([`Construction::complete`]).
     pub fn work(
         site: &mut Site<'_>,
         amount: f32,
@@ -1663,6 +1728,32 @@ impl Construction {
         pathing: &mut Pathing,
         now: u32,
     ) -> Result<Worked, Unsupported> {
+        if let Some(main) = site.chain.main {
+            let MainWork {
+                mut construction,
+                mut hp,
+            } = main;
+            if construction.desolid {
+                construction.progress = f32::from_bits(STARTED);
+            }
+            let going = !construction.add_work(&mut hp, amount);
+            return Ok(Worked::Main { amount, going });
+        }
+        for a in &mut site.chain.annexes {
+            if a.construction.desolid {
+                world.started(a.id);
+                if Self::begin(
+                    a.id,
+                    a.construction,
+                    a.mover.as_deref_mut(),
+                    world,
+                    pathing,
+                    now,
+                )? {
+                    *a.firepower = a.volley;
+                }
+            }
+        }
         // COMISS: a NaN hit point count is not worked on either
         if site.life.state != 0 || crate::fmath::below_or_unordered(site.life.hp, 1.0) {
             return Ok(Worked::Done);
@@ -2425,6 +2516,7 @@ mod tests {
                 now: 0,
                 rice: false,
             },
+            chain: WorkChain::default(),
         };
         let worked = Construction::work(&mut site, 0.02, &mut world, &mut Pathing::default(), 0);
         assert_eq!(
@@ -2489,6 +2581,7 @@ mod tests {
                 now: 0,
                 rice: false,
             },
+            chain: WorkChain::default(),
         };
         let rate = 1.0f32 * 1.0 * 0.021;
         assert_eq!(
@@ -2501,6 +2594,183 @@ mod tests {
         assert!(world.get(10028).unwrap().obstruction.is_some());
         assert!(world.tiles().word(29, 87).unwrap() & crate::spatial::BLOCKED != 0);
     }
+
+    /// A gate's foundation (master 665) with its two posts (1192, annexes of a building type):
+    /// `FUN_1411cc430` starts each desolid post first (its record, its missiles per volley, the
+    /// clearing after the update), a post already started stays as it is, then the gate's own
+    /// first work starts it.
+    #[test]
+    fn the_work_starts_the_desolid_annexes_first() {
+        use crate::spatial::Tiles;
+        let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
+        let at = |x: f32, id: i16| crate::spatial::Placed {
+            position: [x, 88.0, 0.0],
+            master: id,
+            ..house()
+        };
+        world.insert(10028, at(30.0, 665));
+        world.insert(10029, at(28.5, 1192));
+        world.insert(10030, at(31.5, 1192));
+        let foundation = |desolid| Construction {
+            progress: 0.0,
+            desolid,
+            builders: 1,
+            hit_points: 550,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let (mut post, mut started_post) = (foundation(true), foundation(false));
+        let (mut post_fire, mut started_fire) = (0.0, 0.0);
+        let mut life = Lifecycle {
+            state: 0,
+            hp: 1.0,
+            master_id: 665,
+            ..Lifecycle::default()
+        };
+        let mut c = foundation(true);
+        let mut pathing = Pathing::default();
+        let mut site = Site {
+            id: 10028,
+            life: &mut life,
+            construction: &mut c,
+            mover: None,
+            firepower: None,
+            roo_called: None,
+            store: None,
+            completion: Completion {
+                master: None,
+                annexed: true,
+                attribute_204: false,
+                mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer: false,
+                ai: false,
+                main: false,
+                now: 0,
+                rice: false,
+            },
+            chain: WorkChain {
+                annexes: vec![
+                    AnnexStart {
+                        id: 10029,
+                        construction: &mut post,
+                        mover: None,
+                        firepower: &mut post_fire,
+                        volley: 2.0,
+                    },
+                    AnnexStart {
+                        id: 10030,
+                        construction: &mut started_post,
+                        mover: None,
+                        firepower: &mut started_fire,
+                        volley: 2.0,
+                    },
+                ],
+                main: None,
+            },
+        };
+        assert_eq!(
+            Construction::work(&mut site, 0.021, &mut world, &mut pathing, 0),
+            Ok(Worked::Going)
+        );
+        assert_eq!(world.take_started(), vec![10029, 10028]);
+        assert!(!post.desolid && post.started);
+        assert_eq!(post.progress, f32::from_bits(STARTED));
+        assert_eq!(post_fire, 2.0);
+        assert!(world.get(10029).unwrap().obstruction.is_some());
+        assert_eq!((started_post, started_fire), (foundation(false), 0.0));
+        assert!(!c.desolid);
+    }
+
+    /// An annex (a gate's post) whose main building is in state 0 with a hit point gives it the
+    /// work (`FUN_1411cc430`'s loop): the post itself is not worked, and the result is the main
+    /// building's (its start's build points, then the work): 0 while it goes on, 1 once it
+    /// reaches its build time.
+    #[test]
+    fn an_annex_s_work_goes_to_its_main_building() {
+        let mut world = Spatial::default();
+        let foundation = Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 1,
+            hit_points: 550,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let mut run = |main: Construction, amount: f32| {
+            let mut life = Lifecycle {
+                state: 0,
+                hp: 1.0,
+                master_id: 1192,
+                ..Lifecycle::default()
+            };
+            let mut c = foundation;
+            let mut site = Site {
+                id: 10029,
+                life: &mut life,
+                construction: &mut c,
+                mover: None,
+                firepower: None,
+                roo_called: None,
+                store: None,
+                completion: Completion {
+                    master: None,
+                    annexed: false,
+                    attribute_204: false,
+                    mode_680: 0,
+                    farm_bonus: [0.0, -1.0, -1.0],
+                    masters: None,
+                    computer: false,
+                    ai: false,
+                    main: true,
+                    now: 0,
+                    rice: false,
+                },
+                chain: WorkChain {
+                    annexes: Vec::new(),
+                    main: Some(MainWork {
+                        construction: main,
+                        hp: 1.0,
+                    }),
+                },
+            };
+            let worked =
+                Construction::work(&mut site, amount, &mut world, &mut Pathing::default(), 0);
+            assert_eq!(
+                (c, life.hp),
+                (foundation, 1.0),
+                "the post itself is not worked"
+            );
+            worked
+        };
+        assert_eq!(
+            run(foundation, 0.021),
+            Ok(Worked::Main {
+                amount: 0.021,
+                going: true
+            })
+        );
+        let nearly = Construction {
+            progress: 24.99,
+            desolid: false,
+            ..foundation
+        };
+        assert_eq!(
+            run(nearly, 0.021),
+            Ok(Worked::Main {
+                amount: 0.021,
+                going: false
+            })
+        );
+    }
+
     use crate::movement::Me;
     use crate::spatial::Spatial;
 
@@ -2615,6 +2885,7 @@ mod tests {
                 now: 0,
                 rice: false,
             },
+            chain: WorkChain::default(),
         };
         let _ = build
             .update(
@@ -2731,6 +3002,7 @@ mod tests {
                 now: 0,
                 rice: false,
             },
+            chain: WorkChain::default(),
         };
         let mut build = BuildAction {
             state: WAIT,
@@ -2895,6 +3167,7 @@ mod tests {
                             now: 0,
                             rice: false,
                         },
+                        chain: WorkChain::default(),
                     }),
                     Builder {
                         class: VILLAGER,

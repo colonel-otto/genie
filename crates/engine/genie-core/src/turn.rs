@@ -905,6 +905,10 @@ struct Context<'a> {
     /// The waits for foundations the unit's slot 0x388 found while its unit AI ran, which the
     /// caller makes the unit's after the update ([`Turns::wait_for_foundation`]).
     waits: Vec<Wait>,
+    /// The work a builder gave an annex whose main building takes it (the foundation, the
+    /// seconds; [`crate::build::Worked::Main`]), which the caller runs after the update
+    /// ([`Turns::work_building`]).
+    main_works: Vec<(i32, f32)>,
     /// The owner's diplomacy (`player+0x260`), which the unit's task search reads.
     relations: &'a [u8],
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
@@ -5432,6 +5436,7 @@ impl Unit {
                 now: c.world_time,
                 rice: self.rice,
             },
+            chain: crate::build::WorkChain::default(),
         };
         let built = Construction::complete(&mut site, c.spatial, c.pathing)?;
         // its set_state(2) took its annexes along first (FUN_1411dbb70)
@@ -5982,7 +5987,57 @@ impl Unit {
                         })
                         .collect()
                 });
-            let site = others.iter_mut().find(|u| u.id == target).and_then(|u| {
+            // FUN_1411cc430's way to the building that takes the work: while the foundation is an
+            // annex of a main building in state 0 with at least 1 hit point (COMISS: a NaN too),
+            // that main building; then the foundation's annexes of a building type, which its
+            // work starts first (none when the work goes on to a main building: the caller's)
+            let mut worked = target;
+            let mut main_work = None;
+            while let Some(m) = others
+                .iter()
+                .find(|u| u.id == worked)
+                .and_then(|u| u.annex_of)
+                .and_then(|m| others.iter().find(|u| u.id == m))
+                .filter(|m| m.life.state == 0 && crate::fmath::at_most_or_unordered(1.0, m.life.hp))
+            {
+                worked = m.id;
+                main_work = Some(crate::build::MainWork {
+                    construction: m.construction.ok_or(crate::build::NO_CONSTRUCTION)?,
+                    hp: m.life.hp,
+                });
+            }
+            let annex_ids = c.spatial.annexes_of(target);
+            let mut site = None;
+            let mut starts = Vec::new();
+            for u in others.iter_mut() {
+                if u.id == target {
+                    site = Some(u);
+                    continue;
+                }
+                if main_work.is_some() || !annex_ids.contains(&u.id) {
+                    continue;
+                }
+                let Some(am) = masters
+                    .and_then(|m| m.get(u.life.master_id))
+                    .filter(|m| BUILDING_KIND <= m.kind)
+                else {
+                    continue;
+                };
+                let construction = u
+                    .construction
+                    .as_mut()
+                    .ok_or(crate::build::NO_CONSTRUCTION)?;
+                starts.push(crate::build::AnnexStart {
+                    id: u.id,
+                    construction,
+                    mover: u.mover.as_mut(),
+                    firepower: &mut u.firepower,
+                    volley: am.volley_fire,
+                });
+            }
+            // the slot order: the constructor made them, and their ids, in it
+            starts.sort_by_key(|a| a.id);
+            let site = site.and_then(|u| {
                 let master = masters.and_then(|m| m.get(u.life.master_id));
                 let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
                 Some(Site {
@@ -6005,6 +6060,10 @@ impl Unit {
                         main,
                         now: world_time,
                         rice,
+                    },
+                    chain: crate::build::WorkChain {
+                        annexes: starts,
+                        main: main_work,
                     },
                 })
             });
@@ -6039,15 +6098,22 @@ impl Unit {
             if !step.occupants.is_empty() {
                 c.evacuations.push((target, step.occupants.clone()));
             }
-            // a construction that started: its owner watches it (FUN_1411e5670), the caller's
-            if let Some(cons) = others
-                .iter_mut()
-                .find(|u| u.id == target)
-                .and_then(|u| u.construction.as_mut())
-                .filter(|cons| cons.started)
-            {
-                cons.started = false;
-                c.started.push(target);
+            // the constructions that started, its annexes' first: their owner watches each
+            // (FUN_1411e5670), the caller's
+            for id in annex_ids.iter().copied().chain([target]) {
+                if let Some(cons) = others
+                    .iter_mut()
+                    .find(|u| u.id == id)
+                    .and_then(|u| u.construction.as_mut())
+                    .filter(|cons| cons.started)
+                {
+                    cons.started = false;
+                    c.started.push(id);
+                }
+            }
+            // the work an annex's main building takes, the caller's
+            if let Some(amount) = step.main_work {
+                c.main_works.push((target, amount));
             }
             if let Some(built) = step.completed {
                 // its set_state(2) took its annexes along first (FUN_1411dbb70)
@@ -11433,6 +11499,7 @@ impl Turns {
                     build_command: None,
                     move_aside: Vec::new(),
                     waits: Vec::new(),
+                    main_works: Vec::new(),
                     relations: &player.relations,
                     leads: None,
                     zones: &mut self.zones,
@@ -11463,6 +11530,7 @@ impl Turns {
                     std::mem::take(&mut c.annex_states),
                     std::mem::take(&mut c.cleared),
                 );
+                let main_works = std::mem::take(&mut c.main_works);
                 let building_death = c.building_death.take();
                 let pauses = std::mem::take(&mut c.pauses);
                 let gate_toggle = std::mem::take(&mut c.gate_toggle);
@@ -11484,6 +11552,12 @@ impl Turns {
                 // the gate's player opens or shuts it, in the gate's update before the rest
                 if gate_toggle && let Err(e) = self.toggle_gate(p, i) {
                     result = result.and(Err(e));
+                }
+                // the work a builder gave an annex goes to its main building (FUN_1411cc430)
+                for (annex, amount) in main_works {
+                    if let Err(e) = self.work_building(annex, amount) {
+                        result = result.and(Err(e));
+                    }
                 }
                 // a building's set_state took its annexes along first (FUN_1411dbb70)
                 for (annex, state) in annex_states {
@@ -13302,6 +13376,53 @@ mod tests {
             after: &players[1..],
         };
         assert_eq!(wait_progress(10028, &[], other), Some(0.0));
+    }
+
+    /// `FUN_1411cc430` on an annex whose main building is in state 0 with a hit point (the
+    /// builder's work deferred to the caller, [`crate::build::Worked::Main`]): the main
+    /// building's annexes start first (the annex itself among them, desolid), then the main
+    /// building starts and takes the work; the annex takes none.
+    #[test]
+    fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
+        let mut t = sent_off_world(vec![]);
+        let annex = Unit {
+            id: 10031,
+            annex_of: Some(10028),
+            ..t.players[1].objects[1].clone()
+        };
+        t.players[1].objects.push(annex);
+        t.spatial = Spatial::with_tiles(
+            [120, 120],
+            crate::spatial::Tiles::new(120, 120, vec![4; 14400]),
+        );
+        for (id, x) in [(10028, 30.0), (10031, 32.0)] {
+            t.spatial.insert(
+                id,
+                Placed {
+                    position: [x, 88.0, 0.0],
+                    radius: [1.0, 1.0],
+                    class: 3,
+                    player: 1,
+                    master: 70,
+                    obstruction_type: 2,
+                    buildable_on: 0,
+                    tall: true,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+        }
+        t.spatial.set_annex(10031, Some(10028));
+        t.work_building(10031, 0.021).unwrap();
+        let c = |id: i32| t.object(id).unwrap().1.construction.unwrap();
+        let started = f32::from_bits(0x2edb_e6ff);
+        assert!(!c(10031).desolid);
+        assert_eq!(c(10031).progress, started);
+        assert!(!c(10028).desolid);
+        assert_eq!(c(10028).progress, started + 0.021);
+        assert_eq!(t.object(10031).unwrap().1.life.hp, 1.0);
+        assert!(1.0 < t.object(10028).unwrap().1.life.hp);
     }
 
     /// The whole of it: a villager the foundation sent off (its queue the foundation's order)
