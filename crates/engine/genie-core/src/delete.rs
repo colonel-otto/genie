@@ -196,7 +196,7 @@ impl Turns {
         let site = unit.construction;
         let desolid = site.is_some_and(|c| c.desolid);
         let share = if state < 2 && 1.0 <= hp {
-            let c = site.ok_or(Unsupported("a foundation without its construction"))?;
+            let c = site.ok_or(crate::build::NO_CONSTRUCTION)?;
             let build_time = f32::from(c.build_time);
             (build_time - c.progress) / build_time
         } else {
@@ -242,9 +242,7 @@ impl Turns {
     ///
     /// An object the slice does not hold, and what the parts do not model.
     pub(crate) fn destroy(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
-        let (_, u) = self
-            .object(id)
-            .ok_or(Unsupported("a destroyed object the slice does not hold"))?;
+        let (_, u) = self.object(id).ok_or(crate::build::NOT_HELD)?;
         let state = u.life.state;
         let master = self.master_of(owner, u.life.master_id)?.clone();
         if master.kind == BUILDING {
@@ -284,9 +282,7 @@ impl Turns {
     /// modelled. Not held: the special-object list (`+0x30c` bit 0, `FUN_141677380`) and the log
     /// line.
     pub(crate) fn base_destroy(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
-        let (_, u) = self
-            .object(id)
-            .ok_or(Unsupported("a destroyed object the slice does not hold"))?;
+        let (_, u) = self.object(id).ok_or(crate::build::NOT_HELD)?;
         if 7 <= u.life.state {
             return Ok(());
         }
@@ -456,9 +452,7 @@ impl Turns {
         master: &Master,
     ) -> Result<(), Unsupported> {
         let computer = self.players[owner].computer;
-        let (_, u) = self
-            .object_mut(id)
-            .ok_or(Unsupported("a dying building the slice does not hold"))?;
+        let (_, u) = self.object_mut(id).ok_or(crate::build::NOT_HELD)?;
         let death = crate::turn::built_death(u, master, computer)?;
         for &(kind, amount) in &death.adds {
             self.players[owner].add_attribute(kind, amount)?;

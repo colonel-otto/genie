@@ -1253,9 +1253,7 @@ impl crate::turn::Turns {
         master: &Master,
     ) -> Result<(), Unsupported> {
         let (_, u) = self.object(id).ok_or(NOT_HELD)?;
-        let construction = u
-            .construction
-            .ok_or(Unsupported("a foundation without its construction"))?;
+        let construction = u.construction.ok_or(NO_CONSTRUCTION)?;
         let completion = Completion {
             master: Some(master),
             annexed: false,
@@ -1320,9 +1318,12 @@ impl crate::turn::Turns {
 /// flag (`FUN_14162ce00`'s `FUN_1411cc430` with `DAT_142eea788`).
 const STACK_WORK: f32 = 10000.0;
 
-/// The routines below reach their building through the object itself (their callers hold it):
-/// the slice's lists hold every object the world does.
-const NOT_HELD: Unsupported = Unsupported("a building the slice does not hold");
+/// The guard of an object the routines here reach through the object itself (their callers
+/// hold it): the slice's lists hold every object the world does.
+pub(crate) const NOT_HELD: Unsupported = Unsupported("an object the slice does not hold");
+
+/// The guard of a building without its construction: the slice gives every building one.
+pub(crate) const NO_CONSTRUCTION: Unsupported = Unsupported("a building without its construction");
 
 /// The object at `place`, in its player's live or sleeping list (the world's table,
 /// `FUN_1415417a0`, holds both).
@@ -1381,10 +1382,7 @@ impl crate::turn::Turns {
             self.construction_starts(q, at)?;
         }
         let (q, u) = self.object_mut(at).ok_or(NOT_HELD)?;
-        let c = u
-            .construction
-            .as_mut()
-            .ok_or(Unsupported("a worked building without its construction"))?;
+        let c = u.construction.as_mut().ok_or(NO_CONSTRUCTION)?;
         if c.add_work(&mut u.life.hp, amount) {
             self.set_state(q, at, 2)?;
         }
@@ -1414,10 +1412,7 @@ impl crate::turn::Turns {
         let u = held(&mut self.players, place);
         let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
         let master = masters.and_then(|m| m.get(u.life.master_id));
-        let construction = u
-            .construction
-            .as_mut()
-            .ok_or(Unsupported("a completed building without its construction"))?;
+        let construction = u.construction.as_mut().ok_or(NO_CONSTRUCTION)?;
         let mut site = Site {
             id,
             life: &mut u.life,

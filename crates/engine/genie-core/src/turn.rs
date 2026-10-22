@@ -3903,7 +3903,7 @@ impl Unit {
         let construction = self
             .construction
             .as_mut()
-            .ok_or(Unsupported("a dying foundation without its construction"))?;
+            .ok_or(crate::build::NO_CONSTRUCTION)?;
         let completion = Completion {
             master: Some(master),
             annexed: false,
@@ -9505,7 +9505,7 @@ impl Turns {
         made: &Master,
         am: &Master,
     ) -> Result<(), Unsupported> {
-        let not_held = Unsupported("an annex the slice does not hold");
+        let not_held = crate::build::NOT_HELD;
         let (_, a) = self.object_mut(aid).ok_or(not_held)?;
         a.annex_of = Some(id);
         self.spatial.set_annex(aid, Some(id));
@@ -9517,7 +9517,7 @@ impl Turns {
             let c = a
                 .construction
                 .as_mut()
-                .ok_or(Unsupported("an annex without its construction"))?;
+                .ok_or(crate::build::NO_CONSTRUCTION)?;
             if !c.desolid {
                 c.desolid = true;
                 self.pathing.removed(aid);
