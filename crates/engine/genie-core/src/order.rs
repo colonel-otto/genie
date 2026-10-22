@@ -1396,41 +1396,27 @@ impl Turns {
         Ok(())
     }
 
-    /// GATE (`do_command` case 0x72): the object `id` (any player's: a missing one does nothing)
-    /// of a master of type 80 toggles its gate lock (slot 0x670 with slot 0x668's value
-    /// negated, `FUN_1411dba30`): a lock sets its last move time to the world time plus 1. The
-    /// player must own it (another player's object, which a game setting, `FUN_1412ffe00`, or
-    /// the world's `+0xb12` may let through, is not modelled). Its sound (slot 0x4c0) and the
-    /// UI's flag are not held.
+    /// GATE (`do_command` case 0x72): the command's check refuses an object `id` the world does
+    /// not hold, or another player's while players may not order each other's units (the
+    /// setting `+0x1074`, [`Turns::allied_control`]; the world's `+0xb12` cheat is not held).
+    /// The object, live or sleeping (`FUN_1415417a0`), of a master of type 80 toggles its gate
+    /// lock: slot 0x670 ([`lock_gate`]) with slot 0x668's value negated. Its sound (slot 0x4c0)
+    /// and the UI's flag are not held.
     pub(crate) fn gate(&mut self, player: usize, id: i32) -> Result<(), Unsupported> {
-        let Some(place) = self.place(id) else {
+        let Some((p, unit)) = self.object(id) else {
             return Ok(());
         };
-        let (p, idx) = match place {
-            Place::Live(p, i) => (p, i),
-            Place::Sleeping(..) => return Err(Unsupported("a GATE of a sleeping object")),
-        };
-        if p != player {
-            return Err(Unsupported("a GATE of another player's object"));
+        if p != player && !self.allied_control {
+            return Ok(());
         }
-        let master = self.players[p].objects[idx].life.master_id;
-        if self.master_of(p, master)?.kind != 80 {
+        if self.master_of(p, unit.life.master_id)?.kind != BUILDING {
             return Ok(());
         }
         let now = self.world_time;
-        let unit = &mut self.players[p].objects[idx];
-        let gate = unit
-            .gate
-            .as_mut()
-            .ok_or(Unsupported("a GATE of a building without its gate state"))?;
-        gate.locked = !gate.locked;
-        if gate.locked {
-            unit.mover
-                .as_mut()
-                .ok_or(Unsupported("a locked gate without its moving part"))?
-                .last_move = now.wrapping_add(1);
-        }
-        Ok(())
+        let (_, unit) = self.object_mut(id).expect("found above");
+        // slot 0x668: the lock's value (a building without its gate state is lock_gate's)
+        let locked = unit.gate.is_some_and(|g| g.locked);
+        lock_gate(unit, !locked, now)
     }
 
     /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each unit of `ids` with a unit AI that may scout
@@ -3970,6 +3956,24 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
     [inside_map(x, map[0]), inside_map(y, map[1])]
 }
 
+/// A building's slot 0x670 (`FUN_1411dba30`): its gate lock (`mGateLocked`, `+0xc7c`, an int its
+/// callers set to 0 or 1) takes `locked`; a lock also sets its last move time (`+0x870`,
+/// [`crate::movement::Mover::last_move`]) to the world time (`FUN_1415300d0`) plus 1.
+fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), Unsupported> {
+    let gate = unit
+        .gate
+        .as_mut()
+        .ok_or(Unsupported("a GATE of a building without its gate state"))?;
+    gate.locked = locked;
+    if locked {
+        unit.mover
+            .as_mut()
+            .ok_or(Unsupported("a locked gate without its moving part"))?
+            .last_move = now.wrapping_add(1);
+    }
+    Ok(())
+}
+
 /// `setDifferentiatorGroups` (`FUN_1410395a0`): group `g`'s differentiator groups (`+0x108`,
 /// count `+0x110`) are `list` instead. The routine's false for an allocation that failed cannot
 /// come: `operator new` (`FUN_142a8bd2c`) throws rather than return none.
@@ -4284,6 +4288,56 @@ mod tests {
         assert_eq!(t.players[1].objects[1].group.id, -1);
         assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
         assert_eq!(t.players[0].objects[0].ai.as_ref().unwrap().orders.len(), 1);
+    }
+
+    /// GATE and `FUN_1411dba30`: player 1's building 50 toggles its lock, a lock setting its last
+    /// move time to the world time plus 1, an unlock leaving it; player 2's GATE of it does
+    /// nothing unless players may order each other's units; a unit (type 70) takes nothing.
+    #[test]
+    fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.world_time = 400;
+        t.players.push(crate::turn::Player::default());
+        t.masters.push(crate::masters::Masters::new([]));
+        t.masters[1] = crate::masters::Masters::new([
+            Master {
+                id: 4,
+                kind: 70,
+                ..Master::default()
+            },
+            Master {
+                id: 79,
+                kind: BUILDING,
+                ..Master::default()
+            },
+        ]);
+        t.players[1].objects.push(Unit {
+            id: 50,
+            gate: Some(crate::turn::Gate::default()),
+            mover: Some(crate::hunt::tests::walker()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 79,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        let building = |t: &Turns| {
+            let b = &t.players[1].objects[1];
+            (b.gate.unwrap().locked, b.mover.as_ref().unwrap().last_move)
+        };
+        t.gate(1, 50).unwrap();
+        assert_eq!(building(&t), (true, 401));
+        t.world_time = 500;
+        t.gate(2, 50).unwrap();
+        assert_eq!(building(&t), (true, 401));
+        t.allied_control = true;
+        t.gate(2, 50).unwrap();
+        assert_eq!(building(&t), (false, 401));
+        t.gate(1, 11).unwrap();
+        t.gate(1, 99).unwrap();
+        assert_eq!(t.players[1].objects[0].gate, None);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
