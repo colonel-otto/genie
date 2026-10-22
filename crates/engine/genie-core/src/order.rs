@@ -220,6 +220,14 @@ impl Turns {
         }
     }
 
+    /// The object `id`, live or sleeping, to change (`FUN_1415417a0`'s object).
+    pub(crate) fn object_mut(&mut self, id: i32) -> Option<(usize, &mut Unit)> {
+        match self.place(id)? {
+            Place::Live(p, i) => Some((p, &mut self.players[p].objects[i])),
+            Place::Sleeping(p, i) => Some((p, &mut self.players[p].sleeping[i])),
+        }
+    }
+
     pub(crate) fn master_of(&self, player: usize, master: i16) -> Result<&Master, Unsupported> {
         self.masters
             .get(player)

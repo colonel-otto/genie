@@ -482,6 +482,27 @@ mod tests {
         assert!(t.statistics_only(1, false).unwrap());
     }
 
+    /// `FUN_14100d140` writes the formation type of every member `FUN_1415417a0` finds with a
+    /// unit AI, a sleeping one too.
+    #[test]
+    fn the_stances_reach_a_sleeping_member() {
+        let mut t = three();
+        for u in &mut t.players[1].objects {
+            u.ai = Some(crate::unit_ai::UnitAi::default());
+        }
+        let asleep = t.players[1].objects.remove(2);
+        t.players[1].sleeping.push(asleep);
+        t.stances_state(1, 5);
+        assert_eq!(
+            t.players[1].sleeping[0].ai.as_ref().unwrap().formation_type,
+            5
+        );
+        assert_eq!(
+            t.players[1].objects[0].ai.as_ref().unwrap().formation_type,
+            5
+        );
+    }
+
     /// `LockFormation` (`FUN_141024e70`) re-reads the spacing (`+0x15c`) for every member
     /// (`MOVSS`/`UCOMISS` at 0x14102500a): the first held member with a radius sets it, the later
     /// ones are skipped.

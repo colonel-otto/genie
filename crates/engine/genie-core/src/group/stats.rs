@@ -272,10 +272,9 @@ impl Turns {
         }
         self.update_desired_positions(group, -1)?;
         self.stances_state(group, 0);
+        // FUN_1415417a0 finds sleeping members too
         for &id in &ids {
-            if let Some(crate::order::Place::Live(q, i)) = self.place(id)
-                && let Some(ai) = self.players[q].objects[i].ai.as_mut()
-            {
+            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
                 ai.formation_type = 0;
             }
         }
@@ -360,10 +359,9 @@ impl Turns {
         if let Some(g) = self.groups.get_mut(group) {
             g.state = state;
         }
+        // FUN_1415417a0 finds sleeping members too
         for &id in &ids {
-            if let Some(crate::order::Place::Live(q, i)) = self.place(id)
-                && let Some(ai) = self.players[q].objects[i].ai.as_mut()
-            {
+            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
                 ai.formation_type = formation_type;
             }
         }

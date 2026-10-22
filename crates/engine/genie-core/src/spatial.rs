@@ -2576,20 +2576,18 @@ pub(crate) const GATE_CLASS: i16 = 39;
 fn ccw(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2]) -> i32 {
     let (dx1, dy1) = (p1[0] - p0[0], p1[1] - p0[1]);
     let (dx2, dy2) = (p2[0] - p0[0], p2[1] - p0[1]);
-    // the game's `<=` is false for a NaN too
-    if matches!(
-        (dy2 * dx1).partial_cmp(&(dx2 * dy1)),
-        Some(std::cmp::Ordering::Greater) | None
-    ) {
+    // every test is COMISS/JA (0x1410576ee..0x14105772e): an unordered one falls through, so a
+    // NaN reaches the last answer, 0
+    if dy2 * dx1 > dx2 * dy1 {
         return 1;
     }
-    if dy2 * dx1 < dx2 * dy1 || dx2 * dx1 < 0.0 || dy2 * dy1 < 0.0 {
+    if dx2 * dy1 > dy2 * dx1 || 0.0 > dx2 * dx1 || 0.0 > dy2 * dy1 {
         return -1;
     }
-    if dy2 * dy2 + dx2 * dx2 <= dy1 * dy1 + dx1 * dx1 {
-        return 0;
+    if dy2 * dy2 + dx2 * dx2 > dy1 * dy1 + dx1 * dx1 {
+        return 1;
     }
-    1
+    0
 }
 
 /// `FUN_141054ec0`: whether segments `p1`–`p2` and `p3`–`p4` meet.
@@ -2632,13 +2630,26 @@ fn box_meets_segment([bx0, by0, bx1, by1]: [f32; 4], r: f32, walk: [f32; 4]) -> 
 mod tests {
     use super::*;
 
-    /// `FUN_141052e10`'s inside tests are COMISS/JC: a walk from a NaN point to a point beyond
-    /// the box meets nothing; one from inside meets it.
+    /// `FUN_1410576a0`: counter-clockwise 1, clockwise -1, on the segment 0, beyond its end 1;
+    /// a NaN falls through every COMISS/JA to 0.
     #[test]
-    fn a_walk_from_a_nan_point_counts_its_start_outside() {
+    fn ccw_answers_as_the_game_s_compares() {
+        assert_eq!(ccw([0.0, 0.0], [1.0, 0.0], [1.0, 1.0]), 1);
+        assert_eq!(ccw([0.0, 0.0], [1.0, 0.0], [1.0, -1.0]), -1);
+        assert_eq!(ccw([0.0, 0.0], [2.0, 0.0], [1.0, 0.0]), 0);
+        assert_eq!(ccw([0.0, 0.0], [1.0, 0.0], [2.0, 0.0]), 1);
+        assert_eq!(ccw([0.0, 0.0], [1.0, 0.0], [-1.0, 0.0]), -1);
+        assert_eq!(ccw([0.0, 0.0], [1.0, 0.0], [f32::NAN, 1.0]), 0);
+    }
+
+    /// `FUN_141052e10`: a walk from a NaN point meets the box's first side already (ccw answers
+    /// 0 for a NaN, so the segments meet); a walk inside it meets it; one past it does not.
+    #[test]
+    fn a_walk_meets_a_box_by_its_sides_or_from_inside() {
         let b = [0.0, 0.0, 1.0, 1.0];
-        assert!(!box_meets_segment(b, 0.0, [f32::NAN, 0.5, 5.0, 5.0]));
+        assert!(box_meets_segment(b, 0.0, [f32::NAN, 0.5, 5.0, 5.0]));
         assert!(box_meets_segment(b, 0.0, [0.5, 0.5, 0.6, 0.6]));
+        assert!(!box_meets_segment(b, 0.0, [3.0, 3.0, 5.0, 5.0]));
     }
 
     fn villager(x: f32, y: f32) -> Placed {
