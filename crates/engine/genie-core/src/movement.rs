@@ -402,6 +402,35 @@ fn gate_gap(
     gap
 }
 
+/// `FUN_140f98bc0` with 1 on a level's path: the waypoint after `index`. A path that does not
+/// loop (flags bit 0) has none (-1); a loop goes on to its next point, or 0 past its last; a path
+/// that goes back and forth (bit 1) turns at its ends, bit 2 the way back, which the turn sets
+/// or clears.
+const fn looping_next(level: &mut PathData, index: i32) -> i32 {
+    let n = level.points.len() as i32;
+    if level.path_flags & 1 == 0 {
+        return -1;
+    }
+    if level.path_flags & 2 == 0 {
+        return if index + 1 < n { index + 1 } else { 0 };
+    }
+    if level.path_flags & 4 == 0 {
+        let next = index - 1;
+        if next < 0 {
+            level.path_flags |= 4;
+            return 1;
+        }
+        next
+    } else {
+        let next = index + 1;
+        if n <= next {
+            level.path_flags &= !4;
+            return n - 2;
+        }
+        next
+    }
+}
+
 /// `FUN_140f98d50`: a path's point `i` goes, the later ones move down (true); an index outside
 /// the path (below 0 or past its last point) changes nothing (false).
 fn remove_point(points: &mut Vec<Vec3>, i: i32) -> bool {
@@ -884,7 +913,9 @@ impl Mover {
             match self.paths[0].state {
                 4 | 5 => match self.arrived(goal)? {
                     Next::Done(m) => return Ok(m),
-                    _ => continue,
+                    Next::Again => continue,
+                    // a link of another type: on past the request (state 4 or 5) to the walk
+                    Next::Dispatch => {}
                 },
                 2 => {
                     let plan = plan
@@ -1271,17 +1302,18 @@ impl Mover {
                 let _ = self.paths.remove(0);
                 let parent = &mut self.paths[0];
                 parent.state = 2;
-                if parent.path_flags & 1 != 0 {
-                    return Err(Unsupported(
-                        "a looping parent's next waypoint (FUN_140f98bc0)",
-                    ));
+                // a looping parent path moves on (FUN_140f98bc0 with 1)
+                if parent.has_path && parent.path_flags & 1 != 0 {
+                    parent.waypoint = looping_next(parent, parent.waypoint);
                 }
             }
             3 => {
                 let _ = self.paths.remove(0);
                 self.paths[0].state = 2;
             }
-            _ => return Err(Unsupported("an arrived level of another link")),
+            // the game's switch has no case: the level stays and the step goes on past the
+            // request to the walk (`LAB_141153bd1`)
+            _ => return Ok(Next::Dispatch),
         }
         Ok(Next::Again)
     }
@@ -3432,6 +3464,46 @@ mod tests {
         m.stats.turn_rate = 1.0;
         assert_eq!(m.steer([0.0, 0.0, 1.0], 0.02), Ok(true));
         assert!(m.forward[2].abs() < 0.03);
+    }
+
+    /// `FUN_140f98bc0` with 1: a loop's next point or 0 past its end; a back-and-forth path turns
+    /// at its ends and flips bit 2; a path that does not loop has none.
+    #[test]
+    fn a_looping_path_s_next_waypoint_goes_round_or_back_and_forth() {
+        let mut l = level(1, &[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]], 2);
+        l.path_flags = 0;
+        assert_eq!(looping_next(&mut l, 1), -1);
+        l.path_flags = 1;
+        assert_eq!((looping_next(&mut l, 1), looping_next(&mut l, 2)), (2, 0));
+        l.path_flags = 3;
+        assert_eq!(looping_next(&mut l, 1), 0);
+        assert_eq!((looping_next(&mut l, 0), l.path_flags), (1, 7));
+        assert_eq!(looping_next(&mut l, 1), 2);
+        assert_eq!((looping_next(&mut l, 2), l.path_flags), (1, 3));
+    }
+
+    /// `LAB_141151b6d`: an arrived level of link 2 hands its looping parent its next waypoint;
+    /// one of another link stays and the step walks on.
+    #[test]
+    fn an_arrived_level_hands_a_looping_parent_its_next_waypoint() {
+        let goal = Goal {
+            target: None,
+            gap: FAR,
+            to_end: FAR,
+        };
+        let mut m = builder_9177();
+        m.paths[0].linked_type = 2;
+        m.paths[1].path_flags = 1;
+        m.paths[1].waypoint = 1;
+        assert!(matches!(m.arrived(goal), Ok(Next::Again)));
+        assert_eq!(
+            (m.paths.len(), m.paths[0].state, m.paths[0].waypoint),
+            (1, 2, 0)
+        );
+        let mut m = builder_9177();
+        m.paths[0].linked_type = 0;
+        assert!(matches!(m.arrived(goal), Ok(Next::Dispatch)));
+        assert_eq!(m.paths.len(), 2);
     }
 
     /// `0x141150f00`: a level whose target is gone walks as to a point (`FUN_1415417a0` finds
