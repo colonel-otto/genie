@@ -1967,13 +1967,14 @@ impl Mover {
         target: &Placed,
         (from, to): ([f32; 2], [f32; 2]),
     ) -> Result<bool, Unsupported> {
-        let fixed = |f: f32| (f * short_path::TO_FIXED) as i64 as i32;
+        // CVTTSS2SI into a 64-bit register, its low 32 bits kept
+        let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * short_path::TO_FIXED) as i32;
         let query = short_path::Query {
             from: [fixed(from[0]), fixed(from[1])],
             to: [fixed(to[0]), fixed(to[1])],
-            radius: (self.stats.radius[0] * short_path::TO_FIXED) as i64 as u32 as i32,
-            target_size: [fixed(target.radius[0]), fixed(target.radius[1])],
-            range: fixed(self.stats.weapon_range),
+            radius: self.stats.radius[0],
+            target_size: target.radius,
+            range: self.stats.weapon_range,
             blocked: u64::from(self.stats.restriction_mask ^ 0xff),
         };
         let tiles = world.tiles();

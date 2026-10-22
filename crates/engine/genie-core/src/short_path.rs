@@ -1984,23 +1984,52 @@ impl Search<'_> {
     }
 }
 
-/// The short pather's inputs in fixed point: the start and the goal, the unit's radius, the
-/// target's half sizes (when the goal is the target's own position), the range, and the terrain
-/// classes the unit cannot cross (`mask ^ 0xff`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The short pather's arguments (`FUN_140f9d3a0`'s block, which `FUN_140f9e540` and
+/// `FUN_140fa0110` fill): the start and the goal in fixed point (the callers truncate them), the
+/// unit's radius, the target's half sizes (when the goal is the target's own position) and the
+/// range as floats, and the terrain classes the unit cannot cross (`mask ^ 0xff`). The search
+/// ([`Pather::search`]) and the start test ([`Pather::start_blocked`]) truncate the floats.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Query {
     /// The start.
     pub from: Point,
     /// The goal.
     pub to: Point,
-    /// The unit's radius.
-    pub radius: i32,
-    /// The target's half sizes, when the goal is its own position.
-    pub target_size: [i32; 2],
-    /// The range.
-    pub range: i32,
-    /// The terrain classes the unit cannot cross, as a tile mask.
+    /// The unit's radius (`+0xc`).
+    pub radius: f32,
+    /// The target's half sizes, when the goal is its own position (`+0x10`, `+0x14`).
+    pub target_size: [f32; 2],
+    /// The range (`+0x18`).
+    pub range: f32,
+    /// The terrain classes the unit cannot cross, as a tile mask (`+0x1c`).
     pub blocked: u64,
+}
+
+impl Query {
+    /// `FUN_140f9d300`'s and `FUN_140f9d3e0`'s casts: each float times 2^22 by `CVTTSS2SI` into
+    /// a 64-bit register, its low 32 bits kept (the radius through `uint`, the same bits).
+    fn fixed(&self) -> Fixed {
+        let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * TO_FIXED) as i32;
+        Fixed {
+            from: self.from,
+            to: self.to,
+            radius: fixed(self.radius),
+            target_size: [fixed(self.target_size[0]), fixed(self.target_size[1])],
+            range: fixed(self.range),
+            blocked: self.blocked,
+        }
+    }
+}
+
+/// A [`Query`] in fixed point, as `FUN_140fa53d0` and `FUN_140faa170` take it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Fixed {
+    from: Point,
+    to: Point,
+    radius: i32,
+    target_size: [i32; 2],
+    range: i32,
+    blocked: u64,
 }
 
 /// What a search returns (`FUN_140fa53d0`'s result) with the path's points from the start on, in
@@ -2059,7 +2088,7 @@ pub struct Call {
 }
 
 /// What the entry makes of a call.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Entry {
     /// 0: the start lies within range of the target (`FUN_14118faf0` less the radius): the path is
     /// cleared.
@@ -2096,7 +2125,8 @@ impl Call {
         if !on_map(self.from) || !on_map(self.to) {
             return Entry::Invalid;
         }
-        let fixed = |f: f32| (f * TO_FIXED) as i64 as i32;
+        // CVTTSS2SI into a 64-bit register, its low 32 bits kept
+        let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * TO_FIXED) as i32;
         let to = [fixed(self.to[0]), fixed(self.to[1])];
         let at_target = self
             .target
@@ -2112,9 +2142,9 @@ impl Call {
             query: Query {
                 from: [fixed(self.from[0]), fixed(self.from[1])],
                 to,
-                radius: (self.radius * TO_FIXED) as i64 as u32 as i32,
-                target_size: [fixed(size[0]), fixed(size[1])],
-                range: fixed(self.range),
+                radius: self.radius,
+                target_size: size,
+                range: self.range,
                 blocked: u64::from(self.mask ^ 0xff),
             },
             ignore,
@@ -2197,8 +2227,8 @@ impl Pather {
     }
 
     /// One call of the short pather (`FUN_140f9d2f0` the ignored shapes, `FUN_140f9d300` the
-    /// search, `FUN_140f9d2b0` the cleanup): `ignore` the shape ids of the units it ignores,
-    /// `words` the obstruction manager's tile words.
+    /// search with the query's floats in fixed point, `FUN_140f9d2b0` the cleanup): `ignore` the
+    /// shape ids of the units it ignores, `words` the obstruction manager's tile words.
     pub fn search(
         &mut self,
         mesh: &mut Mesh,
@@ -2212,7 +2242,7 @@ impl Pather {
         for &id in ignore {
             self.ignore[id as usize] = true;
         }
-        let result = self.core(mesh, words, q);
+        let result = self.core(mesh, words, &q.fixed());
         for &id in ignore {
             if let Some(f) = self.ignore.get_mut(id as usize) {
                 *f = false;
@@ -2233,6 +2263,7 @@ impl Pather {
         words: &dyn Fn(u32, u32) -> u64,
         q: &Query,
     ) -> bool {
+        let q = &q.fixed();
         if self.ignore.len() < mesh.shapes.len() {
             self.ignore.resize(mesh.shapes.len(), false);
         }
@@ -2300,7 +2331,7 @@ impl Pather {
         &mut self,
         mesh: &mut Mesh,
         words: &dyn Fn(u32, u32) -> u64,
-        q: &Query,
+        q: &Fixed,
     ) -> Result<ShortPath, Unsupported> {
         let r = q.radius;
         let d = 0x20_0000 - r;
@@ -2647,5 +2678,32 @@ mod tests {
             ray_rect([0, 3 * ONE], [4 * ONE, 3 * ONE], r, &mut t, &mut side),
             0
         );
+    }
+
+    /// A query from (5, 5) to (7, 5) with a radius of a quarter tile and range `range`.
+    fn range_query(range: f32) -> Query {
+        Query {
+            from: [5 * ONE, 5 * ONE],
+            to: [7 * ONE, 5 * ONE],
+            radius: 0.25,
+            target_size: [0.0, 0.0],
+            range,
+            blocked: 0,
+        }
+    }
+
+    #[test]
+    fn the_search_truncates_its_radius_and_range_to_fixed_point() {
+        // FUN_140f9d300: (int)(longlong)(range * 2^22). The goal lies 1.75 tiles beyond the
+        // radius: a range of 1.75 holds it at once (result 0); the float just below truncates to
+        // 0x6fffff and searches
+        let words = |_: u32, _: u32| 0;
+        let below = f32::from_bits(1.75f32.to_bits() - 1);
+        let mut mesh = Mesh::new(16);
+        let mut pather = Pather::default();
+        let found = pather.search(&mut mesh, &words, &range_query(1.75), &[]);
+        assert_eq!(found.map(|f| f.result), Ok(0));
+        let found = pather.search(&mut mesh, &words, &range_query(below), &[]);
+        assert_eq!(found.map(|f| f.result), Ok(1));
     }
 }
