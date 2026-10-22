@@ -291,7 +291,8 @@ pub fn aim(
         gap *= aimer.spread;
         // the missile's attack count (`+0x900`, its firer's when fired): master 528 strays by its
         // share, 527 and the others by all of it
-        if 0 < attack_count && master_id == MASTER_528 {
+        // DIVSS hands on a NaN distance quieted, which it is already: its bits stay on any host
+        if 0 < attack_count && master_id == MASTER_528 && !gap.is_nan() {
             gap /= attack_count as f32;
         }
         let gap = gap + 0.0;
