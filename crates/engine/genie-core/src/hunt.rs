@@ -132,6 +132,16 @@ pub struct Lead {
     pub start: [f32; 2],
 }
 
+impl Lead {
+    /// The constructor's (`FUN_140ac2dd0`): nothing moved or still, the start at (−1, −1)
+    /// (`0xbf800000`).
+    pub const NEW: Self = Self {
+        moved: false,
+        still_time: 0,
+        start: [-1.0, -1.0],
+    };
+}
+
 /// What the drop-off reads of its drop site on arrival: that the site takes what the unit carries
 /// (`FUN_140fdd190`) and the gap between the two footprints squared (`FUN_14118f8c0`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -466,7 +476,7 @@ impl HuntAction {
             carry_to: -1,
             timer: 0.0,
             move_wait: MoveWait::default(),
-            lead: Lead::default(),
+            lead: Lead::NEW,
         };
         if 0.0 < target.amount {
             let kind = task.resource;
@@ -1683,6 +1693,9 @@ pub(crate) mod tests {
         );
         // nothing carried, a human player and settings that keep it: the held kind stays
         assert_eq!(held, (-1, 0.0));
+        // the constructor's lead: the animal's start at (-1, -1)
+        assert_eq!(hunt.lead, Lead::NEW);
+        assert_eq!(hunt.lead.start, [-1.0, -1.0]);
     }
 
     /// Slot 0x48 on another tree: the hunt takes it and its Attack starts over; one within 0.01
