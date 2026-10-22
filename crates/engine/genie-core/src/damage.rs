@@ -422,8 +422,8 @@ pub fn lose(t: &mut Victim, d: f32) {
 /// best armor of the class, else its best of any (melee) or its base armor and best of any
 /// (pierce), plus its powerup (the stingers `+0xb4c`, `+0xb50`, unsaved and written nowhere in
 /// this recording, are 0), less the armor removed. A wall foundation (class 27 in state 0) has
-/// no melee armor.
-fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> Result<i16, Unsupported> {
+/// no melee armor (`FUN_141213810`); its pierce armor is computed as any other's.
+fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> i16 {
     let best = |c: i16, from: i16| {
         a.armors
             .iter()
@@ -448,19 +448,16 @@ fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> Result<i16
             if own_class == 27 && state == 0 {
                 armor = 0;
             }
-            Ok(armor.wrapping_sub(a.armor_removed[0]))
+            armor.wrapping_sub(a.armor_removed[0])
         }
         3 => {
-            if own_class == 27 && state == 0 {
-                return Err(Unsupported("the pierce armor of a wall foundation"));
-            }
             let mut armor = best(3, -1);
             if armor == -1 {
                 armor = any(a.base_armor);
             }
-            Ok(armor
+            armor
                 .wrapping_add(a.armor_powerups[1])
-                .wrapping_sub(a.armor_removed[1]))
+                .wrapping_sub(a.armor_removed[1])
         }
         _ => unreachable!("only melee and pierce armor have their own slots"),
     }
@@ -517,7 +514,7 @@ pub fn armor_damage(
             }
             armor = n;
             if 70 <= kind && matches!(k, 3 | 4) {
-                armor = class_armor(a, k, own_class, state)?;
+                armor = class_armor(a, k, own_class, state);
             }
         }
         let armor_f = f32::from(armor);
@@ -996,6 +993,27 @@ mod tests {
     /// MarvinBlue/426048731's update 1170: the hunter 10029 (master 592: classes 11, 4, 13 and
     /// 17 at 3, 3, 6 and 0) strikes its sheep 9520 (master 705: armor 0 for 4, 3 and 31, base 0):
     /// 3 + 3 + 6 = 12, the game's 14 -> 2 hit points.
+    /// Slot 0x870 (`FUN_1410857f0`): the best pierce armor, else the base armor and the best of
+    /// any; a wall foundation (class 27, state 0) has no case of its own.
+    #[test]
+    fn a_wall_foundation_s_pierce_armor_is_computed_as_any_other() {
+        let a = Armored {
+            armors: vec![(4, 2), (3, 5)],
+            base_armor: 1,
+            ..Armored::default()
+        };
+        assert_eq!(class_armor(&a, 3, 27, 0), 5);
+        assert_eq!(class_armor(&a, 3, 27, 2), 5);
+        let none = Armored {
+            armors: vec![(4, 2)],
+            base_armor: 1,
+            ..Armored::default()
+        };
+        assert_eq!(class_armor(&none, 3, 27, 0), 2);
+        // its melee armor (FUN_141213810's wall foundation) is 0
+        assert_eq!(class_armor(&a, 4, 27, 0), 0);
+    }
+
     #[test]
     fn a_hunter_strikes_its_sheep_for_twelve() {
         let (mut sheep, mut hunter) = (sheep(), hunter());
