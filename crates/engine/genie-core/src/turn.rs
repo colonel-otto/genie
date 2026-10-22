@@ -10427,12 +10427,22 @@ impl Turns {
             .collect()
     }
 
-    /// A gate's slot 0x678 (`FUN_1411d4a30`): player `p` may pass gate `i` of player `q` when the
-    /// gate stands (state below 3), is not locked (`mGateLocked`) and its owner and `p` count each
-    /// other as allies (`FUN_141663dc0`, `FUN_141663d90`; a player counts itself).
+    /// A gate's slot 0x678 (`FUN_1411d4a30`): player `p` may pass object `i` of player `q` when it
+    /// stands (state below 3), its master is of class 39 and transforms (`+0x9ba` not -1), it is
+    /// not locked (`mGateLocked`) and its owner and `p` count each other as allies
+    /// (`FUN_141663dc0`, `FUN_141663d90`; a player counts itself).
     fn gate_passes(&self, q: usize, i: usize, p: usize) -> bool {
         let gate = &self.players[q].objects[i];
+        let transforming = self
+            .masters
+            .get(q)
+            .and_then(|m| m.get(gate.life.master_id))
+            .is_some_and(|m| {
+                m.class == crate::spatial::GATE_CLASS
+                    && m.building.as_ref().is_some_and(|b| b.transform_unit != -1)
+            });
         gate.life.state < 3
+            && transforming
             && !gate.gate.is_some_and(|g| g.locked)
             && self.spatial.allied_with(q, p)
             && self.spatial.allied_with(p, q)
@@ -12010,6 +12020,60 @@ mod tests {
         give_load((&relations, false), 1, &mut adds, 0, 10.0).unwrap();
         assert_eq!(adds, [(0, 10.0), (166, 10.0)]);
         assert!(give_load((&relations, true), 1, &mut adds, 3, 10.0).is_err());
+    }
+
+    /// A gate's slot 0x678 (`FUN_1411d4a30`): a standing, unlocked object of class 39 whose
+    /// master transforms (`+0x9ba` not -1), between allies; any other object answers false.
+    #[test]
+    fn only_a_standing_unlocked_transforming_gate_lets_an_ally_pass() {
+        let object = |id: i32, master: i16, state: u8, locked: bool| Unit {
+            id,
+            life: Lifecycle {
+                master_id: master,
+                state,
+                ..Lifecycle::default()
+            },
+            gate: Some(Gate {
+                locked,
+                ..Gate::default()
+            }),
+            ..Unit::default()
+        };
+        let player = |objects: Vec<Unit>| Player {
+            objects,
+            relations: vec![0, 0],
+            attributes: vec![0.0; 250],
+            ..Player::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0; 2],
+            vec![
+                player(Vec::new()),
+                player(vec![
+                    object(1, 64, 2, false),
+                    object(2, 65, 2, false),
+                    object(3, 66, 2, false),
+                    object(4, 64, 3, false),
+                    object(5, 64, 2, true),
+                ]),
+            ],
+        );
+        let master = |id: i16, class: i16, transform_unit: i16| Master {
+            id,
+            class,
+            building: Some(crate::masters::BuildingMaster {
+                transform_unit,
+                ..crate::masters::BuildingMaster::default()
+            }),
+            ..Master::default()
+        };
+        let masters = Masters::new([master(64, 39, 63), master(65, 39, -1), master(66, 4, 63)]);
+        t.masters = vec![masters.clone(), masters];
+        let passes: Vec<bool> = (0..5).map(|i| t.gate_passes(1, i, 1)).collect();
+        assert_eq!(passes, [true, false, false, false, false]);
     }
 
     #[test]

@@ -2376,6 +2376,35 @@ mod tests {
         assert!(pather.hulls[0].points.contains(&[10.0, 10.0]));
     }
 
+    /// Slot 0x3e8 (`FUN_14114f790`): the old short pather from the unit's place with its radius
+    /// and terrain mask, ignoring it and the target; a path found or none needed gives its
+    /// length, a target the world does not hold none.
+    #[test]
+    fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
+        let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
+        w.insert(9171, placed(2.0, 5.5, 0.2, 5));
+        w.insert(48, placed(5.5, 5.5, 0.5, 2));
+        w.insert(9149, placed(10.5, 5.5, 0.5, 2));
+        let mut mover = crate::hunt::tests::walker();
+        mover.stats.radius = [0.2, 0.2, 0.2];
+        mover.stats.restriction_mask = 6;
+        let me = crate::movement::Me {
+            id: 9171,
+            position: [2.0, 5.5, 0.0],
+            action_state: 0,
+            group: -1,
+        };
+        let length = mover.short_reach(&me, &w, 9149, 0.1).unwrap().unwrap();
+        let mut pather = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let (_, path) = pather.find([2.0, 5.5], [10.5, 5.5], 9149, 0.1).unwrap();
+        assert_eq!(length, path.length());
+        let by = 5.5 - 0.7 * SQRT_2;
+        let expected = (3.5f32 * 3.5 + (5.5 - by) * (5.5 - by)).sqrt()
+            + (5.1f32 * 5.1 + (5.5 - by) * (5.5 - by)).sqrt();
+        assert!((length - expected).abs() < 1e-4, "{length} {expected}");
+        assert_eq!(mover.short_reach(&me, &w, 777, 0.1).unwrap(), None);
+    }
+
     #[test]
     fn a_unit_within_range_needs_no_path() {
         let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
