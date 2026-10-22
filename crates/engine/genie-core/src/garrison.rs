@@ -24,8 +24,6 @@ const LEAST_HP_SHARE: f64 = crate::image::garrison::LEAST_HP_SHARE;
 pub(crate) const BUILDING_CLASS: i16 = 3;
 /// A gate's class: its annex is not its main building for a garrison order.
 const GATE_CLASS: i16 = 39;
-/// The class of relics, which a building's count leaves out (`+0xc2c`).
-const RELIC_CLASS: i16 = 1;
 /// The ids a command's check reads (`FUN_140e558b0`): a human player's first 60, a computer
 /// player's first 500.
 const HUMAN_IDS: usize = 60;
@@ -906,9 +904,12 @@ impl Turns {
         Ok(unchecked || self.has_room(bp, b, None)?)
     }
 
-    /// A building's slot 0x498 (`FUN_1411d0ce0`): the objects inside it (`+0x2f8`'s count) and
-    /// what they hold (`+0x9a8`), less its relics (`+0xc2c`). An object inside that holds others
-    /// and a relic inside are not modelled.
+    /// Slot 0x498 of the object `id`: the objects inside it (`+0x2f8`'s count, relics too) and
+    /// what its own `+0x9a8` (`inside_garrison_count`, a saved byte) adds (`FUN_141213500`); a
+    /// building (`FUN_1411d0ce0`) less its `+0xc2c`, the units of type 70 that came in with a
+    /// running `raider_build_countdown` (`+0x9a0`, `FUN_1411cb850`/`FUN_1411d6ad0`). Not
+    /// modelled: an object inside that holds others (the slice reads no `+0x9a8`) and, in a
+    /// building, a unit with its countdown set (`+0xc2c`, which the slice does not keep).
     fn garrisoned(&self, building: i32) -> Result<i32, Unsupported> {
         let holds = |id: i32| {
             self.players.iter().any(|q| {
@@ -918,14 +919,25 @@ impl Turns {
                     .any(|v| v.life.inside == Some(id))
             })
         };
+        let is_building = self
+            .object(building)
+            .map(|(bp, b)| {
+                self.master_of(bp, b.life.master_id)
+                    .map(|m| m.kind == BUILDING)
+            })
+            .transpose()?
+            .unwrap_or(false);
         let mut count = 0;
         for (p, player) in self.players.iter().enumerate() {
             for u in player.objects.iter().chain(&player.sleeping) {
                 if u.life.inside != Some(building) {
                     continue;
                 }
-                if self.master_of(p, u.life.master_id)?.class == RELIC_CLASS {
-                    return Err(Unsupported("a relic inside a building (+0xc2c)"));
+                let kind = self.master_of(p, u.life.master_id)?.kind;
+                if is_building && kind == COMBAT_KIND && u.raider_countdown != 0 {
+                    return Err(Unsupported(
+                        "a unit inside a building with its raider_build_countdown (+0xc2c)",
+                    ));
                 }
                 if holds(u.id) {
                     return Err(Unsupported(
@@ -2207,5 +2219,35 @@ mod tests {
         u.life.inside = Some(200);
         t.players[1].objects.push(u);
         assert!(t.unload(1, &[1000], [4.5, 4.5], 0, -1, false).is_err());
+    }
+
+    #[test]
+    fn a_buildings_count_takes_relics_in_and_leaves_raiders_unmodelled() {
+        // FUN_1411d0ce0 = FUN_141213500 (the +0x2f8 count and +0x9a8) less +0xc2c, which counts
+        // the units of type 70 that came in with +0x9a0 set (FUN_1411cb850)
+        let mut t = garrison_world();
+        let mut masters = garrison_masters();
+        masters = Masters::new(masters.iter().cloned().chain([Master {
+            id: 285,
+            kind: 20,
+            class: 1,
+            ..Master::default()
+        }]));
+        t.masters = (0..4).map(|_| masters.clone()).collect();
+        for (p, id, m) in [(0, 900, 285), (1, 1000, VILLAGER), (2, 2000, VILLAGER)] {
+            let mut u = unit(id, m, 25.0);
+            u.life.inside = Some(100);
+            t.players[p].objects.push(u);
+        }
+        assert_eq!(t.garrisoned(100), Ok(3));
+        // a raider inside a building: its +0xc2c share is not kept
+        t.object_mut(1000).unwrap().1.raider_countdown = 20;
+        assert!(t.garrisoned(100).is_err());
+        // a transport has no +0xc2c term
+        let mut u = unit(3000, VILLAGER, 25.0);
+        u.life.inside = Some(200);
+        u.raider_countdown = 20;
+        t.players[1].objects.push(u);
+        assert_eq!(t.garrisoned(200), Ok(1));
     }
 }
