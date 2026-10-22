@@ -1205,6 +1205,49 @@ impl Master {
         self.disabled = disabled;
     }
 
+    /// The value attribute `attribute` changes that the masters' loader left at its default
+    /// while what the slice derives from it holds another (the speed, `+0x740`, under a moving
+    /// master's speeds; the turn speed, `+0x758`, under its turn time; the train locations under
+    /// their ids; the damage sprites under the flag that it has some): the change would derive
+    /// from the default. None when the master holds it.
+    #[must_use]
+    pub fn unloaded_for(&self, attribute: u8) -> Option<&'static str> {
+        use crate::masters::attribute as a;
+        let moving = self.moving.as_ref();
+        match attribute {
+            a::MOVEMENT_SPEED | a::STANDING_GRAPHIC | a::WALKING_GRAPHIC | a::RUNNING_GRAPHIC
+                if self.max_speed == 0.0 && moving.is_some_and(|m| m.speed != 0.0) =>
+            {
+                Some("a master's speed (+0x740) the loader did not fill")
+            }
+            a::ROTATION_SPEED
+                if self.turn_speed == 0.0 && moving.is_some_and(|m| m.turn_time != 0.0) =>
+            {
+                Some("a master's turn speed (+0x758) the loader did not fill")
+            }
+            a::TRAIN_LOCATION
+            | a::TRAIN_BUTTON
+            | a::HOTKEY_ID
+            | a::TRAIN_TIME
+            | a::TRAIN_LOCATIONS_ENTRY_MOD
+            | a::TRAIN_LOCATIONS_TOTAL_NUM
+                if self.train_locations.is_empty() && !self.trained_at.is_empty() =>
+            {
+                Some("a master's train locations (+0x898) the loader did not fill")
+            }
+            a::DAMAGE_GRAPHIC
+            | a::DAMAGE_GRAPHICS_ENTRY_MOD
+            | a::DAMAGE_GRAPHICS_TOTAL_NUM
+            | a::DAMAGE_GRAPHIC_PERCENT
+            | a::DAMAGE_GRAPHIC_APPLY_MODE
+                if self.damage_graphics.is_empty() && self.damage_sprites =>
+            {
+                Some("a master's damage sprites (+0x638) the loader did not fill")
+            }
+            _ => None,
+        }
+    }
+
     /// The resource storage `attribute` (21, 26, 27) names: the first, second or third entry.
     fn storage_mut(&mut self, attribute: u8) -> Option<&mut f32> {
         let i = match attribute {

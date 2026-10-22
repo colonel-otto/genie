@@ -1039,6 +1039,12 @@ fn build_points_after(points: f32, time: i16, change: Change, v: f32) -> f32 {
     }
 }
 
+/// `unit` lies within the player's master table (`0 <= unit < player+0x20`): the slice's
+/// [`Masters`] hold no count past their last master, which stands for the table's end.
+fn within_table(masters: &Masters, unit: i16) -> bool {
+    0 <= unit && masters.iter().any(|m| unit <= m.id)
+}
+
 /// The sprite attributes whose change shows on the objects after it (`FUN_140fde290`: 70 to 77,
 /// 82 to 91 and 131).
 const fn shows_sprite(attribute: u8) -> bool {
@@ -1065,7 +1071,9 @@ fn has_actions(u: &Unit) -> bool {
 impl Turns {
     /// Slot 0x148 (`FUN_1416121b0`) of player `p`: the hooks before (`FUN_141614f40` with 0),
     /// the change of attribute `attribute` by `v` on master `unit` or on the masters and
-    /// objects of class `class` ([`Turns::change_attribute`]), the hooks after (with 1).
+    /// objects of class `class` ([`Turns::change_attribute`]), the hooks after (with 1). A master
+    /// it reaches whose loader left the changed value unfilled ([`Master::unloaded_for`]) stops it
+    /// first.
     pub(crate) fn modify_attribute(
         &mut self,
         p: usize,
@@ -1075,6 +1083,13 @@ impl Turns {
         v: f32,
         attribute: u8,
     ) -> Result<(), Unsupported> {
+        if let Some(why) = self
+            .reached_masters(p, unit, class)
+            .iter()
+            .find_map(|&id| self.masters[p].get(id)?.unloaded_for(attribute))
+        {
+            return Err(Unsupported(why));
+        }
         self.effect_hooks(p, false, unit, class, attribute)?;
         self.change_attribute(p, change, unit, class, v, attribute)?;
         self.effect_hooks(p, true, unit, class, attribute)
@@ -1255,12 +1270,7 @@ impl Turns {
         let Some(masters) = self.masters.get(p) else {
             return Ok(());
         };
-        let table = masters
-            .iter()
-            .map(|m| i32::from(m.id) + 1)
-            .max()
-            .unwrap_or(0);
-        if 0 <= unit && i32::from(unit) < table {
+        if within_table(masters, unit) {
             return match masters.get(unit) {
                 Some(_) => self.change_master_attribute(p, change, unit, v, attribute),
                 None => Ok(()),
@@ -1297,15 +1307,29 @@ impl Turns {
         for id in pending {
             let _ = self.change_object(id, change, v, attribute)?;
         }
-        let ids: Vec<i16> = self.masters[p]
-            .iter()
-            .filter(|m| m.class == class)
-            .map(|m| m.id)
-            .collect();
-        for id in ids {
+        for id in self.reached_masters(p, unit, class) {
             self.change_one_master(p, id, change, v, attribute);
         }
         Ok(())
+    }
+
+    /// The masters of player `p` slot 0x148 changes ([`Turns::change_attribute`]): master `unit`
+    /// within the table (none for a null slot), else those of class `class`, by id.
+    fn reached_masters(&self, p: usize, unit: i16, class: i16) -> Vec<i16> {
+        let Some(masters) = self.masters.get(p) else {
+            return Vec::new();
+        };
+        if within_table(masters, unit) {
+            return masters.get(unit).map(|m| m.id).into_iter().collect();
+        }
+        if class < 0 {
+            return Vec::new();
+        }
+        masters
+            .iter()
+            .filter(|m| m.class == class)
+            .map(|m| m.id)
+            .collect()
     }
 
     /// `FUN_14165a400` with no object (`param_6` −1) of player `p`'s master `unit`: its objects
