@@ -122,12 +122,16 @@ struct Splittable {
 }
 
 /// What the order splitter makes of an order's units (`FUN_140fd76d0`'s result at
-/// `DAT_143f11960`): the units that move alone, in the order the splitter leaves them, and its
-/// groups, each its first unit first.
+/// `DAT_143f11960`): the units that move alone, in the order the splitter leaves them, its
+/// groups, each its first unit first, and the units a path did not join.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Split {
     pub(crate) loose: Vec<i32>,
     pub(crate) groups: Vec<Vec<i32>>,
+    /// The units a path from them did not join (`+0x3a48`, a `std::unordered_set` the splitter
+    /// fills through `FUN_140a3e380` and the kept-group order `FUN_140fd9f40` reads), as a set:
+    /// its bucket order is not held.
+    pub(crate) far: std::collections::BTreeSet<i32>,
 }
 
 impl Split {
@@ -139,6 +143,15 @@ impl Split {
             self.groups.push(units);
         }
     }
+}
+
+/// What FOLLOW reads of its target (`FUN_14161c920`'s `param_3`): its id, its place on the
+/// ground and, for a master with a footprint (`+0x5d8` or `+0x5dc` above 0), its class.
+#[derive(Clone, Copy, Debug)]
+struct Followed {
+    id: i32,
+    place: [f32; 2],
+    class: Option<i32>,
 }
 
 /// The splitter's path from one unit to another (`FUN_140f7cb30` -> `FUN_140f7c530`): the
@@ -158,19 +171,22 @@ const SPLIT_BY_PATH: bool = true;
 
 /// `FUN_140fd76d0`'s test whether `b` joins `a`: both above type 69, both of formation category
 /// 0 or neither, the same object flags' bit 1, speeds within [`SPLIT_SPEED_GAP`] where the player
-/// breaks formations by speed, then (`member`: for the chosen unit's group, also `b` in a state
-/// of 2 or more) within the player's influence distance on the ground (between where each last
-/// moved to, slot 0x520: `FUN_14087e560` with the height zeroed). Within [`SPLIT_PATH_REACH`]
-/// the game measures a path instead, when the planner of `b`'s restriction exists: from `b`'s
-/// place to `a`'s (`FUN_140f7c530` with `a`'s radius on x as the radii and `b`'s as the range,
-/// no tile search), which joins `b` when it reaches the goal (result 1) no longer than the
-/// influence distance.
+/// breaks formations by speed (`COMISS`, `JA`: a NaN gap is within), then (`member`: for the
+/// chosen unit's group, also `b` in a state of 2 or more) within the player's influence distance
+/// on the ground (between where each last moved to, slot 0x520: `FUN_14087e560` with the height
+/// zeroed; `COMISS`, `JA`: a NaN distance is within). Below [`SPLIT_PATH_REACH`] (`COMISS`, `JBE`:
+/// a NaN distance is not) the game measures a path instead, when the planner of `b`'s
+/// restriction exists: from `b`'s place to `a`'s (`FUN_140f7c530` with `a`'s radius on x as the
+/// radii and `b`'s as the range, no tile search), which joins `b` when it reaches the goal
+/// (result 1) no longer than the influence distance (a NaN length is not longer); else `b` joins
+/// the splitter's far units (`FUN_140a3e380`).
 fn splits_together(
     a: &Splittable,
     b: &Splittable,
     f: crate::turn::Formations,
     member: bool,
     path: &mut SplitPath<'_>,
+    far: &mut std::collections::BTreeSet<i32>,
 ) -> Result<bool, Unsupported> {
     if a.kind <= MAX_UNGROUPED || b.kind <= MAX_UNGROUPED {
         return Ok(false);
@@ -190,9 +206,13 @@ fn splits_together(
         && d < SPLIT_PATH_REACH
         && let Some((code, length)) = path(a, b)?
     {
-        return Ok(code == 1 && length <= f.influence);
+        let joins = code == 1 && crate::fmath::at_most_or_unordered(length, f.influence);
+        if !joins {
+            let _ = far.insert(b.id);
+        }
+        return Ok(joins);
     }
-    Ok(d <= f.influence)
+    Ok(crate::fmath::at_most_or_unordered(d, f.influence))
 }
 
 /// The class `FUN_140c89760` lets scout without the master's flag when a game setting allows it
@@ -349,32 +369,59 @@ impl Turns {
     ///   group, one alone moves loose; with Ctrl held (`control`) it is a group of its own.
     ///
     /// The split keeps at most 60 groups of at most 60 units: a group past them is dropped with
-    /// its units. An order to more than 60 units (`FUN_140fd9ae0`'s runs of 60) is not modelled.
+    /// its units. An order to more than 60 units splits its sorted list, the gone units in it, in
+    /// runs of 60, each on its own into the one split (`FUN_140fd9ae0`'s `FixedMemoryResource`
+    /// of 60): an id the next run repeats is in both.
     pub(crate) fn split(
         &mut self,
         units: &[i32],
         kept: &dyn Fn(i32) -> bool,
         control: bool,
     ) -> Result<Split, Unsupported> {
-        if 60 < units.len() {
-            return Err(Unsupported("an order to more than 60 units"));
-        }
         // FUN_140fd9ae0 splits only when the list's first unit exists (its owner): else no unit
         // takes the order
         let Some((owner, _)) = units.first().and_then(|&id| self.object(id)) else {
             return Ok(Split::default());
         };
-        let mut sorted = units.to_vec();
-        sorted.sort_unstable();
-        sorted.dedup();
-        let mut left: Vec<Splittable> = Vec::with_capacity(sorted.len());
-        for id in sorted {
+        // FUN_140fd9dc0's objects, null for a gone id; LAB_140fd89b0 sorts a null as -1, and
+        // equal ids are one object, so any sort gives the game's order
+        let mut sorted: Vec<Option<i32>> = units
+            .iter()
+            .map(|&id| self.object(id).map(|_| id))
+            .collect();
+        sorted.sort_unstable_by_key(|u| u.unwrap_or(-1));
+        for u in &mut sorted {
+            if u.is_some_and(|id| !kept(id)) {
+                *u = None;
+            }
+        }
+        let mut split = Split::default();
+        for run in sorted.chunks(60) {
+            self.split_run(owner, run, control, &mut split)?;
+        }
+        Ok(split)
+    }
+
+    /// One run of at most 60 of the order splitter (`FUN_140fd76d0`) into `split`: a null entry
+    /// and one the run's next entry repeats are left out.
+    fn split_run(
+        &mut self,
+        owner: usize,
+        run: &[Option<i32>],
+        control: bool,
+        split: &mut Split,
+    ) -> Result<(), Unsupported> {
+        let mut left: Vec<Splittable> = Vec::with_capacity(run.len());
+        for (i, &u) in run.iter().enumerate() {
+            let Some(id) = u else {
+                continue;
+            };
+            if run.get(i + 1).copied().flatten() == Some(id) {
+                continue;
+            }
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
-            if !kept(id) {
-                continue;
-            }
             let master = self.master_of(p, u.life.master_id)?;
             left.push(Splittable {
                 id,
@@ -395,7 +442,6 @@ impl Turns {
                 restriction: u.mover.as_ref().map(|m| m.stats.restriction),
             });
         }
-        let mut split = Split::default();
         // the units in a group the world holds, with the order's other members of their group
         let mut taken = vec![false; left.len()];
         for i in 0..left.len() {
@@ -426,7 +472,7 @@ impl Turns {
         let formations = self.players[owner].formations;
         if !formations.auto {
             split.loose.extend(left.iter().map(|u| u.id));
-            return Ok(split);
+            return Ok(());
         }
         // units above type 69 of formation category 0 stay loose (the dock test FUN_141158210 is
         // 1 only on an `E` tile in game type 12)
@@ -465,7 +511,9 @@ impl Turns {
             for (i, a) in left.iter().enumerate() {
                 let mut n = 1;
                 for b in left.iter().filter(|b| b.id != a.id) {
-                    n += usize::from(splits_together(a, b, formations, false, &mut path)?);
+                    let joins =
+                        splits_together(a, b, formations, false, &mut path, &mut split.far)?;
+                    n += usize::from(joins);
                 }
                 if best.1 < n {
                     best = (i, n);
@@ -476,7 +524,14 @@ impl Turns {
             if !control {
                 let mut i = 0;
                 while i < left.len() {
-                    if splits_together(&chosen, &left[i], formations, true, &mut path)? {
+                    if splits_together(
+                        &chosen,
+                        &left[i],
+                        formations,
+                        true,
+                        &mut path,
+                        &mut split.far,
+                    )? {
                         group.push(left.remove(i).id);
                     } else {
                         i += 1;
@@ -489,7 +544,7 @@ impl Turns {
             }
             split.keep(group);
         }
-        Ok(split)
+        Ok(())
     }
 
     /// A loose unit of an order leaves its group (`FUN_14102c160` on the group of its `+0x6d0`
@@ -579,7 +634,9 @@ impl Turns {
             .ok_or(Unsupported("an ordered unit without movement state"))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
-        mover.ignore_units.extend_from_slice(others);
+        for &other in others {
+            ignore_unit(&mut mover.ignore_units, other);
+        }
         let point = match centroid {
             None => order.point,
             Some(c) => offset_point([unit.position[0], unit.position[1]], c, order.point, map),
@@ -848,86 +905,213 @@ impl Turns {
         let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {
             if let Some(g) = self.groups.get_mut(id) {
-                g.differentiator_groups.clone_from(&list);
+                set_differentiator_groups(g, &list);
             }
         }
         Ok(())
     }
 
-    /// FOLLOW (0x14, `FUN_140e66a60` -> `FUN_14161c920`) of `target`, which the caller found in
-    /// the world (else the command does nothing), after the resets: one unit forms no group
-    /// (`FUN_140fd9ae0`) and takes the order ([`Turns::follow_unit`]); several units, which the
-    /// splitter may group and which follow at their offsets, are not modelled.
+    /// FOLLOW (0x14): the command's check (`FUN_140e54c50`, [`Turns::command_check`]), then
+    /// `FUN_140e66a60`: a target the world does not hold does nothing; the first 60 ids (500 for
+    /// a computer player) go, gone ones null (`FUN_140e6b750`), to `FUN_14161c920`. Its unit AI
+    /// resets (`FUN_141631040`) are the caller's ([`crate::turn`]). The splitter
+    /// (`FUN_140fd9ae0`, no Ctrl) parts the units; a group it forms is not modelled (a new
+    /// group, `FUN_14152efc0`, follows through `FUN_141007320`; a kept one through
+    /// `FUN_140fd9f40`). The command count goes on. Several loose units leave their unit groups
+    /// (`FUN_14102c160` with −1) and, when the box of those that move is narrow enough
+    /// ([`follow_spread`]), each moves to its offset from their mean added to the target's place
+    /// ([`Turns::follow_offset`]); else each follows the target ([`Turns::follow_unit`]).
     pub(crate) fn follow(
         &mut self,
         player: usize,
         units: &[i32],
         target: i32,
     ) -> Result<(), Unsupported> {
-        self.groups.count_command();
-        match units {
-            [] => Ok(()),
-            &[id] => self.follow_unit(player, id, target),
-            _ => Err(Unsupported("a FOLLOW of several units")),
+        let Some(ids) = self.command_check(player, units) else {
+            return Ok(());
+        };
+        let Some((tp, t)) = self.object(target) else {
+            return Ok(());
+        };
+        let tm = self.master_of(tp, t.life.master_id)?;
+        let followed = Followed {
+            id: target,
+            place: [t.position[0], t.position[1]],
+            class: (0.0 < tm.radius[0] || 0.0 < tm.radius[1]).then_some(i32::from(tm.class)),
+        };
+        let cap = if self.players[player].computer {
+            500
+        } else {
+            60
+        };
+        let ids = &ids[..ids.len().min(cap)];
+        let split = self.split(ids, &|_| true, false)?;
+        if !split.groups.is_empty() {
+            return Err(Unsupported(
+                "a FOLLOW whose units the splitter groups (FUN_141007320, FUN_140fd9f40)",
+            ));
         }
+        self.groups.count_command();
+        let loose = split.loose;
+        if 1 < loose.len() {
+            let mut points = Vec::with_capacity(loose.len());
+            for &id in &loose {
+                self.leave_group_of(id, -1)?;
+                if let Some(at) = self.follower(id)? {
+                    points.push(at);
+                }
+            }
+            if let Some(mean) = follow_spread(&points) {
+                for i in 0..loose.len() {
+                    self.follow_offset(&loose, i, followed, mean)?;
+                }
+                return Ok(());
+            }
+        }
+        for i in 0..loose.len() {
+            self.follow_unit(&loose, i, followed)?;
+        }
+        Ok(())
     }
 
-    /// FOLLOW's one unit (`FUN_14161c920`'s loop for an order without groups): a unit the world
-    /// does not hold takes nothing, nor does one of a type below 30 or without speed. Its ignore
-    /// list empties (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and takes the move to
-    /// the target (slot 0x138, [`Turns::move_to_object`]). With slot
-    /// 0x138's 0 the unit AI takes the follow order and action (`FUN_140c64b60` with 1,
-    /// `FUN_140c64b50`); then the target with its class, for a target master with a footprint
-    /// (`+0x5d8` or `+0x5dc` above 0; else none), and its place on the ground (`FUN_140c64be0`).
-    /// Slot 0x2d8's walk and show targets and `+0x888` are not held; another player's unit is not
-    /// modelled.
-    fn follow_unit(&mut self, player: usize, id: i32, target: i32) -> Result<(), Unsupported> {
-        use crate::unit_ai::{FOLLOW_ACTION, FOLLOW_ORDER};
-        let Some(place) = self.place(id) else {
-            return Ok(());
+    /// Unit `id` leaves the unit group the world holds of its link (`FUN_14102c160` with `target`
+    /// and 0, [`Turns::remove_unit`]); a unit the world does not hold or in no group, nothing.
+    fn leave_group_of(&mut self, id: i32, target: i32) -> Result<(), Unsupported> {
+        let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
+        if link != -1 {
+            let _ = self.remove_unit(link, id, target, false)?;
+        }
+        Ok(())
+    }
+
+    /// FOLLOW's test of a unit (`FUN_14161c920`): one the world holds, of a type of 30 or more
+    /// whose master moves (slot 0xe8 above 0; `COMISS`, `JNC`: a NaN speed moves), gives its
+    /// place on the ground.
+    fn follower(&self, id: i32) -> Result<Option<[f32; 2]>, Unsupported> {
+        let Some((p, u)) = self.object(id) else {
+            return Ok(None);
         };
-        let Place::Live(p, idx) = place else {
+        let master = self.master_of(p, u.life.master_id)?;
+        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
+        let moves = MOVING <= master.kind && crate::fmath::below_or_unordered(0.0, speed);
+        Ok(moves.then_some([u.position[0], u.position[1]]))
+    }
+
+    /// A follower's start (`FUN_14161c920`, both loops): its ignore list empties
+    /// (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the other loose units
+    /// ([`ignore_unit`]); its place in the live list. A sleeping object is of a type below 30
+    /// (only slot 0x180 puts one to sleep), which [`Turns::follower`] passed over.
+    fn follower_start(&mut self, loose: &[i32], i: usize) -> Result<(usize, usize), Unsupported> {
+        let Some(Place::Live(p, idx)) = self.place(loose[i]) else {
             return Err(Unsupported(
-                "a FOLLOW of a unit the slice does not hold live",
+                "a FOLLOW of a sleeping object of a type of 30 or more",
             ));
         };
-        if p != player {
-            return Err(Unsupported("a FOLLOW of another player's unit"));
-        }
-        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
-        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
-        if master.kind < MOVING || speed <= 0.0 {
-            return Ok(());
-        }
-        let (target_class, target_place) = {
-            let (tp, t) = self
-                .object(target)
-                .ok_or(Unsupported("a FOLLOW whose target the slice does not hold"))?;
-            let tm = self.master_of(tp, t.life.master_id)?;
-            let footprint = 0.0 < tm.radius[0] || 0.0 < tm.radius[1];
-            (footprint.then_some(i32::from(tm.class)), t.position)
-        };
-        let unit = &mut self.players[player].objects[idx];
-        let mover = unit
+        let mover = self.players[p].objects[idx]
             .mover
             .as_mut()
             .ok_or(Unsupported("a followed unit without movement state"))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
-        self.move_to_object(player, idx, target, [target_place[0], target_place[1], 0.0])?;
-        let unit = &mut self.players[player].objects[idx];
-        if let Some(ai) = unit.ai.as_mut() {
-            ai.set_order(FOLLOW_ORDER, self.streams.get(Stream::Ai));
-            ai.set_action(FOLLOW_ACTION);
-            let (t, class) = target_class.map_or((-1, -1), |class| (target, class));
-            ai.set_target(t, class, [target_place[0], target_place[1], 0.0]);
+        for (k, &other) in loose.iter().enumerate() {
+            if k != i {
+                ignore_unit(&mut mover.ignore_units, other);
+            }
+        }
+        Ok((p, idx))
+    }
+
+    /// FOLLOW's loose unit `loose[i]` (`FUN_14161c920`'s loop for units that do not move at
+    /// their offsets): it leaves its unit group (`FUN_14102c160` with the target's id); one that
+    /// does not move takes nothing ([`Turns::follower`]); else it starts
+    /// ([`Turns::follower_start`]) and moves to the target at its place (slot 0x138,
+    /// [`Turns::move_to_object_with`], z 0). Its unit AI takes the follow order and action
+    /// (`FUN_140c64b60` with 1, `FUN_140c64b50`) only when no action of its took the move; then
+    /// the target with its class (none without a footprint) at its place (`FUN_140c64be0`).
+    /// Slot 0x2d8's walk and show targets and `+0x888` are not held.
+    fn follow_unit(
+        &mut self,
+        loose: &[i32],
+        i: usize,
+        followed: Followed,
+    ) -> Result<(), Unsupported> {
+        use crate::unit_ai::{FOLLOW_ACTION, FOLLOW_ORDER};
+        self.leave_group_of(loose[i], followed.id)?;
+        if self.follower(loose[i])?.is_none() {
+            return Ok(());
+        }
+        let (p, idx) = self.follower_start(loose, i)?;
+        let [x, y] = followed.place;
+        let taken = self.move_to_object_with(p, idx, followed.id, [x, y, 0.0], true)?;
+        let rng = self.streams.get(Stream::Ai);
+        if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
+            if !taken {
+                ai.set_order(FOLLOW_ORDER, rng);
+                ai.set_action(FOLLOW_ACTION);
+            }
+            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
+            ai.set_target(t, class, [x, y, 0.0]);
         }
         Ok(())
     }
 
+    /// FOLLOW's loose unit `loose[i]` at its offset (`FUN_14161c920`'s loop after the box): one
+    /// that moves ([`Turns::follower`]) starts ([`Turns::follower_start`]) and goes to its place
+    /// less `mean` plus the target's, held on the map ([`follow_axis`]): slot 0x138 (z 0) to the
+    /// target there when its master has a footprint, else to the point
+    /// ([`Turns::move_point_order_with`]). Its unit AI takes the move order and action
+    /// (`FUN_140c64b60` with 1, `FUN_140c64b50`) and the target (none without a footprint) at
+    /// that place (`FUN_140c64be0`). Slot 0x2d8's walk and show targets are not held.
+    fn follow_offset(
+        &mut self,
+        loose: &[i32],
+        i: usize,
+        followed: Followed,
+        mean: [f32; 2],
+    ) -> Result<(), Unsupported> {
+        use crate::unit_ai::MOVE_ACTION;
+        let Some([x, y]) = self.follower(loose[i])? else {
+            return Ok(());
+        };
+        let (p, idx) = self.follower_start(loose, i)?;
+        let map = self.spatial.map;
+        let at = [
+            follow_axis(x - mean[0] + followed.place[0], map[0]),
+            follow_axis(y - mean[1] + followed.place[1], map[1]),
+            0.0,
+        ];
+        match followed.class {
+            Some(_) => {
+                let _ = self.move_to_object_with(p, idx, followed.id, at, true)?;
+            }
+            None => self.move_point_order_with(p, idx, at, true)?,
+        }
+        let rng = self.streams.get(Stream::Ai);
+        if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
+            ai.set_order(MOVE_ORDER, rng);
+            ai.set_action(MOVE_ACTION);
+            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
+            ai.set_target(t, class, at);
+        }
+        Ok(())
+    }
+
+    /// Slot 0x138 to `target` outside slot 0x128's work command (the unit's `+0xa14` 1):
+    /// [`Turns::move_to_object_with`].
+    pub(crate) fn move_to_object(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        point: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        self.move_to_object_with(player, idx, target, point, true)
+            .map(|_| ())
+    }
+
     /// Slot 0x138 to `target` (`FUN_141216f10`): a villager is no longer under the town bell
-    /// (`+0x9dc`); with `+0xa14` (1 but inside slot 0x128's work command with 0) its unit AI's
-    /// order queue empties (`FUN_140c5e010`); then `FUN_14106d340`: unless the unit is its own
+    /// (`+0x9dc`); with `+0xa14` (`a14`: 1 but inside slot 0x128's work command with 0) its unit
+    /// AI's order queue empties (`FUN_140c5e010`); then `FUN_14106d340`: unless the unit is its own
     /// target, its unit AI's notifies go with the world time (`FUN_140c5dc10`) and, but after a
     /// kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target and
     /// `point` (a Hunt's, [`Turns::hunt_take_move`]; an Artifact's, `FUN_140aaca30`, would: not
@@ -936,13 +1120,14 @@ impl Turns {
     /// 0x808, [`MoveToAction::to_target`]). Its `command_flag` (`+0x888`) is not held.
     ///
     /// [`MoveToAction::to_target`]: crate::move_to::MoveToAction::to_target
-    pub(crate) fn move_to_object(
+    pub(crate) fn move_to_object_with(
         &mut self,
         player: usize,
         idx: usize,
         target: i32,
         point: [f32; 3],
-    ) -> Result<(), Unsupported> {
+        a14: bool,
+    ) -> Result<bool, Unsupported> {
         let world_time = self.world_time;
         let villager = self
             .master_of(player, self.players[player].objects[idx].life.master_id)?
@@ -952,52 +1137,21 @@ impl Turns {
         if villager {
             unit.town_bell.flag = false;
         }
-        if let Some(ai) = unit.ai.as_mut() {
+        if a14 && let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
         if target == unit.id {
-            return Ok(());
+            return Ok(false);
         }
         if let Some(ai) = unit.ai.as_mut() {
             ai.clear_notifies(world_time)?;
         }
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
-        let top = unit.top_action_kind();
-        if unit.ai.is_some() && !stop_after_kill {
-            match top {
-                Some(HUNT) => {
-                    if self.hunt_take_move(player, idx, Some(target), point)? {
-                        return Ok(());
-                    }
-                }
-                // the Gather's (0x140a8b740) always takes it
-                Some(crate::gather::GATHER) => {
-                    let _ = self.gather_take_move(player, idx, Some(target), point)?;
-                    return Ok(());
-                }
-                // the base slot 0x40 (FUN_140a78490) takes nothing: a MoveTo's, an Explore's, a
-                // Build's, an Attack's, an Enter's, a Fly's, a missile's, a Make's
-                None
-                | Some(
-                    crate::move_to::MOVE_TO
-                    | crate::explore::EXPLORE
-                    | crate::build::BUILD
-                    | crate::attack::ATTACK
-                    | crate::garrison::ENTER
-                    | crate::fly::FLY
-                    | crate::missile::MISSILE
-                    | crate::make::MAKE,
-                ) => {}
-                // the Artifact's slot 8 (FUN_140aaca30) takes the target: set_state(5)
-                Some(crate::artifact::ARTIFACT_TYPE) => {
-                    return self.artifact_take_object(player, idx, target);
-                }
-                Some(_) => {
-                    return Err(Unsupported(
-                        "a move to an object of a unit with an action (its slot 0x40)",
-                    ));
-                }
-            }
+        if unit.ai.is_some()
+            && !stop_after_kill
+            && self.head_takes_move(player, idx, Some(target), point)?
+        {
+            return Ok(true);
         }
         let unit = &self.players[player].objects[idx];
         if unit.unmodelled_action.is_some() {
@@ -1025,7 +1179,62 @@ impl Turns {
             )?;
         }
         unit.move_to = Some(move_to);
-        Ok(())
+        Ok(false)
+    }
+
+    /// The head action's slot 0x40 (`FUN_140a97730`) on a move of the unit at `idx` to `point`,
+    /// toward the object `target` if any: true when the action takes the move. An empty list
+    /// takes nothing, nor does the base slot (`FUN_140a78490`) of a `MoveTo`, an Explore, a Build
+    /// (0x140aade60), an Attack, an Enter, a Fly, a missile or a Make. The Artifact's
+    /// (`FUN_140aaca30`) always takes it: toward an object ([`Turns::artifact_take_object`]), or
+    /// to the point, where a `MoveTo` it walked goes and stops the unit; the Hunt's
+    /// (`0x140ac52c0`, [`Turns::hunt_take_move`]) and the Gather's (`0x140a8b740`,
+    /// [`Turns::gather_take_move`]) decide themselves.
+    fn head_takes_move(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: Option<i32>,
+        point: [f32; 3],
+    ) -> Result<bool, Unsupported> {
+        let unit = &mut self.players[player].objects[idx];
+        if unit.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "slot 0x40 of an action the slice does not hold",
+            ));
+        }
+        match unit.top_action_kind() {
+            None
+            | Some(
+                crate::move_to::MOVE_TO
+                | crate::explore::EXPLORE
+                | crate::build::BUILD
+                | crate::attack::ATTACK
+                | crate::garrison::ENTER
+                | crate::fly::FLY
+                | crate::missile::MISSILE
+                | crate::make::MAKE,
+            ) => Ok(false),
+            Some(crate::artifact::ARTIFACT_TYPE) => {
+                if let Some(t) = target {
+                    self.artifact_take_object(player, idx, t)?;
+                    return Ok(true);
+                }
+                let walked = unit.artifact.as_mut().is_some_and(|a| a.take_point(point));
+                if walked {
+                    unit.mover
+                        .as_mut()
+                        .ok_or(Unsupported("a walker without movement state"))?
+                        .stop()?;
+                }
+                Ok(true)
+            }
+            Some(HUNT) => self.hunt_take_move(player, idx, target, point),
+            Some(crate::gather::GATHER) => self.gather_take_move(player, idx, target, point),
+            Some(other) => {
+                unreachable!("a top action of type {other}, which top_action never holds")
+            }
+        }
     }
 
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
@@ -1097,12 +1306,12 @@ impl Turns {
         if HERD_MOST <= listed.len() {
             return Ok(());
         }
-        let at = self
-            .spatial
-            .get(sheep)
-            .map(|q| q.position)
-            .ok_or(Unsupported("a herded animal without a place"))?;
-        let (x, y) = (at[0] as i32, at[1] as i32);
+        // the animal's own place (+0x3c8, +0x4c8), truncated; send_to_site found it live
+        let at = self.object(sheep).expect("sent to the site").1.position;
+        let (x, y) = (
+            crate::checkpoint::cvttss2si(at[0]),
+            crate::checkpoint::cvttss2si(at[1]),
+        );
         let [w, h] = self.spatial.map;
         let (x0, x1) = ((x - 3).max(0), if x + 3 < w { x + 3 } else { w - 1 });
         let (y0, y1) = ((y - 3).max(0), if y + 3 < h { y + 3 } else { h - 1 });
@@ -1317,33 +1526,40 @@ impl Turns {
         Ok(())
     }
 
-    /// `UNIT_AI_STATE` (`do_command` case 0x12: the check `FUN_140e55d30`, then `FUN_140e6a7c0`):
-    /// each of `ids` the world holds, of the player's, with a unit AI takes the stance `state`
-    /// (slot 0x1c0, `FUN_140c64d50`: `+0x1a9`, its place as the stance's, `+0x1ac`), but not
-    /// stances 1 and 2 for classes 54 and 51 (and, the siege AI's slot, masters 42 and 331). An id
-    /// gone or another player's counts for nothing (a game setting, `FUN_1412ffe00`, or the
-    /// world's `+0xb12` may let another player's through, not modelled). `NoAttack` (3) on a unit
-    /// that attacks (order 700 or action 600: slot 0xb0 with 1, `FUN_140c5e1e0`) and the UI's
-    /// flag are not modelled.
+    /// `UNIT_AI_STATE` (`do_command` case 0x12): the check ([`Turns::command_check`]), then
+    /// `FUN_140e6a7c0` over its first 60 ids (500 for a computer player): each object the world
+    /// holds (any player's the check let through) with a unit AI takes the stance `state` (slot
+    /// 0x1c0, [`set_stance`]), but not stances 1 and 2 for classes 54 and 51 (and, the siege AI's
+    /// slot, masters 42 and 331). The UI's flag is not held.
     pub(crate) fn unit_ai_state(
         &mut self,
         player: usize,
         ids: &[i32],
         state: u8,
     ) -> Result<(), Unsupported> {
-        for &id in ids {
+        let Some(ids) = self.command_check(player, ids) else {
+            return Ok(());
+        };
+        let cap = if self.players[player].computer {
+            500
+        } else {
+            60
+        };
+        for &id in ids.iter().take(cap) {
             let Some(place) = self.place(id) else {
                 continue;
             };
             let (p, idx) = match place {
                 Place::Live(p, i) => (p, i),
+                // only slot 0x180 puts an object to sleep, one of a type below 30, which has no
+                // unit AI: the handler passes it over
+                Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
                 Place::Sleeping(..) => {
-                    return Err(Unsupported("a UNIT_AI_STATE of a sleeping object"));
+                    return Err(Unsupported(
+                        "a UNIT_AI_STATE of a sleeping object with a unit AI",
+                    ));
                 }
             };
-            if p != player {
-                continue;
-            }
             let unit = &self.players[p].objects[idx];
             if unit.ai.is_none() {
                 continue;
@@ -1354,79 +1570,78 @@ impl Turns {
             {
                 continue;
             }
+            let class = master.class;
             let unit = &mut self.players[p].objects[idx];
-            let [x, y, _] = unit.position;
+            let place = ([unit.position[0], unit.position[1]], class);
             let ai = unit.ai.as_mut().expect("checked above");
-            ai.stance = state;
-            ai.state_position = [x, y];
-            if state == 3 && (ai.current_order == 700 || ai.current_action == 600) {
-                return Err(Unsupported(
-                    "NoAttack on an attacking unit (slot 0xb0, FUN_140c5e1e0)",
-                ));
+            let mut fx = Vec::new();
+            set_stance(ai, state, place, &mut fx)?;
+            for e in fx {
+                match e {
+                    crate::unit_ai::Effect::Stop => self.command_stop(p, idx)?,
+                    _ => return Err(Unsupported("a stance's stop effect not modelled")),
+                }
             }
         }
         Ok(())
     }
 
-    /// GATE (`do_command` case 0x72): the object `id` (any player's: a missing one does nothing)
-    /// of a master of type 80 toggles its gate lock (slot 0x670 with slot 0x668's value
-    /// negated, `FUN_1411dba30`): a lock sets its last move time to the world time plus 1. The
-    /// player must own it (another player's object, which a game setting, `FUN_1412ffe00`, or
-    /// the world's `+0xb12` may let through, is not modelled). Its sound (slot 0x4c0) and the
-    /// UI's flag are not held.
+    /// GATE (`do_command` case 0x72): the command's check refuses an object `id` the world does
+    /// not hold, or another player's while players may not order each other's units (the
+    /// setting `+0x1074`, [`Turns::allied_control`]; the world's `+0xb12` cheat is not held).
+    /// The object, live or sleeping (`FUN_1415417a0`), of a master of type 80 toggles its gate
+    /// lock: slot 0x670 ([`lock_gate`]) with slot 0x668's value negated. Its sound (slot 0x4c0)
+    /// and the UI's flag are not held.
     pub(crate) fn gate(&mut self, player: usize, id: i32) -> Result<(), Unsupported> {
-        let Some(place) = self.place(id) else {
+        let Some((p, unit)) = self.object(id) else {
             return Ok(());
         };
-        let (p, idx) = match place {
-            Place::Live(p, i) => (p, i),
-            Place::Sleeping(..) => return Err(Unsupported("a GATE of a sleeping object")),
-        };
-        if p != player {
-            return Err(Unsupported("a GATE of another player's object"));
+        if p != player && !self.allied_control {
+            return Ok(());
         }
-        let master = self.players[p].objects[idx].life.master_id;
-        if self.master_of(p, master)?.kind != 80 {
+        if self.master_of(p, unit.life.master_id)?.kind != BUILDING {
             return Ok(());
         }
         let now = self.world_time;
-        let unit = &mut self.players[p].objects[idx];
-        let gate = unit
-            .gate
-            .as_mut()
-            .ok_or(Unsupported("a GATE of a building without its gate state"))?;
-        gate.locked = !gate.locked;
-        if gate.locked {
-            unit.mover
-                .as_mut()
-                .ok_or(Unsupported("a locked gate without its moving part"))?
-                .last_move = now.wrapping_add(1);
-        }
-        Ok(())
+        let (_, unit) = self.object_mut(id).expect("found above");
+        // slot 0x668: the lock's value (a building without its gate state is lock_gate's)
+        let locked = unit.gate.is_some_and(|g| g.locked);
+        lock_gate(unit, !locked, now)
     }
 
-    /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each unit of `ids` with a unit AI that may scout
-    /// (`FUN_140c89760`: its master's object flags `+0x654` have bit 4; class 58's rule behind a
-    /// game setting, `FUN_140eca780`, is not modelled) takes an order at once (slot 0x30 ->
-    /// slot 0x28 with Immediate, [`crate::unit_ai::UnitAi::take_order_now`]): the stop order
-    /// when its action is the auto scout's already, else the auto scout order, from the player,
-    /// without a target, at the point (−1, −1) at the unit's height, range 1, priority 100, shown
-    /// at (−1, −1) and ready. The handler looks ids up in every player's objects; another
-    /// player's unit is not modelled. Its sound and the UI's flags are not held.
+    /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): of the first 60 ids (500 for a computer player,
+    /// `FUN_141659cf0`) each object the world holds (any player's: the handler has no owner
+    /// test) with a unit AI that may scout (`FUN_140c89760`: its master's object flags `+0x654`
+    /// have bit 4; class 58's rule behind a game setting, `FUN_140eca780`, is not modelled)
+    /// takes an order at once (slot 0x30 -> slot 0x28 with Immediate,
+    /// [`crate::unit_ai::UnitAi::take_order_now`]): the stop order when its action is the auto
+    /// scout's already, else the auto scout order, from the object's owner (`+0x718`), without
+    /// a target, at the point (−1, −1) at the unit's height, range 1, priority 100, shown at
+    /// (−1, −1) and ready. Its sound and the UI's flags are not held.
     pub(crate) fn auto_scout(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
         use crate::unit_ai::{
             AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER, Effect, QueuedOrder, STOP_ORDER,
         };
-        for &id in ids {
+        let cap = if self.players[player].computer {
+            500
+        } else {
+            60
+        };
+        for &id in ids.iter().take(cap) {
             let Some(place) = self.place(id) else {
                 continue;
             };
-            let Place::Live(p, idx) = place else {
-                return Err(Unsupported("an AUTO_SCOUT of a sleeping object"));
+            let (p, idx) = match place {
+                Place::Live(p, i) => (p, i),
+                // only slot 0x180 puts an object to sleep, one of a type below 30, which has no
+                // unit AI: the handler passes it over
+                Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
+                Place::Sleeping(..) => {
+                    return Err(Unsupported(
+                        "an AUTO_SCOUT of a sleeping object with a unit AI",
+                    ));
+                }
             };
-            if p != player {
-                return Err(Unsupported("an AUTO_SCOUT of another player's unit"));
-            }
             let unit = &self.players[p].objects[idx];
             if unit.ai.is_none() {
                 continue;
@@ -1443,7 +1658,7 @@ impl Turns {
             let (state, position) = (unit.life.state, unit.position);
             let ai = unit.ai.as_mut().expect("checked above");
             let order = QueuedOrder {
-                issuer: player as i32,
+                issuer: p as i32,
                 order: if ai.current_action == AUTO_SCOUT_ACTION {
                     STOP_ORDER
                 } else {
@@ -1471,55 +1686,111 @@ impl Turns {
         Ok(())
     }
 
-    /// STOP (0x01, `RGE_Command::do_command` case 1, `FUN_14161e200`) of the player's units
-    /// `ids` (the lookup `FUN_140e6b750`, in the packet's order, an id the world does not hold
-    /// left out; the command's check `FUN_140e558b0`'s twin `FUN_140e55a30` drops another
-    /// player's unit unless the game setting `+0x1074`, which the slice does not hold: it stops
-    /// there). First each unit AI's saved patrol goes (`FUN_140c68de0`) and it resets as for an
-    /// order (`FUN_141631040`, [`crate::unit_ai::UnitAi::reset_for_order`]); several units
-    /// forming exactly one unit group would stop as the group (`FUN_14152ec80`,
-    /// `FUN_1410110c0`), and the slice holds no groups. Then each unit leaves its group (none),
-    /// its unit AI's order queue empties (`FUN_140c5e010`) and its idle timer takes its adjusted
-    /// timeout (`+0x160` = `+0x164`), its ignore list empties (`FUN_141197da0`), the object stops
-    /// (slot 0x148, [`Turns::object_stop`]) and its movement stands (slot 0x560,
-    /// `FUN_1411616f0`: slot 0x5d0, then `FUN_140f98e80` on its walked level).
+    /// STOP (0x01, `RGE_Command::do_command` case 1) of the player's units `ids`: the command's
+    /// check ([`Turns::command_check`]), the lookup ([`Turns::lookup`]), then `FUN_14161e200`. First
+    /// each unit AI resets as for an order (`FUN_141631040`, the loop of `FUN_140e6cfc0`:
+    /// [`crate::unit_ai::UnitAi::reset_for_order`]). Several entries (a gone unit's null among
+    /// them) that are exactly one unit group's members (`FUN_14152ec80`, the group's size
+    /// `+0xe4`) stop as the group: each unit AI's order queue empties and its idle timer takes its
+    /// adjusted timeout, then the group's stop (`FUN_1410110c0`), which is not modelled. Else each
+    /// unit leaves the unit group the world holds of its link (`FUN_14102c160` with -1 and 0,
+    /// [`Turns::remove_unit`]), its unit AI's order queue empties (`FUN_140c5e010`) and its idle
+    /// timer takes its adjusted timeout (`+0x160` = `+0x164`), its ignore list empties
+    /// (`FUN_141197da0`), the object stops (slot 0x148, [`Turns::object_stop`]) and its movement
+    /// stands (slot 0x560, `FUN_1411616f0`: slot 0x5d0, then `FUN_140f98e80` on its walked
+    /// level).
     pub(crate) fn stop_command(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
-        let mut units = Vec::with_capacity(ids.len());
-        for &id in ids {
-            match self.place(id) {
-                None => {}
-                Some(Place::Live(p, idx)) if p == player => units.push(idx),
-                Some(Place::Live(..)) => {
-                    return Err(Unsupported(
-                        "a STOP of another player's unit (the setting +0x1074)",
-                    ));
-                }
-                Some(Place::Sleeping(..)) => {
-                    return Err(Unsupported("a STOP of a sleeping object"));
-                }
-            }
-        }
-        for &idx in &units {
-            let rng = self.streams.get(Stream::Ai);
-            if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
-                ai.reset_for_order(rng);
-            }
-        }
-        for &idx in &units {
-            let unit = &mut self.players[player].objects[idx];
+        let Some(ids) = self.command_check(player, ids) else {
+            return Ok(());
+        };
+        let list: Vec<Option<i32>> = self
+            .lookup(&ids)
+            .into_iter()
+            .zip(&ids)
+            .map(|(place, &id)| place.map(|_| id))
+            .collect();
+        let units: Vec<i32> = list.iter().flatten().copied().collect();
+        for &id in &units {
+            let unit = match self.place(id) {
+                Some(Place::Live(p, i)) => &mut self.players[p].objects[i],
+                Some(Place::Sleeping(p, i)) => &mut self.players[p].sleeping[i],
+                None => continue,
+            };
             if let Some(ai) = unit.ai.as_mut() {
+                ai.reset_for_order(self.streams.get(Stream::Ai));
+            }
+        }
+        if 1 < list.len() {
+            let entries: Vec<i32> = list.iter().map(|u| u.unwrap_or(-1)).collect();
+            let group =
+                crate::group::common_group(&entries, |id| self.object(id).map(|(_, u)| u.group.id));
+            if self
+                .groups
+                .get(group)
+                .is_some_and(|g| g.members.len() == list.len())
+            {
+                return Err(Unsupported("a STOP of a whole unit group (FUN_1410110c0)"));
+            }
+        }
+        for &id in &units {
+            let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
+            if link != -1 {
+                let _ = self.remove_unit(link, id, -1, false)?;
+            }
+            let Some((_, u)) = self.object_mut(id) else {
+                continue;
+            };
+            if let Some(ai) = u.ai.as_mut() {
                 ai.orders.clear();
                 ai.idle_timer = ai.adjusted_idle_timeout;
             }
-            if let Some(m) = unit.mover.as_mut() {
+            if let Some(m) = u.mover.as_mut() {
                 m.ignore_units.clear();
             }
-            self.object_stop(player, idx)?;
-            if let Some(m) = self.players[player].objects[idx].mover.as_mut() {
+            // a sleeping object is of a type below 30 (only slot 0x180 puts one to sleep), whose
+            // slots 0x148 and 0x560 are empty (0x141072730, 0x141072740)
+            let Some(Place::Live(p, idx)) = self.place(id) else {
+                continue;
+            };
+            self.object_stop(p, idx)?;
+            if let Some(m) = self.players[p].objects[idx].mover.as_mut() {
                 m.stand()?;
             }
         }
         Ok(())
+    }
+
+    /// The check of a command on units (STOP's `FUN_140e55a30` and `UNIT_AI_STATE`'s `FUN_140e55d30`,
+    /// twins of `FUN_140e558b0`) of the ids of `player`: of the first 60 (500 for a computer,
+    /// `FUN_141659cf0`) an id the world does not hold, or another player's without the setting
+    /// `+0x1074` ([`Turns::allied_control`]), becomes -1; the ids past them stay unchecked. A
+    /// human's command whose checked ids all went is refused (None).
+    /// The packet's own tests (its size, a player the game lacks) are the decoder's, and the
+    /// world's `+0xb12` (the cheat that would let either through) is not held.
+    pub(crate) fn command_check(&self, player: usize, ids: &[i32]) -> Option<Vec<i32>> {
+        let computer = self.players[player].computer;
+        let checked = ids.len().min(if computer { 500 } else { 60 });
+        let mut ids = ids.to_vec();
+        let mut dropped = 0;
+        for id in &mut ids[..checked] {
+            let keep = self
+                .object(*id)
+                .is_some_and(|(p, _)| p == player || self.allied_control);
+            if *id == -1 || !keep {
+                *id = -1;
+                dropped += 1;
+            }
+        }
+        if checked <= dropped && !computer {
+            return None;
+        }
+        Some(ids)
+    }
+
+    /// `FUN_140e6b750`: each id's object (`FUN_1415417a0`, live or sleeping), None where the
+    /// world holds none; the list keeps the ids' count.
+    pub(crate) fn lookup(&self, ids: &[i32]) -> Vec<Option<Place>> {
+        ids.iter().map(|&id| self.place(id)).collect()
     }
 
     /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: the action list empties
@@ -1645,7 +1916,9 @@ impl Turns {
             .ok_or(Unsupported("a moved unit without movement state"))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
-        mover.ignore_units.extend_from_slice(others);
+        for &other in others {
+            ignore_unit(&mut mover.ignore_units, other);
+        }
         let takes_it = !order.queued
             && unit
                 .ai
@@ -1710,8 +1983,8 @@ impl Turns {
     }
 
     /// `FUN_14106d340` on a move of the unit at `idx` to `point`: a unit with a unit AI
-    /// (`FUN_140c5dc10` clears its notifies with the world time) lets its current action's slot
-    /// 8 take the point (`FUN_140a97730`) unless it stops after a kill (`FUN_140c41c10`); else a
+    /// (`FUN_140c5dc10` clears its notifies with the world time) lets its head action take the
+    /// point ([`Turns::head_takes_move`]) unless it stops after a kill (`FUN_140c41c10`); else a
     /// `MoveTo` to the point replaces its actions. True when the action took it.
     pub(crate) fn move_to_point(
         &mut self,
@@ -1720,54 +1993,16 @@ impl Turns {
         point: [f32; 3],
     ) -> Result<bool, Unsupported> {
         // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
-        // current action's slot 8 take the point (FUN_140a97730) unless it stops after a kill
-        // (FUN_140c41c10): an Artifact action's does (FUN_140aaca30), a MoveTo's
-        // (`FUN_140a78490`) never
+        // head action's slot 0x40 take the point unless it stops after a kill (FUN_140c41c10)
         let world_time = self.world_time;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.clear_notifies(world_time)?;
         }
-        let top = unit.top_action_kind();
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
-        let taken = match (unit.ai.is_some() && !stop_after_kill, top) {
-            (true, Some(crate::artifact::ARTIFACT_TYPE)) => {
-                let walked = unit.artifact.as_mut().is_some_and(|a| a.take_point(point));
-                if walked {
-                    unit.mover
-                        .as_mut()
-                        .ok_or(Unsupported("a walker without movement state"))?
-                        .stop()?;
-                }
-                true
-            }
-            // the Hunt's (0x140ac52c0, [`Turns::hunt_take_move`]) to a point: a task with a work
-            // range (`+0x48`'s `+0x30`) does not take it, else the hunt walks there (state 15)
-            // and lets its target go
-            (true, Some(HUNT)) => self.hunt_take_move(player, idx, None, point)?,
-            // the Gather's (0x140a8b740) walks to the point (set_state 15)
-            (true, Some(crate::gather::GATHER)) => {
-                self.gather_take_move(player, idx, None, point)?
-            }
-            // an Explore's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's, a Build's
-            // (0x140aade60), an Attack's, an Enter's, a Fly's, a missile's and a Make's
-            (true, Some(t))
-                if !matches!(
-                    t,
-                    crate::move_to::MOVE_TO
-                        | crate::explore::EXPLORE
-                        | crate::build::BUILD
-                        | crate::attack::ATTACK
-                        | crate::garrison::ENTER
-                        | crate::fly::FLY
-                        | crate::missile::MISSILE
-                        | crate::make::MAKE
-                ) =>
-            {
-                return Err(Unsupported("a move of a unit with an action (its slot 8)"));
-            }
-            _ => false,
-        };
+        let taken = unit.ai.is_some()
+            && !stop_after_kill
+            && self.head_takes_move(player, idx, None, point)?;
         if !taken {
             // the MoveTo to the point (FUN_140aa0d30, range 0) and its install (slot 0x808)
             self.clear_actions(player, idx)?;
@@ -1787,8 +2022,8 @@ impl Turns {
 
     /// The unit's slot 0x340 (`FUN_141216c50`) forced, from its unit AI's move off a footprint
     /// (slot 0x148): a unit of class 51 or 54 (packing) is not modelled; any other runs
-    /// `FUN_1410866e0`: its current action's slot 0x40 may take the point (the Artifact's,
-    /// the Hunt's and the Gather's, as [`Turns::move_to_point`]'s), else a `MoveTo` to the point
+    /// `FUN_1410866e0`: its head action's slot 0x40 may take the point
+    /// ([`Turns::head_takes_move`]), else a `MoveTo` to the point
     /// within the move's range, walking or running, replaces its actions.
     pub(crate) fn move_aside(
         &mut self,
@@ -1803,41 +2038,8 @@ impl Turns {
                 "a move off a footprint of a unit of class 51 or 54",
             ));
         }
-        let top = unit.top_action_kind();
         let point = m.point;
-        let taken = match top {
-            Some(crate::artifact::ARTIFACT_TYPE) => {
-                let unit = &mut self.players[player].objects[idx];
-                let walked = unit.artifact.as_mut().is_some_and(|a| a.take_point(point));
-                if walked {
-                    unit.mover
-                        .as_mut()
-                        .ok_or(Unsupported("a walker without movement state"))?
-                        .stop()?;
-                }
-                true
-            }
-            Some(HUNT) => self.hunt_take_move(player, idx, None, point)?,
-            Some(crate::gather::GATHER) => self.gather_take_move(player, idx, None, point)?,
-            Some(t)
-                if !matches!(
-                    t,
-                    crate::move_to::MOVE_TO
-                        | crate::explore::EXPLORE
-                        | crate::build::BUILD
-                        | crate::attack::ATTACK
-                        | crate::garrison::ENTER
-                        | crate::fly::FLY
-                        | crate::missile::MISSILE
-                        | crate::make::MAKE
-                ) =>
-            {
-                return Err(Unsupported(
-                    "a move off a footprint of a unit with an action (its slot 0x40)",
-                ));
-            }
-            _ => false,
-        };
+        let taken = self.head_takes_move(player, idx, None, point)?;
         if !taken {
             self.clear_actions(player, idx)?;
             let unit = &mut self.players[player].objects[idx];
@@ -1853,11 +2055,16 @@ impl Turns {
         Ok(())
     }
 
-    /// Slot 0x7e8 (`FUN_141227190`) of a unit on a target object: a unit in state 3 or later
-    /// ignores it; without a target the world holds (none, or one gone) the work command goes to
-    /// the point; against an unallied target the unit's least range must not exceed the gap
-    /// (`FUN_1410862c0`); a villager drops its town-bell flag (`FUN_1412067f0`); then the work
-    /// command; then it leaves the pasture it is in (`FUN_141189ca0`).
+    /// Slot 0x7e8 (`FUN_141227190`) of a unit on a target object: a unit in state 3 or later, or
+    /// of class 54 under its own Pack or Unpack (`0x7d`, `0x7c`), ignores it. Against a target
+    /// the unit is not allied with (`FUN_141663d90` with allies) [`work_reach`]
+    /// (`FUN_1410862c0`) decides: class 54 out of reach packs (`FUN_140ad4ff0`), class 51 in
+    /// reach unpacks (`FUN_140ae58a0`), each through slot 0x808; else a target below the least
+    /// range is the unit's notify [`TOO_CLOSE`] to its own unit AI (slot 0x328) and nothing more.
+    /// Without a target the world holds (none, or one gone) the work command goes to the point,
+    /// and a computer's class 54 packs instead. Neither action is held. A villager drops its
+    /// town-bell flag (`FUN_1412067f0`); then the work command; then it leaves the pasture it is
+    /// in (`FUN_141189ca0`).
     pub(crate) fn order_work(
         &mut self,
         player: usize,
@@ -1866,13 +2073,48 @@ impl Turns {
     ) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
-        if master.class == CLASS_54 {
-            return Err(Unsupported("an order to a unit of class 54"));
-        }
+        // the class-54 test of its top action comes first in the game, but either way the order
+        // is ignored
         if 2 < unit.life.state {
             return Ok(());
         }
-        let Some((tp, _)) = self.object(order.target) else {
+        let class = master.class;
+        let target = self.object(order.target).map(|(tp, _)| tp);
+        let world = World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let reach = match target {
+            Some(tp) if !world.allied(player, tp, true) => {
+                let (me, them) = (
+                    self.spatial
+                        .get(unit.id)
+                        .ok_or(Unsupported("an ordered unit without a place"))?,
+                    self.spatial
+                        .get_known(order.target)?
+                        .ok_or(Unsupported("a target without a place"))?,
+                );
+                let (_, gap) = gaps(me.position, me.radius, them.position, them.radius);
+                Some(work_reach(gap, master.weapon_range, master.min_range))
+            }
+            _ => None,
+        };
+        let packs = match reach {
+            None => target.is_none() && class == CLASS_54 && self.players[player].computer,
+            Some((within, _)) => (class == CLASS_54 && !within) || (class == CLASS_51 && within),
+        };
+        // a class 54 under an action the slice does not hold may be under its Pack or Unpack
+        if packs || (class == CLASS_54 && unit.unmodelled_action.is_some()) {
+            return Err(Unsupported(
+                "a Pack or Unpack of class 54 or 51 (FUN_140ad4ff0, FUN_140ae58a0)",
+            ));
+        }
+        if reach.is_some_and(|(_, too_close)| too_close) {
+            let unit = &mut self.players[player].objects[idx];
+            unit.post_own(TOO_CLOSE, [order.target, -1, -1])?;
+            return Ok(());
+        }
+        if target.is_none() {
             // no target, or one the world does not hold (slot 0x7e8 with none): the work command
             // at the point
             let order = Work {
@@ -1885,30 +2127,8 @@ impl Turns {
                 return Err(Unsupported("a unit that leaves its pasture"));
             }
             return Ok(());
-        };
-        let world = World {
-            players: &self.players,
-            drop_sites: &self.drop_sites,
-        };
-        if !world.allied(player, tp, true) {
-            let (me, them) = (
-                self.spatial
-                    .get(unit.id)
-                    .ok_or(Unsupported("an ordered unit without a place"))?,
-                self.spatial
-                    .get_known(order.target)?
-                    .ok_or(Unsupported("a target without a place"))?,
-            );
-            let (_, gap) = gaps(me.position, me.radius, them.position, them.radius);
-            if gap < master.min_range {
-                return Err(Unsupported(
-                    "an order on a target closer than the least range",
-                ));
-            }
-            if master.class == CLASS_51 {
-                return Err(Unsupported("an order to a unit of class 51"));
-            }
         }
+        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         // livestock (class 58) takes the enter command (slot 0x3a0); where it enters nothing, the
         // work command goes to the target's place without a target
         let mut order = *order;
@@ -1947,55 +2167,52 @@ impl Turns {
     }
 
     /// Slot 0x3a0 (`FUN_1410847e0`, the enter command, with 0) of the unit at `idx` on `target`:
-    /// true when it enters, false when nothing comes of it. It is entering the target already
-    /// (its top action an Enter on it); else slot 0x820 (`FUN_14106c6a0`) looks for a task on
-    /// the target with the garrison filter (3), without the master's change, whose Enter it would
-    /// take.
+    /// true when it enters, false when nothing comes of it (a target the world does not hold, or
+    /// no task). It is entering the target already (its top action an Enter on it); else slot
+    /// 0x820 ([`Turns::find_work_task`]) looks for a task on the target with the garrison filter
+    /// (3) and the master's change, whose Enter it would take.
     fn livestock_enters(
-        &self,
+        &mut self,
         player: usize,
         idx: usize,
         target: i32,
     ) -> Result<bool, Unsupported> {
+        if self.object(target).is_none() {
+            return Ok(false);
+        }
         let unit = &self.players[player].objects[idx];
         if unit.top_action_kind() == Some(crate::garrison::ENTER)
             && unit.top_target() == Some(target)
         {
             return Ok(true);
         }
-        let masters = self
-            .masters
-            .get(player)
-            .ok_or(Unsupported("an enter command: no master table"))?;
-        let owner = &self.players[player];
-        let actor = Actor {
-            id: unit.id,
-            master: self.master_of(player, unit.life.master_id)?,
-            player,
-            held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
-            civ: owner.civ,
-        };
-        let world = World {
-            players: &self.players,
-            drop_sites: &self.drop_sites,
-        };
-        let t = self.task_target(target, 1)?;
-        let general = self.task_target(target, 2)?;
-        Ok(masters
-            .work_master(&actor, &t, &general, GARRISON, &world)?
+        Ok(self
+            .find_work_task(player, idx, target, GARRISON, true)?
             .is_some())
     }
 
-    /// Slot 0x138 (`FUN_141216f10`) without a target, the no-task end of a work command on a
-    /// point: a villager drops its town-bell flag (not held otherwise), the unit AI's order queue
-    /// empties (`+0xa14` 1, `FUN_140c5e010`), then the move to the point
-    /// ([`Turns::move_to_point`], `FUN_14106d340`).
+    /// Slot 0x138 (`FUN_141216f10`) without a target, outside slot 0x128's work command (the
+    /// unit's `+0xa14` 1): [`Turns::move_point_order_with`].
     pub(crate) fn move_point_order(
         &mut self,
         player: usize,
         idx: usize,
         point: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        self.move_point_order_with(player, idx, point, true)
+    }
+
+    /// Slot 0x138 (`FUN_141216f10`) without a target, the no-task end of a work command on a
+    /// point: a villager drops its town-bell flag (not held otherwise), the unit AI's order queue
+    /// empties (`FUN_140c5e010`) while the unit's `+0xa14` (`a14`) is set, then the move to the
+    /// point ([`Turns::move_to_point`], `FUN_14106d340`). `+0xa14` is 1 but inside slot 0x128
+    /// (`FUN_141211b80`), which holds it at its argument while its work command runs.
+    pub(crate) fn move_point_order_with(
+        &mut self,
+        player: usize,
+        idx: usize,
+        point: [f32; 3],
+        a14: bool,
     ) -> Result<(), Unsupported> {
         let villager = self
             .master_of(player, self.players[player].objects[idx].life.master_id)?
@@ -2005,7 +2222,7 @@ impl Turns {
         if villager {
             unit.town_bell.flag = false;
         }
-        if let Some(ai) = unit.ai.as_mut() {
+        if a14 && let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
         let _ = self.move_to_point(player, idx, point)?;
@@ -2081,13 +2298,11 @@ impl Turns {
             found = held(t.pasture).map(|(_, p)| p);
         }
         if found.is_none() {
-            let own = unit.ai.as_ref().and_then(|ai| {
-                ai.orders
-                    .iter()
-                    .find(|o| 0 <= o.target && o.issuer == unit.id)
-                    .map(|o| o.target)
-            });
-            found = own.and_then(held).map(|(_, t)| t);
+            let own = unit
+                .ai
+                .as_ref()
+                .map_or(-1, |ai| own_order_target(ai, unit.id));
+            found = held(own).map(|(_, t)| t);
         }
         let (target, point) = found.map_or((-1, [unit.position[0], unit.position[1]]), |t| {
             (t.id, [t.position[0], t.position[1]])
@@ -2248,7 +2463,7 @@ impl Turns {
             if self.keep_attack(player, idx, target, filter, point, clears)? {
                 return Ok(());
             }
-            return self.work_move(player, idx, target, point, clears);
+            return self.work_move(player, idx, target, point, (clears, notified));
         };
         // a new master's task is another than the one the unit's action holds
         let same_master = with == self.players[player].objects[idx].life.master_id;
@@ -2359,7 +2574,9 @@ impl Turns {
             ),
             crate::build::BUILD => self.start_build(player, idx, target, &task, point, clears),
             // the factory makes no action of a mule cart's task: the move without one
-            crate::build::CART_TASK => self.work_move(player, idx, target, point, clears),
+            crate::build::CART_TASK => {
+                self.work_move(player, idx, target, point, (clears, notified))
+            }
             crate::gather::GATHER => {
                 self.start_gather(player, idx, target, &task, Some((point, clears)))
             }
@@ -2371,15 +2588,16 @@ impl Turns {
 
     /// The work command without an action (`FUN_14106ff70`: no task, or one the action list's
     /// factory makes no action of, the mule cart's 0x99): a unit whose master moves (slot 0xe8,
-    /// its speed `+0x740`) is told of a move (slot 0x828) and, in state 2 or of class 51, moves to
-    /// the target or the point (slot 0x138); one that does not move does nothing.
+    /// its speed `+0x740`) is told of a move (slot 0x828, its notifies cleared with `clears`) and,
+    /// in state 2 or of class 51, moves to the target or the point (slot 0x138 with the unit's
+    /// `+0xa14`, the work's `notified`); one that does not move does nothing.
     fn work_move(
         &mut self,
         player: usize,
         idx: usize,
         target: i32,
         point: [f32; 3],
-        clears: bool,
+        (clears, notified): (bool, bool),
     ) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
@@ -2419,22 +2637,94 @@ impl Turns {
         }
         if alive || class == 51 {
             if target == -1 {
-                self.move_point_order(player, idx, point)?;
+                self.move_point_order_with(player, idx, point, notified)?;
             } else {
-                self.move_to_object(player, idx, target, point)?;
+                let _ = self.move_to_object_with(player, idx, target, point, notified)?;
             }
         }
         Ok(())
     }
 
+    /// The unit's slot 0x820 (`FUN_14106c6a0`) on `target` (its place the point): the task its
+    /// master's list gives for the target with `filter` (the list's slot 0x10, [`find_task`] in
+    /// mode 0); without one, a master with a task swap group (`+0x7b8` not 0) tries each of its
+    /// player's masters by id of the same class, type and group, its own too, with any filter;
+    /// the first with a task gives it, and with `change` the unit takes that master (slot 0x90,
+    /// [`Turns::change_master`], or [`Turns::transform_building`] for a building) though it be its
+    /// own. None: no task. The terrain under the point, which only a task for a terrain reads, is
+    /// not passed.
+    ///
+    /// [`find_task`]: crate::tasks::find_task
+    fn find_work_task(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        filter: i16,
+        change: bool,
+    ) -> Result<Option<crate::masters::Task>, Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let own = self.master_of(player, unit.life.master_id)?;
+        let owner = &self.players[player];
+        let actor = Actor {
+            id: unit.id,
+            master: own,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+            civ: owner.civ,
+        };
+        let world = World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let t = self.task_target(target, 1)?;
+        let general = self.task_target(target, 2)?;
+        let find = |list: &Master, filter: i16| {
+            crate::tasks::find_task(list, &actor, Some(&t), Some(&general), None, filter, &world)
+                .map(Option::<&crate::masters::Task>::copied)
+        };
+        if let Some(task) = find(own, filter)? {
+            return Ok(Some(task));
+        }
+        if own.task_by_group == 0 {
+            return Ok(None);
+        }
+        let mut found = None;
+        // the master table exists: master_of found the unit's own in it
+        for candidate in self.masters[player].iter() {
+            if candidate.class != own.class
+                || candidate.kind != own.kind
+                || candidate.task_by_group != own.task_by_group
+            {
+                continue;
+            }
+            if let Some(task) = find(candidate, -1)? {
+                found = Some((candidate.id, task));
+                break;
+            }
+        }
+        let Some((with, task)) = found else {
+            return Ok(None);
+        };
+        if change {
+            if self.master_of(player, with)?.kind == BUILDING {
+                self.transform_building(player, idx, with)?;
+            } else {
+                self.change_master(player, idx, with)?;
+            }
+        }
+        Ok(Some(task))
+    }
+
     /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::Effect::HuntObject`], after the
     /// unit's update): its stopAction (slot 0x3c0: the action list cleared,
     /// [`Turns::clear_actions`], and in state 2 the standing sprite), then its hunt command (object
-    /// slot 0x360, `FUN_1412151f0`, forced): with no action left slot 0x820 finds the task as the
-    /// work command does ([`crate::masters::Masters::work_master`] with any filter; the master
-    /// switch, slot 0x90) and a Hunt task installs a new Hunt ([`Turns::start_hunt`] without the
-    /// unit AI's notify: `HuntObject` set the AI itself). A target the world does not hold, no task,
-    /// another task's action or a task not enabled would fail the command, which the unit AI took
+    /// slot 0x360, `FUN_1412151f0`, forced): with no action left slot 0x820 finds the task
+    /// ([`Turns::find_work_task`] with any filter and the master switch) and a new Hunt on it,
+    /// whatever its action type or requirement (`FUN_140ac2dd0`), replaces the unit's actions
+    /// ([`Turns::start_hunt`] without the unit AI's notify: `HuntObject` set the AI itself). A
+    /// target the world does not hold or no task would fail the command, which the unit AI took
     /// as done: not modelled.
     pub(crate) fn hunt_command(
         &mut self,
@@ -2446,46 +2736,13 @@ impl Turns {
         if self.players[player].objects[idx].life.state == 2 {
             self.standing_sprite(player, idx)?;
         }
-        let (tp, t) = self.object(target).ok_or(Unsupported(
+        let (_, t) = self.object(target).ok_or(Unsupported(
             "a hunt command on an object the world does not hold",
         ))?;
         let point = t.position;
-        let _ = tp;
-        let unit = &self.players[player].objects[idx];
-        let found = {
-            let masters = self
-                .masters
-                .get(player)
-                .ok_or(Unsupported("a hunt command: no master table"))?;
-            let owner = &self.players[player];
-            let actor = Actor {
-                id: unit.id,
-                master: self.master_of(player, unit.life.master_id)?,
-                player,
-                held: (unit.life.attribute_type, unit.life.amount),
-                attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
-                civ: owner.civ,
-            };
-            let world = World {
-                players: &self.players,
-                drop_sites: &self.drop_sites,
-            };
-            let t = self.task_target(target, 1)?;
-            let general = self.task_target(target, 2)?;
-            masters
-                .work_master(&actor, &t, &general, -1, &world)?
-                .map(|(with, task)| (with, *task))
-        };
-        let (with, task) = found.ok_or(Unsupported("a hunt command without a task"))?;
-        if task.action_type != HUNT {
-            return Err(Unsupported("a hunt command whose task is not a Hunt"));
-        }
-        if self.players[player].objects[idx].life.master_id != with {
-            self.change_master(player, idx, with)?;
-        }
-        if !enabled(&self.players[player].attributes, task.enablement) {
-            return Err(Unsupported("a hunt command whose task is not enabled"));
-        }
+        let task = self
+            .find_work_task(player, idx, target, -1, true)?
+            .ok_or(Unsupported("a hunt command without a task"))?;
         self.start_hunt(
             player,
             idx,
@@ -2507,8 +2764,8 @@ impl Turns {
 
     /// The unit's gather command (object slot 0x368, `FUN_141085030`) forced on `target`, as the
     /// unit AI's `GatherObject` runs it ([`crate::unit_ai::Effect::GatherObject`], after the
-    /// unit's update): slot 0x820 (`FUN_14106c6a0`) finds the task as the work command does
-    /// ([`crate::masters::Masters::work_master`] with any filter; the master switch, slot 0x90);
+    /// unit's update): slot 0x820 finds the task ([`Turns::find_work_task`] with any filter and
+    /// the master switch);
     /// the unit's top Gather on the task found takes the target (its slot 0x48 with the target's
     /// place, [`Turns::retarget_gather`]; what it answers the command passes over); else a new
     /// Gather on the task replaces the unit's actions (`FUN_140a88310`, `FUN_140a98620`, slot
@@ -2526,35 +2783,9 @@ impl Turns {
                 "a gather command on an object the world does not hold",
             ));
         }
-        let unit = &self.players[player].objects[idx];
-        let found = {
-            let masters = self
-                .masters
-                .get(player)
-                .ok_or(Unsupported("a gather command: no master table"))?;
-            let owner = &self.players[player];
-            let actor = Actor {
-                id: unit.id,
-                master: self.master_of(player, unit.life.master_id)?,
-                player,
-                held: (unit.life.attribute_type, unit.life.amount),
-                attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
-                civ: owner.civ,
-            };
-            let world = World {
-                players: &self.players,
-                drop_sites: &self.drop_sites,
-            };
-            let t = self.task_target(target, 1)?;
-            let general = self.task_target(target, 2)?;
-            masters
-                .work_master(&actor, &t, &general, -1, &world)?
-                .map(|(with, task)| (with, *task))
-        };
-        let (with, task) = found.ok_or(Unsupported("a gather command without a task"))?;
-        if self.players[player].objects[idx].life.master_id != with {
-            self.change_master(player, idx, with)?;
-        }
+        let task = self
+            .find_work_task(player, idx, target, -1, true)?
+            .ok_or(Unsupported("a gather command without a task"))?;
         let unit = &self.players[player].objects[idx];
         if unit.top_action_kind() == Some(crate::gather::GATHER)
             && unit.gather.is_some_and(|g| g.task.id == task.id)
@@ -2670,14 +2901,8 @@ impl Turns {
         let builder = self.master_of(player, unit.life.master_id)?;
         let gap = crate::movement::footprint_gap(unit.position, builder.radius, t_at, t_radius);
         if old.target != target {
-            if old.added {
-                self.leave_builders(old.target)?;
-            }
-            if old.target != -1 {
-                let by = self.releaser(player, idx);
-                self.release(old.target, by)?;
-            }
-            self.take(target);
+            // the task finder took the new target below state 3, which slot 0x68 keeps
+            let _ = self.build_set_target(player, idx, (old.target, old.added), target)?;
             let unit = &mut self.players[player].objects[idx];
             let (Some(build), mover) = (unit.build.as_mut(), unit.mover.as_mut()) else {
                 return Err(Unsupported("a Build's retarget without its Build"));
@@ -2704,9 +2929,34 @@ impl Turns {
         Ok(class)
     }
 
+    /// The Build's slot 0x68 (`FUN_140ab0300`) of the builder at `idx`, its target `old` and
+    /// whether it is counted among the builders (`added`, `+0x68`), on `new` (−1 for none): a
+    /// counted Build of another target leaves the builders ([`Turns::leave_builders`]) and is no
+    /// longer counted; then the base ([`Turns::retarget_action`]) takes the target. Returns the
+    /// Build's target after it.
+    pub(crate) fn build_set_target(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (old, added): (i32, bool),
+        new: i32,
+    ) -> Result<i32, Unsupported> {
+        let leaves = old != new && added;
+        if leaves {
+            self.leave_builders(old)?;
+        }
+        let target = self.retarget_action(player, idx, old, new, false)?;
+        if let Some(build) = self.players[player].objects[idx].build.as_mut() {
+            build.target = target;
+            build.added &= !leaves;
+        }
+        Ok(target)
+    }
+
     /// `FUN_140aaddb0` and the builder count: the foundation `id` a Build counted its builder
-    /// among (an annex of type 80 its main building, `+0xbb8`), when the world still holds it,
-    /// counts one builder less (`+0x9e8`).
+    /// among (an annex of type 80 its main building, `+0xbb8`), when the world still holds it
+    /// (live or sleeping, `FUN_1415417a0`), counts one builder less (`+0x9e8`, held in its
+    /// construction record).
     fn leave_builders(&mut self, id: i32) -> Result<(), Unsupported> {
         let Some((p, f)) = self.object(id) else {
             return Ok(());
@@ -2717,12 +2967,9 @@ impl Turns {
         } else {
             id
         };
-        let Some(Place::Live(sp, si)) = self.place(site) else {
-            return Err(Unsupported("a Build's foundation that sleeps"));
-        };
-        let c = self.players[sp].objects[si]
-            .construction
-            .as_mut()
+        let c = self
+            .object_mut(site)
+            .and_then(|(_, b)| b.construction.as_mut())
             .ok_or(Unsupported("a Build's foundation without its construction"))?;
         c.builders = c.builders.wrapping_sub(1);
         Ok(())
@@ -2980,13 +3227,44 @@ impl Turns {
                     self.streams.get(Stream::Sprite),
                 )?;
             }
-            if let Some(old) = old {
-                let by = self.releaser(player, idx);
-                self.release(old, by)?;
-            }
-            self.take(target);
+            // the hunt's slot 0x68 (FUN_140ac7980): FUN_140a7a230 on the new target, which the
+            // work command's task finder took below state 3
+            let _ = self.retarget_action(player, idx, old.unwrap_or(-1), target, false)?;
         }
         Ok(())
+    }
+
+    /// An action's slot 0x68 base (`FUN_140a7a230`) for the unit at `idx`: its target `old` (−1
+    /// for none) becomes `new`. The same target changes nothing. A different old target the
+    /// world still holds is let go (slot 0x180, [`Turns::release`]) unless the action is a
+    /// sub-action (`quiet`, `+0x60`); a new target in state 7 or more is not taken, and the
+    /// action is left without one; else it is taken (slot 0x178 with the action's type,
+    /// [`Turns::take`]) unless `quiet`. Returns the action's target id (`+0x30`) after it.
+    pub(crate) fn retarget_action(
+        &mut self,
+        player: usize,
+        idx: usize,
+        old: i32,
+        new: i32,
+        quiet: bool,
+    ) -> Result<i32, Unsupported> {
+        if old == new {
+            return Ok(old);
+        }
+        if old != -1 && !quiet && self.object(old).is_some() {
+            let by = self.releaser(player, idx);
+            self.release(old, by)?;
+        }
+        let Some((_, t)) = self.object(new) else {
+            return Ok(-1);
+        };
+        if 7 <= t.life.state {
+            return Ok(-1);
+        }
+        if !quiet {
+            self.take(new);
+        }
+        Ok(new)
     }
 
     /// The Gather's slot 0x48 (`0x140a903a0`) on the work command's new target
@@ -3597,8 +3875,7 @@ impl Turns {
     /// `TRANSFORM_OBJECT` (`RGE_Command::do_command` case 0x29): the object `id`, the player's
     /// (another player's is refused, the cheat flag `+0xb12` aside), of the trophy master
     /// (1649) takes one of the trophies 1650 to 1653 the player has (`FUN_141659d20`): slot 0x90
-    /// with 0, the building's (`FUN_1411e6d90`): [`Turns::change_master`], then a built
-    /// building's build points (`+0xc50`) take the new master's build time.
+    /// with 0, the building's ([`Turns::transform_building`]).
     pub(crate) fn transform_object(
         &mut self,
         player: usize,
@@ -3615,9 +3892,22 @@ impl Turns {
         if unit.life.master_id != TROPHY || !TROPHIES.contains(&master) {
             return Ok(());
         }
-        self.change_master(p, idx, master)?;
-        let build_time = self.master_of(p, master)?.build_time;
-        let unit = &mut self.players[p].objects[idx];
+        self.transform_building(p, idx, master)
+    }
+
+    /// A building's slot 0x90 (`FUN_1411e6d90`, with 0 from each caller): [`Turns::change_master`],
+    /// then in state 2 its build points (`+0xc50`) take the new master's build time (its first
+    /// train location's time, 0 without one). The slice holds them in the building's
+    /// construction record.
+    fn transform_building(
+        &mut self,
+        player: usize,
+        idx: usize,
+        new: i16,
+    ) -> Result<(), Unsupported> {
+        self.change_master(player, idx, new)?;
+        let build_time = self.master_of(player, new)?.build_time;
+        let unit = &mut self.players[player].objects[idx];
         if unit.life.state == 2
             && let Some(c) = unit.construction.as_mut()
         {
@@ -3628,11 +3918,10 @@ impl Turns {
 
     /// The player's gate toggle (`FUN_14162f8c0`, from its slots 0x340 and 0x338): a gate of its
     /// player's masters, without masters of its own ([`crate::turn::Gate::other_masters`]),
-    /// changes to its master's `transform_unit` (slot 0x90, the building's `FUN_1411e6d90`:
-    /// [`Turns::change_master`], then a built gate's build points take the new master's build
-    /// time). A gate that shut (the new master's height above 0) kills the units in it (slot 0xd8
-    /// on those its count finds, `FUN_141211340`: not modelled) and takes the world time plus 1
-    /// as its last move time (`+0x870`).
+    /// changes to its master's `transform_unit` (slot 0x90, [`Turns::transform_building`]). A
+    /// gate that shut (the new master's height above 0) kills the units in it (slot 0xd8 on
+    /// those its count finds, [`Turns::shut_in_gate`]) and takes the world time plus 1 as its
+    /// last move time (`+0x870`).
     pub(crate) fn toggle_gate(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         if unit.gate.is_some_and(|g| g.other_masters) {
@@ -3648,28 +3937,15 @@ impl Turns {
         if new == -1 {
             return Ok(());
         }
-        self.change_master(player, idx, new)?;
-        let next = self.master_of(player, new)?;
-        let (build_time, height) = (next.build_time, next.height);
+        self.transform_building(player, idx, new)?;
+        let height = self.master_of(player, new)?.height;
         let now = self.world_time;
-        let unit = &mut self.players[player].objects[idx];
-        if unit.life.state == 2
-            && let Some(c) = unit.construction.as_mut()
-        {
-            c.progress = f32::from(build_time);
-        }
         if 0.0 < height {
-            let id = unit.id;
+            let id = self.players[player].objects[idx].id;
             let annexes = crate::turn::annexes_of(id, &self.players[player].objects);
             let (units, _) = crate::turn::gate_units(&self.spatial, id, &annexes)?;
             for u in units {
-                let killed = self.object(u).is_some_and(|(owner, o)| {
-                    self.master_of(owner, o.life.master_id)
-                        .is_ok_and(|m| m.class != 42 && (m.class != 58 || o.life.amount <= 0.0))
-                });
-                if killed {
-                    return Err(Unsupported("a gate shutting on a unit (slot 0xd8)"));
-                }
+                self.shut_in_gate(u)?;
             }
             self.players[player].objects[idx]
                 .mover
@@ -3680,13 +3956,47 @@ impl Turns {
         Ok(())
     }
 
+    /// Slot 0xd8 of object `id` in a gate that shut (`FUN_14162f8c0`): from type 70 on
+    /// (`FUN_141211340`) class 42 is spared, and livestock (class 58) while it holds some
+    /// (`COMISS`, `JA`: a NaN load holds none); else, and below type 70, `FUN_14118f580`: an
+    /// object asleep wakes to the end of its player's live list (slots 0x2d8, 0x2d0), one flagged
+    /// to sleep drops the flag, and its hit points go to 0. Its place in its player's
+    /// special-object list (`+0x30c` bit 0, `FUN_141677380`) is not held.
+    fn shut_in_gate(&mut self, id: i32) -> Result<(), Unsupported> {
+        /// The first master type whose slot 0xd8 is `FUN_141211340` (`TRIBE_Combat_Object`).
+        const TRIBE_COMBAT: u8 = 70;
+        /// The class `FUN_141211340` always spares.
+        const SPARED: i16 = 42;
+        let Some((p, u)) = self.object(id) else {
+            return Ok(());
+        };
+        let master = self.master_of(p, u.life.master_id)?;
+        let spared = TRIBE_COMBAT <= master.kind
+            && (master.class == SPARED || (master.class == LIVESTOCK && 0.0 < u.life.amount));
+        if spared {
+            return Ok(());
+        }
+        let unit = match self.place(id).expect("found above") {
+            Place::Live(p, i) => &mut self.players[p].objects[i],
+            Place::Sleeping(p, i) => {
+                let woken = self.players[p].sleeping.swap_remove(i);
+                self.players[p].objects.push(woken);
+                self.players[p].objects.last_mut().expect("pushed")
+            }
+        };
+        unit.life.goto_sleep = false;
+        unit.life.hp = 0.0;
+        Ok(())
+    }
+
     /// Slot 0x90 (`FUN_141225b70` with 0): the unit changes its master. Its action list is
     /// cleared; in a state below 3 (`FUN_1411a6a70`) the old master's storage leaves its player's
     /// attributes and the new one's comes in (`FUN_1411a56c0`, flag 2), its hit points keep their
     /// share of the new master's (whole, at least 1), its sight goes and the new master's comes
     /// (slots 0x1d8, 0x1d0), its place and obstruction record take the new master's
     /// (`FUN_141055b40`, `FUN_14118c540`) and it moves with the new master's values; its powerups
-    /// go (`FUN_1412066b0`); it takes the new master's standing sprite (slot 0x68). Its
+    /// go ([`clear_powerups`]) and in state 2 its volleys (`+0xa00`) are the new master's volley
+    /// fire; it takes the new master's standing sprite (slot 0x68). Its
     /// per-master counts, facet, class registry (`DAT_143f69170`) and particles are not held.
     pub(crate) fn change_master(
         &mut self,
@@ -3786,7 +4096,12 @@ impl Turns {
             }
         }
         let unit = &mut self.players[player].objects[idx];
-        unit.work_rate_powerup = 0.0;
+        clear_powerups(unit);
+        // in state 2 the volleys (`+0xa00`) are the new master's volley fire, the shares of the
+        // units inside dropped
+        if unit.life.state == 2 {
+            unit.firepower = next.volley_fire;
+        }
         Ok(())
     }
 }
@@ -3852,6 +4167,65 @@ fn inside_map(v: f32, size: i32) -> f32 {
     }
 }
 
+/// FOLLOW's box (`FUN_14161c920`, the loop at `0x14161cc72`) over the places (x, y) of the loose
+/// units that move, as its code has it: each unit's lesser and greater coordinate
+/// (`CMOVBE` on `COMISS x, y` and `COMISS y, x`: a tie or NaN picks x) replace the last unit's,
+/// which first fold into a running least (from [`BOX_START`]) and greatest (from 0), each by
+/// `COMISS`/`CMOVBE` (a tie or NaN takes the last unit's); the sums run on.
+/// The box passes when the last unit's spread and the running one's are each at most
+/// [`SPREAD`] (`COMISS`, `JC`: NaN fails); then it gives the mean place (the sums over the
+/// count, none without units).
+fn follow_spread(points: &[[f32; 2]]) -> Option<[f32; 2]> {
+    use crate::fmath::{at_most_or_unordered, below_or_unordered};
+    /// `DAT_142eea788`.
+    const BOX_START: f32 = crate::image::order::BOX_START;
+    /// `DAT_142eb9430`.
+    const SPREAD: f32 = crate::image::order::SPREAD;
+    let (mut lesser, mut least, mut greater, mut greatest) = (BOX_START, BOX_START, 0.0f32, 0.0f32);
+    let (mut sx, mut sy) = (0.0f32, 0.0f32);
+    for &[x, y] in points {
+        least = if at_most_or_unordered(lesser, least) {
+            lesser
+        } else {
+            least
+        };
+        greatest = if at_most_or_unordered(greatest, greater) {
+            greater
+        } else {
+            greatest
+        };
+        lesser = if at_most_or_unordered(x, y) { x } else { y };
+        greater = if at_most_or_unordered(y, x) { x } else { y };
+        sx += x;
+        sy += y;
+    }
+    if below_or_unordered(SPREAD, greater - lesser) || below_or_unordered(SPREAD, greatest - least)
+    {
+        return None;
+    }
+    if !points.is_empty() {
+        let n = points.len() as i32 as f32;
+        (sx, sy) = (sx / n, sy / n);
+    }
+    Some([sx, sy])
+}
+
+/// A FOLLOW offset's coordinate on a map of `size` tiles (`FUN_14161c920`): above the size less
+/// [`EDGE_GAP`] (at least 0, `MAXSS`) it is that (`COMISS`, `JA`), below 0 it is 0, else itself
+/// (a NaN too).
+fn follow_axis(v: f32, size: i32) -> f32 {
+    /// `DAT_142eb99cc`.
+    const EDGE_GAP: f32 = crate::image::group::SHORT_LENGTH;
+    let most = crate::fmath::maxss(size as f32 - EDGE_GAP, 0.0);
+    if v > most {
+        most
+    } else if 0.0 > v {
+        0.0
+    } else {
+        v
+    }
+}
+
 /// The cell of the `i`th of `n` units in MOVE's grid (`FUN_140e67800`): `side` cells a row, the
 /// root of `n` times `GRID_AREA` truncated; the unit's column and row, less half the side, a
 /// `GRID_STEP` each from the order's point, kept on the map ([`inside_map`]).
@@ -3866,6 +4240,95 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
     let y = (i / side - half) as f32 * GRID_STEP + point[1];
     [inside_map(x, map[0]), inside_map(y, map[1])]
 }
+
+/// `FUN_1412066b0`, a master change's powerups: the attack (`+0xa24`), reload (`+0xa28`), work
+/// rate (`+0xa30`), most hit points (`+0xa3c`) and melee and pierce armor (`+0xa48`, `+0xa4c`)
+/// powerups go; the hit points powerup (`+0xa38`) stays. The routine also zeroes `+0xa34`,
+/// `+0xa40`, `+0xa50` and `+0x9f8`, empties the powerup map (`+0xa98`, count `+0xaa0`), sets
+/// `+0xa2c` to slot 0x1b8 × 0.05 and takes a sight powerup (`+0xad4`) off (slots 0x1d8, 0x1d0):
+/// none of them is held.
+const fn clear_powerups(unit: &mut Unit) {
+    unit.attack_powerup = 0.0;
+    unit.reload_powerup = 0.0;
+    unit.work_rate_powerup = 0.0;
+    unit.hp_powerups[1] = 0.0;
+    unit.armor_powerups = [0; 2];
+}
+
+/// `FUN_140c4da50`: the target of the first order in unit AI `ai`'s queue (`+0x20`, count
+/// `+0x18`) that has one (not negative) and that its own unit `id` issued; −1 for none.
+fn own_order_target(ai: &crate::unit_ai::UnitAi, id: i32) -> i32 {
+    ai.orders
+        .iter()
+        .find(|o| 0 <= o.target && o.issuer == id)
+        .map_or(-1, |o| o.target)
+}
+
+/// A unit AI's slot 0x1c0 (`FUN_140c64d50`): the stance (`+0x1a9`) takes `state` and the stance's
+/// place (`+0x1ac`, `+0x1b0`) the unit's (`place`, with its master's class); `NoAttack` (3) on a
+/// unit AI that attacks (its order 700 or its action 600) stops the action (slot 0xb0 with 1,
+/// [`crate::unit_ai::UnitAi::stop_with`], whose stopAction the caller runs) and forgets the
+/// target (`FUN_140c5e1e0`).
+fn set_stance(
+    ai: &mut crate::unit_ai::UnitAi,
+    state: u8,
+    place: ([f32; 2], i16),
+    fx: &mut Vec<crate::unit_ai::Effect>,
+) -> Result<(), Unsupported> {
+    ai.stance = state;
+    ai.state_position = place.0;
+    if state == 3 && (ai.current_order == 700 || ai.current_action == 600) {
+        ai.stop_with(true, Some(place), fx)?;
+        ai.remove_target();
+    }
+    Ok(())
+}
+
+/// A building's slot 0x670 (`FUN_1411dba30`): its gate lock (`mGateLocked`, `+0xc7c`, an int its
+/// callers set to 0 or 1) takes `locked`; a lock also sets its last move time (`+0x870`,
+/// [`crate::movement::Mover::last_move`]) to the world time (`FUN_1415300d0`) plus 1.
+fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), Unsupported> {
+    let gate = unit
+        .gate
+        .as_mut()
+        .ok_or(Unsupported("a GATE of a building without its gate state"))?;
+    gate.locked = locked;
+    if locked {
+        unit.mover
+            .as_mut()
+            .ok_or(Unsupported("a locked gate without its moving part"))?
+            .last_move = now.wrapping_add(1);
+    }
+    Ok(())
+}
+
+/// `setDifferentiatorGroups` (`FUN_1410395a0`): group `g`'s differentiator groups (`+0x108`,
+/// count `+0x110`) are `list` instead. The routine's false for an allocation that failed cannot
+/// come: `operator new` (`FUN_142a8bd2c`) throws rather than return none.
+fn set_differentiator_groups(g: &mut crate::group::UnitGroup, list: &[u32]) {
+    g.differentiator_groups.clear();
+    g.differentiator_groups.extend_from_slice(list);
+}
+
+/// `FUN_14118c790`: unit `id` joins the end of a unit's ignore list (`+0x670`, count `+0x678`);
+/// the list's capacity (`+0x67c`: 24 at first, then twice the count, the new slots −1) is the
+/// `Vec`'s, which no reader sees.
+fn ignore_unit(ignore: &mut Vec<i32>, id: i32) {
+    ignore.push(id);
+}
+
+/// `FUN_1410862c0`: the footprint gap (`FUN_14118f680`) against the unit's ranges: whether it
+/// is within the weapon range (slot 0x230; `COMISS`, `JC`: NaN out) and not too close, and
+/// whether it is too close, below the least range (slot 0x240; `COMISS`, `SETA`: NaN not).
+fn work_reach(gap: f32, weapon_range: f32, min_range: f32) -> (bool, bool) {
+    let too_close = gap < min_range;
+    let within = !crate::fmath::below_or_unordered(weapon_range, gap) && !too_close;
+    (within, too_close)
+}
+
+/// Notify `0x1fe`: slot 0x7e8's target is below the unit's least range (the unit's own id twice,
+/// the target, −1, −1).
+const TOO_CLOSE: i32 = 0x1fe;
 
 /// A whole share (`DAT_14330ebcc`), which `FUN_1411859a0` takes hit points against.
 const DAMAGE_WHOLE: f32 = crate::image::order::DAMAGE_WHOLE;
@@ -4059,6 +4522,1069 @@ mod tests {
         assert_eq!(split.loose, [12, 13]);
     }
 
+    /// `FUN_140e55a30`: of the first 60 ids (500 for a computer) one the world lacks or another
+    /// player's (without the setting `+0x1074`) becomes -1; a human's command left without a unit
+    /// is refused.
+    #[test]
+    fn the_command_check_drops_gone_units_and_others_units_of_its_first_60() {
+        let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players[0].objects.push(Unit {
+            id: 30,
+            ..Unit::default()
+        });
+        assert_eq!(
+            t.command_check(1, &[11, 30, 99, -1]),
+            Some(vec![11, -1, -1, -1])
+        );
+        t.allied_control = true;
+        assert_eq!(t.command_check(1, &[11, 30, 99]), Some(vec![11, 30, -1]));
+        t.allied_control = false;
+        assert_eq!(t.command_check(1, &[30, 99]), None);
+        t.players[1].computer = true;
+        assert_eq!(t.command_check(1, &[30, 99]), Some(vec![-1, -1]));
+        t.players[1].computer = false;
+        // past the first 60 nothing is checked
+        let mut ids = vec![99; 60];
+        ids.push(30);
+        assert_eq!(t.command_check(1, &ids), None);
+        ids[0] = 11;
+        let checked = t.command_check(1, &ids).unwrap();
+        assert_eq!((checked[0], checked[1], checked[60]), (11, -1, 30));
+    }
+
+    /// `FUN_140e6b750`: each id's object, live or sleeping, None for a gone one, in the ids' order.
+    #[test]
+    fn the_lookup_keeps_a_gone_unit_s_entry() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players[1].sleeping.push(Unit {
+            id: 40,
+            ..Unit::default()
+        });
+        assert_eq!(
+            t.lookup(&[99, 40, 11, -1]),
+            [
+                None,
+                Some(Place::Sleeping(1, 0)),
+                Some(Place::Live(1, 0)),
+                None
+            ]
+        );
+    }
+
+    /// `FUN_14161e200`: the units of a STOP leave their unit group unless they are exactly its
+    /// members (a gone unit's entry counts in the list); each unit AI's order queue empties and
+    /// its idle timer takes its adjusted timeout; another player's unit the check dropped and a
+    /// sleeping object take nothing.
+    #[test]
+    fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
+        let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
+        let mut t = soldiers(&units, &[11, 12]);
+        let order = crate::unit_ai::QueuedOrder {
+            issuer: 1,
+            order: MOVE_ORDER,
+            priority: 100,
+            target: -1,
+            target_owner: -1,
+            point: [1.0, 1.0, 0.0],
+            range: 0.0,
+            shown: [1.0, 1.0],
+            ready: true,
+            target_type: -1,
+        };
+        t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi {
+            orders: vec![order],
+            idle_timer: 5,
+            adjusted_idle_timeout: 300,
+            ..crate::unit_ai::UnitAi::default()
+        });
+        let ai = t.players[1].objects[0].ai.clone();
+        t.players[0].objects.push(Unit {
+            id: 30,
+            ai,
+            ..Unit::default()
+        });
+        t.players[1].sleeping.push(Unit {
+            id: 40,
+            ..Unit::default()
+        });
+        t.stop_command(1, &[11, 12, 99, 30, 40]).unwrap();
+        let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+        assert_eq!((ai.orders.len(), ai.idle_timer), (0, 300));
+        assert_eq!(t.players[1].objects[0].group.id, -1);
+        assert_eq!(t.players[1].objects[1].group.id, -1);
+        assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
+        assert_eq!(t.players[0].objects[0].ai.as_ref().unwrap().orders.len(), 1);
+    }
+
+    /// GATE and `FUN_1411dba30`: player 1's building 50 toggles its lock, a lock setting its last
+    /// move time to the world time plus 1, an unlock leaving it; player 2's GATE of it does
+    /// nothing unless players may order each other's units; a unit (type 70) takes nothing.
+    #[test]
+    fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.world_time = 400;
+        t.players.push(crate::turn::Player::default());
+        t.masters.push(crate::masters::Masters::new([]));
+        t.masters[1] = crate::masters::Masters::new([
+            Master {
+                id: 4,
+                kind: 70,
+                ..Master::default()
+            },
+            Master {
+                id: 79,
+                kind: BUILDING,
+                ..Master::default()
+            },
+        ]);
+        t.players[1].objects.push(Unit {
+            id: 50,
+            gate: Some(crate::turn::Gate::default()),
+            mover: Some(crate::hunt::tests::walker()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 79,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        let building = |t: &Turns| {
+            let b = &t.players[1].objects[1];
+            (b.gate.unwrap().locked, b.mover.as_ref().unwrap().last_move)
+        };
+        t.gate(1, 50).unwrap();
+        assert_eq!(building(&t), (true, 401));
+        t.world_time = 500;
+        t.gate(2, 50).unwrap();
+        assert_eq!(building(&t), (true, 401));
+        t.allied_control = true;
+        t.gate(2, 50).unwrap();
+        assert_eq!(building(&t), (false, 401));
+        t.gate(1, 11).unwrap();
+        t.gate(1, 99).unwrap();
+        assert_eq!(t.players[1].objects[0].gate, None);
+    }
+
+    /// `TRANSFORM_OBJECT` and `FUN_1411e6d90`: player 1's trophy 60 (master 1649) takes trophy
+    /// 1650, keeping its share of hit points, and in state 2 its build points take the new
+    /// master's build time; in state 1 they stay.
+    #[test]
+    fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let master = |id, build_time| Master {
+            id,
+            kind: BUILDING,
+            hit_points: 100,
+            build_time,
+            volley_fire: f32::from(build_time / 15),
+            ..Master::default()
+        };
+        t.masters[1] = crate::masters::Masters::new([master(TROPHY, 10), master(1650, 30)]);
+        let trophy = |state| Unit {
+            id: 60,
+            firepower: 7.0,
+            construction: Some(crate::build::Construction {
+                progress: 10.0,
+                desolid: false,
+                builders: 0,
+                hit_points: 100,
+                build_time: 10,
+                record: crate::spatial::Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: true,
+            }),
+            life: crate::lifecycle::Lifecycle {
+                master_id: TROPHY,
+                state,
+                hp: 50.0,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects = vec![trophy(2)];
+        t.transform_object(1, 60, 1650).unwrap();
+        let unit = &t.players[1].objects[0];
+        assert_eq!(unit.life.master_id, 1650);
+        assert_eq!(unit.life.hp, 50.0);
+        assert_eq!(unit.construction.unwrap().progress, 30.0);
+        // FUN_141225b70 in state 2: the volleys are the new master's volley fire
+        assert_eq!(unit.firepower, 2.0);
+        t.players[1].objects = vec![trophy(1)];
+        t.transform_object(1, 60, 1650).unwrap();
+        assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
+        assert_eq!(t.players[1].objects[0].firepower, 7.0);
+    }
+
+    /// `FUN_141216f10` to a point: the unit AI's order queue empties only with the unit's
+    /// `+0xa14`, which slot 0x128 with 0 clears while its work command runs; the move follows
+    /// either way.
+    #[test]
+    fn a_move_inside_a_work_command_with_0_keeps_the_order_queue() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let order = crate::unit_ai::QueuedOrder {
+            issuer: 1,
+            order: MOVE_ORDER,
+            priority: 100,
+            target: -1,
+            target_owner: -1,
+            point: [1.0, 1.0, 0.0],
+            range: 0.0,
+            shown: [1.0, 1.0],
+            ready: true,
+            target_type: -1,
+        };
+        t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi {
+            orders: vec![order],
+            ..crate::unit_ai::UnitAi::default()
+        });
+        t.move_point_order_with(1, 0, [30.0, 30.0, 0.0], false)
+            .unwrap();
+        let unit = &t.players[1].objects[0];
+        assert_eq!(unit.ai.as_ref().unwrap().orders.len(), 1);
+        assert_eq!(unit.move_to.unwrap().goal, Some([30.0, 30.0, 0.0]));
+        t.move_point_order(1, 0, [31.0, 30.0, 0.0]).unwrap();
+        assert_eq!(t.players[1].objects[0].ai.as_ref().unwrap().orders.len(), 0);
+    }
+
+    /// `FUN_140e666f0`: another player's scout takes the order as its owner's, a unit without
+    /// bit 4 nothing; of a human's ids only the first 60 count.
+    #[test]
+    fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players.push(crate::turn::Player::default());
+        let scout = Master {
+            id: 448,
+            kind: 70,
+            class: 12,
+            object_flags: 0x10,
+            ..Master::default()
+        };
+        t.masters
+            .push(crate::masters::Masters::new([scout.clone()]));
+        t.masters[1] = crate::masters::Masters::new([
+            scout,
+            Master {
+                id: 4,
+                kind: 70,
+                ..Master::default()
+            },
+        ]);
+        let ai = crate::unit_ai::UnitAi {
+            current_order: -1,
+            current_action: -1,
+            ..crate::unit_ai::UnitAi::default()
+        };
+        let unit = |id| Unit {
+            id,
+            position: [20.0, 20.0, 0.0],
+            ai: Some(ai.clone()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 448,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects[0].ai = Some(ai.clone());
+        t.players[1].objects.push(unit(12));
+        t.players[2].objects.push(unit(30));
+        let mut ids = vec![99; 59];
+        ids.extend([30, 11, 12]);
+        t.auto_scout(1, &ids).unwrap();
+        let order = |t: &Turns, p: usize, i: usize| {
+            t.players[p].objects[i].ai.as_ref().unwrap().current_order
+        };
+        assert_eq!(order(&t, 2, 0), crate::unit_ai::AUTO_SCOUT_ORDER);
+        assert_eq!(order(&t, 1, 0), -1);
+        assert_eq!(order(&t, 1, 1), -1);
+        t.auto_scout(1, &[12]).unwrap();
+        assert_eq!(order(&t, 1, 1), crate::unit_ai::AUTO_SCOUT_ORDER);
+    }
+
+    /// `FUN_140c64d50`: the stance and its place are set; `NoAttack` on an attacking unit AI
+    /// stops its action (keeping an order not of the action), asks for its stopAction and
+    /// forgets its target; any other stance leaves them.
+    #[test]
+    fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
+        let attacking = crate::unit_ai::UnitAi {
+            current_order: 700,
+            current_action: 600,
+            current_target: 40,
+            target_type: 6,
+            ..crate::unit_ai::UnitAi::default()
+        };
+        let mut ai = attacking;
+        let mut fx = Vec::new();
+        set_stance(&mut ai, 1, ([3.0, 4.0], 6), &mut fx).unwrap();
+        assert_eq!((ai.stance, ai.state_position), (1, [3.0, 4.0]));
+        assert_eq!((ai.current_action, ai.current_target), (600, 40));
+        assert_eq!(fx, []);
+        set_stance(&mut ai, 3, ([3.0, 5.0], 6), &mut fx).unwrap();
+        assert_eq!(ai.stance, 3);
+        // order 700 is the action's (600 + 100): the stop ends it, the state position the place
+        assert_eq!((ai.current_order, ai.current_action), (-1, -1));
+        assert_eq!((ai.current_target, ai.last_target), (-1, 40));
+        assert_eq!(fx, [crate::unit_ai::Effect::Stop]);
+    }
+
+    /// `FUN_140e6a7c0` after `FUN_140e55d30`: another player's unit takes the stance only while
+    /// players may order each other's; a class-54 unit takes no stance 1.
+    #[test]
+    fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players.push(crate::turn::Player::default());
+        t.masters.push(crate::masters::Masters::new([Master {
+            id: 4,
+            kind: 70,
+            class: 54,
+            ..Master::default()
+        }]));
+        t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi::default());
+        t.players[2].objects.push(Unit {
+            id: 30,
+            ai: Some(crate::unit_ai::UnitAi::default()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 4,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        let stance = |t: &Turns, p: usize| t.players[p].objects[0].ai.as_ref().unwrap().stance;
+        t.unit_ai_state(1, &[11, 30], 2).unwrap();
+        assert_eq!((stance(&t, 1), stance(&t, 2)), (2, 0));
+        t.allied_control = true;
+        t.unit_ai_state(1, &[30], 1).unwrap();
+        assert_eq!(stance(&t, 2), 0);
+        t.unit_ai_state(1, &[30], 3).unwrap();
+        assert_eq!(stance(&t, 2), 3);
+    }
+
+    /// `FUN_1412066b0`: the attack, reload, work rate, most hit points and armor powerups go, the
+    /// hit points powerup and the reload stinger stay.
+    #[test]
+    fn a_master_change_clears_the_powerups_but_the_hit_points_one() {
+        let mut unit = Unit {
+            attack_powerup: 2.0,
+            reload_powerup: 0.5,
+            reload_stinger: 0.25,
+            work_rate_powerup: 0.15,
+            hp_powerups: [10.0, 20.0],
+            armor_powerups: [1, 2],
+            ..Unit::default()
+        };
+        clear_powerups(&mut unit);
+        assert_eq!(
+            (
+                unit.attack_powerup,
+                unit.reload_powerup,
+                unit.work_rate_powerup
+            ),
+            (0.0, 0.0, 0.0)
+        );
+        assert_eq!(
+            (unit.hp_powerups, unit.armor_powerups),
+            ([10.0, 0.0], [0, 0])
+        );
+        assert_eq!(unit.reload_stinger, 0.25);
+    }
+
+    /// `FUN_140a97730`: an empty list and a `MoveTo` head take no move; an Artifact head takes
+    /// the point (its goal); an action the slice does not hold is refused.
+    #[test]
+    fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let point = [25.0, 21.0, 0.0];
+        assert_eq!(t.head_takes_move(1, 0, None, point), Ok(false));
+        t.players[1].objects[0].move_to = Some(crate::move_to::MoveToAction {
+            run: false,
+            state: crate::move_to::MoveTo::Start,
+            goal: Some([30.0, 30.0, 0.0]),
+            target: -1,
+            range: 0.0,
+            wait: crate::move_to::MoveWait::default(),
+        });
+        assert_eq!(t.head_takes_move(1, 0, Some(11), point), Ok(false));
+        t.players[1].objects[0].move_to = None;
+        t.players[1].objects[0].artifact = Some(crate::artifact::Artifact::new(false));
+        assert_eq!(t.head_takes_move(1, 0, None, point), Ok(true));
+        let artifact = t.players[1].objects[0].artifact.unwrap();
+        assert_eq!(artifact.goal, Some(point));
+        t.players[1].objects[0].artifact = None;
+        t.players[1].objects[0].unmodelled_action = Some(Unsupported("a test's action"));
+        assert!(t.head_takes_move(1, 0, None, point).is_err());
+    }
+
+    /// `FUN_14161c920`'s box: each unit's x is set against its own y, the units before the last
+    /// fold into the running least and greatest; units side by side on a diagonal pass, two near
+    /// each other far off it do not.
+    #[test]
+    fn follow_s_box_sets_each_unit_s_x_against_its_y() {
+        assert_eq!(
+            follow_spread(&[[20.0, 20.0], [21.0, 20.0]]),
+            Some([20.5, 20.0])
+        );
+        assert_eq!(follow_spread(&[[10.0, 30.0], [10.5, 30.0]]), None);
+        // the last unit's spread: 8 passes, more does not
+        assert_eq!(follow_spread(&[[10.0, 18.0]]), Some([10.0, 18.0]));
+        assert_eq!(follow_spread(&[[10.0, 18.5]]), None);
+        // the running spread holds the units before the last
+        assert_eq!(
+            follow_spread(&[[10.0, 10.0], [30.0, 30.0], [30.0, 30.0]]),
+            None
+        );
+        assert_eq!(follow_spread(&[]), Some([0.0, 0.0]));
+    }
+
+    /// A FOLLOW offset stays on the map: below 0 it is 0, past the size less 0.01 that.
+    #[test]
+    fn a_follow_offset_stays_on_the_map() {
+        assert_eq!(follow_axis(-0.5, 120), 0.0);
+        assert_eq!(follow_axis(130.0, 120), 119.99);
+        assert_eq!(follow_axis(60.25, 120), 60.25);
+        assert!(follow_axis(f32::NAN, 120).is_nan());
+    }
+
+    /// Player 1's soldiers 11 and 12 (moving, each with a unit AI) and player 2's 30 at (40, 20),
+    /// a master with a footprint of class 6; auto formations off, a map of 120 tiles.
+    fn followers() -> Turns {
+        let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players[1].formations.auto = false;
+        t.spatial.map = [120, 120];
+        let walker = crate::hunt::tests::walker();
+        t.masters[1] = crate::masters::Masters::new([Master {
+            id: 4,
+            kind: 70,
+            moving: Some(walker.stats),
+            ..Master::default()
+        }]);
+        for u in &mut t.players[1].objects {
+            u.mover = Some(walker.clone());
+            u.ai = Some(crate::unit_ai::UnitAi {
+                current_order: -1,
+                current_action: -1,
+                current_target: -1,
+                ..crate::unit_ai::UnitAi::default()
+            });
+        }
+        t.players.push(crate::turn::Player::default());
+        t.masters.push(crate::masters::Masters::new([Master {
+            id: 5,
+            kind: 70,
+            class: 6,
+            radius: [0.5, 0.5],
+            ..Master::default()
+        }]));
+        t.players[2].objects.push(Unit {
+            id: 30,
+            position: [40.0, 20.0, 0.0],
+            life: crate::lifecycle::Lifecycle {
+                master_id: 5,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        t.spatial.insert(
+            30,
+            crate::spatial::Placed {
+                position: [40.0, 20.0, 0.0],
+                radius: [0.5, 0.5],
+                class: 6,
+                player: 2,
+                master: 5,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: false,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        t
+    }
+
+    /// `FUN_14161c920` for one unit: it follows the target (a `MoveTo` to it), its unit AI takes
+    /// the follow order and action and the target with its class at its place.
+    #[test]
+    fn a_follower_takes_the_follow_order_and_walks_to_its_target() {
+        let mut t = followers();
+        t.follow(1, &[11], 30).unwrap();
+        let unit = &t.players[1].objects[0];
+        let ai = unit.ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.current_order, ai.current_action),
+            (crate::unit_ai::FOLLOW_ORDER, crate::unit_ai::FOLLOW_ACTION)
+        );
+        assert_eq!((ai.current_target, ai.target_type), (30, 6));
+        assert_eq!(ai.target_point, [40.0, 20.0, 0.0]);
+        assert_eq!(unit.move_to.unwrap().target, 30);
+        assert_eq!(t.players[1].objects[1].move_to, None);
+    }
+
+    /// `FUN_14161c920` for two units side by side: each moves to the target at its offset from
+    /// the two's mean, takes the move order and action, and ignores the other.
+    #[test]
+    fn followers_side_by_side_take_their_offsets_from_the_target() {
+        let mut t = followers();
+        t.follow(1, &[11, 12], 30).unwrap();
+        for (i, (other, x)) in [(12, 39.5), (11, 40.5)].into_iter().enumerate() {
+            let unit = &t.players[1].objects[i];
+            let ai = unit.ai.as_ref().unwrap();
+            assert_eq!(
+                (ai.current_order, ai.current_action),
+                (MOVE_ORDER, crate::unit_ai::MOVE_ACTION)
+            );
+            assert_eq!((ai.current_target, ai.target_point), (30, [x, 20.0, 0.0]));
+            assert_eq!(unit.mover.as_ref().unwrap().ignore_units, [other]);
+            assert_eq!(unit.move_to.unwrap().target, 30);
+        }
+    }
+
+    /// FOLLOW's check: another player's unit takes nothing while players may not order each
+    /// other's units.
+    #[test]
+    fn a_follow_of_another_player_s_unit_does_nothing() {
+        let mut t = followers();
+        t.follow(2, &[11], 30).unwrap();
+        assert_eq!(
+            t.players[1].objects[0].ai.as_ref().unwrap().current_order,
+            -1
+        );
+    }
+
+    /// `FUN_140aaddb0`: a Build on an annex counts its main building's builders one less; a
+    /// foundation the world no longer holds counts nothing.
+    #[test]
+    fn a_builder_leaves_the_main_building_of_an_annex() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.masters[1] = crate::masters::Masters::new([Master {
+            id: 79,
+            kind: BUILDING,
+            ..Master::default()
+        }]);
+        let construction = crate::build::Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 2,
+            hit_points: 100,
+            build_time: 10,
+            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: true,
+        };
+        let building = |id, annex_of| Unit {
+            id,
+            annex_of,
+            construction: Some(construction),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 79,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects = vec![building(60, None), building(70, Some(60))];
+        t.leave_builders(70).unwrap();
+        let builders = |t: &Turns, i: usize| t.players[1].objects[i].construction.unwrap().builders;
+        assert_eq!((builders(&t, 0), builders(&t, 1)), (1, 2));
+        t.leave_builders(60).unwrap();
+        t.leave_builders(99).unwrap();
+        assert_eq!(builders(&t, 0), 0);
+    }
+
+    /// `FUN_140c4da50`: the first queued order with a target that the unit itself issued; an
+    /// order of another issuer or without a target does not count.
+    #[test]
+    fn a_unit_s_own_queued_order_names_its_target() {
+        let order = |issuer, target| crate::unit_ai::QueuedOrder {
+            issuer,
+            order: MOVE_ORDER,
+            priority: 100,
+            target,
+            target_owner: -1,
+            point: [1.0, 1.0, 0.0],
+            range: 0.0,
+            shown: [1.0, 1.0],
+            ready: true,
+            target_type: -1,
+        };
+        let mut ai = crate::unit_ai::UnitAi {
+            orders: vec![order(1, 50), order(11, -1), order(11, 60), order(11, 70)],
+            ..crate::unit_ai::UnitAi::default()
+        };
+        assert_eq!(own_order_target(&ai, 11), 60);
+        ai.orders.truncate(2);
+        assert_eq!(own_order_target(&ai, 11), -1);
+    }
+
+    /// `FUN_140a7a230`: a new target is taken (its workers count one more) and the old one let
+    /// go; a quiet sub-action does neither; a target in state 7 or more is not taken; the same
+    /// target changes nothing.
+    #[test]
+    fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.masters[0] = crate::masters::Masters::new([Master {
+            id: 66,
+            kind: 70,
+            ..Master::default()
+        }]);
+        let deer = |id, state, workers| Unit {
+            id,
+            workers,
+            combat: true,
+            life: crate::lifecycle::Lifecycle {
+                master_id: 66,
+                state,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[0].objects = vec![deer(40, 2, 1), deer(41, 2, 0), deer(42, 7, 0)];
+        let workers =
+            |t: &Turns| -> Vec<i32> { t.players[0].objects.iter().map(|u| u.workers).collect() };
+        assert_eq!(t.retarget_action(1, 0, 40, 40, false), Ok(40));
+        assert_eq!(workers(&t), [1, 0, 0]);
+        assert_eq!(t.retarget_action(1, 0, 40, 41, true), Ok(41));
+        assert_eq!(workers(&t), [1, 0, 0]);
+        assert_eq!(t.retarget_action(1, 0, 40, 41, false), Ok(41));
+        assert_eq!(workers(&t), [0, 1, 0]);
+        assert_eq!(t.retarget_action(1, 0, 41, 42, false), Ok(-1));
+        assert_eq!(workers(&t), [0, 0, 0]);
+        assert_eq!(t.retarget_action(1, 0, 99, -1, false), Ok(-1));
+    }
+
+    /// `FUN_140ab0300`: a Build counted among its foundation's builders leaves them for a new
+    /// target, which it takes; the same target keeps the count.
+    #[test]
+    fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.masters[1] = crate::masters::Masters::new([
+            Master {
+                id: 4,
+                kind: 70,
+                ..Master::default()
+            },
+            Master {
+                id: 79,
+                kind: BUILDING,
+                ..Master::default()
+            },
+        ]);
+        let foundation = |id, builders| Unit {
+            id,
+            construction: Some(crate::build::Construction {
+                progress: 0.0,
+                desolid: true,
+                builders,
+                hit_points: 100,
+                build_time: 10,
+                record: crate::spatial::Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: true,
+            }),
+            workers: 1,
+            life: crate::lifecycle::Lifecycle {
+                master_id: 79,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects.push(foundation(60, 1));
+        t.players[1].objects.push(foundation(61, 0));
+        t.players[1].objects[0].build = Some(crate::build::BuildAction {
+            target: 60,
+            state: 6,
+            move_to: None,
+            goal: None,
+            task: crate::build::BuildTask {
+                range: 0.1,
+                work_value: 1.0,
+                work_rate: 1.0,
+            },
+            added: true,
+            timer: 0.0,
+        });
+        assert_eq!(t.build_set_target(1, 0, (60, true), 60), Ok(60));
+        assert!(t.players[1].objects[0].build.unwrap().added);
+        assert_eq!(t.build_set_target(1, 0, (60, true), 61), Ok(61));
+        let build = t.players[1].objects[0].build.unwrap();
+        assert_eq!((build.target, build.added), (61, false));
+        let site = |t: &Turns, i: usize| {
+            let u = &t.players[1].objects[i];
+            (u.construction.unwrap().builders, u.workers)
+        };
+        assert_eq!((site(&t, 1), site(&t, 2)), ((0, 0), (0, 2)));
+    }
+
+    /// `FUN_141211340` and `FUN_14118f580` in a gate that shut: a soldier dies (no hit points),
+    /// class 42 and livestock with food are spared, livestock with a NaN load is not, and a
+    /// sleeping object (below type 70) wakes to the end of the live list and dies.
+    #[test]
+    fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let master = |id, kind, class| Master {
+            id,
+            kind,
+            class,
+            ..Master::default()
+        };
+        t.masters[1] = crate::masters::Masters::new([
+            master(4, 70, 6),
+            master(42, 70, 42),
+            master(58, 70, LIVESTOCK),
+            master(10, 10, 5),
+        ]);
+        let unit = |id, master, amount| Unit {
+            id,
+            life: crate::lifecycle::Lifecycle {
+                master_id: master,
+                hp: 10.0,
+                amount,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects = vec![
+            unit(11, 4, 0.0),
+            unit(12, 42, 0.0),
+            unit(13, 58, 50.0),
+            unit(14, 58, f32::NAN),
+        ];
+        t.players[1].sleeping = vec![unit(15, 10, 0.0)];
+        for id in 11..=16 {
+            t.shut_in_gate(id).unwrap();
+        }
+        let hp: Vec<(i32, f32)> = t.players[1]
+            .objects
+            .iter()
+            .map(|u| (u.id, u.life.hp))
+            .collect();
+        assert_eq!(
+            hp,
+            [(11, 0.0), (12, 10.0), (13, 10.0), (14, 0.0), (15, 0.0)]
+        );
+        assert_eq!(t.players[1].sleeping.len(), 0);
+    }
+
+    /// `FUN_14106c6a0`: a villager's own master without a task for its player's foundation
+    /// takes the first master of its class, type and swap group with one, searched with any
+    /// filter, and becomes it only with the change; one with its own task keeps its master.
+    #[test]
+    fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
+        let units = [(11, 83, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let task = |action_type, object_id| crate::masters::Task {
+            action_type,
+            object_group: -1,
+            object_id,
+            work_val1: 1.0,
+            ..crate::masters::Task::default()
+        };
+        let villager = |id, tasks| Master {
+            id,
+            kind: 70,
+            class: 4,
+            task_by_group: 1,
+            hit_points: 25,
+            tasks,
+            ..Master::default()
+        };
+        t.masters[1] = crate::masters::Masters::new([
+            villager(83, vec![task(5, 53)]),
+            villager(118, vec![task(101, -1)]),
+            Master {
+                id: 70,
+                kind: BUILDING,
+                class: 3,
+                hit_points: 550,
+                ..Master::default()
+            },
+        ]);
+        t.players[1].objects[0].life.hp = 25.0;
+        t.players[1].objects.push(Unit {
+            id: 60,
+            life: crate::lifecycle::Lifecycle {
+                master_id: 70,
+                state: 0,
+                hp: 550.0,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        let found = t.find_work_task(1, 0, 60, GARRISON, false).unwrap();
+        assert_eq!(found.map(|t| t.action_type), Some(101));
+        assert_eq!(t.players[1].objects[0].life.master_id, 83);
+        let found = t.find_work_task(1, 0, 60, -1, true).unwrap();
+        assert_eq!(found.map(|t| t.action_type), Some(101));
+        assert_eq!(t.players[1].objects[0].life.master_id, 118);
+        // 118's own task: no change
+        assert!(t.find_work_task(1, 0, 60, -1, true).unwrap().is_some());
+        assert_eq!(t.players[1].objects[0].life.master_id, 118);
+    }
+
+    /// `0x140ac60e0` case 6 and `FUN_140ac4c60`: the hunt's own sheep goes to the drop site, and
+    /// so does the player's idle livestock in state 2 on a tile within 3 that the player sees,
+    /// then the livestock around that; another player's or one too far stays.
+    #[test]
+    fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
+        let units = [(11, 4, [30.0, 30.0])];
+        let mut t = soldiers(&units, &[]);
+        t.spatial = crate::spatial::Spatial::new([40, 40]);
+        let sight = crate::visibility::Visibility::new(
+            40,
+            40,
+            vec![],
+            vec![u64::MAX; 1600],
+            vec![],
+            0,
+            vec![],
+        );
+        t.spatial.sight = Some(sight);
+        let walker = crate::hunt::tests::walker();
+        let sheep_master = Master {
+            id: 594,
+            kind: 70,
+            class: LIVESTOCK,
+            radius: [0.2, 0.2],
+            moving: Some(walker.stats),
+            ..Master::default()
+        };
+        t.masters[1] = crate::masters::Masters::new([
+            sheep_master.clone(),
+            Master {
+                id: 4,
+                kind: 70,
+                radius: [1.5, 1.5],
+                ..Master::default()
+            },
+        ]);
+        t.players.push(crate::turn::Player::default());
+        t.masters.push(crate::masters::Masters::new([sheep_master]));
+        let sheep = |id, x: f32, y: f32| Unit {
+            id,
+            position: [x, y, 0.0],
+            mover: Some(walker.clone()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 594,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects.extend([
+            sheep(20, 10.5, 10.5),
+            sheep(21, 12.5, 11.5),
+            sheep(22, 20.5, 10.5),
+        ]);
+        t.players[2].objects.push(sheep(23, 11.5, 10.5));
+        let placed = |player, master, at: [f32; 2], radius| crate::spatial::Placed {
+            position: [at[0], at[1], 0.0],
+            radius: [radius, radius],
+            class: LIVESTOCK,
+            player,
+            master,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: false,
+            speed: 0.8,
+            unknown: None,
+            obstruction: None,
+        };
+        t.spatial.insert(11, placed(1, 4, [30.0, 30.0], 1.5));
+        for (id, p, at) in [
+            (20, 1, [10.5, 10.5]),
+            (21, 1, [12.5, 11.5]),
+            (22, 1, [20.5, 10.5]),
+            (23, 2, [11.5, 10.5]),
+        ] {
+            t.spatial.insert(id, placed(p, 594, at, 0.2));
+        }
+        t.lead_herd(1, 20, 11).unwrap();
+        let goes = |p: usize, id: i32| {
+            t.players[p]
+                .objects
+                .iter()
+                .find(|u| u.id == id)
+                .and_then(|u| u.move_to)
+                .map(|m| m.target)
+        };
+        assert_eq!(goes(1, 20), Some(11));
+        assert_eq!(goes(1, 21), Some(11));
+        assert_eq!(goes(1, 22), None);
+        assert_eq!(goes(2, 23), None);
+    }
+
+    /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
+    #[test]
+    fn a_group_s_differentiator_groups_are_the_list_given() {
+        let mut g = crate::group::UnitGroup {
+            differentiator_groups: vec![1, 2, 3],
+            ..crate::group::UnitGroup::default()
+        };
+        set_differentiator_groups(&mut g, &[7, 8]);
+        assert_eq!(g.differentiator_groups, [7, 8]);
+        set_differentiator_groups(&mut g, &[]);
+        assert_eq!(g.differentiator_groups, Vec::<u32>::new());
+    }
+
+    /// `FUN_14118c790`: each id joins the end of the ignore list, a repeated one again.
+    #[test]
+    fn an_ignored_unit_joins_the_end_of_the_ignore_list() {
+        let mut ignore = vec![7];
+        for id in [9, 8, 9] {
+            ignore_unit(&mut ignore, id);
+        }
+        assert_eq!(ignore, [7, 9, 8, 9]);
+    }
+
+    /// `FUN_1410862c0`: too close below the least range (COMISS, SETA: NaN not), in reach at
+    /// most the weapon range (COMISS, JC: NaN out) and not too close.
+    #[test]
+    fn a_target_is_in_reach_within_the_weapon_range_and_not_below_the_least() {
+        assert_eq!(work_reach(3.0, 5.0, 2.0), (true, false));
+        assert_eq!(work_reach(5.0, 5.0, 2.0), (true, false));
+        assert_eq!(work_reach(5.5, 5.0, 2.0), (false, false));
+        assert_eq!(work_reach(1.0, 5.0, 2.0), (false, true));
+        assert_eq!(work_reach(2.0, 5.0, 2.0), (true, false));
+        assert_eq!(work_reach(f32::NAN, 5.0, 2.0), (false, false));
+        assert_eq!(work_reach(0.0, 0.0, 0.0), (true, false));
+    }
+
+    /// Player 1's soldier 10 (master 4, ranges 2 to 5) at (10, 10) and player 2's unit 20 at
+    /// (`x`, 10), the two enemies, each with a unit AI in state 2.
+    fn soldier_and_enemy(x: f32, class: i16) -> Turns {
+        let unit = |id, master, x: f32| Unit {
+            id,
+            position: [x, 10.0, 0.0],
+            ai: Some(crate::unit_ai::UnitAi::default()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: master,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let player = |objects, relations| crate::turn::Player {
+            objects,
+            relations,
+            ..crate::turn::Player::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0, 0],
+            vec![
+                player(vec![], vec![0, 3, 3]),
+                player(vec![unit(10, 4, 10.0)], vec![3, 0, 3]),
+                player(vec![unit(20, 5, x)], vec![3, 3, 0]),
+            ],
+        );
+        let master = |id, class| Master {
+            id,
+            kind: 70,
+            class,
+            weapon_range: 5.0,
+            min_range: 2.0,
+            radius: [0.2, 0.2],
+            ..Master::default()
+        };
+        t.masters = vec![
+            crate::masters::Masters::new([]),
+            crate::masters::Masters::new([master(4, class)]),
+            crate::masters::Masters::new([master(5, 6)]),
+        ];
+        for (id, player, x) in [(10, 1, 10.0), (20, 2, x)] {
+            t.spatial.insert(
+                id,
+                crate::spatial::Placed {
+                    position: [x, 10.0, 0.0],
+                    radius: [0.2, 0.2],
+                    class,
+                    player,
+                    master: 4,
+                    obstruction_type: 0,
+                    buildable_on: 0,
+                    tall: false,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+        }
+        t
+    }
+
+    /// `FUN_141227190` on an enemy nearer than the least range: the unit posts notify 0x1fe
+    /// with the target to its own unit AI (slot 0x328) and takes no work.
+    #[test]
+    fn an_order_on_an_enemy_below_the_least_range_notifies_the_unit_ai() {
+        let mut t = soldier_and_enemy(11.0, 6);
+        let work = Work {
+            target: 20,
+            point: [11.0, 10.0, 0.0],
+            carry_test: false,
+            filter: -1,
+            notified: true,
+        };
+        t.order_work(1, 0, &work).unwrap();
+        let unit = &t.players[1].objects[0];
+        let ai = unit.ai.as_ref().unwrap();
+        assert_eq!(
+            ai.notifies,
+            [crate::unit_ai::Notify::own(10, 0x1fe, [20, -1, -1])]
+        );
+        assert_eq!(unit.top_action_kind(), None);
+    }
+
+    /// `FUN_140fd9ae0` with 61 or more: the sorted list (a gone unit null, sorted first) splits
+    /// in runs of 60, each split on its own (`FUN_140fd76d0`) into the one split: its groups count
+    /// on, and an id repeated across two runs is in each.
+    #[test]
+    fn the_splitter_splits_an_order_to_more_than_60_units_in_runs_of_60() {
+        let units: Vec<_> = (100..161).map(|id| (id, 4, [20.0, 20.0])).collect();
+        let mut t = soldiers(&units, &[]);
+        let ids: Vec<i32> = (100..161).rev().collect();
+        let split = t.split(&ids, &|_| true, false).unwrap();
+        assert_eq!(split.groups, [(100..160).collect::<Vec<_>>()]);
+        assert_eq!(split.loose, [160]);
+        // the gone 999 is the first run's first entry
+        let gone: Vec<i32> = ids.iter().copied().chain([999]).collect();
+        let split = t.split(&gone, &|_| true, false).unwrap();
+        assert_eq!(
+            split.groups,
+            [(100..159).collect::<Vec<_>>(), vec![159, 160]]
+        );
+        assert_eq!(split.loose, Vec::<i32>::new());
+        // 159 twice: the first run's last entry has no next one to repeat it
+        let twice: Vec<i32> = (100..160).chain([159]).collect();
+        let split = t.split(&twice, &|_| true, false).unwrap();
+        assert_eq!(split.groups, [(100..160).collect::<Vec<_>>()]);
+        assert_eq!(split.loose, [159]);
+        // with Ctrl held the first run fills the 60 groups, the second's group is dropped
+        let split = t.split(&ids, &|_| true, true).unwrap();
+        assert_eq!(split.groups.len(), 60);
+        assert_eq!(split.groups[59], [159]);
+        assert_eq!(split.loose, Vec::<i32>::new());
+    }
+
     /// MarvinBlue/426048731's MOVE of 1569: player 2's villagers 9175 and 9177 (by id) take a
     /// grid of one cell a row, half a tile apart, from the order's point (their `MoveTos`' points in
     /// the save after 1568).
@@ -4123,28 +5649,39 @@ mod tests {
         };
         // no planner: the distance decides
         let mut none = |_: &Splittable, _: &Splittable| Ok(None);
+        let mut away = std::collections::BTreeSet::new();
         let scout = unit(9185, true, [42.047_367, 94.338_486, 0.0]);
         let sheep = unit(9529, false, [45.5, 93.5, 0.0]);
-        assert!(!splits_together(&scout, &sheep, f, false, &mut none).unwrap());
+        assert!(!splits_together(&scout, &sheep, f, false, &mut none, &mut away).unwrap());
         // nearer than 20 tiles the planner's path decides: its goal reached (1) within the
         // influence distance
         let other = unit(9186, true, [44.0, 94.0, 0.0]);
         let mut short = |_: &Splittable, _: &Splittable| Ok(Some((1, 2.5)));
-        assert!(splits_together(&scout, &other, f, false, &mut short).unwrap());
+        assert!(splits_together(&scout, &other, f, false, &mut short, &mut away).unwrap());
         let mut long = |_: &Splittable, _: &Splittable| Ok(Some((1, 3.5)));
-        assert!(!splits_together(&scout, &other, f, false, &mut long).unwrap());
+        assert!(!splits_together(&scout, &other, f, false, &mut long, &mut away).unwrap());
         let mut nearest = |_: &Splittable, _: &Splittable| Ok(Some((2, 2.5)));
-        assert!(!splits_together(&scout, &other, f, false, &mut nearest).unwrap());
+        assert!(!splits_together(&scout, &other, f, false, &mut nearest, &mut away).unwrap());
+        // a path that did not join puts the unit among the far ones; a NaN length joins
+        assert_eq!(away, [9186].into());
+        let mut lost = |_: &Splittable, _: &Splittable| Ok(Some((1, f32::NAN)));
+        assert!(splits_together(&scout, &other, f, false, &mut lost, &mut away).unwrap());
+        // a NaN distance takes no path and is within the influence distance
+        let nowhere = Splittable {
+            moved_at: [f32::NAN, 94.0],
+            ..other
+        };
+        assert!(splits_together(&scout, &nowhere, f, false, &mut short, &mut away).unwrap());
         let far = unit(9187, true, [80.0, 94.0, 0.0]);
-        assert!(!splits_together(&scout, &far, f, false, &mut none).unwrap());
+        assert!(!splits_together(&scout, &far, f, false, &mut none, &mut away).unwrap());
         let wide = crate::turn::Formations {
             influence: 40.0,
             ..f
         };
-        assert!(splits_together(&scout, &far, wide, false, &mut none).unwrap());
+        assert!(splits_together(&scout, &far, wide, false, &mut none, &mut away).unwrap());
         // a member must stand in state 2 or more
         let born = Splittable { state: 0, ..far };
-        assert!(!splits_together(&scout, &born, wide, true, &mut none).unwrap());
+        assert!(!splits_together(&scout, &born, wide, true, &mut none, &mut away).unwrap());
     }
 
     #[test]
