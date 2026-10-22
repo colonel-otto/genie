@@ -727,8 +727,10 @@ impl Goal {
 /// A node's payload (`+0x18..+0x30`, a `std::variant`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
-    /// 0: the start; its shape (always none here).
-    Start { shape: u32 },
+    /// 0: the start. Its shape field is always none: `FUN_140fa4410`, the only maker of a type-0
+    /// node, writes -1 there (`local_178`), so the expansion's branch for a type-0 node on a
+    /// shape (a side node, `FUN_140fa3fe0`) never runs.
+    Start,
     /// 1: a waypoint.
     Waypoint,
     /// 2: a point on a shape's side.
@@ -1485,7 +1487,7 @@ impl Search<'_> {
             idx: self.arena.len() as u32,
             parent: NONE,
             at: p,
-            kind: Kind::Start { shape: NONE },
+            kind: Kind::Start,
         };
         self.arena.push(start);
         if self.ctx.holder(p).is_none() {
@@ -1640,22 +1642,17 @@ impl Search<'_> {
     }
 
     /// A hit point snapped onto the hit shape's side, then onto that side of every shape of its
-    /// tile that still holds it, until none does (`LAB_140fa7102`, `LAB_140fa5f50`).
-    fn settle(&self, h: &mut Point, hit: &mut Hit) -> Result<(), Unsupported> {
+    /// tile that still holds it, until none does (`LAB_140fa7102`, `LAB_140fa5f50`, unbounded as
+    /// the game's). It ends: a holder holds the point strictly inside, so the snap keeps the other
+    /// coordinate and moves this one past the holder's side, always the same way (side 0 and 3
+    /// lower, 1 and 2 higher); no shape holds it again, and the mesh has finitely many.
+    fn settle(&self, h: &mut Point, hit: &mut Hit) {
         let d = self.ctx.d;
         snap_to_side(h, self.ctx.mesh.shapes[hit.shape as usize], hit.side, d);
-        for _ in 0..10_000 {
-            match self.ctx.holder(*h) {
-                None => return Ok(()),
-                Some(id) => {
-                    snap_to_side(h, self.ctx.mesh.shapes[id as usize], hit.side, d);
-                    hit.shape = id;
-                }
-            }
+        while let Some(id) = self.ctx.holder(*h) {
+            snap_to_side(h, self.ctx.mesh.shapes[id as usize], hit.side, d);
+            hit.shape = id;
         }
-        Err(Unsupported(
-            "a hit point that two shapes keep snapping back into",
-        ))
     }
 
     /// `FUN_140fa2b20`: the two legs of an L toward `c` from node `b`, the first along direction
@@ -1908,12 +1905,13 @@ impl Search<'_> {
                 }
             }
             if k == 2 {
-                return self.corner_axis(n, t);
+                self.corner_axis(n, t);
+                return Ok(());
             }
         }
         if k == 1 {
             let mut h = Self::at_fraction(p, t, frac);
-            self.settle(&mut h, &mut hit)?;
+            self.settle(&mut h, &mut hit);
             if h != p {
                 let g = n.g.wrapping_add(float_distance(p, h));
                 self.side_node(g, n.idx, hit.shape, hit.side, h);
@@ -1940,7 +1938,7 @@ impl Search<'_> {
     /// Type 3 when every ray touches: along x toward `t`, then along y; a leg's hit becomes a
     /// side node; with both legs clear, one tile toward `t` (at most) becomes a waypoint that may
     /// be the best (by cost, not estimate).
-    fn corner_axis(&mut self, n: Node, t: Point) -> Result<(), Unsupported> {
+    fn corner_axis(&mut self, n: Node, t: Point) {
         let p = n.at;
         let dx = t[0].wrapping_sub(p[0]);
         let dy = t[1].wrapping_sub(p[1]);
@@ -1949,7 +1947,7 @@ impl Search<'_> {
         if let Some((shape, side, at)) = sw.counted() {
             let g = n.g.wrapping_add(float_distance(p, at));
             self.side_node(g, n.idx, shape, side, at);
-            return Ok(());
+            return;
         }
         let sw2 = self.ctx.sweep(m, t, if 0 < dy { 2 } else { 0 });
         if !sw2.found {
@@ -1967,7 +1965,7 @@ impl Search<'_> {
             if self.best == NONE || w.g < self.arena[self.best as usize].g {
                 self.best = w.idx;
             }
-            return Ok(());
+            return;
         }
         let mid = self.add(
             through_float(dx.wrapping_abs()).wrapping_add(n.g),
@@ -1975,14 +1973,12 @@ impl Search<'_> {
             m,
             Kind::Waypoint,
         );
-        let (Some(shape), Some(side), Some(at)) = (sw2.shape, sw2.side, sw2.point) else {
-            return Err(Unsupported(
-                "a sweep that counted a shape without its outputs",
-            ));
-        };
+        // the second sweep counted a shape (`found`, tested above): its outputs are written
+        let (shape, side, at) = sw2
+            .counted()
+            .expect("a sweep that counts a shape writes its point and side");
         let g = through_float((at[1].wrapping_sub(p[1])).wrapping_abs()).wrapping_add(mid.g);
         self.side_node(g, mid.idx, shape, side, at);
-        Ok(())
     }
 }
 
@@ -2328,7 +2324,8 @@ impl Pather {
         blocked
     }
 
-    /// `FUN_140fa53d0`.
+    /// `FUN_140fa53d0`. Its call counter (`DAT_143f0f364 += 1` at entry) has no reader (its only
+    /// xref is that read-write) and is not held.
     fn core(
         &mut self,
         mesh: &mut Mesh,
@@ -2511,14 +2508,9 @@ impl Search<'_> {
             Kind::Waypoint => {
                 let _ = self.pop_test(&n);
             }
-            Kind::Start { shape } => {
+            Kind::Start => {
                 if self.pop_test(&n) {
                     return Ok(None);
-                }
-                if shape != NONE {
-                    return Err(Unsupported(
-                        "a start node on a shape (no creator in the game)",
-                    ));
                 }
                 let t = range_point(self.goal.range, p, self.goal.at)?;
                 let mut frac = T_START;
@@ -2541,7 +2533,7 @@ impl Search<'_> {
                     2 => self.touch_from(n, p, t, frac, hit)?,
                     _ => {
                         let mut h = Self::at_fraction(p, t, frac);
-                        self.settle(&mut h, &mut hit)?;
+                        self.settle(&mut h, &mut hit);
                         let g = n.g.wrapping_add(float_distance(p, h));
                         self.side_node(g, n.idx, hit.shape, hit.side, h);
                     }
