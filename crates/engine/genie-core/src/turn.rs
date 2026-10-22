@@ -181,6 +181,9 @@ pub struct Unit {
     pub default_make: bool,
     /// A farm's or fish trap's Make action, its top action ([`crate::make`]).
     pub make: Option<crate::make::MakeAction>,
+    /// A villager's wait for a foundation (`TRIBE_Action_Wait_Solidify`), its only action
+    /// ([`crate::wait_solidify`]).
+    pub wait_solidify: Option<crate::wait_solidify::WaitSolidify>,
     /// The slice could not model one of its updates: it freezes (its place is known only within
     /// its speed since) while the rest of its player's objects go on.
     pub stopped: bool,
@@ -899,6 +902,11 @@ struct Context<'a> {
     /// The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller
     /// runs after the update ([`Turns::move_aside`]).
     move_aside: Vec<AiMove>,
+    /// The waits for foundations the unit's slot 0x388 found while its unit AI ran, which the
+    /// caller makes the unit's after the update ([`Turns::wait_for_foundation`]).
+    waits: Vec<Wait>,
+    /// The owner's diplomacy (`player+0x260`), which the unit's task search reads.
+    relations: &'a [u8],
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
     /// update ([`Turns::lead_herd`]).
     leads: Option<(i32, i32)>,
@@ -906,6 +914,18 @@ struct Context<'a> {
     zones: &'a mut crate::zones::Zones,
     /// The other players' lists, as they stand before the unit's update.
     foreign: Foreign<'a>,
+}
+
+/// What the unit's slot 0x388 (`FUN_141226fc0`) found while its unit AI ran
+/// ([`crate::unit_ai::UnitSide::wait_solidify`]): the foundation, the task its slot 0x820 found
+/// on it and the master the search switches the unit to (slot 0x90; None when its own master's
+/// list gave the task). The caller makes them the unit's after the update
+/// ([`Turns::wait_for_foundation`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Wait {
+    pub(crate) target: i32,
+    pub(crate) task: crate::masters::Task,
+    pub(crate) switch: Option<i16>,
 }
 
 /// The players but the owner of the unit that updates, read-only: the players before it and
@@ -929,6 +949,16 @@ impl<'a> Foreign<'a> {
                 .find(|u| u.id == id)
                 .map(|u| (q, u))
         })
+    }
+
+    /// Player `q`, unless it is the one whose list is out.
+    fn player(&self, q: usize) -> Option<&'a Player> {
+        let own = self.before.len();
+        match q.cmp(&own) {
+            std::cmp::Ordering::Less => self.before.get(q),
+            std::cmp::Ordering::Equal => None,
+            std::cmp::Ordering::Greater => self.after.get(q - own - 1),
+        }
     }
 }
 
@@ -973,6 +1003,14 @@ struct UnitView<'u> {
     takes: &'u mut Vec<i32>,
     /// The objects an action let go (slot 0x180), the caller's.
     releases: &'u mut Vec<(i32, Releaser)>,
+    /// The waits for foundations its slot 0x388 found ([`Wait`]), the caller's.
+    waits: &'u mut Vec<Wait>,
+    /// What its task search reads of its owner: its diplomacy, attributes and civ, and the drop
+    /// sites.
+    relations: &'u [u8],
+    attributes: &'u [f32],
+    civ: u8,
+    drop_sites: &'u [DropSite],
 }
 
 /// What `bestUnitToAttack` reads of the world for the unit whose AI runs
@@ -1613,6 +1651,62 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         self.spatial.set_scout_map(self.player, m);
         Ok(())
     }
+
+    /// The unit's slot 0x388 (`FUN_141226fc0`) on the foundation `target`: the world's object
+    /// (`FUN_1415417a0`; the owner's sleeping list, which the unit does not see here, holds
+    /// only objects of a type below 30, never a building), then its slot 0x820 with any action
+    /// type (`0xffff`) and the switch ([`task_search`] on the target and its main building);
+    /// with a task the new wait replaces the unit's actions, which the caller makes after the
+    /// update ([`Wait`], [`Turns::wait_for_foundation`]).
+    fn wait_solidify(&mut self, target: i32) -> Result<bool, Unsupported> {
+        let unit = &*self.unit;
+        let (player, others, foreign) = (self.player, self.others, self.foreign);
+        let find = |id: i32| {
+            if id == unit.id {
+                return Some((player, unit));
+            }
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (player, u))
+                .or_else(|| foreign.find(id))
+        };
+        let (Some(t), Some(general)) = (
+            task_target_with(target, 1, &find, self.every)?,
+            task_target_with(target, 2, &find, self.every)?,
+        ) else {
+            return Ok(false);
+        };
+        let (masters, own) = self
+            .masters
+            .and_then(|m| Some((m, m.get(unit.life.master_id)?)))
+            .ok_or(Unsupported(
+                "a unit AI's unit of a master the slice does not have",
+            ))?;
+        let actor = Actor {
+            id: unit.id,
+            master: own,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            civ: self.civ,
+        };
+        let dip = SideWorld {
+            player,
+            relations: self.relations,
+            foreign,
+            drop_sites: self.drop_sites,
+        };
+        let Some((task, switch)) = task_search(masters, &actor, &t, &general, -1, &dip)? else {
+            return Ok(false);
+        };
+        self.waits.push(Wait {
+            target,
+            task,
+            switch: switch.map(|m| m.id),
+        });
+        Ok(true)
+    }
 }
 
 impl UnitView<'_> {
@@ -1961,11 +2055,15 @@ impl Unit {
                 .map(|a| action(crate::missile::MISSILE, a.state))
         })
         .or_else(|| self.make.map(|m| action(crate::make::MAKE, m.state)))
+        .or_else(|| {
+            self.wait_solidify
+                .map(|w| action(crate::wait_solidify::WAIT_SOLIDIFY, w.state))
+        })
     }
 
     /// The target of its top action ([`Unit::top_action`]), −1 for an action without one (an
-    /// Artifact not moving to an object, a Fly, an Explore); None without an action the slice
-    /// holds.
+    /// Artifact not moving to an object, a Fly, an Explore, a wait for a foundation, which keeps
+    /// the foundation at `+0x68`); None without an action the slice holds.
     #[must_use]
     pub fn top_target(&self) -> Option<i32> {
         if let Some(a) = self.artifact {
@@ -1986,6 +2084,7 @@ impl Unit {
                     .map(|a| a.target)
             })
             .or_else(|| self.make.map(|_| -1))
+            .or_else(|| self.wait_solidify.map(|_| -1))
     }
 
     /// The second target of its top action (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's
@@ -2368,9 +2467,11 @@ impl Unit {
     }
 
     /// The action list's clearing (`FUN_140a98620`): each action's teardown (a `MoveTo`'s, also
-    /// an Explore's, stops the unit, slot 0x5d0). A Build waiting without work goes; the others
-    /// the slice holds are not modelled.
+    /// an Explore's, stops the unit, slot 0x5d0). A Build waiting without work and a wait for a
+    /// foundation go; the others the slice holds are not modelled.
     fn clear_own_actions(&mut self) -> Result<(), Unsupported> {
+        // a wait for a foundation goes: its teardown is the base one's, which lets no target go
+        self.wait_solidify = None;
         if self
             .build
             .as_ref()
@@ -5718,8 +5819,10 @@ impl Unit {
             {
                 m.stop()?;
             }
-            // a Make's teardown is the base one's: it holds no target
+            // a Make's teardown is the base one's: it holds no target; a wait for a foundation's
+            // too
             self.make = None;
+            self.wait_solidify = None;
             // a MoveTo of its own: its teardown stops the unit, and the base teardown
             // (FUN_140a73fc0) lets its target go (slot 0x180; its `+0x60` is 0)
             if let Some(move_to) = self.move_to.take() {
@@ -6033,6 +6136,14 @@ impl Unit {
             }
         } else if self.enter.is_some() {
             self.enter_update(c, others, me)?;
+        }
+        // the wait for a foundation (FUN_140ae8b70) on its build points, none when the world
+        // does not hold it; its 1 removes it (FUN_140a98e20: the base teardown lets no target go,
+        // and no action follows it, the wait having replaced the list)
+        if let Some(w) = self.wait_solidify
+            && w.update(wait_progress(w.target, others, c.foreign))
+        {
+            self.wait_solidify = None;
         }
         if self.missile.as_ref().is_some_and(|m| m.action.is_some()) {
             self.fly(c, others)?;
@@ -6955,7 +7066,7 @@ impl Unit {
             };
             // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
             let mut ai = self.ai.take().expect("filtered above");
-            let effects = if let Some(dt) = turn {
+            let effects = {
                 {
                     let attacker = crate::unit_ai::Attacker {
                         ai_type: ai.ai_type,
@@ -7004,16 +7115,22 @@ impl Unit {
                             graphics: c.graphics,
                             takes: &mut c.takes,
                             releases: &mut c.releases,
+                            waits: &mut c.waits,
+                            relations: c.relations,
+                            attributes: c.attributes,
+                            civ: c.civ,
+                            drop_sites: c.drop_sites,
                         };
-                        ai.update(dt, c.world_time, computer, &at, ai_stream, &mut side)
+                        match turn {
+                            Some(dt) => {
+                                ai.update(dt, c.world_time, computer, &at, ai_stream, &mut side)
+                            }
+                            None => ai.off_turn(&at, &mut side),
+                        }
                     };
                     self.ai = Some(ai);
                     result?
                 }
-            } else {
-                let result = ai.off_turn(&at);
-                self.ai = Some(ai);
-                result?
             };
             self.apply(effects, class, c)?;
         }
@@ -8547,6 +8664,128 @@ impl Diplomacy for World<'_> {
     }
 }
 
+/// The players' relations and the drop sites as the task finder reads them while a unit's
+/// owner's list is out for its update ([`UnitView`]): the owner's relations, the others'.
+struct SideWorld<'a> {
+    player: usize,
+    relations: &'a [u8],
+    foreign: Foreign<'a>,
+    drop_sites: &'a [DropSite],
+}
+
+impl Diplomacy for SideWorld<'_> {
+    /// [`crate::tasks::allied`] with `from`'s diplomacy.
+    fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
+        let relations = if from == self.player {
+            self.relations
+        } else {
+            self.foreign
+                .player(from)
+                .map_or(&[][..], |p| &p.relations[..])
+        };
+        crate::tasks::allied(relations, from, to, with_ally)
+    }
+
+    fn drops_at(&self, building: i16, actor: &Actor<'_>) -> bool {
+        crate::tasks::drops_at(self.drop_sites, building, actor)
+    }
+}
+
+/// The build points (`+0xc50`) a wait for a foundation reads of object `id`
+/// ([`crate::wait_solidify::WaitSolidify::update`]) among its owner's other objects and the
+/// other players' lists: None when the world does not hold it. Its target is the building that
+/// sent the unit off (the unit AI's notify 0x216), whose build points are its construction's;
+/// the world never gives its id to another object, so an object without a construction is not
+/// met.
+fn wait_progress(id: i32, others: &[Unit], foreign: Foreign<'_>) -> Option<f32> {
+    others
+        .iter()
+        .find(|u| u.id == id)
+        .or_else(|| foreign.find(id).map(|(_, u)| u))
+        .and_then(|u| u.construction.map(|k| k.progress))
+}
+
+/// What the task finder reads of object `id`, as `find` holds the objects (with their owners)
+/// and `every` the players' masters; an annex stands for its main building (`+0xbb8`), `steps`
+/// times (`Turns::task_target`'s reading). None when `find` does not hold it.
+fn task_target_with<'a>(
+    id: i32,
+    steps: usize,
+    find: &impl Fn(i32) -> Option<(usize, &'a Unit)>,
+    every: &'a [Masters],
+) -> Result<Option<TaskTarget<'a>>, Unsupported> {
+    let mut id = id;
+    for _ in 0..steps {
+        match find(id).and_then(|(_, u)| u.annex_of) {
+            Some(main) => id = main,
+            None => break,
+        }
+    }
+    let Some((player, u)) = find(id) else {
+        return Ok(None);
+    };
+    let master = every
+        .get(player)
+        .and_then(|m| m.get(u.life.master_id))
+        .ok_or(Unsupported("an object of a master the slice does not have"))?;
+    let [powerup, max_powerup] = u.hp_powerups;
+    Ok(Some(TaskTarget {
+        id,
+        master,
+        player,
+        state: u.life.state,
+        held: (u.life.attribute_type, u.life.amount),
+        hp: u.life.hp + (max_powerup - powerup),
+        max_hp: f32::from(master.hit_points) + max_powerup,
+        attackable: u.attackable,
+        pasture: u.pasture,
+        top_action: u.top_action_kind(),
+    }))
+}
+
+/// The search of a unit's slot 0x820 (`FUN_14106c6a0`) on target `t` (`general` the target the
+/// general search reads, its main building's) with `filter`: the list of its own master
+/// (`actor.master`) gives the task ([`crate::tasks::find_task`] in mode 0); without one, a
+/// master with a task swap group (`+0x7b8`) tries its player's masters (`masters`) in id order
+/// of its class, type and group, its own too, with any filter, and the first with a task gives
+/// it. The task, with the master that gave it when the swap group did: with its `param_7` the
+/// routine switches the unit to that master (slot 0x90 with 0), its own too, which is the
+/// caller's. None: no task. The terrain under the target's place, which only a task for a
+/// terrain reads, is not passed (as `Turns::find_work_task`, the same routine's port in
+/// `crate::order`, which this module cannot call).
+fn task_search<'m>(
+    masters: &'m Masters,
+    actor: &Actor<'_>,
+    t: &TaskTarget<'_>,
+    general: &TaskTarget<'_>,
+    filter: i16,
+    dip: &impl Diplomacy,
+) -> Result<Option<(crate::masters::Task, Option<&'m Master>)>, Unsupported> {
+    let own = actor.master;
+    let find = |list: &Master, filter: i16| {
+        crate::tasks::find_task(list, actor, Some(t), Some(general), None, filter, dip)
+            .map(Option::<&crate::masters::Task>::copied)
+    };
+    if let Some(task) = find(own, filter)? {
+        return Ok(Some((task, None)));
+    }
+    if own.task_by_group == 0 {
+        return Ok(None);
+    }
+    for candidate in masters.iter() {
+        if candidate.class != own.class
+            || candidate.kind != own.kind
+            || candidate.task_by_group != own.task_by_group
+        {
+            continue;
+        }
+        if let Some(task) = find(candidate, -1)? {
+            return Ok(Some((task, Some(candidate))));
+        }
+    }
+    Ok(None)
+}
+
 impl Turns {
     /// The world as the header save holds it: its time, frame seed, turn order and players.
     #[must_use]
@@ -9209,6 +9448,7 @@ impl Turns {
             default_fly: None,
             default_make,
             make: None,
+            wait_solidify: None,
             stopped: false,
             sprite: None,
             anim_speed: None,
@@ -10025,13 +10265,35 @@ impl Turns {
         Ok(())
     }
 
+    /// The unit's slot 0x388 (`FUN_141226fc0`) after its unit AI's update, with what it found
+    /// there ([`Wait`]): slot 0x820's switch to the master its swap group gave (slot 0x90 with 0,
+    /// [`Turns::change_master`]; a villager's candidates are of its own type, never a
+    /// building's), the action list cleared (`FUN_140a98620`, [`Turns::clear_actions`]; a wait
+    /// it held goes too, its teardown the base one's) and the new wait in it (slot 0x808,
+    /// `FUN_14106e990`: the wait's slot 0x70 with no action and its start both do nothing).
+    pub(crate) fn wait_for_foundation(
+        &mut self,
+        player: usize,
+        idx: usize,
+        wait: Wait,
+    ) -> Result<(), Unsupported> {
+        if let Some(master) = wait.switch {
+            self.change_master(player, idx, master)?;
+        }
+        self.clear_actions(player, idx)?;
+        self.players[player].objects[idx].wait_solidify = Some(
+            crate::wait_solidify::WaitSolidify::new(wait.task, wait.target),
+        );
+        Ok(())
+    }
+
     /// The unit's build command (slot 0x380, `FUN_14120d410`, forced) on `foundation`: a Build on
-    /// top takes the foundation (its slot 0x48, [`Turns::build_take`]); without one it finds a
-    /// task of any action type through slot 0x820 (the work command's master switch,
-    /// [`Masters::work_master`]) and installs a Build action on it (`FUN_140aad4e0` with that
-    /// task, whatever its type; the action list cleared). The foundation's master's class and
-    /// its place, for the unit AI. A foundation that is gone or without a Build task (slot
-    /// 0x380's 0) is not modelled.
+    /// top takes the foundation (its slot 0x48, [`Turns::build_take`]); without one its slot
+    /// 0x820 with any action type and the switch ([`task_search`] on the foundation and its main
+    /// building; the switch, slot 0x90 with 0, [`Turns::change_master`]) finds a task, and a
+    /// Build action on it (`FUN_140aad4e0` with that task, whatever its type) replaces the
+    /// unit's actions. The foundation's master's class and its place, for the unit AI. A
+    /// foundation that is gone or without a task (slot 0x380's 0) is not modelled.
     pub(crate) fn build_command(
         &mut self,
         player: usize,
@@ -10046,41 +10308,16 @@ impl Turns {
                 .ok_or(Unsupported("a BuildObject on a foundation that is gone"))?;
             return Ok((class, f_at));
         }
-        let (fp, f) = self
-            .object(foundation)
-            .ok_or(Unsupported("a build order on a foundation that is gone"))?;
-        let (f_master, f_state, f_held, f_hp, f_attackable, f_pasture, f_at) = (
-            f.life.master_id,
-            f.life.state,
-            (f.life.attribute_type, f.life.amount),
-            f.life.hp,
-            f.attackable,
-            f.pasture,
-            f.position,
-        );
+        let gone = Unsupported("a build order on a foundation that is gone");
+        let (fp, f) = self.object(foundation).ok_or(gone)?;
+        let (site, f_at) = (self.master_of(fp, f.life.master_id)?, f.position);
+        let find = |id: i32| self.object(id);
+        let t = task_target_with(foundation, 1, &find, &self.masters)?.ok_or(gone)?;
+        let general = task_target_with(foundation, 2, &find, &self.masters)?.ok_or(gone)?;
         let masters = self
             .masters
             .get(player)
             .ok_or(Unsupported("a build order: no master table"))?;
-        let site = self
-            .masters
-            .get(fp)
-            .and_then(|m| m.get(f_master))
-            .ok_or(Unsupported(
-                "a build order on a master the slice does not have",
-            ))?;
-        let target = TaskTarget {
-            id: foundation,
-            master: site,
-            player: fp,
-            state: f_state,
-            held: f_held,
-            hp: f_hp,
-            max_hp: f32::from(site.hit_points),
-            attackable: f_attackable,
-            pasture: f_pasture,
-            top_action: None,
-        };
         let world = World {
             players: &self.players,
             drop_sites: &self.drop_sites,
@@ -10099,12 +10336,9 @@ impl Turns {
         };
         // slot 0x820 with any action type (0xffff): whatever task it finds, the Build takes
         // (FUN_140aad4e0 on it), its type and its enablement unread
-        let (with, task) = masters
-            .work_master(&actor, &target, &target, -1, &world)?
+        let (task, switch) = task_search(masters, &actor, &t, &general, -1, &world)?
             .ok_or(Unsupported("a build order with no task for its foundation"))?;
-        let builder = masters
-            .get(with)
-            .expect("work_master returns a master the player has");
+        let builder = switch.unwrap_or(actor.master);
         let gap = footprint_gap(unit.position, builder.radius, f_at, site.radius);
         let build = BuildAction::start(
             foundation,
@@ -10116,8 +10350,8 @@ impl Turns {
             },
         );
         let class = i32::from(site.class);
-        if self.players[player].objects[idx].life.master_id != with {
-            self.change_master(player, idx, with)?;
+        if let Some(m) = switch.map(|m| m.id) {
+            self.change_master(player, idx, m)?;
         }
         self.take(foundation);
         self.clear_actions(player, idx)?;
@@ -11202,6 +11436,8 @@ impl Turns {
                     build_object: None,
                     build_command: None,
                     move_aside: Vec::new(),
+                    waits: Vec::new(),
+                    relations: &player.relations,
                     leads: None,
                     zones: &mut self.zones,
                     foreign: Foreign { before, after },
@@ -11220,6 +11456,7 @@ impl Turns {
                 let build_object = c.build_object.take();
                 let build_command = c.build_command.take();
                 let move_aside = std::mem::take(&mut c.move_aside);
+                let waits = std::mem::take(&mut c.waits);
                 let techs_done = std::mem::take(&mut c.techs_done);
                 let carts = std::mem::take(&mut c.carts);
                 let completions = std::mem::take(&mut c.completions);
@@ -11419,6 +11656,20 @@ impl Turns {
                             "a move off a footprint of a unit that leaves its list",
                         )));
                     } else if let Err(e) = self.move_aside(p, i, m) {
+                        result = Err(e);
+                    }
+                }
+                // the waits for foundations the unit AI's orders found (slot 0x388)
+                for w in waits {
+                    // a unit that ran its orders stays in its list: the full update runs them
+                    // only for a unit alive and not inside another, between turns only for a
+                    // unit of a type below 70 or outside, and nothing after the queue in the
+                    // unit's update kills, captures or houses it
+                    debug_assert!(matches!(result, Ok(Step::Stay)) || result.is_err());
+                    if !matches!(result, Ok(Step::Stay)) {
+                        break;
+                    }
+                    if let Err(e) = self.wait_for_foundation(p, i, w) {
                         result = Err(e);
                     }
                 }
@@ -12853,6 +13104,260 @@ mod tests {
         };
         assert_eq!(order(2), Some((2, BUILD_ORDER, 10028, 1)));
         assert_eq!(order(1), Some((1, BUILD_ORDER, 10028, 1)));
+    }
+
+    /// A world of player 1's villager 9175 (master 83, which has no Build task) beside its
+    /// house's foundation 10028 (master 70, state 0, no build points yet), with the unit AI's
+    /// queue `orders`.
+    fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> Turns {
+        let villager = Unit {
+            id: 9175,
+            position: [29.5, 89.5, 0.0],
+            life: Lifecycle {
+                class: Class::Animated,
+                state: 2,
+                hp: 25.0,
+                master_id: 83,
+                ..Lifecycle::default()
+            },
+            ai: Some(UnitAi {
+                ai_type: crate::unit_ai::CIVILIAN,
+                current_order: -1,
+                current_action: -1,
+                current_target: -1,
+                last_target: -1,
+                orders,
+                ..UnitAi::default()
+            }),
+            pasture: -1,
+            my_pasture: -1,
+            ..Unit::default()
+        };
+        let foundation = Unit {
+            id: 10028,
+            position: [30.0, 88.0, 0.0],
+            life: Lifecycle {
+                class: Class::Animated,
+                state: 0,
+                hp: 1.0,
+                master_id: 70,
+                ..Lifecycle::default()
+            },
+            construction: Some(Construction {
+                progress: 0.0,
+                desolid: true,
+                builders: 0,
+                hit_points: 550,
+                build_time: 25,
+                record: crate::spatial::Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: false,
+            }),
+            pasture: -1,
+            my_pasture: -1,
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            29910,
+            1,
+            vec![0, 0],
+            vec![
+                Player::default(),
+                Player {
+                    objects: vec![villager, foundation],
+                    attributes: vec![0.0; 250],
+                    relations: vec![1, 0],
+                    ..Player::default()
+                },
+            ],
+        );
+        t.masters = vec![builder_masters(), builder_masters()];
+        t
+    }
+
+    fn task(action_type: i16) -> crate::masters::Task {
+        crate::masters::Task {
+            action_type,
+            object_group: -1,
+            ..crate::masters::Task::default()
+        }
+    }
+
+    /// Slot 0x820's search (`FUN_14106c6a0`): the own master's list first; without a task there
+    /// the player's masters by id of the unit's class, type and swap group, with any filter,
+    /// the first with a task giving it with the master to switch to; none without a group.
+    #[test]
+    fn slot_0x820_s_search_takes_the_own_task_else_the_first_master_of_the_swap_group() {
+        let t = sent_off_world(vec![]);
+        let masters = &t.masters[1];
+        let find = |id: i32| t.object(id);
+        let site = task_target_with(10028, 1, &find, &t.masters)
+            .unwrap()
+            .unwrap();
+        let world = World {
+            players: &t.players,
+            drop_sites: &[],
+        };
+        let search = |own: &Master| {
+            let actor = Actor {
+                id: 9175,
+                master: own,
+                player: 1,
+                held: (-1, 0.0),
+                attribute_95: 0.0,
+                civ: 0,
+            };
+            task_search(masters, &actor, &site, &site, -1, &world)
+                .unwrap()
+                .map(|(task, switch)| (task.action_type, switch.map(|m| m.id)))
+        };
+        // a villager of master 83 builds as the builder 118, the first of its group with a task
+        assert_eq!(search(masters.get(83).unwrap()), Some((101, Some(118))));
+        // the builders find it in their own lists
+        assert_eq!(search(masters.get(118).unwrap()), Some((101, None)));
+        assert_eq!(search(masters.get(212).unwrap()), Some((101, None)));
+        // without a swap group there is no other list to try
+        let alone = Master {
+            task_by_group: 0,
+            ..masters.get(83).unwrap().clone()
+        };
+        assert_eq!(search(&alone), None);
+    }
+
+    /// The task finder's target (`Turns::task_target`'s reading): an annex stands for its main
+    /// building, once per step; an object not held is none.
+    #[test]
+    fn a_task_target_reads_an_annex_as_its_main_building() {
+        let mut t = sent_off_world(vec![]);
+        t.players[1].objects[0].annex_of = Some(10028);
+        let find = |id: i32| t.object(id);
+        let at = |steps| {
+            task_target_with(9175, steps, &find, &t.masters)
+                .unwrap()
+                .map(|x| (x.id, x.master.id, x.state))
+        };
+        assert_eq!(at(0), Some((9175, 83, 2)));
+        assert_eq!(at(1), Some((10028, 70, 0)));
+        assert_eq!(at(2), Some((10028, 70, 0)));
+        assert!(
+            task_target_with(77, 1, &find, &t.masters)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    /// The unit's slot 0x388 after its unit AI's update (`FUN_141226fc0`): the switch to the
+    /// master slot 0x820's search gave (slot 0x90), the actions cleared and the wait (type 0x9a,
+    /// state 10) the only one, its target −1 (the foundation is at its `+0x68`).
+    #[test]
+    fn a_wait_for_a_foundation_switches_the_villager_and_holds_the_task() {
+        let mut t = sent_off_world(vec![]);
+        let wait = Wait {
+            target: 10028,
+            task: task(101),
+            switch: Some(118),
+        };
+        t.wait_for_foundation(1, 0, wait).unwrap();
+        let v = &t.players[1].objects[0];
+        assert_eq!(v.life.master_id, 118);
+        assert_eq!(
+            v.wait_solidify,
+            Some(crate::wait_solidify::WaitSolidify::new(task(101), 10028))
+        );
+        assert_eq!(
+            v.top_action(),
+            Some(TopAction {
+                kind: 0x9a,
+                state: 10
+            })
+        );
+        assert_eq!(v.top_target(), Some(-1));
+        // without a switch the master stays
+        let mut kept = sent_off_world(vec![]);
+        kept.wait_for_foundation(
+            1,
+            0,
+            Wait {
+                switch: None,
+                ..wait
+            },
+        )
+        .unwrap();
+        assert_eq!(kept.players[1].objects[0].life.master_id, 83);
+    }
+
+    /// The wait's foundation as its update reads it: its build points among the owner's other
+    /// objects or the other players', none when the world does not hold it.
+    #[test]
+    fn a_wait_reads_its_foundation_s_build_points_wherever_it_is() {
+        let t = sent_off_world(vec![]);
+        let (none, players) = (&t.players[..0], &t.players[..]);
+        let own = Foreign {
+            before: none,
+            after: none,
+        };
+        assert_eq!(wait_progress(10028, &t.players[1].objects, own), Some(0.0));
+        assert_eq!(wait_progress(77, &t.players[1].objects, own), None);
+        // another player's (player 0 updating, player 1 after it)
+        let other = Foreign {
+            before: none,
+            after: &players[1..],
+        };
+        assert_eq!(wait_progress(10028, &[], other), Some(0.0));
+    }
+
+    /// The whole of it: a villager the foundation sent off (its queue the foundation's order)
+    /// runs the order on its turn (slot 0x108 forced: its slot 0x388 finds the builder's task by
+    /// the swap group), becomes the builder with the wait as its only action, and keeps waiting
+    /// while the foundation has no build points; once they pass 0.01 its next update drops the
+    /// wait, the unit AI's action value staying 0x27a.
+    #[test]
+    fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
+        use crate::unit_ai::{FOUNDATION_ORDER, QueuedOrder, WAIT_SOLIDIFY_ACTION};
+        let order = QueuedOrder {
+            issuer: 1,
+            order: FOUNDATION_ORDER,
+            priority: 100,
+            target: 10028,
+            target_owner: 1,
+            point: [30.0, 0.0, 0.0],
+            range: 0.0,
+            shown: [30.0, 0.0],
+            ready: true,
+            target_type: 70,
+        };
+        let mut t = sent_off_world(vec![order]);
+        t.tick(50);
+        let v = &t.players[1].objects[0];
+        assert!(!v.stopped, "{:?}", t.players[1].objects[0]);
+        assert_eq!(v.life.master_id, 118);
+        assert_eq!(v.top_action_kind(), Some(0x9a));
+        let ai = v.ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.current_action, ai.last_action, ai.current_order),
+            (WAIT_SOLIDIFY_ACTION, WAIT_SOLIDIFY_ACTION, FOUNDATION_ORDER)
+        );
+        assert_eq!(ai.orders, vec![]);
+        // player 0's update, then player 1's: the wait reads 0 build points and stays
+        t.tick(50);
+        t.tick(50);
+        assert_eq!(t.players[1].objects[0].top_action_kind(), Some(0x9a));
+        t.players[1].objects[1]
+            .construction
+            .as_mut()
+            .unwrap()
+            .progress = 0.5;
+        t.tick(50);
+        t.tick(50);
+        assert_eq!(t.players[1].freezes, vec![]);
+        let v = &t.players[1].objects[0];
+        assert_eq!(v.wait_solidify, None);
+        assert_eq!(
+            v.ai.as_ref().map(|ai| ai.current_action),
+            Some(WAIT_SOLIDIFY_ACTION)
+        );
     }
 
     #[test]
