@@ -97,6 +97,8 @@ pub struct Site<'a> {
     pub construction: &'a mut Construction,
     /// The foundation's movement state (its last move time), if the slice holds it.
     pub mover: Option<&'a mut crate::movement::Mover>,
+    /// Its missiles per volley (`+0xa00`), which its construction's start sets to its master's.
+    pub firepower: Option<&'a mut f32>,
     /// What its completion reads ([`Construction::complete`]).
     pub completion: Completion<'a>,
 }
@@ -113,8 +115,79 @@ pub struct Completion<'a> {
     /// The game's setting at `+0x680` ([`crate::turn::Turns::mode_680`]).
     pub mode_680: i32,
     /// The owner's attributes 237, 238 and 239 (`player+0x768`..`+0x778`): a farm's bonus when
-    /// built, its amount, resource and technology ([`Construction::complete`]).
+    /// built, its amount, its resource and a master near which it is given
+    /// ([`Completion::first_part`]).
     pub farm_bonus: [f32; 3],
+    /// The owner's masters, whose table `FUN_141659d20` reads.
+    pub masters: Option<&'a crate::masters::Masters>,
+    /// The owner is a computer player (`FUN_141659cf0`).
+    pub computer: bool,
+    /// The building has a unit AI (`+0x6b0`): a mule cart's.
+    pub ai: bool,
+}
+
+/// What the completion's first part (`FUN_1411c6bd0`) gives its caller: the attributes its owner
+/// gains (a farm's bonus) and whether a mule cart's search for resources follows.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FirstPart {
+    /// The attributes its owner gains, in order.
+    pub attributes: Vec<(i16, f32)>,
+    /// The building's master has a task of action type 0x99 and the building a unit AI: its
+    /// search for resources follows ([`crate::turn::Turns::cart_search`]).
+    pub cart: bool,
+}
+
+impl Completion<'_> {
+    /// The completion's first part (`FUN_1411c6bd0`), which the building's `set_state` runs from
+    /// state 0 to any state of 2 or more: a farm (class 49) whose build points reached its build
+    /// time (COMISS, JC: a NaN does not) gets its owner's bonus when attributes 238 (a resource)
+    /// and 239 (a master), cut to integers (CVTTSS2SI), are both 0 or more (`FUN_1411c66a0`): a
+    /// master 239 the owner has (`FUN_141659d20`) gives it only near the farm
+    /// (`FUN_1411d3cd0`, not modelled); a resource up to the owner's attribute count gets
+    /// attribute 237's amount (slot 0xf8 with 1 and 1); a pasture (1893, 1897) then fills
+    /// (`FUN_1411c8410`, not modelled); a master with a task of action type 0x99 and a unit AI
+    /// runs its cart's search (the tail's game mode 4 test, `FUN_140c87f20`, holds in a game).
+    /// Not modelled: a computer player's (`FUN_1411e7ca0`) and an overridden sprite's master
+    /// copy (`+0x788`). Not held: the owner's `+0x137c` (cleared for master 109), the object
+    /// tracker (`FUN_14104eac0`, `FUN_14104faf0`) and the farm's `+0xcac`.
+    ///
+    /// # Errors
+    ///
+    /// What it does not model.
+    pub fn first_part(&self, c: &Construction) -> Result<FirstPart, Unsupported> {
+        use crate::checkpoint::cvttss2si;
+        let master = self.master.ok_or(Unsupported(
+            "a completion of a master the slice does not have",
+        ))?;
+        if self.computer {
+            return Err(Unsupported(
+                "a computer player's building part (FUN_1411e7ca0)",
+            ));
+        }
+        if c.sprite_override {
+            return Err(Unsupported("a completion of an overridden sprite"));
+        }
+        let mut part = FirstPart::default();
+        if master.class == FARM && f32::from(c.build_time) <= c.progress {
+            let [amount, resource, near] = self.farm_bonus;
+            let (resource, near) = (cvttss2si(resource), cvttss2si(near));
+            if 0 <= resource && 0 <= near {
+                let has = i16::try_from(near)
+                    .ok()
+                    .and_then(|m| self.masters?.get(m))
+                    .is_some();
+                if has {
+                    return Err(Unsupported("a farm's bonus near a master (FUN_1411d3cd0)"));
+                }
+                part.attributes.push((resource as i16, amount));
+            }
+            if matches!(master.id, 1893 | 1897) {
+                return Err(Unsupported("a pasture's completion (FUN_1411c8410)"));
+            }
+        }
+        part.cart = self.ai && master.tasks.iter().any(|t| t.action_type == CART_TASK);
+        Ok(part)
+    }
 }
 
 /// What a builder's work did to its foundation ([`Construction::work`]).
@@ -167,6 +240,19 @@ pub struct Builder<'a> {
     /// The state of each foundation its unit AI's queued build orders name (None for one that
     /// is gone), as the update starts.
     pub build_targets: &'a [(i32, Option<u8>)],
+    /// What the footprint clearing of its `set_state(7)` reads of the objects on the tiles
+    /// ([`ClearLook`]), as the update starts; None for one the caller does not hold.
+    pub look: Looks<'a>,
+}
+
+/// What the footprint clearing reads of the objects on the tiles, by id ([`ClearLook`]).
+#[derive(Clone, Copy)]
+pub struct Looks<'a>(pub &'a dyn Fn(i32) -> Option<ClearLook>);
+
+impl std::fmt::Debug for Looks<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Looks")
+    }
 }
 
 /// What the end of a Build's work leads to (case 0xdf).
@@ -205,6 +291,9 @@ pub struct BuildStep {
     /// The units on the foundation's footprint besides the builder, which its test
     /// (`FUN_14123bb20`) would send off: the caller's.
     pub occupants: Vec<i32>,
+    /// The objects the footprint clearing of its `set_state(7)` deletes (`FUN_1415c3620` with
+    /// `param_6`), in order; their records went already: the caller's.
+    pub cleared: Vec<Cleared>,
     /// The end of the work at a drop site (`set_state(224)`, `FUN_140aadc50`): the load the
     /// builder gives its player (kind, amount; the food kinds 15 to 17 as 0), which it no longer
     /// carries (`FUN_14119d310` with −1 and 0): the caller's.
@@ -359,6 +448,7 @@ impl BuildAction {
             }
             (4, None) => Err(Unsupported("a Build action in state 4 without its MoveTo")),
             (WORK, _) => {
+                let look = builder.look;
                 // case 5: FUN_141162db0 turns the builder to face its foundation
                 let at = walk
                     .world
@@ -379,7 +469,7 @@ impl BuildAction {
                         "a builder that turns over time to face its foundation",
                     ));
                 }
-                self.place(&walk, site, waits, &mut step)
+                self.place(&mut walk, site, (waits, look), &mut step)
             }
             // case 0xdd: the wait runs down by the world's dt, then set_state(7) again
             (WAIT, _) => {
@@ -388,7 +478,7 @@ impl BuildAction {
                     return Ok(step);
                 }
                 self.timer = 0.0;
-                self.place(&walk, site, waits, &mut step)
+                self.place(&mut walk, site, (waits, builder.look), &mut step)
             }
             (PLACE, _) => self.work(walk, site, load).map(|(c, d)| {
                 step.completed = c;
@@ -611,13 +701,16 @@ impl BuildAction {
     }
 
     /// `set_state(7)` (`0x140aae200` case 7) on a foundation no builder started: clear the
-    /// footprint of what may be built over, find who stands on it, and send this builder off it
-    /// if it stands there itself.
+    /// footprint of what may be built over (`FUN_1415c3620` with `param_6`,
+    /// [`footprint_clearing`]: the records of what goes go now, the deletes are the caller's
+    /// after the update, [`BuildStep::cleared`]), find who stands on it (those just cleared are in
+    /// state 7, which the test passes over), and send this builder off it if it stands there
+    /// itself.
     fn place(
         &mut self,
-        walk: &Walk<'_>,
+        walk: &mut Walk<'_>,
         site: Option<Site<'_>>,
-        waits: &mut u8,
+        (waits, look): (&mut u8, Looks<'_>),
         step: &mut BuildStep,
     ) -> Result<(), Unsupported> {
         let mut site = site.ok_or(Unsupported("a foundation of another player"))?;
@@ -632,17 +725,38 @@ impl BuildAction {
         if !site.construction.desolid {
             return self.join(walk, &mut site);
         }
-        let world = &*walk.world;
-        let placed = world
+        let placed = *walk
+            .world
             .get_known(self.target)?
             .ok_or(Unsupported("a foundation that is gone"))?;
-        let site_ref = &mut site;
-        let site = placed;
-        if !world.footprint_clearing(self.target, site)?.is_empty() {
-            return Err(Unsupported("a foundation clears objects off its footprint"));
+        let clearing = ClearingSite {
+            player: placed.player,
+            master: placed.master,
+            class: placed.class,
+            radius: placed.radius,
+            at: [placed.position[0], placed.position[1]],
+            trees: true,
+        };
+        let cleared = footprint_clearing(walk.world, &clearing, look.0)?;
+        for cl in cleared.iter().filter(|cl| cl.record_goes) {
+            if let Some(p) = walk.plan.as_mut() {
+                p.pathing.removed(cl.id);
+            }
+            walk.world.drop_record(cl.id);
         }
+        if let Some(p) = walk.plan.as_mut() {
+            p.pathing.tiles_changed(walk.world.take_changes());
+        }
+        let site_ref = &mut site;
+        let site = &placed;
+        let world = &*walk.world;
         let obstructs = !matches!(site.obstruction_type, 0 | 12);
-        let occupants = world.footprint_occupants(self.target, site, obstructs)?;
+        let occupants: Vec<i32> = world
+            .footprint_occupants(self.target, site, obstructs)?
+            .into_iter()
+            .filter(|&id| !cleared.iter().any(|cl| cl.id == id))
+            .collect();
+        step.cleared = cleared;
         step.occupants = occupants
             .iter()
             .copied()
@@ -807,6 +921,281 @@ impl BuildAction {
     }
 }
 
+/// What the footprint clearing (`FUN_1415c3620`) reads of the new building: its owner
+/// (`param_2`), its master's id (`param_3`), class and radii, its place (`param_4`,
+/// `param_5`), and whether the caller is the builder's or a new object's (`param_6`: the trees
+/// at most of 1 hit point go too, and each deleted object's record with them).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClearingSite {
+    /// The building's owner.
+    pub player: usize,
+    /// Its master's id.
+    pub master: i16,
+    /// Its master's class (`+0x410`).
+    pub class: i16,
+    /// Its master's radii (`+0x5d8`, `+0x5dc`).
+    pub radius: [f32; 2],
+    /// Its place.
+    pub at: [f32; 2],
+    /// `param_6`: the builder's call (the Build's `set_state(7)`) or a new object's
+    /// (`FUN_14162ce00` with its flag).
+    pub trees: bool,
+}
+
+/// What the footprint clearing reads of an object on a tile besides its place: its hit points
+/// (`+0x278`), its master's height (`+0x5e0`) and type, its state, whether it is a desolid
+/// foundation (`+0xc60`) and whether its record went already (`mROOAlreadyCalled`, `+0x686`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClearLook {
+    /// `+0x278`.
+    pub hp: f32,
+    /// Its master's `radius_z` (`+0x5e0`).
+    pub height: f32,
+    /// `+0x686`.
+    pub roo_called: bool,
+    /// Its master's type.
+    pub kind: u8,
+    /// `+0x640`.
+    pub state: u8,
+    /// `+0xc60`.
+    pub desolid: bool,
+}
+
+/// An object the footprint clearing deletes, in the tiles' order: a wall (class 27) first goes
+/// through the building's delete core (`FUN_1411ccbb0`), then every one is destroyed (slot
+/// 0xd0); with `param_6` its record goes after (`FUN_141189670`, then `+0x686` set,
+/// `FUN_141189b60`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cleared {
+    /// The object.
+    pub id: i32,
+    /// It is a wall (class 27): `FUN_1411ccbb0` before its destroy.
+    pub wall: bool,
+    /// Its record goes in the clearing: its destroy's death part drops it (a unit or a tall
+    /// building not desolid of type 70 and up below state 3 whose record is still there,
+    /// [`crate::turn::combat_dies`], which sets `+0x686`), or with `param_6` `FUN_141189670`
+    /// after the destroy does (`+0x686` still clear, and its master tall, COMISS: a NaN height
+    /// too, or the object holding its record).
+    pub record_goes: bool,
+}
+
+/// The flag masters (`FUN_140fde270`: 274, 1689 and 1785), which the footprint clearing leaves
+/// alone unless their master has height.
+const FLAG_MASTERS: [i16; 3] = [0x112, 0x699, 0x6f9];
+/// The tiles the footprint clearing scans each way of the building's place (`DAT_142eb0f48`).
+pub(crate) const CLEARING_REACH: f32 = 4.0;
+/// The hit points a tree at most has that the builder's clearing takes (`DAT_14330eb8c`).
+const STUMP_HP: f32 = 1.0;
+/// The masters whose classes (39, the gate, and 52) take their owner's walls (27) off their
+/// footprint, and the tree class (15).
+const GATE: i16 = 39;
+const CLASS_52: i16 = 52;
+const TREE: i16 = 15;
+
+/// `FUN_1415c3620` with `param_7` 0, its choice: the objects whose centre is on the tiles from 4
+/// before the building's place to 4 past it (CVTTSS2SI to 16 bits, held on the map), rows then
+/// columns, each tile's list in its order (`objects_on`: the ghosts, type 25, are not on it), of
+/// another master than the building's, that may be built on (`+0x5e9`), or a wall (27) of the
+/// building's owner under a gate (39) or a master of class 52, or with `param_6` a tree (15)
+/// of at most 1 hit point (COMISS: a NaN is not), whose box meets the building's (on each axis
+/// the gap below the two radii summed; the gap's sign flips only below 0). Of those, a flag
+/// master (`FUN_140fde270`) whose height is at most 0 stays; the others go ([`Cleared`]). A
+/// building without radii clears nothing (COMISS: a NaN radius is not 0 or less). The game's
+/// other branch, `param_7` or the editor's screen mode (`FUN_140c87f20` 4: the objects only leave
+/// their tiles, `FUN_140f5f3c0`), never runs in a game: `param_7` is the map generator's
+/// (`FUN_140fad9c0`).
+///
+/// # Errors
+///
+/// An object on a tile the caller does not hold (`look` gives none), and for the builder's call a
+/// frozen object that may be on the tiles ([`Spatial::check_known`]).
+pub(crate) fn footprint_clearing(
+    world: &Spatial,
+    site: &ClearingSite,
+    look: &dyn Fn(i32) -> Option<ClearLook>,
+) -> Result<Vec<Cleared>, Unsupported> {
+    use crate::checkpoint::cvttss2si;
+    use crate::fmath::below_or_unordered;
+    let [rx, ry] = site.radius;
+    if !below_or_unordered(0.0, rx) && !below_or_unordered(0.0, ry) {
+        return Ok(Vec::new());
+    }
+    let [w, h] = world.map;
+    let range = |v: f32, size: i32| {
+        let low = cvttss2si(v - CLEARING_REACH) as i16;
+        let high = cvttss2si(v + CLEARING_REACH) as i16;
+        let high = if size <= i32::from(high) {
+            (size - 1) as i16
+        } else {
+            high
+        };
+        (low.max(0), high)
+    };
+    let (x0, x1) = range(site.at[0], w);
+    let (y0, y1) = range(site.at[1], h);
+    if x1 < x0 || y1 < y0 {
+        return Ok(Vec::new());
+    }
+    // a stopped player's units may have felled a tree there since they froze: the builder's
+    // choice, which reads the trees' hit points, wants the tiles known; the constructor's reads
+    // only masters and owners, which they do not change
+    if site.trees {
+        world.check_known([
+            f32::from(x0),
+            f32::from(y0),
+            f32::from(x1) + 1.0,
+            f32::from(y1) + 1.0,
+        ])?;
+    }
+    let under_gate = matches!(site.class, GATE | CLASS_52);
+    let mut cleared = Vec::new();
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            for (id, o) in world.objects_on(i32::from(x), i32::from(y)) {
+                if o.master == site.master {
+                    continue;
+                }
+                let own_wall = o.player == site.player && under_gate && o.class == WALL;
+                let tree = site.trees && o.class == TREE;
+                if o.buildable_on == 0 && !own_wall && !tree {
+                    continue;
+                }
+                let seen = look(id).ok_or(Unsupported(
+                    "a footprint clearing of an object the slice does not hold",
+                ))?;
+                // the tree's test: COMISS 1.0 against its hit points, JC passes it over (a NaN
+                // too)
+                if o.buildable_on == 0 && !own_wall && below_or_unordered(STUMP_HP, seen.hp) {
+                    continue;
+                }
+                let dx = (o.position[0] - site.at[0]).abs();
+                let dy = (o.position[1] - site.at[1]).abs();
+                if !(dx < o.radius[0] + rx && dy < o.radius[1] + ry) {
+                    continue;
+                }
+                // COMISS 0 against the height, JNC: a flag master of height 0 or less stays
+                if FLAG_MASTERS.contains(&o.master) && !below_or_unordered(0.0, seen.height) {
+                    continue;
+                }
+                // the destroy's death part (FUN_14121cc40 below state 3) drops the record and sets
+                // +0x686 first; then FUN_141189670: COMISS 0 against the height, JC drops the
+                // record (a NaN too), else the record held (`+0x658`) does
+                let dies = 70 <= seen.kind && seen.state < 3 && !seen.roo_called;
+                let destroy_drops =
+                    dies && (seen.kind < 80 || (!seen.desolid && 0.0 < seen.height));
+                let roo_drops = site.trees
+                    && !seen.roo_called
+                    && !dies
+                    && (below_or_unordered(0.0, seen.height) || o.obstruction.is_some());
+                cleared.push(Cleared {
+                    id,
+                    wall: o.class == WALL,
+                    record_goes: destroy_drops || roo_drops,
+                });
+            }
+        }
+    }
+    Ok(cleared)
+}
+
+impl crate::turn::Turns {
+    /// What a built building's storage gave its owner leaves (`FUN_1411e63f0`, then
+    /// `FUN_1411e6580`, [`crate::turn::storage_leaves`]) outside its update.
+    ///
+    /// # Errors
+    ///
+    /// An object the slice does not hold, its own store, and an attribute the owner lacks.
+    pub(crate) fn storage_leaves(
+        &mut self,
+        owner: usize,
+        id: i32,
+        master: &Master,
+    ) -> Result<(), Unsupported> {
+        let (_, u) = self
+            .object_mut(id)
+            .ok_or(Unsupported("a building the slice does not hold"))?;
+        for (kind, amount) in crate::turn::storage_leaves(u, master)? {
+            self.players[owner].add_attribute(kind, amount)?;
+        }
+        Ok(())
+    }
+
+    /// The completion's first part (`FUN_1411c6bd0`, [`Completion::first_part`]) of the
+    /// foundation `id` of `owner` outside its update: its owner gains its attributes, then a mule
+    /// cart's search runs from state 0 ([`crate::turn::Turns::cart_search`]).
+    ///
+    /// # Errors
+    ///
+    /// What the part does not model.
+    pub(crate) fn completion_part(
+        &mut self,
+        owner: usize,
+        id: i32,
+        master: &Master,
+    ) -> Result<(), Unsupported> {
+        let (_, u) = self
+            .object(id)
+            .ok_or(Unsupported("a building the slice does not hold"))?;
+        let construction = u
+            .construction
+            .ok_or(Unsupported("a foundation without its construction"))?;
+        let completion = Completion {
+            master: Some(master),
+            annexed: false,
+            attribute_204: false,
+            mode_680: self.mode_680,
+            farm_bonus: crate::turn::farm_bonus(&self.players[owner].attributes),
+            masters: self.masters.get(owner),
+            computer: self.players[owner].computer,
+            ai: u.ai.is_some(),
+        };
+        let part = completion.first_part(&construction)?;
+        for (kind, amount) in part.attributes {
+            self.players[owner].add_attribute(kind, amount)?;
+        }
+        if part.cart {
+            self.cart_search(owner, id, 0)?;
+        }
+        Ok(())
+    }
+
+    /// The construction's start (`FUN_1411e5670`, [`Construction::begin`]) of the foundation
+    /// `id` of `owner` outside its update: a desolid one starts, its missiles per volley are its
+    /// master's, and its owner watches it ([`crate::turn::Turns::watch_started`]).
+    ///
+    /// # Errors
+    ///
+    /// A sleeping foundation, and what the start does not model.
+    pub(crate) fn construction_starts(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+        let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
+            return Err(Unsupported("a sleeping foundation's construction starts"));
+        };
+        let volley = self
+            .masters
+            .get(p)
+            .and_then(|m| m.get(self.players[p].objects[i].life.master_id))
+            .map_or(0.0, |m| m.volley_fire);
+        let now = self.world_time;
+        let u = &mut self.players[p].objects[i];
+        let Some(c) = u.construction.as_mut() else {
+            return Ok(());
+        };
+        if Construction::begin(
+            id,
+            c,
+            u.mover.as_mut(),
+            &mut self.spatial,
+            &mut self.pathing,
+            now,
+        )? {
+            c.started = false;
+            u.firepower = volley;
+            self.watch_started(owner, id)?;
+        }
+        Ok(())
+    }
+}
+
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments).
 const fn beside_diagonal(bx: i32, by: i32, dx: i32, dy: i32) -> ([i32; 2], [i32; 2]) {
     if dx < 1 {
@@ -842,10 +1231,13 @@ impl Construction {
         }
         let c = &mut *site.construction;
         if c.desolid {
-            Self::start(site.id, c, world, pathing)?;
-            // FUN_1411e5670's last line: the last move time is the world's time plus 1
-            if let Some(m) = site.mover.as_deref_mut() {
-                m.last_move = now.wrapping_add(1);
+            // FUN_1411cd0d0: the desolid foundations it overlaps go after the builder's update
+            // (Turns::clear_foundations_under), then FUN_1411e5670
+            world.started(site.id);
+            if Self::begin(site.id, c, site.mover.as_deref_mut(), world, pathing, now)?
+                && let (Some(f), Some(m)) = (site.firepower.as_deref_mut(), site.completion.master)
+            {
+                *f = m.volley_fire;
             }
         }
         let build_time = f32::from(c.build_time);
@@ -902,29 +1294,9 @@ impl Construction {
                 "a completion with a player's attribute 204 (FUN_14152bcb0)",
             ));
         }
-        if site.construction.sprite_override {
-            return Err(Unsupported("a completion of an overridden sprite"));
-        }
-        let mut attributes = Vec::new();
-        // FUN_1411c6bd0's part for a farm (class 49) built: FUN_1411c66a0 with the owner's
-        // attributes 238 (a resource), 239 (a technology) and 237 (an amount): a resource of the
-        // player's gets the amount (slot 0xf8 with 1 and 1); the pastures' part (FUN_1411c8410)
-        // and a technology's test (FUN_141659d20, FUN_1411d3cd0) are not modelled
-        if master.class == FARM {
-            if matches!(master.id, 1893 | 1897) {
-                return Err(Unsupported("a pasture's completion (FUN_1411c8410)"));
-            }
-            let [amount, resource, tech] = done.farm_bonus;
-            let (resource, tech) = (resource as i32, tech as i32);
-            if 0 <= resource && 0 <= tech {
-                return Err(Unsupported(
-                    "a farm's bonus under a technology (FUN_141659d20)",
-                ));
-            }
-            if 0 <= resource {
-                attributes.push((resource as i16, amount));
-            }
-        }
+        // FUN_1411c6bd0 (its build points are its build time already: FUN_1411cc430 wrote them)
+        let first = done.first_part(site.construction)?;
+        let mut attributes = first.attributes;
         // a wall's (adjacent mode) facets and its neighbours' (FUN_1411ce890) are not held
         if building.stack_unit >= 0 || building.disappears_when_built {
             return Err(Unsupported(
@@ -990,34 +1362,39 @@ impl Construction {
         Ok(Built {
             attributes,
             tech: (0 <= building.tech).then_some(building.tech),
-            cart: master
-                .tasks
-                .iter()
-                .any(|t| t.action_type == CART_TASK)
-                .then_some(before),
+            cart: first.cart.then_some(before),
         })
     }
 
-    /// The construction starts (`FUN_1411cd0d0`, then `FUN_1411e5670`): the desolid foundations
-    /// it overlaps go (the world's started list, `Turns::clear_foundations_under`, after the
-    /// builder's update); it is no longer desolid, holds a sliver of
+    /// The construction starts (`FUN_1411e5670`) on a desolid foundation (one not desolid, or
+    /// without its own master copy `+0x6c0`, which a desolid one always holds, returns at once,
+    /// false): its master is its owner's again (the same in the slice), its missiles per volley
+    /// its master's (`+0xa00`, the caller's: true); it is no longer desolid, holds a sliver of
     /// progress, and gets its obstruction record (`FUN_141056460`: the tiles it marks, which the
     /// planners see, and its shape in the mesh); its footprint comes into its player's sight and
-    /// its tiles link to its anchor again (`FUN_140f73900`); its last move time becomes the
-    /// world's time plus 1 ([`Construction::work`]). Its damage sprites, `+0xa00` and `+0xca4` are
-    /// not held by the slice.
-    fn start(
+    /// its tiles link to its anchor again (`FUN_140f73900`); its owner watches it
+    /// (`FUN_141090430` when `FUN_1411cc980`, the caller's through [`Construction::started`]);
+    /// its last move time becomes the world's time plus 1. Not held: its damage sprites (made
+    /// for a player not allied with the local one), the tall count of its tile (`FUN_140f64540`)
+    /// and `+0xca4`.
+    ///
+    /// # Errors
+    ///
+    /// A foundation the world does not hold.
+    pub(crate) fn begin(
         id: i32,
         c: &mut Self,
+        mover: Option<&mut crate::movement::Mover>,
         world: &mut Spatial,
         pathing: &mut Pathing,
-    ) -> Result<(), Unsupported> {
+        now: u32,
+    ) -> Result<bool, Unsupported> {
+        if !c.desolid {
+            return Ok(false);
+        }
         let placed = *world
             .get(id)
             .ok_or(Unsupported("a foundation that is gone"))?;
-        // the desolid foundations it overlaps go after the builder's update (FUN_1411cd0d0,
-        // Turns::clear_foundations_under)
-        world.started(id);
         c.desolid = false;
         c.started = true;
         c.progress = f32::from_bits(STARTED);
@@ -1032,13 +1409,282 @@ impl Construction {
         if let Some(p) = world.get(id) {
             pathing.moved(id, p, false);
         }
-        Ok(())
+        if let Some(m) = mover {
+            m.last_move = now.wrapping_add(1);
+        }
+        Ok(true)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An object of `master` (class `class`, radius `r`, `buildable` on) of player 1 at `x`, `y`.
+    fn on_map(
+        x: f32,
+        y: f32,
+        master: i16,
+        class: i16,
+        r: f32,
+        buildable: u8,
+    ) -> crate::spatial::Placed {
+        crate::spatial::Placed {
+            position: [x, y, 0.0],
+            radius: [r, r],
+            class,
+            player: 1,
+            master,
+            obstruction_type: 0,
+            buildable_on: buildable,
+            tall: false,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        }
+    }
+
+    /// What `FUN_1415c3620` reads besides the place: hit points `hp` and height `height` of a
+    /// live static object.
+    const fn seen(hp: f32, height: f32) -> ClearLook {
+        ClearLook {
+            hp,
+            height,
+            roo_called: false,
+            kind: 10,
+            state: 2,
+            desolid: false,
+        }
+    }
+
+    /// `FUN_1415c3620` for a house (master 70, radius 1) of player 1 at (10.5, 10.5): rows, then
+    /// columns, then each tile's list: two decorations on one tile go in the list's order; a
+    /// wall of the owner only under a gate (class 39); a stump (a tree of at most 1 hit point)
+    /// only for the builder's call; a flag master (274) of height 0 stays, one with height goes;
+    /// what does not overlap, a live tree and the house's own master stay.
+    #[test]
+    fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
+        use crate::spatial::Tiles;
+        let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        let objects = [
+            (5, on_map(10.5, 10.5, 1358, 5, 0.5, 1), seen(1.0, 0.0)),
+            (3, on_map(10.2, 10.2, 1351, 5, 0.5, 1), seen(1.0, 0.0)),
+            (8, on_map(11.2, 10.5, 349, TREE, 0.5, 0), seen(0.5, 1.0)),
+            (9, on_map(11.5, 9.5, 350, TREE, 0.5, 0), seen(100.0, 1.0)),
+            (
+                11,
+                on_map(11.7, 9.7, 350, TREE, 0.5, 0),
+                seen(f32::NAN, 1.0),
+            ),
+            (4, on_map(9.5, 10.5, 72, WALL, 0.5, 0), seen(100.0, 1.0)),
+            (6, on_map(10.2, 11.5, 0x112, 11, 0.5, 1), seen(1.0, 0.0)),
+            (7, on_map(11.5, 11.5, 0x112, 11, 0.5, 1), seen(1.0, 2.0)),
+            (10, on_map(13.6, 10.5, 1358, 5, 0.5, 1), seen(1.0, 0.0)),
+            (12, on_map(10.6, 10.6, 70, 3, 1.0, 1), seen(1.0, 0.0)),
+        ];
+        for (id, p, _) in &objects {
+            world.insert(*id, *p);
+        }
+        let look = |id: i32| objects.iter().find(|o| o.0 == id).map(|o| o.2);
+        let site = |class: i16, trees: bool| ClearingSite {
+            player: 1,
+            master: 70,
+            class,
+            radius: [1.0, 1.0],
+            at: [10.5, 10.5],
+            trees,
+        };
+        let ids = |world: &Spatial, s: ClearingSite| -> Vec<i32> {
+            footprint_clearing(world, &s, &look)
+                .unwrap()
+                .iter()
+                .map(|c| c.id)
+                .collect()
+        };
+        assert_eq!(ids(&world, site(3, false)), [5, 3, 7]);
+        assert_eq!(ids(&world, site(3, true)), [5, 3, 8, 7]);
+        assert_eq!(ids(&world, site(GATE, false)), [4, 5, 3, 7]);
+        // a wall of another player stays under a gate
+        world.insert(
+            4,
+            crate::spatial::Placed {
+                player: 2,
+                ..objects[5].1
+            },
+        );
+        assert_eq!(ids(&world, site(GATE, false)), [5, 3, 7]);
+        // a master without radii clears nothing; a NaN radius is not 0 or less
+        let mut none = site(3, true);
+        none.radius = [0.0, 0.0];
+        assert_eq!(ids(&world, none), Vec::<i32>::new());
+        none.radius = [f32::NAN, 0.0];
+        assert_eq!(ids(&world, none), Vec::<i32>::new());
+    }
+
+    /// The record each cleared object loses in the clearing ([`Cleared::record_goes`]): with
+    /// `param_6`, a tall master's or a recorded object's (`FUN_141189670`, a NaN height too), not
+    /// one whose record went (`+0x686`); a unit below state 3 loses it in its destroy's death
+    /// part whatever the call; a building only when it is tall and not desolid.
+    #[test]
+    fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
+        use crate::spatial::Tiles;
+        let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        let looks = [
+            (1, seen(1.0, 1.0)),
+            (2, seen(1.0, f32::NAN)),
+            (
+                3,
+                ClearLook {
+                    roo_called: true,
+                    ..seen(1.0, 1.0)
+                },
+            ),
+            (4, seen(1.0, 0.0)),
+            (
+                5,
+                ClearLook {
+                    kind: 70,
+                    ..seen(1.0, 0.0)
+                },
+            ),
+            (
+                6,
+                ClearLook {
+                    kind: 80,
+                    desolid: true,
+                    ..seen(1.0, 1.0)
+                },
+            ),
+            (
+                7,
+                ClearLook {
+                    kind: 80,
+                    ..seen(1.0, 1.0)
+                },
+            ),
+            (
+                8,
+                ClearLook {
+                    kind: 70,
+                    state: 5,
+                    ..seen(1.0, 0.0)
+                },
+            ),
+        ];
+        for (k, (id, _)) in looks.iter().enumerate() {
+            let x = 9.5 + 0.1 * k as f32;
+            world.insert(*id, on_map(x, 10.5, 1358, 5, 0.5, 1));
+        }
+        let look = |id: i32| looks.iter().find(|o| o.0 == id).map(|o| o.1);
+        let goes = |trees: bool| -> Vec<i32> {
+            let s = ClearingSite {
+                player: 1,
+                master: 70,
+                class: 3,
+                radius: [1.0, 1.0],
+                at: [10.5, 10.5],
+                trees,
+            };
+            footprint_clearing(&world, &s, &look)
+                .unwrap()
+                .iter()
+                .filter(|c| c.record_goes)
+                .map(|c| c.id)
+                .collect()
+        };
+        assert_eq!(goes(true), [1, 2, 5, 7]);
+        assert_eq!(goes(false), [5, 7]);
+    }
+
+    /// The completion's first part (`FUN_1411c6bd0`) of a farm whose build points reached its
+    /// build time: attribute 237's amount for the resource of 238 only when 239 is 0 or more too
+    /// and names a master the owner does not have; a pasture is not modelled; a mule cart's
+    /// search follows with a unit AI only.
+    #[test]
+    fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
+        let farm = Master {
+            id: 50,
+            class: FARM,
+            ..Master::default()
+        };
+        let masters = crate::masters::Masters::new([Master {
+            id: 68,
+            ..Master::default()
+        }]);
+        let built = Construction {
+            progress: 15.0,
+            desolid: false,
+            builders: 1,
+            hit_points: 480,
+            build_time: 15,
+            record: Obstruction { kind: 0, class: 0 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let part = |bonus: [f32; 3], c: &Construction| {
+            Completion {
+                master: Some(&farm),
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+                farm_bonus: bonus,
+                masters: Some(&masters),
+                computer: false,
+                ai: false,
+            }
+            .first_part(c)
+        };
+        assert_eq!(
+            part([45.0, 0.0, -1.0], &built).unwrap().attributes,
+            Vec::new()
+        );
+        assert_eq!(
+            part([45.0, -1.0, 2.0], &built).unwrap().attributes,
+            Vec::new()
+        );
+        assert_eq!(
+            part([45.0, 0.0, 2.0], &built).unwrap().attributes,
+            [(0, 45.0)]
+        );
+        assert_eq!(
+            part([45.0, 0.0, 68.0], &built),
+            Err(Unsupported("a farm's bonus near a master (FUN_1411d3cd0)"))
+        );
+        // not built yet: nothing
+        let going = Construction {
+            progress: 14.5,
+            ..built
+        };
+        assert_eq!(
+            part([45.0, 0.0, 2.0], &going).unwrap().attributes,
+            Vec::new()
+        );
+        // a cart (a task of action type 0x99) with a unit AI searches
+        let cart = Master {
+            tasks: vec![crate::masters::Task {
+                action_type: CART_TASK,
+                ..crate::masters::Task::default()
+            }],
+            ..Master::default()
+        };
+        let searches = |ai: bool| {
+            Completion {
+                master: Some(&cart),
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+                farm_bonus: [0.0; 3],
+                masters: None,
+                computer: false,
+                ai,
+            }
+            .first_part(&built)
+            .unwrap()
+            .cart
+        };
+        assert_eq!((searches(true), searches(false)), (true, false));
+    }
 
     /// A villager's Build task: range 0.1, work value 1, work rate 1.
     const TASK: BuildTask = BuildTask {
@@ -1237,12 +1883,16 @@ mod tests {
             life: &mut life,
             construction: &mut c,
             mover: None,
+            firepower: None,
             completion: Completion {
                 master: Some(&master),
                 annexed: false,
                 attribute_204: false,
                 mode_680: 0,
                 farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer: false,
+                ai: false,
             },
         };
         let worked = Construction::work(&mut site, 0.02, &mut world, &mut Pathing::default(), 0);
@@ -1289,12 +1939,16 @@ mod tests {
             life: &mut life,
             construction: &mut c,
             mover: None,
+            firepower: None,
             completion: Completion {
                 master: None,
                 annexed: false,
                 attribute_204: false,
                 mode_680: 0,
                 farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer: false,
+                ai: false,
             },
         };
         let rate = 1.0f32 * 1.0 * 0.021;
@@ -1406,12 +2060,16 @@ mod tests {
             life: &mut life,
             construction: &mut construction,
             mover: None,
+            firepower: None,
             completion: Completion {
                 master: None,
                 annexed: false,
                 attribute_204: false,
                 mode_680: 0,
                 farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer: false,
+                ai: false,
             },
         };
         let _ = build
@@ -1438,12 +2096,141 @@ mod tests {
                     ai: None,
                     waits: &mut 0,
                     build_targets: &[],
+                    look: Looks(&|_| None),
                 },
             )
             .unwrap();
         assert_eq!(
             (build.state, build.move_to, build.goal),
             (223, Some(MoveTo::Start), Some([29.5, 89.5, 0.0]))
+        );
+    }
+
+    /// census v5's 240 stops "a foundation clears objects off its footprint": the Build's
+    /// `set_state(7)` on a desolid foundation clears its footprint with `param_6`
+    /// (`FUN_1415c3620`): a stump (a tree of at most 1 hit point) on it loses its record at once
+    /// (`FUN_141189670`), its delete is the caller's; the occupants' test passes over it (state
+    /// 7) and the tiles hold no other player's mark: the builder joins the work.
+    #[test]
+    fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
+        use crate::spatial::{Placed, Tiles};
+        let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        world.insert(
+            10028,
+            Placed {
+                position: [10.5, 10.5, 0.0],
+                player: 1,
+                ..house()
+            },
+        );
+        world.insert(
+            77,
+            Placed {
+                position: [10.2, 10.2, 0.0],
+                radius: [0.5, 0.5],
+                class: TREE,
+                player: 0,
+                master: 349,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(Obstruction { kind: 2, class: 0 }),
+            },
+        );
+        assert_ne!(world.tiles().word(10, 10).unwrap() >> 23, 0);
+        let looks = |id: i32| {
+            (id == 77).then_some(ClearLook {
+                hp: 0.5,
+                height: 1.0,
+                roo_called: false,
+                kind: 10,
+                state: 2,
+                desolid: false,
+            })
+        };
+        let mut life = Lifecycle {
+            state: 0,
+            master_id: 70,
+            ..Lifecycle::default()
+        };
+        let mut construction = Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 0,
+            hit_points: 550,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let site = Site {
+            id: 10028,
+            life: &mut life,
+            construction: &mut construction,
+            mover: None,
+            firepower: None,
+            completion: Completion {
+                master: None,
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer: false,
+                ai: false,
+            },
+        };
+        let mut build = BuildAction {
+            state: WAIT,
+            move_to: None,
+            timer: 0.01,
+            ..BuildAction::start(10028, 0.0, TASK)
+        };
+        let step = build
+            .update(
+                Walk {
+                    mover: None,
+                    me: Me {
+                        id: 5,
+                        position: [12.5, 10.5, 0.0],
+                        group: -1,
+                        action_state: 0,
+                    },
+                    dt: 0.02,
+                    world: &mut world,
+                    plan: None,
+                },
+                Some(site),
+                Builder {
+                    class: VILLAGER,
+                    master: 83,
+                    held: 0.0,
+                    held_kind: -1,
+                    drop_site: false,
+                    ai: None,
+                    waits: &mut 0,
+                    build_targets: &[],
+                    look: Looks(&looks),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            step.cleared,
+            [Cleared {
+                id: 77,
+                wall: false,
+                record_goes: true,
+            }]
+        );
+        assert_eq!(step.occupants, Vec::<i32>::new());
+        assert_eq!(world.get(77).unwrap().obstruction, None);
+        assert_eq!(world.tiles().word(10, 10).unwrap() >> 23, 0);
+        assert_eq!(
+            (build.state, build.added, construction.builders),
+            (PLACE, true, 1)
         );
     }
 
@@ -1479,6 +2266,7 @@ mod tests {
             ai: None,
             waits: waits.next().expect("a wait count per update"),
             build_targets: &[],
+            look: Looks(&|_| None),
         };
         world.insert(10028, house());
         let _ = near.update(walk(1, &mut world), None, builder()).unwrap();
