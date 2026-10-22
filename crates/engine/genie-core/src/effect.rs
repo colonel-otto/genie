@@ -1,8 +1,13 @@
 //! A research's completion and the effects it gives: `FUN_1413cdcd0` (the technology done, its
 //! effect, the technologies that depend on it, the player's statistics), the effects'
-//! `TRIBE_Effects::do_effect` (`FUN_141462440`, then the base `FUN_140ec2ac0`) and the player's
-//! attribute modifier (slot 0x158 -> slot 0x148, `FUN_1416121b0`: the hooks `FUN_141614f40`
-//! around `FUN_14165a000`).
+//! `TRIBE_Effects::do_effect` (`FUN_141462440`, then the base `FUN_140ec2ac0`) with every kind
+//! for every party, and what they reach: the player's attribute modifier (slots 0x150, 0x158,
+//! 0x160 -> slot 0x148, `FUN_1416121b0`: the hooks `FUN_141614f40` around `FUN_14165a000`, the
+//! objects' slots 0x78, 0x80, 0x88 and the masters' 0x18, 0x20, 0x28 of
+//! [`crate::masters`]), the resource commands (slots 0x1b0, 0x1b8, the player's attribute set
+//! and add), the technology changes (`'e'`, `'f'`, `'g'`, kind 8), the enables, upgrades,
+//! spawns and cost entries. The objects' parts an upgrade, a spawn and the objects' own masters
+//! need are the objects' routines, which this file leaves to them.
 
 use crate::masters::{AttributeWorld, Master, Masters, master_type};
 use crate::rng::Stream;
@@ -16,8 +21,10 @@ const TECHS_RESEARCHED: i16 = 0x15;
 const RESEARCH_SPENT: i16 = 0x63;
 /// The attribute the dependents' update sets to 1 when none of them is left (`+0x138`).
 const ATTRIBUTE_39: usize = 39;
-/// The master whose enabling first asks the game's mode (`0x26d`, `FUN_1416665b0`).
+/// The master whose enabling first asks the game's mode (`0x26d`, `FUN_1416665b0`), and the
+/// mode that never enables it (11).
 const MODE_TESTED_MASTER: i16 = 0x26d;
+const MODE_WITHOUT_0X26D: i32 = 11;
 /// The `TRIBE_Effects` command kinds that change technologies (`'e'`, `'f'`, `'g'`): a cost, the
 /// disabling and a research time.
 const TECH_COST: u8 = b'e';
@@ -353,9 +360,9 @@ impl Turns {
     /// against `+0x260` is taken to hold). Without `one` building (a third argument of 1) and
     /// its object, the master's slot 0x58 (`FUN_141126280`) sets `available` unless it is
     /// `disabled` (the byte, held as its test against 0). The sprites' loading on an enable
-    /// (slot 0xa8) is not simulation. Not modelled: the enabling of master `0x26d` (it asks the
-    /// game's mode and settings) and a command for one building (`FUN_1411c69f0`,
-    /// `FUN_1411c6a50`: the building's list, not held).
+    /// (slot 0xa8) is not simulation. The enabling of master `0x26d` does nothing in game mode
+    /// 11; not modelled: its enabling in another mode (it asks a settings flag) and a command for
+    /// one building (`FUN_1411c69f0`, `FUN_1411c6a50`: the building's list, not held).
     fn enable_master(
         &mut self,
         p: usize,
@@ -368,6 +375,11 @@ impl Turns {
             return Ok(());
         }
         if enable == 1 && master == MODE_TESTED_MASTER {
+            // game mode 11 never enables it; any other asks a settings flag (their `+0x18`'s
+            // `+0x7c`, bit 1, FUN_141324b60), which is not held
+            if self.game_mode == MODE_WITHOUT_0X26D {
+                return Ok(());
+            }
             return Err(Unsupported(
                 "the enabling of master 0x26d (the game's mode)",
             ));
@@ -2704,6 +2716,40 @@ mod tests {
                 .is_err()
         );
         assert_eq!(t.masters[0].get(82).unwrap().hit_points, 4800);
+    }
+
+    /// The enable command (`FUN_1416665b0`, kind 2): `available` takes the byte unless the master
+    /// is disabled; master 0x26d is never enabled in game mode 11.
+    #[test]
+    fn the_enable_command_sets_available_unless_disabled() {
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![Player::default()]);
+        let mut locked = combat(5, 6, 10);
+        locked.disabled = true;
+        t.masters = vec![Masters::new([
+            combat(4, 6, 10),
+            locked,
+            combat(0x26d, 3, 10),
+        ])];
+        t.do_effect(
+            0,
+            &[attribute(2, 4, 1, -1, 0.0), attribute(2, 5, 1, -1, 0.0)],
+            None,
+        )
+        .unwrap();
+        let available: Vec<bool> = t.masters[0].iter().map(|m| m.available).collect();
+        assert_eq!(available, [true, false, false]);
+        t.game_mode = 11;
+        t.do_effect(0, &[attribute(2, 0x26d, 1, -1, 0.0)], None)
+            .unwrap();
+        assert!(!t.masters[0].get(0x26d).unwrap().available);
+        t.game_mode = 0;
+        assert!(
+            t.do_effect(0, &[attribute(2, 0x26d, 1, -1, 0.0)], None)
+                .is_err()
+        );
+        t.do_effect(0, &[attribute(2, 4, 0, -1, 0.0)], None)
+            .unwrap();
+        assert!(!t.masters[0].get(4).unwrap().available);
     }
 
     /// A research whose effect reaches its building (the object `FUN_1413cdcd0` passes, which its
