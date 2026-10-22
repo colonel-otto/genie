@@ -910,22 +910,19 @@ pub mod master_type {
 }
 
 /// 32767.0 (`DAT_142eb69cc`): a capped add or multiply holds hit points and carry capacity
-/// below it (an image role to add: `masters::SHORT_CAP`).
-const SHORT_CAP: f32 = 32767.0;
-/// 0.5 (`DAT_142e7f384`): a multiply's rounding (an image role to add: `masters::ROUND`).
-const ROUND: f32 = 0.5;
-/// 4.5 (`DAT_142f52490`): the most speed a capped add or multiply leaves (an image role to add:
-/// `masters::SPEED_CAP`).
-const SPEED_CAP: f32 = 4.5;
-/// 20.0 (`DAT_142e7f38c`): a missile master's (an image role to add:
-/// `masters::MISSILE_SPEED_CAP`).
-const MISSILE_SPEED_CAP: f32 = 20.0;
-/// 1.0 (`DAT_14330eb8c`): a handicap above it raises an attack class at 0 (an image role to add:
-/// `masters::HANDICAP_FLOOR`).
-const HANDICAP_FLOOR: f32 = 1.0;
+/// below it.
+const SHORT_CAP: f32 = crate::image::masters::SHORT_CAP;
+/// 0.5 (`DAT_142e7f384`): a multiply's rounding.
+const ROUND: f32 = crate::image::masters::ROUND;
+/// 4.5 (`DAT_142f52490`): the most speed a capped add or multiply leaves .
+const SPEED_CAP: f32 = crate::image::masters::SPEED_CAP;
+/// 20.0 (`DAT_142e7f38c`): a missile master's .
+const MISSILE_SPEED_CAP: f32 = crate::image::masters::MISSILE_SPEED_CAP;
+/// 1.0 (`DAT_14330eb8c`): a handicap above it raises an attack class at 0 .
+const HANDICAP_FLOOR: f32 = crate::image::masters::HANDICAP_FLOOR;
 /// 100.0 (`DAT_14330ebcc`): a multiply's armor or attack amount is a percentage (an image role to
 /// add: `masters::PERCENT`).
-const PERCENT: f32 = 100.0;
+const PERCENT: f32 = crate::image::masters::PERCENT;
 /// The attack classes a handicap leaves alone (`0x280000018`'s bits up to class 0x21): 3, 4, 31
 /// and 33.
 const UNHANDICAPPED: u64 = 0x2_8000_0018;

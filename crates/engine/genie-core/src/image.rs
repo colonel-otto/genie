@@ -72,6 +72,22 @@ pub mod damage {
     pub const WIDE_CONE: f32 = f32::from_bits(0x3fd5_c28f);
 }
 
+/// The values `crate::effect`'s port reads.
+pub mod effect {
+    /// -1.0
+    pub const NO_TIME: f32 = f32::from_bits(0xbf80_0000);
+    /// 1.0
+    pub const ONE: f32 = f32::from_bits(0x3f80_0000);
+    /// 0.5
+    pub const ROUND: f32 = f32::from_bits(0x3f00_0000);
+    /// 2.0
+    pub const STATE_AVAILABLE: f32 = f32::from_bits(0x4000_0000);
+    /// 3.0
+    pub const STATE_RESEARCHED: f32 = f32::from_bits(0x4040_0000);
+    /// 1.0
+    pub const STATE_UNAVAILABLE: f32 = f32::from_bits(0x3f80_0000);
+}
+
 /// The values `crate::explore`'s port reads.
 pub mod explore {
     /// 1.0
@@ -360,6 +376,22 @@ pub mod long_path {
     pub const REACHED: f32 = f32::from_bits(0x3f80_0000);
     /// 0.5
     pub const TILE_CENTRE: f32 = f32::from_bits(0x3f00_0000);
+}
+
+/// The values `crate::masters`'s port reads.
+pub mod masters {
+    /// 1.0
+    pub const HANDICAP_FLOOR: f32 = f32::from_bits(0x3f80_0000);
+    /// 20.0
+    pub const MISSILE_SPEED_CAP: f32 = f32::from_bits(0x41a0_0000);
+    /// 100.0
+    pub const PERCENT: f32 = f32::from_bits(0x42c8_0000);
+    /// 0.5
+    pub const ROUND: f32 = f32::from_bits(0x3f00_0000);
+    /// 32767.0
+    pub const SHORT_CAP: f32 = f32::from_bits(0x46ff_fe00);
+    /// 4.5
+    pub const SPEED_CAP: f32 = f32::from_bits(0x4090_0000);
 }
 
 /// The values `crate::missile`'s port reads.

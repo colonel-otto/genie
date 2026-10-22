@@ -663,8 +663,8 @@ const RESOURCE_19: i16 = 19;
 const KEPT_STORAGE: u8 = 64;
 /// A hit point total a capped multiply holds an object's below (`FUN_1411962e0`: `0x46fffe00`).
 const OBJECT_HP_CAP: f32 = 32767.0;
-/// A multiply's rounding (`DAT_142e7f384`, 0.5; an image role to add: `effect::ROUND`).
-const ROUND: f32 = 0.5;
+/// A multiply's rounding (`DAT_142e7f384`, 0.5).
+const ROUND: f32 = crate::image::effect::ROUND;
 
 /// The key a player's object tracker (`player+0x18`) files an object under (`FUN_141658430`):
 /// its key master (the stack unit a building master names, else its own; the unit lines' table
@@ -1006,8 +1006,8 @@ impl Turns {
 }
 
 /// 1.0 (`DAT_14330eb8c`): a building whose master has no build time takes the new one as its
-/// points (an image role to add: `effect::ONE`).
-const ONE: f32 = 1.0;
+/// points.
+const ONE: f32 = crate::image::effect::ONE;
 /// The player's `+0x648`, which caps an add or multiply of hit points (not held: 0 for every
 /// player probed).
 const CAPPED: bool = false;
@@ -1782,13 +1782,12 @@ const fn tech_time_mode(mode: i16) -> Option<u8> {
 }
 
 /// 1.0, 2.0 and 3.0 (`DAT_14330eb8c`, `DAT_142e8c150`, `DAT_142eb1c98`): a state change's values
-/// (kind 8's mode 12): 0 disables, 1 makes it unavailable, 2 available and enabled, 3 researched
-/// (image roles to add: `effect::STATE_*`).
-const STATE_UNAVAILABLE: f32 = 1.0;
-const STATE_AVAILABLE: f32 = 2.0;
-const STATE_RESEARCHED: f32 = 3.0;
+/// (kind 8's mode 12): 0 disables, 1 makes it unavailable, 2 available and enabled, 3 researched.
+const STATE_UNAVAILABLE: f32 = crate::image::effect::STATE_UNAVAILABLE;
+const STATE_AVAILABLE: f32 = crate::image::effect::STATE_AVAILABLE;
+const STATE_RESEARCHED: f32 = crate::image::effect::STATE_RESEARCHED;
 /// −1.0 (`DAT_14330ec20`): a research time without a `.dat` location, and a set's "none".
-const NO_TIME: f32 = -1.0;
+const NO_TIME: f32 = crate::image::effect::NO_TIME;
 
 impl Turns {
     /// `FUN_1415c3f20`'s technology change (kind 8, its `0x6f` case) for player `p`'s technology
