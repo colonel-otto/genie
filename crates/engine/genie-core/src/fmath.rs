@@ -193,6 +193,107 @@ pub fn rotate(m: &[Vec3; 3], v: Vec3) -> Vec3 {
     ]
 }
 
+/// fabsf `0x14099e7b0`: `x` with its sign bit cleared (an `AND` on its bits).
+const fn fabs(x: f32) -> f32 {
+    f32::from_bits(x.to_bits() & 0x7fff_ffff)
+}
+
+/// `0x14099e870`, msun's isnan as the game compiles it: `x` widened to a double (`CVTSS2SD`), the
+/// high word without its sign plus 1 for a non-zero low word, above the infinity's `0x7ff00000`.
+fn is_nan(x: f32) -> bool {
+    let d = f64::from(x).to_bits();
+    ((d >> 32) as u32 & 0x7fff_ffff) + u32::from(d as u32 != 0) > 0x7ff0_0000
+}
+
+/// atanf of a negative x from 2^26 down: −π/2's leading bits (`DAT_142ec8a74`).
+const ATAN_OF_MINUS_HUGE: f32 = f32::from_bits(0xbfc9_0fda);
+/// 2 (`DAT_142e8c150`).
+const TWO: f32 = f32::from_bits(0x4000_0000);
+/// 3/2 (`DAT_142eb4838`).
+const ONE_AND_A_HALF: f32 = f32::from_bits(0x3fc0_0000);
+/// −1 (`DAT_14330ec20`).
+const MINUS_ONE: f32 = f32::from_bits(0xbf80_0000);
+/// atanf's series in z = t², w = z²: (T1 − w T3) w + ((w T4 + T2) w + T0) z. T0 (`DAT_142ec8a6c`).
+const ATAN_T0: f32 = f32::from_bits(0x3eaa_aaa9);
+/// The series' T1 (`DAT_142ec8a70`).
+const ATAN_T1: f32 = f32::from_bits(0xbe4c_ca98);
+/// The series' T2 (`DAT_142ec8a68`).
+const ATAN_T2: f32 = f32::from_bits(0x3e11_f50d);
+/// The series' T3, subtracted: msun's aT3 negated (`DAT_142ec8a64`).
+const ATAN_T3: f32 = f32::from_bits(0x3dda_1247);
+/// The series' T4 (`DAT_142ec8a60`).
+const ATAN_T4: f32 = f32::from_bits(0x3d7c_ac25);
+/// atan(1/2)'s leading bits (`DAT_142ec8a40`).
+const ATAN_HI_0: f32 = f32::from_bits(0x3eed_6338);
+/// atan(1)'s leading bits (`DAT_142ec8a44`).
+const ATAN_HI_1: f32 = f32::from_bits(0x3f49_0fda);
+/// atan(3/2)'s leading bits (`DAT_142ec8a48`).
+const ATAN_HI_2: f32 = f32::from_bits(0x3f7b_985e);
+/// atan(∞)'s leading bits (`DAT_142ec8a4c`).
+const ATAN_HI_3: f32 = f32::from_bits(0x3fc9_0fda);
+/// atan(1/2)'s next bits (`DAT_142ec8a50`).
+const ATAN_LO_0: f32 = f32::from_bits(0x31ac_3769);
+/// atan(1)'s next bits (`DAT_142ec8a54`).
+const ATAN_LO_1: f32 = f32::from_bits(0x3322_2168);
+/// atan(3/2)'s next bits (`DAT_142ec8a58`).
+const ATAN_LO_2: f32 = f32::from_bits(0x3314_0fb4);
+/// atan(∞)'s next bits (`DAT_142ec8a5c`).
+const ATAN_LO_3: f32 = f32::from_bits(0x33a2_2168);
+/// The breakpoints' angles, the image's table at `0x142ec8a40`.
+const ATAN_HI: [f32; 4] = [ATAN_HI_0, ATAN_HI_1, ATAN_HI_2, ATAN_HI_3];
+/// Their next bits, the table at `0x142ec8a50`.
+const ATAN_LO: [f32; 4] = [ATAN_LO_0, ATAN_LO_1, ATAN_LO_2, ATAN_LO_3];
+
+/// The arc tangent: the game's atanf `0x14099e2f0` (msun's `s_atanf.c`). |x| from 2^26 up is
+/// ±π/2 (a NaN comes back as it is), below 2^-12 it is x. Below 7/16 the series runs on x; above,
+/// |x| is moved next to a breakpoint (1/2, 1, 3/2, ∞) and the series added to its angle.
+#[must_use]
+pub fn atan(x: f32) -> f32 {
+    let hx = x.to_bits();
+    let negative = hx >> 31 != 0;
+    let ix = hx & 0x7fff_ffff;
+    if ix >= 0x4c80_0000 {
+        if is_nan(x) {
+            return x;
+        }
+        return if negative {
+            ATAN_OF_MINUS_HUGE
+        } else {
+            PIO2_HI
+        };
+    }
+    let (id, t) = if ix < 0x3ee0_0000 {
+        if ix < 0x3980_0000 {
+            // a subnormal x is squared into a dead store (msun raises underflow): x it is
+            return x;
+        }
+        (None, x)
+    } else {
+        let a = fabs(x);
+        if ix < 0x3f98_0000 {
+            if ix < 0x3f30_0000 {
+                (Some(0), (a * TWO - ONE) / (a + TWO))
+            } else {
+                (Some(1), (a - ONE) / (a + ONE))
+            }
+        } else if ix < 0x401c_0000 {
+            (Some(2), (a - ONE_AND_A_HALF) / (a * ONE_AND_A_HALF + ONE))
+        } else {
+            (Some(3), MINUS_ONE / a)
+        }
+    };
+    let z = t * t;
+    let w = z * z;
+    let s2 = (ATAN_T1 - w * ATAN_T3) * w;
+    let s1 = ((w * ATAN_T4 + ATAN_T2) * w + ATAN_T0) * z;
+    let series = (s2 + s1) * t;
+    let Some(id) = id else {
+        return t - series;
+    };
+    let r = ATAN_HI[id] - ((series - ATAN_LO[id]) - t);
+    if negative { -r } else { r }
+}
+
 /// `atan2f(y, x)` (`0x14099e020`).
 #[must_use]
 pub fn atan2(y: f32, x: f32) -> f32 {
@@ -279,6 +380,99 @@ mod tests {
                 (0xbf35_04f3, 0x4016_cbe4),
             ],
         );
+    }
+
+    /// atanf `0x14099e2f0` at its branches' bounds (2^-12, 7/16, 11/16, 19/16, 39/16, 2^26),
+    /// zeros, subnormals, infinities and NaNs: a NaN comes back as it is, a signalling one too.
+    #[test]
+    fn atan_is_the_games_atanf_at_its_bounds() {
+        assert_bits(
+            "atan",
+            atan,
+            &[
+                (0x0000_0000, 0x0000_0000),
+                (0x8000_0000, 0x8000_0000),
+                (0x0000_0001, 0x0000_0001),
+                (0x8000_0001, 0x8000_0001),
+                (0x007f_ffff, 0x007f_ffff),
+                (0x807f_ffff, 0x807f_ffff),
+                (0x0080_0000, 0x0080_0000),
+                (0x8080_0000, 0x8080_0000),
+                (0x7f7f_ffff, 0x3fc9_0fda),
+                (0xff7f_ffff, 0xbfc9_0fda),
+                (0x7f80_0000, 0x3fc9_0fda),
+                (0xff80_0000, 0xbfc9_0fda),
+                (0x7fc0_0000, 0x7fc0_0000),
+                (0xffc0_0000, 0xffc0_0000),
+                (0x7f80_0001, 0x7f80_0001),
+                (0xff81_2345, 0xff81_2345),
+                (0x397f_ffff, 0x397f_ffff),
+                (0x3980_0000, 0x3980_0000),
+                (0xb980_0000, 0xb980_0000),
+                (0x3edf_ffff, 0x3ed3_2775),
+                (0x3ee0_0000, 0x3ed3_2776),
+                (0xbee0_0000, 0xbed3_2776),
+                (0x3f2f_ffff, 0x3f1a_2f80),
+                (0x3f30_0000, 0x3f1a_2f81),
+                (0x3f97_ffff, 0x3f5e_f386),
+                (0x3f98_0000, 0x3f5e_f387),
+                (0xbf98_0000, 0xbf5e_f387),
+                (0x401b_ffff, 0x3f97_3ab9),
+                (0x401c_0000, 0x3f97_3ab9),
+                (0xc01c_0000, 0xbf97_3ab9),
+                (0x4c7f_ffff, 0x3fc9_0fdb),
+                (0x4c80_0000, 0x3fc9_0fda),
+                (0xcc80_0000, 0xbfc9_0fda),
+                (0x3f80_0000, 0x3f49_0fdb),
+                (0xbf80_0000, 0xbf49_0fdb),
+                (0x3f00_0000, 0x3eed_6338),
+                (0x4049_0fdb, 0x3fa1_9dc5),
+            ],
+        );
+    }
+
+    /// fabsf `0x14099e7b0` clears the sign bit and nothing else, a NaN's payload kept.
+    #[test]
+    fn fabs_clears_the_sign_bit() {
+        assert_bits(
+            "fabs",
+            fabs,
+            &[
+                (0x0000_0000, 0x0000_0000),
+                (0x8000_0000, 0x0000_0000),
+                (0x8000_0001, 0x0000_0001),
+                (0x807f_ffff, 0x007f_ffff),
+                (0xff7f_ffff, 0x7f7f_ffff),
+                (0xff80_0000, 0x7f80_0000),
+                (0xffc0_0000, 0x7fc0_0000),
+                (0x7f80_0001, 0x7f80_0001),
+                (0xff81_2345, 0x7f81_2345),
+            ],
+        );
+    }
+
+    /// `0x14099e870` (isnan through the double): true for every NaN, quiet or signalling, of
+    /// either sign; false for the infinities and the largest finite value.
+    #[test]
+    fn is_nan_is_true_for_every_nan_only() {
+        for (x, game) in [
+            (0x0000_0000, false),
+            (0x8000_0001, false),
+            (0x007f_ffff, false),
+            (0x7f7f_ffff, false),
+            (0xff7f_ffff, false),
+            (0x7f80_0000, false),
+            (0xff80_0000, false),
+            (0x7fc0_0000, true),
+            (0xffc0_0000, true),
+            (0x7f80_0001, true),
+            (0xff80_0001, true),
+            (0xff81_2345, true),
+            (0x7fff_ffff, true),
+            (0xffff_ffff, true),
+        ] {
+            assert_eq!(is_nan(f32::from_bits(x)), game, "{x:08x}");
+        }
     }
 
     #[test]

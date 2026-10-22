@@ -124,3 +124,9 @@ fn sweep(ours: fn(f32) -> f32, oracle: fn(f32) -> f32) -> Vec<u32> {
 fn acos_agrees_with_libm_on_every_f32() {
     assert_eq!(sweep(fmath::acos, libm::acosf), Vec::<u32>::new());
 }
+
+#[test]
+#[ignore = "all 2^32 inputs: run in release with --ignored"]
+fn atan_agrees_with_libm_on_every_f32() {
+    assert_eq!(sweep(fmath::atan, libm::atanf), Vec::<u32>::new());
+}
