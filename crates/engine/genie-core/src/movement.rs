@@ -1327,7 +1327,9 @@ impl Mover {
             gap,
             to_end,
         } = goal;
-        let position = vector(me.position);
+        // the request measures and plans from +0x824 (`pfVar14`, `local_18c8`), where the unit
+        // last moved to
+        let position = vector(self.moved_at);
         let radius = self.stats.radius[0];
         let ground_radius = [radius, self.stats.radius[1]];
         let level = &mut self.paths[0];
@@ -1431,7 +1433,7 @@ impl Mover {
                         }
                         if way <= TARGET_SHORT_REACH {
                             let near = self.near_goal(way, gap, to_end);
-                            let line = ground_line(me.position, waypoint);
+                            let line = ground_line(self.moved_at, waypoint);
                             let ignore =
                                 self.ignore_list(me, world, plan, target, target_id, line)?;
                             let r = self.short_path(
@@ -1502,7 +1504,7 @@ impl Mover {
                 if SHORT_PATHER && !failed && (way <= SHORT_REACH || near) {
                     planned = false;
                     path.points.clear();
-                    let line = ground_line(me.position, waypoint);
+                    let line = ground_line(self.moved_at, waypoint);
                     let ignore = self.ignore_list(me, world, plan, target, target_id, line)?;
                     let r = self.short_path(
                         me,
@@ -1695,9 +1697,10 @@ impl Mover {
             group_units: plan.groups.group_units(me.group),
         };
         let target_id = target.map_or(-1, |(id, _)| id);
+        // from +0x824, the motion step's `local_18c8`
         let (mut found, long) = long_path_for(
             &walker,
-            [me.position[0], me.position[1]],
+            [self.moved_at[0], self.moved_at[1]],
             world,
             plan.computer,
             (waypoint, range),
@@ -2051,9 +2054,10 @@ impl Mover {
         out: &mut Path,
     ) -> Result<u8, Unsupported> {
         let walker = self.walker(me.id);
+        // from +0x824: the motion step's `local_18c8`, the reach test's start (FUN_14114fea0)
         short_path_for(
             walker,
-            [me.position[0], me.position[1]],
+            [self.moved_at[0], self.moved_at[1]],
             world,
             plan,
             (to, range, target),
@@ -2094,9 +2098,10 @@ impl Mover {
             .first()
             .map(|l| l.target)
             .filter(|&t| t != -1 && world.get(t).is_some());
+        // from +0x824, the motion step's `local_18c8`
         tile_plan_for(
             self.walker(me.id),
-            [me.position[0], me.position[1]],
+            [self.moved_at[0], self.moved_at[1]],
             level_target,
             world,
             plan,
@@ -2214,9 +2219,16 @@ impl Mover {
         range: f32,
         master: i16,
     ) -> Result<bool, Unsupported> {
-        let [x, y, _] = me.position;
+        // FUN_14114fea0 and FUN_14114ffc0 hand the unit's +0x824 (x, height, y) as the start
+        let [x, y, height_at] = self.moved_at;
         let [w, h] = world.map;
-        let on_map = |px: f32, py: f32| 0.0 <= px && 0.0 <= py && px < w as f32 && py < h as f32;
+        // COMISS 0, v; JA and COMISS v, size; JNC (0x140fa03f1..0x140fa0459): a NaN passes
+        let on_map = |px: f32, py: f32| {
+            fmath::at_most_or_unordered(0.0, px)
+                && fmath::at_most_or_unordered(0.0, py)
+                && fmath::below_or_unordered(px, w as f32)
+                && fmath::below_or_unordered(py, h as f32)
+        };
         if !on_map(x, y) || !on_map(to[0], to[1]) {
             return Ok(false);
         }
@@ -2246,7 +2258,7 @@ impl Mover {
             // FUN_140fa0370 hands the start test both vectors' first two floats: x and the
             // height, the unit's (`+0x824`) and the target's (slot 0x520), not x and y
             let height = target.map_or(0.0, |(_, t)| t.position[2]);
-            let line = ([x, me.position[2]], [to[0], height]);
+            let line = ([x, height_at], [to[0], height]);
             let ignore =
                 self.ignore_list(me, world, plan, target.map(|(_, t)| t), target_id, line)?;
             if self.short_path(me, world, plan, goal, range, target_id, &ignore, &mut path)? < 2 {
@@ -2267,7 +2279,9 @@ impl Mover {
                 let g = d.abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
             };
-            let (gx, gy) = (gap(dx, radius[0]), gap(dy, radius[1]));
+            // the gap from the unit's place (its decoded x and y), not +0x824
+            let [px, py, _] = me.position;
+            let (gx, gy) = (gap(to[0] - px, radius[0]), gap(to[1] - py, radius[1]));
             if gx * gx + gy * gy < REACH_NEAR {
                 return Ok(false);
             }
@@ -2287,8 +2301,14 @@ impl Mover {
             .map(|p| [p.position[0] as i32, p.position[1] as i32])
             .collect();
         let req = crate::long_path::LongRequest {
-            from: [x as i32, y as i32],
-            to: [to[0] as i32, to[1] as i32],
+            from: [
+                crate::checkpoint::cvttss2si(x),
+                crate::checkpoint::cvttss2si(y),
+            ],
+            to: [
+                crate::checkpoint::cvttss2si(to[0]),
+                crate::checkpoint::cvttss2si(to[1]),
+            ],
             range,
             target: long_target,
             moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
@@ -3145,6 +3165,56 @@ mod tests {
             in_the_way: Vec::new(),
             sprite_facets: None,
         }
+    }
+
+    /// `FUN_14114ffc0` -> `FUN_140fa0370`: the reach test starts at +0x824, where the unit last
+    /// moved to: a unit whose +0x824 lies off the map reaches nothing, whatever its place.
+    #[test]
+    fn the_reach_test_starts_where_the_unit_last_moved_to() {
+        let mut world = Spatial::with_tiles(
+            [40, 40],
+            crate::spatial::Tiles::new(40, 40, vec![4; 40 * 40]),
+        );
+        world.insert(
+            9177,
+            Placed {
+                position: [5.5, 5.5, 0.0],
+                radius: [0.2, 0.2],
+                class: 4,
+                player: 2,
+                master: 83,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.8,
+                unknown: None,
+                obstruction: Some(Obstruction { kind: 5, class: 2 }),
+            },
+        );
+        let mut pathing = Pathing::default();
+        let mut object = Well512::default();
+        let groups = crate::group::UnitGroups::default();
+        let mut plan = Planning {
+            pathing: &mut pathing,
+            now: 0,
+            computer: false,
+            object: &mut object,
+            construction_rate: 1.0,
+            groups: &groups,
+        };
+        let me = Me {
+            id: 9177,
+            position: [5.5, 5.5, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let mut m = builder_9177();
+        m.moved_at = [5.5, 5.5, 0.0];
+        // 25 tiles away on open land: the long pather's answer
+        let far = [30.5, 5.5];
+        assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(true));
+        m.moved_at = [-1.0, 5.5, 0.0];
+        assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(false));
     }
 
     /// `FUN_14114f630`: an angle at most the turn's most, or a NaN most (an infinite turn rate
