@@ -1572,7 +1572,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let [w, h] = self.spatial.map;
         for y in 0..h {
             for x in 0..w {
-                if self.spatial.sees_tile(self.player, x, y) {
+                if self.spatial.scout_sight(self.player, x, y) == Some(0xf) {
                     m.set(x, y, 1);
                 }
             }
