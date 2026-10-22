@@ -2147,43 +2147,27 @@ impl Turns {
     }
 
     /// Slot 0x3a0 (`FUN_1410847e0`, the enter command, with 0) of the unit at `idx` on `target`:
-    /// true when it enters, false when nothing comes of it. It is entering the target already
-    /// (its top action an Enter on it); else slot 0x820 (`FUN_14106c6a0`) looks for a task on
-    /// the target with the garrison filter (3), without the master's change, whose Enter it would
-    /// take.
+    /// true when it enters, false when nothing comes of it (a target the world does not hold, or
+    /// no task). It is entering the target already (its top action an Enter on it); else slot
+    /// 0x820 ([`Turns::find_work_task`]) looks for a task on the target with the garrison filter
+    /// (3) and the master's change, whose Enter it would take.
     fn livestock_enters(
-        &self,
+        &mut self,
         player: usize,
         idx: usize,
         target: i32,
     ) -> Result<bool, Unsupported> {
+        if self.object(target).is_none() {
+            return Ok(false);
+        }
         let unit = &self.players[player].objects[idx];
         if unit.top_action_kind() == Some(crate::garrison::ENTER)
             && unit.top_target() == Some(target)
         {
             return Ok(true);
         }
-        let masters = self
-            .masters
-            .get(player)
-            .ok_or(Unsupported("an enter command: no master table"))?;
-        let owner = &self.players[player];
-        let actor = Actor {
-            id: unit.id,
-            master: self.master_of(player, unit.life.master_id)?,
-            player,
-            held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
-            civ: owner.civ,
-        };
-        let world = World {
-            players: &self.players,
-            drop_sites: &self.drop_sites,
-        };
-        let t = self.task_target(target, 1)?;
-        let general = self.task_target(target, 2)?;
-        Ok(masters
-            .work_master(&actor, &t, &general, GARRISON, &world)?
+        Ok(self
+            .find_work_task(player, idx, target, GARRISON, true)?
             .is_some())
     }
 
@@ -2641,14 +2625,86 @@ impl Turns {
         Ok(())
     }
 
+    /// The unit's slot 0x820 (`FUN_14106c6a0`) on `target` (its place the point): the task its
+    /// master's list gives for the target with `filter` (the list's slot 0x10, [`find_task`] in
+    /// mode 0); without one, a master with a task swap group (`+0x7b8` not 0) tries each of its
+    /// player's masters by id of the same class, type and group, its own too, with any filter;
+    /// the first with a task gives it, and with `change` the unit takes that master (slot 0x90,
+    /// [`Turns::change_master`], or [`Turns::transform_building`] for a building) though it be its
+    /// own. None: no task. The terrain under the point, which only a task for a terrain reads, is
+    /// not passed.
+    ///
+    /// [`find_task`]: crate::tasks::find_task
+    fn find_work_task(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        filter: i16,
+        change: bool,
+    ) -> Result<Option<crate::masters::Task>, Unsupported> {
+        let unit = &self.players[player].objects[idx];
+        let own = self.master_of(player, unit.life.master_id)?;
+        let owner = &self.players[player];
+        let actor = Actor {
+            id: unit.id,
+            master: own,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+            civ: owner.civ,
+        };
+        let world = World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let t = self.task_target(target, 1)?;
+        let general = self.task_target(target, 2)?;
+        let find = |list: &Master, filter: i16| {
+            crate::tasks::find_task(list, &actor, Some(&t), Some(&general), None, filter, &world)
+                .map(Option::<&crate::masters::Task>::copied)
+        };
+        if let Some(task) = find(own, filter)? {
+            return Ok(Some(task));
+        }
+        if own.task_by_group == 0 {
+            return Ok(None);
+        }
+        let mut found = None;
+        // the master table exists: master_of found the unit's own in it
+        for candidate in self.masters[player].iter() {
+            if candidate.class != own.class
+                || candidate.kind != own.kind
+                || candidate.task_by_group != own.task_by_group
+            {
+                continue;
+            }
+            if let Some(task) = find(candidate, -1)? {
+                found = Some((candidate.id, task));
+                break;
+            }
+        }
+        let Some((with, task)) = found else {
+            return Ok(None);
+        };
+        if change {
+            if self.master_of(player, with)?.kind == BUILDING {
+                self.transform_building(player, idx, with)?;
+            } else {
+                self.change_master(player, idx, with)?;
+            }
+        }
+        Ok(Some(task))
+    }
+
     /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::Effect::HuntObject`], after the
     /// unit's update): its stopAction (slot 0x3c0: the action list cleared,
     /// [`Turns::clear_actions`], and in state 2 the standing sprite), then its hunt command (object
-    /// slot 0x360, `FUN_1412151f0`, forced): with no action left slot 0x820 finds the task as the
-    /// work command does ([`crate::masters::Masters::work_master`] with any filter; the master
-    /// switch, slot 0x90) and a Hunt task installs a new Hunt ([`Turns::start_hunt`] without the
-    /// unit AI's notify: `HuntObject` set the AI itself). A target the world does not hold, no task,
-    /// another task's action or a task not enabled would fail the command, which the unit AI took
+    /// slot 0x360, `FUN_1412151f0`, forced): with no action left slot 0x820 finds the task
+    /// ([`Turns::find_work_task`] with any filter and the master switch) and a new Hunt on it,
+    /// whatever its action type or requirement (`FUN_140ac2dd0`), replaces the unit's actions
+    /// ([`Turns::start_hunt`] without the unit AI's notify: `HuntObject` set the AI itself). A
+    /// target the world does not hold or no task would fail the command, which the unit AI took
     /// as done: not modelled.
     pub(crate) fn hunt_command(
         &mut self,
@@ -2660,46 +2716,13 @@ impl Turns {
         if self.players[player].objects[idx].life.state == 2 {
             self.standing_sprite(player, idx)?;
         }
-        let (tp, t) = self.object(target).ok_or(Unsupported(
+        let (_, t) = self.object(target).ok_or(Unsupported(
             "a hunt command on an object the world does not hold",
         ))?;
         let point = t.position;
-        let _ = tp;
-        let unit = &self.players[player].objects[idx];
-        let found = {
-            let masters = self
-                .masters
-                .get(player)
-                .ok_or(Unsupported("a hunt command: no master table"))?;
-            let owner = &self.players[player];
-            let actor = Actor {
-                id: unit.id,
-                master: self.master_of(player, unit.life.master_id)?,
-                player,
-                held: (unit.life.attribute_type, unit.life.amount),
-                attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
-                civ: owner.civ,
-            };
-            let world = World {
-                players: &self.players,
-                drop_sites: &self.drop_sites,
-            };
-            let t = self.task_target(target, 1)?;
-            let general = self.task_target(target, 2)?;
-            masters
-                .work_master(&actor, &t, &general, -1, &world)?
-                .map(|(with, task)| (with, *task))
-        };
-        let (with, task) = found.ok_or(Unsupported("a hunt command without a task"))?;
-        if task.action_type != HUNT {
-            return Err(Unsupported("a hunt command whose task is not a Hunt"));
-        }
-        if self.players[player].objects[idx].life.master_id != with {
-            self.change_master(player, idx, with)?;
-        }
-        if !enabled(&self.players[player].attributes, task.enablement) {
-            return Err(Unsupported("a hunt command whose task is not enabled"));
-        }
+        let task = self
+            .find_work_task(player, idx, target, -1, true)?
+            .ok_or(Unsupported("a hunt command without a task"))?;
         self.start_hunt(
             player,
             idx,
@@ -2721,8 +2744,8 @@ impl Turns {
 
     /// The unit's gather command (object slot 0x368, `FUN_141085030`) forced on `target`, as the
     /// unit AI's `GatherObject` runs it ([`crate::unit_ai::Effect::GatherObject`], after the
-    /// unit's update): slot 0x820 (`FUN_14106c6a0`) finds the task as the work command does
-    /// ([`crate::masters::Masters::work_master`] with any filter; the master switch, slot 0x90);
+    /// unit's update): slot 0x820 finds the task ([`Turns::find_work_task`] with any filter and
+    /// the master switch);
     /// the unit's top Gather on the task found takes the target (its slot 0x48 with the target's
     /// place, [`Turns::retarget_gather`]; what it answers the command passes over); else a new
     /// Gather on the task replaces the unit's actions (`FUN_140a88310`, `FUN_140a98620`, slot
@@ -2740,35 +2763,9 @@ impl Turns {
                 "a gather command on an object the world does not hold",
             ));
         }
-        let unit = &self.players[player].objects[idx];
-        let found = {
-            let masters = self
-                .masters
-                .get(player)
-                .ok_or(Unsupported("a gather command: no master table"))?;
-            let owner = &self.players[player];
-            let actor = Actor {
-                id: unit.id,
-                master: self.master_of(player, unit.life.master_id)?,
-                player,
-                held: (unit.life.attribute_type, unit.life.amount),
-                attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
-                civ: owner.civ,
-            };
-            let world = World {
-                players: &self.players,
-                drop_sites: &self.drop_sites,
-            };
-            let t = self.task_target(target, 1)?;
-            let general = self.task_target(target, 2)?;
-            masters
-                .work_master(&actor, &t, &general, -1, &world)?
-                .map(|(with, task)| (with, *task))
-        };
-        let (with, task) = found.ok_or(Unsupported("a gather command without a task"))?;
-        if self.players[player].objects[idx].life.master_id != with {
-            self.change_master(player, idx, with)?;
-        }
+        let task = self
+            .find_work_task(player, idx, target, -1, true)?
+            .ok_or(Unsupported("a gather command without a task"))?;
         let unit = &self.players[player].objects[idx];
         if unit.top_action_kind() == Some(crate::gather::GATHER)
             && unit.gather.is_some_and(|g| g.task.id == task.id)
@@ -5264,6 +5261,62 @@ mod tests {
             [(11, 0.0), (12, 10.0), (13, 10.0), (14, 0.0), (15, 0.0)]
         );
         assert_eq!(t.players[1].sleeping.len(), 0);
+    }
+
+    /// `FUN_14106c6a0`: a villager's own master without a task for its player's foundation
+    /// takes the first master of its class, type and swap group with one, searched with any
+    /// filter, and becomes it only with the change; one with its own task keeps its master.
+    #[test]
+    fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
+        let units = [(11, 83, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let task = |action_type, object_id| crate::masters::Task {
+            action_type,
+            object_group: -1,
+            object_id,
+            work_val1: 1.0,
+            ..crate::masters::Task::default()
+        };
+        let villager = |id, tasks| Master {
+            id,
+            kind: 70,
+            class: 4,
+            task_by_group: 1,
+            hit_points: 25,
+            tasks,
+            ..Master::default()
+        };
+        t.masters[1] = crate::masters::Masters::new([
+            villager(83, vec![task(5, 53)]),
+            villager(118, vec![task(101, -1)]),
+            Master {
+                id: 70,
+                kind: BUILDING,
+                class: 3,
+                hit_points: 550,
+                ..Master::default()
+            },
+        ]);
+        t.players[1].objects[0].life.hp = 25.0;
+        t.players[1].objects.push(Unit {
+            id: 60,
+            life: crate::lifecycle::Lifecycle {
+                master_id: 70,
+                state: 0,
+                hp: 550.0,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        let found = t.find_work_task(1, 0, 60, GARRISON, false).unwrap();
+        assert_eq!(found.map(|t| t.action_type), Some(101));
+        assert_eq!(t.players[1].objects[0].life.master_id, 83);
+        let found = t.find_work_task(1, 0, 60, -1, true).unwrap();
+        assert_eq!(found.map(|t| t.action_type), Some(101));
+        assert_eq!(t.players[1].objects[0].life.master_id, 118);
+        // 118's own task: no change
+        assert!(t.find_work_task(1, 0, 60, -1, true).unwrap().is_some());
+        assert_eq!(t.players[1].objects[0].life.master_id, 118);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
