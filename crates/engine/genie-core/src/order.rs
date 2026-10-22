@@ -3686,8 +3686,7 @@ impl Turns {
     /// `TRANSFORM_OBJECT` (`RGE_Command::do_command` case 0x29): the object `id`, the player's
     /// (another player's is refused, the cheat flag `+0xb12` aside), of the trophy master
     /// (1649) takes one of the trophies 1650 to 1653 the player has (`FUN_141659d20`): slot 0x90
-    /// with 0, the building's (`FUN_1411e6d90`): [`Turns::change_master`], then a built
-    /// building's build points (`+0xc50`) take the new master's build time.
+    /// with 0, the building's ([`Turns::transform_building`]).
     pub(crate) fn transform_object(
         &mut self,
         player: usize,
@@ -3704,9 +3703,22 @@ impl Turns {
         if unit.life.master_id != TROPHY || !TROPHIES.contains(&master) {
             return Ok(());
         }
-        self.change_master(p, idx, master)?;
-        let build_time = self.master_of(p, master)?.build_time;
-        let unit = &mut self.players[p].objects[idx];
+        self.transform_building(p, idx, master)
+    }
+
+    /// A building's slot 0x90 (`FUN_1411e6d90`, with 0 from each caller): [`Turns::change_master`],
+    /// then in state 2 its build points (`+0xc50`) take the new master's build time (its first
+    /// train location's time, 0 without one). The slice holds them in the building's
+    /// construction record.
+    fn transform_building(
+        &mut self,
+        player: usize,
+        idx: usize,
+        new: i16,
+    ) -> Result<(), Unsupported> {
+        self.change_master(player, idx, new)?;
+        let build_time = self.master_of(player, new)?.build_time;
+        let unit = &mut self.players[player].objects[idx];
         if unit.life.state == 2
             && let Some(c) = unit.construction.as_mut()
         {
@@ -3717,9 +3729,8 @@ impl Turns {
 
     /// The player's gate toggle (`FUN_14162f8c0`, from its slots 0x340 and 0x338): a gate of its
     /// player's masters, without masters of its own ([`crate::turn::Gate::other_masters`]),
-    /// changes to its master's `transform_unit` (slot 0x90, the building's `FUN_1411e6d90`:
-    /// [`Turns::change_master`], then a built gate's build points take the new master's build
-    /// time). A gate that shut (the new master's height above 0) kills the units in it (slot 0xd8
+    /// changes to its master's `transform_unit` (slot 0x90, [`Turns::transform_building`]). A
+    /// gate that shut (the new master's height above 0) kills the units in it (slot 0xd8
     /// on those its count finds, `FUN_141211340`: not modelled) and takes the world time plus 1
     /// as its last move time (`+0x870`).
     pub(crate) fn toggle_gate(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
@@ -3737,18 +3748,11 @@ impl Turns {
         if new == -1 {
             return Ok(());
         }
-        self.change_master(player, idx, new)?;
-        let next = self.master_of(player, new)?;
-        let (build_time, height) = (next.build_time, next.height);
+        self.transform_building(player, idx, new)?;
+        let height = self.master_of(player, new)?.height;
         let now = self.world_time;
-        let unit = &mut self.players[player].objects[idx];
-        if unit.life.state == 2
-            && let Some(c) = unit.construction.as_mut()
-        {
-            c.progress = f32::from(build_time);
-        }
         if 0.0 < height {
-            let id = unit.id;
+            let id = self.players[player].objects[idx].id;
             let annexes = crate::turn::annexes_of(id, &self.players[player].objects);
             let (units, _) = crate::turn::gate_units(&self.spatial, id, &annexes)?;
             for u in units {
@@ -4338,6 +4342,53 @@ mod tests {
         t.gate(1, 11).unwrap();
         t.gate(1, 99).unwrap();
         assert_eq!(t.players[1].objects[0].gate, None);
+    }
+
+    /// `TRANSFORM_OBJECT` and `FUN_1411e6d90`: player 1's trophy 60 (master 1649) takes trophy
+    /// 1650, keeping its share of hit points, and in state 2 its build points take the new
+    /// master's build time; in state 1 they stay.
+    #[test]
+    fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let master = |id, build_time| Master {
+            id,
+            kind: BUILDING,
+            hit_points: 100,
+            build_time,
+            ..Master::default()
+        };
+        t.masters[1] = crate::masters::Masters::new([master(TROPHY, 10), master(1650, 30)]);
+        let trophy = |state| Unit {
+            id: 60,
+            construction: Some(crate::build::Construction {
+                progress: 10.0,
+                desolid: false,
+                builders: 0,
+                hit_points: 100,
+                build_time: 10,
+                record: crate::spatial::Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: true,
+            }),
+            life: crate::lifecycle::Lifecycle {
+                master_id: TROPHY,
+                state,
+                hp: 50.0,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects = vec![trophy(2)];
+        t.transform_object(1, 60, 1650).unwrap();
+        let unit = &t.players[1].objects[0];
+        assert_eq!(unit.life.master_id, 1650);
+        assert_eq!(unit.life.hp, 50.0);
+        assert_eq!(unit.construction.unwrap().progress, 30.0);
+        t.players[1].objects = vec![trophy(1)];
+        t.transform_object(1, 60, 1650).unwrap();
+        assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
