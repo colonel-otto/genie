@@ -231,6 +231,29 @@ impl Streams {
 mod tests {
     use super::*;
 
+    #[test]
+    fn float01_is_the_game_s_get_rand_float_0_to_1() {
+        // FUN_1408115a0 run in unicorn on this state (words at +0x24, index at +0x64)
+        let mut r = Well512 {
+            state: std::array::from_fn(|i| 0x9e37_79b9_u32.wrapping_mul(i as u32 + 1)),
+            index: 5,
+            ..Well512::default()
+        };
+        let game = [
+            0x3e2f_e1b9,
+            0x3e66_58f1,
+            0x3eea_6794,
+            0x3ea8_b3e0,
+            0x3f3d_c906,
+            0x3eaf_bdab,
+            0x3f68_7e1e,
+            0x3f3b_f800,
+        ];
+        let ours: Vec<u32> = (0..8).map(|_| r.float01().to_bits()).collect();
+        assert_eq!(ours, game);
+        assert_eq!((r.draws, r.last), (8, u32::MAX));
+    }
+
     // Expected values from an independent Python transcription of the same decompiled functions.
 
     #[test]
