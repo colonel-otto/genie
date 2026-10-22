@@ -26,6 +26,10 @@ pub(crate) const BUILDING_CLASS: i16 = 3;
 const GATE_CLASS: i16 = 39;
 /// The class of relics, which a building's count leaves out (`+0xc2c`).
 const RELIC_CLASS: i16 = 1;
+/// The ids a command's check reads (`FUN_140e558b0`): a human player's first 60, a computer
+/// player's first 500.
+const HUMAN_IDS: usize = 60;
+const COMPUTER_IDS: usize = 500;
 /// `SEEK_SHELTER`'s villagers: class 4 of type 70.
 const VILLAGER_CLASS: i16 = 4;
 const VILLAGER_KIND: u8 = 70;
@@ -947,25 +951,33 @@ impl Turns {
         self.shelter(player, &units, &[(building, count)], through_ai)
     }
 
-    /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`): of `ids`, the villagers (class 4 of type 70) and
-    /// the units of master 1808 seek shelter (a villager of master 1808 is listed twice) in the
-    /// player's buildings that take villagers: in the player's object order, those of type 80 in
-    /// state 2, not inside another (`+0x2f0`, `FUN_141188da0`), whose master's `garrison_type`
-    /// has bit 0 (`FUN_1411ccb60` with 1), each with its count ([`Turns::garrisoned`]); then
-    /// [`Turns::shelter`] (`FUN_141622450`). The command's check (`FUN_140e558b0`) drops an id
-    /// the world does not hold and another player's unit unless the game setting `+0x1074`
-    /// allows it, which the slice does not hold: it stops there.
+    /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`), after the command's check (`FUN_140e558b0`): of
+    /// the first 60 `ids` (500 for a computer player), an id the world does not hold, and another
+    /// player's unit unless players may order each other's ([`Turns::allied_control`],
+    /// `+0x1074`), are dropped ([`Turns::checked_units`]); with every id dropped the command does
+    /// nothing. Of the others, the villagers (class 4 of type 70) and the units of master 1808
+    /// seek shelter (a villager of master 1808 is listed twice) in the player's buildings that
+    /// take villagers: in the player's object order, those of type 80 in state 2, not inside
+    /// another (`+0x2f0`, `FUN_141188da0`), whose master's `garrison_type` has bit 0
+    /// (`FUN_1411ccb60` with 1), each with its count ([`Turns::garrisoned`]); then
+    /// [`Turns::shelter`] (`FUN_141622450`).
     pub(crate) fn seek_shelter(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
-        let mut units = Vec::with_capacity(ids.len());
-        for &id in ids {
+        let cap = if self.players[player].computer {
+            COMPUTER_IDS
+        } else {
+            HUMAN_IDS
+        };
+        let checked = self.checked_units(player, &ids[..ids.len().min(cap)]);
+        // a human's command whose ids all dropped is refused; run (the cheat +0xb12) on no
+        // units it would only read the buildings' counts
+        if checked.iter().all(|&id| id == -1) {
+            return Ok(());
+        }
+        let mut units = Vec::with_capacity(checked.len());
+        for id in checked {
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
-            if p != player {
-                return Err(Unsupported(
-                    "a SeekShelter of another player's unit (the setting +0x1074)",
-                ));
-            }
             let m = self.master_of(p, u.life.master_id)?;
             if m.class == VILLAGER_CLASS && m.kind == VILLAGER_KIND {
                 units.push(id);
@@ -1390,6 +1402,7 @@ mod tests {
                 id: VILLAGER,
                 kind: 70,
                 class: 4,
+                copy_id: VILLAGER,
                 tasks: vec![task(GARRISON, 3), task(GARRISON, 20)],
                 ..Master::default()
             },
@@ -1422,6 +1435,8 @@ mod tests {
     fn unit(id: i32, master: i16, hp: f32) -> Unit {
         let mut u = Unit {
             id,
+            pasture: -1,
+            my_pasture: -1,
             ..Unit::default()
         };
         u.life.master_id = master;
@@ -2051,5 +2066,93 @@ mod tests {
         assert_eq!(takes(&t, 200, 1, VILLAGER), Ok(true));
         // an object below type 70
         assert_eq!(takes(&t, 400, 1, VILLAGER), Ok(false));
+    }
+
+    /// A villager of player `p` with a unit AI and speed at (`x`, `y`).
+    fn walker(t: &mut Turns, p: usize, id: i32, m: i16, at: [f32; 2]) {
+        let mut v = unit(id, m, 25.0);
+        v.position = [at[0], at[1], 0.0];
+        v.ai = Some(crate::unit_ai::UnitAi {
+            ai_type: 8,
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            ..crate::unit_ai::UnitAi::default()
+        });
+        v.mover = Some(crate::movement::Mover {
+            forward: [1.0, 0.0, 0.0],
+            right: [0.0, 0.0, -1.0],
+            velocity: None,
+            paths: vec![],
+            factor: 1.0,
+            stats: crate::movement::MoveStats {
+                speed: 0.8,
+                ..standing()
+            },
+            waiting: 0,
+            wait_delays: 0,
+            attack_moving: false,
+            last_move: 0,
+            moved_at: [0.0; 3],
+            substitute_count: 0,
+            ignore_units: Vec::new(),
+            last_turn: 0.0,
+            angle: 0.0,
+            move_to_point: None,
+            speed_stopped: false,
+            pauses: Vec::new(),
+            in_the_way: Vec::new(),
+            sprite_facets: None,
+        });
+        t.players[p].objects.push(v);
+        t.spatial.insert(
+            id,
+            crate::spatial::Placed {
+                position: [at[0], at[1], 0.0],
+                radius: [0.2, 0.2],
+                class: 4,
+                player: p,
+                master: m,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.8,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+    }
+
+    #[test]
+    fn seek_shelter_sends_the_players_villagers_and_checked_units_to_its_buildings() {
+        // FUN_140e6a3a0 -> FUN_141622450 -> FUN_141621220 with no transports: the command's
+        // check (FUN_140e558b0) drops another player's unit unless players may order each
+        // other's (+0x1074); a villager walks to the town centre's Enter
+        let mut t = let_out_world();
+        walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+        walker(&mut t, 2, 2000, VILLAGER, [5.5, 6.5]);
+        walker(&mut t, 1, 1001, ARCHER, [6.5, 5.5]);
+        t.seek_shelter(1, &[1000, 2000, 1001, 4242]).unwrap();
+        let enter = |t: &Turns, id| t.object(id).unwrap().1.enter.map(|e| e.target);
+        assert_eq!(enter(&t, 1000), Some(100));
+        // the ally's villager was dropped by the check; the archer is no villager
+        assert_eq!((enter(&t, 2000), enter(&t, 1001)), (None, None));
+        // with +0x1074 the ally's villager is the player's to send; its own player's town
+        // centres are not asked, only the commanding player's
+        let mut t = let_out_world();
+        t.allied_control = true;
+        walker(&mut t, 2, 2000, VILLAGER, [5.5, 6.5]);
+        t.seek_shelter(1, &[2000]).unwrap();
+        assert_eq!(enter(&t, 2000), Some(100));
+        // a building that takes no villagers (garrison type bit 0) is not asked
+        let mut t = let_out_world();
+        for m in &mut t.masters {
+            if let Some(b) = m.get_mut(TC).and_then(|tc| tc.building.as_mut()) {
+                b.garrison_type = 2;
+            }
+        }
+        walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+        t.seek_shelter(1, &[1000]).unwrap();
+        assert_eq!(enter(&t, 1000), None);
     }
 }
