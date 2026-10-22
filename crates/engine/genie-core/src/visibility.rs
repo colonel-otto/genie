@@ -13,8 +13,12 @@
 //! data list, map `+0x5e00`): a player whose sight first reaches a tile of a building whose anchor
 //! it never saw sees the building's tiles as explored (`FUN_141285da0`).
 //!
+//! Each player's tile list (player `+0x180`) holds the tiles its map explored since its update
+//! last ended, whose objects that gather by themselves join its visible-resource lists
+//! ([`VisibleResources`], player `+0x2f0`).
+//!
 //! Not held: the tile's fog byte (`+0x17`, for the local player's view), the minimap's and the
-//! renderer's dirty tiles (player `+0x180`, `FUN_141285c70`'s `+0x1f0`, `FUN_141778750`), the
+//! renderer's dirty tiles (`FUN_141285c70`'s `+0x1f0`, `FUN_141778750`), the
 //! cheat that reveals the map (`DAT_143f68a30`, probed 0), shared sight (`+0x798`, `+0x79c`, 0 in
 //! every object probed) and the line-of-sight powerup (`+0xad4`, unsaved, 0 after a load).
 

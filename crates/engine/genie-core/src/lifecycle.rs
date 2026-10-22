@@ -152,7 +152,8 @@ impl Lifecycle {
     /// not held). The storage the caller checks; the players' fog ghosts of a master whose fog
     /// visibility is 2 (`FUN_14118e990`, for players that explored the tile but do not see it)
     /// need the visibility map, which the slice does not hold: it assumes none, as for the
-    /// visible-resource lists (`FUN_141090430`), the statistics and the sounds.
+    /// statistics and the sounds. The visible-resource lists (`FUN_1411980b0`) are the caller's
+    /// ([`crate::turn::forget_resource`]).
     fn die(&mut self, object: &mut Well512) -> Result<(), Unsupported> {
         if self.inside.is_some() {
             return Err(Unsupported("an object inside another dies"));
