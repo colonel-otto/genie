@@ -2884,14 +2884,8 @@ impl Turns {
         let builder = self.master_of(player, unit.life.master_id)?;
         let gap = crate::movement::footprint_gap(unit.position, builder.radius, t_at, t_radius);
         if old.target != target {
-            if old.added {
-                self.leave_builders(old.target)?;
-            }
-            if old.target != -1 {
-                let by = self.releaser(player, idx);
-                self.release(old.target, by)?;
-            }
-            self.take(target);
+            // the task finder took the new target below state 3, which slot 0x68 keeps
+            let _ = self.build_set_target(player, idx, (old.target, old.added), target)?;
             let unit = &mut self.players[player].objects[idx];
             let (Some(build), mover) = (unit.build.as_mut(), unit.mover.as_mut()) else {
                 return Err(Unsupported("a Build's retarget without its Build"));
@@ -2916,6 +2910,30 @@ impl Turns {
         (unit.build, unit.mover) = (build, mover);
         r?;
         Ok(class)
+    }
+
+    /// The Build's slot 0x68 (`FUN_140ab0300`) of the builder at `idx`, its target `old` and
+    /// whether it is counted among the builders (`added`, `+0x68`), on `new` (−1 for none): a
+    /// counted Build of another target leaves the builders ([`Turns::leave_builders`]) and is no
+    /// longer counted; then the base ([`Turns::retarget_action`]) takes the target. Returns the
+    /// Build's target after it.
+    pub(crate) fn build_set_target(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (old, added): (i32, bool),
+        new: i32,
+    ) -> Result<i32, Unsupported> {
+        let leaves = old != new && added;
+        if leaves {
+            self.leave_builders(old)?;
+        }
+        let target = self.retarget_action(player, idx, old, new, false)?;
+        if let Some(build) = self.players[player].objects[idx].build.as_mut() {
+            build.target = target;
+            build.added &= !leaves;
+        }
+        Ok(target)
     }
 
     /// `FUN_140aaddb0` and the builder count: the foundation `id` a Build counted its builder
@@ -3192,13 +3210,44 @@ impl Turns {
                     self.streams.get(Stream::Sprite),
                 )?;
             }
-            if let Some(old) = old {
-                let by = self.releaser(player, idx);
-                self.release(old, by)?;
-            }
-            self.take(target);
+            // the hunt's slot 0x68 (FUN_140ac7980): FUN_140a7a230 on the new target, which the
+            // work command's task finder took below state 3
+            let _ = self.retarget_action(player, idx, old.unwrap_or(-1), target, false)?;
         }
         Ok(())
+    }
+
+    /// An action's slot 0x68 base (`FUN_140a7a230`) for the unit at `idx`: its target `old` (−1
+    /// for none) becomes `new`. The same target changes nothing. A different old target the
+    /// world still holds is let go (slot 0x180, [`Turns::release`]) unless the action is a
+    /// sub-action (`quiet`, `+0x60`); a new target in state 7 or more is not taken, and the
+    /// action is left without one; else it is taken (slot 0x178 with the action's type,
+    /// [`Turns::take`]) unless `quiet`. Returns the action's target id (`+0x30`) after it.
+    pub(crate) fn retarget_action(
+        &mut self,
+        player: usize,
+        idx: usize,
+        old: i32,
+        new: i32,
+        quiet: bool,
+    ) -> Result<i32, Unsupported> {
+        if old == new {
+            return Ok(old);
+        }
+        if old != -1 && !quiet && self.object(old).is_some() {
+            let by = self.releaser(player, idx);
+            self.release(old, by)?;
+        }
+        let Some((_, t)) = self.object(new) else {
+            return Ok(-1);
+        };
+        if 7 <= t.life.state {
+            return Ok(-1);
+        }
+        if !quiet {
+            self.take(new);
+        }
+        Ok(new)
     }
 
     /// The Gather's slot 0x48 (`0x140a903a0`) on the work command's new target
@@ -5034,6 +5083,108 @@ mod tests {
         assert_eq!(own_order_target(&ai, 11), 60);
         ai.orders.truncate(2);
         assert_eq!(own_order_target(&ai, 11), -1);
+    }
+
+    /// `FUN_140a7a230`: a new target is taken (its workers count one more) and the old one let
+    /// go; a quiet sub-action does neither; a target in state 7 or more is not taken; the same
+    /// target changes nothing.
+    #[test]
+    fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.masters[0] = crate::masters::Masters::new([Master {
+            id: 66,
+            kind: 70,
+            ..Master::default()
+        }]);
+        let deer = |id, state, workers| Unit {
+            id,
+            workers,
+            combat: true,
+            life: crate::lifecycle::Lifecycle {
+                master_id: 66,
+                state,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[0].objects = vec![deer(40, 2, 1), deer(41, 2, 0), deer(42, 7, 0)];
+        let workers =
+            |t: &Turns| -> Vec<i32> { t.players[0].objects.iter().map(|u| u.workers).collect() };
+        assert_eq!(t.retarget_action(1, 0, 40, 40, false), Ok(40));
+        assert_eq!(workers(&t), [1, 0, 0]);
+        assert_eq!(t.retarget_action(1, 0, 40, 41, true), Ok(41));
+        assert_eq!(workers(&t), [1, 0, 0]);
+        assert_eq!(t.retarget_action(1, 0, 40, 41, false), Ok(41));
+        assert_eq!(workers(&t), [0, 1, 0]);
+        assert_eq!(t.retarget_action(1, 0, 41, 42, false), Ok(-1));
+        assert_eq!(workers(&t), [0, 0, 0]);
+        assert_eq!(t.retarget_action(1, 0, 99, -1, false), Ok(-1));
+    }
+
+    /// `FUN_140ab0300`: a Build counted among its foundation's builders leaves them for a new
+    /// target, which it takes; the same target keeps the count.
+    #[test]
+    fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.masters[1] = crate::masters::Masters::new([
+            Master {
+                id: 4,
+                kind: 70,
+                ..Master::default()
+            },
+            Master {
+                id: 79,
+                kind: BUILDING,
+                ..Master::default()
+            },
+        ]);
+        let foundation = |id, builders| Unit {
+            id,
+            construction: Some(crate::build::Construction {
+                progress: 0.0,
+                desolid: true,
+                builders,
+                hit_points: 100,
+                build_time: 10,
+                record: crate::spatial::Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: true,
+            }),
+            workers: 1,
+            life: crate::lifecycle::Lifecycle {
+                master_id: 79,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects.push(foundation(60, 1));
+        t.players[1].objects.push(foundation(61, 0));
+        t.players[1].objects[0].build = Some(crate::build::BuildAction {
+            target: 60,
+            state: 6,
+            move_to: None,
+            goal: None,
+            task: crate::build::BuildTask {
+                range: 0.1,
+                work_value: 1.0,
+                work_rate: 1.0,
+            },
+            added: true,
+            timer: 0.0,
+        });
+        assert_eq!(t.build_set_target(1, 0, (60, true), 60), Ok(60));
+        assert!(t.players[1].objects[0].build.unwrap().added);
+        assert_eq!(t.build_set_target(1, 0, (60, true), 61), Ok(61));
+        let build = t.players[1].objects[0].build.unwrap();
+        assert_eq!((build.target, build.added), (61, false));
+        let site = |t: &Turns, i: usize| {
+            let u = &t.players[1].objects[i];
+            (u.construction.unwrap().builders, u.workers)
+        };
+        assert_eq!((site(&t, 1), site(&t, 2)), ((0, 0), (0, 2)));
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
