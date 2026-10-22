@@ -623,6 +623,9 @@ pub(crate) const RESEARCH_ACTION: i32 = 0x26c;
 const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
 /// The building master type RESEARCH asks for (`'P'`, 80).
 const BUILDING_KIND: u8 = 80;
+/// The buildings' paid costs (attribute 247), which the combat setup adds for a building with a
+/// train location (`FUN_14121df60`).
+const BUILDING_COST: i16 = 247;
 /// The masters whose restrictions the world's load gives planners (`World::load_world`'s two
 /// calls of `FUN_140f7d310`: Gaia's entries `+0x298` and `+0x10b8`).
 const PLANNED_MASTERS: [i16; 2] = [83, 535];
@@ -8798,8 +8801,10 @@ impl Turns {
     /// constructor `FUN_1411de5f0`): a new object of `master` for `player` at `position` (state
     /// 0, hit points 1, the ground's height), with a unit AI of the given type if its class gets
     /// one, its construction terrain ([`Turns::construction_terrain`]) and its footprint cleared
-    /// ([`Turns::clear_footprint`]); then the player pays the master's cost and the foundation,
-    /// desolid, takes its place and its sight ([`Turns::foundation_place`]). Its id and position.
+    /// ([`Turns::clear_footprint`]); the combat setup counts its class ([`count_class`]) and a
+    /// building with a train location its paid cost (attribute 247); then the player pays the
+    /// master's cost and the foundation, desolid, takes its place and its sight
+    /// ([`Turns::foundation_place`]). Its id and position.
     pub(crate) fn found(
         &mut self,
         player: usize,
@@ -8830,8 +8835,27 @@ impl Turns {
             turn.stopped = true;
             None
         });
-        // the combat setup's powerup offset (`+0xa54`, FUN_14121df60's "setup" draw)
+        // the combat setup (FUN_14121df60): its class counters (FUN_141226060), its powerup
+        // offset (`+0xa54`, the "setup" draw) and, for a building with a train location (an
+        // entry of `+0x898` other than -1), its paid cost in attribute 247 (slot 0xf8)
+        if let Some(m) = self.masters.get(player).and_then(|m| m.get(master)) {
+            count_class(&mut self.players[player].attributes, m, 1.0);
+        }
         let _ = self.streams.get(Stream::Object).rand15();
+        if let Some(m) = self
+            .masters
+            .get(player)
+            .and_then(|m| m.get(master))
+            .filter(|m| m.kind == BUILDING_KIND && m.trained_at.iter().any(|&t| t != -1))
+        {
+            let paid: i32 = m
+                .cost
+                .iter()
+                .filter(|&&(resource, _, paid)| 0 <= resource && paid)
+                .map(|&(_, amount, _)| i32::from(amount))
+                .sum();
+            self.players[player].add_attribute(BUILDING_COST, paid as f32)?;
+        }
         // the static init (FUN_1411a45a0): the last storage entry of flag 0 is held
         // (FUN_141193710), those of flags 1, 2 and 32 go to the owner (FUN_141193860)
         let storage = self
@@ -12145,6 +12169,7 @@ mod tests {
                         villager(9181, 293, 29.0, 99.0),
                     ],
                     resources: [200.0, 100.0, 200.0, 100.0],
+                    attributes: vec![0.0; 250],
                     ..Player::default()
                 },
             ],
@@ -12166,6 +12191,8 @@ mod tests {
         );
         let p = &t.players[1];
         assert_eq!(p.resources, [200.0, 75.0, 200.0, 100.0]);
+        // the house's paid cost, as a building with a train location, in attribute 247
+        assert_eq!(p.attributes[247], 25.0);
         let foundation = p.objects.last().unwrap();
         assert_eq!(
             (
@@ -12212,6 +12239,7 @@ mod tests {
                 vec![
                     Player {
                         resources: [0.0, 100.0, 0.0, 0.0],
+                        attributes: vec![0.0; 250],
                         computer: true,
                         ..Player::default()
                     },
