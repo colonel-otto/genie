@@ -66,10 +66,15 @@ pub fn garrison_type_takes(garrison_type: u8, class: i16, id: i16, with_42: bool
     by_class || as_cavalry || as_monk
 }
 
-/// `FUN_1415c9240` with 3, 3: the master's task list holds a garrison task (action type 3) on
-/// buildings (class 3).
-fn has_garrison_task(tasks: &[Task]) -> bool {
-    tasks.iter().any(is_garrison_task)
+/// `FUN_1415c9240`: the master's task list holds a task of action type `action` on objects of
+/// class `class`, both bytes the game widens to compare with the task's ushorts (`+0xe`,
+/// `+0x10`). A building's test asks for 3 on its own class (a transport) or on buildings (3).
+fn has_garrison_task(tasks: &[Task], action: i16, class: i16) -> bool {
+    let byte = |v: i16| u16::from(v.to_le_bytes()[0]);
+    tasks.iter().any(|t| {
+        t.action_type.cast_unsigned() == byte(action)
+            && t.object_group.cast_unsigned() == byte(class)
+    })
 }
 
 /// A garrison task (action type 3) on buildings (class 3).
@@ -191,7 +196,8 @@ pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32
     sum / reload * g
 }
 
-/// The kind of the master a transforming master names (`+0x656`): a combat unit's.
+/// The type of a combat unit: the master a transforming master names (`+0x656`), and a unit a
+/// transport takes in (`FUN_14120eb10`).
 const COMBAT_KIND: u8 = 70;
 
 /// `FUN_141213520`: the share of a building's volleys a unit of `master` inside it adds, against
@@ -229,15 +235,21 @@ pub fn share(
 }
 
 impl Turns {
-    /// Slot 0x198 of a building (`FUN_1412169b0`) for `unit`: its count ([`Turns::garrisoned`])
-    /// plus the unit and what it holds (1 and its own count) within its master's capacity
-    /// (`obj_max`).
-    pub(crate) fn has_room(&self, building: i32, unit: i32) -> Result<bool, Unsupported> {
-        let (bp, b) = self
-            .object(building)
-            .ok_or(Unsupported("a room test of a building that is gone"))?;
+    /// Slot 0x198 of a building (`FUN_1412169b0`) `b` of player `bp` for `unit`: its count
+    /// ([`Turns::garrisoned`]) plus the unit and what it holds (1 and its own count; 1 for no
+    /// unit) within its master's capacity (`obj_max`).
+    pub(crate) fn has_room(
+        &self,
+        bp: usize,
+        b: &crate::turn::Unit,
+        unit: Option<i32>,
+    ) -> Result<bool, Unsupported> {
         let capacity = i32::from(self.master_of(bp, b.life.master_id)?.garrison);
-        Ok(self.garrisoned(building)? + 1 + self.garrisoned(unit)? <= capacity)
+        let with = match unit {
+            Some(u) => self.garrisoned(u)? + 1,
+            None => 1,
+        };
+        Ok(self.garrisoned(b.id)? + with <= capacity)
     }
 
     /// The work command's Enter (its action type 3): the action takes its building (an annex its
@@ -290,7 +302,8 @@ impl Turns {
                 "an Enter of a unit inside an object (state 13)",
             ));
         }
-        if !self.has_room(target, id)? {
+        let (tp, t) = self.object(target).expect("found above");
+        if !self.has_room(tp, t, Some(id))? {
             return Err(Unsupported(
                 "an Enter into a building without room (state 11)",
             ));
@@ -773,19 +786,34 @@ impl Turns {
         Ok(true)
     }
 
-    /// `FUN_14120eb10(building, player, master, 1, 1)`: whether `building` takes a unit of
-    /// `player`'s master `master` in. The player must have the master; another player's building
-    /// must be allied both ways (`FUN_141663d90`); the building in state 2 (an annex asks its main
-    /// building, `+0xbb8`), of type 80, above [`LEAST_HP_SHARE`] of its master's hit points, with
-    /// a capacity (`obj_max`); the unit's master of type 70 or more with a garrison task on
-    /// buildings ([`has_garrison_task`]) and of a kind the building's `garrison_type` takes
-    /// ([`garrison_type_takes`]). A building whose `object_flags` bit 0 is set (a transport's
-    /// test, for a unit of type 70 or a class of flag 0x10002, `FUN_1411205e0`) is not modelled.
+    /// `FUN_14120eb10(building, player, master, 1, 1)` ([`Turns::takes_in_as`]).
     pub(crate) fn takes_in(
         &self,
         building: i32,
         player: usize,
         master: i16,
+    ) -> Result<bool, Unsupported> {
+        self.takes_in_as(building, player, master, true, true)
+    }
+
+    /// `FUN_14120eb10`: whether `building` takes a unit of `player`'s master `master` in. The
+    /// player must have the master; another player's building must be allowed (`others`, the
+    /// game's `param_4` 1) and allied both ways (`FUN_141663d90`); the building in state 2. A
+    /// building whose `object_flags` bit 0 is set (a transport) takes a unit of type 70 (or of a
+    /// class of flag 0x10002, `FUN_1411205e0`) with a task of action 3 on its own class
+    /// ([`has_garrison_task`]). Any other takes a unit of type 70 or more when it is of type 80
+    /// (an annex asks its main building, `+0xbb8`), above [`LEAST_HP_SHARE`] of its master's hit
+    /// points, with a capacity (`obj_max`), the unit's master with a garrison task on buildings
+    /// and of a kind the building's `garrison_type` takes ([`garrison_type_takes`]). Either then
+    /// needs room for one more (slot 0x198 with no unit, [`Turns::has_room`]) unless `unchecked`
+    /// (`param_5` not 0).
+    pub(crate) fn takes_in_as(
+        &self,
+        building: i32,
+        player: usize,
+        master: i16,
+        others: bool,
+        unchecked: bool,
     ) -> Result<bool, Unsupported> {
         let Some(unit) = self.masters.get(player).and_then(|m| m.get(master)) else {
             return Ok(false);
@@ -793,22 +821,32 @@ impl Turns {
         let Some((bp, b)) = self.object(building) else {
             return Ok(false);
         };
-        let world = World {
-            players: &self.players,
-            drop_sites: &self.drop_sites,
-        };
-        if bp != player && !(world.allied(bp, player, true) && world.allied(player, bp, true)) {
-            return Ok(false);
+        if bp != player {
+            let world = World {
+                players: &self.players,
+                drop_sites: &self.drop_sites,
+            };
+            if !others || !world.allied(bp, player, true) || !world.allied(player, bp, true) {
+                return Ok(false);
+            }
         }
         if b.life.state != 2 {
             return Ok(false);
         }
-        if self.master_of(bp, b.life.master_id)?.object_flags & 1 != 0 {
-            return Err(Unsupported(
-                "a garrison test of a building with object flag 0 (a transport's)",
-            ));
+        let own = self.master_of(bp, b.life.master_id)?;
+        if own.object_flags & 1 != 0 {
+            if unit.kind != COMBAT_KIND {
+                return Err(Unsupported(
+                    "a transport's garrison test of a unit not of type 70 (the class flags \
+                     0x10002, FUN_1411205e0)",
+                ));
+            }
+            if !has_garrison_task(&unit.tasks, GARRISON, own.class) {
+                return Ok(false);
+            }
+            return Ok(unchecked || self.has_room(bp, b, None)?);
         }
-        if unit.kind < 70 {
+        if unit.kind < COMBAT_KIND || own.kind != BUILDING {
             return Ok(false);
         }
         let (bp, b) = match b.annex_of {
@@ -818,23 +856,21 @@ impl Turns {
             None => (bp, b),
         };
         let bm = self.master_of(bp, b.life.master_id)?;
-        if bm.kind != BUILDING {
-            return Ok(false);
-        }
+        // CVTPS2PD, CVTDQ2PD, MULSD, then COMISD with JBE: an unordered hit point count takes
+        // nothing
         let max_hp = f64::from(f32::from(bm.hit_points));
-        if f64::from(b.life.hp) <= max_hp * LEAST_HP_SHARE || bm.garrison == 0 {
+        let above = f64::from(b.life.hp) > max_hp * LEAST_HP_SHARE;
+        if !above || bm.garrison == 0 {
             return Ok(false);
         }
-        if !has_garrison_task(&unit.tasks) {
+        if !has_garrison_task(&unit.tasks, GARRISON, BUILDING_CLASS) {
             return Ok(false);
         }
         let garrison_type = bm.building.map_or(0, |m| m.garrison_type);
-        Ok(garrison_type_takes(
-            garrison_type,
-            unit.class,
-            unit.id,
-            true,
-        ))
+        if !garrison_type_takes(garrison_type, unit.class, unit.id, true) {
+            return Ok(false);
+        }
+        Ok(unchecked || self.has_room(bp, b, None)?)
     }
 
     /// A building's slot 0x498 (`FUN_1411d0ce0`): the objects inside it (`+0x2f8`'s count) and
@@ -1303,6 +1339,99 @@ const fn unload_group_takes(group: i32, class: i16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::masters::BuildingMaster;
+    use crate::turn::{Player, Unit};
+
+    const TC: i16 = 109;
+    const VILLAGER: i16 = 83;
+    const ARCHER: i16 = 4;
+    const SHIP: i16 = 545;
+    const GATE: i16 = 88;
+
+    fn task(action_type: i16, object_group: i16) -> Task {
+        Task {
+            action_type,
+            object_group,
+            ..Task::default()
+        }
+    }
+
+    /// A town centre (garrison type 11, room for 15), a villager and an archer that may enter
+    /// buildings, a transport ship (object flag 0, room for 5) and a gate.
+    fn garrison_masters() -> Masters {
+        Masters::new([
+            Master {
+                id: TC,
+                kind: 80,
+                class: 52,
+                hit_points: 2400,
+                garrison: 15,
+                building: Some(BuildingMaster {
+                    garrison_type: 11,
+                    ..BuildingMaster::default()
+                }),
+                ..Master::default()
+            },
+            Master {
+                id: VILLAGER,
+                kind: 70,
+                class: 4,
+                tasks: vec![task(GARRISON, 3), task(GARRISON, 20)],
+                ..Master::default()
+            },
+            Master {
+                id: ARCHER,
+                kind: 70,
+                class: 0,
+                tasks: vec![task(7, 3)],
+                ..Master::default()
+            },
+            Master {
+                id: SHIP,
+                kind: 70,
+                class: 20,
+                object_flags: 1,
+                garrison: 1,
+                ..Master::default()
+            },
+            Master {
+                id: GATE,
+                kind: 80,
+                class: 39,
+                hit_points: 2750,
+                garrison: 0,
+                ..Master::default()
+            },
+        ])
+    }
+
+    fn unit(id: i32, master: i16, hp: f32) -> Unit {
+        let mut u = Unit {
+            id,
+            ..Unit::default()
+        };
+        u.life.master_id = master;
+        u.life.hp = hp;
+        u.life.state = 2;
+        u
+    }
+
+    /// Gaia and three players; players 1 and 2 allied both ways, player 3 an enemy. Player 1
+    /// holds town centre 100, ship 200 and gate 300 (an annex of the town centre).
+    fn garrison_world() -> Turns {
+        let mut players: Vec<Player> = (0..4).map(|_| Player::default()).collect();
+        players[1].relations = vec![1, 0, 0, 3];
+        players[2].relations = vec![1, 0, 0, 3];
+        players[3].relations = vec![1, 3, 3, 0];
+        let mut t = Turns::new(0, 0, 0, vec![0; 4], players);
+        t.masters = (0..4).map(|_| garrison_masters()).collect();
+        t.players[1].objects.push(unit(100, TC, 2400.0));
+        t.players[1].objects.push(unit(200, SHIP, 100.0));
+        let mut gate = unit(300, GATE, 2750.0);
+        gate.annex_of = Some(100);
+        t.players[1].objects.push(gate);
+        t
+    }
 
     /// UNLOAD's class groups (flag 2) as `FUN_14118a610` tests them; group 3 is the bit mask
     /// `0x200801000801000` over classes below 58.
@@ -1572,5 +1701,98 @@ mod tests {
             ..foot
         };
         assert_eq!(share(&relic_like, &masters, 0.0, f32::NAN), Ok(1.0));
+    }
+
+    #[test]
+    fn a_garrison_task_compares_the_bytes_the_game_passes_widened() {
+        // FUN_1415c9240: the task's ushorts +0xe and +0x10 against the byte arguments
+        let tasks = [task(GARRISON, 20), task(GARRISON, -1)];
+        // class 276 passes its low byte 20; a task of 276 never matches a byte
+        assert!(has_garrison_task(&tasks[..1], GARRISON, 276));
+        assert!(has_garrison_task(&tasks[..1], GARRISON, 20));
+        assert!(!has_garrison_task(&[task(GARRISON, 276)], GARRISON, 276));
+        // a class of -1 passes 0xff, which a task of 0xffff does not match
+        assert!(!has_garrison_task(&tasks[1..], GARRISON, -1));
+        assert!(has_garrison_task(&[task(GARRISON, 255)], GARRISON, -1));
+        assert!(!has_garrison_task(&[task(7, 3)], GARRISON, 3));
+    }
+
+    #[test]
+    fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_type() {
+        // FUN_14120eb10
+        let mut t = garrison_world();
+        let takes = |t: &Turns, b, p, m, others, unchecked| {
+            t.takes_in_as(b, p, m, others, unchecked).unwrap()
+        };
+        assert!(takes(&t, 100, 1, VILLAGER, true, true));
+        assert!(takes(&t, 100, 1, VILLAGER, true, false));
+        // a master the player does not have, a building the world does not hold
+        assert!(!takes(&t, 100, 1, 999, true, true));
+        assert!(!takes(&t, 101, 1, VILLAGER, true, true));
+        // an ally's building only with param_4 1; an enemy's never
+        assert!(takes(&t, 100, 2, VILLAGER, true, true));
+        assert!(!takes(&t, 100, 2, VILLAGER, false, true));
+        assert!(!takes(&t, 100, 3, VILLAGER, true, true));
+        // no garrison task on buildings; garrison type 11 has no bit for class 0
+        assert!(!takes(&t, 100, 1, ARCHER, true, true));
+        // the gate (an annex) asks its main building, but its own master must be of type 80
+        assert!(takes(&t, 300, 1, VILLAGER, true, true));
+        // a unit takes nothing in through this path: the archer is no transport
+        assert!(!takes(&t, 200, 1, ARCHER, true, true));
+        // hit points at most a fifth of the master's (COMISD, JBE: NaN too)
+        for hp in [480.0, f32::NAN] {
+            t.players[1].objects[0].life.hp = hp;
+            assert!(!takes(&t, 100, 1, VILLAGER, true, true));
+            assert!(!takes(&t, 300, 1, VILLAGER, true, true));
+        }
+        t.players[1].objects[0].life.hp = 480.5;
+        assert!(takes(&t, 100, 1, VILLAGER, true, true));
+        // state 2 only
+        t.players[1].objects[0].life.state = 3;
+        assert!(!takes(&t, 100, 1, VILLAGER, true, true));
+        t.players[1].objects[0].life.state = 2;
+        // full: only the room test (param_5 0) refuses
+        for k in 0..15 {
+            let mut v = unit(1000 + k, VILLAGER, 25.0);
+            v.life.inside = Some(100);
+            t.players[1].objects.push(v);
+        }
+        assert!(takes(&t, 100, 1, VILLAGER, true, true));
+        assert!(!takes(&t, 100, 1, VILLAGER, true, false));
+    }
+
+    #[test]
+    fn a_transport_takes_a_combat_unit_with_a_task_on_its_class_and_room() {
+        // FUN_14120eb10's object-flag-0 branch: FUN_1415c9240 with 3 and the transport's class
+        let mut t = garrison_world();
+        let takes = |t: &Turns, m, unchecked| t.takes_in_as(200, 1, m, true, unchecked);
+        assert_eq!(takes(&t, VILLAGER, false), Ok(true));
+        assert_eq!(takes(&t, ARCHER, true), Ok(false));
+        let mut v = unit(1000, VILLAGER, 25.0);
+        v.life.inside = Some(200);
+        t.players[1].objects.push(v);
+        assert_eq!(takes(&t, VILLAGER, false), Ok(false));
+        assert_eq!(takes(&t, VILLAGER, true), Ok(true));
+        // a unit of another type needs the class flags (FUN_1411205e0), not modelled
+        assert!(takes(&t, TC, true).is_err());
+    }
+
+    #[test]
+    fn a_room_test_counts_the_unit_and_what_it_holds_or_one_for_none() {
+        // FUN_1412169b0: slot 0x498 of the building plus that of the unit and 1
+        let mut t = garrison_world();
+        t.players[1].objects.push(unit(1000, VILLAGER, 25.0));
+        let room = |t: &Turns, unit| {
+            let (bp, b) = t.object(200).unwrap();
+            t.has_room(bp, b, unit).unwrap()
+        };
+        assert!(room(&t, None));
+        assert!(room(&t, Some(1000)));
+        // a unit holding one more needs room for two
+        let mut held = unit(1001, ARCHER, 25.0);
+        held.life.inside = Some(1000);
+        t.players[1].objects.push(held);
+        assert!(!room(&t, Some(1000)));
+        assert!(room(&t, None));
     }
 }
