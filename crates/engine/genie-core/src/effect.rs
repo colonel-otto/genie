@@ -11,7 +11,7 @@
 
 use crate::masters::{AttributeWorld, Master, Masters, master_type};
 use crate::rng::Stream;
-use crate::tech::{EffectCommand, is_age};
+use crate::tech::EffectCommand;
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::Unsupported;
 
@@ -42,11 +42,12 @@ impl Turns {
     /// [`Turns::do_effect`]) and updates the technologies that depend on it
     /// ([`Turns::update_dependents`]); researched at a location with a button, it counts in
     /// attribute 0x15 and its listed costs (`FUN_1413d4a00`, the amounts summed) in attribute
-    /// 0x63. Not held: the local player's statistics and achievements. Not modelled: a research
-    /// paid in relics (`FUN_1413d0e70`), an effect the slice cannot run without its building
-    /// ([`Turns::research_effect_known`]), an age's history (`FUN_141560ae0`) and the civ's
-    /// disabled technologies (`FUN_140ea93a0`; such a technology is never available to be
-    /// researched).
+    /// 0x63. Last, an age (101 to 103) adds its event to the player's history (`FUN_141560ae0`
+    /// with 0, 1 or 2, [`crate::history::History::add_event`]), which the AI's age time reads.
+    /// Not held: the local player's statistics and achievements (`FUN_1409644a0` among them).
+    /// Not modelled: a research paid in relics (`FUN_1413d0e70`), an effect the slice cannot run without its
+    /// building ([`Turns::research_effect_known`]) and the civ's disabled technologies
+    /// (`FUN_140ea93a0`; such a technology is never available to be researched).
     pub(crate) fn complete_research(
         &mut self,
         p: usize,
@@ -63,11 +64,6 @@ impl Turns {
             return Err(Unsupported("a research paid in relics (FUN_1413d0e70)"));
         }
         self.research_effect_known(p, t)?;
-        if is_age(t as i16) {
-            return Err(Unsupported(
-                "an age's completion (its history, FUN_141560ae0)",
-            ));
-        }
         self.players[p].techs[t].state = 3;
         self.do_effect(p, &def.effect, None)?;
         self.update_dependents(p, t)?;
@@ -82,6 +78,16 @@ impl Turns {
             let owner = &mut self.players[p];
             owner.add_attribute(TECHS_RESEARCHED, 1.0)?;
             owner.add_attribute(RESEARCH_SPENT, spent)?;
+        }
+        let age = match t {
+            101 => Some(crate::history::FEUDAL_AGE),
+            102 => Some(crate::history::CASTLE_AGE),
+            103 => Some(crate::history::IMPERIAL_AGE),
+            _ => None,
+        };
+        if let Some(kind) = age {
+            let now = self.world_time;
+            self.players[p].history.add_event(kind, 0.0, 0.0, 0, now);
         }
         Ok(true)
     }
@@ -2815,6 +2821,46 @@ mod tests {
         assert!(t.complete_research(0, 1, None).is_err());
         t.players[0].techs[1].effect_override = 7;
         assert_eq!(t.complete_research(0, 1, None), Ok(true));
+    }
+
+    /// An age (101 to 103) completes as any research and adds its event (0 to 2) to the
+    /// player's history at the world's time (`FUN_1413cdcd0`'s end); another research adds none.
+    #[test]
+    fn an_age_adds_its_event_to_the_history() {
+        use crate::tech::{TechDef, TechState};
+        let state = TechState {
+            state: 2,
+            building_master: -1,
+            ..TechState::default()
+        };
+        let player = Player {
+            techs: vec![state; 104],
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        t.techs = vec![
+            TechDef {
+                required: [-1; 6],
+                ..TechDef::default()
+            };
+            104
+        ];
+        t.world_time = 612_345;
+        t.players[0].history.entries = vec![[3, 0]; 20];
+        assert_eq!(t.complete_research(0, 100, None), Ok(true));
+        assert_eq!(t.players[0].history.events, []);
+        assert_eq!(t.complete_research(0, 102, None), Ok(true));
+        assert_eq!(t.players[0].techs[102].state, 3);
+        assert_eq!(
+            t.players[0].history.events,
+            [crate::history::Event {
+                kind: crate::history::CASTLE_AGE,
+                time_slice: 20,
+                world_time: 612_345,
+                ..crate::history::Event::default()
+            }]
+        );
     }
 
     /// A technology whose requirement is researched and whose research takes no time at a

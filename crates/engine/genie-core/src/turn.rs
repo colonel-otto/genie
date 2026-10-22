@@ -225,6 +225,9 @@ const GATE_CLOSE_DELAY: f32 = 0.5;
 /// counts (25).
 const GATE_QUERY_RECORDS: usize = 10;
 const GATE_COUNT_CAP: usize = 25;
+/// The world constructor's history period (`FUN_141599e50`'s immediate 0x19 at `world+0x8b8`),
+/// until the `.dat`'s `time_slice` replaces it.
+pub const HISTORY_PERIOD: i32 = 25;
 
 /// The sprite a hunt's walk shows ([`crate::hunt::walk_sprite`]) from its task's sprites.
 fn hunt_walk_sprite(
@@ -7821,6 +7824,8 @@ pub struct Player {
     pub watched: Vec<crate::ghost::Watched>,
     /// The player's ghosts (its doppelganger list `+0x40`), in the list's order.
     pub ghosts: Vec<crate::ghost::Ghost>,
+    /// Its history (`+0xdb8`, saved, [`crate::history`]).
+    pub history: crate::history::History,
 }
 
 impl Turns {
@@ -8461,6 +8466,9 @@ pub struct Turns {
     pub groups: crate::group::UnitGroups,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
     pub dt_seconds: f32,
+    /// The history period (`world+0x8b8`, `time_slice`): the `.dat`'s, which the world reads
+    /// after its constructor's [`HISTORY_PERIOD`] ([`crate::history::History::update`]).
+    pub history_period: i32,
 }
 
 /// The objects of recyclable masters (`+0x680`, the `.dat`'s `recyclable`): a new one takes the
@@ -8538,6 +8546,7 @@ impl Turns {
             techs: Vec::new(),
             groups: crate::group::UnitGroups::default(),
             dt_seconds: 0.0,
+            history_period: HISTORY_PERIOD,
         }
     }
 

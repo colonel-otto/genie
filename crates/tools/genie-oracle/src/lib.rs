@@ -2097,6 +2097,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 // the load builds the watched lists (Turns::build_watched)
                 watched: Vec::new(),
                 ghosts: saved_ghosts(p),
+                history: history(&p.world_player().history),
             }
         })
         .collect();
@@ -2204,6 +2205,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         turns.linked_techs.clone_from(&table.linked_techs);
         turns.graphics = table.graphics.clone();
         turns.techs.clone_from(&table.techs);
+        turns.history_period = table.time_slice;
         turns.masters = header
             .players()
             .iter()
@@ -2245,6 +2247,58 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
 /// players who cannot see it (`CantSeeBits`). Its last bits (`+0x7e8`) and seen flag (`+0x7f7`)
 /// are not saved: a load starts them at 0; its original's link waits for the original's update
 /// (the slice links it by id).
+/// A player's history as saved (`TRIBE_History_Info::load`, `FUN_141560f20`): the entries, the
+/// events in the list's order (the load links each after the last), and the running totals'
+/// low 16 bits into the zeroed ints.
+#[must_use]
+pub fn history(h: &genie_save::generated::world::History) -> genie_core::history::History {
+    genie_core::history::History {
+        entries: h
+            .history
+            .iter()
+            .map(|e| [e.history_civilian_pop, e.history_military_pop])
+            .collect(),
+        max_entries: h.max_number_of_entries,
+        events: h
+            .events
+            .iter()
+            .map(|e| genie_core::history::Event {
+                kind: e.temp_event,
+                time_slice: e.temp_time_slice,
+                world_time: e.temp_world_time,
+                data1: e.temp_data1,
+                data2: e.temp_data2,
+                data3: e.temp_data3,
+            })
+            .collect(),
+        number_of_events: h.number_of_events,
+        update_count: h.update_history_count,
+        old_total_razings: h.old_total_razings,
+        old_build_value_razings: h.old_build_value_razings,
+        old_total_razings_other: h.old_total_razings_other,
+        old_build_value_razings_other: h.old_build_value_razings_other,
+        old_total_kills: h.old_total_kills,
+        old_build_value_kills: h.old_build_value_kills,
+        old_total_kills_other: h.old_total_kills_other,
+        old_build_value_kills_other: h.old_build_value_kills_other,
+        razings_weight: h.razings_weight,
+        kills_weight: h.kills_weight,
+        razing_percent: h.razing_percent,
+        kills_percent: h.kills_perecent,
+        razings_flag: h.razings_flag,
+        battle_flag: h.battle_flag,
+        old_current_build_value_units: h.old_current_build_value_units as i32,
+        old_current_build_value_buildings: h.old_current_build_value_buildings as i32,
+        old_player_kill_bv: h.old_player_kill_bv.iter().map(|&v| v as i32).collect(),
+        old_player_razing_bv: h.old_player_razing_bv.iter().map(|&v| v as i32).collect(),
+        running_ave_bv_percent: h.running_ave_bv_percent,
+        running_total_bv_kills: h.running_total_bv_kills as i32,
+        running_total_bv_razings: h.running_total_bv_razings as i32,
+        running_total_kills: i32::from(h.running_total_kills),
+        running_total_razings: i32::from(h.running_total_razings),
+    }
+}
+
 fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::ghost::Ghost> {
     section
         .objects()

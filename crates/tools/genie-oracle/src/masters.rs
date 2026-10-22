@@ -345,6 +345,9 @@ pub struct MasterTable {
     pub linked_techs: std::collections::BTreeMap<i16, genie_core::tech::Linked>,
     /// The technologies, by id.
     pub techs: Vec<genie_core::tech::TechDef>,
+    /// The history period (the `.dat`'s `time_slice`, which the world keeps at `+0x8b8`); the
+    /// world constructor's [`genie_core::turn::HISTORY_PERIOD`] without a `.dat`.
+    pub time_slice: i32,
 }
 
 /// A technology of the `.dat` as the tech tree holds it: its costs, its type and its effect's
@@ -507,6 +510,7 @@ impl MasterTable {
             })
             .collect();
         table.techs = dat.techs.iter().map(|t| tech_def(dat, t)).collect();
+        table.time_slice = dat.time_slice;
         table
     }
 
@@ -537,6 +541,7 @@ impl MasterTable {
             drop_sites: Vec::new(),
             linked_techs: std::collections::BTreeMap::new(),
             techs: Vec::new(),
+            time_slice: genie_core::turn::HISTORY_PERIOD,
         }
     }
 

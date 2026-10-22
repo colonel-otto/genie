@@ -27,6 +27,10 @@ const STOP_AFTER_MS: u32 = 60_000;
 /// The classes a defeat stops besides explorers: villagers (4) and fishing boats (21).
 const VILLAGER: i16 = 4;
 const FISHING_BOAT: i16 = 21;
+/// The defeat's event weighs the players below this id (`FUN_141639860`'s `CMP R14D, 0x19`).
+const DEFEAT_IDS: usize = 25;
+/// The first of the attributes a defeat's event reads (300 + a player's id).
+const KILLS_OF: usize = 300;
 /// The class whose unit AI a stop leaves alone (`FUN_14108c050`).
 const SCOUT_CLASS: i16 = 58;
 /// The trade carts' class, which keep their actions while they carry goods (`FUN_14106a940`).
@@ -129,8 +133,8 @@ impl Turns {
     /// settings object or its setting `FUN_141300cd0`, as the playback holds it,
     /// [`Spatial::reveal_to`]); the battle royale's is not modelled. A lost player's objects stop
     /// ([`Turns::stop_everything`]) once the game is a minute old; its fealty (`+0x12f8`) would
-    /// give its resources and units away while the game goes on, which is not modelled. The
-    /// history's event (`FUN_141560ae0`) is not held.
+    /// give its resources and units away while the game goes on, which is not modelled. A
+    /// newly lost player's history takes its defeat ([`Turns::defeat_event`]).
     pub(crate) fn set_status(&mut self, p: usize, status: u8) -> Result<(), Unsupported> {
         let old = self.players[p].game_status;
         if status != old && (!self.players[p].resigned || status == LOST) {
@@ -157,6 +161,9 @@ impl Turns {
             if STOP_AFTER_MS < self.world_time {
                 self.stop_everything(p)?;
             }
+            if old != LOST {
+                self.defeat_event(p);
+            }
             if old != LOST && 0 < self.players[p].fealty && self.game_state == 0 {
                 return Err(Unsupported(
                     "a defeated player's fealty (its resources and units given away)",
@@ -164,6 +171,37 @@ impl Turns {
             }
         }
         Ok(())
+    }
+
+    /// The defeat's history event (`FUN_141639860` from `0x141639cd1`) of player `p`, unless it
+    /// resigned (`+0x8b`) or is Gaia: the other players but Gaia (ids up to 24) are weighed by
+    /// their attribute 300 + their own id (the game reads each one's own, not the defeated
+    /// player's); the first strictly above the best so far (`COMISS` with `JBE`, from 0) is the
+    /// event's `data1`, its value through `CVTTSS2SI` its `data2`; none gives player 1 and 0.
+    pub(crate) fn defeat_event(&mut self, p: usize) {
+        if self.players[p].resigned || p == 0 {
+            return;
+        }
+        let mut killer = 1u8;
+        let mut most = 0i32;
+        for (i, other) in self.players.iter().enumerate() {
+            if i == 0 || i == p || DEFEAT_IDS <= i {
+                continue;
+            }
+            let v = other.attributes.get(KILLS_OF + i).copied().unwrap_or(0.0);
+            if v > most as f32 {
+                most = crate::checkpoint::cvttss2si(v);
+                killer = i as u8;
+            }
+        }
+        let now = self.world_time;
+        self.players[p].history.add_event(
+            crate::history::DEFEAT,
+            f32::from(killer),
+            most as f32,
+            0,
+            now,
+        );
     }
 
     /// `FUN_14165d720`: player `i`'s status for the victory check. A player still playing whose
@@ -679,6 +717,41 @@ mod tests {
     /// slot 0x38 answers true and the unit is no trade cart with goods (`FUN_14106a940`): a
     /// human hunter's Hunt halts (state 2) and stays. A unit AI then stops (slot 0xb0) as the
     /// top action is no trade (0x6f), and its stopAction empties the list.
+    /// A defeat (`FUN_141639860`) adds its event to the history: the player with the most of
+    /// its own attribute 300 + id, Gaia and the defeated player left out; a resigned player and
+    /// a history without entries get none.
+    #[test]
+    fn a_defeat_names_the_player_with_the_most_of_its_own_attribute() {
+        let mut t = game();
+        let other = t.players[1].clone();
+        t.players.push(other);
+        t.players[2].attributes.resize(310, 0.0);
+        t.players[3].attributes.resize(310, 0.0);
+        t.players[1].attributes.resize(310, 0.0);
+        t.players[0].attributes = vec![9.0; 310];
+        t.players[2].attributes[302] = 3.0;
+        t.players[3].attributes[303] = 7.9;
+        t.players[1].attributes[301] = 50.0;
+        t.players[1].history.entries = vec![[1, 0]; 4];
+        t.world_time = 5_000;
+        t.defeat_event(1);
+        assert_eq!(
+            t.players[1].history.events,
+            [crate::history::Event {
+                kind: crate::history::DEFEAT,
+                time_slice: 4,
+                world_time: 5_000,
+                data1: 3.0,
+                data2: 7.0,
+                data3: 0.0,
+            }]
+        );
+        t.players[2].resigned = true;
+        t.players[2].history.entries = vec![[1, 0]];
+        t.defeat_event(2);
+        assert_eq!(t.players[2].history.events, []);
+    }
+
     #[test]
     fn a_stopped_hunter_keeps_its_halted_hunt() {
         use crate::hunt::{HuntAction, HuntTask, Lead};
