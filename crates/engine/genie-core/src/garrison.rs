@@ -1076,8 +1076,25 @@ impl Turns {
         Ok(())
     }
 
+    /// `FUN_140c40e00`: a unit AI's test of the building `b` of player `bp` for its unit of
+    /// player `player` and master `master`: none for an object below type 70, else whether it
+    /// takes the unit in ([`Turns::takes_in`], with 1 and 1).
+    fn ai_takes(
+        &self,
+        bp: usize,
+        b: &crate::turn::Unit,
+        player: usize,
+        master: i16,
+    ) -> Result<bool, Unsupported> {
+        if self.master_of(bp, b.life.master_id)?.kind < COMBAT_KIND {
+            return Ok(false);
+        }
+        self.takes_in(b.id, player, master)
+    }
+
     /// One building's part of [`Turns::shelter`]: the order splitter (`FUN_140fd9dc0` with
-    /// command `0x2713`) on its units, then slot 0x7e8 for each loose unit.
+    /// command `0x2713`) on its units, which keeps those whose unit AI's test passes
+    /// ([`Turns::ai_takes`]), then slot 0x7e8 for each loose unit.
     fn shelter_in(
         &mut self,
         building: i32,
@@ -1087,15 +1104,13 @@ impl Turns {
         let (bp, b) = self
             .object(building)
             .ok_or(Unsupported("a garrison's building is gone"))?;
+        // the splitter tests a unit with a unit AI only
         let keeps = |id: i32| -> Result<bool, Unsupported> {
             let (p, u) = self.object(id).expect("a going unit");
             if u.ai.is_none() {
                 return Ok(true);
             }
-            if self.master_of(bp, b.life.master_id)?.kind < 70 {
-                return Ok(false);
-            }
-            self.takes_in(building, p, u.life.master_id)
+            self.ai_takes(bp, b, p, u.life.master_id)
         };
         let point = b.position;
         let mut kept = Vec::with_capacity(going.len());
@@ -2009,5 +2024,32 @@ mod tests {
         inside_tc(&mut t, 2, 2001, ARCHER);
         t.go_back_to_work(1, &[100]).unwrap();
         assert_eq!(t.players[2].objects[0].life.inside, Some(100));
+    }
+
+    #[test]
+    fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
+        // FUN_140c40e00: type below 70 none, else FUN_14120eb10 with 1, 1
+        let mut t = garrison_world();
+        let mut masters = garrison_masters();
+        masters = Masters::new(masters.iter().cloned().chain([Master {
+            id: 59,
+            kind: 60,
+            class: 3,
+            garrison: 5,
+            ..Master::default()
+        }]));
+        t.masters = (0..4).map(|_| masters.clone()).collect();
+        t.players[1].objects.push(unit(400, 59, 10.0));
+        let takes = |t: &Turns, b, p, m| {
+            let (bp, bu) = t.object(b).unwrap();
+            t.ai_takes(bp, bu, p, m)
+        };
+        assert_eq!(takes(&t, 100, 1, VILLAGER), Ok(true));
+        assert_eq!(takes(&t, 100, 2, VILLAGER), Ok(true));
+        assert_eq!(takes(&t, 100, 1, ARCHER), Ok(false));
+        // the transport (type 70) by its own branch
+        assert_eq!(takes(&t, 200, 1, VILLAGER), Ok(true));
+        // an object below type 70
+        assert_eq!(takes(&t, 400, 1, VILLAGER), Ok(false));
     }
 }
