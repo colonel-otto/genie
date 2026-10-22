@@ -2,9 +2,7 @@
 //! them (createColumnLine `FUN_141012280`, ...).
 
 use crate::fmath::{Vec3, add, scale, sub};
-use crate::group::create::FormationUnit;
-use crate::group::layout::{MemberPlace, create_box, create_by_place, create_phalanx};
-use crate::group::motion::moved_vector;
+use crate::group::layout::{clear_line, reset_line};
 use crate::group::{Formation, FormationLine, Slot, UnitGroup, sub_formation};
 use crate::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
 use crate::movement::PathData;
@@ -135,7 +133,7 @@ struct Category {
 /// the columns (a column's), then fewer lines until a line is at least twice as wide as the
 /// formation is deep (a column the reverse). Returns (lines, columns).
 fn sizes(count: i32, by_line: bool) -> (i32, i32) {
-    let root = crate::fmath::sqrt(count as f32).ceil() as i32;
+    let root = crate::checkpoint::cvttss2si(crate::fmath::sqrt(count as f32).ceil());
     let root = root.max(1);
     let per = |a: i32| {
         let b = count / a;
@@ -161,10 +159,11 @@ fn sizes(count: i32, by_line: bool) -> (i32, i32) {
     }
 }
 
-/// createColumnLine (`FUN_141012280`) up to its transform: the group's sub-formations (its unit
-/// types, by category 0 to 5) laid out in lines on `formation`, `world_time` the slots' time.
-/// `column` lays a column (the column ratio set, type 1), else a line (type 2, staggered 7,
-/// flanked 8). Returns false for a group without members or ratios (nothing laid out).
+/// The slots of createColumnLine (`FUN_141012280`, [`crate::turn::Turns::create_column_line`])
+/// up to its transform: the group's sub-formations (its unit types, by category 0 to 5) laid
+/// out in lines on `formation`, `world_time` the slots' time. `column` lays a column (the column
+/// ratio set, type 1), else a line (type 2, staggered 7, flanked 8). Returns false for a group
+/// without members (nothing laid out); its callers always pass a ratio.
 ///
 /// Each sub-formation with units takes the lines and columns of [`sizes`]; the widest line
 /// (columns times the sub-formation's spacing) sets the width of the others when two or more
@@ -183,15 +182,27 @@ fn sizes(count: i32, by_line: bool) -> (i32, i32) {
 /// next line). The line takes its slots' indices and its distance back, which grows by each
 /// line's spacing (doubled when staggered) and, when a wider sub-formation follows, by the
 /// difference.
-pub(crate) fn create_column_line(
+///
+/// The roots and the line counts are the CRT's `ceilf` (the ucrtbase import at 0x142a8e728),
+/// for which `f32::ceil` stands: both are exact (the result is the integer above, a NaN stays
+/// NaN); `CVTTSS2SI` then makes a NaN or an infinity `i32::MIN`
+/// ([`crate::checkpoint::cvttss2si`]), which the clamps to 1 take in.
+///
+/// # Panics
+///
+/// Never for a line or slot past its array: the lines' array holds the sum of the
+/// sub-formations' lines (`FUN_14102d490`), and the slots' array their lines times the widest
+/// line's columns (`FUN_14102d580`), while no line holds more than its sub-formation's
+/// columns.
+pub(crate) fn column_line_slots(
     formation: &mut Formation,
     group: &UnitGroup,
     column: bool,
     (staggered, flanked): (bool, bool),
     world_time: u32,
-) -> Result<bool, Unsupported> {
+) -> bool {
     if group.members.is_empty() {
-        return Ok(false);
+        return false;
     }
     let category = |c: i32| -> Option<Category> {
         let stat = group
@@ -239,7 +250,8 @@ pub(crate) fn create_column_line(
                 lines_of[k] = 1;
                 continue;
             }
-            let mut lines = ((cat.count as f32 * cat.spacing) / widest).ceil() as i32;
+            let mut lines =
+                crate::checkpoint::cvttss2si(((cat.count as f32 * cat.spacing) / widest).ceil());
             if lines < 1 {
                 lines = 1;
             }
@@ -325,27 +337,12 @@ pub(crate) fn create_column_line(
                 let half_step = [single[0] / TWO, single[1] / TWO, single[2] / TWO];
                 total = sub(total, half_step);
             }
-            let line = formation
-                .lines
-                .get_mut(line_index as usize)
-                .ok_or(Unsupported("a formation line past the lines' array"))?;
-            // FUN_141008f50: a line of `actual` places (-1 each) at depth `line_index`; none for
-            // no places
-            *line = if 0 < actual {
-                FormationLine {
-                    depth: line_index,
-                    indices: vec![u32::MAX; actual as usize],
-                    ..FormationLine::default()
-                }
-            } else {
-                FormationLine::default()
-            };
+            let line = &mut formation.lines[line_index as usize];
+            clear_line(line);
+            let _ = reset_line(line, actual, line_index);
             line.distance_back = distance_back;
             for col in 0..actual.max(0) {
                 let at = used_slots + col as usize;
-                if formation.slot_capacity() <= at {
-                    return Err(Unsupported("a formation slot past the slots' array"));
-                }
                 let mut offset = total;
                 if flanked {
                     let flank = FLANK_SPACING - line_index as f32 / depth as f32;
@@ -409,7 +406,39 @@ pub(crate) fn create_column_line(
         }
     }
     formation.use_slots(used_slots);
-    Ok(true)
+    true
+}
+
+impl crate::turn::Turns {
+    /// createColumnLine (`FUN_141012280`) of `formation` for group `g`: a column (`column`, the
+    /// column ratio 2 and line ratio -1) or a line (ratios -1 and 2), staggered or flanked;
+    /// false without members. Its slots ([`column_line_slots`]), then the transform and the
+    /// units ([`Turns::lay_units`]) with the column-to-line flag (0x141013d20..0x141013d3a): a
+    /// line (2, 7 or 8) whose group's previous formation is a column (1). The game reads that
+    /// type through the
+    /// previous formation's pointer, which `UpdateDesiredPositions` sets whenever it lays a
+    /// formation out anew; a group without one is not a column here.
+    ///
+    /// # Errors
+    ///
+    /// As the transform and the units' assignment.
+    pub(crate) fn create_column_line(
+        &self,
+        formation: &mut Formation,
+        g: &UnitGroup,
+        column: bool,
+        staggered_flanked: (bool, bool),
+    ) -> Result<bool, Unsupported> {
+        if !column_line_slots(formation, g, column, staggered_flanked, self.world_time) {
+            return Ok(false);
+        }
+        let after_column = matches!(formation.kind, LINE | STAGGERED | FLANKED)
+            && g.previous_formation
+                .as_ref()
+                .is_some_and(|p| p.kind == COLUMN);
+        self.lay_units(formation, g, after_column)?;
+        Ok(true)
+    }
 }
 
 /// `FUN_140f96030`: the walked level's top ancestor (the paths are walked first), none for a
@@ -529,13 +558,17 @@ impl crate::turn::Turns {
     /// ([`Formation::new`]); the type is [`Turns::formation_type`]'s. A type other
     /// than the formation's, or a given one, makes the formation the previous one and a new one
     /// the current. A formation not yet of the type with a slot per member is laid out: a line,
-    /// staggered or flanked line or a column by createColumnLine ([`create_column_line`], its
-    /// transform and units after it, [`lay_units`]), a phalanx and a box by their own
-    /// ([`crate::group::layout::create_phalanx`], [`crate::group::layout::create_box`], then
-    /// [`lay_units`]), a horde and a user defined formation from the members' places
-    /// ([`crate::group::layout::create_by_place`]) and then transformed
-    /// ([`formation_transform`], `param_4` 0); a formation already laid out, or of a type the
-    /// switch does not know (6), is only transformed.
+    /// staggered or flanked line or a column by createColumnLine
+    /// ([`Turns::create_column_line`]), a phalanx and a box by their own
+    /// ([`Turns::create_phalanx`], [`Turns::create_box`]), each with its transform and units; a
+    /// horde and a user defined formation from the members' places ([`Turns::create_horde`],
+    /// [`Turns::create_udf`]) and then transformed ([`Turns::formation_transform`], `param_4`
+    /// 0); a formation already laid out, or of a type the switch does not know (6), is only
+    /// transformed.
+    ///
+    /// The walked path the type's choice measures ([`measured_path`]) is the top level's only by
+    /// its id and the walked level's only by its pointer in the game; the slice's
+    /// [`PathData::has_path`] stands for either.
     ///
     /// # Errors
     ///
@@ -558,32 +591,6 @@ impl crate::turn::Turns {
             && g.current_formation
                 .as_ref()
                 .is_some_and(|f| f.kind == kind && f.slots.len() == g.members.len());
-        let places = if !laid_out && matches!(kind, HORDE | USER_DEFINED) {
-            let mut places = Vec::with_capacity(g.members.len());
-            for m in &g.members {
-                let place = match self.object(m.id) {
-                    Some((p, u)) => {
-                        let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
-                        Some(MemberPlace {
-                            id: m.id,
-                            at: moved_vector(u),
-                            category: sub_formation(
-                                unit.kind,
-                                unit.hero_flag,
-                                unit.formation_category,
-                            )
-                            .unwrap_or(-1),
-                        })
-                    }
-                    None => None,
-                };
-                places.push(place);
-            }
-            places
-        } else {
-            Vec::new()
-        };
-        let world_time = self.world_time;
         let g = self.groups.get_mut(group).expect("the group read above");
         if g.current_formation.is_none() {
             g.current_formation = Some(Formation::new());
@@ -595,43 +602,25 @@ impl crate::turn::Turns {
         let mut f = g.current_formation.take().expect("made above");
         let g = self.groups.get(group).expect("the group read above");
         let result = match kind {
-            LINE | STAGGERED | FLANKED | COLUMN if !laid_out => {
-                match create_column_line(
+            LINE | STAGGERED | FLANKED | COLUMN if !laid_out => self
+                .create_column_line(
                     &mut f,
                     g,
                     kind == COLUMN,
                     (kind == STAGGERED, kind == FLANKED),
-                    world_time,
-                ) {
-                    Ok(true) => {
-                        // a line after a column keeps the units' slots (`FUN_141009060`)
-                        let after_column = kind != COLUMN
-                            && g.previous_formation
-                                .as_ref()
-                                .is_some_and(|p| p.kind == COLUMN);
-                        self.lay_units(&mut f, g, after_column)
-                    }
-                    Ok(false) => Ok(()),
-                    Err(e) => Err(e),
-                }
-            }
-            PHALANX if !laid_out => {
-                if create_phalanx(&mut f, g, world_time) {
-                    self.lay_units(&mut f, g, false)
-                } else {
-                    Ok(())
-                }
-            }
-            BOX if !laid_out => match create_box(&mut f, g, world_time) {
-                Ok(true) => self.lay_units(&mut f, g, false),
-                Ok(false) => Ok(()),
-                Err(e) => Err(e),
-            },
-            HORDE | USER_DEFINED if !laid_out => {
-                // true: the group has members
-                let _ = create_by_place(&mut f, g, &places, kind == USER_DEFINED, world_time);
-                self.formation_transform(&mut f, g, false).map(|_| ())
-            }
+                )
+                .map(|_| ()),
+            PHALANX if !laid_out => self.create_phalanx(&mut f, g).map(|_| ()),
+            BOX if !laid_out => self.create_box(&mut f, g).map(|_| ()),
+            // true: the group has members; the transform after (`LAB_141040abf`)
+            HORDE if !laid_out => self
+                .create_horde(&mut f, g)
+                .and_then(|_| self.formation_transform(&mut f, g, false))
+                .map(|_| ()),
+            USER_DEFINED if !laid_out => self
+                .create_udf(&mut f, g)
+                .and_then(|_| self.formation_transform(&mut f, g, false))
+                .map(|_| ()),
             // laid out already, or a type the switch does not know: the transform alone
             _ => self.formation_transform(&mut f, g, false).map(|_| ()),
         };
@@ -1677,7 +1666,7 @@ pub(crate) mod tests {
     /// A 20 by 20 map of terrain class 1 but class 2 on `blocked`, masters 4 and 5 (category 1)
     /// and 6 (category 3), and player 1's `units` (id, master, x, y) on it and on the
     /// obstruction manager, all in group 1 at the origin facing x.
-    fn slot_world(
+    pub(crate) fn slot_world(
         units: &[(i32, i16, f32, f32)],
         blocked: &[(usize, usize)],
     ) -> crate::turn::Turns {
@@ -1778,7 +1767,7 @@ pub(crate) mod tests {
     }
 
     /// A slot at `at` (x, height, y) of category `category`, transformed and active.
-    fn slot_at(at: Vec3, category: i32) -> Slot {
+    pub(crate) fn slot_at(at: Vec3, category: i32) -> Slot {
         Slot {
             unit_id: -1,
             transform_position: at,
@@ -2246,6 +2235,63 @@ pub(crate) mod tests {
         assert_eq!(count_up(0xc1 | 0x3e), 0xc1);
     }
 
+    /// One statistic of category 1 holding `units`, all of master 4, spacing 1.
+    fn one_statistic(t: &mut crate::turn::Turns, units: &[i32]) {
+        let mut unit_types = vec![0u32; 50];
+        unit_types[0] = 4;
+        let mut counts = vec![0u32; 50];
+        counts[0] = units.len() as u32;
+        let g = &mut t.groups.groups[0];
+        g.desired_spacing = 1.0;
+        g.unit_types = vec![crate::group::UnitTypeStatistic {
+            formation_category: 1,
+            units: units.to_vec(),
+            desired_spacing: 1.0,
+            number_unit_types: 1,
+            unit_types,
+            unit_type_counts: counts,
+            ..crate::group::UnitTypeStatistic::default()
+        }];
+    }
+
+    /// `FUN_141012280` lays its slots, transforms them and takes the units, the column-to-line
+    /// flag set for a line after a column (0x141013d20..0x141013d3a): a line of three after a
+    /// column takes its members from the middle out (11, 10, 12), after a line the closest
+    /// (10, 11, 12); each as its slots and `lay_units` with that flag.
+    #[test]
+    fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
+        let run = |previous: i32| {
+            let mut t = slot_world(
+                &[(10, 4, 5.5, 5.5), (11, 4, 5.5, 6.5), (12, 4, 5.5, 7.5)],
+                &[],
+            );
+            one_statistic(&mut t, &[10, 11, 12]);
+            t.groups.groups[0].motion.position[0] = [6.5, 0.0, 6.5];
+            let mut before = Formation::new();
+            before.kind = previous;
+            t.groups.groups[0].previous_formation = Some(before);
+            let g = t.groups.get(1).unwrap().clone();
+            let mut whole = Formation::new();
+            assert!(
+                t.create_column_line(&mut whole, &g, false, (false, false))
+                    .unwrap()
+            );
+            let mut parts = Formation::new();
+            assert!(column_line_slots(
+                &mut parts,
+                &g,
+                false,
+                (false, false),
+                t.world_time
+            ));
+            t.lay_units(&mut parts, &g, previous == COLUMN).unwrap();
+            assert_eq!(whole, parts);
+            whole.slots.iter().map(|s| s.unit_id).collect::<Vec<_>>()
+        };
+        assert_eq!(run(COLUMN), [11, 10, 12]);
+        assert_eq!(run(LINE), [10, 11, 12]);
+    }
+
     /// A path level of `points` points at waypoint `waypoint` (none without points).
     fn level(points: &[Vec3], waypoint: i32, flags: u32) -> PathData {
         PathData {
@@ -2442,7 +2488,7 @@ pub(crate) mod tests {
     fn a_line_of_two_unit_types_alternates_its_slots() {
         let g = group_of(3, 10, 1.0, &[(4, 5), (24, 5)]);
         let mut f = Formation::new();
-        assert!(create_column_line(&mut f, &g, false, (false, false), 77).unwrap());
+        assert!(column_line_slots(&mut f, &g, false, (false, false), 77));
         assert_eq!((f.kind, f.maximum_width, f.maximum_depth), (LINE, 5, 2));
         assert_eq!(f.slots.len(), 10);
         assert_eq!(f.slots[0].offset, [0.0, 0.0, -2.0]);
