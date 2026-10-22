@@ -2550,7 +2550,7 @@ impl Mover {
 
     /// The unit vector on the ground from `from` to `to` (slot 194, `0x14114f210`); the forward
     /// vector when the two are less than 1e-7 apart or on the same point.
-    fn direction_to(&self, from: Vec3, to: Vec3) -> Vec3 {
+    pub(crate) fn direction_to(&self, from: Vec3, to: Vec3) -> Vec3 {
         if from[0] != to[0] || from[2] != to[2] {
             let x = to[0] - from[0];
             let z = to[2] - from[2];
@@ -2566,7 +2566,7 @@ impl Mover {
     /// Where this tick's speed would take the unit along `direction` (slot 199, `0x141161860`)
     /// from where it last moved to (`+0x824`, [`Mover::moved_at`]): the forward speed after one
     /// more step of acceleration, capped by the top speed (COMISS/JA, then JC: a NaN speed stays).
-    fn projected(&self, direction: Vec3, dt: f32) -> Vec3 {
+    pub(crate) fn projected(&self, direction: Vec3, dt: f32) -> Vec3 {
         let position = vector(self.moved_at);
         let Some(v) = &self.velocity else {
             return position;
@@ -2813,27 +2813,42 @@ impl Mover {
         self.sprite_facets.or(self.stats.facets)
     }
 
-    /// Turn toward `direction` (slot 195, `0x14114f630`, then the yaw, slot 184, `0x141163140`):
-    /// by the angle between the flat forward vector and the direction, at most the turn rate times
-    /// dt (a hundred times dt for a master whose object flags have bit 1), about the up axis; then
-    /// the forward vector and its right are renormalised (slot 173, `0x14115d150`, which rebuilds
-    /// the right vector from up and forward, and takes the forward vector's facet,
-    /// `FUN_14119d0c0`); the angle becomes the facet's (`FUN_14114d780`, [`crate::facing`]).
-    /// Returns whether the turn fell short (the angle was above the most), which brakes the unit
-    /// ([`Mover::control_speed`]). A unit whose sprites differ in their facets is not modelled.
+    /// Turn toward `direction` (slot 195, [`Mover::turn_toward`], from the flat forward vector
+    /// renormalised, with [`Mover::turn_dt`]), then the yaw by the turn ([`Mover::yaw`]) unless
+    /// the walked level's flags have bit 0 and the turn is 0. Returns whether the turn fell short
+    /// (the angle was above the most), which brakes the unit ([`Mover::control_speed`]).
     fn steer(&mut self, direction: Vec3, dt: f32) -> Result<bool, Unsupported> {
         let mut flat = self.forward;
         flat[1] = 0.0;
         let flat = fmath::normalize(flat);
-        let angle = fmath::angle_between(direction, flat);
-        let dt = if self.stats.fast_turn {
+        let (turn, clipped) = self.turn_toward(flat, direction, self.turn_dt(dt));
+        if self.paths[0].flags & 1 != 0 && turn == 0.0 {
+            return Ok(clipped);
+        }
+        self.yaw(turn, self.facets())?;
+        Ok(clipped)
+    }
+
+    /// The dt a turn takes: a hundred times `dt` for a master whose object flags have bit 1
+    /// ([`MoveStats::fast_turn`]), as the motion step (`0x141150f00`) and a group member's
+    /// steering (`FUN_141025fb0` at `0x141027887`) multiply it before slot 195.
+    pub(crate) fn turn_dt(&self, dt: f32) -> f32 {
+        if self.stats.fast_turn {
             dt * FAST_TURN
         } else {
             dt
-        };
+        }
+    }
+
+    /// Slot 195 (`FUN_14114f630`): the turn from `forward` toward `direction` in `dt`, and
+    /// whether it fell short. The angle between them (`FUN_14087e650`) turns whole when at most
+    /// the master's turn rate (its slot 0x90) times `dt` (`COMISS` then `JBE` at `0x14114f6d6`:
+    /// either NaN turns whole, unclipped); else the most, negated for a negative angle, and
+    /// clipped. The turn is negated when the cross product of the direction and `forward` has a
+    /// height above 0.
+    pub(crate) fn turn_toward(&self, forward: Vec3, direction: Vec3, dt: f32) -> (f32, bool) {
+        let angle = fmath::angle_between(direction, forward);
         let most = self.stats.turn_rate * dt;
-        // FUN_14114f630: COMISS angle, most; JBE (0x14114f6d6): at most, or either NaN, the whole
-        // angle unclipped; else the most, negated for a negative angle, clipped
         let (mut turn, clipped) = if fmath::at_most_or_unordered(angle, most) {
             (angle, false)
         } else if angle < 0.0 {
@@ -2841,22 +2856,69 @@ impl Mover {
         } else {
             (most, true)
         };
-        if 0.0 < fmath::cross(direction, flat)[1] {
+        if 0.0 < fmath::cross(direction, forward)[1] {
             turn = -turn;
         }
-        if self.paths[0].flags & 1 != 0 && turn == 0.0 {
-            return Ok(clipped);
-        }
+        (turn, clipped)
+    }
+
+    /// Slot 184 (`FUN_141163140`): the yaw by `turn` about the up axis: the forward vector turns
+    /// and is renormalised, then takes its place with the up axis (slot 173,
+    /// [`Mover::set_orientation`], which takes the forward vector's facet, `FUN_14119d0c0`); the
+    /// angle becomes the facet's (`FUN_14114d780`, [`crate::facing`]) of `facets`, the current
+    /// sprite's (the right vector the routine turns too, slot 173 rebuilds).
+    ///
+    /// # Errors
+    ///
+    /// Without the current sprite's facets: a unit whose sprites differ in their facets.
+    pub(crate) fn yaw(
+        &mut self,
+        turn: f32,
+        facets: Option<crate::facing::SpriteFacets>,
+    ) -> Result<(), Unsupported> {
         let m = fmath::rotation(turn, UP);
         let forward = fmath::normalize(fmath::rotate(&m, self.forward));
-        self.forward = forward;
-        self.right = fmath::normalize(fmath::cross(UP, forward));
-        let facets = self.facets().ok_or(Unsupported(
+        self.set_orientation(forward, UP);
+        let facets = facets.ok_or(Unsupported(
             "the yaw of a unit whose sprites differ in their facets",
         ))?;
         let facet = crate::facing::facet_of_forward(forward, facets);
         self.angle = crate::facing::angle_of_facet(facet, facets);
-        Ok(clipped)
+        Ok(())
+    }
+
+    /// Slot 173 (`FUN_14115d150`): the unit faces `forward` (`+0x830`), its right vector
+    /// (`+0x83c`) the cross product of `up` and it, renormalised. The facet it takes of the
+    /// forward vector (`+0xe`, `FUN_14119d0c0`) is not held: the slice derives the facet from the
+    /// angle (`+0x7e8`), which this slot leaves.
+    pub(crate) fn set_orientation(&mut self, forward: Vec3, up: Vec3) {
+        self.forward = forward;
+        self.right = fmath::normalize(fmath::cross(up, forward));
+    }
+
+    /// Slot 0x598 (`FUN_14115d050`): the unit's speed along its forward vector (its velocity's
+    /// `+8`, `FUN_140f9b880`) becomes `speed`; a unit without velocity data gets them, zeroed
+    /// (`FUN_140f8f5b0`), unless `speed` is 0 (`UCOMISS` with `JP`: a NaN gets them).
+    pub(crate) fn set_speed(&mut self, speed: f32) {
+        if self.velocity.is_none() {
+            if speed == 0.0 {
+                return;
+            }
+            self.velocity = Some(Velocity {
+                velocity: [0.0; 3],
+                acceleration: [0.0; 3],
+            });
+        }
+        if let Some(v) = self.velocity.as_mut() {
+            v.velocity[2] = speed;
+        }
+    }
+
+    /// Slot 0x600 (`FUN_14114d3b0`): the unit has a walked level whose pause (`+0x34`) is above
+    /// 0.
+    #[must_use]
+    pub fn paused(&self) -> bool {
+        self.paths.first().is_some_and(|l| 0.0 < l.pause_time)
     }
 
     /// The speed control toward the waypoint (slot 198, `0x141150a80`): a unit whose turn fell
@@ -3476,6 +3538,89 @@ mod tests {
         m.stats.turn_rate = 1.0;
         assert_eq!(m.steer([0.0, 0.0, 1.0], 0.02), Ok(true));
         assert!(m.forward[2].abs() < 0.03);
+    }
+
+    /// Slot 195 (`FUN_14114f630`) from a forward vector it is given: a quarter turn to the left
+    /// of +x (toward +z) is negative, clipped to the turn rate times dt; the fast turn's dt is a
+    /// hundred times longer.
+    #[test]
+    fn a_turn_toward_a_direction_is_signed_and_clipped_by_the_turn_rate() {
+        let mut m = builder_9177();
+        m.stats.turn_rate = 1.0;
+        let (x, z) = ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+        assert_eq!(m.turn_toward(x, z, 0.5), (-0.5, true));
+        assert_eq!(m.turn_toward(z, x, 0.5), (0.5, true));
+        let (turn, clipped) = m.turn_toward(x, z, 2.0);
+        assert!(!clipped);
+        assert_eq!(turn, -std::f32::consts::FRAC_PI_2);
+        // a NaN most turns the whole angle (JBE on unordered)
+        assert!(!m.turn_toward(x, z, f32::NAN).1);
+        assert_eq!(m.turn_dt(0.02), 0.02);
+        m.stats.fast_turn = true;
+        assert_eq!(m.turn_dt(0.02), 0.02 * 100.0);
+    }
+
+    /// Slot 184 (`FUN_141163140`): the yaw turns the forward vector about the up axis and
+    /// rebuilds the right one (slot 173); the angle is the new facet's. Without facets it stops
+    /// after the vectors.
+    #[test]
+    fn a_yaw_turns_forward_and_right_and_takes_the_facet_s_angle() {
+        let mut m = builder_9177();
+        m.forward = [1.0, 0.0, 0.0];
+        m.right = [0.0, 0.0, -1.0];
+        let facets = crate::facing::SpriteFacets {
+            count: 16,
+            flag_1: true,
+        };
+        m.yaw(-std::f32::consts::FRAC_PI_2, Some(facets)).unwrap();
+        assert!(m.forward[0].abs() < 1e-6 && (m.forward[2] - 1.0).abs() < 1e-6);
+        assert_eq!(m.right, fmath::normalize(fmath::cross(UP, m.forward)));
+        let facet = crate::facing::facet_of_forward(m.forward, facets);
+        assert_eq!(m.angle, crate::facing::angle_of_facet(facet, facets));
+        let before = m.angle;
+        assert!(m.yaw(0.1, None).is_err());
+        assert_eq!(m.angle, before);
+        assert!(m.forward[0] != 0.0);
+    }
+
+    /// Slot 173 (`FUN_14115d150`) sets the forward vector and the right one from the given up
+    /// vector, the angle left; slot 0x598 (`FUN_14115d050`) makes zeroed velocity data for a
+    /// speed other than 0 (a NaN too) and sets its forward speed; slot 0x600 (`FUN_14114d3b0`)
+    /// reads the walked level's pause.
+    #[test]
+    fn the_orientation_speed_and_pause_slots() {
+        let mut m = builder_9177();
+        m.angle = 1.0;
+        m.set_orientation([0.0, 0.0, 1.0], [0.0, 1.0, 0.0]);
+        assert_eq!(m.forward, [0.0, 0.0, 1.0]);
+        assert_eq!(m.right, [1.0, 0.0, 0.0]);
+        assert_eq!(m.angle, 1.0);
+        m.velocity = None;
+        m.set_speed(0.0);
+        assert_eq!(m.velocity, None);
+        m.set_speed(f32::NAN);
+        assert!(m.velocity.unwrap().velocity[2].is_nan());
+        m.velocity = None;
+        m.set_speed(1.2);
+        assert_eq!(
+            m.velocity,
+            Some(Velocity {
+                velocity: [0.0, 0.0, 1.2],
+                acceleration: [0.0; 3],
+            })
+        );
+        m.velocity.as_mut().unwrap().acceleration = [0.0, 0.0, 5.0];
+        m.set_speed(0.0);
+        assert_eq!(m.velocity.unwrap().velocity[2], 0.0);
+        assert_eq!(m.velocity.unwrap().acceleration[2], 5.0);
+        m.paths = Vec::new();
+        assert!(!m.paused());
+        m.paths = vec![PathData::without_path()];
+        assert!(!m.paused());
+        m.paths[0].pause_time = 0.5;
+        assert!(m.paused());
+        m.paths[0].pause_time = f32::NAN;
+        assert!(!m.paused());
     }
 
     /// `LAB_141152ec1`: a waypoint a tile away, or a target a tile from the unit, or a near one of
