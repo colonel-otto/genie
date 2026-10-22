@@ -882,8 +882,21 @@ pub fn choose_attack(
 }
 
 /// The classes slot 0xa8 of the soldier's unit AI (`FUN_140c1ae60`) passes among neutral objects:
-/// those of the mask `0x200200800838001c` (2, 3, 4, 15, 16, 17, 21, 27, 35, 49, 53, 61) never.
+/// those of the mask `0x200200800838001c` (2, 3, 4, 19, 20, 21, 27, 39, 49, 61) never.
 const NEUTRAL_SPARED: u64 = 0x2002_0080_0838_001c;
+
+/// Slot 0xa8 of the soldier's unit AI (`FUN_140c1ae60`), whether it attacks a neutral object of
+/// `class` (taken as unsigned, so a class outside `0..0x3e` passes the mask): never one of
+/// [`NEUTRAL_SPARED`]'s classes, and with the unit's master's `attack_priority` 3
+/// (`FUN_141202220`) only [`PRIORITY_3_CLASSES`] (`FUN_140fddf10`).
+#[must_use]
+pub fn soldier_attacks_neutral(attack_priority: u8, class: i16) -> bool {
+    let class_bits = i32::from(class) as u32;
+    if class_bits < 0x3e && NEUTRAL_SPARED >> class_bits & 1 != 0 {
+        return false;
+    }
+    attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class)
+}
 
 /// `bestUnitToAttack`'s (`FUN_140c44680`, as the idle checks call it: no reference distance, an
 /// idle check, path checks on, no extra objects, the class filter off) tests of an object it
@@ -926,9 +939,7 @@ pub fn attack_candidate(
                 "a neutral object's test (slot 0xa8) of a unit-AI type not modelled",
             ));
         }
-        let class = t.class as u16;
-        let spared = class < 0x3e && NEUTRAL_SPARED >> class & 1 != 0;
-        if spared || (me.attack_priority == 3 && !PRIORITY_3_CLASSES.contains(&t.class)) {
+        if !soldier_attacks_neutral(me.attack_priority, t.class) {
             return Ok(None);
         }
     }
@@ -2971,9 +2982,7 @@ impl UnitAi {
                 "a player's hunted animal under attack (its owner's alert, slot 0x2e8)",
             ));
         }
-        if let Err(i) = self.attackers.binary_search(&n.caller) {
-            self.attackers.insert(i, n.caller);
-        }
+        let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
         let uncon = !(matches!(self.current_action, 0x25f | 0x268) || at.class == CLASS_KING);
         let _ = self.run_away(uncon, at, computer, ai_rng, side, fx)?;
@@ -3135,9 +3144,7 @@ impl UnitAi {
             self.end_notifies(time, at, fx)?;
             return Ok(DEAD);
         }
-        if let Err(i) = self.attackers.binary_search(&n.caller) {
-            self.attackers.insert(i, n.caller);
-        }
+        let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
         let target = self.closest_valid_attacker(at, ai_rng);
         let Some(attacker) = at.unit(target) else {
@@ -3202,13 +3209,7 @@ impl UnitAi {
                 "a computer villager's damage notify (its slot 0x50)",
             ));
         }
-        let added = match self.attackers.binary_search(&n.caller) {
-            Ok(_) => false,
-            Err(i) => {
-                self.attackers.insert(i, n.caller);
-                true
-            }
-        };
+        let added = self.add_attacker(n.caller);
         let fierce = attacker.class == CLASS_10 && attacker.combat_level == 1;
         if added && self.current_target != n.caller && !fierce {
             return Err(Unsupported(
@@ -4054,6 +4055,19 @@ impl UnitAi {
             self.stop_current(true, at, fx)?;
         }
         Ok(GO_ON)
+    }
+
+    /// `FUN_140b43f30` on the attackers (`+0xc0`, count `+0xc8`): a binary search of the sorted
+    /// set; an id not in it goes into its place (the array grows by `capacity * 103 / 64 + 1`,
+    /// Vec's own growth here) and the call answers true, one already in it answers false.
+    pub(crate) fn add_attacker(&mut self, id: i32) -> bool {
+        match self.attackers.binary_search(&id) {
+            Ok(_) => false,
+            Err(i) => {
+                self.attackers.insert(i, id);
+                true
+            }
+        }
     }
 
     /// `FUN_140c5e1e0`: the target becomes the last one, and none (its point −1).
@@ -7538,5 +7552,35 @@ mod tests {
             ..BOAR
         };
         assert_eq!(tower_can_attack(&TC, &unit), Ok(true));
+    }
+
+    /// `FUN_140b43f30` on the attackers (`+0xc0`): an id joins the set in its sorted place and
+    /// the call answers 1; an id already in it changes nothing and answers 0.
+    #[test]
+    fn an_attacker_joins_the_sorted_set_once() {
+        let mut u = idle(4);
+        assert!(u.add_attacker(30));
+        assert!(u.add_attacker(10));
+        assert!(u.add_attacker(20));
+        assert!(!u.add_attacker(10));
+        assert!(u.add_attacker(-1));
+        assert_eq!(u.attackers, vec![-1, 10, 20, 30]);
+    }
+
+    /// The soldier's slot 0xa8 (`FUN_140c1ae60`): a neutral object of a class in the mask
+    /// `0x200200800838001c` is passed over; at attack priority 3 only [`PRIORITY_3_CLASSES`]
+    /// pass; any other class passes, also one outside the mask's 62 bits.
+    #[test]
+    fn the_soldier_passes_over_neutrals_of_its_masked_classes() {
+        for class in [2, 3, 4, 19, 20, 21, 27, 39, 49, 61] {
+            assert!(!soldier_attacks_neutral(0, class), "class {class}");
+        }
+        for class in [0, 6, 9, 15, 35, 52, 53, 60, 62, 63, -1] {
+            assert!(soldier_attacks_neutral(0, class), "class {class}");
+        }
+        assert!(soldier_attacks_neutral(3, 52));
+        assert!(!soldier_attacks_neutral(3, 6));
+        // a masked class stays passed over whatever the priority
+        assert!(!soldier_attacks_neutral(3, 27));
     }
 }
