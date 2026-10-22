@@ -13358,6 +13358,37 @@ mod tests {
         assert_eq!(kept.players[1].objects[0].life.master_id, 83);
     }
 
+    /// While a player's list is out for its unit's update, the others are read around it, and
+    /// the task finder reads the owner's diplomacy from the update and another player's from its
+    /// own record.
+    #[test]
+    fn a_unit_s_side_reads_the_other_players_relations_around_its_own() {
+        let players: Vec<Player> = (0..3)
+            .map(|q| Player {
+                relations: vec![q as u8; 3],
+                ..Player::default()
+            })
+            .collect();
+        let foreign = Foreign {
+            before: &players[..1],
+            after: &players[2..],
+        };
+        assert_eq!(foreign.player(0).map(|p| p.relations[0]), Some(0));
+        assert!(foreign.player(1).is_none());
+        assert_eq!(foreign.player(2).map(|p| p.relations[0]), Some(2));
+        assert!(foreign.player(3).is_none());
+        // the owner (1) counts player 2 as an ally (0), player 2 counts the owner an enemy (2)
+        let world = SideWorld {
+            player: 1,
+            relations: &[1, 1, 0],
+            foreign,
+            drop_sites: &[],
+        };
+        assert!(world.allied(1, 2, false));
+        assert!(!world.allied(2, 1, false));
+        assert!(world.allied(1, 1, false));
+    }
+
     /// The wait's foundation as its update reads it: its build points among the owner's other
     /// objects or the other players', none when the world does not hold it.
     #[test]
