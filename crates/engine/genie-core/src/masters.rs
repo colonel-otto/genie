@@ -1189,6 +1189,22 @@ impl Master {
         }
     }
 
+    /// The master copy, slot 8 (`FUN_1411252b0` and its overrides up to the building's
+    /// `FUN_14123c4e0`), as an upgrade of a master to another of its type runs it: this master
+    /// takes `other`'s values (its tasks, costs, train locations, damage sprites and every other
+    /// list copied) but keeps its id, its class, its availability and its disabling (and its
+    /// `+0x260`, `+0x5ec`, `+0x738` and, keeping its id, the interface's names: not held). The
+    /// action master's work rate takes `other`'s times this one's handicapped rate (`+0x79c`)
+    /// when the two differ: not held, taken equal.
+    pub fn copy_from(&mut self, other: &Self) {
+        let (id, class, available, disabled) = (self.id, self.class, self.available, self.disabled);
+        *self = other.clone();
+        self.id = id;
+        self.class = class;
+        self.available = available;
+        self.disabled = disabled;
+    }
+
     /// The resource storage `attribute` (21, 26, 27) names: the first, second or third entry.
     fn storage_mut(&mut self, attribute: u8) -> Option<&mut f32> {
         let i = match attribute {

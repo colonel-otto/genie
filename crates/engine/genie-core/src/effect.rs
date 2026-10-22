@@ -63,7 +63,7 @@ impl Turns {
             ));
         }
         self.players[p].techs[t].state = 3;
-        self.do_effect(p, def.effect_id, &def.effect, None)?;
+        self.do_effect(p, &def.effect, None)?;
         self.update_dependents(p, t)?;
         let owner = &self.players[p];
         let state = &owner.techs[t];
@@ -381,8 +381,6 @@ mod kind {
 /// The cost attributes a multiply by a negative amount turns into a cost entry's removal or
 /// addition (`FUN_1415c1f70`): 103 to 106.
 const COST_ATTRIBUTES: std::ops::RangeInclusive<i16> = 103..=106;
-/// The effect whose spawn commands (kind 7) count for the local player's statistics (`0x318`).
-const COUNTED_SPAWNS: i16 = 0x318;
 /// The resource whose change (kind 1) grows the food the player's farms hold after the effect
 /// (`0x24`, `FUN_141615270`).
 const FARM_FOOD: i16 = 0x24;
@@ -425,15 +423,15 @@ impl Turns {
             .collect()
     }
 
-    /// `TRIBE_Effects::do_effect` (`FUN_141462440`) of effect `effect_id`, its commands `effect`,
-    /// for player `p` with the effect's object `object` (none for a research's): first its
+    /// `TRIBE_Effects::do_effect` (`FUN_141462440`) of an effect's commands `effect` (the
+    /// effect's id names them in the game's table; its 0x318 makes the spawns count in the local
+    /// player's statistics, which are not simulation) for player `p` with the effect's object `object` (none for a research's): first its
     /// technology commands in order, the cost modifier (`'e'`, [`Turns::tech_cost`]), the disable
     /// command (`'f'`, an id other than −1, [`Turns::disable_tech`]) and the research time
     /// modifier (`'g'`, [`Turns::research_time`]); then the base's ([`Turns::base_effect`]).
     pub(crate) fn do_effect(
         &mut self,
         p: usize,
-        effect_id: i16,
         effect: &[EffectCommand],
         object: Option<i32>,
     ) -> Result<(), Unsupported> {
@@ -452,7 +450,7 @@ impl Turns {
                 _ => {}
             }
         }
-        self.base_effect(p, effect_id, effect, object)
+        self.base_effect(p, effect, object)
     }
 
     /// `RGE_Effects::do_effect` (`FUN_140ec2ac0`): each command by its kind ([`kind`]), for the
@@ -464,14 +462,13 @@ impl Turns {
     fn base_effect(
         &mut self,
         p: usize,
-        effect_id: i16,
         effect: &[EffectCommand],
         object: Option<i32>,
     ) -> Result<(), Unsupported> {
         let mut farms: Option<(f32, f32)> = None;
         for c in effect {
             if kind::OBJECTS_SET <= c.kind && c.kind <= kind::OBJECT_UPGRADE {
-                self.object_effect(p, c, object)?;
+                Self::object_effect(c, object)?;
                 continue;
             }
             if 4 < c.kind / 10 || 8 < c.kind % 10 {
@@ -504,7 +501,7 @@ impl Turns {
                     for q in self.party(p, party) {
                         if cost {
                             let unit = if c.b < 0 { c.a } else { c.b };
-                            self.cost_entries(q, unit, c.c, crate::checkpoint::cvttss2si(c.d))?;
+                            self.cost_entries(q, unit, c.c, crate::checkpoint::cvttss2si(c.d));
                         } else {
                             self.modify_attribute(q, Change::Multiply, c.a, c.b, c.d, attribute)?;
                         }
@@ -550,9 +547,8 @@ impl Turns {
                     }
                 }
                 kind::SPAWN => {
-                    let counted = own && effect_id == COUNTED_SPAWNS;
                     for q in self.party(p, party) {
-                        self.spawn_at(q, c.a, c.b, c.c, counted)?;
+                        self.spawn_at(q, c.a, c.b, c.c)?;
                     }
                 }
                 kind::TECH => {
@@ -1471,78 +1467,7 @@ impl Turns {
     }
 }
 
-impl Turns {
-    /// Slot 0x1a0 (`FUN_14160e410`). Not yet ported.
-    fn upgrade_master(
-        &mut self,
-        _p: usize,
-        _from: i16,
-        _to: i16,
-        _mode: i16,
-        _object: Option<i32>,
-    ) -> Result<(), Unsupported> {
-        Err(Unsupported("an effect command the slice does not model"))
-    }
-
-    /// Slot 0x1a8 (`FUN_1416136f0`). Not yet ported.
-    fn spawn_at(
-        &mut self,
-        _p: usize,
-        _master: i16,
-        _at: i16,
-        _count: i16,
-        _counted: bool,
-    ) -> Result<(), Unsupported> {
-        Err(Unsupported("an effect command the slice does not model"))
-    }
-
-    /// `FUN_1415c3f20` with 8. Not yet ported.
-    fn modify_tech(
-        &mut self,
-        _p: usize,
-        _tech: i16,
-        _mode: i16,
-        _v: f32,
-        _location: i16,
-    ) -> Result<(), Unsupported> {
-        Err(Unsupported("an effect command the slice does not model"))
-    }
-
-    /// `FUN_1415c1f70`. Not yet ported.
-    fn cost_entries(
-        &mut self,
-        _p: usize,
-        _unit: i16,
-        _attribute: i16,
-        _how: i32,
-    ) -> Result<(), Unsupported> {
-        Err(Unsupported("an effect command the slice does not model"))
-    }
-
-    /// The objects' kinds 200 to 206. Not yet ported.
-    fn object_effect(
-        &mut self,
-        _p: usize,
-        _c: &EffectCommand,
-        _object: Option<i32>,
-    ) -> Result<(), Unsupported> {
-        Err(Unsupported("an effect command the slice does not model"))
-    }
-
-    /// `FUN_1413d1210`. Not yet ported.
-    fn research_time(
-        &mut self,
-        _p: usize,
-        _tech: i16,
-        _v: f32,
-        _mode: u8,
-        _location: i16,
-    ) -> Result<(), Unsupported> {
-        Err(Unsupported(
-            "an effect's research time command ('g', FUN_1413d1210)",
-        ))
-    }
-}
+impl Turns {}
 
 /// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):
 /// the player's `allied_LOS_Enable` (`+0x2cc`) takes 1, the world's masks are rebuilt (its slot
@@ -1718,10 +1643,10 @@ impl Turns {
             for y in 0..h {
                 for x in 0..w {
                     let word = sight.unified[(y * w + x) as usize];
-                    if (visible & word & PLAYER_BITS) != 0 || (explored & word & PLAYER_BITS) != 0 {
-                        if let Some(list) = sight.new_tiles.get_mut(p) {
-                            list.push([x, y]);
-                        }
+                    let seen =
+                        (visible & word & PLAYER_BITS) != 0 || (explored & word & PLAYER_BITS) != 0;
+                    if seen && let Some(list) = sight.new_tiles.get_mut(p) {
+                        list.push([x, y]);
                     }
                 }
             }
@@ -1761,6 +1686,409 @@ impl Turns {
             make.remaining = (grown * amount + f) - held;
         }
         Ok(())
+    }
+}
+
+/// The modes of `FUN_1415c3f20`'s technology change (kind 8) that change a cost, with the
+/// resource and the cost modifier's mode (`DAT_142ed71b0`'s map: 0 to 3 set food, wood, stone,
+/// gold; 0x4000 to 0x4003 add to them; 0xd to 0x10 multiply them, 0x11 every one).
+const fn tech_cost_mode(mode: i16) -> Option<(i16, u8)> {
+    match mode {
+        0..=3 => Some((mode, 0)),
+        0x4000..=0x4003 => Some((mode - 0x4000, 1)),
+        0xd..=0x10 => Some((mode - 0xd, 2)),
+        0x11 => Some((-1, 2)),
+        _ => None,
+    }
+}
+
+/// The modes that change a research time (`DAT_142f8f340`'s map: −1 sets, −2 adds, −3
+/// multiplies).
+const fn tech_time_mode(mode: i16) -> Option<u8> {
+    match mode {
+        -1 => Some(0),
+        -2 => Some(1),
+        -3 => Some(2),
+        _ => None,
+    }
+}
+
+/// 1.0, 2.0 and 3.0 (`DAT_14330eb8c`, `DAT_142e8c150`, `DAT_142eb1c98`): a state change's values
+/// (kind 8's mode 12): 0 disables, 1 makes it unavailable, 2 available and enabled, 3 researched
+/// (image roles to add: `effect::STATE_*`).
+const STATE_UNAVAILABLE: f32 = 1.0;
+const STATE_AVAILABLE: f32 = 2.0;
+const STATE_RESEARCHED: f32 = 3.0;
+/// −1.0 (`DAT_14330ec20`): a research time without a `.dat` location, and a set's "none".
+const NO_TIME: f32 = -1.0;
+
+impl Turns {
+    /// `FUN_1415c3f20`'s technology change (kind 8, its `0x6f` case) for player `p`'s technology
+    /// `tech` by `mode` and `v` at location `location` (below 1: every location; past the
+    /// technology's locations a new one is added, a copy of the last with no building): a cost
+    /// mode changes a cost ([`Turns::tech_cost`]); 4 sets the location's building to a master the
+    /// player has, 5 its button; 9 the stacking, 10 the research cap; 12 the state; 18 the
+    /// effect override (an already researched technology's new effect would run at once, from
+    /// the world's effect table, not held); the research time modes ([`tech_time_mode`]) change
+    /// the time ([`Turns::research_time`]) and update the dependents. The icon (6), name (7),
+    /// description (8) and hotkey (11) overrides are the interface's. A technology past the
+    /// player's tree changes nothing (the game also reads its one past the end, not modelled).
+    fn modify_tech(
+        &mut self,
+        p: usize,
+        tech: i16,
+        mode: i16,
+        v: f32,
+        location: i16,
+    ) -> Result<(), Unsupported> {
+        let Some(t) = usize::try_from(tech)
+            .ok()
+            .filter(|&t| t < self.players[p].techs.len())
+        else {
+            return Ok(());
+        };
+        let (mut at, mut building) = (None, -1);
+        if 0 < location {
+            let state = &mut self.players[p].techs[t];
+            let i = usize::try_from(location).expect("above 0");
+            if i < state.locations.len() {
+                building = state.locations[i].building;
+                at = Some(i);
+            } else {
+                // the game copies the last entry; a technology without locations would read before
+                // an empty list's start (a crash no recording shows)
+                let Some(&last) = state.locations.last() else {
+                    return Ok(());
+                };
+                at = Some(state.locations.len());
+                state.locations.push(crate::tech::Location {
+                    building: -1,
+                    ..last
+                });
+            }
+        }
+        if let Some((resource, cost_mode)) = tech_cost_mode(mode) {
+            self.tech_cost(p, tech, resource, v, cost_mode);
+            return Ok(());
+        }
+        if let Some(time_mode) = tech_time_mode(mode) {
+            self.research_time(p, tech, v, time_mode, building)?;
+            return self.update_dependents(p, t);
+        }
+        let short = crate::checkpoint::cvttss2si(v) as i16;
+        match mode {
+            4 => {
+                let has = self
+                    .masters
+                    .get(p)
+                    .is_some_and(|m| m.get(crate::checkpoint::cvttss2si(v) as i16).is_some());
+                if has {
+                    let state = &mut self.players[p].techs[t];
+                    for (i, l) in state.locations.iter_mut().enumerate() {
+                        if at.is_none_or(|a| a == i) {
+                            l.building = short;
+                        }
+                    }
+                }
+            }
+            5 => {
+                let state = &mut self.players[p].techs[t];
+                for (i, l) in state.locations.iter_mut().enumerate() {
+                    if at.is_none_or(|a| a == i) {
+                        l.button = crate::checkpoint::cvttss2si(v) as u8;
+                    }
+                }
+            }
+            9 => self.players[p].techs[t].stack = v != 0.0,
+            10 => self.players[p].techs[t].research_cap = short,
+            12 => {
+                let state = &mut self.players[p].techs[t];
+                if v == 0.0 {
+                    state.state = -1;
+                } else if v == STATE_UNAVAILABLE {
+                    state.state = 0;
+                } else if v == STATE_AVAILABLE {
+                    state.state = 1;
+                    state.enabled = true;
+                } else if v == STATE_RESEARCHED {
+                    let _ = self.force_research(p, t)?;
+                }
+            }
+            18 => {
+                let state = &mut self.players[p].techs[t];
+                state.effect_override = short;
+                if state.state == RESEARCHED {
+                    return Err(Unsupported(
+                        "a researched technology's new effect (the world's effect table)",
+                    ));
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// `FUN_1413cdcd0` with `param_3` 1 (kind 8's state 3) for player `p`'s technology `t`: one in
+    /// state 0 to 2 completes as [`Turns::complete_research`] (the civ's disabled technologies are
+    /// not asked); any other gives its effect again and counts in attributes 0x15 and 0x63 (its
+    /// listed costs) whatever its location, its state left.
+    fn force_research(&mut self, p: usize, t: usize) -> Result<bool, Unsupported> {
+        if (0..=2).contains(&self.players[p].techs[t].state) {
+            return self.complete_research(p, t, None);
+        }
+        let def = self.techs[t].clone();
+        let state = &self.players[p].techs[t];
+        if state.effect_override != -1 && state.effect_override != def.effect_id {
+            return Err(Unsupported("a technology's effect override"));
+        }
+        self.do_effect(p, &def.effect, None)?;
+        let owner = &self.players[p];
+        let get = |k: i16| crate::tech::Attributes::get(owner, k);
+        let factors = crate::tech::factors(t as i16, &get)?;
+        let listed = owner.techs[t].listed_costs(&def, factors);
+        let spent = listed.iter().map(|&(_, a)| i32::from(a)).sum::<i32>() as f32;
+        let owner = &mut self.players[p];
+        owner.add_attribute(TECHS_RESEARCHED, 1.0)?;
+        owner.add_attribute(RESEARCH_SPENT, spent)?;
+        Ok(true)
+    }
+
+    /// The research time modifier (`'g'`, `FUN_1413d1210`) of player `p`'s technology `tech` by
+    /// `v` in `mode`: each location (`location` −1; else its location of that building,
+    /// `FUN_1413c8930`) changes its adjustment (`+0xc`) against the `.dat`'s time there (−1
+    /// without one): mode 2 adds `(v − 1) × time` rounded half away from 1 (in 16 bits), mode 0
+    /// sets it so the time is `v` (none for −1, which leaves 0), any other adds `v` (in 16 bits).
+    /// A technology in state 1 whose work done reaches its new time completes
+    /// ([`Turns::complete_research`]), but for a set to −1. The game walks a copy of the
+    /// locations.
+    fn research_time(
+        &mut self,
+        p: usize,
+        tech: i16,
+        v: f32,
+        mode: u8,
+        location: i16,
+    ) -> Result<(), Unsupported> {
+        let Some(t) = usize::try_from(tech)
+            .ok()
+            .filter(|&t| t < self.players[p].techs.len())
+        else {
+            return Ok(());
+        };
+        let buildings: Vec<i16> = if location == -1 {
+            self.players[p].techs[t]
+                .locations
+                .iter()
+                .map(|l| l.building)
+                .collect()
+        } else {
+            vec![location]
+        };
+        for building in buildings {
+            let time = self
+                .techs
+                .get(t)
+                .and_then(|d| d.locations.iter().find(|&&(b, _)| b == building))
+                .map_or(NO_TIME, |&(_, time)| f32::from(time));
+            let state = &mut self.players[p].techs[t];
+            let i = state
+                .locations
+                .iter()
+                .position(|l| l.building == building)
+                .unwrap_or(0);
+            // a building comes from the locations (kind 8 adds one first), so only an empty list
+            // finds none, which the game's walk of the copy never reaches
+            let Some(entry) = state.locations.get_mut(i) else {
+                continue;
+            };
+            let short = |x: f32| f32::from(crate::checkpoint::cvttss2si(x) as i16);
+            let adjustment = match mode {
+                2 => {
+                    let half = if crate::fmath::below_or_unordered(v, ONE) {
+                        -ROUND
+                    } else {
+                        ROUND
+                    };
+                    short((v - ONE) * time + half) + entry.adjustment
+                }
+                0 => {
+                    let s = if v == NO_TIME {
+                        0
+                    } else {
+                        crate::checkpoint::cvttss2si(v) as i16
+                    };
+                    f32::from(s) - time
+                }
+                _ => short(v) + entry.adjustment,
+            };
+            entry.adjustment = adjustment;
+            let done = state.state == 1
+                && adjustment + time <= state.research_done
+                && (mode != 0 || v != NO_TIME);
+            if done {
+                let _ = self.complete_research(p, t, None)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Turns {
+    /// Slot 0x1a0 (`FUN_14160e410`) of player `p`: master `from` upgrades to `to` by `mode`
+    /// (`FUN_141657d10`), with the volleys' hooks around it (the abilities, `+0x930`, are not
+    /// held). For `mode` −1 or 3 and two masters of one type the player's `from` takes `to`'s
+    /// values ([`Master::copy_from`]); before it each of the player's objects of `from` (live,
+    /// then sleeping) changes (slot 0x98), one past its use (`+0x640` 4 on) and each object of
+    /// `from`'s dead unit master (when `to`'s differs) takes a master of its own
+    /// (`FUN_141186d10`), as an object with an own master of `from`'s id does in mode 3 and
+    /// mode 2's object; those changes are the objects' (slot 0x98 from `FUN_141201a60` down to
+    /// `FUN_141186580`, the own masters), which the slice does not hold: an upgrade with such
+    /// objects stops. Without them only the masters change. Upgrades to 0x67f and 0x6a1 also
+    /// move the tracker's objects (`FUN_14104fd10`, the tracker not held: its keys follow the
+    /// objects' masters).
+    fn upgrade_master(
+        &mut self,
+        p: usize,
+        from: i16,
+        to: i16,
+        mode: i16,
+        object: Option<i32>,
+    ) -> Result<(), Unsupported> {
+        self.all_garrison_volleys(p, false)?;
+        self.upgrade_objects(p, from, to, mode, object)?;
+        self.all_garrison_volleys(p, true)
+    }
+
+    /// `FUN_141657d10`, the upgrade's own part ([`Turns::upgrade_master`]).
+    fn upgrade_objects(
+        &mut self,
+        p: usize,
+        from: i16,
+        to: i16,
+        mode: i16,
+        object: Option<i32>,
+    ) -> Result<(), Unsupported> {
+        let Some(masters) = self.masters.get(p) else {
+            return Ok(());
+        };
+        let (Some(old), Some(new)) = (masters.get(from), masters.get(to)) else {
+            return Ok(());
+        };
+        // the dead unit master whose objects take masters of their own: `from`'s when `to`'s
+        // differs by its copy id
+        let dead = masters.get(old.death_spawns[0]).filter(|d| {
+            masters
+                .get(new.death_spawns[0])
+                .is_some_and(|e| d.copy_id != e.copy_id)
+        });
+        let dead = dead.map(|d| d.id);
+        let both = mode == -1 || mode == 3;
+        let same_type = old.kind == new.kind;
+        if mode == 2 && object.is_some() {
+            return Err(Unsupported(
+                "an upgrade of the effect's object (mode 2, slot 0x98 on a master of its own)",
+            ));
+        }
+        let player = &self.players[p];
+        let objects = player.objects.iter().chain(&player.sleeping);
+        if objects
+            .clone()
+            .any(|u| u.life.master_id == from || Some(u.life.master_id) == dead)
+        {
+            return Err(Unsupported(
+                "an upgrade of objects (slot 0x98, FUN_141201a60 down to FUN_141186580)",
+            ));
+        }
+        if both && same_type {
+            let new = new.clone();
+            if let Some(m) = self.masters[p].get_mut(from) {
+                m.copy_from(&new);
+            }
+        }
+        Ok(())
+    }
+
+    /// Slot 0x1a8 (`FUN_1416136f0`) of player `p`: `count` objects of master `master` (Gaia's when
+    /// the player lacks it) at each of its built objects of building master `at` (state 2), up
+    /// to attribute 234's count of buildings when above 0, in a playback (the screen's mode is not
+    /// 4). The objects' creation (slot 0x1c0 at the building's place; a male villager, 0x53,
+    /// draws its sex from the `SpawnObject` stream, half of them 0x125; its walk to the gather
+    /// point) is the spawning's, which this file does not hold: a spawn that makes an object
+    /// stops. The local player's statistics of effect 0x318's spawns are not simulation.
+    fn spawn_at(&self, p: usize, master: i16, at: i16, count: i16) -> Result<(), Unsupported> {
+        let has = |q: usize, id: i16| self.masters.get(q).is_some_and(|m| m.get(id).is_some());
+        let building = self
+            .masters
+            .get(p)
+            .and_then(|m| m.get(at))
+            .is_some_and(|m| m.kind == master_type::BUILDING);
+        if !building || !(has(p, master) || has(0, master)) || count <= 0 {
+            return Ok(());
+        }
+        if self.players[p]
+            .objects
+            .iter()
+            .any(|u| u.life.master_id == at && u.life.state == 2)
+        {
+            return Err(Unsupported(
+                "an effect's spawn of objects (slot 0x1a8, FUN_1416136f0: slot 0x1c0)",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The objects' kinds (`FUN_140ec2ac0`'s 200 to 206): 200 to 202 change the
+    /// objects with masters of their own of master `a` or class `b` (`FUN_141659dd0`; the slice
+    /// holds no own masters: none); 203 to 205 the effect's object, which first takes a master of
+    /// its own (`FUN_14165abe0`, `FUN_141186d10`, not held); 206 changes the effect's object's
+    /// master (`FUN_14165ae40`). Without an object only 200 to 202 run.
+    const fn object_effect(c: &EffectCommand, object: Option<i32>) -> Result<(), Unsupported> {
+        match (c.kind, object) {
+            (kind::OBJECTS_SET..kind::OBJECT_SET, _) | (_, None) => Ok(()),
+            (kind::OBJECT_UPGRADE, Some(_)) => Err(Unsupported(
+                "an effect's master change of its object (kind 206, FUN_14165ae40)",
+            )),
+            (_, Some(_)) => Err(Unsupported(
+                "an effect on its object's own master (kinds 203 to 205, FUN_141186d10)",
+            )),
+        }
+    }
+
+    /// `FUN_1415c1f70` (a multiply of a cost by a negative amount) of player `p`: the cost
+    /// attribute (103 to 106) names the resource (food, wood, gold 3, stone 2); `how` −2 removes
+    /// its first cost entry from master `unit` (`FUN_141612df0`), −1 adds one of it, amount −1
+    /// and paid, in the first empty entry (`FUN_14160c450`); a `unit` of 900 and up names class
+    /// `unit − 900`, every master of it by id. Only a master from type 70 on has costs. The game
+    /// scans four entries, the fourth past the three (not modelled); the slice holds the entries
+    /// of a resource only, so an added one goes after them.
+    fn cost_entries(&mut self, p: usize, unit: i16, attribute: i16, how: i32) {
+        let resource = match attribute {
+            103 => 0,
+            104 => 1,
+            105 => 3,
+            106 => 2,
+            _ => return,
+        };
+        if how != -2 && how != -1 {
+            return;
+        }
+        let Some(masters) = self.masters.get_mut(p) else {
+            return;
+        };
+        let class = (900..1000).contains(&unit).then(|| unit - 900);
+        for m in masters.iter_mut() {
+            let named = class.map_or(m.id == unit, |c| m.class == c);
+            if !named || m.kind < master_type::COMBAT {
+                continue;
+            }
+            if how == -2 {
+                if let Some(i) = m.cost.iter().position(|c| c.0 == resource) {
+                    let _ = m.cost.remove(i);
+                }
+            } else if m.cost.len() < 3 {
+                m.cost.push((resource, -1, true));
+            }
+        }
     }
 }
 
@@ -1819,7 +2147,7 @@ mod tests {
                 d: 770.0,
             },
         ];
-        t.do_effect(0, -1, &loom, None).unwrap();
+        t.do_effect(0, &loom, None).unwrap();
         let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
         // (25 + 15) × 10 / 25 = 16
         assert_eq!(hp, [40.0, 16.0]);
@@ -1869,19 +2197,19 @@ mod tests {
             combat(7, 6, 60),
         ])];
         // set master 4's hit points to 90: its unit keeps its share, 30 × 90 / 60 = 45
-        t.do_effect(0, -1, &[attribute(0, 4, 6, 0, 90.0)], None)
+        t.do_effect(0, &[attribute(0, 4, 6, 0, 90.0)], None)
             .unwrap();
         let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
         assert_eq!(hp, [45.0, 30.0]);
         let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
         assert_eq!(hps, [90, 60, 60]);
         // master 6 lies within the table (up to 7) but has no master: nothing, not the class
-        t.do_effect(0, -1, &[attribute(4, 6, 6, 0, 10.0)], None)
+        t.do_effect(0, &[attribute(4, 6, 6, 0, 10.0)], None)
             .unwrap();
         let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
         assert_eq!(hps, [90, 60, 60]);
         // past the table the class changes: (60 + 10) × 30 / 60 = 35
-        t.do_effect(0, -1, &[attribute(4, 100, 6, 0, 10.0)], None)
+        t.do_effect(0, &[attribute(4, 100, 6, 0, 10.0)], None)
             .unwrap();
         let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
         assert_eq!(hps, [100, 70, 70]);
@@ -1914,7 +2242,7 @@ mod tests {
         archer_master.garrison_firepower = 1.0;
         t.masters = vec![Masters::new([archer_master, tower_master])];
         // the tower's rate: 5 / 2 = 2.5; the archer's share 4 / 2 / 2.5 = 0.8, then 6 / 2 / 2.5
-        t.do_effect(0, -1, &[attribute(4, -1, 0, 9, f32::from(0x302_i16))], None)
+        t.do_effect(0, &[attribute(4, -1, 0, 9, f32::from(0x302_i16))], None)
             .unwrap();
         assert_eq!(t.masters[0].get(4).unwrap().weapons, [(3, 6)]);
         assert_eq!(t.players[0].objects[0].firepower, 2.0 - 0.8 + 1.2);
@@ -1954,7 +2282,7 @@ mod tests {
             building(31, 100, 30, [-1; 4]),
         ])];
         // multiply the class's hit points by 1.5: every object's hit points × 1.5 + 0.5
-        t.do_effect(0, -1, &[attribute(5, -1, 3, 0, 1.5)], None)
+        t.do_effect(0, &[attribute(5, -1, 3, 0, 1.5)], None)
             .unwrap();
         let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
         assert_eq!(hp, [150.0, 75.0, 15.0]);
@@ -1983,7 +2311,7 @@ mod tests {
             ],
         );
         t.masters = vec![Masters::new([combat(4, 6, 60)]); 4];
-        t.do_effect(1, -1, &[attribute(14, -1, 6, 0, 5.0)], None)
+        t.do_effect(1, &[attribute(14, -1, 6, 0, 5.0)], None)
             .unwrap();
         let hps: Vec<i16> = t
             .masters
@@ -1991,7 +2319,7 @@ mod tests {
             .map(|m| m.get(4).unwrap().hit_points)
             .collect();
         assert_eq!(hps, [60, 65, 65, 60]);
-        t.do_effect(1, -1, &[attribute(44, -1, 6, 0, 5.0)], None)
+        t.do_effect(1, &[attribute(44, -1, 6, 0, 5.0)], None)
             .unwrap();
         let hps: Vec<i16> = t
             .masters
@@ -2000,7 +2328,7 @@ mod tests {
             .collect();
         assert_eq!(hps, [65, 65, 65, 60]);
         // the enemies' block (24): player 3 counts player 1 an enemy and is counted one
-        t.do_effect(1, -1, &[attribute(24, -1, 6, 0, 5.0)], None)
+        t.do_effect(1, &[attribute(24, -1, 6, 0, 5.0)], None)
             .unwrap();
         let hps: Vec<i16> = t
             .masters
@@ -2024,7 +2352,7 @@ mod tests {
         house.storage = vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)];
         t.masters = vec![Masters::new([house])];
         t.players[0].attributes[4] = 10.0;
-        t.do_effect(0, -1, &[attribute(0, 70, -1, 21, 15.0)], None)
+        t.do_effect(0, &[attribute(0, 70, -1, 21, 15.0)], None)
             .unwrap();
         assert_eq!(t.players[0].attributes[4], 30.0);
         assert_eq!(t.masters[0].get(70).unwrap().storage[0].1, 15.0);
@@ -2046,7 +2374,7 @@ mod tests {
         villager.max_speed = 0.8;
         villager.moving = Some(stats);
         t.masters = vec![Masters::new([villager])];
-        t.do_effect(0, -1, &[attribute(5, -1, 4, 5, 1.1)], None)
+        t.do_effect(0, &[attribute(5, -1, 4, 5, 1.1)], None)
             .unwrap();
         let s = t.players[0].objects[0].mover.as_ref().unwrap().stats;
         // no graphics: the sprites' factors are 0, the speeds the master's
@@ -2068,18 +2396,21 @@ mod tests {
         };
         let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
         t.players[0].attributes[69] = 2.0;
-        t.do_effect(0, -1, &[attribute(1, 78, 0, -1, 0.15)], None)
+        t.do_effect(0, &[attribute(1, 78, 0, -1, 0.15)], None)
             .unwrap();
         // Horse Collar: 75 × attribute 69 added to 36
-        t.do_effect(0, -1, &[attribute(1, 36, 1, 69, 75.0)], None)
+        t.do_effect(0, &[attribute(1, 36, 1, 69, 75.0)], None)
             .unwrap();
-        t.do_effect(0, -1, &[attribute(6, 78, -1, -1, 2.0)], None)
+        t.do_effect(0, &[attribute(6, 78, -1, -1, 2.0)], None)
             .unwrap();
         // gold, a resource, lives beside the attributes
-        t.do_effect(0, -1, &[attribute(1, 3, 1, -1, 50.0)], None)
+        t.do_effect(0, &[attribute(1, 3, 1, -1, 50.0)], None)
             .unwrap();
         let a = &t.players[0].attributes;
-        assert_eq!((a[78], a[36], t.players[0].resources[3]), (0.3, 150.0, 50.0));
+        assert_eq!(
+            (a[78], a[36], t.players[0].resources[3]),
+            (0.3, 150.0, 50.0)
+        );
     }
 
     /// A change of the farms' food (resource 0x24) grows the food each farm still makes:
@@ -2106,7 +2437,7 @@ mod tests {
         t.masters = vec![Masters::new([master])];
         t.players[0].attributes[31] = 1.0;
         t.players[0].attributes[36] = 175.0;
-        t.do_effect(0, -1, &[attribute(1, 36, 1, -1, 75.0)], None)
+        t.do_effect(0, &[attribute(1, 36, 1, -1, 75.0)], None)
             .unwrap();
         assert_eq!(t.players[0].attributes[36], 250.0);
         // (175 / 175)^1 × 75 + 175 − 75
@@ -2129,28 +2460,221 @@ mod tests {
             0,
             0,
             vec![0; 3],
-            vec![player(vec![0, 3, 3]), player(vec![3, 0, 0]), player(vec![3, 0, 0])],
+            vec![
+                player(vec![0, 3, 3]),
+                player(vec![3, 0, 0]),
+                player(vec![3, 0, 0]),
+            ],
         );
         t.spatial.vision = vec![[0; 2]; 3];
-        t.do_effect(1, -1, &[attribute(1, 50, 1, -1, 1.0)], None)
+        t.do_effect(1, &[attribute(1, 50, 1, -1, 1.0)], None)
             .unwrap();
         assert!(t.players[1].allied_vision);
         assert_eq!(t.players[1].attributes[50], 1.0);
         assert_eq!(t.spatial.vision[1][0] & 0b110, 0b110);
-        t.do_effect(2, -1, &[attribute(1, 0xc4, 0, -1, 7.0)], None)
+        t.do_effect(2, &[attribute(1, 0xc4, 0, -1, 7.0)], None)
             .unwrap();
         let spread: Vec<f32> = t.players.iter().map(|p| p.attributes[0xc4]).collect();
         assert_eq!(spread, [0.0, 7.0, 7.0]);
-        t.do_effect(1, -1, &[attribute(1, 0xc4, 0, -1, 9.0)], None)
+        t.do_effect(1, &[attribute(1, 0xc4, 0, -1, 9.0)], None)
             .unwrap();
         assert_eq!(t.players[1].attributes[0xc4], 7.0);
-        t.do_effect(1, -1, &[attribute(1, 0xb7, 0, -1, 1.0)], None)
+        t.do_effect(1, &[attribute(1, 0xb7, 0, -1, 1.0)], None)
             .unwrap();
         assert_eq!(t.spatial.vision[1][0] & 0b110, 0b110);
         assert!(
-            t.do_effect(1, -1, &[attribute(1, 0x21, 0, -1, 7.0)], None)
+            t.do_effect(1, &[attribute(1, 0x21, 0, -1, 7.0)], None)
                 .is_err()
         );
+    }
+
+    /// A technology at the barracks (master 12, 30 seconds in the `.dat`) in state 1 with 20
+    /// seconds of work done.
+    fn barracks_tech() -> Turns {
+        use crate::tech::{Location, TechDef, TechState};
+        let state = TechState {
+            state: 1,
+            research_done: 20.0,
+            locations: vec![Location {
+                building: 12,
+                time: 30,
+                button: 3,
+                adjustment: 0.0,
+            }],
+            building_master: -1,
+            ..TechState::default()
+        };
+        let player = Player {
+            techs: vec![state],
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        t.techs = vec![TechDef {
+            required: [-1; 6],
+            locations: vec![(12, 30)],
+            ..TechDef::default()
+        }];
+        t
+    }
+
+    /// `FUN_1413d1210`: mode 0 sets the time (the adjustment is the value less the `.dat`'s
+    /// time), mode 1 adds the truncated value, mode 2 adds `(v − 1) × time` rounded half away
+    /// from 1; once the work done reaches the new time a technology in state 1 completes.
+    #[test]
+    fn the_research_time_modifier_changes_the_adjustment_and_may_complete() {
+        let mut t = barracks_tech();
+        t.do_effect(0, &[attribute(b'g', 0, -1, 1, 4.9)], None)
+            .unwrap();
+        assert_eq!(t.players[0].techs[0].locations[0].adjustment, 4.0);
+        t.do_effect(0, &[attribute(b'g', 0, -1, 2, 0.8)], None)
+            .unwrap();
+        // (0.8 − 1) × 30 − 0.5 = −6.5, truncated −6, plus 4
+        assert_eq!(t.players[0].techs[0].locations[0].adjustment, -2.0);
+        assert_eq!(t.players[0].techs[0].state, 1);
+        // set to 20: the adjustment −10, and 20 seconds are done
+        t.do_effect(0, &[attribute(b'g', 0, -1, 0, 20.0)], None)
+            .unwrap();
+        assert_eq!(t.players[0].techs[0].locations[0].adjustment, -10.0);
+        assert_eq!(t.players[0].techs[0].state, 3);
+    }
+
+    /// Kind 8 (`FUN_1415c3f20`'s technology change): a cost mode changes a cost (0x4002: add to
+    /// stone), 4 a location's building to a master the player has, 5 its button, 10 the research
+    /// cap, 12 the state, −1 the research time (with the dependents' update).
+    #[test]
+    fn a_technology_change_reaches_its_costs_locations_and_state() {
+        use crate::tech::Cost;
+        let mut t = barracks_tech();
+        t.techs[0].costs[0] = Cost {
+            attribute: 2,
+            amount: 100,
+            paid: 1,
+        };
+        t.masters = vec![Masters::new([combat(87, 3, 1000)])];
+        t.do_effect(0, &[attribute(8, 0, 0x4002, -1, 25.0)], None)
+            .unwrap();
+        assert_eq!(t.players[0].techs[0].cost_adj, [25, 0, 0]);
+        // a building the player lacks leaves the location
+        t.do_effect(0, &[attribute(8, 0, 4, -1, 88.0)], None)
+            .unwrap();
+        t.do_effect(0, &[attribute(8, 0, 4, -1, 87.0)], None)
+            .unwrap();
+        t.do_effect(0, &[attribute(8, 0, 5, -1, 7.0)], None)
+            .unwrap();
+        t.do_effect(0, &[attribute(8, 0, 10, -1, 2.0)], None)
+            .unwrap();
+        let s = &t.players[0].techs[0];
+        assert_eq!((s.locations[0].building, s.locations[0].button), (87, 7));
+        assert_eq!(s.research_cap, 2);
+        // a location past the list adds a copy of the last, without a building
+        t.do_effect(0, &[attribute(8, 0, 5, 3, 9.0)], None).unwrap();
+        let s = &t.players[0].techs[0];
+        assert_eq!(s.locations.len(), 2);
+        assert_eq!((s.locations[1].building, s.locations[1].button), (-1, 9));
+        t.do_effect(0, &[attribute(8, 0, 12, -1, 0.0)], None)
+            .unwrap();
+        assert_eq!(t.players[0].techs[0].state, -1);
+        t.do_effect(0, &[attribute(8, 0, 12, -1, 2.0)], None)
+            .unwrap();
+        assert_eq!(
+            (t.players[0].techs[0].state, t.players[0].techs[0].enabled),
+            (1, true)
+        );
+        // state 3 completes it (its first location has a building and a button: it counts);
+        // once researched, again gives its effect and counts whatever its location
+        t.do_effect(0, &[attribute(8, 0, 12, -1, 3.0)], None)
+            .unwrap();
+        assert_eq!(t.players[0].techs[0].state, 3);
+        assert_eq!(t.players[0].attributes[0x15], 1.0);
+        t.do_effect(0, &[attribute(8, 0, 12, -1, 3.0)], None)
+            .unwrap();
+        assert_eq!(t.players[0].attributes[0x15], 2.0);
+    }
+
+    /// Kind 3 (`FUN_14160e410`, mode −1): without objects of the old master, the old master takes
+    /// the new one's values but keeps its id, class, availability and disabling
+    /// (`Master::copy_from`); with objects the objects' change (slot 0x98) is not this file's.
+    #[test]
+    fn an_upgrade_copies_the_new_master_into_the_old() {
+        let player = Player::default();
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        let mut militia = combat(74, 6, 40);
+        militia.available = true;
+        let mut man_at_arms = combat(75, 6, 45);
+        man_at_arms.weapons = vec![(4, 6)];
+        man_at_arms.available = false;
+        t.masters = vec![Masters::new([militia, man_at_arms])];
+        t.do_effect(0, &[attribute(3, 74, 75, -1, 0.0)], None)
+            .unwrap();
+        let m = t.masters[0].get(74).unwrap();
+        assert_eq!(
+            (m.id, m.hit_points, m.weapons.clone()),
+            (74, 45, vec![(4, 6)])
+        );
+        assert!(m.available);
+        // mode 1 leaves the master
+        t.masters[0].get_mut(75).unwrap().hit_points = 50;
+        t.do_effect(0, &[attribute(3, 74, 75, 1, 0.0)], None)
+            .unwrap();
+        assert_eq!(t.masters[0].get(74).unwrap().hit_points, 45);
+        t.players[0].objects.push(unit_of(1, 74, 45.0));
+        assert!(
+            t.do_effect(0, &[attribute(3, 74, 75, -1, 0.0)], None)
+                .is_err()
+        );
+    }
+
+    /// Kind 7 (`FUN_1416136f0`) makes objects at the built buildings of a master, which this file
+    /// leaves to the spawning; with none built it does nothing. Kind 5 on a cost by a negative
+    /// amount removes (−2) or adds (−1) a cost entry (`FUN_1415c1f70`).
+    #[test]
+    fn spawns_and_cost_entries() {
+        let mut centre = unit_of(1, 109, 2400.0);
+        centre.life.state = 0;
+        let player = Player {
+            objects: vec![centre],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        let mut tc = combat(109, 80, 2400);
+        tc.kind = 80;
+        let mut serjeant = combat(1658, 6, 60);
+        serjeant.cost = vec![(0, 60, true), (2, 35, true)];
+        t.masters = vec![Masters::new([tc, serjeant])];
+        t.do_effect(0, &[attribute(7, 1658, 109, 5, 0.0)], None)
+            .unwrap();
+        t.players[0].objects[0].life.state = 2;
+        assert!(
+            t.do_effect(0, &[attribute(7, 1658, 109, 5, 0.0)], None)
+                .is_err()
+        );
+        t.do_effect(0, &[attribute(5, 1658, -1, 106, -2.0)], None)
+            .unwrap();
+        assert_eq!(t.masters[0].get(1658).unwrap().cost, [(0, 60, true)]);
+        t.do_effect(0, &[attribute(5, 1658, -1, 105, -1.0)], None)
+            .unwrap();
+        assert_eq!(
+            t.masters[0].get(1658).unwrap().cost,
+            [(0, 60, true), (3, -1, true)]
+        );
+    }
+
+    /// The objects' kinds: 200 to 202 change the objects with masters of their own (none held);
+    /// 203 to 206 need the effect's object, which a research has not.
+    #[test]
+    fn the_object_kinds_without_an_object_do_nothing() {
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![Player::default()]);
+        t.masters = vec![Masters::new([combat(82, 52, 4800)])];
+        for kind in 200..=206 {
+            t.do_effect(0, &[attribute(kind, 82, -1, 8, 770.0)], None)
+                .unwrap();
+        }
+        assert!(
+            t.do_effect(0, &[attribute(204, 82, -1, 0, 1500.0)], Some(5))
+                .is_err()
+        );
+        assert_eq!(t.masters[0].get(82).unwrap().hit_points, 4800);
     }
 
     /// A technology whose requirement is researched and whose research takes no time at a
@@ -2219,26 +2743,25 @@ mod tests {
         t.techs = vec![kind(0), kind(0), kind(0x21), kind(crate::tech::SHARED_KIND)];
         let command = |kind: u8, a: i16, b: i16, c: i16, d: f32| EffectCommand { kind, a, b, c, d };
         for tech in 0..4 {
-            t.do_effect(0, -1, &[command(b'f', -1, -1, -1, tech as f32)], None)
+            t.do_effect(0, &[command(b'f', -1, -1, -1, tech as f32)], None)
                 .unwrap();
         }
         let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
         assert_eq!(states, [-1, 3, 1, 1]);
         // gold of technology 0 costs 10 more; food set to 100; every paid cost scaled by 0.5
-        t.do_effect(0, -1, &[command(b'e', 0, 3, 1, 10.0)], None)
+        t.do_effect(0, &[command(b'e', 0, 3, 1, 10.0)], None)
             .unwrap();
         assert_eq!(t.players[0].techs[0].cost_adj, [0, 10, 0]);
-        t.do_effect(0, -1, &[command(b'e', 0, 0, 0, 100.0)], None)
+        t.do_effect(0, &[command(b'e', 0, 0, 0, 100.0)], None)
             .unwrap();
         assert_eq!(t.players[0].techs[0].cost_adj, [-50, 10, 0]);
-        t.do_effect(0, -1, &[command(b'e', 1, -1, 2, 0.5)], None)
+        t.do_effect(0, &[command(b'e', 1, -1, 2, 0.5)], None)
             .unwrap();
         assert_eq!(t.players[0].techs[1].cost_adj, [-75, -25, 0]);
-        // the research time modifier is not modelled
-        assert!(
-            t.do_effect(0, -1, &[command(b'g', 0, -1, 1, 5.0)], None)
-                .is_err()
-        );
+        // the research time modifier changes a location's adjustment; a technology without
+        // locations has none to change
+        t.do_effect(0, &[command(b'g', 0, -1, 1, 5.0)], None)
+            .unwrap();
     }
 
     /// `FUN_1413cdb00` reads the id as a short (`MOVZX EDX, BX` in `FUN_14163a500`): 65538 is
@@ -2263,10 +2786,10 @@ mod tests {
             c: -1,
             d,
         };
-        t.do_effect(0, -1, &[disable(65538.0)], None).unwrap();
+        t.do_effect(0, &[disable(65538.0)], None).unwrap();
         let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
         assert_eq!(states, [0, 0, -1]);
-        t.do_effect(0, -1, &[disable(65535.0)], None).unwrap();
+        t.do_effect(0, &[disable(65535.0)], None).unwrap();
         let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
         assert_eq!(states, [-1, -1, -1]);
     }
@@ -2300,7 +2823,7 @@ mod tests {
             c: 1,
             d: 3.0e9,
         };
-        t.do_effect(0, -1, &[change], None).unwrap();
+        t.do_effect(0, &[change], None).unwrap();
         assert_eq!(t.players[0].techs[0].cost_adj, [0, 0, 0]);
         // mode 2 at 1.5: (1.5 − 1) × 150 + 0.5 = 75.5, truncated to 75
         let scale = EffectCommand {
@@ -2308,7 +2831,7 @@ mod tests {
             d: 1.5,
             ..change
         };
-        t.do_effect(0, -1, &[scale], None).unwrap();
+        t.do_effect(0, &[scale], None).unwrap();
         assert_eq!(t.players[0].techs[0].cost_adj, [75, 0, 0]);
     }
 
