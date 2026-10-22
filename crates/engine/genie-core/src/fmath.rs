@@ -7,16 +7,74 @@
 //! image), its operation order, its branches and its integer bit tests. Its sqrtf `0x14099ef70` is
 //! an integer Newton iteration that rounds correctly, so IEEE's square root gives the same bits.
 //! Its fmodf is the CRT's (an import): the exact remainder, ported as musl's ([`fmod`]).
+//!
+//! A NaN result's bits are the game's on every host: SSE gives an invalid operation on operands
+//! that are not NaN its default NaN with the sign set (`0xffc00000`), where ARM gives it without
+//! the sign and WebAssembly either way, and it hands on the first NaN operand quieted, where ARM
+//! prefers a signalling one. A routine whose result is a NaN therefore makes its bits itself
+//! ([`sse_nan`]).
 
 /// 1 (`DAT_14330eb8c`).
 const ONE: f32 = f32::from_bits(0x3f80_0000);
 /// 1/2 (`DAT_142e7f384`).
 const HALF: f32 = f32::from_bits(0x3f00_0000);
 
-/// The square root, as the game's (correctly rounded).
+/// SSE's default NaN in f32 (Intel's quiet-NaN floating-point indefinite): an invalid operation's
+/// result on operands that are not NaN.
+const INDEFINITE: u32 = 0xffc0_0000;
+/// SSE's default NaN in f64.
+const INDEFINITE_F64: u64 = 0xfff8_0000_0000_0000;
+/// The quiet bit of an f32 NaN.
+const QUIET: u32 = 0x0040_0000;
+/// The quiet bit of an f64 NaN.
+const QUIET_F64: u64 = 0x0008_0000_0000_0000;
+
+/// `result` as SSE gives it: a NaN result is the first NaN of `operands` (in the game's operand
+/// order), quieted, else the default NaN ([`INDEFINITE`]).
+fn sse_nan(result: f32, operands: &[f32]) -> f32 {
+    if !result.is_nan() {
+        return result;
+    }
+    let nan = operands.iter().find(|o| o.is_nan());
+    f32::from_bits(nan.map_or(INDEFINITE, |o| o.to_bits() | QUIET))
+}
+
+/// [`sse_nan`] in f64.
+fn sse_nan_f64(result: f64, operands: &[f64]) -> f64 {
+    if !result.is_nan() {
+        return result;
+    }
+    let nan = operands.iter().find(|o| o.is_nan());
+    f64::from_bits(nan.map_or(INDEFINITE_F64, |o| o.to_bits() | QUIET_F64))
+}
+
+/// An f64 rounded to f32 as `CVTSD2SS` does: a NaN keeps its sign and the top 23 bits of its
+/// payload, quieted.
+const fn narrow(x: f64) -> f32 {
+    if !x.is_nan() {
+        return x as f32;
+    }
+    let b = x.to_bits();
+    f32::from_bits(
+        ((b >> 32) as u32 & 0x8000_0000) | 0x7f80_0000 | ((b >> 29) as u32 & 0x007f_ffff) | QUIET,
+    )
+}
+
+/// An f32 widened to f64 as `CVTSS2SD` does: a NaN keeps its sign and payload, quieted.
+fn widen(x: f32) -> f64 {
+    if !x.is_nan() {
+        return f64::from(x);
+    }
+    let b = u64::from(x.to_bits());
+    f64::from_bits(
+        ((b & 0x8000_0000) << 32) | 0x7ff0_0000_0000_0000 | ((b & 0x007f_ffff) << 29) | QUIET_F64,
+    )
+}
+
+/// The square root, as the game's (correctly rounded); below 0 the default NaN.
 #[must_use]
 pub fn sqrt(x: f32) -> f32 {
-    x.sqrt()
+    sse_nan(x.sqrt(), &[x])
 }
 
 /// π/2's leading bits (`DAT_142ec89f0`): acosf near 0, also atanf's bound.
@@ -50,7 +108,7 @@ pub fn acos(x: f32) -> f32 {
         if ix != 0x3f80_0000 {
             // SUBSS x, x; DIVSS 0, (x − x): NaN for |x| above 1, infinities and NaN
             #[allow(clippy::eq_op)]
-            return 0.0 / (x - x);
+            return sse_nan(0.0 / (x - x), &[x]);
         }
         return if hx >> 31 != 0 {
             ACOS_OF_MINUS_ONE
@@ -119,7 +177,10 @@ fn k_sin(x: f64) -> f32 {
     let w = z * z;
     let r = z * SIN_S4 - SIN_S3;
     let s = z * x;
-    (w * s * r + ((z * SIN_S2 - SIN_S1) * s + x)) as f32
+    narrow(sse_nan_f64(
+        w * s * r + ((z * SIN_S2 - SIN_S1) * s + x),
+        &[x],
+    ))
 }
 
 /// `0x14099cad0` (msun's `__kernel_cosdf`): the cosine of a double up to about π/4 in size,
@@ -128,7 +189,10 @@ fn k_cos(x: f64) -> f32 {
     let z = x * x;
     let w = z * z;
     let r = z * COS_C3 - COS_C2;
-    (r * (w * z) + ((ONE_F64 - z * COS_C0) + w * COS_C1)) as f32
+    narrow(sse_nan_f64(
+        r * (w * z) + ((ONE_F64 - z * COS_C0) + w * COS_C1),
+        &[x],
+    ))
 }
 
 /// floor's 2^52, added and taken off to round away the fraction (`DAT_142ec8bf0`).
@@ -460,7 +524,7 @@ fn rem_pio2(x: f32) -> (i32, f64) {
     }
     if ix >= 0x7f80_0000 {
         #[allow(clippy::eq_op)]
-        return (0, f64::from(x - x));
+        return (0, widen(sse_nan(x - x, &[x])));
     }
     // x's 24 bits with the exponent 23, scaled by 2^e0
     let e0 = (ix >> 23) as i32 - 150;
@@ -512,7 +576,7 @@ pub fn cos(x: f32) -> f32 {
     }
     if ix >= 0x7f80_0000 {
         #[allow(clippy::eq_op)]
-        return x - x;
+        return sse_nan(x - x, &[x]);
     }
     let (n, y) = rem_pio2(x);
     match n & 3 {
@@ -565,7 +629,7 @@ pub fn sin(x: f32) -> f32 {
     }
     if ix >= 0x7f80_0000 {
         #[allow(clippy::eq_op)]
-        return x - x;
+        return sse_nan(x - x, &[x]);
     }
     let (n, y) = rem_pio2(x);
     match n & 3 {
@@ -591,7 +655,7 @@ pub fn fmod(x: f32, y: f32) -> f32 {
         // the invalid operation's default NaN, or the NaN argument quieted
         let p = x * y;
         #[allow(clippy::eq_op)]
-        return p / p;
+        return sse_nan(p / p, &[x, y]);
     }
     if uxi << 1 <= uyi << 1 {
         // |x| at most |y|: a signed zero when equal, else x
@@ -889,7 +953,8 @@ const PI_LO: f32 = f32::from_bits(0xb3bb_bd2e);
 #[must_use]
 pub fn atan2(y: f32, x: f32) -> f32 {
     if is_nan(x) || is_nan(y) {
-        return y + x;
+        // ADDSS y, x: the first NaN operand, quieted
+        return sse_nan(y + x, &[y, x]);
     }
     let hx = x.to_bits();
     if hx == 0x3f80_0000 {
