@@ -19,7 +19,8 @@
 //! unit's radius halved as the buffer, and the pather's ignore list: the unit, its target and the
 //! tile under a one-tile target that the unit's terrain cannot cross.
 
-use crate::fmath::{at_most_or_unordered, sqrt};
+use crate::checkpoint::cvttss2si;
+use crate::fmath::{at_most_or_unordered, below_or_unordered, maxss, minss, sqrt};
 use crate::spatial::{GATE_CLASS, Placed, Spatial, tile_record_id};
 use crate::unit_ai::Unsupported;
 
@@ -651,9 +652,20 @@ pub fn quick_reach_from(
 }
 
 impl<'w> HullPather<'w> {
-    /// The pather for unit `unit` (terrain `mask`, `radius`) with the ignore list slot 0x3e8 sets
-    /// (`FUN_140f89e40` with the unit and `target`): both objects, and the tile under a target of
-    /// one tile on a tile's middle whose terrain the mask lacks.
+    /// The pather for unit `unit` (terrain `mask`, `radius`, its player) with the ignore list slot
+    /// 0x3e8 sets (`FUN_140f89e40` with the unit and `target`): both objects, and the tile under a
+    /// target of one tile on a tile's middle whose terrain the mask lacks.
+    ///
+    /// The rest is `MShortPather`'s constructor (`FUN_140f84e40`): no hulls (`+0x8`, `+0x10`), the
+    /// open lists' heads without links (`+0x28`..`+0x38`, `+0x60`..`+0x70`), two empty closed
+    /// lists (`+0x90`, `LAB_140f84e30`), the area -1 (`+0xe8`..`+0xf4`), bounds 0 (`+0x118`,
+    /// `+0x120`), four exit and four entrance paths, each empty with length 0 (`+0x108`, `+0x110`,
+    /// `LAB_140f850c0`: `FUN_140f8f5d0` with id -1). Its node pool (`+0xb0`, `+0xb8`) has no
+    /// counterpart: genie never reuses a node, and `addNode` writes every field of one it reuses.
+    /// None of the pather's routines reads `+0xd8` or `+0xe0`. The game keeps one pather per
+    /// obstruction manager; of what one search leaves, only the hulls and the area reach the next,
+    /// when it keeps them ([`HullPather::find_keeping`]), so a caller that keeps this pather
+    /// across searches holds the same state.
     #[must_use]
     pub fn new(world: &'w Spatial, unit: i32, target: i32, mask: u8, radius: f32) -> Self {
         let mut ignore = vec![unit, target];
@@ -1222,14 +1234,15 @@ impl<'w> HullPather<'w> {
             .map_or(-1, |i| i as i32)
     }
 
-    /// Whether `p` lies within the area's tiles, `r` from their edge.
+    /// Whether `p` lies within the area's tiles, `r` from their edge. Each bound skips by
+    /// `COMISS`/`JA` (0x140f86a44, 0x140f8d942, 0x140f899d3): an unordered coordinate is inside.
     fn in_area(&self, p: Point) -> bool {
         let r = self.radius;
         let [x0, y0, x1, y1] = self.area;
-        x0 as f32 + r <= p[0]
-            && p[0] <= (x1 + 1) as f32 - r
-            && y0 as f32 + r <= p[1]
-            && p[1] <= (y1 + 1) as f32 - r
+        at_most_or_unordered(x0 as f32 + r, p[0])
+            && at_most_or_unordered(p[0], (x1 + 1) as f32 - r)
+            && at_most_or_unordered(y0 as f32 + r, p[1])
+            && at_most_or_unordered(p[1], (y1 + 1) as f32 - r)
     }
 
     /// Whether `p` lies on the map, `r` from its edge.
@@ -1239,13 +1252,12 @@ impl<'w> HullPather<'w> {
         !(p[0] < r || w as f32 - r < p[0] || p[1] < r || h as f32 - r < p[1])
     }
 
-    /// The gap between `p` and the target's box grown by the radius.
+    /// The gap between `p` and the target's box grown by the radius; each axis held at 0 or
+    /// more by `MAXSS` (0x140f86bcf, 0x140f85a18): an unordered one is 0.
     fn target_gap(&self, t: &Target, p: Point) -> f32 {
         let r = self.radius;
-        let gx = (p[0] - t.at[0]).abs() - (t.radius[0] + r);
-        let gy = (p[1] - t.at[1]).abs() - (t.radius[1] + r);
-        let gx = if gx <= 0.0 { 0.0 } else { gx };
-        let gy = if gy <= 0.0 { 0.0 } else { gy };
+        let gx = maxss((p[0] - t.at[0]).abs() - (t.radius[0] + r), 0.0);
+        let gy = maxss((p[1] - t.at[1]).abs() - (t.radius[1] + r), 0.0);
         sqrt(gy * gy + gx * gx)
     }
 
@@ -1355,15 +1367,21 @@ impl<'w> HullPather<'w> {
         reach: Option<(Point, f32)>,
     ) -> bool {
         let [x0, y0, x1, y1] = b;
+        // `COMISS`/`JA`, then `SETBE`; `JBE`, then `CMOVA` (0x140f8d1fc..0x140f8d235,
+        // 0x140f893a4..0x140f893d0): an unordered coordinate counts past the box's far side
         let col = if p[0] < x0 {
             0
+        } else if p[0] < x1 {
+            1
         } else {
-            1 + i32::from(x1 <= p[0])
+            2
         };
-        let row = if y0 <= p[1] {
-            if p[1] < y1 { 3 } else { 6 }
-        } else {
+        let row = if p[1] < y0 {
             0
+        } else if p[1] < y1 {
+            3
+        } else {
+            6
         };
         let sides = match row + col {
             0 => [true, false, false, true],
@@ -1394,9 +1412,13 @@ impl<'w> HullPather<'w> {
             7 => [false, false, true, false],
             _ => [false, true, true, false],
         };
+        // a point farther than the reach is left out (`COMISS`/`JA`, 0x140f8d620)
         let near = |q: Point| {
             reach.is_none_or(|(c, d)| {
-                (c[0] - q[0]) * (c[0] - q[0]) + (c[1] - q[1]) * (c[1] - q[1]) <= d * d
+                at_most_or_unordered(
+                    (c[0] - q[0]) * (c[0] - q[0]) + (c[1] - q[1]) * (c[1] - q[1]),
+                    d * d,
+                )
             })
         };
         let mut made = false;
@@ -1508,7 +1530,11 @@ impl<'w> HullPather<'w> {
     /// `goal`, a node that sees the goal (or is within range of it or of the target) ends it in
     /// `paths[0]` (result 0), else the node nearest the goal does (1); without one, each ray that
     /// leaves the hull keeps its way out (`most` paths, result 4, or 5 when the start was inside a
-    /// box). 2: nothing found, 3: no first step.
+    /// box). 2: nothing found, 3: no first step. From inside a box, the start's region about the
+    /// box picks the sides whose points start the walk too (the jump table at 0x140f8d261,
+    /// [`HullPather::side_points`]). `FindShortPath`, its only caller, gives it a hull, a start and
+    /// paths (its result 6 is for none) and no array for the sides the ways out leave by (its
+    /// argument 13).
     #[allow(clippy::too_many_arguments)]
     fn walk_out(
         &mut self,
@@ -1655,7 +1681,9 @@ impl<'w> HullPather<'w> {
     /// `MShortPather::pathWithinHull` into a hull (`FUN_140f88ee0`): the walk out of hull `hull`
     /// from the goal `from` toward the start `to`, whose ways out (at most `most`) are the
     /// entrance paths, each with the hull side it leaves by. Result 4 (5 when the goal was inside
-    /// a box) with paths, 2 without, 3 without a first step.
+    /// a box) with paths, 2 without, 3 without a first step. `FindShortPath`, its only caller,
+    /// gives it a hull, a start, paths and the sides' array (its result 6 is for none) and its
+    /// argument 10 set: each way out is nudged back into the hull.
     #[allow(clippy::too_many_arguments)]
     fn walk_in(
         &mut self,
@@ -1776,7 +1804,23 @@ impl<'w> HullPather<'w> {
         target_id: i32,
         range: f32,
     ) -> Result<(u8, Waypoints), Unsupported> {
-        self.find_with(from, to, target_id, range, false)
+        self.find_with(from, to, target_id, range, false, false)
+    }
+
+    /// [`HullPather::find`] with `FindShortPath`'s argument 11 set: the area and the hulls of this
+    /// pather's last search stay (when it has an area) and the search builds none.
+    ///
+    /// # Errors
+    ///
+    /// Where the pather meets what the slice does not model.
+    pub fn find_keeping(
+        &mut self,
+        from: Point,
+        to: Point,
+        target_id: i32,
+        range: f32,
+    ) -> Result<(u8, Waypoints), Unsupported> {
+        self.find_with(from, to, target_id, range, true, false)
     }
 
     /// [`HullPather::find`] as slot 0x3e0 calls it (its last argument 1): the quick path alone,
@@ -1792,9 +1836,13 @@ impl<'w> HullPather<'w> {
         target_id: i32,
         range: f32,
     ) -> Result<(u8, Waypoints), Unsupported> {
-        self.find_with(from, to, target_id, range, true)
+        self.find_with(from, to, target_id, range, false, true)
     }
 
+    /// `FindShortPath` with its argument 11 (`keep`) and its argument 15 below 2 (`quick_only`
+    /// for 1). Its callers pass 0 (slot 0x3e8, `FUN_140f9e540`) or 1 (slot 0x3e0) there, never 2
+    /// or more, which would skip the quick path. Its arguments 12 to 14 are the pather's player
+    /// and include list; its path is the one returned.
     #[allow(clippy::too_many_lines)]
     fn find_with(
         &mut self,
@@ -1802,23 +1850,26 @@ impl<'w> HullPather<'w> {
         to: Point,
         target_id: i32,
         range: f32,
+        mut keep: bool,
         quick_only: bool,
     ) -> Result<(u8, Waypoints), Unsupported> {
         let r = self.radius;
         let [w, h] = self.world.map;
         let mut path = Waypoints::default();
-        self.area = [-1, -1, -1, -1];
+        if !keep {
+            self.area = [-1, -1, -1, -1];
+        }
         self.bounds = [r, r, w as f32 - r, h as f32 - r];
-        let [bx0, by0, bx1, by1] = self.bounds;
+        let [_, _, bx1, by1] = self.bounds;
+        // each bound by `COMISS`/`JA` (0x140f8569f..0x140f85701): an unordered coordinate passes
         if from[0] < r || bx1 < from[0] || from[1] < r || by1 < from[1] {
             return Ok((4, path));
         }
-        if to[0] < r || bx1 < to[0] || to[1] < r || by1 < to[1] {
-            return Err(Unsupported(
-                "the old short pather to a goal at the map's edge (FUN_140f89d80)",
-            ));
+        if (to[0] < r || bx1 < to[0] || to[1] < r || by1 < to[1])
+            && !self.edge_goal(to, target_id)?
+        {
+            return Ok((4, path));
         }
-        let _ = (bx0, by0);
         self.start = from;
         self.goal = to;
         // the target counts only where it stands on the goal
@@ -1884,29 +1935,22 @@ impl<'w> HullPather<'w> {
         if quick_only {
             return Ok((3, path));
         }
-        // the area: the walk's tiles and two more each way, on the map
-        let (lo_x, hi_x) = (
-            if to[0] <= from[0] { to[0] } else { from[0] },
-            if from[0] <= to[0] { to[0] } else { from[0] },
-        );
-        let (lo_y, hi_y) = (
-            if to[1] <= from[1] { to[1] } else { from[1] },
-            if from[1] <= to[1] { to[1] } else { from[1] },
-        );
-        self.area = [
-            (lo_x as i32 - 2).max(0),
-            (lo_y as i32 - 2).max(0),
-            if w <= hi_x as i32 + 2 {
-                w - 1
-            } else {
-                hi_x as i32 + 2
-            },
-            if h <= hi_y as i32 + 2 {
-                h - 1
-            } else {
-                hi_y as i32 + 2
-            },
-        ];
+        // the area, unless kept: the walk's tiles and two more each way, on the map (`MINSS`,
+        // `MAXSS` of the start's and the goal's, `CVTTSS2SI`, 0x140f85f61..0x140f85ff5)
+        if !keep || self.area[0] == -1 {
+            let tile = |v: f32, d: i32| cvttss2si(v).wrapping_add(d);
+            let x0 = tile(minss(from[0], to[0]), -2);
+            let y0 = tile(minss(from[1], to[1]), -2);
+            let x1 = tile(maxss(from[0], to[0]), 2);
+            let y1 = tile(maxss(from[1], to[1]), 2);
+            self.area = [
+                x0.max(0),
+                y0.max(0),
+                if w <= x1 { w - 1 } else { x1 },
+                if h <= y1 { h - 1 } else { y1 },
+            ];
+            keep = false;
+        }
         let Some(target) = target else {
             return Err(Unsupported(
                 "the old short pather without a target on its goal (the goal's point query)",
@@ -1936,7 +1980,7 @@ impl<'w> HullPather<'w> {
                 break;
             }
             self.close_all(0);
-            if growths == 0 {
+            if !keep && growths == 0 {
                 self.build_hulls()?;
             }
             let root = self.add_unrefused(0, true, None, from, Some(to), -1, -1);
@@ -2202,8 +2246,9 @@ impl<'w> HullPather<'w> {
             let d_path =
                 (last[1] - to[1]) * (last[1] - to[1]) + (last[0] - to[0]) * (last[0] - to[0]);
             let d_node = (e[1] - to[1]) * (e[1] - to[1]) + (e[0] - to[0]) * (e[0] - to[0]);
-            // a node nearer the goal than the walk's end is the end (never with a NaN)
-            if d_node.partial_cmp(&d_path) != Some(std::cmp::Ordering::Less) {
+            // a node nearer the goal than the walk's end is the end (`COMISS`/`JNC` to the
+            // partway end, 0x140f86cb6: an unordered distance takes the node)
+            if !below_or_unordered(d_node, d_path) {
                 return Ok((self.partway(&mut path, from, to, range), path));
             }
         }
@@ -2236,6 +2281,34 @@ impl<'w> HullPather<'w> {
         Ok((self.partway(&mut path, from, to, range), path))
     }
 
+    /// `FindShortPath` for a goal off the map less the radius: the target (none: 4) must stand
+    /// on it (`UCOMISS`, an unordered coordinate does not), and the goal lie on the map itself
+    /// (`FUN_140f89d80` with the bounds the map's: `COMISS`/`JA` each way, an unordered
+    /// coordinate on it); then the bounds go back to the map less the radius.
+    fn edge_goal(&mut self, to: Point, target_id: i32) -> Result<bool, Unsupported> {
+        if target_id == -1 {
+            return Ok(false);
+        }
+        let Some(t) = self.world.get_known(target_id)? else {
+            return Ok(false);
+        };
+        if t.position[0] != to[0] || t.position[1] != to[1] {
+            return Ok(false);
+        }
+        let r = self.radius;
+        let [w, h] = self.world.map;
+        self.bounds = [0.0, 0.0, w as f32 - 0.0, h as f32 - 0.0];
+        let [bx0, by0, bx1, by1] = self.bounds;
+        let on_map = at_most_or_unordered(bx0, to[0])
+            && at_most_or_unordered(to[0], bx1)
+            && at_most_or_unordered(by0, to[1])
+            && at_most_or_unordered(to[1], by1);
+        if on_map {
+            self.bounds = [r, r, w as f32 - r, h as f32 - r];
+        }
+        Ok(on_map)
+    }
+
     /// `FindShortPath`'s end for a path partway (2): none when it ends at the start (3); within
     /// range of the goal it is a path (1); one that ends no nearer the goal than the start is none.
     fn partway(&self, path: &mut Waypoints, from: Point, to: Point, range: f32) -> u8 {
@@ -2246,7 +2319,9 @@ impl<'w> HullPather<'w> {
             result = 3;
         }
         let d = (last[1] - to[1]) * (last[1] - to[1]) + (last[0] - to[0]) * (last[0] - to[0]);
-        if d < (from[1] - to[1]) * (from[1] - to[1]) + (from[0] - to[0]) * (from[0] - to[0]) {
+        // `COMISS`/`JC` (0x140f876ca): an unordered distance counts as nearer
+        let start = (from[1] - to[1]) * (from[1] - to[1]) + (from[0] - to[0]) * (from[0] - to[0]);
+        if below_or_unordered(d, start) {
             if d < range * range {
                 result = 1;
             }
@@ -3046,6 +3121,306 @@ mod tests {
             quick_reach_from(&w, 9171, [2.0, 5.5], 9149, 6, 0.2, 0.1).unwrap(),
             None
         );
+    }
+
+    /// `FUN_140f84e40`: no hulls, both open lists empty behind their heads, empty closed lists,
+    /// the area -1, bounds 0, four empty exit and entrance paths; the iteration cap 0x40. With
+    /// `FUN_140f89e40`'s ignore list: the unit and the target.
+    #[test]
+    fn a_new_pather_holds_the_constructor_s_state() {
+        let mut w = open_world();
+        w.insert(9171, placed(2.0, 5.5, 0.2, 5));
+        let p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        assert_eq!(ITERATION_CAP, 0x40);
+        assert_eq!((p.player, p.ignore.clone()), (1, vec![9171, 9149]));
+        assert_eq!(p.hulls, []);
+        assert_eq!(p.nodes.len(), 2);
+        for head in &p.nodes {
+            assert_eq!((head.parent, head.next, head.prev), (None, None, None));
+        }
+        assert_eq!(p.closed, [Vec::<usize>::new(), Vec::new()]);
+        assert_eq!((p.area, p.bounds), ([-1; 4], [0.0; 4]));
+        assert_eq!(p.exits, vec![Waypoints::default(); PATHS]);
+        assert_eq!(p.entrances, vec![Waypoints::default(); PATHS]);
+        assert_eq!(
+            (p.buffer, p.include.len(), p.gates.is_none()),
+            (None, 0, true)
+        );
+    }
+
+    /// The pather's float tests as the game compiles them: the area test skips by `COMISS`/`JA`
+    /// (an unordered place is inside, 0x140f86a44), the target's gap clamps each axis by `MAXSS`
+    /// (an unordered one is 0, 0x140f86bcf), a walk within a hull picks its sides by `JA`/`SETBE`/
+    /// `CMOVA` (an unordered start is right of and below the box, 0x140f8d1fc) and keeps a side
+    /// point unless it is farther than the reach (`JA`, 0x140f8d620), and the end's partway test
+    /// takes an unordered distance as nearer the goal (`JC`, 0x140f876ca).
+    #[test]
+    fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
+        let w = open_world();
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        p.area = [2, 2, 5, 5];
+        assert!(p.in_area([f32::NAN, 3.0]));
+        assert!(p.in_area([2.2, 5.8]));
+        assert!(!p.in_area([2.1, 3.0]));
+        let t = Target {
+            id: 1,
+            at: [10.0, 10.0],
+            radius: [0.5, 0.5],
+            speed: 0.0,
+        };
+        let gy = (13.7f32 - 10.0).abs() - (0.5 + 0.2);
+        assert_eq!(p.target_gap(&t, [f32::NAN, 13.7]), gy);
+        assert_eq!(p.target_gap(&t, [10.2, 10.3]), 0.0);
+        // an unordered start: the box's right and top sides (case 8); an unordered reach leaves
+        // no side point out
+        let b = [4.0, 4.0, 6.0, 6.0];
+        p.hulls = vec![Hull::default()];
+        let root = p.add_unrefused(1, true, None, [5.0, 5.0], None, -1, -1);
+        assert!(p.side_points(0, root, b, [f32::NAN, f32::NAN], 0.5, None));
+        let mut at: Vec<Point> = open_nodes(&p, 1)
+            .iter()
+            .filter(|&&i| i != root)
+            .map(|&i| p.nodes[i].at)
+            .collect();
+        at.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let n = NUDGE;
+        let mut expected = vec![
+            [6.0 + n, 4.0 + n],
+            [6.0 + n, (4.0 + n) + 1.0],
+            [6.0 - n, 6.0 + n],
+            [(6.0 - n) - 1.0, 6.0 + n],
+        ];
+        expected.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(at, expected);
+        p.empty(1);
+        let root = p.add_unrefused(1, true, None, [5.0, 3.0], None, -1, -1);
+        let reach = Some(([5.0, 3.0], f32::NAN));
+        assert!(p.side_points(0, root, b, [5.0, 3.0], 0.5, reach));
+        assert_eq!(open_nodes(&p, 1).len(), 3);
+        // partway: an unordered end is nearer the goal than the start, and not within range
+        let mut path = Waypoints {
+            points: vec![[1.0, 1.0], [f32::NAN, 2.0]],
+            cost: 0.0,
+        };
+        p.start = [1.0, 1.0];
+        assert_eq!(p.partway(&mut path, [1.0, 1.0], [9.0, 9.0], 0.5), 2);
+        assert_eq!(path.points.len(), 2);
+    }
+
+    /// A 20 × 20 map whose tiles (6, 4..=6) or (8, 4..=6) are of a terrain the mask 6 lacks (a
+    /// wall), with the map's links, and the unit 9171 and its target 9149 (a tree's size) at
+    /// (12.5, 5.5).
+    fn walled(wall_x: usize, unit: [f32; 2]) -> Spatial {
+        let mut classes = vec![4; 400];
+        for y in 4..=6 {
+            classes[y * 20 + wall_x] = 1;
+        }
+        let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+        w.sight = Some(crate::visibility::Visibility::new(
+            20,
+            20,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+            Vec::new(),
+        ));
+        w.insert(9171, placed(unit[0], unit[1], 0.2, 5));
+        w.insert(9149, placed(12.5, 5.5, 0.5, 2));
+        w
+    }
+
+    /// `FindShortPath` (`FUN_140f85580`) when the quick path meets more than one obstruction:
+    /// the area about the walk (2 tiles each way), its hulls (the wall's three rows merged, the
+    /// target's marked tile a hull of its own), the target's entrance paths joined to its hull,
+    /// then the search from the start: its walk crosses the wall's hull, whose points it follows
+    /// both ways; the first node within range of the target's grown box ends it, and the path
+    /// skips every node that sees past its parent.
+    #[test]
+    fn the_hull_search_goes_around_a_wall_to_the_target() {
+        let w = walled(6, [2.0, 5.5]);
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let (result, path) = p.find([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+        assert_eq!(p.area, [0, 3, 14, 7]);
+        assert_eq!(
+            p.hulls[0].points,
+            [[7.2, 7.2], [7.2, 3.8], [5.8, 3.8], [5.8, 7.2]]
+        );
+        assert_eq!(p.hulls[0].objects.len(), 3);
+        // the target's hull took the four entrance ends on its left side, by their distance from
+        // the side's first point (11.8, 4.8)
+        let x = 11.8 - NUDGE;
+        assert_eq!(p.hulls[1].entrances, [-1, -1, -1, 2, 0, 1, 3, -1]);
+        assert_eq!(p.hulls[1].points[3][0], x);
+        assert_eq!(result, 1);
+        assert_eq!(path.points[..3], [[2.0, 5.5], [5.8, 7.2], [7.2, 7.2]]);
+        let end = path.points[3];
+        assert_eq!((path.points.len(), end[0]), (4, x));
+        assert!((end[1] - (6.2 - NUDGE - 0.35)).abs() < 1e-5);
+    }
+
+    /// A start inside a hull: `pathWithinHull` out of it (`FUN_140f8cf00`) gives the exit paths,
+    /// whose nodes but the last go closed and the last open into the search's list; the goal's
+    /// hull its entrance paths (`FUN_140f88ee0`) with the target.
+    #[test]
+    fn a_start_inside_a_hull_leaves_it_by_its_exit_paths() {
+        let mut w = walled(8, [4.9, 5.5]);
+        w.insert(48, placed(5.5, 5.5, 0.5, 2));
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let (result, path) = p.find([4.9, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+        let ends: Vec<Point> = p.exits.iter().map(|e| e.points[2]).collect();
+        let n = 4.8 - NUDGE;
+        assert_eq!(
+            ends,
+            [[n, 5.5], [n, 5.541_421_4], [n, 5.458_578_6], [n, 5.6]]
+        );
+        let starts: Vec<Point> = p.entrances.iter().map(|e| e.points[0]).collect();
+        assert_eq!(starts, [[12.5, 5.5]; 4]);
+        assert_eq!(result, 1);
+        assert_eq!(
+            path.points[..5],
+            [[4.9, 5.5], [4.8, 5.6], [4.8, 6.2], [7.8, 7.2], [9.2, 7.2]]
+        );
+    }
+
+    /// `pathWithinHull` out of a hull (`FUN_140f8cf00`). Without a goal: from inside a box, the
+    /// 16 first steps (each 2r, held at the hull's side) and the points of the box's sides the
+    /// start's region picks, within 2r; each ray that leaves the boxes ends a way out at the
+    /// hull's side, nudged out, kept by its end (result 5 from inside a box). With a goal: a node
+    /// that sees the goal ends the walk there (0).
+    #[test]
+    fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
+        let w = walled(8, [4.9, 5.5]);
+        let box_hull = |p: &mut HullPather<'_>| {
+            p.area = [0, 0, 19, 19];
+            let h = p.add_shape([4.8, 4.8], [6.2, 6.2]);
+            p.hulls[h].objects.push(Shape {
+                bounds: [4.8, 4.8, 6.2, 6.2],
+                id: 48,
+            });
+            h
+        };
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let h = box_hull(&mut p);
+        let mut paths = vec![Waypoints::default(); PATHS];
+        let mut count = 0;
+        let walk = p
+            .walk_out(
+                h,
+                [4.9, 5.5],
+                None,
+                None,
+                0.1,
+                true,
+                &mut paths,
+                PATHS,
+                &mut count,
+            )
+            .unwrap();
+        assert_eq!((walk.result, walk.left_boxes, count), (5, true, 4));
+        let n = 4.8 - NUDGE;
+        assert_eq!(paths[0].points, [[4.9, 5.5], [n, 5.5]]);
+        assert_eq!(paths[3].points, [[4.9, 5.5], [n, 5.6]]);
+        assert!(paths[0].cost < paths[1].cost && paths[1].cost <= paths[3].cost);
+        // toward a goal it sees from its first step
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let h = box_hull(&mut p);
+        let mut paths = vec![Waypoints::default(); 1];
+        let mut count = 0;
+        let goal = Some([3.0, 5.5]);
+        let walk = p
+            .walk_out(
+                h,
+                [4.9, 5.5],
+                goal,
+                None,
+                0.1,
+                false,
+                &mut paths,
+                1,
+                &mut count,
+            )
+            .unwrap();
+        assert_eq!((walk.result, walk.left_boxes, count), (0, false, 0));
+        assert_eq!(paths[0].points, [[4.9, 5.5], [3.0, 5.5]]);
+    }
+
+    /// `pathWithinHull` into a hull (`FUN_140f88ee0`): the walk out of the hull from the goal
+    /// inside a box toward the start, its ways out nudged back in by [`NUDGE`], each with the hull
+    /// side it leaves by (result 5: the goal is inside a box).
+    #[test]
+    fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
+        let w = walled(8, [4.9, 5.5]);
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        p.area = [0, 0, 19, 19];
+        let h = p.add_shape([4.8, 4.8], [6.2, 6.2]);
+        p.hulls[h].objects.push(Shape {
+            bounds: [4.8, 4.8, 6.2, 6.2],
+            id: 48,
+        });
+        let mut paths = vec![Waypoints::default(); PATHS];
+        let mut sides = [0usize; PATHS];
+        let mut count = 0;
+        let walk = p
+            .walk_in(
+                h,
+                [5.0, 5.5],
+                [2.0, 5.5],
+                None,
+                &mut paths,
+                &mut sides,
+                PATHS,
+                &mut count,
+            )
+            .unwrap();
+        assert_eq!((walk.result, walk.left_boxes, count), (5, true, 4));
+        // all four leave by side 3, the hull's left (its points 2 to 3)
+        assert_eq!(sides, [3; 4]);
+        let x = 4.8 + NUDGE;
+        // the world holds no record in the box: the end sees the goal, its parent is skipped
+        assert_eq!(paths[0].points, [[5.0, 5.5], [x, 5.5]]);
+    }
+
+    /// `FindShortPath` with a goal off the map less the radius: its target must stand on it and
+    /// the goal lie on the map (`FUN_140f89d80` with the map's bounds), else 4.
+    #[test]
+    fn a_goal_at_the_map_s_edge_needs_its_target_on_it() {
+        let mut w = open_world();
+        w.insert(9171, placed(15.0, 5.5, 0.2, 5));
+        w.insert(9149, placed(19.9, 5.5, 0.5, 2));
+        w.insert(9150, placed(20.5, 7.5, 0.5, 2));
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let (result, path) = p.find([15.0, 5.5], [19.9, 5.5], 9149, 0.0).unwrap();
+        assert_eq!((result, path.points), (1, vec![[15.0, 5.5], [19.9, 5.5]]));
+        assert_eq!(p.bounds, [0.2, 0.2, 19.8, 19.8]);
+        // no target, a target elsewhere, a goal off the map
+        assert_eq!(p.find([15.0, 5.5], [19.9, 5.5], -1, 0.0).unwrap().0, 4);
+        assert_eq!(p.find([15.0, 5.5], [19.9, 6.5], 9149, 0.0).unwrap().0, 4);
+        assert_eq!(p.find([15.0, 5.5], [20.5, 7.5], 9150, 0.0).unwrap().0, 4);
+        assert_eq!(p.bounds, [0.0, 0.0, 20.0, 20.0]);
+    }
+
+    /// `FindShortPath`'s argument 11: the last search's area and hulls stay, none are built; with
+    /// no area yet the search makes its own.
+    #[test]
+    fn a_kept_search_reuses_the_last_area_and_hulls() {
+        let w = walled(6, [2.0, 5.5]);
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let first = p.find_keeping([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+        assert_eq!(p.area, [0, 3, 14, 7]);
+        let mut fresh = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        assert_eq!(
+            first,
+            fresh.find([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap()
+        );
+        // the hulls gone: a kept search builds none and finds no way around the wall
+        p.hulls.clear();
+        p.area = [0, 2, 14, 8];
+        let (result, _) = p.find_keeping([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+        assert_eq!((result, p.area, p.hulls.len()), (3, [0, 2, 14, 8], 0));
+        // not kept: the area and the hulls anew
+        let (result, _) = p.find([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+        assert_eq!((result, p.area, p.hulls.len()), (1, [0, 3, 14, 7], 2));
     }
 
     #[test]
