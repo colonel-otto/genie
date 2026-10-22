@@ -3829,7 +3829,8 @@ impl Turns {
     /// share of the new master's (whole, at least 1), its sight goes and the new master's comes
     /// (slots 0x1d8, 0x1d0), its place and obstruction record take the new master's
     /// (`FUN_141055b40`, `FUN_14118c540`) and it moves with the new master's values; its powerups
-    /// go ([`clear_powerups`]); it takes the new master's standing sprite (slot 0x68). Its
+    /// go ([`clear_powerups`]) and in state 2 its volleys (`+0xa00`) are the new master's volley
+    /// fire; it takes the new master's standing sprite (slot 0x68). Its
     /// per-master counts, facet, class registry (`DAT_143f69170`) and particles are not held.
     pub(crate) fn change_master(
         &mut self,
@@ -3928,7 +3929,13 @@ impl Turns {
                 }
             }
         }
-        clear_powerups(&mut self.players[player].objects[idx]);
+        let unit = &mut self.players[player].objects[idx];
+        clear_powerups(unit);
+        // in state 2 the volleys (`+0xa00`) are the new master's volley fire, the shares of the
+        // units inside dropped
+        if unit.life.state == 2 {
+            unit.firepower = next.volley_fire;
+        }
         Ok(())
     }
 }
@@ -4439,11 +4446,13 @@ mod tests {
             kind: BUILDING,
             hit_points: 100,
             build_time,
+            volley_fire: f32::from(build_time / 15),
             ..Master::default()
         };
         t.masters[1] = crate::masters::Masters::new([master(TROPHY, 10), master(1650, 30)]);
         let trophy = |state| Unit {
             id: 60,
+            firepower: 7.0,
             construction: Some(crate::build::Construction {
                 progress: 10.0,
                 desolid: false,
@@ -4469,9 +4478,12 @@ mod tests {
         assert_eq!(unit.life.master_id, 1650);
         assert_eq!(unit.life.hp, 50.0);
         assert_eq!(unit.construction.unwrap().progress, 30.0);
+        // FUN_141225b70 in state 2: the volleys are the new master's volley fire
+        assert_eq!(unit.firepower, 2.0);
         t.players[1].objects = vec![trophy(1)];
         t.transform_object(1, 60, 1650).unwrap();
         assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
+        assert_eq!(t.players[1].objects[0].firepower, 7.0);
     }
 
     /// `FUN_141216f10` to a point: the unit AI's order queue empties only with the unit's
