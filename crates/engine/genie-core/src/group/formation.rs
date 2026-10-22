@@ -7,6 +7,7 @@ use crate::group::layout::{clear_line, reset_line};
 use crate::group::{Formation, FormationLine, Slot, UnitGroup, sub_formation};
 use crate::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
 use crate::movement::PathData;
+use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
 /// The formation types (`mType`; the log names of `FUN_14103fd00`).
@@ -160,7 +161,7 @@ fn sizes(count: i32, by_line: bool) -> (i32, i32) {
     }
 }
 
-/// The slots of createColumnLine (`FUN_141012280`, [`crate::turn::Turns::create_column_line`])
+/// The slots of createColumnLine (`FUN_141012280`, [`Turns::create_column_line`])
 /// up to its transform: the group's sub-formations (its unit types, by category 0 to 5) laid
 /// out in lines on `formation`, `world_time` the slots' time. `column` lays a column (the column
 /// ratio set, type 1), else a line (type 2, staggered 7, flanked 8). Returns false for a group
@@ -409,7 +410,7 @@ pub(crate) fn column_line_slots(
     true
 }
 
-impl crate::turn::Turns {
+impl Turns {
     /// createColumnLine (`FUN_141012280`) of `formation` for group `g`: a column (`column`, the
     /// column ratio 2 and line ratio -1) or a line (ratios -1 and 2), staggered or flanked;
     /// false without members. Its slots ([`column_line_slots`]), then the transform and the
@@ -475,7 +476,7 @@ fn measured_path(paths: &[PathData]) -> Option<&PathData> {
         .or_else(|| paths.first().filter(|w| w.has_path))
 }
 
-impl crate::turn::Turns {
+impl Turns {
     /// The type `UpdateDesiredPositions` (`FUN_14103fd00`) chooses itself for group
     /// `g` (given none and its lock -1 or 0): a line (2), unless its path (the top level's, else the
     /// walked level's, [`measured_path`]) makes it a column (1): off the last high waypoint
@@ -771,7 +772,7 @@ const ASSIGNMENT_CELLS: usize = ASSIGNMENT_SIDE * ASSIGNMENT_SIDE;
 /// ... and the taken marks 80 bytes (`DAT_143f1fb00`).
 const ASSIGNMENT_MARKS: usize = 80;
 
-impl crate::turn::Turns {
+impl Turns {
     /// `FUN_141011300` of `object` (`param_1`, as the world's table gives it,
     /// [`Turns::world_object`]): -1 for none (a null object), else its master's sub-formation
     /// ([`sub_formation`], -1 for none); a ghost's master (type 25) has none.
@@ -1700,10 +1701,7 @@ pub(crate) mod tests {
     /// A 20 by 20 map of terrain class 1 but class 2 on `blocked`, masters 4 and 5 (category 1)
     /// and 6 (category 3), and player 1's `units` (id, master, x, y) on it and on the
     /// obstruction manager, all in group 1 at the origin facing x.
-    pub(crate) fn slot_world(
-        units: &[(i32, i16, f32, f32)],
-        blocked: &[(usize, usize)],
-    ) -> crate::turn::Turns {
+    pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usize)]) -> Turns {
         use crate::spatial::{Obstruction, Placed, Spatial, Tiles};
         use crate::terrain::{Terrain, TerrainKind};
         let objects: Vec<crate::turn::Unit> = units
@@ -1722,7 +1720,7 @@ pub(crate) mod tests {
             objects: objects.clone(),
             ..crate::turn::Player::default()
         };
-        let mut t = crate::turn::Turns::new(
+        let mut t = Turns::new(
             0,
             0,
             0,
@@ -2341,7 +2339,7 @@ pub(crate) mod tests {
     }
 
     /// One statistic of category 1 holding `units`, all of master 4, spacing 1.
-    fn one_statistic(t: &mut crate::turn::Turns, units: &[i32]) {
+    fn one_statistic(t: &mut Turns, units: &[i32]) {
         let mut unit_types = vec![0u32; 50];
         unit_types[0] = 4;
         let mut counts = vec![0u32; 50];
@@ -2422,7 +2420,7 @@ pub(crate) mod tests {
 
     /// Player 1 (minimum column distance 10, column-to-line 5) with unit 7 of a soldier master
     /// (type 70, category 1) in group 1 at the origin along `paths` (walked first).
-    fn type_world(paths: Vec<PathData>) -> crate::turn::Turns {
+    fn type_world(paths: Vec<PathData>) -> Turns {
         let mut u = crate::turn::Unit {
             id: 7,
             ..crate::turn::Unit::default()
@@ -2437,7 +2435,7 @@ pub(crate) mod tests {
             },
             ..crate::turn::Player::default()
         };
-        let mut t = crate::turn::Turns::new(
+        let mut t = Turns::new(
             0,
             0,
             0,
@@ -2465,7 +2463,7 @@ pub(crate) mod tests {
         t
     }
 
-    fn own(t: &crate::turn::Turns) -> i32 {
+    fn own(t: &Turns) -> i32 {
         t.own_formation_type(t.groups.get(1).unwrap()).unwrap()
     }
 

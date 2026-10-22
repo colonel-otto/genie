@@ -44,14 +44,18 @@ impl Turns {
     /// radius, the total spacing `(largest + sum) + (largest + sum)` in that order, the stored
     /// positions' desired length the members' count times the spacing; the motion's top speed is
     /// the slowest member's (divided by [`SLOW_GROUP_FACTOR`] with flags bit 9), the seconds not
-    /// under attack 0 when a member is under attack, else they grow by the update's time; each
-    /// sub-formation's spacing is twice its widest radius and its attack range its members'
-    /// largest; with flags bit 1 the formation type follows ([`Turns::calc_formation_type`]).
-    /// Without one the smallest radius, the spacing and the smallest ranges are 0.
+    /// under attack 0 when a member is under attack, else they grow by the update's time; a
+    /// member inside another object stops ([`Turns::stop_if_inside`]); each sub-formation's
+    /// spacing is twice its widest unit's radius and its attack range its units' largest against
+    /// the group's target ([`Turns::range_against`]), its units looked up in the world's table;
+    /// with the motion flags' bit 1 the formation type follows
+    /// ([`Turns::calc_formation_type`]). Without one the smallest radius, the spacing and the
+    /// smallest ranges are 0.
     ///
-    /// Not modelled: `far` (members far from the formation leave it), a member's range against
-    /// the group's target (slot 0x238 with one), and the attack plan's re-attack
-    /// (`FUN_14100f7f0`).
+    /// Not modelled: `far` (members far from their slot leave the group; its limits 20 and 40,
+    /// `DAT_142e7f38c` and `DAT_142ecbff0`, have no image role yet), `+0x478` (a member's
+    /// `+0x30c`; the group holds no such field), a charge's range against a target, and the
+    /// attack plan's re-attack (`FUN_14100f7f0`) against a target the world holds.
     pub fn group_statistics(&mut self, group: i32, far: bool) -> Result<(), Unsupported> {
         if self.statistics_only(group, far)? {
             self.calc_formation_type(group)?;
@@ -105,16 +109,11 @@ impl Turns {
                         [m.moved_at[0], m.moved_at[2], m.moved_at[1]]
                     }),
                 speed: u.mover.as_ref().map_or(0.0, |m| m.stats.speed),
-                range: master.weapon_range,
+                range: weapon_range(master),
                 under_attack: u.under_attack,
                 attacking: ai.current_action == ATTACK_ACTION,
             };
-            let room = MOST_OBJECTS.saturating_sub(objects.len());
-            for o in self.member_objects(id, room)? {
-                if !objects.contains(&o) {
-                    objects.push(o);
-                }
-            }
+            self.member_objects(id, &mut objects)?;
             views.push(Some(view));
         }
         let g = self.groups.get_mut(group).expect("the group read above");
@@ -178,6 +177,11 @@ impl Turns {
             g.smallest_ranged_unit_range = 0.0;
             return Ok(false);
         }
+        // a member inside another object (`+0x2f0`) stops (slot 0x5d0), in the members' order
+        for v in views.iter().flatten() {
+            self.stop_if_inside(v.id)?;
+        }
+        let g = self.groups.get_mut(group).expect("the group read above");
         let n = held as f32;
         g.centroid = [g.centroid[0] / n, g.centroid[1] / n, g.centroid[2] / n];
         g.desired_height /= n;
@@ -196,32 +200,50 @@ impl Turns {
         }
         let old_plan = g.attack_plan_type;
         g.attack_plan_type = 0;
-        let has_target = g.current_target.target != -1;
-        for stat in &mut g.unit_types {
-            if stat.units.is_empty() {
+        let target = g.current_target.target;
+        // each sub-formation with units: its attack range the largest of its units' slot 0x238
+        // against the group's target, its spacing twice its widest unit (the first unit's
+        // place counts even when the world does not hold it); its units are looked up in the
+        // world's table, members or not
+        let stats: Vec<Vec<i32>> = g.unit_types.iter().map(|u| u.units.clone()).collect();
+        for (n, units) in stats.iter().enumerate() {
+            if units.is_empty() {
                 continue;
             }
-            stat.attack_range = 0.0;
-            let mut widest = 0.0;
-            for (k, id) in stat.units.iter().enumerate() {
-                let Some(v) = views.iter().flatten().find(|v| v.id == *id) else {
+            let (mut range, mut widest) = (0.0f32, 0.0f32);
+            for (k, &id) in units.iter().enumerate() {
+                let Some(object) = self.world_object(id) else {
                     continue;
                 };
-                if has_target {
-                    return Err(Unsupported(
-                        "a sub-formation's range against the group's target (slot 0x238)",
-                    ));
+                let r = self.range_against(object, self.world_object(target))?;
+                // COMISS/JBE at 0x14100c506 and 0x14100c51e
+                if range < r {
+                    range = r;
                 }
-                if stat.attack_range < v.range {
-                    stat.attack_range = v.range;
-                }
-                if k == 0 || widest < v.unit.radius {
-                    widest = v.unit.radius;
+                let radius = match object {
+                    crate::group::WorldObject::Unit(p, u) => {
+                        FormationUnit::of(self.master_of(p, u.life.master_id)?).radius
+                    }
+                    crate::group::WorldObject::Ghost(p, _) => {
+                        FormationUnit::of(self.master_of(p, object.master_id())?).radius
+                    }
+                };
+                if k == 0 || widest < radius {
+                    widest = radius;
                 }
             }
-            stat.desired_spacing = widest + widest;
+            let g = self.groups.get_mut(group).expect("the group read above");
+            g.unit_types[n].attack_range = range;
+            g.unit_types[n].desired_spacing = widest + widest;
         }
-        if old_plan == 1 && g.current_command == 9 && has_target {
+        let g = self.groups.get(group).expect("the group read above");
+        // the re-attack: an attack plan of 1 before, command 9 (attack) and a target the
+        // world's table holds; a target it does not hold does nothing
+        if old_plan == 1
+            && g.current_command == 9
+            && target != -1
+            && self.world_object(target).is_some()
+        {
             return Err(Unsupported(
                 "a group's attack plan that attacks again (FUN_14100f7f0)",
             ));
@@ -367,16 +389,29 @@ impl Turns {
         }
     }
 
-    /// `FUN_140c65c60` with -1 and 70 for member `id`: its unit AI's search from its place (slot
-    /// 0x50, `FUN_140c63e20` mode 1, as [`crate::unit_ai::Pick::Look`]), then the objects of its
-    /// lists 4, 3 and 2 in that order, of any owner, in a state below 3 (the third list's only of
-    /// a class its unit AI cares for, slot 0xa8), each once, into `objects`, at most
-    /// [`MOST_OBJECTS`]. Only a soldier's unit AI (13) is modelled, and a search that lists
-    /// objects is not.
-    fn member_objects(&self, id: i32, room: usize) -> Result<Vec<i32>, Unsupported> {
-        if room == 0 {
-            return Ok(Vec::new());
+    /// `FUN_140c65c60` with -1 and [`MOST_OBJECTS`] for member `id` into the group's
+    /// `objects` (`+0x49c`, its count `+0x5b4`): nothing once they are full. Else its unit AI's
+    /// slot 0x50 with 1 from its place (x, y): the search (`FUN_140c63e20` mode 1,
+    /// [`crate::unit_ai::Pick::Look`] over the soldier's cared classes), which, when it queried
+    /// afresh, sets the alert mode (`+0x1b8`) to whether it found enemies and, with enemies,
+    /// restarts the time since a sighting (`+0x1b4`; a computer player's notify after 10 s is
+    /// not modelled). Then the objects of the search's lists 4, 3 and 2 in that order
+    /// ([`crate::spatial::Spatial::searched`]) that the world's table holds in a state below 3
+    /// (`+0x640`), of any owner, the third list's only of a class the unit AI attacks among
+    /// neutrals (slot 0xa8, [`crate::unit_ai::soldier_attacks_neutral`]), join the list: each
+    /// once when it held any on entry (the duplicate test runs only then), and the list stops at
+    /// [`MOST_OBJECTS`].
+    ///
+    /// # Errors
+    ///
+    /// A member without a unit AI (the game calls through its null pointer), of a unit-AI type
+    /// other than the soldier's (13) or of a computer player (slot 0x50's and 0xa8's per type),
+    /// and the search's.
+    fn member_objects(&mut self, id: i32, objects: &mut Vec<i32>) -> Result<(), Unsupported> {
+        if MOST_OBJECTS <= objects.len() {
+            return Ok(());
         }
+        let on_entry = objects.len();
         let (p, u) = self
             .object(id)
             .ok_or(Unsupported("a group member's search for a unit not held"))?;
@@ -394,6 +429,7 @@ impl Turns {
             ));
         }
         let master = self.master_of(p, u.life.master_id)?;
+        let attack_priority = master.attack_priority;
         let search = crate::unit_ai::Search {
             at: [u.position[0], u.position[1]],
             radius: crate::unit_ai::search_radius(master.line_of_sight, master.search_radius),
@@ -401,15 +437,288 @@ impl Turns {
             size: master.radius,
             pick: crate::unit_ai::Pick::Look,
         };
-        let _ = self.spatial.search_query(p, &search)?;
+        let fresh = self.spatial.search_query(p, &search)?;
         let lists = self.spatial.searched().ok_or(Unsupported(
             "a group member's search that reads the registry's last answer (before any query)",
         ))?;
-        if lists[2..=4].iter().any(|l| !l.is_empty()) {
-            return Err(Unsupported(
-                "a group member's search that lists objects (FUN_140c65c60)",
-            ));
+        if fresh {
+            let enemies = !lists[4].is_empty();
+            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
+                ai.alert_mode = enemies;
+                if enemies {
+                    ai.time_since_enemy = 0.0;
+                }
+            }
         }
-        Ok(Vec::new())
+        for list in [4usize, 3, 2] {
+            for record in &lists[list] {
+                let Some(object) = self.world_object(record.id) else {
+                    continue;
+                };
+                let state = match object {
+                    crate::group::WorldObject::Unit(_, u) => u.life.state,
+                    crate::group::WorldObject::Ghost(_, g) => g.state,
+                };
+                if 3 <= state {
+                    continue;
+                }
+                if list == 3 {
+                    let class = self.master_of(object.player(), object.master_id())?.class;
+                    if !crate::unit_ai::soldier_attacks_neutral(attack_priority, class) {
+                        continue;
+                    }
+                }
+                if 0 < on_entry && objects.contains(&record.id) {
+                    continue;
+                }
+                objects.push(record.id);
+                if MOST_OBJECTS <= objects.len() {
+                    return Ok(());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Slot 0x238 of `object` against `target` (the group's, as the world's table gives it): a
+    /// combat object's (types 50 to 80, `FUN_14108d9b0`) weapon range (slot 0x230,
+    /// [`weapon_range`]), to which charge types 6 and 7 add the charge's against the target, or
+    /// without one its current action's (slot 0x2f8, `FUN_14120f510`); any other object's 0
+    /// (`FUN_14106ff60`).
+    ///
+    /// # Errors
+    ///
+    /// A charge type 6 or 7 with a target: its `charge_event` (`+0x920`) is not in the slice's
+    /// masters; and an object of a master the slice does not have.
+    fn range_against(
+        &self,
+        object: crate::group::WorldObject<'_>,
+        target: Option<crate::group::WorldObject<'_>>,
+    ) -> Result<f32, Unsupported> {
+        let master = self.master_of(object.player(), object.master_id())?;
+        if !COMBAT_KINDS.contains(&master.kind) {
+            return Ok(0.0);
+        }
+        if matches!(master.charge_type, 6 | 7) {
+            let action_target = match object {
+                crate::group::WorldObject::Unit(_, u) => u
+                    .top_target()
+                    .filter(|&t| -1 < t)
+                    .and_then(|t| self.world_object(t)),
+                crate::group::WorldObject::Ghost(..) => None,
+            };
+            if target.or(action_target).is_some() {
+                return Err(Unsupported(
+                    "a charge's range against its target (slot 0x2f8, charge_event +0x920)",
+                ));
+            }
+        }
+        Ok(weapon_range(master))
+    }
+
+    /// A member inside another object (`+0x2f0`: another object's garrison holds it) stops
+    /// (slot 0x5d0, `FUN_14108c2f0`, [`crate::movement::Mover`]'s stop), as `FUN_14100bcb0` does
+    /// for each such member it reads.
+    ///
+    /// # Errors
+    ///
+    /// What the stop does not model.
+    fn stop_if_inside(&mut self, id: i32) -> Result<(), Unsupported> {
+        let inside = self
+            .players
+            .iter()
+            .flat_map(|q| q.objects.iter().chain(&q.sleeping))
+            .any(|o| o.garrison.contains(&id));
+        if !inside {
+            return Ok(());
+        }
+        if let Some(m) = self.object_mut(id).and_then(|(_, u)| u.mover.as_mut()) {
+            m.stop()?;
+        }
+        Ok(())
+    }
+}
+
+/// The master types of the combat objects (`RGE_Combat_Object` and its subclasses: combat,
+/// missile, TRIBE combat and building), whose slot 0x230 is `FUN_14108d960`.
+const COMBAT_KINDS: [u8; 4] = [50, 60, 70, 80];
+
+/// Slot 0x230 of an object of `master`: a combat object's weapon range (`+0x828`,
+/// `FUN_14108d960`), any other's 0 (`FUN_14106ff50`).
+fn weapon_range(master: &crate::masters::Master) -> f32 {
+    if COMBAT_KINDS.contains(&master.kind) {
+        master.weapon_range
+    } else {
+        0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::group::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
+    use crate::masters::{Master, Masters};
+    use crate::turn::{Player, Unit};
+
+    /// Player 1's soldier 10 (master 4, class 6) at (5, 5) in group 1; player 2 (its enemy)
+    /// holds 20 at (6, 5) and 21 (state 3) at (5, 6); player 3 (neutral) holds 30 (class 6) at
+    /// (4, 5) and 31 (class 4, a villager) at (5, 4); every one of them in player 1's sight.
+    fn searched_world() -> Turns {
+        let unit = |id: i32, master: i16, x: f32, y: f32| {
+            let mut u = Unit {
+                id,
+                position: [x, y, 0.0],
+                ..Unit::default()
+            };
+            u.life.master_id = master;
+            u.life.state = 2;
+            u
+        };
+        let mut soldier = unit(10, 4, 5.0, 5.0);
+        soldier.ai = Some(crate::unit_ai::UnitAi {
+            ai_type: crate::unit_ai::SOLDIER_AI,
+            ..crate::unit_ai::UnitAi::default()
+        });
+        let mut dying = unit(21, 4, 5.0, 6.0);
+        dying.life.state = 3;
+        let players = vec![
+            Player::default(),
+            Player {
+                objects: vec![soldier],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![unit(20, 4, 6.0, 5.0), dying],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![unit(30, 4, 4.0, 5.0), unit(31, 6, 5.0, 4.0)],
+                ..Player::default()
+            },
+        ];
+        let mut t = Turns::new(0, 0, 0, vec![0; 4], players);
+        let master = |id: i16, class: i16| Master {
+            id,
+            kind: 70,
+            class,
+            formation_category: 1,
+            line_of_sight: 4.0,
+            weapon_range: 1.0,
+            radius: [0.2, 0.2],
+            ..Master::default()
+        };
+        t.masters = vec![Masters::new([master(4, 6), master(6, 4)]); 4];
+        let mut s = crate::spatial::Spatial::new([20, 20]);
+        s.relations = vec![
+            vec![0, 3, 3, 3],
+            vec![0, 0, 3, 1],
+            vec![0, 3, 0, 3],
+            vec![0, 1, 3, 0],
+        ];
+        let mut r = crate::registry::Registry::new(4, 65);
+        for (id, owner, at, class) in [
+            (20, 2, [6.0, 5.0], 6),
+            (21, 2, [5.0, 6.0], 6),
+            (30, 3, [4.0, 5.0], 6),
+            (31, 3, [5.0, 4.0], 4),
+        ] {
+            r.update_unit(id, owner, at, [0.2, 0.2], class, 0, 1 << 1)
+                .unwrap();
+        }
+        let mut v = crate::visibility::Visibility::new(
+            20,
+            20,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+            Vec::new(),
+        );
+        v.registry = Some(r);
+        s.sight = Some(v);
+        t.spatial = s;
+        let mut g = UnitGroup::new(1);
+        g.owner = 1;
+        g.members = vec![Member {
+            id: 10,
+            ..Member::default()
+        }];
+        g.unit_types = vec![UnitTypeStatistic {
+            formation_category: 1,
+            units: vec![10],
+            ..UnitTypeStatistic::default()
+        }];
+        t.groups = UnitGroups {
+            groups: vec![g],
+            ..UnitGroups::default()
+        };
+        t
+    }
+
+    /// `FUN_140c65c60`: the member's search lists its enemies (list 4: 20, not 21 in state 3),
+    /// then the neutrals it attacks (list 3: 30, not the villager 31, slot 0xa8); the fresh
+    /// query sets the alert mode for the enemies and restarts the time since a sighting. Again
+    /// from the same place (the cache's answer, not fresh) the list held objects on entry, so
+    /// nothing joins twice; a list one short of 70 takes one more.
+    #[test]
+    fn a_member_s_search_lists_its_enemies_then_the_neutrals_it_attacks() {
+        let mut t = searched_world();
+        t.players[1].objects[0]
+            .ai
+            .as_mut()
+            .unwrap()
+            .time_since_enemy = 7.0;
+        let mut objects = Vec::new();
+        t.member_objects(10, &mut objects).unwrap();
+        assert_eq!(objects, [20, 30]);
+        let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+        assert_eq!((ai.alert_mode, ai.time_since_enemy), (true, 0.0));
+        t.member_objects(10, &mut objects).unwrap();
+        assert_eq!(objects, [20, 30]);
+        let mut full: Vec<i32> = (1000..1069).collect();
+        t.member_objects(10, &mut full).unwrap();
+        assert_eq!((full.len(), full[69]), (70, 20));
+        t.member_objects(10, &mut full).unwrap();
+        assert_eq!(full.len(), 70);
+    }
+
+    /// `FUN_14100bcb0`'s sub-formations: a statistic's unit the world holds that is no member
+    /// (50, weapon range 6) counts for its attack range; a group target the world does not hold
+    /// is none (slot 0x238 is the weapon range), and with it the re-attack does nothing.
+    #[test]
+    fn a_sub_formation_s_range_takes_its_held_units_against_the_group_s_target() {
+        let mut t = searched_world();
+        let mut far = Unit {
+            id: 50,
+            ..Unit::default()
+        };
+        far.life.master_id = 7;
+        t.players[1].objects.push(far);
+        for masters in &mut t.masters {
+            let archer = Master {
+                id: 7,
+                kind: 70,
+                class: 0,
+                weapon_range: 6.0,
+                radius: [0.3, 0.3],
+                ..Master::default()
+            };
+            *masters = Masters::new(masters.iter().cloned().chain([archer]));
+        }
+        let g = t.groups.get_mut(1).unwrap();
+        g.unit_types[0].units.push(50);
+        g.current_target.target = 99;
+        g.attack_plan_type = 1;
+        g.current_command = 9;
+        let _ = t.statistics_only(1, false).unwrap();
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(g.unit_types[0].attack_range, 6.0);
+        assert_eq!(g.objects, [20, 30]);
+        assert_eq!(g.attack_plan_type, 0);
+        // a target the world holds: the re-attack is not modelled
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_target.target = 20;
+        g.attack_plan_type = 1;
+        assert!(t.statistics_only(1, false).is_err());
     }
 }

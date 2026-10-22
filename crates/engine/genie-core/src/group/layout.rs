@@ -6,6 +6,7 @@
 use crate::fmath::{self, Vec3};
 use crate::group::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::group::{Formation, FormationLine, Slot, UnitGroup};
+use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
 /// A horde's and a user defined formation's slots lie at most this far from the group's place
@@ -46,7 +47,7 @@ fn length(v: Vec3) -> f32 {
 }
 
 /// The slots of `createHorde` (`FUN_141013eb0`), or of `createUDF` (`FUN_141014f60`) for
-/// `user_defined` ([`crate::turn::Turns::create_horde`], [`crate::turn::Turns::create_udf`],
+/// `user_defined` ([`Turns::create_horde`], [`Turns::create_udf`],
 /// which look the members up), of `formation` for `group`, `members` its members (None for one
 /// the world does not hold): false without members. The slots' array grows to the members (`FUN_14102d580`) and every
 /// slot turns inactive; the type is a horde (0) or user defined (5), the width and depth -1, no
@@ -168,7 +169,7 @@ fn next_statistic(group: &UnitGroup, current: Option<usize>, placed: &mut usize)
     None
 }
 
-/// The slots of `createPhalanx` (`FUN_1410147b0`, [`crate::turn::Turns::create_phalanx`]),
+/// The slots of `createPhalanx` (`FUN_1410147b0`, [`Turns::create_phalanx`]),
 /// up to its transform: false without members. The lines are
 /// the fewest whose triangle (1 + 2 + ...) holds the members; the slots' array grows to their
 /// square, the lines' to them, every slot turns inactive; a phalanx (3) of no slots yet,
@@ -420,7 +421,7 @@ pub fn create_lines(formation: &mut Formation) {
     }
 }
 
-/// The slots of `createBox` (`FUN_141011a00`, [`crate::turn::Turns::create_box`]), up to its
+/// The slots of `createBox` (`FUN_141011a00`, [`Turns::create_box`]), up to its
 /// transform: false without members. Every slot turns
 /// inactive and none is in use; then category by category from 5 down to 0, the first unit type
 /// statistic of the category with units puts that many slots on a box ([`place_box_perimeter`]
@@ -517,11 +518,11 @@ pub(crate) fn box_slots(
     Ok(true)
 }
 
-impl crate::turn::Turns {
+impl Turns {
     /// `createHorde` (`FUN_141013eb0`) of `formation` for group `g`: false without members.
-    /// Each member the world's table holds ([`crate::turn::Turns::world_object`]) gives its
+    /// Each member the world's table holds ([`Turns::world_object`]) gives its
     /// place (slot 0x520) and its sub-formation (`FUN_141011300` with 0,
-    /// [`crate::turn::Turns::unit_category`]) to the slots ([`slots_by_place`]).
+    /// [`Turns::unit_category`]) to the slots ([`slots_by_place`]).
     /// `UpdateDesiredPositions` transforms them after.
     ///
     /// # Errors
@@ -583,7 +584,7 @@ impl crate::turn::Turns {
 
     /// `createPhalanx` (`FUN_1410147b0`) of `formation` for group `g`: false without members.
     /// Its slots ([`phalanx_slots`]), then the transform and the units
-    /// ([`crate::turn::Turns::lay_units`] without the column-to-line flag: unless the transform
+    /// ([`Turns::lay_units`] without the column-to-line flag: unless the transform
     /// took the units anew, every slot of the array loses its unit and its filled mark and the
     /// slots take the closest, `FUN_141009760`).
     ///
@@ -604,7 +605,7 @@ impl crate::turn::Turns {
 
     /// `createBox` (`FUN_141011a00`) of `formation` for group `g`: false without members. Its
     /// slots ([`box_slots`]), then the transform and the units as a phalanx's
-    /// ([`crate::turn::Turns::lay_units`] without the column-to-line flag).
+    /// ([`Turns::lay_units`] without the column-to-line flag).
     ///
     /// # Errors
     ///
@@ -799,7 +800,7 @@ mod tests {
 
     /// Group 1 of `slot_world`'s units 10, 11 (category 1) and 12 (category 3) at (5.5, 5.5),
     /// (6.5, 5.5) and (5.5, 6.5), their statistics, the group at (6, 6), spacing 1.
-    fn three_at_six() -> crate::turn::Turns {
+    fn three_at_six() -> Turns {
         let mut t = crate::group::formation::tests::slot_world(
             &[(10, 4, 5.5, 5.5), (11, 4, 6.5, 5.5), (12, 6, 5.5, 6.5)],
             &[],
