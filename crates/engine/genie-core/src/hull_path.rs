@@ -3423,6 +3423,40 @@ mod tests {
         assert_eq!((result, p.area, p.hulls.len()), (1, [0, 3, 14, 7], 2));
     }
 
+    /// `FindShortPath`'s search meets a node beyond the area: the area grows by two tiles each
+    /// way on the map (at most 100 tiles, `GROWTHS` times), its tiles' obstructions join the
+    /// hulls and the search starts again in it.
+    #[test]
+    fn a_node_beyond_the_area_grows_it_once() {
+        let mut classes = vec![4; 400];
+        for y in 3..=8 {
+            classes[y * 20 + 6] = 1;
+        }
+        let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+        w.sight = Some(crate::visibility::Visibility::new(
+            20,
+            20,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+            Vec::new(),
+        ));
+        w.insert(9171, placed(5.0, 5.5, 0.2, 5));
+        w.insert(9149, placed(8.5, 5.5, 0.5, 2));
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let (result, path) = p.find([5.0, 5.5], [8.5, 5.5], 9149, 0.1).unwrap();
+        // the first area (3..=10, 3..=7) held the wall's rows 3..=7; the corner (5.8, 2.8) lies
+        // beyond it: grown, the area took row 8 into the wall's hull
+        assert_eq!(p.area, [1, 1, 12, 9]);
+        assert_eq!((p.hulls[0].min, p.hulls[0].max), ([5.8, 2.8], [7.2, 9.2]));
+        assert_eq!(result, 1);
+        assert_eq!(
+            path.points,
+            [[5.0, 5.5], [5.8, 2.8], [7.2, 2.8], [7.8, 4.8]]
+        );
+    }
+
     #[test]
     fn a_unit_within_range_needs_no_path() {
         let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
