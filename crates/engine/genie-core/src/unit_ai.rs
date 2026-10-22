@@ -1798,6 +1798,19 @@ impl UnitAi {
         self.current_action = action;
     }
 
+    /// `FUN_140c64c10`: the target and its class become the last ones (`+0x6c`, `+0x70`), the
+    /// target takes `id` and the point (`+0x50`..`+0x58`); the class (`+0x4c`) is the master's
+    /// of the object the world holds under `id` (`FUN_1415417a0`; `class`), else it stays.
+    pub(crate) const fn target_at(&mut self, id: i32, class: Option<i32>, point: [f32; 3]) {
+        self.last_target = self.current_target;
+        self.last_target_type = self.target_type;
+        self.current_target = id;
+        self.target_point = point;
+        if let Some(class) = class {
+            self.target_type = class;
+        }
+    }
+
     /// `FUN_140c64be0`: the target, its class and its point.
     pub(crate) const fn set_target(&mut self, target: i32, class: i32, point: [f32; 3]) {
         self.last_target = self.current_target;
@@ -1872,10 +1885,8 @@ impl UnitAi {
             return None;
         }
         self.set_action(MOVE_ACTION);
-        self.last_target = self.current_target;
-        self.last_target_type = self.target_type;
-        self.current_target = -1;
-        self.target_point = m.point;
+        // FUN_140c64c10 with -1: the world holds no object -1
+        self.target_at(-1, None, m.point);
         Some(m)
     }
 
@@ -3019,8 +3030,9 @@ impl UnitAi {
     /// (`FUN_140c5dc10`) and it returns 4. Else the attacker joins its attackers
     /// (`FUN_140b43f30`), the unit is under attack (`FUN_14119d2d0` with 1) and it runs from its
     /// attackers ([`UnitAi::run_away`]), unconditionally unless its action is 0x25f or 0x268 or
-    /// its class 59; it returns 3. The owner's alert (slot 0x2e8 with 0x201) of an animal that is
-    /// not Gaia's is not modelled.
+    /// its class 59; it returns 3. An animal that is not Gaia's first alerts its owner (slot
+    /// 0x2e8 with 0x201): a human player's alert list, not held; a computer player's AI, not
+    /// modelled.
     #[allow(clippy::too_many_arguments)]
     fn hunted_damaged(
         &mut self,
@@ -3036,9 +3048,12 @@ impl UnitAi {
             self.end_notifies(time, at, fx)?;
             return Ok(DEAD);
         }
-        if at.player != 0 {
+        // an animal that is not Gaia's alerts its owner (slot 0x2e8 with 0x201,
+        // `FUN_14162dab0`): a human player's alert list and the old pather's hulled-area reset,
+        // not held; a computer player's AI hears it (slot 0x3c8)
+        if at.player != 0 && computer {
             return Err(Unsupported(
-                "a player's hunted animal under attack (its owner's alert, slot 0x2e8)",
+                "a computer player's hunted animal under attack (its AI hears 0x201)",
             ));
         }
         let _ = self.add_attacker(n.caller);
@@ -3580,7 +3595,7 @@ impl UnitAi {
         }
         self.commanded = true;
         self.set_action(ATTACK_ACTION);
-        self.set_target(target, i32::from(class), position);
+        self.target_at(target, Some(i32::from(class)), position);
         Ok(true)
     }
 
@@ -4607,10 +4622,7 @@ impl UnitAi {
         let point = [x as f32, y as f32];
         fx.push(Effect::Explore(point));
         self.last_action = std::mem::replace(&mut self.current_action, EXPLORE_ACTION);
-        self.last_target = self.current_target;
-        self.last_target_type = self.target_type;
-        self.current_target = -1;
-        self.target_point = [point[0], point[1], EXPLORE_Z];
+        self.target_at(-1, None, [point[0], point[1], EXPLORE_Z]);
         true
     }
 
@@ -4935,11 +4947,7 @@ impl UnitAi {
     fn move_to_object(&mut self, id: i32, target: Seen, range: f32, fx: &mut Vec<Effect>) {
         fx.push(Effect::MoveToObject { target: id, range });
         self.set_action(MOVE_ACTION);
-        self.last_target = self.current_target;
-        self.last_target_type = self.target_type;
-        self.current_target = id;
-        self.target_type = i32::from(target.class);
-        self.target_point = target.position;
+        self.target_at(id, Some(i32::from(target.class)), target.position);
     }
 
     /// The boar's end of its full update: without a target it is no longer furious.
@@ -8921,5 +8929,93 @@ mod tests {
         building.sort_unstable();
         soldier.sort_unstable();
         assert_eq!(building, soldier);
+    }
+
+    /// The hunted animal's damage notify (`FUN_140c26420`) for a human player's king (class 59):
+    /// the owner's alert (0x201, a human player's alert list, not held), the attacker joins the
+    /// set, the unit is under attack and runs from its attackers (slot 0x160; class 59 not
+    /// unconditionally, so only without an action value), by twice its speed away from them;
+    /// processing breaks off (3). A computer player's AI would hear the alert (not modelled).
+    #[test]
+    fn a_human_player_s_king_runs_from_its_attacker() {
+        let mut u = UnitAi {
+            hunted: None,
+            ..idle(2)
+        };
+        let at = Surroundings {
+            id: 500,
+            position: [20.0, 30.0, 0.0],
+            speed: 1.0,
+            map: [64, 64],
+            player: 1,
+            class: CLASS_KING,
+            state: 2,
+            units: vec![UnitSeen {
+                id: 77,
+                class: 6,
+                owner: 2,
+                state: 2,
+                target: Some(500),
+                position: [22.0, 30.0, 0.0],
+                ..UnitSeen::default()
+            }],
+            ..Surroundings::default()
+        };
+        let n = Notify::own(77, DAMAGED, [77, 40, 0]);
+        let mut side = StandSide {
+            refusals: 0,
+            tested: Vec::new(),
+        };
+        let mut fx = Vec::new();
+        let r = u.hunted_damaged(n, 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r, Ok(BREAK));
+        assert_eq!(u.attackers, vec![77]);
+        assert_eq!(
+            fx,
+            vec![Effect::Move(AiMove {
+                point: [18.0, 30.0, 0.0],
+                range: 0.0,
+                force: true,
+                walk: false,
+            })]
+        );
+        let mut u = UnitAi {
+            hunted: None,
+            ..idle(2)
+        };
+        let r = u.hunted_damaged(n, 0, &at, true, &mut rng(), &mut side, &mut Vec::new());
+        assert!(r.is_err());
+    }
+
+    /// `FUN_140c64c10`: the target and its class become the last ones, the id and the point are
+    /// taken, and the class only when the world holds the object (else it stays).
+    #[test]
+    fn a_target_takes_its_class_only_from_an_object_the_world_holds() {
+        let mut u = UnitAi {
+            current_target: 40,
+            target_type: 9,
+            ..idle(13)
+        };
+        u.target_at(41, None, [1.0, 2.0, 3.0]);
+        assert_eq!(
+            (
+                u.last_target,
+                u.last_target_type,
+                u.current_target,
+                u.target_type
+            ),
+            (40, 9, 41, 9)
+        );
+        assert_eq!(u.target_point, [1.0, 2.0, 3.0]);
+        u.target_at(42, Some(4), [5.0, 6.0, 0.0]);
+        assert_eq!(
+            (
+                u.last_target,
+                u.last_target_type,
+                u.current_target,
+                u.target_type
+            ),
+            (41, 9, 42, 4)
+        );
     }
 }
