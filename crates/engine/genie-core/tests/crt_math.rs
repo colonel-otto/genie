@@ -169,3 +169,15 @@ fn atan2_agrees_with_libm_on_random_pairs() {
     });
     assert_eq!(bad, Vec::new());
 }
+
+#[test]
+#[ignore = "all 2^32 inputs: run in release with --ignored"]
+fn cos_agrees_with_libm_on_every_f32() {
+    assert_eq!(sweep(fmath::cos, libm::cosf), Vec::<u32>::new());
+}
+
+#[test]
+#[ignore = "all 2^32 inputs: run in release with --ignored"]
+fn sin_agrees_with_libm_on_every_f32() {
+    assert_eq!(sweep(fmath::sin, libm::sinf), Vec::<u32>::new());
+}
