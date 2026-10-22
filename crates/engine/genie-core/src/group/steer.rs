@@ -91,7 +91,7 @@ impl Turns {
     /// # Panics
     ///
     /// When the world does not hold `group`: the group update passes its own.
-    pub(crate) fn members_to_slots(
+    pub fn members_to_slots(
         &mut self,
         group: i32,
         differentiators: &[i32],
@@ -284,7 +284,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`, or `index` or `slot` is outside it: the members'
     /// moves pass their own.
-    pub(crate) fn steer_to_slot(
+    pub fn steer_to_slot(
         &mut self,
         group: i32,
         index: usize,
