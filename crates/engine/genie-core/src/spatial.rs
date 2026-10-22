@@ -2618,14 +2618,28 @@ fn box_meets_segment([bx0, by0, bx1, by1]: [f32; 4], r: f32, walk: [f32; 4]) -> 
     {
         return true;
     }
-    let outside =
-        |p: [f32; 2]| p[0] < lo_x - r || r + hi_x < p[0] || p[1] < lo_y - r || r + hi_y < p[1];
+    // COMISS/JC (0x141052fb8..0x141052ff9, 0x1410530dc..0x141053119): a NaN coordinate is out
+    let outside = |p: [f32; 2]| {
+        crate::fmath::below_or_unordered(p[0], lo_x - r)
+            || crate::fmath::below_or_unordered(r + hi_x, p[0])
+            || crate::fmath::below_or_unordered(p[1], lo_y - r)
+            || crate::fmath::below_or_unordered(r + hi_y, p[1])
+    };
     !(outside(start) && outside(end))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `FUN_141052e10`'s inside tests are COMISS/JC: a walk from a NaN point to a point beyond
+    /// the box meets nothing; one from inside meets it.
+    #[test]
+    fn a_walk_from_a_nan_point_counts_its_start_outside() {
+        let b = [0.0, 0.0, 1.0, 1.0];
+        assert!(!box_meets_segment(b, 0.0, [f32::NAN, 0.5, 5.0, 5.0]));
+        assert!(box_meets_segment(b, 0.0, [0.5, 0.5, 0.6, 0.6]));
+    }
 
     fn villager(x: f32, y: f32) -> Placed {
         Placed {

@@ -58,8 +58,8 @@ impl Formation {
     }
 
     /// `FUN_14102d580`: a larger slots' array of `n`, each new slot without a unit (-1), its
-    /// desired category and sub-category -1, the rest 0; the slots in use are copied, the spare
-    /// ones not.
+    /// desired category and sub-category -1, the rest 0; the slots in use are copied but for
+    /// their transform mark, the spare ones not.
     pub(crate) fn resize_slots(&mut self, n: usize) {
         if n == 0 || n <= self.slot_capacity() {
             return;
@@ -71,6 +71,11 @@ impl Formation {
             ..Slot::default()
         };
         self.spare_slots = vec![fresh; n - self.slots.len()];
+        // the copy moves `+0x00..+0x43` (0x14102d646..0x14102d6bf): the transform mark (`+0x44`)
+        // is the new array's 0
+        for s in &mut self.slots {
+            s.transformed = 0;
+        }
     }
 
     /// `FUN_14102d490`: a new lines' array of `n` (the old lines go), each line empty.
@@ -1487,6 +1492,19 @@ const fn count_up(b: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `FUN_14102d580` copies a slot in use without its transform mark (`+0x44`).
+    #[test]
+    fn a_larger_slots_array_drops_the_transform_marks() {
+        let mut f = Formation::new();
+        f.resize_slots(1);
+        f.use_slots(1);
+        f.slots[0].unit_id = 7;
+        f.slots[0].transformed = 1;
+        f.resize_slots(4);
+        assert_eq!((f.slots[0].unit_id, f.slots[0].transformed), (7, 0));
+        assert_eq!(f.slot_capacity(), 4);
+    }
 
     /// A 20 by 20 map of terrain class 1 but class 2 on `blocked`, masters 4 and 5 (category 1)
     /// and 6 (category 3), and player 1's `units` (id, master, x, y) on it and on the

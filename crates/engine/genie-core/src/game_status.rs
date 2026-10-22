@@ -33,6 +33,8 @@ const SCOUT_CLASS: i16 = 58;
 const TRADE_CART: i16 = 19;
 /// The unit AI action value a stop leaves alone (`FUN_14108c050`).
 const KEPT_ACTION: i32 = 0x2c2;
+/// The trade action's type (`0x6f`), whose load keeps a stopped unit's AI going.
+const TRADE_ACTION: i16 = 0x6f;
 /// The action types whose stop keeps a value of the unit's (`+0x88a`, `FUN_14106fa60`).
 const KEEPING_TYPES: [i16; 2] = [0x7c, 0x7d];
 /// The buildings a stop leaves alone (`FUN_1411e6290`).
@@ -263,12 +265,11 @@ impl Turns {
 
     /// The object stop (slot 0x148, `FUN_14108c050`; a building's `FUN_1411e6290`) of the object
     /// at `idx` of player `p`: the action object's stop (`FUN_14106fa60`): its top action's
-    /// slot 0x38 ([`Turns::halt_top_action`]), then the action list goes
-    /// ([`Turns::clear_actions`]) but for a trade cart carrying goods whose top action said so;
-    /// then a unit AI of a class other than 58 whose action value is not `0x2c2` stops (slot
-    /// 0xb0 with 0: the order ends, and stopAction, slot 0x3c0) and forgets its target and its
-    /// last target (`FUN_140c4dcb0`) — its top action was a gather (0x6f) of a load it holds
-    /// only when the list stayed.
+    /// slot 0x38 ([`Turns::halt_top_action`]); the action list goes ([`Turns::clear_actions`])
+    /// unless that answered true for a unit that is no trade cart with goods; then a unit AI of
+    /// a class other than 58 whose action value is not `0x2c2` and whose top action is no trade
+    /// (0x6f) with a load stops (slot 0xb0 with 0: the order ends, and stopAction, slot 0x3c0)
+    /// and forgets its target and its last target (`FUN_140c4dcb0`).
     pub(crate) fn object_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
         let unit = &self.players[p].objects[idx];
         let master = self.master_of(p, unit.life.master_id)?;
@@ -282,16 +283,25 @@ impl Turns {
         let keeps = self.halt_top_action(p, idx)?;
         if keeps && class == TRADE_CART {
             return Err(Unsupported(
-                "a trade cart's stop (its goods keep its actions)",
+                "a trade cart's goods after its stop (+0x7a0, FUN_141188160)",
             ));
         }
-        self.clear_actions(p, idx)?;
+        // FUN_14106fa60: the list stays when the top action's slot 0x38 answered true and the
+        // unit is no trade cart with goods (FUN_14106a940)
+        if !keeps {
+            self.clear_actions(p, idx)?;
+        }
         let unit = &mut self.players[p].objects[idx];
         let place = ([unit.position[0], unit.position[1]], class);
+        // slot 0x438 is the top action's type: a trade (0x6f) with a load held (COMISS 0, held;
+        // JNC at 0x14108c11e: a NaN load counts) keeps the unit AI going
+        let trading = unit.top_action_kind() == Some(TRADE_ACTION)
+            && crate::fmath::below_or_unordered(0.0, unit.life.amount)
+            && unit.life.attribute_type != -1;
         let Some(ai) = unit.ai.as_mut() else {
             return Ok(());
         };
-        if class == SCOUT_CLASS || ai.current_action == KEPT_ACTION {
+        if class == SCOUT_CLASS || ai.current_action == KEPT_ACTION || trading {
             return Ok(());
         }
         let mut fx = Vec::new();
@@ -663,6 +673,66 @@ mod tests {
         t.masters = vec![masters.clone(), masters.clone(), masters];
         t.victory_conquest = true;
         t
+    }
+
+    /// The action object's stop (`FUN_14106fa60`) keeps the action list when the top action's
+    /// slot 0x38 answers true and the unit is no trade cart with goods (`FUN_14106a940`): a
+    /// human hunter's Hunt halts (state 2) and stays. A unit AI then stops (slot 0xb0) as the
+    /// top action is no trade (0x6f), and its stopAction empties the list.
+    #[test]
+    fn a_stopped_hunter_keeps_its_halted_hunt() {
+        use crate::hunt::{HuntAction, HuntTask, Lead};
+        let hunter = Unit {
+            id: 20,
+            ai: Some(UnitAi {
+                current_order: 0x2c9,
+                current_action: 0x265,
+                current_target: -1,
+                ..UnitAi::default()
+            }),
+            hunt: Some(HuntAction {
+                target: -1,
+                state: 4,
+                point: [-1.0; 3],
+                target_class: -1,
+                task: HuntTask {
+                    id: 0,
+                    range: 0.0,
+                    resource: -1,
+                    sprites: [-1; 4],
+                    work_value: 0.0,
+                    productivity: -1,
+                    kind4: -1,
+                },
+                attack: None,
+                move_to: None,
+                walk_range: 0.0,
+                drop_site: -1,
+                carry_to: -1,
+                timer: 0.0,
+                move_wait: crate::move_to::MoveWait::default(),
+                lead: Lead::default(),
+            }),
+            ..Unit::default()
+        };
+        let mut t = game();
+        let mut hunter = hunter;
+        // game()'s villager master
+        hunter.life.master_id = 109;
+        hunter.my_pasture = -1;
+        t.players[1].objects.push(hunter);
+        let idx = t.players[1].objects.len() - 1;
+        let mut without_ai = t.clone();
+        // the unit AI's stopAction (slot 0x3c0) then empties the list
+        t.object_stop(1, idx).unwrap();
+        let u = &t.players[1].objects[idx];
+        assert_eq!(u.hunt, None);
+        assert_eq!(u.ai.as_ref().unwrap().current_action, -1);
+        // without a unit AI the halted Hunt stays
+        without_ai.players[1].objects[idx].ai = None;
+        without_ai.object_stop(1, idx).unwrap();
+        let u = &without_ai.players[1].objects[idx];
+        assert_eq!(u.hunt.map(|h| h.state), Some(crate::hunt::IDLE));
     }
 
     /// records/425906646's player 2 cancels the second villager of its town centre at update

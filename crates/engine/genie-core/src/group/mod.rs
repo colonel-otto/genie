@@ -619,6 +619,27 @@ impl UnitGroup {
 mod tests {
     use super::*;
 
+    /// `BMotion`'s constructor (`FUN_141041850`): the 0x7f7fffff turn limits at `+0x9c`,
+    /// `+0xa0`, `+0xa8`, zero speeds and accelerations, the lead (`+0xc4`) -1, flags 3, the
+    /// frame at the origin facing x, one level without a path.
+    #[test]
+    fn a_new_motion_holds_the_constructor_s_values() {
+        let m = Motion::new();
+        assert_eq!(
+            (
+                m.turn_radius_speed,
+                m.maximum_yaw_per_second_moving,
+                m.maximum_yaw_per_second_stationary
+            ),
+            (f32::MAX, f32::MAX, f32::MAX)
+        );
+        assert_eq!((m.flags, m.lead, m.number_wait_delays), (3, -1, 0));
+        assert_eq!((m.velocity, m.acceleration), ([0.0; 3], [0.0; 3]));
+        let frame = [[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]];
+        assert_eq!((m.position, m.new_position), (frame, frame));
+        assert_eq!(m.paths, vec![PathData::without_path()]);
+    }
+
     /// `FUN_14152ece0` over units 1, 2 (group 7), 3 (group 8), 4 (no group), 9 (gone).
     #[test]
     fn the_common_group_needs_every_held_unit_in_one_group_and_the_first_held() {

@@ -85,6 +85,16 @@ impl LeadGroup {
     }
 }
 
+impl Turns {
+    /// Slot 0x280 (`FUN_141082d60`): the id of the object the unit's top action targets
+    /// (`FUN_140a78450`: an id above -1 that the world holds), else -1.
+    pub(crate) fn top_target_object(&self, u: &crate::turn::Unit) -> i32 {
+        u.top_target()
+            .filter(|&t| -1 < t && self.object(t).is_some())
+            .unwrap_or(-1)
+    }
+}
+
 /// What `BMotion` reads of the group itself besides its motion: its owner is a computer player
 /// (`FUN_141659cf0` on the group's `+0xdc`), and per member its top action's target (slot 0x280,
 /// `FUN_141082d60`: -1 without one) and where it last moved to (slot 0x520, x, height, y), each
@@ -279,7 +289,8 @@ impl Motion {
     /// forward and right turn (`FUN_14087e350`, `FUN_14087e2c0`) and are normalized
     /// (`FUN_141027d00`); motion flags bit 0.
     pub fn turn(&mut self, yaw: f32) {
-        if yaw.abs() <= EPSILON {
+        // only an ordered 1e-7 below the yaw's size turns: a NaN yaw does not
+        if fmath::at_most_or_unordered(yaw.abs(), EPSILON) {
             return;
         }
         let r = fmath::rotation(yaw, self.new_position[2]);
@@ -992,13 +1003,8 @@ impl Turns {
                 .members
                 .iter()
                 .map(|m| {
-                    self.object(m.id).map(|(_, u)| {
-                        let target = u
-                            .top_target()
-                            .filter(|&t| t != -1 && self.object(t).is_some())
-                            .unwrap_or(-1);
-                        (target, moved_vector(u))
-                    })
+                    self.object(m.id)
+                        .map(|(_, u)| (self.top_target_object(u), moved_vector(u)))
                 })
                 .collect(),
         };
@@ -1070,6 +1076,45 @@ pub(super) fn moved_vector(u: &crate::turn::Unit) -> Vec3 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Slot 0x280 (`FUN_141082d60`) passes only a target id above -1 the world holds: a
+    /// recycled object's negative id gives -1 like none.
+    #[test]
+    fn a_top_target_below_minus_one_is_none() {
+        use crate::turn::{Player, Unit};
+        let hunter = |target: i32| Unit {
+            id: 5,
+            hunt: Some(crate::hunt::tests::hunting(target)),
+            ..Unit::default()
+        };
+        let held = |id: i32| Unit {
+            id,
+            ..Unit::default()
+        };
+        let player = Player {
+            objects: vec![held(7), held(-3)],
+            ..Player::default()
+        };
+        let t = Turns::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
+        assert_eq!(t.top_target_object(&hunter(7)), 7);
+        assert_eq!(t.top_target_object(&hunter(-3)), -1);
+        assert_eq!(t.top_target_object(&hunter(9)), -1);
+        assert_eq!(t.top_target_object(&held(1)), -1);
+    }
+
+    /// `FUN_14104c150` turns only when 1e-7 is below the yaw's size (an ordered compare): a NaN
+    /// yaw leaves the vectors and the motion flags alone.
+    #[test]
+    fn a_nan_yaw_does_not_turn() {
+        let mut m = Motion::new();
+        let before = m.clone();
+        m.turn(f32::NAN);
+        assert_eq!(m.flags, before.flags);
+        assert_eq!(
+            format!("{:?}", m.new_position),
+            format!("{:?}", before.new_position)
+        );
+    }
     use crate::group::UnitGroups;
     use crate::pathing::Pathing;
     use crate::rng::Well512;

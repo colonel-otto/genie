@@ -1516,31 +1516,16 @@ impl Turns {
     }
 
     /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: the action list empties
-    /// (`FUN_140a98620`) and a unit in state 2 takes its standing sprite where the slice holds
-    /// its sprite. An Explore goes, its `MoveTo` stopping the unit; an own `MoveTo` goes, its
-    /// teardown (`0x140aa1f30`) stopping the unit; other actions are not modelled here.
+    /// (`FUN_140a98620`, [`Turns::clear_actions`]) and a unit in state 2 takes its standing
+    /// sprite (slot 0x798, then slot 0x68) where the slice holds its sprite.
     pub(crate) fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
-        let unit = &mut self.players[p].objects[idx];
-        if let Some(e) = unit.explore.take()
-            && e.move_to.is_some()
-        {
-            unit.mover
-                .as_mut()
-                .ok_or(Unsupported("a walker without movement state"))?
-                .stop()?;
-        }
-        if unit.move_to.take().is_some() {
-            unit.mover
-                .as_mut()
-                .ok_or(Unsupported("a walker without movement state"))?
-                .stop()?;
-        }
-        if unit.top_action().is_some() || unit.unmodelled_action.is_some() {
+        if self.players[p].objects[idx].unmodelled_action.is_some() {
             return Err(Unsupported(
                 "a command's stop of an action in the command phase",
             ));
         }
-        if unit.life.state == 2 {
+        self.clear_actions(p, idx)?;
+        if self.players[p].objects[idx].life.state == 2 {
             self.standing_sprite(p, idx)?;
         }
         Ok(())

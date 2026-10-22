@@ -1513,6 +1513,25 @@ pub(crate) mod tests {
     }
     use crate::movement::{MoveStats, Velocity};
 
+    /// A Hunt gathering `target` with the chopping task.
+    pub(crate) fn hunting(target: i32) -> HuntAction {
+        HuntAction {
+            target,
+            state: GATHER,
+            point: [0.0; 3],
+            target_class: -1,
+            task: CHOP,
+            attack: None,
+            move_to: None,
+            walk_range: 0.0,
+            drop_site: -1,
+            carry_to: -1,
+            timer: 0.0,
+            move_wait: MoveWait::default(),
+            lead: Lead::default(),
+        }
+    }
+
     /// A villager walking at 0.8 tiles a second, radius 0.2.
     pub(crate) fn walker() -> Mover {
         Mover {

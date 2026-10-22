@@ -2357,7 +2357,8 @@ impl Mover {
             let x = to[0] - from[0];
             let z = to[2] - from[2];
             let length = fmath::sqrt(x * x + 0.0 + z * z);
-            if EPSILON <= length {
+            // COMISS eps, length; JBE at 0x14114f2aa: a NaN length divides too
+            if fmath::at_most_or_unordered(EPSILON, length) {
                 return [x / length, 0.0, z / length];
             }
         }
@@ -3126,6 +3127,17 @@ mod tests {
             reach([5.0, 0.0, 0.0], [0.0; 3], [5.0, 0.0, 0.0]),
             Reach::Reached
         ));
+    }
+
+    /// The ground direction (`FUN_14114f210`): a NaN length divides (JBE on unordered), so the
+    /// direction is NaN, not the forward vector.
+    #[test]
+    fn a_direction_of_a_nan_length_is_nan() {
+        let m = crate::hunt::tests::walker();
+        let d = m.direction_to([f32::NAN, 0.0, 0.0], [1.0, 0.0, 1.0]);
+        assert!(d[0].is_nan() && d[2].is_nan());
+        let d = m.direction_to([0.0, 0.0, 0.0], [3.0, 0.0, 4.0]);
+        assert_eq!(d, [0.6, 0.0, 0.8]);
     }
 
     #[test]
