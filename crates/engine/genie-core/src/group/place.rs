@@ -97,15 +97,17 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A group the world does not hold, or what [`Turns::clear_spot`] does not model.
+    /// What [`Turns::clear_spot`] does not model.
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, and its
+    /// callers pass a group they hold.
     pub fn set_initial_position(&mut self, group: i32) -> Result<(), Unsupported> {
-        let g = self.groups.get_mut(group).ok_or(Unsupported(
-            "SetInitialPosition of a group the world does not hold",
-        ))?;
+        let g = self
+            .groups
+            .get_mut(group)
+            .expect("SetInitialPosition's caller holds the group");
         g.stored_positions.clear_points();
         let centroid = g.centroid;
         let at = self.clear_spot(group, centroid)?;
@@ -177,15 +179,17 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A group the world does not hold, or a held member without movement state.
+    /// A held member without movement state.
     ///
     /// # Panics
     ///
-    /// Never: the group is the one found first.
+    /// When the world does not hold `group`: the game's routine gets the group itself, and its
+    /// caller ([`Turns::set_initial_position`]) holds it.
     pub fn set_initial_orientation(&mut self, group: i32) -> Result<(), Unsupported> {
-        let g = self.groups.get(group).ok_or(Unsupported(
-            "SetInitialOrientation of a group the world does not hold",
-        ))?;
+        let g = self
+            .groups
+            .get(group)
+            .expect("SetInitialOrientation's caller holds the group");
         let mut forwards = Vec::with_capacity(g.members.len());
         for m in &g.members {
             let Some((_, u)) = self.object(m.id) else {

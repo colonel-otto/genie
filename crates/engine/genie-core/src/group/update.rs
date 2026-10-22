@@ -1,8 +1,34 @@
 //! A group's update (FD-036): `BUnitGroup::update` (`FUN_14103d910`), which the world runs for
 //! the groups a player owns after the player's objects.
 
+use crate::group::UnitGroup;
 use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
+
+impl UnitGroup {
+    /// The group's vtable slot 8 after its update (`BUnitGroup::updateEnd`, `FUN_141040b50`): a
+    /// group whose motion moved (motion flags bit 0) adds its new position to the front of its
+    /// stored positions ([`crate::group::PointLine::add_at_front`]); the motion's flags lose bit
+    /// 0, and bit 1 with it when set, which sets the group's flags bit 1 (`FUN_14104a240`).
+    pub fn update_end(&mut self) {
+        let g = self;
+        if g.motion.flags & 1 != 0 {
+            let [point, forward, up, right] = g.motion.new_position;
+            g.stored_positions.add_at_front(crate::group::LinePoint {
+                point,
+                forward,
+                up,
+                right,
+            });
+        }
+        let flags = g.motion.flags;
+        g.motion.flags &= !1;
+        if flags & 2 != 0 {
+            g.motion.flags &= !3;
+            g.flags |= 2;
+        }
+    }
+}
 
 impl Turns {
     /// The groups player `p` owns update after its objects (`BaseWorld::update` at
@@ -28,39 +54,22 @@ impl Turns {
             if !self.group_update(id)? {
                 return Err(Unsupported("a group's deletion after its update"));
             }
-            self.group_update_end(id)?;
+            self.group_update_end(id);
         }
         Ok(())
     }
 
-    /// The group's vtable slot 8 after its update (`BUnitGroup::updateEnd`, `FUN_141040b50`): a
-    /// group whose motion moved (motion flags bit 0) adds its new position to the front of its
-    /// stored positions ([`crate::group::PointLine::add_at_front`]); the motion's flags lose bit 0, and
-    /// bit 1 with it when set, which sets the group's flags bit 1 (`FUN_14104a240`).
+    /// The group's vtable slot 8 after its update ([`UnitGroup::update_end`]) of group `group`,
+    /// which its update kept.
     ///
-    /// # Errors
+    /// # Panics
     ///
-    /// A group the world does not hold.
-    pub fn group_update_end(&mut self, group: i32) -> Result<(), Unsupported> {
-        let g = self.groups.get_mut(group).ok_or(Unsupported(
-            "the update end of a group the world does not hold",
-        ))?;
-        if g.motion.flags & 1 != 0 {
-            let [point, forward, up, right] = g.motion.new_position;
-            g.stored_positions.add_at_front(crate::group::LinePoint {
-                point,
-                forward,
-                up,
-                right,
-            });
-        }
-        let flags = g.motion.flags;
-        g.motion.flags &= !1;
-        if flags & 2 != 0 {
-            g.motion.flags &= !3;
-            g.flags |= 2;
-        }
-        Ok(())
+    /// When the world does not hold the group: the update loop passes only the groups it holds.
+    fn group_update_end(&mut self, group: i32) {
+        self.groups
+            .get_mut(group)
+            .expect("a group the update kept")
+            .update_end();
     }
 
     /// `BUnitGroup::update` (`FUN_14103d910`) of group `group`, as far as it is ported: flags bit
@@ -234,6 +243,28 @@ pub const IDLE_SPAN: u32 = 750;
 mod tests {
     use crate::group::{Member, UnitGroup, UnitGroups};
     use crate::turn::{Player, Turns, Unit};
+
+    /// `FUN_141040b50`: a motion that moved (bit 0) stores its new position at the front; bit 1
+    /// moves to the group's flags, and both motion bits clear. A motion that did not move keeps
+    /// its stored positions.
+    #[test]
+    fn the_update_end_stores_a_moved_group_s_new_position() {
+        let mut g = UnitGroup::new(1);
+        g.motion.new_position[0] = [3.0, 0.0, 4.0];
+        g.motion.flags = 3;
+        g.flags = 0;
+        g.update_end();
+        assert_eq!((g.motion.flags, g.flags & 2), (0, 2));
+        assert_eq!(
+            g.stored_positions.points.first().map(|p| p.point),
+            Some([3.0, 0.0, 4.0])
+        );
+        let mut still = UnitGroup::new(2);
+        still.motion.flags = 0;
+        let before = still.stored_positions.points.len();
+        still.update_end();
+        assert_eq!(still.stored_positions.points.len(), before);
+    }
 
     /// `FUN_141016870`: the lead is the held member nearest (in 3D, where it last moved to) the
     /// target's place, the first of equals; -1 without a held member.
