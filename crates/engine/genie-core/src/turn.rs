@@ -7867,6 +7867,7 @@ impl Turns {
                     position: u.position,
                     radius: master.radius,
                     visible: self.spatial.visible(viewer, x as i32, y as i32),
+                    flags: master.object_flags,
                 }));
             }
         }

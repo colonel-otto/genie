@@ -1438,6 +1438,8 @@ pub struct Seen {
     pub radius: [f32; 2],
     /// Its tile is visible to the viewer.
     pub visible: bool,
+    /// Its master's `object_flags` (`+0x654`).
+    pub flags: u32,
 }
 
 /// The class whose busy units skip the idle check (`-0xe98` raw).
@@ -3712,7 +3714,8 @@ impl UnitAi {
                 }
                 TARGET_MOVED => {
                     // "Target is still visible, tracking.": a target the world holds within the
-                    // lion's line of sight (FUN_14118f8c0 against its sight squared: COMISS, JC)
+                    // lion's line of sight (FUN_14118f8c0 against its sight squared: COMISS, JC
+                    // past)
                     let gap = at.target.filter(|_| self.current_target != -1).map(|t| {
                         crate::movement::footprint_gap_squared(
                             at.position,
@@ -3721,12 +3724,17 @@ impl UnitAi {
                             t.radius,
                         )
                     });
+                    // a target within its sight whose master has no flag 0x10 (`+0x654`) it
+                    // attacks again (slot 0xb8: the target, forced, not any, its group) and the
+                    // processing breaks
+                    let flags = at.target.map_or(0, |t| t.flags);
                     if let Some(gap) = gap
                         && !crate::fmath::below_or_unordered(at.los * at.los, gap)
+                        && flags & 0x10 == 0
                     {
-                        return Err(Unsupported(
-                            "a lion's moved target within its sight (its master's flag 0x10)",
-                        ));
+                        let _ =
+                            self.attack_object(self.current_target, true, false, at, side, fx)?;
+                        return Ok(BREAK);
                     }
                     // "Target is invalid or no longer visible, stopping pursuit.": the target
                     // goes, the action stops (slot 0xb0 with 1) and slot 0x48 hands the notify
@@ -8492,8 +8500,9 @@ mod tests {
 
     /// The lion's handler for a moved target (0x1fc): a target the world no longer holds, or
     /// one beyond its line of sight (the footprints' squared gap against its sight squared,
-    /// `COMISS` then `JC`), is dropped and the lion stops before the base handler; one within
-    /// its sight it would track (its master's flag 0x10, not held).
+    /// `COMISS` then `JC`), or one whose master has flag 0x10 (`+0x654`), is dropped and the lion
+    /// stops before the base handler; one within its sight it attacks again (slot 0xb8 with the
+    /// target, forced) and the processing breaks (3).
     #[test]
     fn a_lion_drops_a_moved_target_out_of_its_sight() {
         let lion = || UnitAi {
@@ -8506,21 +8515,45 @@ mod tests {
         let (r, fx, _) = handled(&mut u, n, &Surroundings::default(), false);
         assert_eq!((r, fx), (Ok(GO_ON), vec![Effect::Stop]));
         assert_eq!((u.current_target, u.current_action), (-1, -1));
+        // the villager 700 the lion attacks (class 4, which it attacks by its classes)
         let at = |x: f32| Surroundings {
             position: [10.0, 10.0, 0.0],
             size: [0.5, 0.5],
             los: 4.0,
             target: Some(Seen {
                 state: 2,
+                class: 4,
                 position: [x, 10.0, 0.0],
                 radius: [0.5, 0.5],
                 ..Seen::default()
             }),
+            units: vec![UnitSeen {
+                id: 700,
+                class: 4,
+                owner: 1,
+                state: 2,
+                position: [x, 10.0, 0.0],
+                ..UnitSeen::default()
+            }],
             ..Surroundings::default()
         };
-        // 5 tiles apart, 4 between the footprints: at its sight, tracked (not modelled)
+        // 5 tiles apart, 4 between the footprints: at its sight, attacked again
         let mut u = lion();
-        assert!(handled(&mut u, n, &at(15.0), false).0.is_err());
+        let (r, fx, side) = handled(&mut u, n, &at(15.0), false);
+        assert_eq!(
+            (r, fx, side.attacks),
+            (Ok(BREAK), vec![], vec![(700, true)])
+        );
+        assert_eq!((u.current_target, u.current_action), (700, ATTACK_ACTION));
+        // a master with flag 0x10 is dropped at its sight too
+        let mut u = lion();
+        let mut flagged = at(15.0);
+        flagged.target = flagged.target.map(|t| Seen { flags: 0x10, ..t });
+        let (r, fx, side) = handled(&mut u, n, &flagged, false);
+        assert_eq!(
+            (r, fx, side.attacks),
+            (Ok(GO_ON), vec![Effect::Stop], vec![])
+        );
         // 6 apart, 5 between: beyond it
         let mut u = lion();
         let (r, fx, _) = handled(&mut u, n, &at(16.0), false);
