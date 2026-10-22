@@ -298,6 +298,9 @@ const DETOUR: f32 = 1.25;
 const SPLIT: f32 = crate::image::movement::SPLIT;
 /// How many plans one motion step makes at most.
 const PLANS: u32 = 3;
+/// What a gate's annex's gap loses against the gate's own (`XMM14`, the motion step's load at
+/// 0x1411510e7, the same as [`RANGE_FLOOR`]'s).
+const ANNEX_GAP: f32 = crate::image::movement::RANGE_FLOOR;
 /// A level's plans before it gives up (`FUN_140f8f670`).
 const CONTINUE: i32 = 10;
 
@@ -375,6 +378,28 @@ impl PathData {
     const fn has_more(&self) -> bool {
         self.has_path && self.waypoint < self.points.len() as i32 - 1
     }
+}
+
+/// A gap to the walked level's target `target` (its id and place): for a gate (class 39), the
+/// least (`MINSS`) of `own` and its first two annexes' (slot 0x680) gaps from the unit (`near`:
+/// its place and radii) through `annex`; for anything else `own`.
+fn gate_gap(
+    world: &Spatial,
+    (at, radius): ([f32; 3], [f32; 2]),
+    (id, target): (i32, &Placed),
+    own: f32,
+    annex: impl Fn(f32) -> f32,
+) -> f32 {
+    if target.class != GATE {
+        return own;
+    }
+    let mut gap = own;
+    for a in world.annexes_of(id).into_iter().take(2) {
+        if let Some(p) = world.get(a) {
+            gap = fmath::minss(annex(footprint_gap(at, radius, p.position, p.radius)), gap);
+        }
+    }
+    gap
 }
 
 /// `FUN_140f98d50`: a path's point `i` goes, the later ones move down (true); an index outside
@@ -826,12 +851,13 @@ impl Mover {
                         .ok_or(Unsupported("a path target that is gone"))?,
                 ),
             };
-            if target.as_ref().is_some_and(|t| t.class == GATE) {
-                return Err(Unsupported("a path to a gate (its annexes)"));
-            }
-            // the gap to the target, else to where the top level's path ends
+            // the gap to the target, else to where the top level's path ends; a gate's is the
+            // least over it and its first two annexes (slot 0x680), each annex's less 0.1
+            // (`MINSS`, 0x1411512b8)
             let gap = target.as_ref().map_or(FAR, |t| {
-                footprint_gap(me.position, ground_radius, t.position, t.radius)
+                let own = footprint_gap(me.position, ground_radius, t.position, t.radius);
+                let near = (me.position, ground_radius);
+                gate_gap(world, near, (level.target, t), own, |g| g - ANNEX_GAP)
             });
             let to_end = match (&target, self.paths.len()) {
                 (Some(_), _) => gap,
@@ -969,8 +995,10 @@ impl Mover {
         let level = &self.paths[0];
         match goal.target {
             Some(t) => {
-                let gap =
-                    footprint_gap(me.position, ground_radius, t.position, t.radius) - level.range;
+                let range = level.range;
+                let own = footprint_gap(me.position, ground_radius, t.position, t.radius) - range;
+                let near = (me.position, ground_radius);
+                let gap = gate_gap(world, near, (level.target, t), own, |g| g - range);
                 if gap < EPSILON {
                     // in range of the target: the waypoint counts as reached
                     let level = &mut self.paths[0];
@@ -1074,12 +1102,16 @@ impl Mover {
             [left[0], left[2], 0.0],
             [0.0, 0.0],
         );
+        let range = level.range;
         let mut beyond = match goal.target {
-            None => (back - level.range) - RANGE_FLOOR,
+            None => (back - range) - RANGE_FLOOR,
             Some(t) => {
-                footprint_gap(me.position, ground_radius, t.position, t.radius)
-                    - level.range
-                    - RANGE_FLOOR
+                let own = (footprint_gap(me.position, ground_radius, t.position, t.radius) - range)
+                    - RANGE_FLOOR;
+                let near = (me.position, ground_radius);
+                gate_gap(world, near, (level.target, t), own, |g| {
+                    (g - range) - RANGE_FLOOR
+                })
             }
         };
         if goal.target.is_some() && level.flags & 4 != 0 {
@@ -3402,6 +3434,45 @@ mod tests {
         m.stats.turn_rate = 1.0;
         assert_eq!(m.steer([0.0, 0.0, 1.0], 0.02), Ok(true));
         assert!(m.forward[2].abs() < 0.03);
+    }
+
+    /// The motion step's gate gaps (0x1411512b3, 0x141151a62, 0x141154f22): a gate's gap is the
+    /// least of its own and its first two annexes' through the site's terms (`MINSS`); any other
+    /// target's is its own.
+    #[test]
+    fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
+        let mut world = Spatial::new([40, 40]);
+        let wall = |x: f32, class: i16| Placed {
+            position: [x, 10.0, 0.0],
+            radius: [0.5, 0.5],
+            class,
+            player: 1,
+            master: 0,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: Some(Obstruction { kind: 2, class: 1 }),
+        };
+        world.insert(100, wall(10.0, GATE));
+        world.insert(101, wall(12.0, 27));
+        world.insert(102, wall(8.0, 27));
+        world.set_annex(101, Some(100));
+        world.set_annex(102, Some(100));
+        let near = ([13.5, 10.0, 0.0], [0.2, 0.2]);
+        let gate = *world.get(100).unwrap();
+        let own = footprint_gap(near.0, near.1, gate.position, gate.radius);
+        assert!((own - 2.8).abs() < 1e-6);
+        // annex 101 lies 0.8 away, less 0.1
+        let gap = gate_gap(&world, near, (100, &gate), own, |g| g - ANNEX_GAP);
+        let annex = footprint_gap(near.0, near.1, [12.0, 10.0, 0.0], [0.5, 0.5]);
+        assert!((annex - 0.8).abs() < 1e-6);
+        assert_eq!(gap, annex - ANNEX_GAP);
+        // not a gate: its own
+        let mut post = gate;
+        post.class = 27;
+        assert_eq!(gate_gap(&world, near, (100, &post), own, |g| g - 1.0), own);
     }
 
     /// `FUN_140f98d50` and `FUN_140f98dd0`: a point goes, or the path ends before it and is
