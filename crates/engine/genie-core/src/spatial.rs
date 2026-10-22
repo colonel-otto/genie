@@ -1886,38 +1886,101 @@ impl Spatial {
         }
     }
 
-    /// Whether player `player` sees tile (`x`, `y`) (`FUN_141663500` returning 0xf): its mask
-    /// `+0x2a8` meets the unified map's visible bits there (bits 29 and 61, which a tile has only
-    /// when the map is revealed, are not held).
-    pub fn sees_tile(&self, player: usize, x: i32, y: i32) -> bool {
-        let Some(v) = self.sight.as_ref() else {
-            return false;
-        };
+    /// The unified map's word (`+0x5e30`) at tile (`x`, `y`), none off the map.
+    fn unified_word(v: &Visibility, x: i32, y: i32) -> Option<u64> {
         if x < 0 || y < 0 || v.width <= x || v.height <= y {
-            return false;
+            return None;
         }
-        v.unified[(y * v.width + x) as usize] & crate::registry::MASK & self.vision(player)[0] != 0
+        Some(v.unified[(y * v.width + x) as usize])
     }
 
-    /// `FUN_141663500` is not 0: player `player` sees tile (`x`, `y`) or saw it (its masks
-    /// `+0x2a8` and `+0x2a0` meet the unified map's bits there). Unknown without the players'
+    /// `FUN_141663500`, the player's tile test: what player `player` knows of tile (`x`, `y`).
+    /// 0xf when it sees the tile (its visible mask `+0x2a8` meets the unified map's word under
+    /// [`crate::registry::MASK`]), or when the word is revealed to all (bit 29,
+    /// [`crate::vision::NO_TILE`]) and the player explored it (its explored mask `+0x2a0` meets
+    /// the word under the mask) or the word is explored by all (bit 61); else 0x80 when it
+    /// explored it or the word is explored by all; else 0, also off the map. None without the
+    /// players' sight.
+    #[must_use]
+    pub fn tile_sight(&self, player: usize, x: i32, y: i32) -> Option<u8> {
+        use crate::registry::MASK;
+        use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
+        let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
+            return Some(0);
+        };
+        let [seen, explored] = self.vision(player);
+        let explored = explored & word & MASK != 0;
+        let all_explored = word & NO_TILE_EXPLORED != 0;
+        let revealed = word & NO_TILE != 0;
+        if seen & word & MASK != 0 || (revealed && (explored || all_explored)) {
+            return Some(0xf);
+        }
+        Some(if explored || all_explored { 0x80 } else { 0 })
+    }
+
+    /// `FUN_141285350`, the visible map's tile test (`InfluenceMap` and the scout map read it):
+    /// 0xf when player `player`'s visible mask (`+0x2a8`) meets the unified map's word at tile
+    /// (`x`, `y`) under [`crate::registry::MASK`], else 0x80 when its explored mask (`+0x2a0`)
+    /// does, else 0, also off the map (the visible map's own size, `+0x20`, `+0x24`, the map's).
+    /// The revealed bits 29 and 61 lie outside the mask. None without the players' sight.
+    #[must_use]
+    pub fn scout_sight(&self, player: usize, x: i32, y: i32) -> Option<u8> {
+        let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
+            return Some(0);
+        };
+        let word = word & crate::registry::MASK;
+        let [seen, explored] = self.vision(player);
+        Some(if seen & word != 0 {
+            0xf
+        } else if explored & word != 0 {
+            0x80
+        } else {
+            0
+        })
+    }
+
+    /// `FUN_140c68a00`, a unit's tile test (`FUN_141285280` reads the unified map's word, its
+    /// player the unit's `+0x138`): 0xf when player `player`'s visible mask (`+0x2a8`) meets the
+    /// word at tile (`x`, `y`) under [`crate::registry::MASK`], else 0x80 when its explored mask
+    /// (`+0x2a0`) does, else 0. The game reads the word unchecked; its three callers
+    /// (`FUN_140ab79e0`, `FUN_140c567c0`, `FUN_140c26f60`) pass an object's tile, which the
+    /// position setter holds on the map, so off the map is 0 here. None without the players'
     /// sight.
+    #[must_use]
+    pub fn visibility(&self, player: usize, x: i32, y: i32) -> Option<u8> {
+        let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
+            return Some(0);
+        };
+        let word = word & crate::registry::MASK;
+        let [seen, explored] = self.vision(player);
+        Some(if seen & word != 0 {
+            0xf
+        } else if explored & word != 0 {
+            0x80
+        } else {
+            0
+        })
+    }
+
+    /// Whether player `player` sees tile (`x`, `y`): [`Spatial::tile_sight`] is 0xf. False
+    /// without the players' sight.
+    pub fn sees_tile(&self, player: usize, x: i32, y: i32) -> bool {
+        self.tile_sight(player, x, y) == Some(0xf)
+    }
+
+    /// [`Spatial::tile_sight`] is not 0: player `player` sees tile (`x`, `y`) or explored it.
+    /// Unknown without the players' sight.
     pub fn explored(&self, player: usize, x: i32, y: i32) -> Result<bool, Unsupported> {
-        let v = self.sight.as_ref().ok_or(Unsupported(
+        let answer = self.tile_sight(player, x, y).ok_or(Unsupported(
             "a test of explored tiles without the players' sight",
         ))?;
-        if x < 0 || y < 0 || v.width <= x || v.height <= y {
-            return Ok(false);
-        }
-        let [seen, explored] = self.vision(player);
-        Ok(v.unified[(y * v.width + x) as usize] & crate::registry::MASK & (seen | explored) != 0)
+        Ok(answer != 0)
     }
 
-    /// `FUN_140c68a00` gives 0xf: player `player` sees tile (`x`, `y`) now (its mask `+0x2a8`
-    /// meets the unified map's visible bits there). False off the map and without the players'
-    /// sight.
+    /// [`Spatial::visibility`] is 0xf: player `player` sees tile (`x`, `y`) now. False without
+    /// the players' sight.
     pub fn visible(&self, player: usize, x: i32, y: i32) -> bool {
-        self.sees_tile(player, x, y)
+        self.visibility(player, x, y) == Some(0xf)
     }
 
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its
@@ -3085,6 +3148,70 @@ mod tests {
         s.reveal_to(1);
         assert_eq!(s.vision[1], crate::vision::own_masks(1, true));
         assert_eq!(s.vision[0], crate::vision::own_masks(0, false));
+    }
+
+    /// A map of two tiles holding `words`, which players 0 and 1 see with their own masks.
+    fn sighted(words: Vec<u64>) -> Spatial {
+        let n = words.len() as i32;
+        Spatial {
+            sight: Some(Visibility::new(
+                n,
+                1,
+                Vec::new(),
+                words,
+                Vec::new(),
+                0,
+                Vec::new(),
+            )),
+            vision: vec![
+                crate::vision::own_masks(0, false),
+                crate::vision::own_masks(1, false),
+            ],
+            ..Spatial::default()
+        }
+    }
+
+    /// `FUN_141663500`: 0xf seen, 0x80 explored, 0 neither; a word revealed to all (bit 29 with
+    /// an explored hit or bit 61) is seen, one explored for all (bit 61) explored.
+    #[test]
+    fn a_player_s_tile_test_answers_seen_explored_or_neither_and_reads_the_revealed_bits() {
+        use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
+        let (seen, explored) = (1 << 1, 1 << 33);
+        let s = sighted(vec![
+            seen,
+            explored,
+            NO_TILE_EXPLORED,
+            NO_TILE | NO_TILE_EXPLORED,
+            NO_TILE,
+            NO_TILE | explored,
+        ]);
+        let answers = |p: usize| (0..7).map(|x| s.tile_sight(p, x, 0)).collect::<Vec<_>>();
+        let some = |v: [u8; 7]| v.map(Some).to_vec();
+        assert_eq!(answers(1), some([0xf, 0x80, 0x80, 0xf, 0, 0xf, 0]));
+        assert_eq!(answers(0), some([0, 0, 0x80, 0xf, 0, 0, 0]));
+        assert_eq!(s.tile_sight(1, -1, 0), Some(0));
+        assert_eq!(s.tile_sight(1, 0, 1), Some(0));
+        assert_eq!(Spatial::default().tile_sight(1, 0, 0), None);
+        // sees_tile is its 0xf, explored any answer
+        assert!(s.sees_tile(0, 3, 0) && !s.sees_tile(0, 2, 0));
+        assert_eq!(s.explored(0, 2, 0), Ok(true));
+        assert_eq!(s.explored(0, 4, 0), Ok(false));
+    }
+
+    /// `FUN_141285350` and `FUN_140c68a00`: the word under the registry's mask only, so the
+    /// revealed bits 29 and 61 count for nothing.
+    #[test]
+    fn the_visible_map_s_tile_test_reads_only_the_players_bits() {
+        use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
+        let (seen, explored) = (1 << 1, 1 << 33);
+        let s = sighted(vec![seen, explored, NO_TILE | NO_TILE_EXPLORED, 0]);
+        let scout = (0..5).map(|x| s.scout_sight(1, x, 0)).collect::<Vec<_>>();
+        assert_eq!(scout, [0xf, 0x80, 0, 0, 0].map(Some).to_vec());
+        let seen_now = (0..4).map(|x| s.visibility(1, x, 0)).collect::<Vec<_>>();
+        assert_eq!(seen_now, [0xf, 0x80, 0, 0].map(Some).to_vec());
+        assert!(s.visible(1, 0, 0) && !s.visible(1, 1, 0));
+        assert_eq!(Spatial::default().scout_sight(1, 0, 0), None);
+        assert_eq!(Spatial::default().visibility(1, 0, 0), None);
     }
 
     #[test]
