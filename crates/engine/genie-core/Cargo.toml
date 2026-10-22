@@ -7,7 +7,9 @@ license = "AGPL-3.0-only"
 repository.workspace = true
 
 [dependencies]
-# The game's acosf, cosf and sinf are FreeBSD msun's, as libm's are (crates/engine/genie-core/tests/crt_math.rs)
+# floorf, which the game imports from the CRT (api-ms-win-crt-math): an exact operation, so libm's
+# gives its bits (src/facing.rs); the image's own math routines are ported in src/fmath.rs, and
+# tests/crt_math.rs's ignored sweeps check them against libm
 libm = "0.2"
 # what the engine tells a subscriber while it runs (src/trace.rs); the binaries install one
 tracing.workspace = true
