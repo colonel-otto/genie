@@ -6,6 +6,7 @@
 //! (`FUN_1411cd780` -> `FUN_1411ccbb0`) gives back what is left of a foundation's cost and takes
 //! its hit points too. The object dies in its next update.
 
+use crate::masters::Master;
 use crate::order::Place;
 use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
@@ -19,6 +20,11 @@ const DELETABLE_TYPE: u8 = 70;
 
 /// The buildings' master type, whose slot 0x8b8 is the building's.
 const BUILDING: u8 = 80;
+
+/// The first master type whose slot 0xd0 is the action object's (`FUN_14106c420`), and the
+/// TRIBE combat objects' type, whose slot 0xa0 is `FUN_14121cc40`.
+const ACTION_OBJECT: u8 = 40;
+const TRIBE_COMBAT: u8 = 70;
 
 /// A player's game status once it lost (`+0x89`).
 const LOST: u8 = 2;
@@ -76,7 +82,7 @@ impl Turns {
     /// its list's order: a desolid foundation (type 80, `+0xc60`) other than it whose owner sees
     /// and explored the tile ([`crate::spatial::Spatial::sees_and_explored`]) and whose box
     /// overlaps its own (on each axis the gap below the two radii summed) is removed
-    /// ([`Turns::remove_building`]; its `mROOAlreadyCalled`, `+0x686`, is not held).
+    /// ([`Turns::remove_building`]) and its `mROOAlreadyCalled` (`+0x686`) set.
     pub(crate) fn clear_foundations_under(&mut self, id: i32) -> Result<(), Unsupported> {
         const AROUND: i32 = 5;
         let Some(site) = self.spatial.get(id).copied() else {
@@ -127,6 +133,10 @@ impl Turns {
         }
         for (owner, oid) in gone {
             self.remove_building(owner, oid)?;
+            // its record went with it (`+0x686` set)
+            if let Some((_, u)) = self.object_mut(oid) {
+                u.roo_called = true;
+            }
         }
         Ok(())
     }
@@ -211,28 +221,257 @@ impl Turns {
         Ok(())
     }
 
-    /// A building's destroy (slot 0xd0, `FUN_1411cfb30`) of a foundation no builder started: its
-    /// action list goes (it has none) and the base destroy (`FUN_14118f1e0`) takes its hit points
-    /// and wakes it, then `set_state(7)` (`FUN_1411dbb70`: its annexes first, then the combat
-    /// object's, `FUN_14121cc40`); its owner's watched list lets it go (`FUN_141091310`). Not
-    /// modelled: a foundation with annexes. Not held: `+0xca4`.
+    /// A foundation's destroy (slot 0xd0, [`Turns::destroy`]) from its delete.
     fn destroy_foundation(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
-        if !self.spatial.annexes_of(id).is_empty() {
-            return Err(Unsupported("a deleted foundation with annexes"));
-        }
-        let i = self.wake(id);
-        let u = &mut self.players[owner].objects[i];
-        if u.life.state < 7 {
-            let (before, master, position) = (u.life.state, u.life.master_id, u.position);
-            u.life.hp = 0.0;
-            u.life.state = 7;
-            self.spatial.sight_state(id, 7);
-            if before < 4 {
-                let master = self.masters.get(owner).and_then(|m| m.get(master));
-                crate::turn::forget_resource(&mut self.spatial, master, id, position);
+        self.destroy(owner, id)
+    }
+
+    /// Slot 0xd0 of object `id` of player `owner`, by its master's type. A building's
+    /// (`FUN_1411cfb30`): in state 2 what its storage gave its owner leaves
+    /// ([`Turns::storage_leaves`]); a town-centre foundation (621) while its owner has no town
+    /// centre (`FUN_1416597e0`, the player's object tracker for masters 109 and 444; the slice
+    /// asks its live lists) would clear the world's `+0x820` entry of the owner
+    /// (`FUN_1414615d0`, not modelled); then the action object's. The action object's (types 40 to
+    /// 79 and the buildings, `FUN_14106c420`): its action list goes (`FUN_140a98620`,
+    /// [`Turns::clear_actions`]), then the base destroy ([`Turns::base_destroy`]). A building's
+    /// owner's watched list lets it go last (`FUN_141091310`). Not held: the semi-asleep flag
+    /// (`+0xc98`, `FUN_14107db90`), `+0xca4` and the log lines.
+    ///
+    /// # Errors
+    ///
+    /// An object the slice does not hold, and what the parts do not model.
+    pub(crate) fn destroy(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+        let (_, u) = self
+            .object(id)
+            .ok_or(Unsupported("a destroyed object the slice does not hold"))?;
+        let state = u.life.state;
+        let master = self.master_of(owner, u.life.master_id)?.clone();
+        if master.kind == BUILDING {
+            if state == 2 {
+                self.storage_leaves(owner, id, &master)?;
+            }
+            if master.id == TOWN_CENTRE_621 && !self.has_town_centre(owner) {
+                return Err(Unsupported(
+                    "a deleted town centre 621 (the world's +0x820)",
+                ));
             }
         }
+        if ACTION_OBJECT <= master.kind
+            && let Some(Place::Live(p, i)) = self.place(id)
+        {
+            self.clear_actions(p, i)?;
+        }
+        self.base_destroy(owner, id)?;
+        if master.kind == BUILDING {
+            self.unwatch(owner, id);
+        }
+        Ok(())
+    }
+
+    /// `FUN_1416597e0(owner, 0)`: the first object of the owner's tracker of the town-centre
+    /// masters (109, 444) that the world holds; the slice takes any live one of the owner's.
+    fn has_town_centre(&self, owner: usize) -> bool {
+        self.players[owner]
+            .objects
+            .iter()
+            .any(|u| matches!(u.life.master_id, 109 | 444) && u.life.state < 7)
+    }
+
+    /// The base destroy (`FUN_14118f1e0`) of object `id` of player `owner`: below state 7 its
+    /// hit points go to 0, it wakes (`FUN_14119deb0` with 0) and goes to state 7 (slot 0xa0,
+    /// [`Turns::set_state`]). An object inside another would leave it first (slot 0x1a8): not
+    /// modelled. Not held: the special-object list (`+0x30c` bit 0, `FUN_141677380`) and the log
+    /// line.
+    pub(crate) fn base_destroy(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+        let (_, u) = self
+            .object(id)
+            .ok_or(Unsupported("a destroyed object the slice does not hold"))?;
+        if 7 <= u.life.state {
+            return Ok(());
+        }
+        if u.life.inside.is_some() {
+            return Err(Unsupported(
+                "a destroyed object inside another (slot 0x1a8)",
+            ));
+        }
+        let i = self.wake(id);
+        self.players[owner].objects[i].life.hp = 0.0;
+        self.set_state(owner, id, 7)
+    }
+
+    /// Slot 0xa0 of object `id` of player `owner` to `new`, a state of 3 or more, outside the
+    /// object's own update, by its master's type: a building's (`FUN_1411dbb70`,
+    /// [`Turns::building_set_state`]), a combat object's of type 70 (`FUN_14121cc40`,
+    /// [`Turns::combat_set_state`]), else the base one ([`Turns::base_set_state`]).
+    ///
+    /// # Errors
+    ///
+    /// What the parts do not model.
+    pub(crate) fn set_state(&mut self, owner: usize, id: i32, new: u8) -> Result<(), Unsupported> {
+        let (_, u) = self.object(id).ok_or(Unsupported(
+            "a set_state of an object the slice does not hold",
+        ))?;
+        let master = self.master_of(owner, u.life.master_id)?.clone();
+        match master.kind {
+            BUILDING => self.building_set_state(owner, id, new, &master),
+            TRIBE_COMBAT => self.combat_set_state(owner, id, new, &master),
+            _ => self.base_set_state(owner, id, new, &master),
+        }
+    }
+
+    /// The building's `set_state` (`FUN_1411dbb70`) to a state of 3 or more: its annexes first
+    /// (`+0xbc0`..`+0xbd8`, each a building: their own slot 0xa0 with the same state); a
+    /// foundation (state 0) then runs the completion's first part ([`Turns::completion_part`],
+    /// `FUN_1411c6bd0`) and, still in state 0 and going to a state from 1 to 6, its
+    /// construction's start (`FUN_1411e5670`, [`Turns::construction_starts`]); a built building
+    /// going to state 3 dies ([`Turns::built_building_dies`], which ends in the combat object's
+    /// `set_state`); any other goes to the combat object's ([`Turns::combat_set_state`]).
+    fn building_set_state(
+        &mut self,
+        owner: usize,
+        id: i32,
+        new: u8,
+        master: &Master,
+    ) -> Result<(), Unsupported> {
+        for annex in self.spatial.annexes_of(id) {
+            if let Some((q, a)) = self.object(annex)
+                && self.master_of(q, a.life.master_id)?.kind == BUILDING
+            {
+                self.set_state(q, annex, new)?;
+            }
+        }
+        let state = self.object(id).map_or(8, |(_, u)| u.life.state);
+        if state == 0 {
+            self.completion_part(owner, id, master)?;
+            let still = self.object(id).is_some_and(|(_, u)| u.life.state == 0);
+            if still && (1..=6).contains(&new) {
+                self.construction_starts(owner, id)?;
+            }
+        }
+        if new == 3 && state == 2 {
+            return self.built_building_dies(owner, id, master);
+        }
+        self.combat_set_state(owner, id, new, master)
+    }
+
+    /// The combat object's `set_state` (`FUN_14121cc40`) to a state of 3 or more: from below 3
+    /// its death's part ([`crate::turn::combat_dies`]); to state 3 from 2 its owner's attributes
+    /// lose its paid cost ([`crate::turn::refund_of`]: 98 and 164, a building 98 and 165, each at
+    /// least 0); then the base `set_state` ([`Turns::base_set_state`]).
+    fn combat_set_state(
+        &mut self,
+        owner: usize,
+        id: i32,
+        new: u8,
+        master: &Master,
+    ) -> Result<(), Unsupported> {
+        let Some(Place::Live(p, i)) = self.place(id) else {
+            return Err(Unsupported("a combat object's set_state while it sleeps"));
+        };
+        let state = self.players[p].objects[i].life.state;
+        if 3 <= new && state < 3 {
+            let u = &mut self.players[p].objects[i];
+            crate::turn::combat_dies(u, master, &mut self.spatial, &mut self.pathing)?;
+            self.pathing.tiles_changed(self.spatial.take_changes());
+        }
+        if new == 3 && state == 2 {
+            let main = self.players[p].objects[i].annex_of;
+            for (kind, amount) in crate::turn::refund_of(master, main) {
+                let player = &mut self.players[owner];
+                player.add_attribute(kind, -amount)?;
+                if player.attributes[kind as usize] < 0.0 {
+                    player.attributes[kind as usize] = 0.0;
+                }
+            }
+        }
+        self.base_set_state(owner, id, new, master)
+    }
+
+    /// The base `set_state` (`FUN_14119d710`) to `new`, a state of 3 or more, outside the
+    /// object's update: a lower state than its own changes nothing; from below 3 the storage of
+    /// flags 2 and 16 leaves its owner (`FUN_1411a56c0` with 0) and, while the world's game state
+    /// is not 2, a master of fog visibility 2 leaves its ghosts (`FUN_14118e990`,
+    /// [`Turns::ghosts_at_death`], before the state changes); from below 4 to above 6 it leaves
+    /// the visible-resource lists (`FUN_1411980b0`, [`crate::turn::forget_resource`]); its sight
+    /// follows ([`crate::spatial::Spatial::sight_state`]); from below 7 to 7 the storage of flag
+    /// 32 leaves its owner; then the state, and a sleeping object wakes unless the state is 2 or
+    /// 6. Not held: the statistics and the scenario's events.
+    fn base_set_state(
+        &mut self,
+        owner: usize,
+        id: i32,
+        new: u8,
+        master: &Master,
+    ) -> Result<(), Unsupported> {
+        let (_, u) = self.object(id).ok_or(Unsupported(
+            "a set_state of an object the slice does not hold",
+        ))?;
+        let (old, position) = (u.life.state, u.position);
+        if old == new || (new < old && new != 0) {
+            return Ok(());
+        }
+        if 2 < new && old < 3 {
+            for &(kind, amount, flag) in &master.storage {
+                if 0 <= kind && matches!(flag, 2 | 16) {
+                    self.players[owner].add_attribute(kind, -amount)?;
+                }
+            }
+            if master.ghost_on_death == crate::ghost::LEAVES_GHOSTS && self.game_state != 2 {
+                self.ghosts_at_death(owner, id)?;
+            }
+        }
+        if old < 4 && 6 < new {
+            crate::turn::forget_resource(&mut self.spatial, Some(master), id, position);
+        }
+        self.spatial.sight_state(id, new);
+        if old < 7 && new == 7 {
+            for &(kind, amount, flag) in &master.storage {
+                if 0 <= kind && flag == 32 {
+                    self.players[owner].add_attribute(kind, -amount)?;
+                }
+            }
+        }
+        if let Some((_, u)) = self.object_mut(id) {
+            u.life.state = new;
+        }
+        if !matches!(new, 2 | 6) && matches!(self.place(id), Some(Place::Sleeping(..))) {
+            let _ = self.wake(id);
+        }
+        Ok(())
+    }
+
+    /// A built building's death (`FUN_1411dbb70` to state 3 from 2) outside its update: its
+    /// part ([`crate::turn::built_death`]), then the combat object's `set_state`; the count it
+    /// lowers and its technology follow (as its own update's caller does them).
+    fn built_building_dies(
+        &mut self,
+        owner: usize,
+        id: i32,
+        master: &Master,
+    ) -> Result<(), Unsupported> {
+        let computer = self.players[owner].computer;
+        let (_, u) = self
+            .object_mut(id)
+            .ok_or(Unsupported("a dying building the slice does not hold"))?;
+        let death = crate::turn::built_death(u, master, computer)?;
+        for &(kind, amount) in &death.adds {
+            self.players[owner].add_attribute(kind, amount)?;
+        }
         self.unwatch(owner, id);
+        if let (Some(v), Some(at)) = (self.spatial.sight.as_mut(), death.unlink) {
+            v.unlink_building(at, master.radius);
+        }
+        self.combat_set_state(owner, id, 3, master)?;
+        if let Some(kind) = death.building.count {
+            let player = &mut self.players[owner];
+            player.add_attribute(kind, -1.0)?;
+            if player.attributes[kind as usize] < 0.0 {
+                player.attributes[kind as usize] = 0.0;
+            }
+        }
+        if let Some((m, tech)) = death.building.tech {
+            self.withdraw_tech(owner, m, tech)?;
+        }
         Ok(())
     }
 
@@ -319,6 +558,8 @@ mod tests {
                 let u = &mut t.players[p].objects[i];
                 u.life.master_id = master;
                 u.life.hp = 25.0;
+                u.pasture = -1;
+                u.my_pasture = -1;
             }
         }
         t.players[1].objects[1].life.state = 0;
@@ -390,5 +631,248 @@ mod tests {
             (t.players[1].resources[1], house.hp, house.state),
             (25.0 * share, 0.0, 0)
         );
+    }
+}
+
+#[cfg(test)]
+mod clearing_tests {
+    use super::*;
+    use crate::lifecycle::{Class, Lifecycle};
+    use crate::masters::{Master, Masters};
+    use crate::spatial::{Placed, Spatial, Tiles};
+    use crate::turn::{Player, Unit};
+
+    /// A live object `id` of `master` at `x`, `y`, outside any pasture.
+    fn object(id: i32, master: i16, x: f32, y: f32) -> Unit {
+        Unit {
+            id,
+            position: [x, y, 0.0],
+            life: Lifecycle {
+                master_id: master,
+                ..Lifecycle::default()
+            },
+            pasture: -1,
+            my_pasture: -1,
+            ..Unit::default()
+        }
+    }
+
+    /// Its place on the map, from its master.
+    fn placed(u: &Unit, m: &Master, player: usize) -> Placed {
+        Placed {
+            position: u.position,
+            radius: m.radius,
+            class: m.class,
+            player,
+            master: m.id,
+            obstruction_type: m.obstruction_type,
+            buildable_on: m.buildable_on,
+            tall: m.tall,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        }
+    }
+
+    /// The masters: a house (70), two decorations Gaia's map scatters (1351, 1358; type 10,
+    /// buildable on), a dead villager (type 30, buildable on, its flag-32 storage of attribute
+    /// 7), a pile (type 70, buildable on, tall, with a record) and a dead farm (type 80, class
+    /// 11, buildable on).
+    fn masters() -> Masters {
+        let deco = |id| Master {
+            id,
+            kind: 10,
+            class: 5,
+            radius: [0.5, 0.5],
+            buildable_on: 1,
+            ..Master::default()
+        };
+        Masters::new([
+            Master {
+                id: 70,
+                kind: 80,
+                class: 3,
+                radius: [1.0, 1.0],
+                ..Master::default()
+            },
+            deco(1351),
+            deco(1358),
+            Master {
+                id: 43,
+                kind: 30,
+                class: 11,
+                radius: [0.2, 0.2],
+                buildable_on: 1,
+                storage: vec![(7, 1.0, 32)],
+                ..Master::default()
+            },
+            Master {
+                id: 254,
+                kind: 70,
+                class: 40,
+                radius: [0.5, 0.5],
+                height: 1.0,
+                tall: true,
+                obstruction_type: 2,
+                buildable_on: 1,
+                ..Master::default()
+            },
+            Master {
+                id: 357,
+                kind: 80,
+                class: 11,
+                radius: [1.5, 1.5],
+                buildable_on: 1,
+                building: Some(crate::masters::BuildingMaster {
+                    stack_unit: -1,
+                    foundation_terrain: -1,
+                    tech: -1,
+                    annexes: [-1; 4],
+                    head_unit: -1,
+                    transform_unit: -1,
+                    ..crate::masters::BuildingMaster::default()
+                }),
+                ..Master::default()
+            },
+        ])
+    }
+
+    /// Gaia holding `gaia` (live) and `asleep`, player 1 holding `own`, on a 20 by 20 map.
+    fn world(gaia: Vec<Unit>, asleep: Vec<Unit>, own: Vec<Unit>) -> Turns {
+        let ms = masters();
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0; 2],
+            vec![
+                Player {
+                    objects: gaia,
+                    sleeping: asleep,
+                    attributes: vec![0.0; 200],
+                    ..Player::default()
+                },
+                Player {
+                    objects: own,
+                    attributes: vec![0.0; 200],
+                    ..Player::default()
+                },
+            ],
+        );
+        t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        for p in 0..2 {
+            let all: Vec<Unit> = t.players[p]
+                .objects
+                .iter()
+                .chain(&t.players[p].sleeping)
+                .cloned()
+                .collect();
+            for u in all {
+                let m = ms.get(u.life.master_id).expect("a test master");
+                let mut at = placed(&u, m, p);
+                if m.obstruction_type == 2 {
+                    at.obstruction = Some(crate::spatial::Obstruction { kind: 2, class: 0 });
+                }
+                t.spatial.insert(u.id, at);
+            }
+        }
+        t.masters = vec![ms.clone(), ms];
+        t
+    }
+
+    /// records/429859027's update 19 (and 161 more stops of census v5): a foundation's
+    /// constructor clears two of Gaia's sleeping decorations off one tile (`FUN_1415c3620`): each
+    /// in its tile's list order is destroyed (`FUN_14118f1e0`): its hit points go, it wakes to
+    /// the end of Gaia's live list and goes to state 7.
+    #[test]
+    fn a_footprint_clearing_wakes_two_sleeping_decorations_in_their_tile_s_order() {
+        let mut t = world(
+            vec![object(1, 1351, 3.5, 3.5)],
+            vec![
+                object(6084, 1358, 10.6, 10.6),
+                object(6083, 1351, 10.4, 10.4),
+            ],
+            vec![],
+        );
+        assert_eq!(t.spatial.tiles().list(10, 10), [6084, 6083]);
+        t.clear_footprint(1, 70, [10.5, 10.5], false).unwrap();
+        let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id).collect();
+        assert_eq!(ids, [1, 6084, 6083]);
+        assert_eq!(t.players[0].sleeping.len(), 0);
+        for u in &t.players[0].objects[1..] {
+            assert_eq!((u.life.state, u.life.hp), (7, 0.0));
+        }
+        assert_eq!(t.players[0].objects[0].life.state, 2);
+    }
+
+    /// records/428477858's update 1838: a foundation clears a dead villager (type 30) in state 5
+    /// off its footprint: the base destroy takes it to state 7 and its storage of flag 32 leaves
+    /// its owner (`FUN_14119d710`).
+    #[test]
+    fn a_cleared_corpse_goes_to_state_7_and_its_flag_32_storage_leaves() {
+        let mut corpse = object(30, 43, 10.5, 10.5);
+        corpse.life.state = 5;
+        corpse.life.class = Class::Animated;
+        let mut t = world(vec![], vec![], vec![corpse]);
+        t.players[1].attributes[7] = 3.0;
+        t.clear_footprint(1, 70, [10.5, 10.5], false).unwrap();
+        let u = &t.players[1].objects[0];
+        assert_eq!((u.life.state, u.life.hp), (7, 0.0));
+        assert_eq!(t.players[1].attributes[7], 2.0);
+    }
+
+    /// A pile (type 70) a new object's clearing (`param_6`) destroys: its action list goes
+    /// (`FUN_14106c420`), and the combat object's `set_state(7)` (`FUN_14121cc40`) drops its
+    /// record and its height and sets `+0x686`; it gets no refund (only state 3 from 2 does).
+    #[test]
+    fn a_cleared_pile_loses_its_record_in_its_destroy() {
+        let mut t = world(vec![object(40, 254, 10.5, 10.5)], vec![], vec![]);
+        t.players[0].attributes[98] = 5.0;
+        assert!(t.spatial.get(40).unwrap().obstruction.is_some());
+        t.clear_footprint(1, 70, [10.5, 10.5], true).unwrap();
+        let u = &t.players[0].objects[0];
+        assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
+        let p = t.spatial.get(40).unwrap();
+        assert_eq!((p.obstruction, p.tall), (None, false));
+        assert_eq!(t.players[0].attributes[98], 5.0);
+    }
+
+    /// A dead farm (`FARM_D`, a building of type 80) a new farm's constructor clears: the
+    /// building's destroy (`FUN_1411cfb30`): its storage leaves in state 2, its action list goes,
+    /// the base destroy takes it to state 7 through the building's and the combat object's
+    /// `set_state`, and its owner's watched list lets it go.
+    #[test]
+    fn a_cleared_dead_farm_goes_through_the_building_s_destroy() {
+        let mut t = world(vec![], vec![], vec![object(50, 357, 10.5, 10.5)]);
+        t.clear_footprint(1, 70, [10.5, 10.5], false).unwrap();
+        let u = &t.players[1].objects[0];
+        assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
+    }
+
+    /// `FUN_14121cc40`'s refund at a death from state 2: a unit's paid cost leaves attributes 98
+    /// and 164, a building's 98 and 165, the castle's and the wonder's 98 alone, an annex's none.
+    #[test]
+    fn a_death_refunds_its_paid_cost_by_its_type() {
+        let unit = Master {
+            kind: 70,
+            cost: vec![(0, 50, true), (3, 20, true), (1, 5, false)],
+            ..Master::default()
+        };
+        assert_eq!(
+            crate::turn::refund_of(&unit, None),
+            [(98, 70.0), (164, 70.0)]
+        );
+        let house = Master {
+            id: 70,
+            kind: 80,
+            ..unit
+        };
+        assert_eq!(
+            crate::turn::refund_of(&house, None),
+            [(98, 70.0), (165, 70.0)]
+        );
+        assert_eq!(crate::turn::refund_of(&house, Some(9)), []);
+        let castle = Master { id: 82, ..house };
+        assert_eq!(crate::turn::refund_of(&castle, None), [(98, 70.0)]);
     }
 }
