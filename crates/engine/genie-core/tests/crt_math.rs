@@ -3,6 +3,9 @@
 //! inputs of
 //! `fixtures/crt_math_158041.txt`: edge cases and seeded random inputs over the ranges movement
 //! uses, recorded in the tick oracle's emulator (`load_oracle/probes/crt_math.py`).
+//!
+//! The ignored sweeps run every f32 through a port and through the `libm` crate, which ports the
+//! same msun sources the game links (`cargo test --release -- --ignored`).
 
 use genie_core::fmath;
 
@@ -86,4 +89,38 @@ fn atan2_is_the_games_atan2f() {
         mismatches("atan2f", |a| fmath::atan2(a[0], a[1])),
         Vec::<String>::new()
     );
+}
+
+/// The f32 inputs (bits) where `ours` and `oracle` give other bits, over all 2^32 of them (at
+/// most 16 per thread).
+fn sweep(ours: fn(f32) -> f32, oracle: fn(f32) -> f32) -> Vec<u32> {
+    let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+    let threads = u32::try_from(threads).unwrap_or(4);
+    let span = u32::MAX / threads + 1;
+    std::thread::scope(|s| {
+        let mut workers = Vec::new();
+        for t in 0..threads {
+            let start = t * span;
+            let end = start.saturating_add(span - 1);
+            workers.push(s.spawn(move || {
+                (start..=end)
+                    .filter(|&b| {
+                        let x = f32::from_bits(b);
+                        ours(x).to_bits() != oracle(x).to_bits()
+                    })
+                    .take(16)
+                    .collect::<Vec<u32>>()
+            }));
+        }
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().expect("a sweep thread"))
+            .collect()
+    })
+}
+
+#[test]
+#[ignore = "all 2^32 inputs: run in release with --ignored"]
+fn acos_agrees_with_libm_on_every_f32() {
+    assert_eq!(sweep(fmath::acos, libm::acosf), Vec::<u32>::new());
 }

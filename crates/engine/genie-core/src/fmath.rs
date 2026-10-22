@@ -1,9 +1,16 @@
 //! The game's f32 math, bit for bit (checked by `tests/crt_math.rs` against build 158041's own
 //! routines on recorded inputs).
 //!
-//! The game links software routines from FreeBSD's msun: acosf `0x14099dc60`, cosf `0x14099e4d0`,
-//! sinf `0x14099ed60`. The `libm` crate ports the same sources. Its sqrtf `0x14099ef70` is an
-//! integer Newton iteration that rounds correctly, so IEEE's square root gives the same bits.
+//! The game links musl's math routines, which take FreeBSD msun's sources: acosf `0x14099dc60`,
+//! atan2f `0x14099e020`, cosf `0x14099e4d0`, sinf `0x14099ed60` and the kernels and argument
+//! reduction they call. Each is ported here from its machine code: its constants (read from the
+//! image), its operation order, its branches and its integer bit tests. Its sqrtf `0x14099ef70` is
+//! an integer Newton iteration that rounds correctly, so IEEE's square root gives the same bits.
+
+/// 1 (`DAT_14330eb8c`).
+const ONE: f32 = f32::from_bits(0x3f80_0000);
+/// 1/2 (`DAT_142e7f384`).
+const HALF: f32 = f32::from_bits(0x3f00_0000);
 
 /// The square root, as the game's (correctly rounded).
 #[must_use]
@@ -11,10 +18,63 @@ pub fn sqrt(x: f32) -> f32 {
     x.sqrt()
 }
 
-/// The arc cosine, as the game's acosf (msun's) computes it.
+/// π/2's leading bits (`DAT_142ec89f0`): acosf near 0, also atanf's bound.
+const PIO2_HI: f32 = f32::from_bits(0x3fc9_0fda);
+/// π/2's next bits (`DAT_142ec89e0`).
+const PIO2_LO: f32 = f32::from_bits(0x33a2_2168);
+/// acosf(-1), twice [`PIO2_HI`] (`DAT_142ec89f4`).
+const ACOS_OF_MINUS_ONE: f32 = f32::from_bits(0x4049_0fda);
+/// acosf's rational R(z) = z (P0 + z (P1 − z P2)) / (1 − z Q1): P0 (`DAT_142ec89e8`).
+const ACOS_P0: f32 = f32::from_bits(0x3e2a_aa75);
+/// R's P1 (`DAT_142ec89f8`).
+const ACOS_P1: f32 = f32::from_bits(0xbd2f_13ba);
+/// R's P2, subtracted: msun's pS2 negated (`DAT_142ec89e4`).
+const ACOS_P2: f32 = f32::from_bits(0x3c0d_d36b);
+/// R's Q1, subtracted: msun's qS1 negated (`DAT_142ec89ec`).
+const ACOS_Q1: f32 = f32::from_bits(0x3f34_e5ae);
+
+/// acosf's R(z), each product and sum in the game's order (inlined three times in acosf).
+fn acos_r(z: f32) -> f32 {
+    ((ACOS_P1 - z * ACOS_P2) * z + ACOS_P0) * z / (ONE - z * ACOS_Q1)
+}
+
+/// The arc cosine: the game's acosf `0x14099dc60` (msun's `e_acosf.c`). |x| from 1 up and NaN
+/// take the bit test's branch: ±1 give 0 and π, the rest the invalid `0 / (x − x)`. Below 1/2 it
+/// is π/2 less x's series, above 1/2 twice the arc sine of `sqrt((1 ∓ x) / 2)`.
 #[must_use]
 pub fn acos(x: f32) -> f32 {
-    libm::acosf(x)
+    let hx = x.to_bits();
+    let ix = hx & 0x7fff_ffff;
+    if ix >= 0x3f80_0000 {
+        if ix != 0x3f80_0000 {
+            // SUBSS x, x; DIVSS 0, (x − x): NaN for |x| above 1, infinities and NaN
+            #[allow(clippy::eq_op)]
+            return 0.0 / (x - x);
+        }
+        return if hx >> 31 != 0 {
+            ACOS_OF_MINUS_ONE
+        } else {
+            0.0
+        };
+    }
+    if ix < 0x3f00_0000 {
+        if ix <= 0x3280_0000 {
+            return PIO2_HI;
+        }
+        return PIO2_HI - (x - (PIO2_LO - acos_r(x * x) * x));
+    }
+    if hx >> 31 != 0 {
+        let z = (x + ONE) * HALF;
+        let s = sqrt(z);
+        let h = PIO2_HI - (acos_r(z) * s - PIO2_LO + s);
+        return h + h;
+    }
+    let z = (ONE - x) * HALF;
+    let s = sqrt(z);
+    let df = f32::from_bits(s.to_bits() & 0xffff_f000);
+    let c = (z - df * df) / (df + s);
+    let h = acos_r(z) * s + c + df;
+    h + h
 }
 
 /// The cosine, as the game's cosf (msun's) computes it.
@@ -166,6 +226,60 @@ pub fn maxss(a: f32, b: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `f` gives the game's bits on each `(input, output)` pair, a NaN's payload included. The
+    /// outputs are build 158041's own routines, run on these inputs in unicorn.
+    fn assert_bits(name: &str, f: impl Fn(f32) -> f32, cases: &[(u32, u32)]) {
+        for &(x, game) in cases {
+            let got = f(f32::from_bits(x)).to_bits();
+            assert_eq!(got, game, "{name}({x:08x}): {got:08x}, game {game:08x}");
+        }
+    }
+
+    /// acosf `0x14099dc60` at its branches' bounds (2^-26, 0.5, 1), zeros, subnormals, infinities
+    /// and NaNs: |x| above 1 is the invalid 0/0, a NaN comes back quieted.
+    #[test]
+    fn acos_is_the_games_acosf_at_its_bounds() {
+        assert_bits(
+            "acos",
+            acos,
+            &[
+                (0x0000_0000, 0x3fc9_0fda),
+                (0x8000_0000, 0x3fc9_0fda),
+                (0x0000_0001, 0x3fc9_0fda),
+                (0x8000_0001, 0x3fc9_0fda),
+                (0x007f_ffff, 0x3fc9_0fda),
+                (0x807f_ffff, 0x3fc9_0fda),
+                (0x0080_0000, 0x3fc9_0fda),
+                (0x8080_0000, 0x3fc9_0fda),
+                (0x7f7f_ffff, 0xffc0_0000),
+                (0xff7f_ffff, 0xffc0_0000),
+                (0x7f80_0000, 0xffc0_0000),
+                (0xff80_0000, 0xffc0_0000),
+                (0x7fc0_0000, 0x7fc0_0000),
+                (0xffc0_0000, 0xffc0_0000),
+                (0x7f80_0001, 0x7fc0_0001),
+                (0xff81_2345, 0xffc1_2345),
+                (0x3280_0000, 0x3fc9_0fda),
+                (0x3280_0001, 0x3fc9_0fdb),
+                (0xb280_0000, 0x3fc9_0fda),
+                (0xb280_0001, 0x3fc9_0fdb),
+                (0x3eff_ffff, 0x3f86_0a92),
+                (0x3f00_0000, 0x3f86_0a92),
+                (0xbeff_ffff, 0x4006_0a92),
+                (0xbf00_0000, 0x4006_0a92),
+                (0x3f7f_ffff, 0x39b5_04f3),
+                (0x3f80_0000, 0x0000_0000),
+                (0x3f80_0001, 0xffc0_0000),
+                (0xbf7f_ffff, 0x4049_0a32),
+                (0xbf80_0000, 0x4049_0fda),
+                (0xbf80_0001, 0xffc0_0000),
+                (0x4000_0000, 0xffc0_0000),
+                (0x3f35_04f3, 0x3f49_0fdb),
+                (0xbf35_04f3, 0x4016_cbe4),
+            ],
+        );
+    }
 
     #[test]
     fn a_jc_after_comiss_is_taken_below_and_unordered() {
