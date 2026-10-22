@@ -608,11 +608,18 @@ pub fn take(
 }
 
 /// A static object's slot 0xe8 (`FUN_14118efd0`): it has no armor (slot 0xf0 `FUN_14118cab0`:
-/// the weapons' sum times the factor) and loses the damage (slot 0xb0); below 1 hit point it has
+/// a TRIBE attacker's ready charge on it, then the weapons times the factor) and loses the
+/// damage (slot 0xb0); below 1 hit point it has
 /// 0 and wakes, and but for a villager's hit it loses what it holds. Its damage sprites (slot
 /// 0x4c0) are not held.
 fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)], factor: f32) {
-    let mut damage = 0.0f32;
+    // slot 0x2f0 of a TRIBE attacker (types 70, 80; [`charge_hit`]) starts the sum at its raw
+    // charge (slot 0x310, `+0x9e0`) plus 0
+    let mut damage = if 70 <= src.kind && charge_hit(src, t) {
+        src.charge + 0.0
+    } else {
+        0.0f32
+    };
     for &(_, amount) in weapons {
         damage += f32::from(amount) * factor;
     }
@@ -1012,6 +1019,36 @@ mod tests {
         assert_eq!(class_armor(&none, 3, 27, 0), 2);
         // its melee armor (FUN_141213810's wall foundation) is 0
         assert_eq!(class_armor(&a, 4, 27, 0), 0);
+    }
+
+    /// Slot 0xf0 (`FUN_14118cab0`): a TRIBE attacker whose charge hits the target (slot 0x2f0)
+    /// starts the static damage at its charge; any other starts at 0.
+    #[test]
+    fn a_static_object_takes_a_ready_charge_first() {
+        let tree = || Victim {
+            hp: 100.0,
+            class: 15,
+            kind: 10,
+            ..Victim::default()
+        };
+        let charging = Attacker {
+            kind: 70,
+            charge_type: 1,
+            charge_target: -1,
+            charge: 5.0,
+            max_charge: 5.0,
+            ..Attacker::default()
+        };
+        let mut t = tree();
+        take_static(&mut t, &charging, &[(4, 3)], 1.0);
+        assert_eq!(t.hp, 100.0 - (5.0 + 3.0));
+        let mut t = tree();
+        let plain = Attacker {
+            charge_type: 0,
+            ..charging
+        };
+        take_static(&mut t, &plain, &[(4, 3)], 1.0);
+        assert_eq!(t.hp, 97.0);
     }
 
     #[test]
