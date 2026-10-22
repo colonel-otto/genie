@@ -122,12 +122,12 @@ impl Path {
     }
 
     /// Append `other`'s points to these (`FUN_140f95c00`); the length is `other`'s, or measured
-    /// anew when `other`'s is at most 1e-7.
+    /// anew when `other`'s is at most 1e-7 or unordered (`COMISS`, `JBE` at 0x140f95d66).
     pub fn append(&mut self, other: &Self) {
         for &p in &other.points {
             let _ = self.push(p);
         }
-        if other.length <= 1e-7 {
+        if fmath::at_most_or_unordered(other.length, 1e-7) {
             self.measure();
         } else {
             self.length = other.length;
@@ -1736,6 +1736,82 @@ mod tests {
             ends,
             [[109.5, 42.5], [103.5, 44.5], [103.604_164, 46.854_168]]
         );
+    }
+
+    /// `FUN_140f7be80` orders each pair of corners, holds the rectangle on the map (its low
+    /// corner at 0, its high one at `+0x404`/`+0x406`, the size less one) and closes, from each
+    /// level-3 cell over it, the node cells under it within the rectangle at their level
+    /// (`FUN_140f7e070`): a mixed cell's children in the order (2x, 2y), (2x + 1, 2y),
+    /// (2x + 1, 2y + 1), (2x, 2y + 1). Closing a closed cell or opening an open one changes nothing.
+    /// `FUN_140f95c00` appends each point through `FUN_140f95060` at the end (a point equal to
+    /// the last is left out), then takes the source's length or, at most 1e-7, measures anew:
+    /// `COMISS` with `JBE` (0x140f95d66), so an unordered (NaN) length measures too.
+    #[test]
+    fn an_appended_path_takes_the_source_s_length_or_measures_a_short_or_nan_one() {
+        let mut path = Path::default();
+        let _ = path.push([0.0, 0.0, 0.0]);
+        let other = Path {
+            points: vec![[0.0, 0.0, 0.0], [3.0, 0.0, 4.0]],
+            length: 9.0,
+        };
+        path.append(&other);
+        assert_eq!(path.points, [[0.0, 0.0, 0.0], [3.0, 0.0, 4.0]]);
+        assert_eq!(path.length, 9.0);
+        for short in [1e-7, 0.0, f32::NAN] {
+            let mut path = Path::default();
+            path.append(&Path {
+                length: short,
+                ..other.clone()
+            });
+            assert_eq!(path.length, 5.0, "{short}");
+        }
+    }
+
+    #[test]
+    fn a_closed_rectangle_closes_the_node_cells_under_it() {
+        // tile (0, 0) has no passable neighbour: its level-3, 2 and 1 cells are mixed, and the
+        // four tiles of the level-1 cell are nodes
+        let walls = |x: i32, y: i32| (x, y) == (1, 0) || (x, y) == (0, 1);
+        let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &walls);
+        let open = p.clone();
+        assert_eq!(p.level(1)[0][1] & (NODE | MIXED), MIXED);
+        assert_eq!(p.level(0)[0][1] & NODE, NODE);
+        // the corners swapped and the low y off the map
+        p.close_rect([5, 3, 1, -2], true);
+        assert_eq!(p.region, [1, 0, 5, 3]);
+        let closed = |p: &Planner, l: usize, x: usize, y: usize| {
+            let w = p.level_sizes().0[l] as usize;
+            p.level(l)[y * w + x][0] & CLOSED != 0
+        };
+        let expected: [(usize, usize, usize, bool); 14] = [
+            (0, 0, 0, false),
+            (0, 1, 0, true),
+            (0, 1, 1, true),
+            (0, 0, 1, false),
+            (1, 0, 0, false),
+            (1, 1, 0, true),
+            (1, 1, 1, true),
+            (1, 0, 1, true),
+            (2, 0, 0, false),
+            (2, 1, 0, true),
+            (2, 1, 1, false),
+            (2, 0, 1, false),
+            (3, 0, 0, false),
+            (3, 1, 0, false),
+        ];
+        for (l, x, y, c) in expected {
+            assert_eq!(closed(&p, l, x, y), c, "level {l} ({x}, {y})");
+        }
+        // the closed bit is added once
+        let once = p.clone();
+        p.close_rect([1, 0, 5, 3], true);
+        assert_eq!(p, once);
+        assert_eq!(p.level(0)[1][0], CLOSED);
+        // the high corner past the map's size holds at its last tile: everything reopens
+        p.close_rect([0, 0, 20, 9], false);
+        assert_eq!(p.region, [0, 0, 15, 7]);
+        p.region = open.region;
+        assert_eq!(p, open);
     }
 
     #[test]
