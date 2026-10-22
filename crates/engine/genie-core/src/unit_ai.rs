@@ -2848,7 +2848,8 @@ impl UnitAi {
     /// as a hunt (700/613, [`UnitAi::hunt_object`]), a hunt without an order (−1/613: `HuntObject`
     /// after a stop that ended the order; the update has no case for the order), on the follow
     /// order (712 with its action 612, the move's 610 or none), a builder or hunter sent off a
-    /// footprint (702/703, 713/703), on a boar's or lion's own attack (−1/600) or the attack order
+    /// footprint (702/703, 713/703), a building on MOVE's order with a target (710 and any
+    /// action value), on a boar's or lion's own attack (−1/600) or the attack order
     /// (700/600), or without an order and an action (a hunt ended by its
     /// queued orders); busy (`busy`, the actions left), only those or a unit on MOVE's order
     /// (710/610: without a target, or an animal's own wander; with one, the work command's move to
@@ -2882,8 +2883,10 @@ impl UnitAi {
         let attacking = (matches!(self.ai_type, BOAR_AI | 5) && order == (-1, ATTACK_ACTION))
             || order == (ATTACK_ORDER, ATTACK_ACTION)
             || order == (ATTACK_ORDER, crate::spawn::MAKE_ACTION);
-        // a move to an object (the work command's without a task, slot 0x138)
-        let moving_to = order == (MOVE_ORDER, MOVE_ACTION);
+        // a move to an object (the work command's without a task, slot 0x138); a building a
+        // MOVE took with a target keeps the order while it trains or researches
+        let moving_to =
+            order == (MOVE_ORDER, MOVE_ACTION) || (self.ai_type == 17 && order.0 == MOVE_ORDER);
         // without an order and an action the target is a stale one: the order queue's next order
         // takes over
         if self.current_target != -1 && !working && !attacking && !moving_to && order != (-1, -1) {
@@ -7153,7 +7156,7 @@ mod tests {
     }
 
     #[test]
-    fn a_lion_s_own_attack_and_a_worker_moved_off_a_footprint_are_modelled() {
+    fn a_lion_s_own_attack_a_moved_building_and_a_worker_moved_off_a_footprint_are_modelled() {
         // a wolf's attack from its idle search (lion_idle): no order, the attack action, its
         // target; as the boar's
         let wolf = UnitAi {
@@ -7164,6 +7167,18 @@ mod tests {
             ..UnitAi::default()
         };
         assert!(wolf.check_busy_order(Retarget::Base, true).is_ok());
+        // a building a MOVE took with a target (its unit AI's order 710), with no action value
+        // or its own research's (620)
+        for action in [-1, 620] {
+            let building = UnitAi {
+                ai_type: 17,
+                current_order: MOVE_ORDER,
+                current_action: action,
+                current_target: 13764,
+                ..UnitAi::default()
+            };
+            assert!(building.check_busy_order(Retarget::Base, false).is_ok());
+        }
         // a builder and a hunter sent off a footprint (sent_off: the action value 0x2bf, the
         // order and the target kept)
         for order in [BUILD_ORDER, HUNT_ORDER] {
