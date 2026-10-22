@@ -773,6 +773,14 @@ const SLOT_NUDGE: [[f32; 2]; 5] = [
 /// The capacity of `ClosestUnit`'s list of the units the slots took (`DAT_143f20710`, 0x118
 /// bytes).
 const USED_UNITS: usize = 70;
+/// The feature's assignment's arrays (`FUN_14100a0c0`): 70 members or slots a side
+/// (`DAT_143f1fb50`, `DAT_143f1fc70`, 0x118 bytes each) ...
+const ASSIGNMENT_SIDE: usize = 70;
+/// ... the costs and the preferences 70 × 70 (`DAT_143f161e0`, `DAT_143f1ae70`, 0x4c90 bytes
+/// each) ...
+const ASSIGNMENT_CELLS: usize = ASSIGNMENT_SIDE * ASSIGNMENT_SIDE;
+/// ... and the taken marks 80 bytes (`DAT_143f1fb00`).
+const ASSIGNMENT_MARKS: usize = 80;
 
 impl crate::turn::Turns {
     /// `FUN_141011300` of `object` (`param_1`, as the world's table gives it,
@@ -850,15 +858,18 @@ impl crate::turn::Turns {
     /// The ground distance from slot place `at` to unit `id`'s (`FUN_14087e560`, its height
     /// zeroed, `sqrt(x² + 0 + y²)`), None for a unit the world does not hold.
     fn slot_distance(&self, at: Vec3, id: i32) -> Option<f32> {
-        let (_, u) = self.object(id)?;
-        let mut d = sub(at, moved_vector(u));
+        let object = self.world_object(id)?;
+        let mut d = sub(at, object.moved_vector());
         d[1] = 0.0;
         Some(crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]))
     }
 
-    /// `FUN_141009760` (the settings' flag `DAT_143f01834` 0, as every load of the recordings
-    /// sets it; with it set the game takes `FUN_14100a0c0`) of `formation` for group `g`: the
-    /// transformed active slots in use take the closest units of their sub-formation and type
+    /// `FUN_141009760` of `formation` for group `g` without the settings' flag `DAT_143f01834`
+    /// (the world's saved `mUseFeatureFlags` being 1, which `World::load_world` hands to
+    /// `FUN_140ecabe0`; 0 in every recording of this build), with which the game takes the
+    /// feature's assignment instead ([`Turns::assign_slots_by_variance`]; the slice holds
+    /// neither the flag nor that routine's process-global costs yet). The transformed active
+    /// slots in use take the closest units of their sub-formation and type
     /// ([`Turns::closest_unit`]), none taken twice. Two orders are measured first, as the sum of
     /// the ground distances (slot to unit) and the count found: the slots in order, and the same
     /// with the first slot's unit of that order barred from the first slot that finds one (whose
@@ -963,6 +974,157 @@ impl crate::turn::Turns {
                     }
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// The feature's assignment (`FUN_14100a0c0`, [`Turns::populate_slots`] with the settings'
+    /// flag) of `formation`'s slots in use to group `g`'s members, `n` of them:
+    ///
+    /// - The costs (`costs`, the process global `DAT_143f161e0` of 70 × 70 floats that only this
+    ///   routine reads and writes, all 0 as the process starts; grown to that when shorter): for
+    ///   each member the world holds ([`Turns::world_object`]), slot by slot, the squared distance from where it last
+    ///   moved to (slot 0x518, as slot 0x520) to the slot's place (`+0x1c`), summed x, height,
+    ///   y; [`FARTHEST`] for a slot not transformed or not active, of another sub-formation
+    ///   ([`Turns::unit_category`]) or, before both, of another master. A member's row starts at
+    ///   its index times `n`, so with more slots than members a row runs into the next one's,
+    ///   which overwrites it; a member the world does not hold leaves its row as it was.
+    /// - The preferences: each member's slots by cost, each the cheapest not yet taken (the
+    ///   first untaken one, then any strictly cheaper, `COMISS`/`JBE` at 0x14100a47e: a NaN cost
+    ///   neither wins nor loses), in rows laid like the costs.
+    /// - Each start member in turn takes its first preferred slot not taken, then the next
+    ///   member (wrapping), until every slot is taken or a member has none left (a start that
+    ///   placed nobody counts for nothing). Its mean is the sum of the costs over `n`, its
+    ///   variance the mean of the squared differences over the pairs placed; a variance below
+    ///   the best so far (`COMISS`/`JBE` at 0x14100a9be, from [`FARTHEST`]) keeps the start's
+    ///   pairs.
+    /// - Each kept pair's slot takes its member, filled (`+0x34`); the other slots are left as
+    ///   they are, and a member the world does not hold may take one.
+    ///
+    /// The routine's other arrays are the process's too but are filled before each read: the
+    /// preferences for the rows read (`DAT_143f1ae70`), the taken marks (`DAT_143f1fb00`), the
+    /// start's pairs (`DAT_143f1fd90`, `DAT_143f1feb0`, -1 each start) and the kept ones
+    /// (`DAT_143f1fb50`, `DAT_143f1fc70`, -1 at the start).
+    ///
+    /// # Errors
+    ///
+    /// A held member of a master the slice does not have.
+    ///
+    /// # Panics
+    ///
+    /// For more than 70 members or slots, which the game's arrays do not hold either: a group
+    /// takes fewer than 70 members ([`crate::group::create`]'s `AddUnit`) and its layouts a slot
+    /// each.
+    pub fn assign_slots_by_variance(
+        &self,
+        formation: &mut Formation,
+        g: &UnitGroup,
+        costs: &mut Vec<f32>,
+    ) -> Result<(), Unsupported> {
+        let n = g.members.len();
+        let s = formation.slots.len();
+        if costs.len() < ASSIGNMENT_CELLS {
+            costs.resize(ASSIGNMENT_CELLS, 0.0);
+        }
+        for (i, m) in g.members.iter().enumerate() {
+            let Some(object) = self.world_object(m.id) else {
+                continue;
+            };
+            if s == 0 {
+                continue;
+            }
+            let category = self.unit_category(Some(object))?;
+            let master = i32::from(object.master_id());
+            let at = object.moved_vector();
+            for (j, slot) in formation.slots.iter().enumerate() {
+                let mut skip = slot.transformed == 0 || slot.active == 0;
+                if slot.desired_category != -1 && category != slot.desired_category {
+                    skip = true;
+                }
+                let other_master =
+                    slot.desired_sub_category != -1 && master != slot.desired_sub_category;
+                costs[i * n + j] = if other_master || skip {
+                    FARTHEST
+                } else {
+                    let d = sub(at, slot.transform_position);
+                    d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+                };
+            }
+        }
+        let mut preferences = vec![-1i32; ASSIGNMENT_CELLS];
+        let mut taken = [false; ASSIGNMENT_MARKS];
+        for i in 0..n {
+            let row = i * n;
+            taken[..s].fill(false);
+            for k in 0..s {
+                let first = taken[..s].iter().position(|&t| !t).unwrap_or(s);
+                let mut best = first;
+                for j in first + 1..s {
+                    if !taken[j] && costs[row + j] < costs[row + best] {
+                        best = j;
+                    }
+                }
+                preferences[row + k] = best as i32;
+                taken[best] = true;
+            }
+        }
+        let mut kept = ([-1i32; ASSIGNMENT_SIDE], [-1i32; ASSIGNMENT_SIDE]);
+        let mut best_variance = FARTHEST;
+        for start in 0..n {
+            if s == 0 {
+                continue;
+            }
+            taken[..s].fill(false);
+            let mut pairs = ([-1i32; ASSIGNMENT_SIDE], [-1i32; ASSIGNMENT_SIDE]);
+            let (mut placed, mut sum, mut member) = (0usize, 0.0f32, start);
+            while placed < s {
+                let row = member * n;
+                let mut l = 0;
+                let mut slot = preferences[row];
+                while slot != -1 && taken[slot as usize] {
+                    l += 1;
+                    if s <= l {
+                        slot = -1;
+                        break;
+                    }
+                    slot = preferences[row + l];
+                }
+                if slot == -1 {
+                    break;
+                }
+                pairs.0[placed] = member as i32;
+                pairs.1[placed] = slot;
+                taken[slot as usize] = true;
+                sum += costs[row + slot as usize];
+                member = if member + 1 < n { member + 1 } else { 0 };
+                placed += 1;
+            }
+            if placed == 0 {
+                continue;
+            }
+            let mean = sum / n as f32;
+            let (mut variance, mut count) = (0.0f32, 0i32);
+            for (&r, &c) in pairs.0[..s].iter().zip(&pairs.1[..s]) {
+                if r != -1 && c != -1 {
+                    count += 1;
+                    let d = costs[r as usize * n + c as usize] - mean;
+                    variance += d * d;
+                }
+            }
+            variance /= count as f32;
+            if variance < best_variance {
+                best_variance = variance;
+                kept.0[..s].copy_from_slice(&pairs.0[..s]);
+                kept.1[..s].copy_from_slice(&pairs.1[..s]);
+            }
+        }
+        for (&r, &c) in kept.0[..n].iter().zip(&kept.1[..n]) {
+            if r == -1 {
+                continue;
+            }
+            let slot = &mut formation.slots[c as usize];
+            slot.position_filled = 1;
+            slot.unit_id = g.members[r as usize].id;
         }
         Ok(())
     }
@@ -1754,6 +1916,73 @@ pub(crate) mod tests {
         };
         assert_eq!(run(-5.0), [(11, 1), (10, 1)]);
         assert_eq!(run(5.0), [(10, 1), (11, 1)]);
+    }
+
+    /// `FUN_14100a0c0`: slots at (0, 0) and (3, 0), member 10 at the first and 11 at
+    /// (1/3, 2.98), 3 from the first slot and 4 from the second. The trials of `FUN_141009760`
+    /// give 10 the first slot (4 in all against 6); the feature keeps the start whose squared
+    /// distances differ least, 11 in the first (9) and 10 in the second (9). A member the world
+    /// does not hold (12) keeps its row of costs (0 as the process starts) and takes a slot.
+    #[test]
+    fn the_feature_s_assignment_keeps_the_start_of_least_variance() {
+        let y = (80.0f32 / 9.0).sqrt();
+        let run = |feature: bool, gone: bool| {
+            let mut t = slot_world(&[(10, 4, 0.0, 0.0), (11, 4, 1.0 / 3.0, y)], &[]);
+            if gone {
+                t.groups.groups[0].members.push(crate::group::Member {
+                    id: 12,
+                    ..crate::group::Member::default()
+                });
+            }
+            let g = t.groups.get(1).unwrap().clone();
+            let mut f = Formation::new();
+            f.slots = vec![slot_at([0.0; 3], 1), slot_at([3.0, 0.0, 0.0], 1)];
+            if feature {
+                t.assign_slots_by_variance(&mut f, &g, &mut Vec::new())
+                    .unwrap();
+            } else {
+                t.populate_slots(&mut f, &g).unwrap();
+            }
+            f.slots
+                .iter()
+                .map(|s| (s.unit_id, s.position_filled))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(run(false, false), [(10, 1), (11, 1)]);
+        assert_eq!(run(true, false), [(11, 1), (10, 1)]);
+        assert_eq!(run(true, true), [(11, 1), (12, 1)]);
+    }
+
+    /// The feature's costs persist between calls (`DAT_143f161e0`): a member the world no
+    /// longer holds is placed by the row its last call wrote, and a cost row runs into the next
+    /// member's with more slots than members.
+    #[test]
+    fn the_feature_s_costs_of_a_gone_member_are_its_last() {
+        let mut t = slot_world(&[(10, 4, 0.0, 0.0), (11, 4, 3.0, 0.0)], &[]);
+        let g = t.groups.get(1).unwrap().clone();
+        let mut costs = Vec::new();
+        let two = || vec![slot_at([0.0; 3], 1), slot_at([3.0, 0.0, 0.0], 1)];
+        let mut f = Formation::new();
+        f.slots = two();
+        t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();
+        assert_eq!(costs[..4], [0.0, 9.0, 9.0, 0.0]);
+        // 11 leaves the world: its row (9, 0) stays and still gives it the second slot
+        let _ = t.players[1].objects.remove(1);
+        let mut f = Formation::new();
+        f.slots = two();
+        t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();
+        assert_eq!(f.slots[1].unit_id, 11);
+        // three slots for two members: row 0 runs into row 1's first place, which row 1 writes
+        let t = slot_world(&[(10, 4, 0.0, 0.0), (11, 4, 3.0, 0.0)], &[]);
+        let mut f = Formation::new();
+        f.slots = vec![
+            slot_at([0.0; 3], 1),
+            slot_at([3.0, 0.0, 0.0], 1),
+            slot_at([1.0, 0.0, 0.0], 1),
+        ];
+        let mut costs = Vec::new();
+        t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();
+        assert_eq!(costs[..5], [0.0, 9.0, 9.0, 0.0, 4.0]);
     }
 
     /// `FUN_141009760` measures from the slot's `+0x1c`, which the load fills from the save's
