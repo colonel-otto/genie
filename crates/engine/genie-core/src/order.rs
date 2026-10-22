@@ -2294,13 +2294,11 @@ impl Turns {
             found = held(t.pasture).map(|(_, p)| p);
         }
         if found.is_none() {
-            let own = unit.ai.as_ref().and_then(|ai| {
-                ai.orders
-                    .iter()
-                    .find(|o| 0 <= o.target && o.issuer == unit.id)
-                    .map(|o| o.target)
-            });
-            found = own.and_then(held).map(|(_, t)| t);
+            let own = unit
+                .ai
+                .as_ref()
+                .map_or(-1, |ai| own_order_target(ai, unit.id));
+            found = held(own).map(|(_, t)| t);
         }
         let (target, point) = found.map_or((-1, [unit.position[0], unit.position[1]]), |t| {
             (t.id, [t.position[0], t.position[1]])
@@ -4164,6 +4162,15 @@ const fn clear_powerups(unit: &mut Unit) {
     unit.armor_powerups = [0; 2];
 }
 
+/// `FUN_140c4da50`: the target of the first order in unit AI `ai`'s queue (`+0x20`, count
+/// `+0x18`) that has one (not negative) and that its own unit `id` issued; −1 for none.
+fn own_order_target(ai: &crate::unit_ai::UnitAi, id: i32) -> i32 {
+    ai.orders
+        .iter()
+        .find(|o| 0 <= o.target && o.issuer == id)
+        .map_or(-1, |o| o.target)
+}
+
 /// A unit AI's slot 0x1c0 (`FUN_140c64d50`): the stance (`+0x1a9`) takes `state` and the stance's
 /// place (`+0x1ac`, `+0x1b0`) the unit's (`place`, with its master's class); `NoAttack` (3) on a
 /// unit AI that attacks (its order 700 or its action 600) stops the action (slot 0xb0 with 1,
@@ -5002,6 +5009,31 @@ mod tests {
         t.leave_builders(60).unwrap();
         t.leave_builders(99).unwrap();
         assert_eq!(builders(&t, 0), 0);
+    }
+
+    /// `FUN_140c4da50`: the first queued order with a target that the unit itself issued; an
+    /// order of another issuer or without a target does not count.
+    #[test]
+    fn a_unit_s_own_queued_order_names_its_target() {
+        let order = |issuer, target| crate::unit_ai::QueuedOrder {
+            issuer,
+            order: MOVE_ORDER,
+            priority: 100,
+            target,
+            target_owner: -1,
+            point: [1.0, 1.0, 0.0],
+            range: 0.0,
+            shown: [1.0, 1.0],
+            ready: true,
+            target_type: -1,
+        };
+        let mut ai = crate::unit_ai::UnitAi {
+            orders: vec![order(1, 50), order(11, -1), order(11, 60), order(11, 70)],
+            ..crate::unit_ai::UnitAi::default()
+        };
+        assert_eq!(own_order_target(&ai, 11), 60);
+        ai.orders.truncate(2);
+        assert_eq!(own_order_target(&ai, 11), -1);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
