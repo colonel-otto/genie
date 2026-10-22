@@ -10,6 +10,7 @@
 //! sheep (update 1170). The charges, shields, blasts, terrain bonuses, special attacks,
 //! retaliations and reflections are ports of the code, checked by the unit tests alone.
 
+use crate::checkpoint::cvttss2si;
 use crate::fmath;
 use crate::unit_ai::Unsupported;
 
@@ -583,10 +584,11 @@ pub fn armor_damage(
 }
 
 /// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
-/// already done to it (`blast_taken`, a building's `+0xb90`): a static object
-/// (`FUN_14118efd0`), a combat object of type 50 or 60 ([`damage`]) or of type 70
+/// already done to it (`blast_taken`, a building's `+0xb90`): a static, animated, doppelganger,
+/// moving or action object, or a tree (types below 50 and 90: `FUN_14118efd0`,
+/// [`take_static`]), a combat object of type 50 or 60 ([`damage`]) or of type 70
 /// ([`take_unit`]). A building's (`FUN_1411cea90`: its link, its least damage, its kill
-/// statistics) and an object of types 30 to 49 are not modelled.
+/// statistics) is not modelled.
 pub fn take(
     t: &mut Victim,
     src: &mut Victim,
@@ -600,9 +602,6 @@ pub fn take(
         80 => Err(Unsupported(
             "a hit on a building (slot 0xe8, FUN_1411cea90)",
         )),
-        30..=49 => Err(Unsupported(
-            "a hit on a moving object without combat values",
-        )),
         _ => {
             take_static(t, &src.source, weapons, factor);
             Ok(())
@@ -610,11 +609,16 @@ pub fn take(
     }
 }
 
-/// A static object's slot 0xe8 (`FUN_14118efd0`): it has no armor (slot 0xf0 `FUN_14118cab0`:
-/// a TRIBE attacker's ready charge on it, then the weapons times the factor) and loses the
-/// damage (slot 0xb0); below 1 hit point it has
-/// 0 and wakes, and but for a villager's hit it loses what it holds. Its damage sprites (slot
-/// 0x4c0) are not held.
+/// A static object's slot 0xe8 (`FUN_14118efd0`), also the animated, doppelganger, moving and
+/// action objects' and a tree's: it has no armor (slot 0xf0 `FUN_14118cab0`: a TRIBE attacker's
+/// ready charge on it, then the weapons times the factor) and loses the damage (slot 0xb0,
+/// `FUN_141189160`); below 1 hit point (`COMISS`/`JBE`: a NaN stays) it has 0 and wakes
+/// (`FUN_14119deb0` with 0: `goto_sleep` clears; an object asleep in its player's sleeping list
+/// moves to the live list, the caller's), and but for a villager's hit it loses what it holds.
+/// The routine's test for no attacker cannot be reached: slot 0xf0 has called the attacker's
+/// slot 0x2f0 before it. Its last call (slot 0x4c0, `FUN_141196a00` or `FUN_141158bb0`) plays
+/// the master's damage sound (`+0x700`), whose draws are the Unsynced stream's: no simulation
+/// state.
 fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)], factor: f32) {
     // slot 0x2f0 of a TRIBE attacker (types 70, 80; [`charge_hit`]) starts the sum at its raw
     // charge (slot 0x310, `+0x9e0`) plus 0
@@ -784,13 +788,13 @@ fn damage(
 
 /// The blast's rectangle of tiles about `center` for radius `r` (`FUN_14107f690`): the tiles
 /// from `(int)(c - r) - 6` (at least 0) to before `(int)(c + r) + 6` (at most the map's edge,
-/// which no object passes).
+/// which no object passes), each `CVTTSS2SI` into 32 bits kept as a short.
 fn blast_tiles(center: [f32; 3], r: f32) -> ([i32; 2], [i32; 2]) {
     let low = |c: f32| {
-        let t = ((c - r) as i32 as i16).wrapping_sub(6);
+        let t = (cvttss2si(c - r) as i16).wrapping_sub(6);
         i32::from(t.max(0))
     };
-    let high = |c: f32| i32::from(((c + r) as i32 as i16).wrapping_add(6));
+    let high = |c: f32| i32::from((cvttss2si(c + r) as i16).wrapping_add(6));
     (
         [low(center[0]), low(center[1])],
         [high(center[0]), high(center[1])],
@@ -815,7 +819,11 @@ fn blast_tiles(center: [f32; 3], r: f32) -> ([i32; 2], [i32; 2]) {
 /// player that had 1 is counted killed, `FUN_1412005b0`). Then the object's slot 0xe8 with the
 /// attacker's weapons ([`take`]), and the attacker's hit is its charge's if any hit was
 /// (slot 0x2f0). A building's blast so far (`+0xb90`) and link (`+0xbb8`) are not modelled
-/// (buildings are not).
+/// (buildings are not). The compares are the assembly's: a NaN gap past a radius is 0
+/// (`COMISS`/`JBE`), a NaN square distance is beyond the radius (`JBE`), a NaN facet offset
+/// stays in a cone (`JA` past, both the narrow and the wide one), a NaN `area_damage` leaves the
+/// factor as it is. Answers whether the radius is above 0 (or NaN: `COMISS 0, r`/`JC`), which
+/// neither caller reads.
 pub fn blast(
     attacker: &mut Victim,
     center: [f32; 3],
@@ -823,11 +831,11 @@ pub fn blast(
     main: Option<i32>,
     targets: &mut [&mut Victim],
     factor: f32,
-) -> Result<(), Unsupported> {
+) -> Result<bool, Unsupported> {
     let a = attacker.source;
     let r = a.area_effect;
-    if r <= 0.0 {
-        return Ok(());
+    if !fmath::below_or_unordered(0.0, r) {
+        return Ok(false);
     }
     let wide = if a.blast_level & 0x80 != 0 { r } else { 0.0 };
     let (from, to) = blast_tiles(center, r);
@@ -860,12 +868,18 @@ pub fn blast(
         if RAMS.contains(&a.master_id) && t.kind != 80 && !is_main {
             continue;
         }
-        let gap = |d: f32, radius: f32| if d <= radius { 0.0 } else { d - radius };
+        let gap = |d: f32, radius: f32| {
+            if fmath::at_most_or_unordered(d, radius) {
+                0.0
+            } else {
+                d - radius
+            }
+        };
         // the hit's slack (its info's +0xc, +0x10) is 0 for a melee hit
         let dx = gap((t.position[0] - center[0]).abs(), t.radius[0]);
         let dy = gap((t.position[1] - center[1]).abs(), t.radius[1]);
         let d2 = dy * dy + dx * dx;
-        if r * r <= d2 {
+        if fmath::at_most_or_unordered(r * r, d2) {
             continue;
         }
         if 70 <= t.kind && shield(t, false) {
@@ -899,7 +913,7 @@ pub fn blast(
                         ))?;
                 if a.blast_level & 0x20 == 0 {
                     let off = facing_offset(attacker.position, facing, t.position);
-                    if !(MINUS_CONE..=CONE).contains(&off) {
+                    if CONE < off || off < MINUS_CONE {
                         continue;
                     }
                 } else {
@@ -912,6 +926,8 @@ pub fn blast(
                     }
                 }
             }
+            // COMISS share, 0 / JC, then COMISS 0, share / JBE: a share below 0 is a fixed
+            // damage, a NaN one goes on to the hit with the factor as it is
             if a.area_damage < 0.0 {
                 let before = t.hp;
                 lose(t, a.area_damage.abs());
@@ -936,14 +952,16 @@ pub fn blast(
                 }
                 continue;
             }
-            f *= a.area_damage;
+            if !a.area_damage.is_nan() {
+                f *= a.area_damage;
+            }
         }
         take(t, attacker, &weapons, f * factor, 0.0)?;
         if !attacker.source.charge_hit {
             attacker.source.charge_hit = charge_hit(&attacker.source, t);
         }
     }
-    Ok(())
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -1052,6 +1070,36 @@ mod tests {
         };
         take_static(&mut t, &plain, &[(4, 3)], 1.0);
         assert_eq!(t.hp, 97.0);
+    }
+
+    /// Slot 0xe8 of a moving or action object (types 30 to 49) is the static object's
+    /// (`FUN_14118efd0`): the weapons times the factor, no armor; below 1 hit point it has 0,
+    /// wakes and loses what it holds but to a villager. A NaN hit point count stays (`COMISS`/`JBE`).
+    #[test]
+    fn a_moving_object_takes_a_hit_as_a_static_one() {
+        let bird = |hp: f32| Victim {
+            hp,
+            amount: 50.0,
+            kind: 40,
+            class: 38,
+            goto_sleep: true,
+            ..Victim::default()
+        };
+        let mut hunter = hunter();
+        let mut t = bird(10.0);
+        take(&mut t, &mut hunter, &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
+        assert_eq!((t.hp, t.amount, t.goto_sleep), (5.0, 50.0, true));
+        take(&mut t, &mut hunter, &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
+        // a villager's hit leaves what it holds
+        assert_eq!((t.hp, t.amount, t.goto_sleep), (0.0, 50.0, false));
+        let mut archer = hunter.clone();
+        archer.source.class = 0;
+        let mut t = bird(4.0);
+        take(&mut t, &mut archer, &[(3, 4)], 1.0, 0.0).unwrap();
+        assert_eq!((t.hp, t.amount), (0.0, 0.0));
+        let mut t = bird(f32::NAN);
+        take(&mut t, &mut archer, &[(3, 4)], 1.0, 0.0).unwrap();
+        assert!(t.hp.is_nan() && t.amount == 50.0 && t.goto_sleep);
     }
 
     #[test]
@@ -1256,6 +1304,84 @@ mod tests {
         assert!(hunter.damaged.is_none() && hunter.killed.is_none());
     }
 
+    /// `FUN_14107f690`'s float compares as its assembly has them: a NaN gap past a radius counts
+    /// as 0 (`COMISS`/`JBE`), a NaN offset stays in a narrow cone (two `JA`s past), a NaN
+    /// `area_damage` leaves the factor as it is (`JC`, then `JBE` past the multiply); the tiles'
+    /// rectangle truncates with `CVTTSS2SI`; the answer is whether the radius is above 0 or NaN.
+    #[test]
+    fn a_blast_s_nan_paths_are_the_game_s() {
+        let mut elephant = hunter();
+        elephant.source.area_effect = 1.0;
+        elephant.source.blast_level = 0x42;
+        elephant.source.area_damage = 0.5;
+        elephant.weapons = vec![(4, 10)];
+        let center = elephant.position;
+        let enemy = |x: f32, y: f32| Victim {
+            id: 2,
+            player: 2,
+            position: [x, y, 0.0],
+            blast_defense: 2,
+            ..sheep()
+        };
+        // a NaN radius on x: the gap on x is 0, the falloff takes the gap on y alone
+        let mut t = Victim {
+            radius: [f32::NAN, 0.0],
+            ..enemy(10.8, 11.5)
+        };
+        assert_eq!(
+            blast(&mut elephant, center, None, None, &mut [&mut t], 1.0),
+            Ok(true)
+        );
+        let f = (1.0 - fmath::sqrt(0.5 * 0.5)) / 1.0 * 0.5;
+        assert_eq!(t.hp, 14.0 - 10.0 * f);
+        // a narrow cone keeps a NaN offset
+        elephant.source.blast_level = 0x82;
+        elephant.armored.as_mut().unwrap().facing = Some(Facing {
+            angle: f32::NAN,
+            facets: 8,
+        });
+        let mut t = enemy(10.8, 11.0);
+        assert!(
+            facing_offset(
+                center,
+                Facing {
+                    angle: f32::NAN,
+                    facets: 8
+                },
+                t.position
+            )
+            .is_nan()
+        );
+        assert_eq!(
+            blast(&mut elephant, center, None, None, &mut [&mut t], 1.0),
+            Ok(true)
+        );
+        assert_eq!(t.hp, 9.0);
+        // a NaN area damage share leaves the factor at 1
+        elephant.source.blast_level = 2;
+        elephant.source.area_damage = f32::NAN;
+        let mut t = enemy(10.8, 11.0);
+        assert_eq!(
+            blast(&mut elephant, center, None, None, &mut [&mut t], 1.0),
+            Ok(true)
+        );
+        assert_eq!(t.hp, 4.0);
+        // no radius, no blast; a NaN radius blasts
+        elephant.source.area_effect = 0.0;
+        assert_eq!(
+            blast(&mut elephant, center, None, None, &mut [], 1.0),
+            Ok(false)
+        );
+        elephant.source.area_effect = f32::NAN;
+        assert_eq!(
+            blast(&mut elephant, center, None, None, &mut [], 1.0),
+            Ok(true)
+        );
+        // CVTTSS2SI gives 0x80000000 past the i32 range: 0 in the low short
+        assert_eq!(blast_tiles([3e9, 3e9, 0.0], 1.0), ([0, 0], [6, 6]));
+        assert_eq!(blast_tiles([10.5, 4.5, 0.0], 1.0), ([3, 0], [17, 11]));
+    }
+
     /// A melee blast (radius 0.5, level 2, half the damage) reaches the objects about the
     /// attacker but its friends, its target excluded; a falloff (bit 6) scales by the distance.
     #[test]
@@ -1282,7 +1408,10 @@ mod tests {
         };
         let center = elephant.position;
         let mut all = [&mut target, &mut near, &mut far, &mut friend];
-        blast(&mut elephant, center, Some(1), None, &mut all, 1.0).unwrap();
+        assert_eq!(
+            blast(&mut elephant, center, Some(1), None, &mut all, 1.0),
+            Ok(true)
+        );
         assert_eq!(
             (target.hp, near.hp, far.hp, friend.hp),
             (14.0, 9.0, 14.0, 14.0)
@@ -1291,7 +1420,10 @@ mod tests {
         elephant.source.blast_level = 0x42;
         let mut near = enemy(2, 10.8);
         let mut all = [&mut near];
-        blast(&mut elephant, center, None, None, &mut all, 1.0).unwrap();
+        assert_eq!(
+            blast(&mut elephant, center, None, None, &mut all, 1.0),
+            Ok(true)
+        );
         let dx = (10.8f32 - 10.5f32).abs();
         let f = (1.0 - fmath::sqrt(0.0 * 0.0 + dx * dx)) / 1.0 * 0.5;
         assert_eq!(near.hp, 14.0 - 10.0 * f);

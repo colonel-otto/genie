@@ -233,6 +233,10 @@ pub fn volley_reach(radius: [f32; 2], range: f32) -> f32 {
     fmath::sqrt(radius[0] * radius[0] + radius[1] * radius[1]) + range + VOLLEY_REACH_MARGIN
 }
 
+/// The missile master whose miss strays by its attack count's share (`0x62ac` raw; the game
+/// tests master 527, `0x62ab`, first, which keeps all of it as any other).
+const MASTER_528: i16 = 528;
+
 /// What the aim reads of the firing object (`+0x28`, else the missile): its master's
 /// `base_hit_chance` (`+0x83e`) and `missed_missile_spread` (`+0x860`), its class and the
 /// target's master's radius on x and class for the class-54 rule.
@@ -251,8 +255,9 @@ pub struct Aimer {
 /// target); the Action stream's draw ("intercept") over 100 against the hit chance (80 for a
 /// class-54 shooter at a target narrower than a tile of class 27, 52 or 3) misses above it: the
 /// hit mode becomes 1 and the point strays by up to the ground distance times the spread, two
-/// more draws, half each way. A missile master of id 527 or 528 with an attack count is not
-/// modelled.
+/// more draws, half each way; a missile of master 528 with an attack count (`+0x900`) strays by
+/// that share of it. The class-54 rule is the firing object's (`+0x28`): the caller's `aimer` is
+/// the missile's own master for a volley's extra missile, which has none.
 #[allow(clippy::too_many_arguments)]
 pub fn aim(
     point: [f32; 3],
@@ -284,8 +289,11 @@ pub fn aim(
             *hit_mode = 1;
         }
         gap *= aimer.spread;
-        if 0 < attack_count && matches!(master_id, 527 | 528) {
-            return Err(Unsupported("a missed missile of master 527 or 528"));
+        // the missile's attack count (`+0x900`, its firer's when fired): master 528 strays by its
+        // share, 527 and the others by all of it
+        // DIVSS hands on a NaN distance quieted, which it is already: its bits stay on any host
+        if 0 < attack_count && master_id == MASTER_528 && !gap.is_nan() {
+            gap /= attack_count as f32;
         }
         let gap = gap + 0.0;
         let half = gap * HALF;
@@ -482,6 +490,63 @@ mod tests {
         assert!((a.distance - 2.44257).abs() < 1e-5);
         assert!((step[0] - 0.364).abs() < 1e-6);
         assert!(flying);
+    }
+
+    /// `FUN_140a9c600`: the Action stream's draw over 100 against the hit chance; a hit keeps the
+    /// point (a target's height a third of its height radius up), a miss turns the hit mode to 1
+    /// and strays by up to the ground distance times the spread, half each way. A missed missile
+    /// of master 528 with an attack count strays by that share; master 527 and the others by all.
+    #[test]
+    fn a_missile_misses_by_its_spread_and_master_528_by_its_attack_count_s_share() {
+        let aimer = Aimer {
+            hit_chance: 70,
+            spread: 0.5,
+            class: 0,
+        };
+        // the target 3 east and 4 north: a ground distance of 5
+        let point = [13.0, 14.0, 0.0];
+        let from = [10.0, 10.0, 1.0];
+        let target = Some(([0.2, 0.2, 1.5], 6));
+        let aim_with = |draws: [u32; 3], master: i16, count: i32, mode: &mut u8| {
+            let mut d = draws.into_iter();
+            aim(point, from, target, aimer, master, count, mode, &mut || {
+                d.next().unwrap()
+            })
+        };
+        // a draw of 70% or less hits: the target's height rises by 1.5 / 3
+        let mut mode = 0;
+        assert_eq!(
+            aim_with([22937, 0, 0], 4, 0, &mut mode),
+            Ok([13.0, 14.0, 0.5])
+        );
+        assert_eq!(mode, 0);
+        // a miss: 5 × 0.5 = 2.5; the draws 32767 and 0 stray 1.25 one way and the other
+        let missed = aim_with([32767, 32767, 0], 4, 3, &mut mode).unwrap();
+        assert_eq!(mode, 1);
+        assert_eq!(missed, [13.0 + 1.25, 14.0 - 1.25, 0.5]);
+        // master 527 keeps the distance with an attack count; 528 divides it by the count
+        let mut mode = 2;
+        assert_eq!(aim_with([32767, 32767, 0], 527, 3, &mut mode), Ok(missed));
+        assert_eq!(mode, 2);
+        let share = 2.5f32 / 3.0 + 0.0;
+        let expected = [
+            (32767.0 * share) / 32767.0 - share * 0.5 + 13.0,
+            (0.0 * share) / 32767.0 - share * 0.5 + 14.0,
+            0.5,
+        ];
+        assert_eq!(aim_with([32767, 32767, 0], 528, 3, &mut mode), Ok(expected));
+        // without an attack count master 528 strays by all of it
+        assert_eq!(aim_with([32767, 32767, 0], 528, 0, &mut mode), Ok(missed));
+        // a class-54 shooter at a narrow building hits at 80
+        let siege = Aimer { class: 54, ..aimer };
+        let mut d = std::iter::once(26213u32);
+        let narrow = Some(([0.5, 0.5, 0.0], 3));
+        assert_eq!(
+            aim(point, from, narrow, siege, 4, 0, &mut mode, &mut || d
+                .next()
+                .unwrap()),
+            Ok(point)
+        );
     }
 
     #[test]
