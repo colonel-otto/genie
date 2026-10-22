@@ -105,10 +105,12 @@ impl MakeAction {
     /// (`FUN_14119d310` with 0).
     #[must_use]
     pub fn start(task: Task, attributes: &[f32], held: &mut Held<'_>) -> Self {
+        // the factory's constructor (FUN_140a99430) sets +0x68 to 120.0, which set_state(6)
+        // replaces at once
         let mut make = Self {
             state: 0,
             remaining: 0.0,
-            total: 0.0,
+            total: 120.0,
             task,
         };
         make.set_state(MAKING, attributes);
