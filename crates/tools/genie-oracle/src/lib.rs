@@ -2561,6 +2561,7 @@ fn work_masters(
         work.damage_sprites = !s.damage_sprite.is_empty();
         work.fly_mode = table.fly_mode(civ, s.id()).unwrap_or(0);
         work.standing_sprite = s.idle_sprite_id;
+        work.standing_sprite_2 = (0 <= s.idle2_sprite_id).then_some(s.idle2_sprite_id);
         (work.move_sprite, work.run_sprite) =
             moving_master(m).map_or((-1, -1), |mv| (mv.move_sprite_id, mv.run_sprite_id));
         work.death_sprite = s.death_sprite_id;

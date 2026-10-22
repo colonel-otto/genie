@@ -329,6 +329,9 @@ pub struct Master {
     /// (class, amount); and the sprite it waits with between swings (`+0x910`, the `.dat`'s
     /// `idle_attack_graphic`, −1 for none).
     pub standing_sprite: i16,
+    /// Its second standing sprite (`+0x478`, the `.dat`'s `standing_graphic[1]`), whose idle
+    /// animation the object swaps in (`0x141071880`); None for none.
+    pub standing_sprite_2: Option<i16>,
     /// The sprite it waits with between swings (`+0x910`, −1 for none).
     pub idle_attack_sprite: i16,
     /// Its walking sprite (`+0x748`, `move_sprite_id`; the unit's slot 0x7c8) and its running

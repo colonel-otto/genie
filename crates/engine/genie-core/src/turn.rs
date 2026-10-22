@@ -156,6 +156,9 @@ pub struct Unit {
     pub charge: f32,
     /// `mHitSomethingValidForChargeAttack` (`+0x8a8`): its last hit was its charge's.
     pub charge_hit: bool,
+    /// `+0x78c`: which of its master's standing sprites its idle swap last showed (1 the second,
+    /// [`Master::standing_sprite_2`]); not saved, 0 at a load and from the constructor.
+    pub idle_variant: i32,
     /// `+0x644`, `worker_num`: the actions that have the object as their target.
     pub workers: i32,
     /// `+0x650`, `mLastHumanOrderTime`: the world time of the last order a human gave it
@@ -5468,6 +5471,55 @@ impl Unit {
 
     /// One update, and whether the object stays in its list, leaves it or goes to sleep. `others`
     /// are the rest of the owner's objects, whose foundations a builder works on.
+    /// The animated object's idle swap (the end of `RGE_Animated_Object::update`,
+    /// `0x141071880`): an object whose master has a second standing sprite (`+0x478`) and whose
+    /// slot 0x5d8 answers 0 (an animated object's always; a moving one's while its master's move
+    /// algorithm, `+0x768`, has bit 0 clear), showing either standing sprite, whose sprite's node
+    /// looped in this update (the sprite list's slot 0x40, the node's slot 12), draws on the
+    /// Sprite stream ("Update"); above 0x3fff it shows the other (`FUN_141189760` with the other
+    /// index and 0x7fff: `+0x78c` takes the index, slot 0x68 the master's sprite of that index,
+    /// [`crate::attack::set_sprite`], and the list's slot 0x28 puts its node back to its first
+    /// frame, [`crate::sprite::ActiveSprite::reset_frame`]).
+    fn idle_swap(
+        &mut self,
+        master: &Master,
+        graphics: &std::collections::BTreeMap<i16, Graphic>,
+        sprite_rng: &mut Well512,
+    ) {
+        let Some(second) = master.standing_sprite_2 else {
+            return;
+        };
+        if self
+            .mover
+            .as_ref()
+            .is_some_and(|m| m.stats.move_algorithm & 1 != 0)
+        {
+            return;
+        }
+        let Some(shown) = self.sprite.as_ref() else {
+            return;
+        };
+        let id = shown.graphic.id;
+        if (id != master.standing_sprite && id != second) || !shown.looped {
+            return;
+        }
+        if sprite_rng.rand15() <= 0x3fff {
+            return;
+        }
+        self.idle_variant = i32::from(self.idle_variant == 0);
+        let next = if self.idle_variant == 0 {
+            master.standing_sprite
+        } else {
+            second
+        };
+        if let Some(&g) = graphics.get(&next) {
+            crate::attack::set_sprite(&mut self.sprite, g, sprite_rng);
+        }
+        if let Some(s) = self.sprite.as_mut() {
+            s.reset_frame();
+        }
+    }
+
     fn update(&mut self, c: &mut Context<'_>, others: &mut [Self]) -> Result<Step, Unsupported> {
         if let Some(resume) = c.ai_resume.take() {
             return self.ai_part(c, others, resume);
@@ -5626,9 +5678,14 @@ impl Unit {
                 .map(|m| crate::facing::facet_of_angle(m.angle, m.stats.facets).0);
             c.remains = Some((spawn, self.position, facet));
         }
-        // the animated object's update (0x141071880): its sprite's clock at its animation speed
+        // the animated object's update (0x141071880): its sprite's clock at its animation speed,
+        // then its idle swap
         if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.anim_speed) {
             sprite.update(c.dt_seconds, speed);
+            // the swap reads the loop this update's clock made
+            if let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) {
+                self.idle_swap(master, c.graphics, c.streams.get(Stream::Sprite));
+            }
         }
         if let Some(e) = self.unmodelled_action.filter(|_| self.life.state == 2) {
             return Err(e);
@@ -9019,6 +9076,7 @@ impl Turns {
             armor_removed: [0; 2],
             charge: 0.0,
             charge_hit: false,
+            idle_variant: 0,
         });
         self.construction_terrain(player, master, position)?;
         self.clear_footprint(player, master, [position[0], position[1]])?;
@@ -12132,6 +12190,84 @@ mod tests {
             -1.0,
         );
         assert_eq!(a[40], 4.0);
+    }
+
+    /// `0x141071880`'s idle swap: a standing sprite that looped draws on the Sprite stream and,
+    /// above 0x3fff, swaps to the other standing sprite at its first frame; a sprite that did not
+    /// loop, another sprite or a master without a second standing sprite draws nothing.
+    #[test]
+    fn an_idle_object_swaps_its_standing_sprite_on_a_high_draw() {
+        use crate::sprite::{ActiveSprite, Graphic};
+        let g = |id| Graphic {
+            id,
+            frames: 10,
+            facets: 8,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 1,
+        };
+        let graphics: std::collections::BTreeMap<i16, Graphic> =
+            [(100, g(100)), (101, g(101))].into_iter().collect();
+        let master = Master {
+            standing_sprite: 100,
+            standing_sprite_2: Some(101),
+            ..Master::default()
+        };
+        let shown = |id, looped| ActiveSprite {
+            frame: 4,
+            looped,
+            ..ActiveSprite::at_rest(g(id), 4)
+        };
+        // a seed whose first draw is above 0x3fff, another whose first is not
+        let rng = |seed| {
+            let mut r = Well512::default();
+            r.set_seed(seed);
+            r
+        };
+        let high = (0..100u32)
+            .find(|&s| 0x3fff < rng(s).rand15())
+            .expect("a high draw");
+        let low = (0..100u32)
+            .find(|&s| rng(s).rand15() <= 0x3fff)
+            .expect("a low draw");
+        let mut u = Unit {
+            sprite: Some(shown(100, true)),
+            ..Unit::default()
+        };
+        let mut r = rng(high);
+        u.idle_swap(&master, &graphics, &mut r);
+        assert_eq!(u.idle_variant, 1);
+        let s = u.sprite.unwrap();
+        assert_eq!((s.graphic.id, s.frame), (101, 0));
+        assert_eq!(r.draws, 1 + rng(high).draws);
+        // a low draw keeps the sprite
+        let mut u = Unit {
+            sprite: Some(shown(100, true)),
+            ..Unit::default()
+        };
+        u.idle_swap(&master, &graphics, &mut rng(low));
+        assert_eq!((u.idle_variant, u.sprite.unwrap().graphic.id), (0, 100));
+        // no loop, another sprite, no second standing sprite: no draw
+        for (sprite, m) in [
+            (shown(100, false), master.clone()),
+            (shown(7, true), master.clone()),
+            (
+                shown(100, true),
+                Master {
+                    standing_sprite_2: None,
+                    ..master.clone()
+                },
+            ),
+        ] {
+            let mut u = Unit {
+                sprite: Some(sprite),
+                ..Unit::default()
+            };
+            let mut r = rng(high);
+            u.idle_swap(&m, &graphics, &mut r);
+            assert_eq!(r.draws, rng(high).draws);
+        }
     }
 
     #[test]
