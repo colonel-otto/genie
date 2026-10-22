@@ -356,11 +356,13 @@ fn charge_damage(a: &Attacker) -> Result<f32, Unsupported> {
 }
 
 /// `FUN_14108d8a0`: a shield blocks the hit: a target whose master's charge type is 5 against a
-/// melee hit (4 against a missile) spends a charge of 1 when it has one. The type-5 shield's
-/// statistics (`FUN_140a497f0`) are not held. A target without combat values has charge type 0.
+/// melee hit (4 against a missile) spends a charge of 1 when it has one (`COMISS 1.0, charge`,
+/// `JA` past: a NaN charge blocks too). The type-5 shield's local-player statistics
+/// (`FUN_140a497f0`) change no simulation state (FD-037-D20). A target without combat values has
+/// charge type 0.
 pub fn shield(v: &mut Victim, missile: bool) -> bool {
     let kind = if missile { 4 } else { 5 };
-    if v.source.charge_type == kind && 1.0 <= v.source.charge {
+    if v.source.charge_type == kind && fmath::at_most_or_unordered(1.0, v.source.charge) {
         v.source.charge -= 1.0;
         return true;
     }
@@ -1154,6 +1156,10 @@ mod tests {
         assert!(shield(&mut sheep, false));
         assert_eq!(sheep.source.charge, 0.5);
         assert!(!shield(&mut sheep, false));
+        // COMISS 1.0, charge; JA past: a NaN charge blocks the hit and stays NaN
+        sheep.source.charge = f32::NAN;
+        assert!(shield(&mut sheep, false));
+        assert!(sheep.source.charge.is_nan());
     }
 
     #[test]
