@@ -11,7 +11,7 @@
 //! [`Tiles`] holds what the game keeps per tile: the obstruction manager's word (terrain class,
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
-use crate::registry::{Record, relation_kind};
+use crate::registry::Record;
 use crate::unit_ai::{Found, Pick, Search, Unsupported};
 use crate::visibility::Visibility;
 use std::collections::BTreeMap;
@@ -417,6 +417,11 @@ pub struct Spatial {
     annexes: BTreeMap<i32, i32>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
     pub relations: Vec<Vec<u8>>,
+    /// What each player's queries make of the other players' objects (`player+0x278`, the
+    /// save's `unit_diplomacy`): 1 its own, 0 Gaia's, 2 an ally's, 3 a neutral's, 4 an enemy's.
+    /// Loaded, not derived: the slice runs no diplomacy change (command 0x76), whose handler
+    /// would write it with `relation`.
+    pub unit_diplomacy: Vec<Vec<i32>>,
     /// Each player's masters with a task of action type 0x99, which a building's slot 0x4f0
     /// reads (`FUN_1411d4980` -> `FUN_1415c60b0`): a drop-off walker counts such a building
     /// among the workers near it.
@@ -486,6 +491,7 @@ impl Spatial {
             scout_maps: BTreeMap::new(),
             annexes: BTreeMap::new(),
             relations: Vec::new(),
+            unit_diplomacy: Vec::new(),
             task_0x99: Vec::new(),
             sight: None,
             vision: Vec::new(),
@@ -1470,6 +1476,19 @@ impl Spatial {
         )
     }
 
+    /// What player `player`'s queries make of the first `players` players' objects
+    /// ([`Spatial::unit_diplomacy`], `player+0x278`).
+    ///
+    /// # Errors
+    ///
+    /// A player whose kinds the slice did not load.
+    pub fn query_kinds(&self, player: usize, players: usize) -> Result<Vec<u32>, Unsupported> {
+        let kinds = self.unit_diplomacy.get(player).ok_or(Unsupported(
+            "a search of a player without its unit diplomacy",
+        ))?;
+        Ok(kinds.iter().take(players).map(|&k| k as u32).collect())
+    }
+
     /// The query of a unit AI's search (`FUN_140c63e20`'s first part): over the player's
     /// registry unless the [`SearchCache`] holds near the place; true when it queried afresh. The
     /// lists it leaves are [`Spatial::searched`]'s.
@@ -1481,13 +1500,7 @@ impl Spatial {
         let r = v.registry.as_ref().ok_or(Unsupported(
             "a search without the objects-in-sight registry",
         ))?;
-        let own = self
-            .relations
-            .get(player)
-            .ok_or(Unsupported("a search of a player without relations"))?;
-        let relations = (0..r.players.min(own.len()))
-            .map(|o| relation_kind(player, o, own[o]))
-            .collect::<Result<Vec<u32>, _>>()?;
+        let relations = self.query_kinds(player, r.players)?;
         let [x, y] = search.at;
         let mut fresh = false;
         {
@@ -2800,6 +2813,18 @@ fn segment_meets_box(
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_query_takes_its_kinds_of_players_from_the_save() {
+        // player 2's +0x278 as loaded: itself 1, Gaia 0, player 1 an ally (2) whatever its
+        // diplomacy byte (2 here, which no derivation knew)
+        let mut s = Spatial::new([10, 10]);
+        s.relations = vec![vec![1, 4, 4], vec![1, 0, 4], vec![1, 2, 0]];
+        s.unit_diplomacy = vec![vec![1, 4, 4], vec![0, 1, 4], vec![0, 2, 1]];
+        assert_eq!(s.query_kinds(2, 3), Ok(vec![0, 2, 1]));
+        assert_eq!(s.query_kinds(2, 2), Ok(vec![0, 2]));
+        assert!(s.query_kinds(3, 3).is_err());
+    }
+
     /// `FUN_1410576a0`: counter-clockwise 1, clockwise -1, on the segment 0, beyond its end 1;
     /// a NaN falls through every COMISS/JA to 0.
     #[test]
@@ -2861,6 +2886,7 @@ mod tests {
         let mut s = Spatial::new([120, 120]);
         // player 2 counts player 1 its enemy (3)
         s.relations = vec![vec![0, 3, 3], vec![0, 0, 3], vec![0, 3, 0]];
+        s.unit_diplomacy = vec![vec![1, 4, 4], vec![0, 1, 4], vec![0, 4, 1]];
         let mut r = Registry::new(3, 65);
         // a villager of player 1 at (12, 10), which player 2 sees
         r.update_unit(1, 1, [12.0, 10.0], [0.2, 0.2], 4, 0, 1 << 2)

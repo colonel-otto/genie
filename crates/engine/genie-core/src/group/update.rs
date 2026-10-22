@@ -1591,6 +1591,12 @@ mod tests {
             vec![0, 3, 0, 3],
             vec![0, 0, 3, 0],
         ];
+        s.unit_diplomacy = vec![
+            vec![1, 4, 4, 4],
+            vec![0, 1, 4, 2],
+            vec![0, 4, 1, 4],
+            vec![0, 2, 4, 1],
+        ];
         s.sight = Some(crate::visibility::Visibility::new(
             8,
             8,

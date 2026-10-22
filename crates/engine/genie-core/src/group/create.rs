@@ -614,6 +614,7 @@ mod tests {
         v.registry = Some(crate::registry::Registry::new(2, 65));
         t.spatial.sight = Some(v);
         t.spatial.relations = vec![vec![0, 0], vec![0, 0]];
+        t.spatial.unit_diplomacy = vec![vec![1, 2], vec![0, 1]];
         let g = t.groups.get_mut(1).unwrap();
         g.flags |= 2;
         g.motion.flags &= !2;

@@ -2881,6 +2881,13 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
     let tiles = Tiles::new(map.map_width, map.map_height, classes);
     let mut out = Spatial::with_tiles([map.map_width, map.map_height], tiles);
     out.terrain = Some(map_terrain(header, terrain));
+    // what each player's queries make of the others' objects (player +0x278, the load's
+    // unit_diplomacy)
+    out.unit_diplomacy = header
+        .players()
+        .iter()
+        .map(|p| p.world_player().base.unit_diplomacy.clone())
+        .collect();
     let mut sight = saved_sight(header);
     for (player, section) in header.players().iter().enumerate() {
         let all = section.live_objects().chain(section.sleeping_objects());

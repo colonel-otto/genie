@@ -615,6 +615,12 @@ mod tests {
             vec![0, 3, 0, 3],
             vec![0, 1, 3, 0],
         ];
+        s.unit_diplomacy = vec![
+            vec![1, 4, 4, 4],
+            vec![0, 1, 4, 3],
+            vec![0, 4, 1, 4],
+            vec![0, 3, 4, 1],
+        ];
         let mut r = crate::registry::Registry::new(4, 65);
         for (id, owner, at, class) in [
             (20, 2, [6.0, 5.0], 6),
