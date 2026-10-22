@@ -197,6 +197,22 @@ impl WorldObject<'_> {
         }
     }
 
+    /// Its state (`+0x640`): a ghost's own (2, then 7 and 8 once destroyed).
+    pub(crate) const fn state(&self) -> u8 {
+        match *self {
+            Self::Unit(_, u) => u.life.state,
+            Self::Ghost(_, g) => g.state,
+        }
+    }
+
+    /// It is inside another object (`+0x2f0`, `FUN_141188da0`); a ghost never is.
+    pub(crate) const fn inside(&self) -> bool {
+        match *self {
+            Self::Unit(_, u) => u.life.inside.is_some(),
+            Self::Ghost(..) => false,
+        }
+    }
+
     /// Its place: x, y, z (`+0x3c8`, `+0x4c8`, `+0x5a8`).
     pub(crate) const fn position(&self) -> crate::fmath::Vec3 {
         match *self {
