@@ -219,7 +219,7 @@ pub trait Area {
 /// (`FUN_1416597e0`, its tile `tc`), None without a town centre or a point. The points lie 10,
 /// 15 and 20 tiles from the centre's tile in eight directions each; a point counts when it is on
 /// the map (`map`, the player's visible map's size), the player has not seen its tile, it lies in
-/// the unit's zone, the unit could stand there and reaches it; the first such point, or a
+/// the unit's zone (their low bytes equal), the unit could stand there and reaches it; the first such point, or a
 /// strictly closer one, wins. The player's explored-points grid (`player+0x1370`, which the
 /// search would read instead of the explored tiles and mark the point found in) is never made
 /// in the slice: the base notify makes it only when no point is found, which it does not model.
@@ -242,7 +242,8 @@ pub fn unexplored_area(
             if area.explored(x, y)? {
                 continue;
             }
-            if area.zone(x, y) != own || !area.clear(x, y)? || !area.reaches(x, y)? {
+            // the zones' low bytes only (`CMP byte ptr [RSP+0x48],AL` at 0x140c65812)
+            if area.zone(x, y) as u8 != own as u8 || !area.clear(x, y)? || !area.reaches(x, y)? {
                 continue;
             }
             let d = area.distance(x, y);
@@ -534,6 +535,58 @@ mod tests {
             Ok(Some([9, 94]))
         );
         assert_eq!(unexplored_area(None, [120, 120], &mut area), Ok(None));
+    }
+
+    /// [`Open`] with every tile in zone `zone`, the unit's own 1.
+    struct Zoned {
+        open: Open,
+        zone: u16,
+    }
+
+    impl Area for Zoned {
+        fn explored(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+            self.open.explored(x, y)
+        }
+        fn zone(&mut self, _: i32, _: i32) -> u16 {
+            self.zone
+        }
+        fn own_zone(&mut self) -> u16 {
+            1
+        }
+        fn clear(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+            self.open.clear(x, y)
+        }
+        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, Unsupported> {
+            self.open.reaches(x, y)
+        }
+        fn distance(&self, x: i32, y: i32) -> f32 {
+            self.open.distance(x, y)
+        }
+    }
+
+    #[test]
+    fn the_rings_compare_the_zones_low_bytes() {
+        // CMP byte ptr [RSP+0x48],AL at 0x140c65812: zone 0x101 is the unit's zone 1
+        let open = || Open {
+            explored: vec![],
+            unreachable: vec![],
+        };
+        let mut area = Zoned {
+            open: open(),
+            zone: 0x101,
+        };
+        assert_eq!(
+            unexplored_area(Some([29, 94]), [120, 120], &mut area),
+            Ok(Some([19, 94]))
+        );
+        let mut area = Zoned {
+            open: open(),
+            zone: 0x102,
+        };
+        assert_eq!(
+            unexplored_area(Some([29, 94]), [120, 120], &mut area),
+            Ok(None)
+        );
     }
 
     /// An area where only the listed tiles are unexplored.
