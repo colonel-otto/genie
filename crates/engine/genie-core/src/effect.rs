@@ -2448,6 +2448,14 @@ mod tests {
             (s.speed, s.walk_speed, s.stand_speed),
             (speed, speed, speed)
         );
+        // a speed the loader left at 0 under the moving values stops the change first
+        t.masters[0].get_mut(4).unwrap().max_speed = 0.0;
+        assert!(
+            t.do_effect(0, &[attribute(5, -1, 4, 5, 1.1)], None)
+                .is_err()
+        );
+        let stats = t.players[0].objects[0].mover.as_ref().unwrap().stats;
+        assert_eq!(stats.speed, speed);
     }
 
     /// The resource commands (kind 1, `FUN_141620c70`): mode 0 sets the attribute, any other adds
