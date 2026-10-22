@@ -534,18 +534,39 @@ impl Spatial {
             .filter_map(|id| self.objects.get(id).map(|o| (*id, o)))
     }
 
-    /// The object's obstruction record goes (`FUN_141055b40`'s record part): a static record's
-    /// tiles keep only their terrain class ([`Spatial::unmark`]).
-    pub fn drop_record(&mut self, id: i32) {
+    /// The object's obstruction record goes (`FUN_141055b40`'s record part), by its master's
+    /// obstruction type (`+0x651`) whether or not it has its record yet: types 0 and 12 have
+    /// none (false); types 0, 1, 2, 11, 13 and 10 (as 2) clear their tiles' marks
+    /// ([`Spatial::unmark`]), after which type 1 keeps its record filed (true); any other type
+    /// drops its record (true), false without one. The mesh shape's removal is the caller's
+    /// (`Pathing::removed`).
+    pub fn dropped_record(&mut self, id: i32) -> bool {
         let Some(p) = self.objects.get(&id).copied() else {
-            return;
+            return false;
         };
-        if p.obstruction.is_some_and(Obstruction::marks_tiles) {
+        let kind = p.obstruction_type;
+        if kind == 0 || kind == 12 {
+            return false;
+        }
+        let marks = Obstruction { kind, class: 0 }.marks_tiles();
+        if marks {
             self.unmark(&p, id);
+            if kind == 1 {
+                return true;
+            }
         }
-        if let Some(o) = self.objects.get_mut(&id) {
-            o.obstruction = None;
+        match self.objects.get_mut(&id) {
+            Some(o) if o.obstruction.is_some() => {
+                o.obstruction = None;
+                true
+            }
+            _ => false,
         }
+    }
+
+    /// [`Spatial::dropped_record`] for a caller that does not read its answer.
+    pub fn drop_record(&mut self, id: i32) {
+        let _ = self.dropped_record(id);
     }
 
     /// `FUN_141055980` for object `id`'s static record ([`Tiles::unmark`]): the planners hear of
@@ -3096,6 +3117,48 @@ mod tests {
         s.remove(808);
         assert_eq!(s.tiles().word(140, 3), Some(1));
         assert_eq!(s.take_changes(), vec![[140, 3, 140, 3]]);
+    }
+
+    /// `FUN_141055b40` by the master's obstruction type: type 12 keeps all (false); type 1 clears
+    /// its tiles and keeps its record (true); a type 2 foundation without its record still clears
+    /// its player's marks (false); a unit (type 5) drops its record (true).
+    #[test]
+    fn a_record_goes_by_its_master_s_obstruction_type() {
+        let mut s = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![1; 400]));
+        let mut rock = villager(5.5, 5.5);
+        rock.radius = [0.5, 0.5];
+        rock.obstruction_type = 1;
+        rock.obstruction = Some(Obstruction { kind: 1, class: 1 });
+        s.insert(1, rock);
+        assert!(s.tiles().word(5, 5).is_some_and(|w| w & BLOCKED != 0));
+        assert!(s.dropped_record(1));
+        assert_eq!(s.tiles().word(5, 5), Some(1));
+        assert_eq!(s.get(1).and_then(|p| p.obstruction), rock.obstruction);
+        let mut other = rock;
+        other.obstruction_type = 12;
+        other.position = [8.5, 8.5, 0.0];
+        s.insert(2, other);
+        assert!(!s.dropped_record(2));
+        assert!(s.tiles().word(8, 8).is_some_and(|w| w & BLOCKED != 0));
+        // a foundation of player 2 without its record on a tile player 2 marked
+        let mut wall = rock;
+        wall.obstruction_type = 2;
+        wall.obstruction = Some(Obstruction { kind: 2, class: 1 });
+        wall.position = [12.5, 12.5, 0.0];
+        s.insert(3, wall);
+        let mut site = wall;
+        site.obstruction = None;
+        s.insert(4, site);
+        s.objects.get_mut(&3).unwrap().obstruction = None;
+        assert!(!s.dropped_record(4));
+        assert_eq!(s.tiles().word(12, 12), Some(1));
+        let unit = villager(15.5, 15.5);
+        let mut unit5 = unit;
+        unit5.obstruction_type = 5;
+        s.insert(5, unit5);
+        assert!(s.dropped_record(5));
+        assert_eq!(s.get(5).and_then(|p| p.obstruction), None);
+        assert!(!s.dropped_record(5));
     }
 
     #[test]
