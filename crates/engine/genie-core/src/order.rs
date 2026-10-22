@@ -3902,9 +3902,9 @@ impl Turns {
     /// The player's gate toggle (`FUN_14162f8c0`, from its slots 0x340 and 0x338): a gate of its
     /// player's masters, without masters of its own ([`crate::turn::Gate::other_masters`]),
     /// changes to its master's `transform_unit` (slot 0x90, [`Turns::transform_building`]). A
-    /// gate that shut (the new master's height above 0) kills the units in it (slot 0xd8
-    /// on those its count finds, `FUN_141211340`: not modelled) and takes the world time plus 1
-    /// as its last move time (`+0x870`).
+    /// gate that shut (the new master's height above 0) kills the units in it (slot 0xd8 on
+    /// those its count finds, [`Turns::shut_in_gate`]) and takes the world time plus 1 as its
+    /// last move time (`+0x870`).
     pub(crate) fn toggle_gate(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         if unit.gate.is_some_and(|g| g.other_masters) {
@@ -3928,13 +3928,7 @@ impl Turns {
             let annexes = crate::turn::annexes_of(id, &self.players[player].objects);
             let (units, _) = crate::turn::gate_units(&self.spatial, id, &annexes)?;
             for u in units {
-                let killed = self.object(u).is_some_and(|(owner, o)| {
-                    self.master_of(owner, o.life.master_id)
-                        .is_ok_and(|m| m.class != 42 && (m.class != 58 || o.life.amount <= 0.0))
-                });
-                if killed {
-                    return Err(Unsupported("a gate shutting on a unit (slot 0xd8)"));
-                }
+                self.shut_in_gate(u)?;
             }
             self.players[player].objects[idx]
                 .mover
@@ -3942,6 +3936,39 @@ impl Turns {
                 .ok_or(Unsupported("a shut gate without its moving part"))?
                 .last_move = now.wrapping_add(1);
         }
+        Ok(())
+    }
+
+    /// Slot 0xd8 of object `id` in a gate that shut (`FUN_14162f8c0`): from type 70 on
+    /// (`FUN_141211340`) class 42 is spared, and livestock (class 58) while it holds some
+    /// (`COMISS`, `JA`: a NaN load holds none); else, and below type 70, `FUN_14118f580`: an
+    /// object asleep wakes to the end of its player's live list (slots 0x2d8, 0x2d0), one flagged
+    /// to sleep drops the flag, and its hit points go to 0. Its place in its player's
+    /// special-object list (`+0x30c` bit 0, `FUN_141677380`) is not held.
+    fn shut_in_gate(&mut self, id: i32) -> Result<(), Unsupported> {
+        /// The first master type whose slot 0xd8 is `FUN_141211340` (`TRIBE_Combat_Object`).
+        const TRIBE_COMBAT: u8 = 70;
+        /// The class `FUN_141211340` always spares.
+        const SPARED: i16 = 42;
+        let Some((p, u)) = self.object(id) else {
+            return Ok(());
+        };
+        let master = self.master_of(p, u.life.master_id)?;
+        let spared = TRIBE_COMBAT <= master.kind
+            && (master.class == SPARED || (master.class == LIVESTOCK && 0.0 < u.life.amount));
+        if spared {
+            return Ok(());
+        }
+        let unit = match self.place(id).expect("found above") {
+            Place::Live(p, i) => &mut self.players[p].objects[i],
+            Place::Sleeping(p, i) => {
+                let woken = self.players[p].sleeping.swap_remove(i);
+                self.players[p].objects.push(woken);
+                self.players[p].objects.last_mut().expect("pushed")
+            }
+        };
+        unit.life.goto_sleep = false;
+        unit.life.hp = 0.0;
         Ok(())
     }
 
@@ -5185,6 +5212,58 @@ mod tests {
             (u.construction.unwrap().builders, u.workers)
         };
         assert_eq!((site(&t, 1), site(&t, 2)), ((0, 0), (0, 2)));
+    }
+
+    /// `FUN_141211340` and `FUN_14118f580` in a gate that shut: a soldier dies (no hit points),
+    /// class 42 and livestock with food are spared, livestock with a NaN load is not, and a
+    /// sleeping object (below type 70) wakes to the end of the live list and dies.
+    #[test]
+    fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let master = |id, kind, class| Master {
+            id,
+            kind,
+            class,
+            ..Master::default()
+        };
+        t.masters[1] = crate::masters::Masters::new([
+            master(4, 70, 6),
+            master(42, 70, 42),
+            master(58, 70, LIVESTOCK),
+            master(10, 10, 5),
+        ]);
+        let unit = |id, master, amount| Unit {
+            id,
+            life: crate::lifecycle::Lifecycle {
+                master_id: master,
+                hp: 10.0,
+                amount,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects = vec![
+            unit(11, 4, 0.0),
+            unit(12, 42, 0.0),
+            unit(13, 58, 50.0),
+            unit(14, 58, f32::NAN),
+        ];
+        t.players[1].sleeping = vec![unit(15, 10, 0.0)];
+        for id in 11..=16 {
+            t.shut_in_gate(id).unwrap();
+        }
+        let hp: Vec<(i32, f32)> = t.players[1]
+            .objects
+            .iter()
+            .map(|u| (u.id, u.life.hp))
+            .collect();
+        assert_eq!(
+            hp,
+            [(11, 0.0), (12, 10.0), (13, 10.0), (14, 0.0), (15, 0.0)]
+        );
+        assert_eq!(t.players[1].sleeping.len(), 0);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
