@@ -1852,7 +1852,8 @@ impl Turns {
 
     /// FLARE's objects (`0x140e7bfd0`): with `players` at most the world's players, each player
     /// from 1 below `players` makes a flare (master 274, its slot 0x1c0 `FUN_14162ce00` with the
-    /// footprint left alone, then the master's slot 0x40 as [`Turns::remains`] makes it) at
+    /// footprint left alone: the master's slot 0x40 as [`Turns::remains`] makes it, then
+    /// [`Turns::made_new_object`]) at
     /// `target`'s place, or at `point` on the ground when `target` is −1 or gone; its workers
     /// (`+0x644`) are 0. Not held: the sender's flare's workers 1 when the local player is among
     /// the recipients (`+0x11`..), a computer player's AI memory of it (`+0x7a8`'s `+0xbc00`),
@@ -1876,6 +1877,7 @@ impl Turns {
         let at = at.unwrap_or([point[0], point[1], 0.0]);
         for p in 1..usize::from(players) {
             self.remains(p, FLARE, at, None)?;
+            self.made_new_object(p)?;
         }
         Ok(())
     }

@@ -221,11 +221,16 @@ impl Turns {
             return Err(Unsupported("a deleted foundation with annexes"));
         }
         let i = self.wake(id);
-        let life = &mut self.players[owner].objects[i].life;
-        if life.state < 7 {
-            life.hp = 0.0;
-            life.state = 7;
+        let u = &mut self.players[owner].objects[i];
+        if u.life.state < 7 {
+            let (before, master, position) = (u.life.state, u.life.master_id, u.position);
+            u.life.hp = 0.0;
+            u.life.state = 7;
             self.spatial.sight_state(id, 7);
+            if before < 4 {
+                let master = self.masters.get(owner).and_then(|m| m.get(master));
+                crate::turn::forget_resource(&mut self.spatial, master, id, position);
+            }
         }
         self.unwatch(owner, id);
         Ok(())

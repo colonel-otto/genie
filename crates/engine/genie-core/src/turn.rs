@@ -5167,10 +5167,15 @@ impl Unit {
                         "a destroyed object inside another (slot 0x1a8)",
                     ));
                 }
+                let before = self.life.state;
                 self.life.hp = 0.0;
                 self.life.goto_sleep = false;
                 self.life.state = 7;
                 c.spatial.sight_state(self.id, 7);
+                if before < 4 {
+                    let master = c.masters.and_then(|m| m.get(self.life.master_id));
+                    forget_resource(c.spatial, master, self.id, self.position);
+                }
             }
         }
         Ok(())
@@ -5574,6 +5579,10 @@ impl Unit {
             }
             if after != 3 {
                 c.spatial.sight_state(self.id, after);
+            }
+            if before < 4 && 6 < after {
+                let master = c.masters.and_then(|m| m.get(self.life.master_id));
+                forget_resource(c.spatial, master, self.id, self.position);
             }
         }
         // the dying sprite ended (RGE_Animated_Object::update): the animation stops and an object
@@ -8145,6 +8154,8 @@ impl Turns {
                         continue;
                     }
                     let gone = self.players[p].objects.swap_remove(i);
+                    let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
+                    forget_resource(&mut self.spatial, master, gone.id, gone.position);
                     let _ = self.spatial.leave(gone.id);
                     self.pathing.removed(gone.id);
                     continue;
@@ -8176,6 +8187,13 @@ impl Turns {
                     }
                     if state != 3 {
                         self.spatial.sight_state(id, state);
+                    }
+                    if before < 4 && 6 < state {
+                        let master = self
+                            .masters
+                            .get(p)
+                            .and_then(|m| m.get(forced.life.master_id));
+                        forget_resource(&mut self.spatial, master, id, forced.position);
                     }
                 }
                 self.spatial.unfreeze(id);
@@ -9370,10 +9388,16 @@ impl Turns {
                 ));
             }
             if u.life.state < 7 {
+                let before = u.life.state;
                 u.life.hp = 0.0;
                 u.life.goto_sleep = false;
                 u.life.state = 7;
                 self.spatial.sight_state(id, 7);
+                if before < 4 {
+                    let (master, position) = (u.life.master_id, u.position);
+                    let master = self.masters.get(p).and_then(|m| m.get(master));
+                    forget_resource(&mut self.spatial, master, id, position);
+                }
             }
         }
         Ok(())
@@ -10551,6 +10575,87 @@ impl Turns {
         self.pathing.tiles_changed(self.spatial.take_changes());
     }
 
+    /// `Process_New_Tiles` (`FUN_1412899a0`, the end of `WorldPlayerBase::update`): on each tile
+    /// player `p`'s map explored since its last update, in order, each object (the tile's list,
+    /// in its order) of a master that gathers by itself (`enable_auto_gather`, `+0x681`) joins
+    /// the player's list of its group (`+0x683`) at its place ([`VisibleResources::add`]). A
+    /// ghost's master (243) does not gather; no recyclable master does, so the objects have ids of
+    /// 0 and up (`FUN_141288830` reads them from the world's table `DAT_143f69168`).
+    ///
+    /// # Errors
+    ///
+    /// An object of a master the slice does not have.
+    ///
+    /// [`VisibleResources::add`]: crate::visibility::VisibleResources::add
+    pub(crate) fn process_new_tiles(&mut self, p: usize) -> Result<(), Unsupported> {
+        let Some(sight) = self.spatial.sight.as_ref() else {
+            return Ok(());
+        };
+        let (Some(tiles), Some(lists)) = (sight.new_tiles.get(p), sight.resources.get(p)) else {
+            return Ok(());
+        };
+        if lists.lists.is_empty() {
+            return Ok(());
+        }
+        let mut found = Vec::new();
+        for &[x, y] in tiles {
+            for (id, _) in self.spatial.objects_on(x, y) {
+                let Some((owner, unit)) = self.object(id) else {
+                    continue;
+                };
+                let master = self.master_of(owner, unit.life.master_id)?;
+                if master.auto_gather {
+                    found.push((id, master.gather_group, unit.position));
+                }
+            }
+        }
+        if let Some(r) = self
+            .spatial
+            .sight
+            .as_mut()
+            .and_then(|v| v.resources.get_mut(p))
+        {
+            for (id, group, [x, y, _]) in found {
+                r.add(id, group, x, y);
+            }
+        }
+        Ok(())
+    }
+
+    /// `WorldPlayer::make_new_object`'s visible resources (`FUN_14162ce00`, player slot 0x1c0,
+    /// after the master made the object, the last of player `p`'s list): an object of a master
+    /// that gathers by itself (`+0x681`) joins, at its place, the lists of its group (`+0x683`)
+    /// of the players, in order, that see or explored its tile (`FUN_141663500` on its x and y
+    /// truncated, [`Spatial::explored`]); the world's state (`+0x88`) is 0 in a game.
+    ///
+    /// # Errors
+    ///
+    /// A master the slice does not have, or no players' sight.
+    pub(crate) fn made_new_object(&mut self, p: usize) -> Result<(), Unsupported> {
+        let Some(u) = self.players[p].objects.last() else {
+            return Ok(());
+        };
+        let (id, [x, y, _]) = (u.id, u.position);
+        let master = self.master_of(p, u.life.master_id)?;
+        if !master.auto_gather {
+            return Ok(());
+        }
+        let group = master.gather_group;
+        let (tx, ty) = (x as i32, y as i32);
+        let mut explored = Vec::new();
+        for q in 0..self.players.len() {
+            explored.push(self.spatial.explored(q, tx, ty)?);
+        }
+        if let Some(v) = self.spatial.sight.as_mut() {
+            for (q, _) in explored.iter().enumerate().filter(|&(_, &e)| e) {
+                if let Some(r) = v.resources.get_mut(q) {
+                    r.add(id, group, x, y);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// `World::load_world`'s planners (`FUN_140f7d310`): the restrictions of Gaia's masters 83
     /// (the villager's) and 535 (the galley's), each unless one of the same values has one; any
     /// other restriction finds none (its units walk without the tile pathfinder).
@@ -11059,6 +11164,9 @@ impl Turns {
                 match result {
                     Ok(Step::Leave) => {
                         let gone = player.objects.swap_remove(i);
+                        // its deletion (FUN_14116b5e0)
+                        let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
+                        forget_resource(&mut self.spatial, master, gone.id, gone.position);
                         if let Err(e) = self.spatial.leave(gone.id) {
                             crate::trace::player_unsupported(self.ticks, p, e);
                             let _ = player.unsupported.get_or_insert((self.ticks, i, e));
@@ -11147,9 +11255,17 @@ impl Turns {
             if let Err(e) = self.update_groups(p) {
                 self.stop_player(p, e);
             }
-            // the player's own update (WorldPlayerBase::update): its plans start over
+            // the player's own update (WorldPlayerBase::update): its plans start over, and at
+            // its end the tiles its map explored give their resources
             self.pathing.reset_plans(p);
+            if let Err(e) = self.process_new_tiles(p) {
+                self.stop_player(p, e);
+            }
             self.close_gates(p, &mut gates_open);
+            // its tile list empties (FUN_141661030)
+            if let Some(v) = self.spatial.sight.as_mut() {
+                v.clear_new_tiles(p);
+            }
         }
         self.spatial.grow_unknown(seconds(dt));
         let s1 = self.streams.get(Stream::World).rand15();
@@ -11191,6 +11307,28 @@ pub const fn scenario_mode(game_mode: i32) -> bool {
 fn farm_bonus(attributes: &[f32]) -> [f32; 3] {
     let at = |i: usize| attributes.get(i).copied().unwrap_or(-1.0);
     [at(237), at(238), at(239)]
+}
+
+/// `FUN_1411980b0`'s visible resources, from `set_state` leaving a state below 4 for one above 6
+/// (`FUN_14119d710`) and from the object's deletion (the destructors' `FUN_14116b5e0`): an object
+/// of id 0 and up whose master gathers by itself (`+0x681`) leaves the lists of the players that
+/// explored its tile ([`Visibility::forget_resource`]); the world's state (`+0x88`) is 0 in a
+/// game. The routine's other parts are the callers': a master of `create_doppelganger_on_death`
+/// 2 leaves its owner's watched list (`FUN_141091310`).
+///
+/// [`Visibility::forget_resource`]: crate::visibility::Visibility::forget_resource
+pub(crate) fn forget_resource(
+    spatial: &mut Spatial,
+    master: Option<&Master>,
+    id: i32,
+    position: [f32; 3],
+) {
+    if id < 0 {
+        return;
+    }
+    if let (Some(m), Some(v)) = (master.filter(|m| m.auto_gather), spatial.sight.as_mut()) {
+        v.forget_resource(id, position, m.gather_group);
+    }
 }
 
 pub(crate) fn victim_of(
@@ -11634,6 +11772,230 @@ mod tests {
             0,
             vec![false; players],
         ));
+    }
+
+    /// `Process_New_Tiles`: player 1's newly explored tiles, in order, give the objects of its
+    /// masters that gather by themselves to its lists by group, at their places.
+    #[test]
+    fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
+        use crate::masters::{Master, Masters};
+        use crate::visibility::{VisibleResource, VisibleResources};
+        let object = |id, master, x, y| Unit {
+            id,
+            position: [x, y, 0.0],
+            life: Lifecycle {
+                class: Class::Static,
+                state: 2,
+                master_id: master,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            1,
+            vec![0, 0],
+            vec![
+                Player {
+                    sleeping: vec![
+                        object(501, 411, 10.5, 10.25),
+                        object(502, 412, 10.5, 10.5),
+                        object(503, 413, 11.5, 10.75),
+                    ],
+                    ..Player::default()
+                },
+                Player::default(),
+            ],
+        );
+        let master = |id, auto_gather, gather_group| Master {
+            id,
+            kind: 10,
+            auto_gather,
+            gather_group,
+            ..Master::default()
+        };
+        t.masters = vec![
+            Masters::new([
+                master(411, true, 0),
+                master(412, false, 0),
+                master(413, true, 4),
+            ]),
+            Masters::default(),
+        ];
+        t.spatial = Spatial::with_tiles(
+            [120, 120],
+            crate::spatial::Tiles::new(120, 120, vec![0; 120 * 120]),
+        );
+        placeable(&mut t);
+        for u in &t.players[0].sleeping {
+            t.spatial.insert(
+                u.id,
+                Placed {
+                    position: u.position,
+                    radius: [0.5, 0.5],
+                    class: 15,
+                    player: 0,
+                    master: u.life.master_id,
+                    obstruction_type: 0,
+                    buildable_on: 0,
+                    tall: false,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+        }
+        let v = t.spatial.sight.as_mut().unwrap();
+        v.resources[1] = VisibleResources {
+            capacities: vec![32; 5],
+            lists: vec![Vec::new(); 5],
+        };
+        v.new_tiles[1] = vec![[11, 10], [10, 10]];
+        t.process_new_tiles(1).unwrap();
+        let rec = |id, x, y| VisibleResource {
+            id,
+            x,
+            y,
+            ..VisibleResource::default()
+        };
+        let v = t.spatial.sight.as_ref().unwrap();
+        assert_eq!(v.resources[1].lists[0], [rec(501, 10.5, 10.25)]);
+        assert_eq!(v.resources[1].lists[4], [rec(503, 11.5, 10.75)]);
+        assert_eq!(v.resources[0], VisibleResources::default());
+    }
+
+    /// `FUN_1411980b0`: a static resource that runs out (state 3 to 7) leaves the players'
+    /// visible-resource lists at once; an animated one (state 5 to 7, not below 4) only when it
+    /// is deleted (state 8 leaving its list, `FUN_14116b5e0`).
+    #[test]
+    fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
+        use crate::lifecycle::MasterData;
+        use crate::masters::{Master, Masters};
+        use crate::visibility::VisibleResources;
+        let dead = |id, class, state, master| Unit {
+            id,
+            position: [10.5, 10.5, 0.0],
+            life: Lifecycle {
+                class,
+                state,
+                master_id: master,
+                attribute_type: -1,
+                master: Some(MasterData {
+                    decay: 0.0,
+                    undead: false,
+                }),
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            1,
+            vec![0, 0],
+            vec![
+                Player {
+                    objects: vec![
+                        dead(501, Class::Static, 3, 411),
+                        dead(502, Class::Animated, 5, 412),
+                    ],
+                    ..Player::default()
+                },
+                Player::default(),
+            ],
+        );
+        let master = |id, gather_group| Master {
+            id,
+            kind: 10,
+            auto_gather: true,
+            gather_group,
+            ..Master::default()
+        };
+        t.masters = vec![
+            Masters::new([master(411, 0), master(412, 1)]),
+            Masters::default(),
+        ];
+        placeable(&mut t);
+        let v = t.spatial.sight.as_mut().unwrap();
+        for p in 0..2 {
+            v.resources[p] = VisibleResources {
+                capacities: vec![32; 5],
+                lists: vec![Vec::new(); 5],
+            };
+            v.resources[p].add(501, 0, 10.5, 10.5);
+            v.resources[p].add(502, 1, 10.5, 10.5);
+        }
+        let held = |t: &Turns| -> Vec<(usize, usize)> {
+            let v = t.spatial.sight.as_ref().unwrap();
+            (0..2)
+                .map(|p| (v.resources[p].lists[0].len(), v.resources[p].lists[1].len()))
+                .collect()
+        };
+        t.tick(10);
+        assert_eq!(t.players[0].objects[0].life.state, 7);
+        assert_eq!(held(&t), [(0, 1), (0, 1)]);
+        t.tick(10);
+        assert_eq!(held(&t), [(0, 1), (0, 1)]);
+        t.tick(10);
+        assert_eq!(t.players[0].objects, []);
+        assert_eq!(held(&t), [(0, 0), (0, 0)]);
+    }
+
+    /// `FUN_14162ce00`: a new object of a master that gathers by itself joins the lists of the
+    /// players that explored its tile; one of another master joins none.
+    #[test]
+    fn a_new_resource_joins_the_lists_of_the_players_that_explored_its_tile() {
+        use crate::masters::{Master, Masters};
+        use crate::visibility::{VisibleResource, VisibleResources};
+        let made = |id, master| Unit {
+            id,
+            position: [20.75, 30.25, 0.0],
+            life: Lifecycle {
+                state: 2,
+                master_id: master,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            1,
+            vec![0, 0, 0],
+            vec![Player::default(), Player::default(), Player::default()],
+        );
+        let master = |id, auto_gather| Master {
+            id,
+            kind: 30,
+            auto_gather,
+            gather_group: 2,
+            ..Master::default()
+        };
+        t.masters = vec![Masters::new([master(53, true), master(54, false)]); 3];
+        placeable(&mut t);
+        let v = t.spatial.sight.as_mut().unwrap();
+        // players 0 and 2 explored the tile, player 1 did not
+        v.unified[30 * 120 + 20] = 1 << 32 | 1 << 34;
+        for r in &mut v.resources {
+            *r = VisibleResources {
+                capacities: vec![32; 5],
+                lists: vec![Vec::new(); 5],
+            };
+        }
+        t.players[0].objects.push(made(700, 53));
+        t.made_new_object(0).unwrap();
+        t.players[0].objects.push(made(701, 54));
+        t.made_new_object(0).unwrap();
+        let fish = VisibleResource {
+            id: 700,
+            x: 20.75,
+            y: 30.25,
+            ..VisibleResource::default()
+        };
+        let v = t.spatial.sight.as_ref().unwrap();
+        let lists: Vec<_> = v.resources.iter().map(|r| r.lists[2].clone()).collect();
+        assert_eq!(lists, [vec![fish], vec![], vec![fish]]);
     }
 
     #[test]

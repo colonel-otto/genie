@@ -51,7 +51,10 @@ use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
 use genie_core::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::turn::{Command, Player, Turns, Unit};
 use genie_core::unit_ai::Unsupported;
-use genie_core::visibility::{BuildingSight, Extent, Seer, Visibility, VisibleMap, capture_kind};
+use genie_core::visibility::{
+    BuildingSight, Extent, Seer, Visibility, VisibleMap, VisibleResource, VisibleResources,
+    capture_kind,
+};
 use genie_rec::de::{self, Op};
 use genie_save::Header;
 use genie_save::PlayerSection;
@@ -2957,7 +2960,7 @@ fn saved_sight(header: &Header) -> Visibility {
             capacity: e.n + 1,
         })
         .collect();
-    Visibility::new(
+    let mut sight = Visibility::new(
         map.map_width,
         map.map_height,
         maps,
@@ -2971,7 +2974,41 @@ fn saved_sight(header: &Header) -> Visibility {
             .iter()
             .map(|p| p.world_player().type_ == 3)
             .collect(),
-    )
+    );
+    sight.resources = players
+        .iter()
+        .map(|p| saved_resources(&p.objects().visible_resource_manager))
+        .collect();
+    sight
+}
+
+/// A player's saved `Visible_Resource_Manager` as [`VisibleResources`] holds it.
+fn saved_resources(m: &genie_save::generated::world::VisibleResourceManager) -> VisibleResources {
+    VisibleResources {
+        capacities: m
+            .list_sizes
+            .iter()
+            .flatten()
+            .map(|s| s.vr_list_size)
+            .collect(),
+        lists: m
+            .lists
+            .iter()
+            .flatten()
+            .map(|l| {
+                l.visible_resource_rec
+                    .iter()
+                    .map(|r| VisibleResource {
+                        id: r.object_id,
+                        distance: r.distance,
+                        zone: r.zone,
+                        x: r.pos_x,
+                        y: r.pos_y,
+                    })
+                    .collect()
+            })
+            .collect(),
+    }
 }
 
 /// The players' visible maps and the unified map of a save, as [`Visibility`] holds them.
@@ -2995,6 +3032,7 @@ pub fn visibility_differences(slice: &Visibility, game: &Visibility, player: usi
             a.explored, b.explored
         ));
     }
+    out.extend(resource_differences(slice, game, player));
     let w = slice.width.max(1) as usize;
     let bits = 1u64 << player | 1u64 << (32 + player);
     let unified_same = || {
@@ -3022,6 +3060,53 @@ pub fn visibility_differences(slice: &Visibility, game: &Visibility, player: usi
         if u != v {
             out.push(format!(
                 "player {player} tile ({x}, {y}) unified bits {u:#x}, the game {v:#x}"
+            ));
+        }
+    }
+    out
+}
+
+/// Where player `player`'s visible-resource lists in `slice` differ from `game`'s: their count,
+/// each list's capacity and its first record that differs (every field, the floats by their
+/// bits), or its length.
+fn resource_differences(slice: &Visibility, game: &Visibility, player: usize) -> Vec<String> {
+    let (Some(a), Some(b)) = (slice.resources.get(player), game.resources.get(player)) else {
+        return vec![format!("player {player} has no visible-resource lists")];
+    };
+    let mut out = Vec::new();
+    if a.lists.len() != b.lists.len() {
+        out.push(format!(
+            "player {player} holds {} visible-resource lists, the game {}",
+            a.lists.len(),
+            b.lists.len()
+        ));
+    }
+    if a.capacities != b.capacities {
+        out.push(format!(
+            "player {player} visible-resource capacities {:?}, the game {:?}",
+            a.capacities, b.capacities
+        ));
+    }
+    let bits = |r: &VisibleResource| {
+        (
+            r.id,
+            r.distance.to_bits(),
+            r.zone,
+            r.x.to_bits(),
+            r.y.to_bits(),
+        )
+    };
+    for (g, (x, y)) in a.lists.iter().zip(&b.lists).enumerate() {
+        if let Some(k) = x.iter().zip(y).position(|(r, s)| bits(r) != bits(s)) {
+            out.push(format!(
+                "player {player} visible resources {g}: record {k} {:?}, the game {:?}",
+                x[k], y[k]
+            ));
+        } else if x.len() != y.len() {
+            out.push(format!(
+                "player {player} visible resources {g}: {} records, the game {}",
+                x.len(),
+                y.len()
             ));
         }
     }

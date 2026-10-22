@@ -112,6 +112,7 @@ impl Turns {
         // town centre in its owner's list order; each flared player is recorded
         for (p, q, at) in flares {
             self.remains(p, FLARE4, at, None)?;
+            self.made_new_object(p)?;
             let flared = &mut self.players[p].tc_flared;
             if flared.len() <= q {
                 flared.resize(q + 1, false);

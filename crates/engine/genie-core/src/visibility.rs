@@ -103,6 +103,105 @@ pub struct Extent {
     pub capacity: i32,
 }
 
+/// A record of a player's visible-resource lists (`VISIBLE_RESOURCE_REC`, 32 bytes, saved).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct VisibleResource {
+    /// The object (`+0xc`).
+    pub id: i32,
+    /// Its distance from the point of the last search that chose it (`+0x10`,
+    /// [`VisibleResources::closest`]); 0 when added.
+    pub distance: f32,
+    /// `+0x14`, HD's `zone`: 0 when added.
+    pub zone: u8,
+    /// The object's x when added (`+0x18`).
+    pub x: f32,
+    /// Its y when added (`+0x1c`).
+    pub y: f32,
+}
+
+/// A player's `Visible_Resource_Manager` (player `+0x2f0`, saved): per resource group (a master's
+/// `resource_gather_group`, `+0x683`) the objects of masters that gather by themselves
+/// (`enable_auto_gather`, `+0x681`) the player found on the tiles it explored.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct VisibleResources {
+    /// `VR_ListSize`: each list's capacity, which a full list's next record doubles.
+    pub capacities: Vec<i32>,
+    /// The lists (`num_visible_resource_lists` of them), `VR_ListUsed` records each.
+    pub lists: Vec<Vec<VisibleResource>>,
+}
+
+impl VisibleResources {
+    /// `AddResource` (`FUN_141288830`) of the object `id` at (`x`, `y`): a manager with lists
+    /// puts its record last in list `group`, doubling a full list's capacity. The masters' groups
+    /// are 0 to 4 and every manager holds 5 lists; the game writes past its lists for a group out
+    /// of range.
+    pub fn add(&mut self, id: i32, group: u8, x: f32, y: f32) {
+        let g = usize::from(group);
+        let (Some(list), Some(capacity)) = (self.lists.get_mut(g), self.capacities.get_mut(g))
+        else {
+            return;
+        };
+        if usize::try_from(*capacity).is_ok_and(|c| c == list.len()) {
+            *capacity *= 2;
+        }
+        list.push(VisibleResource {
+            id,
+            distance: 0.0,
+            zone: 0,
+            x,
+            y,
+        });
+    }
+
+    /// `Remove_Resource` (`FUN_141289b80`): the first record of the object `id` in list `group`
+    /// takes the last record and the list shortens. Its index; 0 for an empty list, -1 when the
+    /// object is not in it or the manager has no lists.
+    pub fn remove(&mut self, id: i32, group: u8) -> i32 {
+        let Some(list) = self.lists.get_mut(usize::from(group)) else {
+            return -1;
+        };
+        if list.is_empty() {
+            return 0;
+        }
+        let Some(i) = list.iter().position(|r| r.id == id) else {
+            return -1;
+        };
+        let _ = list.swap_remove(i);
+        i as i32
+    }
+
+    /// `Get_Closest_Resource` (`FUN_141289000`): the record of list `group` nearest (`x`, `y`)
+    /// (squared, the first of equals) whose object is not in `skip`; its distance becomes the
+    /// root. None for a group out of range or an empty list.
+    pub fn closest(&mut self, x: f32, y: f32, group: i32, skip: &[i32]) -> Option<usize> {
+        let list = usize::try_from(group)
+            .ok()
+            .and_then(|g| self.lists.get_mut(g))?;
+        // COMISS r, p; JBE: a record at or below the point (or NaN) measures p - r
+        let gap = |r: f32, p: f32| {
+            if crate::fmath::at_most_or_unordered(r, p) {
+                p - r
+            } else {
+                r - p
+            }
+        };
+        let mut best = None;
+        let mut nearest = f32::MAX;
+        for (i, r) in list.iter().enumerate() {
+            let (dx, dy) = (gap(r.x, x), gap(r.y, y));
+            let d = dy * dy + dx * dx;
+            if d < nearest && !skip.contains(&r.id) {
+                best = Some(i);
+                nearest = d;
+            }
+        }
+        if let Some(i) = best {
+            list[i].distance = crate::fmath::sqrt(nearest);
+        }
+        best
+    }
+}
+
 /// The players' visible maps, the unified map, the map tiles' building links and the objects'
 /// sight.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -128,6 +227,13 @@ pub struct Visibility {
     seers: BTreeMap<i32, Seer>,
     /// The objects-in-sight registry, when the slice holds it (the save does not).
     pub registry: Option<Registry>,
+    /// Each player's tile list (`RGE_Tile_List`, player `+0x180`, not saved): the tiles its map
+    /// explored (`FUN_14165d500`) since its last update ended, in order, which the update's
+    /// `Process_New_Tiles` reads; its count of new tiles (`+8`) only a computer player's AI
+    /// reads.
+    pub new_tiles: Vec<Vec<[i32; 2]>>,
+    /// Each player's visible-resource lists.
+    pub resources: Vec<VisibleResources>,
     /// The first part of the game the slice met and does not model, for its caller.
     unsupported: Option<Unsupported>,
 }
@@ -177,6 +283,7 @@ impl Visibility {
         computer: Vec<bool>,
     ) -> Self {
         let n = (width.max(0) * height.max(0)) as usize;
+        let players = maps.len();
         Self {
             width,
             height,
@@ -188,6 +295,8 @@ impl Visibility {
             computer,
             seers: BTreeMap::new(),
             registry: None,
+            new_tiles: vec![Vec::new(); players],
+            resources: vec![VisibleResources::default(); players],
             unsupported: None,
         }
     }
@@ -203,6 +312,45 @@ impl Visibility {
 
     fn unsupported(&mut self, what: &'static str) {
         let _ = self.unsupported.get_or_insert(Unsupported(what));
+    }
+
+    /// `RGE_Tile_List::add_node` (`FUN_14165d500`) on player `player`'s tile list.
+    fn new_tile(&mut self, player: usize, x: i32, y: i32) {
+        if let Some(list) = self.new_tiles.get_mut(player) {
+            list.push([x, y]);
+        }
+    }
+
+    /// `RGE_Tile_List::del_list` (`FUN_141661030`) on player `player`'s tile list, after the
+    /// player's update (`BaseWorld::update`); the list is never frozen in a game (`+0x10`).
+    pub fn clear_new_tiles(&mut self, player: usize) {
+        if let Some(list) = self.new_tiles.get_mut(player) {
+            list.clear();
+        }
+    }
+
+    /// `FUN_1411980b0`'s visible resources, for an object of a master that gathers by itself
+    /// (`+0x681`) of group `group` at `position`: from player 0 up while players remain to be
+    /// found in the explored bits of the unified map at its tile (bits 32 to 56), each player
+    /// there (`FUN_14152b700`: one the world has) loses the object from its list
+    /// ([`VisibleResources::remove`]).
+    pub fn forget_resource(&mut self, id: i32, position: [f32; 3], group: u8) {
+        let (x, y) = (position[0] as i32, position[1] as i32);
+        if x < 0 || y < 0 || self.width <= x || self.height <= y {
+            return;
+        }
+        let mut explored = (self.unified[self.index(x, y)] & MASK) >> 32;
+        let mut p = 0;
+        while explored != 0 {
+            if explored & 1 != 0 {
+                let Some(r) = self.resources.get_mut(p) else {
+                    break;
+                };
+                let _ = r.remove(id, group);
+            }
+            p += 1;
+            explored >>= 1;
+        }
     }
 
     /// The object `id` comes into the players' sight with `seer`.
@@ -256,6 +404,7 @@ impl Visibility {
                 if c == 0 {
                     newly += 1;
                     self.maps[player].explored += 1;
+                    self.new_tile(player, tx, ty);
                     if self.computer.get(player).copied().unwrap_or(false) {
                         self.unsupported("a computer player's newly explored tile (its slot 0x88)");
                     }
@@ -343,6 +492,7 @@ impl Visibility {
                 if c == 0 {
                     newly += 1;
                     self.maps[player].explored += 1;
+                    self.new_tile(player, x, y);
                     c = 1;
                     self.unified[i] |= seen;
                 }
@@ -388,6 +538,7 @@ impl Visibility {
                 if self.maps[player].counts[i] == -1 {
                     self.maps[player].explored += 1;
                     newly += 1;
+                    self.new_tile(player, x, y);
                     self.unified[i] |= seen;
                     self.maps[player].counts[i] = 0;
                 }
@@ -1075,6 +1226,127 @@ mod tests {
             capture: 0,
             kind: 70,
         }
+    }
+
+    fn resources(lists: usize) -> VisibleResources {
+        VisibleResources {
+            capacities: vec![2; lists],
+            lists: vec![Vec::new(); lists],
+        }
+    }
+
+    fn rec(id: i32, x: f32, y: f32) -> VisibleResource {
+        VisibleResource {
+            id,
+            x,
+            y,
+            ..VisibleResource::default()
+        }
+    }
+
+    /// `AddResource` (`FUN_141288830`): the record goes last in its group's list at the object's
+    /// place, its distance and byte 0; a full list doubles its capacity. A manager without lists
+    /// adds nothing.
+    #[test]
+    fn a_resource_goes_last_in_its_group_s_list_and_a_full_list_doubles() {
+        let mut r = resources(5);
+        r.add(10, 4, 3.5, 7.5);
+        r.add(11, 4, 1.5, 2.5);
+        assert_eq!(r.capacities[4], 2);
+        r.add(12, 4, 0.5, 0.5);
+        assert_eq!(r.capacities, [2, 2, 2, 2, 4]);
+        assert_eq!(
+            r.lists[4],
+            [rec(10, 3.5, 7.5), rec(11, 1.5, 2.5), rec(12, 0.5, 0.5)]
+        );
+        assert!(r.lists[..4].iter().all(Vec::is_empty));
+        let mut none = VisibleResources::default();
+        none.add(10, 0, 1.0, 1.0);
+        assert_eq!(none, VisibleResources::default());
+    }
+
+    /// `Remove_Resource` (`FUN_141289b80`): the first record of the object takes the last one's
+    /// record and the list shortens; its index, 0 for an empty list, -1 when not found.
+    #[test]
+    fn a_removed_resource_s_place_takes_the_last_record() {
+        let mut r = resources(5);
+        for id in [1, 2, 3] {
+            r.add(id, 0, id as f32, 0.0);
+        }
+        assert_eq!(r.remove(1, 0), 0);
+        assert_eq!(r.lists[0], [rec(3, 3.0, 0.0), rec(2, 2.0, 0.0)]);
+        assert_eq!(r.remove(2, 0), 1);
+        assert_eq!(r.lists[0], [rec(3, 3.0, 0.0)]);
+        assert_eq!(r.remove(9, 0), -1);
+        assert_eq!(r.remove(9, 1), 0);
+        assert_eq!(VisibleResources::default().remove(3, 0), -1);
+    }
+
+    /// `Get_Closest_Resource` (`FUN_141289000`): the group's record nearest the point (squared,
+    /// the first of equals), past the ids to skip, takes its distance; none for a group out of
+    /// range or an empty list.
+    #[test]
+    fn the_closest_resource_skips_the_ids_given_and_keeps_its_distance() {
+        let mut r = resources(5);
+        r.add(1, 2, 13.0, 10.0);
+        r.add(2, 2, 10.0, 12.0);
+        r.add(3, 2, 7.0, 10.0);
+        assert_eq!(r.closest(10.0, 10.0, 2, &[]), Some(1));
+        assert_eq!(r.lists[2][1].distance, 2.0);
+        assert_eq!(r.closest(10.0, 10.0, 2, &[2]), Some(0));
+        assert_eq!(r.lists[2][0].distance, 3.0);
+        assert_eq!(r.closest(10.0, 10.0, 2, &[2, 1]), Some(2));
+        assert_eq!(r.closest(10.0, 10.0, 2, &[1, 2, 3]), None);
+        assert_eq!(r.closest(10.0, 10.0, 1, &[]), None);
+        assert_eq!(r.closest(10.0, 10.0, 5, &[]), None);
+        assert_eq!(r.closest(10.0, 10.0, -1, &[]), None);
+    }
+
+    /// The tiles a player's map explores go to its tile list (player `+0x180`, `FUN_14165d500`)
+    /// in order: the circle's (`explore_terrain`) and a rectangle's (`explore_terrain_sq`) newly
+    /// explored tiles, a revealed rectangle's never explored ones (`reveal_terrain_sq`); the
+    /// player's update ends with the list cleared (`FUN_141661030`).
+    #[test]
+    fn newly_explored_tiles_join_the_player_s_tile_list_until_its_update_ends() {
+        let mut v = world(2);
+        let _ = v.explore(1, 10, 10, 0, false);
+        let _ = v.explore(1, 10, 10, 1, false);
+        assert_eq!(
+            v.new_tiles[1],
+            [
+                [10, 10],
+                [9, 9],
+                [10, 9],
+                [11, 9],
+                [9, 10],
+                [11, 10],
+                [9, 11],
+                [10, 11],
+                [11, 11]
+            ]
+        );
+        let _ = v.explore_rect(1, 11, 9, 12, 9);
+        let _ = v.reveal_rect(1, 11, 8, 12, 8);
+        assert_eq!(v.new_tiles[1][9..], [[12, 9], [11, 8], [12, 8]]);
+        assert_eq!(v.new_tiles[0], Vec::<[i32; 2]>::new());
+        v.clear_new_tiles(1);
+        assert_eq!(v.new_tiles[1], Vec::<[i32; 2]>::new());
+    }
+
+    /// `FUN_1411980b0`'s lists: each player whose map explored the object's tile (its bit 32 + p
+    /// of the unified map, from 0 while the player exists) loses the object from its group's list.
+    #[test]
+    fn a_resource_leaves_the_lists_of_the_players_that_explored_its_tile() {
+        let mut v = world(3);
+        v.resources = vec![resources(5), resources(5), resources(5)];
+        for r in &mut v.resources {
+            r.add(7, 1, 20.5, 30.5);
+        }
+        let _ = v.explore(2, 20, 30, 0, false);
+        v.forget_resource(7, [20.5, 30.5, 0.0], 1);
+        assert_eq!(v.resources[2].lists[1], []);
+        assert_eq!(v.resources[0].lists[1], [rec(7, 20.5, 30.5)]);
+        assert_eq!(v.resources[1].lists[1], [rec(7, 20.5, 30.5)]);
     }
 
     #[test]
