@@ -124,6 +124,11 @@ impl Lifecycle {
             }
             3 | 5 => {
                 self.dead(dt_seconds)?;
+                // RGE_Animated_Object::update after the static step: state 3 goes on to 4 with a
+                // dying sprite (slot 0x7a0), else 5 (slot 0xa0)
+                if self.state == 3 && self.class == Class::Animated {
+                    self.state = if self.dying_sprite.is_some() { 4 } else { 5 };
+                }
                 Ok(false)
             }
             // RGE_Animated_Object::update: the dying sprite plays; once it stops, state 5 (the
@@ -273,6 +278,26 @@ mod tests {
             .update(seconds(104), &mut Well512::default(), false)
             .unwrap();
         assert_eq!((life.state, life.amount), (3, 0.0));
+    }
+
+    /// `0x141071880`: an animated object in state 3 after the static step (one that holds an
+    /// amount, loaded so) goes on to state 4 with a dying sprite, else 5; a static one stays.
+    #[test]
+    fn an_animated_object_in_state_3_goes_on_to_4_or_5() {
+        let held = |class, dying_sprite| Lifecycle {
+            state: 3,
+            attribute_type: 15,
+            amount: 100.0,
+            dying_sprite,
+            ..dead(class)
+        };
+        let step = |mut l: Lifecycle| {
+            let _ = l.update(0.025, &mut Well512::default(), true).unwrap();
+            l.state
+        };
+        assert_eq!(step(held(Class::Animated, Some(8220))), 4);
+        assert_eq!(step(held(Class::Animated, None)), 5);
+        assert_eq!(step(held(Class::Static, None)), 3);
     }
 
     /// MarvinBlue/426048731's sheep 9520 (dying sprite 8220): killed, it dies into state 4, which
