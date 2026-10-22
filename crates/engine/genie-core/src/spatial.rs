@@ -150,6 +150,9 @@ impl Placed {
 /// The tile bit a static record sets (`0x4000`, in `FUN_141056460`): the tile is blocked.
 pub const BLOCKED: u64 = 0x4000;
 
+/// The most objects a tile's list holds (`FUN_140f5f0a0`'s `count < 0xfa`).
+const MOST_ON_TILE: usize = 0xfa;
+
 /// The obstruction manager's grid (`FUN_141054660`): its top cell is the largest power of two up
 /// to twice the map's longer side (at most 4096 tiles), each level halves the cells' side
 /// (level `k`'s cells are `top >> k` tiles wide, its cell shift `levels - k + 2`), down to cells
@@ -264,16 +267,41 @@ impl Tiles {
         self.index(position[0] as i32, position[1] as i32)
     }
 
-    /// The object goes last on tile `i` (`FUN_140f5f0a0`).
-    fn append(&mut self, i: usize, id: i32) {
+    /// The object goes last on tile `i` (`FUN_140f5f0a0`). An empty tile's list takes it and
+    /// the tall count becomes 1 for a `tall` object (else it stays, 0 on an empty tile); a tile
+    /// of [`MOST_ON_TILE`] objects or more takes none and keeps its count; else the object goes
+    /// last and the tall count is redone over the list, each object by `tall` (its master's
+    /// height radius above 0 now).
+    fn append(&mut self, i: usize, id: i32, tall: impl Fn(i32) -> bool) {
+        let n = self.lists[i].len();
+        if n == 0 {
+            self.lists[i].push(id);
+            if tall(id) {
+                self.tall[i] = 1;
+            }
+            return;
+        }
+        if MOST_ON_TILE <= n {
+            return;
+        }
         self.lists[i].push(id);
+        self.recount(i, tall);
     }
 
-    /// The object leaves tile `i`: the last object takes its slot (`FUN_140f5f560`).
-    fn take_off(&mut self, i: usize, id: i32) {
-        if let Some(k) = self.lists[i].iter().position(|&o| o == id) {
-            let _ = self.lists[i].swap_remove(k);
-        }
+    /// The object leaves tile `i` (`FUN_140f5f560`): one not on the list changes nothing; else
+    /// the last object takes its slot and the tall count is redone over the list.
+    fn take_off(&mut self, i: usize, id: i32, tall: impl Fn(i32) -> bool) {
+        let Some(k) = self.lists[i].iter().position(|&o| o == id) else {
+            return;
+        };
+        let _ = self.lists[i].swap_remove(k);
+        self.recount(i, tall);
+    }
+
+    /// Tile `i`'s tall count over its list, each object by `tall` (a byte, as the game counts).
+    fn recount(&mut self, i: usize, tall: impl Fn(i32) -> bool) {
+        let count = self.lists[i].iter().filter(|&&o| tall(o)).count();
+        self.tall[i] = count as u8;
     }
 
     /// Marks (`bits`) on tile (`x`, `y`)'s word, for a test's map.
@@ -728,20 +756,16 @@ impl Spatial {
         }
         let _ = self.objects.insert(id, placed);
         if let Some(i) = self.tiles.tile_of(placed.position) {
-            self.tiles.append(i, id);
-            self.recount(i);
+            let objects = &self.objects;
+            self.tiles.append(i, id, |o| Self::is_tall(objects, o));
         }
     }
 
-    /// Tile `i`'s tall count after its list changed: the tall objects on it (`FUN_140f5f0a0` and
-    /// `FUN_140f5f560` count them over the list, each by its master's height radius now; a
-    /// ghost is not tall).
-    fn recount(&mut self, i: usize) {
-        let tall = self.tiles.lists[i]
-            .iter()
-            .filter(|id| self.objects.get(id).is_some_and(|p| p.tall))
-            .count();
-        self.tiles.tall[i] = tall as u8;
+    /// Whether listed object `id` counts as tall (its master's height radius above 0, which
+    /// `FUN_140f5f0a0` and `FUN_140f5f560` read): a ghost, whose master the slice does not hold,
+    /// counts as not tall.
+    fn is_tall(objects: &BTreeMap<i32, Placed>, id: i32) -> bool {
+        objects.get(&id).is_some_and(|p| p.tall)
     }
 
     /// The object's master changed (`FUN_1411a6a70`): it takes the new master's radii, class,
@@ -799,8 +823,8 @@ impl Spatial {
         let _ = self.inside.remove(&id);
         if let Some(gone) = self.objects.remove(&id) {
             if let Some(i) = self.tiles.tile_of(gone.position) {
-                self.tiles.take_off(i, id);
-                self.recount(i);
+                let objects = &self.objects;
+                self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
             }
             if gone.obstruction.is_some_and(Obstruction::marks_tiles) {
                 self.unmark(&gone, id);
@@ -1326,13 +1350,12 @@ impl Spatial {
             p.position = position;
             let (old, new) = (self.tiles.tile_of(from), self.tiles.tile_of(position));
             if old != new {
+                let objects = &self.objects;
                 if let Some(i) = old {
-                    self.tiles.take_off(i, id);
-                    self.recount(i);
+                    self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
                 }
                 if let Some(i) = new {
-                    self.tiles.append(i, id);
-                    self.recount(i);
+                    self.tiles.append(i, id, |o| Self::is_tall(objects, o));
                 }
             }
             let Some(p) = self.objects.get(&id) else {
@@ -2035,17 +2058,22 @@ impl Spatial {
 
     /// A player's ghost `id` of an object it saw (a doppelganger, type 25): it is on its tile's
     /// list, and movement sees nothing else of it. The slice keeps the ghosts of the save and
-    /// makes none.
+    /// makes none. The tile's tall count is redone ([`Tiles`]' append, `FUN_140f5f0a0`); the
+    /// game counts the ghost by its master's height radius, which the slice does not hold, so
+    /// the ghost counts as not tall.
     pub fn insert_ghost(&mut self, id: i32, position: [f32; 3]) {
         if let Some(i) = self.tiles.tile_of(position) {
-            self.tiles.append(i, id);
+            let objects = &self.objects;
+            self.tiles.append(i, id, |o| Self::is_tall(objects, o));
         }
     }
 
-    /// A ghost leaves its tile's list (its last object takes its place).
+    /// A ghost leaves its tile's list (its last object takes its place) and the tile's tall count
+    /// is redone (`FUN_140f5f560`).
     pub fn remove_ghost(&mut self, id: i32, position: [f32; 3]) {
         if let Some(i) = self.tiles.tile_of(position) {
-            self.tiles.take_off(i, id);
+            let objects = &self.objects;
+            self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
         }
     }
 
@@ -3156,6 +3184,47 @@ mod tests {
             Vec::new()
         );
         assert_eq!(s.tiles().list(1, 1), [9171, 9173, 10029]);
+    }
+
+    /// `FUN_140f5f0a0`: a tile of 250 objects takes no more and keeps its tall count;
+    /// `FUN_140f5f560`: an object not on the list leaves nothing changed (no recount).
+    #[test]
+    fn a_full_tile_takes_no_object_and_one_not_on_it_leaves_its_count() {
+        let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
+        for id in 0..250 {
+            s.insert(id, villager(1.5, 1.5));
+        }
+        assert_eq!(s.tiles().objects(1, 1), Some(250));
+        assert_eq!(s.tiles().tall(1, 1), Some(250));
+        // object 0 is no longer tall; the game does not redo the count
+        s.set_tall(0, false);
+        s.insert(250, villager(1.5, 1.5));
+        assert_eq!(s.tiles().objects(1, 1), Some(250));
+        assert!(!s.tiles().list(1, 1).contains(&250));
+        assert_eq!(s.tiles().tall(1, 1), Some(250));
+        // 250 leaves a tile whose list never held it: no recount
+        s.remove(250);
+        assert_eq!(s.tiles().tall(1, 1), Some(250));
+        // one that is on it leaves: the count is redone over the list, 0 not tall
+        s.remove(249);
+        assert_eq!(s.tiles().tall(1, 1), Some(248));
+    }
+
+    /// A ghost enters and leaves a tile's list as any object does (`FUN_140f5f0a0`,
+    /// `FUN_140f5f560`): the tile's tall count is redone over the list.
+    #[test]
+    fn a_ghost_entering_or_leaving_a_tile_redoes_its_tall_count() {
+        let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
+        s.insert(1, villager(1.5, 1.5));
+        s.insert(2, villager(1.5, 1.5));
+        s.set_tall(1, false);
+        assert_eq!(s.tiles().tall(1, 1), Some(2));
+        s.insert_ghost(-5, [1.5, 1.5, 0.0]);
+        assert_eq!(s.tiles().list(1, 1), [1, 2, -5]);
+        assert_eq!(s.tiles().tall(1, 1), Some(1));
+        s.set_tall(2, false);
+        s.remove_ghost(-5, [1.5, 1.5, 0.0]);
+        assert_eq!(s.tiles().tall(1, 1), Some(0));
     }
 
     /// The house foundation 10028 at (30, 88) of MarvinBlue/426048731 with its builder 9175 on its
