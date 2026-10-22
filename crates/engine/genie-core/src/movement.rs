@@ -607,7 +607,7 @@ impl Mover {
         };
         v.velocity[2] = speed;
         // the position setter runs only for a distance it moves
-        let Some(at) = self.move_forward(dt * speed, position, map) else {
+        let Some(at) = self.move_forward(dt * speed, map) else {
             return position;
         };
         let at = self.grounded(at, terrain);
@@ -643,14 +643,15 @@ impl Mover {
         }
     }
 
-    /// `moveForward` (slot 182): `distance × factor` along the forward vector, through the
-    /// position setter; a distance below 1e-7 moves nothing.
-    fn move_forward(&self, distance: f32, position: [f32; 3], map: [i32; 2]) -> Option<[f32; 3]> {
+    /// `moveForward` (slot 182, `FUN_141158490`): `distance × factor` along the forward vector
+    /// from where the unit last moved to (`+0x824`, [`Mover::moved_at`]), through the position
+    /// setter; a distance below 1e-7 moves nothing.
+    fn move_forward(&self, distance: f32, map: [i32; 2]) -> Option<[f32; 3]> {
         let d = distance * self.factor;
         if d.abs() < EPSILON {
             return None;
         }
-        let to = fmath::add(vector(position), fmath::scale(d, self.forward));
+        let to = fmath::add(vector(self.moved_at), fmath::scale(d, self.forward));
         Some(self.set_position(map_position(to), map))
     }
 
@@ -823,7 +824,9 @@ impl Mover {
         computer: bool,
     ) -> Result<Next, Unsupported> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
-        let position = vector(me.position);
+        // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
+        // (slot 0x638) and its query (FUN_14114cc60) start at +0x824, where the unit last moved to
+        let position = vector(self.moved_at);
         let level = &self.paths[0];
         let waypoint = point_or_zero_of(level, level.waypoint);
         if ground(position, waypoint) < EPSILON {
@@ -831,7 +834,7 @@ impl Mover {
             return Ok(Next::Again);
         }
         let direction = self.direction_to(position, waypoint);
-        let projected = self.projected(position, direction, dt);
+        let projected = self.projected(direction, dt);
         match reach(waypoint, position, projected) {
             Reach::Away => {
                 self.paths[0].flags |= 3;
@@ -913,7 +916,7 @@ impl Mover {
             None => {}
         }
         let clipped = self.steer(direction, dt)?;
-        self.control_speed(position, waypoint, clipped);
+        self.control_speed(waypoint, clipped);
         Ok(Next::Done(Motion::Moving))
     }
 
@@ -2366,9 +2369,11 @@ impl Mover {
         self.forward
     }
 
-    /// Where this tick's speed would take the unit along `direction` (slot 199, `0x141161860`):
-    /// the forward speed after one more step of acceleration, capped by the top speed.
-    fn projected(&self, position: Vec3, direction: Vec3, dt: f32) -> Vec3 {
+    /// Where this tick's speed would take the unit along `direction` (slot 199, `0x141161860`)
+    /// from where it last moved to (`+0x824`, [`Mover::moved_at`]): the forward speed after one
+    /// more step of acceleration, capped by the top speed (COMISS/JA, then JC: a NaN speed stays).
+    fn projected(&self, direction: Vec3, dt: f32) -> Vec3 {
+        let position = vector(self.moved_at);
         let Some(v) = &self.velocity else {
             return position;
         };
@@ -2655,8 +2660,11 @@ impl Mover {
 
     /// The speed control toward the waypoint (slot 198, `0x141150a80`): a unit whose turn fell
     /// short stops (its speed 0, slot 0x598) and brakes; else it accelerates to the top speed
-    /// unless the waypoint lies inside the turning circle, where it brakes.
-    fn control_speed(&mut self, position: Vec3, waypoint: Vec3, clipped: bool) {
+    /// unless the waypoint lies inside the turning circle, where it brakes. The way to the
+    /// waypoint and the circle start where the unit last moved to (`+0x824`,
+    /// [`Mover::moved_at`]).
+    fn control_speed(&mut self, waypoint: Vec3, clipped: bool) {
+        let position = vector(self.moved_at);
         let Some(v) = self.velocity.as_mut() else {
             self.velocity = Some(Velocity {
                 velocity: [0.0; 3],
@@ -3081,7 +3089,7 @@ mod tests {
             wait_delays: 0,
             attack_moving: false,
             last_move: 0,
-            moved_at: [0.0; 3],
+            moved_at: [28.0, 89.0, 0.0],
             substitute_count: 0,
             ignore_units: Vec::new(),
             last_turn: 0.0,
@@ -3343,6 +3351,34 @@ mod tests {
         assert_eq!(m.forward, [0.894_427_2, 0.0, -0.447_213_62]);
     }
 
+    /// `moveForward` (`FUN_141158490`), slot 199 (`FUN_141161860`) and slot 198
+    /// (`FUN_141150a80`) start from `+0x824`, where the unit last moved to, not from the place
+    /// the caller holds.
+    #[test]
+    fn the_step_and_the_speed_control_start_where_the_unit_last_moved_to() {
+        let mut m = builder_9177();
+        m.forward = [1.0, 0.0, 0.0];
+        m.moved_at = [10.0, 20.0, 0.0];
+        m.velocity.as_mut().unwrap().velocity = [0.0, 0.0, 0.5];
+        m.velocity.as_mut().unwrap().acceleration = [0.0; 3];
+        // the step: 0.5 tiles a second for a second, from (10, 20) whatever the caller holds
+        let at = m.step_velocity([40.0, 40.0, 0.0], 1.0, [120, 120], None, 0);
+        assert_eq!(at, [10.5, 20.0, 0.0]);
+        assert_eq!(m.moved_at, [10.5, 20.0, 0.0]);
+        // the projection along +x: 0.5 tiles from (10.5, 20)
+        assert_eq!(m.projected([1.0, 0.0, 0.0], 1.0), [11.0, 0.0, 20.0]);
+        // the speed control's turning circle around (10.5, 20) grown to the right by 1: a
+        // waypoint inside it brakes, one beyond it speeds up
+        m.stats.turn_radius = 2.0;
+        m.stats.turn_radius_speed = 1.0;
+        m.right = [0.0, 0.0, -1.0];
+        m.control_speed([10.5, 0.0, 19.2], false);
+        assert_eq!(m.velocity.as_ref().unwrap().acceleration[2], -f32::MAX);
+        m.velocity.as_mut().unwrap().acceleration = [0.0; 3];
+        m.control_speed([12.0, 0.0, 17.0], false);
+        assert_eq!(m.velocity.as_ref().unwrap().acceleration[2], f32::MAX);
+    }
+
     #[test]
     fn the_second_tick_turns_toward_the_waypoint_from_where_the_first_step_ended() {
         let mut m = builder_9177();
@@ -3434,6 +3470,7 @@ mod tests {
         ];
         m.velocity.as_mut().unwrap().velocity = [0.0, 0.0, 0.8];
         let mut world = Spatial::new([120, 120]);
+        m.moved_at = [29.51, 89.49, 0.0];
         let mut me = Me {
             id: 9175,
             position: [29.51, 89.49, 0.0],
