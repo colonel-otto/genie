@@ -2921,8 +2921,9 @@ impl Turns {
     }
 
     /// `FUN_140aaddb0` and the builder count: the foundation `id` a Build counted its builder
-    /// among (an annex of type 80 its main building, `+0xbb8`), when the world still holds it,
-    /// counts one builder less (`+0x9e8`).
+    /// among (an annex of type 80 its main building, `+0xbb8`), when the world still holds it
+    /// (live or sleeping, `FUN_1415417a0`), counts one builder less (`+0x9e8`, held in its
+    /// construction record).
     fn leave_builders(&mut self, id: i32) -> Result<(), Unsupported> {
         let Some((p, f)) = self.object(id) else {
             return Ok(());
@@ -2933,12 +2934,9 @@ impl Turns {
         } else {
             id
         };
-        let Some(Place::Live(sp, si)) = self.place(site) else {
-            return Err(Unsupported("a Build's foundation that sleeps"));
-        };
-        let c = self.players[sp].objects[si]
-            .construction
-            .as_mut()
+        let c = self
+            .object_mut(site)
+            .and_then(|(_, b)| b.construction.as_mut())
             .ok_or(Unsupported("a Build's foundation without its construction"))?;
         c.builders = c.builders.wrapping_sub(1);
         Ok(())
@@ -4963,6 +4961,47 @@ mod tests {
             t.players[1].objects[0].ai.as_ref().unwrap().current_order,
             -1
         );
+    }
+
+    /// `FUN_140aaddb0`: a Build on an annex counts its main building's builders one less; a
+    /// foundation the world no longer holds counts nothing.
+    #[test]
+    fn a_builder_leaves_the_main_building_of_an_annex() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.masters[1] = crate::masters::Masters::new([Master {
+            id: 79,
+            kind: BUILDING,
+            ..Master::default()
+        }]);
+        let construction = crate::build::Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 2,
+            hit_points: 100,
+            build_time: 10,
+            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: true,
+        };
+        let building = |id, annex_of| Unit {
+            id,
+            annex_of,
+            construction: Some(construction),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 79,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects = vec![building(60, None), building(70, Some(60))];
+        t.leave_builders(70).unwrap();
+        let builders = |t: &Turns, i: usize| t.players[1].objects[i].construction.unwrap().builders;
+        assert_eq!((builders(&t, 0), builders(&t, 1)), (1, 2));
+        t.leave_builders(60).unwrap();
+        t.leave_builders(99).unwrap();
+        assert_eq!(builders(&t, 0), 0);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
