@@ -2576,6 +2576,35 @@ fn work_masters(
             });
         }
         work.damage_sprites = !s.damage_sprite.is_empty();
+        // what the masters' attribute setters change: the top and turn speeds (+0x740,
+        // +0x758), the damage sprites (+0x638) and the train locations (+0x898)
+        work.max_speed = animated_master(m).map_or(0.0, |a| a.max_speed);
+        work.turn_speed = moving_master(m).map_or(0.0, |mv| mv.turn_speed);
+        work.damage_graphics = s
+            .damage_sprite
+            .iter()
+            .map(|d| genie_core::masters::DamageGraphic {
+                sprite: d.temp_id,
+                percent: d.sprite_info_damage_percent,
+                apply_mode: d.sprite_info_flag,
+            })
+            .collect();
+        work.train_locations = m
+            .tribe_master_building_object
+            .as_deref()
+            .map(|b| &b.tribe_master_combat_object)
+            .or(m.tribe_master_combat_object.as_deref())
+            .map_or_else(Vec::new, |c| {
+                c.train_location
+                    .iter()
+                    .map(|t| genie_core::masters::TrainLocation {
+                        location: t.train_location_id,
+                        time: t.train_time,
+                        button: t.button_location_id,
+                        hotkey: t.hotkey_id,
+                    })
+                    .collect()
+            });
         work.fly_mode = table.fly_mode(civ, s.id()).unwrap_or(0);
         work.standing_sprite = s.idle_sprite_id;
         work.standing_sprite_2 = (0 <= s.idle2_sprite_id).then_some(s.idle2_sprite_id);
