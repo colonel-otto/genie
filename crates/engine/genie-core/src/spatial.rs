@@ -150,6 +150,10 @@ impl Placed {
 /// The tile bit a static record sets (`0x4000`, in `FUN_141056460`): the tile is blocked.
 pub const BLOCKED: u64 = 0x4000;
 
+/// The room of the hit list the obstruction queries' callers give (`local_1758`, `local_148`:
+/// `0x19`), which the edge records (`FUN_141057290`) also respect.
+const QUERY_HITS: usize = 0x19;
+
 /// The most objects a tile's list holds (`FUN_140f5f0a0`'s `count < 0xfa`).
 const MOST_ON_TILE: usize = 0xfa;
 
@@ -1117,7 +1121,10 @@ impl Spatial {
         // a query beyond the map's edge meets the edge's records first (FUN_141057290)
         let mut hits: Vec<i32> =
             if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
-                self.edge_records(query).iter().map(|e| e.id).collect()
+                self.edge_records(query, QUERY_HITS)
+                    .iter()
+                    .map(|e| e.id)
+                    .collect()
             } else {
                 Vec::new()
             };
@@ -1208,7 +1215,7 @@ impl Spatial {
         let [w, h] = self.map;
         let mut hits: Vec<i32> = Vec::new();
         if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
-            hits.extend(self.edge_records(query).iter().map(|e| e.id));
+            hits.extend(self.edge_records(query, QUERY_HITS).iter().map(|e| e.id));
             if MOST_HITS <= hits.len() {
                 hits.truncate(MOST_HITS);
                 return Ok(hits);
@@ -1301,7 +1308,7 @@ impl Spatial {
         ];
         let [w, h] = self.map;
         if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
-            && !self.edge_records(rect).is_empty()
+            && !self.edge_records(rect, QUERY_HITS).is_empty()
         {
             return Ok(true);
         }
@@ -2407,7 +2414,7 @@ impl Spatial {
         let [w, h] = self.map;
         let rect = [x - grow, y - grow, grow + x, grow + y];
         if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
-            && !self.edge_records(rect).is_empty()
+            && !self.edge_records(rect, QUERY_HITS).is_empty()
         {
             return Ok(true);
         }
@@ -2518,7 +2525,7 @@ impl Spatial {
         let grown = [lo_x - g, lo_y - g, g + hi_x, g + hi_y];
         let mut hits = Vec::new();
         if grown[0] < 0.0 || grown[1] < 0.0 || (w as f32) < grown[2] || (h as f32) < grown[3] {
-            hits = self.edge_records(grown);
+            hits = self.edge_records(grown, QUERY_HITS);
             if first {
                 return Ok(hits);
             }
@@ -2628,45 +2635,51 @@ impl Spatial {
     /// ignore list): for each edge it crosses (left, top, right, bottom), the manager's record for
     /// that edge (`+0xb0`, `+0xb8`, `+0xc0`, `+0xc8`), set to the tile box where the rectangle's
     /// diagonal `(x0, y0)` -> `(x1, y1)` crosses the edge's line, id `x << 12 | y | 0xff000000`.
+    /// The list takes at most `cap` records (its `*param_6`): the routine returns once the list
+    /// holds that many, after any edge. The terms are the game's, each with its zero factor
+    /// (`0 × dy0`, `(w − w) × dy`, ...), so an infinite or NaN operand gives NaN as there; each
+    /// crossing is cast by `CVTTSS2SI` into 32 bits (a NaN or huge one is `i32::MIN`).
     #[must_use]
-    pub fn edge_records(&self, rect: [f32; 4]) -> Vec<Hit> {
+    // the game's (w - w) and (h - h) factors: 0, but NaN times an infinite or NaN term
+    #[allow(clippy::eq_op)]
+    pub fn edge_records(&self, rect: [f32; 4], cap: usize) -> Vec<Hit> {
+        use crate::checkpoint::cvttss2si;
         let [x0, y0, x1, y1] = rect;
         // the manager's map size as floats (+0xa8, +0xac)
         let (w, h) = (self.map[0] as f32, self.map[1] as f32);
         let (dx, dy) = (x1 - x0, y1 - y0);
         let (dy0, dx0) = (y0 - 0.0, x0 - 0.0);
-        // each edge line through the diagonal (the game's terms with a zero side, 0 × d and
-        // (w − w) × d, drop out: they add or take a zero)
         let at = |t: f32| {
-            let x = (dx * t + x0) as i32;
-            // (uint): a truncation through 64 bits
-            let y = (dy * t + y0) as i64 as u32;
+            let x = cvttss2si(dx * t + x0);
+            let y = cvttss2si(dy * t + y0);
             Hit {
-                id: ((x << 12) as u32 | y | 0xff00_0000) as i32,
-                bounds: [
-                    x as f32,
-                    y as i32 as f32,
-                    x as f32 + 1.0,
-                    y as i32 as f32 + 1.0,
-                ],
+                id: ((x << 12) | y | 0xff00_0000_u32 as i32),
+                bounds: [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0],
             }
         };
         let mut hits = Vec::new();
+        let mut edges: [Option<f32>; 4] = [None; 4];
         if x0 < 0.0 {
             let hh = h - 0.0;
-            hits.push(at(-(hh * dx0) / (dx * hh)));
+            edges[0] = Some((dy0 * 0.0 - hh * dx0) / (dx * hh - dy * 0.0));
         }
         if y0 < 0.0 {
             let hh = h - 0.0;
-            hits.push(at((hh * dy0) / -(hh * dy)));
+            edges[1] = Some((hh * dy0 - dx0 * 0.0) / (dx * 0.0 - hh * dy));
         }
         if w < x1 {
             let hh = h - 0.0;
-            hits.push(at(-((x0 - w) * hh) / (hh * dx)));
+            edges[2] = Some(((w - w) * dy0 - (x0 - w) * hh) / (hh * dx - (w - w) * dy));
         }
         if h < y1 {
             let ww = w - 0.0;
-            hits.push(at(((y0 - h) * ww) / -(ww * dy)));
+            edges[3] = Some(((y0 - h) * ww - (h - h) * dx0) / ((h - h) * dx - ww * dy));
+        }
+        for t in edges.into_iter().flatten() {
+            hits.push(at(t));
+            if cap <= hits.len() {
+                break;
+            }
         }
         hits
     }
@@ -2874,17 +2887,30 @@ mod tests {
     #[test]
     fn a_rectangle_leaving_the_map_meets_the_edge_records_where_its_diagonal_crosses() {
         let s = Spatial::new([120, 120]);
-        assert_eq!(s.edge_records([0.0, 0.0, 120.0, 120.0]), Vec::<Hit>::new());
+        assert_eq!(
+            s.edge_records([0.0, 0.0, 120.0, 120.0], 25),
+            Vec::<Hit>::new()
+        );
         // the diagonal (-0.3, 50) -> (0.3, 50.6) crosses x 0 at y 50.3: the left edge's tile (0, 50)
-        let left = s.edge_records([-0.3, 50.0, 0.3, 50.6]);
+        let left = s.edge_records([-0.3, 50.0, 0.3, 50.6], 25);
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].id as u32, 0xff00_0000 | 0x32);
         assert_eq!(left[0].bounds, [0.0, 50.0, 1.0, 51.0]);
         // past the bottom right corner: (119.5, 119.7) -> (120.5, 120.7) crosses x 120 at y 120.2
         // and y 120 at x 119.8
-        let corner = s.edge_records([119.5, 119.7, 120.5, 120.7]);
+        let corner = s.edge_records([119.5, 119.7, 120.5, 120.7], 25);
         let ids: Vec<u32> = corner.iter().map(|h| h.id as u32).collect();
         assert_eq!(ids, [0xff07_8078, 0xff07_7078]);
+        // a list with room for one stops after the first edge
+        assert_eq!(s.edge_records([119.5, 119.7, 120.5, 120.7], 1), corner[..1]);
+        // an infinite end: the crossing's terms give NaN, which CVTTSS2SI makes i32::MIN
+        let far = s.edge_records([-0.5, 10.0, f32::INFINITY, 10.5], 25);
+        assert_eq!(far.len(), 2);
+        assert_eq!(far[0].id as u32, 0xff00_000a);
+        assert_eq!(
+            far[0].bounds,
+            [-2_147_483_648.0, 10.0, -2_147_483_648.0, 11.0]
+        );
         // a unit of radius 0.3 cannot stand 0.2 from the edge
         assert!(!s.point_clear(1, [0.2, 50.0], 0.3, 0xff).unwrap());
         assert!(s.point_clear(1, [0.4, 50.0], 0.3, 0xff).unwrap());
