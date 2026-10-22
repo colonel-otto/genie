@@ -6,6 +6,7 @@
 //! (`FUN_1411cd780` -> `FUN_1411ccbb0`) gives back what is left of a foundation's cost and takes
 //! its hit points too. The object dies in its next update.
 
+use crate::build::held;
 use crate::masters::Master;
 use crate::order::Place;
 use crate::turn::Turns;
@@ -370,17 +371,17 @@ impl Turns {
         new: u8,
         master: &Master,
     ) -> Result<(), Unsupported> {
-        let Some(Place::Live(p, i)) = self.place(id) else {
-            return Err(Unsupported("a combat object's set_state while it sleeps"));
+        // an object the slice does not hold fails in the base set_state
+        let Some(place) = self.place(id) else {
+            return self.base_set_state(owner, id, new, master);
         };
-        let state = self.players[p].objects[i].life.state;
+        let u = held(&mut self.players, place);
+        let (state, main) = (u.life.state, u.annex_of);
         if 3 <= new && state < 3 {
-            let u = &mut self.players[p].objects[i];
             crate::turn::combat_dies(u, master, &mut self.spatial, &mut self.pathing)?;
             self.pathing.tiles_changed(self.spatial.take_changes());
         }
         if new == 3 && state == 2 {
-            let main = self.players[p].objects[i].annex_of;
             for (kind, amount) in crate::turn::refund_of(master, main) {
                 let player = &mut self.players[owner];
                 player.add_attribute(kind, -amount)?;

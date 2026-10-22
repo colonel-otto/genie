@@ -9478,9 +9478,8 @@ impl Turns {
             let Some(am) = self.masters.get(player).and_then(|m| m.get(annex)).cloned() else {
                 continue;
             };
-            if am.kind != BUILDING_KIND {
-                return Err(Unsupported("an annex of a type other than a building"));
-            }
+            // the .dat's annexes are buildings (type 80): another type's master has no building
+            // part, which the constructor below refuses
             let [ox, oy] = building.annex_offsets[slot];
             let ai = crate::unit_ai::factory_type(am.class, annex, am.volley_missile.unwrap_or(-1));
             let at = [position[0] + ox, position[1] + oy, given_z];
@@ -9506,18 +9505,15 @@ impl Turns {
         made: &Master,
         am: &Master,
     ) -> Result<(), Unsupported> {
-        let (_, a) = self
-            .object_mut(aid)
-            .ok_or(Unsupported("an annex the slice does not hold"))?;
+        let not_held = Unsupported("an annex the slice does not hold");
+        let (_, a) = self.object_mut(aid).ok_or(not_held)?;
         a.annex_of = Some(id);
         self.spatial.set_annex(aid, Some(id));
         if made.class != GATE {
             self.unwatch(player, aid);
         }
         if 0.0 < am.height {
-            let (_, a) = self
-                .object_mut(aid)
-                .ok_or(Unsupported("an annex the slice does not hold"))?;
+            let (_, a) = self.object_mut(aid).ok_or(not_held)?;
             let c = a
                 .construction
                 .as_mut()

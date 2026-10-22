@@ -16,6 +16,7 @@ use crate::masters::Master;
 use crate::move_to::{Goal, start_walk, walk_on};
 pub use crate::move_to::{MoveTo, Walk};
 use crate::movement::footprint_gap;
+use crate::order::Place;
 use crate::pathing::Pathing;
 use crate::spatial::{Obstruction, Spatial};
 use crate::unit_ai::{UnitAi, Unsupported};
@@ -1231,9 +1232,7 @@ impl crate::turn::Turns {
         id: i32,
         master: &Master,
     ) -> Result<(), Unsupported> {
-        let (_, u) = self
-            .object_mut(id)
-            .ok_or(Unsupported("a building the slice does not hold"))?;
+        let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
         for (kind, amount) in crate::turn::storage_leaves(u, master) {
             self.players[owner].add_attribute(kind, amount)?;
         }
@@ -1253,9 +1252,7 @@ impl crate::turn::Turns {
         id: i32,
         master: &Master,
     ) -> Result<(), Unsupported> {
-        let (_, u) = self
-            .object(id)
-            .ok_or(Unsupported("a building the slice does not hold"))?;
+        let (_, u) = self.object(id).ok_or(NOT_HELD)?;
         let construction = u
             .construction
             .ok_or(Unsupported("a foundation without its construction"))?;
@@ -1288,18 +1285,18 @@ impl crate::turn::Turns {
     ///
     /// # Errors
     ///
-    /// A sleeping foundation, and what the start does not model.
+    /// What the start does not model.
     pub(crate) fn construction_starts(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
-        let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
-            return Err(Unsupported("a sleeping foundation's construction starts"));
-        };
+        let place = self.place(id).ok_or(NOT_HELD)?;
+        let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
+        let master = held(&mut self.players, place).life.master_id;
         let volley = self
             .masters
             .get(p)
-            .and_then(|m| m.get(self.players[p].objects[i].life.master_id))
+            .and_then(|m| m.get(master))
             .map_or(0.0, |m| m.volley_fire);
         let now = self.world_time;
-        let u = &mut self.players[p].objects[i];
+        let u = held(&mut self.players, place);
         let Some(c) = u.construction.as_mut() else {
             return Ok(());
         };
@@ -1323,6 +1320,19 @@ impl crate::turn::Turns {
 /// flag (`FUN_14162ce00`'s `FUN_1411cc430` with `DAT_142eea788`).
 const STACK_WORK: f32 = 10000.0;
 
+/// The routines below reach their building through the object itself (their callers hold it):
+/// the slice's lists hold every object the world does.
+const NOT_HELD: Unsupported = Unsupported("a building the slice does not hold");
+
+/// The object at `place`, in its player's live or sleeping list (the world's table,
+/// `FUN_1415417a0`, holds both).
+pub(crate) fn held(players: &mut [crate::turn::Player], place: Place) -> &mut crate::turn::Unit {
+    match place {
+        Place::Live(p, i) => &mut players[p].objects[i],
+        Place::Sleeping(p, i) => &mut players[p].sleeping[i],
+    }
+}
+
 impl crate::turn::Turns {
     /// `FUN_1411cc430` outside a builder's update, `amount` seconds on the building `id`: first
     /// each annex (`+0xbc0`..`+0xbd8`) of a building type that is desolid starts
@@ -1335,7 +1345,7 @@ impl crate::turn::Turns {
     ///
     /// # Errors
     ///
-    /// A sleeping building, and what the starts and the completion do not model.
+    /// What the starts and the completion do not model.
     pub(crate) fn work_building(&mut self, id: i32, amount: f32) -> Result<(), Unsupported> {
         let mut at = id;
         loop {
@@ -1362,10 +1372,7 @@ impl crate::turn::Turns {
                 _ => break,
             }
         }
-        let Some(crate::order::Place::Live(q, i)) = self.place(at) else {
-            return Err(Unsupported("a worked building that sleeps"));
-        };
-        let u = &self.players[q].objects[i];
+        let (q, u) = self.object(at).ok_or(NOT_HELD)?;
         if u.life.state != 0 || crate::fmath::below_or_unordered(u.life.hp, 1.0) {
             return Ok(());
         }
@@ -1373,7 +1380,7 @@ impl crate::turn::Turns {
             self.clear_foundations_under(at)?;
             self.construction_starts(q, at)?;
         }
-        let u = &mut self.players[q].objects[i];
+        let (q, u) = self.object_mut(at).ok_or(NOT_HELD)?;
         let c = u
             .construction
             .as_mut()
@@ -1391,21 +1398,20 @@ impl crate::turn::Turns {
     ///
     /// # Errors
     ///
-    /// A sleeping building, and what the completion does not model.
+    /// What the completion does not model.
     pub(crate) fn complete_building(&mut self, id: i32) -> Result<(), Unsupported> {
         let attribute_204 = self
             .players
             .iter()
             .any(|q| q.attributes.get(204).is_some_and(|&v| v != 0.0));
-        let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
-            return Err(Unsupported("a completed building that sleeps"));
-        };
+        let place = self.place(id).ok_or(NOT_HELD)?;
+        let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
         let farm_bonus = crate::turn::farm_bonus(&self.players[p].attributes);
         let computer = self.players[p].computer;
         let annexed = !self.spatial.annexes_of(id).is_empty();
         let (mode_680, now) = (self.mode_680, self.world_time);
         let masters = self.masters.get(p);
-        let u = &mut self.players[p].objects[i];
+        let u = held(&mut self.players, place);
         let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
         let master = masters.and_then(|m| m.get(u.life.master_id));
         let construction = u
@@ -1496,9 +1502,7 @@ impl crate::turn::Turns {
         building: i32,
         stack: StackUnit,
     ) -> Result<(), Unsupported> {
-        let (_, old) = self.object(building).ok_or(Unsupported(
-            "a stack unit of a building the slice does not hold",
-        ))?;
+        let (_, old) = self.object(building).ok_or(NOT_HELD)?;
         let (orders, gather) = (
             old.ai
                 .as_ref()
@@ -1526,11 +1530,11 @@ impl crate::turn::Turns {
         let Some(new) = self.make_new_object(p, stack.master, stack.at, true)? else {
             return Ok(());
         };
-        let (q, nu) = self
-            .object(new)
-            .ok_or(Unsupported("a stack unit the slice does not hold"))?;
+        let (q, nu) = self.object(new).ok_or(NOT_HELD)?;
         let new_master = self.master_of(q, nu.life.master_id)?;
-        if new_master.kind == BUILDING_TYPE {
+        let mut point = None;
+        let building_made = new_master.kind == BUILDING_TYPE;
+        if building_made {
             if old_class == CLASS_39 && new_master.class == CLASS_39 {
                 return Err(Unsupported(
                     "a gate's stack gate (slot 0x670 with the old one's lock)",
@@ -1538,7 +1542,7 @@ impl crate::turn::Turns {
             }
             // a gather point on the old building names the new one; one whose target the world
             // no longer holds keeps its point, none at x or y −1 (compared as floats)
-            let point = gather.map(|g| {
+            point = gather.map(|g| {
                 let target = if g.target == building { new } else { g.target };
                 match self.object(target) {
                     Some((_, t)) => Some(crate::turn::GatherPoint {
@@ -1555,9 +1559,9 @@ impl crate::turn::Turns {
                     ),
                 }
             });
-            let (_, nu) = self
-                .object_mut(new)
-                .ok_or(Unsupported("a stack unit the slice does not hold"))?;
+        }
+        let (_, nu) = self.object_mut(new).ok_or(NOT_HELD)?;
+        if building_made {
             if let Some(ai) = nu.ai.as_mut().filter(|_| !orders.is_empty()) {
                 ai.building_orders.extend(orders);
             }
@@ -1565,9 +1569,6 @@ impl crate::turn::Turns {
                 nu.gather_point = g;
             }
         }
-        let (_, nu) = self
-            .object_mut(new)
-            .ok_or(Unsupported("a stack unit the slice does not hold"))?;
         nu.life.hp -= stack.hp_lost;
         Ok(())
     }
