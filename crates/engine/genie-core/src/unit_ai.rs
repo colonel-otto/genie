@@ -98,6 +98,9 @@ pub const GROUP_ASIDE_ACTION: i32 = 0x2c0;
 /// The order on a foundation a villager sent off its footprint takes up again (slot 0x108,
 /// `FUN_140c5c170` case 0x2de).
 pub const FOUNDATION_ORDER: i32 = 0x2de;
+/// The action value of a unit waiting for a foundation (slot 0x108, `FUN_140c68a60`, and the
+/// order switch's case 0x2de); the full update's reset of ended actions leaves it.
+pub const WAIT_SOLIDIFY_ACTION: i32 = 0x27a;
 /// [`SENT_OFF`]'s radii are hundredths (`DAT_14330ebcc`).
 const RADIUS_SCALE: f32 = crate::image::unit_ai::RADIUS_SCALE;
 /// The prey animals' class, whose move off a footprint runs (slot 0x148's seventh argument).
@@ -1147,6 +1150,19 @@ pub trait UnitSide {
     ) -> Result<Option<Gatherable>, Unsupported> {
         Err(Unsupported("a resource search without the world"))
     }
+
+    /// The unit's slot 0x388 (`FUN_141226fc0`) on object `target`: when the world holds it
+    /// (`FUN_1415417a0`) and the unit's slot 0x820 finds a task on it (any action type, with the
+    /// master switch), a new `TRIBE_Action_Wait_Solidify` on that task
+    /// ([`crate::wait_solidify`]) replaces the unit's actions (`FUN_140a98620`, slot 0x808);
+    /// true then.
+    ///
+    /// # Errors
+    ///
+    /// What the task search does not model.
+    fn wait_solidify(&mut self, _target: i32) -> Result<bool, Unsupported> {
+        Err(Unsupported("a wait for a foundation without the world"))
+    }
 }
 
 /// What the unit AI's `ClosestResourceObject` found ([`UnitSide::closest_resource`]): the object,
@@ -1507,6 +1523,8 @@ const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
 
 /// The base idle timeout (`+0x168`) the constructor sets; the adjusted one is drawn around it.
 const IDLE_TIMEOUT: u32 = 3000;
+/// The tower's idle timeout (`FUN_140c12960`'s `FUN_140c41bc0` with 1000).
+const TOWER_IDLE_TIMEOUT: u32 = 1000;
 /// The villager class (`-0xea8` raw): a boar attacking one turns furious.
 const CLASS_VILLAGER: i16 = 4;
 /// The desired target distance (`+0x5c`) the constructor sets.
@@ -1669,7 +1687,8 @@ impl UnitAi {
     /// AI-stream values, in this order: the last retarget time `r % 500`, the adjusted idle timeout
     /// `r % 1500 + 2250` and the retarget timer `750 + r % 500`. The factory (`FUN_141215a90`)
     /// picks the type's constructor; the building's (17, `TribeBuildingUnitAIModule`
-    /// `0x140c11470`, whose cared classes are [`BUILDING_CARED`]) and the civilian's (8,
+    /// `0x140c11470`, whose cared classes are [`BUILDING_CARED`]), the tower's (15,
+    /// `FUN_140c12960`: its idle timeout 1000, a fourth draw for the adjusted one) and the civilian's (8,
     /// `TribeCivilianUnitAIModule` `0x140c115d0`, [`CIVILIAN_CARED`]) are modelled, both of which
     /// set the stance (`+0x1a9`) to 0 after the base's 3; for any other type nothing is drawn.
     pub const fn constructed(
@@ -1677,12 +1696,19 @@ impl UnitAi {
         position: [f32; 3],
         ai: &mut Well512,
     ) -> Result<Self, Unsupported> {
-        if !matches!(ai_type, 8 | 17) {
+        if !matches!(ai_type, 8 | 17 | TOWER_AI) {
             return Err(Unsupported("constructor of a unit-AI type not modelled"));
         }
         let last_retarget_time = ai.rand15() % 500;
-        let adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
+        let mut adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
         let retarget_timer = 750 + ai.rand15() % 500;
+        // the tower's (FUN_140c12960): FUN_140c41bc0(1000) sets its idle timeout, whose slot
+        // 0x1a8 draws its adjusted one again
+        let mut idle_timeout = IDLE_TIMEOUT;
+        if ai_type == TOWER_AI {
+            idle_timeout = TOWER_IDLE_TIMEOUT;
+            adjusted_idle_timeout = self::adjusted_idle_timeout(TOWER_IDLE_TIMEOUT, ai);
+        }
         Ok(Self {
             ai_type,
             current_order: -1,
@@ -1698,7 +1724,7 @@ impl UnitAi {
             last_target_type: -1,
             idle_timer: 0,
             adjusted_idle_timeout,
-            idle_timeout: IDLE_TIMEOUT,
+            idle_timeout,
             secondary_timer: 750,
             look_around_timer: 0,
             look_around_timeout: 1000,
@@ -2502,7 +2528,7 @@ impl UnitAi {
             && self.can_order(at, false)
             && !at.garrisoned
         {
-            self.run_orders(at, &mut fx)?;
+            self.run_orders(at, side, &mut fx)?;
         }
         let ordered = fx.iter().any(|e| matches!(e, Effect::OrderOnTarget(_)));
         let mut retargeted = false;
@@ -2854,7 +2880,8 @@ impl UnitAi {
     /// queued orders); busy (`busy`, the actions left), only those or a unit on MOVE's order
     /// (710/610: without a target, or an animal's own wander; with one, the work command's move to
     /// an object), and for the types that never retarget also one whose move ended (710 with no
-    /// action value); the attacks only for the types that do.
+    /// action value) or a villager waiting for a foundation (734/634 without a target); the
+    /// attacks only for the types that do.
     fn check_busy_order(&self, retarget: Retarget, busy: bool) -> Result<(), Unsupported> {
         let order = (self.current_order, self.current_action);
         let working = matches!(
@@ -2887,6 +2914,11 @@ impl UnitAi {
         // MOVE took with a target keeps the order while it trains or researches
         let moving_to =
             order == (MOVE_ORDER, MOVE_ACTION) || (self.ai_type == 17 && order.0 == MOVE_ORDER);
+        // a villager waiting for a foundation (case 0x2de's slot 0x108), without a target: the
+        // update, its target block and the civilian's processMisc have no case for the order or
+        // the action value
+        let waiting =
+            order == (FOUNDATION_ORDER, WAIT_SOLIDIFY_ACTION) && self.current_target == -1;
         // without an order and an action the target is a stale one: the order queue's next order
         // takes over
         if self.current_target != -1 && !working && !attacking && !moving_to && order != (-1, -1) {
@@ -2896,7 +2928,9 @@ impl UnitAi {
             return Ok(());
         }
         match retarget {
-            Retarget::Never | Retarget::Civilian if working || moving || moving_to || moved => {
+            Retarget::Never | Retarget::Civilian
+                if working || moving || moving_to || moved || waiting =>
+            {
                 Ok(())
             }
             // a move to an object: the retarget check passes over its target unless it is a
@@ -3347,7 +3381,7 @@ impl UnitAi {
         // into the queue at once (slot 0x30) and the order becomes the attack (700,
         // `FUN_140c64b60` with 0: the last order kept) at priority 100
         if self.current_order != -1 && n.caller != self.current_target {
-            self.requeue_current(at, fx)?;
+            self.requeue_current(at, side, fx)?;
             self.set_order_with(crate::ai_kinds::ORDER_ATTACK, false, ai_rng);
             self.order_priority = 100;
         }
@@ -3451,6 +3485,7 @@ impl UnitAi {
     fn requeue_current(
         &mut self,
         at: &Surroundings,
+        side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         if 2 < at.state || self.current_order == -1 {
@@ -3469,7 +3504,7 @@ impl UnitAi {
             target_type: self.target_type,
         };
         let place = ([at.position[0], at.position[1]], at.class);
-        self.order_now(record, Some(at.id), Some(place), Some(at), fx)
+        self.order_now(record, Some(at.id), Some(place), Some((at, side)), fx)
     }
 
     /// `FUN_140c55c90`'s immediate branch ("Adding as an immediate order."), for a unit in state
@@ -3481,15 +3516,15 @@ impl UnitAi {
     /// roundup (`0x2d9`, "so I'm not stopping the object") the target goes (`FUN_140c5e1e0`) and
     /// the action stops (slot 0xb0 with 1, which ends an order of its action and reads the
     /// unit's `place` for it). The notifies end (`FUN_140c5dc10` with 0; outside the full update
-    /// without `at`, where a completion it would stop on is not modelled), the queue's first
-    /// order runs at once (slot 0x230, [`UnitAi::process_order`]) and, unless it was not ready,
-    /// leaves the queue (`FUN_140c5e280`).
+    /// without `world`, where a completion it would stop on is not modelled), the queue's first
+    /// order runs at once (slot 0x230, [`UnitAi::process_order`] with `world`, the surroundings
+    /// and the unit) and, unless it was not ready, leaves the queue (`FUN_140c5e280`).
     fn order_now(
         &mut self,
         order: QueuedOrder,
         keep_from: Option<i32>,
         place: Option<([f32; 2], i16)>,
-        at: Option<&Surroundings>,
+        world: Option<(&Surroundings, &mut dyn UnitSide)>,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         if let Some(unit) = keep_from
@@ -3514,12 +3549,12 @@ impl UnitAi {
             self.remove_target();
             self.stop_with(true, place, fx)?;
         }
-        match at {
-            Some(at) => self.end_notifies(0, at, fx)?,
+        match &world {
+            Some((at, _)) => self.end_notifies(0, at, fx)?,
             None => self.clear_notifies(0)?,
         }
         let front = self.orders[0];
-        if self.process_order(&front, at, fx)? != 0xe {
+        if self.process_order(&front, world, fx)? != 0xe {
             let _ = self.orders.remove(0);
         }
         Ok(())
@@ -4454,8 +4489,12 @@ impl UnitAi {
     /// The unit AI between its owner's turns (`FUN_140c68980`, from `RGE_Combat_Object::update`
     /// for a unit of a type below 70 or not inside another): with no notifies queued, a unit
     /// without an action value or with an action it may interrupt (slot 0x2d0) runs its order
-    /// queue. Its effects, as the full update's.
-    pub fn off_turn(&mut self, at: &Surroundings) -> Result<Vec<Effect>, Unsupported> {
+    /// queue. Its effects, as the full update's; `side` answers what the orders ask of the unit.
+    pub fn off_turn(
+        &mut self,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+    ) -> Result<Vec<Effect>, Unsupported> {
         let mut fx = Vec::new();
         if !self.notifies.is_empty() || self.orders.is_empty() {
             return Ok(fx);
@@ -4464,7 +4503,7 @@ impl UnitAi {
             return Ok(fx);
         }
         if self.can_order(at, false) {
-            self.run_orders(at, &mut fx)?;
+            self.run_orders(at, side, &mut fx)?;
         }
         Ok(fx)
     }
@@ -4509,6 +4548,7 @@ impl UnitAi {
     pub fn run_orders(
         &mut self,
         at: &Surroundings,
+        side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         let mut k = 0;
@@ -4517,7 +4557,7 @@ impl UnitAi {
                 return Ok(());
             }
             let order = self.orders[k];
-            let r = self.process_order(&order, Some(at), fx)?;
+            let r = self.process_order(&order, Some((at, &mut *side)), fx)?;
             if r == 0xe {
                 k += 1;
                 continue;
@@ -4539,17 +4579,21 @@ impl UnitAi {
     /// and the unit's slot 0x2d8 shows its points (`+0x7c0`..`+0x7cc`, not held); once taken
     /// (1) the order and its priority become the AI's (leaving a patrol order caps the secondary
     /// timer). An order on a target (`0x2db`) goes to the unit ([`Effect::OrderOnTarget`]) and is
-    /// taken; a hunt order (`0x2c9`) runs `HuntObject` ([`UnitAi::hunt_object`]) and is taken. Other
-    /// orders are not modelled.
+    /// taken; a hunt order (`0x2c9`) runs `HuntObject` ([`UnitAi::hunt_object`]) and is taken; a
+    /// foundation's order (`0x2de`) waits for it ([`UnitAi::wait_for_foundation`]). Other orders
+    /// are not modelled. `world` is what the unit AI's updates pass (its surroundings and its
+    /// unit); [`UnitAi::take_order_now`] passes none, as its own order (`AUTO_SCOUT`'s stop or
+    /// auto scout order) is the one that runs.
     fn process_order(
         &mut self,
         o: &QueuedOrder,
-        at: Option<&Surroundings>,
+        world: Option<(&Surroundings, &mut dyn UnitSide)>,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         if !o.ready {
             return Ok(0xe);
         }
+        let outside = Unsupported("an order on an object run outside the unit AI's update");
         if o.order == AUTO_SCOUT_ORDER {
             // case 0x321: slot 0x100 with 1 to the order's point, then the auto scout's action
             // value, the explore's the last; the tail takes the order
@@ -4562,7 +4606,7 @@ impl UnitAi {
         }
         if o.order == HUNT_ORDER {
             // case 0x2c9: HuntObject (slot 0xc8) forced on the target; the tail takes the order
-            let at = at.ok_or(Unsupported("a hunt order run outside the unit AI's update"))?;
+            let (at, _) = world.ok_or(outside)?;
             let (class, point) = if o.target == self.current_target {
                 (self.target_type, self.target_point)
             } else if let Some(t) = at.target.filter(|_| o.target == self.last_target) {
@@ -4576,6 +4620,18 @@ impl UnitAi {
                 ));
             };
             self.hunt_object(o.target, class, point, at, fx)?;
+            return self.take_order(o);
+        }
+        if o.order == FOUNDATION_ORDER {
+            // case 0x2de: slot 0x108 forced on the target, then the action value 0x27a, the
+            // last the one slot 0x108 left (0x27a itself when it waited); the tail takes the
+            // order on 1
+            let (_, side) = world.ok_or(outside)?;
+            let waits = self.wait_for_foundation(o.target, true, side)?;
+            self.last_action = std::mem::replace(&mut self.current_action, WAIT_SOLIDIFY_ACTION);
+            if !waits {
+                return Ok(0);
+            }
             return self.take_order(o);
         }
         if o.order == STOP_ORDER {
@@ -4633,6 +4689,26 @@ impl UnitAi {
         self.current_order = o.order;
         self.order_priority = o.priority;
         Ok(1)
+    }
+
+    /// Slot 0x108 (`FUN_140c68a60`), with `force` (its argument 3) or without an action value:
+    /// the unit's slot 0x388 on the foundation `target` ([`UnitSide::wait_solidify`]); on its 1
+    /// the action value becomes [`WAIT_SOLIDIFY_ACTION`], the old one the last. True when it
+    /// waits.
+    fn wait_for_foundation(
+        &mut self,
+        target: i32,
+        force: bool,
+        side: &mut dyn UnitSide,
+    ) -> Result<bool, Unsupported> {
+        if !force && self.current_action != -1 {
+            return Ok(false);
+        }
+        if !side.wait_solidify(target)? {
+            return Ok(false);
+        }
+        self.set_action(WAIT_SOLIDIFY_ACTION);
+        Ok(true)
     }
 
     /// Slot 0x100 (`FUN_140c4d910`), with `again` (its argument 4) or without an action value:
@@ -5249,6 +5325,153 @@ mod tests {
                 (MOVE_ORDER, 0, [0.0; 3], 0, false),
                 (ORDER_ON_TARGET, 600, [33.5, 2.0, 0.0], 100, true),
             ]
+        );
+    }
+
+    /// What the unit's slot 0x388 answers ([`UnitSide::wait_solidify`]), and the foundations
+    /// asked.
+    struct WaitSide(bool, Vec<i32>);
+
+    impl UnitSide for WaitSide {
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
+            Err(Unsupported("no attack here"))
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn wait_solidify(&mut self, target: i32) -> Result<bool, Unsupported> {
+            self.1.push(target);
+            Ok(self.0)
+        }
+    }
+
+    /// The queue a villager sent off a foundation's footprint holds once its move aside ended
+    /// (0x2bf, which the full update resets): the foundation's order, then its work.
+    fn sent_off_queue() -> UnitAi {
+        let order = |order: i32, target: i32, x: f32| QueuedOrder {
+            issuer: 1,
+            order,
+            priority: 100,
+            target,
+            target_owner: 1,
+            point: [x, 2.0, 0.0],
+            range: 0.0,
+            shown: [x, 2.0],
+            ready: true,
+            target_type: 70,
+        };
+        UnitAi {
+            current_action: -1,
+            last_action: MOVE_ASIDE_ACTION,
+            current_order: -1,
+            order_priority: -1,
+            current_target: -1,
+            orders: vec![
+                order(FOUNDATION_ORDER, 10028, 30.0),
+                order(ORDER_ON_TARGET, 600, 33.5),
+            ],
+            ..UnitAi::default()
+        }
+    }
+
+    /// Case 0x2de (`FUN_140c5c170`): slot 0x108 forced (`FUN_140c68a60`) runs the unit's slot
+    /// 0x388 on the foundation; its 1 makes 0x27a the action value with the old one the last,
+    /// then the case sets 0x27a again (the last takes it) and the tail takes the order and its
+    /// priority, which ends the queue's turn: the work waits in the queue.
+    #[test]
+    fn a_foundation_order_waits_for_the_foundation_and_ends_the_queue_s_turn() {
+        let mut ai = sent_off_queue();
+        let mut side = WaitSide(true, Vec::new());
+        let fx = ai.off_turn(&scout_at(true, false), &mut side).unwrap();
+        assert_eq!(fx, vec![]);
+        assert_eq!(side.1, vec![10028]);
+        assert_eq!(
+            (ai.current_action, ai.last_action),
+            (WAIT_SOLIDIFY_ACTION, WAIT_SOLIDIFY_ACTION)
+        );
+        assert_eq!(
+            (ai.current_order, ai.order_priority),
+            (FOUNDATION_ORDER, 100)
+        );
+        let left: Vec<_> = ai.orders.iter().map(|o| (o.order, o.target)).collect();
+        assert_eq!(left, vec![(ORDER_ON_TARGET, 600)]);
+    }
+
+    /// Slot 0x388's 0 (no foundation, or no task on it): the case still makes 0x27a the action
+    /// value, the old one the last, and returns 0; the order goes and the queue runs the next,
+    /// the work on its old target (priority 100 passes the action value).
+    #[test]
+    fn a_foundation_order_without_a_wait_goes_and_the_work_runs() {
+        let mut ai = sent_off_queue();
+        let mut side = WaitSide(false, Vec::new());
+        let fx = ai.off_turn(&scout_at(true, false), &mut side).unwrap();
+        assert_eq!(side.1, vec![10028]);
+        assert_eq!(
+            (ai.current_action, ai.last_action),
+            (WAIT_SOLIDIFY_ACTION, -1)
+        );
+        assert_eq!((ai.current_order, ai.order_priority), (-1, -1));
+        assert_eq!(ai.orders, vec![]);
+        let [Effect::OrderOnTarget(work)] = fx.as_slice() else {
+            panic!("the work on its target: {fx:?}");
+        };
+        assert_eq!((work.order, work.target), (ORDER_ON_TARGET, 600));
+    }
+
+    /// Slot 0x108 (`FUN_140c68a60`): unforced, a unit with an action value does not ask its
+    /// unit; forced or without one it does, and only its 1 changes the action values.
+    #[test]
+    fn slot_0x108_asks_the_unit_when_forced_or_without_an_action_value() {
+        let mut ai = UnitAi {
+            current_action: GATHER_ACTION,
+            last_action: 7,
+            ..UnitAi::default()
+        };
+        let mut side = WaitSide(true, Vec::new());
+        assert_eq!(ai.wait_for_foundation(10028, false, &mut side), Ok(false));
+        assert_eq!(side.1, Vec::<i32>::new());
+        assert_eq!((ai.current_action, ai.last_action), (GATHER_ACTION, 7));
+        let mut refused = WaitSide(false, Vec::new());
+        assert_eq!(ai.wait_for_foundation(10028, true, &mut refused), Ok(false));
+        assert_eq!(refused.1, vec![10028]);
+        assert_eq!((ai.current_action, ai.last_action), (GATHER_ACTION, 7));
+        assert_eq!(ai.wait_for_foundation(10028, true, &mut side), Ok(true));
+        assert_eq!(
+            (ai.current_action, ai.last_action),
+            (WAIT_SOLIDIFY_ACTION, GATHER_ACTION)
+        );
+        let mut idle = UnitAi {
+            current_action: -1,
+            ..UnitAi::default()
+        };
+        assert_eq!(idle.wait_for_foundation(10028, false, &mut side), Ok(true));
+        assert_eq!(
+            (idle.current_action, idle.last_action),
+            (WAIT_SOLIDIFY_ACTION, -1)
         );
     }
 
@@ -6235,6 +6458,35 @@ mod tests {
         );
     }
 
+    /// The tower's unit AI (15, `TribeTowerUnitAIModule` `FUN_140c12960`, a town centre's with
+    /// its volley missile): the base's three draws, then `FUN_140c41bc0(1000)`: its idle timeout
+    /// 1000 and a fourth draw for its adjusted idle timeout (`r % 500 + 750`). records/428759682
+    /// update 2019: the town centre 8768 a 621's completion makes holds base 1000, adjusted 818.
+    #[test]
+    fn a_new_tower_unit_ai_draws_four_timers() {
+        let mut r = rng();
+        let ai = UnitAi::constructed(TOWER_AI, [54.0, 147.0, 0.0], &mut r).unwrap();
+        let mut expected = rng();
+        let (a, _, c, d) = (
+            expected.rand15(),
+            expected.rand15(),
+            expected.rand15(),
+            expected.rand15(),
+        );
+        assert_eq!(r.draws, 4);
+        assert_eq!(
+            (
+                ai.ai_type,
+                ai.last_retarget_time,
+                ai.retarget_timer,
+                ai.idle_timeout,
+                ai.adjusted_idle_timeout,
+                ai.stance,
+            ),
+            (TOWER_AI, a % 500, 750 + c % 500, 1000, d % 500 + 750, 0)
+        );
+    }
+
     #[test]
     fn a_unit_ai_class_without_a_modelled_constructor_draws_nothing() {
         let mut r = rng();
@@ -6727,7 +6979,7 @@ mod tests {
         // runs the queue: the first move becomes the AI's (order 710 at priority 100, action 610,
         // its point) and the unit's, forced and walking; the order leaves the queue
         let mut u = scout();
-        let fx = u.off_turn(&scout_at(true, true)).unwrap();
+        let fx = u.off_turn(&scout_at(true, true), &mut no_search).unwrap();
         assert_eq!(
             fx,
             vec![Effect::Move(AiMove {
@@ -6749,18 +7001,24 @@ mod tests {
     #[test]
     fn between_turns_a_walking_unit_or_one_with_notifies_keeps_its_queue() {
         let mut walking = scout();
-        assert_eq!(walking.off_turn(&scout_at(false, true)), Ok(vec![]));
+        assert_eq!(
+            walking.off_turn(&scout_at(false, true), &mut no_search),
+            Ok(vec![])
+        );
         assert_eq!(walking.orders.len(), 2);
         let mut told = UnitAi {
             notifies: vec![Notify::own(9183, ACTION_COMPLETED, [MOVE_ACTION, 0, 0])],
             ..scout()
         };
-        assert_eq!(told.off_turn(&scout_at(true, true)), Ok(vec![]));
+        assert_eq!(
+            told.off_turn(&scout_at(true, true), &mut no_search),
+            Ok(vec![])
+        );
         assert_eq!(told.orders.len(), 2);
         // an order not ready stays and the next one runs
         let mut u = scout();
         u.orders[0].ready = false;
-        let _ = u.off_turn(&scout_at(true, true)).unwrap();
+        let _ = u.off_turn(&scout_at(true, true), &mut no_search).unwrap();
         assert_eq!(u.orders.len(), 1);
         assert_eq!(u.orders[0].point, [89.09375, 60.677_082, 0.0]);
     }

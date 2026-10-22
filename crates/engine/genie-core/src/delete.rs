@@ -6,6 +6,7 @@
 //! (`FUN_1411cd780` -> `FUN_1411ccbb0`) gives back what is left of a foundation's cost and takes
 //! its hit points too. The object dies in its next update.
 
+use crate::build::held;
 use crate::masters::Master;
 use crate::order::Place;
 use crate::turn::Turns;
@@ -195,7 +196,7 @@ impl Turns {
         let site = unit.construction;
         let desolid = site.is_some_and(|c| c.desolid);
         let share = if state < 2 && 1.0 <= hp {
-            let c = site.ok_or(Unsupported("a foundation without its construction"))?;
+            let c = site.ok_or(crate::build::NO_CONSTRUCTION)?;
             let build_time = f32::from(c.build_time);
             (build_time - c.progress) / build_time
         } else {
@@ -241,9 +242,7 @@ impl Turns {
     ///
     /// An object the slice does not hold, and what the parts do not model.
     pub(crate) fn destroy(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
-        let (_, u) = self
-            .object(id)
-            .ok_or(Unsupported("a destroyed object the slice does not hold"))?;
+        let (_, u) = self.object(id).ok_or(crate::build::NOT_HELD)?;
         let state = u.life.state;
         let master = self.master_of(owner, u.life.master_id)?.clone();
         if master.kind == BUILDING {
@@ -283,9 +282,7 @@ impl Turns {
     /// modelled. Not held: the special-object list (`+0x30c` bit 0, `FUN_141677380`) and the log
     /// line.
     pub(crate) fn base_destroy(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
-        let (_, u) = self
-            .object(id)
-            .ok_or(Unsupported("a destroyed object the slice does not hold"))?;
+        let (_, u) = self.object(id).ok_or(crate::build::NOT_HELD)?;
         if 7 <= u.life.state {
             return Ok(());
         }
@@ -299,7 +296,8 @@ impl Turns {
         self.set_state(owner, id, 7)
     }
 
-    /// Slot 0xa0 of object `id` of player `owner` to `new`, a state of 3 or more, outside the
+    /// Slot 0xa0 of object `id` of player `owner` to `new`, a state of 3 or more (2 for a
+    /// building's completion), outside the
     /// object's own update, by its master's type: a building's (`FUN_1411dbb70`,
     /// [`Turns::building_set_state`]), a combat object's of type 70 (`FUN_14121cc40`,
     /// [`Turns::combat_set_state`]), else the base one ([`Turns::base_set_state`]).
@@ -341,6 +339,10 @@ impl Turns {
             }
         }
         let state = self.object(id).map_or(8, |(_, u)| u.life.state);
+        // the completion: its first part, its construction's start and the block for state 2
+        if new == 2 && state == 0 {
+            return self.complete_building(id);
+        }
         if state == 0 {
             self.completion_part(owner, id, master)?;
             let still = self.object(id).is_some_and(|(_, u)| u.life.state == 0);
@@ -365,17 +367,17 @@ impl Turns {
         new: u8,
         master: &Master,
     ) -> Result<(), Unsupported> {
-        let Some(Place::Live(p, i)) = self.place(id) else {
-            return Err(Unsupported("a combat object's set_state while it sleeps"));
+        // an object the slice does not hold fails in the base set_state
+        let Some(place) = self.place(id) else {
+            return self.base_set_state(owner, id, new, master);
         };
-        let state = self.players[p].objects[i].life.state;
+        let u = held(&mut self.players, place);
+        let (state, main) = (u.life.state, u.annex_of);
         if 3 <= new && state < 3 {
-            let u = &mut self.players[p].objects[i];
             crate::turn::combat_dies(u, master, &mut self.spatial, &mut self.pathing)?;
             self.pathing.tiles_changed(self.spatial.take_changes());
         }
         if new == 3 && state == 2 {
-            let main = self.players[p].objects[i].annex_of;
             for (kind, amount) in crate::turn::refund_of(master, main) {
                 let player = &mut self.players[owner];
                 player.add_attribute(kind, -amount)?;
@@ -450,9 +452,7 @@ impl Turns {
         master: &Master,
     ) -> Result<(), Unsupported> {
         let computer = self.players[owner].computer;
-        let (_, u) = self
-            .object_mut(id)
-            .ok_or(Unsupported("a dying building the slice does not hold"))?;
+        let (_, u) = self.object_mut(id).ok_or(crate::build::NOT_HELD)?;
         let death = crate::turn::built_death(u, master, computer)?;
         for &(kind, amount) in &death.adds {
             self.players[owner].add_attribute(kind, amount)?;

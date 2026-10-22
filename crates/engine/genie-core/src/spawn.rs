@@ -1428,7 +1428,7 @@ impl Turns {
                 ]
             })
         });
-        let ai_type = factory_type(made.class, master, made.missile)?
+        let ai_type = factory_type(made.class, master, made.volley_missile.unwrap_or(-1))?
             .ok_or(Unsupported("a new combat unit without a unit AI"))?;
         let standing = (0 <= made.standing_sprite)
             .then(|| self.graphics.get(&made.standing_sprite).copied())
@@ -1943,7 +1943,7 @@ impl Turns {
                 "a new building of a recyclable master or with a paid cost",
             ));
         }
-        let ai_type = factory_type(made.class, master, made.missile)?;
+        let ai_type = factory_type(made.class, master, made.volley_missile.unwrap_or(-1))?;
         let id = self.next_object_id;
         self.next_object_id += 1;
         let ai = ai_type

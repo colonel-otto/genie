@@ -144,6 +144,9 @@ fn slope_share(shape: u8, fx: f32, fy: f32) -> f32 {
     }
 }
 
+/// The town centre's master (109), whose foundation terrain leaves its gap (`FUN_1411ddd90`).
+const TOWN_CENTRE: i16 = 109;
+
 /// What a completed building's foundation reads of it (`FUN_1411ddd90`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Foundation {
@@ -356,10 +359,11 @@ impl Terrain {
     /// terrain 6 and layer 32; any other foundation covers the tiles of other terrains. A covered
     /// tile's layer goes to the snow layer (or none, `FUN_140f640f0`), then its terrain to the
     /// foundation's (`FUN_140f64170`), or with no snow layer and setting `+0x680` at 1 its layer
-    /// (a farm's terrain and a building of class 14 always take the terrain). The deferred
-    /// covering of farm terrains under `DAT_143f69454` (0 when probed), master 109's gaps and
-    /// masters 357 and 1188 are not modelled; the local player's own farm's view (`FUN_140f640a0`)
-    /// is not held.
+    /// (a farm's terrain and a building of class 14 always take the terrain). The town centre
+    /// (109) passes over the four tiles of its gap, which keep their terrain to restore. The
+    /// deferred covering of farm terrains under `DAT_143f69454` (0 when probed) and masters 357
+    /// and 1188 are not modelled; the local player's own farm's view (`FUN_140f640a0`) is not
+    /// held.
     ///
     /// # Panics
     ///
@@ -367,10 +371,8 @@ impl Terrain {
     pub fn cover(&mut self, f: &Foundation) -> Result<(), Unsupported> {
         /// `DAT_142eb1e9c`.
         const INSIDE: f32 = crate::image::terrain::INSIDE;
-        if matches!(f.master, 109 | 357 | 1188) {
-            return Err(Unsupported(
-                "a foundation terrain of master 109, 357 or 1188",
-            ));
+        if matches!(f.master, 357 | 1188) {
+            return Err(Unsupported("a foundation terrain of master 357 or 1188"));
         }
         let [x, y, _] = f.position;
         let [cx, cy] = f.clearance;
@@ -387,6 +389,11 @@ impl Terrain {
             return Err(Unsupported("a foundation terrain off the map"));
         }
         let (x0, y0, x1, y1) = (x0.max(0), y0.max(0), x1.min(w), y1.min(h));
+        // the town centre's (109) gap: the clamped rectangle's first two columns of its third
+        // and fourth rows
+        let gap = |tx: i32, ty: i32| {
+            f.master == TOWN_CENTRE && (tx == x0 || tx == x0 + 1) && (ty == y0 + 2 || ty == y0 + 3)
+        };
         let (mut wanted, mut kind, mut layer) = (f.terrain, f.terrain, -1i16);
         if f.terrain == FOUNDATION && f.snow {
             (wanted, kind, layer) = (SNOW_SKIPPED, SNOW_FOUNDATION, SNOW_LAYER);
@@ -422,7 +429,7 @@ impl Terrain {
                 } else {
                     wanted != t
                 };
-                if !covered {
+                if !covered || gap(tx, ty) {
                     continue;
                 }
                 self.layers[i] = layer;
@@ -527,6 +534,41 @@ mod tests {
         assert_eq!(t.kinds, [6, 6, 6, 6]);
         assert_eq!(t.layers, [32, 32, 32, 32]);
         assert_eq!(t.restore, [255; 4]);
+    }
+
+    /// The town centre's foundation (master 109, terrain 27; records/428759682's 8768 at
+    /// (54, 147), its clearance 2): `FUN_1411ddd90` passes over the four tiles of its gap, the
+    /// first two columns of the clamped rectangle's third and fourth rows, which keep their
+    /// terrain (and still keep it to restore).
+    #[test]
+    fn the_town_centre_s_foundation_leaves_its_gap() {
+        let mut t = map(vec![0; 2 * 4], vec![-1; 2 * 4]);
+        t.width = 4;
+        t.height = 4;
+        t.kinds = vec![0; 16];
+        t.layers = vec![-1; 16];
+        t.restore = vec![255; 16];
+        t.restrictions[4][0] = 0.5;
+        t.cover(&Foundation {
+            position: [2.0, 2.0, 0.0],
+            clearance: [2.0, 2.0],
+            terrain: FOUNDATION,
+            snow: false,
+            master: 109,
+            class: 3,
+            terrain_bonus: 4,
+            mode_680: 0,
+        })
+        .unwrap();
+        #[rustfmt::skip]
+        let covered = [
+            27, 27, 27, 27,
+            27, 27, 27, 27,
+            0, 0, 27, 27,
+            0, 0, 27, 27,
+        ];
+        assert_eq!(t.kinds, covered);
+        assert_eq!(t.restore, [0; 16]);
     }
 
     #[test]
