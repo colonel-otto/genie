@@ -3332,13 +3332,9 @@ impl UnitAi {
     /// Slot 0x30 with the current order, immediate and in front (`FUN_140c55c90` as the
     /// civilian's damage notify calls it: the issuer the unit, the order, target and its class,
     /// owner −1, the target point, the range `+0x5c`, the priority `+0x40`, the point shown,
-    /// ready): a unit above state 2 or without an order takes none. The current order goes in
-    /// front of the queue (`FUN_140c42640`), then the given one, the same record, in front too;
-    /// then (an order other than `0x2d9`) the target goes (`FUN_140c5e1e0`) and the action stops
-    /// (slot 0xb0 with 1, which ends an order of its action), the notifies end
-    /// (`FUN_140c5dc10` with 0), the queue's first order runs at once (slot 0x230,
-    /// [`UnitAi::process_order`]) and, unless it was not ready, leaves the queue
-    /// (`FUN_140c5e280`).
+    /// ready): a unit above state 2 or without an order takes none; else
+    /// [`UnitAi::order_now`] with the unit's id, so the current order goes in front of the queue
+    /// and the given one, the same record, in front of it.
     fn requeue_current(
         &mut self,
         at: &Surroundings,
@@ -3359,18 +3355,73 @@ impl UnitAi {
             ready: true,
             target_type: self.target_type,
         };
-        self.orders.insert(0, record);
-        self.orders.insert(0, record);
-        if record.order != crate::ai_kinds::ORDER_ATTACK_ROUNDUP {
-            self.remove_target();
-            self.stop_current(true, at, fx)?;
+        let place = ([at.position[0], at.position[1]], at.class);
+        self.order_now(record, Some(at.id), Some(place), Some(at), fx)
+    }
+
+    /// `FUN_140c55c90`'s immediate branch ("Adding as an immediate order."), for a unit in state
+    /// 2 or below and an order other than −1. With `keep_from` (inFront 1, the unit's id) a
+    /// current order goes in front of the queue first ("Keeping old order, putting it onto the
+    /// queue.", [`UnitAi::insert_order`]): the issuer the unit, the current order, priority
+    /// (`+0x40`), target and its class, owner −1, the target point, the range `+0x5c`, and the
+    /// new order's shown point and ready flag. Then the order goes in front. But for an attack
+    /// roundup (`0x2d9`, "so I'm not stopping the object") the target goes (`FUN_140c5e1e0`) and
+    /// the action stops (slot 0xb0 with 1, which ends an order of its action and reads the
+    /// unit's `place` for it). The notifies end (`FUN_140c5dc10` with 0; outside the full update
+    /// without `at`, where a completion it would stop on is not modelled), the queue's first
+    /// order runs at once (slot 0x230, [`UnitAi::process_order`]) and, unless it was not ready,
+    /// leaves the queue (`FUN_140c5e280`).
+    fn order_now(
+        &mut self,
+        order: QueuedOrder,
+        keep_from: Option<i32>,
+        place: Option<([f32; 2], i16)>,
+        at: Option<&Surroundings>,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        if let Some(unit) = keep_from
+            && self.current_order != -1
+        {
+            let kept = QueuedOrder {
+                issuer: unit,
+                order: self.current_order,
+                priority: self.order_priority,
+                target: self.current_target,
+                target_owner: -1,
+                point: self.target_point,
+                range: self.desired_distance,
+                shown: order.shown,
+                ready: order.ready,
+                target_type: self.target_type,
+            };
+            self.insert_order(kept, true);
         }
-        self.clear_notifies(0)?;
+        self.insert_order(order, true);
+        if order.order != crate::ai_kinds::ORDER_ATTACK_ROUNDUP {
+            self.remove_target();
+            self.stop_with(true, place, fx)?;
+        }
+        match at {
+            Some(at) => self.end_notifies(0, at, fx)?,
+            None => self.clear_notifies(0)?,
+        }
         let front = self.orders[0];
-        if self.process_order(&front, Some(at), fx)? != 0xe {
+        if self.process_order(&front, at, fx)? != 0xe {
             let _ = self.orders.remove(0);
         }
         Ok(())
+    }
+
+    /// `FUN_140c42640`: an order joins the queue, in front of the first when `in_front` and the
+    /// queue holds one, else after the last. A full queue doubles its capacity first, its new
+    /// records filled with a stop order (`0x2c2`) to nothing (Vec's own growth here); a failed
+    /// allocation, the routine's only other way out, cannot happen (`operator new` throws).
+    pub(crate) fn insert_order(&mut self, order: QueuedOrder, in_front: bool) {
+        if in_front && !self.orders.is_empty() {
+            self.orders.insert(0, order);
+        } else {
+            self.orders.push(order);
+        }
     }
 
     /// `AttackObject` (slot 0xb8, `FUN_140c43720`): `+0x1d5` clears; not `force`d, an AI with an
@@ -3741,13 +3792,8 @@ impl UnitAi {
                 ready: true,
                 target_type: o.master,
             };
-            let first = order(&site, FOUNDATION_ORDER);
-            if self.orders.is_empty() {
-                self.orders.push(first);
-            } else {
-                self.orders.insert(0, first);
-            }
-            self.orders.push(order(&target, ORDER_ON_TARGET));
+            self.insert_order(order(&site, FOUNDATION_ORDER), true);
+            self.insert_order(order(&target, ORDER_ON_TARGET), false);
         }
         Ok(GO_ON)
     }
@@ -4219,13 +4265,11 @@ impl UnitAi {
             return Ok(true);
         }
         if immediate {
+            // the immediate branch is [`UnitAi::order_now`], which reads the unit's id and place
+            // and gives effects; [`UnitAi::take_order_now`] is its entry
             return Err(Unsupported("an immediate order for the unit AI's queue"));
         }
-        if in_front && !self.orders.is_empty() {
-            self.orders.insert(0, order);
-        } else {
-            self.orders.push(order);
-        }
+        self.insert_order(order, in_front);
         Ok(true)
     }
 
@@ -4387,12 +4431,8 @@ impl UnitAi {
     }
 
     /// Slot 0x28 (`FUN_140c55c90`) with Immediate set and inFront clear: for a unit in state 2 or
-    /// below and an order (not −1), the order goes to the front of the queue (`FUN_140c42640`
-    /// with inFront 1); then, but for an attack roundup (0x2d9, not modelled), the target goes
-    /// and the action stops (`FUN_140c5e1e0`, slot 0xb0 with 1), the notifies go
-    /// (`FUN_140c5dc10` with 0) and the order runs at once (slot 0x230), leaving the queue unless
-    /// it was not ready (`FUN_140c5e280`). `place` is the unit's position (x, y) and master's
-    /// class, for the stop.
+    /// below and an order (not −1), [`UnitAi::order_now`] without keeping the current order.
+    /// `place` is the unit's position (x, y) and master's class, for the stop.
     pub fn take_order_now(
         &mut self,
         unit_state: u8,
@@ -4403,17 +4443,7 @@ impl UnitAi {
         if 2 < unit_state || order.order == -1 {
             return Ok(());
         }
-        if order.order == 0x2d9 {
-            return Err(Unsupported("an immediate attack roundup order"));
-        }
-        self.orders.insert(0, order);
-        self.remove_target();
-        self.stop_with(true, Some(place), fx)?;
-        self.clear_notifies(0)?;
-        if self.process_order(&order, None, fx)? != 0xe {
-            let _ = self.orders.remove(0);
-        }
-        Ok(())
+        self.order_now(order, None, Some(place), None, fx)
     }
 
     /// The idle part of the full update: a unit without an action value (and without a target
@@ -7582,5 +7612,120 @@ mod tests {
         assert!(!soldier_attacks_neutral(3, 6));
         // a masked class stays passed over whatever the priority
         assert!(!soldier_attacks_neutral(3, 27));
+    }
+
+    /// `FUN_140c42640`: an order goes after the last unless it goes in front of a queue that
+    /// holds one.
+    #[test]
+    fn an_inserted_order_goes_in_front_only_of_a_queue_that_holds_one() {
+        let order = |target| QueuedOrder {
+            target,
+            order: MOVE_ORDER,
+            ready: true,
+            ..QueuedOrder::default()
+        };
+        let mut u = idle(13);
+        u.insert_order(order(1), true);
+        u.insert_order(order(2), false);
+        u.insert_order(order(3), true);
+        u.insert_order(order(4), false);
+        let targets: Vec<i32> = u.orders.iter().map(|o| o.target).collect();
+        assert_eq!(targets, [3, 1, 2, 4]);
+    }
+
+    /// `FUN_140c55c90` immediate and in front: a builder (702/602 on foundation 50) told to
+    /// move at once keeps its build order: the build goes in front of the queue with the move's
+    /// shown point and ready flag (issuer the unit, owner −1, its range `+0x5c`), the move in
+    /// front of it; the target goes, the action stops and ends the build order (602 + 100), the
+    /// move runs (slot 0x230) and leaves the queue; the build waits behind.
+    #[test]
+    fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
+        let mut u = UnitAi {
+            current_order: BUILD_ORDER,
+            order_priority: 2,
+            current_action: BUILD_ACTION,
+            current_target: 50,
+            target_type: 3,
+            target_point: [20.0, 21.0, 0.0],
+            desired_distance: 2.0,
+            ..idle(8)
+        };
+        let order = QueuedOrder {
+            issuer: 1,
+            order: MOVE_ORDER,
+            priority: 7,
+            target: -1,
+            target_owner: -1,
+            point: [10.0, 11.0, 0.0],
+            range: 0.5,
+            shown: [10.0, 11.0],
+            ready: true,
+            target_type: -1,
+        };
+        let mut fx = Vec::new();
+        u.order_now(order, Some(9), Some(([5.0, 6.0], 4)), None, &mut fx)
+            .unwrap();
+        let kept = QueuedOrder {
+            issuer: 9,
+            order: BUILD_ORDER,
+            priority: 2,
+            target: 50,
+            target_owner: -1,
+            point: [20.0, 21.0, 0.0],
+            range: 2.0,
+            shown: [10.0, 11.0],
+            ready: true,
+            target_type: 3,
+        };
+        assert_eq!(u.orders, vec![kept]);
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Stop,
+                Effect::Move(AiMove {
+                    point: [10.0, 11.0, 0.0],
+                    range: 0.5,
+                    force: true,
+                    walk: true,
+                })
+            ]
+        );
+        assert_eq!((u.current_order, u.order_priority), (MOVE_ORDER, 7));
+        // the stop ended the build order; the move's FUN_140c64c10 made the forgotten -1 the
+        // last target
+        assert_eq!((u.last_order, u.last_target), (BUILD_ORDER, -1));
+        assert_eq!(u.state_position, [5.0, 6.0]);
+    }
+
+    /// `FUN_140c55c90` immediate for an attack roundup (0x2d9): "We have an `AttackRoundup`, so
+    /// I'm not stopping the object.": the target stays and nothing stops; the notifies still go
+    /// and slot 0x230 runs the order in front, whose roundup case (slot 0xc0) is not modelled.
+    #[test]
+    fn an_immediate_attack_roundup_keeps_the_target_and_the_action() {
+        let mut u = UnitAi {
+            current_order: ATTACK_ORDER,
+            current_action: ATTACK_ACTION,
+            current_target: 50,
+            notifies: vec![Notify::own(9, DAMAGED, [1, 5, 0])],
+            ..idle(13)
+        };
+        let roundup = QueuedOrder {
+            order: crate::ai_kinds::ORDER_ATTACK_ROUNDUP,
+            target: 51,
+            ready: true,
+            ..QueuedOrder::default()
+        };
+        let mut fx = Vec::new();
+        let r = u.take_order_now(2, roundup, ([0.0; 2], 6), &mut fx);
+        assert_eq!(
+            r,
+            Err(Unsupported(
+                "a queued order other than a move or on a target"
+            ))
+        );
+        assert_eq!(fx, Vec::new());
+        assert_eq!((u.current_target, u.current_action), (50, ATTACK_ACTION));
+        assert_eq!(u.notifies, Vec::new());
+        assert_eq!(u.orders, vec![roundup]);
     }
 }
