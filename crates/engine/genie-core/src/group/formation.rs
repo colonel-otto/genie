@@ -1,6 +1,7 @@
 //! A group's formation (FD-036): `BFormation`, its slots and lines, and the layouts that fill
 //! them (createColumnLine `FUN_141012280`, ...).
 
+use crate::checkpoint::cvttss2si;
 use crate::fmath::{Vec3, add, scale, sub};
 use crate::group::layout::{clear_line, reset_line};
 use crate::group::{Formation, FormationLine, Slot, UnitGroup, sub_formation};
@@ -133,7 +134,7 @@ struct Category {
 /// the columns (a column's), then fewer lines until a line is at least twice as wide as the
 /// formation is deep (a column the reverse). Returns (lines, columns).
 fn sizes(count: i32, by_line: bool) -> (i32, i32) {
-    let root = crate::checkpoint::cvttss2si(crate::fmath::sqrt(count as f32).ceil());
+    let root = cvttss2si(crate::fmath::sqrt(count as f32).ceil());
     let root = root.max(1);
     let per = |a: i32| {
         let b = count / a;
@@ -250,8 +251,7 @@ pub(crate) fn column_line_slots(
                 lines_of[k] = 1;
                 continue;
             }
-            let mut lines =
-                crate::checkpoint::cvttss2si(((cat.count as f32 * cat.spacing) / widest).ceil());
+            let mut lines = cvttss2si(((cat.count as f32 * cat.spacing) / widest).ceil());
             if lines < 1 {
                 lines = 1;
             }
@@ -1339,7 +1339,8 @@ impl crate::turn::Turns {
                     let mut back = 0.0;
                     if 0 < i {
                         back = line.distance_back;
-                        if back <= 0.0 {
+                        // COMISS/JA at 0x14103a850: a NaN distance back takes the spacing too
+                        if crate::fmath::at_most_or_unordered(back, 0.0) {
                             back = i as f32 * g.desired_spacing;
                         }
                     }
@@ -1434,7 +1435,10 @@ impl crate::turn::Turns {
             return Ok(());
         };
         let mask = self.master_mask(tester.player(), tester.master_id())?;
-        let stands = |at: Vec3| self.spatial.standable(at[0] as i32, at[2] as i32, mask);
+        let stands = |at: Vec3| {
+            let (x, z) = slot_tile(at);
+            self.spatial.standable(x, z, mask)
+        };
         let position = g.motion.position[0];
         let n = formation.slots.len();
         let Some(_) = (0..n).find(|&i| {
@@ -1444,34 +1448,12 @@ impl crate::turn::Turns {
             return Ok(());
         };
         // the active slot nearest the group's place, and the box around the tester and them
-        let at = tester.moved_vector();
-        let (mut min_x, mut min_z, mut max_x, mut max_z) = (PASS_FAR, PASS_FAR, 0.0f32, 0.0f32);
-        let mut best = FARTHEST;
-        let mut nearest = None;
-        for (j, t) in formation.slots.iter().enumerate() {
-            if t.active == 0 {
-                continue;
-            }
-            let d3 = sub(t.transform_position, position);
-            let d = d3[0] * d3[0] + d3[1] * d3[1] + d3[2] * d3[2];
-            let a = if min_x <= at[0] { min_x } else { at[0] };
-            let b = if min_z <= at[2] { min_z } else { at[2] };
-            let c = if at[0] <= max_x { max_x } else { at[0] };
-            let e = if at[2] <= max_z { max_z } else { at[2] };
-            let p = t.transform_position;
-            min_x = if a <= p[0] { a } else { p[0] };
-            min_z = if b <= p[2] { b } else { p[2] };
-            max_x = if p[0] <= c { c } else { p[0] };
-            max_z = if p[2] <= e { e } else { p[2] };
-            // the game keeps the slot unless the best is at most its distance (a NaN takes it)
-            if d < best {
-                nearest = Some(j);
-                best = d;
-            } else if d.is_nan() {
-                nearest = Some(j);
-            }
-        }
-        let k = nearest.expect("an active slot lies at a finite distance");
+        let ([min_x, min_z, max_x, max_z], nearest) =
+            passability_box(&formation.slots, tester.moved_vector(), position);
+        let k = nearest.expect(
+            "an active slot lies nearer than f32::MAX (the game reads the slot before the array \
+             when none does)",
+        );
         if !stands(formation.slots[k].transform_position) {
             if !stands(position) {
                 return Ok(());
@@ -1507,37 +1489,25 @@ impl crate::turn::Turns {
             s.transform_position[0] = position[0];
             s.transform_position[2] = position[2];
         }
-        let w = ((max_x - min_x) + PASS_MARGIN + PASS_ONE) as i32;
-        let h = ((max_z - min_z) + PASS_MARGIN + PASS_ONE) as i32;
+        // CVTTSS2SI at 0x14103bedd, 0x14103bef9, 0x14103bf1c and 0x14103bf2e
+        let w = cvttss2si((max_x - min_x) + PASS_MARGIN + PASS_ONE);
+        let h = cvttss2si((max_z - min_z) + PASS_MARGIN + PASS_ONE);
         if PASS_CELLS < w || PASS_CELLS < h {
             return Ok(());
         }
-        let ox = (min_x - PASS_HALF_MARGIN) as i32;
-        let oz = (min_z - PASS_HALF_MARGIN) as i32;
+        let ox = cvttss2si(min_x - PASS_HALF_MARGIN);
+        let oz = cvttss2si(min_z - PASS_HALF_MARGIN);
         let mut grid = vec![0u8; GRID_BYTES];
         let near = formation.slots[k].transform_position;
         for &r in &reachable {
             let p = formation.slots[r].transform_position;
-            let gx = (p[0] - ox as f32) as i32;
-            let gz = (p[2] - oz as f32) as i32;
+            let gx = cvttss2si(p[0] - ox as f32);
+            let gz = cvttss2si(p[2] - oz as f32);
             if !(0 <= gx && gx < w && 0 <= gz && gz < h) {
                 continue;
             }
             let cell = (gz * w + gx) as usize;
-            let b = count_up(grid[cell]);
-            let dz = near[2] - p[2];
-            let dx = near[0] - p[0];
-            grid[cell] = if dx.abs() <= dz.abs() {
-                if dz < 0.0 {
-                    b & 0x3f | 0x81
-                } else {
-                    b & 0x3f | 1
-                }
-            } else if dx < 0.0 {
-                b | 0xc1
-            } else {
-                b & 0x3f | 0x41
-            };
+            grid[cell] = cell_mark(grid[cell], near[0] - p[0], near[2] - p[2]);
         }
         let mut visited = vec![0u8; (w * h).max(0) as usize];
         for &u in &unreachable {
@@ -1547,8 +1517,8 @@ impl crate::turn::Turns {
             };
             let unit_mask = self.master_mask(unit.player(), unit.master_id())?;
             let unit_at = unit.position();
-            let gx = (unit_at[0] - ox as f32) as i32;
-            let gy = (unit_at[1] - oz as f32) as i32;
+            let gx = cvttss2si(unit_at[0] - ox as f32);
+            let gy = cvttss2si(unit_at[1] - oz as f32);
             let mut found: Option<(i32, i32, usize)> = None;
             if 0 <= gx && 0 <= gy && gx < w && gy < h {
                 let mut queue = vec![(gx, gy)];
@@ -1599,8 +1569,8 @@ impl crate::turn::Turns {
                 continue;
             };
             let (mut x, mut y) = (fx, fy);
-            let near = formation.slots[k].transform_position;
-            if near[0] as i32 != fx || near[2] as i32 != fy {
+            // CVTTSS2SI at 0x14103cb6a and 0x14103cb70
+            if slot_tile(formation.slots[k].transform_position) != (fx, fy) {
                 let (rx, ry) = (fx - ox, fy - oz);
                 let (ddx, ddy) = match grid[(w * ry + rx) as usize] >> 6 {
                     0 => (0, 1),
@@ -1628,7 +1598,8 @@ impl crate::turn::Turns {
                 }
             }
             let s = &mut formation.slots[u];
-            if g.desired_spacing < PASS_ONE {
+            // COMISS/JC at 0x14103cde3: a NaN spacing nudges too
+            if crate::fmath::below_or_unordered(g.desired_spacing, PASS_ONE) {
                 s.transform_position[0] = x as f32 + PASS_HALF + SLOT_NUDGE[nudge][0];
                 s.transform_position[2] = y as f32 + PASS_HALF + SLOT_NUDGE[nudge][1];
             } else {
@@ -1644,6 +1615,69 @@ impl crate::turn::Turns {
 /// the others kept.
 const fn count_up(b: u8) -> u8 {
     (((b & 0xfe).wrapping_add(2) ^ b) & 0x3e) ^ b
+}
+
+/// The tile of a slot's place the passability tests (`FUN_141185690`'s arguments): x and y
+/// by `CVTTSS2SI` (0x14103b5df, 0x14103b777), a NaN or out of range one `i32::MIN`.
+fn slot_tile(at: Vec3) -> (i32, i32) {
+    (cvttss2si(at[0]), cvttss2si(at[2]))
+}
+
+/// The passability's box and nearest slot (0x14103b650..0x14103b758): from the box
+/// ([`PASS_FAR`], [`PASS_FAR`]) to (0, 0), each active slot of `slots` widens it first by the
+/// tester's place `at` (slot 0x520) and then by its own, as `MINSS new, old` and `MAXSS new, old`
+/// take them (the old bound kept for a NaN either side); the nearest is the first active slot
+/// whose squared distance to the group's place `position` (summed x, height, y) lies below the
+/// best so far, from [`FARTHEST`] (`COMISS`/`CMOVBE`: a NaN distance keeps the earlier one, none
+/// when no slot lies below `f32::MAX`). Returns min x, min y, max x, max y and the nearest.
+fn passability_box(slots: &[Slot], at: Vec3, position: Vec3) -> ([f32; 4], Option<usize>) {
+    use crate::fmath::{maxss, minss};
+    let (mut min_x, mut min_z, mut max_x, mut max_z) = (PASS_FAR, PASS_FAR, 0.0f32, 0.0f32);
+    let mut best = FARTHEST;
+    let mut nearest = None;
+    for (j, t) in slots.iter().enumerate() {
+        if t.active == 0 {
+            continue;
+        }
+        let d3 = sub(t.transform_position, position);
+        let d = d3[0] * d3[0] + d3[1] * d3[1] + d3[2] * d3[2];
+        let earlier = best;
+        if d < best {
+            best = d;
+        }
+        let (a, b) = (minss(at[0], min_x), minss(at[2], min_z));
+        let (c, e) = (maxss(at[0], max_x), maxss(at[2], max_z));
+        let p = t.transform_position;
+        min_x = minss(p[0], a);
+        min_z = minss(p[2], b);
+        max_x = maxss(p[0], c);
+        max_z = maxss(p[2], e);
+        if d < earlier {
+            nearest = Some(j);
+        }
+    }
+    ([min_x, min_z, max_x, max_z], nearest)
+}
+
+/// A reachable slot's grid cell mark (0x14103bfd4..0x14103c046): the cell's count up
+/// ([`count_up`]) with bit 0, then its way toward the nearest slot `dx`, `dz` off: along y when
+/// `|dx|` is at most `|dz|` (`COMISS`/`JBE`: also for a NaN), with bit 7 for a `dz` below 0
+/// (`JNC`: also NaN); else along x, bits 6 and 7 for a `dx` below 0 (`JC`: also NaN), bit 6 alone
+/// otherwise.
+fn cell_mark(b: u8, dx: f32, dz: f32) -> u8 {
+    use crate::fmath::{at_most_or_unordered, below_or_unordered};
+    let b = count_up(b) | 1;
+    if at_most_or_unordered(dx.abs(), dz.abs()) {
+        if below_or_unordered(dz, 0.0) {
+            b & 0x3f | 0x80
+        } else {
+            b & 0x3f
+        }
+    } else if below_or_unordered(dx, 0.0) {
+        b | 0xc0
+    } else {
+        b & 0x3f | 0x40
+    }
 }
 
 #[cfg(test)]
@@ -2096,6 +2130,8 @@ pub(crate) mod tests {
         };
         assert_eq!(run(2.0), [[5.5, 0.0, 5.5], [5.5, 0.0, 5.5]]);
         assert_eq!(run(0.5), [[5.5, 0.0, 5.5], [5.75, 0.0, 5.5]]);
+        // COMISS/JC at 0x14103cde3: a NaN spacing nudges as one below 1
+        assert_eq!(run(f32::NAN), [[5.5, 0.0, 5.5], [5.75, 0.0, 5.5]]);
         // every slot standable: nothing moves
         let mut t = slot_world(&[(10, 4, 5.5, 5.5)], &[]);
         t.groups.groups[0].motion.lead = 10;
@@ -2205,6 +2241,75 @@ pub(crate) mod tests {
         t.passable_slots(&mut f, &g).unwrap();
         assert_eq!(f.slots[1].transform_position, [6.5, 0.0, 6.5]);
         assert_eq!(f.slots[2].transform_position, [6.5, 0.0, 7.5]);
+    }
+
+    /// The passability's box and nearest slot as the assembly takes them: a NaN place keeps the
+    /// box's old bounds (`MINSS`/`MAXSS` of the new value first) and the earlier nearest slot
+    /// (`COMISS`/`CMOVBE`); an inactive slot counts for neither.
+    #[test]
+    fn the_passability_box_keeps_its_bounds_and_nearest_for_a_nan_place() {
+        let nan = [f32::NAN, 0.0, f32::NAN];
+        let mut idle = slot_at([50.0, 0.0, 50.0], 1);
+        idle.active = 0;
+        let slots = [
+            slot_at([4.0, 0.0, 6.0], 1),
+            slot_at(nan, 1),
+            idle,
+            slot_at([3.0, 0.0, 2.0], 1),
+        ];
+        let (bounds, nearest) = passability_box(&slots, [5.0, 0.0, 5.0], [3.0, 0.0, 3.0]);
+        assert_eq!(bounds, [3.0, 2.0, 5.0, 6.0]);
+        assert_eq!(nearest, Some(3));
+        let (_, nearest) = passability_box(&slots[..2], [5.0, 0.0, 5.0], [3.0, 0.0, 3.0]);
+        assert_eq!(nearest, Some(0));
+        // a NaN tester place keeps the starting bounds for its part too
+        let (bounds, _) = passability_box(&slots[..1], nan, [3.0, 0.0, 3.0]);
+        assert_eq!(bounds, [4.0, 6.0, 4.0, 6.0]);
+        assert_eq!(passability_box(&slots[1..2], nan, [0.0; 3]).1, None);
+    }
+
+    /// A reachable slot's cell mark: along y for `|dx| <= |dz|` and for a NaN (bit 7 for a `dz`
+    /// below 0 or NaN), else along x (bits 6 and 7 for a `dx` below 0 or NaN, bit 6 else); the
+    /// count goes up and bit 0 is set.
+    #[test]
+    fn a_cell_mark_points_toward_the_nearest_slot_and_a_nan_along_y() {
+        assert_eq!(cell_mark(0, 0.0, 2.0), 3);
+        assert_eq!(cell_mark(0, 0.0, -2.0), 0x83);
+        assert_eq!(cell_mark(0, 3.0, 1.0), 0x43);
+        assert_eq!(cell_mark(0, -3.0, 1.0), 0xc3);
+        assert_eq!(cell_mark(0xc3, 0.0, 2.0), 5);
+        assert_eq!(cell_mark(0, f32::NAN, 2.0), 3);
+        assert_eq!(cell_mark(0, 3.0, f32::NAN), 0x83);
+        assert_eq!(cell_mark(0, f32::NAN, f32::NAN), 0x83);
+        // a slot's tile by CVTTSS2SI: a NaN place is off any map
+        assert_eq!(slot_tile([f32::NAN, 0.0, 2.5]), (i32::MIN, 2));
+    }
+
+    /// The line transform's distance back (0x14103a850, `COMISS`/`JA`): a line's own when it is
+    /// above 0, else, a NaN too, the line's index times the spacing.
+    #[test]
+    fn a_nan_distance_back_takes_the_index_times_the_spacing() {
+        let t = slot_world(&[(10, 4, 5.0, 5.0)], &[]);
+        let mut g = t.groups.get(1).unwrap().clone();
+        g.motion.position[0] = [9.0, 0.0, 5.0];
+        g.desired_spacing = 2.0;
+        let mut f = Formation::new();
+        f.transform_type = 0;
+        f.number_lines = 2;
+        f.slots = vec![slot_at([0.0; 3], 1), slot_at([0.0; 3], 1)];
+        f.lines = vec![
+            FormationLine {
+                indices: vec![0],
+                ..FormationLine::default()
+            },
+            FormationLine {
+                indices: vec![1],
+                distance_back: f32::NAN,
+                ..FormationLine::default()
+            },
+        ];
+        let _ = t.formation_transform(&mut f, &g, false).unwrap();
+        assert_eq!(f.slots[1].transform_position, [7.0, 0.0, 5.0]);
     }
 
     /// `FUN_141041810`: every slot of the array, spare ones too, loses its unit and filled mark.
