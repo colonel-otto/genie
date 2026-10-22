@@ -2676,8 +2676,15 @@ impl Mover {
             dt
         };
         let most = self.stats.turn_rate * dt;
-        let clipped = most < angle;
-        let mut turn = if angle <= most { angle } else { most };
+        // FUN_14114f630: COMISS angle, most; JBE (0x14114f6d6): at most, or either NaN, the whole
+        // angle unclipped; else the most, negated for a negative angle, clipped
+        let (mut turn, clipped) = if fmath::at_most_or_unordered(angle, most) {
+            (angle, false)
+        } else if angle < 0.0 {
+            (-most, true)
+        } else {
+            (most, true)
+        };
         if 0.0 < fmath::cross(direction, flat)[1] {
             turn = -turn;
         }
@@ -3138,6 +3145,24 @@ mod tests {
             in_the_way: Vec::new(),
             sprite_facets: None,
         }
+    }
+
+    /// `FUN_14114f630`: an angle at most the turn's most, or a NaN most (an infinite turn rate
+    /// times dt 0), turns the whole angle and is not clipped (JBE on unordered).
+    #[test]
+    fn a_nan_most_turns_the_whole_angle_unclipped() {
+        let mut m = builder_9177();
+        m.forward = [1.0, 0.0, 0.0];
+        m.right = [0.0, 0.0, -1.0];
+        m.stats.turn_rate = f32::INFINITY;
+        assert_eq!(m.steer([0.0, 0.0, 1.0], 0.0), Ok(false));
+        assert!(m.forward.iter().all(|c| c.is_finite()));
+        assert!(0.99 < m.forward[2]);
+        // a small most clips the turn
+        m.forward = [1.0, 0.0, 0.0];
+        m.stats.turn_rate = 1.0;
+        assert_eq!(m.steer([0.0, 0.0, 1.0], 0.02), Ok(true));
+        assert!(m.forward[2].abs() < 0.03);
     }
 
     /// `FUN_140f98d50` and `FUN_140f98dd0`: a point goes, or the path ends before it and is
