@@ -19,7 +19,7 @@
 //! unit's radius halved as the buffer, and the pather's ignore list: the unit, its target and the
 //! tile under a one-tile target that the unit's terrain cannot cross.
 
-use crate::fmath::sqrt;
+use crate::fmath::{at_most_or_unordered, sqrt};
 use crate::spatial::{Placed, Spatial, tile_record_id};
 use crate::unit_ai::Unsupported;
 
@@ -313,15 +313,18 @@ impl Hull {
     /// `FUN_140f8ea30`: the nearest box side a ray from `p` meets toward `side` (0 down, 1 up,
     /// 2 left, 3 right), with the box and the box's side (0 its top, 1 its right, 2 its bottom,
     /// 3 its left: the far side when `p` is inside the box). The box `own` counts only strictly
-    /// beyond `p`.
+    /// beyond `p`. The span tests skip a box by `COMISS`/`JA` (0x140f8ec1c, 0x140f8eb6e): an
+    /// unordered coordinate lies in every span.
     fn ray_to_box(&self, p: Point, side: i32, own: i32) -> Option<(Point, usize, i32)> {
         let mut best = MOST;
         let mut found = None;
+        let within =
+            |lo: f32, v: f32, hi: f32| at_most_or_unordered(lo, v) && at_most_or_unordered(v, hi);
         for (k, o) in self.objects.iter().enumerate() {
             let [x0, y0, x1, y1] = o.bounds;
             let mine = k as i32 == own;
             let hit = match side {
-                0 if x0 <= p[0] && p[0] <= x1 => {
+                0 if within(x0, p[0], x1) => {
                     let past = if mine { y1 < p[1] } else { y1 <= p[1] };
                     if past {
                         Some((y1, 0, p[1] - y1))
@@ -331,7 +334,7 @@ impl Hull {
                         Some((y0, 2, p[1] - y0))
                     }
                 }
-                1 if x0 <= p[0] && p[0] <= x1 => {
+                1 if within(x0, p[0], x1) => {
                     let past = if mine { p[1] < y0 } else { p[1] <= y0 };
                     if past {
                         Some((y0, 2, y0 - p[1]))
@@ -341,7 +344,7 @@ impl Hull {
                         Some((y1, 0, y1 - p[1]))
                     }
                 }
-                2 if y0 <= p[1] && p[1] <= y1 => {
+                2 if within(y0, p[1], y1) => {
                     let past = if mine { x1 < p[0] } else { x1 <= p[0] };
                     if past {
                         Some((x1, 1, p[0] - x1))
@@ -351,7 +354,7 @@ impl Hull {
                         Some((x0, 3, p[0] - x0))
                     }
                 }
-                3 if y0 <= p[1] && p[1] <= y1 => {
+                3 if within(y0, p[1], y1) => {
                     let past = if mine { p[0] < x0 } else { p[0] <= x0 };
                     if past {
                         Some((x0, 3, x0 - p[0]))
@@ -2307,6 +2310,46 @@ mod tests {
         let h = square();
         assert_eq!(h.ray_to_hull([0.5, 0.5], 0), Some(([0.5, 0.0], 2)));
         assert_eq!(h.ray_to_hull([0.5, 0.5], 3), Some(([1.0, 0.5], 1)));
+    }
+
+    /// `FUN_140f8ea30`: toward each side, the nearest box whose span holds the point: past it
+    /// (strictly for the box the point lies on, `own`) its far side, inside it its near side,
+    /// short of it nothing; out keeps the point's other coordinate. The span tests are
+    /// `COMISS`/`JA` skips (0x140f8ec1c, 0x140f8eb6e): an unordered coordinate passes them.
+    #[test]
+    fn a_ray_meets_the_nearest_box_side_toward_it() {
+        let shape = |bounds: [f32; 4], id: i32| Shape { bounds, id };
+        let hull = Hull {
+            objects: vec![
+                shape([0.0, 0.0, 2.0, 2.0], 1),
+                shape([1.0, 3.0, 3.0, 5.0], 2),
+                shape([4.0, 1.0, 6.0, 2.0], 3),
+            ],
+            ..Hull::default()
+        };
+        // down from above both: box 1's top (its side 0) is nearer than box 0's
+        assert_eq!(hull.ray_to_box([1.5, 6.0], 0, -1), Some(([1.5, 5.0], 1, 0)));
+        // down from inside box 1: its bottom (side 2), nearer than box 0's top
+        assert_eq!(hull.ray_to_box([1.5, 4.0], 0, -1), Some(([1.5, 3.0], 1, 2)));
+        // on box 1's top side: past it (its top), unless it is the point's own box (its bottom)
+        assert_eq!(hull.ray_to_box([1.5, 5.0], 0, -1), Some(([1.5, 5.0], 1, 0)));
+        assert_eq!(hull.ray_to_box([1.5, 5.0], 0, 1), Some(([1.5, 3.0], 1, 2)));
+        // up from below box 0: its bottom; right from box 0's right side, own: box 2's left
+        assert_eq!(
+            hull.ray_to_box([0.5, -1.0], 1, -1),
+            Some(([0.5, 0.0], 0, 2))
+        );
+        assert_eq!(hull.ray_to_box([2.0, 1.5], 3, 0), Some(([4.0, 1.5], 2, 3)));
+        // left from inside box 2: its left side (side 3); from the right of it: its right
+        assert_eq!(hull.ray_to_box([5.0, 1.5], 2, -1), Some(([4.0, 1.5], 2, 3)));
+        assert_eq!(hull.ray_to_box([7.0, 1.5], 2, -1), Some(([6.0, 1.5], 2, 1)));
+        // right from box 2's right: nothing beyond; an unknown side: nothing
+        assert_eq!(hull.ray_to_box([6.5, 1.5], 3, -1), None);
+        assert_eq!(hull.ray_to_box([1.5, 6.0], 4, -1), None);
+        // an unordered x passes every span test of a vertical ray: the nearest top below
+        let (at, k, side) = hull.ray_to_box([f32::NAN, 6.0], 0, -1).unwrap();
+        assert!(at[0].is_nan());
+        assert_eq!((at[1], k, side), (5.0, 1, 0));
     }
 
     fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
