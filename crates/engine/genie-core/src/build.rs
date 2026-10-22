@@ -99,6 +99,10 @@ pub struct Site<'a> {
     pub mover: Option<&'a mut crate::movement::Mover>,
     /// Its missiles per volley (`+0xa00`), which its construction's start sets to its master's.
     pub firepower: Option<&'a mut f32>,
+    /// Its `mROOAlreadyCalled` (`+0x686`), which its stack unit's completion sets.
+    pub roo_called: Option<&'a mut bool>,
+    /// Its own store (`+0xae0`), which its storage entries of mode 16 fill at its completion.
+    pub store: Option<&'a mut Vec<(i16, f32)>>,
     /// What its completion reads ([`Construction::complete`]).
     pub completion: Completion<'a>,
 }
@@ -124,6 +128,14 @@ pub struct Completion<'a> {
     pub computer: bool,
     /// The building has a unit AI (`+0x6b0`): a mule cart's.
     pub ai: bool,
+    /// The building is an annex (`+0xbb8`, its main building's): no paid cost goes to attributes
+    /// 98 and 165, its tiles keep their links.
+    pub main: bool,
+    /// The world's time (`FUN_1415300d0`), which a construction's start reads.
+    pub now: u32,
+    /// The building stands on mangrove or rice terrain (`+0xcd0`, `FUN_141188db0` at its
+    /// constructor): master 1889's stack unit is the pasture 1893 then.
+    pub rice: bool,
 }
 
 /// What the completion's first part (`FUN_1411c6bd0`) gives its caller: the attributes its owner
@@ -217,6 +229,28 @@ pub struct Built {
     /// unit AI's search for resources follows (`FUN_1411c6bd0`'s tail, the caller's), in the
     /// state the building had before the completion (`set_state(2)` puts it in 2 after).
     pub cart: Option<u8>,
+    /// Its stack unit (`+0x986`), which its owner's slot 0x1c0 makes in its place (the
+    /// caller's, [`crate::turn::Turns::stack_unit`]).
+    pub stack: Option<StackUnit>,
+    /// Its master disappears when built (`+0x984`): its destroy (slot 0xd0) ends the
+    /// completion, after its technology (the caller's).
+    pub vanishes: bool,
+    /// Its construction started in the completion (`FUN_1411e5670` on a desolid one): its owner
+    /// watches it (the caller's).
+    pub started: bool,
+}
+
+/// A completed building's stack unit (`FUN_1411dbb70`'s block for `+0x986`): the master its
+/// owner's slot 0x1c0 makes (`FUN_14162ce00` with its flag set), the place, and the hit points
+/// the building lacked (its master's less its own, which the new object loses).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StackUnit {
+    /// The master (`+0x986`; master 1889 on mangrove or rice terrain, `+0xcd0`, makes 1893).
+    pub master: i16,
+    /// The building's place.
+    pub at: [f32; 3],
+    /// Its master's hit points (`+0x530`, a short) less its own.
+    pub hp_lost: f32,
 }
 
 /// What a builder brings to its Build action's update besides its walk.
@@ -340,6 +374,8 @@ const FINISHED: u8 = 224;
 const DONE: u8 = 1;
 /// 3: the action waits without a target.
 const IDLE: u8 = 3;
+/// The buildings' master type (80).
+const BUILDING_TYPE: u8 = 80;
 /// The masters and the class the end of the work treats apart: 621 and 1889 among the
 /// foundations, class 39 among the builders, 1893 and 1897 (`id - 0x765 & !4 == 0`), the fish
 /// trap 199 and farms (class 49, `FUN_141194b20`).
@@ -1198,7 +1234,7 @@ impl crate::turn::Turns {
         let (_, u) = self
             .object_mut(id)
             .ok_or(Unsupported("a building the slice does not hold"))?;
-        for (kind, amount) in crate::turn::storage_leaves(u, master)? {
+        for (kind, amount) in crate::turn::storage_leaves(u, master) {
             self.players[owner].add_attribute(kind, amount)?;
         }
         Ok(())
@@ -1232,6 +1268,9 @@ impl crate::turn::Turns {
             masters: self.masters.get(owner),
             computer: self.players[owner].computer,
             ai: u.ai.is_some(),
+            main: u.annex_of.is_some(),
+            now: self.world_time,
+            rice: u.rice,
         };
         let part = completion.first_part(&construction)?;
         for (kind, amount) in part.attributes {
@@ -1280,6 +1319,305 @@ impl crate::turn::Turns {
     }
 }
 
+/// The seconds of work a new object's building gets at once from its owner's slot 0x1c0 with its
+/// flag (`FUN_14162ce00`'s `FUN_1411cc430` with `DAT_142eea788`).
+const STACK_WORK: f32 = 10000.0;
+
+impl crate::turn::Turns {
+    /// `FUN_1411cc430` outside a builder's update, `amount` seconds on the building `id`: first
+    /// each annex (`+0xbc0`..`+0xbd8`) of a building type that is desolid starts
+    /// (`FUN_1411cd0d0`, [`crate::turn::Turns::clear_foundations_under`], then `FUN_1411e5670`,
+    /// [`crate::turn::Turns::construction_starts`]), then while the building is an annex of a
+    /// main building in state 0 with at least 1 hit point (COMISS: a NaN too) the work goes to
+    /// the main building, whose annexes start alike. A building in state 0 with at least 1 hit
+    /// point (a NaN not) starts if desolid and takes the work ([`Construction::add_work`]); one
+    /// that reaches its build time completes (`set_state(2)`, [`crate::turn::Turns::set_state`]).
+    ///
+    /// # Errors
+    ///
+    /// A sleeping building, and what the starts and the completion do not model.
+    pub(crate) fn work_building(&mut self, id: i32, amount: f32) -> Result<(), Unsupported> {
+        let mut at = id;
+        loop {
+            for annex in self.spatial.annexes_of(at) {
+                let Some((q, a)) = self.object(annex) else {
+                    continue;
+                };
+                let desolid = a.construction.is_some_and(|c| c.desolid);
+                if self.master_of(q, a.life.master_id)?.kind < 80 || !desolid {
+                    continue;
+                }
+                self.clear_foundations_under(annex)?;
+                self.construction_starts(q, annex)?;
+            }
+            let Some(main) = self.object(at).and_then(|(_, u)| u.annex_of) else {
+                break;
+            };
+            match self.object(main) {
+                Some((_, m))
+                    if m.life.state == 0 && crate::fmath::at_most_or_unordered(1.0, m.life.hp) =>
+                {
+                    at = main;
+                }
+                _ => break,
+            }
+        }
+        let Some(crate::order::Place::Live(q, i)) = self.place(at) else {
+            return Err(Unsupported("a worked building that sleeps"));
+        };
+        let u = &self.players[q].objects[i];
+        if u.life.state != 0 || crate::fmath::below_or_unordered(u.life.hp, 1.0) {
+            return Ok(());
+        }
+        if u.construction.is_some_and(|c| c.desolid) {
+            self.clear_foundations_under(at)?;
+            self.construction_starts(q, at)?;
+        }
+        let u = &mut self.players[q].objects[i];
+        let c = u
+            .construction
+            .as_mut()
+            .ok_or(Unsupported("a worked building without its construction"))?;
+        if c.add_work(&mut u.life.hp, amount) {
+            self.set_state(q, at, 2)?;
+        }
+        Ok(())
+    }
+
+    /// The building `id`'s `set_state(2)` from state 0 outside a builder's update, after its
+    /// annexes' (`FUN_1411dbb70`; [`crate::turn::Turns::set_state`] runs them first): the
+    /// completion ([`Construction::complete`]), then what it leaves its owner
+    /// ([`crate::turn::Turns::built`]).
+    ///
+    /// # Errors
+    ///
+    /// A sleeping building, and what the completion does not model.
+    pub(crate) fn complete_building(&mut self, id: i32) -> Result<(), Unsupported> {
+        let attribute_204 = self
+            .players
+            .iter()
+            .any(|q| q.attributes.get(204).is_some_and(|&v| v != 0.0));
+        let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
+            return Err(Unsupported("a completed building that sleeps"));
+        };
+        let farm_bonus = crate::turn::farm_bonus(&self.players[p].attributes);
+        let computer = self.players[p].computer;
+        let annexed = !self.spatial.annexes_of(id).is_empty();
+        let (mode_680, now) = (self.mode_680, self.world_time);
+        let masters = self.masters.get(p);
+        let u = &mut self.players[p].objects[i];
+        let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
+        let master = masters.and_then(|m| m.get(u.life.master_id));
+        let construction = u
+            .construction
+            .as_mut()
+            .ok_or(Unsupported("a completed building without its construction"))?;
+        let mut site = Site {
+            id,
+            life: &mut u.life,
+            construction,
+            mover: u.mover.as_mut(),
+            firepower: Some(&mut u.firepower),
+            roo_called: Some(&mut u.roo_called),
+            store: Some(&mut u.store),
+            completion: Completion {
+                master,
+                annexed,
+                attribute_204,
+                mode_680,
+                farm_bonus,
+                masters,
+                computer,
+                ai,
+                main,
+                now,
+                rice,
+            },
+        };
+        let built = Construction::complete(&mut site, &mut self.spatial, &mut self.pathing)?;
+        self.built(p, id, built)
+    }
+
+    /// What a completion leaves the owner `p` of the building `id` ([`Built`]), in the game's
+    /// order: the attributes it gains, a mule cart's search (`FUN_1411c6bd0`'s tail), the watch of
+    /// a construction that started (`FUN_1411e5670`), the stack unit
+    /// ([`crate::turn::Turns::stack_unit`]), the technology (`FUN_1413cdcd0`,
+    /// [`crate::turn::Turns::research_built`]) and the destroy of a building that disappears
+    /// when built (slot 0xd0, [`crate::turn::Turns::destroy`]).
+    ///
+    /// # Errors
+    ///
+    /// What the parts do not model.
+    pub(crate) fn built(&mut self, p: usize, id: i32, built: Built) -> Result<(), Unsupported> {
+        for (kind, amount) in built.attributes {
+            self.players[p].add_attribute(kind, amount)?;
+        }
+        if let Some(state) = built.cart {
+            self.cart_search(p, id, state)?;
+        }
+        if built.started {
+            if let Some((_, u)) = self.object_mut(id)
+                && let Some(c) = u.construction.as_mut()
+            {
+                c.started = false;
+            }
+            self.watch_started(p, id)?;
+        }
+        if let Some(stack) = built.stack {
+            self.stack_unit(p, id, stack)?;
+        }
+        if let Some(t) = built.tech {
+            self.research_built(p, t)?;
+        }
+        if built.vanishes {
+            self.destroy(p, id)?;
+        }
+        Ok(())
+    }
+
+    /// The stack unit (`+0x986`) of the completed building `building` of player `p`
+    /// (`FUN_1411dbb70`'s block): its owner's slot 0x1c0 makes it at the building's place with
+    /// its flag ([`crate::turn::Turns::make_new_object`]); a new building takes the old one's
+    /// command queue (the old unit AI's slot 0x218, its orders not empty, then slot 0x1f8: the
+    /// new one's slot 0x208 per order, `FUN_140c15d00`) and its gather point (`+0xc30`..: a
+    /// target that is the old building names the new one; a target the world no longer holds
+    /// keeps the point alone, and with x or y −1 none); then the new object loses the hit points
+    /// the old one lacked. Not modelled: units of players the owner is not allied with that
+    /// took the foundation (`+0xce0`: slot 0x140 on the new object each) and a gate's stack gate
+    /// (slot 0x670 with the old one's lock). Not held: `+0xcb0` (the new id) and the local
+    /// player's tracker (`FUN_14165c2a0`, `FUN_14165c470`).
+    ///
+    /// # Errors
+    ///
+    /// What the parts do not model.
+    pub(crate) fn stack_unit(
+        &mut self,
+        p: usize,
+        building: i32,
+        stack: StackUnit,
+    ) -> Result<(), Unsupported> {
+        let (_, old) = self.object(building).ok_or(Unsupported(
+            "a stack unit of a building the slice does not hold",
+        ))?;
+        let (orders, gather) = (
+            old.ai
+                .as_ref()
+                .map(|ai| ai.building_orders.clone())
+                .unwrap_or_default(),
+            old.gather_point,
+        );
+        let old_class = self.master_of(p, old.life.master_id)?.class;
+        let world = crate::turn::World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let enemies = self.players.iter().enumerate().any(|(q, player)| {
+            !crate::tasks::Diplomacy::allied(&world, q, p, true)
+                && player
+                    .objects
+                    .iter()
+                    .any(|u| u.top_target() == Some(building))
+        });
+        if enemies {
+            return Err(Unsupported(
+                "a stack unit's completion with other players' units on it (+0xce0)",
+            ));
+        }
+        let Some(new) = self.make_new_object(p, stack.master, stack.at, true)? else {
+            return Ok(());
+        };
+        let (q, nu) = self
+            .object(new)
+            .ok_or(Unsupported("a stack unit the slice does not hold"))?;
+        let new_master = self.master_of(q, nu.life.master_id)?;
+        if new_master.kind == BUILDING_TYPE {
+            if old_class == CLASS_39 && new_master.class == CLASS_39 {
+                return Err(Unsupported(
+                    "a gate's stack gate (slot 0x670 with the old one's lock)",
+                ));
+            }
+            // a gather point on the old building names the new one; one whose target the world
+            // no longer holds keeps its point, none at x or y −1 (compared as floats)
+            let point = gather.map(|g| {
+                let target = if g.target == building { new } else { g.target };
+                match self.object(target) {
+                    Some((_, t)) => Some(crate::turn::GatherPoint {
+                        point: [t.position[0], t.position[1], 0.0],
+                        target,
+                        target_master: t.life.master_id,
+                    }),
+                    None => (g.point[0] != -1.0 && g.point[1] != -1.0).then_some(
+                        crate::turn::GatherPoint {
+                            point: [g.point[0], g.point[1], 0.0],
+                            target: -1,
+                            target_master: -1,
+                        },
+                    ),
+                }
+            });
+            let (_, nu) = self
+                .object_mut(new)
+                .ok_or(Unsupported("a stack unit the slice does not hold"))?;
+            if let Some(ai) = nu.ai.as_mut().filter(|_| !orders.is_empty()) {
+                ai.building_orders.extend(orders);
+            }
+            if let Some(g) = point {
+                nu.gather_point = g;
+            }
+        }
+        let (_, nu) = self
+            .object_mut(new)
+            .ok_or(Unsupported("a stack unit the slice does not hold"))?;
+        nu.life.hp -= stack.hp_lost;
+        Ok(())
+    }
+
+    /// The player's slot 0x1c0 (`FUN_14162ce00`) for `master` at `at`: the master's slot 0x40
+    /// makes the object (none for a master the player has not got, `FUN_141666a60`); with its
+    /// flag its footprint is cleared with `param_6` ([`crate::turn::Turns::clear_footprint`]) and
+    /// a building is worked 10000 seconds at once ([`crate::turn::Turns::work_building`]: a stack
+    /// unit completes there); a master that gathers by itself joins the visible-resource lists
+    /// ([`crate::turn::Turns::made_new_object`]). The editor's part (mode 4) never runs in a game.
+    /// Its id.
+    ///
+    /// # Errors
+    ///
+    /// A master of another type than a building (only stack units come here), and what the parts
+    /// do not model.
+    pub(crate) fn make_new_object(
+        &mut self,
+        p: usize,
+        master: i16,
+        at: [f32; 3],
+        flagged: bool,
+    ) -> Result<Option<i32>, Unsupported> {
+        let Some(made) = self.masters.get(p).and_then(|m| m.get(master)).cloned() else {
+            return Ok(None);
+        };
+        if made.kind != BUILDING_TYPE {
+            return Err(Unsupported(
+                "the player's slot 0x1c0 for an object other than a building",
+            ));
+        }
+        let ai =
+            crate::unit_ai::factory_type(made.class, master, made.volley_missile.unwrap_or(-1));
+        let (id, _) = self.make_building(p, master, ai, at)?;
+        if flagged {
+            self.clear_footprint(p, master, [at[0], at[1]], true)?;
+            self.work_building(id, STACK_WORK)?;
+        }
+        if made.auto_gather {
+            if self.players[p].objects.last().map(|u| u.id) != Some(id) {
+                return Err(Unsupported(
+                    "an auto-gathered new building with annexes (its visible resources)",
+                ));
+            }
+            self.made_new_object(p)?;
+        }
+        Ok(Some(id))
+    }
+}
+
 /// `FUN_140c5dcd0`: the build orders (`0x2be`) of `ai`'s queue whose foundation is gone or no
 /// longer in state 0 leave it; `site` is the Build's own foundation with its state now, the
 /// others' states are as the update started (`build_targets`, None for one that is gone).
@@ -1324,12 +1662,13 @@ impl Construction {
     /// annexes is not modelled.
     pub fn work(
         site: &mut Site<'_>,
-        mut amount: f32,
+        amount: f32,
         world: &mut Spatial,
         pathing: &mut Pathing,
         now: u32,
     ) -> Result<Worked, Unsupported> {
-        if site.life.state != 0 || site.life.hp < 1.0 {
+        // COMISS: a NaN hit point count is not worked on either
+        if site.life.state != 0 || crate::fmath::below_or_unordered(site.life.hp, 1.0) {
             return Ok(Worked::Done);
         }
         let c = &mut *site.construction;
@@ -1343,55 +1682,80 @@ impl Construction {
                 *f = m.volley_fire;
             }
         }
-        let build_time = f32::from(c.build_time);
-        let hit_points = f32::from(c.hit_points);
-        if build_time < c.progress + amount {
-            amount = build_time - c.progress;
+        if !c.add_work(&mut site.life.hp, amount) {
+            return Ok(Worked::Going);
         }
-        let hp = if 1.0 <= build_time {
-            (amount * hit_points) / build_time + site.life.hp
+        Self::complete(site, world, pathing).map(Worked::Completed)
+    }
+
+    /// `FUN_1411cc430`'s work of `amount` seconds on a foundation in state 0 with at least 1 hit
+    /// point: at most up to its build time, it adds its share of its master's hit points `hp`
+    /// (all of them without a build time of at least 1), never past them; true when its build
+    /// points reach its build time.
+    pub(crate) fn add_work(&mut self, hp: &mut f32, amount: f32) -> bool {
+        let mut amount = amount;
+        let build_time = f32::from(self.build_time);
+        let hit_points = f32::from(self.hit_points);
+        if build_time < self.progress + amount {
+            amount = build_time - self.progress;
+        }
+        let new = if 1.0 <= build_time {
+            (amount * hit_points) / build_time + *hp
         } else {
             hit_points
         };
-        site.life.hp = if hit_points < hp { hit_points } else { hp };
-        let before = c.progress;
-        c.progress = amount + before;
-        if amount + before < build_time {
-            return Ok(Worked::Going);
-        }
-        Self::complete(site, world).map(Worked::Completed)
+        *hp = if hit_points < new { hit_points } else { new };
+        let before = self.progress;
+        self.progress = amount + before;
+        crate::fmath::at_most_or_unordered(build_time, amount + before)
     }
 
-    /// The construction completes: `FUN_1411cc430`'s `set_state(2)` (`FUN_1411dbb70`), then
-    /// `FUN_14152bcb0`, whose part for players with attribute 204 is not modelled. The building
-    /// (`FUN_1411c6bd0` first: its player's object index `+0x18` and its count `+0x6c` are not
-    /// held; a computer player's, a farm's, an overridden sprite's and a master with a task of
-    /// action type 0x99 are not modelled) holds its build time as its build points; its master's
-    /// storage of modes 4, 8 and 64 goes to its owner (slot 0xf8, returned); it is built, and its
-    /// sight swaps from its footprint to its line of sight (slots 0x1d8, 0x1d0); it takes its
-    /// standing sprite (not held); on snow it gets its snow flag; its foundation terrain covers
-    /// its clearance ([`crate::terrain::Terrain::cover`]; the tile it stands on, `+0x2e8`, keeps
-    /// no terrain to restore in the slice); its owner's attributes 98 and 165 grow by its paid cost (`0x1411dd3ee`: the sum of its
-    /// cost entries flagged paid, as a new unit's 98 and 164 do); then the
-    /// base `set_state` (`FUN_14121cc40`, `FUN_14119d710`) puts it in state 2. The local player's
-    /// sound (slot 0x4c0), the event 0x69 (`FUN_140c898a0`) and the owner's AI (slot 0x388) are
-    /// not held. Last, the master's technology is researched (`FUN_1413cdcd0` with `param_3` 0
-    /// and no building; [`Built::tech`], the caller's). A stack unit, a building that disappears
-    /// when built, own stores (mode 16), the castle (82), the monastery (104), the wonder (276)
-    /// and masters with object flag 0x40 are not modelled; a wall's (`adjacent_mode`) facets, its
-    /// own and its neighbours' (`FUN_1411ce890`), are not held.
-    pub fn complete(site: &mut Site<'_>, world: &mut Spatial) -> Result<Built, Unsupported> {
+    /// The construction completes: the building's `set_state(2)` (`FUN_1411dbb70` from state 0;
+    /// its annexes' come first, the caller's), then `FUN_14152bcb0`, whose part for players with
+    /// attribute 204 is not modelled. The completion's first part (`FUN_1411c6bd0`,
+    /// [`Completion::first_part`]) and a desolid one's construction start (`FUN_1411e5670`,
+    /// [`Construction::begin`]: [`Built::started`]); then the block for state 2: its build points
+    /// hold its build time; its master's storage of modes 4, 8 and 64 goes to its owner (slot
+    /// 0xf8, returned); its sight swaps from its footprint to its line of sight (slots 0x1d8,
+    /// 0x1d0; not for classes 51 and 54, whose `+0xca1` the constructor set); it takes its
+    /// standing sprite (not held); a stack unit (`+0x986`) drops its record and mesh shape
+    /// (`FUN_141055b40`), lets its tiles go (`FUN_140f65580`, a building on a tile that is no
+    /// annex) and sets `+0x686`; its owner makes the stack unit (the caller's, [`Built::stack`]);
+    /// on snow it gets its snow flag; its foundation terrain covers its clearance (terrain 0x3f
+    /// under master 1889's pasture, [`crate::terrain::Terrain::cover`]; the tile it stands on,
+    /// `+0x2e8`, keeps no terrain to restore in the slice); its owner's attributes 98 and 165
+    /// grow by its paid cost (`0x1411dd3ee`: the sum of its cost entries flagged paid) unless it
+    /// is an annex or has a stack unit; then the combat object's and the base `set_state`
+    /// (`FUN_14121cc40`, `FUN_14119d710`) put it in state 2. The local player's sound (slot
+    /// 0x4c0), the event 0x69 (`FUN_140c898a0`), the owner's AI (slot 0x388) and the snow decal
+    /// are not held. Last, the master's technology is researched (`FUN_1413cdcd0` with `param_3`
+    /// 0 and no building; [`Built::tech`], the caller's), and a master that disappears when built
+    /// is destroyed (slot 0xd0, the caller's, [`Built::vanishes`]; its hit points are 0 already,
+    /// as the builder's test after the work reads them). The castle (82),
+    /// the monastery (104), the wonder (276) and masters with object flag 0x40 are not modelled;
+    /// a wall's (`adjacent_mode`) facets, its own and its neighbours' (`FUN_1411ce890`), are not
+    /// held.
+    ///
+    /// # Errors
+    ///
+    /// What it does not model, and a building without its master or place.
+    pub fn complete(
+        site: &mut Site<'_>,
+        world: &mut Spatial,
+        pathing: &mut Pathing,
+    ) -> Result<Built, Unsupported> {
+        /// The pasture master 1889's stack unit on mangrove or rice terrain (`0x765`), and the
+        /// terrain it lays then (`0x3f`).
+        const RICE_PASTURE: i16 = 0x765;
+        const RICE_PASTURE_TERRAIN: u8 = 0x3f;
         let id = site.id;
-        let done = &site.completion;
+        let done = site.completion;
         let master = done.master.ok_or(Unsupported(
             "a completion of a master the slice does not have",
         ))?;
         let building = master
             .building
             .ok_or(Unsupported("a completion of a master that is no building"))?;
-        if done.annexed {
-            return Err(Unsupported("a building with annexes completes"));
-        }
         if done.attribute_204 {
             return Err(Unsupported(
                 "a completion with a player's attribute 204 (FUN_14152bcb0)",
@@ -1400,12 +1764,19 @@ impl Construction {
         // FUN_1411c6bd0 (its build points are its build time already: FUN_1411cc430 wrote them)
         let first = done.first_part(site.construction)?;
         let mut attributes = first.attributes;
-        // a wall's (adjacent mode) facets and its neighbours' (FUN_1411ce890) are not held
-        if building.stack_unit >= 0 || building.disappears_when_built {
-            return Err(Unsupported(
-                "a completion of a stack unit or a vanishing building",
-            ));
+        // FUN_1411e5670 while still in state 0 (2 lies within 1 to 6)
+        let started = Self::begin(
+            id,
+            site.construction,
+            site.mover.as_deref_mut(),
+            world,
+            pathing,
+            done.now,
+        )?;
+        if started && let Some(f) = site.firepower.as_deref_mut() {
+            *f = master.volley_fire;
         }
+        // a wall's (adjacent mode) facets and its neighbours' (FUN_1411ce890) are not held
         if matches!(master.id, 82 | 104 | 276) || master.object_flags & 0x40 != 0 {
             return Err(Unsupported(
                 "a completion of the castle, the monastery, the wonder or object flag 0x40",
@@ -1420,15 +1791,50 @@ impl Construction {
             if matches!(flag, 4 | 8 | 64) {
                 attributes.push((kind, amount));
             }
-            if flag & 0x10 != 0 {
-                return Err(Unsupported("a completion with an own store (mode 16)"));
+        }
+        // the entries of mode 16 go to its own store (FUN_1411abad0: an entry from 0)
+        for &(kind, amount, flag) in &master.storage {
+            if kind < 0 || amount <= 0.0 || flag & 0x10 == 0 {
+                continue;
+            }
+            if let Some(store) = site.store.as_deref_mut() {
+                match store.iter_mut().find(|e| e.0 == kind) {
+                    Some(e) => e.1 += amount,
+                    None => store.push((kind, amount)),
+                }
             }
         }
         let placed = *world
             .get(id)
             .ok_or(Unsupported("a completed building without a place"))?;
-        if let Some(v) = world.sight.as_mut() {
+        if !matches!(master.class, 51 | 54)
+            && let Some(v) = world.sight.as_mut()
+        {
             v.construction_completed(id, placed.position, placed.radius);
+        }
+        let stack_master = if master.id == MASTER_1889 && 0 <= building.stack_unit && done.rice {
+            RICE_PASTURE
+        } else {
+            building.stack_unit
+        };
+        let mut stack = None;
+        if 0 <= building.stack_unit {
+            pathing.removed(id);
+            world.drop_record(id);
+            pathing.tiles_changed(world.take_changes());
+            if !done.main
+                && let Some(v) = world.sight.as_mut()
+            {
+                v.unlink_building(placed.position, master.radius);
+            }
+            stack = Some(StackUnit {
+                master: stack_master,
+                at: placed.position,
+                hp_lost: f32::from(master.hit_points) - site.life.hp,
+            });
+            if let Some(r) = site.roo_called.as_deref_mut() {
+                *r = true;
+            }
         }
         let terrain = world
             .terrain
@@ -1439,10 +1845,15 @@ impl Construction {
             c.snow = true;
         }
         if 0 <= building.foundation_terrain {
+            let laid = if stack_master == RICE_PASTURE {
+                RICE_PASTURE_TERRAIN
+            } else {
+                building.foundation_terrain as u8
+            };
             terrain.cover(&crate::terrain::Foundation {
                 position: placed.position,
                 clearance: master.clearance,
-                terrain: building.foundation_terrain as u8,
+                terrain: laid,
                 snow: c.snow,
                 master: master.id,
                 class: master.class,
@@ -1451,21 +1862,30 @@ impl Construction {
             })?;
         }
         // its paid cost: the cost entries of a resource flagged paid (`+0x880`), summed as shorts
-        let paid: i32 = master
-            .cost
-            .iter()
-            .filter(|&&(resource, _, paid)| 0 <= resource && paid)
-            .map(|&(_, amount, _)| i32::from(amount))
-            .sum();
-        attributes.push((98, paid as f32));
-        attributes.push((165, paid as f32));
+        if !done.main && building.stack_unit == -1 {
+            let paid: i32 = master
+                .cost
+                .iter()
+                .filter(|&&(resource, _, paid)| 0 <= resource && paid)
+                .map(|&(_, amount, _)| i32::from(amount))
+                .sum();
+            attributes.push((98, paid as f32));
+            attributes.push((165, paid as f32));
+        }
         let before = site.life.state;
         site.life.state = 2;
         world.sight_state(id, 2);
+        let vanishes = building.disappears_when_built;
+        if vanishes {
+            site.life.hp = 0.0;
+        }
         Ok(Built {
             attributes,
             tech: (0 <= building.tech).then_some(building.tech),
             cart: first.cart.then_some(before),
+            stack,
+            vanishes,
+            started,
         })
     }
 
@@ -1735,6 +2155,9 @@ mod tests {
                 masters: Some(&masters),
                 computer: false,
                 ai: false,
+                main: false,
+                now: 0,
+                rice: false,
             }
             .first_part(c)
         };
@@ -1781,6 +2204,9 @@ mod tests {
                 masters: None,
                 computer: false,
                 ai,
+                main: false,
+                now: 0,
+                rice: false,
             }
             .first_part(&built)
             .unwrap()
@@ -1959,6 +2385,7 @@ mod tests {
                 garrison_heal_rate: 0.0,
                 garrison_repair_rate: 0.0,
                 annexes: [-1; 4],
+                annex_offsets: [[0.0; 2]; 4],
                 head_unit: -1,
                 transform_unit: -1,
             }),
@@ -1987,6 +2414,8 @@ mod tests {
             construction: &mut c,
             mover: None,
             firepower: None,
+            roo_called: None,
+            store: None,
             completion: Completion {
                 master: Some(&master),
                 annexed: false,
@@ -1996,6 +2425,9 @@ mod tests {
                 masters: None,
                 computer: false,
                 ai: false,
+                main: false,
+                now: 0,
+                rice: false,
             },
         };
         let worked = Construction::work(&mut site, 0.02, &mut world, &mut Pathing::default(), 0);
@@ -2005,6 +2437,9 @@ mod tests {
                 attributes: vec![(4, 5.0), (98, 25.0), (165, 25.0)],
                 tech: None,
                 cart: None,
+                stack: None,
+                vanishes: false,
+                started: false,
             }))
         );
         assert_eq!((life.state, c.progress, c.snow), (2, 25.0, true));
@@ -2043,6 +2478,8 @@ mod tests {
             construction: &mut c,
             mover: None,
             firepower: None,
+            roo_called: None,
+            store: None,
             completion: Completion {
                 master: None,
                 annexed: false,
@@ -2052,6 +2489,9 @@ mod tests {
                 masters: None,
                 computer: false,
                 ai: false,
+                main: false,
+                now: 0,
+                rice: false,
             },
         };
         let rate = 1.0f32 * 1.0 * 0.021;
@@ -2164,6 +2604,8 @@ mod tests {
             construction: &mut construction,
             mover: None,
             firepower: None,
+            roo_called: None,
+            store: None,
             completion: Completion {
                 master: None,
                 annexed: false,
@@ -2173,6 +2615,9 @@ mod tests {
                 masters: None,
                 computer: false,
                 ai: false,
+                main: false,
+                now: 0,
+                rice: false,
             },
         };
         let _ = build
@@ -2275,6 +2720,8 @@ mod tests {
             construction: &mut construction,
             mover: None,
             firepower: None,
+            roo_called: None,
+            store: None,
             completion: Completion {
                 master: None,
                 annexed: false,
@@ -2284,6 +2731,9 @@ mod tests {
                 masters: None,
                 computer: false,
                 ai: false,
+                main: false,
+                now: 0,
+                rice: false,
             },
         };
         let mut build = BuildAction {
@@ -2434,6 +2884,8 @@ mod tests {
                         construction: &mut c,
                         mover: None,
                         firepower: None,
+                        roo_called: None,
+                        store: None,
                         completion: Completion {
                             master: Some(&master),
                             annexed: false,
@@ -2443,6 +2895,9 @@ mod tests {
                             masters: None,
                             computer: false,
                             ai: false,
+                            main: false,
+                            now: 0,
+                            rice: false,
                         },
                     }),
                     Builder {
@@ -2536,5 +2991,243 @@ mod tests {
             (far.state, far.target, far.move_to, step.notified, step.done),
             (IDLE, -1, None, true, false)
         );
+    }
+}
+
+#[cfg(test)]
+mod stack_tests {
+    use super::*;
+    use crate::lifecycle::{Class, Lifecycle};
+    use crate::masters::{BuildingMaster, Masters};
+    use crate::spatial::{Placed, Tiles};
+    use crate::turn::{Player, Turns, Unit};
+
+    /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train
+    /// time `bt`, hit points `hp`, an annex of `head`, with `annexes` at their offsets.
+    fn building(
+        id: i16,
+        (r, z, kind): (f32, f32, u8),
+        (bt, hp): (i16, i16),
+        head: i16,
+        annexes: &[(i16, [f32; 2])],
+    ) -> Master {
+        let mut slots = [-1; 4];
+        let mut offsets = [[0.0; 2]; 4];
+        for (k, &(a, o)) in annexes.iter().enumerate() {
+            slots[k] = a;
+            offsets[k] = o;
+        }
+        Master {
+            id,
+            kind: 80,
+            class: 3,
+            radius: [r, r],
+            height: z,
+            tall: 0.0 < z,
+            obstruction_type: kind,
+            obstruction_class: 2,
+            build_time: bt,
+            trained_at: vec![-1],
+            hit_points: hp,
+            building: Some(BuildingMaster {
+                stack_unit: -1,
+                foundation_terrain: -1,
+                tech: -1,
+                annexes: slots,
+                annex_offsets: offsets,
+                head_unit: head,
+                transform_unit: -1,
+                ..BuildingMaster::default()
+            }),
+            ..Master::default()
+        }
+    }
+
+    /// The town centre's masters as build 158041's `.dat` holds them for a civ without 2160: the
+    /// foundation 621 (stack unit 109, disappears when built), the town centre 109 (annexes 618,
+    /// 619, 620 and 890; its storage of population, 5 of mode 4, and of attribute 506, 1 of mode
+    /// 16; a volley missile: the tower's unit AI), 618 (tall), 619 (its own annexes 1649 and
+    /// 2160), 620, 1649 and 890 (class 27, hit points −1, tall).
+    fn masters() -> Masters {
+        let mut foundation = building(621, (2.0, 4.0, 2), (150, 2400), -1, &[]);
+        if let Some(b) = foundation.building.as_mut() {
+            b.stack_unit = 109;
+            b.disappears_when_built = true;
+        }
+        let mut tc = building(
+            109,
+            (2.0, 0.0, 0),
+            (100, 2400),
+            621,
+            &[
+                (618, [1.0, -1.0]),
+                (619, [-0.5, 0.5]),
+                (620, [-1.0, 1.0]),
+                (890, [-1.0, 1.0]),
+            ],
+        );
+        tc.storage = vec![(4, 5.0, 4), (506, 1.0, 16), (-1, 0.0, 0)];
+        tc.volley_missile = Some(54);
+        let mut empty = building(890, (0.0, 4.0, 5), (-10, -1), 109, &[]);
+        empty.class = 27;
+        Masters::new([
+            foundation,
+            tc,
+            building(618, (1.0, 3.0, 2), (100, 2400), 621, &[]),
+            building(
+                619,
+                (1.5, 0.0, 0),
+                (100, 2400),
+                621,
+                &[(1649, [0.75, -0.75]), (2160, [0.0, 0.0])],
+            ),
+            building(620, (1.0, 0.0, 0), (100, 2400), 621, &[]),
+            building(1649, (0.0, 0.0, 0), (0, 1), 619, &[]),
+            empty,
+        ])
+    }
+
+    /// Player 1 with the town-centre foundation 8759 at (54, 147), built to its last 0.01
+    /// seconds, its record on the map; the next id 8768.
+    fn world() -> Turns {
+        let ms = masters();
+        let foundation = Unit {
+            id: 8759,
+            position: [54.0, 147.0, 0.0],
+            life: Lifecycle {
+                class: Class::Animated,
+                state: 0,
+                hp: 2399.0,
+                master_id: 621,
+                ..Lifecycle::default()
+            },
+            construction: Some(Construction {
+                progress: 149.99,
+                desolid: false,
+                builders: 1,
+                hit_points: 2400,
+                build_time: 150,
+                record: Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: false,
+            }),
+            pasture: -1,
+            my_pasture: -1,
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0; 2],
+            vec![
+                Player::default(),
+                Player {
+                    objects: vec![foundation],
+                    attributes: vec![0.0; 600],
+                    ..Player::default()
+                },
+            ],
+        );
+        t.spatial = Spatial::with_tiles([200, 200], Tiles::new(200, 200, vec![0; 200 * 200]));
+        t.spatial.terrain = Some(crate::terrain::Terrain::new(
+            200,
+            200,
+            vec![(0, 255, -1); 200 * 200],
+            vec![
+                crate::terrain::TerrainKind {
+                    shown: true,
+                    flags: 0,
+                    forest: false,
+                };
+                40
+            ],
+            vec![vec![0.0; 40]; 5],
+        ));
+        t.spatial.insert(
+            8759,
+            Placed {
+                position: [54.0, 147.0, 0.0],
+                radius: [2.0, 2.0],
+                class: 3,
+                player: 1,
+                master: 621,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(Obstruction { kind: 2, class: 2 }),
+            },
+        );
+        t.next_object_id = 8768;
+        t.masters = vec![ms.clone(), ms];
+        t
+    }
+
+    /// census v5's 273 stops "a completion of a stack unit or a vanishing building" (records/
+    /// 428759682 update 2019): the work that completes the town-centre foundation 621 drops its
+    /// record, its owner makes the stack unit 109 at its place with its flag (`FUN_14162ce00`):
+    /// the town centre built already (its train time as build points, its hit points), its
+    /// annexes depth first (618, 619 with its 1649, 620, 890; 2160 the player lacks), each at
+    /// its offset and linked, the tall ones desolid; worked 10000 seconds at once it completes,
+    /// its annexes first: its population (attribute 4) and its own store (506), less the hit
+    /// points the foundation lacked; then 621 disappears (state 7, hit points 0) without paying
+    /// attributes 98 and 165.
+    #[test]
+    fn a_town_centre_foundation_completes_into_the_town_centre_and_its_annexes() {
+        let mut t = world();
+        t.work_building(8759, 1.0).unwrap();
+        let ids: Vec<(i32, i16, u8)> = t.players[1]
+            .objects
+            .iter()
+            .map(|u| (u.id, u.life.master_id, u.life.state))
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                (8759, 621, 7),
+                (8768, 109, 2),
+                (8769, 618, 2),
+                (8770, 619, 2),
+                (8771, 1649, 2),
+                (8772, 620, 2),
+                (8773, 890, 2),
+            ]
+        );
+        let at = |id: i32| t.spatial.get(id).unwrap().position;
+        assert_eq!(
+            [at(8769), at(8770), at(8771), at(8772)],
+            [
+                [55.0, 146.0, 0.0],
+                [53.5, 147.5, 0.0],
+                [54.25, 146.75, 0.0],
+                [53.0, 148.0, 0.0]
+            ]
+        );
+        let unit = |id: i32| t.players[1].objects.iter().find(|u| u.id == id).unwrap();
+        assert_eq!(
+            [8769, 8770, 8771, 8772, 8773].map(|a| unit(a).annex_of),
+            [Some(8768), Some(8768), Some(8770), Some(8768), Some(8768)]
+        );
+        // the tower's unit AI for the town centre, the building's for the annexes
+        assert_eq!(unit(8768).ai.as_ref().map(|ai| ai.ai_type), Some(15));
+        assert_eq!(unit(8769).ai.as_ref().map(|ai| ai.ai_type), Some(17));
+        // the foundation lacked 0.84 of its 2400 hit points after its last work: the town
+        // centre lacks them too
+        let lacked = 2400.0 - (2399.0 + (0.01_f32 * 2400.0) / 150.0);
+        assert_eq!(
+            (unit(8768).life.hp, unit(8768).store.clone()),
+            (2400.0 - lacked, vec![(506, 1.0)])
+        );
+        let attributes = &t.players[1].attributes;
+        assert_eq!(
+            (attributes[4], attributes[98], attributes[165]),
+            (5.0, 0.0, 0.0)
+        );
+        let gone = unit(8759);
+        assert_eq!((gone.life.hp, gone.roo_called), (0.0, true));
+        assert_eq!(t.spatial.get(8759).unwrap().obstruction, None);
     }
 }

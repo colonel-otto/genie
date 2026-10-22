@@ -299,7 +299,8 @@ impl Turns {
         self.set_state(owner, id, 7)
     }
 
-    /// Slot 0xa0 of object `id` of player `owner` to `new`, a state of 3 or more, outside the
+    /// Slot 0xa0 of object `id` of player `owner` to `new`, a state of 3 or more (2 for a
+    /// building's completion), outside the
     /// object's own update, by its master's type: a building's (`FUN_1411dbb70`,
     /// [`Turns::building_set_state`]), a combat object's of type 70 (`FUN_14121cc40`,
     /// [`Turns::combat_set_state`]), else the base one ([`Turns::base_set_state`]).
@@ -341,6 +342,10 @@ impl Turns {
             }
         }
         let state = self.object(id).map_or(8, |(_, u)| u.life.state);
+        // the completion: its first part, its construction's start and the block for state 2
+        if new == 2 && state == 0 {
+            return self.complete_building(id);
+        }
         if state == 0 {
             self.completion_part(owner, id, master)?;
             let still = self.object(id).is_some_and(|(_, u)| u.life.state == 0);

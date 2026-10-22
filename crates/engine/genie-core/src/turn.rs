@@ -186,8 +186,15 @@ pub struct Unit {
     pub stopped: bool,
     /// `mROOAlreadyCalled` (`+0x686`, saved): its obstruction record went (its death's
     /// `FUN_14121cc40`, a footprint clearing's `FUN_141189670`, a construction start's clearing
-    /// `FUN_1411cd0d0`); later ones leave it alone.
+    /// `FUN_1411cd0d0`, a stack unit's completion); later ones leave it alone.
     pub roo_called: bool,
+    /// A building's `+0xcd0`: its constructor found mangrove or rice terrain at its place
+    /// (`FUN_141188db0`), which master 1889's completion reads.
+    pub rice: bool,
+    /// A building's own store (`+0xae0`, `FUN_1411abad0`'s map by attribute): what its storage
+    /// entries of mode 16 put in at its completion and take out at its death
+    /// (`FUN_1411e6580`).
+    pub store: Vec<(i16, f32)>,
 }
 
 /// What every building holds of a gate: `mGateLocked` (`+0xc7c`; a lock also sets the
@@ -716,6 +723,11 @@ const SPEED_EPSILON: f32 = crate::image::turn::SPEED_EPSILON;
 /// A building attacks with a firepower above this (`FUN_14120ea30`).
 const ARMED_FIREPOWER: f32 = crate::image::turn::ARMED_FIREPOWER;
 
+/// The pasture master whose foundation keeps its snow and whose stack unit depends on the rice
+/// terrain under it (1889).
+const PASTURE_1889: i16 = 1889;
+/// The gate's class (39), whose annexes stay in their owner's watched list.
+const GATE: i16 = 39;
 /// A queued villager's master: male when the 64-bit Action draw times 100 (wrapping) is below 50
 /// modulo 100.
 const fn villager(draw: u64) -> i16 {
@@ -858,6 +870,10 @@ struct Context<'a> {
     /// The mule carts the object's update completed, whose search for resources the caller runs
     /// after it ([`Turns::cart_search`]).
     carts: Vec<(i32, u8)>,
+    /// The buildings the object's update completed with a stack unit or that disappear when
+    /// built: the caller makes the stack unit ([`Turns::stack_unit`]) before the technologies
+    /// and destroys the building (slot 0xd0) after them.
+    completions: Vec<(i32, Option<crate::build::StackUnit>, bool)>,
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
     /// which the caller gives after the update ([`Turns::order_work`]).
     work_order: Option<crate::order::Work>,
@@ -3796,6 +3812,9 @@ impl Unit {
             masters: c.masters,
             computer: c.computer,
             ai: self.ai.is_some(),
+            main: self.annex_of.is_some(),
+            now: c.world_time,
+            rice: self.rice,
         };
         let part = completion.first_part(construction)?;
         c.attribute_adds.extend(part.attributes);
@@ -5297,6 +5316,8 @@ impl Unit {
             construction,
             mover: self.mover.as_mut(),
             firepower: Some(&mut self.firepower),
+            roo_called: Some(&mut self.roo_called),
+            store: Some(&mut self.store),
             completion: Completion {
                 master,
                 annexed,
@@ -5306,13 +5327,29 @@ impl Unit {
                 masters: c.masters,
                 computer: c.computer,
                 ai: self.ai.is_some(),
+                main: self.annex_of.is_some(),
+                now: c.world_time,
+                rice: self.rice,
             },
         };
-        let built = Construction::complete(&mut site, c.spatial)?;
+        let built = Construction::complete(&mut site, c.spatial, c.pathing)?;
+        // its set_state(2) took its annexes along first (FUN_1411dbb70)
+        for annex in c.spatial.annexes_of(self.id) {
+            c.annex_states.push((annex, 2));
+        }
         c.attribute_adds.extend(built.attributes);
         c.techs_done.extend(built.tech);
         if let Some(state) = built.cart {
             c.carts.push((self.id, state));
+        }
+        if built.started {
+            if let Some(k) = self.construction.as_mut() {
+                k.started = false;
+            }
+            c.started.push(self.id);
+        }
+        if built.stack.is_some() || built.vanishes {
+            c.completions.push((self.id, built.stack, built.vanishes));
         }
         Ok(())
     }
@@ -5821,6 +5858,7 @@ impl Unit {
             let annexed = others.iter().any(|u| u.annex_of == Some(target));
             let masters = c.masters;
             let (attribute_204, mode_680, computer) = (c.attribute_204, c.mode_680, c.computer);
+            let world_time = c.world_time;
             let farm_bonus = farm_bonus(c.attributes);
             let built = others
                 .iter()
@@ -5843,13 +5881,15 @@ impl Unit {
                 });
             let site = others.iter_mut().find(|u| u.id == target).and_then(|u| {
                 let master = masters.and_then(|m| m.get(u.life.master_id));
-                let ai = u.ai.is_some();
+                let (ai, main, rice) = (u.ai.is_some(), u.annex_of.is_some(), u.rice);
                 Some(Site {
                     id: u.id,
                     life: &mut u.life,
                     construction: u.construction.as_mut()?,
                     mover: u.mover.as_mut(),
                     firepower: Some(&mut u.firepower),
+                    roo_called: Some(&mut u.roo_called),
+                    store: Some(&mut u.store),
                     completion: Completion {
                         master,
                         annexed,
@@ -5859,6 +5899,9 @@ impl Unit {
                         masters,
                         computer,
                         ai,
+                        main,
+                        now: world_time,
+                        rice,
                     },
                 })
             });
@@ -5904,10 +5947,17 @@ impl Unit {
                 c.started.push(target);
             }
             if let Some(built) = step.completed {
+                // its set_state(2) took its annexes along first (FUN_1411dbb70)
+                for annex in c.spatial.annexes_of(target) {
+                    c.annex_states.push((annex, 2));
+                }
                 c.attribute_adds.extend(built.attributes);
                 c.techs_done.extend(built.tech);
                 if let Some(state) = built.cart {
                     c.carts.push((target, state));
+                }
+                if built.stack.is_some() || built.vanishes {
+                    c.completions.push((target, built.stack, built.vanishes));
                 }
             }
             // the load dropped at the end of the work (FUN_140aadc50: the player's slot 0xf8 with
@@ -6778,7 +6828,7 @@ impl Unit {
         // a builder's work found in its Build's update (slot 0x7e8 from case 0xdf) runs inside the
         // action update; the caller gives it (`Turns::order_work`) and then runs the rest of this
         // update ([`Unit::ai_part`])
-        if c.work_order.is_some() {
+        if c.work_order.is_some() || !c.completions.is_empty() {
             c.ai_resume = Some(resume);
             return Ok(Step::Stay);
         }
@@ -8872,14 +8922,9 @@ impl Turns {
         }
     }
 
-    /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108, the building
-    /// constructor `FUN_1411de5f0`): a new object of `master` for `player` at `position` (state
-    /// 0, hit points 1, the ground's height), with a unit AI of the given type if its class gets
-    /// one, its construction terrain ([`Turns::construction_terrain`]) and its footprint cleared
-    /// ([`Turns::clear_footprint`]); the combat setup counts its class ([`count_class`]) and a
-    /// building with a train location its paid cost (attribute 247); then the player pays the
-    /// master's cost and the foundation, desolid, takes its place and its sight
-    /// ([`Turns::foundation_place`]). Its id and position.
+    /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108,
+    /// [`Turns::make_building`]), then the player pays the master's cost (each entry flagged
+    /// paid). Its id and position.
     pub(crate) fn found(
         &mut self,
         player: usize,
@@ -8887,6 +8932,59 @@ impl Turns {
         unit_ai: Result<Option<u32>, Unsupported>,
         position: [f32; 3],
     ) -> Result<(i32, [f32; 3]), Unsupported> {
+        let made = self.make_building(player, master, unit_ai, position)?;
+        let cost = self.master_of(player, master)?.cost.clone();
+        let owner = &mut self.players[player];
+        for &(resource, amount, paid) in &cost {
+            let slot = usize::try_from(resource)
+                .ok()
+                .and_then(|r| owner.resources.get_mut(r))
+                .ok_or(Unsupported("a cost in a resource other than the four"))?;
+            if paid {
+                *slot -= f32::from(amount);
+            }
+        }
+        Ok(made)
+    }
+
+    /// A new building (the master's slot 0x40 or 0x108, `FUN_1411ac5c0` / `FUN_1411aca00` with
+    /// their init: the static, animated, moving and combat setups, then the constructor
+    /// `FUN_1411de5f0`) of `master` for `player` at `position`, the ground's height: its id
+    /// (`mNextObjectId`), its unit AI of the given type if its class gets one, the combat setup's
+    /// class counters ([`count_class`]), its powerup offset (the Object stream's "setup" draw)
+    /// and a building with a train location its paid cost (attribute 247); the static init's
+    /// storage; its place and sight (its place links its tiles to its anchor, `FUN_1411e6780`).
+    /// The constructor: masters 50 and 1889 on snow keep their snow (`+0xc61` 2); a master
+    /// neither of classes 51, 54 nor 357, 1188, nor an annex (`+0x9b8` −1) takes its build time
+    /// as a foundation (a build time above 0: hit points 1, a farm's terrain,
+    /// [`Turns::construction_terrain`]; build points 0), the others are built already (build
+    /// points their train time, their master's hit points); one with build points 0 and a
+    /// build time above 0, not of classes 51 or 54, turns desolid (`FUN_1411cf770`: no record,
+    /// its tiles unlinked); its footprint is cleared ([`Turns::clear_footprint`]); each annex
+    /// slot (`+0x990`) of a master the player has makes its annex the same way at the slot's
+    /// offset (`+0x998`, `+0x9a8`), depth first, linked to the building (`+0xbb8`), out of its
+    /// owner's watched list unless the building is a gate (39), desolid when its master is tall,
+    /// its own footprint cleared; `+0xcd0` notes mangrove or rice terrain under it
+    /// (`FUN_141188db0`); last its owner watches it (`FUN_1411cc980`, [`Turns::watch_started`]).
+    /// Not held: the construction sprite, the facets, the world's `+0x154`, slot 0x840's
+    /// `+0xba0` and `+0xbf8`, and the wonder's `FUN_1411665c0`.
+    ///
+    /// # Errors
+    ///
+    /// A master the player has not got or without its building part, an annex of another type,
+    /// and what the clearing and the attributes do not model.
+    pub(crate) fn make_building(
+        &mut self,
+        player: usize,
+        master: i16,
+        unit_ai: Result<Option<u32>, Unsupported>,
+        position: [f32; 3],
+    ) -> Result<(i32, [f32; 3]), Unsupported> {
+        let made = self.master_of(player, master)?.clone();
+        let building = made.building.ok_or(Unsupported(
+            "a building constructor of a master without its building part",
+        ))?;
+        let given_z = position[2];
         // the new object's new_position: the ground's height (slot 0x60)
         let position = self.on_ground(player, master, position);
         let id = self.next_object_id;
@@ -8995,6 +9093,38 @@ impl Turns {
             in_the_way: Vec::new(),
             sprite_facets: None,
         });
+        // the constructor (FUN_1411de5f0)
+        let [x, y, _] = position;
+        let (tx, ty) = (
+            crate::checkpoint::cvttss2si(x),
+            crate::checkpoint::cvttss2si(y),
+        );
+        let terrain = self.spatial.terrain.as_ref();
+        // masters 50 and 1889 on snow keep their snow (+0xc61 2)
+        let snow = matches!(master, FARM | PASTURE_1889)
+            && -1 < tx
+            && -1 < ty
+            && terrain
+                .map(|t| t.snow_under(tx, ty))
+                .transpose()?
+                .unwrap_or(false);
+        // +0xcd0 (FUN_141188db0): mangrove or rice terrain under its place
+        let rice = terrain.is_some_and(|t| matches!(t.kind(tx, ty), Some(54 | 55 | 63..=67)));
+        let foundation = !matches!(made.class, 51 | 54)
+            && !matches!(master, 357 | 1188)
+            && building.head_unit == -1;
+        let hp = if foundation && 0 < made.build_time {
+            1.0
+        } else {
+            f32::from(made.hit_points)
+        };
+        let progress = if foundation {
+            0.0
+        } else {
+            f32::from(made.build_time)
+        };
+        // FUN_1411cf770 with no master copy of its own and no annex link yet
+        let desolid = 0 < made.build_time && !matches!(made.class, 51 | 54) && progress == 0.0;
         let owner = &mut self.players[player];
         owner.objects.push(Unit {
             id,
@@ -9003,7 +9133,7 @@ impl Turns {
             life: Lifecycle {
                 class: Class::Animated,
                 state: 0,
-                hp: 1.0,
+                hp,
                 master_id: master,
                 attribute_type: held.0,
                 amount: held.1,
@@ -9022,24 +9152,20 @@ impl Turns {
             mover,
             move_to: None,
             fly: None,
-            construction: self
-                .masters
-                .get(player)
-                .and_then(|m| m.get(master))
-                .map(|m| Construction {
-                    progress: 0.0,
-                    desolid: true,
-                    builders: 0,
-                    hit_points: m.hit_points,
-                    build_time: m.build_time,
-                    record: crate::spatial::Obstruction {
-                        kind: m.obstruction_type,
-                        class: m.obstruction_class,
-                    },
-                    snow: false,
-                    sprite_override: false,
-                    started: false,
-                }),
+            construction: Some(Construction {
+                progress,
+                desolid,
+                builders: 0,
+                hit_points: made.hit_points,
+                build_time: made.build_time,
+                record: crate::spatial::Obstruction {
+                    kind: made.obstruction_type,
+                    class: made.obstruction_class,
+                },
+                snow,
+                sprite_override: false,
+                started: false,
+            }),
             work_rate_powerup: 0.0,
             attackable: true,
             untargetable: false,
@@ -9096,11 +9222,76 @@ impl Turns {
             charge_hit: false,
             idle_variant: 0,
             roo_called: false,
+            rice,
+            store: Vec::new(),
         });
-        self.construction_terrain(player, master, position)?;
+        self.building_place(player, id, &made, position, desolid);
+        if foundation && 0 < made.build_time {
+            self.construction_terrain(player, master, position)?;
+        }
         self.clear_footprint(player, master, [position[0], position[1]], false)?;
-        self.foundation_place(player, id, master, position)?;
+        for (slot, &annex) in building.annexes.iter().enumerate() {
+            if annex == -1 {
+                continue;
+            }
+            // a master the player has not got makes nothing (its slot 0x40 is not called)
+            let Some(am) = self.masters.get(player).and_then(|m| m.get(annex)).cloned() else {
+                continue;
+            };
+            if am.kind != BUILDING_KIND {
+                return Err(Unsupported("an annex of a type other than a building"));
+            }
+            let [ox, oy] = building.annex_offsets[slot];
+            let ai = crate::unit_ai::factory_type(am.class, annex, am.volley_missile.unwrap_or(-1));
+            let at = [position[0] + ox, position[1] + oy, given_z];
+            let (aid, at) = self.make_building(player, annex, ai, at)?;
+            self.link_annex(player, id, aid, &made, &am)?;
+            self.clear_footprint(player, annex, [at[0], at[1]], false)?;
+        }
+        self.watch_started(player, id)?;
         Ok((id, position))
+    }
+
+    /// The building constructor's link of a new annex `aid` (master `am`) to its building `id`
+    /// (master `made`): the building's slot and the annex's `+0xbb8`; its owner's watched list
+    /// lets the annex go (`FUN_141091310`) unless the building is a gate (39); a tall annex
+    /// master makes it desolid (`FUN_1411cf770`, which an annex's link lets through: its record
+    /// and mesh shape go, its own master copy has no height, the watched list lets it go; its
+    /// tiles keep their links, as an annex's do).
+    fn link_annex(
+        &mut self,
+        player: usize,
+        id: i32,
+        aid: i32,
+        made: &Master,
+        am: &Master,
+    ) -> Result<(), Unsupported> {
+        let (_, a) = self
+            .object_mut(aid)
+            .ok_or(Unsupported("an annex the slice does not hold"))?;
+        a.annex_of = Some(id);
+        self.spatial.set_annex(aid, Some(id));
+        if made.class != GATE {
+            self.unwatch(player, aid);
+        }
+        if 0.0 < am.height {
+            let (_, a) = self
+                .object_mut(aid)
+                .ok_or(Unsupported("an annex the slice does not hold"))?;
+            let c = a
+                .construction
+                .as_mut()
+                .ok_or(Unsupported("an annex without its construction"))?;
+            if !c.desolid {
+                c.desolid = true;
+                self.pathing.removed(aid);
+                self.spatial.drop_record(aid);
+                self.spatial.set_tall(aid, false);
+                self.pathing.tiles_changed(self.spatial.take_changes());
+                self.unwatch(player, aid);
+            }
+        }
+        Ok(())
     }
 
     /// BUILD's first step (`FUN_140e7a400`): a farm (master 50) whose point's tile (truncated) is
@@ -9496,68 +9687,61 @@ impl Turns {
         Ok(())
     }
 
-    /// A new foundation's part after its constructor: the player pays the master's cost (each
-    /// entry flagged paid), and the foundation, desolid, takes its place on the map (its
-    /// obstruction record comes with its first builder) and its sight, which waits for its
+    /// A new building's place (its static init's `new_position`): it takes its place on the map,
+    /// with its obstruction record unless it is desolid (`FUN_1411cf770` drops the one its place
+    /// gave it; its first builder brings it back), and its sight, which waits for its
     /// construction to start (its place links its tiles to its anchor, `FUN_1411e6780`, and its
-    /// desolid flag unlinks them, `FUN_1411cf770`).
-    fn foundation_place(
+    /// desolid flag unlinks them).
+    fn building_place(
         &mut self,
         player: usize,
-        foundation: i32,
-        master: i16,
+        id: i32,
+        made: &Master,
         position: [f32; 3],
-    ) -> Result<(), Unsupported> {
-        let site = self
-            .masters
-            .get(player)
-            .and_then(|m| m.get(master))
-            .ok_or(Unsupported("BUILD of a master the player does not have"))?;
-        let owner = &mut self.players[player];
-        for &(resource, amount, paid) in &site.cost {
-            let slot = usize::try_from(resource)
-                .ok()
-                .and_then(|r| owner.resources.get_mut(r))
-                .ok_or(Unsupported("a cost in a resource other than the four"))?;
-            if paid {
-                *slot -= f32::from(amount);
-            }
+        desolid: bool,
+    ) {
+        let record = crate::spatial::Obstruction {
+            kind: made.obstruction_type,
+            class: made.obstruction_class,
+        };
+        let placed = Placed {
+            position,
+            radius: made.radius,
+            class: made.class,
+            player,
+            master: made.id,
+            obstruction_type: made.obstruction_type,
+            buildable_on: made.buildable_on,
+            tall: made.tall,
+            speed: 0.0,
+            unknown: None,
+            obstruction: (!desolid && record.recorded()).then_some(record),
+        };
+        self.spatial.insert(id, placed);
+        if placed.obstruction.is_some() {
+            self.pathing.moved(id, &placed, false);
+            self.pathing.tiles_changed(self.spatial.take_changes());
         }
-        self.spatial.insert(
-            foundation,
-            Placed {
-                position,
-                radius: site.radius,
-                class: site.class,
-                player,
-                master,
-                obstruction_type: site.obstruction_type,
-                buildable_on: site.buildable_on,
-                tall: site.tall,
-                speed: 0.0,
-                unknown: None,
-                obstruction: None,
-            },
-        );
         if let Some(v) = self.spatial.sight.as_mut() {
-            let umv = v.link_building(position, site.radius);
-            v.unlink_building(position, site.radius);
+            let umv = v.link_building(position, made.radius);
+            if desolid {
+                v.unlink_building(position, made.radius);
+            }
             v.add_seer(
-                foundation,
+                id,
                 Seer {
                     player,
-                    master,
-                    los: site.line_of_sight,
+                    master: made.id,
+                    los: made.line_of_sight,
                     state: 0,
                     explored: false,
                     building: Some(BuildingSight::default()),
                     umv: umv as u8,
-                    capture: capture_kind(player, site.class, master),
+                    capture: capture_kind(player, made.class, made.id),
                     kind: 80,
                 },
             );
         }
-        Ok(())
     }
 
     /// BUILD's builders (the cost was paid with the foundation, [`Turns::found`]; the pending
@@ -9842,9 +10026,10 @@ impl Turns {
     }
 
     /// The unit's build command (slot 0x380, `FUN_14120d410`, forced) on `foundation`: a Build on
-    /// top takes the foundation (its slot 0x48, [`Turns::build_take`]); without one it finds the
-    /// task through slot 0x820 (the work command's master switch, [`Masters::work_master`]) and
-    /// installs its Build action (the action list cleared). The foundation's master's class and
+    /// top takes the foundation (its slot 0x48, [`Turns::build_take`]); without one it finds a
+    /// task of any action type through slot 0x820 (the work command's master switch,
+    /// [`Masters::work_master`]) and installs a Build action on it (`FUN_140aad4e0` with that
+    /// task, whatever its type; the action list cleared). The foundation's master's class and
     /// its place, for the unit AI. A foundation that is gone or without a Build task (slot
     /// 0x380's 0) is not modelled.
     pub(crate) fn build_command(
@@ -9912,14 +10097,11 @@ impl Turns {
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };
+        // slot 0x820 with any action type (0xffff): whatever task it finds, the Build takes
+        // (FUN_140aad4e0 on it), its type and its enablement unread
         let (with, task) = masters
             .work_master(&actor, &target, &target, -1, &world)?
             .ok_or(Unsupported("a build order with no task for its foundation"))?;
-        if task.action_type != BUILD || !crate::tasks::enabled(&owner.attributes, task.enablement) {
-            return Err(Unsupported(
-                "a build order whose task is not an enabled Build",
-            ));
-        }
         let builder = masters
             .get(with)
             .expect("work_master returns a master the player has");
@@ -11010,6 +11192,7 @@ impl Turns {
                     attribute_adds: Vec::new(),
                     techs_done: Vec::new(),
                     carts: Vec::new(),
+                    completions: Vec::new(),
                     work_order: None,
                     gate_toggle: false,
                     ai_resume: resume.take(),
@@ -11039,6 +11222,7 @@ impl Turns {
                 let move_aside = std::mem::take(&mut c.move_aside);
                 let techs_done = std::mem::take(&mut c.techs_done);
                 let carts = std::mem::take(&mut c.carts);
+                let completions = std::mem::take(&mut c.completions);
                 let work_order = c.work_order.take();
                 let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
                 let (remains, refund) = (c.remains.take(), std::mem::take(&mut c.refund));
@@ -11094,8 +11278,22 @@ impl Turns {
                         result = result.and(Err(e));
                     }
                 }
+                // a completed building's stack unit before its technology (FUN_1411dbb70)
+                for &(building, stack, _) in &completions {
+                    if let Some(stack) = stack
+                        && let Err(e) = self.stack_unit(p, building, stack)
+                    {
+                        result = result.and(Err(e));
+                    }
+                }
                 for t in techs_done {
                     if let Err(e) = self.research_built(p, t) {
+                        result = result.and(Err(e));
+                    }
+                }
+                // then a building that disappears when built is destroyed (slot 0xd0)
+                for (building, _, vanishes) in completions {
+                    if vanishes && let Err(e) = self.destroy(p, building) {
                         result = result.and(Err(e));
                     }
                 }
@@ -11576,10 +11774,10 @@ pub(crate) fn built_death(
     ))?;
     if computer || u.pasture != -1 || u.my_pasture != -1 || !u.garrison.is_empty() {
         return Err(Unsupported(
-            "a dying building of a computer player, with a pasture, units inside, a store of mode 16 or held population",
+            "a dying building of a computer player, with a pasture or units inside",
         ));
     }
-    let adds = storage_leaves(u, master)?;
+    let adds = storage_leaves(u, master);
     if building.foundation_terrain == RESTORED_FOUNDATION {
         return Err(Unsupported(
             "a dying building of foundation terrain 28 (its terrain 1, FUN_1411ce250)",
@@ -11604,16 +11802,9 @@ pub(crate) fn built_death(
 /// `FUN_1411e6580`): each entry of mode 4 with an attribute and an amount above 0 (the
 /// population headroom of a house, a town centre or a castle; slot 0xf8 with the amount
 /// negated), then the population it holds itself (`+0x308` 4: the amount leaves, and it holds
-/// nothing after, `FUN_14119d310` with −1 and 0). Its own store of mode 16 (`+0xae0`) is not
-/// held.
-///
-/// # Errors
-///
-/// A storage entry of mode 16 (its own store, `FUN_1411e6580`).
-pub(crate) fn storage_leaves(
-    u: &mut Unit,
-    master: &Master,
-) -> Result<Vec<(i16, f32)>, Unsupported> {
+/// nothing after, `FUN_14119d310` with −1 and 0); then each entry of mode 16 leaves its own store
+/// ([`Unit::store`]) when the store holds its attribute.
+pub(crate) fn storage_leaves(u: &mut Unit, master: &Master) -> Vec<(i16, f32)> {
     let mut adds = Vec::new();
     for &(kind, amount, flag) in &master.storage {
         if 0 <= kind && 0.0 < amount && flag == 4 {
@@ -11625,16 +11816,17 @@ pub(crate) fn storage_leaves(
         u.life.attribute_type = -1;
         u.life.amount = 0.0;
     }
-    if master
-        .storage
-        .iter()
-        .any(|&(kind, amount, flag)| 0 <= kind && 0.0 < amount && flag & 0x10 != 0)
-    {
-        return Err(Unsupported(
-            "a building's own store of mode 16 (FUN_1411e6580)",
-        ));
+    // FUN_1411e6580: each entry of mode 16 leaves its own store, when the store holds it
+    for &(kind, amount, flag) in &master.storage {
+        if 0 <= kind
+            && 0.0 < amount
+            && flag & 0x10 != 0
+            && let Some(e) = u.store.iter_mut().find(|e| e.0 == kind)
+        {
+            e.1 -= amount;
+        }
     }
-    Ok(adds)
+    adds
 }
 
 /// What the footprint clearing reads of the object `u` ([`crate::build::ClearLook`]) with its
@@ -12108,6 +12300,16 @@ mod tests {
                 clearance: [1.0, 1.0],
                 // built by the villagers (the builders' test, FUN_141262270)
                 trained_at: vec![118],
+                // a house's building part: no annexes, no stack unit, not an annex
+                building: Some(crate::masters::BuildingMaster {
+                    stack_unit: -1,
+                    foundation_terrain: -1,
+                    tech: -1,
+                    annexes: [-1; 4],
+                    head_unit: -1,
+                    transform_unit: -1,
+                    ..crate::masters::BuildingMaster::default()
+                }),
                 ..Master::default()
             },
         ])

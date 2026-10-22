@@ -136,6 +136,10 @@ pub struct BuildingMaster {
     pub garrison_repair_rate: f32,
     /// `+0x990`, the masters of its annexes (−1 for none; their places beside it at `+0x998`).
     pub annexes: [i16; 4],
+    /// `+0x998` (x) and `+0x9a8` (y), each annex slot's place off the building's (the `.dat`'s
+    /// building annexes' `misplacement`), which the building constructor (`FUN_1411de5f0`) makes
+    /// its annexes at.
+    pub annex_offsets: [[f32; 2]; 4],
     /// `+0x9b8`, `head_unit`: the building it is an annex of (−1 for none).
     pub head_unit: i16,
     /// `+0x9ba`, `transform_unit`: the master it transforms into (−1 for none); a gate with one
