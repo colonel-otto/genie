@@ -375,6 +375,21 @@ impl<F: Fn(i32, i32) -> bool> Blocked for F {
 }
 
 impl Planner {
+    /// Whether two planners hold the same grid: the map's size, the levels, the cells, the
+    /// restriction's passability and the terrain. What a search leaves (the region, the goal, the
+    /// last tile, the goal's marks, the nodes, the open list, the best node and the points) is
+    /// not compared: a planner built afresh has searched nothing.
+    #[must_use]
+    pub fn same_grid(&self, other: &Self) -> bool {
+        self.size == other.size
+            && self.widths == other.widths
+            && self.heights == other.heights
+            && self.offsets == other.offsets
+            && self.cells == other.cells
+            && self.passable == other.passable
+            && self.terrain == other.terrain
+    }
+
     /// Build the grid (`FUN_140f74f90`): every cell's off-map children (`FUN_140f7da90`), then
     /// every tile's edges and the levels above them (`FUN_140f7e4b0` over the whole map).
     /// `terrain` holds each tile's terrain row by row, `passable` the restriction's value per
@@ -1625,6 +1640,19 @@ impl Planner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_search_leaves_the_grid_as_it_was() {
+        let terrain = vec![0u8; 64];
+        let open = |_: i32, _: i32| false;
+        let built = Planner::new([8, 8], terrain.clone(), vec![1.0], &open);
+        let mut searched = built.clone();
+        searched.goal = [3, 4];
+        searched.goal_marked = true;
+        assert!(searched != built && searched.same_grid(&built));
+        let other = Planner::new([8, 8], terrain, vec![0.0], &open);
+        assert!(!other.same_grid(&built));
+    }
 
     fn open_map(_: i32, _: i32) -> bool {
         false
