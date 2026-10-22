@@ -114,7 +114,7 @@ impl Turns {
         let g = self.groups.get_mut(group).expect("the group found above");
         g.motion.new_position[0] = at;
         g.motion.position[0] = at;
-        self.set_initial_orientation(group)?;
+        self.set_initial_orientation(group);
         let g = self.groups.get_mut(group).expect("the group found above");
         g.flags |= 0x400;
         Ok(())
@@ -174,35 +174,27 @@ impl Turns {
         Ok(centroid)
     }
 
-    /// `SetInitialOrientation` (`FUN_141039680`) of group `group`: its members' forwards (slot
-    /// 0x648, `+0x830`) summed in their order and divided by the count of those the world holds,
-    /// then normalized; when that is zero the first held member's forward, else
-    /// ([`DEFAULT_FORWARD`], 0, 0). The motion faces it with up (0, 1, 0), position and new position
-    /// alike ([`Motion::set_orientation`]).
-    ///
-    /// # Errors
-    ///
-    /// A held member without movement state.
+    /// `SetInitialOrientation` (`FUN_141039680`) of group `group`: the forwards (slot 0x648,
+    /// [`crate::group::WorldObject::forward`]: 0 for an object that does not move) of the
+    /// members the world's table holds, summed in their order and divided by their count, then
+    /// normalized; when their squares sum to zero (`UCOMISS`/`JP`: not a NaN) the first held
+    /// member's forward, else ([`DEFAULT_FORWARD`], 0, 0). The motion faces it with up
+    /// (0, 1, 0), position and new position alike ([`Motion::set_orientation`]).
     ///
     /// # Panics
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, and its
     /// caller ([`Turns::set_initial_position`]) holds it.
-    pub fn set_initial_orientation(&mut self, group: i32) -> Result<(), Unsupported> {
+    pub fn set_initial_orientation(&mut self, group: i32) {
         let g = self
             .groups
             .get(group)
             .expect("SetInitialOrientation's caller holds the group");
-        let mut forwards = Vec::with_capacity(g.members.len());
-        for m in &g.members {
-            let Some((_, u)) = self.object(m.id) else {
-                continue;
-            };
-            let mover = u.mover.as_ref().ok_or(Unsupported(
-                "a group member without movement state (its forward, slot 0x648)",
-            ))?;
-            forwards.push(mover.forward);
-        }
+        let forwards: Vec<Vec3> = g
+            .members
+            .iter()
+            .filter_map(|m| self.world_object(m.id).map(|o| o.forward()))
+            .collect();
         let mut sum = [0.0f32; 3];
         for f in &forwards {
             sum = [sum[0] + f[0], sum[1] + f[1], sum[2] + f[2]];
@@ -223,7 +215,6 @@ impl Turns {
         };
         let g = self.groups.get_mut(group).expect("the group found above");
         let _ = g.motion.set_orientation(forward, [0.0, 1.0, 0.0], true);
-        Ok(())
     }
 }
 
@@ -613,6 +604,44 @@ mod tests {
         t.players[0].ghosts = vec![crate::group::formation::tests::ghost_at(-1, 3.0, 3.0)];
         t.move_position_to_front(1, 100.0).unwrap();
         assert_eq!(placed(&t), ([15.0, 0.0, 10.5], [15.0, 0.0, 10.5], 0));
+    }
+
+    /// `FUN_141039680`: slot 0x648 of a member that moves is its forward, of one that does not
+    /// (0, 0, 0): (0, 0, 1) and nothing average to (0, 0, 0.5), facing (0, 0, 1). Forwards that
+    /// cancel out give the first held member's; no member held, x.
+    #[test]
+    fn the_initial_orientation_averages_the_members_forwards() {
+        let facing = |forwards: &[Option<Vec3>]| {
+            let units: Vec<crate::turn::Unit> = forwards
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    let mut u = unit(10 + i as i32, 5.0, 5.0);
+                    if let Some(f) = f {
+                        let mut mover = crate::hunt::tests::walker();
+                        mover.forward = *f;
+                        u.mover = Some(mover);
+                    }
+                    u
+                })
+                .collect();
+            let mut t = front_world(units);
+            t.set_initial_orientation(1);
+            t.groups.groups[0].motion.position[1]
+        };
+        assert_eq!(facing(&[Some([0.0, 0.0, 1.0]), None]), [0.0, 0.0, 1.0]);
+        assert_eq!(
+            facing(&[Some([0.0, 0.0, 1.0]), Some([0.0, 0.0, -1.0])]),
+            [0.0, 0.0, 1.0]
+        );
+        let mut t = front_world(Vec::new());
+        t.groups.groups[0].members = vec![crate::group::Member {
+            id: 99,
+            ..crate::group::Member::default()
+        }];
+        t.groups.groups[0].motion.position[1] = [0.0, 0.0, 1.0];
+        t.set_initial_orientation(1);
+        assert_eq!(t.groups.groups[0].motion.position[1], [1.0, 0.0, 0.0]);
     }
 
     /// The spiral's first points from (10, 10): the leg's count and turns as `FUN_141007630`
