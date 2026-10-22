@@ -181,3 +181,55 @@ fn cos_agrees_with_libm_on_every_f32() {
 fn sin_agrees_with_libm_on_every_f32() {
     assert_eq!(sweep(fmath::sin, libm::sinf), Vec::<u32>::new());
 }
+
+#[test]
+#[ignore = "2^30 pairs: run in release with --ignored"]
+fn fmod_is_the_exact_remainder_on_random_pairs() {
+    // the exact remainder of two floats is a float: the double's `%` (fmod) gives it; libm's
+    // fmodf is a second opinion; NaNs match any NaN
+    let differ = |x: f32, y: f32| {
+        let ours = fmath::fmod(x, y);
+        // the remainder is a float already: the cast does not round
+        #[allow(clippy::cast_possible_truncation)]
+        let exact = (f64::from(x) % f64::from(y)) as f32;
+        let theirs = libm::fmodf(x, y);
+        [exact, theirs]
+            .iter()
+            .any(|r| r.to_bits() != ours.to_bits() && !(r.is_nan() && ours.is_nan()))
+    };
+    let threads = 16u64;
+    let bad: Vec<(u32, u32)> = std::thread::scope(|s| {
+        let mut workers = Vec::new();
+        for t in 0..threads {
+            workers.push(s.spawn(move || {
+                let mut state = 0x2545_f491_4f6c_dd1d_u64 ^ t;
+                let mut bad = Vec::new();
+                for k in 0..(1u64 << 30) / threads {
+                    state = state
+                        .wrapping_mul(6_364_136_223_846_793_005)
+                        .wrapping_add(1_442_695_040_888_963_407);
+                    let (mut x, mut y) = (
+                        (state >> 32) as u32,
+                        u32::try_from(state & 0xffff_ffff).expect("a word"),
+                    );
+                    if k % 2 == 0 {
+                        // exponents close together, where the subtraction loop runs long
+                        y = (y & 0x807f_ffff)
+                            | (x & 0x7f80_0000)
+                                .saturating_sub(u32::try_from(k % 30).expect("below 30") << 23);
+                        x &= 0xff7f_ffff;
+                    }
+                    if differ(f32::from_bits(x), f32::from_bits(y)) && bad.len() < 16 {
+                        bad.push((x, y));
+                    }
+                }
+                bad
+            }));
+        }
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().expect("a sweep thread"))
+            .collect()
+    });
+    assert_eq!(bad, Vec::new());
+}

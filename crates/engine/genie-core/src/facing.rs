@@ -53,14 +53,15 @@ fn wrapped(a: f32) -> f32 {
     }
 }
 
-/// `FUN_141158f20`: `x` modulo `m` into 0 to `m`.
+/// `FUN_141158f20`: `x` modulo `m` into 0 to `m`. Below 0, or NaN (`COMISS`, `JC`), the remainder
+/// of −x counts back from `m` unless it is 0 (`UCOMISS`: a NaN remainder takes `m −` it).
 #[must_use]
 pub fn modulo(x: f32, m: f32) -> f32 {
-    if x < 0.0 {
-        let r = libm::fmodf(-x, m);
+    if fmath::below_or_unordered(x, 0.0) {
+        let r = fmath::fmod(-x, m);
         if r == 0.0 { r } else { m - r }
     } else {
-        libm::fmodf(x, m)
+        fmath::fmod(x, m)
     }
 }
 
@@ -301,5 +302,12 @@ mod tests {
         assert_eq!(modulo(-1.0, 16.0), 15.0);
         assert_eq!(modulo(-16.0, 16.0), 0.0);
         assert_eq!(modulo(17.0, 16.0), 1.0);
+        // −0 is not below 0 (COMISS): fmodf(−0, 16) keeps it
+        assert_eq!(modulo(-0.0, 16.0).to_bits(), 0x8000_0000);
+        // a NaN takes the negative branch (COMISS, JC): negated, through fmodf, 16 − it
+        assert_eq!(
+            modulo(f32::from_bits(0x7fc0_0000), 16.0).to_bits(),
+            0xffc0_0000
+        );
     }
 }

@@ -6,6 +6,7 @@
 //! reduction they call. Each is ported here from its machine code: its constants (read from the
 //! image), its operation order, its branches and its integer bit tests. Its sqrtf `0x14099ef70` is
 //! an integer Newton iteration that rounds correctly, so IEEE's square root gives the same bits.
+//! Its fmodf is the CRT's (an import): the exact remainder, ported as musl's ([`fmod`]).
 
 /// 1 (`DAT_14330eb8c`).
 const ONE: f32 = f32::from_bits(0x3f80_0000);
@@ -573,6 +574,87 @@ pub fn sin(x: f32) -> f32 {
         2 => k_sin(-y),
         _ => -k_cos(y),
     }
+}
+
+/// fmodf: the remainder of x / y with x's sign, exact. The game calls the CRT's
+/// (`api-ms-win-crt-math-l1-1-0.dll!fmodf`, through the import thunk `0x142a8e7fa`), whose body is
+/// not in the image; an exact remainder has one value, so musl's `fmodf` is ported: a shift and
+/// subtract on the significands. A zero or NaN y and a non-finite x give `(x · y) / (x · y)`.
+#[must_use]
+pub fn fmod(x: f32, y: f32) -> f32 {
+    let mut uxi = x.to_bits();
+    let mut uyi = y.to_bits();
+    let mut ex = (uxi >> 23 & 0xff) as i32;
+    let mut ey = (uyi >> 23 & 0xff) as i32;
+    let sx = uxi & 0x8000_0000;
+    if uyi << 1 == 0 || y.is_nan() || ex == 0xff {
+        // the invalid operation's default NaN, or the NaN argument quieted
+        let p = x * y;
+        #[allow(clippy::eq_op)]
+        return p / p;
+    }
+    if uxi << 1 <= uyi << 1 {
+        // |x| at most |y|: a signed zero when equal, else x
+        return if uxi << 1 == uyi << 1 {
+            f32::from_bits(sx)
+        } else {
+            x
+        };
+    }
+    // the significands with their leading bit, a subnormal's shifted up
+    if ex == 0 {
+        let mut i = uxi << 9;
+        while i >> 31 == 0 {
+            ex -= 1;
+            i <<= 1;
+        }
+        uxi <<= 1 - ex;
+    } else {
+        uxi &= u32::MAX >> 9;
+        uxi |= 1 << 23;
+    }
+    if ey == 0 {
+        let mut i = uyi << 9;
+        while i >> 31 == 0 {
+            ey -= 1;
+            i <<= 1;
+        }
+        uyi <<= 1 - ey;
+    } else {
+        uyi &= u32::MAX >> 9;
+        uyi |= 1 << 23;
+    }
+    // x mod y, one exponent step at a time
+    while ex > ey {
+        let i = uxi.wrapping_sub(uyi);
+        if i >> 31 == 0 {
+            if i == 0 {
+                return f32::from_bits(sx);
+            }
+            uxi = i;
+        }
+        uxi <<= 1;
+        ex -= 1;
+    }
+    let i = uxi.wrapping_sub(uyi);
+    if i >> 31 == 0 {
+        if i == 0 {
+            return f32::from_bits(sx);
+        }
+        uxi = i;
+    }
+    while uxi >> 23 == 0 {
+        uxi <<= 1;
+        ex -= 1;
+    }
+    // back to a float: normal, or shifted down into a subnormal
+    if ex > 0 {
+        uxi -= 1 << 23;
+        uxi |= (ex as u32) << 23;
+    } else {
+        uxi >>= 1 - ex;
+    }
+    f32::from_bits(uxi | sx)
 }
 
 /// A vector in the game's order (`BVector`): x, height, y. The map's y is the third component.
@@ -1709,6 +1791,52 @@ mod tests {
                 (got_n, y.map(f64::to_bits)),
                 (n, game),
                 "rem_pio2_large({x:?}, {e0}, {prec})"
+            );
+        }
+    }
+
+    /// fmodf: exact remainders with x's sign (zeros kept signed, subnormals, the largest finite
+    /// by the smallest subnormal, x below y), x itself by an infinite y; the invalid cases give
+    /// SSE's default NaN and a NaN argument comes back quieted.
+    #[test]
+    fn fmod_is_the_exact_remainder_with_x_s_sign() {
+        for (x, y, want) in [
+            (0x40b0_0000, 0x4000_0000, 0x3fc0_0000),
+            (0xc0b0_0000, 0x4000_0000, 0xbfc0_0000),
+            (0x40b0_0000, 0xc000_0000, 0x3fc0_0000),
+            (0x8000_0000, 0x4040_0000, 0x8000_0000),
+            (0x0000_0000, 0x4040_0000, 0x0000_0000),
+            (0x4000_0000, 0x4000_0000, 0x0000_0000),
+            (0xc000_0000, 0x4000_0000, 0x8000_0000),
+            (0x3f80_0000, 0x4040_0000, 0x3f80_0000),
+            (0x4180_0000, 0x4180_0000, 0x0000_0000),
+            (0x4188_0000, 0x4180_0000, 0x3f80_0000),
+            (0xbf80_0000, 0x4180_0000, 0xbf80_0000),
+            (0xc0e8_0000, 0x3f00_0000, 0xbe80_0000),
+            (0x42c8_3333, 0x3e99_999a, 0x3e4c_cb5c),
+            (0x3f80_0000, 0x7f80_0000, 0x3f80_0000),
+            (0xbf80_0000, 0xff80_0000, 0xbf80_0000),
+            (0x7f7f_ffff, 0x3fc0_0000, 0x0000_0000),
+            (0x7f7f_ffff, 0x0000_0001, 0x0000_0000),
+            (0x0000_0001, 0x0000_0001, 0x0000_0000),
+            (0x0020_b5c6, 0x0000_0001, 0x0000_0000),
+            (0x0036_a3b1, 0x0020_b5c6, 0x0015_edeb),
+            (0x4b7f_ffff, 0x3f80_0001, 0x34c0_0000),
+            (0x0080_0000, 0x007f_ffff, 0x0000_0001),
+            (0x7f7f_ffff, 0x007f_ffff, 0x0000_0001),
+            (0x5e80_0000, 0x3dcc_cccd, 0x3dcc_c4cd),
+            (0x7f80_0000, 0x3f80_0000, 0xffc0_0000),
+            (0x3f80_0000, 0x0000_0000, 0xffc0_0000),
+            (0x7f80_0000, 0x0000_0000, 0xffc0_0000),
+            (0x0000_0000, 0x8000_0000, 0xffc0_0000),
+            (0x7fc0_0001, 0x3f80_0000, 0x7fc0_0001),
+            (0x3f80_0000, 0xffc0_0002, 0xffc0_0002),
+            (0x7f80_0001, 0x4000_0000, 0x7fc0_0001),
+        ] {
+            let got = fmod(f32::from_bits(x), f32::from_bits(y)).to_bits();
+            assert_eq!(
+                got, want,
+                "fmod({x:08x}, {y:08x}): {got:08x}, want {want:08x}"
             );
         }
     }
