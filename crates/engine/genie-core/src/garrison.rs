@@ -451,15 +451,11 @@ impl Turns {
                     continue;
                 }
                 let _ = self.let_out(player, idx, inside, point, (None, sound))?;
-                let ui = self.players[player]
-                    .objects
-                    .iter()
-                    .position(|u| u.id == inside)
-                    .ok_or(Unsupported("an unloaded unit outside its player's list"))?;
+                let (up, ui) = self.live_inside(inside)?;
                 let kind = self
-                    .master_of(player, self.players[player].objects[ui].life.master_id)?
+                    .master_of(up, self.players[up].objects[ui].life.master_id)?
                     .kind;
-                let u = &mut self.players[player].objects[ui];
+                let u = &mut self.players[up].objects[ui];
                 // a unit (type 70) is no longer under the town bell (`+0x9dc`)
                 if 70 <= kind {
                     u.town_bell.flag = false;
@@ -499,12 +495,12 @@ impl Turns {
                 let Some(&inside) = self.players[p].objects[idx].garrison.get(i) else {
                     continue;
                 };
-                let Some(u) = self.players[p].objects.iter().find(|u| u.id == inside) else {
-                    return Err(Unsupported(
-                        "a unit inside a building outside its player's list",
-                    ));
+                // any player's unit (an ally's too); the game skips a null entry, and an id the
+                // world no longer holds is one
+                let Some((up, u)) = self.object(inside) else {
+                    continue;
                 };
-                let m = self.master_of(p, u.life.master_id)?;
+                let m = self.master_of(up, u.life.master_id)?;
                 if 70 <= m.kind && (m.class == VILLAGER_CLASS || m.id == MASTER_1808) {
                     self.back_to_work(p, idx, inside)?;
                 }
@@ -524,14 +520,8 @@ impl Turns {
     /// [`TownBell::back_to_work`]: crate::town_bell::TownBell::back_to_work
     fn back_to_work(&mut self, p: usize, building: usize, id: i32) -> Result<(), Unsupported> {
         use crate::town_bell::RecordTarget;
-        let ui = self.players[p]
-            .objects
-            .iter()
-            .position(|u| u.id == id)
-            .ok_or(Unsupported(
-                "a unit inside a building outside its player's list",
-            ))?;
-        let mut bell = self.players[p].objects[ui].town_bell;
+        let (up, ui) = self.live_inside(id)?;
+        let mut bell = self.players[up].objects[ui].town_bell;
         let lookup = |t: i32| -> Option<RecordTarget> {
             let (op, o) = self.object(t)?;
             let m = self.master_of(op, o.life.master_id).ok()?;
@@ -545,9 +535,9 @@ impl Turns {
             })
         };
         let (found, record) = bell.back_to_work(&lookup);
-        self.players[p].objects[ui].town_bell = bell;
+        self.players[up].objects[ui].town_bell = bell;
         if found.is_none() && 0 <= record.target_type && 0 <= record.action {
-            let unit = &mut self.players[p].objects[ui];
+            let unit = &mut self.players[up].objects[ui];
             if let Some(ai) = unit.ai.as_mut() {
                 ai.set_action(record.action);
             }
@@ -557,7 +547,7 @@ impl Turns {
             )?;
         }
         let out = self.let_out(p, building, id, record.point, (found.map(|f| f.id), true))?;
-        if out && let Some(u) = self.players[p].objects.iter_mut().find(|u| u.id == id) {
+        if out && let Some((_, u)) = self.object_mut(id) {
             u.town_bell.flag = false;
         }
         Ok(())
@@ -616,9 +606,20 @@ impl Turns {
         })
     }
 
-    /// `FUN_1411e7220`: the unit `id` leaves the building at `building` of player `player`
-    /// toward `point`, when a spot beside it is free ([`Turns::spot_beside`], toward the point,
-    /// or the building's gather point when not on itself): it takes the spot at the building's
+    /// The player and live index of the unit `id` inside a building, whoever's it is.
+    fn live_inside(&self, id: i32) -> Result<(usize, usize), Unsupported> {
+        match self.place(id) {
+            Some(crate::order::Place::Live(p, i)) => Ok((p, i)),
+            _ => Err(Unsupported(
+                "a unit inside a building outside the live lists",
+            )),
+        }
+    }
+
+    /// `FUN_1411e7220`: the unit `id` (any player's, with its own player's masters and orders)
+    /// leaves the building at `building` of player `player` toward `point`, when a spot beside
+    /// it is free ([`Turns::spot_beside`], toward the point, or the building's gather point when
+    /// not on itself): it takes the spot at the building's
     /// height (`FUN_14119d610`), leaves the building (slot 0x1a8, `FUN_141213120`: the
     /// building's slot 0x1c8, `FUN_1411d6ad0` -> `FUN_141217910`, takes its share off the
     /// volleys, back to its master's volley fire when none is left inside or it fell below it,
@@ -658,15 +659,10 @@ impl Turns {
                 "an unload without a gather point (the unit AI's command queue location)",
             ));
         }
-        let ui = self.players[player]
-            .objects
-            .iter()
-            .position(|u| u.id == id)
-            .ok_or(Unsupported(
-                "a unit inside a building outside its player's list",
-            ))?;
-        let unit = &self.players[player].objects[ui];
-        let made = self.master_of(player, unit.life.master_id)?.clone();
+        // the unit is any player's (an ally's too): its own player's masters and orders
+        let (up, ui) = self.live_inside(id)?;
+        let unit = &self.players[up].objects[ui];
+        let made = self.master_of(up, unit.life.master_id)?.clone();
         if bm.class == 13 {
             return Err(Unsupported("an unload of a siege building (class 13)"));
         }
@@ -685,24 +681,28 @@ impl Turns {
         };
         let z = self.players[player].objects[building].position[2];
         let at = [spot[0], spot[1], z];
-        // the building's slot 0x1c8: the share off its volleys, the unit out of its list
-        let share = if made.kind == 70 {
-            let masters = self
-                .masters
-                .get(player)
-                .ok_or(Unsupported("an unload without the masters"))?;
+        // the building's slot 0x1c8 (`FUN_141217910`): a unit (type 70) takes its share off the
+        // volleys (the building's rate by its player's masters, the unit's share by its own)
+        let share = if made.kind == COMBAT_KIND {
+            let (Some(own), Some(theirs)) = (self.masters.get(player), self.masters.get(up)) else {
+                return Err(Unsupported("an unload without the masters"));
+            };
             let b = &self.players[player].objects[building];
-            let unit = &self.players[player].objects[ui];
-            let rate = attack_rate(&bm, masters, b.reload_powerup);
-            share(&made, masters, unit.reload_powerup, rate)?
+            let unit = &self.players[up].objects[ui];
+            let rate = attack_rate(&bm, own, b.reload_powerup);
+            Some(share(&made, theirs, unit.reload_powerup, rate)?)
         } else {
-            0.0
+            None
         };
         let b = &mut self.players[player].objects[building];
-        b.firepower -= share;
+        if let Some(share) = share {
+            b.firepower -= share;
+        }
+        // the unit out of its list (`FUN_141197e10`)
         if let Some(k) = b.garrison.iter().position(|&g| g == id) {
             let _ = b.garrison.swap_remove(k);
         }
+        // COMISS volley, firepower; JBE keeps it: a NaN firepower stays
         if b.garrison.is_empty() || b.firepower < bm.volley_fire {
             b.firepower = bm.volley_fire;
         }
@@ -726,7 +726,7 @@ impl Turns {
         self.pathing.moved(id, &placed, false);
         self.pathing.tiles_changed(self.spatial.take_changes());
         let world_time = self.world_time;
-        let unit = &mut self.players[player].objects[ui];
+        let unit = &mut self.players[up].objects[ui];
         unit.position = at;
         unit.life.inside = None;
         // the position setter's end: a place off where it last moved to is a move
@@ -752,7 +752,7 @@ impl Turns {
                 filter: -1,
                 notified: false,
             };
-            self.order_work(player, ui, &work)?;
+            self.order_work(up, ui, &work)?;
             return Ok(true);
         }
         // the gather point (`+0xc30` 1, not on the building) gives a unit without a point its
@@ -760,11 +760,11 @@ impl Turns {
         let to = match gather {
             Some(g) if point[0] == NO_POINT && g.target != bid => {
                 if g.target != -1 && self.object(g.target).is_some() {
-                    if let Some(ai) = self.players[player].objects[ui].ai.as_mut() {
+                    if let Some(ai) = self.players[up].objects[ui].ai.as_mut() {
                         ai.remove_target();
                     }
                     // slot 0x128 with `+0xa14` 0: the unit AI keeps its notifies
-                    self.gather(player, ui, g, bid, false, false)?;
+                    self.gather(up, ui, g, bid, false, false)?;
                     return Ok(true);
                 }
                 [g.point[0], g.point[1]]
@@ -778,10 +778,10 @@ impl Turns {
         }
         // a move to the point: the unit AI forgets its target (`FUN_140c5e1e0`), then slot 0x2a0
         // and slot 0x128 with no target, `+0xa14` 0
-        if let Some(ai) = self.players[player].objects[ui].ai.as_mut() {
+        if let Some(ai) = self.players[up].objects[ui].ai.as_mut() {
             ai.remove_target();
         }
-        self.gather_move(player, ui, [to[0], to[1], 0.0], false)?;
+        self.gather_move(up, ui, [to[0], to[1], 0.0], false)?;
         Ok(true)
     }
 
@@ -1846,5 +1846,168 @@ mod tests {
         assert_eq!(picks(&t, 6, 1000), [1001]);
         assert_eq!(picks(&t, 6, 3000), [0i32; 0]);
         assert_eq!(picks(&t, 7, 1000), [0i32; 0]);
+    }
+
+    /// A unit's movement as the spot test reads it: terrain restriction 0, no speed.
+    fn standing() -> crate::movement::MoveStats {
+        crate::movement::MoveStats {
+            fly_mode: 0,
+            speed: 0.0,
+            walk_speed: 0.0,
+            run_speed: 0.0,
+            stand_speed: 0.0,
+            turn_rate: 0.0,
+            turn_radius: 0.0,
+            turn_radius_speed: f32::MAX,
+            radius: [0.2, 0.2, 2.0],
+            restriction: 0,
+            restriction_mask: 255,
+            turn_time: 0.0,
+            move_algorithm: 0,
+            min_collision: 0.0,
+            fast_turn: false,
+            facets: None,
+            weapon_range: 0.0,
+        }
+    }
+
+    /// [`garrison_world`] on a flat 20×20 map every player sees, the town centre at (10, 10)
+    /// with its footprint on the map, the villager master able to stand beside it.
+    fn let_out_world() -> Turns {
+        let mut t = garrison_world();
+        let mut masters = garrison_masters();
+        if let Some(tc) = masters.get_mut(TC) {
+            tc.radius = [2.0, 2.0];
+            tc.tall = true;
+            tc.volley_fire = 1.0;
+        }
+        if let Some(v) = masters.get_mut(VILLAGER) {
+            v.radius = [0.2, 0.2];
+            v.tall = true;
+            v.moving = Some(standing());
+        }
+        t.masters = (0..4).map(|_| masters.clone()).collect();
+        let (w, h) = (20, 20);
+        let n = (w * h) as usize;
+        t.spatial = crate::spatial::Spatial::new([w, h]);
+        let mut terrain = crate::terrain::Terrain::new(
+            w,
+            h,
+            vec![(0, 255, -1); n],
+            vec![
+                crate::terrain::TerrainKind {
+                    shown: true,
+                    flags: 0,
+                    forest: false,
+                };
+                1
+            ],
+            vec![vec![1.0]],
+        );
+        terrain.set_elevations(vec![0; n]);
+        t.spatial.terrain = Some(terrain);
+        let seen = (0..4).fold(0u64, |b, p| b | (1 << p) | (1 << (32 + p)));
+        t.spatial.sight = Some(crate::visibility::Visibility::new(
+            w,
+            h,
+            (0..4)
+                .map(|_| crate::visibility::VisibleMap {
+                    counts: vec![0; n],
+                    explored: 0,
+                })
+                .collect(),
+            vec![seen; n],
+            Vec::new(),
+            0,
+            vec![false; 4],
+        ));
+        let tc = &mut t.players[1].objects[0];
+        tc.position = [10.0, 10.0, 0.0];
+        tc.firepower = 1.0;
+        t.spatial.insert(
+            100,
+            crate::spatial::Placed {
+                position: [10.0, 10.0, 0.0],
+                radius: [2.0, 2.0],
+                class: 52,
+                player: 1,
+                master: TC,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(crate::spatial::Obstruction { kind: 2, class: 2 }),
+            },
+        );
+        t
+    }
+
+    /// Puts unit `id` of player `p` and master `m` inside the town centre.
+    fn inside_tc(t: &mut Turns, p: usize, id: i32, m: i16) {
+        let mut u = unit(id, m, 25.0);
+        u.position = [10.0, 10.0, 0.0];
+        u.life.inside = Some(100);
+        t.players[p].objects.push(u);
+        t.spatial.insert(
+            id,
+            crate::spatial::Placed {
+                position: [10.0, 10.0, 0.0],
+                radius: [0.2, 0.2],
+                class: 4,
+                player: p,
+                master: m,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        t.spatial.go_inside(id, [10.0, 10.0, 0.0]);
+        t.players[1].objects[0].garrison.push(id);
+    }
+
+    #[test]
+    fn back_to_work_lets_an_allys_villager_out_toward_its_record() {
+        // FUN_141625590 -> FUN_1412081e0 -> FUN_1411e7220 on player 2's villager 2000 inside
+        // player 1's town centre: its own player's master and orders, the town bell cleared
+        let mut t = let_out_world();
+        inside_tc(&mut t, 2, 2000, VILLAGER);
+        let v = &mut t.players[2].objects[0];
+        v.town_bell.flag = true;
+        v.town_bell.work = crate::town_bell::BackToWork {
+            point: [4.5, 4.5],
+            ..crate::town_bell::BackToWork::NONE
+        };
+        // the building's last unit inside: the volleys go back to the master's volley fire
+        t.players[1].objects[0].firepower = 2.0;
+        t.go_back_to_work(1, &[100]).unwrap();
+        let v = &t.players[2].objects[0];
+        assert_eq!(v.life.inside, None);
+        assert!(!v.town_bell.flag);
+        assert_eq!(t.players[1].objects[0].garrison.len(), 0);
+        assert_eq!(t.players[1].objects[0].firepower, 1.0);
+        assert!(t.spatial.get_known(2000).unwrap().is_some());
+        // FUN_141217910's reset: COMISS volley, firepower; JBE keeps it while units stay inside
+        // and the firepower is not below the volley fire (a NaN one too)
+        let mut t = let_out_world();
+        inside_tc(&mut t, 1, 1000, VILLAGER);
+        inside_tc(&mut t, 2, 2000, VILLAGER);
+        t.players[2].objects[0].town_bell.work.point = [4.5, 4.5];
+        t.players[1].objects[0].firepower = f32::NAN;
+        t.back_to_work(1, 0, 2000).unwrap();
+        assert!(t.players[1].objects[0].firepower.is_nan());
+        assert_eq!(t.players[1].objects[0].garrison, [1000]);
+        t.players[1].objects[0].firepower = 0.5;
+        t.object_mut(1000).unwrap().1.town_bell.work.point = [4.5, 15.5];
+        t.back_to_work(1, 0, 1000).unwrap();
+        assert_eq!(t.players[1].objects[0].firepower, 1.0);
+        // a unit not a villager stays inside
+        let mut t = let_out_world();
+        inside_tc(&mut t, 2, 2001, ARCHER);
+        t.go_back_to_work(1, &[100]).unwrap();
+        assert_eq!(t.players[2].objects[0].life.inside, Some(100));
     }
 }
