@@ -1555,6 +1555,8 @@ const LION_SIGHT_SHARE: f32 = crate::image::unit_ai::LION_SIGHT_SHARE;
 const LION_SIGHT_DIVISOR: f32 = crate::image::unit_ai::LION_SIGHT_DIVISOR;
 /// The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
 const CLASS_KING: i16 = 59;
+/// The king's master that the branch passes over (raw `0x635c`).
+const KING_UNLED: i16 = 704;
 
 /// The walk back's gap and range (`FUN_140c5e7d0`: `DAT_14330eb8c`, 1.0, whose image role in
 /// the unit AI's table is [`RUN_ONE`]'s).
@@ -1832,14 +1834,22 @@ impl UnitAi {
         }
     }
 
-    /// The boar's idle check (slot 72, `FUN_140c1e630`): a furious boar, or any in mode 1, stays.
-    /// Then one draw of `0..81` widens its leash: outside it, a boar not yet heading home goes
-    /// home; inside, once in 7 checks (a second draw) it goes home from more than 2 tiles away, or
-    /// wanders up to 3 tiles (two more draws). Its moves keep its height. `FUN_140c41e50`, first,
-    /// lowers the unit's last human order time to 5000 (`FUN_140fe0d10`); the slice does not hold it.
-    /// True when it produced an action (6, not 5): every way but staying and the 6 in 7 checks
-    /// inside the leash that do nothing, including the one heading home already.
-    fn boar_idle(&mut self, at: &Surroundings, ai: &mut Well512) -> (bool, Option<AiMove>) {
+    /// The boar's idle check (slot 72, `FUN_140c1e630`): `FUN_140c41e50` first
+    /// ([`UnitAi::cap_human_order`]). A furious boar, or any in mode 1, stays. Then one draw of
+    /// `0..81` widens its leash: outside it, a boar not yet heading home goes home; inside, once
+    /// in 7 checks (a second draw) it goes home from more than 2 tiles away, or wanders up to 3
+    /// tiles (two more draws). Its moves keep its height. True when it produced an action (6, not
+    /// 5): every way but staying and the 6 in 7 checks inside the leash that do nothing,
+    /// including the one heading home already.
+    fn boar_idle(&mut self, at: &Surroundings, ai: &mut Well512, fx: &mut Vec<Effect>) -> bool {
+        self.cap_human_order(fx);
+        let (produced, moved) = self.boar_wander(at, ai);
+        fx.extend(moved.map(Effect::Move));
+        produced
+    }
+
+    /// [`UnitAi::boar_idle`] past its cap: whether it produced an action, and its move.
+    fn boar_wander(&mut self, at: &Surroundings, ai: &mut Well512) -> (bool, Option<AiMove>) {
         let Some(home) = self.home else {
             return (false, None);
         };
@@ -1889,13 +1899,15 @@ impl UnitAi {
         (true, self.move_to(go_home))
     }
 
-    /// The hunted animal's idle check (slot 72, `FUN_140c1eea0`). `FUN_140c41e50`, first, lowers
-    /// the unit's last human order time to 5000, which the slice does not hold; the king's branch
-    /// (class 59) is not modelled. Beyond its leash (squared, from the unit's footprint,
-    /// `FUN_140a847c0`) it goes home. Then its search: with nothing found, one draw; once in 7 it
-    /// goes home from more than 2 tiles away, else once in 7 (the same draw) it wanders, two more
-    /// draws; mode 1's herd is not modelled. A found object it would evade (slot 0x150), which is
-    /// not modelled. Its moves keep its height and come within 0.5, forced and walking.
+    /// The hunted animal's idle check (slot 72, `FUN_140c1eea0`). `FUN_140c41e50` first
+    /// ([`UnitAi::cap_human_order`]). A king (class 59) does nothing more (5) unless it is a
+    /// computer player's, not of master 704, not inside another and without an order: then its
+    /// unit's slot 0x7e8 on `FUN_140c16930`'s object, which is not modelled. Beyond its leash
+    /// (squared, from the unit's footprint, `FUN_140a847c0`) it goes home. Then its search: with
+    /// nothing found, one draw; once in 7 it goes home from more than 2 tiles away, else once in
+    /// 7 (the same draw) it wanders, two more draws; mode 1's herd is not modelled. A found object
+    /// it evades ([`UnitAi::evade`]). Its moves keep its height and come within 0.5, forced and
+    /// walking. True when it moved (6), false for 5.
     /// `FUN_140c63e20`'s alert after a search with its argument 4 set (`ClosestObject`'s, 1 at every
     /// call probed): enemies found set the alert mode and start the time since the last sighting
     /// again (past 10 seconds it would tell the owner first, slot 0x2e8 with notify 0x210, which
@@ -1944,15 +1956,38 @@ impl UnitAi {
     fn hunted_idle(
         &mut self,
         at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        self.cap_human_order(fx);
+        if at.class == CLASS_KING {
+            let led =
+                at.master != KING_UNLED && !at.garrisoned && self.current_order == -1 && computer;
+            if led {
+                return Err(Unsupported(
+                    "a computer player's king's idle check (FUN_140c16930, slot 0x7e8)",
+                ));
+            }
+            return Ok(false);
+        }
+        let moved = self.hunted_wander(at, ai, side)?;
+        let produced = moved.is_some();
+        fx.extend(moved.map(Effect::Move));
+        Ok(produced)
+    }
+
+    /// [`UnitAi::hunted_idle`] for an animal that is not a king: its move, if any.
+    fn hunted_wander(
+        &mut self,
+        at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<Option<AiMove>, Unsupported> {
         let h = self
             .hunted
             .ok_or(Unsupported("a hunted animal without its origin"))?;
-        if at.class == CLASS_KING {
-            return Err(Unsupported("the hunted animal's branch for class 59"));
-        }
         let [x, y, z] = at.position;
         let go_home = AiMove {
             point: [h.origin[0], h.origin[1], z],
@@ -2025,21 +2060,23 @@ impl UnitAi {
     }
 
     /// The lion's idle check (slot 72, `FUN_140c1fb70`, factory type 5: wolves, bears).
-    /// `FUN_140c41e50` first (not held, as for the hunted animal); its idle timeout becomes 6000,
+    /// `FUN_140c41e50` first ([`UnitAi::cap_human_order`]); its idle timeout becomes 6000,
     /// redrawn (`FUN_140c41bc0`, slot 0x1a8: one draw). Its search looks for an enemy villager
     /// (class 4) in state 2, then for any enemy in state 2, from the same place (the second reads
     /// the first's answer). A found one within its reach (the footprints' squared gap,
     /// `FUN_14118f8c0`, against the reach squared) it attacks (`AttackObject`, slot 0xb8, not
     /// forced, [`UnitAi::attack_object`]): the reach is its line of sight, outside mode 1 half
     /// of it, or a third of it when it found no villager. The scenario modes' reach (a third by
-    /// a setting's `+0x10` of 4) is not modelled.
+    /// a setting's `+0x10` of 4) is not modelled. True (6) once it called `AttackObject`,
+    /// whatever that did; false (5) when it found nothing within its reach.
     fn lion_idle(
         &mut self,
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<Option<AiMove>, Unsupported> {
+    ) -> Result<bool, Unsupported> {
+        self.cap_human_order(fx);
         self.idle_timeout = LION_IDLE_TIMEOUT;
         self.update_adjusted_idle_timeout(ai);
         let sight = at.los + HUNTED_SIGHT_GROWTH;
@@ -2081,25 +2118,27 @@ impl UnitAi {
             }
         }
         if found.id == -1 {
-            return Ok(None);
+            return Ok(false);
         }
         let Some(t) = side.seen_unit(found.id)? else {
-            return Ok(None);
+            return Ok(false);
         };
         if 0.0 <= reach && reach * reach < t.gap_squared {
-            return Ok(None);
+            return Ok(false);
         }
         let _ = self.attack_object(found.id, false, false, at, side, fx)?;
-        Ok(None)
+        Ok(true)
     }
 
-    /// Slot 72 for the factory types modelled: the boar's, the hunted animal's, the lion's and
-    /// the soldier's ([`UnitAi::soldier_idle`]) do something for an idle unit; each, and the
-    /// transport ship's and the villager's (`FUN_140c1e610`, which does nothing else), first
-    /// lowers the unit's last human order time to `FUN_140fe0d10`'s 5000
-    /// (`FUN_140c41e50`; not on orders 701, 711, 712 and 733, and a group's would decide, the
-    /// slice holds none), as does the tower's ([`UnitAi::tower_idle`]). The building's does
-    /// nothing.
+    /// processIdle, slot 72 (`+0x240`) of each factory type's vtable: the hunted animal's
+    /// ([`UnitAi::hunted_idle`]), the boar's ([`UnitAi::boar_idle`]), the lion's
+    /// ([`UnitAi::lion_idle`]), the soldier's ([`UnitAi::soldier_idle`]) and the tower's, the
+    /// base `FUN_140c564c0` ([`UnitAi::tower_idle`]); the villager's (`FUN_140c1e610`) and the
+    /// transport ship's (`0x140c21d20`) only lower the unit's last human order time
+    /// ([`UnitAi::cap_human_order`]); the building's (`FUN_140c1e600`) and the livestock's
+    /// (`FUN_140c1fea0`) do nothing. True when it produced an action (6), false for 5. Its
+    /// second argument (1 from the idle part, else 0) lets an order the soldier's and the base's
+    /// slot 0x250 retry give 6, which no modelled type's slot 0x60 allows.
     fn process_idle(
         &mut self,
         at: &Surroundings,
@@ -2107,37 +2146,28 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
-        if matches!(self.ai_type, 2 | 4 | 5 | 8 | 11 | 13 | 15) {
-            self.cap_human_order(fx);
-        }
+    ) -> Result<bool, Unsupported> {
         match self.ai_type {
-            13 => return self.soldier_idle(at, computer, side, fx).map(|_| ()),
-            15 => {
-                if self.tower_idle(at, computer, side, fx)? {
-                    return Err(Unsupported(
-                        "an idle tower's attack (processIdle 6 in the idle part)",
-                    ));
-                }
-                return Ok(());
+            2 => self.hunted_idle(at, computer, ai, side, fx),
+            BOAR_AI => Ok(self.boar_idle(at, ai, fx)),
+            5 => self.lion_idle(at, ai, side, fx),
+            CIVILIAN | 11 => {
+                self.cap_human_order(fx);
+                Ok(false)
             }
-            _ => {}
+            SOLDIER_AI => self.soldier_idle(at, computer, side, fx),
+            TOWER_AI => self.tower_idle(at, computer, side, fx),
+            17 | 19 => Ok(false),
+            _ => Err(Unsupported(
+                "processIdle (slot 0x240) of a unit-AI type not modelled",
+            )),
         }
-        let moved = match self.ai_type {
-            2 => self.hunted_idle(at, ai, side)?,
-            BOAR_AI => self.boar_idle(at, ai).1,
-            5 => self.lion_idle(at, ai, side, fx)?,
-            _ => None,
-        };
-        fx.extend(moved.map(Effect::Move));
-        Ok(())
     }
 
-    /// The soldier's idle check (slot 72, `FUN_140c20db0`, factory type 13) as the idle part calls
-    /// it (its second argument 1), after the cap of [`UnitAi::process_idle`]. Before the cap, a
-    /// player that is out (`+0x89` 2; not held, 0 in every player probed) would stop, and slot
-    /// 0x250 (`FUN_140c5d9a0`) retries no order, the soldier's slot 0x60 taking none as
-    /// retryable. A Gaia unit stops unless it is of the combat type with `+0x924` 0 outside the
+    /// The soldier's idle check (slot 72, `FUN_140c20db0`, factory type 13). Before its cap
+    /// (`FUN_140c41e50`, [`UnitAi::cap_human_order`]), a player that is out (`+0x89` 2; not held,
+    /// 0 in every player probed) would stop, and slot 0x250 (`FUN_140c5d9a0`) retries no order,
+    /// the soldier's slot 0x60 taking none as retryable. A Gaia unit stops unless it is of the combat type with `+0x924` 0 outside the
     /// scenario modes (`FUN_141302540`); one in `NoAttack` (stance 3) searches and returns to its
     /// state position ([`UnitAi::no_attack_idle`]); master 706 stops. Its target is the target of its top action
     /// within its range (slot 400, slot 0x1e8) with retargeting on (`+0x1d6` 0), else its current
@@ -2157,6 +2187,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, Unsupported> {
+        self.cap_human_order(fx);
         let searches = !at.scenario && 70 <= at.kind && at.capture == 0;
         if at.player == 0 && !searches {
             return Ok(false);
@@ -2269,10 +2300,11 @@ impl UnitAi {
         Ok(())
     }
 
-    /// The base unit AI's idle check (slot 72, `FUN_140c564c0`), the tower's (factory type 15),
-    /// as the idle part calls it, after the cap of [`UnitAi::process_idle`] (slot 0x250 first
-    /// retries no order, the tower's slot 0x60 taking none as retryable). In `NoAttack` (stance 3)
-    /// it only searches, which is not modelled; else `bestUnitToAttack` from its place
+    /// The base unit AI's idle check (slot 72, `FUN_140c564c0`), the tower's (factory type 15):
+    /// slot 0x250 first retries no order (the tower's slot 0x60 taking none as retryable), then
+    /// the inlined cap of `FUN_140c41e50` ([`UnitAi::cap_human_order`]). In `NoAttack` (stance
+    /// 3) it only searches (slot 0x50 with mode 1 from its place, [`Pick::Look`] over its cared
+    /// classes, which sets the alert mode) and gives 5; else `bestUnitToAttack` from its place
     /// ([`Pick::Attack`], as [`UnitAi::soldier_idle`]'s), then an object found is attacked
     /// ([`UnitAi::attack_object`] forced, slot 0xb8, which then sets `+0x1d5`, not held). True
     /// when it attacks (processIdle's 6).
@@ -2283,8 +2315,17 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, Unsupported> {
+        self.cap_human_order(fx);
         if self.stance == 3 {
-            return Err(Unsupported("a tower's idle search in NoAttack (stance 3)"));
+            let found = side.closest(&Search {
+                at: [at.position[0], at.position[1]],
+                radius: attack_search_radius(at),
+                classes: &TOWER_CARED,
+                size: at.size,
+                pick: Pick::Look,
+            })?;
+            self.attack_search_alert(found, computer)?;
+            return Ok(false);
         }
         let found = side.closest(&Search {
             at: [at.position[0], at.position[1]],
@@ -2469,7 +2510,7 @@ impl UnitAi {
             && self.adjusted_idle_timeout < self.idle_timer
         {
             self.idle_timer = 0;
-            self.process_idle(at, computer, ai, side, fx)?;
+            let _ = self.process_idle(at, computer, ai, side, fx)?;
         }
         self.calm_down();
         Ok(())
@@ -2702,11 +2743,10 @@ impl UnitAi {
     }
 
     /// The target block's attack whose target died (`0x140c66b10`): processIdle (slot 0x240 with
-    /// 0; the boar's [`UnitAi::boar_idle`] after the cap) may find the next thing to do (6); with
-    /// nothing (5) the AI moves to its old target's point within the unit's weapon range (slot
-    /// 0x130, forced, running: it always takes it). Then the order ends: it becomes the last order,
-    /// the order and its priority −1. The other factory types' slot 0x240 and a patrol order's
-    /// part (orders 711, 733) are not modelled.
+    /// 0, [`UnitAi::process_idle`]) may find the next thing to do (6); with nothing (5) the AI
+    /// moves to its old target's point within the unit's weapon range (slot 0x130, forced,
+    /// running: it always takes it). Then the order ends: it becomes the last order, the order and
+    /// its priority −1. A patrol order's part (orders 711, 733) is not modelled.
     fn next_after_kill(
         &mut self,
         at: &Surroundings,
@@ -2715,24 +2755,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
-        let produced = match self.ai_type {
-            BOAR_AI => {
-                self.cap_human_order(fx);
-                let (produced, moved) = self.boar_idle(at, ai);
-                fx.extend(moved.map(Effect::Move));
-                produced
-            }
-            // the soldier's processIdle with 0 (FUN_140c20db0: its cap, then as the idle part's)
-            SOLDIER_AI => {
-                self.cap_human_order(fx);
-                self.soldier_idle(at, computer, side, fx)?
-            }
-            _ => {
-                return Err(Unsupported(
-                    "an attack whose target died: processIdle of another unit AI (slot 0x240)",
-                ));
-            }
-        };
+        let produced = self.process_idle(at, computer, ai, side, fx)?;
         if !produced {
             let m = self.move_to(AiMove {
                 point: self.target_point,
@@ -3855,8 +3878,8 @@ impl UnitAi {
     /// The base handler's case `0x1f9` ("Action %d has failed.", `FUN_140c589c0`): with an order
     /// the state position takes the unit's place first; on the scout order (`0x2da`) the
     /// player's slot 0x2e8 with `0x211` is not modelled. A failed attack (600) on the attack order
-    /// (700) or with the attack action current runs processIdle (slot 0x240 with 0; the boar's
-    /// only, [`UnitAi::boar_idle`]): an action it produced breaks off (0xd), none makes a human
+    /// (700) or with the attack action current runs processIdle (slot 0x240 with 0,
+    /// [`UnitAi::process_idle`]): an action it produced breaks off (0xd), none makes a human
     /// player's unit forget its target and stop (slot 0xb0 with 1). Without an
     /// order, the failure of the current action forgets the target (`FUN_140c5e1e0`) and stops
     /// it (slot 0xb0 with 1; slot 0x48 hands the notify to the owner, not held); with one, so
@@ -3883,27 +3906,7 @@ impl UnitAi {
             }
         }
         if p0 == 600 && (order == 700 || action == 600) {
-            let produced = match self.ai_type {
-                BOAR_AI => {
-                    self.cap_human_order(fx);
-                    let (produced, moved) = self.boar_idle(at, ai);
-                    fx.extend(moved.map(Effect::Move));
-                    produced
-                }
-                TOWER_AI => {
-                    self.cap_human_order(fx);
-                    self.tower_idle(at, computer, side, fx)?
-                }
-                SOLDIER_AI => {
-                    self.cap_human_order(fx);
-                    self.soldier_idle(at, computer, side, fx)?
-                }
-                _ => {
-                    return Err(Unsupported(
-                        "a failed attack on the attack order or action (processIdle, slot 0x240)",
-                    ));
-                }
-            };
+            let produced = self.process_idle(at, computer, ai, side, fx)?;
             if produced {
                 return Ok(PRODUCED);
             }
@@ -3948,15 +3951,10 @@ impl UnitAi {
     /// The base handler's case `0x1fb` ("Action %d has been invalidated.", `FUN_140c589c0`): an
     /// attack (600) invalidated on the attack order (700) or with `0x202` retargets: with
     /// retargeting off (`+0x1d6`) a target still in the world breaks off (not modelled), else
-    /// processIdle (slot 0x240 with 0): the tower's (the base `FUN_140c564c0`, which skips the
-    /// order retry of slot 0x250 with 0; [`UnitAi::tower_idle`] after the cap) attacks what its
-    /// search finds (not modelled) or does nothing (5), the boar's ([`UnitAi::boar_idle`], after
-    /// the cap) may produce an action (6), as may the soldier's ([`UnitAi::soldier_idle`], after
-    /// the cap); the building's handler never passes the notify on
-    /// (`FUN_140c1e600` would do nothing either). Unless it is 5 the
-    /// notify goes on; with 5 a human player's unit forgets its target (`FUN_140c5e1e0`) and stops
-    /// (slot 0xb0 with 1); a computer player's tests (slot 0x130) are not modelled, nor are the
-    /// other factory types' slot 0x240 with 0. Without an order, the invalidation of the current
+    /// processIdle (slot 0x240 with 0, [`UnitAi::process_idle`]; the building's handler never
+    /// passes the notify on). Unless it is 5 the notify goes on; with 5 a human player's unit
+    /// forgets its target (`FUN_140c5e1e0`) and stops (slot 0xb0 with 1); a computer player's
+    /// tests (slot 0x130) are not modelled. Without an order, the invalidation of the current
     /// action forgets the target and stops it (slot 0xb0 with 1; then slot 0x48 hands the notify
     /// to the owner, not held); with one, so does the invalidation of the order's own action
     /// (action + 100 = order); order `0x2d4` and `0x2bd` on action `0x262` are not modelled; any
@@ -3978,27 +3976,7 @@ impl UnitAi {
                     "an invalidated attack with retargeting off (+0x1d6)",
                 ));
             }
-            let produced = match self.ai_type {
-                TOWER_AI => {
-                    self.cap_human_order(fx);
-                    self.tower_idle(at, computer, side, fx)?
-                }
-                BOAR_AI => {
-                    self.cap_human_order(fx);
-                    let (produced, moved) = self.boar_idle(at, ai);
-                    fx.extend(moved.map(Effect::Move));
-                    produced
-                }
-                SOLDIER_AI => {
-                    self.cap_human_order(fx);
-                    self.soldier_idle(at, computer, side, fx)?
-                }
-                _ => {
-                    return Err(Unsupported(
-                        "an invalidated attack on the attack order (its retarget, slot 0x240)",
-                    ));
-                }
-            };
+            let produced = self.process_idle(at, computer, ai, side, fx)?;
             if produced {
                 return Ok(GO_ON);
             }
@@ -4469,8 +4447,9 @@ impl UnitAi {
             && self.current_action == -1
             && (self.current_target == -1 || !busy)
         {
+            // slot 0x240 with 1; the idle part reads no result
             self.idle_timer = 0;
-            self.process_idle(at, computer, ai, side, fx)?;
+            let _ = self.process_idle(at, computer, ai, side, fx)?;
             return Ok(());
         }
         if !matches!(self.current_order, PATROL | PATROL_2)
@@ -4507,7 +4486,7 @@ impl UnitAi {
             return Ok(());
         }
         self.idle_timer = 0;
-        self.process_idle(at, computer, ai, side, fx)
+        self.process_idle(at, computer, ai, side, fx).map(|_| ())
     }
 
     /// [`UnitAi::idle_part`] when the update took an order on a target, which in the game ran
@@ -5332,22 +5311,28 @@ mod tests {
                 attacks: Vec::new(),
             };
             let mut fx = Vec::new();
-            let moved = lion.lion_idle(&at, &mut rng(), &mut side, &mut fx).unwrap();
-            assert_eq!(moved, None);
-            (side.attacks, lion.current_action, lion.current_target)
+            let produced = lion.lion_idle(&at, &mut rng(), &mut side, &mut fx).unwrap();
+            // FUN_140c41e50 first
+            assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
+            (
+                produced,
+                side.attacks,
+                lion.current_action,
+                lion.current_target,
+            )
         };
-        // a villager: the reach is 2 (half of 4)
+        // a villager: the reach is 2 (half of 4); slot 0xb8 then gives 6 whatever it did
         assert_eq!(
             run([700, -1], 3.9),
-            (vec![(700, false)], ATTACK_ACTION, 700)
+            (true, vec![(700, false)], ATTACK_ACTION, 700)
         );
-        assert_eq!(run([700, -1], 4.1), (vec![], -1, -1));
+        assert_eq!(run([700, -1], 4.1), (false, vec![], -1, -1));
         // any enemy: a third of 4
         assert_eq!(
             run([-1, 701], 1.7),
-            (vec![(701, false)], ATTACK_ACTION, 701)
+            (true, vec![(701, false)], ATTACK_ACTION, 701)
         );
-        assert_eq!(run([-1, 701], 1.8), (vec![], -1, -1));
+        assert_eq!(run([-1, 701], 1.8), (false, vec![], -1, -1));
     }
 
     /// A soldier's world: what its `bestUnitToAttack` finds and the attack commands it gave.
@@ -7042,7 +7027,8 @@ mod tests {
         .unwrap();
         assert_eq!((u.current_target, fx), (10028, vec![]));
         // an attack whose target died waits while its Attack swings on the kill (state 2); past
-        // it a villager's processIdle is not modelled, nor is an Attack the slice does not hold
+        // it the villager's processIdle (the cap, then 5) sends it to the dead target's point; an
+        // Attack the slice does not hold is not modelled
         let attack = || UnitAi {
             current_action: ATTACK_ACTION,
             ..builder_done()
@@ -7066,19 +7052,40 @@ mod tests {
             action_state: Some(1),
             ..dead.clone()
         };
-        for at in [&over, &dead] {
-            assert!(
-                attack()
-                    .target_block(
-                        at,
-                        false,
-                        &mut Well512::default(),
-                        &mut Recorder::default(),
-                        &mut Vec::new()
-                    )
-                    .is_err()
-            );
-        }
+        let mut u = attack();
+        let mut fx = Vec::new();
+        u.target_block(
+            &over,
+            false,
+            &mut Well512::default(),
+            &mut Recorder::default(),
+            &mut fx,
+        )
+        .unwrap();
+        assert_eq!(
+            fx,
+            vec![
+                Effect::CapHumanOrder(HUMAN_ORDER_CAP),
+                Effect::Move(AiMove {
+                    point: [30.0, 88.0, 0.0],
+                    range: 0.0,
+                    force: true,
+                    walk: false,
+                })
+            ]
+        );
+        assert_eq!((u.current_order, u.last_order), (-1, BUILD_ORDER));
+        assert!(
+            attack()
+                .target_block(
+                    &dead,
+                    false,
+                    &mut Well512::default(),
+                    &mut Recorder::default(),
+                    &mut Vec::new()
+                )
+                .is_err()
+        );
     }
 
     /// Player 1's scout 9183 following the deer 9655 (FOLLOW at 2604): order 712, action 612,
@@ -7847,5 +7854,222 @@ mod tests {
         u.no_attack_idle(&at, false, &mut |_: &Search<'_>| Ok(Found::NONE), &mut fx)
             .unwrap();
         assert_eq!(fx, Vec::new());
+    }
+
+    /// The transport ship's processIdle (`0x140c21d20`): `FUN_140c41e50`, then 5. An idle ship
+    /// whose idle timer passed its timeout caps its last human order time and does nothing more.
+    #[test]
+    fn an_idle_transport_ship_s_check_caps_its_human_order_time_and_does_nothing() {
+        let mut u = UnitAi {
+            idle_timer: 3001,
+            adjusted_idle_timeout: 3000,
+            ..idle(11)
+        };
+        let at = Surroundings {
+            player: 1,
+            class: 20,
+            ..Surroundings::default()
+        };
+        let fx = u
+            .update(28, 0, false, &at, &mut rng(), &mut no_search)
+            .unwrap();
+        assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
+        assert_eq!(u.idle_timer, 0);
+        // the building's (FUN_140c1e600) and the livestock's (FUN_140c1fea0) return 5 alone
+        for ai_type in [17, 19] {
+            let mut u = idle(ai_type);
+            let mut fx = Vec::new();
+            assert_eq!(
+                u.process_idle(&at, false, &mut rng(), &mut no_search, &mut fx),
+                Ok(false)
+            );
+            assert_eq!(fx, Vec::new());
+        }
+    }
+
+    /// The target block's attack whose target died, for a villager: the civilian's processIdle
+    /// (`FUN_140c1e610`: the cap, then 5) produces nothing, so the AI moves to the dead target's
+    /// point within its weapon range and the order ends.
+    #[test]
+    fn a_villager_whose_attack_target_died_walks_to_its_point() {
+        let mut u = UnitAi {
+            current_order: ATTACK_ORDER,
+            order_priority: 100,
+            current_action: ATTACK_ACTION,
+            current_target: 50,
+            target_point: [5.0, 6.0, 0.0],
+            ..idle(8)
+        };
+        let at = Surroundings {
+            weapon_range: 0.25,
+            ..Surroundings::default()
+        };
+        let mut fx = Vec::new();
+        u.next_after_kill(&at, false, &mut rng(), &mut no_search, &mut fx)
+            .unwrap();
+        assert_eq!(
+            fx,
+            vec![
+                Effect::CapHumanOrder(HUMAN_ORDER_CAP),
+                Effect::Move(AiMove {
+                    point: [5.0, 6.0, 0.0],
+                    range: 0.25,
+                    force: true,
+                    walk: false,
+                })
+            ]
+        );
+        assert_eq!(
+            (u.current_order, u.order_priority, u.last_order),
+            (-1, -1, ATTACK_ORDER)
+        );
+    }
+
+    /// A wolf whose attack target died: its processIdle (`FUN_140c1fb70`) finds another villager
+    /// within its reach and calls `AttackObject` unforced, which fails while the attack action
+    /// value is still current; the 6 it gives all the same keeps it from walking to the dead
+    /// one's point.
+    #[test]
+    fn a_wolf_whose_attack_target_died_attacks_the_next_villager() {
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 50,
+            target_point: [5.0, 6.0, 0.0],
+            ..idle(5)
+        };
+        let at = Surroundings {
+            los: 4.0,
+            search_radius: 1.0,
+            ..Surroundings::default()
+        };
+        let mut side = LionSide {
+            found: [700, -1],
+            searches: 0,
+            seen: UnitSeen {
+                id: 700,
+                class: 4,
+                owner: 1,
+                state: 2,
+                gap_squared: 1.0,
+                ..UnitSeen::default()
+            },
+            attacks: Vec::new(),
+        };
+        let mut fx = Vec::new();
+        u.next_after_kill(&at, false, &mut rng(), &mut side, &mut fx)
+            .unwrap();
+        assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
+        assert_eq!(side.attacks, Vec::new());
+        assert_eq!((u.current_action, u.current_target), (ATTACK_ACTION, 50));
+    }
+
+    /// The tower in `NoAttack` (stance 3, `FUN_140c564c0`): after the cap only the search (slot
+    /// 0x50 with mode 1, its cared classes), whose alert mode it sets; then 5.
+    #[test]
+    fn a_no_attack_tower_only_searches() {
+        let mut u = UnitAi {
+            idle_timer: 504,
+            adjusted_idle_timeout: 503,
+            stance: 3,
+            ..idle(15)
+        };
+        let at = Surroundings {
+            position: [29.0, 94.0, 0.0],
+            player: 2,
+            size: [2.0, 2.0],
+            los: 8.0,
+            state: 2,
+            kind: 80,
+            ..Surroundings::default()
+        };
+        let mut searched = Vec::new();
+        let mut closest = |s: &Search<'_>| {
+            searched.push((s.radius, s.classes.len(), s.pick));
+            Ok(Found {
+                id: -1,
+                enemies: true,
+                position: None,
+                fresh: true,
+            })
+        };
+        let fx = u
+            .update(28, 0, false, &at, &mut rng(), &mut closest)
+            .unwrap();
+        assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
+        assert_eq!(searched, vec![(9.0, TOWER_CARED.len(), Pick::Look)]);
+        assert!(u.alert_mode);
+    }
+
+    /// The tower's processIdle in the idle part (`FUN_140c564c0` with 1): what
+    /// `bestUnitToAttack` found it attacks (slot 0xb8 forced); the idle part reads no result.
+    #[test]
+    fn an_idle_tower_attacks_what_its_search_found() {
+        let mut u = UnitAi {
+            idle_timer: 504,
+            adjusted_idle_timeout: 503,
+            ..idle(15)
+        };
+        let at = Surroundings {
+            position: [29.0, 94.0, 0.0],
+            player: 2,
+            size: [2.0, 2.0],
+            los: 8.0,
+            state: 2,
+            kind: 80,
+            ..Surroundings::default()
+        };
+        let mut side = SoldierSide {
+            found: 9731,
+            attacks: Vec::new(),
+        };
+        let fx = u.update(28, 0, false, &at, &mut rng(), &mut side).unwrap();
+        assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
+        assert_eq!(side.attacks, vec![(9731, true)]);
+        assert_eq!((u.current_action, u.current_target), (ATTACK_ACTION, 9731));
+    }
+
+    /// The hunted animal's processIdle for a king (class 59, `FUN_140c1eea0`): after the cap a
+    /// human player's king does nothing (5) and draws nothing; only a computer player's (not of
+    /// master 704, not inside another, without an order) has its unit's slot 0x7e8, which is not
+    /// modelled.
+    #[test]
+    fn a_human_player_s_king_s_idle_check_only_caps() {
+        let at = Surroundings {
+            position: [31.5, 106.5, 0.0],
+            player: 1,
+            class: CLASS_KING,
+            master: 434,
+            ..Surroundings::default()
+        };
+        let mut u = UnitAi {
+            hunted: None,
+            ..deer()
+        };
+        let mut r = rng();
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.process_idle(&at, false, &mut r, &mut no_search, &mut fx),
+            Ok(false)
+        );
+        assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
+        assert_eq!(r.draws, 0);
+        assert!(
+            u.process_idle(&at, true, &mut r, &mut no_search, &mut Vec::new())
+                .is_err()
+        );
+        // a computer player's king of master 704, or one with an order, does nothing either
+        let unled = Surroundings {
+            master: KING_UNLED,
+            ..at.clone()
+        };
+        assert_eq!(
+            u.process_idle(&unled, true, &mut r, &mut no_search, &mut Vec::new()),
+            Ok(false)
+        );
+        u.current_order = MOVE_ORDER;
+        assert_eq!(
+            u.process_idle(&at, true, &mut r, &mut no_search, &mut Vec::new()),
+            Ok(false)
+        );
     }
 }
