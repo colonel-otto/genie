@@ -1,5 +1,8 @@
 //! What the engine reads of a player's masters: the tasks a unit can do and the masters a unit
-//! changes into to do them. The values are game data: the player's masters in the save, with the
+//! changes into to do them, and how an effect changes a master: the attribute setters (slots
+//! 0x18, 0x20 and 0x28 of every master type, [`Master::set_attribute`]), the master copy of an
+//! upgrade (slot 8, [`Master::copy_from`]) and the values the slice derives from a master
+//! ([`Master::follow`]). The values are game data: the player's masters in the save, with the
 //! `.dat`'s values for what the save does not carry.
 
 use crate::movement::MoveStats;
@@ -1203,6 +1206,49 @@ impl Master {
         self.class = class;
         self.available = available;
         self.disabled = disabled;
+    }
+
+    /// The value attribute `attribute` changes that the masters' loader left at its default
+    /// while what the slice derives from it holds another (the speed, `+0x740`, under a moving
+    /// master's speeds; the turn speed, `+0x758`, under its turn time; the train locations under
+    /// their ids; the damage sprites under the flag that it has some): the change would derive
+    /// from the default. None when the master holds it.
+    #[must_use]
+    pub fn unloaded_for(&self, attribute: u8) -> Option<&'static str> {
+        use crate::masters::attribute as a;
+        let moving = self.moving.as_ref();
+        match attribute {
+            a::MOVEMENT_SPEED | a::STANDING_GRAPHIC | a::WALKING_GRAPHIC | a::RUNNING_GRAPHIC
+                if self.max_speed == 0.0 && moving.is_some_and(|m| m.speed != 0.0) =>
+            {
+                Some("a master's speed (+0x740) the loader did not fill")
+            }
+            a::ROTATION_SPEED
+                if self.turn_speed == 0.0 && moving.is_some_and(|m| m.turn_time != 0.0) =>
+            {
+                Some("a master's turn speed (+0x758) the loader did not fill")
+            }
+            a::TRAIN_LOCATION
+            | a::TRAIN_BUTTON
+            | a::HOTKEY_ID
+            | a::TRAIN_TIME
+            | a::TRAIN_LOCATIONS_ENTRY_MOD
+            | a::TRAIN_LOCATIONS_TOTAL_NUM
+                if self.train_locations.is_empty() && !self.trained_at.is_empty() =>
+            {
+                Some("a master's train locations (+0x898) the loader did not fill")
+            }
+            a::DAMAGE_GRAPHIC
+            | a::DAMAGE_GRAPHICS_ENTRY_MOD
+            | a::DAMAGE_GRAPHICS_TOTAL_NUM
+            | a::DAMAGE_GRAPHIC_PERCENT
+            | a::DAMAGE_GRAPHIC_APPLY_MODE
+                if self.damage_graphics.is_empty() && self.damage_sprites =>
+            {
+                Some("a master's damage sprites (+0x638) the loader did not fill")
+            }
+            _ => None,
+        }
     }
 
     /// The resource storage `attribute` (21, 26, 27) names: the first, second or third entry.
@@ -2659,6 +2705,137 @@ mod tests {
                 flag_1: false
             })
         );
+    }
+
+    /// The action master's (`FUN_14109fbb0` and its add and multiply) work rate, search radius
+    /// and run pattern; the moving master's (`FUN_1410e1c00` ...) turn speed and trail; the
+    /// interface's sounds change nothing.
+    #[test]
+    fn the_action_and_moving_setters_change_their_values() {
+        let mut m = of_type(master_type::ACTION);
+        m.set_attribute(attribute::WORK_RATE, 0.5, &world(false));
+        m.add_attribute(attribute::WORK_RATE, 0.25, &world(false));
+        m.multiply_attribute(attribute::WORK_RATE, 2.0, &world(false));
+        m.set_attribute(attribute::SEARCH_RADIUS, 4.0, &world(false));
+        m.multiply_attribute(attribute::SEARCH_RADIUS, 1.5, &world(false));
+        m.set_attribute(attribute::RUN_PATTERN, 2.0, &world(false));
+        m.add_attribute(attribute::RUN_PATTERN, 255.0, &world(false));
+        m.set_attribute(attribute::ROTATION_SPEED, 0.5, &world(false));
+        m.multiply_attribute(attribute::ROTATION_SPEED, 2.0, &world(false));
+        m.set_attribute(attribute::TRAILING_UNIT, 1300.0, &world(false));
+        m.add_attribute(attribute::TRAILING_UNIT, 2.0, &world(false));
+        m.set_attribute(attribute::TRAIL_MODE, 3.0, &world(false));
+        m.set_attribute(attribute::TRAIL_DENSITY, 1.5, &world(false));
+        m.multiply_attribute(attribute::TRAIL_DENSITY, 2.0, &world(false));
+        let before = m.clone();
+        m.set_attribute(attribute::COMMAND_SOUND, 9.0, &world(false));
+        m.add_attribute(attribute::COMMAND_SOUND, 9.0, &world(false));
+        assert_eq!(m, before);
+        assert_eq!((m.work_rate, m.search_radius, m.run_pattern), (1.5, 6.0, 1));
+        assert_eq!(m.turn_speed, 1.0);
+        assert_eq!(
+            m.trail,
+            Trail {
+                unit: 1302,
+                mode: 3,
+                density: 3.0
+            }
+        );
+    }
+
+    /// The combat master's own values (`FUN_1412661d0` and its add and multiply): hero status,
+    /// charge, conversion, regeneration (by the hit points' share for 120), volleys, the second
+    /// attack sprite (an add from its id), the spawning area; the ability's interface values
+    /// change nothing.
+    #[test]
+    fn the_combat_master_s_own_values_change() {
+        let mut m = of_type(master_type::COMBAT);
+        m.hit_points = 100;
+        m.attack_sprite2 = 10;
+        m.set_attribute(attribute::HERO_STATUS, 1.0, &world(false));
+        m.add_attribute(attribute::HERO_STATUS, 4.0, &world(false));
+        m.set_attribute(attribute::MAXIMUM_CHARGE, 10.0, &world(false));
+        m.multiply_attribute(attribute::MAXIMUM_CHARGE, 1.5, &world(false));
+        m.set_attribute(attribute::RECHARGE_RATE, 0.5, &world(false));
+        m.set_attribute(attribute::CHARGE_EVENT, 2.0, &world(false));
+        m.set_attribute(attribute::CHARGE_TYPE, 6.0, &world(false));
+        m.set_attribute(attribute::MAX_CONVERSION_TIME_MODIFIER, 3.0, &world(false));
+        m.add_attribute(attribute::MAX_CONVERSION_TIME_MODIFIER, 1.0, &world(false));
+        m.set_attribute(attribute::REGENERATION_HP_PERCENT, 0.25, &world(false));
+        m.add_attribute(attribute::REGENERATION_RATE, 5.0, &world(false));
+        m.set_attribute(attribute::TOTAL_MISSILES, 2.0, &world(false));
+        m.multiply_attribute(attribute::MAXIMUM_TOTAL_MISSILES, 3.0, &world(false));
+        m.add_attribute(attribute::ATTACK_GRAPHIC_2, 2.0, &world(false));
+        m.set_attribute(attribute::SPAWNING_AREA_WIDTH + 2, 0.5, &world(false));
+        m.set_attribute(attribute::SECONDARY_PROJECTILE_UNIT, -1.0, &world(false));
+        m.set_attribute(attribute::CHARGE_PROJECTILE_UNIT, 1500.0, &world(false));
+        let before = m.clone();
+        m.set_attribute(attribute::ABILITY_BUTTON_ICON_ID, 9.0, &world(false));
+        assert_eq!(m, before);
+        assert_eq!((m.hero_flag, m.max_charge, m.recharge_rate), (5, 15.0, 0.5));
+        assert_eq!((m.charge_event, m.charge_type), (2, 6));
+        assert_eq!(m.conversion, [0.0, 4.0, 0.0]);
+        assert_eq!(m.regeneration, 30.0);
+        assert_eq!(
+            (m.volley_fire, m.max_volley, m.attack_sprite2),
+            (2.0, 0, 12)
+        );
+        assert_eq!(m.volley_spread, [0.0, 0.0, 0.5]);
+        assert_eq!((m.volley_missile, m.charge_projectile), (None, Some(1500)));
+    }
+
+    /// The missile master's add (`FUN_1410d5ab0`) adds to its own bytes and arc, then runs the
+    /// RGE combat master's; a building master's add (`FUN_14123d530`) its facet and garrison
+    /// type; an animated master's set (`FUN_1410a8b00`) its speed.
+    #[test]
+    fn the_missile_building_and_animated_setters() {
+        let mut m = of_type(master_type::MISSILE);
+        m.missile_stats = Some(crate::missile::MissileStats {
+            projectile_type: 0,
+            smart_mode: 0,
+            hit_mode: 1,
+            vanish_mode: 0,
+            arc: 0.25,
+            speed: 7.0,
+            radius: [0.0; 3],
+            fly_mode: 0,
+        });
+        m.add_attribute(attribute::PROJECTILE_SMART_MODE, 1.0, &world(false));
+        m.add_attribute(attribute::PROJECTILE_HIT_MODE, 1.0, &world(false));
+        m.add_attribute(attribute::PROJECTILE_ARC, 0.25, &world(false));
+        m.set_attribute(attribute::MAXIMUM_RANGE, 5.0, &world(false));
+        let s = m.missile_stats.unwrap();
+        assert_eq!((s.smart_mode, s.hit_mode, s.arc), (1, 2, 0.5));
+        assert_eq!(m.weapon_range, 5.0);
+        let mut b = of_type(master_type::BUILDING);
+        b.building = Some(BuildingMaster::default());
+        b.add_attribute(attribute::BUILDING_ICON_OVERRIDE, 3.0, &world(false));
+        b.add_attribute(attribute::GARRISON_TYPE, 2.0, &world(false));
+        assert_eq!(
+            (b.building_facet, b.building.unwrap().garrison_type),
+            (3, 2)
+        );
+        let mut a = of_type(master_type::DOPPELGANGER);
+        a.set_attribute(attribute::MOVEMENT_SPEED, 1.2, &world(false));
+        assert_eq!(a.max_speed, 1.2);
+    }
+
+    /// The master copy (slot 8, `Master::copy_from`): every value but the id, class,
+    /// availability and disabling.
+    #[test]
+    fn a_master_copy_keeps_its_id_class_and_flags() {
+        let mut militia = master(74, 1, vec![task(7, -1, -1, 0.0)]);
+        militia.class = 6;
+        militia.available = true;
+        let mut man = master(75, 2, vec![task(7, -1, -1, 0.0), task(3, 3, -1, 0.0)]);
+        man.class = 7;
+        man.hit_points = 45;
+        man.disabled = true;
+        militia.copy_from(&man);
+        assert_eq!((militia.id, militia.class), (74, 6));
+        assert!(militia.available && !militia.disabled);
+        assert_eq!((militia.hit_points, militia.tasks.len()), (45, 2));
+        assert_eq!(militia.task_by_group, 2);
     }
 
     #[test]

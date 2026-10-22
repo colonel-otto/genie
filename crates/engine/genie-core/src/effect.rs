@@ -1,8 +1,13 @@
 //! A research's completion and the effects it gives: `FUN_1413cdcd0` (the technology done, its
 //! effect, the technologies that depend on it, the player's statistics), the effects'
-//! `TRIBE_Effects::do_effect` (`FUN_141462440`, then the base `FUN_140ec2ac0`) and the player's
-//! attribute modifier (slot 0x158 -> slot 0x148, `FUN_1416121b0`: the hooks `FUN_141614f40`
-//! around `FUN_14165a000`).
+//! `TRIBE_Effects::do_effect` (`FUN_141462440`, then the base `FUN_140ec2ac0`) with every kind
+//! for every party, and what they reach: the player's attribute modifier (slots 0x150, 0x158,
+//! 0x160 -> slot 0x148, `FUN_1416121b0`: the hooks `FUN_141614f40` around `FUN_14165a000`, the
+//! objects' slots 0x78, 0x80, 0x88 and the masters' 0x18, 0x20, 0x28 of
+//! [`crate::masters`]), the resource commands (slots 0x1b0, 0x1b8, the player's attribute set
+//! and add), the technology changes (`'e'`, `'f'`, `'g'`, kind 8), the enables, upgrades,
+//! spawns and cost entries. The objects' parts an upgrade, a spawn and the objects' own masters
+//! need are the objects' routines, which this file leaves to them.
 
 use crate::masters::{AttributeWorld, Master, Masters, master_type};
 use crate::rng::Stream;
@@ -16,8 +21,10 @@ const TECHS_RESEARCHED: i16 = 0x15;
 const RESEARCH_SPENT: i16 = 0x63;
 /// The attribute the dependents' update sets to 1 when none of them is left (`+0x138`).
 const ATTRIBUTE_39: usize = 39;
-/// The master whose enabling first asks the game's mode (`0x26d`, `FUN_1416665b0`).
+/// The master whose enabling first asks the game's mode (`0x26d`, `FUN_1416665b0`), and the
+/// mode that never enables it (11).
 const MODE_TESTED_MASTER: i16 = 0x26d;
+const MODE_WITHOUT_0X26D: i32 = 11;
 /// The `TRIBE_Effects` command kinds that change technologies (`'e'`, `'f'`, `'g'`): a cost, the
 /// disabling and a research time.
 const TECH_COST: u8 = b'e';
@@ -36,9 +43,10 @@ impl Turns {
     /// ([`Turns::update_dependents`]); researched at a location with a button, it counts in
     /// attribute 0x15 and its listed costs (`FUN_1413d4a00`, the amounts summed) in attribute
     /// 0x63. Not held: the local player's statistics and achievements. Not modelled: a research
-    /// paid in relics (`FUN_1413d0e70`), an effect override, an age's history (`FUN_141560ae0`)
-    /// and the civ's disabled technologies (`FUN_140ea93a0`; such a technology is never
-    /// available to be researched).
+    /// paid in relics (`FUN_1413d0e70`), an effect the slice cannot run without its building
+    /// ([`Turns::research_effect_known`]), an age's history (`FUN_141560ae0`) and the civ's
+    /// disabled technologies (`FUN_140ea93a0`; such a technology is never available to be
+    /// researched).
     pub(crate) fn complete_research(
         &mut self,
         p: usize,
@@ -54,9 +62,7 @@ impl Turns {
         if def.costs[0].attribute == 7 {
             return Err(Unsupported("a research paid in relics (FUN_1413d0e70)"));
         }
-        if state.effect_override != -1 && state.effect_override != def.effect_id {
-            return Err(Unsupported("a technology's effect override"));
-        }
+        self.research_effect_known(p, t)?;
         if is_age(t as i16) {
             return Err(Unsupported(
                 "an age's completion (its history, FUN_141560ae0)",
@@ -78,6 +84,39 @@ impl Turns {
             owner.add_attribute(RESEARCH_SPENT, spent)?;
         }
         Ok(true)
+    }
+
+    /// Whether player `p`'s technology `t` gives an effect this file runs (`FUN_1413ce9b0`): its
+    /// override's when it has one (the world's effect table `+0x128`, not held: only its own
+    /// effect is known), with the research's building as the effect's object (`FUN_1413cdcd0`'s
+    /// `param_4`, which the callers do not pass yet): an effect that reaches its object (an
+    /// enable for one building, an upgrade of the object, the object's kinds 203 to 206, a
+    /// disable of a building's own technology) would differ without it.
+    fn research_effect_known(&self, p: usize, t: usize) -> Result<(), Unsupported> {
+        let def = &self.techs[t];
+        let state = &self.players[p].techs[t];
+        let shared = |c: &EffectCommand| {
+            // FUN_1413d1020 tests the whole id
+            usize::try_from(crate::checkpoint::cvttss2si(c.d))
+                .ok()
+                .and_then(|d| self.techs.get(d))
+                .is_some_and(|d| d.kind == crate::tech::SHARED_KIND)
+        };
+        let reaches_object = def.effect.iter().any(|c| match c.kind {
+            kind::ENABLE => c.c == 1,
+            kind::UPGRADE => c.c == 2,
+            TECH_DISABLE => shared(c),
+            k => (kind::OBJECT_SET..=kind::OBJECT_UPGRADE).contains(&k),
+        });
+        if state.effect_override != -1 && state.effect_override != def.effect_id {
+            return Err(Unsupported("a technology's effect override"));
+        }
+        if reaches_object {
+            return Err(Unsupported(
+                "a research's effect on its building (FUN_1413cdcd0's param_4, not passed)",
+            ));
+        }
+        Ok(())
     }
 
     /// A completed building's technology `t` for player `p` (the end of `FUN_1411dbb70`'s
@@ -321,9 +360,9 @@ impl Turns {
     /// against `+0x260` is taken to hold). Without `one` building (a third argument of 1) and
     /// its object, the master's slot 0x58 (`FUN_141126280`) sets `available` unless it is
     /// `disabled` (the byte, held as its test against 0). The sprites' loading on an enable
-    /// (slot 0xa8) is not simulation. Not modelled: the enabling of master `0x26d` (it asks the
-    /// game's mode and settings) and a command for one building (`FUN_1411c69f0`,
-    /// `FUN_1411c6a50`: the building's list, not held).
+    /// (slot 0xa8) is not simulation. The enabling of master `0x26d` does nothing in game mode
+    /// 11; not modelled: its enabling in another mode (it asks a settings flag) and a command for
+    /// one building (`FUN_1411c69f0`, `FUN_1411c6a50`: the building's list, not held).
     fn enable_master(
         &mut self,
         p: usize,
@@ -336,6 +375,11 @@ impl Turns {
             return Ok(());
         }
         if enable == 1 && master == MODE_TESTED_MASTER {
+            // game mode 11 never enables it; any other asks a settings flag (their `+0x18`'s
+            // `+0x7c`, bit 1, FUN_141324b60), which is not held
+            if self.game_mode == MODE_WITHOUT_0X26D {
+                return Ok(());
+            }
             return Err(Unsupported(
                 "the enabling of master 0x26d (the game's mode)",
             ));
@@ -995,6 +1039,12 @@ fn build_points_after(points: f32, time: i16, change: Change, v: f32) -> f32 {
     }
 }
 
+/// `unit` lies within the player's master table (`0 <= unit < player+0x20`): the slice's
+/// [`Masters`] hold no count past their last master, which stands for the table's end.
+fn within_table(masters: &Masters, unit: i16) -> bool {
+    0 <= unit && masters.iter().any(|m| unit <= m.id)
+}
+
 /// The sprite attributes whose change shows on the objects after it (`FUN_140fde290`: 70 to 77,
 /// 82 to 91 and 131).
 const fn shows_sprite(attribute: u8) -> bool {
@@ -1021,7 +1071,9 @@ fn has_actions(u: &Unit) -> bool {
 impl Turns {
     /// Slot 0x148 (`FUN_1416121b0`) of player `p`: the hooks before (`FUN_141614f40` with 0),
     /// the change of attribute `attribute` by `v` on master `unit` or on the masters and
-    /// objects of class `class` ([`Turns::change_attribute`]), the hooks after (with 1).
+    /// objects of class `class` ([`Turns::change_attribute`]), the hooks after (with 1). A master
+    /// it reaches whose loader left the changed value unfilled ([`Master::unloaded_for`]) stops it
+    /// first.
     pub(crate) fn modify_attribute(
         &mut self,
         p: usize,
@@ -1031,6 +1083,13 @@ impl Turns {
         v: f32,
         attribute: u8,
     ) -> Result<(), Unsupported> {
+        if let Some(why) = self
+            .reached_masters(p, unit, class)
+            .iter()
+            .find_map(|&id| self.masters[p].get(id)?.unloaded_for(attribute))
+        {
+            return Err(Unsupported(why));
+        }
         self.effect_hooks(p, false, unit, class, attribute)?;
         self.change_attribute(p, change, unit, class, v, attribute)?;
         self.effect_hooks(p, true, unit, class, attribute)
@@ -1211,12 +1270,7 @@ impl Turns {
         let Some(masters) = self.masters.get(p) else {
             return Ok(());
         };
-        let table = masters
-            .iter()
-            .map(|m| i32::from(m.id) + 1)
-            .max()
-            .unwrap_or(0);
-        if 0 <= unit && i32::from(unit) < table {
+        if within_table(masters, unit) {
             return match masters.get(unit) {
                 Some(_) => self.change_master_attribute(p, change, unit, v, attribute),
                 None => Ok(()),
@@ -1253,15 +1307,29 @@ impl Turns {
         for id in pending {
             let _ = self.change_object(id, change, v, attribute)?;
         }
-        let ids: Vec<i16> = self.masters[p]
-            .iter()
-            .filter(|m| m.class == class)
-            .map(|m| m.id)
-            .collect();
-        for id in ids {
+        for id in self.reached_masters(p, unit, class) {
             self.change_one_master(p, id, change, v, attribute);
         }
         Ok(())
+    }
+
+    /// The masters of player `p` slot 0x148 changes ([`Turns::change_attribute`]): master `unit`
+    /// within the table (none for a null slot), else those of class `class`, by id.
+    fn reached_masters(&self, p: usize, unit: i16, class: i16) -> Vec<i16> {
+        let Some(masters) = self.masters.get(p) else {
+            return Vec::new();
+        };
+        if within_table(masters, unit) {
+            return masters.get(unit).map(|m| m.id).into_iter().collect();
+        }
+        if class < 0 {
+            return Vec::new();
+        }
+        masters
+            .iter()
+            .filter(|m| m.class == class)
+            .map(|m| m.id)
+            .collect()
     }
 
     /// `FUN_14165a400` with no object (`param_6` −1) of player `p`'s master `unit`: its objects
@@ -1837,10 +1905,7 @@ impl Turns {
             return self.complete_research(p, t, None);
         }
         let def = self.techs[t].clone();
-        let state = &self.players[p].techs[t];
-        if state.effect_override != -1 && state.effect_override != def.effect_id {
-            return Err(Unsupported("a technology's effect override"));
-        }
+        self.research_effect_known(p, t)?;
         self.do_effect(p, &def.effect, None)?;
         let owner = &self.players[p];
         let get = |k: i16| crate::tech::Attributes::get(owner, k);
@@ -2383,6 +2448,14 @@ mod tests {
             (s.speed, s.walk_speed, s.stand_speed),
             (speed, speed, speed)
         );
+        // a speed the loader left at 0 under the moving values stops the change first
+        t.masters[0].get_mut(4).unwrap().max_speed = 0.0;
+        assert!(
+            t.do_effect(0, &[attribute(5, -1, 4, 5, 1.1)], None)
+                .is_err()
+        );
+        let stats = t.players[0].objects[0].mover.as_ref().unwrap().stats;
+        assert_eq!(stats.speed, speed);
     }
 
     /// The resource commands (kind 1, `FUN_141620c70`): mode 0 sets the attribute, any other adds
@@ -2675,6 +2748,74 @@ mod tests {
                 .is_err()
         );
         assert_eq!(t.masters[0].get(82).unwrap().hit_points, 4800);
+    }
+
+    /// The enable command (`FUN_1416665b0`, kind 2): `available` takes the byte unless the master
+    /// is disabled; master 0x26d is never enabled in game mode 11.
+    #[test]
+    fn the_enable_command_sets_available_unless_disabled() {
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![Player::default()]);
+        let mut locked = combat(5, 6, 10);
+        locked.disabled = true;
+        t.masters = vec![Masters::new([
+            combat(4, 6, 10),
+            locked,
+            combat(0x26d, 3, 10),
+        ])];
+        t.do_effect(
+            0,
+            &[attribute(2, 4, 1, -1, 0.0), attribute(2, 5, 1, -1, 0.0)],
+            None,
+        )
+        .unwrap();
+        let available: Vec<bool> = t.masters[0].iter().map(|m| m.available).collect();
+        assert_eq!(available, [true, false, false]);
+        t.game_mode = 11;
+        t.do_effect(0, &[attribute(2, 0x26d, 1, -1, 0.0)], None)
+            .unwrap();
+        assert!(!t.masters[0].get(0x26d).unwrap().available);
+        t.game_mode = 0;
+        assert!(
+            t.do_effect(0, &[attribute(2, 0x26d, 1, -1, 0.0)], None)
+                .is_err()
+        );
+        t.do_effect(0, &[attribute(2, 4, 0, -1, 0.0)], None)
+            .unwrap();
+        assert!(!t.masters[0].get(4).unwrap().available);
+    }
+
+    /// A research whose effect reaches its building (the object `FUN_1413cdcd0` passes, which its
+    /// callers do not yet) stops before it changes anything; one with an effect override too.
+    #[test]
+    fn a_research_whose_effect_needs_its_building_stops() {
+        use crate::tech::{TechDef, TechState};
+        let state = TechState {
+            state: 2,
+            building_master: -1,
+            ..TechState::default()
+        };
+        let player = Player {
+            techs: vec![state.clone(), state],
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        let def = |effect| TechDef {
+            required: [-1; 6],
+            effect_id: 7,
+            effect,
+            ..TechDef::default()
+        };
+        t.techs = vec![
+            def(vec![attribute(204, 82, -1, 0, 1500.0)]),
+            def(vec![attribute(4, -1, 4, 0, 15.0)]),
+        ];
+        assert!(t.complete_research(0, 0, None).is_err());
+        assert_eq!(t.players[0].techs[0].state, 2);
+        t.players[0].techs[1].effect_override = 9;
+        assert!(t.complete_research(0, 1, None).is_err());
+        t.players[0].techs[1].effect_override = 7;
+        assert_eq!(t.complete_research(0, 1, None), Ok(true));
     }
 
     /// A technology whose requirement is researched and whose research takes no time at a
