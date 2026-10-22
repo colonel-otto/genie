@@ -1068,7 +1068,8 @@ impl Mover {
     fn look_ahead(&mut self, me: &Me, world: &Spatial) -> Result<bool, Unsupported> {
         let target = self.paths[0].target;
         let parent = &self.paths[1];
-        let at = vector(me.position);
+        // the motion step's place of the unit: +0x824, where it last moved to
+        let at = vector(self.moved_at);
         let last = parent.points.len() as i32 - 1;
         let from = parent.waypoint;
         let mut k = (from + 5).min(last);
@@ -1113,7 +1114,8 @@ impl Mover {
             return Ok(false);
         }
         let ignore = world.query_ignore(&[me.id, target]);
-        let (from, to) = self.query_ends(vector(me.position), p, world.map);
+        // the query starts at +0x824, where the unit last moved to
+        let (from, to) = self.query_ends(vector(self.moved_at), p, world.map);
         let grow = rx * STRAIGHT_GROW;
         world.check_known_records([
             from[0].min(to[0]) - grow,
@@ -1144,7 +1146,8 @@ impl Mover {
             return Ok(false);
         }
         let ignore = world.query_ignore(&[me.id, target]);
-        let (from, to) = self.query_ends(vector(me.position), p, world.map);
+        // the query starts at +0x824, where the unit last moved to
+        let (from, to) = self.query_ends(vector(self.moved_at), p, world.map);
         let rect = [
             from[0].min(to[0]),
             from[1].min(to[1]),
@@ -1944,59 +1947,65 @@ impl Mover {
         let mut list = vec![me.id];
         if target.is_some() {
             list.push(target_id);
-            if !self.is_moving() && me.action_state == 8 {
-                let grow = self.stats.radius[0] + RANGE_FLOOR;
-                let [x, y, _] = me.position;
-                let rect = [x, y, x, y];
-                world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
-                let t = target.ok_or(Unsupported("unreachable: a drop-off without its target"))?;
-                let owner = world.get(me.id).map(|p| p.player);
-                let r = self.stats.radius[0];
-                let mut blocked: Option<bool> = None;
-                for id in world.obstruction_candidates(rect, grow, &list) {
-                    let Some(p) = world.get(id) else { continue };
-                    let gait = world.gait(id);
-                    if gait.is_some_and(|g| g.moving) {
-                        continue;
-                    }
-                    // a worker whose path is this update's walks: it is passed
-                    if gait.and_then(|g| g.path_made) == Some(now) {
-                        continue;
-                    }
-                    // slot 0x4f0: a building's master with a task of action type 0x99
-                    // (FUN_1415c60b0), 0 for anything else
-                    let worker_building = matches!(p.class, 3 | 27 | 39 | 49 | 52)
-                        && world
-                            .task_0x99
-                            .get(p.player)
-                            .is_some_and(|m| m.contains(&p.master));
-                    if !matches!(p.class, 2 | 4 | 19 | 21) && !worker_building {
-                        continue;
-                    }
-                    let start_blocked = if let Some(b) = blocked {
-                        b
-                    } else {
-                        let b = self.start_blocked(world, plan, t, line)?;
-                        blocked = Some(b);
-                        b
-                    };
-                    if !start_blocked {
-                        continue;
-                    }
-                    let allied = owner.is_some_and(|o| {
-                        let relations = world.relations.get(p.player).map_or(&[][..], |r| &r[..]);
-                        crate::tasks::allied(relations, p.player, o, true)
-                    });
-                    let gap = footprint_gap_squared(p.position, p.radius, t.position, t.radius);
-                    if !allied || gap <= r * r {
-                        continue;
-                    }
-                    list.push(id);
-                }
-            }
         }
-        if self.paths.last().is_some_and(|top| top.created == now) {
+        // the unit's own list but itself, when the walked level's top path (`FUN_140f960f0`: a
+        // level holding a path) was made this update; before the drop-off workers
+        if self
+            .paths
+            .last()
+            .is_some_and(|top| top.has_path && top.created == now)
+        {
             list.extend(self.ignore_units.iter().filter(|&&id| id != me.id));
+        }
+        // the query runs for a unit that does not move (slot 0x5c8); a hit counts only with a
+        // target and the unit's action in state 8
+        if let Some(t) = target
+            && !self.is_moving()
+            && me.action_state == 8
+        {
+            let grow = self.stats.radius[0] + RANGE_FLOOR;
+            // the query's point: slot 0x520, +0x824
+            let [x, y, _] = self.moved_at;
+            let rect = [x, y, x, y];
+            world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
+            let owner = world.get(me.id).map(|p| p.player);
+            let r = self.stats.radius[0];
+            let skip = [me.id, target_id];
+            for id in world.obstruction_candidates(rect, grow, &skip) {
+                let Some(p) = world.get(id) else { continue };
+                let gait = world.gait(id);
+                if gait.is_some_and(|g| g.moving) {
+                    continue;
+                }
+                // a worker whose path is this update's walks: it is passed
+                if gait.and_then(|g| g.path_made) == Some(now) {
+                    continue;
+                }
+                // slot 0x4f0: a building's master with a task of action type 0x99
+                // (FUN_1415c60b0), 0 for anything else
+                let worker_building = matches!(p.class, 3 | 27 | 39 | 49 | 52)
+                    && world
+                        .task_0x99
+                        .get(p.player)
+                        .is_some_and(|m| m.contains(&p.master));
+                if !matches!(p.class, 2 | 4 | 19 | 21) && !worker_building {
+                    continue;
+                }
+                // FUN_140fa0110 runs for each such hit: its temporary shapes leave the mesh's
+                // free list reversed each time, so it is not run once for all
+                if !self.start_blocked(world, plan, t, line)? {
+                    continue;
+                }
+                let allied = owner.is_some_and(|o| {
+                    let relations = world.relations.get(p.player).map_or(&[][..], |r| &r[..]);
+                    crate::tasks::allied(relations, p.player, o, true)
+                });
+                let gap = footprint_gap_squared(p.position, p.radius, t.position, t.radius);
+                if !allied || gap <= r * r {
+                    continue;
+                }
+                list.push(id);
+            }
         }
         Ok(list)
     }
@@ -3167,6 +3176,44 @@ mod tests {
         }
     }
 
+    /// `FUN_14114ece0`: the unit, its target, then its own list but itself when the walked
+    /// level's top path holds a path made this update.
+    #[test]
+    fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
+        let world = world();
+        let mut pathing = Pathing::default();
+        let mut object = Well512::default();
+        let groups = crate::group::UnitGroups::default();
+        let mut plan = Planning {
+            pathing: &mut pathing,
+            now: 16360,
+            computer: false,
+            object: &mut object,
+            construction_rate: 1.0,
+            groups: &groups,
+        };
+        let me = Me {
+            id: 9177,
+            position: [28.0, 89.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let mut m = builder_9177();
+        m.ignore_units = vec![5, 9177, 6];
+        let house = *world.get(10028).unwrap();
+        let line = ([28.0, 0.0], [30.0, 0.0]);
+        let list = |m: &Mover, plan: &mut Planning<'_>| {
+            m.ignore_list(&me, &world, plan, Some(&house), 10028, line)
+        };
+        assert_eq!(list(&m, &mut plan), Ok(vec![9177, 10028, 5, 6]));
+        // a top level without a path, or a path of another update: none of the own list
+        m.paths[1].has_path = false;
+        assert_eq!(list(&m, &mut plan), Ok(vec![9177, 10028]));
+        m.paths[1].has_path = true;
+        m.paths[1].created = 16359;
+        assert_eq!(list(&m, &mut plan), Ok(vec![9177, 10028]));
+    }
+
     /// `FUN_14114ffc0` -> `FUN_140fa0370`: the reach test starts at +0x824, where the unit last
     /// moved to: a unit whose +0x824 lies off the map reaches nothing, whatever its place.
     #[test]
@@ -3351,6 +3398,7 @@ mod tests {
     fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
         // a cow at its level 0 waypoint (21.8, 92.2), its level 1 parent's waypoint 1 of three
         let mut m = builder_9177();
+        m.moved_at = [21.8, 92.2, 0.0];
         m.paths = vec![
             level(0, &[[21.5, 91.5], [21.8, 92.2], [25.15, 92.85]], 3),
             level(
@@ -3380,6 +3428,7 @@ mod tests {
         );
         // a tree in the way of both leaves the levels as they are
         let mut m = builder_9177();
+        m.moved_at = [21.8, 92.2, 0.0];
         m.paths = vec![
             level(0, &[[21.5, 91.5], [21.8, 92.2]], 3),
             level(1, &[[21.5, 91.5], [28.5, 93.5], [28.9, 94.1]], 0),
