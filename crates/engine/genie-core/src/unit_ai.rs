@@ -1475,14 +1475,18 @@ pub struct Unsupported(pub &'static str);
 enum Retarget {
     /// The base slot 73: the retarget check.
     Base,
-    /// An override that never reaches the check: villagers (8), livestock (19).
+    /// An override that never reaches the check: livestock (19, `0x140c21f20`: 9).
     Never,
+    /// The villagers' override (8, `0x140c21da0`, [`UnitAi::civilian_misc`]), which never
+    /// reaches the check either.
+    Civilian,
 }
 
 const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
     match ai_type {
         // villagers (0x140c21da0) and livestock (0x140c21f20) return 9 from slot 73
-        8 | 19 => Ok(Retarget::Never),
+        8 => Ok(Retarget::Civilian),
+        19 => Ok(Retarget::Never),
         // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), lion (5,
         // slot 72 FUN_140c1fb70), transport ship (11, slot 72 0x140c21d20), soldier (13, slot 72
         // FUN_140c20db0), tower (15, the base's slot 72 FUN_140c564c0), building (17, slot 72
@@ -2463,8 +2467,14 @@ impl UnitAi {
         }
         let ordered = fx.iter().any(|e| matches!(e, Effect::OrderOnTarget(_)));
         let mut retargeted = false;
-        if matches!(retarget, Retarget::Base) {
-            retargeted = self.retarget_check(world_time, computer, at, ai, ordered, &mut fx)?;
+        match retarget {
+            Retarget::Base => {
+                retargeted = self.retarget_check(world_time, computer, at, ai, ordered, &mut fx)?;
+            }
+            // with an order on a target taken, the game's slot 73 reads what the order's work
+            // gave the AI, which the caller runs after the update: the check is not run then
+            Retarget::Civilian if !ordered => self.civilian_misc(at, &mut fx)?,
+            Retarget::Civilian | Retarget::Never => {}
         }
         if ordered {
             self.idle_part_before_order(busy, at)?;
@@ -2840,7 +2850,9 @@ impl UnitAi {
             return Ok(());
         }
         match retarget {
-            Retarget::Never if working || moving || moving_to || moved => Ok(()),
+            Retarget::Never | Retarget::Civilian if working || moving || moving_to || moved => {
+                Ok(())
+            }
             // a move to an object: the retarget check passes over its target unless it is a
             // building, wall or trebuchet, whose search is not modelled
             Retarget::Base if moving || moving_to || scouting || following || attacking => Ok(()),
@@ -4822,6 +4834,22 @@ impl UnitAi {
         Err(Unsupported(
             "a unit AI's search for a better target (slot 0x538 with 9, then slot 0x520)",
         ))
+    }
+
+    /// The civilian's slot 73 (`FUN_140c21da0`, processMisc): on the attack order (700) without
+    /// a target (`+0x48` −1) the action stops and the order ends (slot 0xb0 with 0). A computer
+    /// player's villager whose player's `+0x622` is 1 also stops on the attack order or action
+    /// when its target, a player's object, is beyond its range plus 1 (`FUN_141193e30`), which
+    /// is not modelled: `+0x622` is not held. It returns 9 (no retarget).
+    fn civilian_misc(
+        &mut self,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        if self.current_order == ATTACK_ORDER && self.current_target == -1 {
+            self.stop_current(false, at, fx)?;
+        }
+        Ok(())
     }
 
     /// processMisc's follow order (`0x140c567c0`, "I have a follow order for Unit #%d"): a
@@ -8765,5 +8793,46 @@ mod tests {
         assert_eq!((u.current_order, u.last_order), (-1, PATROL_2));
         assert_eq!(u.secondary_timer, 750);
         assert_eq!(r.draws, 1);
+    }
+
+    /// The civilian's slot 73 (`FUN_140c21da0`): on the attack order without a target it stops
+    /// its action and ends the order (slot 0xb0 with 0: the state position takes its place);
+    /// with a target, or on another order, nothing.
+    #[test]
+    fn a_villager_on_the_attack_order_without_a_target_gives_it_up() {
+        let at = Surroundings {
+            position: [12.0, 13.0, 0.0],
+            class: 4,
+            ..Surroundings::default()
+        };
+        let mut u = UnitAi {
+            current_order: ATTACK_ORDER,
+            order_priority: 100,
+            current_action: ATTACK_ACTION,
+            ..idle(8)
+        };
+        let mut fx = Vec::new();
+        u.civilian_misc(&at, &mut fx).unwrap();
+        assert_eq!(fx, vec![Effect::Stop]);
+        assert_eq!(
+            (
+                u.current_order,
+                u.order_priority,
+                u.last_order,
+                u.current_action
+            ),
+            (-1, -1, ATTACK_ORDER, -1)
+        );
+        assert_eq!(u.state_position, [12.0, 13.0]);
+        for (order, target) in [(ATTACK_ORDER, 40), (BUILD_ORDER, -1)] {
+            let mut u = UnitAi {
+                current_order: order,
+                current_target: target,
+                ..idle(8)
+            };
+            let mut fx = Vec::new();
+            u.civilian_misc(&at, &mut fx).unwrap();
+            assert_eq!((fx.len(), u.current_order), (0, order));
+        }
     }
 }
