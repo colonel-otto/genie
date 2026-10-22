@@ -298,6 +298,19 @@ pub(crate) fn show_arrived(
     Ok(())
 }
 
+/// `FUN_1413b9f00` on the object's sprite list (`+0x148`, genie's: the unit's one sprite): the
+/// first instance of graphic `g` (a node's `+0x8`) goes back to its first frame (its slot 9 with
+/// `0x7fff`, [`ActiveSprite::reset_frame`]); false when the list holds none.
+pub(crate) const fn reset_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic) -> bool {
+    match sprite.as_mut() {
+        Some(sp) if sp.graphic.id == g.id => {
+            sp.reset_frame();
+            true
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mut Well512) {
     if sprite.is_some_and(|s| s.graphic.id == g.id) {
         return;
@@ -914,8 +927,9 @@ impl Attack {
             "an attacker without an attack or standing sprite",
         ))?;
         set_sprite(s.sprite, g, s.sprite_rng);
-        if let Some(sp) = s.sprite.as_mut() {
-            sp.reset_frame();
+        // FUN_1413b9f00 on the unit's sprite list with its sprite (`+0x140`)
+        if let Some(current) = s.sprite.map(|sp| sp.graphic) {
+            let _ = reset_sprite(s.sprite, current);
         }
         self.pending = true;
         let length = f32::from(g.frames) * g.frame_duration;
@@ -1455,8 +1469,8 @@ impl Attack {
                 .ok_or(Unsupported("a swing's end without a sprite to wait with"))?;
             let changed = sprite.graphic.id != g.id;
             set_sprite(s.sprite, g, s.sprite_rng);
-            if changed && let Some(sp) = s.sprite.as_mut() {
-                sp.reset_frame();
+            if changed && let Some(current) = s.sprite.map(|sp| sp.graphic) {
+                let _ = reset_sprite(s.sprite, current);
             }
             *s.anim_speed = Some(1.0);
         }
@@ -2023,6 +2037,35 @@ mod tests {
             }
         );
         assert_eq!(a.target, -1);
+    }
+
+    /// `FUN_1413b9f00`: the sprite of the graphic asked for goes back to its first frame (true);
+    /// another graphic's, or none, is left (false).
+    #[test]
+    fn a_sprite_resets_only_for_its_own_graphic() {
+        let swing = Graphic {
+            id: 224,
+            frames: 10,
+            facets: 8,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 1,
+        };
+        let other = Graphic { id: 225, ..swing };
+        let mut sprite = Some(ActiveSprite {
+            frame: 6,
+            last_frame: 5,
+            looped: true,
+            ..ActiveSprite::start(swing, &mut Well512::default())
+        });
+        let before = sprite;
+        assert!(!reset_sprite(&mut sprite, other));
+        assert_eq!(sprite, before);
+        assert!(reset_sprite(&mut sprite, swing));
+        let s = sprite.unwrap();
+        assert_eq!((s.frame, s.last_frame, s.looped), (0, 0, false));
+        assert!(!reset_sprite(&mut None, swing));
     }
 
     #[test]
