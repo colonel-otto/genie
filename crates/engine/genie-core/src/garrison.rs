@@ -4,6 +4,8 @@
 //! the garrison work on it (slot 0x7e8 with task filter 3); and a building's test whether it takes
 //! a unit in (`FUN_14120eb10`).
 
+use crate::checkpoint::cvttss2si;
+use crate::fmath::{at_most_or_unordered, maxss};
 use crate::masters::{Master, Masters, Task};
 use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_on};
 use crate::movement::footprint_gap_squared;
@@ -109,14 +111,19 @@ fn weapons_sum(weapons: &[(i16, i16)], counts: impl Fn(i16) -> bool) -> f32 {
 }
 
 /// `FUN_14120dc10`: the attack rate of an object of `master` (its reload powerup `+0xa28`
-/// taken off its reload): none without a reload or a range above 1; else the pierce and class 38
-/// amounts of its volley missile (a master its player has; not for classes 4 and 6), else its
-/// own melee, pierce, class 31 and 38 amounts, over the reload.
+/// taken off its reload): none without a reload or a range above 1 (an unordered one too);
+/// else the pierce and class 38 amounts of its volley missile (a master its player has; not for
+/// classes 4 and 6), else its own melee, pierce, class 31 and 38 amounts, over the reload.
 #[must_use]
 pub fn attack_rate(master: &Master, masters: &Masters, reload_powerup: f32) -> f32 {
-    if master.reload <= 0.0 || master.weapon_range <= RATE_RANGE {
+    // COMISS reload, 0 and COMISS range, 1.0, each with JBE
+    if at_most_or_unordered(master.reload, 0.0)
+        || at_most_or_unordered(master.weapon_range, RATE_RANGE)
+    {
         return 0.0;
     }
+    // the game reads the slot of an id below the player's master count without testing it: a
+    // null slot there would crash it, so a master the player has is the only case it runs
     let volley = master
         .volley_missile
         .and_then(|id| masters.get(id))
@@ -132,28 +139,41 @@ pub fn attack_rate(master: &Master, masters: &Masters, reload_powerup: f32) -> f
     sum / (master.reload - reload_powerup)
 }
 
+/// Whether the player's master table has a slot for `id` (`0 <= id < player+0x20`), as far as
+/// [`Masters`] knows it: up to its last master. The game's count can run past the last master
+/// with null slots, which [`Masters`] does not keep.
+fn in_table(masters: &Masters, id: i16) -> bool {
+    0 <= id && masters.iter().any(|m| id <= m.id)
+}
+
 /// `FUN_14120e1a0`: what a unit of `master` (its reload powerup `reload_powerup`) fires inside a
 /// building. A master's garrison firepower at most 0 is its magnitude; else the firepower times
-/// its rate: the pierce and class 38 amounts of its volley missile (else its missile; masters its
-/// player has) times its volley fire past one missile (in whole missiles), plus its own melee,
-/// pierce, class 31 and 38 amounts, over its reload (none at most 1e-7).
+/// its rate: the pierce and class 38 amounts of its volley missile (else its missile; the slot
+/// the player's table holds, nothing for a null one) times its volley fire past one missile (in
+/// whole missiles, `CVTTSS2SI`, the products wrapping), plus its own melee, pierce, class 31 and
+/// 38 amounts, over its reload (none at most 1e-7).
 #[must_use]
 pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32 {
     let g = master.garrison_firepower;
+    // COMISS 0, g; JC: an unordered firepower goes on
     if g <= 0.0 {
         return g.abs();
     }
-    let mut sum = 0.0;
+    let mut sum = 0.0f32;
+    // COMISS volley, 1.0; JBE: an unordered volley fire adds no missiles
     if ONE_MISSILE < master.volley_fire {
+        // the volley missile's slot when the table has one, else the missile's (an id out of
+        // the table gives none); a null slot or one without weapons adds nothing
         let missile = master
             .volley_missile
-            .and_then(|id| masters.get(id))
-            .or_else(|| masters.get(master.missile));
+            .filter(|&id| in_table(masters, id))
+            .map_or_else(|| masters.get(master.missile), |id| masters.get(id));
         if let Some(m) = missile {
-            let extra = (master.volley_fire - ONE_MISSILE) as i32;
+            let extra = cvttss2si(master.volley_fire - ONE_MISSILE);
             for &(class, amount) in &m.weapons {
                 if matches!(class, PIERCE | CLASS_38) {
-                    sum += (i32::from(amount) * extra) as f32;
+                    // IMUL EAX, R8D then CVTDQ2PS
+                    sum += i32::from(amount).wrapping_mul(extra) as f32;
                 }
             }
         }
@@ -171,10 +191,14 @@ pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32
     sum / reload * g
 }
 
+/// The kind of the master a transforming master names (`+0x656`): a combat unit's.
+const COMBAT_KIND: u8 = 70;
+
 /// `FUN_141213520`: the share of a building's volleys a unit of `master` inside it adds, against
-/// the building's attack rate `rate` ([`attack_rate`]): none against a rate of 0; 1 for class 42;
-/// else its [`firepower`] over the rate. A master whose object flags have bit 3 (the larger
-/// share of another master, `+0x656`) is not modelled.
+/// the building's attack rate `rate` ([`attack_rate`]): none against a rate of ±0 (`_fdclass`);
+/// 1 for class 42; else its [`firepower`] over the rate, at least the floor (`MAXSS`): 0, or for
+/// a master with object flag 3 the firepower over the rate of the master the flags' upper half
+/// names (`+0x656`, the `.dat`'s trait piece) when that one is of type 70.
 pub fn share(
     master: &Master,
     masters: &Masters,
@@ -187,12 +211,21 @@ pub fn share(
     if master.class == WHOLE_SHARE_CLASS {
         return Ok(1.0);
     }
+    let mut floor = 0.0;
     if master.object_flags & 8 != 0 {
-        return Err(Unsupported(
-            "a garrison share of a master with object flag 3 (+0x656's share)",
-        ));
+        // MOVZX of the ushort at +0x656; the game reads the slot without a test, so a null one
+        // would crash it: a master the player has is the only case it runs
+        let other = u16::try_from(master.object_flags >> 16).unwrap_or(u16::MAX);
+        if let Some(m) = i16::try_from(other).ok().and_then(|id| masters.get(id))
+            && m.kind == COMBAT_KIND
+        {
+            floor = firepower(m, masters, reload_powerup) / rate;
+        }
     }
-    Ok(firepower(master, masters, reload_powerup) / rate)
+    Ok(maxss(
+        firepower(master, masters, reload_powerup) / rate,
+        floor,
+    ))
 }
 
 impl Turns {
@@ -1360,5 +1393,184 @@ mod tests {
             ..villager
         };
         assert_eq!(firepower(&armed, &masters, 0.0), 0.75);
+    }
+
+    /// A town centre's master as `a_villager_inside_a_town_center_adds_one_missile_to_its_volleys`
+    /// has it.
+    fn town_center() -> Master {
+        Master {
+            id: 109,
+            kind: 80,
+            class: 3,
+            reload: 2.0,
+            weapon_range: 6.0,
+            weapons: vec![(3, 5)],
+            volley_missile: Some(54),
+            volley_fire: 1.0,
+            ..Master::default()
+        }
+    }
+
+    #[test]
+    fn an_attack_rate_needs_a_reload_and_a_range_that_compare_above_their_limits() {
+        // FUN_14120dc10: COMISS reload, 0 and COMISS range, 1.0, each with JBE: an unordered
+        // value gives no rate, as one at the limit does
+        let arrow = Master {
+            id: 54,
+            kind: 60,
+            weapons: vec![(3, 5), (4, 7), (38, 2)],
+            ..Master::default()
+        };
+        let masters = Masters::new([arrow, town_center()]);
+        assert_eq!(attack_rate(&town_center(), &masters, 0.0), 3.5);
+        for (reload, range) in [(f32::NAN, 6.0), (2.0, f32::NAN), (0.0, 6.0), (2.0, 1.0)] {
+            let tc = Master {
+                reload,
+                weapon_range: range,
+                ..town_center()
+            };
+            assert_eq!(attack_rate(&tc, &masters, 0.0).to_bits(), 0.0f32.to_bits());
+        }
+        // classes 4 and 6 sum their own melee, pierce, 31 and 38 amounts, not the missile's
+        let infantry = Master {
+            class: 6,
+            weapons: vec![(4, 4), (3, 1), (31, 2), (38, 1), (11, 9)],
+            ..town_center()
+        };
+        assert_eq!(attack_rate(&infantry, &masters, 0.5), 8.0 / 1.5);
+    }
+
+    #[test]
+    fn a_volley_missile_slot_the_table_holds_is_taken_even_when_it_is_empty() {
+        // FUN_14120e1a0: the volley missile when 0 <= id < the player's master count, else the
+        // missile; a null slot or one without weapons adds nothing, with no fallback
+        let missile = Master {
+            id: 50,
+            kind: 60,
+            weapons: vec![(3, 6)],
+            ..Master::default()
+        };
+        let volley = Master {
+            id: 54,
+            kind: 60,
+            weapons: vec![(3, 2), (38, 1), (4, 9)],
+            ..Master::default()
+        };
+        let unarmed = Master {
+            id: 55,
+            kind: 60,
+            ..Master::default()
+        };
+        let archer = |volley_missile| Master {
+            id: 4,
+            kind: 70,
+            reload: 2.0,
+            weapons: vec![(3, 4)],
+            missile: 50,
+            garrison_firepower: 1.0,
+            volley_fire: 3.0,
+            volley_missile,
+            ..Master::default()
+        };
+        let masters = Masters::new([missile, volley, unarmed]);
+        // (2 + 1) * 2 extra missiles, plus its own 4, over its reload 2
+        assert_eq!(firepower(&archer(Some(54)), &masters, 0.0), 5.0);
+        // no volley missile: the missile's (6 * 2 + 4) / 2
+        assert_eq!(firepower(&archer(None), &masters, 0.0), 8.0);
+        // a volley missile without weapons adds nothing
+        assert_eq!(firepower(&archer(Some(55)), &masters, 0.0), 2.0);
+        // a null slot of the player's table (id 52 below its last master) adds nothing either
+        assert_eq!(firepower(&archer(Some(52)), &masters, 0.0), 2.0);
+        // a negative id is no slot: the missile's
+        assert_eq!(firepower(&archer(Some(-2)), &masters, 0.0), 8.0);
+    }
+
+    #[test]
+    fn the_extra_missiles_truncate_and_multiply_as_the_game_does() {
+        // FUN_14120e1a0: CVTTSS2SI R8D gives i32::MIN past the i32 range, and IMUL EAX, R8D
+        // wraps: amount 1 adds -2^31, amount 2 adds 0
+        let volley = |amount| Master {
+            id: 54,
+            kind: 60,
+            weapons: vec![(3, amount)],
+            ..Master::default()
+        };
+        let tower = Master {
+            id: 79,
+            kind: 70,
+            reload: 1.0,
+            garrison_firepower: 1.0,
+            volley_fire: 1e10,
+            volley_missile: Some(54),
+            ..Master::default()
+        };
+        let masters = Masters::new([volley(1)]);
+        assert_eq!(firepower(&tower, &masters, 0.0), -2_147_483_648.0);
+        let masters = Masters::new([volley(2)]);
+        assert_eq!(firepower(&tower, &masters, 0.0), 0.0);
+        // the f32 truncation toward zero: 3.9 - 1 gives 2 extra missiles
+        let masters = Masters::new([volley(3)]);
+        let three = Master {
+            volley_fire: 3.9,
+            ..tower
+        };
+        assert_eq!(firepower(&three, &masters, 0.0), 6.0);
+    }
+
+    #[test]
+    fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_its_floor() {
+        // FUN_141213520: MAXSS(own / rate, floor), the floor 0.0 unless object flag 3 names (in
+        // its upper half, +0x656) a master of type 70: that master's firepower over the rate
+        let foot = Master {
+            id: 1120,
+            kind: 70,
+            class: 0,
+            reload: 2.0,
+            weapons: vec![(3, 2)],
+            garrison_firepower: 1.0,
+            object_flags: 8 | (1122 << 16),
+            ..Master::default()
+        };
+        let mounted = Master {
+            id: 1122,
+            kind: 70,
+            class: 36,
+            reload: 2.0,
+            weapons: vec![(3, 6)],
+            garrison_firepower: 1.0,
+            ..Master::default()
+        };
+        let masters = Masters::new([foot.clone(), mounted.clone()]);
+        // its own 1.0 against the other form's 3.0, over a rate of 2
+        assert_eq!(share(&foot, &masters, 0.0, 2.0), Ok(1.5));
+        // the other form's lower share leaves its own
+        assert_eq!(share(&mounted, &masters, 0.0, 2.0), Ok(1.5));
+        let reversed = Master {
+            object_flags: 8 | (1120 << 16),
+            ..mounted.clone()
+        };
+        assert_eq!(share(&reversed, &masters, 0.0, 2.0), Ok(1.5));
+        // a named master not of type 70, or none, gives the floor 0.0; flag 3 clear names none
+        let building = Master {
+            kind: 80,
+            ..mounted
+        };
+        let masters_80 = Masters::new([foot.clone(), building]);
+        assert_eq!(share(&foot, &masters_80, 0.0, 2.0), Ok(0.5));
+        let unflagged = Master {
+            object_flags: 1122 << 16,
+            ..foot.clone()
+        };
+        assert_eq!(share(&unflagged, &masters, 0.0, 2.0), Ok(0.5));
+        // a negative quotient and a NaN one give the floor 0.0
+        assert_eq!(share(&unflagged, &masters, 0.0, -2.0), Ok(0.0));
+        assert_eq!(share(&unflagged, &masters, 0.0, f32::NAN), Ok(0.0));
+        // _fdclass: a rate of ±0 gives +0.0; class 42 gives 1.0 whatever the rate
+        assert_eq!(share(&foot, &masters, 0.0, -0.0).map(f32::to_bits), Ok(0));
+        let relic_like = Master {
+            class: WHOLE_SHARE_CLASS,
+            ..foot
+        };
+        assert_eq!(share(&relic_like, &masters, 0.0, f32::NAN), Ok(1.0));
     }
 }
