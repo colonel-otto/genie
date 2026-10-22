@@ -1505,6 +1505,8 @@ const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
 
 /// The base idle timeout (`+0x168`) the constructor sets; the adjusted one is drawn around it.
 const IDLE_TIMEOUT: u32 = 3000;
+/// The tower's idle timeout (`FUN_140c12960`'s `FUN_140c41bc0` with 1000).
+const TOWER_IDLE_TIMEOUT: u32 = 1000;
 /// The villager class (`-0xea8` raw): a boar attacking one turns furious.
 const CLASS_VILLAGER: i16 = 4;
 /// The desired target distance (`+0x5c`) the constructor sets.
@@ -1667,7 +1669,8 @@ impl UnitAi {
     /// AI-stream values, in this order: the last retarget time `r % 500`, the adjusted idle timeout
     /// `r % 1500 + 2250` and the retarget timer `750 + r % 500`. The factory (`FUN_141215a90`)
     /// picks the type's constructor; the building's (17, `TribeBuildingUnitAIModule`
-    /// `0x140c11470`, whose cared classes are [`BUILDING_CARED`]) and the civilian's (8,
+    /// `0x140c11470`, whose cared classes are [`BUILDING_CARED`]), the tower's (15,
+    /// `FUN_140c12960`: its idle timeout 1000, a fourth draw for the adjusted one) and the civilian's (8,
     /// `TribeCivilianUnitAIModule` `0x140c115d0`, [`CIVILIAN_CARED`]) are modelled, both of which
     /// set the stance (`+0x1a9`) to 0 after the base's 3; for any other type nothing is drawn.
     pub const fn constructed(
@@ -1675,12 +1678,19 @@ impl UnitAi {
         position: [f32; 3],
         ai: &mut Well512,
     ) -> Result<Self, Unsupported> {
-        if !matches!(ai_type, 8 | 17) {
+        if !matches!(ai_type, 8 | 17 | TOWER_AI) {
             return Err(Unsupported("constructor of a unit-AI type not modelled"));
         }
         let last_retarget_time = ai.rand15() % 500;
-        let adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
+        let mut adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
         let retarget_timer = 750 + ai.rand15() % 500;
+        // the tower's (FUN_140c12960): FUN_140c41bc0(1000) sets its idle timeout, whose slot
+        // 0x1a8 draws its adjusted one again
+        let mut idle_timeout = IDLE_TIMEOUT;
+        if ai_type == TOWER_AI {
+            idle_timeout = TOWER_IDLE_TIMEOUT;
+            adjusted_idle_timeout = self::adjusted_idle_timeout(TOWER_IDLE_TIMEOUT, ai);
+        }
         Ok(Self {
             ai_type,
             current_order: -1,
@@ -1696,7 +1706,7 @@ impl UnitAi {
             last_target_type: -1,
             idle_timer: 0,
             adjusted_idle_timeout,
-            idle_timeout: IDLE_TIMEOUT,
+            idle_timeout,
             secondary_timer: 750,
             look_around_timer: 0,
             look_around_timeout: 1000,
@@ -6217,6 +6227,35 @@ mod tests {
                 commanded: false,
                 attackers: Vec::new(),
             }
+        );
+    }
+
+    /// The tower's unit AI (15, `TribeTowerUnitAIModule` `FUN_140c12960`, a town centre's with
+    /// its volley missile): the base's three draws, then `FUN_140c41bc0(1000)`: its idle timeout
+    /// 1000 and a fourth draw for its adjusted idle timeout (`r % 500 + 750`). records/428759682
+    /// update 2019: the town centre 8768 a 621's completion makes holds base 1000, adjusted 818.
+    #[test]
+    fn a_new_tower_unit_ai_draws_four_timers() {
+        let mut r = rng();
+        let ai = UnitAi::constructed(TOWER_AI, [54.0, 147.0, 0.0], &mut r).unwrap();
+        let mut expected = rng();
+        let (a, _, c, d) = (
+            expected.rand15(),
+            expected.rand15(),
+            expected.rand15(),
+            expected.rand15(),
+        );
+        assert_eq!(r.draws, 4);
+        assert_eq!(
+            (
+                ai.ai_type,
+                ai.last_retarget_time,
+                ai.retarget_timer,
+                ai.idle_timeout,
+                ai.adjusted_idle_timeout,
+                ai.stance,
+            ),
+            (TOWER_AI, a % 500, 750 + c % 500, 1000, d % 500 + 750, 0)
         );
     }
 
