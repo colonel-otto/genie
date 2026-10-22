@@ -305,6 +305,55 @@ pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mu
     *sprite = Some(ActiveSprite::start(g, rng));
 }
 
+/// A building's master type (`'P'`), whose main building (`+0xbb8`) an area effect attacks.
+const BUILDING: u8 = 80;
+/// The class an Attack does not take as its target (`-0xe70` raw, [`Attack::set_target`]).
+const CLASS_60: i16 = 60;
+
+/// An object as the Attack's slot 9 ([`Attack::work`]) and slot 0x68 ([`Attack::set_target`])
+/// read it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Mark {
+    /// The object.
+    pub id: i32,
+    /// Its master's type (80 a building).
+    pub kind: u8,
+    /// Its master's class.
+    pub class: i16,
+    /// Its state (`+0x640`).
+    pub state: u8,
+    /// Its place (decoded `x`, `y`, `z`).
+    pub position: [f32; 3],
+    /// Its master's radii on the ground, which the footprint gap (`FUN_14118f680`) reads.
+    pub radius: [f32; 2],
+}
+
+/// What the Attack's slot 9 ([`Attack::work`]) reads of its unit.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Wielder {
+    /// Its master's `area_effect_range` (`+0x82c`).
+    pub area_effect: f32,
+    /// Its top speed (slot 0x208).
+    pub speed: f32,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its master's radii on the ground.
+    pub radius: [f32; 2],
+}
+
+/// What the Attack's slot 9 or slot 0x68 leaves to its caller.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Worked {
+    /// Slot 9 took the target (its answer, 1).
+    pub kept: bool,
+    /// Slot 0x68 took another target: the unit's attack count (`+0x900`) clears.
+    pub clears_count: bool,
+    /// The old target, whose slot 0x180 lets the unit go when the world still holds it.
+    pub lets_go: Option<i32>,
+    /// The new target, whose slot 0x178 takes the unit with the action's type (9).
+    pub takes: Option<i32>,
+}
+
 /// What readyToAttack answers: ready to swing, waiting for the attack timer, or the target out of
 /// reach at this gap (the unit follows it).
 enum Readiness {
@@ -879,9 +928,11 @@ impl Attack {
         Ok(())
     }
 
-    /// Slot 9 (`FUN_140a841d0`) on `target`, the Attack's own target (an attacker with an area
-    /// effect would take a building's main building): one in states 4 to 7 or 11 keeps it as it
-    /// is. The range test of the other states (and the new target's) is not modelled.
+    /// Slot 9 (`FUN_140a841d0`) on `target`, the Attack's own target, for a caller that holds no
+    /// more of the unit and the target than the id (the work command's `keep_attack`): one in
+    /// states 4 to 7 or 11 keeps it as it is. The rest of the slot (the main building of an area
+    /// effect's building target, the range test, the new target) is [`Attack::work`]'s, which
+    /// needs the unit's and the target's values.
     pub const fn keeps(&self, target: i32) -> Result<bool, Unsupported> {
         if target == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
             return Ok(true);
@@ -889,6 +940,83 @@ impl Attack {
         Err(Unsupported(
             "an Attack's slot 9 on a target out of its states 4 to 7 and 11",
         ))
+    }
+
+    /// Slot 9 (`FUN_140a841d0`, `RGE_Action_Attack::work`) on `target`: none answers false. A
+    /// unit whose master has an area effect (`+0x82c` above 0: `COMISS`/`JBE`) takes a building's
+    /// (type 80) main building (`+0xbb8`, `main`) for it. The Attack's own target in states 4 to 7
+    /// or 11 is kept as it is (true). Else a unit without top speed (slot 0x208 equal to 0:
+    /// `UCOMISS`/`JZ`, so a NaN speed asks on) or whose unit AI's canMoveToAttack (slot 0x1d0,
+    /// `FUN_140c48420`, on the target's id: `can_move`) is false keeps it only within its reach:
+    /// the footprint gap (`FUN_14118f680`) at most the range (`+0x90`), half a tile more for a
+    /// range up to 0.1 (`COMISS`/`JA`: a NaN gap is within). Kept, the indirect fire flag
+    /// (`+0xa0`, which genie's Attacks never set) clears, the target becomes the Attack's (slot
+    /// 0x68, [`Attack::set_target`]) and where it was seen its place (`+0xa4`..`+0xac`); true.
+    pub fn work(
+        &mut self,
+        target: Option<Mark>,
+        main: Option<Mark>,
+        unit: &Wielder,
+        can_move: impl FnOnce(i32) -> bool,
+    ) -> Worked {
+        let Some(mut target) = target else {
+            return Worked::default();
+        };
+        if 0.0 < unit.area_effect
+            && target.kind == BUILDING
+            && let Some(m) = main
+        {
+            target = m;
+        }
+        if target.id == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
+            return Worked {
+                kept: true,
+                ..Worked::default()
+            };
+        }
+        if unit.speed == 0.0 || !can_move(target.id) {
+            let gap = footprint_gap(unit.position, unit.radius, target.position, target.radius);
+            if self.reach() < gap {
+                return Worked::default();
+            }
+        }
+        let mut worked = self.set_target(Some(target));
+        self.seen = target.position;
+        worked.kept = true;
+        worked
+    }
+
+    /// Slot 0x68 (`FUN_140a82a10`, `set_target_obj`): a target of class 60 (`-0xe70` raw) changes
+    /// nothing; another target than the Attack's clears the unit's attack count (`+0x900`); then
+    /// the action's own (`FUN_140a7a230`): a new target lets the old one go (its slot 0x180, when
+    /// the world still holds it: the caller's) unless the Attack is a sub-action (`+0x60`), and
+    /// becomes the Attack's (`+0x20`, its id `+0x30`) below state 7, taken (its slot 0x178 with
+    /// the action's type 9, the caller's) unless a sub-action; one in state 7 or more leaves the
+    /// Attack without a target (−1), as does none.
+    pub fn set_target(&mut self, target: Option<Mark>) -> Worked {
+        let mut worked = Worked::default();
+        if target.is_some_and(|t| t.class == CLASS_60) {
+            return worked;
+        }
+        let new = target.map_or(-1, |t| t.id);
+        if new != self.target {
+            worked.clears_count = true;
+        }
+        if self.target != -1 && self.target != new && !self.sub_action {
+            worked.lets_go = Some(self.target);
+        }
+        if self.target != new {
+            self.target = match target {
+                Some(t) if t.state < 7 => {
+                    if !self.sub_action {
+                        worked.takes = Some(t.id);
+                    }
+                    t.id
+                }
+                _ => -1,
+            };
+        }
+        worked
     }
 
     /// The update of an Attack whose target is gone (its target −1 after [`Attack::lost`]): the
@@ -1663,6 +1791,238 @@ mod tests {
             after_hit(false, 0.0, true, -1, 3, 9),
             Continue { check: false }
         );
+    }
+
+    /// A unit's own Attack on `target` in `state` with range `range`.
+    fn own_attack(target: i32, state: u8, range: f32) -> Attack {
+        Attack {
+            target,
+            target2: -1,
+            state,
+            timer: 0.0,
+            range,
+            min_range: 0.0,
+            point: [NONE; 3],
+            seen: [NONE; 3],
+            move_to: None,
+            move_wait: MoveWait::default(),
+            pending: false,
+            swing: 0.0,
+            rest: 0.0,
+            arms: Arms {
+                move_sprite: None,
+                sprite: None,
+                second_sprite: None,
+                idle_sprite: None,
+                idle_attack_sprite: None,
+                missile: -1,
+                fire_frame: 0,
+                interrupt_frame: -1,
+            },
+            sub_action: false,
+            repaths: false,
+            runs: true,
+        }
+    }
+
+    /// An object of class 9 in state 2 at `x` on the line y = 10, radii 0.2.
+    fn mark(id: i32, x: f32) -> Mark {
+        Mark {
+            id,
+            kind: 70,
+            class: 9,
+            state: 2,
+            position: [x, 10.0, 0.5],
+            radius: [0.2, 0.2],
+        }
+    }
+
+    /// A lion (speed 1.2, radii 0.4) at (10, 10) without an area effect.
+    const LION: Wielder = Wielder {
+        area_effect: 0.0,
+        speed: 1.2,
+        position: [10.0, 10.0, 0.0],
+        radius: [0.4, 0.4],
+    };
+
+    /// `FUN_140a841d0`: the Attack's own target in states 4 to 7 or 11 is kept as it is; in
+    /// another state a unit that may move takes it again: where it was seen becomes its place,
+    /// and the same target changes nothing else.
+    #[test]
+    fn an_attack_keeps_its_own_target_and_sees_it_again_out_of_its_moving_states() {
+        let deer = mark(7, 13.0);
+        for state in [4, 5, 6, 7, 11] {
+            let mut a = own_attack(7, state, 0.0);
+            let w = a.work(Some(deer), None, &LION, |_| panic!("no range test"));
+            assert_eq!(
+                w,
+                Worked {
+                    kept: true,
+                    ..Worked::default()
+                }
+            );
+            assert_eq!(a.seen, [NONE; 3], "{state}");
+        }
+        for state in [1, 2, 3, 13] {
+            let mut a = own_attack(7, state, 0.0);
+            let w = a.work(Some(deer), None, &LION, |id| id == 7);
+            assert_eq!(
+                w,
+                Worked {
+                    kept: true,
+                    ..Worked::default()
+                }
+            );
+            assert_eq!((a.target, a.seen), (7, deer.position), "{state}");
+        }
+        // none answers false
+        let mut a = own_attack(7, 1, 0.0);
+        assert_eq!(a.work(None, None, &LION, |_| true), Worked::default());
+    }
+
+    /// The range test of slot 9: a unit without speed, or whose unit AI may not move to attack,
+    /// keeps a target only within its reach (the range, half a tile more up to 0.1; the gap
+    /// between the footprints); a NaN speed asks the unit AI, a NaN gap is within (`JA`).
+    #[test]
+    fn an_attack_that_cannot_follow_keeps_a_target_only_in_reach() {
+        // the gap: 13 - 10 - (0.4 + 0.2) = 2.4
+        let deer = mark(7, 13.0);
+        let reach = |range: f32, speed: f32, can: bool| {
+            let mut a = own_attack(7, 1, range);
+            let unit = Wielder { speed, ..LION };
+            a.work(Some(deer), None, &unit, |_| can).kept
+        };
+        assert!(reach(0.0, 1.2, true));
+        assert!(!reach(2.0, 1.2, false));
+        assert!(!reach(2.0, 0.0, true));
+        assert!(reach(2.4, 0.0, true));
+        assert!(reach(2.5, 0.0, false));
+        // a range up to 0.1 reaches half a tile more: 0.1 + 0.5 against a gap of 0.6
+        let near = mark(7, 11.2);
+        let mut a = own_attack(7, 1, 0.1);
+        assert!(
+            a.work(Some(near), None, &Wielder { speed: 0.0, ..LION }, |_| true)
+                .kept
+        );
+        let mut a = own_attack(7, 1, 0.0);
+        let farther = mark(7, 11.3);
+        assert!(
+            !a.work(Some(farther), None, &Wielder { speed: 0.0, ..LION }, |_| {
+                true
+            })
+            .kept
+        );
+        // UCOMISS/JP: a NaN speed is not 0, so the unit AI decides
+        let mut asked = false;
+        let mut a = own_attack(7, 1, 0.0);
+        let unit = Wielder {
+            speed: f32::NAN,
+            ..LION
+        };
+        assert!(
+            a.work(Some(deer), None, &unit, |_| {
+                asked = true;
+                true
+            })
+            .kept
+        );
+        assert!(asked);
+        // COMISS/JA: a NaN gap does not lie beyond the reach
+        let lost = Mark {
+            position: [f32::NAN, 10.0, 0.0],
+            ..deer
+        };
+        let mut a = own_attack(7, 1, 0.0);
+        assert!(
+            a.work(Some(lost), None, &Wielder { speed: 0.0, ..LION }, |_| false)
+                .kept
+        );
+    }
+
+    /// An area effect's Attack takes a building's main building (`+0xbb8`): another target than
+    /// its own clears the unit's attack count, lets the old one go and takes the new one (an own
+    /// Attack; a sub-action does neither); a target in state 7 or more is not taken, and one of
+    /// class 60 changes nothing but where it was seen.
+    #[test]
+    fn an_area_effect_s_attack_takes_a_building_s_main_building() {
+        let annex = Mark {
+            kind: BUILDING,
+            class: 3,
+            ..mark(30, 11.0)
+        };
+        let main = Mark {
+            id: 31,
+            position: [12.0, 10.0, 0.0],
+            radius: [1.5, 1.5],
+            ..annex
+        };
+        let mangonel = Wielder {
+            area_effect: 1.0,
+            ..LION
+        };
+        let mut a = own_attack(30, 6, 0.0);
+        let w = a.work(Some(annex), Some(main), &mangonel, |id| id == 31);
+        assert_eq!(
+            w,
+            Worked {
+                kept: true,
+                clears_count: true,
+                lets_go: Some(30),
+                takes: Some(31),
+            }
+        );
+        assert_eq!((a.target, a.seen), (31, main.position));
+        // without an area effect the annex itself is the target, its own in state 6
+        let mut a = own_attack(30, 6, 0.0);
+        assert_eq!(
+            a.work(Some(annex), Some(main), &LION, |_| true),
+            Worked {
+                kept: true,
+                ..Worked::default()
+            }
+        );
+        // a sub-action lets go and takes nothing
+        let mut a = own_attack(30, 6, 0.0);
+        a.sub_action = true;
+        let w = a.work(Some(annex), Some(main), &mangonel, |_| true);
+        assert_eq!(
+            (w.lets_go, w.takes, w.clears_count, a.target),
+            (None, None, true, 31)
+        );
+        // a new target in state 7 or more leaves the Attack without one
+        let mut a = own_attack(30, 6, 0.0);
+        let dying = Mark { state: 7, ..main };
+        let w = a.work(Some(annex), Some(dying), &mangonel, |_| true);
+        assert_eq!((w.lets_go, w.takes, a.target), (Some(30), None, -1));
+        // class 60: slot 0x68 returns at once; the seen point still follows
+        let mut a = own_attack(7, 1, 0.0);
+        let odd = Mark {
+            class: CLASS_60,
+            ..mark(8, 10.5)
+        };
+        let w = a.work(Some(odd), None, &LION, |_| true);
+        assert_eq!(
+            (w, a.target, a.seen),
+            (
+                Worked {
+                    kept: true,
+                    ..Worked::default()
+                },
+                7,
+                odd.position
+            )
+        );
+        // slot 0x68 with none: the count clears and the old target goes
+        let mut a = own_attack(7, 1, 0.0);
+        assert_eq!(
+            a.set_target(None),
+            Worked {
+                clears_count: true,
+                lets_go: Some(7),
+                ..Worked::default()
+            }
+        );
+        assert_eq!(a.target, -1);
     }
 
     #[test]
