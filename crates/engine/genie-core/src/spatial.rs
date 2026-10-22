@@ -2366,7 +2366,9 @@ impl Spatial {
         mask: u8,
         ignore: &[i32],
     ) -> Result<bool, Unsupported> {
-        let Some(word) = self.tiles.word(point[0] as i32, point[1] as i32) else {
+        use crate::checkpoint::cvttss2si;
+        // CVTTSS2SI: a NaN or huge coordinate is i32::MIN, off the map
+        let Some(word) = self.tiles.word(cvttss2si(point[0]), cvttss2si(point[1])) else {
             return Ok(false);
         };
         if word & u64::from(mask ^ 0xff) != 0 {
@@ -2936,6 +2938,11 @@ mod tests {
         assert!(!s.point_clear_among(7, [4.5, 5.5], 0.1, 1, &[]).unwrap());
         assert!(s.point_clear_among(7, [4.5, 5.5], 0.1, 3, &[]).unwrap());
         assert!(!s.point_clear_among(7, [-0.5, 5.5], 0.1, 3, &[]).unwrap());
+        // CVTTSS2SI: a NaN coordinate is i32::MIN, off the map, not tile 0
+        assert!(
+            !s.point_clear_among(7, [f32::NAN, 5.5], 0.1, 1, &[])
+                .unwrap()
+        );
     }
 
     /// `FUN_1411570c0`'s query with its tile records: on a 10 by 10 map of terrain class 1 with
