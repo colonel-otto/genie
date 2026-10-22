@@ -21,11 +21,6 @@ const LOWER: f32 = crate::image::damage::LOWER;
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`), and the share of
 /// reflected damage above which a target reflects.
 const EPSILON: f32 = crate::image::damage::EPSILON;
-/// π, 2π and their negatives, which a facing wraps by (`FUN_14114eaa0`).
-const PI: f32 = crate::image::damage::PI;
-const MINUS_PI: f32 = crate::image::damage::MINUS_PI;
-const TWO_PI: f32 = crate::image::damage::TWO_PI;
-const MINUS_TWO_PI: f32 = crate::image::damage::MINUS_TWO_PI;
 /// A special attack and a retaliation need their attacker within 1.2 facets of where the target
 /// faces (`DAT_142ed66b4`, `DAT_142eb99e4`); the special attack takes the hit's damage to 0.66
 /// (`DAT_142f3855c`); a retaliation answers attackers of a weapon range below 0.2
@@ -285,23 +280,12 @@ pub fn facing_offset(at: [f32; 3], facing: Facing, other: [f32; 3]) -> f32 {
         return 0.0;
     }
     let n = if 7 < facing.facets { facing.facets } else { 8 };
-    let dx = other[0] - at[0];
-    let dy = other[1] - at[1];
-    if !(EPSILON < dx.abs() || EPSILON < dy.abs()) {
-        return 0.0;
-    }
-    let mut a = fmath::atan2(dy, dx);
-    if a < 0.0 {
-        a += TWO_PI;
-    }
-    a -= facing.angle;
-    if PI < a {
-        a += MINUS_TWO_PI;
-    }
-    if a < MINUS_PI {
-        a += TWO_PI;
-    }
-    (f32::from(n) / TWO_PI) * a
+    crate::facing::offset_in_facets(
+        other[0] - at[0],
+        other[1] - at[1],
+        facing.angle,
+        i32::from(n),
+    )
 }
 
 /// `FUN_1412623d0`: a charge (its master's `charge_target`, `+0x924`, one bit per group of
@@ -1132,6 +1116,8 @@ mod tests {
             ..facing
         };
         assert!((facing_offset(at, few, [10.0, 11.0, 0.0]) - 2.0).abs() < 1e-5);
+        // a NaN difference goes on to atan2f (COMISS/JC, JNC: unordered is not "within 1e-7")
+        assert!(facing_offset(at, facing, [f32::NAN, 10.0, 0.0]).is_nan());
         // behind wraps into −π..π, and no sprite or the same point gives 0
         let back = facing_offset(at, facing, [9.0, 9.999, 0.0]);
         assert!(7.9 < back.abs() && back.abs() <= 8.0);

@@ -90,9 +90,35 @@ pub fn cvttss2si(value: f32) -> i32 {
     }
 }
 
+/// `CVTTSS2SI` into a 64-bit register: f32 to i64, truncating toward zero. NaN and values
+/// outside the i64 range give `i64::MIN`; a caller that keeps the low 32 bits (`EAX`) wraps
+/// where [`cvttss2si`] would give `i32::MIN`.
+#[must_use]
+pub fn cvttss2si_64(value: f32) -> i64 {
+    if value.is_nan()
+        || !(-9_223_372_036_854_775_808.0..9_223_372_036_854_775_808.0).contains(&value)
+    {
+        i64::MIN
+    } else {
+        value as i64
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_64_bit_cvttss2si_keeps_the_low_word_past_the_i32_range() {
+        assert_eq!((cvttss2si_64(2.9), cvttss2si_64(-2.9)), (2, -2));
+        // 2^31 fits 64 bits; its low word is i32::MIN, 2^32 + 2^31 wraps the same way
+        assert_eq!(cvttss2si_64(2_147_483_648.0) as i32, i32::MIN);
+        assert_eq!(cvttss2si_64(6_442_450_944.0) as i32, i32::MIN);
+        assert_eq!(cvttss2si_64(4_294_967_296.0) as i32, 0);
+        for v in [f32::NAN, f32::INFINITY, -f32::INFINITY, 1.0e19] {
+            assert_eq!(cvttss2si_64(v), i64::MIN, "{v}");
+        }
+    }
 
     fn object() -> ObjectState {
         ObjectState {

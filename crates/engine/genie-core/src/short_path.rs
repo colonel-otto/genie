@@ -1466,7 +1466,8 @@ impl Search<'_> {
         }
         let fx = (g.at[0].wrapping_sub(p[0])) as f32 * TO_FLOAT;
         let fy = (g.at[1].wrapping_sub(p[1])) as f32 * TO_FLOAT;
-        let f = (fmath::sqrt(fx * fx + fy * fy) * TO_FIXED) as i32;
+        // CVTTSS2SI RAX at 0x140fa4558, EAX stored: a start 512 tiles or more away wraps
+        let f = crate::checkpoint::cvttss2si_64(fmath::sqrt(fx * fx + fy * fy) * TO_FIXED) as i32;
         let start = Node {
             g: 0,
             f,

@@ -104,6 +104,16 @@ impl Well512 {
         ((u64::from(self.raw()) * u64::from(n)) >> 32) as u32
     }
 
+    /// A step scaled to `0..n` that takes no step for `n` 0 (`FUN_140810fc0`): the draw counts
+    /// either way, then 0 for `n` 0, else [`Well512::below`]'s `step × n >> 32`; `last` stays.
+    pub fn below_checked(&mut self, n: u32) -> u32 {
+        if n == 0 {
+            self.draws = self.draws.wrapping_add(1);
+            return 0;
+        }
+        self.below(n)
+    }
+
     /// An index in `0..n` as the C++ library's `std::shuffle` draws it with the generator as its
     /// engine (MSVC `_Rng_from_urng`, 32 bits a step): a step, again while it falls in the last
     /// incomplete span of `n` (`step / n` is not below `u32::MAX / n`, unless `u32::MAX % n` is
@@ -277,6 +287,33 @@ mod tests {
         let ai: Vec<u32> = (0..3).map(|_| s.get(Stream::Ai).rand15()).collect();
         assert_eq!(world, [19550, 2220, 13198]);
         assert_eq!(ai, [16591, 22366, 24306]);
+    }
+
+    #[test]
+    fn a_draw_below_n_scales_the_step_by_n() {
+        // FUN_140810cb0: step × n >> 32
+        let (mut a, mut b) = (Well512::default(), Well512::default());
+        a.set_seed(0);
+        b.set_seed(0);
+        let step = b.raw();
+        assert_eq!(a.below(360), ((u64::from(step) * 360) >> 32) as u32);
+        assert_eq!(a.below(0), 0);
+        assert_eq!(a.draws, 2);
+    }
+
+    #[test]
+    fn a_checked_draw_below_zero_counts_the_draw_but_takes_no_step() {
+        // FUN_140810fc0: the draw count +1, then 0 for n 0 with the state left alone; any other
+        // n is FUN_140810cb0's draw
+        let (mut a, mut b) = (Well512::default(), Well512::default());
+        a.set_seed(7);
+        b.set_seed(7);
+        assert_eq!(a.below_checked(0), 0);
+        assert_eq!(a.draws, 1);
+        assert_eq!(a.state, b.state);
+        assert_eq!(a.below_checked(360), b.below(360));
+        assert_eq!((a.draws, b.draws), (2, 1));
+        assert_eq!(a.state, b.state);
     }
 
     #[test]

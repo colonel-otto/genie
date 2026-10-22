@@ -134,10 +134,15 @@ pub fn facets_to(at: [f32; 2], angle: f32, to: [f32; 2], s: Option<SpriteFacets>
     let Some(s) = s.filter(|s| 0 < s.count) else {
         return 0.0;
     };
-    let n = at_least_eight(s);
-    let dx = to[0] - at[0];
-    let dy = to[1] - at[1];
-    if !(EPSILON < dx.abs() || EPSILON < dy.abs()) {
+    offset_in_facets(to[0] - at[0], to[1] - at[1], angle, at_least_eight(s))
+}
+
+/// `FUN_14114eaa0`'s body for `n` facets: the difference `dx`, `dy` within 1e-7 on both axes
+/// gives 0; any other, NaN included, goes on to the angle.
+#[must_use]
+pub fn offset_in_facets(dx: f32, dy: f32, angle: f32, n: i32) -> f32 {
+    // COMISS/JC at 0x14114ec3e and JNC at 0x14114ec5e: an unordered difference is not within
+    if dx.abs() <= EPSILON && dy.abs() <= EPSILON {
         return 0.0;
     }
     let mut a = fmath::atan2(dy, dx);
@@ -229,6 +234,16 @@ mod tests {
         count: 16,
         flag_1: true,
     };
+
+    #[test]
+    fn an_unordered_difference_goes_on_to_the_angle() {
+        // COMISS/JC at 0x14114ec3e, JNC at 0x14114ec5e: a NaN difference is not "within 1e-7",
+        // so atan2f gives NaN; the same point (within 1e-7) still gives 0
+        let at = [10.0, 10.0];
+        assert!(facets_to(at, 0.0, [f32::NAN, 10.0], Some(VILLAGER)).is_nan());
+        assert!(facets_to(at, 0.0, [10.0, f32::NAN], Some(VILLAGER)).is_nan());
+        assert_eq!(facets_to(at, 0.0, [10.0, 10.0], Some(VILLAGER)), 0.0);
+    }
 
     #[test]
     fn a_forward_vector_takes_its_facet_and_the_facet_its_angle() {

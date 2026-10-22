@@ -193,7 +193,7 @@ impl Fly {
     fn choose(&mut self, sky: Sky<'_>) -> Result<bool, Unsupported> {
         let t = self.task;
         let leash = f32::from(t.holding_attr) * f32::from(t.holding_attr);
-        let mut angle = sky.action.below(360) as i32;
+        let mut angle = sky.action.below_checked(360) as i32;
         let factor = if t.work_val1 < EPSILON {
             1.0
         } else {
@@ -352,7 +352,7 @@ mod tests {
         r.set_seed(7);
         let mut e = r.clone();
         let _ = fly.update(walk(&mut world), sky(&mut r)).unwrap();
-        let angle = e.below(360) as i32;
+        let angle = e.below_checked(360) as i32;
         let d = 1.32 * (10.0f32 - 0.021) * 1.0;
         let theta = angle as f32 * DEGREE;
         let (c, s) = (cos(theta), sin(theta));

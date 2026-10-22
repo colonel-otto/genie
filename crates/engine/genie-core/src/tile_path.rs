@@ -157,15 +157,18 @@ fn point_at(path: &Path, index: i32) -> Vec3 {
         .unwrap_or([0.0; 3])
 }
 
-/// `FUN_140f761b0` and the stretch of `FUN_140f7dbb0`: the `between` points from `first` to
-/// `last` replaced by evenly spaced points at most 7.5 apart on the straight line (through the
-/// path's own insert, which keeps no two equal points together); returns how many fewer points
-/// lie between them now.
-fn straighten(path: &mut Path, first: i32, last: i32, between: i32) -> i32 {
+/// `FUN_140f761b0`: the points between `first` and `last` replaced by evenly spaced points at
+/// most 7.5 apart on the straight line (through the path's own insert, which keeps no two equal
+/// points together); returns how many fewer points lie between them now, 0 with none between.
+fn straighten(path: &mut Path, first: i32, last: i32) -> i32 {
+    let between = (last - first) - 1;
+    if between < 1 {
+        return 0;
+    }
     let a = point_at(path, first);
     let d = fmath::sub(point_at(path, last), a);
     let length = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-    let steps = (length / SMOOTH_STEP) as i32;
+    let steps = crate::checkpoint::cvttss2si(length / SMOOTH_STEP);
     let fewer = between - steps;
     let at = (first + 1) as usize;
     if fewer < 0 {
@@ -215,14 +218,14 @@ pub fn smooth<E>(
                 first = probe - 1;
                 next = probe + 1;
             } else {
-                let fewer = straighten(path, first, probe - 1, between);
+                let fewer = straighten(path, first, probe - 1);
                 first = (probe - 1) - fewer;
                 next = first + 2;
             }
         } else {
             next = probe + 1;
-            if next as usize == path.points.len() && 0 < (probe - first) - 1 {
-                let _ = straighten(path, first, probe, (probe - first) - 1);
+            if next as usize == path.points.len() {
+                let _ = straighten(path, first, probe);
             }
         }
         probe = next;
@@ -1668,6 +1671,21 @@ mod tests {
         assert!(path.push([4.0, 0.0, 6.0]));
         path.measure();
         assert_eq!(path.length, 5.0);
+    }
+
+    /// `FUN_140f761b0` with fewer than one point between `first` and `last`: no change, 0 fewer.
+    #[test]
+    fn a_stretch_without_points_between_is_left_as_it_is() {
+        let mut path = Path {
+            points: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [30.0, 0.0, 0.0]],
+            length: 0.0,
+        };
+        let before = path.points.clone();
+        assert_eq!(straighten(&mut path, 0, 1), 0);
+        assert_eq!(straighten(&mut path, 1, 1), 0);
+        assert_eq!(path.points, before);
+        // two apart: one point between, the line 30 long takes four points at 7.5 apart: 3 more
+        assert_eq!(straighten(&mut path, 0, 2), -3);
     }
 
     /// MarvinBlue/426048731's 9520 in update 758 (the probe's log): the search's twelve tile

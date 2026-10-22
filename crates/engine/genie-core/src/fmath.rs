@@ -80,7 +80,7 @@ pub fn normalize(v: Vec3) -> Vec3 {
 }
 
 /// The angle between two unit vectors (`FUN_14087e650`): π/2 when their dot product is below
-/// 1e-7 in size, 0 from 1 up, π from -1 down, else its arc cosine.
+/// 1e-7 in size, 0 from 1 up, π from -1 down, else its arc cosine (a NaN dot included).
 #[must_use]
 pub fn angle_between(a: Vec3, b: Vec3) -> f32 {
     let d = dot(a, b);
@@ -88,10 +88,11 @@ pub fn angle_between(a: Vec3, b: Vec3) -> f32 {
         std::f32::consts::FRAC_PI_2
     } else if d >= 1.0 {
         0.0
-    } else if d > -1.0 {
-        acos(d)
-    } else {
+    } else if d <= -1.0 {
         std::f32::consts::PI
+    } else {
+        // COMISS -1, d; JC at 0x14087e6ed: an unordered dot goes on to acosf
+        acos(d)
     }
 }
 
@@ -138,9 +139,46 @@ pub fn atan2(y: f32, x: f32) -> f32 {
     libm::atan2f(y, x)
 }
 
+/// `MINSS a, b`: `a` when it is less than `b`, else `b` (also when either is NaN).
+#[must_use]
+pub fn minss(a: f32, b: f32) -> f32 {
+    if a < b { a } else { b }
+}
+
+/// `MAXSS a, b`: `a` when it is greater than `b`, else `b` (also when either is NaN).
+#[must_use]
+pub fn maxss(a: f32, b: f32) -> f32 {
+    if a > b { a } else { b }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn minss_and_maxss_take_the_second_operand_when_either_is_nan() {
+        assert_eq!((minss(1.0, 2.0), minss(2.0, 1.0)), (1.0, 1.0));
+        assert_eq!((maxss(1.0, 2.0), maxss(2.0, 1.0)), (2.0, 2.0));
+        assert_eq!(minss(f32::NAN, 2.0), 2.0);
+        assert!(minss(2.0, f32::NAN).is_nan());
+        assert_eq!(maxss(f32::NAN, 2.0), 2.0);
+        assert!(maxss(2.0, f32::NAN).is_nan());
+    }
+
+    #[test]
+    fn the_angle_between_unit_vectors_follows_the_games_compares() {
+        // FUN_14087e650: |d| below 1e-7 gives π/2, 1 and up 0, -1 and down π, else acosf; a NaN
+        // dot falls through all three unordered compares (JBE, JC, JC) to acosf(NaN)
+        let x = [1.0, 0.0, 0.0];
+        assert_eq!(
+            angle_between(x, [0.0, 0.0, 1.0]),
+            std::f32::consts::FRAC_PI_2
+        );
+        assert_eq!(angle_between(x, x), 0.0);
+        assert_eq!(angle_between(x, [-1.0, 0.0, 0.0]), std::f32::consts::PI);
+        assert_eq!(angle_between(x, [0.5, 0.0, 0.0]), acos(0.5));
+        assert!(angle_between(x, [f32::NAN, 0.0, 0.0]).is_nan());
+    }
 
     /// `FUN_14087e710`: (3, 4, 0) lies 4 from the x axis, whatever the direction's length.
     #[test]

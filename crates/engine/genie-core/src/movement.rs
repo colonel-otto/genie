@@ -271,15 +271,13 @@ const PUSHED: f32 = crate::image::movement::PUSHED;
 fn overlap(a: Vec3, [ar, ad]: [f32; 2], b: Vec3, [br, bd]: [f32; 2]) -> f32 {
     let (ax1, ax0, ay0, ay1) = (a[0] + ar, a[0] - ar, a[2] - ad, a[2] + ad);
     let (by0, by1, bx0, bx1) = (b[2] - bd, b[2] + bd, b[0] - br, b[0] + br);
-    if bx0 < ax1 && ax0 < bx1 && by0 < ay1 && ay0 < by1 {
-        let x1 = if bx1 <= ax1 { bx1 } else { ax1 };
-        let x0 = if ax0 <= bx0 { bx0 } else { ax0 };
-        let y1 = if by1 <= ay1 { by1 } else { ay1 };
-        let y0 = if ay0 <= by0 { by0 } else { ay0 };
-        if y1 - y0 <= x1 - x0 { y1 - y0 } else { x1 - x0 }
-    } else {
-        0.0
+    // COMISS/JNC at 0x1411615fd..0x141161610: only an ordered `>=` leaves, a NaN goes on
+    if bx0 >= ax1 || ax0 >= bx1 || by0 >= ay1 || ay0 >= by1 {
+        return 0.0;
     }
+    let x = fmath::minss(ax1, bx1) - fmath::maxss(ax0, bx0);
+    let y = fmath::minss(ay1, by1) - fmath::maxss(ay0, by0);
+    fmath::minss(x, y)
 }
 
 /// How far level 0's look ahead reaches on its parent's path, squared (`DAT_14330ebcc`).
@@ -3099,6 +3097,15 @@ mod tests {
         let d = overlap(a, [0.5, 0.5], b, [0.5, 0.5]);
         assert_eq!(d, (21.8f32 + 0.5) - (22.5 - 0.5));
         assert_eq!(overlap(a, [0.2, 0.2], b, [0.2, 0.2]), 0.0);
+        // a NaN goes past the four tests (COMISS/JNC) into MINSS/MAXSS, whose second operand wins
+        let nan = overlap([f32::NAN, 0.0, 92.2], [0.5, 0.5], b, [0.5, 0.5]);
+        assert_eq!(
+            nan,
+            fmath::minss(
+                (22.5f32 + 0.5) - (22.5 - 0.5),
+                (91.5f32 + 0.5) - (92.2 - 0.5)
+            )
+        );
     }
 
     #[test]
