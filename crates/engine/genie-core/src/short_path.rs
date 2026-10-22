@@ -329,6 +329,20 @@ struct Sweep {
     side: Option<u8>,
 }
 
+impl Sweep {
+    /// The counted shape with the last hit's side and point: a sweep that counts a shape has
+    /// written a point and a side by then (the hit that counts writes them first).
+    fn counted(&self) -> Option<(u32, u8, Point)> {
+        if !self.found {
+            return None;
+        }
+        let (Some(shape), Some(side), Some(at)) = (self.shape, self.side, self.point) else {
+            unreachable!("a counting hit writes its point and side before it counts");
+        };
+        Some((shape, side, at))
+    }
+}
+
 /// The raycast's callbacks (`FUN_140fa1f60`, `FUN_140fa2180`, `FUN_140fa2850`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Callback {
@@ -1049,7 +1063,7 @@ impl Search<'_> {
         shape: &mut u32,
         u: &mut i32,
         steps: i32,
-    ) -> Result<i32, Unsupported> {
+    ) -> i32 {
         let b = self.bounds;
         let w = side.wrapping_sub(1) & 3;
         let (target, dir) = match w {
@@ -1060,7 +1074,7 @@ impl Search<'_> {
         };
         let sw = self.ctx.sweep(*pos, target, dir);
         let u_new = Self::along(*pos, w);
-        if !sw.found {
+        let Some((hid, hs, hp)) = sw.counted() else {
             if steps == 0 {
                 *first = target;
             }
@@ -1068,12 +1082,7 @@ impl Search<'_> {
             *shape = NONE;
             *side = w;
             *pos = target;
-            return Ok(1);
-        }
-        let (Some(hp), Some(hs), Some(hid)) = (sw.point, sw.side, sw.shape) else {
-            return Err(Unsupported(
-                "a border walk whose sweep left its outputs unwritten",
-            ));
+            return 1;
         };
         if steps == 0 {
             *first = hp;
@@ -1082,7 +1091,7 @@ impl Search<'_> {
         *shape = hid;
         *side = u32::from(hs);
         *pos = hp;
-        Ok(0)
+        0
     }
 
     /// `FUN_140fa8fa0`: trace the outline of the cluster of touching shapes from shape `shape0`'s
@@ -1208,7 +1217,7 @@ impl Search<'_> {
                         continue 'segment;
                     }
                     let r = self
-                        .border_walk(&mut pos, &mut first, &mut side, &mut shape, &mut u, steps)?;
+                        .border_walk(&mut pos, &mut first, &mut side, &mut shape, &mut u, steps);
                     if r == 0 {
                         break;
                     }
@@ -1935,12 +1944,7 @@ impl Search<'_> {
         let dy = t[1].wrapping_sub(p[1]);
         let m = [t[0], p[1]];
         let sw = self.ctx.sweep(p, m, if 0 < dx { 1 } else { 3 });
-        if sw.found {
-            let (Some(shape), Some(side), Some(at)) = (sw.shape, sw.side, sw.point) else {
-                return Err(Unsupported(
-                    "a sweep that counted a shape without its outputs",
-                ));
-            };
+        if let Some((shape, side, at)) = sw.counted() {
             let g = n.g.wrapping_add(float_distance(p, at));
             self.side_node(g, n.idx, shape, side, at);
             return Ok(());
