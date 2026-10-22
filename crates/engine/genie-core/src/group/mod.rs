@@ -189,6 +189,32 @@ impl WorldObject<'_> {
         }
     }
 
+    /// Its id (`+0x8`).
+    pub(crate) const fn id(&self) -> i32 {
+        match *self {
+            Self::Unit(_, u) => u.id,
+            Self::Ghost(_, g) => g.id,
+        }
+    }
+
+    /// Its place: x, y, z (`+0x3c8`, `+0x4c8`, `+0x5a8`).
+    pub(crate) const fn position(&self) -> crate::fmath::Vec3 {
+        match *self {
+            Self::Unit(_, u) => u.position,
+            Self::Ghost(_, g) => g.position,
+        }
+    }
+
+    /// Whether it is a moving object (`RGE_Moving_Object` and its subclasses, types 30 and up,
+    /// whose movement state the slice holds): their slot 0x270 is `FUN_141158940`, a static,
+    /// animated or doppelganger object's `FUN_141071e30` (0).
+    pub(crate) const fn moves(&self) -> bool {
+        match *self {
+            Self::Unit(_, u) => u.mover.is_some(),
+            Self::Ghost(..) => false,
+        }
+    }
+
     /// Slot 0x520, where it last moved to as the game's vector (x, height, y): a moving
     /// object's `+0x824` ([`crate::group::motion::moved_vector`]), any other's place
     /// (`FUN_141196c10`, a ghost's too).

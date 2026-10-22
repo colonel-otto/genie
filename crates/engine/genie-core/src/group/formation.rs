@@ -1135,14 +1135,12 @@ impl crate::turn::Turns {
     /// [`RIGHT_ANGLE`] with fewer than two sub-formations takes the units anew: every slot of
     /// the array loses its unit and its filled mark and the slots take their units (from the
     /// previous column, [`Turns::from_previous_column`], for `column_to_line`, else the closest,
-    /// [`Turns::populate_slots`]). The slots' passability against the group's lead (`+0xc4`,
-    /// else the first active slot's unit) is not modelled. Returns whether the slots took their
-    /// units anew (`*param_3`).
+    /// [`Turns::populate_slots`]). Then the slots' passability ([`Turns::passable_slots`]).
+    /// Returns whether the slots took their units anew (`*param_3`).
     ///
     /// # Errors
     ///
-    /// A formation line past the lines' array, a held lead or slot unit (the passability), and
-    /// the routines it runs.
+    /// A formation line past the lines' array, and the routines it runs.
     pub fn formation_transform(
         &self,
         formation: &mut Formation,
@@ -1239,8 +1237,9 @@ impl crate::turn::Turns {
     }
 
     /// `FormationTransform`'s passability (`FUN_14103a1f0` after the transform) of `formation`
-    /// for group `g`, tested with the group's lead (`FUN_1410465d0`), else the first active slot's
-    /// unit the world holds (none: nothing). The slots' places are their transform positions
+    /// for group `g`, tested with the object of the group's lead ([`Turns::lead_object`], the
+    /// lead -1 the world's object -1), else that of the first active slot's unit the world's
+    /// table holds ([`Turns::world_object`], an empty slot's -1 too; none: nothing). The slots' places are their transform positions
     /// (`+0x1c`, the save's `mTransformPosition`). At the first active slot whose place's tile
     /// the tester cannot stand on (`FUN_141185690`, [`crate::spatial::Spatial::standable`] with
     /// its master's terrain mask): the active slot nearest the group's place (3D) must be
@@ -1273,17 +1272,17 @@ impl crate::turn::Turns {
     /// Never: an active slot was found, so the nearest one is too (its distance is finite).
     #[allow(clippy::too_many_lines)]
     fn passable_slots(&self, formation: &mut Formation, g: &UnitGroup) -> Result<(), Unsupported> {
-        let tester = self.object(g.motion.lead).or_else(|| {
+        let tester = self.lead_object(&g.motion).or_else(|| {
             formation
                 .slots
                 .iter()
                 .filter(|s| s.active != 0)
-                .find_map(|s| self.object(s.unit_id))
+                .find_map(|s| self.world_object(s.unit_id))
         });
-        let Some((tp, tester)) = tester else {
+        let Some(tester) = tester else {
             return Ok(());
         };
-        let mask = self.master_mask(tp, tester.life.master_id)?;
+        let mask = self.master_mask(tester.player(), tester.master_id())?;
         let stands = |at: Vec3| self.spatial.standable(at[0] as i32, at[2] as i32, mask);
         let position = g.motion.position[0];
         let n = formation.slots.len();
@@ -1294,7 +1293,7 @@ impl crate::turn::Turns {
             return Ok(());
         };
         // the active slot nearest the group's place, and the box around the tester and them
-        let at = moved_vector(tester);
+        let at = tester.moved_vector();
         let (mut min_x, mut min_z, mut max_x, mut max_z) = (PASS_FAR, PASS_FAR, 0.0f32, 0.0f32);
         let mut best = FARTHEST;
         let mut nearest = None;
@@ -1392,12 +1391,13 @@ impl crate::turn::Turns {
         let mut visited = vec![0u8; (w * h).max(0) as usize];
         for &u in &unreachable {
             visited.fill(0);
-            let Some((up, unit)) = self.object(formation.slots[u].unit_id) else {
+            let Some(unit) = self.world_object(formation.slots[u].unit_id) else {
                 continue;
             };
-            let unit_mask = self.master_mask(up, unit.life.master_id)?;
-            let gx = (unit.position[0] - ox as f32) as i32;
-            let gy = (unit.position[1] - oz as f32) as i32;
+            let unit_mask = self.master_mask(unit.player(), unit.master_id())?;
+            let unit_at = unit.position();
+            let gx = (unit_at[0] - ox as f32) as i32;
+            let gy = (unit_at[1] - oz as f32) as i32;
             let mut found: Option<(i32, i32, usize)> = None;
             if 0 <= gx && 0 <= gy && gx < w && gy < h {
                 let mut queue = vec![(gx, gy)];
@@ -1465,7 +1465,7 @@ impl crate::turn::Turns {
                 let b = grid[cell];
                 if b & 0x3e < 0xb
                     && !self.spatial.still_line_hit(
-                        [unit.position[0], unit.position[1]],
+                        [unit_at[0], unit_at[1]],
                         [(ddx + fx) as f32 + PASS_HALF, (fy + ddy) as f32 + PASS_HALF],
                         temporary,
                         &members,
@@ -1496,7 +1496,7 @@ const fn count_up(b: u8) -> u8 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// `FUN_14102d580` copies a slot in use without its transform mark (`+0x44`).
@@ -1886,6 +1886,81 @@ mod tests {
         f.slots = vec![slot_at([12.5, 0.0, 5.5], 1)];
         t.passable_slots(&mut f, &g).unwrap();
         assert_eq!(f.slots[0].transform_position, [12.5, 0.0, 5.5]);
+    }
+
+    /// A ghost of id `id` at (`x`, `y`) in its player's doppelganger list.
+    pub(crate) fn ghost_at(id: i32, x: f32, y: f32) -> crate::ghost::Ghost {
+        crate::ghost::Ghost {
+            id,
+            original: None,
+            original_id: -1,
+            original_master: None,
+            original_owner: 1,
+            position: [x, y, 0.0],
+            tile: [x as i32, y as i32],
+            footprint: 0,
+            bits: 0,
+            cant_see: 0,
+            seen: false,
+            state: 2,
+        }
+    }
+
+    /// `FUN_1410465d0` for the constructor's lead -1 finds the world's object -1: a ghost there
+    /// (master 243, its restriction 1 standing on class 2 only) tests the slots, stands on none
+    /// of them nor on the group's place, so nothing moves; without it the first active slot's
+    /// unit tests them, and slot 1 moves as with that unit as the lead.
+    #[test]
+    fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
+        use crate::terrain::{Terrain, TerrainKind};
+        let run = |ghost: bool| {
+            let mut t = slot_world(&[(10, 4, 5.5, 5.5), (11, 4, 7.5, 5.5)], &[(8, 5)]);
+            let kind = |flags: u8| TerrainKind {
+                shown: true,
+                flags,
+                forest: false,
+            };
+            t.spatial.terrain = Some(Terrain::new(
+                20,
+                20,
+                vec![(0, 255, -1); 400],
+                vec![kind(1), kind(8)],
+                vec![vec![1.0, 0.0], vec![0.0, 1.0]],
+            ));
+            for masters in &mut t.masters {
+                let ghost = crate::masters::Master {
+                    id: crate::ghost::GHOST_MASTER,
+                    kind: crate::ghost::GHOST,
+                    terrain_restriction: 1,
+                    ..crate::masters::Master::default()
+                };
+                *masters = crate::masters::Masters::new(masters.iter().cloned().chain([ghost]));
+            }
+            if ghost {
+                t.players[1].ghosts = vec![ghost_at(-1, 1.0, 1.0)];
+            }
+            t.groups.groups[0].motion.position[0] = [5.5, 0.0, 5.5];
+            assert_eq!(t.groups.groups[0].motion.lead, -1);
+            let g = t.groups.get(1).unwrap().clone();
+            let mut f = Formation::new();
+            f.slots = vec![
+                Slot {
+                    unit_id: 10,
+                    ..slot_at([5.5, 0.0, 5.5], 1)
+                },
+                Slot {
+                    unit_id: 11,
+                    ..slot_at([8.5, 0.0, 5.5], 1)
+                },
+            ];
+            t.passable_slots(&mut f, &g).unwrap();
+            f.slots
+                .iter()
+                .map(|s| s.transform_position)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(run(false), [[5.5, 0.0, 5.5], [5.5, 0.0, 5.5]]);
+        assert_eq!(run(true), [[5.5, 0.0, 5.5], [8.5, 0.0, 5.5]]);
     }
 
     /// The passability's extra step: slot 1's unit at (7.5, 7.5) finds slot 2's cell (6, 7)

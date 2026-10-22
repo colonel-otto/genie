@@ -980,6 +980,13 @@ fn steer(
 }
 
 impl Turns {
+    /// `FUN_1410465d0`: the object the world's table holds for `motion`'s lead (`+0xc4`,
+    /// [`Turns::world_object`]). The constructor's lead -1 finds the object of id -1, a
+    /// recyclable master's (a missile or a ghost), while one is in a player's list.
+    pub(crate) fn lead_object(&self, motion: &Motion) -> Option<crate::group::WorldObject<'_>> {
+        self.world_object(motion.lead)
+    }
+
     /// `BMotion`'s update (`FUN_14104a090`) of group `group`, `budget` its `param_2`: the path
     /// step for the group's lead ([`path_step`]), then the velocity along the vectors
     /// ([`Motion::integrate`]). The group update calls it only with a lead the world holds, a
