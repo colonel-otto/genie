@@ -2526,7 +2526,7 @@ impl AttackGround {
 }
 
 /// `0x6c` `TRIBE_COMMAND_GIVE_ATTRIBUTE` (`GameCommand<TRIBE_Command_Give_Attribute>`, formatter `0x140e73880`: `GiveAttr(fromComm=%d to=%d, attr=%d, amt=%.2f, cost=%.2f)`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TribeGiveAttribute {
     /// `+0x01`, header
     pub commp_id: u8,
@@ -2538,8 +2538,6 @@ pub struct TribeGiveAttribute {
     pub attr: u16,
     /// `+0x0e`, formatter
     pub to: u8,
-    /// `+0x0f..`: the bytes after the fixed part, which no layout here splits
-    pub rest: Vec<u8>,
 }
 
 impl TribeGiveAttribute {
@@ -2551,14 +2549,13 @@ impl TribeGiveAttribute {
     /// The command in a packet, if the packet fits the layout.
     #[must_use]
     pub fn decode(p: &[u8]) -> Option<Self> {
-        fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
+        fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
             commp_id: get(p, 0x01),
             amt: get(p, 0x04),
             cost: get(p, 0x08),
             attr: get(p, 0x0c),
             to: get(p, 0x0e),
-            rest: bytes(p, Self::FIXED)?,
         })
     }
 
@@ -2570,7 +2567,6 @@ impl TribeGiveAttribute {
         put(&mut out, self.cost);
         put(&mut out, self.attr);
         put(&mut out, self.to);
-        out.extend_from_slice(&self.rest);
         finish(out)
     }
 }
@@ -3535,7 +3531,7 @@ impl MultiQueue {
 
 /// `0x82` `TRIBE_COMMAND_SET_GATHER_STATE` (`GameCommand<TRIBE_Command_Set_Gather_Point_Self>`, formatter `0x140e741b0`: `SetGatherPointSelf(num=%d)`).
 ///
-/// Not in the corpus: the layout is the one of `0x01` `RGE_COMMAND_STOP`, whose formatter prints the same fields.
+/// The layout is the one the game's builder `0x140e722f0` writes (the build's data).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetGatherState {
     /// `+0x01`, header
@@ -3544,7 +3540,9 @@ pub struct SetGatherState {
     pub num: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
+    /// `+0x08`, builder
+    pub field_0x08: u8,
+    /// `+0x09..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
@@ -3552,7 +3550,7 @@ impl SetGatherState {
     /// The packet's first byte.
     pub const BYTE: u8 = 0x82;
     /// The length of the fixed part.
-    pub const FIXED: usize = 0x08;
+    pub const FIXED: usize = 0x09;
 
     /// The command in a packet, if the packet fits the layout.
     #[must_use]
@@ -3562,6 +3560,7 @@ impl SetGatherState {
             commp_id: get(p, 0x01),
             num: get(p, 0x04),
             gap_0x06: get(p, 0x06),
+            field_0x08: get(p, 0x08),
             ids: words(p, Self::FIXED)?,
         })
     }
@@ -3572,6 +3571,7 @@ impl SetGatherState {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
+        put(&mut out, self.field_0x08);
         self.ids.iter().for_each(|&w| put(&mut out, w));
         finish(out)
     }
@@ -3579,7 +3579,7 @@ impl SetGatherState {
 
 /// `0x83` `TRIBE_COMMAND_DELETE_OBJECTS` (`GameCommand<TRIBE_Command_Delete_Objects>`, formatter `0x140e73390`: `DeleteObjects(num=%d)`).
 ///
-/// Not in the corpus: the layout is the one of `0x01` `RGE_COMMAND_STOP`, whose formatter prints the same fields.
+/// The layout is the one the game's builder `0x140e71c20` writes (the build's data).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteObjects {
     /// `+0x01`, header
@@ -3588,7 +3588,9 @@ pub struct DeleteObjects {
     pub num: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
+    /// `+0x08`, builder
+    pub field_0x08: u8,
+    /// `+0x09..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
@@ -3596,7 +3598,7 @@ impl DeleteObjects {
     /// The packet's first byte.
     pub const BYTE: u8 = 0x83;
     /// The length of the fixed part.
-    pub const FIXED: usize = 0x08;
+    pub const FIXED: usize = 0x09;
 
     /// The command in a packet, if the packet fits the layout.
     #[must_use]
@@ -3606,6 +3608,7 @@ impl DeleteObjects {
             commp_id: get(p, 0x01),
             num: get(p, 0x04),
             gap_0x06: get(p, 0x06),
+            field_0x08: get(p, 0x08),
             ids: words(p, Self::FIXED)?,
         })
     }
@@ -3616,6 +3619,7 @@ impl DeleteObjects {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
+        put(&mut out, self.field_0x08);
         self.ids.iter().for_each(|&w| put(&mut out, w));
         finish(out)
     }
@@ -3623,7 +3627,7 @@ impl DeleteObjects {
 
 /// `0x84` `TRIBE_COMMAND_RESET_BUILDINGS` (`GameCommand<TRIBE_Command_Reset_Buildings>`, formatter `0x140e74030`: `ResetBuildings(num=%d)`).
 ///
-/// Not in the corpus: the layout is the one of `0x01` `RGE_COMMAND_STOP`, whose formatter prints the same fields.
+/// The layout is the one the game's builder `0x140e72030` writes (the build's data).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResetBuildings {
     /// `+0x01`, header
@@ -3632,7 +3636,9 @@ pub struct ResetBuildings {
     pub num: u16,
     /// `+0x06`, gap
     pub gap_0x06: [u8; 2],
-    /// `+0x08..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
+    /// `+0x08`, builder
+    pub field_0x08: u8,
+    /// `+0x09..`: the 32-bit words after the fixed part: object ids (`cade_api`'s `unitIds`, `buildingIds`)
     pub ids: Vec<i32>,
 }
 
@@ -3640,7 +3646,7 @@ impl ResetBuildings {
     /// The packet's first byte.
     pub const BYTE: u8 = 0x84;
     /// The length of the fixed part.
-    pub const FIXED: usize = 0x08;
+    pub const FIXED: usize = 0x09;
 
     /// The command in a packet, if the packet fits the layout.
     #[must_use]
@@ -3650,6 +3656,7 @@ impl ResetBuildings {
             commp_id: get(p, 0x01),
             num: get(p, 0x04),
             gap_0x06: get(p, 0x06),
+            field_0x08: get(p, 0x08),
             ids: words(p, Self::FIXED)?,
         })
     }
@@ -3660,6 +3667,7 @@ impl ResetBuildings {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
+        put(&mut out, self.field_0x08);
         self.ids.iter().for_each(|&w| put(&mut out, w));
         finish(out)
     }
