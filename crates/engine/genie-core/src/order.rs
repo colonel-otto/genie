@@ -963,6 +963,7 @@ impl Turns {
         point: [f32; 3],
     ) -> Result<(), Unsupported> {
         self.move_to_object_with(player, idx, target, point, true)
+            .map(|_| ())
     }
 
     /// Slot 0x138 to `target` (`FUN_141216f10`): a villager is no longer under the town bell
@@ -983,7 +984,7 @@ impl Turns {
         target: i32,
         point: [f32; 3],
         a14: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<bool, Unsupported> {
         let world_time = self.world_time;
         let villager = self
             .master_of(player, self.players[player].objects[idx].life.master_id)?
@@ -997,48 +998,17 @@ impl Turns {
             ai.orders.clear();
         }
         if target == unit.id {
-            return Ok(());
+            return Ok(false);
         }
         if let Some(ai) = unit.ai.as_mut() {
             ai.clear_notifies(world_time)?;
         }
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
-        let top = unit.top_action_kind();
-        if unit.ai.is_some() && !stop_after_kill {
-            match top {
-                Some(HUNT) => {
-                    if self.hunt_take_move(player, idx, Some(target), point)? {
-                        return Ok(());
-                    }
-                }
-                // the Gather's (0x140a8b740) always takes it
-                Some(crate::gather::GATHER) => {
-                    let _ = self.gather_take_move(player, idx, Some(target), point)?;
-                    return Ok(());
-                }
-                // the base slot 0x40 (FUN_140a78490) takes nothing: a MoveTo's, an Explore's, a
-                // Build's, an Attack's, an Enter's, a Fly's, a missile's, a Make's
-                None
-                | Some(
-                    crate::move_to::MOVE_TO
-                    | crate::explore::EXPLORE
-                    | crate::build::BUILD
-                    | crate::attack::ATTACK
-                    | crate::garrison::ENTER
-                    | crate::fly::FLY
-                    | crate::missile::MISSILE
-                    | crate::make::MAKE,
-                ) => {}
-                // the Artifact's slot 8 (FUN_140aaca30) takes the target: set_state(5)
-                Some(crate::artifact::ARTIFACT_TYPE) => {
-                    return self.artifact_take_object(player, idx, target);
-                }
-                Some(_) => {
-                    return Err(Unsupported(
-                        "a move to an object of a unit with an action (its slot 0x40)",
-                    ));
-                }
-            }
+        if unit.ai.is_some()
+            && !stop_after_kill
+            && self.head_takes_move(player, idx, Some(target), point)?
+        {
+            return Ok(true);
         }
         let unit = &self.players[player].objects[idx];
         if unit.unmodelled_action.is_some() {
@@ -1066,7 +1036,62 @@ impl Turns {
             )?;
         }
         unit.move_to = Some(move_to);
-        Ok(())
+        Ok(false)
+    }
+
+    /// The head action's slot 0x40 (`FUN_140a97730`) on a move of the unit at `idx` to `point`,
+    /// toward the object `target` if any: true when the action takes the move. An empty list
+    /// takes nothing, nor does the base slot (`FUN_140a78490`) of a `MoveTo`, an Explore, a Build
+    /// (0x140aade60), an Attack, an Enter, a Fly, a missile or a Make. The Artifact's
+    /// (`FUN_140aaca30`) always takes it: toward an object ([`Turns::artifact_take_object`]), or
+    /// to the point, where a `MoveTo` it walked goes and stops the unit; the Hunt's
+    /// (`0x140ac52c0`, [`Turns::hunt_take_move`]) and the Gather's (`0x140a8b740`,
+    /// [`Turns::gather_take_move`]) decide themselves.
+    fn head_takes_move(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: Option<i32>,
+        point: [f32; 3],
+    ) -> Result<bool, Unsupported> {
+        let unit = &mut self.players[player].objects[idx];
+        if unit.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "slot 0x40 of an action the slice does not hold",
+            ));
+        }
+        match unit.top_action_kind() {
+            None
+            | Some(
+                crate::move_to::MOVE_TO
+                | crate::explore::EXPLORE
+                | crate::build::BUILD
+                | crate::attack::ATTACK
+                | crate::garrison::ENTER
+                | crate::fly::FLY
+                | crate::missile::MISSILE
+                | crate::make::MAKE,
+            ) => Ok(false),
+            Some(crate::artifact::ARTIFACT_TYPE) => {
+                if let Some(t) = target {
+                    self.artifact_take_object(player, idx, t)?;
+                    return Ok(true);
+                }
+                let walked = unit.artifact.as_mut().is_some_and(|a| a.take_point(point));
+                if walked {
+                    unit.mover
+                        .as_mut()
+                        .ok_or(Unsupported("a walker without movement state"))?
+                        .stop()?;
+                }
+                Ok(true)
+            }
+            Some(HUNT) => self.hunt_take_move(player, idx, target, point),
+            Some(crate::gather::GATHER) => self.gather_take_move(player, idx, target, point),
+            Some(other) => {
+                unreachable!("a top action of type {other}, which top_action never holds")
+            }
+        }
     }
 
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
@@ -1815,8 +1840,8 @@ impl Turns {
     }
 
     /// `FUN_14106d340` on a move of the unit at `idx` to `point`: a unit with a unit AI
-    /// (`FUN_140c5dc10` clears its notifies with the world time) lets its current action's slot
-    /// 8 take the point (`FUN_140a97730`) unless it stops after a kill (`FUN_140c41c10`); else a
+    /// (`FUN_140c5dc10` clears its notifies with the world time) lets its head action take the
+    /// point ([`Turns::head_takes_move`]) unless it stops after a kill (`FUN_140c41c10`); else a
     /// `MoveTo` to the point replaces its actions. True when the action took it.
     pub(crate) fn move_to_point(
         &mut self,
@@ -1825,54 +1850,16 @@ impl Turns {
         point: [f32; 3],
     ) -> Result<bool, Unsupported> {
         // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
-        // current action's slot 8 take the point (FUN_140a97730) unless it stops after a kill
-        // (FUN_140c41c10): an Artifact action's does (FUN_140aaca30), a MoveTo's
-        // (`FUN_140a78490`) never
+        // head action's slot 0x40 take the point unless it stops after a kill (FUN_140c41c10)
         let world_time = self.world_time;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.clear_notifies(world_time)?;
         }
-        let top = unit.top_action_kind();
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
-        let taken = match (unit.ai.is_some() && !stop_after_kill, top) {
-            (true, Some(crate::artifact::ARTIFACT_TYPE)) => {
-                let walked = unit.artifact.as_mut().is_some_and(|a| a.take_point(point));
-                if walked {
-                    unit.mover
-                        .as_mut()
-                        .ok_or(Unsupported("a walker without movement state"))?
-                        .stop()?;
-                }
-                true
-            }
-            // the Hunt's (0x140ac52c0, [`Turns::hunt_take_move`]) to a point: a task with a work
-            // range (`+0x48`'s `+0x30`) does not take it, else the hunt walks there (state 15)
-            // and lets its target go
-            (true, Some(HUNT)) => self.hunt_take_move(player, idx, None, point)?,
-            // the Gather's (0x140a8b740) walks to the point (set_state 15)
-            (true, Some(crate::gather::GATHER)) => {
-                self.gather_take_move(player, idx, None, point)?
-            }
-            // an Explore's slot 0x40 is the base's (`FUN_140a78490`), as a MoveTo's, a Build's
-            // (0x140aade60), an Attack's, an Enter's, a Fly's, a missile's and a Make's
-            (true, Some(t))
-                if !matches!(
-                    t,
-                    crate::move_to::MOVE_TO
-                        | crate::explore::EXPLORE
-                        | crate::build::BUILD
-                        | crate::attack::ATTACK
-                        | crate::garrison::ENTER
-                        | crate::fly::FLY
-                        | crate::missile::MISSILE
-                        | crate::make::MAKE
-                ) =>
-            {
-                return Err(Unsupported("a move of a unit with an action (its slot 8)"));
-            }
-            _ => false,
-        };
+        let taken = unit.ai.is_some()
+            && !stop_after_kill
+            && self.head_takes_move(player, idx, None, point)?;
         if !taken {
             // the MoveTo to the point (FUN_140aa0d30, range 0) and its install (slot 0x808)
             self.clear_actions(player, idx)?;
@@ -1892,8 +1879,8 @@ impl Turns {
 
     /// The unit's slot 0x340 (`FUN_141216c50`) forced, from its unit AI's move off a footprint
     /// (slot 0x148): a unit of class 51 or 54 (packing) is not modelled; any other runs
-    /// `FUN_1410866e0`: its current action's slot 0x40 may take the point (the Artifact's,
-    /// the Hunt's and the Gather's, as [`Turns::move_to_point`]'s), else a `MoveTo` to the point
+    /// `FUN_1410866e0`: its head action's slot 0x40 may take the point
+    /// ([`Turns::head_takes_move`]), else a `MoveTo` to the point
     /// within the move's range, walking or running, replaces its actions.
     pub(crate) fn move_aside(
         &mut self,
@@ -1908,41 +1895,8 @@ impl Turns {
                 "a move off a footprint of a unit of class 51 or 54",
             ));
         }
-        let top = unit.top_action_kind();
         let point = m.point;
-        let taken = match top {
-            Some(crate::artifact::ARTIFACT_TYPE) => {
-                let unit = &mut self.players[player].objects[idx];
-                let walked = unit.artifact.as_mut().is_some_and(|a| a.take_point(point));
-                if walked {
-                    unit.mover
-                        .as_mut()
-                        .ok_or(Unsupported("a walker without movement state"))?
-                        .stop()?;
-                }
-                true
-            }
-            Some(HUNT) => self.hunt_take_move(player, idx, None, point)?,
-            Some(crate::gather::GATHER) => self.gather_take_move(player, idx, None, point)?,
-            Some(t)
-                if !matches!(
-                    t,
-                    crate::move_to::MOVE_TO
-                        | crate::explore::EXPLORE
-                        | crate::build::BUILD
-                        | crate::attack::ATTACK
-                        | crate::garrison::ENTER
-                        | crate::fly::FLY
-                        | crate::missile::MISSILE
-                        | crate::make::MAKE
-                ) =>
-            {
-                return Err(Unsupported(
-                    "a move off a footprint of a unit with an action (its slot 0x40)",
-                ));
-            }
-            _ => false,
-        };
+        let taken = self.head_takes_move(player, idx, None, point)?;
         if !taken {
             self.clear_actions(player, idx)?;
             let unit = &mut self.players[player].objects[idx];
@@ -2560,7 +2514,7 @@ impl Turns {
             if target == -1 {
                 self.move_point_order_with(player, idx, point, notified)?;
             } else {
-                self.move_to_object_with(player, idx, target, point, notified)?;
+                let _ = self.move_to_object_with(player, idx, target, point, notified)?;
             }
         }
         Ok(())
@@ -4661,6 +4615,33 @@ mod tests {
             ([10.0, 0.0], [0, 0])
         );
         assert_eq!(unit.reload_stinger, 0.25);
+    }
+
+    /// `FUN_140a97730`: an empty list and a `MoveTo` head take no move; an Artifact head takes
+    /// the point (its goal); an action the slice does not hold is refused.
+    #[test]
+    fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let point = [25.0, 21.0, 0.0];
+        assert_eq!(t.head_takes_move(1, 0, None, point), Ok(false));
+        t.players[1].objects[0].move_to = Some(crate::move_to::MoveToAction {
+            run: false,
+            state: crate::move_to::MoveTo::Start,
+            goal: Some([30.0, 30.0, 0.0]),
+            target: -1,
+            range: 0.0,
+            wait: crate::move_to::MoveWait::default(),
+        });
+        assert_eq!(t.head_takes_move(1, 0, Some(11), point), Ok(false));
+        t.players[1].objects[0].move_to = None;
+        t.players[1].objects[0].artifact = Some(crate::artifact::Artifact::new(false));
+        assert_eq!(t.head_takes_move(1, 0, None, point), Ok(true));
+        let artifact = t.players[1].objects[0].artifact.unwrap();
+        assert_eq!(artifact.goal, Some(point));
+        t.players[1].objects[0].artifact = None;
+        t.players[1].objects[0].unmodelled_action = Some(Unsupported("a test's action"));
+        assert!(t.head_takes_move(1, 0, None, point).is_err());
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
