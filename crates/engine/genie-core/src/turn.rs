@@ -11310,11 +11310,12 @@ fn farm_bonus(attributes: &[f32]) -> [f32; 3] {
 }
 
 /// `FUN_1411980b0`'s visible resources, from `set_state` leaving a state below 4 for one above 6
-/// (`FUN_14119d710`) and from the object's deletion (the destructors' `FUN_14116b5e0`): an object
-/// of id 0 and up whose master gathers by itself (`+0x681`) leaves the lists of the players that
-/// explored its tile ([`Visibility::forget_resource`]); the world's state (`+0x88`) is 0 in a
-/// game. The routine's other parts are the callers': a master of `create_doppelganger_on_death`
-/// 2 leaves its owner's watched list (`FUN_141091310`).
+/// (`FUN_14119d710`) and from the object's deletion: an object of id 0 and up whose master
+/// gathers by itself (`+0x681`) leaves the lists of the players that explored its tile
+/// ([`Visibility::forget_resource`]); the world's state (`+0x88`) is 0 in a game. The deletion's
+/// call is the destructors' (`FUN_14116b5e0`). The routine's other parts are the callers': a
+/// master of `create_doppelganger_on_death` 2 leaves its owner's watched list
+/// (`FUN_141091310`).
 ///
 /// [`Visibility::forget_resource`]: crate::visibility::Visibility::forget_resource
 pub(crate) fn forget_resource(
