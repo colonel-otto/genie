@@ -1137,7 +1137,7 @@ impl Spatial {
                 && grown[0] <= rect[2]
                 && rect[1] <= grown[3]
                 && grown[1] <= rect[3]
-                && box_meets_segment([x0, y0, x1, y1], g, walk)
+                && record_meets_segment(kind, [x0, y0, x1, y1], g, walk)
             {
                 hits.push(id);
             }
@@ -1192,13 +1192,13 @@ impl Spatial {
         }
         self.check_known_records(query)?;
         let walk = [from[0], from[1], to[0], to[1]];
-        let meets = |bx: [f32; 4]| {
+        let meets = |kind: u8, bx: [f32; 4]| {
             let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
             rect[0] <= grown[2]
                 && grown[0] <= rect[2]
                 && rect[1] <= grown[3]
                 && grown[1] <= rect[3]
-                && box_meets_segment(bx, grow, walk)
+                && record_meets_segment(kind, bx, grow, walk)
         };
         if let Some(mask) = mask {
             let impassable = u64::from(mask & 0x7f | 0x80);
@@ -1219,7 +1219,7 @@ impl Spatial {
                     };
                     let id = tile_record_id(x, y);
                     let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
-                    if word & impassable == 0 && !ignore.contains(&id) && meets(bx) {
+                    if word & impassable == 0 && !ignore.contains(&id) && meets(3, bx) {
                         hits.push(id);
                         if MOST_HITS <= hits.len() {
                             return Ok(hits);
@@ -1237,7 +1237,7 @@ impl Spatial {
             {
                 continue;
             }
-            if !meets(p.bounds()) {
+            if !meets(kind, p.bounds()) {
                 continue;
             }
             hits.push(id);
@@ -1283,12 +1283,12 @@ impl Spatial {
         }
         self.check_known_records(rect)?;
         let walk = [from[0], from[1], to[0], to[1]];
-        let meets = |bx: [f32; 4]| {
+        let meets = |kind: u8, bx: [f32; 4]| {
             rect[0] <= bx[2]
                 && bx[0] <= rect[2]
                 && rect[1] <= bx[3]
                 && bx[1] <= rect[3]
-                && box_meets_segment(bx, 0.0, walk)
+                && record_meets_segment(kind, bx, 0.0, walk)
         };
         let ([x0, y0, x1, y1], mask) = temporary;
         let impassable = u64::from(mask & 0x7f | 0x80);
@@ -1300,7 +1300,7 @@ impl Spatial {
                     continue;
                 };
                 let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
-                if word & impassable == 0 && meets(bx) {
+                if word & impassable == 0 && meets(3, bx) {
                     return Ok(true);
                 }
             }
@@ -1314,7 +1314,7 @@ impl Spatial {
                 && !ignore.contains(&id)
                 && !self.gaits.get(&id).is_some_and(|g| g.moving)
                 && self.visits(p, kind, rect)
-                && meets(p.bounds())
+                && meets(kind, p.bounds())
         }))
     }
 
@@ -2484,13 +2484,13 @@ impl Spatial {
         }
         self.check_known_records(grown)?;
         let walk = [a[0], a[1], b[0], b[1]];
-        let meets = |bx: [f32; 4]| {
+        let meets = |kind: u8, bx: [f32; 4]| {
             let r = [bx[0] - g, bx[1] - g, g + bx[2], g + bx[3]];
             lo_x <= r[2]
                 && r[0] <= hi_x
                 && lo_y <= r[3]
                 && r[1] <= hi_y
-                && box_meets_segment(bx, g, walk)
+                && record_meets_segment(kind, bx, g, walk)
         };
         let impassable = u64::from(mask & 0x7f | 0x80);
         let tx1 = if (grown[2] as i32) < w {
@@ -2510,7 +2510,7 @@ impl Spatial {
                 };
                 let id = tile_record_id(x, y);
                 let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
-                if word & impassable == 0 && !ignore.contains(&id) && meets(bx) {
+                if word & impassable == 0 && !ignore.contains(&id) && meets(3, bx) {
                     hits.push(Hit { id, bounds: bx });
                     if first || MOST_HITS <= hits.len() {
                         return Ok(hits);
@@ -2531,7 +2531,7 @@ impl Spatial {
                 continue;
             }
             let bx = p.bounds();
-            if !meets(bx) {
+            if !meets(kind, bx) {
                 continue;
             }
             if kind == 11 {
@@ -2659,13 +2659,44 @@ fn segments_meet(p1: [f32; 2], p2: [f32; 2], p3: [f32; 2], p4: [f32; 2]) -> bool
         && (ccw(p3, p4, p2) * ccw(p3, p4, p1)) as f32 <= 0.0
 }
 
-/// `FUN_141052e10` with the box grown by `r`: the walk `[x0, y0, x1, y1]` crosses one of the grown
-/// box's edges or starts or ends inside it.
+/// `FUN_141052e10` (the segment test's) and `FUN_1410512f0` (the walk test's) with the box grown
+/// by `r` (the manager's `+0x57`/`+0x58`): the walk `[x0, y0, x1, y1]` crosses one of the grown
+/// box's edges or starts or ends inside it, the box ordered (low and high edges) for the inside
+/// tests.
 fn box_meets_segment([bx0, by0, bx1, by1]: [f32; 4], r: f32, walk: [f32; 4]) -> bool {
     let lo_x = if bx1 < bx0 { bx1 } else { bx0 };
     let hi_x = if bx0 < bx1 { bx1 } else { bx0 };
     let lo_y = if by1 < by0 { by1 } else { by0 };
     let hi_y = if by0 < by1 { by1 } else { by0 };
+    segment_meets_box([bx0, by0, bx1, by1], r, walk, [lo_x, lo_y, hi_x, hi_y])
+}
+
+/// A record's test against the walk by its kind (`FUN_141051e00`, `FUN_141052800`): a circle's
+/// (kind 5, `FUN_141051630` and `FUN_141053130`) reads its box as it stands for the inside tests;
+/// the others' (kinds 2, 3, 11, 13) order it ([`box_meets_segment`]).
+fn record_meets_segment(kind: u8, b: [f32; 4], r: f32, walk: [f32; 4]) -> bool {
+    if kind == 5 {
+        segment_meets_box(b, r, walk, b)
+    } else {
+        box_meets_segment(b, r, walk)
+    }
+}
+
+/// The four edges of box `[bx0, by0, bx1, by1]` grown by `r`, each tested against the walk
+/// (`FUN_141052ca0`: `FUN_141054ec0`), then the inside tests of the walk's ends against `inside`
+/// grown by `r`. `FUN_141052ca0` also lists each crossing (record, id, point) at the manager's
+/// `+0x40` while its `+0x54` is set; `FUN_141051900` sets `+0x54` only for a list at `+0x40`
+/// with a cap `+0x50` of at least 1, and nothing gives the manager one: the only stores to
+/// `+0x40`, `+0x48` and `+0x50` in its code (0x14104f000..0x141060000) are its constructor's
+/// and `FUN_1410560b0`'s zeros, and none of the routines that address it through
+/// `DAT_143f0a088` writes them. So the listing never runs, and the edges' order (the
+/// `FUN_1410512f0` tests all four, `FUN_141052e10` stops at the first crossing) does not show.
+fn segment_meets_box(
+    [bx0, by0, bx1, by1]: [f32; 4],
+    r: f32,
+    walk: [f32; 4],
+    [lo_x, lo_y, hi_x, hi_y]: [f32; 4],
+) -> bool {
     let (start, end) = ([walk[0], walk[1]], [walk[2], walk[3]]);
     let edges = [
         ([bx0 - r, by0 - r], [r + bx1, by0 - r]),
@@ -2679,7 +2710,8 @@ fn box_meets_segment([bx0, by0, bx1, by1]: [f32; 4], r: f32, walk: [f32; 4]) -> 
     {
         return true;
     }
-    // COMISS/JC (0x141052fb8..0x141052ff9, 0x1410530dc..0x141053119): a NaN coordinate is out
+    // COMISS/JC (0x141052fb8..0x141052ff9, 0x1410530dc..0x141053119; 0x1410514ad..0x141051620,
+    // 0x14105189e..0x1410518f2): a NaN coordinate is out
     let outside = |p: [f32; 2]| {
         crate::fmath::below_or_unordered(p[0], lo_x - r)
             || crate::fmath::below_or_unordered(r + hi_x, p[0])
@@ -2713,6 +2745,22 @@ mod tests {
         assert!(box_meets_segment(b, 0.0, [f32::NAN, 0.5, 5.0, 5.0]));
         assert!(box_meets_segment(b, 0.0, [0.5, 0.5, 0.6, 0.6]));
         assert!(!box_meets_segment(b, 0.0, [3.0, 3.0, 5.0, 5.0]));
+    }
+
+    /// `FUN_141051630` (and `FUN_141053130`): a circle record's box is read as it stands, so a
+    /// box whose x1 lies below its x0 holds no walk inside it; `FUN_1410512f0` orders it first.
+    #[test]
+    fn a_circle_record_s_box_is_read_unordered_and_another_s_ordered() {
+        let b = [2.0, 0.0, 1.0, 1.0];
+        let inside = [1.4, 0.4, 1.6, 0.6];
+        assert!(record_meets_segment(2, b, 0.0, inside));
+        assert!(!record_meets_segment(5, b, 0.0, inside));
+        assert!(record_meets_segment(5, [1.0, 0.0, 2.0, 1.0], 0.0, inside));
+        // grown, the edges and the inside tests take the grow on the box as it stands: the
+        // edges then run at x 1.25 and 1.75, the inside tests hold nothing
+        assert!(!record_meets_segment(5, b, 0.25, inside));
+        assert!(record_meets_segment(5, b, 0.25, [1.0, 0.5, 1.5, 0.5]));
+        assert!(record_meets_segment(2, b, 0.25, inside));
     }
 
     fn villager(x: f32, y: f32) -> Placed {
