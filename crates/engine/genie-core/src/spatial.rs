@@ -1898,11 +1898,7 @@ impl Spatial {
     /// the player's masks (`+0x2a8`, `+0x2a0`) too.
     pub fn reveal_to(&mut self, player: usize) {
         use crate::vision::{ENDED, ENDED_EXPLORED};
-        if let Some(v) = self.sight.as_mut() {
-            for w in &mut v.unified {
-                *w |= ENDED | ENDED_EXPLORED;
-            }
-        }
+        self.reveal_map(ENDED | ENDED_EXPLORED);
         if let Some(m) = self.vision.get_mut(player) {
             m[0] |= ENDED;
             m[1] |= ENDED_EXPLORED;
@@ -1983,6 +1979,17 @@ impl Spatial {
         } else {
             0
         })
+    }
+
+    /// `FUN_1412847b0`: every word of the unified map (`+0x5e30`, width × height) takes the bits
+    /// of `mask` (the end of the game `0x4000000040000000`, a revealed map `0x2000000020000000`,
+    /// both `0x6000000060000000`). Nothing without the players' sight.
+    pub fn reveal_map(&mut self, mask: u64) {
+        if let Some(v) = self.sight.as_mut() {
+            for w in &mut v.unified {
+                *w |= mask;
+            }
+        }
     }
 
     /// Whether player `player` sees tile (`x`, `y`): [`Spatial::tile_sight`] is 0xf. False
@@ -3264,6 +3271,34 @@ mod tests {
 
     /// A player who lost while the game goes on sees the map revealed: its masks take the ended
     /// bits (and the unified map's every word, here without the players' sight).
+    /// `FUN_1412847b0`: the mask goes into every word of the unified map; `FUN_141639860` (the
+    /// end of the game for a player) also gives the player's masks the ended bits.
+    #[test]
+    fn revealing_the_map_sets_the_mask_in_every_word() {
+        use crate::vision::{ENDED, ENDED_EXPLORED, NO_TILE, NO_TILE_EXPLORED};
+        let mut s = sighted(vec![0, 1 << 1, 1 << 33]);
+        s.reveal_map(NO_TILE | NO_TILE_EXPLORED);
+        let words = &s.sight.as_ref().unwrap().unified;
+        assert_eq!(
+            *words,
+            [0, 1 << 1, 1 << 33].map(|w: u64| w | NO_TILE | NO_TILE_EXPLORED)
+        );
+        let mut s = sighted(vec![0, 0]);
+        s.reveal_to(1);
+        assert!(
+            s.sight
+                .as_ref()
+                .unwrap()
+                .unified
+                .iter()
+                .all(|&w| w == ENDED | ENDED_EXPLORED)
+        );
+        // player 1 lost: its masks take the ended bits; the tile tests mask them out
+        // (registry::MASK holds neither bit 30 nor 62)
+        assert_eq!(s.vision[1], crate::vision::own_masks(1, true));
+        assert_eq!(s.tile_sight(1, 0, 0), Some(0));
+    }
+
     #[test]
     fn a_revealed_map_gives_the_player_the_ended_bits() {
         let mut s = Spatial {
