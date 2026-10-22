@@ -36,9 +36,10 @@ impl Turns {
     /// ([`Turns::update_dependents`]); researched at a location with a button, it counts in
     /// attribute 0x15 and its listed costs (`FUN_1413d4a00`, the amounts summed) in attribute
     /// 0x63. Not held: the local player's statistics and achievements. Not modelled: a research
-    /// paid in relics (`FUN_1413d0e70`), an effect override, an age's history (`FUN_141560ae0`)
-    /// and the civ's disabled technologies (`FUN_140ea93a0`; such a technology is never
-    /// available to be researched).
+    /// paid in relics (`FUN_1413d0e70`), an effect the slice cannot run without its building
+    /// ([`Turns::research_effect_known`]), an age's history (`FUN_141560ae0`) and the civ's
+    /// disabled technologies (`FUN_140ea93a0`; such a technology is never available to be
+    /// researched).
     pub(crate) fn complete_research(
         &mut self,
         p: usize,
@@ -54,9 +55,7 @@ impl Turns {
         if def.costs[0].attribute == 7 {
             return Err(Unsupported("a research paid in relics (FUN_1413d0e70)"));
         }
-        if state.effect_override != -1 && state.effect_override != def.effect_id {
-            return Err(Unsupported("a technology's effect override"));
-        }
+        self.research_effect_known(p, t)?;
         if is_age(t as i16) {
             return Err(Unsupported(
                 "an age's completion (its history, FUN_141560ae0)",
@@ -78,6 +77,39 @@ impl Turns {
             owner.add_attribute(RESEARCH_SPENT, spent)?;
         }
         Ok(true)
+    }
+
+    /// Whether player `p`'s technology `t` gives an effect this file runs (`FUN_1413ce9b0`): its
+    /// override's when it has one (the world's effect table `+0x128`, not held: only its own
+    /// effect is known), with the research's building as the effect's object (`FUN_1413cdcd0`'s
+    /// `param_4`, which the callers do not pass yet): an effect that reaches its object (an
+    /// enable for one building, an upgrade of the object, the object's kinds 203 to 206, a
+    /// disable of a building's own technology) would differ without it.
+    fn research_effect_known(&self, p: usize, t: usize) -> Result<(), Unsupported> {
+        let def = &self.techs[t];
+        let state = &self.players[p].techs[t];
+        let shared = |c: &EffectCommand| {
+            // FUN_1413d1020 tests the whole id
+            usize::try_from(crate::checkpoint::cvttss2si(c.d))
+                .ok()
+                .and_then(|d| self.techs.get(d))
+                .is_some_and(|d| d.kind == crate::tech::SHARED_KIND)
+        };
+        let reaches_object = def.effect.iter().any(|c| match c.kind {
+            kind::ENABLE => c.c == 1,
+            kind::UPGRADE => c.c == 2,
+            TECH_DISABLE => shared(c),
+            k => (kind::OBJECT_SET..=kind::OBJECT_UPGRADE).contains(&k),
+        });
+        if state.effect_override != -1 && state.effect_override != def.effect_id {
+            return Err(Unsupported("a technology's effect override"));
+        }
+        if reaches_object {
+            return Err(Unsupported(
+                "a research's effect on its building (FUN_1413cdcd0's param_4, not passed)",
+            ));
+        }
+        Ok(())
     }
 
     /// A completed building's technology `t` for player `p` (the end of `FUN_1411dbb70`'s
@@ -1837,10 +1869,7 @@ impl Turns {
             return self.complete_research(p, t, None);
         }
         let def = self.techs[t].clone();
-        let state = &self.players[p].techs[t];
-        if state.effect_override != -1 && state.effect_override != def.effect_id {
-            return Err(Unsupported("a technology's effect override"));
-        }
+        self.research_effect_known(p, t)?;
         self.do_effect(p, &def.effect, None)?;
         let owner = &self.players[p];
         let get = |k: i16| crate::tech::Attributes::get(owner, k);
@@ -2675,6 +2704,40 @@ mod tests {
                 .is_err()
         );
         assert_eq!(t.masters[0].get(82).unwrap().hit_points, 4800);
+    }
+
+    /// A research whose effect reaches its building (the object `FUN_1413cdcd0` passes, which its
+    /// callers do not yet) stops before it changes anything; one with an effect override too.
+    #[test]
+    fn a_research_whose_effect_needs_its_building_stops() {
+        use crate::tech::{TechDef, TechState};
+        let state = TechState {
+            state: 2,
+            building_master: -1,
+            ..TechState::default()
+        };
+        let player = Player {
+            techs: vec![state.clone(), state],
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        let def = |effect| TechDef {
+            required: [-1; 6],
+            effect_id: 7,
+            effect,
+            ..TechDef::default()
+        };
+        t.techs = vec![
+            def(vec![attribute(204, 82, -1, 0, 1500.0)]),
+            def(vec![attribute(4, -1, 4, 0, 15.0)]),
+        ];
+        assert!(t.complete_research(0, 0, None).is_err());
+        assert_eq!(t.players[0].techs[0].state, 2);
+        t.players[0].techs[1].effect_override = 9;
+        assert!(t.complete_research(0, 1, None).is_err());
+        t.players[0].techs[1].effect_override = 7;
+        assert_eq!(t.complete_research(0, 1, None), Ok(true));
     }
 
     /// A technology whose requirement is researched and whose research takes no time at a
