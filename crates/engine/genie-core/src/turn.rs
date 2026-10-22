@@ -7960,7 +7960,8 @@ impl Turns {
     }
 
     /// Slot 0x70 (`FUN_14120f800`) to Gaia of the object at `j` of player `q`, from outside its
-    /// update ([`Unit::change_owner`]'s parts and the list and storage moves of a capture).
+    /// update ([`Unit::change_owner`]'s parts, the class counters ([`count_class`]) and the list
+    /// and storage moves of a capture).
     fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), Unsupported> {
         let u = &self.players[q].objects[j];
         let (id, master_id) = (u.id, u.life.master_id);
@@ -7977,12 +7978,13 @@ impl Turns {
                     "an ownership change to a player without the master",
                 ))?;
         let los = gaia_master.line_of_sight;
-        let storage = self
-            .masters
-            .get(q)
-            .and_then(|m| m.get(master_id))
-            .map(|m| m.storage.clone())
-            .unwrap_or_default();
+        let own = self.masters.get(q).and_then(|m| m.get(master_id));
+        let storage = own.map(|m| m.storage.clone()).unwrap_or_default();
+        // the class counters leave the old owner and come to Gaia (FUN_141226060 with -1, then 1)
+        if let Some(m) = own {
+            count_class(&mut self.players[q].attributes, m, -1.0);
+            count_class(&mut self.players[0].attributes, m, 1.0);
+        }
         self.spatial.change_owner(id, 0, los)?;
         let world_time = self.world_time;
         let mut unit = self.players[q].objects.swap_remove(j);
@@ -8156,6 +8158,9 @@ impl Turns {
                     let gone = self.players[p].objects.swap_remove(i);
                     let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
                     forget_resource(&mut self.spatial, master, gone.id, gone.position);
+                    if let Some(m) = master.filter(|m| 70 <= m.kind) {
+                        count_class(&mut self.players[p].attributes, m, -1.0);
+                    }
                     let _ = self.spatial.leave(gone.id);
                     self.pathing.removed(gone.id);
                     continue;
@@ -11164,9 +11169,13 @@ impl Turns {
                 match result {
                     Ok(Step::Leave) => {
                         let gone = player.objects.swap_remove(i);
-                        // its deletion (FUN_14116b5e0)
+                        // its deletion (FUN_14116b5e0), and a combat object's destructor's class
+                        // counters (FUN_141200450)
                         let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
                         forget_resource(&mut self.spatial, master, gone.id, gone.position);
+                        if let Some(m) = master.filter(|m| 70 <= m.kind) {
+                            count_class(&mut player.attributes, m, -1.0);
+                        }
                         if let Err(e) = self.spatial.leave(gone.id) {
                             crate::trace::player_unsupported(self.ticks, p, e);
                             let _ = player.unsupported.get_or_insert((self.ticks, i, e));
@@ -11329,6 +11338,45 @@ pub(crate) fn forget_resource(
     }
     if let (Some(m), Some(v)) = (master.filter(|m| m.auto_gather), spatial.sight.as_mut()) {
         v.forget_resource(id, position, m.gather_group);
+    }
+}
+
+/// The classes a combat object of which counts in its player's attribute 40
+/// (`FUN_141226060`).
+const MILITARY_CLASSES: [i16; 24] = [
+    0, 6, 12, 13, 18, 22, 23, 24, 26, 28, 35, 36, 43, 44, 45, 46, 47, 50, 51, 53, 54, 55, 56, 57,
+];
+/// The masters whose objects count in attribute 235 besides 40 (`FUN_141226060`).
+const MILITARY_235: [i16; 2] = [1663, 1697];
+/// The classes that count in attribute 37 (`FUN_141226060`); the villagers' (4) too.
+const CIVILIAN_CLASSES: [i16; 4] = [2, 19, 20, 21];
+
+/// `FUN_141226060`: a combat object (type 70 and up) of `master` counts `by` (1 or -1) in its
+/// player's `attributes` by its class: a military class (0, 6, 12, 13, 18, 22 to 24, 26, 28, 35,
+/// 36, 43 to 47, 50, 51, 53 to 57) in attribute 40, masters 1663 and 1697 also in 235; a
+/// villager (class 4) in 38 when its master's task swap group (`+0x7b8`) is 1 or 2, and in 37
+/// as the classes 2, 19, 20 and 21 do. The attributes take it as they are (no player slot).
+/// Its callers: the combat setup (`FUN_14121df60`, 1), the destructors (`FUN_141200450`,
+/// `FUN_1411ec020`, -1), the ownership change (`FUN_14120f800`, -1 then 1 for the new owner) and
+/// the master change (`FUN_141186580` through `FUN_141209d90`, -1 then 1 with the new master).
+pub(crate) fn count_class(attributes: &mut [f32], master: &Master, by: f32) {
+    let mut add = |i: usize| {
+        if let Some(v) = attributes.get_mut(i) {
+            *v += by;
+        }
+    };
+    if MILITARY_CLASSES.contains(&master.class) {
+        add(40);
+        if MILITARY_235.contains(&master.id) {
+            add(235);
+        }
+        return;
+    }
+    if master.class == crate::spawn::VILLAGER && matches!(master.task_by_group, 1 | 2) {
+        add(38);
+    }
+    if master.class == crate::spawn::VILLAGER || CIVILIAN_CLASSES.contains(&master.class) {
+        add(37);
     }
 }
 
@@ -11997,6 +12045,43 @@ mod tests {
         let v = t.spatial.sight.as_ref().unwrap();
         let lists: Vec<_> = v.resources.iter().map(|r| r.lists[2].clone()).collect();
         assert_eq!(lists, [vec![fish], vec![], vec![fish]]);
+    }
+
+    /// `FUN_141226060`: the class counters by class and master.
+    #[test]
+    fn a_combat_object_counts_in_its_player_s_class_attributes() {
+        use crate::masters::Master;
+        let counted = |class, id, task_by_group| {
+            let mut a = vec![0.0f32; 240];
+            let m = Master {
+                id,
+                class,
+                task_by_group,
+                ..Master::default()
+            };
+            count_class(&mut a, &m, 1.0);
+            count_class(&mut a, &m, 1.0);
+            [a[37], a[38], a[40], a[235]]
+        };
+        assert_eq!(counted(6, 4, 0), [0.0, 0.0, 2.0, 0.0]);
+        assert_eq!(counted(13, 1663, 0), [0.0, 0.0, 2.0, 2.0]);
+        assert_eq!(counted(57, 1697, 0), [0.0, 0.0, 2.0, 2.0]);
+        assert_eq!(counted(4, 83, 1), [2.0, 2.0, 0.0, 0.0]);
+        assert_eq!(counted(4, 83, 2), [2.0, 2.0, 0.0, 0.0]);
+        assert_eq!(counted(4, 83, 3), [2.0, 0.0, 0.0, 0.0]);
+        assert_eq!(counted(19, 128, 0), [2.0, 0.0, 0.0, 0.0]);
+        assert_eq!(counted(58, 1663, 1), [0.0; 4]);
+        assert_eq!(counted(3, 109, 0), [0.0; 4]);
+        let mut a = vec![5.0f32; 41];
+        count_class(
+            &mut a,
+            &Master {
+                class: 6,
+                ..Master::default()
+            },
+            -1.0,
+        );
+        assert_eq!(a[40], 4.0);
     }
 
     #[test]

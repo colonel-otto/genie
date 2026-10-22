@@ -52,7 +52,7 @@ const GATE: i16 = 39;
 /// The relic's master, which always stays (`FUN_141194e80`).
 const RELIC: i16 = 285;
 /// The villager class, whose new units count in attribute 248.
-const VILLAGER: i16 = 4;
+pub(crate) const VILLAGER: i16 = 4;
 /// The make action's unit-AI action value (`0x26b`), which its constructor sets and its end
 /// notifies.
 pub(crate) const MAKE_ACTION: i32 = 0x26b;
@@ -1391,7 +1391,8 @@ impl Turns {
     /// The object takes its place (its height the ground's, by its master's fly mode), its record
     /// and mesh shape, its sight and its storage (flags 1, 2 and 32, `FUN_141193860`); its
     /// player's attributes 98 and 164 (and 246 under [`Turns::unit_cost_246`]) grow by its paid
-    /// cost and a villager's (class 4) attribute 248 by one. It joins its player's list last; its
+    /// cost and a villager's (class 4) attribute 248 by one, and its class counts
+    /// ([`crate::turn::count_class`]). It joins its player's list last; its
     /// index there.
     pub(crate) fn combat_object(
         &mut self,
@@ -1515,6 +1516,8 @@ impl Turns {
         if made.class == VILLAGER {
             owner.add_attribute(248, 1.0)?;
         }
+        // the combat setup's class counters (FUN_141226060)
+        crate::turn::count_class(&mut owner.attributes, made, 1.0);
         owner.objects.push(Unit {
             id,
             position,
@@ -1981,6 +1984,8 @@ impl Turns {
         if let Some(e) = self.spatial.take_sight_unsupported() {
             return Err(e);
         }
+        // the combat setup's class counters (FUN_141226060)
+        crate::turn::count_class(&mut self.players[p].attributes, made, 1.0);
         self.players[p].objects.push(Unit {
             id,
             position: at,
