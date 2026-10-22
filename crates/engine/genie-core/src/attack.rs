@@ -1517,7 +1517,7 @@ impl Attack {
     fn trample(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
         let (center, target) = (s.own.position, s.victim.id);
         let mut targets: Vec<&mut Victim> = s.blasted.iter_mut().collect();
-        damage::blast(&mut s.own, center, Some(target), None, &mut targets, 1.0)?;
+        let _ = damage::blast(&mut s.own, center, Some(target), None, &mut targets, 1.0)?;
         s.executed = Some(target);
         let draw = object_rng.raw64();
         let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
@@ -1637,7 +1637,7 @@ pub(crate) fn strike(
         let main = victim.id;
         let mut targets: Vec<&mut Victim> = blasted.iter_mut().collect();
         targets.push(victim);
-        damage::blast(own, hit.at, None, Some(main), &mut targets, 1.0)?;
+        let _ = damage::blast(own, hit.at, None, Some(main), &mut targets, 1.0)?;
         if a.charge_type == 3 {
             own.source.charge = 0.0;
         }
