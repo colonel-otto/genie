@@ -200,4 +200,135 @@ mod tests {
         bell.record(work(1, 2, [3.0, 4.0]));
         assert_eq!(bell.work, cutting);
     }
+
+    /// The objects of a test world: a house 7 that is built, a house 8 that is not, a farm 9
+    /// that is built, a sheep 10.
+    fn object(id: i32) -> Option<RecordTarget> {
+        let (building, class, built) = match id {
+            7 => (true, 3, true),
+            8 => (true, 3, false),
+            9 => (true, FARM_CLASS, true),
+            10 => (false, 58, false),
+            _ => return None,
+        };
+        Some(RecordTarget {
+            id,
+            building,
+            class,
+            built,
+        })
+    }
+
+    #[test]
+    fn a_record_names_its_target_else_its_second_target_unless_a_built_building_ended_it() {
+        // FUN_1411f8fa0: the target the world holds
+        let shepherd = BackToWork {
+            target2: 7,
+            ..work(10, 0x261, [5.0, 6.0])
+        };
+        assert_eq!(record_object(shepherd, &object), (object(10), shepherd));
+        // a target the world no longer holds: the second target, unless it is below 0
+        let gone = BackToWork {
+            target2: 10,
+            ..work(11, 0x265, [5.0, 6.0])
+        };
+        assert_eq!(record_object(gone, &object), (object(10), gone));
+        let none = BackToWork {
+            target2: -1,
+            ..gone
+        };
+        assert_eq!(record_object(none, &object), (None, none));
+        let lost = BackToWork {
+            target2: 12,
+            ..gone
+        };
+        assert_eq!(record_object(lost, &object), (None, lost));
+        // a target below 0 is not looked up: the second target is
+        let second = BackToWork {
+            target2: 10,
+            ..work(-1, 0x25a, [5.0, 6.0])
+        };
+        assert_eq!(record_object(second, &object), (object(10), second));
+        // building, gathering and hunting (mask 0x881 over 0x25a..0x265) on a built building
+        // other than a farm end the record: no object, both targets −1 in the copy
+        for action in [0x25a, 0x261, 0x265] {
+            let on_house = BackToWork {
+                target2: 10,
+                ..work(7, action, [5.0, 6.0])
+            };
+            let ended = BackToWork {
+                target: -1,
+                target2: -1,
+                ..on_house
+            };
+            assert_eq!(record_object(on_house, &object), (None, ended));
+            // reached through the second target, too
+            let through_second = BackToWork {
+                target2: 7,
+                ..work(11, action, [5.0, 6.0])
+            };
+            let ended = BackToWork {
+                target: -1,
+                target2: -1,
+                ..through_second
+            };
+            assert_eq!(record_object(through_second, &object), (None, ended));
+            // a house not built yet and a built farm stay
+            for kept in [8, 9] {
+                let r = work(kept, action, [5.0, 6.0]);
+                assert_eq!(record_object(r, &object), (object(kept), r));
+            }
+        }
+        // the actions between them, and any other, keep a built building
+        for action in [0x25b, 0x260, 0x262, 0x264, 0x266, 0x259, -1] {
+            let r = work(7, action, [5.0, 6.0]);
+            assert_eq!(record_object(r, &object), (object(7), r));
+        }
+    }
+
+    #[test]
+    fn back_to_work_takes_the_first_record_else_the_second_which_moves_up() {
+        // FUN_1412035a0: the first record's object wins; the records stay
+        let first = work(10, 0x261, [5.0, 6.0]);
+        let second = work(8, BUILD_ACTION, [1.0, 2.0]);
+        let mut bell = TownBell {
+            flag: false,
+            work: first,
+            before_building: second,
+        };
+        assert_eq!(bell.back_to_work(&object), (object(10), first));
+        assert_eq!((bell.work, bell.before_building), (first, second));
+        // the first's object gone: the second's object, and the second becomes the first
+        let gone = work(11, 0x261, [5.0, 6.0]);
+        bell.work = gone;
+        assert_eq!(bell.back_to_work(&object), (object(8), second));
+        assert_eq!(
+            (bell.work, bell.before_building),
+            (second, BackToWork::NONE)
+        );
+        // neither has an object: the first record as it is, its targets kept even when a built
+        // building ended it
+        let ended = work(7, BUILD_ACTION, [5.0, 6.0]);
+        let mut bell = TownBell {
+            flag: false,
+            work: ended,
+            before_building: work(12, 0x261, [1.0, 2.0]),
+        };
+        assert_eq!(bell.back_to_work(&object), (None, ended));
+        assert_eq!(bell.work, ended);
+        // ... or the second when the first has no point (−1, −1 on both axes)
+        let pointless = work(11, 0x261, [-1.0, -1.0]);
+        let before = work(12, 0x261, [1.0, 2.0]);
+        let mut bell = TownBell {
+            flag: false,
+            work: pointless,
+            before_building: before,
+        };
+        assert_eq!(bell.back_to_work(&object), (None, before));
+        // one axis at −1 is a point
+        let half = work(11, 0x261, [-1.0, 3.0]);
+        bell.work = half;
+        assert_eq!(bell.back_to_work(&object), (None, half));
+        assert_eq!((bell.work, bell.before_building), (half, before));
+    }
 }
