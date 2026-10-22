@@ -13,9 +13,9 @@ const SPACING_FACTOR: f32 = crate::image::group::SPACING_FACTOR;
 /// A group holds fewer than this many members (`FUN_1410083c0`'s `0x46`: "No room in this
 /// group").
 const MAX_MEMBERS: usize = 70;
-/// The members' arrays grow from nothing to this many (`FUN_14102d710` with 10, then twice
-/// that), then double.
-const FIRST_CAPACITY: usize = 20;
+/// The members' arrays of a group without any first grow to this many (`FUN_1410083c0`'s
+/// `FUN_14102d710` with 10), then, as every full array, to twice their capacity.
+const FIRST_CAPACITY: i32 = 10;
 /// The unit AI's actions and orders `AddUnit` clears (`FUN_1410083c0`): actions 0x259, 0x2bf and
 /// 0x2c0, orders 0x2bd, 0x323 and 0x324.
 const CLEARED_ACTIONS: [i32; 3] = [0x259, 0x2bf, 0x2c0];
@@ -54,20 +54,37 @@ impl FormationUnit {
 }
 
 impl UnitGroup {
-    /// The members' arrays' room for one more (`FUN_1410083c0` with `FUN_14102d710`): when every
-    /// slot is taken they grow (from none to [`FIRST_CAPACITY`], else to twice), the new slots'
-    /// `mSecondsSinceAttacking` at `f32::MAX` (`0x7f7fffff`). The next member takes the first
-    /// spare slot's value, which a removed member may have left (`FUN_14102c160` shifts the ids
-    /// and moves, not this array).
+    /// The members' arrays' capacity (`+0xe8`): the members and the spare places past them.
+    #[must_use]
+    pub const fn member_capacity(&self) -> usize {
+        self.members.len() + self.spare_seconds.len()
+    }
+
+    /// `FUN_14102d710`: the members' arrays (ids `+0xf0`, own moves `+0xf8`,
+    /// `mSecondsSinceAttacking` `+0x480`) grow to `n`. False, with nothing changed, for `n` of 0
+    /// or less or not above the capacity (`+0xe8`). Else the members keep their ids, moves and
+    /// seconds, and every place past them is fresh: no unit (-1), no move (active 0, path and
+    /// reason -1, the rest 0) and its seconds at `f32::MAX` (`0x7f7fffff`), an earlier spare
+    /// value gone; the capacity is `n`. Allocation failure is Rust's abort.
+    pub fn resize_members(&mut self, n: i32) -> bool {
+        if n <= 0 || n as usize <= self.member_capacity() {
+            return false;
+        }
+        self.spare_seconds = vec![f32::MAX; n as usize - self.members.len()];
+        true
+    }
+
+    /// The members' arrays' room for one more (`FUN_1410083c0`): a full array (the members at
+    /// the capacity) grows ([`UnitGroup::resize_members`]): one of none to [`FIRST_CAPACITY`]
+    /// and then, as any full one, to twice its capacity (20 the first time). The next member
+    /// takes the first spare place's seconds, which a removed member may have left
+    /// (`FUN_14102c160` shifts the ids and moves, not this array).
     fn next_seconds(&mut self) -> f32 {
         if self.spare_seconds.is_empty() {
-            let capacity = self.members.len();
-            let grown = if capacity == 0 {
-                FIRST_CAPACITY
-            } else {
-                capacity * 2
-            };
-            self.spare_seconds = vec![f32::MAX; grown - capacity];
+            if self.member_capacity() == 0 {
+                let _ = self.resize_members(FIRST_CAPACITY);
+            }
+            let _ = self.resize_members(self.member_capacity() as i32 * 2);
         }
         self.spare_seconds.remove(0)
     }
@@ -420,6 +437,35 @@ mod tests {
             ..UnitGroups::default()
         };
         t
+    }
+
+    /// `FUN_14102d710`: nothing for 0, a negative size or one not above the capacity; a larger
+    /// one keeps the members and makes every place past them fresh, an old spare value gone.
+    /// `AddUnit` grows a group without places to 10, then 20.
+    #[test]
+    fn the_members_arrays_grow_with_fresh_places_past_the_members() {
+        let mut g = UnitGroup::new(1);
+        g.members = vec![Member {
+            id: 5,
+            seconds_since_attacking: 2.0,
+            ..Member::default()
+        }];
+        g.spare_seconds = vec![7.0, 8.0];
+        assert!(!g.resize_members(0));
+        assert!(!g.resize_members(-4));
+        assert!(!g.resize_members(3));
+        assert_eq!(g.spare_seconds, [7.0, 8.0]);
+        assert!(g.resize_members(4));
+        assert_eq!(
+            (g.members[0].id, g.members[0].seconds_since_attacking),
+            (5, 2.0)
+        );
+        assert_eq!(g.spare_seconds, [f32::MAX; 3]);
+        assert_eq!(g.member_capacity(), 4);
+        // the place taken for the next member leaves 19 spare of 20
+        let mut empty = UnitGroup::new(2);
+        assert_eq!(empty.next_seconds(), f32::MAX);
+        assert_eq!(empty.spare_seconds.len(), 19);
     }
 
     /// `FUN_14102c160`: 11 leaves: the ids close up, the seconds keep their places (11's 2 now
