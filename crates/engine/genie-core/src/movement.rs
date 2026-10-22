@@ -380,6 +380,16 @@ impl PathData {
     }
 }
 
+/// `LAB_141152ec1`'s test whether a waypoint `way` away is far enough for the long pather: a
+/// tile or more without a target; with one (its own gap, `FUN_14118f680`, and its master), its
+/// gap a tile or more (`COMISS`/`JNC` at 0x141152f0e: a NaN is near) or its master 45 however
+/// near.
+fn far_waypoint(way: f32, target: Option<(f32, i16)>) -> bool {
+    target.map_or(CLOSE <= way, |(gap, master)| {
+        CLOSE <= gap || master == WIDE_MASTER
+    })
+}
+
 /// A gap to the walked level's target `target` (its id and place): for a gate (class 39), the
 /// least (`MINSS`) of `own` and its first two annexes' (slot 0x680) gaps from the unit (`near`:
 /// its place and radii) through `annex`; for anything else `own`.
@@ -1695,13 +1705,13 @@ impl Mover {
             };
             if tail && LONG_PATHER && (trade_cart || SHORT_REACH < way) {
                 // LAB_141152ec1: a far waypoint takes the long pather
-                let far = match target {
-                    None => CLOSE <= way,
-                    Some(_) if CLOSE <= gap => true,
-                    Some(_) => {
-                        return Err(Unsupported("a near target's master test (0x60c9)"));
-                    }
-                };
+                let far = far_waypoint(
+                    way,
+                    target.map(|t| {
+                        let gap = footprint_gap(me.position, ground_radius, t.position, t.radius);
+                        (gap, t.master)
+                    }),
+                );
                 if far {
                     planned = false;
                     let target = target.map(|t| (target_id, t));
@@ -3464,6 +3474,17 @@ mod tests {
         m.stats.turn_rate = 1.0;
         assert_eq!(m.steer([0.0, 0.0, 1.0], 0.02), Ok(true));
         assert!(m.forward[2].abs() < 0.03);
+    }
+
+    /// `LAB_141152ec1`: a waypoint a tile away, or a target a tile from the unit, or a near one of
+    /// master 45, is the long pather's.
+    #[test]
+    fn a_far_waypoint_or_a_target_of_master_45_takes_the_long_pather() {
+        assert!(far_waypoint(1.0, None) && !far_waypoint(0.5, None));
+        assert!(far_waypoint(0.0, Some((1.0, 4))));
+        assert!(!far_waypoint(30.0, Some((0.5, 4))));
+        assert!(far_waypoint(30.0, Some((0.5, WIDE_MASTER))));
+        assert!(!far_waypoint(30.0, Some((f32::NAN, 4))));
     }
 
     /// `FUN_140f98bc0` with 1: a loop's next point or 0 past its end; a back-and-forth path turns
