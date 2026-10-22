@@ -3829,7 +3829,7 @@ impl Turns {
     /// share of the new master's (whole, at least 1), its sight goes and the new master's comes
     /// (slots 0x1d8, 0x1d0), its place and obstruction record take the new master's
     /// (`FUN_141055b40`, `FUN_14118c540`) and it moves with the new master's values; its powerups
-    /// go (`FUN_1412066b0`); it takes the new master's standing sprite (slot 0x68). Its
+    /// go ([`clear_powerups`]); it takes the new master's standing sprite (slot 0x68). Its
     /// per-master counts, facet, class registry (`DAT_143f69170`) and particles are not held.
     pub(crate) fn change_master(
         &mut self,
@@ -3928,8 +3928,7 @@ impl Turns {
                 }
             }
         }
-        let unit = &mut self.players[player].objects[idx];
-        unit.work_rate_powerup = 0.0;
+        clear_powerups(&mut self.players[player].objects[idx]);
         Ok(())
     }
 }
@@ -4008,6 +4007,20 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
     let x = (i % side - half) as f32 * GRID_STEP + point[0];
     let y = (i / side - half) as f32 * GRID_STEP + point[1];
     [inside_map(x, map[0]), inside_map(y, map[1])]
+}
+
+/// `FUN_1412066b0`, a master change's powerups: the attack (`+0xa24`), reload (`+0xa28`), work
+/// rate (`+0xa30`), most hit points (`+0xa3c`) and melee and pierce armor (`+0xa48`, `+0xa4c`)
+/// powerups go; the hit points powerup (`+0xa38`) stays. The routine also zeroes `+0xa34`,
+/// `+0xa40`, `+0xa50` and `+0x9f8`, empties the powerup map (`+0xa98`, count `+0xaa0`), sets
+/// `+0xa2c` to slot 0x1b8 × 0.05 and takes a sight powerup (`+0xad4`) off (slots 0x1d8, 0x1d0):
+/// none of them is held.
+const fn clear_powerups(unit: &mut Unit) {
+    unit.attack_powerup = 0.0;
+    unit.reload_powerup = 0.0;
+    unit.work_rate_powerup = 0.0;
+    unit.hp_powerups[1] = 0.0;
+    unit.armor_powerups = [0; 2];
 }
 
 /// A unit AI's slot 0x1c0 (`FUN_140c64d50`): the stance (`+0x1a9`) takes `state` and the stance's
@@ -4607,6 +4620,35 @@ mod tests {
         assert_eq!(stance(&t, 2), 0);
         t.unit_ai_state(1, &[30], 3).unwrap();
         assert_eq!(stance(&t, 2), 3);
+    }
+
+    /// `FUN_1412066b0`: the attack, reload, work rate, most hit points and armor powerups go, the
+    /// hit points powerup and the reload stinger stay.
+    #[test]
+    fn a_master_change_clears_the_powerups_but_the_hit_points_one() {
+        let mut unit = Unit {
+            attack_powerup: 2.0,
+            reload_powerup: 0.5,
+            reload_stinger: 0.25,
+            work_rate_powerup: 0.15,
+            hp_powerups: [10.0, 20.0],
+            armor_powerups: [1, 2],
+            ..Unit::default()
+        };
+        clear_powerups(&mut unit);
+        assert_eq!(
+            (
+                unit.attack_powerup,
+                unit.reload_powerup,
+                unit.work_rate_powerup
+            ),
+            (0.0, 0.0, 0.0)
+        );
+        assert_eq!(
+            (unit.hp_powerups, unit.armor_powerups),
+            ([10.0, 0.0], [0, 0])
+        );
+        assert_eq!(unit.reload_stinger, 0.25);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
