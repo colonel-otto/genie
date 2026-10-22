@@ -294,10 +294,91 @@ pub fn atan(x: f32) -> f32 {
     if negative { -r } else { r }
 }
 
-/// `atan2f(y, x)` (`0x14099e020`).
+/// π (`DAT_142eb0c68`).
+const PI: f32 = f32::from_bits(0x4049_0fdb);
+/// −π (`DAT_142ec8a3c`).
+const MINUS_PI: f32 = f32::from_bits(0xc049_0fdb);
+/// π/2 (`DAT_142eb0c64`).
+const FRAC_PI_2: f32 = f32::from_bits(0x3fc9_0fdb);
+/// −π/2 (`DAT_142ec8a34`).
+const MINUS_FRAC_PI_2: f32 = f32::from_bits(0xbfc9_0fdb);
+/// π/4 (`DAT_142eb6e44`).
+const FRAC_PI_4: f32 = f32::from_bits(0x3f49_0fdb);
+/// −π/4 (`DAT_142ec8a30`).
+const MINUS_FRAC_PI_4: f32 = f32::from_bits(0xbf49_0fdb);
+/// 3π/4 (`DAT_142ec8a24`).
+const THREE_FRAC_PI_4: f32 = f32::from_bits(0x4016_cbe4);
+/// −3π/4 (`DAT_142ec8a38`).
+const MINUS_THREE_FRAC_PI_4: f32 = f32::from_bits(0xc016_cbe4);
+/// −0 (`DAT_142ec8a28`).
+const MINUS_ZERO: f32 = f32::from_bits(0x8000_0000);
+/// π's next bits below [`PI`] (`DAT_142ec8a2c`).
+const PI_LO: f32 = f32::from_bits(0xb3bb_bd2e);
+
+/// `atan2f(y, x)`: the game's atan2f `0x14099e020` (msun's `e_atan2f.c`), the angle of the point
+/// (x, y). A NaN in either gives `y + x`; x = 1 is atanf(y). `m` holds x's sign (bit 1) and y's
+/// (bit 0): it picks the quadrant of the zeros, the infinities and of atanf(|y / x|).
 #[must_use]
 pub fn atan2(y: f32, x: f32) -> f32 {
-    libm::atan2f(y, x)
+    if is_nan(x) || is_nan(y) {
+        return y + x;
+    }
+    let hx = x.to_bits();
+    if hx == 0x3f80_0000 {
+        return atan(y);
+    }
+    let hy = y.to_bits();
+    let m = ((hx & 0xbfff_ffff) | (hy >> 1)) >> 30;
+    let ix = hx & 0x7fff_ffff;
+    let iy = hy & 0x7fff_ffff;
+    if iy == 0 {
+        return match m {
+            0 | 1 => y,
+            2 => PI,
+            _ => MINUS_PI,
+        };
+    }
+    let up_or_down = if m & 1 == 0 {
+        FRAC_PI_2
+    } else {
+        MINUS_FRAC_PI_2
+    };
+    if ix == 0 {
+        return up_or_down;
+    }
+    if ix == 0x7f80_0000 {
+        return if iy == 0x7f80_0000 {
+            match m {
+                0 => FRAC_PI_4,
+                1 => MINUS_FRAC_PI_4,
+                2 => THREE_FRAC_PI_4,
+                _ => MINUS_THREE_FRAC_PI_4,
+            }
+        } else {
+            match m {
+                0 => 0.0,
+                1 => MINUS_ZERO,
+                2 => PI,
+                _ => MINUS_PI,
+            }
+        };
+    }
+    // |y / x| above 2^26, or y infinite
+    if ix + 0x0d00_0000 < iy || iy == 0x7f80_0000 {
+        return up_or_down;
+    }
+    // |y / x| below 2^-26 with x negative: 0, else atanf(|y / x|)
+    let z = if m & 2 != 0 && iy + 0x0d00_0000 < ix {
+        0.0
+    } else {
+        atan(fabs(y / x))
+    };
+    match m {
+        0 => z,
+        1 => -z,
+        2 => PI - (z - PI_LO),
+        _ => (z - PI_LO) - PI,
+    }
 }
 
 /// `COMISS a, b` then `JC`: taken when `a` is less than `b` or either is NaN (unordered).
@@ -429,6 +510,160 @@ mod tests {
                 (0x4049_0fdb, 0x3fa1_9dc5),
             ],
         );
+    }
+
+    /// atan2f `0x14099e020` on every pair of ±0, ±1, 1/2, −3, the smallest subnormal, 1e20, ±∞
+    /// and a NaN: the game's outputs (unicorn).
+    #[test]
+    fn atan2_is_the_games_atan2f_on_special_pairs() {
+        for (y, x, game) in [
+            (0x0000_0000, 0x0000_0000, 0x0000_0000),
+            (0x0000_0000, 0x8000_0000, 0x4049_0fdb),
+            (0x0000_0000, 0x3f80_0000, 0x0000_0000),
+            (0x0000_0000, 0xbf80_0000, 0x4049_0fdb),
+            (0x0000_0000, 0x3f00_0000, 0x0000_0000),
+            (0x0000_0000, 0xc040_0000, 0x4049_0fdb),
+            (0x0000_0000, 0x0000_0001, 0x0000_0000),
+            (0x0000_0000, 0x60ad_78ec, 0x0000_0000),
+            (0x0000_0000, 0x7f80_0000, 0x0000_0000),
+            (0x0000_0000, 0xff80_0000, 0x4049_0fdb),
+            (0x0000_0000, 0x7fc0_0001, 0x7fc0_0001),
+            (0x8000_0000, 0x0000_0000, 0x8000_0000),
+            (0x8000_0000, 0x8000_0000, 0xc049_0fdb),
+            (0x8000_0000, 0x3f80_0000, 0x8000_0000),
+            (0x8000_0000, 0xbf80_0000, 0xc049_0fdb),
+            (0x8000_0000, 0x3f00_0000, 0x8000_0000),
+            (0x8000_0000, 0xc040_0000, 0xc049_0fdb),
+            (0x8000_0000, 0x0000_0001, 0x8000_0000),
+            (0x8000_0000, 0x60ad_78ec, 0x8000_0000),
+            (0x8000_0000, 0x7f80_0000, 0x8000_0000),
+            (0x8000_0000, 0xff80_0000, 0xc049_0fdb),
+            (0x8000_0000, 0x7fc0_0001, 0x7fc0_0001),
+            (0x3f80_0000, 0x0000_0000, 0x3fc9_0fdb),
+            (0x3f80_0000, 0x8000_0000, 0x3fc9_0fdb),
+            (0x3f80_0000, 0x3f80_0000, 0x3f49_0fdb),
+            (0x3f80_0000, 0xbf80_0000, 0x4016_cbe4),
+            (0x3f80_0000, 0x3f00_0000, 0x3f8d_b70d),
+            (0x3f80_0000, 0xc040_0000, 0x4034_784b),
+            (0x3f80_0000, 0x0000_0001, 0x3fc9_0fdb),
+            (0x3f80_0000, 0x60ad_78ec, 0x1e3c_e508),
+            (0x3f80_0000, 0x7f80_0000, 0x0000_0000),
+            (0x3f80_0000, 0xff80_0000, 0x4049_0fdb),
+            (0x3f80_0000, 0x7fc0_0001, 0x7fc0_0001),
+            (0xbf80_0000, 0x0000_0000, 0xbfc9_0fdb),
+            (0xbf80_0000, 0x8000_0000, 0xbfc9_0fdb),
+            (0xbf80_0000, 0x3f80_0000, 0xbf49_0fdb),
+            (0xbf80_0000, 0xbf80_0000, 0xc016_cbe4),
+            (0xbf80_0000, 0x3f00_0000, 0xbf8d_b70d),
+            (0xbf80_0000, 0xc040_0000, 0xc034_784b),
+            (0xbf80_0000, 0x0000_0001, 0xbfc9_0fdb),
+            (0xbf80_0000, 0x60ad_78ec, 0x9e3c_e508),
+            (0xbf80_0000, 0x7f80_0000, 0x8000_0000),
+            (0xbf80_0000, 0xff80_0000, 0xc049_0fdb),
+            (0xbf80_0000, 0x7fc0_0001, 0x7fc0_0001),
+            (0x3f00_0000, 0x0000_0000, 0x3fc9_0fdb),
+            (0x3f00_0000, 0x8000_0000, 0x3fc9_0fdb),
+            (0x3f00_0000, 0x3f80_0000, 0x3eed_6338),
+            (0x3f00_0000, 0xbf80_0000, 0x402b_6374),
+            (0x3f00_0000, 0x3f00_0000, 0x3f49_0fdb),
+            (0x3f00_0000, 0xc040_0000, 0x403e_7e0f),
+            (0x3f00_0000, 0x0000_0001, 0x3fc9_0fdb),
+            (0x3f00_0000, 0x60ad_78ec, 0x1dbc_e508),
+            (0x3f00_0000, 0x7f80_0000, 0x0000_0000),
+            (0x3f00_0000, 0xff80_0000, 0x4049_0fdb),
+            (0x3f00_0000, 0x7fc0_0001, 0x7fc0_0001),
+            (0xc040_0000, 0x0000_0000, 0xbfc9_0fdb),
+            (0xc040_0000, 0x8000_0000, 0xbfc9_0fdb),
+            (0xc040_0000, 0x3f80_0000, 0xbf9f_e0bb),
+            (0xc040_0000, 0xbf80_0000, 0xbff2_3efa),
+            (0xc040_0000, 0x3f00_0000, 0xbfb3_ec43),
+            (0xc040_0000, 0xc040_0000, 0xc016_cbe4),
+            (0xc040_0000, 0x0000_0001, 0xbfc9_0fdb),
+            (0xc040_0000, 0x60ad_78ec, 0x9f0d_abc6),
+            (0xc040_0000, 0x7f80_0000, 0x8000_0000),
+            (0xc040_0000, 0xff80_0000, 0xc049_0fdb),
+            (0xc040_0000, 0x7fc0_0001, 0x7fc0_0001),
+            (0x0000_0001, 0x0000_0000, 0x3fc9_0fdb),
+            (0x0000_0001, 0x8000_0000, 0x3fc9_0fdb),
+            (0x0000_0001, 0x3f80_0000, 0x0000_0001),
+            (0x0000_0001, 0xbf80_0000, 0x4049_0fdb),
+            (0x0000_0001, 0x3f00_0000, 0x0000_0002),
+            (0x0000_0001, 0xc040_0000, 0x4049_0fdb),
+            (0x0000_0001, 0x0000_0001, 0x3f49_0fdb),
+            (0x0000_0001, 0x60ad_78ec, 0x0000_0000),
+            (0x0000_0001, 0x7f80_0000, 0x0000_0000),
+            (0x0000_0001, 0xff80_0000, 0x4049_0fdb),
+            (0x0000_0001, 0x7fc0_0001, 0x7fc0_0001),
+            (0x60ad_78ec, 0x0000_0000, 0x3fc9_0fdb),
+            (0x60ad_78ec, 0x8000_0000, 0x3fc9_0fdb),
+            (0x60ad_78ec, 0x3f80_0000, 0x3fc9_0fda),
+            (0x60ad_78ec, 0xbf80_0000, 0x3fc9_0fdb),
+            (0x60ad_78ec, 0x3f00_0000, 0x3fc9_0fdb),
+            (0x60ad_78ec, 0xc040_0000, 0x3fc9_0fdb),
+            (0x60ad_78ec, 0x0000_0001, 0x3fc9_0fdb),
+            (0x60ad_78ec, 0x60ad_78ec, 0x3f49_0fdb),
+            (0x60ad_78ec, 0x7f80_0000, 0x0000_0000),
+            (0x60ad_78ec, 0xff80_0000, 0x4049_0fdb),
+            (0x60ad_78ec, 0x7fc0_0001, 0x7fc0_0001),
+            (0x7f80_0000, 0x0000_0000, 0x3fc9_0fdb),
+            (0x7f80_0000, 0x8000_0000, 0x3fc9_0fdb),
+            (0x7f80_0000, 0x3f80_0000, 0x3fc9_0fda),
+            (0x7f80_0000, 0xbf80_0000, 0x3fc9_0fdb),
+            (0x7f80_0000, 0x3f00_0000, 0x3fc9_0fdb),
+            (0x7f80_0000, 0xc040_0000, 0x3fc9_0fdb),
+            (0x7f80_0000, 0x0000_0001, 0x3fc9_0fdb),
+            (0x7f80_0000, 0x60ad_78ec, 0x3fc9_0fdb),
+            (0x7f80_0000, 0x7f80_0000, 0x3f49_0fdb),
+            (0x7f80_0000, 0xff80_0000, 0x4016_cbe4),
+            (0x7f80_0000, 0x7fc0_0001, 0x7fc0_0001),
+            (0xff80_0000, 0x0000_0000, 0xbfc9_0fdb),
+            (0xff80_0000, 0x8000_0000, 0xbfc9_0fdb),
+            (0xff80_0000, 0x3f80_0000, 0xbfc9_0fda),
+            (0xff80_0000, 0xbf80_0000, 0xbfc9_0fdb),
+            (0xff80_0000, 0x3f00_0000, 0xbfc9_0fdb),
+            (0xff80_0000, 0xc040_0000, 0xbfc9_0fdb),
+            (0xff80_0000, 0x0000_0001, 0xbfc9_0fdb),
+            (0xff80_0000, 0x60ad_78ec, 0xbfc9_0fdb),
+            (0xff80_0000, 0x7f80_0000, 0xbf49_0fdb),
+            (0xff80_0000, 0xff80_0000, 0xc016_cbe4),
+            (0xff80_0000, 0x7fc0_0001, 0x7fc0_0001),
+            (0x7fc0_0001, 0x0000_0000, 0x7fc0_0001),
+            (0x7fc0_0001, 0x8000_0000, 0x7fc0_0001),
+            (0x7fc0_0001, 0x3f80_0000, 0x7fc0_0001),
+            (0x7fc0_0001, 0xbf80_0000, 0x7fc0_0001),
+            (0x7fc0_0001, 0x3f00_0000, 0x7fc0_0001),
+            (0x7fc0_0001, 0xc040_0000, 0x7fc0_0001),
+            (0x7fc0_0001, 0x0000_0001, 0x7fc0_0001),
+            (0x7fc0_0001, 0x60ad_78ec, 0x7fc0_0001),
+            (0x7fc0_0001, 0x7f80_0000, 0x7fc0_0001),
+            (0x7fc0_0001, 0xff80_0000, 0x7fc0_0001),
+            (0x7fc0_0001, 0x7fc0_0001, 0x7fc0_0001),
+        ] {
+            let got = atan2(f32::from_bits(y), f32::from_bits(x)).to_bits();
+            assert_eq!(
+                got, game,
+                "atan2({y:08x}, {x:08x}): {got:08x}, game {game:08x}"
+            );
+        }
+    }
+
+    /// A NaN in either argument gives `y + x` (`ADDSS y, x`): SSE returns the first operand's NaN
+    /// (y's) when both are NaNs, quieted. (Unicorn's softfloat picks the larger payload there, as
+    /// the x87 does, so these outputs follow Intel's rule, not the emulator.)
+    #[test]
+    fn atan2_of_a_nan_is_y_plus_x() {
+        for (y, x, game) in [
+            (0xffc0_0002, 0x7fc0_0003, 0xffc0_0002),
+            (0x7f80_0001, 0xff80_0002, 0x7fc0_0001),
+            (0x7f80_0001, 0x3f80_0000, 0x7fc0_0001),
+            (0x3f80_0000, 0x7f80_0001, 0x7fc0_0001),
+        ] {
+            let got = atan2(f32::from_bits(y), f32::from_bits(x)).to_bits();
+            assert_eq!(
+                got, game,
+                "atan2({y:08x}, {x:08x}): {got:08x}, game {game:08x}"
+            );
+        }
     }
 
     /// fabsf `0x14099e7b0` clears the sign bit and nothing else, a NaN's payload kept.

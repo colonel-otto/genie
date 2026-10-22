@@ -130,3 +130,42 @@ fn acos_agrees_with_libm_on_every_f32() {
 fn atan_agrees_with_libm_on_every_f32() {
     assert_eq!(sweep(fmath::atan, libm::atanf), Vec::<u32>::new());
 }
+
+#[test]
+#[ignore = "2^30 pairs: run in release with --ignored"]
+fn atan2_agrees_with_libm_on_random_pairs() {
+    // libm returns `x + y` for a NaN, the game `y + x`: two NaNs may differ in payload only
+    let differ = |y: f32, x: f32| {
+        let (ours, theirs) = (fmath::atan2(y, x), libm::atan2f(y, x));
+        ours.to_bits() != theirs.to_bits() && !(ours.is_nan() && theirs.is_nan())
+    };
+    let threads = 16u64;
+    let bad: Vec<(u32, u32)> = std::thread::scope(|s| {
+        let mut workers = Vec::new();
+        for t in 0..threads {
+            workers.push(s.spawn(move || {
+                // a 64-bit LCG per thread, its high words the two arguments' bits
+                let mut state = 0x9e37_79b9_7f4a_7c15_u64 ^ t;
+                let mut bad = Vec::new();
+                for _ in 0..(1u64 << 30) / threads {
+                    state = state
+                        .wrapping_mul(6_364_136_223_846_793_005)
+                        .wrapping_add(1_442_695_040_888_963_407);
+                    let (y, x) = (
+                        (state >> 32) as u32,
+                        u32::try_from(state & 0xffff_ffff).expect("a word"),
+                    );
+                    if differ(f32::from_bits(y), f32::from_bits(x)) && bad.len() < 16 {
+                        bad.push((y, x));
+                    }
+                }
+                bad
+            }));
+        }
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().expect("a sweep thread"))
+            .collect()
+    });
+    assert_eq!(bad, Vec::new());
+}
