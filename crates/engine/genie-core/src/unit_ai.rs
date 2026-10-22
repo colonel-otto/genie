@@ -1822,7 +1822,10 @@ impl UnitAi {
 
     /// The AI's move (slot 0x130, `FUN_140c55620`): with `force` or no action value, the unit takes
     /// it (its slot 0x340, which the caller runs), and the AI holds the move action and the point
-    /// without a target (`FUN_140c64c10` with −1, which leaves the target class).
+    /// without a target (`FUN_140c64c10` with −1, which leaves the target class). The game
+    /// changes the AI only on slot 0x340's 1: the caller's slot 0x340 is `FUN_1410866e0`, which
+    /// always gives 1, but for classes 51 and 54 (`FUN_141216c50`, their packing), which it
+    /// does not run.
     const fn move_to(&mut self, m: AiMove) -> Option<AiMove> {
         if !m.force && self.current_action != -1 {
             return None;
@@ -1932,34 +1935,27 @@ impl UnitAi {
         }
     }
 
-    /// The hunted animal's evade of the object its search found (`FUN_140c1eea0`, then slot
-    /// 0x150, `FUN_140c4d140`, with arguments 5 and 6 as the idle's frame leaves them: 1 and 0 at
-    /// every call probed): from its place away from the object by three times its speed (slot
-    /// 0x208; one tile more in mode 1, not here), held on the map (below 0 to 0, at the far edge
-    /// one tile in), the unit's move there (slot 0x340: range 0, forced, running); the AI holds
-    /// the move action and the point.
-    fn evade(&mut self, at: &Surroundings, other: [f32; 3]) -> Option<AiMove> {
+    /// The hunted animal's evade of the object its search found (`FUN_140c1eea0`): from its
+    /// place away from the object by three times its speed (slot 0x208; one tile more in mode 1,
+    /// not here), at its height, through `evasiveMoveTo` (slot 0x150, [`UnitAi::evasive_move`])
+    /// with arguments 5 and 6 1 and 0 (`[RSP+0x20]`, `[RSP+0x28]`): an object on its own point
+    /// gives coordinates that are not numbers, which become its own place plus or minus one;
+    /// the point is held on the map and the unit moves there. True (6).
+    fn evade(
+        &mut self,
+        at: &Surroundings,
+        other: [f32; 3],
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
         let [x, y, z] = at.position;
         let reach = at.speed * EVADE_REACH;
         let (dx, dy) = (other[0] - x, other[1] - y);
         let d = crate::fmath::sqrt(dy * dy + dx * dx);
-        let held = |v: f32, size: i32| {
-            if v < 0.0 {
-                0.0
-            } else if size as f32 <= v {
-                size as f32 - EVADE_EDGE
-            } else {
-                v
-            }
-        };
-        let ex = held(x - (dx / d) * reach, at.map[0]);
-        let ey = held(y - (dy / d) * reach, at.map[1]);
-        self.move_to(AiMove {
-            point: [ex, ey, z],
-            range: 0.0,
-            force: true,
-            walk: false,
-        })
+        let point = [x - (dx / d) * reach, y - (dy / d) * reach, z];
+        let _ = self.evasive_move(point, (true, false), at, ai, side, fx)?;
+        Ok(true)
     }
 
     fn hunted_idle(
@@ -1981,10 +1977,7 @@ impl UnitAi {
             }
             return Ok(false);
         }
-        let moved = self.hunted_wander(at, ai, side)?;
-        let produced = moved.is_some();
-        fx.extend(moved.map(Effect::Move));
-        Ok(produced)
+        self.hunted_wander(at, ai, side, fx)
     }
 
     /// [`UnitAi::hunted_idle`] for an animal that is not a king: its move, if any.
@@ -1993,7 +1986,8 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-    ) -> Result<Option<AiMove>, Unsupported> {
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
         let h = self
             .hunted
             .ok_or(Unsupported("a hunted animal without its origin"))?;
@@ -2008,7 +2002,8 @@ impl UnitAi {
         if 0.0 < leash {
             let gap = point_gap_squared([h.origin[0], h.origin[1]], at.position, at.size);
             if leash < gap {
-                return Ok(self.move_to(go_home));
+                fx.extend(self.move_to(go_home).map(Effect::Move));
+                return Ok(true);
             }
         }
         if at.mode_1 {
@@ -2041,14 +2036,15 @@ impl UnitAi {
             let other = found
                 .position
                 .ok_or(Unsupported("a found object without its place"))?;
-            return Ok(self.evade(at, other));
+            return self.evade(at, other, ai, side, fx);
         }
         let r = ai.rand15();
         if r.is_multiple_of(BOAR_WANDER) {
             let dx = x - h.origin[0];
             let dy = y - h.origin[1];
             if HUNTED_HOME < dy * dy + dx * dx {
-                return Ok(self.move_to(go_home));
+                fx.extend(self.move_to(go_home).map(Effect::Move));
+                return Ok(true);
             }
             let step = |ai: &mut Well512| {
                 let n = (ai.rand15() % (2 * HUNTED_STEP as u32)) as i32;
@@ -2060,12 +2056,14 @@ impl UnitAi {
             };
             let sx = step(ai) as f32;
             let sy = step(ai) as f32;
-            return Ok(self.move_to(AiMove {
+            let wander = self.move_to(AiMove {
                 point: [x + sx, sy + y, z],
                 ..go_home
-            }));
+            });
+            fx.extend(wander.map(Effect::Move));
+            return Ok(true);
         }
-        Ok(None)
+        Ok(false)
     }
 
     /// The lion's idle check (slot 72, `FUN_140c1fb70`, factory type 5: wolves, bears).
@@ -3086,7 +3084,8 @@ impl UnitAi {
         let near = |p: f32, own: f32| {
             if !p.is_nan() {
                 p
-            } else if own <= EVASIVE_NEAR {
+            } else if crate::fmath::at_most_or_unordered(own, EVASIVE_NEAR) {
+                // COMISS own, 5.0; JBE
                 own + RUN_ONE
             } else {
                 own - RUN_ONE
@@ -3908,13 +3907,15 @@ impl UnitAi {
         let radius = [n.p[0] as f32 / RADIUS_SCALE, n.p[1] as f32 / RADIUS_SCALE];
         let off = side.off_footprint(n.p[2], radius)?;
         if let Some([x, y]) = off.spot {
-            self.set_action(MOVE_ASIDE_ACTION);
-            fx.push(Effect::MoveAside(AiMove {
-                point: [x, y, off.z],
-                range: 0.0,
-                force: true,
-                walk: off.class != PREY_CLASS,
-            }));
+            let _ = self.move_aside(
+                AiMove {
+                    point: [x, y, off.z],
+                    range: 0.0,
+                    force: true,
+                    walk: off.class != PREY_CLASS,
+                },
+                fx,
+            );
         }
         if !off.computer
             && off.class == VILLAGER_CLASS
@@ -3936,6 +3937,21 @@ impl UnitAi {
             self.insert_order(order(&target, ORDER_ON_TARGET), false);
         }
         Ok(GO_ON)
+    }
+
+    /// Slot 0x148 (`FUN_140c4d0d0`), the move off a footprint: with its force flag (`m.force`)
+    /// or without an action value, the unit's slot 0x340 takes the move with the same
+    /// arguments ([`Effect::MoveAside`], which the caller runs after the update); on its 1 the
+    /// action value becomes [`MOVE_ASIDE_ACTION`], the old one the last, and the target stays.
+    /// The caller's slot 0x340 is `FUN_1410866e0`, which always gives 1, but for classes 51 and
+    /// 54 (`FUN_141216c50`, their packing), which it does not run. True when it moves.
+    fn move_aside(&mut self, m: AiMove, fx: &mut Vec<Effect>) -> bool {
+        if !m.force && self.current_action != -1 {
+            return false;
+        }
+        fx.push(Effect::MoveAside(m));
+        self.set_action(MOVE_ASIDE_ACTION);
+        true
     }
 
     /// The action values of an explorer (the base handler's case 0x202): 605, 623 and 630, and
@@ -8447,5 +8463,266 @@ mod tests {
                 .0
                 .is_err()
         );
+    }
+
+    /// The hunted animal's evade goes through `evasiveMoveTo` (slot 0x150 with 1 and 0,
+    /// `FUN_140c4d140`): an object on its own point gives a point that is not a number, which
+    /// becomes its own place minus one on each axis (above 5) before the map's hold.
+    #[test]
+    fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
+        let mut u = deer();
+        let mut r = wander_seed(false);
+        let place = Surroundings {
+            speed: 1.2,
+            map: [120, 120],
+            ..deer_at([31.5, 106.5, 0.0])
+        };
+        let on_top = |_: &Search<'_>| {
+            Ok(Found {
+                id: 9183,
+                enemies: false,
+                position: Some([31.5, 106.5, 0.0]),
+                fresh: true,
+            })
+        };
+        let moved = u
+            .update_idle(10, 0, false, &place, &mut r, &mut on_top.clone())
+            .unwrap()
+            .unwrap();
+        assert_eq!(moved.point, [30.5, 105.5, 0.0]);
+        let near_edge = Surroundings {
+            speed: 1.2,
+            map: [120, 120],
+            ..deer_at([3.5, 4.5, 0.0])
+        };
+        let mut u = deer();
+        let on_it = |_: &Search<'_>| {
+            Ok(Found {
+                id: 9183,
+                enemies: false,
+                position: Some([3.5, 4.5, 0.0]),
+                fresh: true,
+            })
+        };
+        let moved = u
+            .update_idle(
+                10,
+                0,
+                false,
+                &near_edge,
+                &mut wander_seed(false),
+                &mut on_it.clone(),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(moved.point, [4.5, 5.5, 0.0]);
+    }
+
+    /// A unit side whose stand test fails a given number of times.
+    struct StandSide {
+        refusals: usize,
+        tested: Vec<[f32; 2]>,
+    }
+
+    impl UnitSide for StandSide {
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
+            Err(Unsupported("no attack here"))
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, Unsupported> {
+            self.tested.push(point);
+            if self.refusals == 0 {
+                return Ok(true);
+            }
+            self.refusals -= 1;
+            Ok(false)
+        }
+    }
+
+    /// `evasiveMoveTo` (`FUN_140c4d140`): without `uncon` a unit with an action stays; with
+    /// `tries` a point the unit cannot stand at moves by four draws (x's sign, its amount, y's
+    /// sign, its amount: `rand15 & 1`, `rand15 & 3`), held on the map, up to five times; then the
+    /// forced running move within 0, the move action value and the point, the AI commanded.
+    #[test]
+    fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
+        let at = Surroundings {
+            position: [10.0, 20.0, 1.5],
+            map: [64, 64],
+            ..Surroundings::default()
+        };
+        let mut busy = UnitAi {
+            current_action: ATTACK_ACTION,
+            ..idle(2)
+        };
+        let mut side = StandSide {
+            refusals: 0,
+            tested: Vec::new(),
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            busy.evasive_move(
+                [12.0, 22.0, 1.5],
+                (false, true),
+                &at,
+                &mut rng(),
+                &mut side,
+                &mut fx
+            ),
+            Ok(false)
+        );
+        assert_eq!((fx.len(), side.tested.len()), (0, 0));
+        let mut u = idle(2);
+        let mut side = StandSide {
+            refusals: 1,
+            tested: Vec::new(),
+        };
+        let mut r = rng();
+        let mut expected = rng();
+        let step = |r: &mut Well512, v: f32| {
+            let up = r.rand15() & 1 != 0;
+            let by = (r.rand15() & 3) as f32;
+            if up { v + by } else { v - by }
+        };
+        let ex = step(&mut expected, 12.0);
+        let ey = step(&mut expected, 22.0);
+        assert_eq!(
+            u.evasive_move(
+                [12.0, 22.0, 1.5],
+                (false, true),
+                &at,
+                &mut r,
+                &mut side,
+                &mut fx
+            ),
+            Ok(true)
+        );
+        assert_eq!(side.tested, vec![[12.0, 22.0], [ex, ey]]);
+        assert_eq!(r.draws, 4);
+        assert_eq!(
+            fx,
+            vec![Effect::Move(AiMove {
+                point: [ex, ey, 1.5],
+                range: 0.0,
+                force: true,
+                walk: false,
+            })]
+        );
+        assert_eq!(
+            (u.current_action, u.target_point),
+            (MOVE_ACTION, [ex, ey, 1.5])
+        );
+        assert!(u.commanded);
+        // a point past the far edge is held a tile in, below 0 at 0
+        let mut u = idle(2);
+        let mut fx = Vec::new();
+        let mut side = StandSide {
+            refusals: 0,
+            tested: Vec::new(),
+        };
+        let _ = u.evasive_move(
+            [70.0, -3.0, 0.0],
+            (true, false),
+            &at,
+            &mut rng(),
+            &mut side,
+            &mut fx,
+        );
+        assert_eq!(first_move(&fx).map(|m| m.point), Some([63.0, 0.0, 0.0]));
+    }
+
+    /// Slot 0x148 (`FUN_140c4d0d0`): unforced, a unit AI with an action value takes no move off
+    /// a footprint; forced, or without one, the unit's slot 0x340 gets the move
+    /// ([`Effect::MoveAside`]) and the action value becomes 0x2bf, the old one the last.
+    #[test]
+    fn a_move_off_a_footprint_needs_force_or_no_action() {
+        let m = |force| AiMove {
+            point: [4.0, 5.0, 0.0],
+            range: 0.0,
+            force,
+            walk: true,
+        };
+        let mut u = UnitAi {
+            current_action: GATHER_ACTION,
+            current_target: 40,
+            ..idle(8)
+        };
+        let mut fx = Vec::new();
+        assert!(!u.move_aside(m(false), &mut fx));
+        assert_eq!((fx.len(), u.current_action), (0, GATHER_ACTION));
+        assert!(u.move_aside(m(true), &mut fx));
+        assert_eq!(fx, vec![Effect::MoveAside(m(true))]);
+        assert_eq!(
+            (u.last_action, u.current_action, u.current_target),
+            (GATHER_ACTION, MOVE_ASIDE_ACTION, 40)
+        );
+        let mut idle_unit = idle(8);
+        let mut fx = Vec::new();
+        assert!(idle_unit.move_aside(m(false), &mut fx));
+        assert_eq!(fx, vec![Effect::MoveAside(m(false))]);
+    }
+
+    /// Slot 0x130 (`FUN_140c55620`): unforced, a unit AI with an action value takes no move;
+    /// forced, the action value becomes the move's (the old one the last) and `FUN_140c64c10`
+    /// with −1 moves the target to the last and takes the point, leaving the target class.
+    #[test]
+    fn an_ai_move_needs_force_or_no_action_and_keeps_the_target_class() {
+        let m = |force| AiMove {
+            point: [4.0, 5.0, 0.5],
+            range: 0.5,
+            force,
+            walk: true,
+        };
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 40,
+            target_type: 9,
+            last_target: 30,
+            last_target_type: 4,
+            ..idle(4)
+        };
+        let before = u.clone();
+        assert_eq!(u.move_to(m(false)), None);
+        assert_eq!(u, before);
+        assert_eq!(u.move_to(m(true)), Some(m(true)));
+        assert_eq!(
+            (u.last_action, u.current_action),
+            (ATTACK_ACTION, MOVE_ACTION)
+        );
+        assert_eq!(
+            (
+                u.last_target,
+                u.last_target_type,
+                u.current_target,
+                u.target_type
+            ),
+            (40, 9, -1, 9)
+        );
+        assert_eq!(u.target_point, [4.0, 5.0, 0.5]);
     }
 }
