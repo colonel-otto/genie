@@ -2274,17 +2274,21 @@ impl Spatial {
 
     /// Whether a static record of another player marks a tile of `site`'s footprint
     /// (`FUN_1411d4b80`).
+    /// The edges cast by `CVTTSS2SI` (a NaN or huge edge gives `i32::MIN`: the loops then do
+    /// not run), the tile's players the low 32 bits of `word >> 23` against `1 << (player &
+    /// 0x1f)` in 32 bits.
     pub fn foreign_marks(&self, site: &Placed) -> bool {
+        use crate::checkpoint::cvttss2si;
         let [sx, sy, _] = site.position;
         let [rx, ry] = site.radius;
         let (w, h) = (self.tiles.width, self.tiles.height);
-        let (x0, y0) = (((sx - rx) as i32).max(0), ((sy - ry) as i32).max(0));
-        let x1 = (((sx + rx) - 0.001) as i32).min(w - 1);
-        let y1 = (((sy + ry) - 0.001) as i32).min(h - 1);
-        let own = 1u64 << site.player;
+        let (x0, y0) = (cvttss2si(sx - rx).max(0), cvttss2si(sy - ry).max(0));
+        let x1 = cvttss2si((sx + rx) - 0.001).min(w - 1);
+        let y1 = cvttss2si((sy + ry) - 0.001).min(h - 1);
+        let own = 1u32 << (site.player as u32 & 0x1f);
         (y0..=y1).any(|y| {
             (x0..=x1).any(|x| {
-                let players = self.tiles.word(x, y).unwrap_or(0) >> 23;
+                let players = (self.tiles.word(x, y).unwrap_or(0) >> 23) as u32;
                 players != 0 && players != own
             })
         })
@@ -3283,6 +3287,23 @@ mod tests {
         flower.buildable_on = 1;
         s.insert(77, flower);
         assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![77]));
+        assert!(!s.foreign_marks(&house));
+    }
+
+    /// `FUN_1411d4b80` reads a tile's players as the low 32 bits of `word >> 23` and casts the
+    /// footprint's edges by `CVTTSS2SI`: a NaN place casts to `i32::MIN`, so no tile is read.
+    #[test]
+    fn foreign_marks_read_the_players_in_32_bits_and_skip_a_nan_place() {
+        let (mut s, mut house) = site();
+        // player 2 of 30.0, 88.0: tile (29, 87) marked by player 3, then a bit past 32 players
+        s.tiles.mark_for_test(29, 87, 0x80_0000 << 3);
+        assert!(s.foreign_marks(&house));
+        let (mut t, _) = site();
+        t.tiles.mark_for_test(29, 87, 1 << 60);
+        assert!(!t.foreign_marks(&house));
+        // a NaN place reads nothing, not tile 0 (here marked by player 3)
+        s.tiles.mark_for_test(0, 0, 0x80_0000 << 3);
+        house.position = [f32::NAN, f32::NAN, 0.0];
         assert!(!s.foreign_marks(&house));
     }
 
