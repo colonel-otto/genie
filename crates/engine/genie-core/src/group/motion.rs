@@ -270,18 +270,23 @@ impl Motion {
         self.velocity[2] = 0.0;
     }
 
-    /// `calculateYawAngle` (`FUN_141046270`) with its clamp (`param_5` 1): the angle from
-    /// `forward` to `direction` (`FUN_14087e650`), at most `+0xa0` (the yaw per second moving)
-    /// times `dt`, negative when `direction × forward` points up.
+    /// `BMotion::calculateYawAngle` (`FUN_141046270`): the angle from `forward` (`param_2`) to
+    /// `direction` (`param_3`, `FUN_14087e650`); with `clamp` (`param_5` 1) at most `+0xa0`
+    /// (the yaw per second moving) times `dt` (`param_4`), as `MINSS` takes it at 0x1410463e2
+    /// (the limit when it is below the angle, else the angle, also when either is NaN); negated
+    /// when `direction × forward` (`FUN_14087e4d0`) points up (`COMISS`/`JBE` at 0x141046400:
+    /// not for a NaN). The warning for a `dt` of `f32::MAX` with a yaw per second above 1 and
+    /// the one of the result are log lines only.
     #[must_use]
-    pub fn clamped_yaw(&self, forward: Vec3, direction: Vec3, dt: f32) -> f32 {
-        let angle = fmath::angle_between(direction, forward);
-        let most = self.maximum_yaw_per_second_moving * dt;
-        let limited = if angle <= most { angle } else { most };
+    pub fn calculate_yaw_angle(&self, forward: Vec3, direction: Vec3, dt: f32, clamp: bool) -> f32 {
+        let mut angle = fmath::angle_between(direction, forward);
+        if clamp {
+            angle = fmath::minss(self.maximum_yaw_per_second_moving * dt, angle);
+        }
         if 0.0 < fmath::cross(direction, forward)[1] {
-            -limited
+            -angle
         } else {
-            limited
+            angle
         }
     }
 
@@ -943,7 +948,7 @@ fn steer(
     forward[1] = 0.0;
     let f = fmath::sqrt(forward[0] * forward[0] + 0.0 + forward[2] * forward[2]);
     let forward = [forward[0] / f, forward[1] / f, forward[2] / f];
-    let yaw = motion.clamped_yaw(forward, direction, dt);
+    let yaw = motion.calculate_yaw_angle(forward, direction, dt, true);
     motion.turn(yaw);
     // the members' centre pulls the group while every member acts on a target
     let all_acting = group
@@ -1253,16 +1258,37 @@ mod tests {
     }
 
     /// `calculateYawAngle` with its clamp: a quarter turn to the left is negative, and limited
-    /// by the yaw per second times dt.
+    /// by the yaw per second times dt; without the clamp (`param_5` 0) the whole angle.
     #[test]
     fn a_turn_is_limited_by_the_yaw_per_second() {
         let mut m = Motion::new();
         let (x, z) = ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
-        let free = m.clamped_yaw(x, z, 0.1);
+        let free = m.calculate_yaw_angle(x, z, 0.1, true);
         assert_eq!(free, -std::f32::consts::FRAC_PI_2);
         m.maximum_yaw_per_second_moving = 1.0;
-        assert_eq!(m.clamped_yaw(x, z, 0.1), -0.1);
-        assert_eq!(m.clamped_yaw(z, x, 0.1), 0.1);
+        assert_eq!(m.calculate_yaw_angle(x, z, 0.1, true), -0.1);
+        assert_eq!(m.calculate_yaw_angle(z, x, 0.1, true), 0.1);
+        assert_eq!(
+            m.calculate_yaw_angle(z, x, 0.1, false),
+            std::f32::consts::FRAC_PI_2
+        );
+    }
+
+    /// The clamp is `MINSS limit, angle` (0x1410463e2): a NaN limit leaves the angle, a NaN
+    /// angle stays NaN (an ordered `<=` would take the limit both times); a NaN cross product
+    /// keeps the sign (`COMISS`/`JBE`).
+    #[test]
+    fn the_yaw_clamp_keeps_the_angle_for_a_nan_operand() {
+        let mut m = Motion::new();
+        let (x, z) = ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+        m.maximum_yaw_per_second_moving = f32::NAN;
+        assert_eq!(
+            m.calculate_yaw_angle(x, z, 0.1, true),
+            -std::f32::consts::FRAC_PI_2
+        );
+        m.maximum_yaw_per_second_moving = 1.0;
+        let nan = m.calculate_yaw_angle([f32::NAN, 0.0, 0.0], z, 0.1, true);
+        assert!(nan.is_nan(), "{nan}");
     }
 
     /// `FUN_14104c150` turns the new position's forward and right about its up; a turn of 1e-7

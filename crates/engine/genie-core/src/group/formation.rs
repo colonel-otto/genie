@@ -649,21 +649,6 @@ const RIGHT_ANGLE: f32 = crate::image::group::RIGHT_ANGLE;
 /// A slot's place kept this far inside the map's far edges (`FUN_14100b760`, `DAT_142eb5690`).
 const MAP_EDGE: f32 = crate::image::group::MAP_EDGE;
 
-impl crate::group::Motion {
-    /// `BMotion::calculateYawAngle` (`FUN_141046270`) without its clamp (`param_5` 0): the angle
-    /// from `canon` to `dir` (`FUN_14087e650`), negative when their cross product `dir × canon`
-    /// points up.
-    #[must_use]
-    pub fn yaw_angle(canon: Vec3, dir: Vec3) -> f32 {
-        let angle = crate::fmath::angle_between(dir, canon);
-        if 0.0 < crate::fmath::cross(dir, canon)[1] {
-            -angle
-        } else {
-            angle
-        }
-    }
-}
-
 /// `FUN_14100b760`: a place kept on the map: below 0 it is 0, from the map's width on it is the
 /// width less [`MAP_EDGE`], on both axes (the y test against the height, its value the width's).
 pub(super) fn on_map(mut p: Vec3, map: [i32; 2]) -> Vec3 {
@@ -1178,8 +1163,12 @@ impl crate::turn::Turns {
             0.0,
         ];
         let [position, forward, up, _right] = g.motion.position;
-        let yaw = crate::group::Motion::yaw_angle(canon, forward);
-        let old = crate::group::Motion::yaw_angle(canon, formation.transform_orientation);
+        // calculateYawAngle without its clamp (`param_5` 0), with the world's update time
+        let dt = self.dt_seconds;
+        let yaw = g.motion.calculate_yaw_angle(canon, forward, dt, false);
+        let old = g
+            .motion
+            .calculate_yaw_angle(canon, formation.transform_orientation, dt, false);
         let flips = RIGHT_ANGLE < (yaw - old).abs() && g.unit_types.len() < 2;
         let rotation = crate::fmath::rotation(yaw, up);
         formation.transform_orientation = forward;
