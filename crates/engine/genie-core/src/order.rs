@@ -953,9 +953,21 @@ impl Turns {
         Ok(())
     }
 
+    /// Slot 0x138 to `target` outside slot 0x128's work command (the unit's `+0xa14` 1):
+    /// [`Turns::move_to_object_with`].
+    pub(crate) fn move_to_object(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        point: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        self.move_to_object_with(player, idx, target, point, true)
+    }
+
     /// Slot 0x138 to `target` (`FUN_141216f10`): a villager is no longer under the town bell
-    /// (`+0x9dc`); with `+0xa14` (1 but inside slot 0x128's work command with 0) its unit AI's
-    /// order queue empties (`FUN_140c5e010`); then `FUN_14106d340`: unless the unit is its own
+    /// (`+0x9dc`); with `+0xa14` (`a14`: 1 but inside slot 0x128's work command with 0) its unit
+    /// AI's order queue empties (`FUN_140c5e010`); then `FUN_14106d340`: unless the unit is its own
     /// target, its unit AI's notifies go with the world time (`FUN_140c5dc10`) and, but after a
     /// kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target and
     /// `point` (a Hunt's, [`Turns::hunt_take_move`]; an Artifact's, `FUN_140aaca30`, would: not
@@ -964,12 +976,13 @@ impl Turns {
     /// 0x808, [`MoveToAction::to_target`]). Its `command_flag` (`+0x888`) is not held.
     ///
     /// [`MoveToAction::to_target`]: crate::move_to::MoveToAction::to_target
-    pub(crate) fn move_to_object(
+    pub(crate) fn move_to_object_with(
         &mut self,
         player: usize,
         idx: usize,
         target: i32,
         point: [f32; 3],
+        a14: bool,
     ) -> Result<(), Unsupported> {
         let world_time = self.world_time;
         let villager = self
@@ -980,7 +993,7 @@ impl Turns {
         if villager {
             unit.town_bell.flag = false;
         }
-        if let Some(ai) = unit.ai.as_mut() {
+        if a14 && let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
         if target == unit.id {
@@ -2076,15 +2089,28 @@ impl Turns {
             .is_some())
     }
 
-    /// Slot 0x138 (`FUN_141216f10`) without a target, the no-task end of a work command on a
-    /// point: a villager drops its town-bell flag (not held otherwise), the unit AI's order queue
-    /// empties (`+0xa14` 1, `FUN_140c5e010`), then the move to the point
-    /// ([`Turns::move_to_point`], `FUN_14106d340`).
+    /// Slot 0x138 (`FUN_141216f10`) without a target, outside slot 0x128's work command (the
+    /// unit's `+0xa14` 1): [`Turns::move_point_order_with`].
     pub(crate) fn move_point_order(
         &mut self,
         player: usize,
         idx: usize,
         point: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        self.move_point_order_with(player, idx, point, true)
+    }
+
+    /// Slot 0x138 (`FUN_141216f10`) without a target, the no-task end of a work command on a
+    /// point: a villager drops its town-bell flag (not held otherwise), the unit AI's order queue
+    /// empties (`FUN_140c5e010`) while the unit's `+0xa14` (`a14`) is set, then the move to the
+    /// point ([`Turns::move_to_point`], `FUN_14106d340`). `+0xa14` is 1 but inside slot 0x128
+    /// (`FUN_141211b80`), which holds it at its argument while its work command runs.
+    pub(crate) fn move_point_order_with(
+        &mut self,
+        player: usize,
+        idx: usize,
+        point: [f32; 3],
+        a14: bool,
     ) -> Result<(), Unsupported> {
         let villager = self
             .master_of(player, self.players[player].objects[idx].life.master_id)?
@@ -2094,7 +2120,7 @@ impl Turns {
         if villager {
             unit.town_bell.flag = false;
         }
-        if let Some(ai) = unit.ai.as_mut() {
+        if a14 && let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
         let _ = self.move_to_point(player, idx, point)?;
@@ -2337,7 +2363,7 @@ impl Turns {
             if self.keep_attack(player, idx, target, filter, point, clears)? {
                 return Ok(());
             }
-            return self.work_move(player, idx, target, point, clears);
+            return self.work_move(player, idx, target, point, (clears, notified));
         };
         // a new master's task is another than the one the unit's action holds
         let same_master = with == self.players[player].objects[idx].life.master_id;
@@ -2448,7 +2474,9 @@ impl Turns {
             ),
             crate::build::BUILD => self.start_build(player, idx, target, &task, point, clears),
             // the factory makes no action of a mule cart's task: the move without one
-            crate::build::CART_TASK => self.work_move(player, idx, target, point, clears),
+            crate::build::CART_TASK => {
+                self.work_move(player, idx, target, point, (clears, notified))
+            }
             crate::gather::GATHER => {
                 self.start_gather(player, idx, target, &task, Some((point, clears)))
             }
@@ -2460,15 +2488,16 @@ impl Turns {
 
     /// The work command without an action (`FUN_14106ff70`: no task, or one the action list's
     /// factory makes no action of, the mule cart's 0x99): a unit whose master moves (slot 0xe8,
-    /// its speed `+0x740`) is told of a move (slot 0x828) and, in state 2 or of class 51, moves to
-    /// the target or the point (slot 0x138); one that does not move does nothing.
+    /// its speed `+0x740`) is told of a move (slot 0x828, its notifies cleared with `clears`) and,
+    /// in state 2 or of class 51, moves to the target or the point (slot 0x138 with the unit's
+    /// `+0xa14`, the work's `notified`); one that does not move does nothing.
     fn work_move(
         &mut self,
         player: usize,
         idx: usize,
         target: i32,
         point: [f32; 3],
-        clears: bool,
+        (clears, notified): (bool, bool),
     ) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
@@ -2508,9 +2537,9 @@ impl Turns {
         }
         if alive || class == 51 {
             if target == -1 {
-                self.move_point_order(player, idx, point)?;
+                self.move_point_order_with(player, idx, point, notified)?;
             } else {
-                self.move_to_object(player, idx, target, point)?;
+                self.move_to_object_with(player, idx, target, point, notified)?;
             }
         }
         Ok(())
@@ -4389,6 +4418,38 @@ mod tests {
         t.players[1].objects = vec![trophy(1)];
         t.transform_object(1, 60, 1650).unwrap();
         assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
+    }
+
+    /// `FUN_141216f10` to a point: the unit AI's order queue empties only with the unit's
+    /// `+0xa14`, which slot 0x128 with 0 clears while its work command runs; the move follows
+    /// either way.
+    #[test]
+    fn a_move_inside_a_work_command_with_0_keeps_the_order_queue() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        let order = crate::unit_ai::QueuedOrder {
+            issuer: 1,
+            order: MOVE_ORDER,
+            priority: 100,
+            target: -1,
+            target_owner: -1,
+            point: [1.0, 1.0, 0.0],
+            range: 0.0,
+            shown: [1.0, 1.0],
+            ready: true,
+            target_type: -1,
+        };
+        t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi {
+            orders: vec![order],
+            ..crate::unit_ai::UnitAi::default()
+        });
+        t.move_point_order_with(1, 0, [30.0, 30.0, 0.0], false)
+            .unwrap();
+        let unit = &t.players[1].objects[0];
+        assert_eq!(unit.ai.as_ref().unwrap().orders.len(), 1);
+        assert_eq!(unit.move_to.unwrap().goal, Some([30.0, 30.0, 0.0]));
+        t.move_point_order(1, 0, [31.0, 30.0, 0.0]).unwrap();
+        assert_eq!(t.players[1].objects[0].ai.as_ref().unwrap().orders.len(), 0);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
