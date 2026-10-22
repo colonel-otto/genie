@@ -1844,6 +1844,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         alert_mode: ai.alert_mode_value != 0,
         time_since_enemy: ai.time_since_enemy_sighting,
         patrol_path: ai.has_patrol_path == 1,
+        patrol_waypoint: ai.patrol_current_waypoint,
         stop_after_kill: ai.stop_after_target_killed_value != 0,
         home: combat
             .tribe_elephant_unit_ai_module

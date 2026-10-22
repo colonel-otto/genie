@@ -8698,16 +8698,7 @@ impl Turns {
                     }),
                     None => false,
                 };
-                for &id in units {
-                    let unit = self
-                        .players
-                        .iter_mut()
-                        .flat_map(|p| p.objects.iter_mut())
-                        .find(|o| o.id == id);
-                    if let Some(ai) = unit.and_then(|o| o.ai.as_mut()) {
-                        ai.reset_for_order(self.streams.get(Stream::Ai));
-                    }
-                }
+                self.reset_order_units(units);
                 if human {
                     self.human_order(units);
                 }
@@ -10427,6 +10418,28 @@ impl Turns {
             .collect()
     }
 
+    /// `FUN_140e6cfc0`: each of an order's units (INTERACT, MOVE, RETREAT) the world holds,
+    /// sleeping ones too (`FUN_1415417a0`), with a unit AI resets it for the order
+    /// ([`UnitAi::reset_for_order`]), in list order.
+    fn reset_order_units(&mut self, units: &[i32]) {
+        for &id in units {
+            let Some(place) = self.place(id) else {
+                continue;
+            };
+            let (p, i) = match place {
+                crate::order::Place::Live(p, i) | crate::order::Place::Sleeping(p, i) => (p, i),
+            };
+            let player = &mut self.players[p];
+            let unit = match place {
+                crate::order::Place::Live(..) => &mut player.objects[i],
+                crate::order::Place::Sleeping(..) => &mut player.sleeping[i],
+            };
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.reset_for_order(self.streams.get(Stream::Ai));
+            }
+        }
+    }
+
     /// A gate's slot 0x678 (`FUN_1411d4a30`): player `p` may pass object `i` of player `q` when it
     /// stands (state below 3), its master is of class 39 and transforms (`+0x9ba` not -1), it is
     /// not locked (`mGateLocked`) and its owner and `p` count each other as allies
@@ -12010,6 +12023,34 @@ mod tests {
             ..master
         };
         assert!(v.heal(&ship, 0.1).is_err());
+    }
+
+    /// `FUN_140e6cfc0` resets every listed unit the world holds, a sleeping one too, and passes
+    /// over an id it does not hold.
+    #[test]
+    fn an_order_resets_its_units_sleeping_ones_too() {
+        let unit = |id: i32| Unit {
+            id,
+            ai: Some(UnitAi {
+                patrol_path: true,
+                patrol_waypoint: 2,
+                adjusted_idle_timeout: 100,
+                secondary_timer: 900,
+                ..UnitAi::default()
+            }),
+            ..Unit::default()
+        };
+        let player = Player {
+            objects: vec![unit(1)],
+            sleeping: vec![unit(2)],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
+        t.reset_order_units(&[2, 9, 1]);
+        for u in t.players[1].objects.iter().chain(&t.players[1].sleeping) {
+            let ai = u.ai.as_ref().unwrap();
+            assert_eq!((ai.patrol_path, ai.secondary_timer), (false, 750));
+        }
     }
 
     #[test]

@@ -1502,7 +1502,6 @@ impl Turns {
         for &idx in &units {
             let rng = self.streams.get(Stream::Ai);
             if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
-                ai.patrol_path = false;
                 ai.reset_for_order(rng);
             }
         }

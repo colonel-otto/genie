@@ -1494,12 +1494,12 @@ impl Planner {
         let mut tiles = Path::default();
         let first = self.search_over_levels(req, &mut levels);
         let mut second = None;
-        let start_edges = self.cell(0, tile(req.from[0]), tile(req.from[1]))[0];
         let (gx, gy) = (tile(req.to[0]), tile(req.to[1]));
+        // the start's cell is read only once the search over the levels reached the goal
         if req.range == 0.0
             && req.full
             && first == Found::Goal
-            && start_edges != 0
+            && self.cell(0, tile(req.from[0]), tile(req.from[1]))[0] != 0
             && (self.cell(0, gx, gy)[0] != 0 || (target_box && self.near_passable(gx, gy)))
             && {
                 levels.measure();
@@ -1628,6 +1628,24 @@ mod tests {
 
     fn open_map(_: i32, _: i32) -> bool {
         false
+    }
+
+    /// `FUN_140f7c530` reads the start's cell only after the search over the levels found the
+    /// goal: a start off the map ends the search there, without the tile search.
+    #[test]
+    fn a_plan_from_off_the_map_reads_no_start_cell() {
+        let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
+        let req = Request {
+            from: [-3.0, 2.0],
+            to: [5.5, 2.5],
+            radii: 0.2,
+            range: 0.0,
+            closed: Vec::new(),
+            full: true,
+        };
+        let mut out = Path::default();
+        let found = p.plan::<()>(&req, false, &mut out, None).unwrap();
+        assert_eq!(found, Found::OffMap);
     }
 
     #[test]

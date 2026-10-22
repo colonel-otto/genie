@@ -313,6 +313,8 @@ pub struct UnitAi {
     pub time_since_enemy: f32,
     /// `+0x1c0` holds a patrol path (the save's `hasPatrolPath`).
     pub patrol_path: bool,
+    /// `+0x1c8`, `mPatrolCurrentWaypoint`: the patrol path's waypoint the unit walks to.
+    pub patrol_waypoint: i32,
     /// `+0x1a8`, `stop_after_target_killed_value`: a move does not let the current action take its
     /// point (`FUN_140c41c10`).
     pub stop_after_kill: bool,
@@ -1661,6 +1663,7 @@ impl UnitAi {
             alert_mode: false,
             time_since_enemy: 0.0,
             patrol_path: false,
+            patrol_waypoint: 0,
             stop_after_kill: false,
             home: None,
             hunted: None,
@@ -1677,10 +1680,14 @@ impl UnitAi {
     }
 
     /// What an order (INTERACT, MOVE, RETREAT) does to each of its units' AI before it runs
-    /// (`FUN_140e6cfc0`): an adjusted idle timeout of 750 or more is redrawn
+    /// (`FUN_140e6cfc0`): the patrol path goes (`FUN_140c68de0`: `+0x1c0`, its waypoint `+0x1c8`
+    /// 0); an adjusted idle timeout of 750 or more is redrawn
     /// (`UpdateAdjustedIdleTimeout`, unit-AI slot 53, `0x140c41e00`), and the secondary timer is
     /// capped at 750.
     pub fn reset_for_order(&mut self, ai: &mut Well512) {
+        // FUN_140c68de0: the patrol path goes and its waypoint is 0
+        self.patrol_path = false;
+        self.patrol_waypoint = 0;
         if self.adjusted_idle_timeout > 749 {
             self.update_adjusted_idle_timeout(ai);
         }
@@ -5916,6 +5923,7 @@ mod tests {
                 alert_mode: false,
                 time_since_enemy: 0.0,
                 patrol_path: false,
+                patrol_waypoint: 0,
                 stop_after_kill: false,
                 home: None,
                 hunted: None,
@@ -5947,6 +5955,8 @@ mod tests {
             idle_timeout: 3000,
             adjusted_idle_timeout: 2600,
             secondary_timer: 900,
+            patrol_path: true,
+            patrol_waypoint: 3,
             ..idle(13)
         };
         let mut r = rng();
@@ -5955,6 +5965,8 @@ mod tests {
             (u.adjusted_idle_timeout, u.secondary_timer),
             (7241 % 1500 + 2250, 750)
         );
+        // FUN_140c68de0 first: the patrol path and its waypoint go
+        assert_eq!((u.patrol_path, u.patrol_waypoint), (false, 0));
         let mut low = UnitAi {
             idle_timeout: 3000,
             adjusted_idle_timeout: 749,
