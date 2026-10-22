@@ -1499,55 +1499,110 @@ impl Turns {
         Ok(())
     }
 
-    /// STOP (0x01, `RGE_Command::do_command` case 1, `FUN_14161e200`) of the player's units
-    /// `ids` (the lookup `FUN_140e6b750`, in the packet's order, an id the world does not hold
-    /// left out; the command's check `FUN_140e558b0`'s twin `FUN_140e55a30` drops another
-    /// player's unit unless the game setting `+0x1074`, which the slice does not hold: it stops
-    /// there). First each unit AI's saved patrol goes (`FUN_140c68de0`) and it resets as for an
-    /// order (`FUN_141631040`, [`crate::unit_ai::UnitAi::reset_for_order`]); several units
-    /// forming exactly one unit group would stop as the group (`FUN_14152ec80`,
-    /// `FUN_1410110c0`), and the slice holds no groups. Then each unit leaves its group (none),
-    /// its unit AI's order queue empties (`FUN_140c5e010`) and its idle timer takes its adjusted
-    /// timeout (`+0x160` = `+0x164`), its ignore list empties (`FUN_141197da0`), the object stops
-    /// (slot 0x148, [`Turns::object_stop`]) and its movement stands (slot 0x560,
-    /// `FUN_1411616f0`: slot 0x5d0, then `FUN_140f98e80` on its walked level).
+    /// STOP (0x01, `RGE_Command::do_command` case 1) of the player's units `ids`: the command's
+    /// check ([`Turns::stop_check`]), the lookup ([`Turns::lookup`]), then `FUN_14161e200`. First
+    /// each unit AI resets as for an order (`FUN_141631040`, the loop of `FUN_140e6cfc0`:
+    /// [`crate::unit_ai::UnitAi::reset_for_order`]). Several entries (a gone unit's null among
+    /// them) that are exactly one unit group's members (`FUN_14152ec80`, the group's size
+    /// `+0xe4`) stop as the group: each unit AI's order queue empties and its idle timer takes its
+    /// adjusted timeout, then the group's stop (`FUN_1410110c0`), which is not modelled. Else each
+    /// unit leaves the unit group the world holds of its link (`FUN_14102c160` with -1 and 0,
+    /// [`Turns::remove_unit`]), its unit AI's order queue empties (`FUN_140c5e010`) and its idle
+    /// timer takes its adjusted timeout (`+0x160` = `+0x164`), its ignore list empties
+    /// (`FUN_141197da0`), the object stops (slot 0x148, [`Turns::object_stop`]) and its movement
+    /// stands (slot 0x560, `FUN_1411616f0`: slot 0x5d0, then `FUN_140f98e80` on its walked
+    /// level).
     pub(crate) fn stop_command(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
-        let mut units = Vec::with_capacity(ids.len());
-        for &id in ids {
-            match self.place(id) {
-                None => {}
-                Some(Place::Live(p, idx)) if p == player => units.push(idx),
-                Some(Place::Live(..)) => {
-                    return Err(Unsupported(
-                        "a STOP of another player's unit (the setting +0x1074)",
-                    ));
-                }
-                Some(Place::Sleeping(..)) => {
-                    return Err(Unsupported("a STOP of a sleeping object"));
-                }
-            }
-        }
-        for &idx in &units {
-            let rng = self.streams.get(Stream::Ai);
-            if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
-                ai.reset_for_order(rng);
-            }
-        }
-        for &idx in &units {
-            let unit = &mut self.players[player].objects[idx];
+        let Some(ids) = self.stop_check(player, ids) else {
+            return Ok(());
+        };
+        let list: Vec<Option<i32>> = self
+            .lookup(&ids)
+            .into_iter()
+            .zip(&ids)
+            .map(|(place, &id)| place.map(|_| id))
+            .collect();
+        let units: Vec<i32> = list.iter().flatten().copied().collect();
+        for &id in &units {
+            let unit = match self.place(id) {
+                Some(Place::Live(p, i)) => &mut self.players[p].objects[i],
+                Some(Place::Sleeping(p, i)) => &mut self.players[p].sleeping[i],
+                None => continue,
+            };
             if let Some(ai) = unit.ai.as_mut() {
+                ai.reset_for_order(self.streams.get(Stream::Ai));
+            }
+        }
+        if 1 < list.len() {
+            let entries: Vec<i32> = list.iter().map(|u| u.unwrap_or(-1)).collect();
+            let group =
+                crate::group::common_group(&entries, |id| self.object(id).map(|(_, u)| u.group.id));
+            if self
+                .groups
+                .get(group)
+                .is_some_and(|g| g.members.len() == list.len())
+            {
+                return Err(Unsupported("a STOP of a whole unit group (FUN_1410110c0)"));
+            }
+        }
+        for &id in &units {
+            let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
+            if link != -1 {
+                let _ = self.remove_unit(link, id, -1, false)?;
+            }
+            let Some((_, u)) = self.object_mut(id) else {
+                continue;
+            };
+            if let Some(ai) = u.ai.as_mut() {
                 ai.orders.clear();
                 ai.idle_timer = ai.adjusted_idle_timeout;
             }
-            if let Some(m) = unit.mover.as_mut() {
+            if let Some(m) = u.mover.as_mut() {
                 m.ignore_units.clear();
             }
-            self.object_stop(player, idx)?;
-            if let Some(m) = self.players[player].objects[idx].mover.as_mut() {
+            // a sleeping object is of a type below 30 (only slot 0x180 puts one to sleep), whose
+            // slots 0x148 and 0x560 are empty (0x141072730, 0x141072740)
+            let Some(Place::Live(p, idx)) = self.place(id) else {
+                continue;
+            };
+            self.object_stop(p, idx)?;
+            if let Some(m) = self.players[p].objects[idx].mover.as_mut() {
                 m.stand()?;
             }
         }
         Ok(())
+    }
+
+    /// STOP's check (`FUN_140e55a30`, the twin of `FUN_140e558b0`) of the ids of `player`: of the
+    /// first 60 (500 for a computer, `FUN_141659cf0`) an id the world does not hold, or another
+    /// player's without the setting `+0x1074` ([`Turns::allied_control`]), becomes -1; the ids
+    /// past them stay unchecked. A human's command whose checked ids all went is refused (None).
+    /// The packet's own tests (its size, a player the game lacks) are the decoder's, and the
+    /// world's `+0xb12` (the cheat that would let either through) is not held.
+    pub(crate) fn stop_check(&self, player: usize, ids: &[i32]) -> Option<Vec<i32>> {
+        let computer = self.players[player].computer;
+        let checked = ids.len().min(if computer { 500 } else { 60 });
+        let mut ids = ids.to_vec();
+        let mut dropped = 0;
+        for id in &mut ids[..checked] {
+            let keep = self
+                .object(*id)
+                .is_some_and(|(p, _)| p == player || self.allied_control);
+            if *id == -1 || !keep {
+                *id = -1;
+                dropped += 1;
+            }
+        }
+        if checked <= dropped && !computer {
+            return None;
+        }
+        Some(ids)
+    }
+
+    /// `FUN_140e6b750`: each id's object (`FUN_1415417a0`, live or sleeping), None where the
+    /// world holds none; the list keeps the ids' count.
+    pub(crate) fn lookup(&self, ids: &[i32]) -> Vec<Option<Place>> {
+        ids.iter().map(|&id| self.place(id)).collect()
     }
 
     /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: the action list empties
@@ -4125,6 +4180,102 @@ mod tests {
         assert_eq!(split.loose, [13]);
         let split = t.split(&[12, 13], &|_| true, false).unwrap();
         assert_eq!(split.loose, [12, 13]);
+    }
+
+    /// `FUN_140e55a30`: of the first 60 ids (500 for a computer) one the world lacks or another
+    /// player's (without the setting `+0x1074`) becomes -1; a human's command left without a unit
+    /// is refused.
+    #[test]
+    fn the_stop_check_drops_gone_units_and_others_units_of_its_first_60() {
+        let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players[0].objects.push(Unit {
+            id: 30,
+            ..Unit::default()
+        });
+        assert_eq!(
+            t.stop_check(1, &[11, 30, 99, -1]),
+            Some(vec![11, -1, -1, -1])
+        );
+        t.allied_control = true;
+        assert_eq!(t.stop_check(1, &[11, 30, 99]), Some(vec![11, 30, -1]));
+        t.allied_control = false;
+        assert_eq!(t.stop_check(1, &[30, 99]), None);
+        t.players[1].computer = true;
+        assert_eq!(t.stop_check(1, &[30, 99]), Some(vec![-1, -1]));
+        t.players[1].computer = false;
+        // past the first 60 nothing is checked
+        let mut ids = vec![99; 60];
+        ids.push(30);
+        assert_eq!(t.stop_check(1, &ids), None);
+        ids[0] = 11;
+        let checked = t.stop_check(1, &ids).unwrap();
+        assert_eq!((checked[0], checked[1], checked[60]), (11, -1, 30));
+    }
+
+    /// `FUN_140e6b750`: each id's object, live or sleeping, None for a gone one, in the ids' order.
+    #[test]
+    fn the_lookup_keeps_a_gone_unit_s_entry() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players[1].sleeping.push(Unit {
+            id: 40,
+            ..Unit::default()
+        });
+        assert_eq!(
+            t.lookup(&[99, 40, 11, -1]),
+            [
+                None,
+                Some(Place::Sleeping(1, 0)),
+                Some(Place::Live(1, 0)),
+                None
+            ]
+        );
+    }
+
+    /// `FUN_14161e200`: the units of a STOP leave their unit group unless they are exactly its
+    /// members (a gone unit's entry counts in the list); each unit AI's order queue empties and
+    /// its idle timer takes its adjusted timeout; another player's unit the check dropped and a
+    /// sleeping object take nothing.
+    #[test]
+    fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
+        let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
+        let mut t = soldiers(&units, &[11, 12]);
+        let order = crate::unit_ai::QueuedOrder {
+            issuer: 1,
+            order: MOVE_ORDER,
+            priority: 100,
+            target: -1,
+            target_owner: -1,
+            point: [1.0, 1.0, 0.0],
+            range: 0.0,
+            shown: [1.0, 1.0],
+            ready: true,
+            target_type: -1,
+        };
+        t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi {
+            orders: vec![order],
+            idle_timer: 5,
+            adjusted_idle_timeout: 300,
+            ..crate::unit_ai::UnitAi::default()
+        });
+        let ai = t.players[1].objects[0].ai.clone();
+        t.players[0].objects.push(Unit {
+            id: 30,
+            ai,
+            ..Unit::default()
+        });
+        t.players[1].sleeping.push(Unit {
+            id: 40,
+            ..Unit::default()
+        });
+        t.stop_command(1, &[11, 12, 99, 30, 40]).unwrap();
+        let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+        assert_eq!((ai.orders.len(), ai.idle_timer), (0, 300));
+        assert_eq!(t.players[1].objects[0].group.id, -1);
+        assert_eq!(t.players[1].objects[1].group.id, -1);
+        assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
+        assert_eq!(t.players[0].objects[0].ai.as_ref().unwrap().orders.len(), 1);
     }
 
     /// `FUN_14118c790`: each id joins the end of the ignore list, a repeated one again.
