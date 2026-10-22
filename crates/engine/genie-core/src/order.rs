@@ -1879,11 +1879,16 @@ impl Turns {
         Ok(())
     }
 
-    /// Slot 0x7e8 (`FUN_141227190`) of a unit on a target object: a unit in state 3 or later
-    /// ignores it; without a target the world holds (none, or one gone) the work command goes to
-    /// the point; against an unallied target the unit's least range must not exceed the gap
-    /// (`FUN_1410862c0`); a villager drops its town-bell flag (`FUN_1412067f0`); then the work
-    /// command; then it leaves the pasture it is in (`FUN_141189ca0`).
+    /// Slot 0x7e8 (`FUN_141227190`) of a unit on a target object: a unit in state 3 or later, or
+    /// of class 54 under its own Pack or Unpack (`0x7d`, `0x7c`), ignores it. Against a target
+    /// the unit is not allied with (`FUN_141663d90` with allies) [`work_reach`]
+    /// (`FUN_1410862c0`) decides: class 54 out of reach packs (`FUN_140ad4ff0`), class 51 in
+    /// reach unpacks (`FUN_140ae58a0`), each through slot 0x808; else a target below the least
+    /// range is the unit's notify [`TOO_CLOSE`] to its own unit AI (slot 0x328) and nothing more.
+    /// Without a target the world holds (none, or one gone) the work command goes to the point,
+    /// and a computer's class 54 packs instead. Neither action is held. A villager drops its
+    /// town-bell flag (`FUN_1412067f0`); then the work command; then it leaves the pasture it is
+    /// in (`FUN_141189ca0`).
     pub(crate) fn order_work(
         &mut self,
         player: usize,
@@ -1892,13 +1897,48 @@ impl Turns {
     ) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
-        if master.class == CLASS_54 {
-            return Err(Unsupported("an order to a unit of class 54"));
-        }
+        // the class-54 test of its top action comes first in the game, but either way the order
+        // is ignored
         if 2 < unit.life.state {
             return Ok(());
         }
-        let Some((tp, _)) = self.object(order.target) else {
+        let class = master.class;
+        let target = self.object(order.target).map(|(tp, _)| tp);
+        let world = World {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let reach = match target {
+            Some(tp) if !world.allied(player, tp, true) => {
+                let (me, them) = (
+                    self.spatial
+                        .get(unit.id)
+                        .ok_or(Unsupported("an ordered unit without a place"))?,
+                    self.spatial
+                        .get_known(order.target)?
+                        .ok_or(Unsupported("a target without a place"))?,
+                );
+                let (_, gap) = gaps(me.position, me.radius, them.position, them.radius);
+                Some(work_reach(gap, master.weapon_range, master.min_range))
+            }
+            _ => None,
+        };
+        let packs = match reach {
+            None => target.is_none() && class == CLASS_54 && self.players[player].computer,
+            Some((within, _)) => (class == CLASS_54 && !within) || (class == CLASS_51 && within),
+        };
+        // a class 54 under an action the slice does not hold may be under its Pack or Unpack
+        if packs || (class == CLASS_54 && unit.unmodelled_action.is_some()) {
+            return Err(Unsupported(
+                "a Pack or Unpack of class 54 or 51 (FUN_140ad4ff0, FUN_140ae58a0)",
+            ));
+        }
+        if reach.is_some_and(|(_, too_close)| too_close) {
+            let unit = &mut self.players[player].objects[idx];
+            unit.post_own(TOO_CLOSE, [order.target, -1, -1])?;
+            return Ok(());
+        }
+        if target.is_none() {
             // no target, or one the world does not hold (slot 0x7e8 with none): the work command
             // at the point
             let order = Work {
@@ -1911,30 +1951,8 @@ impl Turns {
                 return Err(Unsupported("a unit that leaves its pasture"));
             }
             return Ok(());
-        };
-        let world = World {
-            players: &self.players,
-            drop_sites: &self.drop_sites,
-        };
-        if !world.allied(player, tp, true) {
-            let (me, them) = (
-                self.spatial
-                    .get(unit.id)
-                    .ok_or(Unsupported("an ordered unit without a place"))?,
-                self.spatial
-                    .get_known(order.target)?
-                    .ok_or(Unsupported("a target without a place"))?,
-            );
-            let (_, gap) = gaps(me.position, me.radius, them.position, them.radius);
-            if gap < master.min_range {
-                return Err(Unsupported(
-                    "an order on a target closer than the least range",
-                ));
-            }
-            if master.class == CLASS_51 {
-                return Err(Unsupported("an order to a unit of class 51"));
-            }
         }
+        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         // livestock (class 58) takes the enter command (slot 0x3a0); where it enters nothing, the
         // work command goes to the target's place without a target
         let mut order = *order;
@@ -3893,6 +3911,19 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
     [inside_map(x, map[0]), inside_map(y, map[1])]
 }
 
+/// `FUN_1410862c0`: the footprint gap (`FUN_14118f680`) against the unit's ranges: whether it
+/// is within the weapon range (slot 0x230; `COMISS`, `JC`: NaN out) and not too close, and
+/// whether it is too close, below the least range (slot 0x240; `COMISS`, `SETA`: NaN not).
+fn work_reach(gap: f32, weapon_range: f32, min_range: f32) -> (bool, bool) {
+    let too_close = gap < min_range;
+    let within = !crate::fmath::below_or_unordered(weapon_range, gap) && !too_close;
+    (within, too_close)
+}
+
+/// Notify `0x1fe`: slot 0x7e8's target is below the unit's least range (the unit's own id twice,
+/// the target, −1, −1).
+const TOO_CLOSE: i32 = 0x1fe;
+
 /// A whole share (`DAT_14330ebcc`), which `FUN_1411859a0` takes hit points against.
 const DAMAGE_WHOLE: f32 = crate::image::order::DAMAGE_WHOLE;
 
@@ -4083,6 +4114,106 @@ mod tests {
         assert_eq!(split.loose, [13]);
         let split = t.split(&[12, 13], &|_| true, false).unwrap();
         assert_eq!(split.loose, [12, 13]);
+    }
+
+    /// `FUN_1410862c0`: too close below the least range (COMISS, SETA: NaN not), in reach at
+    /// most the weapon range (COMISS, JC: NaN out) and not too close.
+    #[test]
+    fn a_target_is_in_reach_within_the_weapon_range_and_not_below_the_least() {
+        assert_eq!(work_reach(3.0, 5.0, 2.0), (true, false));
+        assert_eq!(work_reach(5.0, 5.0, 2.0), (true, false));
+        assert_eq!(work_reach(5.5, 5.0, 2.0), (false, false));
+        assert_eq!(work_reach(1.0, 5.0, 2.0), (false, true));
+        assert_eq!(work_reach(2.0, 5.0, 2.0), (true, false));
+        assert_eq!(work_reach(f32::NAN, 5.0, 2.0), (false, false));
+        assert_eq!(work_reach(0.0, 0.0, 0.0), (true, false));
+    }
+
+    /// Player 1's soldier 10 (master 4, ranges 2 to 5) at (10, 10) and player 2's unit 20 at
+    /// (`x`, 10), the two enemies, each with a unit AI in state 2.
+    fn soldier_and_enemy(x: f32, class: i16) -> Turns {
+        let unit = |id, master, x: f32| Unit {
+            id,
+            position: [x, 10.0, 0.0],
+            ai: Some(crate::unit_ai::UnitAi::default()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: master,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let player = |objects, relations| crate::turn::Player {
+            objects,
+            relations,
+            ..crate::turn::Player::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0, 0],
+            vec![
+                player(vec![], vec![0, 3, 3]),
+                player(vec![unit(10, 4, 10.0)], vec![3, 0, 3]),
+                player(vec![unit(20, 5, x)], vec![3, 3, 0]),
+            ],
+        );
+        let master = |id, class| Master {
+            id,
+            kind: 70,
+            class,
+            weapon_range: 5.0,
+            min_range: 2.0,
+            radius: [0.2, 0.2],
+            ..Master::default()
+        };
+        t.masters = vec![
+            crate::masters::Masters::new([]),
+            crate::masters::Masters::new([master(4, class)]),
+            crate::masters::Masters::new([master(5, 6)]),
+        ];
+        for (id, player, x) in [(10, 1, 10.0), (20, 2, x)] {
+            t.spatial.insert(
+                id,
+                crate::spatial::Placed {
+                    position: [x, 10.0, 0.0],
+                    radius: [0.2, 0.2],
+                    class,
+                    player,
+                    master: 4,
+                    obstruction_type: 0,
+                    buildable_on: 0,
+                    tall: false,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+        }
+        t
+    }
+
+    /// `FUN_141227190` on an enemy nearer than the least range: the unit posts notify 0x1fe
+    /// with the target to its own unit AI (slot 0x328) and takes no work.
+    #[test]
+    fn an_order_on_an_enemy_below_the_least_range_notifies_the_unit_ai() {
+        let mut t = soldier_and_enemy(11.0, 6);
+        let work = Work {
+            target: 20,
+            point: [11.0, 10.0, 0.0],
+            carry_test: false,
+            filter: -1,
+            notified: true,
+        };
+        t.order_work(1, 0, &work).unwrap();
+        let unit = &t.players[1].objects[0];
+        let ai = unit.ai.as_ref().unwrap();
+        assert_eq!(
+            ai.notifies,
+            [crate::unit_ai::Notify::own(10, 0x1fe, [20, -1, -1])]
+        );
+        assert_eq!(unit.top_action_kind(), None);
     }
 
     /// `FUN_140fd9ae0` with 61 or more: the sorted list (a gone unit null, sorted first) splits
