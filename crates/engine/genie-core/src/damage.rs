@@ -583,10 +583,11 @@ pub fn armor_damage(
 }
 
 /// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
-/// already done to it (`blast_taken`, a building's `+0xb90`): a static object
-/// (`FUN_14118efd0`), a combat object of type 50 or 60 ([`damage`]) or of type 70
+/// already done to it (`blast_taken`, a building's `+0xb90`): a static, animated, doppelganger,
+/// moving or action object, or a tree (types below 50 and 90: `FUN_14118efd0`,
+/// [`take_static`]), a combat object of type 50 or 60 ([`damage`]) or of type 70
 /// ([`take_unit`]). A building's (`FUN_1411cea90`: its link, its least damage, its kill
-/// statistics) and an object of types 30 to 49 are not modelled.
+/// statistics) is not modelled.
 pub fn take(
     t: &mut Victim,
     src: &mut Victim,
@@ -600,9 +601,6 @@ pub fn take(
         80 => Err(Unsupported(
             "a hit on a building (slot 0xe8, FUN_1411cea90)",
         )),
-        30..=49 => Err(Unsupported(
-            "a hit on a moving object without combat values",
-        )),
         _ => {
             take_static(t, &src.source, weapons, factor);
             Ok(())
@@ -610,11 +608,16 @@ pub fn take(
     }
 }
 
-/// A static object's slot 0xe8 (`FUN_14118efd0`): it has no armor (slot 0xf0 `FUN_14118cab0`:
-/// a TRIBE attacker's ready charge on it, then the weapons times the factor) and loses the
-/// damage (slot 0xb0); below 1 hit point it has
-/// 0 and wakes, and but for a villager's hit it loses what it holds. Its damage sprites (slot
-/// 0x4c0) are not held.
+/// A static object's slot 0xe8 (`FUN_14118efd0`), also the animated, doppelganger, moving and
+/// action objects' and a tree's: it has no armor (slot 0xf0 `FUN_14118cab0`: a TRIBE attacker's
+/// ready charge on it, then the weapons times the factor) and loses the damage (slot 0xb0,
+/// `FUN_141189160`); below 1 hit point (`COMISS`/`JBE`: a NaN stays) it has 0 and wakes
+/// (`FUN_14119deb0` with 0: `goto_sleep` clears; an object asleep in its player's sleeping list
+/// moves to the live list, the caller's), and but for a villager's hit it loses what it holds.
+/// The routine's test for no attacker cannot be reached: slot 0xf0 has called the attacker's
+/// slot 0x2f0 before it. Its last call (slot 0x4c0, `FUN_141196a00` or `FUN_141158bb0`) plays
+/// the master's damage sound (`+0x700`), whose draws are the Unsynced stream's: no simulation
+/// state.
 fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)], factor: f32) {
     // slot 0x2f0 of a TRIBE attacker (types 70, 80; [`charge_hit`]) starts the sum at its raw
     // charge (slot 0x310, `+0x9e0`) plus 0
@@ -1052,6 +1055,36 @@ mod tests {
         };
         take_static(&mut t, &plain, &[(4, 3)], 1.0);
         assert_eq!(t.hp, 97.0);
+    }
+
+    /// Slot 0xe8 of a moving or action object (types 30 to 49) is the static object's
+    /// (`FUN_14118efd0`): the weapons times the factor, no armor; below 1 hit point it has 0,
+    /// wakes and loses what it holds but to a villager. A NaN hit point count stays (`COMISS`/`JBE`).
+    #[test]
+    fn a_moving_object_takes_a_hit_as_a_static_one() {
+        let bird = |hp: f32| Victim {
+            hp,
+            amount: 50.0,
+            kind: 40,
+            class: 38,
+            goto_sleep: true,
+            ..Victim::default()
+        };
+        let mut hunter = hunter();
+        let mut t = bird(10.0);
+        take(&mut t, &mut hunter, &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
+        assert_eq!((t.hp, t.amount, t.goto_sleep), (5.0, 50.0, true));
+        take(&mut t, &mut hunter, &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
+        // a villager's hit leaves what it holds
+        assert_eq!((t.hp, t.amount, t.goto_sleep), (0.0, 50.0, false));
+        let mut archer = hunter.clone();
+        archer.source.class = 0;
+        let mut t = bird(4.0);
+        take(&mut t, &mut archer, &[(3, 4)], 1.0, 0.0).unwrap();
+        assert_eq!((t.hp, t.amount), (0.0, 0.0));
+        let mut t = bird(f32::NAN);
+        take(&mut t, &mut archer, &[(3, 4)], 1.0, 0.0).unwrap();
+        assert!(t.hp.is_nan() && t.amount == 50.0 && t.goto_sleep);
     }
 
     #[test]
