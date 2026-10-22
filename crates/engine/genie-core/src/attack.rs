@@ -379,6 +379,8 @@ enum Readiness {
 const GATE: i16 = 39;
 /// The villagers' class, whose attack ends on any dead target.
 const VILLAGER: i16 = 4;
+/// The trees' class, a dead one of which up to state 5 keeps another unit's attack going.
+const TREE: i16 = 15;
 
 /// The units in the way the motion step told the unit AI of (its slot 0x38 with
 /// [`crate::unit_ai::IN_THE_WAY`], [`crate::movement::Mover::in_the_way`]), in the order of the
@@ -698,9 +700,6 @@ impl Attack {
     /// a non-villager at it, and a mover of stance 0 that waits instead (`set_state` 5) are not
     /// modelled.
     fn lost(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
-        if s.victim.class == 15 && s.own.class != VILLAGER && s.victim.state <= 5 {
-            return Err(Unsupported("an Attack on a dead tree (state up to 5)"));
-        }
         if s.ai_order.is_some() && (s.victim.player != 0 || s.own.class != VILLAGER) {
             s.forgets = true;
         }
@@ -776,25 +775,22 @@ impl Attack {
     /// `set_state(6)` (case 6): the range test; in reach and ready, the swing (`set_state` 7).
     fn ready(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
         self.enter(READY, walk, s)?;
-        match self.ready_to_attack(&mut walk.reborrow(), s)? {
+        match self.ready_to_attack(&mut walk.reborrow(), s, false)? {
             Readiness::Ready => self.set_swing(walk, s),
             Readiness::Waiting => Ok(()),
             Readiness::Away(gap) => self.follow(walk, s, gap),
         }
     }
 
-    /// readyToAttack's answer to a target out of reach: `set_state(4)`, the `MoveTo` after it with
-    /// the range of slot 0x238 (the master's weapon range).
+    /// readyToAttack's answer to a target out of reach of a unit that may follow it (its notify
+    /// 0x1fd posted): `set_state(4)`, the `MoveTo` after it with the range of slot 0x238 (the
+    /// master's weapon range).
     fn follow(
         &mut self,
         walk: &mut Walk<'_>,
         s: &mut Strike<'_>,
         gap: f32,
     ) -> Result<(), Unsupported> {
-        // readyToAttack posts 0x1fd first for a unit's own Attack
-        if !self.sub_action {
-            s.posted.push((0x1fd, [0; 3]));
-        }
         self.enter(MOVE, walk, s)?;
         if self.moving(s.own.source.weapon_range, gap) {
             self.arrived_sprite(s)?;
@@ -802,87 +798,102 @@ impl Attack {
         Ok(())
     }
 
-    /// readyToAttack (`FUN_140a7f9d0`) on an object: a target of a player (not Gaia) out of the
-    /// unit's player's sight (its slot 0x1e0 neither 0xf nor 0x80 with its master's fog flag) is
-    /// not modelled (`set_state` 5 or 13). A unit that moves (a master of type 30 and up with a
-    /// speed, `FUN_140fdd080`; the slice reads the unit's top speed) whose target stands on the
-    /// attack's point (`FUN_140a7bbf0`) or within half a tile of it on each axis
-    /// (`FUN_140a7bd10`) is ready at once; so is a unit that does not move with such a target in
-    /// its range (the gap half a tile less for a range up to 0.1) and not under its least range
-    /// (none up to 0.1), or with a volley under way (`FUN_1412161a0`); else the reach decides:
-    /// the target's gap
-    /// (`FUN_14118f680`) below the least range is not modelled; beyond the reach (the range, half
-    /// a tile more without one) the unit follows it (`set_state` 4, [`Readiness::Away`]) when it may
-    /// move (its speed and canMoveToAttack, slot 0x1d0; a stance-1 leash and `set_state` 13 are not
-    /// modelled; the Hunt's Attack, a sub-action (`+0x60`), posts no notify 0x1fd); within it the
-    /// target's place becomes the point. Ready, the unit faces the target (`FUN_141162db0`, at
-    /// once for a unit without a turn time) and swings once its attack timer ran out (slot 0x100).
-    /// A gate target (class 39, its parts' gaps) is not modelled.
+    /// readyToAttack (`FUN_140a7f9d0`) on an object; `skip_ready` is its third argument (1 from
+    /// `set_state(7)`'s range clamp: no ready-at-once test). A target of a player (not Gaia) out
+    /// of the unit's player's sight (its slot 0x1e0 neither 0xf nor 0x80 with its master's fog
+    /// flag) fails the attack (`set_state` 13) unless the unit AI's stance (`+0x1a9`) is 0, the
+    /// top speed above 0 (`COMISS`/`JBE`) and canMoveToAttack 1, whose wait (`set_state` 5, a
+    /// `MoveTo` to where it was seen) is not modelled. A unit that moves (a master of type 30 and
+    /// up with a speed, `FUN_140fdd080`; the slice reads the unit's top speed, above 0 just when
+    /// the master's is) whose target stands on the attack's point (`FUN_140a7bbf0`) or within
+    /// half a tile of it on each axis (`FUN_140a7bd10`: a NaN difference is not within) is ready
+    /// at once; so is a unit that does not move with such a target in its range ([`in_range`]),
+    /// or with a volley under way (`FUN_1412161a0`). Else the reach decides, by the target's gap
+    /// (`FUN_14118f680`): below the least range (`COMISS`/`JA`) a unit's own Attack posts 0x1fe
+    /// (−1, −1, −1); a unit with a top speed (`UCOMISS`: not 0) whose unit AI may move to attack
+    /// (slot 0x1d0) waits, any other fails (`set_state` 13). Beyond the reach (the range, half a
+    /// tile more without one) a unit's own Attack posts 0x1fd; a stance-1 leash (the unit AI's
+    /// point, `+0x1ac`, `+0x1b0`) is not modelled; a unit that may move follows the target
+    /// (`set_state` 4, [`Readiness::Away`]), any other fails. Within it the target's place becomes
+    /// the point and the unit faces it ([`Attack::face`]). A gate target (class 39, its parts'
+    /// gaps) is not modelled.
     fn ready_to_attack(
         &mut self,
         walk: &mut Walk<'_>,
-        s: &Strike<'_>,
+        s: &mut Strike<'_>,
+        skip_ready: bool,
     ) -> Result<Readiness, Unsupported> {
-        let mover = walk
-            .mover
-            .as_deref_mut()
-            .ok_or(Unsupported("an attacker without movement state"))?;
-        let t = walk
+        let t = *walk
             .world
             .get_known(self.target)?
             .ok_or(Unsupported("an Attack whose target is gone"))?;
+        let speed = walk
+            .mover
+            .as_deref()
+            .ok_or(Unsupported("an attacker without movement state"))?
+            .stats
+            .speed;
         let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
         if 0 < t.player
             && !walk.world.sees_tile(s.own.player, tx, ty)
             && !(s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?)
         {
-            return Err(Unsupported(
-                "readyToAttack on a target out of its player's sight",
-            ));
+            if s.stance == 0 && 0.0 < speed && s.can_move {
+                return Err(Unsupported(
+                    "readyToAttack's wait for a target out of sight (set_state 5)",
+                ));
+            }
+            return self.fail(walk, s);
         }
         let at = walk
             .world
             .get(walk.me.id)
             .map_or(walk.me.position, |p| p.position);
+        let mover = walk
+            .mover
+            .as_deref_mut()
+            .ok_or(Unsupported("an attacker without movement state"))?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(at, ground, t.position, t.radius);
+        let near = if self.range <= NO_RANGE {
+            gap + SHORT_RANGE_GAP
+        } else {
+            gap
+        };
         let moved = t.position != self.point;
-        let far = (0..3).any(|i| HALF < (t.position[i] - self.point[i]).abs());
-        let mobile = 0.0 < mover.stats.speed;
-        if !moved || (!far && mobile) {
+        let far = (0..3)
+            .any(|i| crate::fmath::below_or_unordered(HALF, (t.position[i] - self.point[i]).abs()));
+        let mobile = 30 <= s.own.kind && 0.0 < speed;
+        if !skip_ready
+            && (!moved
+                || (!far
+                    && (mobile
+                        || in_range(near, self.range, self.min_range)
+                        || s.volley_under_way)))
+        {
             return self.face(mover, at, t.position, s);
         }
-        if !far {
-            // a unit that does not move: ready with the target in its range (the gap half a tile
-            // less for a range up to 0.1) and not under its least range (none up to 0.1), or
-            // with a volley under way (FUN_1412161a0)
-            let near = if self.range <= NO_RANGE {
-                gap + SHORT_RANGE_GAP
-            } else {
-                gap
-            };
-            let in_range =
-                near <= self.range && (self.min_range <= NO_RANGE || self.min_range <= near);
-            if in_range || s.volley_under_way {
-                return self.face(mover, at, t.position, s);
-            }
-        }
         if gap < self.min_range {
-            return Err(Unsupported(
-                "an attack on a target closer than the least range",
-            ));
+            if !self.sub_action {
+                s.posted.push((0x1fe, [-1; 3]));
+            }
+            if speed != 0.0 && s.can_move {
+                return Ok(Readiness::Waiting);
+            }
+            return self.fail(walk, s);
         }
         if t.class == GATE {
             return Err(Unsupported("an attack on a gate (its parts' gaps)"));
         }
         if self.reach() < gap {
+            if !self.sub_action {
+                s.posted.push((0x1fd, [0; 3]));
+            }
             if s.stance == 1 {
                 return Err(Unsupported("an attack's leash test (stance 1)"));
             }
-            if mover.stats.speed == 0.0 || !s.can_move {
-                return Err(Unsupported(
-                    "an attack whose target left the reach of a unit that cannot follow",
-                ));
+            if speed == 0.0 || !s.can_move {
+                return self.fail(walk, s);
             }
             return Ok(Readiness::Away(gap));
         }
@@ -890,9 +901,16 @@ impl Attack {
         self.face(mover, at, t.position, s)
     }
 
+    /// readyToAttack's `set_state(13)` (as [`Attack::finish_in`]); it answers 0.
+    fn fail(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<Readiness, Unsupported> {
+        self.finish_in(FAILED, walk, s)?;
+        Ok(Readiness::Waiting)
+    }
+
     /// readyToAttack's ready end (`0x140a801f2`): the unit at `at` faces its target at `to`
     /// (`FUN_141162db0`, [`face_target`]; masters 1704 and 1706 skip it); one not facing it yet
-    /// waits; one facing it swings once its attack timer ran out.
+    /// waits; one facing it swings once its attack timer ran out (slot 0x100, `FUN_141082d40`:
+    /// `COMISS` with 0 then `SETBE`, so a NaN timer has run out).
     fn face(
         &self,
         mover: &mut Mover,
@@ -905,11 +923,13 @@ impl Attack {
         {
             return Ok(Readiness::Waiting);
         }
-        Ok(if *s.attack_timer <= 0.0 {
-            Readiness::Ready
-        } else {
-            Readiness::Waiting
-        })
+        Ok(
+            if crate::fmath::at_most_or_unordered(*s.attack_timer, 0.0) {
+                Readiness::Ready
+            } else {
+                Readiness::Waiting
+            },
+        )
     }
 
     /// `set_state(7)` (case 7): the swing. The unit takes the attack sprite (a second attack sprite,
@@ -1082,12 +1102,17 @@ impl Attack {
     /// its target died.
     pub fn update(&mut self, mut walk: Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
         self.timer += walk.dt;
-        if self.state != KILLED && 2 < s.victim.state {
-            // the target died before the attack ended (the update's start): a dead tree (class
-            // 15) up to state 5 keeps a non-villager's attack going, and one of stance 0 that
-            // moves would wait (set_state 5), neither modelled; a villager's unit AI keeps a dead
+        // a dead tree (class 15) up to state 5 keeps a non-villager's attack going: its update
+        // goes on, the target not alive (`0x140a8342e`)
+        let alive = s.victim.state <= 2;
+        let gone =
+            !alive && (s.victim.class != TREE || s.own.class == VILLAGER || 5 < s.victim.state);
+        if self.state != KILLED && gone {
+            // the target died before the attack ended (the update's start): one of stance 0 that
+            // moves would wait (set_state 5), not modelled; a villager's unit AI keeps a dead
             // target of Gaia's (another's FUN_140c5e1e0 forgets, not modelled). The attack lets
-            // the target go (slot 0x68 with none) and its point, posts no notify as the hunt's
+            // the target go (slot 0x68 with none: a sub-action lets nothing go; the unit's attack
+            // count clears, the caller's) and its point, posts no notify as the hunt's
             // sub-action (`+0x60`), ends (set_state 1) and returns 5
             if !self.sub_action {
                 return self.lost(&mut walk, s);
@@ -1102,6 +1127,7 @@ impl Attack {
                     "a villager's Attack whose player-owned target died (its unit AI forgets it)",
                 ));
             }
+            self.target = -1;
             self.point = [NONE; 3];
             self.finish(&mut walk, s)?;
             return Ok(5);
@@ -1166,7 +1192,12 @@ impl Attack {
             }
             MOVE => self.walk(walk, s, t.position, t.radius),
             READY => {
-                match self.ready_to_attack(&mut walk.reborrow(), s)? {
+                match self.ready_to_attack(&mut walk.reborrow(), s, false)? {
+                    // a target no longer alive (a dead tree): set_state(1), code 5
+                    Readiness::Ready if !alive => {
+                        self.finish(&mut walk, s)?;
+                        return Ok(5);
+                    }
                     Readiness::Ready => self.set_swing(&mut walk, s)?,
                     Readiness::Waiting => {}
                     Readiness::Away(gap) => self.follow(&mut walk, s, gap)?,
@@ -1183,8 +1214,13 @@ impl Attack {
                 if !done {
                     return Ok(0);
                 }
+                // the target goes (slot 0x68 with none: a sub-action lets nothing go; the unit's
+                // attack count clears, the caller's) and the attack ends (set_state 1); the Hunt's
+                // Attack, a sub-action, then posts 0x1fb with 600 and 0x202 too and returns 5
                 if self.sub_action {
+                    self.target = -1;
                     self.finish(&mut walk, s)?;
+                    s.posted.push((0x1fb, [600, 0, 0x202]));
                     return Ok(5);
                 }
                 // a unit's own Attack (not quiet, `+0x60` 0): the target goes (slot 0x68 with
@@ -1203,7 +1239,12 @@ impl Attack {
                 *s.anim_speed = Some(0.0);
                 Ok(3)
             }
-            _ => Err(Unsupported("an Attack in a state the slice does not model")),
+            // cases 4 and 10 walk a MoveTo to where the target was seen
+            GOTO_SEEN | 11 => Err(Unsupported(
+                "an Attack in state 5 or 11 (its MoveTo to where its target was seen)",
+            )),
+            // the states without a case (0, 3, 8 to 10, 12, 14 and above) return 0
+            _ => Ok(0),
         }
     }
 
@@ -1449,12 +1490,17 @@ impl Attack {
             // readyToAttack with its third argument 0: a target out of reach is followed
             // (`set_state` 4); a ready unit only faces it; the swing goes on either way
             AfterHit::Continue { check: true } => {
-                if let Readiness::Away(gap) = self.ready_to_attack(&mut walk.reborrow(), s)? {
+                if let Readiness::Away(gap) =
+                    self.ready_to_attack(&mut walk.reborrow(), s, false)?
+                {
                     self.follow(walk, s, gap)?;
                 }
             }
             AfterHit::Continue { check: false } => {}
         }
+        // the loop test reads the unit's sprite as it is now (`+0x140`): readyToAttack may have
+        // shown the standing one
+        let sprite = s.sprite.unwrap_or(sprite);
         if !sprite.looped && sprite.graphic.flags & 1 != 0 {
             return Ok(0);
         }
@@ -1753,6 +1799,15 @@ pub(crate) fn face_target(
     );
     (mover.angle, mover.last_turn) = (angle, last);
     Ok(faces)
+}
+
+/// readyToAttack's ready-at-once range test of a unit that does not move (`0x140a7fd92`): the
+/// gap `near` (half a tile less for a range up to 0.1) is not beyond the range (`COMISS`/`JA`), and
+/// the least range is at most 0.1 or at most the gap (`COMISS`/`JBE` each: NaN passes).
+fn in_range(near: f32, range: f32, min_range: f32) -> bool {
+    use crate::fmath::at_most_or_unordered;
+    at_most_or_unordered(near, range)
+        && (at_most_or_unordered(min_range, NO_RANGE) || at_most_or_unordered(min_range, near))
 }
 
 /// The squared reach of an attack of `range` (`FUN_140a82ae0` at `0x140a83950`): the range squared,
@@ -2066,6 +2121,437 @@ mod tests {
         let s = sprite.unwrap();
         assert_eq!((s.frame, s.last_frame, s.looped), (0, 0, false));
         assert!(!reset_sprite(&mut None, swing));
+    }
+
+    /// A soldier (class 6, type 70, speed 0.8, radius 0.2) as a mover.
+    fn soldier_mover(speed: f32) -> Mover {
+        use crate::movement::{MoveStats, Velocity};
+        Mover {
+            forward: [1.0, 0.0, 0.0],
+            right: [0.0, 0.0, 1.0],
+            velocity: Some(Velocity {
+                velocity: [0.0, 0.0, 0.0],
+                acceleration: [0.0, 0.0, 0.0],
+            }),
+            paths: vec![],
+            factor: 1.0,
+            stats: MoveStats {
+                fly_mode: 0,
+                speed,
+                turn_rate: f32::MAX,
+                turn_radius: 0.0,
+                turn_radius_speed: f32::MAX,
+                radius: [0.2, 0.2, 0.5],
+                restriction: 7,
+                restriction_mask: 6,
+                turn_time: 0.0,
+                move_algorithm: 0,
+                min_collision: 1.0,
+                fast_turn: false,
+                walk_speed: speed,
+                stand_speed: speed,
+                run_speed: speed,
+                facets: Some(crate::facing::SpriteFacets {
+                    count: 8,
+                    flag_1: true,
+                }),
+                weapon_range: 0.0,
+            },
+            waiting: 0,
+            wait_delays: 0,
+            attack_moving: false,
+            last_move: 0,
+            moved_at: [0.0; 3],
+            substitute_count: 0,
+            ignore_units: Vec::new(),
+            last_turn: 0.0,
+            angle: 0.0,
+            move_to_point: None,
+            speed_stopped: false,
+            pauses: Vec::new(),
+            in_the_way: Vec::new(),
+            sprite_facets: None,
+        }
+    }
+
+    const STANDING: Graphic = Graphic {
+        id: 300,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+
+    /// What an Attack's update reads besides its walk: the unit's sprite, timers and target.
+    struct Rig {
+        sprite: Option<ActiveSprite>,
+        anim: Option<f32>,
+        timer: f32,
+        reload_worldtime: u32,
+        victim: Victim,
+        blasted: Vec<Victim>,
+        rng: Well512,
+    }
+
+    impl Rig {
+        fn new(victim: Victim) -> Self {
+            Self {
+                sprite: None,
+                anim: Some(0.0),
+                timer: 0.0,
+                reload_worldtime: 0,
+                victim,
+                blasted: Vec::new(),
+                rng: Well512::default(),
+            }
+        }
+
+        fn strike(&mut self) -> Strike<'_> {
+            Strike {
+                sprite: &mut self.sprite,
+                anim_speed: &mut self.anim,
+                standing: Some(STANDING),
+                volleys: false,
+                attack_timer: &mut self.timer,
+                reload_worldtime: &mut self.reload_worldtime,
+                reload: 2.0,
+                hit_chance: 100,
+                victim: &mut self.victim,
+                blasted: &mut self.blasted,
+                sprite_rng: &mut self.rng,
+                own: Victim {
+                    id: 1,
+                    kind: 70,
+                    class: 6,
+                    player: 1,
+                    ..Victim::default()
+                },
+                executed: None,
+                fire: None,
+                can_move: true,
+                stance: 0,
+                posted: Vec::new(),
+                queue_empty: true,
+                world_time: 0,
+                ai_order: Some(-1),
+                ai_type: None,
+                computer: false,
+                armed: true,
+                volley_under_way: false,
+                let_go: None,
+                forgets: false,
+                sends_home: false,
+            }
+        }
+    }
+
+    /// A world holding the target `id` of `player` and class `class` at `at`, radius 0.2.
+    fn world_with(id: i32, player: usize, class: i16, at: [f32; 3]) -> crate::spatial::Spatial {
+        let mut world = crate::spatial::Spatial::default();
+        world.insert(
+            id,
+            crate::spatial::Placed {
+                position: at,
+                radius: [0.2, 0.2],
+                class,
+                player,
+                master: 4,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: false,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        world
+    }
+
+    fn walk_in<'a>(mover: &'a mut Mover, world: &'a mut crate::spatial::Spatial) -> Walk<'a> {
+        Walk {
+            mover: Some(mover),
+            me: crate::movement::Me {
+                id: 1,
+                position: [10.0, 10.0, 0.0],
+                action_state: READY,
+                group: -1,
+            },
+            dt: 0.02,
+            world,
+            plan: None,
+        }
+    }
+
+    /// An own Attack of the soldier at (10, 10) on `target` in state 6, range `range` and least
+    /// range `min`, its point `point`.
+    fn soldier_attack(target: i32, range: f32, min: f32, point: [f32; 3]) -> Attack {
+        let mut a = own_attack(target, READY, range);
+        a.min_range = min;
+        a.point = point;
+        a.arms.idle_sprite = Some(STANDING);
+        a
+    }
+
+    /// readyToAttack below the least range: a unit's own Attack posts 0x1fe (−1, −1, −1); a unit
+    /// that may move waits in its state, one without speed fails (`set_state` 13: the standing
+    /// sprite at speed 1).
+    #[test]
+    fn ready_to_attack_under_the_least_range_posts_0x1fe_and_waits_or_fails() {
+        let at = [11.0, 10.0, 0.0];
+        let target = || Victim {
+            id: 7,
+            position: at,
+            ..Victim::default()
+        };
+        for (speed, state) in [(0.8, READY), (0.0, FAILED)] {
+            let mut world = world_with(7, 0, 6, at);
+            let mut mover = soldier_mover(speed);
+            let mut walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(target());
+            let mut s = rig.strike();
+            let mut a = soldier_attack(7, 4.0, 2.0, [NONE; 3]);
+            let r = a.ready_to_attack(&mut walk, &mut s, false).unwrap();
+            assert!(matches!(r, Readiness::Waiting));
+            assert_eq!((a.state, s.posted.clone()), (state, vec![(0x1fe, [-1; 3])]));
+            if state == FAILED {
+                assert_eq!(*s.anim_speed, Some(1.0));
+                assert_eq!(s.sprite.map(|sp| sp.graphic.id), Some(STANDING.id));
+            }
+        }
+        // a sub-action posts nothing
+        let mut world = world_with(7, 0, 6, at);
+        let mut mover = soldier_mover(0.8);
+        let mut walk = walk_in(&mut mover, &mut world);
+        let mut rig = Rig::new(target());
+        let mut s = rig.strike();
+        let mut a = soldier_attack(7, 4.0, 2.0, [NONE; 3]);
+        a.sub_action = true;
+        let _ = a.ready_to_attack(&mut walk, &mut s, false).unwrap();
+        assert_eq!(s.posted, Vec::new());
+    }
+
+    /// readyToAttack beyond the reach: a unit's own Attack posts 0x1fd; a unit that may move
+    /// follows (`set_state` 4 is the caller's), one that cannot fails (`set_state` 13).
+    #[test]
+    fn ready_to_attack_out_of_reach_follows_or_fails() {
+        let at = [15.0, 10.0, 0.0];
+        for (speed, can_move, follows) in
+            [(0.8, true, true), (0.0, true, false), (0.8, false, false)]
+        {
+            let mut world = world_with(7, 0, 6, at);
+            let mut mover = soldier_mover(speed);
+            let mut walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                position: at,
+                ..Victim::default()
+            });
+            let mut s = rig.strike();
+            s.can_move = can_move;
+            let mut a = soldier_attack(7, 1.0, 0.0, [NONE; 3]);
+            let r = a.ready_to_attack(&mut walk, &mut s, false).unwrap();
+            assert_eq!(s.posted, vec![(0x1fd, [0; 3])]);
+            assert_eq!(matches!(r, Readiness::Away(_)), follows);
+            assert_eq!(a.state, if follows { READY } else { FAILED });
+        }
+    }
+
+    /// readyToAttack on a player's target out of sight: a unit of stance 0 with speed that may
+    /// move would wait (`set_state` 5, not modelled); any other fails (`set_state` 13).
+    #[test]
+    fn ready_to_attack_on_a_target_out_of_sight_fails_or_would_wait() {
+        let at = [11.0, 10.0, 0.0];
+        for (stance, fails) in [(0, false), (2, true)] {
+            let mut world = world_with(7, 2, 6, at);
+            world.sight = Some(crate::visibility::Visibility::new(
+                16,
+                16,
+                Vec::new(),
+                vec![0; 256],
+                Vec::new(),
+                0,
+                Vec::new(),
+            ));
+            let mut mover = soldier_mover(0.8);
+            let mut walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                player: 2,
+                position: at,
+                ..Victim::default()
+            });
+            let mut s = rig.strike();
+            s.stance = stance;
+            let mut a = soldier_attack(7, 4.0, 0.0, at);
+            let r = a.ready_to_attack(&mut walk, &mut s, false);
+            if fails {
+                assert!(matches!(r, Ok(Readiness::Waiting)));
+                assert_eq!(a.state, FAILED);
+            } else {
+                assert!(r.is_err());
+            }
+        }
+    }
+
+    /// readyToAttack's ready-at-once test: a target on the attack's point is ready at once, but
+    /// not with the third argument; a NaN difference from the point is not within half a tile
+    /// (the reach decides and the target's place becomes the point); a NaN attack timer has run
+    /// out (slot 0x100's `SETBE`).
+    #[test]
+    fn ready_to_attack_s_at_once_test_and_its_nan_paths() {
+        let at = [11.0, 10.0, 0.0];
+        let run = |point: [f32; 3], skip: bool, range: f32, timer: f32| {
+            let mut world = world_with(7, 0, 6, at);
+            let mut mover = soldier_mover(0.8);
+            let mut walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                position: at,
+                ..Victim::default()
+            });
+            rig.timer = timer;
+            let mut s = rig.strike();
+            let mut a = soldier_attack(7, range, 0.0, point);
+            let r = a.ready_to_attack(&mut walk, &mut s, skip).unwrap();
+            (r, a.point)
+        };
+        assert!(matches!(run(at, false, 0.0, 0.0).0, Readiness::Ready));
+        // the third argument skips it: the gap 0.6 lies beyond a reach of 0.5
+        assert!(matches!(run(at, true, 0.0, 0.0).0, Readiness::Away(_)));
+        // a NaN point: moved and far, the reach decides (2 > 0.6) and the point follows
+        let (r, point) = run([f32::NAN, 10.0, 0.0], false, 2.0, 0.0);
+        assert!(matches!(r, Readiness::Ready));
+        assert_eq!(point, at);
+        assert!(matches!(run(at, false, 0.0, f32::NAN).0, Readiness::Ready));
+        assert!(matches!(run(at, false, 0.0, 0.5).0, Readiness::Waiting));
+    }
+
+    /// The ready-at-once range test of a unit that does not move: `COMISS`/`JA` past the range,
+    /// `JBE` on each least-range test, so NaN passes all three.
+    #[test]
+    fn the_ready_at_once_range_test_passes_nan() {
+        assert!(in_range(1.0, 2.0, 0.0));
+        assert!(!in_range(3.0, 2.0, 0.0));
+        assert!(in_range(f32::NAN, 2.0, 0.0));
+        assert!(in_range(1.0, f32::NAN, 0.0));
+        // a least range above 0.1 needs the gap at least as far
+        assert!(!in_range(0.5, 2.0, 1.0));
+        assert!(in_range(1.5, 2.0, 1.0));
+        assert!(in_range(0.5, 2.0, f32::NAN));
+        assert!(in_range(f32::NAN, 2.0, 1.0));
+    }
+
+    /// `FUN_140a82ae0`'s states without a case (0, 3, 8 to 10, 12, 14) return 0; their timer
+    /// runs.
+    #[test]
+    fn an_attack_in_a_state_without_a_case_returns_0() {
+        let at = [11.0, 10.0, 0.0];
+        for state in [0, 3, 8, 9, 10, 12, 14] {
+            let mut world = world_with(7, 0, 6, at);
+            let mut mover = soldier_mover(0.8);
+            let walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                state: 2,
+                position: at,
+                ..Victim::default()
+            });
+            let mut s = rig.strike();
+            let mut a = soldier_attack(7, 1.0, 0.0, at);
+            (a.state, a.seen) = (state, at);
+            assert_eq!(a.update(walk, &mut s), Ok(0), "{state}");
+            assert_eq!((a.state, a.timer), (state, 0.02));
+        }
+    }
+
+    /// Case 1 (state 2) once the swing's sprite is done: the Hunt's Attack, a sub-action, lets
+    /// its target go (slot 0x68 with none), ends (`set_state` 1) and then posts 0x1fb with 600 and
+    /// 0x202 before it returns 5.
+    #[test]
+    fn a_sub_action_s_attack_after_its_kill_posts_0x1fb_and_returns_5() {
+        let at = [11.0, 10.0, 0.0];
+        let mut world = world_with(7, 0, 9, at);
+        let mut mover = soldier_mover(0.8);
+        let walk = walk_in(&mut mover, &mut world);
+        let mut rig = Rig::new(Victim {
+            id: 7,
+            state: 3,
+            position: at,
+            ..Victim::default()
+        });
+        let mut s = rig.strike();
+        let mut a = soldier_attack(7, 0.0, 0.0, at);
+        (a.state, a.seen, a.sub_action) = (KILLED, at, true);
+        assert_eq!(a.update(walk, &mut s), Ok(5));
+        assert_eq!((a.state, a.target), (DONE, -1));
+        assert_eq!(s.posted, vec![(0x1fb, [600, 0, 0x202])]);
+        assert_eq!(*s.anim_speed, Some(1.0));
+        assert_eq!(s.let_go, None);
+    }
+
+    /// A dead tree (class 15) up to state 5 keeps a non-villager's attack going; ready, the
+    /// attack on it ends (`set_state` 1) and returns 5. A villager's, or one on a tree past
+    /// state 5, ends at the update's start, letting the target go.
+    #[test]
+    fn a_dead_tree_keeps_a_soldier_s_attack_until_it_is_ready() {
+        let at = [11.0, 10.0, 0.0];
+        let run = |unit_class: i16, tree_state: u8| {
+            let mut world = world_with(7, 0, TREE, at);
+            let mut mover = soldier_mover(0.8);
+            let walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                class: TREE,
+                state: tree_state,
+                position: at,
+                ..Victim::default()
+            });
+            let mut s = rig.strike();
+            s.own.class = unit_class;
+            let mut a = soldier_attack(7, 1.0, 0.0, at);
+            a.seen = at;
+            let code = a.update(walk, &mut s).unwrap();
+            (code, a.state, s.let_go)
+        };
+        assert_eq!(run(6, 3), (5, DONE, None));
+        assert_eq!(run(6, 5), (5, DONE, None));
+        assert_eq!(run(4, 3), (5, DONE, Some(7)));
+        assert_eq!(run(6, 6), (5, DONE, Some(7)));
+    }
+
+    /// After a hit, the swing's loop test reads the unit's sprite as readyToAttack left it: one
+    /// that failed (`set_state` 13, the standing sprite from its first frame) keeps the attack in
+    /// state 13, though the attack sprite had looped.
+    #[test]
+    fn a_swing_that_fails_its_interrupt_check_stays_failed() {
+        let at = [15.0, 10.0, 0.0];
+        let mut world = world_with(7, 0, 6, at);
+        let mut mover = soldier_mover(0.0);
+        let walk = walk_in(&mut mover, &mut world);
+        let mut rig = Rig::new(Victim {
+            id: 7,
+            state: 2,
+            position: at,
+            ..Victim::default()
+        });
+        let swing = Graphic {
+            id: 301,
+            ..STANDING
+        };
+        rig.sprite = Some(ActiveSprite {
+            looped: true,
+            frame: 9,
+            ..ActiveSprite::start(swing, &mut Well512::default())
+        });
+        let mut s = rig.strike();
+        let mut a = soldier_attack(7, 1.0, 0.0, [NONE; 3]);
+        (a.state, a.seen, a.arms.interrupt_frame) = (SWING, at, 5);
+        assert_eq!(a.update(walk, &mut s), Ok(0));
+        assert_eq!(a.state, FAILED);
+        assert_eq!(s.posted, vec![(0x1fd, [0; 3])]);
+        assert_eq!(s.sprite.map(|sp| sp.graphic.id), Some(STANDING.id));
     }
 
     #[test]
