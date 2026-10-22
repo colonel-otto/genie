@@ -349,32 +349,59 @@ impl Turns {
     ///   group, one alone moves loose; with Ctrl held (`control`) it is a group of its own.
     ///
     /// The split keeps at most 60 groups of at most 60 units: a group past them is dropped with
-    /// its units. An order to more than 60 units (`FUN_140fd9ae0`'s runs of 60) is not modelled.
+    /// its units. An order to more than 60 units splits its sorted list, the gone units in it, in
+    /// runs of 60, each on its own into the one split (`FUN_140fd9ae0`'s `FixedMemoryResource`
+    /// of 60): an id the next run repeats is in both.
     pub(crate) fn split(
         &mut self,
         units: &[i32],
         kept: &dyn Fn(i32) -> bool,
         control: bool,
     ) -> Result<Split, Unsupported> {
-        if 60 < units.len() {
-            return Err(Unsupported("an order to more than 60 units"));
-        }
         // FUN_140fd9ae0 splits only when the list's first unit exists (its owner): else no unit
         // takes the order
         let Some((owner, _)) = units.first().and_then(|&id| self.object(id)) else {
             return Ok(Split::default());
         };
-        let mut sorted = units.to_vec();
-        sorted.sort_unstable();
-        sorted.dedup();
-        let mut left: Vec<Splittable> = Vec::with_capacity(sorted.len());
-        for id in sorted {
+        // FUN_140fd9dc0's objects, null for a gone id; LAB_140fd89b0 sorts a null as -1, and
+        // equal ids are one object, so any sort gives the game's order
+        let mut sorted: Vec<Option<i32>> = units
+            .iter()
+            .map(|&id| self.object(id).map(|_| id))
+            .collect();
+        sorted.sort_unstable_by_key(|u| u.unwrap_or(-1));
+        for u in &mut sorted {
+            if u.is_some_and(|id| !kept(id)) {
+                *u = None;
+            }
+        }
+        let mut split = Split::default();
+        for run in sorted.chunks(60) {
+            self.split_run(owner, run, control, &mut split)?;
+        }
+        Ok(split)
+    }
+
+    /// One run of at most 60 of the order splitter (`FUN_140fd76d0`) into `split`: a null entry
+    /// and one the run's next entry repeats are left out.
+    fn split_run(
+        &mut self,
+        owner: usize,
+        run: &[Option<i32>],
+        control: bool,
+        split: &mut Split,
+    ) -> Result<(), Unsupported> {
+        let mut left: Vec<Splittable> = Vec::with_capacity(run.len());
+        for (i, &u) in run.iter().enumerate() {
+            let Some(id) = u else {
+                continue;
+            };
+            if run.get(i + 1).copied().flatten() == Some(id) {
+                continue;
+            }
             let Some((p, u)) = self.object(id) else {
                 continue;
             };
-            if !kept(id) {
-                continue;
-            }
             let master = self.master_of(p, u.life.master_id)?;
             left.push(Splittable {
                 id,
@@ -395,7 +422,6 @@ impl Turns {
                 restriction: u.mover.as_ref().map(|m| m.stats.restriction),
             });
         }
-        let mut split = Split::default();
         // the units in a group the world holds, with the order's other members of their group
         let mut taken = vec![false; left.len()];
         for i in 0..left.len() {
@@ -426,7 +452,7 @@ impl Turns {
         let formations = self.players[owner].formations;
         if !formations.auto {
             split.loose.extend(left.iter().map(|u| u.id));
-            return Ok(split);
+            return Ok(());
         }
         // units above type 69 of formation category 0 stay loose (the dock test FUN_141158210 is
         // 1 only on an `E` tile in game type 12)
@@ -489,7 +515,7 @@ impl Turns {
             }
             split.keep(group);
         }
-        Ok(split)
+        Ok(())
     }
 
     /// A loose unit of an order leaves its group (`FUN_14102c160` on the group of its `+0x6d0`
@@ -4057,6 +4083,37 @@ mod tests {
         assert_eq!(split.loose, [13]);
         let split = t.split(&[12, 13], &|_| true, false).unwrap();
         assert_eq!(split.loose, [12, 13]);
+    }
+
+    /// `FUN_140fd9ae0` with 61 or more: the sorted list (a gone unit null, sorted first) splits
+    /// in runs of 60, each split on its own (`FUN_140fd76d0`) into the one split: its groups count
+    /// on, and an id repeated across two runs is in each.
+    #[test]
+    fn the_splitter_splits_an_order_to_more_than_60_units_in_runs_of_60() {
+        let units: Vec<_> = (100..161).map(|id| (id, 4, [20.0, 20.0])).collect();
+        let mut t = soldiers(&units, &[]);
+        let ids: Vec<i32> = (100..161).rev().collect();
+        let split = t.split(&ids, &|_| true, false).unwrap();
+        assert_eq!(split.groups, [(100..160).collect::<Vec<_>>()]);
+        assert_eq!(split.loose, [160]);
+        // the gone 999 is the first run's first entry
+        let gone: Vec<i32> = ids.iter().copied().chain([999]).collect();
+        let split = t.split(&gone, &|_| true, false).unwrap();
+        assert_eq!(
+            split.groups,
+            [(100..159).collect::<Vec<_>>(), vec![159, 160]]
+        );
+        assert_eq!(split.loose, Vec::<i32>::new());
+        // 159 twice: the first run's last entry has no next one to repeat it
+        let twice: Vec<i32> = (100..160).chain([159]).collect();
+        let split = t.split(&twice, &|_| true, false).unwrap();
+        assert_eq!(split.groups, [(100..160).collect::<Vec<_>>()]);
+        assert_eq!(split.loose, [159]);
+        // with Ctrl held the first run fills the 60 groups, the second's group is dropped
+        let split = t.split(&ids, &|_| true, true).unwrap();
+        assert_eq!(split.groups.len(), 60);
+        assert_eq!(split.groups[59], [159]);
+        assert_eq!(split.loose, Vec::<i32>::new());
     }
 
     /// MarvinBlue/426048731's MOVE of 1569: player 2's villagers 9175 and 9177 (by id) take a
