@@ -2405,6 +2405,224 @@ mod tests {
         assert_eq!(mover.short_reach(&me, &w, 777, 0.1).unwrap(), None);
     }
 
+    /// An empty 20 × 20 map of terrain 4, and a pather on it with radius 0.2 and mask 6.
+    fn open_world() -> Spatial {
+        Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]))
+    }
+
+    /// List `l`'s open nodes from its head, each linked back to the one before.
+    fn open_nodes(p: &HullPather<'_>, l: usize) -> Vec<usize> {
+        let mut out = Vec::new();
+        let mut before = l;
+        let mut n = p.nodes[l].next;
+        while let Some(i) = n {
+            assert_eq!(p.nodes[i].prev, Some(before), "node {i}'s prev");
+            out.push(i);
+            before = i;
+            n = p.nodes[i].next;
+        }
+        out
+    }
+
+    /// `MShortPather::addNode` (`FUN_140f8aa10`): the cost is the parent's plus the step, the
+    /// distance to the goal 0 without one. An open node goes after the open nodes whose cost
+    /// plus distance is smaller (`COMISS`/`JBE` at 0x140f8ae2d: before equal ones); with a hull
+    /// point (both `+0x28` and `+0x2c` at least 0, compared as integers), after the node before
+    /// the first larger one of the scan. An open node of the same hull point that costs more
+    /// closes and the new one takes its place; one that costs no more, or a closed one (all of
+    /// them), refuses the new node. Not open: straight into the closed list.
+    #[test]
+    fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
+        let w = open_world();
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        let goal = Some([10.0, 0.0]);
+        let root = p
+            .add_node(0, true, None, [0.0, 0.0], goal, -1, -1, -1, false)
+            .unwrap();
+        assert_eq!((p.nodes[root].cost, p.nodes[root].to_goal), (0.0, 10.0));
+        // cost 5, distance √65: 13.06
+        let a = p
+            .add_node(0, true, Some(root), [3.0, 4.0], goal, 0, 1, 7, false)
+            .unwrap();
+        assert_eq!((p.nodes[a].cost, p.nodes[a].parent), (5.0, Some(root)));
+        assert_eq!(
+            (p.nodes[a].hull, p.nodes[a].vertex, p.nodes[a].direction),
+            (0, 1, 7)
+        );
+        // 6 + 4 = 10: the scan puts it after the node before `a`, past the root's equal 10
+        let b = p
+            .add_node(0, true, Some(root), [6.0, 0.0], goal, 0, 2, -1, false)
+            .unwrap();
+        assert_eq!(open_nodes(&p, 0), [root, b, a]);
+        // no hull point: no scan, the walk stops at the first node of no smaller sum
+        let c = p
+            .add_node(0, true, Some(root), [6.0, 0.0], goal, -1, -1, -1, false)
+            .unwrap();
+        assert_eq!(open_nodes(&p, 0), [c, root, b, a]);
+        // `a`'s hull point at no smaller cost: refused
+        assert_eq!(
+            p.add_node(0, true, Some(root), [0.0, 5.0], goal, 0, 1, -1, false),
+            None
+        );
+        // cheaper (3): `a` closes, the new node goes in by its sum (3 + 7)
+        let d = p
+            .add_node(0, true, Some(root), [3.0, 0.0], goal, 0, 1, -1, false)
+            .unwrap();
+        assert_eq!(open_nodes(&p, 0), [d, c, root, b]);
+        assert_eq!(p.closed[0], [a]);
+        // a closed node of the hull point that costs no more refuses one (`b`, 6, a cost-7
+        // node); a cheaper one is made
+        p.close(0, b);
+        assert_eq!(
+            p.add_node(0, true, Some(root), [0.0, 7.0], goal, 0, 2, -1, false),
+            None
+        );
+        let e = p
+            .add_node(0, true, Some(root), [5.0, 0.0], goal, 0, 2, -1, false)
+            .unwrap();
+        assert_eq!(p.nodes[e].cost, 5.0);
+        // a node not open goes to the closed list without a test
+        let f = p
+            .add_node(0, false, Some(e), [5.0, 0.0], None, 0, 2, -1, false)
+            .unwrap();
+        assert_eq!((p.nodes[f].cost, p.nodes[f].to_goal), (5.0, 0.0));
+        assert_eq!(p.closed[0], [a, b, f]);
+        assert!(!open_nodes(&p, 0).contains(&f));
+    }
+
+    /// `addNode` by place (its last argument set): the same place is within [`EPSILON`] on both
+    /// axes (`COMISS`/`JA`, an unordered difference is no match), with or without a hull point;
+    /// of the closed list, all but the last node count.
+    #[test]
+    fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
+        let w = open_world();
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        let root = p
+            .add_node(1, true, None, [0.0, 0.0], None, -1, -1, -1, true)
+            .unwrap();
+        let a = p
+            .add_node(1, true, Some(root), [2.0, 0.0], None, -1, -1, -1, true)
+            .unwrap();
+        // within EPSILON of `a`, dearer: refused; cheaper (from a nearer parent): replaces it
+        let near = [2.0 + EPSILON * 0.5, 0.0];
+        assert_eq!(
+            p.add_node(1, true, Some(a), near, None, -1, -1, -1, true),
+            None
+        );
+        let q = p
+            .add_node(1, false, None, [1.5, 0.0], None, -1, -1, -1, false)
+            .unwrap();
+        let b = p
+            .add_node(1, true, Some(q), near, None, -1, -1, -1, true)
+            .unwrap();
+        assert_eq!(p.closed[1], [q, a]);
+        assert_eq!(open_nodes(&p, 1), [root, b]);
+        // a place EPSILON away is another place
+        assert!(
+            p.add_node(
+                1,
+                true,
+                Some(a),
+                [2.0 + EPSILON * 2.0, 0.0],
+                None,
+                -1,
+                -1,
+                -1,
+                true
+            )
+            .is_some()
+        );
+        // the closed list's last node does not count, the ones before it do
+        p.empty(1);
+        let r = p
+            .add_node(1, true, None, [9.0, 9.0], None, -1, -1, -1, true)
+            .unwrap();
+        p.close(1, r);
+        let s = p
+            .add_node(1, false, None, [4.0, 4.0], None, -1, -1, -1, false)
+            .unwrap();
+        assert_eq!(p.closed[1], [r, s]);
+        assert!(
+            p.add_node(1, true, Some(s), [4.0, 4.0], None, -1, -1, -1, true)
+                .is_some()
+        );
+        assert!(
+            p.add_node(1, true, Some(s), [9.0, 9.0], None, -1, -1, -1, true)
+                .is_none()
+        );
+    }
+
+    /// `moveToClosedList` (`FUN_140f8ce00`) unlinks the node (its own links stay) and appends it
+    /// to the closed list; `closeAllOpenNodes` (`FUN_140f8c130`) closes the open nodes in their
+    /// order and makes every closed node forget its hull point (`+0x28`, `+0x2c` -1); `emptyLists`
+    /// (`FUN_140f8c300`) drops the list's open and closed nodes.
+    #[test]
+    fn nodes_close_one_by_one_or_all_and_the_lists_empty() {
+        let w = open_world();
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        let goal = Some([10.0, 0.0]);
+        let n: Vec<usize> = (0..4)
+            .map(|k| {
+                p.add_node(0, true, None, [k as f32, 0.0], goal, 0, k, 2, false)
+                    .unwrap()
+            })
+            .collect();
+        // the nearest to the goal first
+        assert_eq!(open_nodes(&p, 0), [n[3], n[2], n[1], n[0]]);
+        p.close(0, n[2]);
+        assert_eq!(open_nodes(&p, 0), [n[3], n[1], n[0]]);
+        assert_eq!(
+            (p.nodes[n[2]].prev, p.nodes[n[2]].next),
+            (Some(n[3]), Some(n[1]))
+        );
+        // the last open node: no next to relink
+        p.close(0, n[0]);
+        assert_eq!(open_nodes(&p, 0), [n[3], n[1]]);
+        assert_eq!(p.closed[0], [n[2], n[0]]);
+        assert_eq!((p.nodes[n[2]].hull, p.nodes[n[2]].vertex), (0, 2));
+        p.close_all(0);
+        assert_eq!(open_nodes(&p, 0), []);
+        assert_eq!(p.closed[0], [n[2], n[0], n[3], n[1]]);
+        for &i in &n {
+            assert_eq!((p.nodes[i].hull, p.nodes[i].vertex), (-1, -1));
+            assert_eq!(p.nodes[i].direction, 2);
+        }
+        // list 1 is another list
+        let other = p
+            .add_node(1, true, None, [1.0, 1.0], goal, 3, 3, -1, false)
+            .unwrap();
+        p.empty(0);
+        assert_eq!((open_nodes(&p, 0), p.closed[0].len()), (vec![], 0));
+        assert_eq!(open_nodes(&p, 1), [other]);
+        p.empty(1);
+        assert_eq!(open_nodes(&p, 1), []);
+    }
+
+    /// `MShortPather::checkPointInsideHull` (`FUN_140f8be30`): the first hull with points that
+    /// holds the point, moved [`NUDGE`] of the way toward its bounding box's middle (a point on
+    /// a side counts as inside), or -1.
+    #[test]
+    fn a_point_lies_in_the_first_hull_holding_it() {
+        let w = open_world();
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        let shifted = |dx: f32| Hull {
+            points: square().points.iter().map(|q| [q[0] + dx, q[1]]).collect(),
+            min: [dx, 0.0],
+            max: [dx + 1.0, 1.0],
+            ..square()
+        };
+        p.hulls = vec![Hull::default(), shifted(0.0), shifted(0.5)];
+        assert_eq!(p.hull_of([0.75, 0.5]), 1);
+        assert_eq!(p.hull_of([1.25, 0.5]), 2);
+        // the left side of hull 1 and the right side of hull 2, nudged inward
+        assert_eq!(p.hull_of([0.0, 0.5]), 1);
+        assert_eq!(p.hull_of([1.5, 0.5]), 2);
+        assert_eq!(p.hull_of([1.75, 0.5]), -1);
+        assert_eq!(p.hull_of([f32::NAN, 0.5]), -1);
+        p.hulls.clear();
+        assert_eq!(p.hull_of([0.75, 0.5]), -1);
+    }
+
     #[test]
     fn a_unit_within_range_needs_no_path() {
         let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
