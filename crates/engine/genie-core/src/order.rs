@@ -304,9 +304,7 @@ impl Turns {
         let loose = self.loose_units(units);
         self.groups.count_command();
         let loose = loose?;
-        for &id in &loose {
-            self.leave_group(id)?;
-        }
+        self.leave_groups(player, &loose, order.target)?;
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
         if 1 < loose.len() && self.players[player].computer {
             return Err(Unsupported(
@@ -547,14 +545,25 @@ impl Turns {
         Ok(())
     }
 
-    /// A loose unit of an order leaves its group (`FUN_14102c160` on the group of its `+0x6d0`
-    /// that the world holds): not modelled.
-    fn leave_group(&self, id: i32) -> Result<(), Unsupported> {
-        let group = self.object(id).map_or(-1, |(_, u)| u.group.id);
-        if self.groups.get(group).is_some() {
-            return Err(Unsupported(
-                "a unit in a group that an order moves alone (FUN_14102c160)",
-            ));
+    /// The loose units of a MOVE or an INTERACT of `player` leave their groups (`FUN_14102c160`
+    /// with 0 on the group of each one's `+0x6d0` the world holds, [`Turns::leave_group_of`]),
+    /// in order. With more than one loose unit of a player whose lobby entry is not a computer's
+    /// (`FUN_140d61870`) the routine's target is -1 (MOVE `FUN_140e67800` at `0x140e67e5d`,
+    /// INTERACT `FUN_140e68b90` at `0x140e6913c`); else it is the order's target object's id
+    /// when the world holds it (`FUN_140e6b820`), -1 without (`0x140e6873b`, `0x140e6991e`).
+    fn leave_groups(
+        &mut self,
+        player: usize,
+        loose: &[i32],
+        target: i32,
+    ) -> Result<(), Unsupported> {
+        let target = if 1 < loose.len() && !self.players[player].computer {
+            -1
+        } else {
+            self.world_object(target).map_or(-1, |t| t.id())
+        };
+        for &id in loose {
+            self.leave_group_of(id, target)?;
         }
         Ok(())
     }
@@ -806,7 +815,7 @@ impl Turns {
             }
             &[id] if !order.control => {
                 self.groups.count_command();
-                self.leave_group(id)?;
+                self.leave_groups(player, &[id], order.target)?;
                 return self.move_unit(player, id, &[], None, order);
             }
             _ => {
@@ -815,9 +824,7 @@ impl Turns {
                     .and_then(|s| self.move_groups(player, &s.groups, order).map(|()| s.loose));
                 self.groups.count_command();
                 let loose = loose?;
-                for &id in &loose {
-                    self.leave_group(id)?;
-                }
+                self.leave_groups(player, &loose, order.target)?;
                 loose
             }
         };
@@ -4616,6 +4623,68 @@ mod tests {
         assert_eq!(t.players[1].objects[1].group.id, -1);
         assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
         assert_eq!(t.players[0].objects[0].ai.as_ref().unwrap().orders.len(), 1);
+    }
+
+    /// MOVE and INTERACT (`FUN_140e67800`, `FUN_140e68b90`): their loose units in a group the
+    /// world holds leave it (`FUN_14102c160`), one unit or several; a unit in no group, or in a
+    /// group the world does not hold, stays as it is.
+    #[test]
+    fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
+        let units = [(11, 83, [20.0, 20.0]), (12, 83, [40.0, 20.0])];
+        let order = MoveOrder {
+            target: -1,
+            point: [30.0, 30.0],
+            queued: false,
+            direct: false,
+            human: false,
+            control: false,
+        };
+        let mut t = soldiers(&units, &[11]);
+        t.move_order(1, &[11], &order).unwrap();
+        assert_eq!(t.players[1].objects[0].group.id, -1);
+        assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
+        // two groups' members ordered alone: both loose
+        let two = || {
+            let mut t = soldiers(&units, &[11]);
+            t.groups.groups.push(crate::group::UnitGroup {
+                id: 6,
+                members: vec![crate::group::Member {
+                    id: 12,
+                    ..crate::group::Member::default()
+                }],
+                ..crate::group::UnitGroup::default()
+            });
+            t.players[1].objects[1].group.id = 6;
+            t
+        };
+        let mut t = two();
+        t.move_order(1, &[11, 12], &order).unwrap();
+        assert_eq!(t.players[1].objects[0].group.id, -1);
+        assert_eq!(t.players[1].objects[1].group.id, -1);
+        assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
+        assert_eq!(t.groups.get(6).unwrap().members.len(), 0);
+        // a group link the world does not hold
+        let mut t = soldiers(&units, &[]);
+        t.players[1].objects[0].group.id = 9;
+        t.move_order(1, &[11], &order).unwrap();
+        assert_eq!(t.players[1].objects[0].group.id, 9);
+        let interact = Interact {
+            target: -1,
+            point: [30.0, 30.0],
+            carry_test: false,
+            queued: false,
+            direct: false,
+            human: false,
+            filter: -1,
+        };
+        let mut t = two();
+        for u in &mut t.players[1].objects {
+            u.pasture = -1;
+            u.my_pasture = -1;
+        }
+        t.interact(1, &[11, 12], &interact).unwrap();
+        assert_eq!(t.players[1].objects[0].group.id, -1);
+        assert_eq!(t.players[1].objects[1].group.id, -1);
     }
 
     /// GATE and `FUN_1411dba30`: player 1's building 50 toggles its lock, a lock setting its last
