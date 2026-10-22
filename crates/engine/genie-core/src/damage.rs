@@ -91,7 +91,8 @@ pub struct Victim {
     pub blast_defense: u8,
     /// Flagged to sleep (`+0x641`, `+0x643`): a killing hit wakes it (`FUN_14119deb0` with 0).
     pub goto_sleep: bool,
-    /// Its master's decay (`+0x620`), which a hunt's decay stop reads (`FUN_140ac44b0`).
+    /// Its master's decay (`+0x620`), which a hunt's decay stop negates (`FUN_140ac44b0`; the
+    /// write-back gives it to the object's own master).
     pub decay: f32,
     /// Its master's `fog_visibility` (`+0x605`): an Attack goes on against it in the fog.
     pub fog_visibility: u8,

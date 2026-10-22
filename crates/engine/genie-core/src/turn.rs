@@ -7870,6 +7870,10 @@ impl Turns {
         u.life.hp = v.hp;
         u.life.amount = v.amount;
         u.life.goto_sleep = v.goto_sleep;
+        // a hunt that stopped its decay gave it a master of its own (FUN_140ac44b0)
+        if let Some(m) = u.life.master.as_mut() {
+            m.decay = v.decay;
+        }
         if let Some(a) = v.armored.as_ref() {
             u.hp_powerups = a.hp_powerups;
         }

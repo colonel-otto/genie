@@ -977,7 +977,7 @@ impl HuntAction {
                         ))
                     }
                     1 | 2 | 5 => {
-                        self.decay_check(gather, strike.victim)?;
+                        self.decay_check(gather.stops_decay, strike.victim);
                         let player = strike.own.player;
                         self.set_walk(&mut walk, strike.victim, player)
                     }
@@ -1091,7 +1091,7 @@ impl HuntAction {
                         .as_deref_mut()
                         .ok_or(Unsupported("a hunter without movement state"))?
                         .stop()?;
-                    self.decay_check(gather, strike.victim)?;
+                    self.decay_check(gather.stops_decay, strike.victim);
                     self.set_face(walk, strike, gather, herd)
                 }
                 None => Err(Unsupported("a Hunt in state 4 without its MoveTo")),
@@ -1292,15 +1292,13 @@ impl HuntAction {
 
     /// `FUN_140ac44b0`: a task whose `attribute_type4` is 0x124, with its player's attribute 292
     /// at 1, stops its target's decay: a target whose master decays (`+0x620` above 0) gets a
-    /// master of its own (`FUN_141186d10`) with the decay negated, which the slice does not
-    /// model. Otherwise it does nothing.
-    fn decay_check(&self, gather: &Gatherer<'_>, victim: &Victim) -> Result<(), Unsupported> {
-        if self.task.kind4 == DECAY_TASK && gather.stops_decay && 0.0 < victim.decay {
-            return Err(Unsupported(
-                "a hunt that stops its target's decay (its own master, FUN_141186d10)",
-            ));
+    /// master of its own unless it has one (`FUN_141188bc0`, `FUN_141186d10`) and that master's
+    /// decay takes the other sign (its bits XOR `0x80000000`); the caller writes it back to the
+    /// target ([`Victim::decay`]). Otherwise it does nothing.
+    fn decay_check(&self, stops_decay: bool, victim: &mut Victim) {
+        if self.task.kind4 == DECAY_TASK && stops_decay && 0.0 < victim.decay {
+            victim.decay = f32::from_bits(victim.decay.to_bits() ^ 0x8000_0000);
         }
-        Ok(())
     }
 
     /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]; a stance below 2
@@ -1530,6 +1528,30 @@ pub(crate) mod tests {
             move_wait: MoveWait::default(),
             lead: Lead::default(),
         }
+    }
+
+    /// `FUN_140ac44b0`: the decay task (`attribute_type4` 0x124) under attribute 292 turns a
+    /// decaying target's decay negative once; any other task or a player without it leaves it.
+    #[test]
+    fn a_decay_task_stops_its_target_s_decay_once() {
+        let mut hunt = hunting(7);
+        let decaying = || Victim {
+            decay: 0.25,
+            ..Victim::default()
+        };
+        let mut v = decaying();
+        hunt.decay_check(true, &mut v);
+        assert_eq!(v.decay, 0.25);
+        hunt.task.kind4 = DECAY_TASK;
+        hunt.decay_check(false, &mut v);
+        assert_eq!(v.decay, 0.25);
+        hunt.decay_check(true, &mut v);
+        assert_eq!(v.decay, -0.25);
+        hunt.decay_check(true, &mut v);
+        assert_eq!(v.decay, -0.25);
+        let mut none = Victim::default();
+        hunt.decay_check(true, &mut none);
+        assert_eq!(none.decay.to_bits(), 0);
     }
 
     /// A villager walking at 0.8 tiles a second, radius 0.2.
