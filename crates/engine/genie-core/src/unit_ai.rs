@@ -2974,16 +2974,25 @@ impl UnitAi {
         Ok(())
     }
 
-    /// The unit's notify (its slot 0x328, `FUN_141086a10`) to its unit AI: a unit in state 2
-    /// passes it to the AI's slot 0x38 (`FUN_140c556d0`), which queues it (`FUN_140c42470`) but
-    /// for an action's invalidation that is not the current action's and a movement completion
-    /// while the AI has an action other than a move (`0x262`, `0x268`, `0x2bf`, `0x2c0`).
-    /// A notify 699 is taken only from one of its attackers. A notify the AI does not take (any
-    /// but 699) goes to the owner's slot 0x2e8 (`FUN_14162dab0`, the human player's alerts),
-    /// which the slice does not hold.
+    /// The unit's notify (its slot 0x328, `FUN_141086a10`) to its unit AI: a unit in state 2 (or
+    /// state 0 with a damage notify, which slot 0x38 refuses there) passes it to the AI's slot
+    /// 0x38 ([`UnitAi::accept`]). A notify the AI does not take (any but 699) goes to the
+    /// owner's slot 0x2e8 (`FUN_14162dab0`, the human player's alerts), which the slice does not
+    /// hold.
     pub fn post(&mut self, n: Notify, unit_state: u8) -> Result<(), Unsupported> {
+        let _ = self.accept(n, unit_state);
+        Ok(())
+    }
+
+    /// The unit AI's slot 0x38 (`FUN_140c556d0`, every type's): outside state 2 it takes nothing
+    /// (0). A notify 699 is taken only from one of its attackers (a binary search of `+0xc0`),
+    /// an action's invalidation only of the current action, and a movement completion
+    /// (`0x1fa` with `0x262`) while the AI has an action other than a move (`0x262`, `0x268`,
+    /// `0x2bf`, `0x2c0`) is ignored, answering 1 without joining the queue; any other joins the
+    /// queue (`FUN_140c42470`, whose 0 on a failed allocation cannot happen) and answers 1.
+    pub fn accept(&mut self, n: Notify, unit_state: u8) -> bool {
         if unit_state != 2 {
-            return Ok(());
+            return false;
         }
         let action = self.current_action;
         let taken = match n.kind {
@@ -2993,7 +3002,7 @@ impl UnitAi {
             ACTION_COMPLETED => {
                 // ignored (and handled) for a non-movement action
                 if n.p[0] == MOVE_ACTION && !matches!(action, 0x262 | 0x268 | 0x2bf | 0x2c0) {
-                    return Ok(());
+                    return true;
                 }
                 true
             }
@@ -3002,7 +3011,7 @@ impl UnitAi {
         if taken {
             self.append(n);
         }
-        Ok(())
+        taken
     }
 
     /// `FUN_140c42470`: a notify joins the queue; a full queue doubles its capacity, but while
@@ -9017,5 +9026,26 @@ mod tests {
             ),
             (41, 9, 42, 4)
         );
+    }
+
+    /// Slot 0x38 (`FUN_140c556d0`) answers whether it took the notify: 0 outside state 2, for a
+    /// 699 from a unit that is not attacking it and for the invalidation of another action; 1
+    /// for a movement completion it ignores (not queued) and for one it queues.
+    #[test]
+    fn the_unit_ai_s_notify_answers_whether_it_took_it() {
+        let mut u = UnitAi {
+            current_action: GATHER_ACTION,
+            attackers: vec![70],
+            ..idle(8)
+        };
+        let n = |caller, kind, p0| Notify::own(caller, kind, [p0, 0, 0]);
+        assert!(!u.accept(n(70, DAMAGED, 0), 0));
+        assert!(!u.accept(n(71, NO_LONGER_ON_ME, 0), 2));
+        assert!(!u.accept(n(70, ACTION_INVALIDATED, ATTACK_ACTION), 2));
+        assert!(u.accept(n(70, ACTION_COMPLETED, MOVE_ACTION), 2));
+        assert_eq!(u.notifies, Vec::new());
+        assert!(u.accept(n(70, NO_LONGER_ON_ME, 0), 2));
+        assert!(u.accept(n(70, ACTION_INVALIDATED, GATHER_ACTION), 2));
+        assert_eq!(u.notifies.len(), 2);
     }
 }
