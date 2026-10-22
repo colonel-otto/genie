@@ -20,7 +20,7 @@
 //! tile under a one-tile target that the unit's terrain cannot cross.
 
 use crate::fmath::{at_most_or_unordered, sqrt};
-use crate::spatial::{Placed, Spatial, tile_record_id};
+use crate::spatial::{GATE_CLASS, Placed, Spatial, tile_record_id};
 use crate::unit_ai::Unsupported;
 
 /// A point on the map, x and y.
@@ -553,6 +553,18 @@ struct Within {
     left_boxes: bool,
 }
 
+/// Slot 0x678 of an object for a player (`FUN_1411d4a30`, a gate's): whether the player may pass
+/// it, `passes(object, player)`. The world's update knows the gates' states and the players'
+/// diplomacy; the pather does not.
+#[derive(Clone, Copy)]
+pub struct GatePass<'w>(pub &'w dyn Fn(i32, i32) -> bool);
+
+impl std::fmt::Debug for GatePass<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("GatePass")
+    }
+}
+
 /// The old short pather over a world, for one unit: its terrain mask, player and radius, and the
 /// ignore list.
 #[derive(Debug)]
@@ -560,6 +572,14 @@ pub struct HullPather<'w> {
     world: &'w Spatial,
     mask: u8,
     radius: f32,
+    /// `FindShortPath`'s player (its argument 12, the unit's player's number `+0x718`), whom slot
+    /// 0x678 asks about a gate.
+    player: i32,
+    /// Slot 0x678 of the gates, when the caller gives it ([`HullPather::with_gates`]).
+    gates: Option<GatePass<'w>>,
+    /// The objects `FindShortPath` includes (its arguments 13 and 14): in the hulls even when
+    /// ignored or moving.
+    include: Vec<i32>,
     /// The manager's buffer for the line tests (`+0x57`, `+0x58`): half the radius.
     buffer: Option<f32>,
     /// The ignore list (`+0xc0` on, `+0xc4` count, `+0xd0` ids), which the manager's tests read.
@@ -632,6 +652,11 @@ impl<'w> HullPather<'w> {
             world,
             mask,
             radius,
+            player: world
+                .get(unit)
+                .map_or(-1, |p| i32::try_from(p.player).unwrap_or(-1)),
+            gates: None,
+            include: Vec::new(),
             buffer: None,
             ignore,
             hulls: Vec::new(),
@@ -644,6 +669,22 @@ impl<'w> HullPather<'w> {
             entrances: vec![Waypoints::default(); PATHS],
             bounds: [0.0; 4],
         }
+    }
+
+    /// The pather with slot 0x678 of the gates in its area for the unit's player: a gate it may
+    /// pass stays out of the hulls.
+    #[must_use]
+    pub const fn with_gates(mut self, passes: &'w dyn Fn(i32, i32) -> bool) -> Self {
+        self.gates = Some(GatePass(passes));
+        self
+    }
+
+    /// The pather with `FindShortPath`'s include list (its arguments 13 and 14): these objects go
+    /// into the hulls even when ignored or moving.
+    #[must_use]
+    pub fn including(mut self, ids: &[i32]) -> Self {
+        self.include = ids.to_vec();
+        self
     }
 
     // The node lists.
@@ -700,14 +741,7 @@ impl<'w> HullPather<'w> {
         direction: i32,
         by_place: bool,
     ) -> Option<usize> {
-        let cost = parent.map_or(0.0, |p| {
-            let q = self.nodes[p];
-            sqrt((q.at[1] - at[1]) * (q.at[1] - at[1]) + (q.at[0] - at[0]) * (q.at[0] - at[0]))
-                + q.cost
-        });
-        let to_goal = goal.map_or(0.0, |g| {
-            sqrt((at[1] - g[1]) * (at[1] - g[1]) + (at[0] - g[0]) * (at[0] - g[0]))
-        });
+        let (cost, to_goal) = self.node_costs(parent, at, goal);
         let mut after: Option<usize> = None;
         if open && (by_place || (0 <= hull && 0 <= vertex)) {
             let same = |n: &Node| {
@@ -750,21 +784,81 @@ impl<'w> HullPather<'w> {
                 return None;
             }
         }
-        let i = self.nodes.len();
-        self.nodes.push(Node {
-            at,
-            parent,
-            next: None,
-            prev: None,
-            to_goal,
-            cost,
-            hull,
-            vertex,
-            direction,
+        Some(self.link_node(
+            l,
+            open,
+            after,
+            Node {
+                at,
+                parent,
+                next: None,
+                prev: None,
+                to_goal,
+                cost,
+                hull,
+                vertex,
+                direction,
+            },
+        ))
+    }
+
+    /// `addNode` for a node nothing can refuse: one straight into the closed list, or an open one
+    /// without a hull point and not by place, for which `addNode` searches no list. The game's
+    /// callers test its answer for null, which then catches only a failed allocation (the roots
+    /// of `FindShortPath` and `pathWithinHull`, `FindShortPath`'s crossing node).
+    #[allow(clippy::too_many_arguments)]
+    fn add_unrefused(
+        &mut self,
+        l: usize,
+        open: bool,
+        parent: Option<usize>,
+        at: Point,
+        goal: Option<Point>,
+        hull: i32,
+        direction: i32,
+    ) -> usize {
+        let (cost, to_goal) = self.node_costs(parent, at, goal);
+        self.link_node(
+            l,
+            open,
+            None,
+            Node {
+                at,
+                parent,
+                next: None,
+                prev: None,
+                to_goal,
+                cost,
+                hull,
+                vertex: -1,
+                direction,
+            },
+        )
+    }
+
+    /// A node's cost (the parent's plus the step, 0 without a parent) and its distance to `goal`
+    /// (0 without one), as `addNode` reckons them.
+    fn node_costs(&self, parent: Option<usize>, at: Point, goal: Option<Point>) -> (f32, f32) {
+        let cost = parent.map_or(0.0, |p| {
+            let q = self.nodes[p];
+            sqrt((q.at[1] - at[1]) * (q.at[1] - at[1]) + (q.at[0] - at[0]) * (q.at[0] - at[0]))
+                + q.cost
         });
+        let to_goal = goal.map_or(0.0, |g| {
+            sqrt((at[1] - g[1]) * (at[1] - g[1]) + (at[0] - g[0]) * (at[0] - g[0]))
+        });
+        (cost, to_goal)
+    }
+
+    /// `addNode`'s end: the node into the closed list, or into the open list after `after` or,
+    /// without, after the open nodes whose cost plus distance is smaller.
+    fn link_node(&mut self, l: usize, open: bool, after: Option<usize>, node: Node) -> usize {
+        let (cost, to_goal) = (node.cost, node.to_goal);
+        let i = self.nodes.len();
+        self.nodes.push(node);
         if !open {
             self.closed[l].push(i);
-            return Some(i);
+            return i;
         }
         let mut s = after.unwrap_or(l);
         if after.is_none() {
@@ -783,7 +877,7 @@ impl<'w> HullPather<'w> {
         if let Some(n) = next {
             self.nodes[n].prev = Some(i);
         }
-        Some(i)
+        i
     }
 
     // The world's tests.
@@ -914,29 +1008,46 @@ impl<'w> HullPather<'w> {
     }
 
     /// `MShortPather::addTileObjects` (`FUN_140f8b460`): the tall objects of tile (`x`, `y`)'s
-    /// list, in its order, but those ignored or moving (slot 0x5c8) and gates its player may pass
-    /// (slot 0x678): each box, grown by the radius, into `hull` (when given and the object is at
-    /// most a tile wide) or its own place in the hulls, once per hull.
-    fn add_tile_objects(&mut self, x: i32, y: i32, hull: Option<usize>) -> Result<(), Unsupported> {
+    /// list (master `+0x5e0` above 0), in its order, but gates `player` may pass (slot 0x678) and,
+    /// unless included, those ignored or moving (slot 0x5c8): each box, grown by the radius, into
+    /// `hull` (when given and the object is at most a tile wide) or its own place in the hulls,
+    /// once per hull.
+    fn add_tile_objects(
+        &mut self,
+        x: i32,
+        y: i32,
+        hull: Option<usize>,
+        player: i32,
+    ) -> Result<(), Unsupported> {
         let world = self.world;
         for &id in world.tiles().list(x, y) {
             let Some(p) = world.get(id) else {
                 continue;
             };
-            if !p.tall {
+            if !p.tall || self.passes(id, p, player)? {
                 continue;
             }
-            if p.class == 39 {
-                return Err(Unsupported(
-                    "a gate in the old short pather's area (its players' passage, slot 0x678)",
-                ));
-            }
-            if self.ignore.contains(&id) || world.gait(id).is_some_and(|g| g.moving) {
+            // slot 0x5c8 is asked only of an object not ignored
+            let left_out = self.ignore.contains(&id) || world.gait(id).is_some_and(|g| g.moving);
+            if left_out && !self.include.contains(&id) {
                 continue;
             }
             self.add_box(id, p, hull);
         }
         Ok(())
+    }
+
+    /// Slot 0x678 of object `id` for `player`: only a gate's (`FUN_1411d4a30`) answers yes, and
+    /// never for player -1 (`processCliffs`'): its ally test `FUN_141663dc0` takes no number at
+    /// or above the player count, unsigned.
+    fn passes(&self, id: i32, p: &Placed, player: i32) -> Result<bool, Unsupported> {
+        if p.class != GATE_CLASS || player < 0 {
+            return Ok(false);
+        }
+        let gates = self.gates.ok_or(Unsupported(
+            "a gate in the old short pather's area (its players' passage, slot 0x678)",
+        ))?;
+        Ok((gates.0)(id, player))
     }
 
     /// One object's box into the hulls ([`HullPather::add_tile_objects`]).
@@ -945,8 +1056,9 @@ impl<'w> HullPather<'w> {
         let [x, y, _] = p.position;
         let [rx, ry] = p.radius;
         let bounds = [(x - rx) - r, (y - ry) - r, x + rx + r, y + ry + r];
+        // `COMISS`/`JA` (0x140f8b772, 0x140f8b7a4): an unordered radius takes the given hull
         let h = match hull {
-            Some(h) if rx <= HALF && ry <= HALF => h,
+            Some(h) if at_most_or_unordered(rx, HALF) && at_most_or_unordered(ry, HALF) => h,
             _ => self.add_shape([bounds[0], bounds[1]], [bounds[2], bounds[3]]),
         };
         let objects = &mut self.hulls[h].objects;
@@ -989,7 +1101,7 @@ impl<'w> HullPather<'w> {
                 }
             }
         }
-        self.add_tile_objects(x, y, hull)?;
+        self.add_tile_objects(x, y, hull, self.player)?;
         let sight = self.world.sight.as_ref().ok_or(Unsupported(
             "the old short pather without the map's building links",
         ))?;
@@ -997,7 +1109,7 @@ impl<'w> HullPather<'w> {
             && let Some([ax, ay]) = sight.anchor_of(x, y)
             && (ax < area[0] || area[2] < ax || ay < area[1] || area[3] < ay)
         {
-            self.add_tile_objects(ax, ay, hull)?;
+            self.add_tile_objects(ax, ay, hull, self.player)?;
         }
         Ok(())
     }
@@ -1070,28 +1182,12 @@ impl<'w> HullPather<'w> {
         Ok(())
     }
 
-    /// `FUN_140f8a890`: a cliff tile's objects, each to its own place.
+    /// `FUN_140f8a890`: a cliff tile's objects (its word's static class 6), each to its own place
+    /// ([`HullPather::add_tile_objects`] with no hull and player -1: no gate passes).
     fn cliff(&mut self, x: i32, y: i32) -> Result<(), Unsupported> {
         let word = self.world.tiles().word(x, y).unwrap_or(0);
         if word & 0x3f00 == 0x600 {
-            let world = self.world;
-            for &id in world.tiles().list(x, y) {
-                let Some(p) = world.get(id) else {
-                    continue;
-                };
-                if !p.tall {
-                    continue;
-                }
-                if p.class == 39 {
-                    return Err(Unsupported(
-                        "a gate in the old short pather's area (its players' passage, slot 0x678)",
-                    ));
-                }
-                if self.ignore.contains(&id) || world.gait(id).is_some_and(|g| g.moving) {
-                    continue;
-                }
-                self.add_box(id, p, None);
-            }
+            self.add_tile_objects(x, y, None, -1)?;
         }
         Ok(())
     }
@@ -1411,9 +1507,7 @@ impl<'w> HullPather<'w> {
         let mut best = goal.map_or(0.0, |g| {
             sqrt((from[1] - g[1]) * (from[1] - g[1]) + (from[0] - g[0]) * (from[0] - g[0]))
         });
-        let root = self
-            .add_node(1, true, None, from, goal, -1, -1, -1, false)
-            .ok_or(Unsupported("the old short pather's first node"))?;
+        let root = self.add_unrefused(1, true, None, from, goal, -1, -1);
         let inside = self.hulls[hull].box_holding(from);
         if let Some(b) = inside {
             self.close(1, root);
@@ -1555,9 +1649,7 @@ impl<'w> HullPather<'w> {
         *count = 0;
         let mut left_boxes = false;
         self.empty(1);
-        let root = self
-            .add_node(1, true, None, from, Some(to), -1, -1, -1, false)
-            .ok_or(Unsupported("the old short pather's first node"))?;
+        let root = self.add_unrefused(1, true, None, from, Some(to), -1, -1);
         let inside = self.hulls[hull].box_holding(from);
         if inside.is_some() || target.is_some() {
             self.close(1, root);
@@ -1825,9 +1917,7 @@ impl<'w> HullPather<'w> {
             if growths == 0 {
                 self.build_hulls()?;
             }
-            let root = self
-                .add_node(0, true, None, from, Some(to), -1, -1, -1, false)
-                .ok_or(Unsupported("the old short pather's first node"))?;
+            let root = self.add_unrefused(0, true, None, from, Some(to), -1, -1);
             start_hull = self.hull_of(from);
             goal_hull = self.hull_of(to);
             within = false;
@@ -1876,40 +1966,15 @@ impl<'w> HullPather<'w> {
                     if n <= 1 {
                         continue;
                     }
-                    let mut node = Some(root);
-                    let mut j = 1;
-                    let mut whole = true;
-                    while j < n - 1 {
-                        node = self.add_node(
-                            0,
-                            false,
-                            node,
-                            points[j],
-                            Some(to),
-                            start_hull,
-                            -1,
-                            -1,
-                            false,
-                        );
-                        if node.is_none() {
-                            whole = false;
-                            break;
-                        }
-                        j += 1;
+                    // the way out's points in turn, its last open (none refused: closed, or
+                    // without a hull point)
+                    let mut node = root;
+                    for &p in &points[1..n - 1] {
+                        node =
+                            self.add_unrefused(0, false, Some(node), p, Some(to), start_hull, -1);
                     }
-                    if whole {
-                        let _ = self.add_node(
-                            0,
-                            true,
-                            node,
-                            points[j],
-                            Some(to),
-                            start_hull,
-                            -1,
-                            -1,
-                            false,
-                        );
-                    }
+                    let last = points[n - 1];
+                    let _ = self.add_unrefused(0, true, Some(node), last, Some(to), start_hull, -1);
                 }
             }
             entered_box = false;
@@ -2017,9 +2082,7 @@ impl<'w> HullPather<'w> {
                 if hit as i32 == self.nodes[best].hull && 0 <= vertex {
                     continue;
                 }
-                let node = self
-                    .add_node(0, false, Some(best), p, Some(to), hit as i32, -1, -1, false)
-                    .ok_or(Unsupported("the old short pather's crossing node"))?;
+                let node = self.add_unrefused(0, false, Some(best), p, Some(to), hit as i32, -1);
                 if self.nodes[node].to_goal < nearest_d {
                     nearest_d = self.nodes[node].to_goal;
                     best_node = Some(node);
@@ -2664,6 +2727,244 @@ mod tests {
         assert_eq!(p.hull_of([f32::NAN, 0.5]), -1);
         p.hulls.clear();
         assert_eq!(p.hull_of([0.75, 0.5]), -1);
+    }
+
+    /// A tall object of class 10 (39 for a gate) without an obstruction record, owned by player 1.
+    fn tall(x: f32, y: f32, r: f32, class: i16) -> Placed {
+        Placed {
+            position: [x, y, 0.0],
+            radius: [r, r],
+            class,
+            player: 1,
+            master: 0,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        }
+    }
+
+    /// The ids of each hull's boxes, hull by hull.
+    fn hull_ids(p: &HullPather<'_>) -> Vec<Vec<i32>> {
+        p.hulls
+            .iter()
+            .map(|h| h.objects.iter().map(|o| o.id).collect())
+            .collect()
+    }
+
+    /// `MShortPather::addTileObjects` (`FUN_140f8b460`): the tile's tall objects in its list's
+    /// order; slot 0x678 (`FUN_1411d4a30`) leaves out a gate the player may pass and, for player
+    /// -1, never does; the ignored and moving objects stay out unless included; a box at most
+    /// half a tile wide (`COMISS`/`JA`: an unordered one too) joins the given hull, a wider one
+    /// its own place; an id goes into a hull once.
+    #[test]
+    fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
+        let mut w = open_world();
+        w.insert(10, tall(5.3, 5.3, 0.2, 10)); // the unit: ignored
+        w.insert(1, tall(5.5, 5.5, 0.5, 10));
+        w.insert(
+            2,
+            Placed {
+                tall: false,
+                ..tall(5.2, 5.2, 0.5, 10)
+            },
+        );
+        w.insert(3, tall(5.5, 5.4, 0.5, 39)); // a gate
+        w.insert(5, tall(5.7, 5.7, 0.2, 10)); // moving
+        w.set_gait(
+            5,
+            Some(crate::spatial::Gait {
+                moving: true,
+                ..Default::default()
+            }),
+        );
+        w.insert(6, tall(5.5, 5.5, 1.0, 10)); // wider than a tile
+        w.insert(7, tall(8.5, 8.5, f32::NAN, 10));
+        let far = Hull {
+            points: vec![[1.0, 1.0], [1.0, 0.0], [0.0, 0.0], [0.0, 1.0]],
+            entrances: vec![-1; 4],
+            min: [0.0, 0.0],
+            max: [1.0, 1.0],
+            objects: Vec::new(),
+        };
+        // a gate for a player, without the world's slot 0x678
+        let mut p = HullPather::new(&w, 10, 11, 6, 0.2);
+        assert_eq!(p.player, 1);
+        p.hulls = vec![far.clone()];
+        assert!(p.add_tile_objects(5, 5, Some(0), 1).is_err());
+        // player 1 passes the gate
+        let passes = |id: i32, player: i32| id == 3 && player == 1;
+        let mut p = HullPather::new(&w, 10, 11, 6, 0.2).with_gates(&passes);
+        p.hulls = vec![far.clone()];
+        p.add_tile_objects(5, 5, Some(0), 1).unwrap();
+        assert_eq!(hull_ids(&p), [vec![1], vec![6]]);
+        assert_eq!(p.hulls[0].objects[0].bounds, [4.8, 4.8, 6.2, 6.2]);
+        assert_eq!(p.hulls[1].objects[0].bounds, [4.3, 4.3, 6.7, 6.7]);
+        // once per hull
+        p.add_tile_objects(5, 5, Some(0), 1).unwrap();
+        assert_eq!(hull_ids(&p), [vec![1], vec![6]]);
+        // player -1 passes no gate, and needs no slot 0x678; included objects go in
+        let mut p = HullPather::new(&w, 10, 11, 6, 0.2).including(&[5, 10]);
+        p.hulls = vec![far];
+        p.add_tile_objects(5, 5, Some(0), -1).unwrap();
+        assert_eq!(hull_ids(&p), [vec![10, 1, 3, 5], vec![6]]);
+        // an unordered radius takes the given hull
+        p.add_tile_objects(8, 8, Some(0), -1).unwrap();
+        assert_eq!(hull_ids(&p)[0], [10, 1, 3, 5, 7]);
+        // without a hull each box finds its own place: the wide box merges into the first's
+        let mut p = HullPather::new(&w, 10, 11, 6, 0.2).with_gates(&passes);
+        p.add_tile_objects(5, 5, None, 1).unwrap();
+        assert_eq!(hull_ids(&p), [vec![1, 6]]);
+    }
+
+    /// `processCliffs` (`FUN_140f8e020`) over the frame two tiles about the area, held on the
+    /// map: rows y0 - 2..=y1 + 2 left and right of the area, then the rows above it, then those
+    /// below; each tile through `FUN_140f8a890`, which takes the objects of a cliff tile (word
+    /// `& 0x3f00` = 0x600) each to its own place, a gate too.
+    #[test]
+    fn the_cliffs_in_the_frame_about_the_area_go_into_the_hulls() {
+        let mut tiles = Tiles::new(20, 20, vec![4; 400]);
+        let cliffs = [
+            (3, 3),
+            (6, 4),
+            (6, 9),
+            (9, 6),
+            (6, 6),
+            (2, 2),
+            (8, 8),
+            (19, 19),
+        ];
+        for (x, y) in cliffs {
+            tiles.mark_for_test(x, y, 0x600);
+        }
+        // not a cliff: another class's bits
+        tiles.mark_for_test(4, 6, 0x700);
+        let mut w = Spatial::with_tiles([20, 20], tiles);
+        for (id, (x, y)) in (1..).zip(cliffs.into_iter().chain([(4, 6)])) {
+            let class = if (x, y) == (9, 6) { 39 } else { 10 };
+            w.insert(id, tall(x as f32 + 0.5, y as f32 + 0.5, 0.1, class));
+        }
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        p.area = [5, 5, 7, 7];
+        p.process_cliffs().unwrap();
+        // (3, 3) and (9, 6) by the side rows, (6, 4) above, (6, 9) below; (8, 8) is a corner of
+        // the frame's side rows, after (9, 6)'s row
+        assert_eq!(hull_ids(&p), [vec![1], vec![4], vec![7], vec![2], vec![3]]);
+        // at the map's edge the frame stops at the last tile
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        p.area = [17, 17, 18, 18];
+        p.process_cliffs().unwrap();
+        assert_eq!(hull_ids(&p), [vec![8]]);
+    }
+
+    /// `processTileObstructions` (`FUN_140f8e1d0`): nothing off the map; a tile whose word holds a
+    /// bit the mask lacks (and not ignored) is a box `r` beyond the tile, into the given hull or
+    /// its own place, once per hull; then the tile's objects, then those of its building's anchor
+    /// tile when that lies outside the area.
+    #[test]
+    fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
+        let mut classes = vec![4; 400];
+        classes[9 * 20 + 9] = 1;
+        classes[3 * 20 + 3] = 1;
+        let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+        let mut v = crate::visibility::Visibility::new(
+            20,
+            20,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+            Vec::new(),
+        );
+        // a building of 2 × 2 tiles, 9..=10 each way, its anchor (10, 10)
+        let _ = v.link_building([10.0, 10.0, 0.0], [1.0, 1.0]);
+        assert_eq!(v.anchor_of(9, 9), Some([10, 10]));
+        w.sight = Some(v);
+        w.insert(20, tall(10.0, 10.0, 1.0, 10)); // the building, on its anchor tile
+        w.insert(21, tall(9.5, 9.5, 0.1, 10));
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        p.process_tile(-1, 9, [5, 5, 9, 9], None).unwrap();
+        p.process_tile(20, 9, [5, 5, 9, 9], None).unwrap();
+        assert_eq!(p.hulls, []);
+        // the tile's box, its object, then the anchor's building, the anchor outside the area
+        p.process_tile(9, 9, [5, 5, 9, 9], None).unwrap();
+        assert_eq!(hull_ids(&p), [vec![tile_record_id(9, 9), 21, 20]]);
+        assert_eq!(p.hulls[0].objects[0].bounds, [8.8, 8.8, 10.2, 10.2]);
+        // the anchor inside the area: its tile's own turn takes the building
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        p.process_tile(9, 9, [5, 5, 10, 10], None).unwrap();
+        assert_eq!(hull_ids(&p), [vec![tile_record_id(9, 9), 21]]);
+        // into a given hull, once; an ignored tile's box stays out
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        p.hulls = vec![Hull::default()];
+        p.process_tile(3, 3, [0, 0, 5, 5], Some(0)).unwrap();
+        p.process_tile(3, 3, [0, 0, 5, 5], Some(0)).unwrap();
+        assert_eq!(hull_ids(&p), [vec![tile_record_id(3, 3)]]);
+        p.ignore.push(tile_record_id(9, 9));
+        p.process_tile(9, 9, [5, 5, 10, 10], Some(0)).unwrap();
+        assert_eq!(hull_ids(&p), [vec![tile_record_id(3, 3), 21]]);
+    }
+
+    /// `MShortPather::buildHulls` (`FUN_140f8b8f0`): no hulls, the area held on the map, then row
+    /// by row: a tile the unit cannot cross (its word holds a bit the mask lacks, or the static
+    /// bit 14 without class 5) starts or continues a run; an open tile ends the run (one box from
+    /// its start to the open tile, then each run tile into its hull) before the open tile's own
+    /// obstructions go each to its own place; a run at the row's end ends at the area's last
+    /// column plus one.
+    #[test]
+    fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
+        let mut classes = vec![4; 400];
+        for x in [3, 4, 5, 9, 10] {
+            classes[5 * 20 + x] = 1;
+        }
+        let mut tiles = Tiles::new(20, 20, classes);
+        // a gate's tile (class 5) is open, another static record's is not
+        tiles.mark_for_test(7, 5, 0x4000 | 0x500);
+        tiles.mark_for_test(8, 5, 0x4000 | 0x200);
+        let mut w = Spatial::with_tiles([20, 20], tiles);
+        w.sight = Some(crate::visibility::Visibility::new(
+            20,
+            20,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+            Vec::new(),
+        ));
+        w.insert(30, tall(1.5, 5.5, 0.3, 10));
+        w.insert(31, tall(4.5, 5.5, 0.2, 10));
+        w.insert(32, tall(7.5, 5.5, 0.2, 10));
+        // moving: out unless included (`FindShortPath`'s arguments 13 and 14, passed on)
+        w.insert(33, tall(0.5, 5.5, 0.2, 10));
+        w.set_gait(
+            33,
+            Some(crate::spatial::Gait {
+                moving: true,
+                ..Default::default()
+            }),
+        );
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        p.hulls = vec![Hull::default()];
+        p.area = [-1, 5, 9, 5];
+        p.build_hulls().unwrap();
+        assert_eq!(p.area, [0, 5, 9, 5]);
+        let t = |x: i32| tile_record_id(x, 5);
+        // the run 8..10 (the area ends at 9) overlaps object 32's hull and joins it; its tile 8
+        // is blocked by its static bit alone, which the tile's box test (the mask's byte) does
+        // not see
+        assert_eq!(
+            hull_ids(&p),
+            [vec![30], vec![t(3), t(4), 31, t(5)], vec![32, t(9)]]
+        );
+        assert_eq!((p.hulls[1].min, p.hulls[1].max), ([2.8, 4.8], [6.2, 6.2]));
+        let x0 = (7.5f32 - 0.2) - 0.2;
+        assert_eq!((p.hulls[2].min, p.hulls[2].max), ([x0, 4.8], [10.2, 6.2]));
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2).including(&[33]);
+        p.area = [0, 5, 2, 5];
+        p.build_hulls().unwrap();
+        assert_eq!(hull_ids(&p), [vec![33], vec![30]]);
     }
 
     #[test]
