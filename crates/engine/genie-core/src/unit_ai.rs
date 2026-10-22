@@ -981,6 +981,13 @@ fn lion_may_attack(attack_priority: u8, class: i16) -> bool {
     }
 }
 
+/// The civilian's slot 0xa0 (`FUN_140c18b70`) without its `any` flag: never classes 1 and 42;
+/// with the unit's master's `attack_priority` 3 (`FUN_141202220`) only [`PRIORITY_3_CLASSES`]
+/// (`FUN_140fddf10`).
+fn civilian_may_attack(attack_priority: u8, class: i16) -> bool {
+    !matches!(class, 1 | 42) && (attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class))
+}
+
 /// What [`UnitSide::attack`] answers: the unit attacks the target, and the notifies the command
 /// posted to its unit AI (slot 0x328 with the kind and three parameters).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -3262,19 +3269,8 @@ impl UnitAi {
             self.current_order = crate::ai_kinds::ORDER_ATTACK;
             self.order_priority = 100;
         }
-        // slot 0xb8 forced, the civilian's (`FUN_140c17370`): HuntObject on an animal or a tree
-        // (classes 9, 10, 15), else AttackObject
-        if matches!(attacker.class, 9 | 10 | 15) {
-            self.hunt_object(
-                n.caller,
-                i32::from(attacker.class),
-                attacker.position,
-                at,
-                fx,
-            )?;
-        } else {
-            let _ = self.attack_object(n.caller, true, false, at, side, fx)?;
-        }
+        // slot 0xb8 forced, the civilian's
+        let _ = self.civilian_attack(n.caller, at, side, fx)?;
         self.stop_after_kill = true;
         Ok(BREAK)
     }
@@ -3427,9 +3423,12 @@ impl UnitAi {
 
     /// `AttackObject` (slot 0xb8, `FUN_140c43720`): `+0x1d5` clears; not `force`d, an AI with an
     /// action fails (false). The target must be in the world; its slot 0xa0 with `any` must let it
-    /// attack the target: the boar's (`FUN_140c48400`) anything, the lion's
-    /// ([`lion_may_attack`]), the soldier's and the tower's ([`UnitSide::may_attack`]; the other
-    /// factory types' are not modelled); then the unit's attack command ([`UnitSide::attack`]), on
+    /// attack the target: the boar's, the transport ship's and the livestock's
+    /// (`FUN_140c48400`) anything, the building's (`FUN_140c18b60`) nothing, the lion's
+    /// ([`lion_may_attack`]), the civilian's ([`civilian_may_attack`]), the soldier's and the
+    /// tower's ([`UnitSide::may_attack`]; the hunted animal's, `FUN_140c18d00`, reads its action
+    /// list, slot 0x538, and is not modelled); then the unit's attack command
+    /// ([`UnitSide::attack`]), on
     /// success the action is
     /// the attack (600, the last action keeping the old) and the target its point and class
     /// (`FUN_140c64c10`). The slice holds no unit groups (`+0x6d0`), whose members would attack
@@ -3461,8 +3460,12 @@ impl UnitAi {
                 },
             };
             let may = match self.ai_type {
-                4 => true,
+                // FUN_140c48400: the boar's, the transport ship's and the livestock's
+                4 | 11 | 19 => true,
                 5 => any || lion_may_attack(at.attack_priority, t.class),
+                CIVILIAN => civilian_may_attack(at.attack_priority, t.class),
+                // FUN_140c18b60
+                17 => false,
                 _ => {
                     return Err(Unsupported(
                         "AttackObject's slot 0xa0 of a unit AI type not modelled",
@@ -3496,6 +3499,33 @@ impl UnitAi {
         self.set_action(ATTACK_ACTION);
         self.set_target(target, i32::from(class), position);
         Ok(true)
+    }
+
+    /// The civilian's `AttackObject` (slot 0xb8, `FUN_140c17370`) with its force flag 1, as every
+    /// caller in the slice passes it (the damage notify and the unit in the way): an object the
+    /// world does not hold (`FUN_1415417a0`) gets nothing (false); an animal or a tree (classes 9,
+    /// 10 and 15) is hunted (slot 0xc8, [`UnitAi::hunt_object`]); any other goes to the base
+    /// `AttackObject` with `any` 0 and the group flag 1 ([`UnitAi::attack_object`]). True when
+    /// it hunts or attacks.
+    fn civilian_attack(
+        &mut self,
+        target: i32,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        let t = match at.unit(target) {
+            Some(t) => *t,
+            None => match side.seen_unit(target)? {
+                Some(t) => t,
+                None => return Ok(false),
+            },
+        };
+        if matches!(t.class, 9 | 10 | 15) {
+            self.hunt_object(target, i32::from(t.class), t.position, at, fx)?;
+            return Ok(true);
+        }
+        self.attack_object(target, true, false, at, side, fx)
     }
 
     /// The attackers' upkeep of the full update (`0x140c6741b`): with none, a unit under attack
@@ -3729,7 +3759,8 @@ impl UnitAi {
 
     /// The base handler's case 0x215 ([`IN_THE_WAY`]): a unit not of a boar's master (class 10
     /// of combat level 1, `FUN_140fde4f0`) attacks the unit in its way (`AttackObject`, slot
-    /// 0xb8, forced, its slot 0xa0 unforced, [`UnitAi::attack_object`]) when the world's table
+    /// 0xb8, forced, its slot 0xa0 unforced: the civilian's [`UnitAi::civilian_attack`], any
+    /// other type's [`UnitAi::attack_object`]) when the world's table
     /// holds it, retargeting is on (`+0x1d6` 0), its stance (`+0x1a9`) is 0 and it has no order;
     /// the other unit's group (`+0x6d0`), which would let it attack with one, the slice does not
     /// hold. Processing goes on.
@@ -3747,7 +3778,12 @@ impl UnitAi {
             && self.current_order == -1
             && self.stance == 0
         {
-            let _ = self.attack_object(n.p[0], true, false, at, side, fx)?;
+            // slot 0xb8 forced: the civilian's own, every other type's the base's
+            let _ = if self.ai_type == CIVILIAN {
+                self.civilian_attack(n.p[0], at, side, fx)?
+            } else {
+                self.attack_object(n.p[0], true, false, at, side, fx)?
+            };
         }
         Ok(GO_ON)
     }
@@ -8071,5 +8107,85 @@ mod tests {
             u.process_idle(&at, true, &mut r, &mut no_search, &mut Vec::new()),
             Ok(false)
         );
+    }
+
+    /// The civilian's `AttackObject` (slot 0xb8, `FUN_140c17370`, forced): an object the world
+    /// does not hold gets nothing; an animal or a tree (classes 9, 10, 15) is hunted (slot 0xc8);
+    /// any other goes to the base `AttackObject`, whose civilian slot 0xa0 (`FUN_140c18b70`)
+    /// refuses classes 1 and 42, and at attack priority 3 the classes outside
+    /// [`PRIORITY_3_CLASSES`].
+    #[test]
+    fn a_villager_hunts_an_animal_and_attacks_another_object() {
+        let at = |priority: u8| Surroundings {
+            id: 10041,
+            state: 2,
+            attack_priority: priority,
+            units: vec![
+                attacker(9731, CLASS_10, 0.5),
+                attacker(9800, 6, 1.0),
+                attacker(9801, 42, 1.0),
+                attacker(9802, 3, 1.0),
+            ],
+            ..Surroundings::default()
+        };
+        let mut u = idle(8);
+        let mut side = Recorder::default();
+        let mut fx = Vec::new();
+        let mut nobody = LionSide {
+            found: [-1, -1],
+            searches: 0,
+            seen: UnitSeen::default(),
+            attacks: Vec::new(),
+        };
+        assert_eq!(
+            u.civilian_attack(9999, &at(0), &mut nobody, &mut fx),
+            Ok(false)
+        );
+        assert_eq!(
+            u.civilian_attack(9731, &at(0), &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!(fx, vec![Effect::HuntObject(9731)]);
+        assert_eq!((u.current_action, u.current_target), (HUNT_ACTION, 9731));
+        let mut u = idle(8);
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.civilian_attack(9800, &at(0), &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!(side.attacks, vec![(9800, true)]);
+        assert_eq!((u.current_action, u.current_target), (ATTACK_ACTION, 9800));
+        let mut u = idle(8);
+        assert_eq!(
+            u.civilian_attack(9801, &at(0), &mut side, &mut fx),
+            Ok(false)
+        );
+        assert_eq!(
+            u.civilian_attack(9800, &at(3), &mut side, &mut fx),
+            Ok(false)
+        );
+        assert_eq!(
+            u.civilian_attack(9802, &at(3), &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!(side.attacks, vec![(9800, true), (9802, true)]);
+    }
+
+    /// Slot 0xa0 of the types whose `AttackObject` is the base's: the transport ship's and the
+    /// livestock's (`FUN_140c48400`) pass anything, the building's (`FUN_140c18b60`) nothing.
+    #[test]
+    fn a_ship_or_livestock_may_attack_anything_and_a_building_nothing() {
+        let at = Surroundings {
+            id: 10041,
+            state: 2,
+            units: vec![attacker(9800, 6, 1.0)],
+            ..Surroundings::default()
+        };
+        for (ai_type, attacks) in [(11, true), (19, true), (17, false)] {
+            let mut u = idle(ai_type);
+            let mut side = Recorder::default();
+            let r = u.attack_object(9800, true, false, &at, &mut side, &mut Vec::new());
+            assert_eq!(r, Ok(attacks), "type {ai_type}");
+        }
     }
 }
