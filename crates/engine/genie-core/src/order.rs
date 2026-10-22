@@ -1358,33 +1358,40 @@ impl Turns {
         Ok(())
     }
 
-    /// `UNIT_AI_STATE` (`do_command` case 0x12: the check `FUN_140e55d30`, then `FUN_140e6a7c0`):
-    /// each of `ids` the world holds, of the player's, with a unit AI takes the stance `state`
-    /// (slot 0x1c0, `FUN_140c64d50`: `+0x1a9`, its place as the stance's, `+0x1ac`), but not
-    /// stances 1 and 2 for classes 54 and 51 (and, the siege AI's slot, masters 42 and 331). An id
-    /// gone or another player's counts for nothing (a game setting, `FUN_1412ffe00`, or the
-    /// world's `+0xb12` may let another player's through, not modelled). `NoAttack` (3) on a unit
-    /// that attacks (order 700 or action 600: slot 0xb0 with 1, `FUN_140c5e1e0`) and the UI's
-    /// flag are not modelled.
+    /// `UNIT_AI_STATE` (`do_command` case 0x12): the check ([`Turns::command_check`]), then
+    /// `FUN_140e6a7c0` over its first 60 ids (500 for a computer player): each object the world
+    /// holds (any player's the check let through) with a unit AI takes the stance `state` (slot
+    /// 0x1c0, [`set_stance`]), but not stances 1 and 2 for classes 54 and 51 (and, the siege AI's
+    /// slot, masters 42 and 331). The UI's flag is not held.
     pub(crate) fn unit_ai_state(
         &mut self,
         player: usize,
         ids: &[i32],
         state: u8,
     ) -> Result<(), Unsupported> {
-        for &id in ids {
+        let Some(ids) = self.command_check(player, ids) else {
+            return Ok(());
+        };
+        let cap = if self.players[player].computer {
+            500
+        } else {
+            60
+        };
+        for &id in ids.iter().take(cap) {
             let Some(place) = self.place(id) else {
                 continue;
             };
             let (p, idx) = match place {
                 Place::Live(p, i) => (p, i),
+                // only slot 0x180 puts an object to sleep, one of a type below 30, which has no
+                // unit AI: the handler passes it over
+                Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
                 Place::Sleeping(..) => {
-                    return Err(Unsupported("a UNIT_AI_STATE of a sleeping object"));
+                    return Err(Unsupported(
+                        "a UNIT_AI_STATE of a sleeping object with a unit AI",
+                    ));
                 }
             };
-            if p != player {
-                continue;
-            }
             let unit = &self.players[p].objects[idx];
             if unit.ai.is_none() {
                 continue;
@@ -1395,15 +1402,17 @@ impl Turns {
             {
                 continue;
             }
+            let class = master.class;
             let unit = &mut self.players[p].objects[idx];
-            let [x, y, _] = unit.position;
+            let place = ([unit.position[0], unit.position[1]], class);
             let ai = unit.ai.as_mut().expect("checked above");
-            ai.stance = state;
-            ai.state_position = [x, y];
-            if state == 3 && (ai.current_order == 700 || ai.current_action == 600) {
-                return Err(Unsupported(
-                    "NoAttack on an attacking unit (slot 0xb0, FUN_140c5e1e0)",
-                ));
+            let mut fx = Vec::new();
+            set_stance(ai, state, place, &mut fx)?;
+            for e in fx {
+                match e {
+                    crate::unit_ai::Effect::Stop => self.command_stop(p, idx)?,
+                    _ => return Err(Unsupported("a stance's stop effect not modelled")),
+                }
             }
         }
         Ok(())
@@ -1510,7 +1519,7 @@ impl Turns {
     }
 
     /// STOP (0x01, `RGE_Command::do_command` case 1) of the player's units `ids`: the command's
-    /// check ([`Turns::stop_check`]), the lookup ([`Turns::lookup`]), then `FUN_14161e200`. First
+    /// check ([`Turns::command_check`]), the lookup ([`Turns::lookup`]), then `FUN_14161e200`. First
     /// each unit AI resets as for an order (`FUN_141631040`, the loop of `FUN_140e6cfc0`:
     /// [`crate::unit_ai::UnitAi::reset_for_order`]). Several entries (a gone unit's null among
     /// them) that are exactly one unit group's members (`FUN_14152ec80`, the group's size
@@ -1523,7 +1532,7 @@ impl Turns {
     /// stands (slot 0x560, `FUN_1411616f0`: slot 0x5d0, then `FUN_140f98e80` on its walked
     /// level).
     pub(crate) fn stop_command(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
-        let Some(ids) = self.stop_check(player, ids) else {
+        let Some(ids) = self.command_check(player, ids) else {
             return Ok(());
         };
         let list: Vec<Option<i32>> = self
@@ -1583,13 +1592,14 @@ impl Turns {
         Ok(())
     }
 
-    /// STOP's check (`FUN_140e55a30`, the twin of `FUN_140e558b0`) of the ids of `player`: of the
-    /// first 60 (500 for a computer, `FUN_141659cf0`) an id the world does not hold, or another
-    /// player's without the setting `+0x1074` ([`Turns::allied_control`]), becomes -1; the ids
-    /// past them stay unchecked. A human's command whose checked ids all went is refused (None).
+    /// The check of a command on units (STOP's `FUN_140e55a30` and `UNIT_AI_STATE`'s `FUN_140e55d30`,
+    /// twins of `FUN_140e558b0`) of the ids of `player`: of the first 60 (500 for a computer,
+    /// `FUN_141659cf0`) an id the world does not hold, or another player's without the setting
+    /// `+0x1074` ([`Turns::allied_control`]), becomes -1; the ids past them stay unchecked. A
+    /// human's command whose checked ids all went is refused (None).
     /// The packet's own tests (its size, a player the game lacks) are the decoder's, and the
     /// world's `+0xb12` (the cheat that would let either through) is not held.
-    pub(crate) fn stop_check(&self, player: usize, ids: &[i32]) -> Option<Vec<i32>> {
+    pub(crate) fn command_check(&self, player: usize, ids: &[i32]) -> Option<Vec<i32>> {
         let computer = self.players[player].computer;
         let checked = ids.len().min(if computer { 500 } else { 60 });
         let mut ids = ids.to_vec();
@@ -4000,6 +4010,26 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
     [inside_map(x, map[0]), inside_map(y, map[1])]
 }
 
+/// A unit AI's slot 0x1c0 (`FUN_140c64d50`): the stance (`+0x1a9`) takes `state` and the stance's
+/// place (`+0x1ac`, `+0x1b0`) the unit's (`place`, with its master's class); `NoAttack` (3) on a
+/// unit AI that attacks (its order 700 or its action 600) stops the action (slot 0xb0 with 1,
+/// [`crate::unit_ai::UnitAi::stop_with`], whose stopAction the caller runs) and forgets the
+/// target (`FUN_140c5e1e0`).
+fn set_stance(
+    ai: &mut crate::unit_ai::UnitAi,
+    state: u8,
+    place: ([f32; 2], i16),
+    fx: &mut Vec<crate::unit_ai::Effect>,
+) -> Result<(), Unsupported> {
+    ai.stance = state;
+    ai.state_position = place.0;
+    if state == 3 && (ai.current_order == 700 || ai.current_action == 600) {
+        ai.stop_with(true, Some(place), fx)?;
+        ai.remove_target();
+    }
+    Ok(())
+}
+
 /// A building's slot 0x670 (`FUN_1411dba30`): its gate lock (`mGateLocked`, `+0xc7c`, an int its
 /// callers set to 0 or 1) takes `locked`; a lock also sets its last move time (`+0x870`,
 /// [`crate::movement::Mover::last_move`]) to the world time (`FUN_1415300d0`) plus 1.
@@ -4242,7 +4272,7 @@ mod tests {
     /// player's (without the setting `+0x1074`) becomes -1; a human's command left without a unit
     /// is refused.
     #[test]
-    fn the_stop_check_drops_gone_units_and_others_units_of_its_first_60() {
+    fn the_command_check_drops_gone_units_and_others_units_of_its_first_60() {
         let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
         let mut t = soldiers(&units, &[]);
         t.players[0].objects.push(Unit {
@@ -4250,22 +4280,22 @@ mod tests {
             ..Unit::default()
         });
         assert_eq!(
-            t.stop_check(1, &[11, 30, 99, -1]),
+            t.command_check(1, &[11, 30, 99, -1]),
             Some(vec![11, -1, -1, -1])
         );
         t.allied_control = true;
-        assert_eq!(t.stop_check(1, &[11, 30, 99]), Some(vec![11, 30, -1]));
+        assert_eq!(t.command_check(1, &[11, 30, 99]), Some(vec![11, 30, -1]));
         t.allied_control = false;
-        assert_eq!(t.stop_check(1, &[30, 99]), None);
+        assert_eq!(t.command_check(1, &[30, 99]), None);
         t.players[1].computer = true;
-        assert_eq!(t.stop_check(1, &[30, 99]), Some(vec![-1, -1]));
+        assert_eq!(t.command_check(1, &[30, 99]), Some(vec![-1, -1]));
         t.players[1].computer = false;
         // past the first 60 nothing is checked
         let mut ids = vec![99; 60];
         ids.push(30);
-        assert_eq!(t.stop_check(1, &ids), None);
+        assert_eq!(t.command_check(1, &ids), None);
         ids[0] = 11;
-        let checked = t.stop_check(1, &ids).unwrap();
+        let checked = t.command_check(1, &ids).unwrap();
         assert_eq!((checked[0], checked[1], checked[60]), (11, -1, 30));
     }
 
@@ -4517,6 +4547,66 @@ mod tests {
         assert_eq!(order(&t, 1, 1), -1);
         t.auto_scout(1, &[12]).unwrap();
         assert_eq!(order(&t, 1, 1), crate::unit_ai::AUTO_SCOUT_ORDER);
+    }
+
+    /// `FUN_140c64d50`: the stance and its place are set; `NoAttack` on an attacking unit AI
+    /// stops its action (keeping an order not of the action), asks for its stopAction and
+    /// forgets its target; any other stance leaves them.
+    #[test]
+    fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
+        let attacking = crate::unit_ai::UnitAi {
+            current_order: 700,
+            current_action: 600,
+            current_target: 40,
+            target_type: 6,
+            ..crate::unit_ai::UnitAi::default()
+        };
+        let mut ai = attacking;
+        let mut fx = Vec::new();
+        set_stance(&mut ai, 1, ([3.0, 4.0], 6), &mut fx).unwrap();
+        assert_eq!((ai.stance, ai.state_position), (1, [3.0, 4.0]));
+        assert_eq!((ai.current_action, ai.current_target), (600, 40));
+        assert_eq!(fx, []);
+        set_stance(&mut ai, 3, ([3.0, 5.0], 6), &mut fx).unwrap();
+        assert_eq!(ai.stance, 3);
+        // order 700 is the action's (600 + 100): the stop ends it, the state position the place
+        assert_eq!((ai.current_order, ai.current_action), (-1, -1));
+        assert_eq!((ai.current_target, ai.last_target), (-1, 40));
+        assert_eq!(fx, [crate::unit_ai::Effect::Stop]);
+    }
+
+    /// `FUN_140e6a7c0` after `FUN_140e55d30`: another player's unit takes the stance only while
+    /// players may order each other's; a class-54 unit takes no stance 1.
+    #[test]
+    fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players.push(crate::turn::Player::default());
+        t.masters.push(crate::masters::Masters::new([Master {
+            id: 4,
+            kind: 70,
+            class: 54,
+            ..Master::default()
+        }]));
+        t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi::default());
+        t.players[2].objects.push(Unit {
+            id: 30,
+            ai: Some(crate::unit_ai::UnitAi::default()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 4,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        let stance = |t: &Turns, p: usize| t.players[p].objects[0].ai.as_ref().unwrap().stance;
+        t.unit_ai_state(1, &[11, 30], 2).unwrap();
+        assert_eq!((stance(&t, 1), stance(&t, 2)), (2, 0));
+        t.allied_control = true;
+        t.unit_ai_state(1, &[30], 1).unwrap();
+        assert_eq!(stance(&t, 2), 0);
+        t.unit_ai_state(1, &[30], 3).unwrap();
+        assert_eq!(stance(&t, 2), 3);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
