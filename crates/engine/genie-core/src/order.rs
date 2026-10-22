@@ -876,7 +876,7 @@ impl Turns {
         let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {
             if let Some(g) = self.groups.get_mut(id) {
-                g.differentiator_groups.clone_from(&list);
+                set_differentiator_groups(g, &list);
             }
         }
         Ok(())
@@ -3970,6 +3970,14 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
     [inside_map(x, map[0]), inside_map(y, map[1])]
 }
 
+/// `setDifferentiatorGroups` (`FUN_1410395a0`): group `g`'s differentiator groups (`+0x108`,
+/// count `+0x110`) are `list` instead. The routine's false for an allocation that failed cannot
+/// come: `operator new` (`FUN_142a8bd2c`) throws rather than return none.
+fn set_differentiator_groups(g: &mut crate::group::UnitGroup, list: &[u32]) {
+    g.differentiator_groups.clear();
+    g.differentiator_groups.extend_from_slice(list);
+}
+
 /// `FUN_14118c790`: unit `id` joins the end of a unit's ignore list (`+0x670`, count `+0x678`);
 /// the list's capacity (`+0x67c`: 24 at first, then twice the count, the new slots −1) is the
 /// `Vec`'s, which no reader sees.
@@ -4276,6 +4284,19 @@ mod tests {
         assert_eq!(t.players[1].objects[1].group.id, -1);
         assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
         assert_eq!(t.players[0].objects[0].ai.as_ref().unwrap().orders.len(), 1);
+    }
+
+    /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
+    #[test]
+    fn a_group_s_differentiator_groups_are_the_list_given() {
+        let mut g = crate::group::UnitGroup {
+            differentiator_groups: vec![1, 2, 3],
+            ..crate::group::UnitGroup::default()
+        };
+        set_differentiator_groups(&mut g, &[7, 8]);
+        assert_eq!(g.differentiator_groups, [7, 8]);
+        set_differentiator_groups(&mut g, &[]);
+        assert_eq!(g.differentiator_groups, Vec::<u32>::new());
     }
 
     /// `FUN_14118c790`: each id joins the end of the ignore list, a repeated one again.
