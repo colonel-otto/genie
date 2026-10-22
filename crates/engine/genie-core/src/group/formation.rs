@@ -790,15 +790,30 @@ const SLOT_NUDGE: [[f32; 2]; 5] = [
 const USED_UNITS: usize = 70;
 
 impl crate::turn::Turns {
-    /// `FUN_141011300` of unit `id` (with a target, whose rams rule needs the byte
-    /// `DAT_143f01837` that nothing sets): its sub-formation ([`sub_formation`]), -1 for none.
+    /// `FUN_141011300` of `object` (`param_1`, as the world's table gives it,
+    /// [`Turns::world_object`]): -1 for none (a null object), else its master's sub-formation
+    /// ([`sub_formation`], -1 for none); a ghost's master (type 25) has none.
+    ///
+    /// The routine's target (`param_2`) enters only the rams' rule: a target of type 80 and a
+    /// unit of class 13, of master 1258, 35, 422 or 548 and of a player not a computer
+    /// (`FUN_141659cf0`), are 0 while the byte `DAT_143f01837` is 1. The image holds 0 there and
+    /// no instruction writes it: its only references are the reads at 0x141011603 (here) and
+    /// 0x14102b73d (`readdRams`, `FUN_14102b730`); `FUN_140ecabe0`, which sets the settings'
+    /// bytes before it, stops at `DAT_143f01834`. So the rule never holds and the result does
+    /// not depend on the target.
     ///
     /// # Errors
     ///
-    /// A unit of a master the slice does not have.
-    fn unit_category(&self, p: usize, u: &crate::turn::Unit) -> Result<i32, Unsupported> {
-        let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
-        Ok(sub_formation(unit.kind, unit.hero_flag, unit.formation_category).unwrap_or(-1))
+    /// An object of a master the slice does not have.
+    pub(crate) fn unit_category(
+        &self,
+        object: Option<crate::group::WorldObject<'_>>,
+    ) -> Result<i32, Unsupported> {
+        let Some(object) = object else {
+            return Ok(-1);
+        };
+        let master = self.master_of(object.player(), object.master_id())?;
+        Ok(sub_formation(master.kind, master.hero_flag, master.formation_category).unwrap_or(-1))
     }
 
     /// `ClosestUnit` (`FUN_14100e370`) of group `g` to `point`: of the members the world holds
@@ -820,21 +835,22 @@ impl crate::turn::Turns {
         let mut best = FARTHEST;
         let mut closest = -1;
         for m in &g.members {
-            let Some((p, u)) = self.object(m.id) else {
+            let Some(object) = self.world_object(m.id) else {
                 continue;
             };
-            if category != -1 && self.unit_category(p, u)? != category {
+            if category != -1 && self.unit_category(Some(object))? != category {
                 continue;
             }
             if sub_category != -1
-                && i32::from(self.master_of(p, u.life.master_id)?.id) != sub_category
+                && i32::from(self.master_of(object.player(), object.master_id())?.id)
+                    != sub_category
             {
                 continue;
             }
             if used.contains(&m.id) {
                 continue;
             }
-            let at = moved_vector(u);
+            let at = object.moved_vector();
             let d = (point[1] - at[1]) * (point[1] - at[1])
                 + (point[0] - at[0]) * (point[0] - at[0])
                 + (point[2] - at[2]) * (point[2] - at[2]);
@@ -992,7 +1008,7 @@ impl crate::turn::Turns {
         let mut list: Vec<i32> = Vec::new();
         for i in 0..n {
             let s = formation.slot_mut(i);
-            if s.transformed != 0 && s.active != 0 && self.object(g.members[i].id).is_some() {
+            if s.transformed != 0 && s.active != 0 && self.world_object(g.members[i].id).is_some() {
                 list.push(g.members[i].id);
             }
         }
@@ -1009,14 +1025,15 @@ impl crate::turn::Turns {
                 if *taken == -1 {
                     continue;
                 }
-                let Some((p, unit)) = g.members.get(u).and_then(|m| self.object(m.id)) else {
+                let Some(object) = g.members.get(u).and_then(|m| self.world_object(m.id)) else {
                     continue;
                 };
-                if category != -1 && self.unit_category(p, unit)? != category {
+                if category != -1 && self.unit_category(Some(object))? != category {
                     continue;
                 }
                 if sub_category != -1
-                    && i32::from(self.master_of(p, unit.life.master_id)?.id) != sub_category
+                    && i32::from(self.master_of(object.player(), object.master_id())?.id)
+                        != sub_category
                 {
                     continue;
                 }
@@ -1651,6 +1668,65 @@ mod tests {
             ..crate::group::PointLine::default()
         };
         assert_eq!(find_point_from_front(&one, 0.0), None);
+    }
+
+    /// `FUN_141011300`: a null object (none in the world's table) is -1; a ghost (its master 243
+    /// of type 25) is below 70, -1; a ram (class 13, master 35, of a human player) keeps its own
+    /// category (2), as the rams' rule never holds; a combat master with hero flag bit 4 is 5.
+    #[test]
+    fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
+        let mut t = slot_world(&[(10, 4, 1.0, 0.0), (35, 35, 2.0, 0.0)], &[]);
+        for masters in &mut t.masters {
+            *masters = crate::masters::Masters::new([
+                crate::masters::Master {
+                    id: 4,
+                    kind: 70,
+                    formation_category: 1,
+                    hero_flag: 0x10,
+                    ..crate::masters::Master::default()
+                },
+                crate::masters::Master {
+                    id: 35,
+                    kind: 70,
+                    class: 13,
+                    formation_category: 2,
+                    ..crate::masters::Master::default()
+                },
+                crate::masters::Master {
+                    id: crate::ghost::GHOST_MASTER,
+                    kind: crate::ghost::GHOST,
+                    formation_category: 1,
+                    ..crate::masters::Master::default()
+                },
+            ]);
+        }
+        t.players[1].kind = 1;
+        t.players[1].ghosts = vec![crate::ghost::Ghost {
+            id: -1,
+            original: None,
+            original_id: -1,
+            original_master: None,
+            original_owner: 1,
+            position: [3.0, 4.0, 0.0],
+            tile: [3, 4],
+            footprint: 0,
+            bits: 0,
+            cant_see: 0,
+            seen: false,
+            state: 2,
+        }];
+        assert_eq!(t.unit_category(None).unwrap(), -1);
+        assert_eq!(t.unit_category(t.world_object(99)).unwrap(), -1);
+        let ghost = t.world_object(-1);
+        assert!(matches!(
+            ghost,
+            Some(crate::group::WorldObject::Ghost(1, _))
+        ));
+        assert_eq!(t.unit_category(ghost).unwrap(), -1);
+        assert_eq!(t.unit_category(t.world_object(35)).unwrap(), 2);
+        assert_eq!(t.unit_category(t.world_object(10)).unwrap(), 5);
+        // the world's table holds ghosts only in its negative half, and none for i32::MIN
+        assert!(t.world_object(i32::MIN).is_none());
     }
 
     /// `FUN_14100e370` from the origin: of all, 12 (category 3) is nearest; of category 1, 11;

@@ -159,12 +159,74 @@ pub fn common_group(ids: &[i32], group_of: impl Fn(i32) -> Option<i32>) -> i32 {
     common
 }
 
-/// A unit's sub-formation in its group (`FUN_141011300`), from its master's type, `hero_flag`
-/// (`+0x8d9`) and formation category (`+0x8bc`): none below type 70; a combat master (70) with
-/// a hero flag of bit 0 or 4 but not both 4 and 7 is 5; categories 1 to 4 are themselves, 0 and
-/// 5 are 5, 6 is 0, any other (255) none ("Invalid formation category"). The rams' rule (class
-/// 13 of masters 1258, 35, 422 and 548 of a human, ordered at a building: 0) holds only while the
-/// byte `DAT_143f01837` is 1, and no code writes it.
+/// An object of the world's id table (`FUN_1415417a0`, `BaseWorld::object`): the objects of
+/// every player's live, sleeping and doppelganger lists, which the player's add and removal
+/// (`FUN_141668040`) keep in the table through the world's slots 16 and 17 (`FUN_14152cb60`,
+/// `FUN_141546a90`). An object of a recyclable master (a missile, a ghost) has a negative id and
+/// sits in the table's negative half (`world+0x178`, at the id's negation); one recycled out of
+/// the game (`RGE_Static_Object::recycle_out_of_game`) leaves its player's list, so the table.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum WorldObject<'a> {
+    /// An object of player `.0`'s live or sleeping list.
+    Unit(usize, &'a crate::turn::Unit),
+    /// A ghost of player `.0`'s doppelganger list (type 25, its master `243`).
+    Ghost(usize, &'a crate::ghost::Ghost),
+}
+
+impl WorldObject<'_> {
+    /// The player whose list holds it (`+0x138`).
+    pub(crate) const fn player(&self) -> usize {
+        match *self {
+            Self::Unit(p, _) | Self::Ghost(p, _) => p,
+        }
+    }
+
+    /// Its master's id (`+0xa0`'s): a ghost's is its player's [`crate::ghost::GHOST_MASTER`].
+    pub(crate) const fn master_id(&self) -> i16 {
+        match *self {
+            Self::Unit(_, u) => u.life.master_id,
+            Self::Ghost(..) => crate::ghost::GHOST_MASTER,
+        }
+    }
+
+    /// Slot 0x520, where it last moved to as the game's vector (x, height, y): a moving
+    /// object's `+0x824` ([`crate::group::motion::moved_vector`]), any other's place
+    /// (`FUN_141196c10`, a ghost's too).
+    pub(crate) fn moved_vector(&self) -> crate::fmath::Vec3 {
+        match *self {
+            Self::Unit(_, u) => motion::moved_vector(u),
+            Self::Ghost(_, g) => [g.position[0], g.position[2], g.position[1]],
+        }
+    }
+}
+
+impl crate::turn::Turns {
+    /// `FUN_1415417a0` of `id`: the object the world's table holds for it ([`WorldObject`]),
+    /// none for `i32::MIN` (the routine's own test) and for an id no list holds. Only the
+    /// negative half holds ghosts.
+    pub(crate) fn world_object(&self, id: i32) -> Option<WorldObject<'_>> {
+        if id == i32::MIN {
+            return None;
+        }
+        if let Some((p, u)) = self.object(id) {
+            return Some(WorldObject::Unit(p, u));
+        }
+        if id < 0 {
+            for (p, player) in self.players.iter().enumerate() {
+                if let Some(g) = player.ghosts.iter().find(|g| g.id == id) {
+                    return Some(WorldObject::Ghost(p, g));
+                }
+            }
+        }
+        None
+    }
+}
+
+/// A unit's sub-formation in its group (`FUN_141011300`, `Turns::unit_category` for a held
+/// object), from its master's type, `hero_flag` (`+0x8d9`) and formation category
+/// (`+0x8bc`): none below type 70 (unsigned); a combat master (70) with a hero flag of bit 0 or
+/// 4 but not both 4 and 7 is 5; categories 1 to 4 are themselves, 0 and 5 are 5, 6 is 0, any
+/// other (255) none ("Invalid formation category").
 #[must_use]
 pub const fn sub_formation(kind: u8, hero_flag: u8, formation_category: u8) -> Option<i32> {
     if kind < 70 {
