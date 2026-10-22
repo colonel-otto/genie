@@ -442,6 +442,13 @@ pub const SOLDIER_CARED: [i32; 39] = [
     50, 51, 52, 53, 54, 55, 39, 56, 57, 19, 59, 49, 42, 61,
 ];
 
+/// The classes a building cares about (`+0x190`, `TribeBuildingUnitAIModule`'s constructor
+/// `FUN_140c11470`, its 39 entries in this order): the soldier's set, 52 moved behind 59.
+pub const BUILDING_CARED: [i32; 39] = [
+    0, 3, 4, 26, 24, 6, 35, 25, 17, 12, 23, 36, 28, 18, 13, 27, 22, 20, 2, 21, 44, 46, 43, 45, 47,
+    50, 51, 53, 54, 55, 56, 57, 19, 59, 52, 49, 39, 42, 61,
+];
+
 /// The classes a tower cares about (`+0x190`, `TribeTowerUnitAIModule`'s constructor
 /// `FUN_140c12960`): the soldier's and 10.
 pub const TOWER_CARED: [i32; 40] = [
@@ -1614,26 +1621,45 @@ const fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
 }
 
 /// The unit-AI type the factory (`FUN_141215a90`) gives a new object of a master of `class`
-/// with `missile` (`+0x8d4`, −1 for none): none for classes 5, 7, 8, 11, 14, 15, 16, 30 to 34,
-/// 38, 42, 48 and 63, the civilian's (8) for class 4, the building's (17) for classes 3, 27, 39,
-/// 49 and 60 without a missile. Masters 1105, 1744 and 1746 have their own, and the other
-/// classes' types are not modelled.
+/// with the volley missile `missile` (`+0x8d4`, −1 for none), the types `FUN_141215560`'s
+/// switch names for its constructors: masters 1105 (`FUN_140c11fb0`, 0x12) and 1744, 1746
+/// (`FUN_140c12040`, 0x10) by their id; then none for classes 5, 7, 8, 11, 14, 15, 16, 30 to 34,
+/// 38, 42, 48 and 63; 0xe for class 1; 0xa for 2 and 19; the building's (0x11) for classes 3,
+/// 27, 39, 49 and 60 without a volley missile, the tower's (0xf) for those with one and for 52;
+/// the civilian's (8) for 4; the hunted animal's (2) for 9 and 59; 0x10 for 13, 51, 54 and 55;
+/// 9 for 18, 43 and 53; 0xb for 20; 0xc for 21; 0x13 for 29 and 58; the soldier's (0xd) for any
+/// other. Class 10 takes the boar's (4) or the lion's (5) by its master's class 10 and combat
+/// level 1 (`FUN_140fde4f0`), which the arguments do not carry.
 pub const fn factory_type(
     class: i16,
     master: i16,
     missile: i16,
 ) -> Result<Option<u32>, Unsupported> {
-    if matches!(master, 1105 | 1744 | 1746) {
-        return Err(Unsupported("a new object of a master with its own unit AI"));
+    match master {
+        1105 => return Ok(Some(0x12)),
+        1744 | 1746 => return Ok(Some(0x10)),
+        _ => {}
     }
-    match class {
-        5 | 7 | 8 | 11 | 14 | 15 | 16 | 30..=34 | 38 | 42 | 48 | 63 => Ok(None),
-        4 => Ok(Some(8)),
-        3 | 27 | 39 | 49 | 60 if missile < 0 => Ok(Some(17)),
-        _ => Err(Unsupported(
-            "a new object whose unit-AI type is not modelled",
-        )),
-    }
+    Ok(Some(match class {
+        5 | 7 | 8 | 11 | 14 | 15 | 16 | 30..=34 | 38 | 42 | 48 | 63 => return Ok(None),
+        1 => 0xe,
+        2 | 19 => 0xa,
+        3 | 27 | 39 | 49 | 60 if missile < 0 => 17,
+        3 | 27 | 39 | 49 | 52 | 60 => TOWER_AI,
+        4 => CIVILIAN,
+        9 | 59 => 2,
+        10 => {
+            return Err(Unsupported(
+                "a new object of class 10, whose type its master's combat level picks",
+            ));
+        }
+        13 | 51 | 54 | 55 => 0x10,
+        18 | 43 | 53 => 9,
+        20 => 0xb,
+        21 => 0xc,
+        29 | 58 => 0x13,
+        _ => SOLDIER_AI,
+    }))
 }
 
 impl UnitAi {
@@ -1641,9 +1667,9 @@ impl UnitAi {
     /// AI-stream values, in this order: the last retarget time `r % 500`, the adjusted idle timeout
     /// `r % 1500 + 2250` and the retarget timer `750 + r % 500`. The factory (`FUN_141215a90`)
     /// picks the type's constructor; the building's (17, `TribeBuildingUnitAIModule`
-    /// `0x140c11470`) and the civilian's (8, `TribeCivilianUnitAIModule` `0x140c115d0`) are
-    /// modelled, both of which set the stance (`+0x1a9`) to 0 after the base's 3; for any other
-    /// type nothing is drawn.
+    /// `0x140c11470`, whose cared classes are [`BUILDING_CARED`]) and the civilian's (8,
+    /// `TribeCivilianUnitAIModule` `0x140c115d0`, [`CIVILIAN_CARED`]) are modelled, both of which
+    /// set the stance (`+0x1a9`) to 0 after the base's 3; for any other type nothing is drawn.
     pub const fn constructed(
         ai_type: u32,
         position: [f32; 3],
@@ -8834,5 +8860,66 @@ mod tests {
             u.civilian_misc(&at, &mut fx).unwrap();
             assert_eq!((fx.len(), u.current_order), (0, order));
         }
+    }
+
+    /// The factory (`FUN_141215a90`): masters 1105, 1744 and 1746 by their id; then by class,
+    /// the classes without a unit AI, the civilian, the building (or the tower with a volley
+    /// missile, `+0x8d4`, and for class 52), the hunted animal, the soldier as the default and
+    /// the rest of the switch; class 10's type its master's combat level picks
+    /// (`FUN_140fde4f0`), which the arguments do not carry.
+    #[test]
+    fn the_factory_picks_the_unit_ai_type_by_master_and_class() {
+        assert_eq!(factory_type(6, 1105, -1), Ok(Some(0x12)));
+        assert_eq!(factory_type(6, 1744, -1), Ok(Some(0x10)));
+        assert_eq!(factory_type(6, 1746, -1), Ok(Some(0x10)));
+        let by_class = [
+            (1, 0xe),
+            (2, 0xa),
+            (19, 0xa),
+            (4, 8),
+            (9, 2),
+            (59, 2),
+            (13, 0x10),
+            (51, 0x10),
+            (54, 0x10),
+            (55, 0x10),
+            (18, 9),
+            (43, 9),
+            (53, 9),
+            (20, 0xb),
+            (21, 0xc),
+            (29, 0x13),
+            (58, 0x13),
+            (52, 0xf),
+            (6, 0xd),
+            (0, 0xd),
+            (64, 0xd),
+        ];
+        for (class, ai_type) in by_class {
+            assert_eq!(
+                factory_type(class, 83, -1),
+                Ok(Some(ai_type)),
+                "class {class}"
+            );
+        }
+        for class in [3, 27, 39, 49, 60] {
+            assert_eq!(factory_type(class, 70, -1), Ok(Some(17)));
+            assert_eq!(factory_type(class, 70, 5), Ok(Some(0xf)));
+        }
+        for class in [5, 7, 8, 11, 14, 15, 16, 30, 31, 32, 33, 34, 38, 42, 48, 63] {
+            assert_eq!(factory_type(class, 83, -1), Ok(None));
+        }
+        assert!(factory_type(10, 48, -1).is_err());
+    }
+
+    /// The building's cared classes (`FUN_140c11470`) are the soldier's in another order.
+    #[test]
+    fn the_building_cares_about_the_soldier_s_classes_in_its_own_order() {
+        let mut building = BUILDING_CARED.to_vec();
+        let mut soldier = SOLDIER_CARED.to_vec();
+        assert_ne!(building, soldier);
+        building.sort_unstable();
+        soldier.sort_unstable();
+        assert_eq!(building, soldier);
     }
 }
