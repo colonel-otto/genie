@@ -646,8 +646,8 @@ pub fn can_attack(me: &Attacker, seeker: &Seeker, t: &Target) -> Result<bool, Un
 
 /// The tower's attack check (`FUN_140c1a760`): never for Gaia's own tower nor the classes 1 and
 /// 42; Gaia's objects only of the classes 9 and 10, unless they are of the combat type with
-/// `+0x924` 0 outside the scenario modes; a building's `desolid_flag` (`+0xc60`) is not held;
-/// never masters 50 and 1187, nor from a tower in a state below 2. Class 10 with an attack
+/// `+0x924` 0 outside the scenario modes; never a building (master type `'P'`) no builder has
+/// started (`desolid_flag`, `+0xc60`), masters 50 and 1187, nor from a tower in a state below 2. Class 10 with an attack
 /// priority below 3 only of combat level 4 (`FUN_140fde120`); else when the tower is armed
 /// (`FUN_14120ea30`: classes 51 and 54, or a missile, or else a firepower, `+0xa00`, above 1)
 /// and its attack priority is not 3 or the class one of [`PRIORITY_3_CLASSES`].
@@ -659,10 +659,7 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> 
     if !gaia_combat && t.owner == 0 && !matches!(t.class, 9 | 10) {
         return Ok(false);
     }
-    if t.kind == 80 {
-        return Err(Unsupported("a tower's attack check of a building (+0xc60)"));
-    }
-    if TOWER_SPARED.contains(&t.master) || me.state <= 1 {
+    if (t.kind == 80 && t.desolid) || TOWER_SPARED.contains(&t.master) || me.state <= 1 {
         return Ok(false);
     }
     if t.class == 10 && me.attack_priority < 3 {
@@ -1785,11 +1782,7 @@ impl UnitAi {
         if moved {
             self.set_order(MOVE_ORDER, ai);
             self.set_action(MOVE_ACTION);
-            self.last_target = -1;
-            self.last_target_type = -1;
-            self.current_target = -1;
-            self.target_type = -1;
-            self.target_point = [-1.0; 3];
+            self.forget_targets();
         }
         let (id, class) = target.unwrap_or((-1, -1));
         self.set_target(id, class, [point[0], point[1], 0.0]);
@@ -2413,7 +2406,7 @@ impl UnitAi {
         if self.current_action == -1
             && (!busy || interruptible)
             && result != 0xd
-            && self.can_order(at)
+            && self.can_order(at, false)
             && !at.garrisoned
         {
             self.run_orders(at, &mut fx)?;
@@ -4124,7 +4117,8 @@ impl UnitAi {
     }
 
     /// `FUN_140c4dcb0` ("Forgetting current target"): the last target (`+0x6c`, `+0x70`) and the
-    /// current one (`+0x48`, `+0x4c`) go, the target point with them.
+    /// current one (`+0x48`, `+0x4c`) go, the target point with them. Its only other line is the
+    /// debug log behind `DAT_143f0900d`, which changes no state.
     pub(crate) const fn forget_targets(&mut self) {
         self.last_target = -1;
         self.last_target_type = -1;
@@ -4152,7 +4146,7 @@ impl UnitAi {
             self.current_order,
             0x269 | 700 | 0x2c5 | 0x2c6 | 0x2c9 | 0x2cf | 0x2d0 | 0x2dd | 0x322
         );
-        if ends && self.can_order(at) {
+        if ends && self.can_order(at, false) {
             if self.current_order == PATROL_2 {
                 return Err(Unsupported("the end of a patrol order 733"));
             }
@@ -4162,11 +4156,16 @@ impl UnitAi {
         Ok(())
     }
 
-    /// `FUN_140c4eea0` with 0: a unit takes orders unless its master has a task of action type
-    /// 0x99 (`FUN_1415c60b0`) and its target exists in the world (`FUN_1415417a0` on `+0x48`) or
-    /// it has an action value (`+0x44`).
-    const fn can_order(&self, at: &Surroundings) -> bool {
-        !(at.task_0x99 && (at.target.is_some() || self.current_action != -1))
+    /// `FUN_140c4eea0`: a unit takes orders unless its master has a task of action type 0x99
+    /// (`FUN_1415c60b0`) and its target exists in the world (`FUN_1415417a0` on `+0x48`) or it
+    /// has an action value (`+0x44`). With `task_only` (its second argument, which the full
+    /// update and `FUN_140c68980` pass as 0 and only the slot 4 of `FUN_140c2bd20` as 1) a unit
+    /// that passes the test takes orders only with that task.
+    const fn can_order(&self, at: &Surroundings, task_only: bool) -> bool {
+        if at.task_0x99 && (at.target.is_some() || self.current_action != -1) {
+            return false;
+        }
+        !task_only || at.task_0x99
     }
 
     /// The unit AI between its owner's turns (`FUN_140c68980`, from `RGE_Combat_Object::update`
@@ -4181,7 +4180,7 @@ impl UnitAi {
         if (self.current_action != -1 || at.busy) && !at.interruptible {
             return Ok(fx);
         }
-        if self.can_order(at) {
+        if self.can_order(at, false) {
             self.run_orders(at, &mut fx)?;
         }
         Ok(fx)
@@ -7435,5 +7434,109 @@ mod tests {
             .unwrap();
         assert_eq!(fx, vec![Effect::CapHumanOrder(5000)]);
         assert_eq!(searched, vec![(9.0, TOWER_CARED.to_vec())]);
+    }
+
+    /// `FUN_140c4dcb0`: both targets and their classes go and the point is −1 on all three axes;
+    /// the order and action stay. MOVE's notify to a unit that took its `MoveTo` forgets the same
+    /// way before it takes the order's target.
+    #[test]
+    fn forgetting_the_targets_clears_the_current_and_the_last_and_the_point() {
+        let mut u = UnitAi {
+            current_order: ATTACK_ORDER,
+            current_action: ATTACK_ACTION,
+            current_target: 12,
+            target_type: 4,
+            target_point: [3.0, 4.0, 0.5],
+            last_target: 11,
+            last_target_type: 9,
+            ..idle(13)
+        };
+        u.forget_targets();
+        assert_eq!(
+            (
+                u.current_target,
+                u.target_type,
+                u.last_target,
+                u.last_target_type
+            ),
+            (-1, -1, -1, -1)
+        );
+        assert_eq!(u.target_point, [-1.0; 3]);
+        assert_eq!(
+            (u.current_order, u.current_action),
+            (ATTACK_ORDER, ATTACK_ACTION)
+        );
+        let mut moved = UnitAi {
+            current_target: 12,
+            target_type: 4,
+            last_target: 11,
+            last_target_type: 9,
+            ..idle(13)
+        };
+        moved.notify_move(true, None, [5.0, 6.0], &mut rng());
+        // the forget, then FUN_140c64be0 with no target: the forgotten -1 becomes the last
+        assert_eq!(
+            (
+                moved.last_target,
+                moved.last_target_type,
+                moved.current_target
+            ),
+            (-1, -1, -1)
+        );
+        assert_eq!(moved.target_point, [5.0, 6.0, 0.0]);
+    }
+
+    /// `FUN_140c4eea0`: a master with a task of action type 0x99 refuses orders while its target
+    /// exists or it has an action value; with the second argument set a unit that passes takes
+    /// orders only with that task, and without it any unit that passes does.
+    #[test]
+    fn a_unit_takes_orders_by_its_0x99_task_and_with_task_only_needs_it() {
+        let mut u = idle(13);
+        let plain = Surroundings::default();
+        let carter = Surroundings {
+            task_0x99: true,
+            ..Surroundings::default()
+        };
+        assert!(u.can_order(&plain, false));
+        assert!(!u.can_order(&plain, true));
+        assert!(u.can_order(&carter, false));
+        assert!(u.can_order(&carter, true));
+        u.current_action = GATHER_ACTION;
+        assert!(!u.can_order(&carter, false));
+        assert!(!u.can_order(&carter, true));
+        assert!(u.can_order(&plain, false));
+        u.current_action = -1;
+        let targeted = Surroundings {
+            target: Some(Seen::default()),
+            ..carter
+        };
+        assert!(!u.can_order(&targeted, true));
+    }
+
+    /// `FUN_140c1a760` at `LAB_140c1aa59`: an enemy building (master type `'P'`) passes the
+    /// tower's check once a builder started it; a foundation still desolid (`+0xc60`) does not.
+    /// The flag counts only for a building: a unit that holds it passes.
+    #[test]
+    fn a_tower_attacks_a_started_building_but_not_a_desolid_foundation() {
+        let house = Target {
+            owner: 1,
+            class: 3,
+            kind: 80,
+            master: 70,
+            ..BOAR
+        };
+        assert_eq!(tower_can_attack(&TC, &house), Ok(true));
+        let foundation = Target {
+            desolid: true,
+            ..house
+        };
+        assert_eq!(tower_can_attack(&TC, &foundation), Ok(false));
+        let unit = Target {
+            owner: 1,
+            class: 6,
+            desolid: true,
+            ..BOAR
+        };
+        assert_eq!(tower_can_attack(&TC, &unit), Ok(true));
     }
 }
