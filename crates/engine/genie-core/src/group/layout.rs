@@ -6,6 +6,7 @@
 use crate::fmath::{self, Vec3};
 use crate::group::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::group::{Formation, FormationLine, Slot, UnitGroup};
+use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
 /// A horde's and a user defined formation's slots lie at most this far from the group's place
@@ -45,9 +46,10 @@ fn length(v: Vec3) -> f32 {
     fmath::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
 }
 
-/// `createHorde` (`FUN_141013eb0`), or `createUDF` (`FUN_141014f60`) for `user_defined`, of
-/// `formation` for `group`, `members` its members (None for one the world does not hold):
-/// false without members. The slots' array grows to the members (`FUN_14102d580`) and every
+/// The slots of `createHorde` (`FUN_141013eb0`), or of `createUDF` (`FUN_141014f60`) for
+/// `user_defined` ([`Turns::create_horde`], [`Turns::create_udf`],
+/// which look the members up), of `formation` for `group`, `members` its members (None for one
+/// the world does not hold): false without members. The slots' array grows to the members (`FUN_14102d580`) and every
 /// slot turns inactive; the type is a horde (0) or user defined (5), the width and depth -1, no
 /// lines, the transform type 3 (a horde) or 1. The slot of each held member's index takes the
 /// unit, its offset from the group's place, its place as the transform and desired transform
@@ -56,7 +58,7 @@ fn length(v: Vec3) -> f32 {
 /// keeps what it had, inactive). A user defined formation's offsets on x move back by the
 /// largest of them (0 at least) plus [`USER_DEFINED_BACK`]; then any offset longer than
 /// [`HORDE_REACH`] is scaled down to it.
-pub fn create_by_place(
+pub(crate) fn slots_by_place(
     formation: &mut Formation,
     group: &UnitGroup,
     members: &[Option<MemberPlace>],
@@ -117,16 +119,28 @@ pub fn create_by_place(
     true
 }
 
-/// `FUN_141008f50` on a line reset as the phalanx and `CreateLines` reset it (its indices, width,
-/// depth and attack range gone, its distance back kept): `width` places of -1 at depth `depth`,
-/// none for no places.
-fn reset_line(line: &mut FormationLine, width: i32, depth: i32) {
+/// The clear createColumnLine, createPhalanx and `CreateLines` each make of a line before they
+/// reset it (inlined, 0x14101357a..0x1410135a2 in createColumnLine): its places freed (`+8`), its width and
+/// depth (`+0`, `+4`) and attack range (`+0x10`) 0; its distance back (`+0x14`) kept.
+pub(crate) fn clear_line(line: &mut FormationLine) {
     line.indices = Vec::new();
     line.depth = 0;
     line.attack_range = 0.0;
+}
+
+/// `FUN_141008f50`: for `width` above 0 and `depth` not below 0 the line's places are `width`
+/// of -1 (the old ones freed), at depth `depth`, its attack range 0, and the routine returns
+/// true; for any other the line is left as it is and it returns false (the line load
+/// `FUN_14101b290` fails on that). The allocation's failure, which leaves the line cleared, is
+/// Rust's abort.
+pub(crate) fn reset_line(line: &mut FormationLine, width: i32, depth: i32) -> bool {
     if 0 < width && 0 <= depth {
         line.indices = vec![u32::MAX; width as usize];
         line.depth = depth;
+        line.attack_range = 0.0;
+        true
+    } else {
+        false
     }
 }
 
@@ -155,7 +169,8 @@ fn next_statistic(group: &UnitGroup, current: Option<usize>, placed: &mut usize)
     None
 }
 
-/// `createPhalanx` (`FUN_1410147b0`) up to its transform: false without members. The lines are
+/// The slots of `createPhalanx` (`FUN_1410147b0`, [`Turns::create_phalanx`]),
+/// up to its transform: false without members. The lines are
 /// the fewest whose triangle (1 + 2 + ...) holds the members; the slots' array grows to their
 /// square, the lines' to them, every slot turns inactive; a phalanx (3) of no slots yet,
 /// transform type 0, the lines as its width, depth and lines. Line `i` holds `i + 1` slots, the
@@ -164,7 +179,7 @@ fn next_statistic(group: &UnitGroup, current: Option<usize>, placed: &mut usize)
 /// it. Each slot takes no unit, the offset, the world's time, the line as its depth, active, and
 /// the category of the unit type statistic in turn ([`next_statistic`], -1 when none is left);
 /// the slots in use are the members.
-pub fn create_phalanx(formation: &mut Formation, group: &UnitGroup, world_time: u32) -> bool {
+pub(crate) fn phalanx_slots(formation: &mut Formation, group: &UnitGroup, world_time: u32) -> bool {
     let n = group.members.len() as i32;
     if n < 1 {
         return false;
@@ -197,7 +212,9 @@ pub fn create_phalanx(formation: &mut Formation, group: &UnitGroup, world_time: 
         if 1 < lines && line == lines - 1 {
             width = n - slot as i32;
         }
-        reset_line(&mut formation.lines[line as usize], width, line);
+        let l = &mut formation.lines[line as usize];
+        clear_line(l);
+        let _ = reset_line(l, width, line);
         let mut at = fmath::add(fmath::scale((width / 2) as f32, single), [0.0; 3]);
         if width & 1 == 0 {
             let half = [single[0] / TWO, single[1] / TWO, single[2] / TWO];
@@ -394,7 +411,8 @@ pub fn create_lines(formation: &mut Formation) {
     formation.number_lines = lines as i32;
     for (k, slots) in members.iter().enumerate() {
         let line = &mut formation.lines[k];
-        reset_line(line, slots.len() as i32, k as i32);
+        clear_line(line);
+        let _ = reset_line(line, slots.len() as i32, k as i32);
         for (m, &slot) in slots.iter().enumerate() {
             if m < line.indices.len() {
                 line.indices[m] = slot;
@@ -403,7 +421,8 @@ pub fn create_lines(formation: &mut Formation) {
     }
 }
 
-/// `createBox` (`FUN_141011a00`) up to its transform: false without members. Every slot turns
+/// The slots of `createBox` (`FUN_141011a00`, [`Turns::create_box`]), up to its
+/// transform: false without members. Every slot turns
 /// inactive and none is in use; then category by category from 5 down to 0, the first unit type
 /// statistic of the category with units puts that many slots on a box ([`place_box_perimeter`]
 /// into the box's positions buffer, `DAT_143f15f00`, whose heights stay 0): the first such
@@ -417,7 +436,7 @@ pub fn create_lines(formation: &mut Formation) {
 ///
 /// A category of more than [`BOX_POSITIONS`] units: the perimeter refuses it and the game's
 /// slots read the buffer's earlier places and the memory past it.
-pub fn create_box(
+pub(crate) fn box_slots(
     formation: &mut Formation,
     group: &UnitGroup,
     world_time: u32,
@@ -491,10 +510,117 @@ pub fn create_box(
     formation.number_lines = 0;
     formation.kind = BOX;
     formation.transform_type = 1;
-    formation.maximum_width = (max_x - min_x) as i32;
-    formation.maximum_depth = (max_x - min_x) as i32;
+    // CVTTSS2SI at 0x141012147 (a NaN or out of range width is i32::MIN)
+    let width = crate::checkpoint::cvttss2si(max_x - min_x);
+    formation.maximum_width = width;
+    formation.maximum_depth = width;
     create_lines(formation);
     Ok(true)
+}
+
+impl Turns {
+    /// `createHorde` (`FUN_141013eb0`) of `formation` for group `g`: false without members.
+    /// Each member the world's table holds ([`Turns::world_object`]) gives its
+    /// place (slot 0x520) and its sub-formation (`FUN_141011300` with 0,
+    /// [`Turns::unit_category`]) to the slots ([`slots_by_place`]).
+    /// `UpdateDesiredPositions` transforms them after.
+    ///
+    /// # Errors
+    ///
+    /// A held member of a master the slice does not have.
+    pub(crate) fn create_horde(
+        &self,
+        formation: &mut Formation,
+        g: &UnitGroup,
+    ) -> Result<bool, Unsupported> {
+        let members = self.member_places(g)?;
+        Ok(slots_by_place(
+            formation,
+            g,
+            &members,
+            false,
+            self.world_time,
+        ))
+    }
+
+    /// `createUDF` (`FUN_141014f60`) of `formation` for group `g`, as [`Self::create_horde`]
+    /// with a user defined formation's slots ([`slots_by_place`]).
+    ///
+    /// # Errors
+    ///
+    /// A held member of a master the slice does not have.
+    pub(crate) fn create_udf(
+        &self,
+        formation: &mut Formation,
+        g: &UnitGroup,
+    ) -> Result<bool, Unsupported> {
+        let members = self.member_places(g)?;
+        Ok(slots_by_place(
+            formation,
+            g,
+            &members,
+            true,
+            self.world_time,
+        ))
+    }
+
+    /// What `createHorde` and `createUDF` read of each member (`FUN_1415417a0`, slot 0x520,
+    /// `FUN_141011300` with 0), None for one the world's table does not hold.
+    fn member_places(&self, g: &UnitGroup) -> Result<Vec<Option<MemberPlace>>, Unsupported> {
+        let mut places = Vec::with_capacity(g.members.len());
+        for m in &g.members {
+            let place = match self.world_object(m.id) {
+                Some(object) => Some(MemberPlace {
+                    id: m.id,
+                    at: object.moved_vector(),
+                    category: self.unit_category(Some(object))?,
+                }),
+                None => None,
+            };
+            places.push(place);
+        }
+        Ok(places)
+    }
+
+    /// `createPhalanx` (`FUN_1410147b0`) of `formation` for group `g`: false without members.
+    /// Its slots ([`phalanx_slots`]), then the transform and the units
+    /// ([`Turns::lay_units`] without the column-to-line flag: unless the transform
+    /// took the units anew, every slot of the array loses its unit and its filled mark and the
+    /// slots take the closest, `FUN_141009760`).
+    ///
+    /// # Errors
+    ///
+    /// As the transform and the units' assignment.
+    pub(crate) fn create_phalanx(
+        &self,
+        formation: &mut Formation,
+        g: &UnitGroup,
+    ) -> Result<bool, Unsupported> {
+        if !phalanx_slots(formation, g, self.world_time) {
+            return Ok(false);
+        }
+        self.lay_units(formation, g, false)?;
+        Ok(true)
+    }
+
+    /// `createBox` (`FUN_141011a00`) of `formation` for group `g`: false without members. Its
+    /// slots ([`box_slots`]), then the transform and the units as a phalanx's
+    /// ([`Turns::lay_units`] without the column-to-line flag).
+    ///
+    /// # Errors
+    ///
+    /// As [`box_slots`], the transform and the units' assignment.
+    pub(crate) fn create_box(
+        &self,
+        formation: &mut Formation,
+        g: &UnitGroup,
+    ) -> Result<bool, Unsupported> {
+        if !box_slots(formation, g, self.world_time)? {
+            return Ok(false);
+        }
+        self.lay_units(formation, g, false)?;
+        Ok(true)
+    }
 }
 
 #[cfg(test)]
@@ -542,7 +668,7 @@ mod tests {
             None,
             Some(place(9, 20.0, 10.0, 3)),
         ];
-        assert!(create_by_place(&mut f, &g, &members, false, 640));
+        assert!(slots_by_place(&mut f, &g, &members, false, 640));
         assert_eq!(
             (
                 f.kind,
@@ -575,7 +701,7 @@ mod tests {
         assert_eq!(f.slots[2].offset, [5.0, 0.0, 0.0]);
         // no members, no layout
         let mut f = Formation::new();
-        assert!(!create_by_place(&mut f, &group(0, 1.0, &[]), &[], false, 0));
+        assert!(!slots_by_place(&mut f, &group(0, 1.0, &[]), &[], false, 0));
         assert_eq!(f, Formation::new());
     }
 
@@ -590,7 +716,7 @@ mod tests {
             None,
             Some(place(9, 20.0, 10.0, 3)),
         ];
-        assert!(create_by_place(&mut f, &g, &members, true, 640));
+        assert!(slots_by_place(&mut f, &g, &members, true, 640));
         assert_eq!((f.kind, f.transform_type), (USER_DEFINED, 1));
         let offsets: Vec<Vec3> = f.slots.iter().map(|s| s.offset).collect();
         assert_eq!(
@@ -610,7 +736,7 @@ mod tests {
             Some(place(9, 20.0, 10.0, 3)),
             Some(place(7, f32::NAN, 10.0, 1)),
         ];
-        assert!(create_by_place(&mut f, &g, &members, true, 640));
+        assert!(slots_by_place(&mut f, &g, &members, true, 640));
         // the farthest ahead stays finite, so the finite member's offset moves back by it
         assert!(f.slots[0].offset[0].is_finite(), "{:?}", f.slots[0].offset);
     }
@@ -635,11 +761,173 @@ mod tests {
         }
     }
 
+    /// `FUN_141008f50`: a line of no width or of a negative depth is left as it is (false);
+    /// else its places are -1, its depth set, its attack range 0 (true). Its callers' clear
+    /// before it keeps only the distance back.
+    #[test]
+    fn a_line_reset_needs_a_width_and_a_depth_not_below_0() {
+        let line = FormationLine {
+            depth: 2,
+            indices: vec![7],
+            attack_range: 1.5,
+            distance_back: 4.0,
+        };
+        let mut l = line.clone();
+        assert!(!reset_line(&mut l, 0, 1));
+        assert_eq!(l, line);
+        assert!(!reset_line(&mut l, 2, -1));
+        assert_eq!(l, line);
+        assert!(reset_line(&mut l, 2, 3));
+        assert_eq!(
+            l,
+            FormationLine {
+                depth: 3,
+                indices: vec![u32::MAX; 2],
+                attack_range: 0.0,
+                distance_back: 4.0,
+            }
+        );
+        let mut l = line;
+        clear_line(&mut l);
+        assert_eq!(
+            l,
+            FormationLine {
+                distance_back: 4.0,
+                ..FormationLine::default()
+            }
+        );
+    }
+
+    /// Group 1 of `slot_world`'s units 10, 11 (category 1) and 12 (category 3) at (5.5, 5.5),
+    /// (6.5, 5.5) and (5.5, 6.5), their statistics, the group at (6, 6), spacing 1.
+    fn three_at_six() -> Turns {
+        let mut t = crate::group::formation::tests::slot_world(
+            &[(10, 4, 5.5, 5.5), (11, 4, 6.5, 5.5), (12, 6, 5.5, 6.5)],
+            &[],
+        );
+        let g = &mut t.groups.groups[0];
+        g.desired_spacing = 1.0;
+        g.motion.position[0] = [6.0, 0.0, 6.0];
+        g.unit_types = vec![
+            UnitTypeStatistic {
+                formation_category: 1,
+                units: vec![10, 11],
+                desired_spacing: 1.0,
+                ..UnitTypeStatistic::default()
+            },
+            UnitTypeStatistic {
+                formation_category: 3,
+                units: vec![12],
+                desired_spacing: 1.0,
+                ..UnitTypeStatistic::default()
+            },
+        ];
+        t
+    }
+
+    /// `FUN_1410147b0` and `FUN_141011a00` lay their slots, then transform them and take the
+    /// units: unless the transform took them, every slot of the array (a spare one too) loses
+    /// its unit and filled mark, and the slots take the closest (`FUN_141009760`). Each is its
+    /// slots and `lay_units` without the column-to-line flag.
+    #[test]
+    fn a_phalanx_and_a_box_take_their_units_after_their_slots() {
+        let t = three_at_six();
+        let g = t.groups.get(1).unwrap().clone();
+        let stale = Slot {
+            unit_id: 99,
+            position_filled: 1,
+            ..Slot::default()
+        };
+        let mut start = Formation::new();
+        start.spare_slots = vec![stale; 9];
+        let mut whole = start.clone();
+        assert!(t.create_phalanx(&mut whole, &g).unwrap());
+        let mut parts = start.clone();
+        assert!(phalanx_slots(&mut parts, &g, t.world_time));
+        t.lay_units(&mut parts, &g, false).unwrap();
+        assert_eq!(whole, parts);
+        let mut ids: Vec<i32> = whole.slots.iter().map(|s| s.unit_id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [10, 11, 12]);
+        assert!(
+            whole
+                .spare_slots
+                .iter()
+                .all(|s| (s.unit_id, s.position_filled) == (-1, 0))
+        );
+        let mut whole = start.clone();
+        assert!(t.create_box(&mut whole, &g).unwrap());
+        let mut parts = start;
+        assert!(box_slots(&mut parts, &g, t.world_time).unwrap());
+        t.lay_units(&mut parts, &g, false).unwrap();
+        assert_eq!(whole, parts);
+        assert!(whole.slots.iter().all(|s| s.unit_id != -1));
+        // without members, nothing
+        let mut none = Formation::new();
+        assert!(!t.create_box(&mut none, &group(0, 1.0, &[])).unwrap());
+        assert!(!t.create_phalanx(&mut none, &group(0, 1.0, &[])).unwrap());
+    }
+
+    /// `FUN_141013eb0` and `FUN_141014f60` look their members up themselves: a held member's
+    /// slot takes its place (slot 0x520) and sub-formation (`FUN_141011300` with 0); the slot
+    /// of a member the world's table does not hold stays fresh and inactive.
+    #[test]
+    fn a_horde_looks_its_members_up_in_the_world() {
+        let mut t = three_at_six();
+        t.groups.groups[0].members.insert(
+            1,
+            Member {
+                id: 50,
+                ..Member::default()
+            },
+        );
+        let g = t.groups.get(1).unwrap().clone();
+        let mut f = Formation::new();
+        assert!(t.create_horde(&mut f, &g).unwrap());
+        let slots: Vec<(i32, Vec3, i32, u32)> = f
+            .slots
+            .iter()
+            .map(|s| {
+                (
+                    s.unit_id,
+                    s.transform_position,
+                    s.desired_category,
+                    s.active,
+                )
+            })
+            .collect();
+        assert_eq!(
+            slots,
+            [
+                (10, [5.5, 0.0, 5.5], 1, 1),
+                (-1, [0.0; 3], -1, 0),
+                (11, [6.5, 0.0, 5.5], 1, 1),
+                (12, [5.5, 0.0, 6.5], 3, 1),
+            ]
+        );
+        assert_eq!((f.kind, f.transform_type), (HORDE, 3));
+        let mut f = Formation::new();
+        assert!(t.create_udf(&mut f, &g).unwrap());
+        assert_eq!(
+            (f.kind, f.transform_type, f.slots[3].unit_id),
+            (USER_DEFINED, 1, 12)
+        );
+    }
+
+    /// `FUN_141011a00` truncates the box's width by `CVTTSS2SI` (0x141012147): a NaN spacing
+    /// gives `i32::MIN`, where Rust's `as` would give 0.
+    #[test]
+    fn a_box_of_a_nan_spacing_is_i32_min_wide() {
+        let mut f = Formation::new();
+        assert!(box_slots(&mut f, &group(2, f32::NAN, &[(1, 2)]), 0).unwrap());
+        assert_eq!((f.maximum_width, f.maximum_depth), (i32::MIN, i32::MIN));
+    }
+
     #[test]
     fn a_phalanx_grows_by_a_slot_a_line() {
         let g = group(4, 2.0, &[(3, 1), (1, 3)]);
         let mut f = Formation::new();
-        assert!(create_phalanx(&mut f, &g, 99));
+        assert!(phalanx_slots(&mut f, &g, 99));
         assert_eq!(
             (
                 f.kind,
@@ -677,7 +965,7 @@ mod tests {
         );
         // without statistics the slots take no category
         let mut f = Formation::new();
-        assert!(create_phalanx(&mut f, &group(2, 2.0, &[]), 0));
+        assert!(phalanx_slots(&mut f, &group(2, 2.0, &[]), 0));
         assert!(f.slots.iter().all(|s| s.desired_category == -1));
     }
 
@@ -766,7 +1054,7 @@ mod tests {
     fn a_box_rings_its_categories_from_the_middle_out() {
         let g = group(4, 2.0, &[(1, 3), (5, 1)]);
         let mut f = Formation::new();
-        assert!(create_box(&mut f, &g, 5).unwrap());
+        assert!(box_slots(&mut f, &g, 5).unwrap());
         assert_eq!(
             (f.kind, f.transform_type, f.maximum_width, f.maximum_depth),
             (BOX, 1, 4, 4)
@@ -790,6 +1078,6 @@ mod tests {
         assert_eq!(f.number_lines, 3);
         // more than the buffer holds of one category
         let g = group(61, 2.0, &[(1, 61)]);
-        assert!(create_box(&mut Formation::new(), &g, 5).is_err());
+        assert!(box_slots(&mut Formation::new(), &g, 5).is_err());
     }
 }

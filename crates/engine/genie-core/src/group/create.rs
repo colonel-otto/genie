@@ -1,7 +1,7 @@
 //! A group's members (FD-036): `AddUnit` (`FUN_1410083c0`) with its sub-formation statistics
 //! (`FUN_141008d90`, `FUN_1410116c0`) and a unit's radius in a formation (`FUN_141025920`).
 
-use crate::group::{Member, SpecificMove, UnitGroup, UnitTypeStatistic, sub_formation};
+use crate::group::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
 use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
@@ -13,9 +13,9 @@ const SPACING_FACTOR: f32 = crate::image::group::SPACING_FACTOR;
 /// A group holds fewer than this many members (`FUN_1410083c0`'s `0x46`: "No room in this
 /// group").
 const MAX_MEMBERS: usize = 70;
-/// The members' arrays grow from nothing to this many (`FUN_14102d710` with 10, then twice
-/// that), then double.
-const FIRST_CAPACITY: usize = 20;
+/// The members' arrays of a group without any first grow to this many (`FUN_1410083c0`'s
+/// `FUN_14102d710` with 10), then, as every full array, to twice their capacity.
+const FIRST_CAPACITY: i32 = 10;
 /// The unit AI's actions and orders `AddUnit` clears (`FUN_1410083c0`): actions 0x259, 0x2bf and
 /// 0x2c0, orders 0x2bd, 0x323 and 0x324.
 const CLEARED_ACTIONS: [i32; 3] = [0x259, 0x2bf, 0x2c0];
@@ -54,20 +54,37 @@ impl FormationUnit {
 }
 
 impl UnitGroup {
-    /// The members' arrays' room for one more (`FUN_1410083c0` with `FUN_14102d710`): when every
-    /// slot is taken they grow (from none to [`FIRST_CAPACITY`], else to twice), the new slots'
-    /// `mSecondsSinceAttacking` at `f32::MAX` (`0x7f7fffff`). The next member takes the first
-    /// spare slot's value, which a removed member may have left (`FUN_14102c160` shifts the ids
-    /// and moves, not this array).
+    /// The members' arrays' capacity (`+0xe8`): the members and the spare places past them.
+    #[must_use]
+    pub const fn member_capacity(&self) -> usize {
+        self.members.len() + self.spare_seconds.len()
+    }
+
+    /// `FUN_14102d710`: the members' arrays (ids `+0xf0`, own moves `+0xf8`,
+    /// `mSecondsSinceAttacking` `+0x480`) grow to `n`. False, with nothing changed, for `n` of 0
+    /// or less or not above the capacity (`+0xe8`). Else the members keep their ids, moves and
+    /// seconds, and every place past them is fresh: no unit (-1), no move (active 0, path and
+    /// reason -1, the rest 0) and its seconds at `f32::MAX` (`0x7f7fffff`), an earlier spare
+    /// value gone; the capacity is `n`. Allocation failure is Rust's abort.
+    pub fn resize_members(&mut self, n: i32) -> bool {
+        if n <= 0 || n as usize <= self.member_capacity() {
+            return false;
+        }
+        self.spare_seconds = vec![f32::MAX; n as usize - self.members.len()];
+        true
+    }
+
+    /// The members' arrays' room for one more (`FUN_1410083c0`): a full array (the members at
+    /// the capacity) grows ([`UnitGroup::resize_members`]): one of none to [`FIRST_CAPACITY`]
+    /// and then, as any full one, to twice its capacity (20 the first time). The next member
+    /// takes the first spare place's seconds, which a removed member may have left
+    /// (`FUN_14102c160` shifts the ids and moves, not this array).
     fn next_seconds(&mut self) -> f32 {
         if self.spare_seconds.is_empty() {
-            let capacity = self.members.len();
-            let grown = if capacity == 0 {
-                FIRST_CAPACITY
-            } else {
-                capacity * 2
-            };
-            self.spare_seconds = vec![f32::MAX; grown - capacity];
+            if self.member_capacity() == 0 {
+                let _ = self.resize_members(FIRST_CAPACITY);
+            }
+            let _ = self.resize_members(self.member_capacity() as i32 * 2);
         }
         self.spare_seconds.remove(0)
     }
@@ -105,12 +122,12 @@ impl UnitGroup {
 }
 
 impl UnitGroup {
-    /// `FUN_14102c480` for unit `id` of sub-formation `category` (None for a unit the world does
-    /// not hold): it leaves the first statistic of that category (none for -1), or, for a unit
-    /// the world does not hold, the first statistic that holds it (`FUN_14102c320`: its units
-    /// close up and its unit types are counted again, [`count_unit_types`]). False when none held
-    /// it.
-    fn leave_statistic(
+    /// [`Turns::leave_statistic`]'s part on the group, for unit `id` of sub-formation `category`
+    /// (None for a unit the world does not hold): it leaves the first statistic of that category
+    /// (none for -1), or, for a unit the world does not hold, the first statistic that holds it
+    /// (`FUN_14102c320`: its units close up and its unit types are counted again,
+    /// [`count_unit_types`]). False when none held it.
+    fn drop_from_statistic(
         &mut self,
         id: i32,
         category: Option<i32>,
@@ -171,15 +188,6 @@ impl Turns {
             return Ok(false);
         };
         let group_id = g.id;
-        let category = match self.object(id) {
-            Some((p, u)) => {
-                let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
-                Some(
-                    sub_formation(unit.kind, unit.hero_flag, unit.formation_category).unwrap_or(-1),
-                )
-            }
-            None => None,
-        };
         if let Some(place) = self.place(id) {
             let u = match place {
                 crate::order::Place::Live(p, i) => &mut self.players[p].objects[i],
@@ -192,14 +200,6 @@ impl Turns {
                 u.group.id = -1;
             }
         }
-        let masters: Vec<(i32, i16)> = self
-            .players
-            .iter()
-            .flat_map(|q| q.objects.iter().chain(&q.sleeping))
-            .map(|u| (u.id, u.life.master_id))
-            .collect();
-        let masters_of = |id: i32| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
-        let mut scratch = std::mem::take(&mut self.groups.unit_types_scratch);
         let g = self.groups.get_mut(group).expect("the group found above");
         let seconds: Vec<f32> = g
             .members
@@ -211,8 +211,7 @@ impl Turns {
             m.seconds_since_attacking = s;
         }
         g.spare_seconds.insert(0, seconds[seconds.len() - 1]);
-        let _ = g.leave_statistic(id, category, &masters_of, &mut scratch);
-        self.groups.unit_types_scratch = scratch;
+        let _ = self.leave_statistic(group, id)?;
         let g = self.groups.get(group).expect("the group found above");
         if g.motion.lead == id {
             let lead = self.nearest_to_target(group);
@@ -227,6 +226,44 @@ impl Turns {
             .expect("the group found above")
             .flags |= 0x1_0002;
         Ok(true)
+    }
+}
+
+impl Turns {
+    /// `FUN_14102c480` of unit `id` and group `group`'s statistics: for an object the world's
+    /// table holds ([`Turns::world_object`]) its sub-formation ([`Turns::unit_category`]; -1:
+    /// false) and the first statistic of it (none: false), which the unit leaves; for one it
+    /// does not hold, the first statistic that held it ([`UnitGroup`]'s
+    /// `drop_from_statistic`, `FUN_14102c320`). The routine's target (`param_4`) enters only the
+    /// rams' rule of `FUN_141011300`, which never holds: the port takes none.
+    ///
+    /// # Errors
+    ///
+    /// A held object of a master the slice does not have.
+    ///
+    /// # Panics
+    ///
+    /// When the world does not hold `group`: its caller (`removeUnit`) holds it.
+    pub(crate) fn leave_statistic(&mut self, group: i32, id: i32) -> Result<bool, Unsupported> {
+        let category = match self.world_object(id) {
+            Some(object) => Some(self.unit_category(Some(object))?),
+            None => None,
+        };
+        let masters: Vec<(i32, i16)> = self
+            .players
+            .iter()
+            .flat_map(|q| q.objects.iter().chain(&q.sleeping))
+            .map(|u| (u.id, u.life.master_id))
+            .collect();
+        let masters_of = |id: i32| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
+        let mut scratch = std::mem::take(&mut self.groups.unit_types_scratch);
+        let left = self
+            .groups
+            .get_mut(group)
+            .expect("removeUnit holds the group")
+            .drop_from_statistic(id, category, &masters_of, &mut scratch);
+        self.groups.unit_types_scratch = scratch;
+        Ok(left)
     }
 }
 
@@ -266,30 +303,41 @@ pub(crate) fn count_unit_types(
 }
 
 impl Turns {
-    /// `AddUnit` (`FUN_1410083c0` with `param_4` 0) of unit `id` to group `group`: false for a unit
-    /// the world does not hold, of no sub-formation ("Invalid formation category",
-    /// [`sub_formation`]) or when the group holds [`MAX_MEMBERS`] less one already; true when it
-    /// is a member already. Else the unit's group link names the group (`+0x6d0`), its unit AI
-    /// drops the actions and orders of [`CLEARED_ACTIONS`] and [`CLEARED_ORDERS`] (`FUN_140c64b50`
-    /// and `FUN_140c64b60` with -1) and empties its order queue (`FUN_140c5e010`); it joins the
-    /// members with no move of its own (active 0, path and reason -1), its sub-formation's
-    /// statistic and the group's spacing (its two radii, the widest); the group's flags take bit
-    /// 1, and bit 16 too when its motion's bit 1 is clear. A unit in another group the world holds
-    /// leaves it first ([`Turns::remove_unit`] with -1).
+    /// `AddUnit` (`FUN_1410083c0` with `param_4` 0) of unit `id` to group `group`: false for an
+    /// object the world's table does not hold ([`Turns::world_object`]), of no sub-formation
+    /// ("Invalid formation category", [`Turns::unit_category`]) or when the group holds
+    /// [`MAX_MEMBERS`] already; true when it is a member already. Else the members' arrays make
+    /// room ([`UnitGroup::resize_members`]); a unit in another group the world holds leaves it
+    /// ([`Turns::remove_unit`]); the unit's group link names the group (`+0x6d0`), its unit AI
+    /// drops the actions and orders of [`CLEARED_ACTIONS`] and [`CLEARED_ORDERS`]
+    /// (`FUN_140c64b50` and `FUN_140c64b60` with -1) and empties its order queue
+    /// (`FUN_140c5e010`); it joins the members with no move of its own (active 0, path and
+    /// reason -1), its sub-formation's statistic and the group's spacing (its two radii, the
+    /// widest: `COMISS`/`JBE` at 0x141008ced); the group's flags take bit 1, and bit 16 too
+    /// when its motion's bit 1 is clear. A sleeping unit joins as a live one.
+    ///
+    /// The routine's target (`param_3`), which it hands to `removeUnit` and to its second
+    /// `FUN_141011300`, enters only the rams' rule, which never holds
+    /// ([`Turns::unit_category`]): the port takes none.
     ///
     /// # Panics
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn add_to_group(&mut self, group: i32, id: i32) -> Result<bool, Unsupported> {
-        let Some((p, u)) = self.object(id) else {
+        let Some(object) = self.world_object(id) else {
             return Ok(false);
         };
+        let sub = self.unit_category(Some(object))?;
+        // a ghost (type 25) has no sub-formation: only a unit gets past this
+        let crate::group::WorldObject::Unit(p, u) = object else {
+            return Ok(false);
+        };
+        if sub == -1 {
+            return Ok(false);
+        }
         let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
         let old = u.group.id;
-        let Some(sub) = sub_formation(unit.kind, unit.hero_flag, unit.formation_category) else {
-            return Ok(false);
-        };
         let g = self.groups.get(group).expect("the caller holds the group");
         if g.has(id) {
             return Ok(true);
@@ -301,11 +349,13 @@ impl Turns {
             // the unit leaves its old group first (removeUnit with -1, moving stopped)
             let _ = self.remove_unit(old, id, -1, false)?;
         }
-        let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
-            return Err(Unsupported("AddUnit of a sleeping unit"));
-        };
+        let place = self.place(id).expect("the unit found above");
         let ai_rng = self.streams.get(crate::rng::Stream::Ai);
-        let u = &mut self.players[q].objects[i];
+        // a sleeping unit joins as a live one
+        let u = match place {
+            crate::order::Place::Live(q, i) => &mut self.players[q].objects[i],
+            crate::order::Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
+        };
         u.group.id = group;
         if let Some(ai) = u.ai.as_mut() {
             if CLEARED_ACTIONS.contains(&ai.current_action)
@@ -420,6 +470,98 @@ mod tests {
             ..UnitGroups::default()
         };
         t
+    }
+
+    /// `FUN_14102d710`: nothing for 0, a negative size or one not above the capacity; a larger
+    /// one keeps the members and makes every place past them fresh, an old spare value gone.
+    /// `AddUnit` grows a group without places to 10, then 20.
+    #[test]
+    fn the_members_arrays_grow_with_fresh_places_past_the_members() {
+        let mut g = UnitGroup::new(1);
+        g.members = vec![Member {
+            id: 5,
+            seconds_since_attacking: 2.0,
+            ..Member::default()
+        }];
+        g.spare_seconds = vec![7.0, 8.0];
+        assert!(!g.resize_members(0));
+        assert!(!g.resize_members(-4));
+        assert!(!g.resize_members(3));
+        assert_eq!(g.spare_seconds, [7.0, 8.0]);
+        assert!(g.resize_members(4));
+        assert_eq!(
+            (g.members[0].id, g.members[0].seconds_since_attacking),
+            (5, 2.0)
+        );
+        assert_eq!(g.spare_seconds, [f32::MAX; 3]);
+        assert_eq!(g.member_capacity(), 4);
+        // the place taken for the next member leaves 19 spare of 20
+        let mut empty = UnitGroup::new(2);
+        assert_eq!(empty.next_seconds(), f32::MAX);
+        assert_eq!(empty.spare_seconds.len(), 19);
+    }
+
+    /// `FUN_1410083c0` adds a sleeping unit as a live one: its link names the group, it joins
+    /// the members and its sub-formation's statistic.
+    #[test]
+    fn a_sleeping_unit_joins_a_group_as_a_live_one() {
+        let mut t = three();
+        let mut asleep = Unit {
+            id: 13,
+            ..Unit::default()
+        };
+        asleep.life.master_id = 4;
+        t.players[1].sleeping.push(asleep);
+        assert!(t.add_to_group(1, 13).unwrap());
+        assert_eq!(t.players[1].sleeping[0].group.id, 1);
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(g.members.last().map(|m| m.id), Some(13));
+        assert_eq!(g.unit_types[0].units, [10, 11, 13]);
+        // an object the world's table does not hold, or of no sub-formation, joins nothing
+        assert!(!t.add_to_group(1, 99).unwrap());
+    }
+
+    /// `FUN_14102c480`: a held unit of no sub-formation (type below 70) or of one no statistic
+    /// has leaves nothing (false); a held unit leaves its sub-formation's first statistic.
+    #[test]
+    fn a_unit_leaves_only_its_own_sub_formation_s_statistic() {
+        let mut t = three();
+        let unit = |id: i32, master: i16| {
+            let mut u = Unit {
+                id,
+                ..Unit::default()
+            };
+            u.life.master_id = master;
+            u
+        };
+        t.players[1].objects.push(unit(14, 7));
+        t.players[1].objects.push(unit(15, 8));
+        for masters in &mut t.masters {
+            let extra = [
+                Master {
+                    id: 7,
+                    kind: 60,
+                    formation_category: 1,
+                    ..Master::default()
+                },
+                Master {
+                    id: 8,
+                    kind: 70,
+                    formation_category: 2,
+                    ..Master::default()
+                },
+            ];
+            *masters = Masters::new(masters.iter().cloned().chain(extra));
+        }
+        t.groups.groups[0].unit_types[0].units.push(14);
+        assert!(!t.leave_statistic(1, 14).unwrap());
+        assert!(!t.leave_statistic(1, 15).unwrap());
+        assert_eq!(t.groups.get(1).unwrap().unit_types[0].units, [10, 11, 14]);
+        assert!(t.leave_statistic(1, 12).unwrap());
+        assert_eq!(
+            t.groups.get(1).unwrap().unit_types[1].units,
+            Vec::<i32>::new()
+        );
     }
 
     /// `FUN_14102c160`: 11 leaves: the ids close up, the seconds keep their places (11's 2 now

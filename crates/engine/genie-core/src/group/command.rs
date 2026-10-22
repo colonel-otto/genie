@@ -1,7 +1,7 @@
 //! A group's orders (FD-036): `BUnitGroup::command` (`FUN_14100efd0`), `commandMoveTo`
 //! (`FUN_141010a80`) and `stopAllUnits` (`FUN_14103a0d0`), the HD PDB's names.
 
-use crate::group::SpecificMove;
+use crate::group::{GroupCommand, SpecificMove, UnitGroup};
 use crate::movement::PathData;
 use crate::order::Place;
 use crate::tile_path::Path;
@@ -17,6 +17,13 @@ pub const MOVE_COMMAND: i32 = 1;
 const NEW_PATH_FLAGS: u32 = 6;
 /// The plans a path level may still try (`FUN_140f9b800`, `FUN_140f98e80`).
 const CONTINUE: i32 = 10;
+
+/// The queued commands on a target `checkQueuedOrders` hands to `FUN_14100fc50` when the world
+/// holds the target (its switch's cases 3 and `0x2713`).
+const TARGET_COMMANDS: [i32; 11] = [3, 5, 0xc, 0x65, 0x69, 0x6a, 0x6e, 0x6f, 0x84, 0x88, 0x2713];
+/// The queued attacks `checkQueuedOrders` hands to `FUN_14100f7f0` when the world holds the
+/// target.
+const ATTACK_COMMANDS: [i32; 4] = [7, 9, 0x68, 0x7d];
 
 /// What `commandMoveTo` is told besides the target and the point: the range (`param_5`), and its
 /// flags `param_6` (a patrol's leg), `param_7` (the group's target goes), `param_8`, `param_9`
@@ -37,6 +44,63 @@ pub struct MoveTo {
     pub direct: bool,
     /// `param_11`.
     pub keep_flag: bool,
+}
+
+impl UnitGroup {
+    /// `queueOrder` (`FUN_14102b640`): a command at the queue's end (`+0x420`, its count
+    /// `+0x450`) of `command`, `target`, `point`, `range` and its approved byte,
+    /// retargeting byte and 16 bits after them.
+    #[allow(clippy::too_many_arguments)]
+    pub fn queue_command(
+        &mut self,
+        command: i32,
+        target: i32,
+        point: [f32; 3],
+        range: f32,
+        approved: u8,
+        disable_retargeting: u8,
+        approved_2: u16,
+    ) {
+        self.command_queue.push(GroupCommand {
+            command,
+            target_id: target,
+            range,
+            point,
+            approved,
+            disable_retargeting,
+            approved_2,
+        });
+    }
+
+    /// `FUN_14100dd10`: the queue's approved commands go and the others turn approved.
+    pub fn approve_queued(&mut self) {
+        self.command_queue.retain(|c| c.approved == 0);
+        for c in &mut self.command_queue {
+            c.approved = 1;
+        }
+    }
+
+    /// `FUN_14100f6b0`: flags bit 5 clears; with `forget_target` the target goes (-1, type -1,
+    /// its place, range and radius 0, its retargeting byte 0); the rams are not re-added
+    /// (`FUN_14102b730`, gated by `DAT_143f01837`, which nothing writes); every member's seconds
+    /// since attacking are `f32::MAX`; the waypoints (`+0x398`, count `+0x3a0`) take (`x`, the
+    /// desired height, `z`). The array's growth (5, then twice) fails only without memory.
+    pub fn add_waypoint(&mut self, x: f32, z: f32, forget_target: bool) {
+        self.flags &= !0x20;
+        if forget_target {
+            let t = &mut self.current_target;
+            t.target = -1;
+            t.kind = -1;
+            t.original_position = [0.0; 3];
+            t.range = 0.0;
+            t.target_radius = 0.0;
+            t.disable_retargeting = 0;
+        }
+        for m in &mut self.members {
+            m.seconds_since_attacking = f32::MAX;
+        }
+        self.waypoints.push([x, self.desired_height, z]);
+    }
 }
 
 impl Turns {
@@ -61,7 +125,7 @@ impl Turns {
     /// # Errors
     ///
     /// A member of a master the slice does not have.
-    pub fn horde_units_only(&self, g: &crate::group::UnitGroup) -> Result<bool, Unsupported> {
+    pub fn horde_units_only(&self, g: &UnitGroup) -> Result<bool, Unsupported> {
         for m in &g.members {
             if let Some((p, u)) = self.object(m.id) {
                 let master = self.master_of(p, u.life.master_id)?;
@@ -136,34 +200,42 @@ impl Turns {
     }
 
     /// `commandMoveTo` (`FUN_141010a80`) of group `group` to `point` (`target` -1 for none): flags
-    /// bits 5 and 12 clear. A queued move, and one behind queued commands without `direct`, go into
-    /// the command queue (`queueOrder`, `FUN_14102b640`, not modelled). A group whose last command
-    /// was not queued empties its command queue ([`crate::group::UnitGroup::clear_command_queue`]);
-    /// `forget_target` clears its target (`mCurrentTarget`: -1 and type -1, its place, range,
-    /// radius and retargeting byte 0); a changed target resets the attack plan's entries
-    /// (`FUN_140fd76a0` on `+0x3b0`, `mCurrentAttackPlan`, which no save holds, every load
-    /// empties and only the attack's plan fills: empty here). Each member's seconds since
-    /// attacking are `f32::MAX`. A horde moves as one (`commandHorde`, not modelled). A changed
-    /// target, or a patrol's path (the walked level's path flags bit 0, or flags bit 11) when
-    /// neither `leg` nor `hold`, sets flags `0xc000`. Below [`EPSILON`] of top speed nothing moves
-    /// (false). The path (a new one, flags [`NEW_PATH_FLAGS`], made now) runs from the group's
-    /// place through its waypoints (which it empties) to the point at the group's desired
-    /// height, its flags bit 0 off and bit 1 on, flags bit 11 off; measured, under two points or
-    /// [`EPSILON`] of length it is none. The group's path data resets ([`PathData`]'s
-    /// `FUN_140f98e80`) and takes it (`FUN_140f9b800`: range, target, waypoint 1, state 2) as
-    /// waypoint level 2 (that level even without a path); the members stop
-    /// ([`Turns::stop_all_units`]) and their unit AIs' notifies go at the world's time
+    /// bits 5 and 12 clear; a changed target resets the attack plan's entries (`FUN_140fd76a0`
+    /// on `+0x3b0`, `mCurrentAttackPlan`, which no save holds, every load empties and only a
+    /// group's attack fills, which the slice does not run: empty here). A queued move goes into
+    /// the command queue ([`UnitGroup::queue_command`], approved with `direct`) and, for a group
+    /// without a command, `direct` makes it hibernate (`+0x13c` 1); false. A move behind queued
+    /// commands without `direct` joins them unapproved, the approved ones go
+    /// ([`UnitGroup::approve_queued`]) and the queue runs ([`Turns::check_queued_orders`]); true.
+    /// Else a group whose last command was not queued empties its command queue
+    /// ([`UnitGroup::clear_command_queue`]); `forget_target` clears its target (`mCurrentTarget`:
+    /// -1 and type -1, its place, range, radius and retargeting byte 0); its rams are not
+    /// re-added (`readdRams`, `FUN_14102b730`, gated by `DAT_143f01837`, which nothing writes).
+    /// Each member's seconds since attacking are `f32::MAX`. A horde moves as one
+    /// (`commandHorde`, not modelled). A changed target, or a patrol's path (the top path's flags
+    /// bit 0, [`crate::group::formation::top_path`], or flags bit 11) when neither `leg` nor
+    /// `hold`, sets flags `0xc000`. Below [`EPSILON`] of top speed nothing moves (false). The
+    /// path (a new one, flags [`NEW_PATH_FLAGS`], made now) runs from the group's place through
+    /// its waypoints (which it empties) to the point at the group's desired height, its flags
+    /// bit 0 off and bit 1 on; flags bit 11 ends set only with `hold`, which also clears the
+    /// path's bit 0 (`keep_flag`'s bit 11 is cleared again after it). Measured, under two points
+    /// or at most [`EPSILON`] of length (`COMISS`/`JC` at 0x141010e2a: a NaN length keeps it) it
+    /// is none. The group's path data resets ([`PathData`]'s `FUN_140f98e80`) and takes it
+    /// (`FUN_140f9b800`: range, target, waypoint 1, state 2) as waypoint level 2 (that level even
+    /// without a path); the members stop ([`Turns::stop_all_units`]) and the unit AIs of those
+    /// the world's table holds, sleeping ones too, drop their notifies at the world's time
     /// (`FUN_140c5dc10`); the target's place is the point, the command [`MOVE_COMMAND`]. With
     /// motion flags bit 1 clear and no patrol the formation follows (`UpdateDesiredPositions`: a
-    /// column without a path or past the player's `mMinColumnDistance`, else a line). Flags bit 8
-    /// is set. True.
+    /// column without a path or when the player's `mMinColumnDistance` is below its length,
+    /// `COMISS`/`JNC` at 0x141010fc8, a NaN too; else a line). Flags bit 8 is set. True.
     ///
-    /// Not modelled: `leg` (a patrol's), `hold` and `keep_flag` (both clear here).
+    /// Not modelled: `leg` (a patrol's leg: its path's bit 1 by the distance to the point
+    /// against 5, `DAT_14330ebb8`, which has no image role for it yet).
     ///
     /// # Errors
     ///
-    /// A queued move, a horde, or what the members' stop and
-    /// the formation do not model.
+    /// A leg, a horde, a queued command the queue cannot run ([`Turns::check_queued_orders`]),
+    /// or what the members' stop and the formation do not model.
     ///
     /// # Panics
     ///
@@ -176,9 +248,9 @@ impl Turns {
         point: [f32; 2],
         how: MoveTo,
     ) -> Result<bool, Unsupported> {
-        if how.leg || how.hold || how.keep_flag {
+        if how.leg {
             return Err(Unsupported(
-                "commandMoveTo of a patrol's leg or a held formation (param_6, 8, 11)",
+                "commandMoveTo of a patrol's leg (param_6: the 5.0 of DAT_14330ebb8)",
             ));
         }
         let world_time = self.world_time;
@@ -192,10 +264,27 @@ impl Turns {
         } else {
             target != g.current_target.target
         };
-        if how.queued || (!how.direct && !g.command_queue.is_empty()) {
-            return Err(Unsupported(
-                "a group's queued move (queueOrder, FUN_14102b640)",
-            ));
+        let at = [point[0], 0.0, point[1]];
+        if how.queued {
+            g.queue_command(
+                MOVE_COMMAND,
+                -1,
+                at,
+                how.range,
+                u8::from(how.direct),
+                0,
+                0xffff,
+            );
+            if g.current_command == -1 && how.direct && g.hibernating != 1 {
+                g.hibernating = 1;
+            }
+            return Ok(false);
+        }
+        if !how.direct && !g.command_queue.is_empty() {
+            g.queue_command(MOVE_COMMAND, -1, at, how.range, 0, 0, 0xffff);
+            g.approve_queued();
+            self.check_queued_orders(group)?;
+            return Ok(true);
         }
         if g.replaces_queue != 0 {
             g.clear_command_queue();
@@ -216,16 +305,14 @@ impl Turns {
             return Err(Unsupported("a horde's move (commandHorde, FUN_141010180)"));
         }
         let g = self.groups.get_mut(group).expect("the group found above");
-        let patrol = g
-            .motion
-            .paths
-            .first()
-            .is_some_and(|l| l.has_path && l.path_flags & 1 != 0)
+        // FUN_141046500: the top ancestor's path, else the walked level's
+        let patrol = crate::group::formation::top_path(&g.motion.paths)
+            .is_some_and(|l| l.path_flags & 1 != 0)
             || g.flags & 0x800 != 0;
         if (!how.hold && !how.leg && patrol) || changed {
             g.flags |= 0xc000;
         }
-        // the top speed below the tolerance (`COMISS`: EPSILON above it)
+        // the top speed below the tolerance (`COMISS`/`JA` at 0x141010cc3)
         if g.motion.maximum_velocity_forward < EPSILON {
             return Ok(false);
         }
@@ -236,10 +323,18 @@ impl Turns {
         }
         g.waypoints.clear();
         let _ = path.push([point[0], g.desired_height, point[1]]);
-        let path_flags = NEW_PATH_FLAGS & !1 | 2;
-        g.flags &= !0x800;
+        let mut path_flags = NEW_PATH_FLAGS & !1 | 2;
+        // `keep_flag` sets bit 11 (0x141010dc1), which the hold's test then decides again
+        if how.hold {
+            path_flags &= !1;
+            g.flags |= 0x800;
+        } else {
+            g.flags &= !0x800;
+        }
         path.measure();
-        let path = (2 <= path.points.len() && EPSILON < path.length).then_some(path);
+        let path = (2 <= path.points.len()
+            && crate::fmath::below_or_unordered(EPSILON, path.length))
+        .then_some(path);
         if path.is_none() {
             g.flags &= !0x800;
         }
@@ -280,12 +375,9 @@ impl Turns {
             .map(|m| m.id)
             .collect();
         for id in ids {
-            if let Some(Place::Live(p, i)) = self.place(id)
-                && let Some(ai) = self.players[p].objects[i].ai.as_mut()
-            {
+            // FUN_1415417a0 finds a sleeping member too
+            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
                 ai.clear_notifies(world_time)?;
-            } else if let Some(Place::Sleeping(..)) = self.place(id) {
-                return Err(Unsupported("a group move of a sleeping member"));
             }
         }
         let owner = self.groups.get(group).expect("found above").owner as usize;
@@ -298,7 +390,8 @@ impl Turns {
         g.current_target.original_position[2] = point[1];
         g.current_command = MOVE_COMMAND;
         if g.motion.flags & 2 == 0 && !patrol {
-            let column = length.is_none_or(|l| (min_column as f32) < l);
+            let column =
+                length.is_none_or(|l| crate::fmath::below_or_unordered(min_column as f32, l));
             self.update_desired_positions(
                 group,
                 if column {
@@ -311,6 +404,109 @@ impl Turns {
         let g = self.groups.get_mut(group).expect("the group found above");
         g.flags |= 0x100;
         Ok(true)
+    }
+
+    /// `checkQueuedOrders` (`FUN_14100d460`) of group `group`: with no queued command a
+    /// hibernating group wakes (`+0x13c` 0; flags `0x4c000` when it was 1). Else the last command
+    /// replaced none (`+0x13d` 0) and the approved commands run in order (unapproved ones wait):
+    /// each takes the run's first command if none was yet and leaves the queue; a move (1), or a
+    /// command on a target the world's table does not hold, adds its point as a waypoint while
+    /// more than one command is queued ([`UnitGroup::add_waypoint`]); a command on a held target
+    /// (3, 5, 0xc, 0x65, 0x69, 0x6a, 0x6e, 0x6f, 0x84, 0x88, 0x2713: `FUN_14100fc50`; 7, 9, 0x68,
+    /// 0x7d: the attack, `FUN_14100f7f0`) ends the run; any other is dropped. The run also ends
+    /// when the next command differs from its first (the queue's end counts as -1). Then, when
+    /// an approved command ran and none ended the run, the group moves to the last command of the
+    /// run ([`Turns::command_move_to`] with its range, the target forgotten, `direct`); the
+    /// hibernating group wakes as above.
+    ///
+    /// # Errors
+    ///
+    /// A command on a target the world holds (`FUN_14100fc50`, `FUN_14100f7f0`, not modelled),
+    /// a run whose last command the game frees before its move (it reads a null command: the
+    /// run's commands equal an unapproved one behind them), and what the move does not model.
+    ///
+    /// # Panics
+    ///
+    /// When the world does not hold `group`: the game's routine gets the group itself, from a
+    /// caller that holds it.
+    pub fn check_queued_orders(&mut self, group: i32) -> Result<(), Unsupported> {
+        let g = self
+            .groups
+            .get_mut(group)
+            .expect("the caller holds the group");
+        if !g.command_queue.is_empty() {
+            g.replaces_queue = 0;
+            // a command on a held target would end the run without the move (`bVar2`); those
+            // are not modelled (below), so every run that ran an approved command moves
+            let (mut first, mut kept, mut ran) = (-1, None, false);
+            let mut i = 0;
+            loop {
+                let g = self.groups.get(group).expect("the group found above");
+                let Some(&node) = g.command_queue.get(i) else {
+                    break;
+                };
+                if node.approved == 0 {
+                    i += 1;
+                    continue;
+                }
+                ran = true;
+                let held = self.world_object(node.target_id).is_some();
+                if first == -1 {
+                    first = node.command;
+                }
+                let count = g.command_queue.len();
+                let g = self.groups.get_mut(group).expect("the group found above");
+                match node.command {
+                    c if TARGET_COMMANDS.contains(&c) && held => {
+                        return Err(Unsupported("a queued command on a target (FUN_14100fc50)"));
+                    }
+                    c if ATTACK_COMMANDS.contains(&c) && held => {
+                        return Err(Unsupported("a queued attack on a target (FUN_14100f7f0)"));
+                    }
+                    c if (c == MOVE_COMMAND
+                        || TARGET_COMMANDS.contains(&c)
+                        || ATTACK_COMMANDS.contains(&c))
+                        && 1 < count =>
+                    {
+                        g.add_waypoint(node.point[0], node.point[2], false);
+                    }
+                    _ => {}
+                }
+                let next = g.command_queue.get(i + 1).map_or(-1, |n| n.command);
+                let _ = g.command_queue.remove(i);
+                let ends = first != -1 && next != first;
+                if ends || g.command_queue.is_empty() {
+                    kept = Some(node);
+                }
+                if ends {
+                    break;
+                }
+            }
+            if ran {
+                let last = kept.ok_or(Unsupported(
+                    "checkQueuedOrders' move to a command it freed (a null command in the game)",
+                ))?;
+                let _ = self.command_move_to(
+                    group,
+                    -1,
+                    [last.point[0], last.point[2]],
+                    MoveTo {
+                        range: last.range,
+                        forget_target: true,
+                        direct: true,
+                        ..MoveTo::default()
+                    },
+                )?;
+            }
+        }
+        let g = self.groups.get_mut(group).expect("the group found above");
+        if g.hibernating != 0 {
+            if g.hibernating == 1 {
+                g.flags |= 0x4_c000;
+            }
+            g.hibernating = 0;
+        }
+        Ok(())
     }
 
     /// `stopAllUnits` (`FUN_14103a0d0`) of group `group`: each member the world holds with an
@@ -337,22 +533,28 @@ impl Turns {
             .map(|m| m.id)
             .collect();
         for (k, id) in ids.into_iter().enumerate() {
-            let (p, idx) = match self.place(id) {
-                None => continue,
-                Some(Place::Live(p, idx)) => (p, idx),
-                Some(Place::Sleeping(..)) => {
-                    return Err(Unsupported("stopAllUnits of a sleeping member"));
-                }
+            // FUN_1415417a0: a sleeping member too
+            let Some(place) = self.place(id) else {
+                continue;
             };
-            let u = &self.players[p].objects[idx];
+            let u = match place {
+                Place::Live(p, i) => &self.players[p].objects[i],
+                Place::Sleeping(p, i) => &self.players[p].sleeping[i],
+            };
             if u.unmodelled_action.is_some() {
                 return Err(Unsupported(
                     "stopAllUnits of a member with an action the slice does not model",
                 ));
             }
+            // slot 0x530: the top action's type, -1 without one
             if !all && u.top_action_kind().is_none() {
                 continue;
             }
+            let Place::Live(p, idx) = place else {
+                return Err(Unsupported(
+                    "stopAllUnits' stop of a sleeping member (the stop takes the live list)",
+                ));
+            };
             self.object_stop(p, idx)?;
             if let Some(m) = self.players[p].objects[idx].mover.as_mut() {
                 m.stand()?;
@@ -365,5 +567,196 @@ impl Turns {
             };
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::group::{GroupCommand, Member, UnitGroups};
+    use crate::masters::{Master, Masters};
+    use crate::turn::{Player, Unit};
+
+    /// Player 1's unit 7 (master 4: type 70, category 1, no action, no unit AI) in group 1 at
+    /// the origin, its top speed 1, its motion flags bit 1 set (no formation follows), at world
+    /// time 50.
+    fn moving_world() -> Turns {
+        let mut u = Unit {
+            id: 7,
+            ..Unit::default()
+        };
+        u.life.master_id = 4;
+        let players = vec![
+            Player::default(),
+            Player {
+                objects: vec![u],
+                ..Player::default()
+            },
+        ];
+        let mut t = Turns::new(50, 0, 0, vec![0, 0], players);
+        let master = Master {
+            id: 4,
+            kind: 70,
+            formation_category: 1,
+            ..Master::default()
+        };
+        t.masters = vec![Masters::new([master]); 2];
+        let mut g = UnitGroup::new(1);
+        g.owner = 1;
+        g.members = vec![Member {
+            id: 7,
+            ..Member::default()
+        }];
+        g.motion.flags = 2;
+        g.motion.maximum_velocity_forward = 1.0;
+        t.groups = UnitGroups {
+            groups: vec![g],
+            ..UnitGroups::default()
+        };
+        t
+    }
+
+    fn command(command: i32, target: i32, x: f32, z: f32, approved: u8) -> GroupCommand {
+        GroupCommand {
+            command,
+            target_id: target,
+            range: 0.5,
+            point: [x, 0.0, z],
+            approved,
+            disable_retargeting: 0,
+            approved_2: 0xffff,
+        }
+    }
+
+    /// `FUN_141010a80` with `param_9`: the move joins the command queue (`queueOrder`, approved
+    /// with `direct`) and nothing moves; a group without a command hibernates for a direct one.
+    #[test]
+    fn a_queued_move_joins_the_command_queue() {
+        let mut t = moving_world();
+        let how = MoveTo {
+            range: 0.5,
+            queued: true,
+            direct: true,
+            ..MoveTo::default()
+        };
+        assert!(!t.command_move_to(1, -1, [3.0, 4.0], how).unwrap());
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(g.command_queue, [command(1, -1, 3.0, 4.0, 1)]);
+        assert_eq!((g.hibernating, g.current_command), (1, -1));
+        assert!(!g.motion.paths[0].has_path);
+    }
+
+    /// `FUN_14100dd10` drops the approved commands and approves the others.
+    #[test]
+    fn approving_the_queue_drops_the_approved_commands() {
+        let mut g = UnitGroup::new(1);
+        g.command_queue = vec![command(1, -1, 1.0, 1.0, 1), command(9, 5, 2.0, 2.0, 0)];
+        g.approve_queued();
+        assert_eq!(g.command_queue, [command(9, 5, 2.0, 2.0, 1)]);
+    }
+
+    /// `FUN_14100d460`: an unapproved command waits; of the approved moves each but the last
+    /// adds its point as a waypoint while more than one command is queued, and the group moves
+    /// through them to the last; a command on a target the world does not hold counts as a
+    /// move, one on a held target is not modelled.
+    #[test]
+    fn the_queued_moves_run_through_their_points() {
+        let mut t = moving_world();
+        t.groups.get_mut(1).unwrap().command_queue = vec![
+            command(9, -1, 9.0, 9.0, 0),
+            command(1, -1, 5.0, 5.0, 1),
+            command(3, 99, 8.0, 6.0, 1),
+        ];
+        // 3 differs from the run's first (1): the run ends at the move to (5, 5)
+        t.check_queued_orders(1).unwrap();
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(
+            g.command_queue,
+            [command(9, -1, 9.0, 9.0, 0), command(3, 99, 8.0, 6.0, 1)]
+        );
+        assert_eq!(g.motion.paths[0].points, [[0.0; 3], [5.0, 0.0, 5.0]]);
+        assert_eq!((g.current_command, g.replaces_queue), (MOVE_COMMAND, 0));
+        // two moves: the first is a waypoint, the group goes through it to the second
+        let mut t = moving_world();
+        t.groups.get_mut(1).unwrap().command_queue =
+            vec![command(1, -1, 5.0, 5.0, 1), command(1, -1, 8.0, 8.0, 1)];
+        t.check_queued_orders(1).unwrap();
+        let g = t.groups.get(1).unwrap();
+        assert!(g.command_queue.is_empty() && g.waypoints.is_empty());
+        assert_eq!(
+            g.motion.paths[0].points,
+            [[0.0; 3], [5.0, 0.0, 5.0], [8.0, 0.0, 8.0]]
+        );
+        // a command on a target the world holds
+        let mut t = moving_world();
+        t.groups.get_mut(1).unwrap().command_queue = vec![command(3, 7, 1.0, 1.0, 1)];
+        assert!(t.check_queued_orders(1).is_err());
+        // nothing queued: a hibernating group wakes
+        let mut t = moving_world();
+        t.groups.get_mut(1).unwrap().hibernating = 1;
+        t.check_queued_orders(1).unwrap();
+        let g = t.groups.get(1).unwrap();
+        assert_eq!((g.hibernating, g.flags & 0x4_c000), (0, 0x4_c000));
+    }
+
+    /// A move without `direct` behind queued commands joins them unapproved; the approved ones
+    /// go and the queue runs: the group moves to the new point.
+    #[test]
+    fn a_move_behind_queued_commands_runs_the_queue() {
+        let mut t = moving_world();
+        t.groups.get_mut(1).unwrap().command_queue = vec![command(1, -1, 5.0, 5.0, 1)];
+        let how = MoveTo {
+            range: 0.5,
+            ..MoveTo::default()
+        };
+        assert!(t.command_move_to(1, -1, [2.0, 3.0], how).unwrap());
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(g.command_queue, Vec::<GroupCommand>::new());
+        assert_eq!(g.motion.paths[0].points, [[0.0; 3], [2.0, 0.0, 3.0]]);
+    }
+
+    /// `param_8` (hold) clears the path's bit 0 and leaves flags bit 11 set; a patrol is read
+    /// on the top ancestor's path (`FUN_141046500`), which sets flags `0xc000`; a sleeping
+    /// member's unit AI drops its notifies (`FUN_140c5dc10` at the world's time); a NaN length
+    /// keeps the path (`COMISS`/`JC`).
+    #[test]
+    fn a_held_move_keeps_flags_bit_11_and_a_patrol_is_the_top_path_s() {
+        let mut t = moving_world();
+        let hold = MoveTo {
+            hold: true,
+            ..MoveTo::default()
+        };
+        assert!(t.command_move_to(1, -1, [2.0, 3.0], hold).unwrap());
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(
+            (g.flags & 0x800, g.motion.paths[0].path_flags & 1),
+            (0x800, 0)
+        );
+        let mut t = moving_world();
+        let mut walked = PathData::without_path();
+        walked.has_path = true;
+        let mut top = PathData::without_path();
+        top.has_path = true;
+        top.path_flags = 1;
+        t.groups.get_mut(1).unwrap().motion.paths = vec![walked, top];
+        let asleep = t.players[1].objects.remove(0);
+        t.players[1].sleeping.push(Unit {
+            ai: Some(crate::unit_ai::UnitAi::default()),
+            ..asleep
+        });
+        assert!(
+            t.command_move_to(1, -1, [2.0, 3.0], MoveTo::default())
+                .unwrap()
+        );
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(g.flags & 0xc000, 0xc000);
+        let ai = t.players[1].sleeping[0].ai.as_ref().unwrap();
+        assert_eq!(ai.last_update_time, 50);
+        let mut t = moving_world();
+        assert!(
+            t.command_move_to(1, -1, [f32::NAN, 3.0], MoveTo::default())
+                .unwrap()
+        );
+        assert!(t.groups.get(1).unwrap().motion.paths[0].has_path);
     }
 }

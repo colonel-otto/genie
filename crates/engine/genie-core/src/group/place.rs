@@ -114,7 +114,7 @@ impl Turns {
         let g = self.groups.get_mut(group).expect("the group found above");
         g.motion.new_position[0] = at;
         g.motion.position[0] = at;
-        self.set_initial_orientation(group)?;
+        self.set_initial_orientation(group);
         let g = self.groups.get_mut(group).expect("the group found above");
         g.flags |= 0x400;
         Ok(())
@@ -174,35 +174,27 @@ impl Turns {
         Ok(centroid)
     }
 
-    /// `SetInitialOrientation` (`FUN_141039680`) of group `group`: its members' forwards (slot
-    /// 0x648, `+0x830`) summed in their order and divided by the count of those the world holds,
-    /// then normalized; when that is zero the first held member's forward, else
-    /// ([`DEFAULT_FORWARD`], 0, 0). The motion faces it with up (0, 1, 0), position and new position
-    /// alike ([`Motion::set_orientation`]).
-    ///
-    /// # Errors
-    ///
-    /// A held member without movement state.
+    /// `SetInitialOrientation` (`FUN_141039680`) of group `group`: the forwards (slot 0x648,
+    /// [`crate::group::WorldObject::forward`]: 0 for an object that does not move) of the
+    /// members the world's table holds, summed in their order and divided by their count, then
+    /// normalized; when their squares sum to zero (`UCOMISS`/`JP`: not a NaN) the first held
+    /// member's forward, else ([`DEFAULT_FORWARD`], 0, 0). The motion faces it with up
+    /// (0, 1, 0), position and new position alike ([`Motion::set_orientation`]).
     ///
     /// # Panics
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, and its
     /// caller ([`Turns::set_initial_position`]) holds it.
-    pub fn set_initial_orientation(&mut self, group: i32) -> Result<(), Unsupported> {
+    pub fn set_initial_orientation(&mut self, group: i32) {
         let g = self
             .groups
             .get(group)
             .expect("SetInitialOrientation's caller holds the group");
-        let mut forwards = Vec::with_capacity(g.members.len());
-        for m in &g.members {
-            let Some((_, u)) = self.object(m.id) else {
-                continue;
-            };
-            let mover = u.mover.as_ref().ok_or(Unsupported(
-                "a group member without movement state (its forward, slot 0x648)",
-            ))?;
-            forwards.push(mover.forward);
-        }
+        let forwards: Vec<Vec3> = g
+            .members
+            .iter()
+            .filter_map(|m| self.world_object(m.id).map(|o| o.forward()))
+            .collect();
         let mut sum = [0.0f32; 3];
         for f in &forwards {
             sum = [sum[0] + f[0], sum[1] + f[1], sum[2] + f[2]];
@@ -223,7 +215,6 @@ impl Turns {
         };
         let g = self.groups.get_mut(group).expect("the group found above");
         let _ = g.motion.set_orientation(forward, [0.0, 1.0, 0.0], true);
-        Ok(())
     }
 }
 
@@ -232,9 +223,9 @@ impl Turns {
     /// update) the distance of the point ahead along the group's forward. The group's place is
     /// its own, or with motion flags bit 1 the members' centre (slot 0x520, summed over the
     /// members the world holds, over the members' count). A flanked group (locked type 8) whose
-    /// lead (`+0xc4`, `FUN_1410465d0`) could stand there among the members (slot 0x270,
-    /// [`crate::spatial::Spatial::point_clear_among`], with [`FRONT_SHARE`] of its radius)
-    /// stands there. Else the members within the spacing ([`FRONT_SHARE`] of it but for a
+    /// lead's object ([`Turns::lead_object`]) moves and could stand there among the members (slot
+    /// 0x270, [`crate::spatial::Spatial::point_clear_among`], with [`FRONT_SHARE`] of its radius;
+    /// an object that does not move cannot) stands there. Else the members within the spacing ([`FRONT_SHARE`] of it but for a
     /// staggered lock, type 7) of the line along the forward through that place (on the
     /// ground, [`fmath::line_distance`]) are in front: of them the one nearest the point ahead
     /// on the ground (the only one, however far), else the member nearest that point. The
@@ -273,14 +264,16 @@ impl Turns {
             let n = g.members.len() as f32;
             [c[0] / n, c[1] / n, c[2] / n]
         };
+        // the lead's slot 0x270: an object that does not move (a ghost found by the lead -1)
+        // stands nowhere (`FUN_141071e30`)
         if g.formation_locked_type == crate::group::formation::FLANKED
-            && let Some((p, u)) = self.object(m.lead)
+            && let Some(lead) = self.lead_object(m).filter(crate::group::WorldObject::moves)
         {
-            let master = self.master_of(p, u.life.master_id)?;
-            let mask = self.master_mask(p, u.life.master_id)?;
+            let master = self.master_of(lead.player(), lead.master_id())?;
+            let mask = self.master_mask(lead.player(), lead.master_id())?;
             let members: Vec<i32> = g.members.iter().map(|mb| mb.id).collect();
             if self.spatial.point_clear_among(
-                m.lead,
+                lead.id(),
                 [centre[0], centre[2]],
                 FRONT_SHARE * master.radius[0],
                 mask,
@@ -567,7 +560,12 @@ mod tests {
     /// the front: of 10 and 11, both in front, 10 is nearer the point ahead.
     #[test]
     fn a_flanked_group_stays_where_its_lead_could_stand() {
-        let units = vec![unit(10, 15.0, 10.5), unit(11, 10.2, 10.1)];
+        // the lead moves (slot 0x270 is `FUN_141158940`), where it last moved to its place
+        let mut lead = unit(10, 15.0, 10.5);
+        let mut mover = crate::hunt::tests::walker();
+        mover.moved_at = lead.position;
+        lead.mover = Some(mover);
+        let units = vec![lead, unit(11, 10.2, 10.1)];
         let flanked = |t: &mut Turns| {
             t.groups.groups[0].formation_locked_type = crate::group::formation::FLANKED;
             t.groups.groups[0].motion.lead = 10;
@@ -583,6 +581,67 @@ mod tests {
         t.groups.groups[0].members.truncate(2);
         t.move_position_to_front(1, 100.0).unwrap();
         assert_eq!(placed(&t), ([15.0, 0.0, 10.5], [15.0, 0.0, 10.5], 0));
+    }
+
+    /// The constructor's lead -1 finds the world's object -1 (`FUN_1410465d0`): a moving one (a
+    /// missile, say) could stand on the group's place among the members, so a flanked group
+    /// stays; a ghost's slot 0x270 (`FUN_141071e30`) is 0, so the group goes to the front.
+    #[test]
+    fn a_flanked_group_tests_the_world_s_object_of_its_lead_id() {
+        let units = vec![unit(10, 15.0, 10.5), unit(11, 10.2, 10.1)];
+        let flanked = |t: &mut Turns| {
+            t.groups.groups[0].formation_locked_type = crate::group::formation::FLANKED;
+            t.groups.groups[0].members.truncate(2);
+        };
+        let mut missile = unit(-1, 3.0, 3.0);
+        missile.mover = Some(crate::hunt::tests::walker());
+        let mut t = front_world(vec![units[0].clone(), units[1].clone(), missile]);
+        flanked(&mut t);
+        t.move_position_to_front(1, 100.0).unwrap();
+        assert_eq!(placed(&t), ([10.0, 0.0, 10.0], [10.0, 0.0, 10.0], 2));
+        let mut t = front_world(units);
+        flanked(&mut t);
+        t.players[0].ghosts = vec![crate::group::formation::tests::ghost_at(-1, 3.0, 3.0)];
+        t.move_position_to_front(1, 100.0).unwrap();
+        assert_eq!(placed(&t), ([15.0, 0.0, 10.5], [15.0, 0.0, 10.5], 0));
+    }
+
+    /// `FUN_141039680`: slot 0x648 of a member that moves is its forward, of one that does not
+    /// (0, 0, 0): (0, 0, 1) and nothing average to (0, 0, 0.5), facing (0, 0, 1). Forwards that
+    /// cancel out give the first held member's; no member held, x.
+    #[test]
+    fn the_initial_orientation_averages_the_members_forwards() {
+        let facing = |forwards: &[Option<Vec3>]| {
+            let units: Vec<crate::turn::Unit> = forwards
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    let mut u = unit(10 + i as i32, 5.0, 5.0);
+                    if let Some(f) = f {
+                        let mut mover = crate::hunt::tests::walker();
+                        mover.forward = *f;
+                        u.mover = Some(mover);
+                    }
+                    u
+                })
+                .collect();
+            let mut t = front_world(units);
+            t.set_initial_orientation(1);
+            t.groups.groups[0].motion.position[1]
+        };
+        assert_eq!(facing(&[Some([0.0, 0.0, 1.0]), None]), [0.0, 0.0, 1.0]);
+        assert_eq!(
+            facing(&[Some([0.0, 0.0, 1.0]), Some([0.0, 0.0, -1.0])]),
+            [0.0, 0.0, 1.0]
+        );
+        let mut t = front_world(Vec::new());
+        t.groups.groups[0].members = vec![crate::group::Member {
+            id: 99,
+            ..crate::group::Member::default()
+        }];
+        t.groups.groups[0].motion.position[1] = [0.0, 0.0, 1.0];
+        t.set_initial_orientation(1);
+        assert_eq!(t.groups.groups[0].motion.position[1], [1.0, 0.0, 0.0]);
     }
 
     /// The spiral's first points from (10, 10): the leg's count and turns as `FUN_141007630`

@@ -1,13 +1,13 @@
 //! A group's formation (FD-036): `BFormation`, its slots and lines, and the layouts that fill
 //! them (createColumnLine `FUN_141012280`, ...).
 
+use crate::checkpoint::cvttss2si;
 use crate::fmath::{Vec3, add, scale, sub};
-use crate::group::create::FormationUnit;
-use crate::group::layout::{MemberPlace, create_box, create_by_place, create_phalanx};
-use crate::group::motion::moved_vector;
+use crate::group::layout::{clear_line, reset_line};
 use crate::group::{Formation, FormationLine, Slot, UnitGroup, sub_formation};
 use crate::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
 use crate::movement::PathData;
+use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
 /// The formation types (`mType`; the log names of `FUN_14103fd00`).
@@ -135,7 +135,7 @@ struct Category {
 /// the columns (a column's), then fewer lines until a line is at least twice as wide as the
 /// formation is deep (a column the reverse). Returns (lines, columns).
 fn sizes(count: i32, by_line: bool) -> (i32, i32) {
-    let root = crate::fmath::sqrt(count as f32).ceil() as i32;
+    let root = cvttss2si(crate::fmath::sqrt(count as f32).ceil());
     let root = root.max(1);
     let per = |a: i32| {
         let b = count / a;
@@ -161,10 +161,11 @@ fn sizes(count: i32, by_line: bool) -> (i32, i32) {
     }
 }
 
-/// createColumnLine (`FUN_141012280`) up to its transform: the group's sub-formations (its unit
-/// types, by category 0 to 5) laid out in lines on `formation`, `world_time` the slots' time.
-/// `column` lays a column (the column ratio set, type 1), else a line (type 2, staggered 7,
-/// flanked 8). Returns false for a group without members or ratios (nothing laid out).
+/// The slots of createColumnLine (`FUN_141012280`, [`Turns::create_column_line`])
+/// up to its transform: the group's sub-formations (its unit types, by category 0 to 5) laid
+/// out in lines on `formation`, `world_time` the slots' time. `column` lays a column (the column
+/// ratio set, type 1), else a line (type 2, staggered 7, flanked 8). Returns false for a group
+/// without members (nothing laid out); its callers always pass a ratio.
 ///
 /// Each sub-formation with units takes the lines and columns of [`sizes`]; the widest line
 /// (columns times the sub-formation's spacing) sets the width of the others when two or more
@@ -183,15 +184,27 @@ fn sizes(count: i32, by_line: bool) -> (i32, i32) {
 /// next line). The line takes its slots' indices and its distance back, which grows by each
 /// line's spacing (doubled when staggered) and, when a wider sub-formation follows, by the
 /// difference.
-pub(crate) fn create_column_line(
+///
+/// The roots and the line counts are the CRT's `ceilf` (the ucrtbase import at 0x142a8e728),
+/// for which `f32::ceil` stands: both are exact (the result is the integer above, a NaN stays
+/// NaN); `CVTTSS2SI` then makes a NaN or an infinity `i32::MIN`
+/// ([`crate::checkpoint::cvttss2si`]), which the clamps to 1 take in.
+///
+/// # Panics
+///
+/// Never for a line or slot past its array: the lines' array holds the sum of the
+/// sub-formations' lines (`FUN_14102d490`), and the slots' array their lines times the widest
+/// line's columns (`FUN_14102d580`), while no line holds more than its sub-formation's
+/// columns.
+pub(crate) fn column_line_slots(
     formation: &mut Formation,
     group: &UnitGroup,
     column: bool,
     (staggered, flanked): (bool, bool),
     world_time: u32,
-) -> Result<bool, Unsupported> {
+) -> bool {
     if group.members.is_empty() {
-        return Ok(false);
+        return false;
     }
     let category = |c: i32| -> Option<Category> {
         let stat = group
@@ -239,7 +252,7 @@ pub(crate) fn create_column_line(
                 lines_of[k] = 1;
                 continue;
             }
-            let mut lines = ((cat.count as f32 * cat.spacing) / widest).ceil() as i32;
+            let mut lines = cvttss2si(((cat.count as f32 * cat.spacing) / widest).ceil());
             if lines < 1 {
                 lines = 1;
             }
@@ -325,27 +338,12 @@ pub(crate) fn create_column_line(
                 let half_step = [single[0] / TWO, single[1] / TWO, single[2] / TWO];
                 total = sub(total, half_step);
             }
-            let line = formation
-                .lines
-                .get_mut(line_index as usize)
-                .ok_or(Unsupported("a formation line past the lines' array"))?;
-            // FUN_141008f50: a line of `actual` places (-1 each) at depth `line_index`; none for
-            // no places
-            *line = if 0 < actual {
-                FormationLine {
-                    depth: line_index,
-                    indices: vec![u32::MAX; actual as usize],
-                    ..FormationLine::default()
-                }
-            } else {
-                FormationLine::default()
-            };
+            let line = &mut formation.lines[line_index as usize];
+            clear_line(line);
+            let _ = reset_line(line, actual, line_index);
             line.distance_back = distance_back;
             for col in 0..actual.max(0) {
                 let at = used_slots + col as usize;
-                if formation.slot_capacity() <= at {
-                    return Err(Unsupported("a formation slot past the slots' array"));
-                }
                 let mut offset = total;
                 if flanked {
                     let flank = FLANK_SPACING - line_index as f32 / depth as f32;
@@ -409,7 +407,39 @@ pub(crate) fn create_column_line(
         }
     }
     formation.use_slots(used_slots);
-    Ok(true)
+    true
+}
+
+impl Turns {
+    /// createColumnLine (`FUN_141012280`) of `formation` for group `g`: a column (`column`, the
+    /// column ratio 2 and line ratio -1) or a line (ratios -1 and 2), staggered or flanked;
+    /// false without members. Its slots ([`column_line_slots`]), then the transform and the
+    /// units ([`Turns::lay_units`]) with the column-to-line flag (0x141013d20..0x141013d3a): a
+    /// line (2, 7 or 8) whose group's previous formation is a column (1). The game reads that
+    /// type through the
+    /// previous formation's pointer, which `UpdateDesiredPositions` sets whenever it lays a
+    /// formation out anew; a group without one is not a column here.
+    ///
+    /// # Errors
+    ///
+    /// As the transform and the units' assignment.
+    pub(crate) fn create_column_line(
+        &self,
+        formation: &mut Formation,
+        g: &UnitGroup,
+        column: bool,
+        staggered_flanked: (bool, bool),
+    ) -> Result<bool, Unsupported> {
+        if !column_line_slots(formation, g, column, staggered_flanked, self.world_time) {
+            return Ok(false);
+        }
+        let after_column = matches!(formation.kind, LINE | STAGGERED | FLANKED)
+            && g.previous_formation
+                .as_ref()
+                .is_some_and(|p| p.kind == COLUMN);
+        self.lay_units(formation, g, after_column)?;
+        Ok(true)
+    }
 }
 
 /// `FUN_140f96030`: the walked level's top ancestor (the paths are walked first), none for a
@@ -446,7 +476,7 @@ fn measured_path(paths: &[PathData]) -> Option<&PathData> {
         .or_else(|| paths.first().filter(|w| w.has_path))
 }
 
-impl crate::turn::Turns {
+impl Turns {
     /// The type `UpdateDesiredPositions` (`FUN_14103fd00`) chooses itself for group
     /// `g` (given none and its lock -1 or 0): a line (2), unless its path (the top level's, else the
     /// walked level's, [`measured_path`]) makes it a column (1): off the last high waypoint
@@ -529,13 +559,17 @@ impl crate::turn::Turns {
     /// ([`Formation::new`]); the type is [`Turns::formation_type`]'s. A type other
     /// than the formation's, or a given one, makes the formation the previous one and a new one
     /// the current. A formation not yet of the type with a slot per member is laid out: a line,
-    /// staggered or flanked line or a column by createColumnLine ([`create_column_line`], its
-    /// transform and units after it, [`lay_units`]), a phalanx and a box by their own
-    /// ([`crate::group::layout::create_phalanx`], [`crate::group::layout::create_box`], then
-    /// [`lay_units`]), a horde and a user defined formation from the members' places
-    /// ([`crate::group::layout::create_by_place`]) and then transformed
-    /// ([`formation_transform`], `param_4` 0); a formation already laid out, or of a type the
-    /// switch does not know (6), is only transformed.
+    /// staggered or flanked line or a column by createColumnLine
+    /// ([`Turns::create_column_line`]), a phalanx and a box by their own
+    /// ([`Turns::create_phalanx`], [`Turns::create_box`]), each with its transform and units; a
+    /// horde and a user defined formation from the members' places ([`Turns::create_horde`],
+    /// [`Turns::create_udf`]) and then transformed ([`Turns::formation_transform`], `param_4`
+    /// 0); a formation already laid out, or of a type the switch does not know (6), is only
+    /// transformed.
+    ///
+    /// The walked path the type's choice measures ([`measured_path`]) is the top level's only by
+    /// its id and the walked level's only by its pointer in the game; the slice's
+    /// [`PathData::has_path`] stands for either.
     ///
     /// # Errors
     ///
@@ -558,32 +592,6 @@ impl crate::turn::Turns {
             && g.current_formation
                 .as_ref()
                 .is_some_and(|f| f.kind == kind && f.slots.len() == g.members.len());
-        let places = if !laid_out && matches!(kind, HORDE | USER_DEFINED) {
-            let mut places = Vec::with_capacity(g.members.len());
-            for m in &g.members {
-                let place = match self.object(m.id) {
-                    Some((p, u)) => {
-                        let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
-                        Some(MemberPlace {
-                            id: m.id,
-                            at: moved_vector(u),
-                            category: sub_formation(
-                                unit.kind,
-                                unit.hero_flag,
-                                unit.formation_category,
-                            )
-                            .unwrap_or(-1),
-                        })
-                    }
-                    None => None,
-                };
-                places.push(place);
-            }
-            places
-        } else {
-            Vec::new()
-        };
-        let world_time = self.world_time;
         let g = self.groups.get_mut(group).expect("the group read above");
         if g.current_formation.is_none() {
             g.current_formation = Some(Formation::new());
@@ -595,43 +603,25 @@ impl crate::turn::Turns {
         let mut f = g.current_formation.take().expect("made above");
         let g = self.groups.get(group).expect("the group read above");
         let result = match kind {
-            LINE | STAGGERED | FLANKED | COLUMN if !laid_out => {
-                match create_column_line(
+            LINE | STAGGERED | FLANKED | COLUMN if !laid_out => self
+                .create_column_line(
                     &mut f,
                     g,
                     kind == COLUMN,
                     (kind == STAGGERED, kind == FLANKED),
-                    world_time,
-                ) {
-                    Ok(true) => {
-                        // a line after a column keeps the units' slots (`FUN_141009060`)
-                        let after_column = kind != COLUMN
-                            && g.previous_formation
-                                .as_ref()
-                                .is_some_and(|p| p.kind == COLUMN);
-                        self.lay_units(&mut f, g, after_column)
-                    }
-                    Ok(false) => Ok(()),
-                    Err(e) => Err(e),
-                }
-            }
-            PHALANX if !laid_out => {
-                if create_phalanx(&mut f, g, world_time) {
-                    self.lay_units(&mut f, g, false)
-                } else {
-                    Ok(())
-                }
-            }
-            BOX if !laid_out => match create_box(&mut f, g, world_time) {
-                Ok(true) => self.lay_units(&mut f, g, false),
-                Ok(false) => Ok(()),
-                Err(e) => Err(e),
-            },
-            HORDE | USER_DEFINED if !laid_out => {
-                // true: the group has members
-                let _ = create_by_place(&mut f, g, &places, kind == USER_DEFINED, world_time);
-                self.formation_transform(&mut f, g, false).map(|_| ())
-            }
+                )
+                .map(|_| ()),
+            PHALANX if !laid_out => self.create_phalanx(&mut f, g).map(|_| ()),
+            BOX if !laid_out => self.create_box(&mut f, g).map(|_| ()),
+            // true: the group has members; the transform after (`LAB_141040abf`)
+            HORDE if !laid_out => self
+                .create_horde(&mut f, g)
+                .and_then(|_| self.formation_transform(&mut f, g, false))
+                .map(|_| ()),
+            USER_DEFINED if !laid_out => self
+                .create_udf(&mut f, g)
+                .and_then(|_| self.formation_transform(&mut f, g, false))
+                .map(|_| ()),
             // laid out already, or a type the switch does not know: the transform alone
             _ => self.formation_transform(&mut f, g, false).map(|_| ()),
         };
@@ -648,21 +638,6 @@ impl crate::turn::Turns {
 const RIGHT_ANGLE: f32 = crate::image::group::RIGHT_ANGLE;
 /// A slot's place kept this far inside the map's far edges (`FUN_14100b760`, `DAT_142eb5690`).
 const MAP_EDGE: f32 = crate::image::group::MAP_EDGE;
-
-impl crate::group::Motion {
-    /// `BMotion::calculateYawAngle` (`FUN_141046270`) without its clamp (`param_5` 0): the angle
-    /// from `canon` to `dir` (`FUN_14087e650`), negative when their cross product `dir × canon`
-    /// points up.
-    #[must_use]
-    pub fn yaw_angle(canon: Vec3, dir: Vec3) -> f32 {
-        let angle = crate::fmath::angle_between(dir, canon);
-        if 0.0 < crate::fmath::cross(dir, canon)[1] {
-            -angle
-        } else {
-            angle
-        }
-    }
-}
 
 /// `FUN_14100b760`: a place kept on the map: below 0 it is 0, from the map's width on it is the
 /// width less [`MAP_EDGE`], on both axes (the y test against the height, its value the width's).
@@ -788,17 +763,40 @@ const SLOT_NUDGE: [[f32; 2]; 5] = [
 /// The capacity of `ClosestUnit`'s list of the units the slots took (`DAT_143f20710`, 0x118
 /// bytes).
 const USED_UNITS: usize = 70;
+/// The feature's assignment's arrays (`FUN_14100a0c0`): 70 members or slots a side
+/// (`DAT_143f1fb50`, `DAT_143f1fc70`, 0x118 bytes each) ...
+const ASSIGNMENT_SIDE: usize = 70;
+/// ... the costs and the preferences 70 × 70 (`DAT_143f161e0`, `DAT_143f1ae70`, 0x4c90 bytes
+/// each) ...
+const ASSIGNMENT_CELLS: usize = ASSIGNMENT_SIDE * ASSIGNMENT_SIDE;
+/// ... and the taken marks 80 bytes (`DAT_143f1fb00`).
+const ASSIGNMENT_MARKS: usize = 80;
 
-impl crate::turn::Turns {
-    /// `FUN_141011300` of unit `id` (with a target, whose rams rule needs the byte
-    /// `DAT_143f01837` that nothing sets): its sub-formation ([`sub_formation`]), -1 for none.
+impl Turns {
+    /// `FUN_141011300` of `object` (`param_1`, as the world's table gives it,
+    /// [`Turns::world_object`]): -1 for none (a null object), else its master's sub-formation
+    /// ([`sub_formation`], -1 for none); a ghost's master (type 25) has none.
+    ///
+    /// The routine's target (`param_2`) enters only the rams' rule: a target of type 80 and a
+    /// unit of class 13, of master 1258, 35, 422 or 548 and of a player not a computer
+    /// (`FUN_141659cf0`), are 0 while the byte `DAT_143f01837` is 1. The image holds 0 there and
+    /// no instruction writes it: its only references are the reads at 0x141011603 (here) and
+    /// 0x14102b73d (`readdRams`, `FUN_14102b730`); `FUN_140ecabe0`, which sets the settings'
+    /// bytes before it, stops at `DAT_143f01834`. So the rule never holds and the result does
+    /// not depend on the target.
     ///
     /// # Errors
     ///
-    /// A unit of a master the slice does not have.
-    fn unit_category(&self, p: usize, u: &crate::turn::Unit) -> Result<i32, Unsupported> {
-        let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
-        Ok(sub_formation(unit.kind, unit.hero_flag, unit.formation_category).unwrap_or(-1))
+    /// An object of a master the slice does not have.
+    pub(crate) fn unit_category(
+        &self,
+        object: Option<crate::group::WorldObject<'_>>,
+    ) -> Result<i32, Unsupported> {
+        let Some(object) = object else {
+            return Ok(-1);
+        };
+        let master = self.master_of(object.player(), object.master_id())?;
+        Ok(sub_formation(master.kind, master.hero_flag, master.formation_category).unwrap_or(-1))
     }
 
     /// `ClosestUnit` (`FUN_14100e370`) of group `g` to `point`: of the members the world holds
@@ -820,21 +818,22 @@ impl crate::turn::Turns {
         let mut best = FARTHEST;
         let mut closest = -1;
         for m in &g.members {
-            let Some((p, u)) = self.object(m.id) else {
+            let Some(object) = self.world_object(m.id) else {
                 continue;
             };
-            if category != -1 && self.unit_category(p, u)? != category {
+            if category != -1 && self.unit_category(Some(object))? != category {
                 continue;
             }
             if sub_category != -1
-                && i32::from(self.master_of(p, u.life.master_id)?.id) != sub_category
+                && i32::from(self.master_of(object.player(), object.master_id())?.id)
+                    != sub_category
             {
                 continue;
             }
             if used.contains(&m.id) {
                 continue;
             }
-            let at = moved_vector(u);
+            let at = object.moved_vector();
             let d = (point[1] - at[1]) * (point[1] - at[1])
                 + (point[0] - at[0]) * (point[0] - at[0])
                 + (point[2] - at[2]) * (point[2] - at[2]);
@@ -849,15 +848,18 @@ impl crate::turn::Turns {
     /// The ground distance from slot place `at` to unit `id`'s (`FUN_14087e560`, its height
     /// zeroed, `sqrt(x² + 0 + y²)`), None for a unit the world does not hold.
     fn slot_distance(&self, at: Vec3, id: i32) -> Option<f32> {
-        let (_, u) = self.object(id)?;
-        let mut d = sub(at, moved_vector(u));
+        let object = self.world_object(id)?;
+        let mut d = sub(at, object.moved_vector());
         d[1] = 0.0;
         Some(crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]))
     }
 
-    /// `FUN_141009760` (the settings' flag `DAT_143f01834` 0, as every load of the recordings
-    /// sets it; with it set the game takes `FUN_14100a0c0`) of `formation` for group `g`: the
-    /// transformed active slots in use take the closest units of their sub-formation and type
+    /// `FUN_141009760` of `formation` for group `g` without the settings' flag `DAT_143f01834`
+    /// (the world's saved `mUseFeatureFlags` being 1, which `World::load_world` hands to
+    /// `FUN_140ecabe0`; 0 in every recording of this build), with which the game takes the
+    /// feature's assignment instead ([`Turns::assign_slots_by_variance`]; the slice holds
+    /// neither the flag nor that routine's process-global costs yet). The transformed active
+    /// slots in use take the closest units of their sub-formation and type
     /// ([`Turns::closest_unit`]), none taken twice. Two orders are measured first, as the sum of
     /// the ground distances (slot to unit) and the count found: the slots in order, and the same
     /// with the first slot's unit of that order barred from the first slot that finds one (whose
@@ -966,6 +968,157 @@ impl crate::turn::Turns {
         Ok(())
     }
 
+    /// The feature's assignment (`FUN_14100a0c0`, [`Turns::populate_slots`] with the settings'
+    /// flag) of `formation`'s slots in use to group `g`'s members, `n` of them:
+    ///
+    /// - The costs (`costs`, the process global `DAT_143f161e0` of 70 × 70 floats that only this
+    ///   routine reads and writes, all 0 as the process starts; grown to that when shorter): for
+    ///   each member the world holds ([`Turns::world_object`]), slot by slot, the squared distance from where it last
+    ///   moved to (slot 0x518, as slot 0x520) to the slot's place (`+0x1c`), summed x, height,
+    ///   y; [`FARTHEST`] for a slot not transformed or not active, of another sub-formation
+    ///   ([`Turns::unit_category`]) or, before both, of another master. A member's row starts at
+    ///   its index times `n`, so with more slots than members a row runs into the next one's,
+    ///   which overwrites it; a member the world does not hold leaves its row as it was.
+    /// - The preferences: each member's slots by cost, each the cheapest not yet taken (the
+    ///   first untaken one, then any strictly cheaper, `COMISS`/`JBE` at 0x14100a47e: a NaN cost
+    ///   neither wins nor loses), in rows laid like the costs.
+    /// - Each start member in turn takes its first preferred slot not taken, then the next
+    ///   member (wrapping), until every slot is taken or a member has none left (a start that
+    ///   placed nobody counts for nothing). Its mean is the sum of the costs over `n`, its
+    ///   variance the mean of the squared differences over the pairs placed; a variance below
+    ///   the best so far (`COMISS`/`JBE` at 0x14100a9be, from [`FARTHEST`]) keeps the start's
+    ///   pairs.
+    /// - Each kept pair's slot takes its member, filled (`+0x34`); the other slots are left as
+    ///   they are, and a member the world does not hold may take one.
+    ///
+    /// The routine's other arrays are the process's too but are filled before each read: the
+    /// preferences for the rows read (`DAT_143f1ae70`), the taken marks (`DAT_143f1fb00`), the
+    /// start's pairs (`DAT_143f1fd90`, `DAT_143f1feb0`, -1 each start) and the kept ones
+    /// (`DAT_143f1fb50`, `DAT_143f1fc70`, -1 at the start).
+    ///
+    /// # Errors
+    ///
+    /// A held member of a master the slice does not have.
+    ///
+    /// # Panics
+    ///
+    /// For more than 70 members or slots, which the game's arrays do not hold either: a group
+    /// takes fewer than 70 members ([`crate::group::create`]'s `AddUnit`) and its layouts a slot
+    /// each.
+    pub fn assign_slots_by_variance(
+        &self,
+        formation: &mut Formation,
+        g: &UnitGroup,
+        costs: &mut Vec<f32>,
+    ) -> Result<(), Unsupported> {
+        let n = g.members.len();
+        let s = formation.slots.len();
+        if costs.len() < ASSIGNMENT_CELLS {
+            costs.resize(ASSIGNMENT_CELLS, 0.0);
+        }
+        for (i, m) in g.members.iter().enumerate() {
+            let Some(object) = self.world_object(m.id) else {
+                continue;
+            };
+            if s == 0 {
+                continue;
+            }
+            let category = self.unit_category(Some(object))?;
+            let master = i32::from(object.master_id());
+            let at = object.moved_vector();
+            for (j, slot) in formation.slots.iter().enumerate() {
+                let mut skip = slot.transformed == 0 || slot.active == 0;
+                if slot.desired_category != -1 && category != slot.desired_category {
+                    skip = true;
+                }
+                let other_master =
+                    slot.desired_sub_category != -1 && master != slot.desired_sub_category;
+                costs[i * n + j] = if other_master || skip {
+                    FARTHEST
+                } else {
+                    let d = sub(at, slot.transform_position);
+                    d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+                };
+            }
+        }
+        let mut preferences = vec![-1i32; ASSIGNMENT_CELLS];
+        let mut taken = [false; ASSIGNMENT_MARKS];
+        for i in 0..n {
+            let row = i * n;
+            taken[..s].fill(false);
+            for k in 0..s {
+                let first = taken[..s].iter().position(|&t| !t).unwrap_or(s);
+                let mut best = first;
+                for j in first + 1..s {
+                    if !taken[j] && costs[row + j] < costs[row + best] {
+                        best = j;
+                    }
+                }
+                preferences[row + k] = best as i32;
+                taken[best] = true;
+            }
+        }
+        let mut kept = ([-1i32; ASSIGNMENT_SIDE], [-1i32; ASSIGNMENT_SIDE]);
+        let mut best_variance = FARTHEST;
+        for start in 0..n {
+            if s == 0 {
+                continue;
+            }
+            taken[..s].fill(false);
+            let mut pairs = ([-1i32; ASSIGNMENT_SIDE], [-1i32; ASSIGNMENT_SIDE]);
+            let (mut placed, mut sum, mut member) = (0usize, 0.0f32, start);
+            while placed < s {
+                let row = member * n;
+                let mut l = 0;
+                let mut slot = preferences[row];
+                while slot != -1 && taken[slot as usize] {
+                    l += 1;
+                    if s <= l {
+                        slot = -1;
+                        break;
+                    }
+                    slot = preferences[row + l];
+                }
+                if slot == -1 {
+                    break;
+                }
+                pairs.0[placed] = member as i32;
+                pairs.1[placed] = slot;
+                taken[slot as usize] = true;
+                sum += costs[row + slot as usize];
+                member = if member + 1 < n { member + 1 } else { 0 };
+                placed += 1;
+            }
+            if placed == 0 {
+                continue;
+            }
+            let mean = sum / n as f32;
+            let (mut variance, mut count) = (0.0f32, 0i32);
+            for (&r, &c) in pairs.0[..s].iter().zip(&pairs.1[..s]) {
+                if r != -1 && c != -1 {
+                    count += 1;
+                    let d = costs[r as usize * n + c as usize] - mean;
+                    variance += d * d;
+                }
+            }
+            variance /= count as f32;
+            if variance < best_variance {
+                best_variance = variance;
+                kept.0[..s].copy_from_slice(&pairs.0[..s]);
+                kept.1[..s].copy_from_slice(&pairs.1[..s]);
+            }
+        }
+        for (&r, &c) in kept.0[..n].iter().zip(&kept.1[..n]) {
+            if r == -1 {
+                continue;
+            }
+            let slot = &mut formation.slots[c as usize];
+            slot.position_filled = 1;
+            slot.unit_id = g.members[r as usize].id;
+        }
+        Ok(())
+    }
+
     /// `populateSlotsWithUnits` (`FUN_14102b230`) of group `g` over the first `n` slots of
     /// `formation` (at most the members), `order` their places in the line order: the members
     /// whose index has a transformed active slot (and that the world holds) form a list in
@@ -992,7 +1145,7 @@ impl crate::turn::Turns {
         let mut list: Vec<i32> = Vec::new();
         for i in 0..n {
             let s = formation.slot_mut(i);
-            if s.transformed != 0 && s.active != 0 && self.object(g.members[i].id).is_some() {
+            if s.transformed != 0 && s.active != 0 && self.world_object(g.members[i].id).is_some() {
                 list.push(g.members[i].id);
             }
         }
@@ -1009,14 +1162,15 @@ impl crate::turn::Turns {
                 if *taken == -1 {
                     continue;
                 }
-                let Some((p, unit)) = g.members.get(u).and_then(|m| self.object(m.id)) else {
+                let Some(object) = g.members.get(u).and_then(|m| self.world_object(m.id)) else {
                     continue;
                 };
-                if category != -1 && self.unit_category(p, unit)? != category {
+                if category != -1 && self.unit_category(Some(object))? != category {
                     continue;
                 }
                 if sub_category != -1
-                    && i32::from(self.master_of(p, unit.life.master_id)?.id) != sub_category
+                    && i32::from(self.master_of(object.player(), object.master_id())?.id)
+                        != sub_category
                 {
                     continue;
                 }
@@ -1133,14 +1287,12 @@ impl crate::turn::Turns {
     /// [`RIGHT_ANGLE`] with fewer than two sub-formations takes the units anew: every slot of
     /// the array loses its unit and its filled mark and the slots take their units (from the
     /// previous column, [`Turns::from_previous_column`], for `column_to_line`, else the closest,
-    /// [`Turns::populate_slots`]). The slots' passability against the group's lead (`+0xc4`,
-    /// else the first active slot's unit) is not modelled. Returns whether the slots took their
-    /// units anew (`*param_3`).
+    /// [`Turns::populate_slots`]). Then the slots' passability ([`Turns::passable_slots`]).
+    /// Returns whether the slots took their units anew (`*param_3`).
     ///
     /// # Errors
     ///
-    /// A formation line past the lines' array, a held lead or slot unit (the passability), and
-    /// the routines it runs.
+    /// A formation line past the lines' array, and the routines it runs.
     pub fn formation_transform(
         &self,
         formation: &mut Formation,
@@ -1161,8 +1313,12 @@ impl crate::turn::Turns {
             0.0,
         ];
         let [position, forward, up, _right] = g.motion.position;
-        let yaw = crate::group::Motion::yaw_angle(canon, forward);
-        let old = crate::group::Motion::yaw_angle(canon, formation.transform_orientation);
+        // calculateYawAngle without its clamp (`param_5` 0), with the world's update time
+        let dt = self.dt_seconds;
+        let yaw = g.motion.calculate_yaw_angle(canon, forward, dt, false);
+        let old = g
+            .motion
+            .calculate_yaw_angle(canon, formation.transform_orientation, dt, false);
         let flips = RIGHT_ANGLE < (yaw - old).abs() && g.unit_types.len() < 2;
         let rotation = crate::fmath::rotation(yaw, up);
         formation.transform_orientation = forward;
@@ -1184,7 +1340,8 @@ impl crate::turn::Turns {
                     let mut back = 0.0;
                     if 0 < i {
                         back = line.distance_back;
-                        if back <= 0.0 {
+                        // COMISS/JA at 0x14103a850: a NaN distance back takes the spacing too
+                        if crate::fmath::at_most_or_unordered(back, 0.0) {
                             back = i as f32 * g.desired_spacing;
                         }
                     }
@@ -1233,8 +1390,9 @@ impl crate::turn::Turns {
     }
 
     /// `FormationTransform`'s passability (`FUN_14103a1f0` after the transform) of `formation`
-    /// for group `g`, tested with the group's lead (`FUN_1410465d0`), else the first active slot's
-    /// unit the world holds (none: nothing). The slots' places are their transform positions
+    /// for group `g`, tested with the object of the group's lead ([`Turns::lead_object`], the
+    /// lead -1 the world's object -1), else that of the first active slot's unit the world's
+    /// table holds ([`Turns::world_object`], an empty slot's -1 too; none: nothing). The slots' places are their transform positions
     /// (`+0x1c`, the save's `mTransformPosition`). At the first active slot whose place's tile
     /// the tester cannot stand on (`FUN_141185690`, [`crate::spatial::Spatial::standable`] with
     /// its master's terrain mask): the active slot nearest the group's place (3D) must be
@@ -1267,18 +1425,21 @@ impl crate::turn::Turns {
     /// Never: an active slot was found, so the nearest one is too (its distance is finite).
     #[allow(clippy::too_many_lines)]
     fn passable_slots(&self, formation: &mut Formation, g: &UnitGroup) -> Result<(), Unsupported> {
-        let tester = self.object(g.motion.lead).or_else(|| {
+        let tester = self.lead_object(&g.motion).or_else(|| {
             formation
                 .slots
                 .iter()
                 .filter(|s| s.active != 0)
-                .find_map(|s| self.object(s.unit_id))
+                .find_map(|s| self.world_object(s.unit_id))
         });
-        let Some((tp, tester)) = tester else {
+        let Some(tester) = tester else {
             return Ok(());
         };
-        let mask = self.master_mask(tp, tester.life.master_id)?;
-        let stands = |at: Vec3| self.spatial.standable(at[0] as i32, at[2] as i32, mask);
+        let mask = self.master_mask(tester.player(), tester.master_id())?;
+        let stands = |at: Vec3| {
+            let (x, z) = slot_tile(at);
+            self.spatial.standable(x, z, mask)
+        };
         let position = g.motion.position[0];
         let n = formation.slots.len();
         let Some(_) = (0..n).find(|&i| {
@@ -1288,34 +1449,12 @@ impl crate::turn::Turns {
             return Ok(());
         };
         // the active slot nearest the group's place, and the box around the tester and them
-        let at = moved_vector(tester);
-        let (mut min_x, mut min_z, mut max_x, mut max_z) = (PASS_FAR, PASS_FAR, 0.0f32, 0.0f32);
-        let mut best = FARTHEST;
-        let mut nearest = None;
-        for (j, t) in formation.slots.iter().enumerate() {
-            if t.active == 0 {
-                continue;
-            }
-            let d3 = sub(t.transform_position, position);
-            let d = d3[0] * d3[0] + d3[1] * d3[1] + d3[2] * d3[2];
-            let a = if min_x <= at[0] { min_x } else { at[0] };
-            let b = if min_z <= at[2] { min_z } else { at[2] };
-            let c = if at[0] <= max_x { max_x } else { at[0] };
-            let e = if at[2] <= max_z { max_z } else { at[2] };
-            let p = t.transform_position;
-            min_x = if a <= p[0] { a } else { p[0] };
-            min_z = if b <= p[2] { b } else { p[2] };
-            max_x = if p[0] <= c { c } else { p[0] };
-            max_z = if p[2] <= e { e } else { p[2] };
-            // the game keeps the slot unless the best is at most its distance (a NaN takes it)
-            if d < best {
-                nearest = Some(j);
-                best = d;
-            } else if d.is_nan() {
-                nearest = Some(j);
-            }
-        }
-        let k = nearest.expect("an active slot lies at a finite distance");
+        let ([min_x, min_z, max_x, max_z], nearest) =
+            passability_box(&formation.slots, tester.moved_vector(), position);
+        let k = nearest.expect(
+            "an active slot lies nearer than f32::MAX (the game reads the slot before the array \
+             when none does)",
+        );
         if !stands(formation.slots[k].transform_position) {
             if !stands(position) {
                 return Ok(());
@@ -1351,47 +1490,36 @@ impl crate::turn::Turns {
             s.transform_position[0] = position[0];
             s.transform_position[2] = position[2];
         }
-        let w = ((max_x - min_x) + PASS_MARGIN + PASS_ONE) as i32;
-        let h = ((max_z - min_z) + PASS_MARGIN + PASS_ONE) as i32;
+        // CVTTSS2SI at 0x14103bedd, 0x14103bef9, 0x14103bf1c and 0x14103bf2e
+        let w = cvttss2si((max_x - min_x) + PASS_MARGIN + PASS_ONE);
+        let h = cvttss2si((max_z - min_z) + PASS_MARGIN + PASS_ONE);
         if PASS_CELLS < w || PASS_CELLS < h {
             return Ok(());
         }
-        let ox = (min_x - PASS_HALF_MARGIN) as i32;
-        let oz = (min_z - PASS_HALF_MARGIN) as i32;
+        let ox = cvttss2si(min_x - PASS_HALF_MARGIN);
+        let oz = cvttss2si(min_z - PASS_HALF_MARGIN);
         let mut grid = vec![0u8; GRID_BYTES];
         let near = formation.slots[k].transform_position;
         for &r in &reachable {
             let p = formation.slots[r].transform_position;
-            let gx = (p[0] - ox as f32) as i32;
-            let gz = (p[2] - oz as f32) as i32;
+            let gx = cvttss2si(p[0] - ox as f32);
+            let gz = cvttss2si(p[2] - oz as f32);
             if !(0 <= gx && gx < w && 0 <= gz && gz < h) {
                 continue;
             }
             let cell = (gz * w + gx) as usize;
-            let b = count_up(grid[cell]);
-            let dz = near[2] - p[2];
-            let dx = near[0] - p[0];
-            grid[cell] = if dx.abs() <= dz.abs() {
-                if dz < 0.0 {
-                    b & 0x3f | 0x81
-                } else {
-                    b & 0x3f | 1
-                }
-            } else if dx < 0.0 {
-                b | 0xc1
-            } else {
-                b & 0x3f | 0x41
-            };
+            grid[cell] = cell_mark(grid[cell], near[0] - p[0], near[2] - p[2]);
         }
         let mut visited = vec![0u8; (w * h).max(0) as usize];
         for &u in &unreachable {
             visited.fill(0);
-            let Some((up, unit)) = self.object(formation.slots[u].unit_id) else {
+            let Some(unit) = self.world_object(formation.slots[u].unit_id) else {
                 continue;
             };
-            let unit_mask = self.master_mask(up, unit.life.master_id)?;
-            let gx = (unit.position[0] - ox as f32) as i32;
-            let gy = (unit.position[1] - oz as f32) as i32;
+            let unit_mask = self.master_mask(unit.player(), unit.master_id())?;
+            let unit_at = unit.position();
+            let gx = cvttss2si(unit_at[0] - ox as f32);
+            let gy = cvttss2si(unit_at[1] - oz as f32);
             let mut found: Option<(i32, i32, usize)> = None;
             if 0 <= gx && 0 <= gy && gx < w && gy < h {
                 let mut queue = vec![(gx, gy)];
@@ -1442,8 +1570,8 @@ impl crate::turn::Turns {
                 continue;
             };
             let (mut x, mut y) = (fx, fy);
-            let near = formation.slots[k].transform_position;
-            if near[0] as i32 != fx || near[2] as i32 != fy {
+            // CVTTSS2SI at 0x14103cb6a and 0x14103cb70
+            if slot_tile(formation.slots[k].transform_position) != (fx, fy) {
                 let (rx, ry) = (fx - ox, fy - oz);
                 let (ddx, ddy) = match grid[(w * ry + rx) as usize] >> 6 {
                     0 => (0, 1),
@@ -1459,7 +1587,7 @@ impl crate::turn::Turns {
                 let b = grid[cell];
                 if b & 0x3e < 0xb
                     && !self.spatial.still_line_hit(
-                        [unit.position[0], unit.position[1]],
+                        [unit_at[0], unit_at[1]],
                         [(ddx + fx) as f32 + PASS_HALF, (fy + ddy) as f32 + PASS_HALF],
                         temporary,
                         &members,
@@ -1471,7 +1599,8 @@ impl crate::turn::Turns {
                 }
             }
             let s = &mut formation.slots[u];
-            if g.desired_spacing < PASS_ONE {
+            // COMISS/JC at 0x14103cde3: a NaN spacing nudges too
+            if crate::fmath::below_or_unordered(g.desired_spacing, PASS_ONE) {
                 s.transform_position[0] = x as f32 + PASS_HALF + SLOT_NUDGE[nudge][0];
                 s.transform_position[2] = y as f32 + PASS_HALF + SLOT_NUDGE[nudge][1];
             } else {
@@ -1489,8 +1618,71 @@ const fn count_up(b: u8) -> u8 {
     (((b & 0xfe).wrapping_add(2) ^ b) & 0x3e) ^ b
 }
 
+/// The tile of a slot's place the passability tests (`FUN_141185690`'s arguments): x and y
+/// by `CVTTSS2SI` (0x14103b5df, 0x14103b777), a NaN or out of range one `i32::MIN`.
+fn slot_tile(at: Vec3) -> (i32, i32) {
+    (cvttss2si(at[0]), cvttss2si(at[2]))
+}
+
+/// The passability's box and nearest slot (0x14103b650..0x14103b758): from the box
+/// ([`PASS_FAR`], [`PASS_FAR`]) to (0, 0), each active slot of `slots` widens it first by the
+/// tester's place `at` (slot 0x520) and then by its own, as `MINSS new, old` and `MAXSS new, old`
+/// take them (the old bound kept for a NaN either side); the nearest is the first active slot
+/// whose squared distance to the group's place `position` (summed x, height, y) lies below the
+/// best so far, from [`FARTHEST`] (`COMISS`/`CMOVBE`: a NaN distance keeps the earlier one, none
+/// when no slot lies below `f32::MAX`). Returns min x, min y, max x, max y and the nearest.
+fn passability_box(slots: &[Slot], at: Vec3, position: Vec3) -> ([f32; 4], Option<usize>) {
+    use crate::fmath::{maxss, minss};
+    let (mut min_x, mut min_z, mut max_x, mut max_z) = (PASS_FAR, PASS_FAR, 0.0f32, 0.0f32);
+    let mut best = FARTHEST;
+    let mut nearest = None;
+    for (j, t) in slots.iter().enumerate() {
+        if t.active == 0 {
+            continue;
+        }
+        let d3 = sub(t.transform_position, position);
+        let d = d3[0] * d3[0] + d3[1] * d3[1] + d3[2] * d3[2];
+        let earlier = best;
+        if d < best {
+            best = d;
+        }
+        let (a, b) = (minss(at[0], min_x), minss(at[2], min_z));
+        let (c, e) = (maxss(at[0], max_x), maxss(at[2], max_z));
+        let p = t.transform_position;
+        min_x = minss(p[0], a);
+        min_z = minss(p[2], b);
+        max_x = maxss(p[0], c);
+        max_z = maxss(p[2], e);
+        if d < earlier {
+            nearest = Some(j);
+        }
+    }
+    ([min_x, min_z, max_x, max_z], nearest)
+}
+
+/// A reachable slot's grid cell mark (0x14103bfd4..0x14103c046): the cell's count up
+/// ([`count_up`]) with bit 0, then its way toward the nearest slot `dx`, `dz` off: along y when
+/// `|dx|` is at most `|dz|` (`COMISS`/`JBE`: also for a NaN), with bit 7 for a `dz` below 0
+/// (`JNC`: also NaN); else along x, bits 6 and 7 for a `dx` below 0 (`JC`: also NaN), bit 6 alone
+/// otherwise.
+fn cell_mark(b: u8, dx: f32, dz: f32) -> u8 {
+    use crate::fmath::{at_most_or_unordered, below_or_unordered};
+    let b = count_up(b) | 1;
+    if at_most_or_unordered(dx.abs(), dz.abs()) {
+        if below_or_unordered(dz, 0.0) {
+            b & 0x3f | 0x80
+        } else {
+            b & 0x3f
+        }
+    } else if below_or_unordered(dx, 0.0) {
+        b | 0xc0
+    } else {
+        b & 0x3f | 0x40
+    }
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// `FUN_14102d580` copies a slot in use without its transform mark (`+0x44`).
@@ -1509,10 +1701,7 @@ mod tests {
     /// A 20 by 20 map of terrain class 1 but class 2 on `blocked`, masters 4 and 5 (category 1)
     /// and 6 (category 3), and player 1's `units` (id, master, x, y) on it and on the
     /// obstruction manager, all in group 1 at the origin facing x.
-    fn slot_world(
-        units: &[(i32, i16, f32, f32)],
-        blocked: &[(usize, usize)],
-    ) -> crate::turn::Turns {
+    pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usize)]) -> Turns {
         use crate::spatial::{Obstruction, Placed, Spatial, Tiles};
         use crate::terrain::{Terrain, TerrainKind};
         let objects: Vec<crate::turn::Unit> = units
@@ -1531,7 +1720,7 @@ mod tests {
             objects: objects.clone(),
             ..crate::turn::Player::default()
         };
-        let mut t = crate::turn::Turns::new(
+        let mut t = Turns::new(
             0,
             0,
             0,
@@ -1610,7 +1799,7 @@ mod tests {
     }
 
     /// A slot at `at` (x, height, y) of category `category`, transformed and active.
-    fn slot_at(at: Vec3, category: i32) -> Slot {
+    pub(crate) fn slot_at(at: Vec3, category: i32) -> Slot {
         Slot {
             unit_id: -1,
             transform_position: at,
@@ -1653,6 +1842,65 @@ mod tests {
         assert_eq!(find_point_from_front(&one, 0.0), None);
     }
 
+    /// `FUN_141011300`: a null object (none in the world's table) is -1; a ghost (its master 243
+    /// of type 25) is below 70, -1; a ram (class 13, master 35, of a human player) keeps its own
+    /// category (2), as the rams' rule never holds; a combat master with hero flag bit 4 is 5.
+    #[test]
+    fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
+        let mut t = slot_world(&[(10, 4, 1.0, 0.0), (35, 35, 2.0, 0.0)], &[]);
+        for masters in &mut t.masters {
+            *masters = crate::masters::Masters::new([
+                crate::masters::Master {
+                    id: 4,
+                    kind: 70,
+                    formation_category: 1,
+                    hero_flag: 0x10,
+                    ..crate::masters::Master::default()
+                },
+                crate::masters::Master {
+                    id: 35,
+                    kind: 70,
+                    class: 13,
+                    formation_category: 2,
+                    ..crate::masters::Master::default()
+                },
+                crate::masters::Master {
+                    id: crate::ghost::GHOST_MASTER,
+                    kind: crate::ghost::GHOST,
+                    formation_category: 1,
+                    ..crate::masters::Master::default()
+                },
+            ]);
+        }
+        t.players[1].kind = 1;
+        t.players[1].ghosts = vec![crate::ghost::Ghost {
+            id: -1,
+            original: None,
+            original_id: -1,
+            original_master: None,
+            original_owner: 1,
+            position: [3.0, 4.0, 0.0],
+            tile: [3, 4],
+            footprint: 0,
+            bits: 0,
+            cant_see: 0,
+            seen: false,
+            state: 2,
+        }];
+        assert_eq!(t.unit_category(None).unwrap(), -1);
+        assert_eq!(t.unit_category(t.world_object(99)).unwrap(), -1);
+        let ghost = t.world_object(-1);
+        assert!(matches!(
+            ghost,
+            Some(crate::group::WorldObject::Ghost(1, _))
+        ));
+        assert_eq!(t.unit_category(ghost).unwrap(), -1);
+        assert_eq!(t.unit_category(t.world_object(35)).unwrap(), 2);
+        assert_eq!(t.unit_category(t.world_object(10)).unwrap(), 5);
+        // the world's table holds ghosts only in its negative half, and none for i32::MIN
+        assert!(t.world_object(i32::MIN).is_none());
+    }
+
     /// `FUN_14100e370` from the origin: of all, 12 (category 3) is nearest; of category 1, 11;
     /// of master 4, 10; with 11 used, 10; of category 2, none.
     #[test]
@@ -1689,6 +1937,73 @@ mod tests {
         };
         assert_eq!(run(-5.0), [(11, 1), (10, 1)]);
         assert_eq!(run(5.0), [(10, 1), (11, 1)]);
+    }
+
+    /// `FUN_14100a0c0`: slots at (0, 0) and (3, 0), member 10 at the first and 11 at
+    /// (1/3, 2.98), 3 from the first slot and 4 from the second. The trials of `FUN_141009760`
+    /// give 10 the first slot (4 in all against 6); the feature keeps the start whose squared
+    /// distances differ least, 11 in the first (9) and 10 in the second (9). A member the world
+    /// does not hold (12) keeps its row of costs (0 as the process starts) and takes a slot.
+    #[test]
+    fn the_feature_s_assignment_keeps_the_start_of_least_variance() {
+        let y = (80.0f32 / 9.0).sqrt();
+        let run = |feature: bool, gone: bool| {
+            let mut t = slot_world(&[(10, 4, 0.0, 0.0), (11, 4, 1.0 / 3.0, y)], &[]);
+            if gone {
+                t.groups.groups[0].members.push(crate::group::Member {
+                    id: 12,
+                    ..crate::group::Member::default()
+                });
+            }
+            let g = t.groups.get(1).unwrap().clone();
+            let mut f = Formation::new();
+            f.slots = vec![slot_at([0.0; 3], 1), slot_at([3.0, 0.0, 0.0], 1)];
+            if feature {
+                t.assign_slots_by_variance(&mut f, &g, &mut Vec::new())
+                    .unwrap();
+            } else {
+                t.populate_slots(&mut f, &g).unwrap();
+            }
+            f.slots
+                .iter()
+                .map(|s| (s.unit_id, s.position_filled))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(run(false, false), [(10, 1), (11, 1)]);
+        assert_eq!(run(true, false), [(11, 1), (10, 1)]);
+        assert_eq!(run(true, true), [(11, 1), (12, 1)]);
+    }
+
+    /// The feature's costs persist between calls (`DAT_143f161e0`): a member the world no
+    /// longer holds is placed by the row its last call wrote, and a cost row runs into the next
+    /// member's with more slots than members.
+    #[test]
+    fn the_feature_s_costs_of_a_gone_member_are_its_last() {
+        let mut t = slot_world(&[(10, 4, 0.0, 0.0), (11, 4, 3.0, 0.0)], &[]);
+        let g = t.groups.get(1).unwrap().clone();
+        let mut costs = Vec::new();
+        let two = || vec![slot_at([0.0; 3], 1), slot_at([3.0, 0.0, 0.0], 1)];
+        let mut f = Formation::new();
+        f.slots = two();
+        t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();
+        assert_eq!(costs[..4], [0.0, 9.0, 9.0, 0.0]);
+        // 11 leaves the world: its row (9, 0) stays and still gives it the second slot
+        let _ = t.players[1].objects.remove(1);
+        let mut f = Formation::new();
+        f.slots = two();
+        t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();
+        assert_eq!(f.slots[1].unit_id, 11);
+        // three slots for two members: row 0 runs into row 1's first place, which row 1 writes
+        let t = slot_world(&[(10, 4, 0.0, 0.0), (11, 4, 3.0, 0.0)], &[]);
+        let mut f = Formation::new();
+        f.slots = vec![
+            slot_at([0.0; 3], 1),
+            slot_at([3.0, 0.0, 0.0], 1),
+            slot_at([1.0, 0.0, 0.0], 1),
+        ];
+        let mut costs = Vec::new();
+        t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();
+        assert_eq!(costs[..5], [0.0, 9.0, 9.0, 0.0, 4.0]);
     }
 
     /// `FUN_141009760` measures from the slot's `+0x1c`, which the load fills from the save's
@@ -1813,6 +2128,8 @@ mod tests {
         };
         assert_eq!(run(2.0), [[5.5, 0.0, 5.5], [5.5, 0.0, 5.5]]);
         assert_eq!(run(0.5), [[5.5, 0.0, 5.5], [5.75, 0.0, 5.5]]);
+        // COMISS/JC at 0x14103cde3: a NaN spacing nudges as one below 1
+        assert_eq!(run(f32::NAN), [[5.5, 0.0, 5.5], [5.75, 0.0, 5.5]]);
         // every slot standable: nothing moves
         let mut t = slot_world(&[(10, 4, 5.5, 5.5)], &[]);
         t.groups.groups[0].motion.lead = 10;
@@ -1821,6 +2138,81 @@ mod tests {
         f.slots = vec![slot_at([12.5, 0.0, 5.5], 1)];
         t.passable_slots(&mut f, &g).unwrap();
         assert_eq!(f.slots[0].transform_position, [12.5, 0.0, 5.5]);
+    }
+
+    /// A ghost of id `id` at (`x`, `y`) in its player's doppelganger list.
+    pub(crate) fn ghost_at(id: i32, x: f32, y: f32) -> crate::ghost::Ghost {
+        crate::ghost::Ghost {
+            id,
+            original: None,
+            original_id: -1,
+            original_master: None,
+            original_owner: 1,
+            position: [x, y, 0.0],
+            tile: [x as i32, y as i32],
+            footprint: 0,
+            bits: 0,
+            cant_see: 0,
+            seen: false,
+            state: 2,
+        }
+    }
+
+    /// `FUN_1410465d0` for the constructor's lead -1 finds the world's object -1: a ghost there
+    /// (master 243, its restriction 1 standing on class 2 only) tests the slots, stands on none
+    /// of them nor on the group's place, so nothing moves; without it the first active slot's
+    /// unit tests them, and slot 1 moves as with that unit as the lead.
+    #[test]
+    fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
+        use crate::terrain::{Terrain, TerrainKind};
+        let run = |ghost: bool| {
+            let mut t = slot_world(&[(10, 4, 5.5, 5.5), (11, 4, 7.5, 5.5)], &[(8, 5)]);
+            let kind = |flags: u8| TerrainKind {
+                shown: true,
+                flags,
+                forest: false,
+            };
+            t.spatial.terrain = Some(Terrain::new(
+                20,
+                20,
+                vec![(0, 255, -1); 400],
+                vec![kind(1), kind(8)],
+                vec![vec![1.0, 0.0], vec![0.0, 1.0]],
+            ));
+            for masters in &mut t.masters {
+                let ghost = crate::masters::Master {
+                    id: crate::ghost::GHOST_MASTER,
+                    kind: crate::ghost::GHOST,
+                    terrain_restriction: 1,
+                    ..crate::masters::Master::default()
+                };
+                *masters = crate::masters::Masters::new(masters.iter().cloned().chain([ghost]));
+            }
+            if ghost {
+                t.players[1].ghosts = vec![ghost_at(-1, 1.0, 1.0)];
+            }
+            t.groups.groups[0].motion.position[0] = [5.5, 0.0, 5.5];
+            assert_eq!(t.groups.groups[0].motion.lead, -1);
+            let g = t.groups.get(1).unwrap().clone();
+            let mut f = Formation::new();
+            f.slots = vec![
+                Slot {
+                    unit_id: 10,
+                    ..slot_at([5.5, 0.0, 5.5], 1)
+                },
+                Slot {
+                    unit_id: 11,
+                    ..slot_at([8.5, 0.0, 5.5], 1)
+                },
+            ];
+            t.passable_slots(&mut f, &g).unwrap();
+            f.slots
+                .iter()
+                .map(|s| s.transform_position)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(run(false), [[5.5, 0.0, 5.5], [5.5, 0.0, 5.5]]);
+        assert_eq!(run(true), [[5.5, 0.0, 5.5], [8.5, 0.0, 5.5]]);
     }
 
     /// The passability's extra step: slot 1's unit at (7.5, 7.5) finds slot 2's cell (6, 7)
@@ -1847,6 +2239,75 @@ mod tests {
         t.passable_slots(&mut f, &g).unwrap();
         assert_eq!(f.slots[1].transform_position, [6.5, 0.0, 6.5]);
         assert_eq!(f.slots[2].transform_position, [6.5, 0.0, 7.5]);
+    }
+
+    /// The passability's box and nearest slot as the assembly takes them: a NaN place keeps the
+    /// box's old bounds (`MINSS`/`MAXSS` of the new value first) and the earlier nearest slot
+    /// (`COMISS`/`CMOVBE`); an inactive slot counts for neither.
+    #[test]
+    fn the_passability_box_keeps_its_bounds_and_nearest_for_a_nan_place() {
+        let nan = [f32::NAN, 0.0, f32::NAN];
+        let mut idle = slot_at([50.0, 0.0, 50.0], 1);
+        idle.active = 0;
+        let slots = [
+            slot_at([4.0, 0.0, 6.0], 1),
+            slot_at(nan, 1),
+            idle,
+            slot_at([3.0, 0.0, 2.0], 1),
+        ];
+        let (bounds, nearest) = passability_box(&slots, [5.0, 0.0, 5.0], [3.0, 0.0, 3.0]);
+        assert_eq!(bounds, [3.0, 2.0, 5.0, 6.0]);
+        assert_eq!(nearest, Some(3));
+        let (_, nearest) = passability_box(&slots[..2], [5.0, 0.0, 5.0], [3.0, 0.0, 3.0]);
+        assert_eq!(nearest, Some(0));
+        // a NaN tester place keeps the starting bounds for its part too
+        let (bounds, _) = passability_box(&slots[..1], nan, [3.0, 0.0, 3.0]);
+        assert_eq!(bounds, [4.0, 6.0, 4.0, 6.0]);
+        assert_eq!(passability_box(&slots[1..2], nan, [0.0; 3]).1, None);
+    }
+
+    /// A reachable slot's cell mark: along y for `|dx| <= |dz|` and for a NaN (bit 7 for a `dz`
+    /// below 0 or NaN), else along x (bits 6 and 7 for a `dx` below 0 or NaN, bit 6 else); the
+    /// count goes up and bit 0 is set.
+    #[test]
+    fn a_cell_mark_points_toward_the_nearest_slot_and_a_nan_along_y() {
+        assert_eq!(cell_mark(0, 0.0, 2.0), 3);
+        assert_eq!(cell_mark(0, 0.0, -2.0), 0x83);
+        assert_eq!(cell_mark(0, 3.0, 1.0), 0x43);
+        assert_eq!(cell_mark(0, -3.0, 1.0), 0xc3);
+        assert_eq!(cell_mark(0xc3, 0.0, 2.0), 5);
+        assert_eq!(cell_mark(0, f32::NAN, 2.0), 3);
+        assert_eq!(cell_mark(0, 3.0, f32::NAN), 0x83);
+        assert_eq!(cell_mark(0, f32::NAN, f32::NAN), 0x83);
+        // a slot's tile by CVTTSS2SI: a NaN place is off any map
+        assert_eq!(slot_tile([f32::NAN, 0.0, 2.5]), (i32::MIN, 2));
+    }
+
+    /// The line transform's distance back (0x14103a850, `COMISS`/`JA`): a line's own when it is
+    /// above 0, else, a NaN too, the line's index times the spacing.
+    #[test]
+    fn a_nan_distance_back_takes_the_index_times_the_spacing() {
+        let t = slot_world(&[(10, 4, 5.0, 5.0)], &[]);
+        let mut g = t.groups.get(1).unwrap().clone();
+        g.motion.position[0] = [9.0, 0.0, 5.0];
+        g.desired_spacing = 2.0;
+        let mut f = Formation::new();
+        f.transform_type = 0;
+        f.number_lines = 2;
+        f.slots = vec![slot_at([0.0; 3], 1), slot_at([0.0; 3], 1)];
+        f.lines = vec![
+            FormationLine {
+                indices: vec![0],
+                ..FormationLine::default()
+            },
+            FormationLine {
+                indices: vec![1],
+                distance_back: f32::NAN,
+                ..FormationLine::default()
+            },
+        ];
+        let _ = t.formation_transform(&mut f, &g, false).unwrap();
+        assert_eq!(f.slots[1].transform_position, [7.0, 0.0, 5.0]);
     }
 
     /// `FUN_141041810`: every slot of the array, spare ones too, loses its unit and filled mark.
@@ -1877,6 +2338,63 @@ mod tests {
         assert_eq!(count_up(0xc1 | 0x3e), 0xc1);
     }
 
+    /// One statistic of category 1 holding `units`, all of master 4, spacing 1.
+    fn one_statistic(t: &mut Turns, units: &[i32]) {
+        let mut unit_types = vec![0u32; 50];
+        unit_types[0] = 4;
+        let mut counts = vec![0u32; 50];
+        counts[0] = units.len() as u32;
+        let g = &mut t.groups.groups[0];
+        g.desired_spacing = 1.0;
+        g.unit_types = vec![crate::group::UnitTypeStatistic {
+            formation_category: 1,
+            units: units.to_vec(),
+            desired_spacing: 1.0,
+            number_unit_types: 1,
+            unit_types,
+            unit_type_counts: counts,
+            ..crate::group::UnitTypeStatistic::default()
+        }];
+    }
+
+    /// `FUN_141012280` lays its slots, transforms them and takes the units, the column-to-line
+    /// flag set for a line after a column (0x141013d20..0x141013d3a): a line of three after a
+    /// column takes its members from the middle out (11, 10, 12), after a line the closest
+    /// (10, 11, 12); each as its slots and `lay_units` with that flag.
+    #[test]
+    fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
+        let run = |previous: i32| {
+            let mut t = slot_world(
+                &[(10, 4, 5.5, 5.5), (11, 4, 5.5, 6.5), (12, 4, 5.5, 7.5)],
+                &[],
+            );
+            one_statistic(&mut t, &[10, 11, 12]);
+            t.groups.groups[0].motion.position[0] = [6.5, 0.0, 6.5];
+            let mut before = Formation::new();
+            before.kind = previous;
+            t.groups.groups[0].previous_formation = Some(before);
+            let g = t.groups.get(1).unwrap().clone();
+            let mut whole = Formation::new();
+            assert!(
+                t.create_column_line(&mut whole, &g, false, (false, false))
+                    .unwrap()
+            );
+            let mut parts = Formation::new();
+            assert!(column_line_slots(
+                &mut parts,
+                &g,
+                false,
+                (false, false),
+                t.world_time
+            ));
+            t.lay_units(&mut parts, &g, previous == COLUMN).unwrap();
+            assert_eq!(whole, parts);
+            whole.slots.iter().map(|s| s.unit_id).collect::<Vec<_>>()
+        };
+        assert_eq!(run(COLUMN), [11, 10, 12]);
+        assert_eq!(run(LINE), [10, 11, 12]);
+    }
+
     /// A path level of `points` points at waypoint `waypoint` (none without points).
     fn level(points: &[Vec3], waypoint: i32, flags: u32) -> PathData {
         PathData {
@@ -1902,7 +2420,7 @@ mod tests {
 
     /// Player 1 (minimum column distance 10, column-to-line 5) with unit 7 of a soldier master
     /// (type 70, category 1) in group 1 at the origin along `paths` (walked first).
-    fn type_world(paths: Vec<PathData>) -> crate::turn::Turns {
+    fn type_world(paths: Vec<PathData>) -> Turns {
         let mut u = crate::turn::Unit {
             id: 7,
             ..crate::turn::Unit::default()
@@ -1917,7 +2435,7 @@ mod tests {
             },
             ..crate::turn::Player::default()
         };
-        let mut t = crate::turn::Turns::new(
+        let mut t = Turns::new(
             0,
             0,
             0,
@@ -1945,7 +2463,7 @@ mod tests {
         t
     }
 
-    fn own(t: &crate::turn::Turns) -> i32 {
+    fn own(t: &Turns) -> i32 {
         t.own_formation_type(t.groups.get(1).unwrap()).unwrap()
     }
 
@@ -2073,7 +2591,7 @@ mod tests {
     fn a_line_of_two_unit_types_alternates_its_slots() {
         let g = group_of(3, 10, 1.0, &[(4, 5), (24, 5)]);
         let mut f = Formation::new();
-        assert!(create_column_line(&mut f, &g, false, (false, false), 77).unwrap());
+        assert!(column_line_slots(&mut f, &g, false, (false, false), 77));
         assert_eq!((f.kind, f.maximum_width, f.maximum_depth), (LINE, 5, 2));
         assert_eq!(f.slots.len(), 10);
         assert_eq!(f.slots[0].offset, [0.0, 0.0, -2.0]);
