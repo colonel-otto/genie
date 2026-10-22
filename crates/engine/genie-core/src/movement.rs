@@ -843,13 +843,11 @@ impl Mover {
             let Some(level) = self.paths.first().filter(|l| l.has_path) else {
                 return Ok(Motion::Done);
             };
+            // FUN_1415417a0 on the level's target: none for -1 and for an object that is gone,
+            // which then measures as a walk to a point (LAB_1411512df)
             let target = match level.target {
                 -1 => None,
-                id => Some(
-                    *world
-                        .get_known(id)?
-                        .ok_or(Unsupported("a path target that is gone"))?,
-                ),
+                id => world.get_known(id)?.copied(),
             };
             // the gap to the target, else to where the top level's path ends; a gate's is the
             // least over it and its first two annexes (slot 0x680), each annex's less 0.1
@@ -3434,6 +3432,29 @@ mod tests {
         m.stats.turn_rate = 1.0;
         assert_eq!(m.steer([0.0, 0.0, 1.0], 0.02), Ok(true));
         assert!(m.forward[2].abs() < 0.03);
+    }
+
+    /// `0x141150f00`: a level whose target is gone walks as to a point (`FUN_1415417a0` finds
+    /// none, `LAB_1411512df`), as one with no target does.
+    #[test]
+    fn a_walk_whose_target_is_gone_walks_as_to_a_point() {
+        let walk = |target: i32| {
+            let mut m = builder_9177();
+            for l in &mut m.paths {
+                l.target = target;
+                l.range = 0.0;
+            }
+            let mut me = Me {
+                id: 9926,
+                position: [28.0, 89.0, 0.0],
+                group: -1,
+                action_state: 0,
+            };
+            let motion = m.motion(&mut me, DT, &mut Spatial::new([120, 120]), None);
+            (motion, m.forward, m.velocity)
+        };
+        assert_eq!(walk(77), walk(-1));
+        assert_eq!(walk(77).0, Ok(Motion::Moving));
     }
 
     /// The motion step's gate gaps (0x1411512b3, 0x141151a62, 0x141154f22): a gate's gap is the
