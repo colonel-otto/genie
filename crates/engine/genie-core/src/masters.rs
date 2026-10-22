@@ -1,5 +1,8 @@
 //! What the engine reads of a player's masters: the tasks a unit can do and the masters a unit
-//! changes into to do them. The values are game data: the player's masters in the save, with the
+//! changes into to do them, and how an effect changes a master: the attribute setters (slots
+//! 0x18, 0x20 and 0x28 of every master type, [`Master::set_attribute`]), the master copy of an
+//! upgrade (slot 8, [`Master::copy_from`]) and the values the slice derives from a master
+//! ([`Master::follow`]). The values are game data: the player's masters in the save, with the
 //! `.dat`'s values for what the save does not carry.
 
 use crate::movement::MoveStats;
