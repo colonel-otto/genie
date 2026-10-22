@@ -13,6 +13,7 @@
 //! `FUN_1413b2d90` (always), frame reset `FUN_1413b5030`, looped (slot 12) `FUN_1413b38e0`
 //! (never).
 
+use crate::fmath;
 use crate::rng::Well512;
 
 /// What the clock reads of a sprite (the `.dat` graphic, memory `+0x8`..`+0x1a`).
@@ -183,7 +184,8 @@ impl ActiveSprite {
     fn interval_at(&self, speed: f32) -> f32 {
         let g = &self.graphic;
         let mut i = g.frame_duration;
-        if EPSILON <= g.speed_multiplier {
+        // COMISS/JA: only an ordered 1e-7 above the multiplier skips it
+        if fmath::at_most_or_unordered(EPSILON, g.speed_multiplier) {
             i *= g.speed_multiplier;
         }
         if 0.0 < speed {
@@ -226,13 +228,15 @@ impl ActiveSprite {
             self.speed = speed;
             i
         };
-        if time < interval {
+        // COMISS/JC at 0x1413b5149: an unordered time or interval returns too
+        if fmath::below_or_unordered(time, interval) {
             return;
         }
         let forward = !g.backwards();
         self.changed = true;
         self.last_frame = start;
-        let steps = (time / interval) as i32 as i16;
+        // CVTTSS2SI EDX, MOVSX EAX, DX (0x1413b5177)
+        let steps = crate::checkpoint::cvttss2si(time / interval) as i16;
         self.last = time - f32::from(steps) * interval;
         if 0.0 < speed || g.speed_multiplier == 0.0 {
             let f = start + if forward { steps } else { -steps };
@@ -244,7 +248,8 @@ impl ActiveSprite {
         let mut stop = self.looped;
         if self.looped {
             let mut f;
-            if g.replay_delay <= 0.0 || self.animate == 2 {
+            // COMISS/JBE at 0x1413b521f: an unordered delay loops at once
+            if fmath::at_most_or_unordered(g.replay_delay, 0.0) || self.animate == 2 {
                 self.animate = 1;
                 f = self.frame % g.frames;
                 if f < 0 {
@@ -311,6 +316,42 @@ mod tests {
         }
         // update 1057, the 49th
         assert_eq!((n, s.frame), (49, 22));
+    }
+
+    /// `FUN_1413b5070`'s compares are COMISS: a NaN speed multiplier still multiplies (JA at
+    /// 0x1413b5112 skips only for an ordered 1e-7 above it), and the NaN interval then returns
+    /// before a step (JC at 0x1413b5149).
+    #[test]
+    fn a_nan_speed_multiplier_holds_the_frame() {
+        let g = Graphic {
+            speed_multiplier: f32::NAN,
+            ..CHOP
+        };
+        let mut s = ActiveSprite::start(g, &mut Well512::default());
+        s.update(1.0, 1.0);
+        assert_eq!((s.frame, s.changed), (0, false));
+    }
+
+    /// `CVTTSS2SI EDX` then `MOVSX EAX, DX` (0x1413b5177): a quotient past the i32 range steps
+    /// 0 frames (0x80000000's low word), where a saturating cast would step back one.
+    #[test]
+    fn a_step_count_past_the_i32_range_steps_no_frame() {
+        let mut s = ActiveSprite::start(CHOP, &mut Well512::default());
+        s.update(3.0e8, 1.0);
+        assert_eq!((s.frame, s.changed, s.looped), (0, true, false));
+    }
+
+    /// The replay delay's test is COMISS/JBE (0x1413b521f): a NaN delay loops at once.
+    #[test]
+    fn a_nan_replay_delay_loops_at_once() {
+        let g = Graphic {
+            frames: 2,
+            replay_delay: f32::NAN,
+            ..CHOP
+        };
+        let mut s = ActiveSprite::start(g, &mut Well512::default());
+        s.update(0.1, 1.0);
+        assert_eq!(s.animate, 1);
     }
 
     #[test]

@@ -473,7 +473,8 @@ fn split(path: &mut Path, i: i32) {
     let Ok(at) = usize::try_from(i) else {
         return;
     };
-    if path.points.len() - 1 <= at {
+    // a signed `count - 1`: an empty path has no stretch
+    if path.points.len() as i64 - 1 <= at as i64 {
         return;
     }
     let (a, b) = (path.points[at], path.points[at + 1]);
@@ -2717,8 +2718,10 @@ fn reach(waypoint: Vec3, position: Vec3, projected: Vec3) -> Reach {
         fmath::length(after),
         fmath::length(step),
     );
-    if EPSILON <= after {
-        if step <= now {
+    // COMISS eps, after; JA: only an ordered 1e-7 above `after` reaches at once
+    if fmath::at_most_or_unordered(EPSILON, after) {
+        // COMISS step, now; JBE: short also when either is NaN
+        if fmath::at_most_or_unordered(step, now) {
             return Reach::Short;
         }
         if now < after {
@@ -3087,6 +3090,42 @@ mod tests {
             in_the_way: Vec::new(),
             sprite_facets: None,
         }
+    }
+
+    /// `FUN_140f9b8f0` compares `i` with the point count less one, signed: an empty path or the
+    /// last point has no stretch to split; any other stretch gets its midpoint.
+    #[test]
+    fn a_split_takes_the_midpoint_of_a_stretch_and_skips_an_empty_path() {
+        let mut empty = Path::default();
+        split(&mut empty, 0);
+        assert_eq!(empty.points, Vec::<Vec3>::new());
+        let mut path = Path {
+            points: vec![[0.0, 0.0, 0.0], [4.0, 0.0, 0.0]],
+            length: 4.0,
+        };
+        split(&mut path, 1);
+        assert_eq!(path.points.len(), 2);
+        split(&mut path, 0);
+        assert_eq!(
+            path.points,
+            [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [4.0, 0.0, 0.0]]
+        );
+    }
+
+    /// Slot 196 (`FUN_14114f400`) at 0x14114f520..0x14114f52d: a NaN distance to the waypoint
+    /// goes past the first test and stops at the second (JBE on unordered): short.
+    #[test]
+    fn a_nan_waypoint_distance_is_short() {
+        let w = [f32::NAN, 0.0, 5.0];
+        assert!(matches!(reach(w, [0.0; 3], [1.0, 0.0, 0.0]), Reach::Short));
+        assert!(matches!(
+            reach([5.0, 0.0, 0.0], [0.0; 3], [1.0, 0.0, 0.0]),
+            Reach::Short
+        ));
+        assert!(matches!(
+            reach([5.0, 0.0, 0.0], [0.0; 3], [5.0, 0.0, 0.0]),
+            Reach::Reached
+        ));
     }
 
     #[test]

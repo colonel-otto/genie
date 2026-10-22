@@ -4235,7 +4235,11 @@ impl UnitAi {
                 k += 1;
                 continue;
             }
-            let _ = self.orders.remove(k);
+            // the game removes the order only while k is inside the queue: slot 0x230 may have
+            // shrunk it (FUN_140c5de60)
+            if k < self.orders.len() {
+                let _ = self.orders.remove(k);
+            }
             if r == 1 {
                 return Ok(());
             }

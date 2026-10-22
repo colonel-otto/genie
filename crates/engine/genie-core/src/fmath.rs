@@ -145,6 +145,12 @@ pub fn below_or_unordered(a: f32, b: f32) -> bool {
     a < b || a.is_nan() || b.is_nan()
 }
 
+/// `COMISS a, b` then `JBE`: taken when `a` is at most `b` or either is NaN (unordered).
+#[must_use]
+pub fn at_most_or_unordered(a: f32, b: f32) -> bool {
+    a <= b || a.is_nan() || b.is_nan()
+}
+
 /// `MINSS a, b`: `a` when it is less than `b`, else `b` (also when either is NaN).
 #[must_use]
 pub fn minss(a: f32, b: f32) -> f32 {
@@ -166,6 +172,8 @@ mod tests {
         assert!(below_or_unordered(1.0, 2.0));
         assert!(!below_or_unordered(2.0, 2.0) && !below_or_unordered(3.0, 2.0));
         assert!(below_or_unordered(f32::NAN, 2.0) && below_or_unordered(2.0, f32::NAN));
+        assert!(at_most_or_unordered(2.0, 2.0) && !at_most_or_unordered(3.0, 2.0));
+        assert!(at_most_or_unordered(f32::NAN, 2.0) && at_most_or_unordered(2.0, f32::NAN));
     }
 
     #[test]

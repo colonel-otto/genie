@@ -306,10 +306,12 @@ impl Turns {
             *adj = match mode {
                 2 => {
                     let half = if amount < 1.0 { -0.5 } else { 0.5 };
-                    adj.wrapping_add(((amount - 1.0) * f32::from(cost.amount) + half) as i32 as i16)
+                    let delta = (amount - 1.0) * f32::from(cost.amount) + half;
+                    adj.wrapping_add(crate::checkpoint::cvttss2si(delta) as i16)
                 }
-                0 => (amount as i32 as i16).wrapping_sub(cost.amount),
-                _ => adj.wrapping_add(amount as i32 as i16),
+                // CVTTSS2SI's 32 bits, the low word added (0x1413d11a6, 0x1413d11be)
+                0 => (crate::checkpoint::cvttss2si(amount) as i16).wrapping_sub(cost.amount),
+                _ => adj.wrapping_add(crate::checkpoint::cvttss2si(amount) as i16),
             };
             if resource != -1 {
                 return;
@@ -336,10 +338,12 @@ impl Turns {
                     states[t].state = -1;
                 }
             };
+        // FUN_1413cdb00 takes the id's low 16 bits (MOVZX EDX, BX in FUN_14163a500)
+        let short = tech as i16;
         let states = &mut self.players[p].techs;
-        match held {
+        match usize::try_from(short).ok().filter(|&t| t < count) {
             Some(t) => disable(&self.techs, states, t),
-            None if tech < 0 => {
+            None if short < 0 => {
                 for t in 0..count {
                     disable(&self.techs, states, t);
                 }
@@ -613,6 +617,77 @@ mod tests {
         assert_eq!(t.players[0].techs[1].cost_adj, [-75, -25, 0]);
         // the research time modifier is not modelled
         assert!(t.do_effect(0, &[command(b'g', 0, -1, 1, 5.0)]).is_err());
+    }
+
+    /// `FUN_1413cdb00` reads the id as a short (`MOVZX EDX, BX` in `FUN_14163a500`): 65538 is
+    /// technology 2, 65535 is −1, every technology.
+    #[test]
+    fn the_disable_command_reads_its_id_s_low_16_bits() {
+        use crate::tech::{TechDef, TechState};
+        let state = |s: i16| TechState {
+            state: s,
+            ..TechState::default()
+        };
+        let player = Player {
+            techs: vec![state(0), state(0), state(0)],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        t.techs = vec![TechDef::default(); 3];
+        let disable = |d: f32| EffectCommand {
+            kind: b'f',
+            a: -1,
+            b: -1,
+            c: -1,
+            d,
+        };
+        t.do_effect(0, &[disable(65538.0)]).unwrap();
+        let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
+        assert_eq!(states, [0, 0, -1]);
+        t.do_effect(0, &[disable(65535.0)]).unwrap();
+        let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
+        assert_eq!(states, [-1, -1, -1]);
+    }
+
+    /// `FUN_1413d10f0` converts with `CVTTSS2SI` and adds the low word: an amount of 2^31 or
+    /// more adds 0 (0x80000000's low word), where a saturating cast would add −1.
+    #[test]
+    fn a_cost_change_past_the_i32_range_adds_nothing() {
+        use crate::tech::{Cost, TechDef, TechState};
+        let player = Player {
+            techs: vec![TechState::default()],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        t.techs = vec![TechDef {
+            costs: [
+                Cost {
+                    attribute: 0,
+                    amount: 150,
+                    paid: 1,
+                },
+                Cost::default(),
+                Cost::default(),
+            ],
+            ..TechDef::default()
+        }];
+        let change = EffectCommand {
+            kind: b'e',
+            a: 0,
+            b: 0,
+            c: 1,
+            d: 3.0e9,
+        };
+        t.do_effect(0, &[change]).unwrap();
+        assert_eq!(t.players[0].techs[0].cost_adj, [0, 0, 0]);
+        // mode 2 at 1.5: (1.5 − 1) × 150 + 0.5 = 75.5, truncated to 75
+        let scale = EffectCommand {
+            c: 2,
+            d: 1.5,
+            ..change
+        };
+        t.do_effect(0, &[scale]).unwrap();
+        assert_eq!(t.players[0].techs[0].cost_adj, [75, 0, 0]);
     }
 
     /// A dead building's master technology goes back to 0 (`FUN_1413d4ec0`) when no other
