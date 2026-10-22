@@ -1288,8 +1288,30 @@ impl Attack {
             }
             return Ok(0);
         }
-        if self.arms.interrupt_frame != -1 {
-            return Err(Unsupported("a swing with an interrupt frame"));
+        match after_hit(
+            ranged,
+            *s.attack_timer,
+            self.target != -1,
+            self.arms.interrupt_frame,
+            self.arms.fire_frame,
+            sprite.frame,
+        ) {
+            AfterHit::Done => {
+                self.enter(KILLED, walk, s)?;
+                return Ok(0);
+            }
+            AfterHit::Ready => {
+                self.ready(walk, s)?;
+                return Ok(0);
+            }
+            // readyToAttack with its third argument 0: a target out of reach is followed
+            // (`set_state` 4); a ready unit only faces it; the swing goes on either way
+            AfterHit::Continue { check: true } => {
+                if let Readiness::Away(gap) = self.ready_to_attack(&mut walk.reborrow(), s)? {
+                    self.follow(walk, s, gap)?;
+                }
+            }
+            AfterHit::Continue { check: false } => {}
         }
         if !sprite.looped && sprite.graphic.flags & 1 != 0 {
             return Ok(0);
@@ -1385,6 +1407,49 @@ pub(crate) struct Hit {
     pub from_z: Option<f32>,
     pub missile: bool,
     pub chance: i16,
+}
+
+/// What the swing does after its hit, before it waits for its sprite's loop (`FUN_140a82ae0`
+/// case 6, `+0x9e` clear).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AfterHit {
+    /// A ranged unit without a target (and no indirect fire, `+0xa0`, which the slice's attacks
+    /// never have): `set_state(2)`.
+    Done,
+    /// A ranged unit past its interrupt frame, else its firing frame: `set_state(6)` at once.
+    Ready,
+    /// The swing goes on; at or past its interrupt frame readyToAttack (`FUN_140a7f9d0` with 0)
+    /// runs first.
+    Continue {
+        /// readyToAttack runs.
+        check: bool,
+    },
+}
+
+/// [`AfterHit`] of a unit with a missile or not (`ranged`, `+0x98`), its attack timer (`+0x91c`,
+/// slot 0x100: `COMISS` with 0 then `SETBE`, so NaN counts as run out), a target (`+0x20`), its
+/// interrupt frame (`+0x9c`, −1 for none), its firing frame (`+0x9a`) and the sprite's frame
+/// (the sprite list's slot 8: the node's `+0x24`), compared as signed shorts.
+fn after_hit(
+    ranged: bool,
+    timer: f32,
+    target: bool,
+    interrupt: i16,
+    fire: i16,
+    frame: i16,
+) -> AfterHit {
+    if ranged && crate::fmath::at_most_or_unordered(timer, 0.0) {
+        if !target {
+            return AfterHit::Done;
+        }
+        let limit = if interrupt == -1 { fire } else { interrupt };
+        if limit < frame {
+            return AfterHit::Ready;
+        }
+    }
+    AfterHit::Continue {
+        check: interrupt != -1 && interrupt <= frame,
+    }
 }
 
 /// What a hit did: its result (`+0x98` of a missile: 2 when a shield blocked it, else 1) and the
@@ -1561,6 +1626,26 @@ fn squared_reach(range: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `FUN_140a82ae0` case 6 after the hit: a ranged unit whose attack timer ran out is done
+    /// without a target and ready again past its interrupt frame (its firing frame without one);
+    /// at or past the interrupt frame readyToAttack runs, the swing going on.
+    #[test]
+    fn a_swing_after_its_hit_follows_its_interrupt_and_firing_frames() {
+        use AfterHit::{Continue, Done, Ready};
+        // ranged, timer run out (NaN counts too)
+        assert_eq!(after_hit(true, 0.0, false, 5, 3, 9), Done);
+        assert_eq!(after_hit(true, 0.0, true, 5, 3, 6), Ready);
+        assert_eq!(after_hit(true, f32::NAN, true, 5, 3, 6), Ready);
+        assert_eq!(after_hit(true, -1.0, true, -1, 3, 4), Ready);
+        assert_eq!(after_hit(true, 0.0, true, -1, 3, 3), Continue { check: false });
+        assert_eq!(after_hit(true, 0.0, true, 5, 3, 5), Continue { check: true });
+        // ranged with time left, or melee: only the interrupt test
+        assert_eq!(after_hit(true, 0.5, false, 5, 3, 9), Continue { check: true });
+        assert_eq!(after_hit(false, 0.0, false, 5, 3, 4), Continue { check: false });
+        assert_eq!(after_hit(false, 0.0, true, 5, 3, 5), Continue { check: true });
+        assert_eq!(after_hit(false, 0.0, true, -1, 3, 9), Continue { check: false });
+    }
 
     #[test]
     fn a_rangeless_attack_reaches_a_tenth_squared_in_f32() {
