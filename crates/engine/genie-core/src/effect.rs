@@ -711,6 +711,23 @@ impl Turns {
         (done, pending)
     }
 
+    /// The ids of player `p`'s done objects its tracker files under key master `key`
+    /// (`FUN_14104f560`'s list of one key, whatever the objects' masters), in the player's lists'
+    /// order.
+    fn tracked_key(&self, p: usize, key: i16) -> Vec<i32> {
+        let Some(masters) = self.masters.get(p) else {
+            return Vec::new();
+        };
+        let player = &self.players[p];
+        player
+            .objects
+            .iter()
+            .chain(&player.sleeping)
+            .filter(|u| tracker_key(masters, u).is_some_and(|k| k.master == key && !k.pending))
+            .map(|u| u.id)
+            .collect()
+    }
+
     /// The ids of player `p`'s objects of master `master` its tracker files under it
     /// (`FUN_14104f960`; `FUN_14165a860` keeps those of that very master), and for a building
     /// master those pending under it, or under the stack unit it heads (`FUN_14104fa50`, key
@@ -1455,27 +1472,6 @@ impl Turns {
 }
 
 impl Turns {
-    /// Slot 0x1b0 (`FUN_141620c70`) of player `p` on resource `attribute`. Not yet ported.
-    fn modify_resource(
-        &mut self,
-        _p: usize,
-        _attribute: i16,
-        _amount: f32,
-        _mode: u8,
-    ) -> Result<(), Unsupported> {
-        Err(Unsupported("an effect command the slice does not model"))
-    }
-
-    /// Slot 0x1b8 (`FUN_141620e30`). Not yet ported.
-    fn multiply_resource(
-        &mut self,
-        _p: usize,
-        _attribute: i16,
-        _v: f32,
-    ) -> Result<(), Unsupported> {
-        Err(Unsupported("an effect command the slice does not model"))
-    }
-
     /// Slot 0x1a0 (`FUN_14160e410`). Not yet ported.
     fn upgrade_master(
         &mut self,
@@ -1523,11 +1519,6 @@ impl Turns {
         Err(Unsupported("an effect command the slice does not model"))
     }
 
-    /// `FUN_141615270`. Not yet ported.
-    fn farm_food(&mut self, _p: usize, _before: f32, _amount: f32) -> Result<(), Unsupported> {
-        Err(Unsupported("an effect command the slice does not model"))
-    }
-
     /// The objects' kinds 200 to 206. Not yet ported.
     fn object_effect(
         &mut self,
@@ -1550,6 +1541,226 @@ impl Turns {
         Err(Unsupported(
             "an effect's research time command ('g', FUN_1413d1210)",
         ))
+    }
+}
+
+/// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):
+/// the player's `allied_LOS_Enable` (`+0x2cc`) takes 1, the world's masks are rebuilt (its slot
+/// 0x78, [`Turns::rebuild_vision`]) and the player's map files every tile its masks reach as new
+/// (`FUN_141285cb0`).
+const ALLIED_VISION: i16 = 0x32;
+/// The attribute that shares every player's sight (0xb7): the masks are rebuilt.
+const SHARED_VISION: i16 = 0xb7;
+/// The attribute of the town centres' flare reveal across the players (0xc4, Spies' "Treason"):
+/// a player with it above 0 changes nothing; else each other player with it at most 0 takes the
+/// amount too.
+const SPREAD_ATTRIBUTE: i16 = 0xc4;
+/// The attribute whose set above 0 calls the scripts' `EffectFunction<n>` (0x21, `FUN_14162d610`).
+const EFFECT_FUNCTION: i16 = 0x21;
+/// The attribute giving the exponent the farms' food grows by (31, `FUN_141615270`).
+const FARM_EXPONENT: i16 = 31;
+/// The masters whose objects' food a farm-food change grows (`DAT_142f925d0`'s keys: 50, 1187,
+/// 1897, 1893), in that order.
+const FARMS: [i16; 4] = [50, 1187, 1897, 1893];
+/// The bits of the unified map a player's masks name players by (`FUN_141285cb0`'s
+/// `0x1ffffff01ffffff`).
+const PLAYER_BITS: u64 = 0x01ff_ffff_01ff_ffff;
+
+impl Turns {
+    /// Slot 0x1b0 (`FUN_141620c70`) of player `p` on resource `attribute` with `amount`: every
+    /// live combat unit's and building's volleys lose the shares of the units inside, the
+    /// attribute changes (`FUN_141661160`: `mode` 0 sets it, slot 0xf0
+    /// [`Turns::set_player_attribute`]; any other adds to it, slot 0xf8 with no statistics,
+    /// [`Turns::add_player_attribute`]; the local player's statistics are not simulation), and
+    /// the volleys take the shares again. A change of resource 0x20 would not run in the screen's
+    /// mode 4 (a playback's is not) or with the game's `+0x668` set (not held: taken unset).
+    fn modify_resource(
+        &mut self,
+        p: usize,
+        attribute: i16,
+        amount: f32,
+        mode: u8,
+    ) -> Result<(), Unsupported> {
+        self.all_garrison_volleys(p, false)?;
+        if mode == 0 {
+            self.set_player_attribute(p, attribute, amount)?;
+        } else {
+            self.add_player_attribute(p, attribute, amount)?;
+        }
+        self.all_garrison_volleys(p, true)
+    }
+
+    /// Slot 0x1b8 (`FUN_141620e30`) of player `p` on resource `attribute` by `v`: as
+    /// [`Turns::modify_resource`], the attribute set to its value times `v` (`FUN_1416614c0`).
+    fn multiply_resource(&mut self, p: usize, attribute: i16, v: f32) -> Result<(), Unsupported> {
+        self.all_garrison_volleys(p, false)?;
+        let value = self.attribute_of(p, attribute) * v;
+        self.set_player_attribute(p, attribute, value)?;
+        self.all_garrison_volleys(p, true)
+    }
+
+    /// `FUN_141217ac0` (`after` false) or `FUN_14120b910` on each of player `p`'s live combat
+    /// units and buildings ([`Turns::garrison_volleys`]).
+    fn all_garrison_volleys(&mut self, p: usize, after: bool) -> Result<(), Unsupported> {
+        let ids: Vec<i32> = self.players[p].objects.iter().map(|u| u.id).collect();
+        for id in ids {
+            let kind = self
+                .object(id)
+                .map(|(_, u)| u.life.master_id)
+                .and_then(|m| self.masters.get(p).and_then(|t| t.get(m)))
+                .map(|m| m.kind);
+            if matches!(kind, Some(master_type::COMBAT | master_type::BUILDING)) {
+                self.garrison_volleys(p, id, after)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_1416674b0`, the attribute's store: within the player's attributes' count it takes `v`
+    /// (the resources are [`crate::turn::Player::resources`]). A computer player's resource
+    /// peaks (`+0x6dc`) and attribute 262's fields (`+0x628`..`+0x630`) are not held.
+    fn store_attribute(&mut self, p: usize, attribute: i16, v: f32) {
+        let player = &mut self.players[p];
+        let Some(i) = usize::try_from(attribute)
+            .ok()
+            .filter(|&i| i < player.attributes.len())
+        else {
+            return;
+        };
+        if i < 4 {
+            player.resources[i] = v;
+        } else {
+            player.attributes[i] = v;
+        }
+    }
+
+    /// Slot 0xf0 (`FUN_14162d610`) of player `p`: attribute `attribute` takes `v`
+    /// ([`Turns::store_attribute`]), with its side effects: 0x32 turns the allied vision on
+    /// first ([`Turns::allied_vision_on`]); 0xc4 changes nothing for a player above 0 and spreads
+    /// to the others at most 0 ([`SPREAD_ATTRIBUTE`]); 0xb7 rebuilds the masks after; 0x21 above 0
+    /// calls the scripts' `EffectFunction<v>` (the XS runtime is not modelled).
+    pub(crate) fn set_player_attribute(
+        &mut self,
+        p: usize,
+        attribute: i16,
+        v: f32,
+    ) -> Result<(), Unsupported> {
+        match attribute {
+            ALLIED_VISION => self.allied_vision_on(p)?,
+            SPREAD_ATTRIBUTE => {
+                if 0.0 < self.attribute_of(p, SPREAD_ATTRIBUTE) {
+                    return Ok(());
+                }
+                // the message to the players is the interface's
+                for q in 1..self.players.len() {
+                    if q != p && self.attribute_of(q, SPREAD_ATTRIBUTE) <= 0.0 {
+                        self.store_attribute(q, SPREAD_ATTRIBUTE, v);
+                    }
+                }
+            }
+            EFFECT_FUNCTION if 0.0 < v => {
+                return Err(Unsupported(
+                    "an effect's script function (attribute 0x21, EffectFunction in Effects.xs)",
+                ));
+            }
+            _ => {}
+        }
+        self.store_attribute(p, attribute, v);
+        if attribute == SHARED_VISION {
+            // the world's slot 0x78; the message is the interface's
+            self.rebuild_vision()?;
+        }
+        Ok(())
+    }
+
+    /// Slot 0xf8 (`FUN_141616820`) of player `p` with no statistics (`param_4` 0): `v` adds to
+    /// attribute `attribute` ([`crate::turn::Player::add_attribute`]), with the side effects of
+    /// 0x32 (the allied vision on first), 0xb7 (the masks rebuilt first, with the old value) and
+    /// 0xc4 (nothing for a player above 0; the others at most 0 add it too).
+    pub(crate) fn add_player_attribute(
+        &mut self,
+        p: usize,
+        attribute: i16,
+        v: f32,
+    ) -> Result<(), Unsupported> {
+        match attribute {
+            ALLIED_VISION => self.allied_vision_on(p)?,
+            SHARED_VISION => self.rebuild_vision()?,
+            SPREAD_ATTRIBUTE => {
+                if 0.0 < self.attribute_of(p, SPREAD_ATTRIBUTE) {
+                    return Ok(());
+                }
+                for q in 1..self.players.len() {
+                    let theirs = self.attribute_of(q, SPREAD_ATTRIBUTE);
+                    if q != p && theirs <= 0.0 {
+                        self.store_attribute(q, SPREAD_ATTRIBUTE, v + theirs);
+                    }
+                }
+            }
+            _ => return self.players[p].add_attribute(attribute, v),
+        }
+        // FUN_14165d040's store of the sum
+        let sum = v + self.attribute_of(p, attribute);
+        self.store_attribute(p, attribute, sum);
+        Ok(())
+    }
+
+    /// Attribute 0x32's side effect: player `p`'s allied vision (`+0x2cc`) on, the masks rebuilt
+    /// (the world's slot 0x78, `FUN_1415e92b0`) and `FUN_141285cb0`: each tile of the map
+    /// (rows, then columns) whose unified word has a player bit of the player's visible or
+    /// explored mask joins its new tiles (`FUN_14165d500`).
+    fn allied_vision_on(&mut self, p: usize) -> Result<(), Unsupported> {
+        self.players[p].allied_vision = true;
+        self.rebuild_vision()?;
+        let [visible, explored] = self.spatial.vision(p);
+        if let Some(sight) = self.spatial.sight.as_mut() {
+            let (w, h) = (sight.width, sight.height);
+            for y in 0..h {
+                for x in 0..w {
+                    let word = sight.unified[(y * w + x) as usize];
+                    if (visible & word & PLAYER_BITS) != 0 || (explored & word & PLAYER_BITS) != 0 {
+                        if let Some(list) = sight.new_tiles.get_mut(p) {
+                            list.push([x, y]);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_141615270` after player `p`'s change of the farms' food (from `before`, by `amount`):
+    /// with attribute 31 at least 0 (`COMISS`, `JC`: not a NaN), each object the tracker files
+    /// under the farm masters ([`FARMS`], their done objects, in that order,
+    /// [`Turns::tracked_key`]) from type 40 on with an action (its Make) has the food still to make (`+0x44`) grow: with `held` its food
+    /// (`+0x310`) and `f = held + still to make`, it takes `(f / before)^exponent × amount + f −
+    /// held` (`powf`, here libm's).
+    fn farm_food(&mut self, p: usize, before: f32, amount: f32) -> Result<(), Unsupported> {
+        let exponent = self.attribute_of(p, FARM_EXPONENT);
+        if crate::fmath::below_or_unordered(exponent, 0.0) {
+            return Ok(());
+        }
+        let mut ids = Vec::new();
+        for farm in FARMS {
+            ids.extend(self.tracked_key(p, farm));
+        }
+        for id in ids {
+            let Some((q, u)) = self.object(id) else {
+                continue;
+            };
+            if self.master_of(q, u.life.master_id)?.kind < master_type::ACTION {
+                continue;
+            }
+            let (_, u) = self.object_mut(id).expect("found above");
+            let held = u.life.amount;
+            let Some(make) = u.make.as_mut() else {
+                continue;
+            };
+            let f = held + make.remaining;
+            let grown = libm::powf(f / before, exponent);
+            make.remaining = (grown * amount + f) - held;
+        }
+        Ok(())
     }
 }
 
@@ -1843,6 +2054,102 @@ mod tests {
         assert_eq!(
             (s.speed, s.walk_speed, s.stand_speed),
             (speed, speed, speed)
+        );
+    }
+
+    /// The resource commands (kind 1, `FUN_141620c70`): mode 0 sets the attribute, any other adds
+    /// to it, scaled by the attribute the third argument names; kind 6 multiplies it
+    /// (`FUN_1416614c0`).
+    #[test]
+    fn the_resource_commands_set_add_and_multiply_an_attribute() {
+        let player = Player {
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        t.players[0].attributes[69] = 2.0;
+        t.do_effect(0, -1, &[attribute(1, 78, 0, -1, 0.15)], None)
+            .unwrap();
+        // Horse Collar: 75 × attribute 69 added to 36
+        t.do_effect(0, -1, &[attribute(1, 36, 1, 69, 75.0)], None)
+            .unwrap();
+        t.do_effect(0, -1, &[attribute(6, 78, -1, -1, 2.0)], None)
+            .unwrap();
+        // gold, a resource, lives beside the attributes
+        t.do_effect(0, -1, &[attribute(1, 3, 1, -1, 50.0)], None)
+            .unwrap();
+        let a = &t.players[0].attributes;
+        assert_eq!((a[78], a[36], t.players[0].resources[3]), (0.3, 150.0, 50.0));
+    }
+
+    /// A change of the farms' food (resource 0x24) grows the food each farm still makes:
+    /// `(f / before)^exponent × amount + f − held` with `f = held + still to make`
+    /// (`FUN_141615270`), the exponent attribute 31.
+    #[test]
+    fn a_farm_food_change_grows_the_farms_food() {
+        let mut farm = unit_of(5, 50, 480.0);
+        farm.life.amount = 75.0;
+        farm.make = Some(crate::make::MakeAction {
+            state: 1,
+            remaining: 100.0,
+            total: 175.0,
+            task: crate::masters::Task::default(),
+        });
+        let player = Player {
+            objects: vec![farm],
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        let mut master = combat(50, 49, 480);
+        master.kind = 80;
+        t.masters = vec![Masters::new([master])];
+        t.players[0].attributes[31] = 1.0;
+        t.players[0].attributes[36] = 175.0;
+        t.do_effect(0, -1, &[attribute(1, 36, 1, -1, 75.0)], None)
+            .unwrap();
+        assert_eq!(t.players[0].attributes[36], 250.0);
+        // (175 / 175)^1 × 75 + 175 − 75
+        assert_eq!(t.players[0].objects[0].make.unwrap().remaining, 175.0);
+    }
+
+    /// Cartography (resource 50, added): the allied vision turns on and the masks are rebuilt
+    /// before the attribute takes its sum (`FUN_141616820`); Treason's set (0xb7) rebuilds them
+    /// after; resource 0xc4 spreads to the players at most 0 unless the player's is above 0; the
+    /// scripts' effect function (0x21 above 0) is not modelled.
+    #[test]
+    fn the_resource_commands_side_effects() {
+        let player = |relations: Vec<u8>| Player {
+            relations,
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        };
+        let mut t = Turns::new(
+            0,
+            0,
+            0,
+            vec![0; 3],
+            vec![player(vec![0, 3, 3]), player(vec![3, 0, 0]), player(vec![3, 0, 0])],
+        );
+        t.spatial.vision = vec![[0; 2]; 3];
+        t.do_effect(1, -1, &[attribute(1, 50, 1, -1, 1.0)], None)
+            .unwrap();
+        assert!(t.players[1].allied_vision);
+        assert_eq!(t.players[1].attributes[50], 1.0);
+        assert_eq!(t.spatial.vision[1][0] & 0b110, 0b110);
+        t.do_effect(2, -1, &[attribute(1, 0xc4, 0, -1, 7.0)], None)
+            .unwrap();
+        let spread: Vec<f32> = t.players.iter().map(|p| p.attributes[0xc4]).collect();
+        assert_eq!(spread, [0.0, 7.0, 7.0]);
+        t.do_effect(1, -1, &[attribute(1, 0xc4, 0, -1, 9.0)], None)
+            .unwrap();
+        assert_eq!(t.players[1].attributes[0xc4], 7.0);
+        t.do_effect(1, -1, &[attribute(1, 0xb7, 0, -1, 1.0)], None)
+            .unwrap();
+        assert_eq!(t.spatial.vision[1][0] & 0b110, 0b110);
+        assert!(
+            t.do_effect(1, -1, &[attribute(1, 0x21, 0, -1, 7.0)], None)
+                .is_err()
         );
     }
 
