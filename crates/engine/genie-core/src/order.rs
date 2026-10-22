@@ -605,7 +605,9 @@ impl Turns {
             .ok_or(Unsupported("an ordered unit without movement state"))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
-        mover.ignore_units.extend_from_slice(others);
+        for &other in others {
+            ignore_unit(&mut mover.ignore_units, other);
+        }
         let point = match centroid {
             None => order.point,
             Some(c) => offset_point([unit.position[0], unit.position[1]], c, order.point, map),
@@ -1671,7 +1673,9 @@ impl Turns {
             .ok_or(Unsupported("a moved unit without movement state"))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
-        mover.ignore_units.extend_from_slice(others);
+        for &other in others {
+            ignore_unit(&mut mover.ignore_units, other);
+        }
         let takes_it = !order.queued
             && unit
                 .ai
@@ -3911,6 +3915,13 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
     [inside_map(x, map[0]), inside_map(y, map[1])]
 }
 
+/// `FUN_14118c790`: unit `id` joins the end of a unit's ignore list (`+0x670`, count `+0x678`);
+/// the list's capacity (`+0x67c`: 24 at first, then twice the count, the new slots −1) is the
+/// `Vec`'s, which no reader sees.
+fn ignore_unit(ignore: &mut Vec<i32>, id: i32) {
+    ignore.push(id);
+}
+
 /// `FUN_1410862c0`: the footprint gap (`FUN_14118f680`) against the unit's ranges: whether it
 /// is within the weapon range (slot 0x230; `COMISS`, `JC`: NaN out) and not too close, and
 /// whether it is too close, below the least range (slot 0x240; `COMISS`, `SETA`: NaN not).
@@ -4114,6 +4125,16 @@ mod tests {
         assert_eq!(split.loose, [13]);
         let split = t.split(&[12, 13], &|_| true, false).unwrap();
         assert_eq!(split.loose, [12, 13]);
+    }
+
+    /// `FUN_14118c790`: each id joins the end of the ignore list, a repeated one again.
+    #[test]
+    fn an_ignored_unit_joins_the_end_of_the_ignore_list() {
+        let mut ignore = vec![7];
+        for id in [9, 8, 9] {
+            ignore_unit(&mut ignore, id);
+        }
+        assert_eq!(ignore, [7, 9, 8, 9]);
     }
 
     /// `FUN_1410862c0`: too close below the least range (COMISS, SETA: NaN not), in reach at
