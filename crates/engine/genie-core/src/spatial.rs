@@ -150,6 +150,13 @@ impl Placed {
 /// The tile bit a static record sets (`0x4000`, in `FUN_141056460`): the tile is blocked.
 pub const BLOCKED: u64 = 0x4000;
 
+/// The room of the hit list the obstruction queries' callers give (`local_1758`, `local_148`:
+/// `0x19`), which the edge records (`FUN_141057290`) also respect.
+const QUERY_HITS: usize = 0x19;
+
+/// The most objects a tile's list holds (`FUN_140f5f0a0`'s `count < 0xfa`).
+const MOST_ON_TILE: usize = 0xfa;
+
 /// The obstruction manager's grid (`FUN_141054660`): its top cell is the largest power of two up
 /// to twice the map's longer side (at most 4096 tiles), each level halves the cells' side
 /// (level `k`'s cells are `top >> k` tiles wide, its cell shift `levels - k + 2`), down to cells
@@ -264,16 +271,41 @@ impl Tiles {
         self.index(position[0] as i32, position[1] as i32)
     }
 
-    /// The object goes last on tile `i` (`FUN_140f5f0a0`).
-    fn append(&mut self, i: usize, id: i32) {
+    /// The object goes last on tile `i` (`FUN_140f5f0a0`). An empty tile's list takes it and
+    /// the tall count becomes 1 for a `tall` object (else it stays, 0 on an empty tile); a tile
+    /// of [`MOST_ON_TILE`] objects or more takes none and keeps its count; else the object goes
+    /// last and the tall count is redone over the list, each object by `tall` (its master's
+    /// height radius above 0 now).
+    fn append(&mut self, i: usize, id: i32, tall: impl Fn(i32) -> bool) {
+        let n = self.lists[i].len();
+        if n == 0 {
+            self.lists[i].push(id);
+            if tall(id) {
+                self.tall[i] = 1;
+            }
+            return;
+        }
+        if MOST_ON_TILE <= n {
+            return;
+        }
         self.lists[i].push(id);
+        self.recount(i, tall);
     }
 
-    /// The object leaves tile `i`: the last object takes its slot (`FUN_140f5f560`).
-    fn take_off(&mut self, i: usize, id: i32) {
-        if let Some(k) = self.lists[i].iter().position(|&o| o == id) {
-            let _ = self.lists[i].swap_remove(k);
-        }
+    /// The object leaves tile `i` (`FUN_140f5f560`): one not on the list changes nothing; else
+    /// the last object takes its slot and the tall count is redone over the list.
+    fn take_off(&mut self, i: usize, id: i32, tall: impl Fn(i32) -> bool) {
+        let Some(k) = self.lists[i].iter().position(|&o| o == id) else {
+            return;
+        };
+        let _ = self.lists[i].swap_remove(k);
+        self.recount(i, tall);
+    }
+
+    /// Tile `i`'s tall count over its list, each object by `tall` (a byte, as the game counts).
+    fn recount(&mut self, i: usize, tall: impl Fn(i32) -> bool) {
+        let count = self.lists[i].iter().filter(|&&o| tall(o)).count();
+        self.tall[i] = count as u8;
     }
 
     /// Marks (`bits`) on tile (`x`, `y`)'s word, for a test's map.
@@ -502,18 +534,39 @@ impl Spatial {
             .filter_map(|id| self.objects.get(id).map(|o| (*id, o)))
     }
 
-    /// The object's obstruction record goes (`FUN_141055b40`'s record part): a static record's
-    /// tiles keep only their terrain class ([`Spatial::unmark`]).
-    pub fn drop_record(&mut self, id: i32) {
+    /// The object's obstruction record goes (`FUN_141055b40`'s record part), by its master's
+    /// obstruction type (`+0x651`) whether or not it has its record yet: types 0 and 12 have
+    /// none (false); types 0, 1, 2, 11, 13 and 10 (as 2) clear their tiles' marks
+    /// ([`Spatial::unmark`]), after which type 1 keeps its record filed (true); any other type
+    /// drops its record (true), false without one. The mesh shape's removal is the caller's
+    /// (`Pathing::removed`).
+    pub fn dropped_record(&mut self, id: i32) -> bool {
         let Some(p) = self.objects.get(&id).copied() else {
-            return;
+            return false;
         };
-        if p.obstruction.is_some_and(Obstruction::marks_tiles) {
+        let kind = p.obstruction_type;
+        if kind == 0 || kind == 12 {
+            return false;
+        }
+        let marks = Obstruction { kind, class: 0 }.marks_tiles();
+        if marks {
             self.unmark(&p, id);
+            if kind == 1 {
+                return true;
+            }
         }
-        if let Some(o) = self.objects.get_mut(&id) {
-            o.obstruction = None;
+        match self.objects.get_mut(&id) {
+            Some(o) if o.obstruction.is_some() => {
+                o.obstruction = None;
+                true
+            }
+            _ => false,
         }
+    }
+
+    /// [`Spatial::dropped_record`] for a caller that does not read its answer.
+    pub fn drop_record(&mut self, id: i32) {
+        let _ = self.dropped_record(id);
     }
 
     /// `FUN_141055980` for object `id`'s static record ([`Tiles::unmark`]): the planners hear of
@@ -728,20 +781,16 @@ impl Spatial {
         }
         let _ = self.objects.insert(id, placed);
         if let Some(i) = self.tiles.tile_of(placed.position) {
-            self.tiles.append(i, id);
-            self.recount(i);
+            let objects = &self.objects;
+            self.tiles.append(i, id, |o| Self::is_tall(objects, o));
         }
     }
 
-    /// Tile `i`'s tall count after its list changed: the tall objects on it (`FUN_140f5f0a0` and
-    /// `FUN_140f5f560` count them over the list, each by its master's height radius now; a
-    /// ghost is not tall).
-    fn recount(&mut self, i: usize) {
-        let tall = self.tiles.lists[i]
-            .iter()
-            .filter(|id| self.objects.get(id).is_some_and(|p| p.tall))
-            .count();
-        self.tiles.tall[i] = tall as u8;
+    /// Whether listed object `id` counts as tall (its master's height radius above 0, which
+    /// `FUN_140f5f0a0` and `FUN_140f5f560` read): a ghost, whose master the slice does not hold,
+    /// counts as not tall.
+    fn is_tall(objects: &BTreeMap<i32, Placed>, id: i32) -> bool {
+        objects.get(&id).is_some_and(|p| p.tall)
     }
 
     /// The object's master changed (`FUN_1411a6a70`): it takes the new master's radii, class,
@@ -799,8 +848,8 @@ impl Spatial {
         let _ = self.inside.remove(&id);
         if let Some(gone) = self.objects.remove(&id) {
             if let Some(i) = self.tiles.tile_of(gone.position) {
-                self.tiles.take_off(i, id);
-                self.recount(i);
+                let objects = &self.objects;
+                self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
             }
             if gone.obstruction.is_some_and(Obstruction::marks_tiles) {
                 self.unmark(&gone, id);
@@ -1093,7 +1142,10 @@ impl Spatial {
         // a query beyond the map's edge meets the edge's records first (FUN_141057290)
         let mut hits: Vec<i32> =
             if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
-                self.edge_records(query).iter().map(|e| e.id).collect()
+                self.edge_records(query, QUERY_HITS)
+                    .iter()
+                    .map(|e| e.id)
+                    .collect()
             } else {
                 Vec::new()
             };
@@ -1137,7 +1189,7 @@ impl Spatial {
                 && grown[0] <= rect[2]
                 && rect[1] <= grown[3]
                 && grown[1] <= rect[3]
-                && box_meets_segment([x0, y0, x1, y1], g, walk)
+                && record_meets_segment(kind, [x0, y0, x1, y1], g, walk)
             {
                 hits.push(id);
             }
@@ -1184,7 +1236,7 @@ impl Spatial {
         let [w, h] = self.map;
         let mut hits: Vec<i32> = Vec::new();
         if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
-            hits.extend(self.edge_records(query).iter().map(|e| e.id));
+            hits.extend(self.edge_records(query, QUERY_HITS).iter().map(|e| e.id));
             if MOST_HITS <= hits.len() {
                 hits.truncate(MOST_HITS);
                 return Ok(hits);
@@ -1192,13 +1244,13 @@ impl Spatial {
         }
         self.check_known_records(query)?;
         let walk = [from[0], from[1], to[0], to[1]];
-        let meets = |bx: [f32; 4]| {
+        let meets = |kind: u8, bx: [f32; 4]| {
             let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
             rect[0] <= grown[2]
                 && grown[0] <= rect[2]
                 && rect[1] <= grown[3]
                 && grown[1] <= rect[3]
-                && box_meets_segment(bx, grow, walk)
+                && record_meets_segment(kind, bx, grow, walk)
         };
         if let Some(mask) = mask {
             let impassable = u64::from(mask & 0x7f | 0x80);
@@ -1219,7 +1271,7 @@ impl Spatial {
                     };
                     let id = tile_record_id(x, y);
                     let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
-                    if word & impassable == 0 && !ignore.contains(&id) && meets(bx) {
+                    if word & impassable == 0 && !ignore.contains(&id) && meets(3, bx) {
                         hits.push(id);
                         if MOST_HITS <= hits.len() {
                             return Ok(hits);
@@ -1237,7 +1289,7 @@ impl Spatial {
             {
                 continue;
             }
-            if !meets(p.bounds()) {
+            if !meets(kind, p.bounds()) {
                 continue;
             }
             hits.push(id);
@@ -1277,18 +1329,18 @@ impl Spatial {
         ];
         let [w, h] = self.map;
         if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
-            && !self.edge_records(rect).is_empty()
+            && !self.edge_records(rect, QUERY_HITS).is_empty()
         {
             return Ok(true);
         }
         self.check_known_records(rect)?;
         let walk = [from[0], from[1], to[0], to[1]];
-        let meets = |bx: [f32; 4]| {
+        let meets = |kind: u8, bx: [f32; 4]| {
             rect[0] <= bx[2]
                 && bx[0] <= rect[2]
                 && rect[1] <= bx[3]
                 && bx[1] <= rect[3]
-                && box_meets_segment(bx, 0.0, walk)
+                && record_meets_segment(kind, bx, 0.0, walk)
         };
         let ([x0, y0, x1, y1], mask) = temporary;
         let impassable = u64::from(mask & 0x7f | 0x80);
@@ -1300,7 +1352,7 @@ impl Spatial {
                     continue;
                 };
                 let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
-                if word & impassable == 0 && meets(bx) {
+                if word & impassable == 0 && meets(3, bx) {
                     return Ok(true);
                 }
             }
@@ -1314,7 +1366,7 @@ impl Spatial {
                 && !ignore.contains(&id)
                 && !self.gaits.get(&id).is_some_and(|g| g.moving)
                 && self.visits(p, kind, rect)
-                && meets(p.bounds())
+                && meets(kind, p.bounds())
         }))
     }
 
@@ -1326,13 +1378,12 @@ impl Spatial {
             p.position = position;
             let (old, new) = (self.tiles.tile_of(from), self.tiles.tile_of(position));
             if old != new {
+                let objects = &self.objects;
                 if let Some(i) = old {
-                    self.tiles.take_off(i, id);
-                    self.recount(i);
+                    self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
                 }
                 if let Some(i) = new {
-                    self.tiles.append(i, id);
-                    self.recount(i);
+                    self.tiles.append(i, id, |o| Self::is_tall(objects, o));
                 }
             }
             let Some(p) = self.objects.get(&id) else {
@@ -1875,49 +1926,119 @@ impl Spatial {
     /// the player's masks (`+0x2a8`, `+0x2a0`) too.
     pub fn reveal_to(&mut self, player: usize) {
         use crate::vision::{ENDED, ENDED_EXPLORED};
-        if let Some(v) = self.sight.as_mut() {
-            for w in &mut v.unified {
-                *w |= ENDED | ENDED_EXPLORED;
-            }
-        }
+        self.reveal_map(ENDED | ENDED_EXPLORED);
         if let Some(m) = self.vision.get_mut(player) {
             m[0] |= ENDED;
             m[1] |= ENDED_EXPLORED;
         }
     }
 
-    /// Whether player `player` sees tile (`x`, `y`) (`FUN_141663500` returning 0xf): its mask
-    /// `+0x2a8` meets the unified map's visible bits there (bits 29 and 61, which a tile has only
-    /// when the map is revealed, are not held).
-    pub fn sees_tile(&self, player: usize, x: i32, y: i32) -> bool {
-        let Some(v) = self.sight.as_ref() else {
-            return false;
-        };
+    /// The unified map's word (`+0x5e30`) at tile (`x`, `y`), none off the map.
+    fn unified_word(v: &Visibility, x: i32, y: i32) -> Option<u64> {
         if x < 0 || y < 0 || v.width <= x || v.height <= y {
-            return false;
+            return None;
         }
-        v.unified[(y * v.width + x) as usize] & crate::registry::MASK & self.vision(player)[0] != 0
+        Some(v.unified[(y * v.width + x) as usize])
     }
 
-    /// `FUN_141663500` is not 0: player `player` sees tile (`x`, `y`) or saw it (its masks
-    /// `+0x2a8` and `+0x2a0` meet the unified map's bits there). Unknown without the players'
+    /// `FUN_141663500`, the player's tile test: what player `player` knows of tile (`x`, `y`).
+    /// 0xf when it sees the tile (its visible mask `+0x2a8` meets the unified map's word under
+    /// [`crate::registry::MASK`]), or when the word is revealed to all (bit 29,
+    /// [`crate::vision::NO_TILE`]) and the player explored it (its explored mask `+0x2a0` meets
+    /// the word under the mask) or the word is explored by all (bit 61); else 0x80 when it
+    /// explored it or the word is explored by all; else 0, also off the map. None without the
+    /// players' sight.
+    #[must_use]
+    pub fn tile_sight(&self, player: usize, x: i32, y: i32) -> Option<u8> {
+        use crate::registry::MASK;
+        use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
+        let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
+            return Some(0);
+        };
+        let [seen, explored] = self.vision(player);
+        let explored = explored & word & MASK != 0;
+        let all_explored = word & NO_TILE_EXPLORED != 0;
+        let revealed = word & NO_TILE != 0;
+        if seen & word & MASK != 0 || (revealed && (explored || all_explored)) {
+            return Some(0xf);
+        }
+        Some(if explored || all_explored { 0x80 } else { 0 })
+    }
+
+    /// `FUN_141285350`, the visible map's tile test (`InfluenceMap` and the scout map read it):
+    /// 0xf when player `player`'s visible mask (`+0x2a8`) meets the unified map's word at tile
+    /// (`x`, `y`) under [`crate::registry::MASK`], else 0x80 when its explored mask (`+0x2a0`)
+    /// does, else 0, also off the map (the visible map's own size, `+0x20`, `+0x24`, the map's).
+    /// The revealed bits 29 and 61 lie outside the mask. None without the players' sight.
+    #[must_use]
+    pub fn scout_sight(&self, player: usize, x: i32, y: i32) -> Option<u8> {
+        let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
+            return Some(0);
+        };
+        let word = word & crate::registry::MASK;
+        let [seen, explored] = self.vision(player);
+        Some(if seen & word != 0 {
+            0xf
+        } else if explored & word != 0 {
+            0x80
+        } else {
+            0
+        })
+    }
+
+    /// `FUN_140c68a00`, a unit's tile test (`FUN_141285280` reads the unified map's word, its
+    /// player the unit's `+0x138`): 0xf when player `player`'s visible mask (`+0x2a8`) meets the
+    /// word at tile (`x`, `y`) under [`crate::registry::MASK`], else 0x80 when its explored mask
+    /// (`+0x2a0`) does, else 0. The game reads the word unchecked; its three callers
+    /// (`FUN_140ab79e0`, `FUN_140c567c0`, `FUN_140c26f60`) pass an object's tile, which the
+    /// position setter holds on the map, so off the map is 0 here. None without the players'
     /// sight.
+    #[must_use]
+    pub fn visibility(&self, player: usize, x: i32, y: i32) -> Option<u8> {
+        let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
+            return Some(0);
+        };
+        let word = word & crate::registry::MASK;
+        let [seen, explored] = self.vision(player);
+        Some(if seen & word != 0 {
+            0xf
+        } else if explored & word != 0 {
+            0x80
+        } else {
+            0
+        })
+    }
+
+    /// `FUN_1412847b0`: every word of the unified map (`+0x5e30`, width × height) takes the bits
+    /// of `mask` (the end of the game `0x4000000040000000`, a revealed map `0x2000000020000000`,
+    /// both `0x6000000060000000`). Nothing without the players' sight.
+    pub fn reveal_map(&mut self, mask: u64) {
+        if let Some(v) = self.sight.as_mut() {
+            for w in &mut v.unified {
+                *w |= mask;
+            }
+        }
+    }
+
+    /// Whether player `player` sees tile (`x`, `y`): [`Spatial::tile_sight`] is 0xf. False
+    /// without the players' sight.
+    pub fn sees_tile(&self, player: usize, x: i32, y: i32) -> bool {
+        self.tile_sight(player, x, y) == Some(0xf)
+    }
+
+    /// [`Spatial::tile_sight`] is not 0: player `player` sees tile (`x`, `y`) or explored it.
+    /// Unknown without the players' sight.
     pub fn explored(&self, player: usize, x: i32, y: i32) -> Result<bool, Unsupported> {
-        let v = self.sight.as_ref().ok_or(Unsupported(
+        let answer = self.tile_sight(player, x, y).ok_or(Unsupported(
             "a test of explored tiles without the players' sight",
         ))?;
-        if x < 0 || y < 0 || v.width <= x || v.height <= y {
-            return Ok(false);
-        }
-        let [seen, explored] = self.vision(player);
-        Ok(v.unified[(y * v.width + x) as usize] & crate::registry::MASK & (seen | explored) != 0)
+        Ok(answer != 0)
     }
 
-    /// `FUN_140c68a00` gives 0xf: player `player` sees tile (`x`, `y`) now (its mask `+0x2a8`
-    /// meets the unified map's visible bits there). False off the map and without the players'
-    /// sight.
+    /// [`Spatial::visibility`] is 0xf: player `player` sees tile (`x`, `y`) now. False without
+    /// the players' sight.
     pub fn visible(&self, player: usize, x: i32, y: i32) -> bool {
-        self.sees_tile(player, x, y)
+        self.visibility(player, x, y) == Some(0xf)
     }
 
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its
@@ -1972,17 +2093,22 @@ impl Spatial {
 
     /// A player's ghost `id` of an object it saw (a doppelganger, type 25): it is on its tile's
     /// list, and movement sees nothing else of it. The slice keeps the ghosts of the save and
-    /// makes none.
+    /// makes none. The tile's tall count is redone ([`Tiles`]' append, `FUN_140f5f0a0`); the
+    /// game counts the ghost by its master's height radius, which the slice does not hold, so
+    /// the ghost counts as not tall.
     pub fn insert_ghost(&mut self, id: i32, position: [f32; 3]) {
         if let Some(i) = self.tiles.tile_of(position) {
-            self.tiles.append(i, id);
+            let objects = &self.objects;
+            self.tiles.append(i, id, |o| Self::is_tall(objects, o));
         }
     }
 
-    /// A ghost leaves its tile's list (its last object takes its place).
+    /// A ghost leaves its tile's list (its last object takes its place) and the tile's tall count
+    /// is redone (`FUN_140f5f560`).
     pub fn remove_ghost(&mut self, id: i32, position: [f32; 3]) {
         if let Some(i) = self.tiles.tile_of(position) {
-            self.tiles.take_off(i, id);
+            let objects = &self.objects;
+            self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
         }
     }
 
@@ -2211,17 +2337,21 @@ impl Spatial {
 
     /// Whether a static record of another player marks a tile of `site`'s footprint
     /// (`FUN_1411d4b80`).
+    /// The edges cast by `CVTTSS2SI` (a NaN or huge edge gives `i32::MIN`: the loops then do
+    /// not run), the tile's players the low 32 bits of `word >> 23` against `1 << (player &
+    /// 0x1f)` in 32 bits.
     pub fn foreign_marks(&self, site: &Placed) -> bool {
+        use crate::checkpoint::cvttss2si;
         let [sx, sy, _] = site.position;
         let [rx, ry] = site.radius;
         let (w, h) = (self.tiles.width, self.tiles.height);
-        let (x0, y0) = (((sx - rx) as i32).max(0), ((sy - ry) as i32).max(0));
-        let x1 = (((sx + rx) - 0.001) as i32).min(w - 1);
-        let y1 = (((sy + ry) - 0.001) as i32).min(h - 1);
-        let own = 1u64 << site.player;
+        let (x0, y0) = (cvttss2si(sx - rx).max(0), cvttss2si(sy - ry).max(0));
+        let x1 = cvttss2si((sx + rx) - 0.001).min(w - 1);
+        let y1 = cvttss2si((sy + ry) - 0.001).min(h - 1);
+        let own = 1u32 << (site.player as u32 & 0x1f);
         (y0..=y1).any(|y| {
             (x0..=x1).any(|x| {
-                let players = self.tiles.word(x, y).unwrap_or(0) >> 23;
+                let players = (self.tiles.word(x, y).unwrap_or(0) >> 23) as u32;
                 players != 0 && players != own
             })
         })
@@ -2271,7 +2401,9 @@ impl Spatial {
         mask: u8,
         ignore: &[i32],
     ) -> Result<bool, Unsupported> {
-        let Some(word) = self.tiles.word(point[0] as i32, point[1] as i32) else {
+        use crate::checkpoint::cvttss2si;
+        // CVTTSS2SI: a NaN or huge coordinate is i32::MIN, off the map
+        let Some(word) = self.tiles.word(cvttss2si(point[0]), cvttss2si(point[1])) else {
             return Ok(false);
         };
         if word & u64::from(mask ^ 0xff) != 0 {
@@ -2303,7 +2435,7 @@ impl Spatial {
         let [w, h] = self.map;
         let rect = [x - grow, y - grow, grow + x, grow + y];
         if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
-            && !self.edge_records(rect).is_empty()
+            && !self.edge_records(rect, QUERY_HITS).is_empty()
         {
             return Ok(true);
         }
@@ -2414,20 +2546,20 @@ impl Spatial {
         let grown = [lo_x - g, lo_y - g, g + hi_x, g + hi_y];
         let mut hits = Vec::new();
         if grown[0] < 0.0 || grown[1] < 0.0 || (w as f32) < grown[2] || (h as f32) < grown[3] {
-            hits = self.edge_records(grown);
+            hits = self.edge_records(grown, QUERY_HITS);
             if first {
                 return Ok(hits);
             }
         }
         self.check_known_records(grown)?;
         let walk = [a[0], a[1], b[0], b[1]];
-        let meets = |bx: [f32; 4]| {
+        let meets = |kind: u8, bx: [f32; 4]| {
             let r = [bx[0] - g, bx[1] - g, g + bx[2], g + bx[3]];
             lo_x <= r[2]
                 && r[0] <= hi_x
                 && lo_y <= r[3]
                 && r[1] <= hi_y
-                && box_meets_segment(bx, g, walk)
+                && record_meets_segment(kind, bx, g, walk)
         };
         let impassable = u64::from(mask & 0x7f | 0x80);
         let tx1 = if (grown[2] as i32) < w {
@@ -2447,7 +2579,7 @@ impl Spatial {
                 };
                 let id = tile_record_id(x, y);
                 let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
-                if word & impassable == 0 && !ignore.contains(&id) && meets(bx) {
+                if word & impassable == 0 && !ignore.contains(&id) && meets(3, bx) {
                     hits.push(Hit { id, bounds: bx });
                     if first || MOST_HITS <= hits.len() {
                         return Ok(hits);
@@ -2468,7 +2600,7 @@ impl Spatial {
                 continue;
             }
             let bx = p.bounds();
-            if !meets(bx) {
+            if !meets(kind, bx) {
                 continue;
             }
             if kind == 11 {
@@ -2524,45 +2656,51 @@ impl Spatial {
     /// ignore list): for each edge it crosses (left, top, right, bottom), the manager's record for
     /// that edge (`+0xb0`, `+0xb8`, `+0xc0`, `+0xc8`), set to the tile box where the rectangle's
     /// diagonal `(x0, y0)` -> `(x1, y1)` crosses the edge's line, id `x << 12 | y | 0xff000000`.
+    /// The list takes at most `cap` records (its `*param_6`): the routine returns once the list
+    /// holds that many, after any edge. The terms are the game's, each with its zero factor
+    /// (`0 × dy0`, `(w − w) × dy`, ...), so an infinite or NaN operand gives NaN as there; each
+    /// crossing is cast by `CVTTSS2SI` into 32 bits (a NaN or huge one is `i32::MIN`).
     #[must_use]
-    pub fn edge_records(&self, rect: [f32; 4]) -> Vec<Hit> {
+    // the game's (w - w) and (h - h) factors: 0, but NaN times an infinite or NaN term
+    #[allow(clippy::eq_op)]
+    pub fn edge_records(&self, rect: [f32; 4], cap: usize) -> Vec<Hit> {
+        use crate::checkpoint::cvttss2si;
         let [x0, y0, x1, y1] = rect;
         // the manager's map size as floats (+0xa8, +0xac)
         let (w, h) = (self.map[0] as f32, self.map[1] as f32);
         let (dx, dy) = (x1 - x0, y1 - y0);
         let (dy0, dx0) = (y0 - 0.0, x0 - 0.0);
-        // each edge line through the diagonal (the game's terms with a zero side, 0 × d and
-        // (w − w) × d, drop out: they add or take a zero)
         let at = |t: f32| {
-            let x = (dx * t + x0) as i32;
-            // (uint): a truncation through 64 bits
-            let y = (dy * t + y0) as i64 as u32;
+            let x = cvttss2si(dx * t + x0);
+            let y = cvttss2si(dy * t + y0);
             Hit {
-                id: ((x << 12) as u32 | y | 0xff00_0000) as i32,
-                bounds: [
-                    x as f32,
-                    y as i32 as f32,
-                    x as f32 + 1.0,
-                    y as i32 as f32 + 1.0,
-                ],
+                id: ((x << 12) | y | 0xff00_0000_u32 as i32),
+                bounds: [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0],
             }
         };
         let mut hits = Vec::new();
+        let mut edges: [Option<f32>; 4] = [None; 4];
         if x0 < 0.0 {
             let hh = h - 0.0;
-            hits.push(at(-(hh * dx0) / (dx * hh)));
+            edges[0] = Some((dy0 * 0.0 - hh * dx0) / (dx * hh - dy * 0.0));
         }
         if y0 < 0.0 {
             let hh = h - 0.0;
-            hits.push(at((hh * dy0) / -(hh * dy)));
+            edges[1] = Some((hh * dy0 - dx0 * 0.0) / (dx * 0.0 - hh * dy));
         }
         if w < x1 {
             let hh = h - 0.0;
-            hits.push(at(-((x0 - w) * hh) / (hh * dx)));
+            edges[2] = Some(((w - w) * dy0 - (x0 - w) * hh) / (hh * dx - (w - w) * dy));
         }
         if h < y1 {
             let ww = w - 0.0;
-            hits.push(at(((y0 - h) * ww) / -(ww * dy)));
+            edges[3] = Some(((y0 - h) * ww - (h - h) * dx0) / ((h - h) * dx - ww * dy));
+        }
+        for t in edges.into_iter().flatten() {
+            hits.push(at(t));
+            if cap <= hits.len() {
+                break;
+            }
         }
         hits
     }
@@ -2596,13 +2734,44 @@ fn segments_meet(p1: [f32; 2], p2: [f32; 2], p3: [f32; 2], p4: [f32; 2]) -> bool
         && (ccw(p3, p4, p2) * ccw(p3, p4, p1)) as f32 <= 0.0
 }
 
-/// `FUN_141052e10` with the box grown by `r`: the walk `[x0, y0, x1, y1]` crosses one of the grown
-/// box's edges or starts or ends inside it.
+/// `FUN_141052e10` (the segment test's) and `FUN_1410512f0` (the walk test's) with the box grown
+/// by `r` (the manager's `+0x57`/`+0x58`): the walk `[x0, y0, x1, y1]` crosses one of the grown
+/// box's edges or starts or ends inside it, the box ordered (low and high edges) for the inside
+/// tests.
 fn box_meets_segment([bx0, by0, bx1, by1]: [f32; 4], r: f32, walk: [f32; 4]) -> bool {
     let lo_x = if bx1 < bx0 { bx1 } else { bx0 };
     let hi_x = if bx0 < bx1 { bx1 } else { bx0 };
     let lo_y = if by1 < by0 { by1 } else { by0 };
     let hi_y = if by0 < by1 { by1 } else { by0 };
+    segment_meets_box([bx0, by0, bx1, by1], r, walk, [lo_x, lo_y, hi_x, hi_y])
+}
+
+/// A record's test against the walk by its kind (`FUN_141051e00`, `FUN_141052800`): a circle's
+/// (kind 5, `FUN_141051630` and `FUN_141053130`) reads its box as it stands for the inside tests;
+/// the others' (kinds 2, 3, 11, 13) order it ([`box_meets_segment`]).
+fn record_meets_segment(kind: u8, b: [f32; 4], r: f32, walk: [f32; 4]) -> bool {
+    if kind == 5 {
+        segment_meets_box(b, r, walk, b)
+    } else {
+        box_meets_segment(b, r, walk)
+    }
+}
+
+/// The four edges of box `[bx0, by0, bx1, by1]` grown by `r`, each tested against the walk
+/// (`FUN_141052ca0`: `FUN_141054ec0`), then the inside tests of the walk's ends against `inside`
+/// grown by `r`. `FUN_141052ca0` also lists each crossing (record, id, point) at the manager's
+/// `+0x40` while its `+0x54` is set; `FUN_141051900` sets `+0x54` only for a list at `+0x40`
+/// with a cap `+0x50` of at least 1, and nothing gives the manager one: the only stores to
+/// `+0x40`, `+0x48` and `+0x50` in its code (0x14104f000..0x141060000) are its constructor's
+/// and `FUN_1410560b0`'s zeros, and none of the routines that address it through
+/// `DAT_143f0a088` writes them. So the listing never runs, and the edges' order (the
+/// `FUN_1410512f0` tests all four, `FUN_141052e10` stops at the first crossing) does not show.
+fn segment_meets_box(
+    [bx0, by0, bx1, by1]: [f32; 4],
+    r: f32,
+    walk: [f32; 4],
+    [lo_x, lo_y, hi_x, hi_y]: [f32; 4],
+) -> bool {
     let (start, end) = ([walk[0], walk[1]], [walk[2], walk[3]]);
     let edges = [
         ([bx0 - r, by0 - r], [r + bx1, by0 - r]),
@@ -2616,7 +2785,8 @@ fn box_meets_segment([bx0, by0, bx1, by1]: [f32; 4], r: f32, walk: [f32; 4]) -> 
     {
         return true;
     }
-    // COMISS/JC (0x141052fb8..0x141052ff9, 0x1410530dc..0x141053119): a NaN coordinate is out
+    // COMISS/JC (0x141052fb8..0x141052ff9, 0x1410530dc..0x141053119; 0x1410514ad..0x141051620,
+    // 0x14105189e..0x1410518f2): a NaN coordinate is out
     let outside = |p: [f32; 2]| {
         crate::fmath::below_or_unordered(p[0], lo_x - r)
             || crate::fmath::below_or_unordered(r + hi_x, p[0])
@@ -2650,6 +2820,22 @@ mod tests {
         assert!(box_meets_segment(b, 0.0, [f32::NAN, 0.5, 5.0, 5.0]));
         assert!(box_meets_segment(b, 0.0, [0.5, 0.5, 0.6, 0.6]));
         assert!(!box_meets_segment(b, 0.0, [3.0, 3.0, 5.0, 5.0]));
+    }
+
+    /// `FUN_141051630` (and `FUN_141053130`): a circle record's box is read as it stands, so a
+    /// box whose x1 lies below its x0 holds no walk inside it; `FUN_1410512f0` orders it first.
+    #[test]
+    fn a_circle_record_s_box_is_read_unordered_and_another_s_ordered() {
+        let b = [2.0, 0.0, 1.0, 1.0];
+        let inside = [1.4, 0.4, 1.6, 0.6];
+        assert!(record_meets_segment(2, b, 0.0, inside));
+        assert!(!record_meets_segment(5, b, 0.0, inside));
+        assert!(record_meets_segment(5, [1.0, 0.0, 2.0, 1.0], 0.0, inside));
+        // grown, the edges and the inside tests take the grow on the box as it stands: the
+        // edges then run at x 1.25 and 1.75, the inside tests hold nothing
+        assert!(!record_meets_segment(5, b, 0.25, inside));
+        assert!(record_meets_segment(5, b, 0.25, [1.0, 0.5, 1.5, 0.5]));
+        assert!(record_meets_segment(2, b, 0.25, inside));
     }
 
     fn villager(x: f32, y: f32) -> Placed {
@@ -2722,17 +2908,30 @@ mod tests {
     #[test]
     fn a_rectangle_leaving_the_map_meets_the_edge_records_where_its_diagonal_crosses() {
         let s = Spatial::new([120, 120]);
-        assert_eq!(s.edge_records([0.0, 0.0, 120.0, 120.0]), Vec::<Hit>::new());
+        assert_eq!(
+            s.edge_records([0.0, 0.0, 120.0, 120.0], 25),
+            Vec::<Hit>::new()
+        );
         // the diagonal (-0.3, 50) -> (0.3, 50.6) crosses x 0 at y 50.3: the left edge's tile (0, 50)
-        let left = s.edge_records([-0.3, 50.0, 0.3, 50.6]);
+        let left = s.edge_records([-0.3, 50.0, 0.3, 50.6], 25);
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].id as u32, 0xff00_0000 | 0x32);
         assert_eq!(left[0].bounds, [0.0, 50.0, 1.0, 51.0]);
         // past the bottom right corner: (119.5, 119.7) -> (120.5, 120.7) crosses x 120 at y 120.2
         // and y 120 at x 119.8
-        let corner = s.edge_records([119.5, 119.7, 120.5, 120.7]);
+        let corner = s.edge_records([119.5, 119.7, 120.5, 120.7], 25);
         let ids: Vec<u32> = corner.iter().map(|h| h.id as u32).collect();
         assert_eq!(ids, [0xff07_8078, 0xff07_7078]);
+        // a list with room for one stops after the first edge
+        assert_eq!(s.edge_records([119.5, 119.7, 120.5, 120.7], 1), corner[..1]);
+        // an infinite end: the crossing's terms give NaN, which CVTTSS2SI makes i32::MIN
+        let far = s.edge_records([-0.5, 10.0, f32::INFINITY, 10.5], 25);
+        assert_eq!(far.len(), 2);
+        assert_eq!(far[0].id as u32, 0xff00_000a);
+        assert_eq!(
+            far[0].bounds,
+            [-2_147_483_648.0, 10.0, -2_147_483_648.0, 11.0]
+        );
         // a unit of radius 0.3 cannot stand 0.2 from the edge
         assert!(!s.point_clear(1, [0.2, 50.0], 0.3, 0xff).unwrap());
         assert!(s.point_clear(1, [0.4, 50.0], 0.3, 0xff).unwrap());
@@ -2793,6 +2992,11 @@ mod tests {
         assert!(!s.point_clear_among(7, [4.5, 5.5], 0.1, 1, &[]).unwrap());
         assert!(s.point_clear_among(7, [4.5, 5.5], 0.1, 3, &[]).unwrap());
         assert!(!s.point_clear_among(7, [-0.5, 5.5], 0.1, 3, &[]).unwrap());
+        // CVTTSS2SI: a NaN coordinate is i32::MIN, off the map, not tile 0
+        assert!(
+            !s.point_clear_among(7, [f32::NAN, 5.5], 0.1, 1, &[])
+                .unwrap()
+        );
     }
 
     /// `FUN_1411570c0`'s query with its tile records: on a 10 by 10 map of terrain class 1 with
@@ -2913,6 +3117,48 @@ mod tests {
         s.remove(808);
         assert_eq!(s.tiles().word(140, 3), Some(1));
         assert_eq!(s.take_changes(), vec![[140, 3, 140, 3]]);
+    }
+
+    /// `FUN_141055b40` by the master's obstruction type: type 12 keeps all (false); type 1 clears
+    /// its tiles and keeps its record (true); a type 2 foundation without its record still clears
+    /// its player's marks (false); a unit (type 5) drops its record (true).
+    #[test]
+    fn a_record_goes_by_its_master_s_obstruction_type() {
+        let mut s = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![1; 400]));
+        let mut rock = villager(5.5, 5.5);
+        rock.radius = [0.5, 0.5];
+        rock.obstruction_type = 1;
+        rock.obstruction = Some(Obstruction { kind: 1, class: 1 });
+        s.insert(1, rock);
+        assert!(s.tiles().word(5, 5).is_some_and(|w| w & BLOCKED != 0));
+        assert!(s.dropped_record(1));
+        assert_eq!(s.tiles().word(5, 5), Some(1));
+        assert_eq!(s.get(1).and_then(|p| p.obstruction), rock.obstruction);
+        let mut other = rock;
+        other.obstruction_type = 12;
+        other.position = [8.5, 8.5, 0.0];
+        s.insert(2, other);
+        assert!(!s.dropped_record(2));
+        assert!(s.tiles().word(8, 8).is_some_and(|w| w & BLOCKED != 0));
+        // a foundation of player 2 without its record on a tile player 2 marked
+        let mut wall = rock;
+        wall.obstruction_type = 2;
+        wall.obstruction = Some(Obstruction { kind: 2, class: 1 });
+        wall.position = [12.5, 12.5, 0.0];
+        s.insert(3, wall);
+        let mut site = wall;
+        site.obstruction = None;
+        s.insert(4, site);
+        s.objects.get_mut(&3).unwrap().obstruction = None;
+        assert!(!s.dropped_record(4));
+        assert_eq!(s.tiles().word(12, 12), Some(1));
+        let unit = villager(15.5, 15.5);
+        let mut unit5 = unit;
+        unit5.obstruction_type = 5;
+        s.insert(5, unit5);
+        assert!(s.dropped_record(5));
+        assert_eq!(s.get(5).and_then(|p| p.obstruction), None);
+        assert!(!s.dropped_record(5));
     }
 
     #[test]
@@ -3043,6 +3289,47 @@ mod tests {
         assert_eq!(s.tiles().list(1, 1), [9171, 9173, 10029]);
     }
 
+    /// `FUN_140f5f0a0`: a tile of 250 objects takes no more and keeps its tall count;
+    /// `FUN_140f5f560`: an object not on the list leaves nothing changed (no recount).
+    #[test]
+    fn a_full_tile_takes_no_object_and_one_not_on_it_leaves_its_count() {
+        let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
+        for id in 0..250 {
+            s.insert(id, villager(1.5, 1.5));
+        }
+        assert_eq!(s.tiles().objects(1, 1), Some(250));
+        assert_eq!(s.tiles().tall(1, 1), Some(250));
+        // object 0 is no longer tall; the game does not redo the count
+        s.set_tall(0, false);
+        s.insert(250, villager(1.5, 1.5));
+        assert_eq!(s.tiles().objects(1, 1), Some(250));
+        assert!(!s.tiles().list(1, 1).contains(&250));
+        assert_eq!(s.tiles().tall(1, 1), Some(250));
+        // 250 leaves a tile whose list never held it: no recount
+        s.remove(250);
+        assert_eq!(s.tiles().tall(1, 1), Some(250));
+        // one that is on it leaves: the count is redone over the list, 0 not tall
+        s.remove(249);
+        assert_eq!(s.tiles().tall(1, 1), Some(248));
+    }
+
+    /// A ghost enters and leaves a tile's list as any object does (`FUN_140f5f0a0`,
+    /// `FUN_140f5f560`): the tile's tall count is redone over the list.
+    #[test]
+    fn a_ghost_entering_or_leaving_a_tile_redoes_its_tall_count() {
+        let mut s = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
+        s.insert(1, villager(1.5, 1.5));
+        s.insert(2, villager(1.5, 1.5));
+        s.set_tall(1, false);
+        assert_eq!(s.tiles().tall(1, 1), Some(2));
+        s.insert_ghost(-5, [1.5, 1.5, 0.0]);
+        assert_eq!(s.tiles().list(1, 1), [1, 2, -5]);
+        assert_eq!(s.tiles().tall(1, 1), Some(1));
+        s.set_tall(2, false);
+        s.remove_ghost(-5, [1.5, 1.5, 0.0]);
+        assert_eq!(s.tiles().tall(1, 1), Some(0));
+    }
+
     /// The house foundation 10028 at (30, 88) of MarvinBlue/426048731 with its builder 9175 on its
     /// footprint at (30, 89), on open land (class 4) and a villager's mask (restriction 7: 6).
     fn site() -> (Spatial, Placed) {
@@ -3073,6 +3360,34 @@ mod tests {
 
     /// A player who lost while the game goes on sees the map revealed: its masks take the ended
     /// bits (and the unified map's every word, here without the players' sight).
+    /// `FUN_1412847b0`: the mask goes into every word of the unified map; `FUN_141639860` (the
+    /// end of the game for a player) also gives the player's masks the ended bits.
+    #[test]
+    fn revealing_the_map_sets_the_mask_in_every_word() {
+        use crate::vision::{ENDED, ENDED_EXPLORED, NO_TILE, NO_TILE_EXPLORED};
+        let mut s = sighted(vec![0, 1 << 1, 1 << 33]);
+        s.reveal_map(NO_TILE | NO_TILE_EXPLORED);
+        let words = &s.sight.as_ref().unwrap().unified;
+        assert_eq!(
+            *words,
+            [0, 1 << 1, 1 << 33].map(|w: u64| w | NO_TILE | NO_TILE_EXPLORED)
+        );
+        let mut s = sighted(vec![0, 0]);
+        s.reveal_to(1);
+        assert!(
+            s.sight
+                .as_ref()
+                .unwrap()
+                .unified
+                .iter()
+                .all(|&w| w == ENDED | ENDED_EXPLORED)
+        );
+        // player 1 lost: its masks take the ended bits; the tile tests mask them out
+        // (registry::MASK holds neither bit 30 nor 62)
+        assert_eq!(s.vision[1], crate::vision::own_masks(1, true));
+        assert_eq!(s.tile_sight(1, 0, 0), Some(0));
+    }
+
     #[test]
     fn a_revealed_map_gives_the_player_the_ended_bits() {
         let mut s = Spatial {
@@ -3085,6 +3400,70 @@ mod tests {
         s.reveal_to(1);
         assert_eq!(s.vision[1], crate::vision::own_masks(1, true));
         assert_eq!(s.vision[0], crate::vision::own_masks(0, false));
+    }
+
+    /// A map of two tiles holding `words`, which players 0 and 1 see with their own masks.
+    fn sighted(words: Vec<u64>) -> Spatial {
+        let n = words.len() as i32;
+        Spatial {
+            sight: Some(Visibility::new(
+                n,
+                1,
+                Vec::new(),
+                words,
+                Vec::new(),
+                0,
+                Vec::new(),
+            )),
+            vision: vec![
+                crate::vision::own_masks(0, false),
+                crate::vision::own_masks(1, false),
+            ],
+            ..Spatial::default()
+        }
+    }
+
+    /// `FUN_141663500`: 0xf seen, 0x80 explored, 0 neither; a word revealed to all (bit 29 with
+    /// an explored hit or bit 61) is seen, one explored for all (bit 61) explored.
+    #[test]
+    fn a_player_s_tile_test_answers_seen_explored_or_neither_and_reads_the_revealed_bits() {
+        use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
+        let (seen, explored) = (1 << 1, 1 << 33);
+        let s = sighted(vec![
+            seen,
+            explored,
+            NO_TILE_EXPLORED,
+            NO_TILE | NO_TILE_EXPLORED,
+            NO_TILE,
+            NO_TILE | explored,
+        ]);
+        let answers = |p: usize| (0..7).map(|x| s.tile_sight(p, x, 0)).collect::<Vec<_>>();
+        let some = |v: [u8; 7]| v.map(Some).to_vec();
+        assert_eq!(answers(1), some([0xf, 0x80, 0x80, 0xf, 0, 0xf, 0]));
+        assert_eq!(answers(0), some([0, 0, 0x80, 0xf, 0, 0, 0]));
+        assert_eq!(s.tile_sight(1, -1, 0), Some(0));
+        assert_eq!(s.tile_sight(1, 0, 1), Some(0));
+        assert_eq!(Spatial::default().tile_sight(1, 0, 0), None);
+        // sees_tile is its 0xf, explored any answer
+        assert!(s.sees_tile(0, 3, 0) && !s.sees_tile(0, 2, 0));
+        assert_eq!(s.explored(0, 2, 0), Ok(true));
+        assert_eq!(s.explored(0, 4, 0), Ok(false));
+    }
+
+    /// `FUN_141285350` and `FUN_140c68a00`: the word under the registry's mask only, so the
+    /// revealed bits 29 and 61 count for nothing.
+    #[test]
+    fn the_visible_map_s_tile_test_reads_only_the_players_bits() {
+        use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
+        let (seen, explored) = (1 << 1, 1 << 33);
+        let s = sighted(vec![seen, explored, NO_TILE | NO_TILE_EXPLORED, 0]);
+        let scout = (0..5).map(|x| s.scout_sight(1, x, 0)).collect::<Vec<_>>();
+        assert_eq!(scout, [0xf, 0x80, 0, 0, 0].map(Some).to_vec());
+        let seen_now = (0..4).map(|x| s.visibility(1, x, 0)).collect::<Vec<_>>();
+        assert_eq!(seen_now, [0xf, 0x80, 0, 0].map(Some).to_vec());
+        assert!(s.visible(1, 0, 0) && !s.visible(1, 1, 0));
+        assert_eq!(Spatial::default().scout_sight(1, 0, 0), None);
+        assert_eq!(Spatial::default().visibility(1, 0, 0), None);
     }
 
     #[test]
@@ -3108,6 +3487,23 @@ mod tests {
         flower.buildable_on = 1;
         s.insert(77, flower);
         assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![77]));
+        assert!(!s.foreign_marks(&house));
+    }
+
+    /// `FUN_1411d4b80` reads a tile's players as the low 32 bits of `word >> 23` and casts the
+    /// footprint's edges by `CVTTSS2SI`: a NaN place casts to `i32::MIN`, so no tile is read.
+    #[test]
+    fn foreign_marks_read_the_players_in_32_bits_and_skip_a_nan_place() {
+        let (mut s, mut house) = site();
+        // player 2 of 30.0, 88.0: tile (29, 87) marked by player 3, then a bit past 32 players
+        s.tiles.mark_for_test(29, 87, 0x80_0000 << 3);
+        assert!(s.foreign_marks(&house));
+        let (mut t, _) = site();
+        t.tiles.mark_for_test(29, 87, 1 << 60);
+        assert!(!t.foreign_marks(&house));
+        // a NaN place reads nothing, not tile 0 (here marked by player 3)
+        s.tiles.mark_for_test(0, 0, 0x80_0000 << 3);
+        house.position = [f32::NAN, f32::NAN, 0.0];
         assert!(!s.foreign_marks(&house));
     }
 

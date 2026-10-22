@@ -298,6 +298,9 @@ const DETOUR: f32 = 1.25;
 const SPLIT: f32 = crate::image::movement::SPLIT;
 /// How many plans one motion step makes at most.
 const PLANS: u32 = 3;
+/// What a gate's annex's gap loses against the gate's own (`XMM14`, the motion step's load at
+/// 0x1411510e7, the same as [`RANGE_FLOOR`]'s).
+const ANNEX_GAP: f32 = crate::image::movement::RANGE_FLOOR;
 /// A level's plans before it gives up (`FUN_140f8f670`).
 const CONTINUE: i32 = 10;
 
@@ -369,9 +372,98 @@ impl PathData {
             .unwrap_or(OUTSIDE_PATH)
     }
 
-    /// The level has waypoints after the current one (`FUN_140f96050` on a top level).
+    /// `FUN_140f96050`'s test of the top level: a level without a path (`+0x18` null and none in
+    /// the world's table by its id `+0x20`) has none (0); else waypoints after the current one:
+    /// not `count - 1 <= waypoint` in 32 bits, so an empty path has more for a waypoint below -1.
     const fn has_more(&self) -> bool {
-        !self.points.is_empty() && self.waypoint < self.points.len() as i32 - 1
+        self.has_path && self.waypoint < self.points.len() as i32 - 1
+    }
+}
+
+/// `LAB_141152ec1`'s test whether a waypoint `way` away is far enough for the long pather: a
+/// tile or more without a target; with one (its own gap, `FUN_14118f680`, and its master), its
+/// gap a tile or more (`COMISS`/`JNC` at 0x141152f0e: a NaN is near) or its master 45 however
+/// near.
+fn far_waypoint(way: f32, target: Option<(f32, i16)>) -> bool {
+    target.map_or(CLOSE <= way, |(gap, master)| {
+        CLOSE <= gap || master == WIDE_MASTER
+    })
+}
+
+/// A gap to the walked level's target `target` (its id and place): for a gate (class 39), the
+/// least (`MINSS`) of `own` and its first two annexes' (slot 0x680) gaps from the unit (`near`:
+/// its place and radii) through `annex`; for anything else `own`.
+fn gate_gap(
+    world: &Spatial,
+    (at, radius): ([f32; 3], [f32; 2]),
+    (id, target): (i32, &Placed),
+    own: f32,
+    annex: impl Fn(f32) -> f32,
+) -> f32 {
+    if target.class != GATE {
+        return own;
+    }
+    let mut gap = own;
+    for a in world.annexes_of(id).into_iter().take(2) {
+        if let Some(p) = world.get(a) {
+            gap = fmath::minss(annex(footprint_gap(at, radius, p.position, p.radius)), gap);
+        }
+    }
+    gap
+}
+
+/// `FUN_140f98bc0` with 1 on a level's path: the waypoint after `index`. A path that does not
+/// loop (flags bit 0) has none (-1); a loop goes on to its next point, or 0 past its last; a path
+/// that goes back and forth (bit 1) turns at its ends, bit 2 the way back, which the turn sets
+/// or clears.
+const fn looping_next(level: &mut PathData, index: i32) -> i32 {
+    let n = level.points.len() as i32;
+    if level.path_flags & 1 == 0 {
+        return -1;
+    }
+    if level.path_flags & 2 == 0 {
+        return if index + 1 < n { index + 1 } else { 0 };
+    }
+    if level.path_flags & 4 == 0 {
+        let next = index - 1;
+        if next < 0 {
+            level.path_flags |= 4;
+            return 1;
+        }
+        next
+    } else {
+        let next = index + 1;
+        if n <= next {
+            level.path_flags &= !4;
+            return n - 2;
+        }
+        next
+    }
+}
+
+/// `FUN_140f98d50`: a path's point `i` goes, the later ones move down (true); an index outside
+/// the path (below 0 or past its last point) changes nothing (false).
+fn remove_point(points: &mut Vec<Vec3>, i: i32) -> bool {
+    match usize::try_from(i) {
+        Ok(k) if k < points.len() => {
+            let _ = points.remove(k);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// `FUN_140f98dd0`: the path ends before its point `i` (the points from `i` on go) and is
+/// measured again (`FUN_140f95a60`, true); an index outside the path, or an empty path, changes
+/// nothing (false).
+fn cut_path(path: &mut Path, i: i32) -> bool {
+    match usize::try_from(i) {
+        Ok(k) if k < path.points.len() => {
+            path.points.truncate(k);
+            path.measure();
+            true
+        }
+        _ => false,
     }
 }
 
@@ -451,15 +543,64 @@ const TWO_PI: f32 = crate::image::movement::TWO_PI;
 /// the largest float. The `.dat`'s own turning values do not survive the copy.
 #[must_use]
 pub fn turn_rate(turn_speed: f32, walking_facets: Option<i16>) -> f32 {
-    let Some(facets) = walking_facets.filter(|_| turn_speed != 0.0) else {
-        return f32::MAX;
+    turning(turn_speed, walking_facets, Turning::PRESET).0.rate
+}
+
+/// A moving master's turning values (`+0x76c`..`+0x77c`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Turning {
+    /// `+0x76c`: the turn radius.
+    pub radius: f32,
+    /// `+0x770`: the speed at which the turn radius is its value.
+    pub radius_speed: f32,
+    /// `+0x774`: the most the unit turns per second.
+    pub rate: f32,
+    /// `+0x778`: a revolution's time (slot 0x98, `FUN_1410e39e0`).
+    pub revolution: f32,
+    /// `+0x77c`: 2π over the revolution's time.
+    pub revolution_rate: f32,
+}
+
+impl Turning {
+    /// What the master's three constructors (`FUN_1410d9440`, `FUN_1410d95b0`,
+    /// `FUN_1410d9790`) set: radius 0, the largest float, and the 8-byte stores
+    /// `0x7f7fffff` at `+0x774` and `+0x77c` (the largest float, then 0 above it).
+    pub const PRESET: Self = Self {
+        radius: 0.0,
+        radius_speed: f32::MAX,
+        rate: f32::MAX,
+        revolution: 0.0,
+        revolution_rate: f32::MAX,
+    };
+}
+
+/// `FUN_1410e3a70` (master slot 0x80) on a master's turning values `before`, with its answer: a
+/// turn speed (`+0x758`) of 0 resets them (radius 0, the largest float for the radius speed,
+/// the rate and the revolution's rate, the revolution time 0; false); with a walking sprite
+/// (`+0x748`) the facets times the turn speed are the revolution's time (`FUN_1410e39e0`: 2π
+/// over it, the largest float for 0) and the rate takes 2π over it (true); without one nothing
+/// changes (false).
+#[must_use]
+pub fn turning(turn_speed: f32, walking_facets: Option<i16>, before: Turning) -> (Turning, bool) {
+    if turn_speed == 0.0 {
+        return (Turning::PRESET, false);
+    }
+    let Some(facets) = walking_facets else {
+        return (before, false);
     };
     let revolution = f32::from(facets) * turn_speed;
-    if revolution == 0.0 {
+    let revolution_rate = if revolution == 0.0 {
         f32::MAX
     } else {
         TWO_PI / revolution
-    }
+    };
+    let after = Turning {
+        revolution,
+        revolution_rate,
+        rate: revolution_rate,
+        ..before
+    };
+    (after, true)
 }
 
 /// A path too short to walk: fewer than two points or shorter than 0.01.
@@ -607,7 +748,7 @@ impl Mover {
         };
         v.velocity[2] = speed;
         // the position setter runs only for a distance it moves
-        let Some(at) = self.move_forward(dt * speed, position, map) else {
+        let Some(at) = self.move_forward(dt * speed, map) else {
             return position;
         };
         let at = self.grounded(at, terrain);
@@ -643,14 +784,15 @@ impl Mover {
         }
     }
 
-    /// `moveForward` (slot 182): `distance × factor` along the forward vector, through the
-    /// position setter; a distance below 1e-7 moves nothing.
-    fn move_forward(&self, distance: f32, position: [f32; 3], map: [i32; 2]) -> Option<[f32; 3]> {
+    /// `moveForward` (slot 182, `FUN_141158490`): `distance × factor` along the forward vector
+    /// from where the unit last moved to (`+0x824`, [`Mover::moved_at`]), through the position
+    /// setter; a distance below 1e-7 moves nothing.
+    fn move_forward(&self, distance: f32, map: [i32; 2]) -> Option<[f32; 3]> {
         let d = distance * self.factor;
         if d.abs() < EPSILON {
             return None;
         }
-        let to = fmath::add(vector(position), fmath::scale(d, self.forward));
+        let to = fmath::add(vector(self.moved_at), fmath::scale(d, self.forward));
         Some(self.set_position(map_position(to), map))
     }
 
@@ -667,10 +809,12 @@ impl Mover {
                 v
             }
         };
+        // both clamps read the map's +0x18, its width (0x14116220d for y): on a map that is not
+        // square the y clamp takes the width
         let (x, y) = if EPSILON < self.stats.speed {
             (
                 inside(x, self.stats.radius[0], map[0]),
-                inside(y, self.stats.radius[1], map[1]),
+                inside(y, self.stats.radius[1], map[0]),
             )
         } else {
             (x, y)
@@ -740,20 +884,19 @@ impl Mover {
             let Some(level) = self.paths.first().filter(|l| l.has_path) else {
                 return Ok(Motion::Done);
             };
+            // FUN_1415417a0 on the level's target: none for -1 and for an object that is gone,
+            // which then measures as a walk to a point (LAB_1411512df)
             let target = match level.target {
                 -1 => None,
-                id => Some(
-                    *world
-                        .get_known(id)?
-                        .ok_or(Unsupported("a path target that is gone"))?,
-                ),
+                id => world.get_known(id)?.copied(),
             };
-            if target.as_ref().is_some_and(|t| t.class == GATE) {
-                return Err(Unsupported("a path to a gate (its annexes)"));
-            }
-            // the gap to the target, else to where the top level's path ends
+            // the gap to the target, else to where the top level's path ends; a gate's is the
+            // least over it and its first two annexes (slot 0x680), each annex's less 0.1
+            // (`MINSS`, 0x1411512b8)
             let gap = target.as_ref().map_or(FAR, |t| {
-                footprint_gap(me.position, ground_radius, t.position, t.radius)
+                let own = footprint_gap(me.position, ground_radius, t.position, t.radius);
+                let near = (me.position, ground_radius);
+                gate_gap(world, near, (level.target, t), own, |g| g - ANNEX_GAP)
             });
             let to_end = match (&target, self.paths.len()) {
                 (Some(_), _) => gap,
@@ -782,7 +925,9 @@ impl Mover {
             match self.paths[0].state {
                 4 | 5 => match self.arrived(goal)? {
                     Next::Done(m) => return Ok(m),
-                    _ => continue,
+                    Next::Again => continue,
+                    // a link of another type: on past the request (state 4 or 5) to the walk
+                    Next::Dispatch => {}
                 },
                 2 => {
                     let plan = plan
@@ -823,7 +968,9 @@ impl Mover {
         computer: bool,
     ) -> Result<Next, Unsupported> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
-        let position = vector(me.position);
+        // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
+        // (slot 0x638) and its query (FUN_14114cc60) start at +0x824, where the unit last moved to
+        let position = vector(self.moved_at);
         let level = &self.paths[0];
         let waypoint = point_or_zero_of(level, level.waypoint);
         if ground(position, waypoint) < EPSILON {
@@ -831,7 +978,7 @@ impl Mover {
             return Ok(Next::Again);
         }
         let direction = self.direction_to(position, waypoint);
-        let projected = self.projected(position, direction, dt);
+        let projected = self.projected(direction, dt);
         match reach(waypoint, position, projected) {
             Reach::Away => {
                 self.paths[0].flags |= 3;
@@ -889,8 +1036,10 @@ impl Mover {
         let level = &self.paths[0];
         match goal.target {
             Some(t) => {
-                let gap =
-                    footprint_gap(me.position, ground_radius, t.position, t.radius) - level.range;
+                let range = level.range;
+                let own = footprint_gap(me.position, ground_radius, t.position, t.radius) - range;
+                let near = (me.position, ground_radius);
+                let gap = gate_gap(world, near, (level.target, t), own, |g| g - range);
                 if gap < EPSILON {
                     // in range of the target: the waypoint counts as reached
                     let level = &mut self.paths[0];
@@ -913,7 +1062,7 @@ impl Mover {
             None => {}
         }
         let clipped = self.steer(direction, dt)?;
-        self.control_speed(position, waypoint, clipped);
+        self.control_speed(waypoint, clipped);
         Ok(Next::Done(Motion::Moving))
     }
 
@@ -950,11 +1099,14 @@ impl Mover {
         let [rx, ry, _] = self.stats.radius;
         let [w, h] = world.map;
         while level.waypoint < level.points.len() as i32 {
-            let [x, _, y] = level.points[level.waypoint as usize];
+            let [x, _, y] = level.point(level.waypoint);
             if rx <= x && ry <= y && x <= w as f32 - rx && y <= h as f32 - ry {
                 break;
             }
-            let _ = level.points.remove(level.waypoint as usize);
+            // the index is the waypoint just incremented, and no writer sets one below -1: it is
+            // never negative, so the point goes (the game's loop would spin on a failed removal)
+            let removed = remove_point(&mut level.points, level.waypoint);
+            debug_assert!(removed, "a waypoint below -1");
         }
         if level.path_flags & 1 != 0 {
             return Err(Unsupported(
@@ -991,12 +1143,16 @@ impl Mover {
             [left[0], left[2], 0.0],
             [0.0, 0.0],
         );
+        let range = level.range;
         let mut beyond = match goal.target {
-            None => (back - level.range) - RANGE_FLOOR,
+            None => (back - range) - RANGE_FLOOR,
             Some(t) => {
-                footprint_gap(me.position, ground_radius, t.position, t.radius)
-                    - level.range
-                    - RANGE_FLOOR
+                let own = (footprint_gap(me.position, ground_radius, t.position, t.radius) - range)
+                    - RANGE_FLOOR;
+                let near = (me.position, ground_radius);
+                gate_gap(world, near, (level.target, t), own, |g| {
+                    (g - range) - RANGE_FLOOR
+                })
             }
         };
         if goal.target.is_some() && level.flags & 4 != 0 {
@@ -1034,7 +1190,8 @@ impl Mover {
     fn look_ahead(&mut self, me: &Me, world: &Spatial) -> Result<bool, Unsupported> {
         let target = self.paths[0].target;
         let parent = &self.paths[1];
-        let at = vector(me.position);
+        // the motion step's place of the unit: +0x824, where it last moved to
+        let at = vector(self.moved_at);
         let last = parent.points.len() as i32 - 1;
         let from = parent.waypoint;
         let mut k = (from + 5).min(last);
@@ -1079,7 +1236,8 @@ impl Mover {
             return Ok(false);
         }
         let ignore = world.query_ignore(&[me.id, target]);
-        let (from, to) = self.query_ends(vector(me.position), p, world.map);
+        // the query starts at +0x824, where the unit last moved to
+        let (from, to) = self.query_ends(vector(self.moved_at), p, world.map);
         let grow = rx * STRAIGHT_GROW;
         world.check_known_records([
             from[0].min(to[0]) - grow,
@@ -1110,7 +1268,8 @@ impl Mover {
             return Ok(false);
         }
         let ignore = world.query_ignore(&[me.id, target]);
-        let (from, to) = self.query_ends(vector(me.position), p, world.map);
+        // the query starts at +0x824, where the unit last moved to
+        let (from, to) = self.query_ends(vector(self.moved_at), p, world.map);
         let rect = [
             from[0].min(to[0]),
             from[1].min(to[1]),
@@ -1155,17 +1314,18 @@ impl Mover {
                 let _ = self.paths.remove(0);
                 let parent = &mut self.paths[0];
                 parent.state = 2;
-                if parent.path_flags & 1 != 0 {
-                    return Err(Unsupported(
-                        "a looping parent's next waypoint (FUN_140f98bc0)",
-                    ));
+                // a looping parent path moves on (FUN_140f98bc0 with 1)
+                if parent.has_path && parent.path_flags & 1 != 0 {
+                    parent.waypoint = looping_next(parent, parent.waypoint);
                 }
             }
             3 => {
                 let _ = self.paths.remove(0);
                 self.paths[0].state = 2;
             }
-            _ => return Err(Unsupported("an arrived level of another link")),
+            // the game's switch has no case: the level stays and the step goes on past the
+            // request to the walk (`LAB_141153bd1`)
+            _ => return Ok(Next::Dispatch),
         }
         Ok(Next::Again)
     }
@@ -1254,6 +1414,13 @@ impl Mover {
         }
     }
 
+    /// `FUN_140f96050` on the walked level: up its parents (`+0x8`) to the top level, the last of
+    /// [`Mover::paths`], whose path has waypoints after its current one
+    /// ([`PathData::has_more`]).
+    fn top_has_more(&self) -> bool {
+        self.paths.last().is_some_and(PathData::has_more)
+    }
+
     /// Object slot 185 (`0x1411583d0`): the unit has velocity data whose velocity is longer than 0.
     #[must_use]
     pub fn is_moving(&self) -> bool {
@@ -1286,7 +1453,9 @@ impl Mover {
             gap,
             to_end,
         } = goal;
-        let position = vector(me.position);
+        // the request measures and plans from +0x824 (`pfVar14`, `local_18c8`), where the unit
+        // last moved to
+        let position = vector(self.moved_at);
         let radius = self.stats.radius[0];
         let ground_radius = [radius, self.stats.radius[1]];
         let level = &mut self.paths[0];
@@ -1336,7 +1505,7 @@ impl Mover {
             .last()
             .is_some_and(|t| !t.points.is_empty() && t.path_flags & 1 != 0);
         if !top_loops && !self.attack_moving {
-            let top_has_more = self.paths.last().is_some_and(PathData::has_more);
+            let top_has_more = self.top_has_more();
             let level = &mut self.paths[0];
             level.continue_counter -= 1;
             if level.continue_counter < 1 {
@@ -1390,7 +1559,7 @@ impl Mover {
                         }
                         if way <= TARGET_SHORT_REACH {
                             let near = self.near_goal(way, gap, to_end);
-                            let line = ground_line(me.position, waypoint);
+                            let line = ground_line(self.moved_at, waypoint);
                             let ignore =
                                 self.ignore_list(me, world, plan, target, target_id, line)?;
                             let r = self.short_path(
@@ -1461,7 +1630,7 @@ impl Mover {
                 if SHORT_PATHER && !failed && (way <= SHORT_REACH || near) {
                     planned = false;
                     path.points.clear();
-                    let line = ground_line(me.position, waypoint);
+                    let line = ground_line(self.moved_at, waypoint);
                     let ignore = self.ignore_list(me, world, plan, target, target_id, line)?;
                     let r = self.short_path(
                         me,
@@ -1538,13 +1707,13 @@ impl Mover {
             };
             if tail && LONG_PATHER && (trade_cart || SHORT_REACH < way) {
                 // LAB_141152ec1: a far waypoint takes the long pather
-                let far = match target {
-                    None => CLOSE <= way,
-                    Some(_) if CLOSE <= gap => true,
-                    Some(_) => {
-                        return Err(Unsupported("a near target's master test (0x60c9)"));
-                    }
-                };
+                let far = far_waypoint(
+                    way,
+                    target.map(|t| {
+                        let gap = footprint_gap(me.position, ground_radius, t.position, t.radius);
+                        (gap, t.master)
+                    }),
+                );
                 if far {
                     planned = false;
                     let target = target.map(|t| (target_id, t));
@@ -1654,9 +1823,10 @@ impl Mover {
             group_units: plan.groups.group_units(me.group),
         };
         let target_id = target.map_or(-1, |(id, _)| id);
+        // from +0x824, the motion step's `local_18c8`
         let (mut found, long) = long_path_for(
             &walker,
-            [me.position[0], me.position[1]],
+            [self.moved_at[0], self.moved_at[1]],
             world,
             plan.computer,
             (waypoint, range),
@@ -1735,8 +1905,8 @@ impl Mover {
                     path.points.clear();
                     return Ok(false);
                 }
-                path.points.truncate(i + 1);
-                path.measure();
+                // i + 1 lies inside the path: the cut always happens
+                let _ = cut_path(path, i as i32 + 1);
                 return Ok(true);
             }
         }
@@ -1777,7 +1947,7 @@ impl Mover {
         target: Option<&Placed>,
         to_end: f32,
     ) -> Result<Step, Unsupported> {
-        let top_has_more = self.paths.last().is_some_and(PathData::has_more);
+        let top_has_more = self.top_has_more();
         if target.is_some() && self.paths[0].flags & 4 != 0 {
             // FUN_140f9b4d0(level, 2, 0): bit 2 goes off the level and on for its parents
             self.paths[0].flags &= !4;
@@ -1900,59 +2070,65 @@ impl Mover {
         let mut list = vec![me.id];
         if target.is_some() {
             list.push(target_id);
-            if !self.is_moving() && me.action_state == 8 {
-                let grow = self.stats.radius[0] + RANGE_FLOOR;
-                let [x, y, _] = me.position;
-                let rect = [x, y, x, y];
-                world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
-                let t = target.ok_or(Unsupported("unreachable: a drop-off without its target"))?;
-                let owner = world.get(me.id).map(|p| p.player);
-                let r = self.stats.radius[0];
-                let mut blocked: Option<bool> = None;
-                for id in world.obstruction_candidates(rect, grow, &list) {
-                    let Some(p) = world.get(id) else { continue };
-                    let gait = world.gait(id);
-                    if gait.is_some_and(|g| g.moving) {
-                        continue;
-                    }
-                    // a worker whose path is this update's walks: it is passed
-                    if gait.and_then(|g| g.path_made) == Some(now) {
-                        continue;
-                    }
-                    // slot 0x4f0: a building's master with a task of action type 0x99
-                    // (FUN_1415c60b0), 0 for anything else
-                    let worker_building = matches!(p.class, 3 | 27 | 39 | 49 | 52)
-                        && world
-                            .task_0x99
-                            .get(p.player)
-                            .is_some_and(|m| m.contains(&p.master));
-                    if !matches!(p.class, 2 | 4 | 19 | 21) && !worker_building {
-                        continue;
-                    }
-                    let start_blocked = if let Some(b) = blocked {
-                        b
-                    } else {
-                        let b = self.start_blocked(world, plan, t, line)?;
-                        blocked = Some(b);
-                        b
-                    };
-                    if !start_blocked {
-                        continue;
-                    }
-                    let allied = owner.is_some_and(|o| {
-                        let relations = world.relations.get(p.player).map_or(&[][..], |r| &r[..]);
-                        crate::tasks::allied(relations, p.player, o, true)
-                    });
-                    let gap = footprint_gap_squared(p.position, p.radius, t.position, t.radius);
-                    if !allied || gap <= r * r {
-                        continue;
-                    }
-                    list.push(id);
-                }
-            }
         }
-        if self.paths.last().is_some_and(|top| top.created == now) {
+        // the unit's own list but itself, when the walked level's top path (`FUN_140f960f0`: a
+        // level holding a path) was made this update; before the drop-off workers
+        if self
+            .paths
+            .last()
+            .is_some_and(|top| top.has_path && top.created == now)
+        {
             list.extend(self.ignore_units.iter().filter(|&&id| id != me.id));
+        }
+        // the query runs for a unit that does not move (slot 0x5c8); a hit counts only with a
+        // target and the unit's action in state 8
+        if let Some(t) = target
+            && !self.is_moving()
+            && me.action_state == 8
+        {
+            let grow = self.stats.radius[0] + RANGE_FLOOR;
+            // the query's point: slot 0x520, +0x824
+            let [x, y, _] = self.moved_at;
+            let rect = [x, y, x, y];
+            world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
+            let owner = world.get(me.id).map(|p| p.player);
+            let r = self.stats.radius[0];
+            let skip = [me.id, target_id];
+            for id in world.obstruction_candidates(rect, grow, &skip) {
+                let Some(p) = world.get(id) else { continue };
+                let gait = world.gait(id);
+                if gait.is_some_and(|g| g.moving) {
+                    continue;
+                }
+                // a worker whose path is this update's walks: it is passed
+                if gait.and_then(|g| g.path_made) == Some(now) {
+                    continue;
+                }
+                // slot 0x4f0: a building's master with a task of action type 0x99
+                // (FUN_1415c60b0), 0 for anything else
+                let worker_building = matches!(p.class, 3 | 27 | 39 | 49 | 52)
+                    && world
+                        .task_0x99
+                        .get(p.player)
+                        .is_some_and(|m| m.contains(&p.master));
+                if !matches!(p.class, 2 | 4 | 19 | 21) && !worker_building {
+                    continue;
+                }
+                // FUN_140fa0110 runs for each such hit: its temporary shapes leave the mesh's
+                // free list reversed each time, so it is not run once for all
+                if !self.start_blocked(world, plan, t, line)? {
+                    continue;
+                }
+                let allied = owner.is_some_and(|o| {
+                    let relations = world.relations.get(p.player).map_or(&[][..], |r| &r[..]);
+                    crate::tasks::allied(relations, p.player, o, true)
+                });
+                let gap = footprint_gap_squared(p.position, p.radius, t.position, t.radius);
+                if !allied || gap <= r * r {
+                    continue;
+                }
+                list.push(id);
+            }
         }
         Ok(list)
     }
@@ -1967,13 +2143,14 @@ impl Mover {
         target: &Placed,
         (from, to): ([f32; 2], [f32; 2]),
     ) -> Result<bool, Unsupported> {
-        let fixed = |f: f32| (f * short_path::TO_FIXED) as i64 as i32;
+        // CVTTSS2SI into a 64-bit register, its low 32 bits kept
+        let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * short_path::TO_FIXED) as i32;
         let query = short_path::Query {
             from: [fixed(from[0]), fixed(from[1])],
             to: [fixed(to[0]), fixed(to[1])],
-            radius: (self.stats.radius[0] * short_path::TO_FIXED) as i64 as u32 as i32,
-            target_size: [fixed(target.radius[0]), fixed(target.radius[1])],
-            range: fixed(self.stats.weapon_range),
+            radius: self.stats.radius[0],
+            target_size: target.radius,
+            range: self.stats.weapon_range,
             blocked: u64::from(self.stats.restriction_mask ^ 0xff),
         };
         let tiles = world.tiles();
@@ -2009,9 +2186,10 @@ impl Mover {
         out: &mut Path,
     ) -> Result<u8, Unsupported> {
         let walker = self.walker(me.id);
+        // from +0x824: the motion step's `local_18c8`, the reach test's start (FUN_14114fea0)
         short_path_for(
             walker,
-            [me.position[0], me.position[1]],
+            [self.moved_at[0], self.moved_at[1]],
             world,
             plan,
             (to, range, target),
@@ -2052,9 +2230,10 @@ impl Mover {
             .first()
             .map(|l| l.target)
             .filter(|&t| t != -1 && world.get(t).is_some());
+        // from +0x824, the motion step's `local_18c8`
         tile_plan_for(
             self.walker(me.id),
-            [me.position[0], me.position[1]],
+            [self.moved_at[0], self.moved_at[1]],
             level_target,
             world,
             plan,
@@ -2172,9 +2351,16 @@ impl Mover {
         range: f32,
         master: i16,
     ) -> Result<bool, Unsupported> {
-        let [x, y, _] = me.position;
+        // FUN_14114fea0 and FUN_14114ffc0 hand the unit's +0x824 (x, height, y) as the start
+        let [x, y, height_at] = self.moved_at;
         let [w, h] = world.map;
-        let on_map = |px: f32, py: f32| 0.0 <= px && 0.0 <= py && px < w as f32 && py < h as f32;
+        // COMISS 0, v; JA and COMISS v, size; JNC (0x140fa03f1..0x140fa0459): a NaN passes
+        let on_map = |px: f32, py: f32| {
+            fmath::at_most_or_unordered(0.0, px)
+                && fmath::at_most_or_unordered(0.0, py)
+                && fmath::below_or_unordered(px, w as f32)
+                && fmath::below_or_unordered(py, h as f32)
+        };
         if !on_map(x, y) || !on_map(to[0], to[1]) {
             return Ok(false);
         }
@@ -2204,7 +2390,7 @@ impl Mover {
             // FUN_140fa0370 hands the start test both vectors' first two floats: x and the
             // height, the unit's (`+0x824`) and the target's (slot 0x520), not x and y
             let height = target.map_or(0.0, |(_, t)| t.position[2]);
-            let line = ([x, me.position[2]], [to[0], height]);
+            let line = ([x, height_at], [to[0], height]);
             let ignore =
                 self.ignore_list(me, world, plan, target.map(|(_, t)| t), target_id, line)?;
             if self.short_path(me, world, plan, goal, range, target_id, &ignore, &mut path)? < 2 {
@@ -2225,28 +2411,40 @@ impl Mover {
                 let g = d.abs() - r;
                 if 0.0 <= g { g } else { 0.0 }
             };
-            let (gx, gy) = (gap(dx, radius[0]), gap(dy, radius[1]));
+            // the gap from the unit's place (its decoded x and y), not +0x824
+            let [px, py, _] = me.position;
+            let (gx, gy) = (gap(to[0] - px, radius[0]), gap(to[1] - py, radius[1]));
             if gx * gx + gy * gy < REACH_NEAR {
                 return Ok(false);
             }
             None
         };
-        if !self.ignore_units.is_empty() {
-            return Err(Unsupported(
-                "the long pather's ignored units (slots 0x2a8, 0x5c8)",
-            ));
-        }
-        // FUN_140f60440 lowers the tall count under the unit and the target
-        let lowered = [Some(me.id), target.map(|(id, _)| id)]
+        // FUN_140f9eb70 lowers the tall counts under its list (FUN_140f60440): the unit and its
+        // ignore units that wait or move, or its group's differentiator units, then the target
+        let walker = LongWalker {
+            id: me.id,
+            position: me.position,
+            radius: ground,
+            mask: self.stats.restriction_mask,
+            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            ignore_units: &self.ignore_units,
+            group_units: plan.groups.group_units(me.group),
+        };
+        let lowered = lowered_units(&walker, world, target.map(|(id, _)| id))
             .into_iter()
-            .flatten()
             .filter_map(|id| world.get(id))
             .filter(|p| p.tall)
             .map(|p| [p.position[0] as i32, p.position[1] as i32])
             .collect();
         let req = crate::long_path::LongRequest {
-            from: [x as i32, y as i32],
-            to: [to[0] as i32, to[1] as i32],
+            from: [
+                crate::checkpoint::cvttss2si(x),
+                crate::checkpoint::cvttss2si(y),
+            ],
+            to: [
+                crate::checkpoint::cvttss2si(to[0]),
+                crate::checkpoint::cvttss2si(to[1]),
+            ],
             range,
             target: long_target,
             moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
@@ -2365,9 +2563,11 @@ impl Mover {
         self.forward
     }
 
-    /// Where this tick's speed would take the unit along `direction` (slot 199, `0x141161860`):
-    /// the forward speed after one more step of acceleration, capped by the top speed.
-    fn projected(&self, position: Vec3, direction: Vec3, dt: f32) -> Vec3 {
+    /// Where this tick's speed would take the unit along `direction` (slot 199, `0x141161860`)
+    /// from where it last moved to (`+0x824`, [`Mover::moved_at`]): the forward speed after one
+    /// more step of acceleration, capped by the top speed (COMISS/JA, then JC: a NaN speed stays).
+    fn projected(&self, direction: Vec3, dt: f32) -> Vec3 {
+        let position = vector(self.moved_at);
         let Some(v) = &self.velocity else {
             return position;
         };
@@ -2632,8 +2832,15 @@ impl Mover {
             dt
         };
         let most = self.stats.turn_rate * dt;
-        let clipped = most < angle;
-        let mut turn = if angle <= most { angle } else { most };
+        // FUN_14114f630: COMISS angle, most; JBE (0x14114f6d6): at most, or either NaN, the whole
+        // angle unclipped; else the most, negated for a negative angle, clipped
+        let (mut turn, clipped) = if fmath::at_most_or_unordered(angle, most) {
+            (angle, false)
+        } else if angle < 0.0 {
+            (-most, true)
+        } else {
+            (most, true)
+        };
         if 0.0 < fmath::cross(direction, flat)[1] {
             turn = -turn;
         }
@@ -2654,8 +2861,11 @@ impl Mover {
 
     /// The speed control toward the waypoint (slot 198, `0x141150a80`): a unit whose turn fell
     /// short stops (its speed 0, slot 0x598) and brakes; else it accelerates to the top speed
-    /// unless the waypoint lies inside the turning circle, where it brakes.
-    fn control_speed(&mut self, position: Vec3, waypoint: Vec3, clipped: bool) {
+    /// unless the waypoint lies inside the turning circle, where it brakes. The way to the
+    /// waypoint and the circle start where the unit last moved to (`+0x824`,
+    /// [`Mover::moved_at`]).
+    fn control_speed(&mut self, waypoint: Vec3, clipped: bool) {
+        let position = vector(self.moved_at);
         let Some(v) = self.velocity.as_mut() else {
             self.velocity = Some(Velocity {
                 velocity: [0.0; 3],
@@ -2998,6 +3208,35 @@ mod tests {
         assert_eq!(turn_rate(0.05, None), f32::MAX);
     }
 
+    /// `FUN_1410e3a70` writes all five turning values: a zero turn speed resets them, a walking
+    /// sprite sets the revolution and both rates, no sprite changes nothing.
+    #[test]
+    fn a_master_s_turning_values_follow_its_turn_speed_and_walking_sprite() {
+        let before = Turning {
+            radius: 1.0,
+            radius_speed: 2.0,
+            rate: 3.0,
+            revolution: 4.0,
+            revolution_rate: 5.0,
+        };
+        assert_eq!(turning(0.0, Some(16), before), (Turning::PRESET, false));
+        assert_eq!(turning(0.05, None, before), (before, false));
+        let (after, set) = turning(0.05, Some(16), before);
+        assert!(set);
+        let rate = TWO_PI / (16.0f32 * 0.05);
+        assert_eq!(
+            after,
+            Turning {
+                revolution: 16.0f32 * 0.05,
+                revolution_rate: rate,
+                rate,
+                ..before
+            }
+        );
+        // a sprite of no facets: a revolution of 0, the largest float
+        assert_eq!(turning(0.05, Some(0), before).0.rate, f32::MAX);
+    }
+
     fn stats() -> MoveStats {
         MoveStats {
             fly_mode: 0,
@@ -3080,7 +3319,7 @@ mod tests {
             wait_delays: 0,
             attack_moving: false,
             last_move: 0,
-            moved_at: [0.0; 3],
+            moved_at: [28.0, 89.0, 0.0],
             substitute_count: 0,
             ignore_units: Vec::new(),
             last_turn: 0.0,
@@ -3091,6 +3330,325 @@ mod tests {
             in_the_way: Vec::new(),
             sprite_facets: None,
         }
+    }
+
+    /// `FUN_14114ece0`: the unit, its target, then its own list but itself when the walked
+    /// level's top path holds a path made this update.
+    #[test]
+    fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
+        let world = world();
+        let mut pathing = Pathing::default();
+        let mut object = Well512::default();
+        let groups = crate::group::UnitGroups::default();
+        let mut plan = Planning {
+            pathing: &mut pathing,
+            now: 16360,
+            computer: false,
+            object: &mut object,
+            construction_rate: 1.0,
+            groups: &groups,
+        };
+        let me = Me {
+            id: 9177,
+            position: [28.0, 89.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let mut m = builder_9177();
+        m.ignore_units = vec![5, 9177, 6];
+        let house = *world.get(10028).unwrap();
+        let line = ([28.0, 0.0], [30.0, 0.0]);
+        let list = |m: &Mover, plan: &mut Planning<'_>| {
+            m.ignore_list(&me, &world, plan, Some(&house), 10028, line)
+        };
+        assert_eq!(list(&m, &mut plan), Ok(vec![9177, 10028, 5, 6]));
+        // a top level without a path, or a path of another update: none of the own list
+        m.paths[1].has_path = false;
+        assert_eq!(list(&m, &mut plan), Ok(vec![9177, 10028]));
+        m.paths[1].has_path = true;
+        m.paths[1].created = 16359;
+        assert_eq!(list(&m, &mut plan), Ok(vec![9177, 10028]));
+    }
+
+    /// `FUN_140fa0110`: the drop-off walker's start test along its line, with its radius, its
+    /// weapon range and the target's radii: blocked deep in terrain its mask lacks, free on
+    /// terrain it has.
+    #[test]
+    fn the_drop_off_walker_s_start_is_blocked_in_terrain_its_mask_lacks() {
+        let test = |class: u8| {
+            let world = Spatial::with_tiles(
+                [16, 16],
+                crate::spatial::Tiles::new(16, 16, vec![class; 256]),
+            );
+            let mut pathing = Pathing::default();
+            pathing.start_mesh(16);
+            let mut object = Well512::default();
+            let groups = crate::group::UnitGroups::default();
+            let mut plan = Planning {
+                pathing: &mut pathing,
+                now: 0,
+                computer: false,
+                object: &mut object,
+                construction_rate: 1.0,
+                groups: &groups,
+            };
+            let mut target = world_target();
+            target.position = [12.5, 5.5, 0.0];
+            let m = builder_9177();
+            m.start_blocked(&world, &mut plan, &target, ([5.5, 5.5], [12.5, 5.5]))
+        };
+        // class 1 lies outside the villager's mask (6): every row of tiles is a shape
+        assert_eq!(test(1), Ok(true));
+        assert_eq!(test(2), Ok(false));
+    }
+
+    /// The house the builders of `world` walk to.
+    fn world_target() -> Placed {
+        *world().get(10028).unwrap()
+    }
+
+    /// `FUN_14114ffc0` -> `FUN_140fa0370`: the reach test starts at +0x824, where the unit last
+    /// moved to: a unit whose +0x824 lies off the map reaches nothing, whatever its place.
+    #[test]
+    fn the_reach_test_starts_where_the_unit_last_moved_to() {
+        let mut world = Spatial::with_tiles(
+            [40, 40],
+            crate::spatial::Tiles::new(40, 40, vec![4; 40 * 40]),
+        );
+        world.insert(
+            9177,
+            Placed {
+                position: [5.5, 5.5, 0.0],
+                radius: [0.2, 0.2],
+                class: 4,
+                player: 2,
+                master: 83,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.8,
+                unknown: None,
+                obstruction: Some(Obstruction { kind: 5, class: 2 }),
+            },
+        );
+        let mut pathing = Pathing::default();
+        let mut object = Well512::default();
+        let groups = crate::group::UnitGroups::default();
+        let mut plan = Planning {
+            pathing: &mut pathing,
+            now: 0,
+            computer: false,
+            object: &mut object,
+            construction_rate: 1.0,
+            groups: &groups,
+        };
+        let me = Me {
+            id: 9177,
+            position: [5.5, 5.5, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let mut m = builder_9177();
+        m.moved_at = [5.5, 5.5, 0.0];
+        // 25 tiles away on open land: the long pather's answer
+        let far = [30.5, 5.5];
+        assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(true));
+        // with ignore units the long pather lowers those that wait or move (none here)
+        m.ignore_units = vec![5, 6];
+        assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(true));
+        m.moved_at = [-1.0, 5.5, 0.0];
+        assert_eq!(m.reaches(&me, &world, &mut plan, far, 0.0, 83), Ok(false));
+    }
+
+    /// `FUN_14114f630`: an angle at most the turn's most, or a NaN most (an infinite turn rate
+    /// times dt 0), turns the whole angle and is not clipped (JBE on unordered).
+    #[test]
+    fn a_nan_most_turns_the_whole_angle_unclipped() {
+        let mut m = builder_9177();
+        m.forward = [1.0, 0.0, 0.0];
+        m.right = [0.0, 0.0, -1.0];
+        m.stats.turn_rate = f32::INFINITY;
+        assert_eq!(m.steer([0.0, 0.0, 1.0], 0.0), Ok(false));
+        assert!(m.forward.iter().all(|c| c.is_finite()));
+        assert!(0.99 < m.forward[2]);
+        // a small most clips the turn
+        m.forward = [1.0, 0.0, 0.0];
+        m.stats.turn_rate = 1.0;
+        assert_eq!(m.steer([0.0, 0.0, 1.0], 0.02), Ok(true));
+        assert!(m.forward[2].abs() < 0.03);
+    }
+
+    /// `LAB_141152ec1`: a waypoint a tile away, or a target a tile from the unit, or a near one of
+    /// master 45, is the long pather's.
+    #[test]
+    fn a_far_waypoint_or_a_target_of_master_45_takes_the_long_pather() {
+        assert!(far_waypoint(1.0, None) && !far_waypoint(0.5, None));
+        assert!(far_waypoint(0.0, Some((1.0, 4))));
+        assert!(!far_waypoint(30.0, Some((0.5, 4))));
+        assert!(far_waypoint(30.0, Some((0.5, WIDE_MASTER))));
+        assert!(!far_waypoint(30.0, Some((f32::NAN, 4))));
+    }
+
+    /// `FUN_141161950`: a moving unit's footprint stays 0.01 inside the map, its y by the map's
+    /// width as its x (the game reads `+0x18` for both).
+    #[test]
+    fn the_position_setter_holds_y_by_the_map_s_width() {
+        let m = builder_9177();
+        // a map 40 wide and 120 high: y 100 lies beyond the width less the radius and the gap
+        let at = m.set_position([10.0, 100.0, 0.0], [40, 120]);
+        assert_eq!(at[1], (40.0f32 - 0.2) - EDGE_GAP);
+        // a unit that does not move is not held
+        let mut still = builder_9177();
+        still.stats.speed = 0.0;
+        assert_eq!(still.set_position([10.0, 100.0, 0.0], [40, 120])[1], 100.0);
+    }
+
+    /// `FUN_140f98bc0` with 1: a loop's next point or 0 past its end; a back-and-forth path turns
+    /// at its ends and flips bit 2; a path that does not loop has none.
+    #[test]
+    fn a_looping_path_s_next_waypoint_goes_round_or_back_and_forth() {
+        let mut l = level(1, &[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]], 2);
+        l.path_flags = 0;
+        assert_eq!(looping_next(&mut l, 1), -1);
+        l.path_flags = 1;
+        assert_eq!((looping_next(&mut l, 1), looping_next(&mut l, 2)), (2, 0));
+        l.path_flags = 3;
+        assert_eq!(looping_next(&mut l, 1), 0);
+        assert_eq!((looping_next(&mut l, 0), l.path_flags), (1, 7));
+        assert_eq!(looping_next(&mut l, 1), 2);
+        assert_eq!((looping_next(&mut l, 2), l.path_flags), (1, 3));
+    }
+
+    /// `LAB_141151b6d`: an arrived level of link 2 hands its looping parent its next waypoint;
+    /// one of another link stays and the step walks on.
+    #[test]
+    fn an_arrived_level_hands_a_looping_parent_its_next_waypoint() {
+        let goal = Goal {
+            target: None,
+            gap: FAR,
+            to_end: FAR,
+        };
+        let mut m = builder_9177();
+        m.paths[0].linked_type = 2;
+        m.paths[1].path_flags = 1;
+        m.paths[1].waypoint = 1;
+        assert!(matches!(m.arrived(goal), Ok(Next::Again)));
+        assert_eq!(
+            (m.paths.len(), m.paths[0].state, m.paths[0].waypoint),
+            (1, 2, 0)
+        );
+        let mut m = builder_9177();
+        m.paths[0].linked_type = 0;
+        assert!(matches!(m.arrived(goal), Ok(Next::Dispatch)));
+        assert_eq!(m.paths.len(), 2);
+    }
+
+    /// `0x141150f00`: a level whose target is gone walks as to a point (`FUN_1415417a0` finds
+    /// none, `LAB_1411512df`), as one with no target does.
+    #[test]
+    fn a_walk_whose_target_is_gone_walks_as_to_a_point() {
+        let walk = |target: i32| {
+            let mut m = builder_9177();
+            for l in &mut m.paths {
+                l.target = target;
+                l.range = 0.0;
+            }
+            let mut me = Me {
+                id: 9926,
+                position: [28.0, 89.0, 0.0],
+                group: -1,
+                action_state: 0,
+            };
+            let motion = m.motion(&mut me, DT, &mut Spatial::new([120, 120]), None);
+            (motion, m.forward, m.velocity)
+        };
+        assert_eq!(walk(77), walk(-1));
+        assert_eq!(walk(77).0, Ok(Motion::Moving));
+    }
+
+    /// The motion step's gate gaps (0x1411512b3, 0x141151a62, 0x141154f22): a gate's gap is the
+    /// least of its own and its first two annexes' through the site's terms (`MINSS`); any other
+    /// target's is its own.
+    #[test]
+    fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
+        let mut world = Spatial::new([40, 40]);
+        let wall = |x: f32, class: i16| Placed {
+            position: [x, 10.0, 0.0],
+            radius: [0.5, 0.5],
+            class,
+            player: 1,
+            master: 0,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: Some(Obstruction { kind: 2, class: 1 }),
+        };
+        world.insert(100, wall(10.0, GATE));
+        world.insert(101, wall(12.0, 27));
+        world.insert(102, wall(8.0, 27));
+        world.set_annex(101, Some(100));
+        world.set_annex(102, Some(100));
+        let near = ([13.5, 10.0, 0.0], [0.2, 0.2]);
+        let gate = *world.get(100).unwrap();
+        let own = footprint_gap(near.0, near.1, gate.position, gate.radius);
+        assert!((own - 2.8).abs() < 1e-6);
+        // annex 101 lies 0.8 away, less 0.1
+        let gap = gate_gap(&world, near, (100, &gate), own, |g| g - ANNEX_GAP);
+        let annex = footprint_gap(near.0, near.1, [12.0, 10.0, 0.0], [0.5, 0.5]);
+        assert!((annex - 0.8).abs() < 1e-6);
+        assert_eq!(gap, annex - ANNEX_GAP);
+        // not a gate: its own
+        let mut post = gate;
+        post.class = 27;
+        assert_eq!(gate_gap(&world, near, (100, &post), own, |g| g - 1.0), own);
+    }
+
+    /// `FUN_140f98d50` and `FUN_140f98dd0`: a point goes, or the path ends before it and is
+    /// measured again; an index outside the path, or an empty path, changes nothing.
+    #[test]
+    fn a_path_loses_a_point_or_its_end_only_for_an_index_inside_it() {
+        let mut points = vec![[0.0; 3], [1.0, 0.0, 0.0], [1.0, 0.0, 2.0]];
+        assert!(!remove_point(&mut points, -1));
+        assert!(!remove_point(&mut points, 3));
+        assert!(remove_point(&mut points, 1));
+        assert_eq!(points, [[0.0; 3], [1.0, 0.0, 2.0]]);
+        let mut path = Path {
+            points: vec![[0.0; 3], [3.0, 0.0, 0.0], [3.0, 0.0, 4.0], [0.0; 3]],
+            length: 12.0,
+        };
+        assert!(!cut_path(&mut path, -1));
+        assert!(!cut_path(&mut path, 4));
+        assert_eq!(path.length, 12.0);
+        assert!(cut_path(&mut path, 3));
+        assert_eq!((path.points.len(), path.length), (3, 7.0));
+        assert!(cut_path(&mut path, 0));
+        assert_eq!((path.points.len(), path.length), (0, 0.0));
+        assert!(!cut_path(&mut path, 0));
+    }
+
+    /// `FUN_140f96050`: the top level decides, not the walked one; a level without a path has
+    /// no more; else `count - 1 <= waypoint` in 32 bits says none.
+    #[test]
+    fn the_top_level_has_more_waypoints_unless_its_count_less_one_reaches_its_index() {
+        let mut m = builder_9177();
+        // the top level's two points, its waypoint 1: none after it, whatever the walked level has
+        m.paths[0].waypoint = 0;
+        assert!(!m.top_has_more());
+        m.paths[1].waypoint = 0;
+        assert!(m.top_has_more());
+        // without a path: none
+        m.paths[1].has_path = false;
+        assert!(!m.top_has_more());
+        // an empty path: -1 <= waypoint, but a waypoint below -1 has more
+        m.paths[1].has_path = true;
+        m.paths[1].points.clear();
+        assert!(!m.top_has_more());
+        m.paths[1].waypoint = -2;
+        assert!(m.top_has_more());
+        m.paths.clear();
+        assert!(!m.top_has_more());
     }
 
     /// `FUN_140f9b8f0` compares `i` with the point count less one, signed: an empty path or the
@@ -3163,6 +3721,7 @@ mod tests {
     fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
         // a cow at its level 0 waypoint (21.8, 92.2), its level 1 parent's waypoint 1 of three
         let mut m = builder_9177();
+        m.moved_at = [21.8, 92.2, 0.0];
         m.paths = vec![
             level(0, &[[21.5, 91.5], [21.8, 92.2], [25.15, 92.85]], 3),
             level(
@@ -3192,6 +3751,7 @@ mod tests {
         );
         // a tree in the way of both leaves the levels as they are
         let mut m = builder_9177();
+        m.moved_at = [21.8, 92.2, 0.0];
         m.paths = vec![
             level(0, &[[21.5, 91.5], [21.8, 92.2]], 3),
             level(1, &[[21.5, 91.5], [28.5, 93.5], [28.9, 94.1]], 0),
@@ -3342,6 +3902,34 @@ mod tests {
         assert_eq!(m.forward, [0.894_427_2, 0.0, -0.447_213_62]);
     }
 
+    /// `moveForward` (`FUN_141158490`), slot 199 (`FUN_141161860`) and slot 198
+    /// (`FUN_141150a80`) start from `+0x824`, where the unit last moved to, not from the place
+    /// the caller holds.
+    #[test]
+    fn the_step_and_the_speed_control_start_where_the_unit_last_moved_to() {
+        let mut m = builder_9177();
+        m.forward = [1.0, 0.0, 0.0];
+        m.moved_at = [10.0, 20.0, 0.0];
+        m.velocity.as_mut().unwrap().velocity = [0.0, 0.0, 0.5];
+        m.velocity.as_mut().unwrap().acceleration = [0.0; 3];
+        // the step: 0.5 tiles a second for a second, from (10, 20) whatever the caller holds
+        let at = m.step_velocity([40.0, 40.0, 0.0], 1.0, [120, 120], None, 0);
+        assert_eq!(at, [10.5, 20.0, 0.0]);
+        assert_eq!(m.moved_at, [10.5, 20.0, 0.0]);
+        // the projection along +x: 0.5 tiles from (10.5, 20)
+        assert_eq!(m.projected([1.0, 0.0, 0.0], 1.0), [11.0, 0.0, 20.0]);
+        // the speed control's turning circle around (10.5, 20) grown to the right by 1: a
+        // waypoint inside it brakes, one beyond it speeds up
+        m.stats.turn_radius = 2.0;
+        m.stats.turn_radius_speed = 1.0;
+        m.right = [0.0, 0.0, -1.0];
+        m.control_speed([10.5, 0.0, 19.2], false);
+        assert_eq!(m.velocity.as_ref().unwrap().acceleration[2], -f32::MAX);
+        m.velocity.as_mut().unwrap().acceleration = [0.0; 3];
+        m.control_speed([12.0, 0.0, 17.0], false);
+        assert_eq!(m.velocity.as_ref().unwrap().acceleration[2], f32::MAX);
+    }
+
     #[test]
     fn the_second_tick_turns_toward_the_waypoint_from_where_the_first_step_ended() {
         let mut m = builder_9177();
@@ -3433,6 +4021,7 @@ mod tests {
         ];
         m.velocity.as_mut().unwrap().velocity = [0.0, 0.0, 0.8];
         let mut world = Spatial::new([120, 120]);
+        m.moved_at = [29.51, 89.49, 0.0];
         let mut me = Me {
             id: 9175,
             position: [29.51, 89.49, 0.0],

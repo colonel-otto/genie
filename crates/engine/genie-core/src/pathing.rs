@@ -210,14 +210,28 @@ impl Pathing {
         self.shapes.get(&id).copied()
     }
 
-    /// The world's load gives restriction `restriction` a planner (`FUN_140f7d310`), unless one
-    /// with the same values has one.
+    /// The world's load gives restriction `restriction` a planner (`FUN_140f7d310`), unless the
+    /// lookup finds one ([`Pathing::planned_for`]).
     pub fn register(&mut self, restriction: usize) {
-        let planned = self.planned.get_or_insert_with(Vec::new);
-        let values = self.restrictions.get(restriction);
-        if values.is_some() && !planned.iter().any(|&r| self.restrictions.get(r) == values) {
-            planned.push(restriction);
+        let _ = self.planned.get_or_insert_with(Vec::new);
+        if self.restrictions.get(restriction).is_some() && self.planned_for(restriction).is_none() {
+            self.planned.get_or_insert_with(Vec::new).push(restriction);
         }
+    }
+
+    /// `FUN_140f7ca70`, the load's planners searched for restriction `restriction`'s values (the
+    /// world's table, `+0x18` each): the first planner whose values (its copy, `+0x3c0`) are
+    /// another length than the restriction's, or none, or each equal (`==`, so a NaN never) to
+    /// its value. None when none is (`0`), for a restriction the data has not got, and without
+    /// the load's planners.
+    fn planned_for(&self, restriction: usize) -> Option<usize> {
+        let values = self.restrictions.get(restriction)?;
+        self.planned.as_ref()?.iter().copied().find(|&r| {
+            let own = self.restrictions.get(r).map_or(&[][..], Vec::as_slice);
+            own.len() != values.len()
+                || own.is_empty()
+                || own.iter().zip(values).all(|(a, b)| a == b)
+        })
     }
 
     /// The planner of a terrain restriction (`FUN_140f7cb30` -> `FUN_140f7ca70`): the first of
@@ -231,13 +245,10 @@ impl Pathing {
                 p.update(rect, &blocked);
             }
         }
-        let values = self.restrictions.get(restriction)?;
+        let _ = self.restrictions.get(restriction)?;
         let key = match self.planned.as_ref() {
             None => restriction,
-            Some(planned) => planned
-                .iter()
-                .copied()
-                .find(|&r| self.restrictions.get(r) == Some(values))?,
+            Some(_) => self.planned_for(restriction)?,
         };
         if !self.planners.contains_key(&key) {
             let passable = self.restrictions.get(key)?.clone();
@@ -393,6 +404,43 @@ mod tests {
         // a player the slice holds no budget of: no caps
         assert!(p.budget(5).allows(0));
         p.count_plan(5);
+    }
+
+    /// `FUN_140f7ca70`: the first planner whose values are another length, or none, or all
+    /// equal (a NaN never equal) to the restriction's; `FUN_140f7d310` adds a planner only when
+    /// none is found.
+    #[test]
+    fn the_planner_lookup_takes_the_first_of_another_length_or_of_equal_values() {
+        let mut p = Pathing {
+            restrictions: vec![
+                vec![1.0, 0.0],
+                vec![1.0, 0.0],
+                vec![0.0, 1.0],
+                vec![1.0, 0.0, 1.0],
+                vec![],
+                vec![f32::NAN, 0.0],
+            ],
+            ..Pathing::default()
+        };
+        p.register(2);
+        p.register(0);
+        p.register(1);
+        assert_eq!(p.planned, Some(vec![2, 0]));
+        assert_eq!(p.planned_for(1), Some(0));
+        assert_eq!(p.planned_for(0), Some(0));
+        // another length or none: the first planner
+        assert_eq!(p.planned_for(3), Some(2));
+        assert_eq!(p.planned_for(4), Some(2));
+        p.register(3);
+        p.register(4);
+        assert_eq!(p.planned, Some(vec![2, 0]));
+        // a NaN equals nothing: a planner of its own
+        assert_eq!(p.planned_for(5), None);
+        p.register(5);
+        assert_eq!(p.planned, Some(vec![2, 0, 5]));
+        assert_eq!(p.planned_for(5), None);
+        // a restriction the data has not got
+        assert_eq!(p.planned_for(9), None);
     }
 
     /// 425906646's villagers walking to player 6's town centre 27171 (annexes 27172, 27173,

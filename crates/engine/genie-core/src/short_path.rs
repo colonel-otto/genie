@@ -727,8 +727,10 @@ impl Goal {
 /// A node's payload (`+0x18..+0x30`, a `std::variant`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
-    /// 0: the start; its shape (always none here).
-    Start { shape: u32 },
+    /// 0: the start. Its shape field is always none: `FUN_140fa4410`, the only maker of a type-0
+    /// node, writes -1 there (`local_178`), so the expansion's branch for a type-0 node on a
+    /// shape (a side node, `FUN_140fa3fe0`) never runs.
+    Start,
     /// 1: a waypoint.
     Waypoint,
     /// 2: a point on a shape's side.
@@ -841,17 +843,19 @@ fn clip(mut a: Point, mut b: Point, bx: [i32; 4]) -> Option<(Point, Point)> {
             return None;
         }
         let c = if ca != 0 { ca } else { cb };
+        // the differences in 32 bits, the products and the division in 64
+        let (dx, dy) = (b[0].wrapping_sub(a[0]), b[1].wrapping_sub(a[1]));
         if c & 1 != 0 {
-            y = a[1].wrapping_add(part(b[1] - a[1], xmin - a[0], b[0] - a[0]));
+            y = a[1].wrapping_add(part(dy, xmin.wrapping_sub(a[0]), dx));
             x = xmin;
         } else if c & 2 != 0 {
-            y = a[1].wrapping_add(part(xmax - a[0], b[1] - a[1], b[0] - a[0]));
+            y = a[1].wrapping_add(part(xmax.wrapping_sub(a[0]), dy, dx));
             x = xmax;
         } else if c & 4 != 0 {
-            x = a[0].wrapping_add(part(ymin - a[1], b[0] - a[0], b[1] - a[1]));
+            x = a[0].wrapping_add(part(ymin.wrapping_sub(a[1]), dx, dy));
             y = ymin;
         } else if c & 8 != 0 {
-            x = a[0].wrapping_add(part(ymax - a[1], b[0] - a[0], b[1] - a[1]));
+            x = a[0].wrapping_add(part(ymax.wrapping_sub(a[1]), dx, dy));
             y = ymax;
         }
         if c == ca {
@@ -1483,7 +1487,7 @@ impl Search<'_> {
             idx: self.arena.len() as u32,
             parent: NONE,
             at: p,
-            kind: Kind::Start { shape: NONE },
+            kind: Kind::Start,
         };
         self.arena.push(start);
         if self.ctx.holder(p).is_none() {
@@ -1638,22 +1642,17 @@ impl Search<'_> {
     }
 
     /// A hit point snapped onto the hit shape's side, then onto that side of every shape of its
-    /// tile that still holds it, until none does (`LAB_140fa7102`, `LAB_140fa5f50`).
-    fn settle(&self, h: &mut Point, hit: &mut Hit) -> Result<(), Unsupported> {
+    /// tile that still holds it, until none does (`LAB_140fa7102`, `LAB_140fa5f50`, unbounded as
+    /// the game's). It ends: a holder holds the point strictly inside, so the snap keeps the other
+    /// coordinate and moves this one past the holder's side, always the same way (side 0 and 3
+    /// lower, 1 and 2 higher); no shape holds it again, and the mesh has finitely many.
+    fn settle(&self, h: &mut Point, hit: &mut Hit) {
         let d = self.ctx.d;
         snap_to_side(h, self.ctx.mesh.shapes[hit.shape as usize], hit.side, d);
-        for _ in 0..10_000 {
-            match self.ctx.holder(*h) {
-                None => return Ok(()),
-                Some(id) => {
-                    snap_to_side(h, self.ctx.mesh.shapes[id as usize], hit.side, d);
-                    hit.shape = id;
-                }
-            }
+        while let Some(id) = self.ctx.holder(*h) {
+            snap_to_side(h, self.ctx.mesh.shapes[id as usize], hit.side, d);
+            hit.shape = id;
         }
-        Err(Unsupported(
-            "a hit point that two shapes keep snapping back into",
-        ))
     }
 
     /// `FUN_140fa2b20`: the two legs of an L toward `c` from node `b`, the first along direction
@@ -1906,12 +1905,13 @@ impl Search<'_> {
                 }
             }
             if k == 2 {
-                return self.corner_axis(n, t);
+                self.corner_axis(n, t);
+                return Ok(());
             }
         }
         if k == 1 {
             let mut h = Self::at_fraction(p, t, frac);
-            self.settle(&mut h, &mut hit)?;
+            self.settle(&mut h, &mut hit);
             if h != p {
                 let g = n.g.wrapping_add(float_distance(p, h));
                 self.side_node(g, n.idx, hit.shape, hit.side, h);
@@ -1938,7 +1938,7 @@ impl Search<'_> {
     /// Type 3 when every ray touches: along x toward `t`, then along y; a leg's hit becomes a
     /// side node; with both legs clear, one tile toward `t` (at most) becomes a waypoint that may
     /// be the best (by cost, not estimate).
-    fn corner_axis(&mut self, n: Node, t: Point) -> Result<(), Unsupported> {
+    fn corner_axis(&mut self, n: Node, t: Point) {
         let p = n.at;
         let dx = t[0].wrapping_sub(p[0]);
         let dy = t[1].wrapping_sub(p[1]);
@@ -1947,7 +1947,7 @@ impl Search<'_> {
         if let Some((shape, side, at)) = sw.counted() {
             let g = n.g.wrapping_add(float_distance(p, at));
             self.side_node(g, n.idx, shape, side, at);
-            return Ok(());
+            return;
         }
         let sw2 = self.ctx.sweep(m, t, if 0 < dy { 2 } else { 0 });
         if !sw2.found {
@@ -1965,7 +1965,7 @@ impl Search<'_> {
             if self.best == NONE || w.g < self.arena[self.best as usize].g {
                 self.best = w.idx;
             }
-            return Ok(());
+            return;
         }
         let mid = self.add(
             through_float(dx.wrapping_abs()).wrapping_add(n.g),
@@ -1973,34 +1973,61 @@ impl Search<'_> {
             m,
             Kind::Waypoint,
         );
-        let (Some(shape), Some(side), Some(at)) = (sw2.shape, sw2.side, sw2.point) else {
-            return Err(Unsupported(
-                "a sweep that counted a shape without its outputs",
-            ));
-        };
+        // the second sweep counted a shape (`found`, tested above): its outputs are written
+        let (shape, side, at) = sw2
+            .counted()
+            .expect("a sweep that counts a shape writes its point and side");
         let g = through_float((at[1].wrapping_sub(p[1])).wrapping_abs()).wrapping_add(mid.g);
         self.side_node(g, mid.idx, shape, side, at);
-        Ok(())
     }
 }
 
-/// The short pather's inputs in fixed point: the start and the goal, the unit's radius, the
-/// target's half sizes (when the goal is the target's own position), the range, and the terrain
-/// classes the unit cannot cross (`mask ^ 0xff`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The short pather's arguments (`FUN_140f9d3a0`'s block, which `FUN_140f9e540` and
+/// `FUN_140fa0110` fill): the start and the goal in fixed point (the callers truncate them), the
+/// unit's radius, the target's half sizes (when the goal is the target's own position) and the
+/// range as floats, and the terrain classes the unit cannot cross (`mask ^ 0xff`). The search
+/// ([`Pather::search`]) and the start test ([`Pather::start_blocked`]) truncate the floats.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Query {
     /// The start.
     pub from: Point,
     /// The goal.
     pub to: Point,
-    /// The unit's radius.
-    pub radius: i32,
-    /// The target's half sizes, when the goal is its own position.
-    pub target_size: [i32; 2],
-    /// The range.
-    pub range: i32,
-    /// The terrain classes the unit cannot cross, as a tile mask.
+    /// The unit's radius (`+0xc`).
+    pub radius: f32,
+    /// The target's half sizes, when the goal is its own position (`+0x10`, `+0x14`).
+    pub target_size: [f32; 2],
+    /// The range (`+0x18`).
+    pub range: f32,
+    /// The terrain classes the unit cannot cross, as a tile mask (`+0x1c`).
     pub blocked: u64,
+}
+
+impl Query {
+    /// `FUN_140f9d300`'s and `FUN_140f9d3e0`'s casts: each float times 2^22 by `CVTTSS2SI` into
+    /// a 64-bit register, its low 32 bits kept (the radius through `uint`, the same bits).
+    fn fixed(&self) -> Fixed {
+        let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * TO_FIXED) as i32;
+        Fixed {
+            from: self.from,
+            to: self.to,
+            radius: fixed(self.radius),
+            target_size: [fixed(self.target_size[0]), fixed(self.target_size[1])],
+            range: fixed(self.range),
+            blocked: self.blocked,
+        }
+    }
+}
+
+/// A [`Query`] in fixed point, as `FUN_140fa53d0` and `FUN_140faa170` take it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Fixed {
+    from: Point,
+    to: Point,
+    radius: i32,
+    target_size: [i32; 2],
+    range: i32,
+    blocked: u64,
 }
 
 /// What a search returns (`FUN_140fa53d0`'s result) with the path's points from the start on, in
@@ -2059,7 +2086,7 @@ pub struct Call {
 }
 
 /// What the entry makes of a call.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Entry {
     /// 0: the start lies within range of the target (`FUN_14118faf0` less the radius): the path is
     /// cleared.
@@ -2096,7 +2123,8 @@ impl Call {
         if !on_map(self.from) || !on_map(self.to) {
             return Entry::Invalid;
         }
-        let fixed = |f: f32| (f * TO_FIXED) as i64 as i32;
+        // CVTTSS2SI into a 64-bit register, its low 32 bits kept
+        let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * TO_FIXED) as i32;
         let to = [fixed(self.to[0]), fixed(self.to[1])];
         let at_target = self
             .target
@@ -2112,9 +2140,9 @@ impl Call {
             query: Query {
                 from: [fixed(self.from[0]), fixed(self.from[1])],
                 to,
-                radius: (self.radius * TO_FIXED) as i64 as u32 as i32,
-                target_size: [fixed(size[0]), fixed(size[1])],
-                range: fixed(self.range),
+                radius: self.radius,
+                target_size: size,
+                range: self.range,
                 blocked: u64::from(self.mask ^ 0xff),
             },
             ignore,
@@ -2197,8 +2225,8 @@ impl Pather {
     }
 
     /// One call of the short pather (`FUN_140f9d2f0` the ignored shapes, `FUN_140f9d300` the
-    /// search, `FUN_140f9d2b0` the cleanup): `ignore` the shape ids of the units it ignores,
-    /// `words` the obstruction manager's tile words.
+    /// search with the query's floats in fixed point, `FUN_140f9d2b0` the cleanup): `ignore` the
+    /// shape ids of the units it ignores, `words` the obstruction manager's tile words.
     pub fn search(
         &mut self,
         mesh: &mut Mesh,
@@ -2212,7 +2240,7 @@ impl Pather {
         for &id in ignore {
             self.ignore[id as usize] = true;
         }
-        let result = self.core(mesh, words, q);
+        let result = self.core(mesh, words, &q.fixed());
         for &id in ignore {
             if let Some(f) = self.ignore.get_mut(id as usize) {
                 *f = false;
@@ -2233,6 +2261,7 @@ impl Pather {
         words: &dyn Fn(u32, u32) -> u64,
         q: &Query,
     ) -> bool {
+        let q = &q.fixed();
         if self.ignore.len() < mesh.shapes.len() {
             self.ignore.resize(mesh.shapes.len(), false);
         }
@@ -2295,12 +2324,13 @@ impl Pather {
         blocked
     }
 
-    /// `FUN_140fa53d0`.
+    /// `FUN_140fa53d0`. Its call counter (`DAT_143f0f364 += 1` at entry) has no reader (its only
+    /// xref is that read-write) and is not held.
     fn core(
         &mut self,
         mesh: &mut Mesh,
         words: &dyn Fn(u32, u32) -> u64,
-        q: &Query,
+        q: &Fixed,
     ) -> Result<ShortPath, Unsupported> {
         let r = q.radius;
         let d = 0x20_0000 - r;
@@ -2478,14 +2508,9 @@ impl Search<'_> {
             Kind::Waypoint => {
                 let _ = self.pop_test(&n);
             }
-            Kind::Start { shape } => {
+            Kind::Start => {
                 if self.pop_test(&n) {
                     return Ok(None);
-                }
-                if shape != NONE {
-                    return Err(Unsupported(
-                        "a start node on a shape (no creator in the game)",
-                    ));
                 }
                 let t = range_point(self.goal.range, p, self.goal.at)?;
                 let mut frac = T_START;
@@ -2508,7 +2533,7 @@ impl Search<'_> {
                     2 => self.touch_from(n, p, t, frac, hit)?,
                     _ => {
                         let mut h = Self::at_fraction(p, t, frac);
-                        self.settle(&mut h, &mut hit)?;
+                        self.settle(&mut h, &mut hit);
                         let g = n.g.wrapping_add(float_distance(p, h));
                         self.side_node(g, n.idx, hit.shape, hit.side, h);
                     }
@@ -2647,5 +2672,83 @@ mod tests {
             ray_rect([0, 3 * ONE], [4 * ONE, 3 * ONE], r, &mut t, &mut side),
             0
         );
+    }
+
+    /// `FUN_140fa16d0`: a segment through the box keeps the part inside, each end moved to the
+    /// edge it crossed (`(dy * (edge - x) >> 22 << 22) / dx`, truncated); a segment beside the
+    /// box is none, one inside it stays; the box's corners may come in any order.
+    #[test]
+    fn a_segment_clipped_to_the_box_keeps_its_part_inside() {
+        let b = [0, 0, 2 * ONE, 2 * ONE];
+        assert_eq!(
+            clip([-ONE, ONE], [3 * ONE, ONE], b),
+            Some(([0, ONE], [2 * ONE, ONE]))
+        );
+        // first the left edge, then the bottom, then the right edge for the far end
+        assert_eq!(
+            clip([-ONE, -ONE], [3 * ONE, 2 * ONE], b),
+            Some(([1_398_101, 0], [2 * ONE, 5_242_880]))
+        );
+        assert_eq!(clip([3 * ONE, 0], [4 * ONE, ONE], b), None);
+        let inside = ([ONE / 2, ONE], [ONE, ONE / 2]);
+        assert_eq!(clip(inside.0, inside.1, b), Some(inside));
+        assert_eq!(
+            clip([-ONE, ONE], [3 * ONE, ONE], [2 * ONE, 2 * ONE, 0, 0]),
+            Some(([0, ONE], [2 * ONE, ONE]))
+        );
+    }
+
+    /// `FUN_140faa170` (through `FUN_140f9d3e0`): blocked when the start, out of range, lies in
+    /// a shape with fewer than two escape candidates; a free start or one in range is not. The
+    /// terrain's temporary shapes leave the mesh after it.
+    #[test]
+    fn a_start_deep_in_blocked_terrain_is_blocked_unless_in_range() {
+        let blocked = |_: u32, _: u32| 1;
+        let free = |_: u32, _: u32| 0;
+        let mut q = Query {
+            from: [5 * ONE + ONE / 2, 5 * ONE + ONE / 2],
+            to: [8 * ONE + ONE / 2, 5 * ONE + ONE / 2],
+            radius: 0.25,
+            target_size: [0.0, 0.0],
+            range: 0.0,
+            blocked: 1,
+        };
+        let mut mesh = Mesh::new(16);
+        let mut pather = Pather::default();
+        // each row of blocked tiles is a shape half a tile wider all round: the start sits 0.75
+        // tiles inside row 5's, beyond twice the radius from its sides
+        assert!(pather.start_blocked(&mut mesh, &blocked, &q));
+        let n = mesh.shapes.len() as u32;
+        assert!(0 < n && (0..n).all(|id| !mesh.is_shape(id)));
+        assert!(!pather.start_blocked(&mut mesh, &free, &q));
+        q.range = 3.0;
+        assert!(!pather.start_blocked(&mut mesh, &blocked, &q));
+    }
+
+    /// A query from (5, 5) to (7, 5) with a radius of a quarter tile and range `range`.
+    fn range_query(range: f32) -> Query {
+        Query {
+            from: [5 * ONE, 5 * ONE],
+            to: [7 * ONE, 5 * ONE],
+            radius: 0.25,
+            target_size: [0.0, 0.0],
+            range,
+            blocked: 0,
+        }
+    }
+
+    #[test]
+    fn the_search_truncates_its_radius_and_range_to_fixed_point() {
+        // FUN_140f9d300: (int)(longlong)(range * 2^22). The goal lies 1.75 tiles beyond the
+        // radius: a range of 1.75 holds it at once (result 0); the float just below truncates to
+        // 0x6fffff and searches
+        let words = |_: u32, _: u32| 0;
+        let below = f32::from_bits(1.75f32.to_bits() - 1);
+        let mut mesh = Mesh::new(16);
+        let mut pather = Pather::default();
+        let found = pather.search(&mut mesh, &words, &range_query(1.75), &[]);
+        assert_eq!(found.map(|f| f.result), Ok(0));
+        let found = pather.search(&mut mesh, &words, &range_query(below), &[]);
+        assert_eq!(found.map(|f| f.result), Ok(1));
     }
 }
