@@ -330,12 +330,11 @@ impl Turns {
     /// the group ([`Turns::set_initial_position`]) when motion flags bit 1 is set, flags bit 10
     /// is clear and the formation is not a horde (kind 0), or flags bit 15 is set (which then
     /// clears); the sub-formations without units go. Then `BMotion`'s update, with a budget
-    /// while flags bit 8 is clear.
+    /// while flags bit 8 is clear, and the rest ([`Turns::after_motion`]).
     ///
     /// # Errors
     ///
-    /// What the update does not model, and the routine past `BMotion`'s update (from
-    /// `0x14103e014`).
+    /// What the update does not model.
     fn awake_update(&mut self, group: i32) -> Result<bool, Unsupported> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let mut far = false;
