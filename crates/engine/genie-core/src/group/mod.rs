@@ -670,14 +670,24 @@ impl Motion {
 
 impl UnitGroup {
     /// `BUnitGroup`'s constructor (`FUN_140fe1550` after [`Motion::new`]) with id `id`
-    /// (`FUN_141039640`): state -1, no formation, flags `0x100`, no command (-1), no target (-1,
-    /// type -1), differentiator -1, `+0x13d` 1 (the 16-bit `0x100` at `+0x13c`, `mHibernating`
-    /// 0); every other field 0 or empty.
+    /// (`FUN_141039640`): the owner -1 (the 64-bit -1 over `+0xd8` and `+0xdc`, whose id the
+    /// id's setter then writes; [`UnitGroups::create`] sets the owner after), state -1, no
+    /// formation, flags `0x100`, no command (-1), no target (-1, type -1), differentiator -1,
+    /// `+0x13d` 1 (the 16-bit `0x100` at `+0x13c`, `mHibernating` 0); every other field 0 or
+    /// empty, the attack plan (`+0x3b0`, `FUN_140fd75c0`) too.
+    ///
+    /// The constructor's other values are no group state: `+0xc8` and `+0xd0` point at the
+    /// group itself; `+0x1e0` (-1) is the category of the unit types list's sentinel node
+    /// (`+0x1d0`), which every walk of the list stops at before reading; the -1 at `+0x3e8` and
+    /// `+0x420` are the order and command queues' sentinels; `+0x470` (0x20) is the growth step
+    /// of the array at `+0x458` (data, capacity `+0x460`, size `+0x468`), which sets its
+    /// capacity only.
     #[must_use]
     pub fn new(id: i32) -> Self {
         Self {
             motion: Motion::new(),
             id,
+            owner: u32::MAX,
             state: -1,
             flags: 0x100,
             current_command: -1,
@@ -839,6 +849,31 @@ mod tests {
         assert_eq!(sub_formation(70, 1, 3), Some(5));
         assert_eq!(sub_formation(70, 0x90, 3), Some(3));
         assert_eq!(sub_formation(80, 1, 3), Some(3));
+    }
+
+    /// `FUN_140fe1550`: every value the constructor writes that the group holds.
+    #[test]
+    fn a_new_group_holds_the_constructor_s_values() {
+        let g = UnitGroup::new(7);
+        assert_eq!((g.id, g.owner, g.state), (7, u32::MAX, -1));
+        assert_eq!(
+            (g.flags, g.current_command, g.differentiator_id),
+            (0x100, -1, -1)
+        );
+        assert_eq!((g.current_target.target, g.current_target.kind), (-1, -1));
+        assert_eq!(
+            (
+                g.hibernating,
+                g.replaces_queue,
+                g.attack_plan_type,
+                g.idle_timer
+            ),
+            (0, 1, 0, 0)
+        );
+        assert_eq!((g.previous_formation, g.current_formation), (None, None));
+        assert!(g.members.is_empty() && g.unit_types.is_empty() && g.command_queue.is_empty());
+        assert_eq!((g.formation_locked_type, g.desired_spacing), (0, 0.0));
+        assert_eq!(g.motion, Motion::new());
     }
 
     #[test]
