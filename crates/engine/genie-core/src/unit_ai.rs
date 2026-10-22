@@ -1621,8 +1621,8 @@ const fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
 }
 
 /// The unit-AI type the factory (`FUN_141215a90`) gives a new object of a master of `class`
-/// with the volley missile `missile` (`+0x8d4`, −1 for none), the types `FUN_141215560`'s
-/// switch names for its constructors: masters 1105 (`FUN_140c11fb0`, 0x12) and 1744, 1746
+/// with the volley missile `missile` (`+0x8d4`, −1 for none). The types are those
+/// `FUN_141215560`'s switch names for its constructors: masters 1105 (`FUN_140c11fb0`, 0x12) and 1744, 1746
 /// (`FUN_140c12040`, 0x10) by their id; then none for classes 5, 7, 8, 11, 14, 15, 16, 30 to 34,
 /// 38, 42, 48 and 63; 0xe for class 1; 0xa for 2 and 19; the building's (0x11) for classes 3,
 /// 27, 39, 49 and 60 without a volley missile, the tower's (0xf) for those with one and for 52;
