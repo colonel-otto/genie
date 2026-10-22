@@ -3292,6 +3292,43 @@ mod tests {
         assert_eq!(list(&m, &mut plan), Ok(vec![9177, 10028]));
     }
 
+    /// `FUN_140fa0110`: the drop-off walker's start test along its line, with its radius, its
+    /// weapon range and the target's radii: blocked deep in terrain its mask lacks, free on
+    /// terrain it has.
+    #[test]
+    fn the_drop_off_walker_s_start_is_blocked_in_terrain_its_mask_lacks() {
+        let test = |class: u8| {
+            let world = Spatial::with_tiles(
+                [16, 16],
+                crate::spatial::Tiles::new(16, 16, vec![class; 256]),
+            );
+            let mut pathing = Pathing::default();
+            pathing.start_mesh(16);
+            let mut object = Well512::default();
+            let groups = crate::group::UnitGroups::default();
+            let mut plan = Planning {
+                pathing: &mut pathing,
+                now: 0,
+                computer: false,
+                object: &mut object,
+                construction_rate: 1.0,
+                groups: &groups,
+            };
+            let mut target = world_target();
+            target.position = [12.5, 5.5, 0.0];
+            let m = builder_9177();
+            m.start_blocked(&world, &mut plan, &target, ([5.5, 5.5], [12.5, 5.5]))
+        };
+        // class 1 lies outside the villager's mask (6): every row of tiles is a shape
+        assert_eq!(test(1), Ok(true));
+        assert_eq!(test(2), Ok(false));
+    }
+
+    /// The house the builders of `world` walk to.
+    fn world_target() -> Placed {
+        *world().get(10028).unwrap()
+    }
+
     /// `FUN_14114ffc0` -> `FUN_140fa0370`: the reach test starts at +0x824, where the unit last
     /// moved to: a unit whose +0x824 lies off the map reaches nothing, whatever its place.
     #[test]
