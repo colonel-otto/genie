@@ -600,13 +600,12 @@ pub struct HullPather<'w> {
 }
 
 /// `canQuickPath` (object slot 0x3e0, `FUN_1411506e0`) of object `me` (its master's terrain
-/// `mask` and `radius` on x) to object `target` within `range`: the old short pather's quick path
-/// alone ([`HullPather::find_quick`]) from its place to the target's, ignoring both, finds it
-/// there or reaches it (a result below 2); false for a target the world does not hold.
+/// `mask` and `radius` on x) to object `target` within `range`, from `me`'s place in the world
+/// ([`quick_reach_from`]); false for a target the world does not hold.
 ///
 /// # Errors
 ///
-/// Where the pather meets what the slice does not model.
+/// Where the pather meets what the slice does not model, or an object the world does not place.
 pub fn quick_reach(
     world: &Spatial,
     me: i32,
@@ -615,17 +614,40 @@ pub fn quick_reach(
     radius: f32,
     range: f32,
 ) -> Result<bool, Unsupported> {
-    let Some(t) = world.get_known(target)? else {
-        return Ok(false);
-    };
     let from = world
         .get(me)
         .ok_or(Unsupported("a quick path of an object without a place"))?
         .position;
+    let reach = quick_reach_from(world, me, [from[0], from[1]], target, mask, radius, range)?;
+    Ok(reach.is_some())
+}
+
+/// `canQuickPath` (object slot 0x3e0, `FUN_1411506e0`) of object `me` at `from` (its own x, y)
+/// to object `target` within `range`: the old short pather's quick path alone
+/// ([`HullPather::find_quick`], `me`'s player, no include list) from `from` to the target's
+/// place, ignoring both, finds it there or reaches it (a result below 2). Returns the path's
+/// length then (`FUN_140f95a60`, which the slot writes to its `param_4` when given), else None;
+/// None for a target the world does not hold.
+///
+/// # Errors
+///
+/// Where the pather meets what the slice does not model.
+pub fn quick_reach_from(
+    world: &Spatial,
+    me: i32,
+    from: Point,
+    target: i32,
+    mask: u8,
+    radius: f32,
+    range: f32,
+) -> Result<Option<f32>, Unsupported> {
+    let Some(t) = world.get_known(target)? else {
+        return Ok(None);
+    };
     let mut pather = HullPather::new(world, me, target, mask, radius);
     let to = [t.position[0], t.position[1]];
-    let (result, _) = pather.find_quick([from[0], from[1]], to, target, range)?;
-    Ok(result < 2)
+    let (result, path) = pather.find_quick(from, to, target, range)?;
+    Ok((result < 2).then(|| path.length()))
 }
 
 impl<'w> HullPather<'w> {
@@ -2965,6 +2987,65 @@ mod tests {
         p.area = [0, 5, 2, 5];
         p.build_hulls().unwrap();
         assert_eq!(hull_ids(&p), [vec![33], vec![30]]);
+    }
+
+    /// `MShortPather::buildPath` (`FUN_140f8bcd0`): from the end back, a node whose walk to its
+    /// grandparent meets nothing (`FUN_141052b90`, `FUN_141052350` with flags 0x40) skips its
+    /// parent and tests again; one whose walk is blocked hands on to its parent. Then each node
+    /// from the end goes first into the path (`FUN_140f95a50`, `InsertWaypoint` at 0).
+    #[test]
+    fn a_path_skips_the_parents_its_nodes_see_past() {
+        let mut classes = vec![4; 400];
+        // blocks the walk (8, 5) -> (2, 2) alone
+        classes[3 * 20 + 4] = 1;
+        let w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+        let mut p = HullPather::new(&w, -1, -1, 6, 0.2);
+        let n0 = p.add_unrefused(0, false, None, [2.0, 2.0], None, -1, -1);
+        let n1 = p.add_unrefused(0, false, Some(n0), [5.0, 2.0], None, -1, -1);
+        let n2 = p.add_unrefused(0, false, Some(n1), [5.0, 5.0], None, -1, -1);
+        let n3 = p.add_unrefused(0, false, Some(n2), [8.0, 5.0], None, -1, -1);
+        let mut path = Waypoints::default();
+        p.build_path(&mut path, n3).unwrap();
+        // n3 sees n1 (n2 skipped), not n0; n1 has no grandparent
+        assert_eq!(path.points, [[2.0, 2.0], [5.0, 2.0], [8.0, 5.0]]);
+        assert_eq!(p.nodes[n3].parent, Some(n1));
+        assert_eq!(p.nodes[n1].parent, Some(n0));
+        // a lone node is a path of one point
+        let mut one = Waypoints::default();
+        p.build_path(&mut one, n0).unwrap();
+        assert_eq!(one.points, [[2.0, 2.0]]);
+    }
+
+    /// Slot 0x3e0 (`FUN_1411506e0`): the quick path alone from the unit's place to the target's,
+    /// ignoring both; a result below 2 reaches, with the path's length (its `param_4`); none for a
+    /// target the world does not hold or a quick path that is blocked.
+    #[test]
+    fn a_unit_s_quick_reach_is_its_quick_path_alone() {
+        let mut w = open_world();
+        w.insert(9171, placed(2.0, 5.5, 0.2, 5));
+        w.insert(48, placed(5.5, 5.5, 0.5, 2));
+        w.insert(9149, placed(10.5, 5.5, 0.5, 2));
+        let by = 5.5 - 0.7 * SQRT_2;
+        let length = quick_reach_from(&w, 9171, [2.0, 5.5], 9149, 6, 0.2, 0.1)
+            .unwrap()
+            .unwrap();
+        let expected = (3.5f32 * 3.5 + (5.5 - by) * (5.5 - by)).sqrt()
+            + (5.1f32 * 5.1 + (5.5 - by) * (5.5 - by)).sqrt();
+        assert!((length - expected).abs() < 1e-4, "{length} {expected}");
+        assert!(quick_reach(&w, 9171, 9149, 6, 0.2, 0.1).unwrap());
+        // within range already: no path, length 0
+        assert_eq!(
+            quick_reach_from(&w, 9171, [9.75, 5.5], 9149, 6, 0.2, 0.1).unwrap(),
+            Some(0.0)
+        );
+        // a target the world does not hold
+        assert!(!quick_reach(&w, 9171, 777, 6, 0.2, 0.1).unwrap());
+        // a second obstruction in the way: the quick path is blocked (3)
+        w.insert(49, placed(7.5, 5.5, 0.5, 2));
+        assert_eq!(
+            quick_reach_from(&w, 9171, [2.0, 5.5], 9149, 6, 0.2, 0.1).unwrap(),
+            None
+        );
     }
 
     #[test]
