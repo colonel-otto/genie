@@ -43,6 +43,9 @@ const LINKED_RADIUS: f32 = f32::from_bits(0x3f00_0000);
 /// in the action list (slot 0x538 with 1), and a top action in state 4, 5 or 11 (slot 0x2b0).
 const MOVE_TO: i16 = crate::move_to::MOVE_TO;
 const KEEPS_MOVING: [u8; 3] = [4, 5, 11];
+/// A group's members are units of type 70 or more (a group takes a unit only with a
+/// sub-formation, [`crate::group::sub_formation`]), which the slice gives movement state.
+const MOVES: &str = "a group's member is a unit of type 70 or more, which moves";
 /// The types of action objects (`RGE_Action_Object`) and of buildings (`TRIBE_Building_Object`).
 const ACTION_KIND: u8 = 40;
 const BUILDING_KIND: u8 = 80;
@@ -199,8 +202,11 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A record whose place the slice does not know near the line, and a unit without movement
-    /// state.
+    /// A record whose place the slice does not know near the line.
+    ///
+    /// # Panics
+    ///
+    /// For a unit without movement state: a group's members move ([`MOVES`]).
     fn line_clear(
         &self,
         u: &crate::turn::Unit,
@@ -209,10 +215,7 @@ impl Turns {
         grow: f32,
         ignore: &[i32],
     ) -> Result<bool, Unsupported> {
-        let mover = u
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("a member without movement state"))?;
+        let mover = u.mover.as_ref().expect(MOVES);
         let own = [u.id];
         let ignore = if ignore.is_empty() { &own[..] } else { ignore };
         let map = self.spatial.map;
@@ -396,10 +399,7 @@ impl Turns {
     /// What the pathers and the position setter do not model.
     fn try_slot(&mut self, group: i32, id: i32, to: Vec3) -> Result<bool, Unsupported> {
         let (p, u) = self.object(id).expect("the member is held");
-        let mover = u
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("a member without movement state"))?;
+        let mover = u.mover.as_ref().expect(MOVES);
         let g = self.groups.get(group).expect("held");
         let computer = self.players.get(p).is_some_and(|q| q.computer);
         let solid = mover.stats.radius.iter().all(|&r| 0.0 < r);
@@ -472,10 +472,7 @@ impl Turns {
             flag_1: s.graphic.flags & 2 != 0,
         });
         let at = moved_vector(u);
-        let mover = u
-            .mover
-            .as_mut()
-            .ok_or(Unsupported("a member without movement state"))?;
+        let mover = u.mover.as_mut().expect(MOVES);
         let direction = mover.direction_to(at, to);
         let (turn, _) = mover.turn_toward(mover.forward, direction, mover.turn_dt(dt));
         let facets = facets.or_else(|| mover.facets());
