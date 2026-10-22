@@ -1432,28 +1432,39 @@ impl Turns {
         lock_gate(unit, !locked, now)
     }
 
-    /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each unit of `ids` with a unit AI that may scout
-    /// (`FUN_140c89760`: its master's object flags `+0x654` have bit 4; class 58's rule behind a
-    /// game setting, `FUN_140eca780`, is not modelled) takes an order at once (slot 0x30 ->
-    /// slot 0x28 with Immediate, [`crate::unit_ai::UnitAi::take_order_now`]): the stop order
-    /// when its action is the auto scout's already, else the auto scout order, from the player,
-    /// without a target, at the point (−1, −1) at the unit's height, range 1, priority 100, shown
-    /// at (−1, −1) and ready. The handler looks ids up in every player's objects; another
-    /// player's unit is not modelled. Its sound and the UI's flags are not held.
+    /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): of the first 60 ids (500 for a computer player,
+    /// `FUN_141659cf0`) each object the world holds (any player's: the handler has no owner
+    /// test) with a unit AI that may scout (`FUN_140c89760`: its master's object flags `+0x654`
+    /// have bit 4; class 58's rule behind a game setting, `FUN_140eca780`, is not modelled)
+    /// takes an order at once (slot 0x30 -> slot 0x28 with Immediate,
+    /// [`crate::unit_ai::UnitAi::take_order_now`]): the stop order when its action is the auto
+    /// scout's already, else the auto scout order, from the object's owner (`+0x718`), without
+    /// a target, at the point (−1, −1) at the unit's height, range 1, priority 100, shown at
+    /// (−1, −1) and ready. Its sound and the UI's flags are not held.
     pub(crate) fn auto_scout(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
         use crate::unit_ai::{
             AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER, Effect, QueuedOrder, STOP_ORDER,
         };
-        for &id in ids {
+        let cap = if self.players[player].computer {
+            500
+        } else {
+            60
+        };
+        for &id in ids.iter().take(cap) {
             let Some(place) = self.place(id) else {
                 continue;
             };
-            let Place::Live(p, idx) = place else {
-                return Err(Unsupported("an AUTO_SCOUT of a sleeping object"));
+            let (p, idx) = match place {
+                Place::Live(p, i) => (p, i),
+                // only slot 0x180 puts an object to sleep, one of a type below 30, which has no
+                // unit AI: the handler passes it over
+                Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
+                Place::Sleeping(..) => {
+                    return Err(Unsupported(
+                        "an AUTO_SCOUT of a sleeping object with a unit AI",
+                    ));
+                }
             };
-            if p != player {
-                return Err(Unsupported("an AUTO_SCOUT of another player's unit"));
-            }
             let unit = &self.players[p].objects[idx];
             if unit.ai.is_none() {
                 continue;
@@ -1470,7 +1481,7 @@ impl Turns {
             let (state, position) = (unit.life.state, unit.position);
             let ai = unit.ai.as_mut().expect("checked above");
             let order = QueuedOrder {
-                issuer: player as i32,
+                issuer: p as i32,
                 order: if ai.current_action == AUTO_SCOUT_ACTION {
                     STOP_ORDER
                 } else {
@@ -4450,6 +4461,62 @@ mod tests {
         assert_eq!(unit.move_to.unwrap().goal, Some([30.0, 30.0, 0.0]));
         t.move_point_order(1, 0, [31.0, 30.0, 0.0]).unwrap();
         assert_eq!(t.players[1].objects[0].ai.as_ref().unwrap().orders.len(), 0);
+    }
+
+    /// `FUN_140e666f0`: another player's scout takes the order as its owner's, a unit without
+    /// bit 4 nothing; of a human's ids only the first 60 count.
+    #[test]
+    fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
+        let units = [(11, 4, [20.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players.push(crate::turn::Player::default());
+        let scout = Master {
+            id: 448,
+            kind: 70,
+            class: 12,
+            object_flags: 0x10,
+            ..Master::default()
+        };
+        t.masters
+            .push(crate::masters::Masters::new([scout.clone()]));
+        t.masters[1] = crate::masters::Masters::new([
+            scout,
+            Master {
+                id: 4,
+                kind: 70,
+                ..Master::default()
+            },
+        ]);
+        let ai = crate::unit_ai::UnitAi {
+            current_order: -1,
+            current_action: -1,
+            ..crate::unit_ai::UnitAi::default()
+        };
+        let unit = |id| Unit {
+            id,
+            position: [20.0, 20.0, 0.0],
+            ai: Some(ai.clone()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 448,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects[0].ai = Some(ai.clone());
+        t.players[1].objects.push(unit(12));
+        t.players[2].objects.push(unit(30));
+        let mut ids = vec![99; 59];
+        ids.extend([30, 11, 12]);
+        t.auto_scout(1, &ids).unwrap();
+        let order = |t: &Turns, p: usize, i: usize| {
+            t.players[p].objects[i].ai.as_ref().unwrap().current_order
+        };
+        assert_eq!(order(&t, 2, 0), crate::unit_ai::AUTO_SCOUT_ORDER);
+        assert_eq!(order(&t, 1, 0), -1);
+        assert_eq!(order(&t, 1, 1), -1);
+        t.auto_scout(1, &[12]).unwrap();
+        assert_eq!(order(&t, 1, 1), crate::unit_ai::AUTO_SCOUT_ORDER);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
