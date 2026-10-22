@@ -400,10 +400,13 @@ impl Turns {
     /// point): a building lets the units inside it out, from the last to come in, those `flag`
     /// and `unit_type` pick ([`unload_picks`]): each through [`Turns::let_out`], toward the point
     /// (or its unit AI's command queue location, which is not modelled); each one out has its
-    /// order queue emptied (`FUN_140c5e010`). A unit inside a building that unloads itself and a
-    /// unit with units inside it (a transport's unload) are not modelled; the local player's
-    /// interface flag (`FUN_141663f50`) is not held. A unit (type 70) out is no longer under the
-    /// town bell (`+0x9dc`).
+    /// order queue emptied (`FUN_140c5e010`). A unit inside a building leaves it toward the point
+    /// (with its sound, no work), its orders gone and, of type 70 and up, no longer under the
+    /// town bell. A unit inside a transport, a unit with units inside it (a transport's unload)
+    /// and the other units' steps (a siege unit's, the group leave, the ignore list and the
+    /// unit AI's order 0x2d1) are not modelled; the local player's interface flag
+    /// (`FUN_141663f50`) is not held. A unit (type 70) out is no longer under the town bell
+    /// (`+0x9dc`).
     pub(crate) fn unload(
         &mut self,
         player: usize,
@@ -421,8 +424,35 @@ impl Turns {
             if unit.life.hp < 1.0 {
                 continue;
             }
-            if unit.life.inside.is_some() {
-                return Err(Unsupported("an unload of a unit inside a building"));
+            // a unit inside a building leaves it toward the point (`FUN_1411e7220` with no
+            // work and its sound); a combat unit is no longer under the town bell (`+0x9dc`),
+            // and its unit AI's orders go (`FUN_140c5e010`)
+            if let Some(container) = unit.life.inside {
+                let building = match self.place(container) {
+                    Some(crate::order::Place::Live(cp, ci)) => {
+                        let c = &self.players[cp].objects[ci];
+                        (BUILDING <= self.master_of(cp, c.life.master_id)?.kind).then_some((cp, ci))
+                    }
+                    _ => None,
+                };
+                let Some((cp, ci)) = building else {
+                    return Err(Unsupported(
+                        "an unload of a unit inside a transport (or a sleeping building)",
+                    ));
+                };
+                let _ = self.let_out(cp, ci, id, point, (None, true))?;
+                let (up, ui) = self.live_inside(id)?;
+                let kind = self
+                    .master_of(up, self.players[up].objects[ui].life.master_id)?
+                    .kind;
+                let u = &mut self.players[up].objects[ui];
+                if COMBAT_KIND <= kind {
+                    u.town_bell.flag = false;
+                }
+                if let Some(ai) = u.ai.as_mut() {
+                    ai.orders.clear();
+                }
+                continue;
             }
             if self.master_of(player, unit.life.master_id)?.kind < BUILDING {
                 if unit.garrison.is_empty() {
@@ -2154,5 +2184,28 @@ mod tests {
         walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
         t.seek_shelter(1, &[1000]).unwrap();
         assert_eq!(enter(&t, 1000), None);
+    }
+
+    #[test]
+    fn unload_lets_a_unit_out_of_the_building_it_is_inside() {
+        // FUN_14161f410 on a unit inside a building: FUN_1411e7220 toward the point, +0x9dc
+        // cleared, its orders gone; the building's own unload of the others is not run
+        let mut t = let_out_world();
+        inside_tc(&mut t, 1, 1000, VILLAGER);
+        inside_tc(&mut t, 1, 1001, VILLAGER);
+        let v = t.object_mut(1000).unwrap().1;
+        v.town_bell.flag = true;
+        v.ai = Some(crate::unit_ai::UnitAi::default());
+        t.unload(1, &[1000], [4.5, 4.5], 0, -1, false).unwrap();
+        let v = t.object(1000).unwrap().1;
+        assert_eq!(v.life.inside, None);
+        assert!(!v.town_bell.flag);
+        assert_eq!(t.players[1].objects[0].garrison, [1001]);
+        // a unit inside a transport is not modelled
+        let mut t = let_out_world();
+        let mut u = unit(1000, VILLAGER, 25.0);
+        u.life.inside = Some(200);
+        t.players[1].objects.push(u);
+        assert!(t.unload(1, &[1000], [4.5, 4.5], 0, -1, false).is_err());
     }
 }
