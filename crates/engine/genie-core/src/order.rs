@@ -141,6 +141,15 @@ impl Split {
     }
 }
 
+/// What FOLLOW reads of its target (`FUN_14161c920`'s `param_3`): its id, its place on the
+/// ground and, for a master with a footprint (`+0x5d8` or `+0x5dc` above 0), its class.
+#[derive(Clone, Copy, Debug)]
+struct Followed {
+    id: i32,
+    place: [f32; 2],
+    class: Option<i32>,
+}
+
 /// The splitter's path from one unit to another (`FUN_140f7cb30` -> `FUN_140f7c530`): the
 /// planner's result code and the path's length; None without a planner for the restriction.
 type SplitPath<'a> =
@@ -882,73 +891,187 @@ impl Turns {
         Ok(())
     }
 
-    /// FOLLOW (0x14, `FUN_140e66a60` -> `FUN_14161c920`) of `target`, which the caller found in
-    /// the world (else the command does nothing), after the resets: one unit forms no group
-    /// (`FUN_140fd9ae0`) and takes the order ([`Turns::follow_unit`]); several units, which the
-    /// splitter may group and which follow at their offsets, are not modelled.
+    /// FOLLOW (0x14): the command's check (`FUN_140e54c50`, [`Turns::command_check`]), then
+    /// `FUN_140e66a60`: a target the world does not hold does nothing; the first 60 ids (500 for
+    /// a computer player) go, gone ones null (`FUN_140e6b750`), to `FUN_14161c920`. Its unit AI
+    /// resets (`FUN_141631040`) are the caller's ([`crate::turn`]). The splitter
+    /// (`FUN_140fd9ae0`, no Ctrl) parts the units; a group it forms is not modelled (a new
+    /// group, `FUN_14152efc0`, follows through `FUN_141007320`; a kept one through
+    /// `FUN_140fd9f40`). The command count goes on. Several loose units leave their unit groups
+    /// (`FUN_14102c160` with −1) and, when the box of those that move is narrow enough
+    /// ([`follow_spread`]), each moves to its offset from their mean added to the target's place
+    /// ([`Turns::follow_offset`]); else each follows the target ([`Turns::follow_unit`]).
     pub(crate) fn follow(
         &mut self,
         player: usize,
         units: &[i32],
         target: i32,
     ) -> Result<(), Unsupported> {
-        self.groups.count_command();
-        match units {
-            [] => Ok(()),
-            &[id] => self.follow_unit(player, id, target),
-            _ => Err(Unsupported("a FOLLOW of several units")),
+        let Some(ids) = self.command_check(player, units) else {
+            return Ok(());
+        };
+        let Some((tp, t)) = self.object(target) else {
+            return Ok(());
+        };
+        let tm = self.master_of(tp, t.life.master_id)?;
+        let followed = Followed {
+            id: target,
+            place: [t.position[0], t.position[1]],
+            class: (0.0 < tm.radius[0] || 0.0 < tm.radius[1]).then_some(i32::from(tm.class)),
+        };
+        let cap = if self.players[player].computer {
+            500
+        } else {
+            60
+        };
+        let ids = &ids[..ids.len().min(cap)];
+        let split = self.split(ids, &|_| true, false)?;
+        if !split.groups.is_empty() {
+            return Err(Unsupported(
+                "a FOLLOW whose units the splitter groups (FUN_141007320, FUN_140fd9f40)",
+            ));
         }
+        self.groups.count_command();
+        let loose = split.loose;
+        if 1 < loose.len() {
+            let mut points = Vec::with_capacity(loose.len());
+            for &id in &loose {
+                self.leave_group_of(id, -1)?;
+                if let Some(at) = self.follower(id)? {
+                    points.push(at);
+                }
+            }
+            if let Some(mean) = follow_spread(&points) {
+                for i in 0..loose.len() {
+                    self.follow_offset(&loose, i, followed, mean)?;
+                }
+                return Ok(());
+            }
+        }
+        for i in 0..loose.len() {
+            self.follow_unit(&loose, i, followed)?;
+        }
+        Ok(())
     }
 
-    /// FOLLOW's one unit (`FUN_14161c920`'s loop for an order without groups): a unit the world
-    /// does not hold takes nothing, nor does one of a type below 30 or without speed. Its ignore
-    /// list empties (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and takes the move to
-    /// the target (slot 0x138, [`Turns::move_to_object`]). With slot
-    /// 0x138's 0 the unit AI takes the follow order and action (`FUN_140c64b60` with 1,
-    /// `FUN_140c64b50`); then the target with its class, for a target master with a footprint
-    /// (`+0x5d8` or `+0x5dc` above 0; else none), and its place on the ground (`FUN_140c64be0`).
-    /// Slot 0x2d8's walk and show targets and `+0x888` are not held; another player's unit is not
-    /// modelled.
-    fn follow_unit(&mut self, player: usize, id: i32, target: i32) -> Result<(), Unsupported> {
-        use crate::unit_ai::{FOLLOW_ACTION, FOLLOW_ORDER};
-        let Some(place) = self.place(id) else {
-            return Ok(());
+    /// Unit `id` leaves the unit group the world holds of its link (`FUN_14102c160` with `target`
+    /// and 0, [`Turns::remove_unit`]); a unit the world does not hold or in no group, nothing.
+    fn leave_group_of(&mut self, id: i32, target: i32) -> Result<(), Unsupported> {
+        let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
+        if link != -1 {
+            let _ = self.remove_unit(link, id, target, false)?;
+        }
+        Ok(())
+    }
+
+    /// FOLLOW's test of a unit (`FUN_14161c920`): one the world holds, of a type of 30 or more
+    /// whose master moves (slot 0xe8 above 0; `COMISS`, `JNC`: a NaN speed moves), gives its
+    /// place on the ground.
+    fn follower(&self, id: i32) -> Result<Option<[f32; 2]>, Unsupported> {
+        let Some((p, u)) = self.object(id) else {
+            return Ok(None);
         };
-        let Place::Live(p, idx) = place else {
+        let master = self.master_of(p, u.life.master_id)?;
+        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
+        let moves = MOVING <= master.kind && crate::fmath::below_or_unordered(0.0, speed);
+        Ok(moves.then_some([u.position[0], u.position[1]]))
+    }
+
+    /// A follower's start (`FUN_14161c920`, both loops): its ignore list empties
+    /// (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the other loose units
+    /// ([`ignore_unit`]); its place in the live list. A sleeping object is of a type below 30
+    /// (only slot 0x180 puts one to sleep), which [`Turns::follower`] passed over.
+    fn follower_start(&mut self, loose: &[i32], i: usize) -> Result<(usize, usize), Unsupported> {
+        let Some(Place::Live(p, idx)) = self.place(loose[i]) else {
             return Err(Unsupported(
-                "a FOLLOW of a unit the slice does not hold live",
+                "a FOLLOW of a sleeping object of a type of 30 or more",
             ));
         };
-        if p != player {
-            return Err(Unsupported("a FOLLOW of another player's unit"));
-        }
-        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
-        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
-        if master.kind < MOVING || speed <= 0.0 {
-            return Ok(());
-        }
-        let (target_class, target_place) = {
-            let (tp, t) = self
-                .object(target)
-                .ok_or(Unsupported("a FOLLOW whose target the slice does not hold"))?;
-            let tm = self.master_of(tp, t.life.master_id)?;
-            let footprint = 0.0 < tm.radius[0] || 0.0 < tm.radius[1];
-            (footprint.then_some(i32::from(tm.class)), t.position)
-        };
-        let unit = &mut self.players[player].objects[idx];
-        let mover = unit
+        let mover = self.players[p].objects[idx]
             .mover
             .as_mut()
             .ok_or(Unsupported("a followed unit without movement state"))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
-        self.move_to_object(player, idx, target, [target_place[0], target_place[1], 0.0])?;
-        let unit = &mut self.players[player].objects[idx];
-        if let Some(ai) = unit.ai.as_mut() {
-            ai.set_order(FOLLOW_ORDER, self.streams.get(Stream::Ai));
-            ai.set_action(FOLLOW_ACTION);
-            let (t, class) = target_class.map_or((-1, -1), |class| (target, class));
-            ai.set_target(t, class, [target_place[0], target_place[1], 0.0]);
+        for (k, &other) in loose.iter().enumerate() {
+            if k != i {
+                ignore_unit(&mut mover.ignore_units, other);
+            }
+        }
+        Ok((p, idx))
+    }
+
+    /// FOLLOW's loose unit `loose[i]` (`FUN_14161c920`'s loop for units that do not move at
+    /// their offsets): it leaves its unit group (`FUN_14102c160` with the target's id); one that
+    /// does not move takes nothing ([`Turns::follower`]); else it starts
+    /// ([`Turns::follower_start`]) and moves to the target at its place (slot 0x138,
+    /// [`Turns::move_to_object_with`], z 0). Its unit AI takes the follow order and action
+    /// (`FUN_140c64b60` with 1, `FUN_140c64b50`) only when no action of its took the move; then
+    /// the target with its class (none without a footprint) at its place (`FUN_140c64be0`).
+    /// Slot 0x2d8's walk and show targets and `+0x888` are not held.
+    fn follow_unit(
+        &mut self,
+        loose: &[i32],
+        i: usize,
+        followed: Followed,
+    ) -> Result<(), Unsupported> {
+        use crate::unit_ai::{FOLLOW_ACTION, FOLLOW_ORDER};
+        self.leave_group_of(loose[i], followed.id)?;
+        if self.follower(loose[i])?.is_none() {
+            return Ok(());
+        }
+        let (p, idx) = self.follower_start(loose, i)?;
+        let [x, y] = followed.place;
+        let taken = self.move_to_object_with(p, idx, followed.id, [x, y, 0.0], true)?;
+        let rng = self.streams.get(Stream::Ai);
+        if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
+            if !taken {
+                ai.set_order(FOLLOW_ORDER, rng);
+                ai.set_action(FOLLOW_ACTION);
+            }
+            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
+            ai.set_target(t, class, [x, y, 0.0]);
+        }
+        Ok(())
+    }
+
+    /// FOLLOW's loose unit `loose[i]` at its offset (`FUN_14161c920`'s loop after the box): one
+    /// that moves ([`Turns::follower`]) starts ([`Turns::follower_start`]) and goes to its place
+    /// less `mean` plus the target's, held on the map ([`follow_axis`]): slot 0x138 (z 0) to the
+    /// target there when its master has a footprint, else to the point
+    /// ([`Turns::move_point_order_with`]). Its unit AI takes the move order and action
+    /// (`FUN_140c64b60` with 1, `FUN_140c64b50`) and the target (none without a footprint) at
+    /// that place (`FUN_140c64be0`). Slot 0x2d8's walk and show targets are not held.
+    fn follow_offset(
+        &mut self,
+        loose: &[i32],
+        i: usize,
+        followed: Followed,
+        mean: [f32; 2],
+    ) -> Result<(), Unsupported> {
+        use crate::unit_ai::MOVE_ACTION;
+        let Some([x, y]) = self.follower(loose[i])? else {
+            return Ok(());
+        };
+        let (p, idx) = self.follower_start(loose, i)?;
+        let map = self.spatial.map;
+        let at = [
+            follow_axis(x - mean[0] + followed.place[0], map[0]),
+            follow_axis(y - mean[1] + followed.place[1], map[1]),
+            0.0,
+        ];
+        match followed.class {
+            Some(_) => {
+                let _ = self.move_to_object_with(p, idx, followed.id, at, true)?;
+            }
+            None => self.move_point_order_with(p, idx, at, true)?,
+        }
+        let rng = self.streams.get(Stream::Ai);
+        if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
+            ai.set_order(MOVE_ORDER, rng);
+            ai.set_action(MOVE_ACTION);
+            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id, c));
+            ai.set_target(t, class, at);
         }
         Ok(())
     }
@@ -3955,6 +4078,65 @@ fn inside_map(v: f32, size: i32) -> f32 {
     }
 }
 
+/// FOLLOW's box (`FUN_14161c920`, the loop at `0x14161cc72`) over the places (x, y) of the loose
+/// units that move, as its code has it: each unit's lesser and greater coordinate
+/// (`CMOVBE` on `COMISS x, y` and `COMISS y, x`: a tie or NaN picks x) replace the last unit's,
+/// which first fold into a running least (from [`BOX_START`]) and greatest (from 0), each by
+/// `COMISS`/`CMOVBE` (a tie or NaN takes the last unit's); the sums run on.
+/// The box passes when the last unit's spread and the running one's are each at most
+/// [`SPREAD`] (`COMISS`, `JC`: NaN fails); then it gives the mean place (the sums over the
+/// count, none without units).
+fn follow_spread(points: &[[f32; 2]]) -> Option<[f32; 2]> {
+    use crate::fmath::{at_most_or_unordered, below_or_unordered};
+    /// `DAT_142eea788`.
+    const BOX_START: f32 = crate::image::order::BOX_START;
+    /// `DAT_142eb9430`.
+    const SPREAD: f32 = crate::image::order::SPREAD;
+    let (mut lesser, mut least, mut greater, mut greatest) = (BOX_START, BOX_START, 0.0f32, 0.0f32);
+    let (mut sx, mut sy) = (0.0f32, 0.0f32);
+    for &[x, y] in points {
+        least = if at_most_or_unordered(lesser, least) {
+            lesser
+        } else {
+            least
+        };
+        greatest = if at_most_or_unordered(greatest, greater) {
+            greater
+        } else {
+            greatest
+        };
+        lesser = if at_most_or_unordered(x, y) { x } else { y };
+        greater = if at_most_or_unordered(y, x) { x } else { y };
+        sx += x;
+        sy += y;
+    }
+    if below_or_unordered(SPREAD, greater - lesser) || below_or_unordered(SPREAD, greatest - least)
+    {
+        return None;
+    }
+    if !points.is_empty() {
+        let n = points.len() as i32 as f32;
+        (sx, sy) = (sx / n, sy / n);
+    }
+    Some([sx, sy])
+}
+
+/// A FOLLOW offset's coordinate on a map of `size` tiles (`FUN_14161c920`): above the size less
+/// [`EDGE_GAP`] (at least 0, `MAXSS`) it is that (`COMISS`, `JA`), below 0 it is 0, else itself
+/// (a NaN too).
+fn follow_axis(v: f32, size: i32) -> f32 {
+    /// `DAT_142eb99cc`.
+    const EDGE_GAP: f32 = crate::image::group::SHORT_LENGTH;
+    let most = crate::fmath::maxss(size as f32 - EDGE_GAP, 0.0);
+    if v > most {
+        most
+    } else if 0.0 > v {
+        0.0
+    } else {
+        v
+    }
+}
+
 /// The cell of the `i`th of `n` units in MOVE's grid (`FUN_140e67800`): `side` cells a row, the
 /// root of `n` times `GRID_AREA` truncated; the unit's column and row, less half the side, a
 /// `GRID_STEP` each from the order's point, kept on the map ([`inside_map`]).
@@ -4642,6 +4824,145 @@ mod tests {
         t.players[1].objects[0].artifact = None;
         t.players[1].objects[0].unmodelled_action = Some(Unsupported("a test's action"));
         assert!(t.head_takes_move(1, 0, None, point).is_err());
+    }
+
+    /// `FUN_14161c920`'s box: each unit's x is set against its own y, the units before the last
+    /// fold into the running least and greatest; units side by side on a diagonal pass, two near
+    /// each other far off it do not.
+    #[test]
+    fn follow_s_box_sets_each_unit_s_x_against_its_y() {
+        assert_eq!(
+            follow_spread(&[[20.0, 20.0], [21.0, 20.0]]),
+            Some([20.5, 20.0])
+        );
+        assert_eq!(follow_spread(&[[10.0, 30.0], [10.5, 30.0]]), None);
+        // the last unit's spread: 8 passes, more does not
+        assert_eq!(follow_spread(&[[10.0, 18.0]]), Some([10.0, 18.0]));
+        assert_eq!(follow_spread(&[[10.0, 18.5]]), None);
+        // the running spread holds the units before the last
+        assert_eq!(
+            follow_spread(&[[10.0, 10.0], [30.0, 30.0], [30.0, 30.0]]),
+            None
+        );
+        assert_eq!(follow_spread(&[]), Some([0.0, 0.0]));
+    }
+
+    /// A FOLLOW offset stays on the map: below 0 it is 0, past the size less 0.01 that.
+    #[test]
+    fn a_follow_offset_stays_on_the_map() {
+        assert_eq!(follow_axis(-0.5, 120), 0.0);
+        assert_eq!(follow_axis(130.0, 120), 119.99);
+        assert_eq!(follow_axis(60.25, 120), 60.25);
+        assert!(follow_axis(f32::NAN, 120).is_nan());
+    }
+
+    /// Player 1's soldiers 11 and 12 (moving, each with a unit AI) and player 2's 30 at (40, 20),
+    /// a master with a footprint of class 6; auto formations off, a map of 120 tiles.
+    fn followers() -> Turns {
+        let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
+        let mut t = soldiers(&units, &[]);
+        t.players[1].formations.auto = false;
+        t.spatial.map = [120, 120];
+        let walker = crate::hunt::tests::walker();
+        t.masters[1] = crate::masters::Masters::new([Master {
+            id: 4,
+            kind: 70,
+            moving: Some(walker.stats),
+            ..Master::default()
+        }]);
+        for u in &mut t.players[1].objects {
+            u.mover = Some(walker.clone());
+            u.ai = Some(crate::unit_ai::UnitAi {
+                current_order: -1,
+                current_action: -1,
+                current_target: -1,
+                ..crate::unit_ai::UnitAi::default()
+            });
+        }
+        t.players.push(crate::turn::Player::default());
+        t.masters.push(crate::masters::Masters::new([Master {
+            id: 5,
+            kind: 70,
+            class: 6,
+            radius: [0.5, 0.5],
+            ..Master::default()
+        }]));
+        t.players[2].objects.push(Unit {
+            id: 30,
+            position: [40.0, 20.0, 0.0],
+            life: crate::lifecycle::Lifecycle {
+                master_id: 5,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        t.spatial.insert(
+            30,
+            crate::spatial::Placed {
+                position: [40.0, 20.0, 0.0],
+                radius: [0.5, 0.5],
+                class: 6,
+                player: 2,
+                master: 5,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: false,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        t
+    }
+
+    /// `FUN_14161c920` for one unit: it follows the target (a `MoveTo` to it), its unit AI takes
+    /// the follow order and action and the target with its class at its place.
+    #[test]
+    fn a_follower_takes_the_follow_order_and_walks_to_its_target() {
+        let mut t = followers();
+        t.follow(1, &[11], 30).unwrap();
+        let unit = &t.players[1].objects[0];
+        let ai = unit.ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.current_order, ai.current_action),
+            (crate::unit_ai::FOLLOW_ORDER, crate::unit_ai::FOLLOW_ACTION)
+        );
+        assert_eq!((ai.current_target, ai.target_type), (30, 6));
+        assert_eq!(ai.target_point, [40.0, 20.0, 0.0]);
+        assert_eq!(unit.move_to.unwrap().target, 30);
+        assert_eq!(t.players[1].objects[1].move_to, None);
+    }
+
+    /// `FUN_14161c920` for two units side by side: each moves to the target at its offset from
+    /// the two's mean, takes the move order and action, and ignores the other.
+    #[test]
+    fn followers_side_by_side_take_their_offsets_from_the_target() {
+        let mut t = followers();
+        t.follow(1, &[11, 12], 30).unwrap();
+        for (i, (other, x)) in [(12, 39.5), (11, 40.5)].into_iter().enumerate() {
+            let unit = &t.players[1].objects[i];
+            let ai = unit.ai.as_ref().unwrap();
+            assert_eq!(
+                (ai.current_order, ai.current_action),
+                (MOVE_ORDER, crate::unit_ai::MOVE_ACTION)
+            );
+            assert_eq!((ai.current_target, ai.target_point), (30, [x, 20.0, 0.0]));
+            assert_eq!(unit.mover.as_ref().unwrap().ignore_units, [other]);
+            assert_eq!(unit.move_to.unwrap().target, 30);
+        }
+    }
+
+    /// FOLLOW's check: another player's unit takes nothing while players may not order each
+    /// other's units.
+    #[test]
+    fn a_follow_of_another_player_s_unit_does_nothing() {
+        let mut t = followers();
+        t.follow(2, &[11], 30).unwrap();
+        assert_eq!(
+            t.players[1].objects[0].ai.as_ref().unwrap().current_order,
+            -1
+        );
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
