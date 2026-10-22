@@ -2,8 +2,9 @@
 //! the groups a player owns after the player's objects, and the deletion of a group whose update
 //! returns 0 (the world list's unlink, then `BUnitGroup`'s destructor, `FUN_140fe1920`).
 
+use crate::fmath::Vec3;
 use crate::group::command::MOVE_COMMAND;
-use crate::group::{UnitGroup, WorldObject};
+use crate::group::{SpecificMove, UnitGroup, WorldObject};
 use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
@@ -42,6 +43,26 @@ const TRADE_CART: i16 = 19;
 const TRADE_BOAT: i16 = 2;
 /// The nearest member's target starts this far (`FUN_141007ca0`, `DAT_14330ebf4`).
 const FARTHEST: f32 = crate::image::group::FARTHEST;
+/// A follow (`mCurrentCommand` 2).
+const FOLLOW: i32 = 2;
+/// A turn of the motion above this lays the formation out anew (`DAT_142eb6e44`, π/4).
+const TURN_LIMIT: f32 = crate::image::facing::QUARTER_PI;
+/// How far ahead of the group its front is looked for (`DAT_14330ebcc`).
+const FRONT_AHEAD: f32 = crate::image::movement::LOOK_AHEAD;
+/// A total spacing above this lays the formation out anew on a changed count
+/// (`DAT_142ec9eb4`).
+const RELAYOUT_SPACING: f32 = crate::image::missile::VOLLEY_REACH_MARGIN;
+/// The share of the lead's line of sight a follow keeps within (`DAT_142e7f384`).
+const FOLLOW_SHARE: f32 = crate::image::group::FRONT_SHARE;
+/// A follow's target this near the top path's end (squared, `DAT_14330eb8c`) keeps the move.
+const CLOSE: f32 = crate::image::group::CLOSE;
+/// The idle timer past which an idle group draws it anew (the immediate `0xbb8`).
+pub const IDLE_LIMIT: u32 = 3000;
+/// The updates of an attack (`FUN_14103f4e0`) and of the other commands on a target
+/// (`FUN_141040bd0`), and the attack formation's refill (`FUN_1410163f0`): not modelled.
+const OTHER_COMMANDS: Unsupported = Unsupported(
+    "a group command's update other than a move or a follow (FUN_14103f4e0, FUN_141040bd0)",
+);
 
 impl UnitGroup {
     /// The group's vtable slot 8 after its update (`BUnitGroup::updateEnd`, `FUN_141040b50`): a
@@ -309,12 +330,11 @@ impl Turns {
     /// the group ([`Turns::set_initial_position`]) when motion flags bit 1 is set, flags bit 10
     /// is clear and the formation is not a horde (kind 0), or flags bit 15 is set (which then
     /// clears); the sub-formations without units go. Then `BMotion`'s update, with a budget
-    /// while flags bit 8 is clear.
+    /// while flags bit 8 is clear, and the rest ([`Turns::after_motion`]).
     ///
     /// # Errors
     ///
-    /// What the update does not model, and the routine past `BMotion`'s update (from
-    /// `0x14103e014`).
+    /// What the update does not model.
     fn awake_update(&mut self, group: i32) -> Result<bool, Unsupported> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let mut far = false;
@@ -385,10 +405,622 @@ impl Turns {
         let g = self.groups.get_mut(group).expect("held");
         g.unit_types.retain(|s| !s.units.is_empty());
         let budget = g.flags & 0x100 == 0;
+        let forward = g.motion.position[1];
         self.motion_update(group, budget)?;
-        Err(Unsupported(
-            "BUnitGroup::update after BMotion's update (FUN_14103d910 from 0x14103e014)",
-        ))
+        self.after_motion(group, far, forward)
+    }
+
+    /// `BUnitGroup::update` after `BMotion`'s update (`0x14103e017` on), `forward` the motion's
+    /// forward before it. With flags bit 8 the formation turns ([`Turns::turn_formation`]). The
+    /// member count is kept; without flags bit 16 the statistics run (far as before), and bit 16
+    /// clears; the group's log (`FUN_141015370`) holds no state. The differentiator groups'
+    /// members (`DAT_143f15860`, at most `0x8c`: [`crate::group::UnitGroups::differentiator_units`])
+    /// are only read by the members' moves below. Each formation line's attack range is its members' least
+    /// ([`Turns::line_ranges`]); the relayout is chosen ([`Turns::relayout_choice`]) and the
+    /// current command updates ([`Turns::command_update`], which may delete the group or let it
+    /// hibernate). Without a member held there is no relayout; else the formation is laid out
+    /// anew (`UpdateDesiredPositions(-1)`). An awake group's motion test (`FUN_141046600`) is
+    /// unread, flags bit 9 clears, and a formation with slots moves its members to them. Then
+    /// the members' own moves ([`Turns::specific_moves_step`]), the order queue's due orders go
+    /// (`FUN_14100d940`, [`Turns::drop_due_orders`], when it has any), and the idle timer
+    /// ([`Turns::idle_timer_step`]). The debug drawing (`DAT_143f15a9c`) and the owner's
+    /// computer test (`FUN_141659cf0`, its answer unread) hold no state. True while the group has
+    /// members.
+    ///
+    /// # Errors
+    ///
+    /// What the steps do not model: the members' moves to their slots (the path check, gated by
+    /// a lobby setting `FUN_140c89690` and `FUN_1412ffe10` the slice does not hold and comparing
+    /// with 64, `DAT_142eb5bb8`, which has no image role; then per member `FUN_141025fb0`, the
+    /// units' steering slots 0x610, 0x618, 0x638, 0x598, 0x650, 0x658, 0x600, 0x590 and 0x1f8 and
+    /// their paths), among others.
+    fn after_motion(&mut self, group: i32, far: bool, forward: Vec3) -> Result<bool, Unsupported> {
+        if self.groups.get(group).expect("held").flags & 0x100 != 0 {
+            self.turn_formation(group, forward)?;
+        }
+        let count = self.groups.get(group).expect("held").members.len();
+        if self.groups.get(group).expect("held").flags & 0x1_0000 == 0 {
+            self.group_statistics(group, far)?;
+        }
+        self.groups.get_mut(group).expect("held").flags &= !0x1_0000;
+        self.line_ranges(group)?;
+        let (mut relayout, refill) = self.relayout_choice(group, count);
+        if !self.command_update(group, &mut relayout)? {
+            return Ok(false);
+        }
+        if !self.any_member_held(group) {
+            relayout = false;
+        }
+        let g = self.groups.get(group).expect("held");
+        if refill && g.current_formation.is_some() {
+            // FUN_1410163f0: an attack's formation of kind 6 fills its slots anew; only an
+            // attack (9) chooses it, whose update stops above
+            return Err(OTHER_COMMANDS);
+        }
+        if relayout {
+            self.update_desired_positions(group, -1)?;
+        }
+        let g = self.groups.get_mut(group).expect("held");
+        if g.hibernating == 0 {
+            g.flags &= !0x200;
+            if g.current_formation
+                .as_ref()
+                .is_some_and(|f| !f.slots.is_empty())
+            {
+                return Err(Unsupported(
+                    "the members' moves to their slots (FUN_14103d910 at 0x14103e8e8: the path check's lobby setting and 64.0, FUN_141025fb0's unit steering)",
+                ));
+            }
+        }
+        self.specific_moves_step(group)?;
+        if !self.groups.get(group).expect("held").order_queue.is_empty() {
+            self.drop_due_orders(group);
+        }
+        self.idle_timer_step(group);
+        Ok(!self.groups.get(group).expect("held").members.is_empty())
+    }
+
+    /// The formation's turn (`0x14103e037`..`0x14103e37b`, flags bit 8): when the motion turned
+    /// more than π/4 from `forward` (the angle `FUN_14087e650` in size; `COMISS` then `JA`, a NaN
+    /// does not), or motion flags bit 1 or flags bit 14 is set, the stored positions lose their
+    /// points (`FUN_14102bae0`), the group moves to its front ([`Turns::move_position_to_front`],
+    /// 100 ahead; [`Turns::front_by_centroid`] when the walked level holds no path, its id
+    /// `+0x20` -1), lays its formation out anew (`UpdateDesiredPositions(-1)`) whose slots lose
+    /// their units and take them again (`FUN_141041810`, [`Turns::populate_slots`]), and flags
+    /// bit 14 clears. Then the walked levels below the top go (`FUN_1410481f0`), `BMotion`'s
+    /// update runs again with a budget, the formation transforms at the new place
+    /// ([`Turns::formation_transform`], `param_4` 0) and flags bit 8 clears. The debug drawing
+    /// (`DAT_143f15a9c`) holds no state.
+    fn turn_formation(&mut self, group: i32, forward: Vec3) -> Result<(), Unsupported> {
+        if self.turns_formation(group, forward) {
+            let g = self.groups.get(group).expect("held");
+            let without_path = g.motion.paths.first().is_some_and(|l| !l.has_path);
+            self.groups
+                .get_mut(group)
+                .expect("held")
+                .stored_positions
+                .clear_points();
+            if without_path {
+                self.front_by_centroid(group);
+            } else {
+                self.move_position_to_front(group, FRONT_AHEAD)?;
+            }
+            self.update_desired_positions(group, -1)?;
+            if let Some(mut f) = self
+                .groups
+                .get_mut(group)
+                .expect("held")
+                .current_formation
+                .take()
+            {
+                f.clear_units();
+                let g = self.groups.get(group).expect("held").clone();
+                let placed = self.populate_slots(&mut f, &g);
+                self.groups.get_mut(group).expect("held").current_formation = Some(f);
+                placed?;
+            }
+            self.groups.get_mut(group).expect("held").flags &= !0x4000;
+        }
+        self.groups
+            .get_mut(group)
+            .expect("held")
+            .motion
+            .drop_to_high_level();
+        self.motion_update(group, true)?;
+        if let Some(mut f) = self
+            .groups
+            .get_mut(group)
+            .expect("held")
+            .current_formation
+            .take()
+        {
+            let g = self.groups.get(group).expect("held").clone();
+            let moved = self.formation_transform(&mut f, &g, false);
+            self.groups.get_mut(group).expect("held").current_formation = Some(f);
+            let _ = moved?;
+        }
+        self.groups.get_mut(group).expect("held").flags &= !0x100;
+        Ok(())
+    }
+
+    /// Whether the formation's turn lays it out anew: the motion turned more than π/4 from
+    /// `forward` (the size of `FUN_14087e650`'s angle; `COMISS` then `JA` at `0x14103e154`, a NaN
+    /// does not), or motion flags bit 1 or flags bit 14 is set.
+    fn turns_formation(&self, group: i32, forward: Vec3) -> bool {
+        let g = self.groups.get(group).expect("held");
+        let turn = crate::fmath::angle_between(g.motion.position[1], forward).abs();
+        TURN_LIMIT < turn || g.motion.flags & 2 != 0 || g.flags & 0x4000 != 0
+    }
+
+    /// `movePositionToFrontUsingCentroid` (inline at `0x14103e199`, its log aside): the group's
+    /// place, and its new place, are its members' mean place (slot 0x520's, summed in order and
+    /// divided by the member count, `CVTDQ2PS`) plus the forward scaled by 0 (`FUN_14087e530`:
+    /// a zero but for an infinite or NaN forward).
+    ///
+    /// # Panics
+    ///
+    /// When the world does not hold a member: the game reads its null object; the members'
+    /// check at the update's start leaves only held ones.
+    fn front_by_centroid(&mut self, group: i32) {
+        let g = self.groups.get(group).expect("held");
+        let mut sum = [0.0f32; 3];
+        for m in &g.members {
+            let v = self
+                .world_object(m.id)
+                .expect("the update's start keeps only held members")
+                .moved_vector();
+            sum = [sum[0] + v[0], sum[1] + v[1], sum[2] + v[2]];
+        }
+        let n = g.members.len() as i32 as f32;
+        let ahead = crate::fmath::scale(0.0, g.motion.position[1]);
+        let point = [
+            sum[0] / n + ahead[0],
+            sum[1] / n + ahead[1],
+            sum[2] / n + ahead[2],
+        ];
+        let g = self.groups.get_mut(group).expect("held");
+        g.motion.new_position[0] = point;
+        g.motion.position[0] = point;
+    }
+
+    /// Each formation line in use's (`mNumberLines`, `+0x2c`) attack range (`+0x10`,
+    /// `0x14103e448`..`0x14103e535`): `f32::MAX`
+    /// (the immediate `0x7f7fffff`), lowered to the weapon range (slot 0x230, a combat object's,
+    /// else 0) of each of its slots' units the world holds that is below it (`COMISS` then
+    /// `JBE`: a NaN range is not).
+    ///
+    /// # Errors
+    ///
+    /// A line place without a slot (index -1 or past the slots, where the game reads outside the
+    /// slots' array), and a unit of a master the slice does not have.
+    pub(crate) fn line_ranges(&mut self, group: i32) -> Result<(), Unsupported> {
+        let g = self.groups.get(group).expect("the caller holds the group");
+        let Some(f) = g.current_formation.as_ref() else {
+            return Ok(());
+        };
+        let lines = usize::try_from(f.number_lines).unwrap_or(0);
+        let mut ranges = Vec::with_capacity(lines);
+        for line in f.lines.iter().take(lines) {
+            let mut range = f32::MAX;
+            for &index in &line.indices {
+                // the slots' array: those in use, then the spare ones
+                let slot = usize::try_from(index as i32)
+                    .ok()
+                    .and_then(|i| {
+                        f.slots
+                            .get(i)
+                            .or_else(|| f.spare_slots.get(i.checked_sub(f.slots.len())?))
+                    })
+                    .ok_or(Unsupported(
+                        "a formation line's place without a slot (the update reads outside the slots, 0x14103e4ce)",
+                    ))?;
+                let Some(object) = self.world_object(slot.unit_id) else {
+                    continue;
+                };
+                let master = self.master_of(object.player(), object.master_id())?;
+                let reach = crate::group::stats::weapon_range(master);
+                if range > reach {
+                    range = reach;
+                }
+            }
+            ranges.push(range);
+        }
+        let f = self
+            .groups
+            .get_mut(group)
+            .expect("held")
+            .current_formation
+            .as_mut()
+            .expect("found above");
+        for (line, range) in f.lines.iter_mut().zip(ranges) {
+            line.attack_range = range;
+        }
+        Ok(())
+    }
+
+    /// The relayout's choice (`0x14103e53f`..`0x14103e5f7`) after the update's start counted
+    /// `count` members: (relayout, refill). A changed count refills an attack's (9) formation of
+    /// kind 6 (`FUN_1410163f0` later), else sets flags bit 7 for a total spacing (`+0x47c`) of
+    /// at most 6 (`COMISS` then `JBE`: a NaN too), else relays out. Flags bit 7 with a spacing
+    /// above 6 relays out and clears bits 7 and 1; then flags bit 1 with a spacing above 6 and an
+    /// idle group ([`Turns::is_idle`]) relays out and clears bit 1.
+    fn relayout_choice(&mut self, group: i32, count: usize) -> (bool, bool) {
+        let idle = self.is_idle(group);
+        let g = self.groups.get_mut(group).expect("held");
+        let (mut relayout, mut refill) = (false, false);
+        if count != g.members.len() {
+            if g.current_command == ATTACK
+                && g.current_formation.as_ref().is_some_and(|f| f.kind == 6)
+            {
+                refill = true;
+            } else if crate::fmath::at_most_or_unordered(g.total_spacing, RELAYOUT_SPACING) {
+                g.flags |= 0x80;
+            } else {
+                relayout = true;
+            }
+        }
+        if g.flags & 0x80 != 0 && RELAYOUT_SPACING < g.total_spacing {
+            relayout = true;
+            g.flags &= !0x82;
+        }
+        if g.flags & 2 != 0 && RELAYOUT_SPACING < g.total_spacing && idle {
+            g.flags &= !2;
+            relayout = true;
+        }
+        (relayout, refill)
+    }
+
+    /// The current command's update (`0x14103e5f7`..`0x14103e865`): false deletes the group. No
+    /// command does nothing; a move ([`Turns::move_update`], `FUN_141041420`) that finished
+    /// hibernates the group (`+0x13c` 1) while commands are queued, else deletes it. A follow (2)
+    /// with its target held and a lead (the member nearest the target's place, [`Turns::
+    /// nearest_to_target`]) moves the group to the target (`commandMoveTo` with the target's x
+    /// and y, the range half the lead's master's line of sight, at once) when the target is
+    /// that range or more (`COMISS` then `JC`: a NaN is not) from where the group's target was
+    /// (`+0x3c8`, the height left out), and sets flags bit 12; without the target or a lead it
+    /// ends as a finished move. An attack (`FUN_14103f4e0`) and the other commands
+    /// (`FUN_141040bd0`) are not modelled.
+    fn command_update(&mut self, group: i32, relayout: &mut bool) -> Result<bool, Unsupported> {
+        let g = self.groups.get(group).expect("held");
+        let finished = match g.current_command {
+            NO_COMMAND => false,
+            MOVE_COMMAND => self.move_update(group, relayout)?,
+            FOLLOW => {
+                let target = g.current_target.target;
+                let from = g.current_target.original_position;
+                let to = self
+                    .world_object(target)
+                    .map(|t| (t.moved_vector(), t.position()));
+                let lead = if to.is_some() {
+                    let lead = self.nearest_to_target(group);
+                    self.groups.get_mut(group).expect("held").motion.lead = lead;
+                    lead
+                } else {
+                    -1
+                };
+                match to {
+                    Some((moved, [x, y, _])) if lead != -1 => {
+                        let g = self.groups.get(group).expect("held");
+                        let leader = self
+                            .lead_object(&g.motion)
+                            .expect("the nearest member is held");
+                        let sight = self
+                            .master_of(leader.player(), leader.master_id())?
+                            .line_of_sight;
+                        let range = sight * FOLLOW_SHARE;
+                        let d = crate::fmath::sub(from, moved);
+                        let squared = d[0] * d[0] + 0.0 + d[2] * d[2];
+                        if !crate::fmath::below_or_unordered(squared, range * range) {
+                            let _ = self.command_move_to(
+                                group,
+                                target,
+                                [x, y],
+                                crate::group::command::MoveTo {
+                                    range,
+                                    leg: false,
+                                    forget_target: false,
+                                    hold: false,
+                                    queued: false,
+                                    direct: true,
+                                    keep_flag: false,
+                                },
+                            )?;
+                        }
+                        self.groups.get_mut(group).expect("held").flags |= 0x1000;
+                        return Ok(true);
+                    }
+                    _ => true,
+                }
+            }
+            _ => return Err(OTHER_COMMANDS),
+        };
+        if finished {
+            if self
+                .groups
+                .get(group)
+                .expect("held")
+                .command_queue
+                .is_empty()
+            {
+                return Ok(false);
+            }
+            self.groups.get_mut(group).expect("held").hibernating = 1;
+        }
+        Ok(true)
+    }
+
+    /// `FUN_141041420`, a move's update: true when the move finished. Motion flags bit 1 asks
+    /// for a relayout. A moving group (`FUN_141046600`) asks for one too, unless with flags bit
+    /// 12 (a follow's) its target the world holds stands a squared 1 or more (`COMISS` then
+    /// `JNC`: not a NaN) from the top path's end (`FUN_140f95fb0`: its last point, the static
+    /// zero point `DAT_143f0dc78` for fewer than two), when the command becomes a follow (2);
+    /// such a group without its target does nothing. A standing group with flags bit 12 follows
+    /// too. A group with wait delays (`+0xc0`) or waiting for a path (`FUN_141046640`) does
+    /// nothing. Then, off a patrol (the top path's flags bit 0) and with flags bit 11 clear,
+    /// without queued commands but with a formation whose slots' array exists: the units of the
+    /// slots in state 3 leave the group (`removeUnit` with the group's target); some left and
+    /// some not: the rest move to their places ([`Turns::move_to_desired_positions`]) and the
+    /// update ends. With a path walked (the walked level's path, `+0x18`, holding points) it
+    /// goes on; without, a formation none of whose slots was in state 3 locks to its kind
+    /// ([`Turns::lock_formation`], `FUN_141024e70`) and the command ends (-1); else the command
+    /// ends. Any other group without a path walked ends its command. Then flags bit 2 clears, bit
+    /// 5 sets and the members move to their places; finished: no path walked and not the
+    /// patrol's case.
+    ///
+    /// # Errors
+    ///
+    /// What the leaves, the lock and the members' moves do not model.
+    ///
+    /// # Panics
+    ///
+    /// When the world does not hold `group`: the group update passes its own.
+    pub fn move_update(&mut self, group: i32, relayout: &mut bool) -> Result<bool, Unsupported> {
+        let g = self.groups.get(group).expect("the caller holds the group");
+        if g.motion.flags & 2 != 0 {
+            *relayout = true;
+            return Ok(false);
+        }
+        let walks = g
+            .motion
+            .paths
+            .first()
+            .is_some_and(|l| l.has_path && !l.points.is_empty());
+        let follows = g.flags >> 12 & 1 != 0;
+        if g.motion.moving() {
+            if follows {
+                let Some(target) = self.world_object(g.current_target.target) else {
+                    return Ok(false);
+                };
+                if let Some(top) = crate::group::formation::top_path(&g.motion.paths) {
+                    let end = match top.points.as_slice() {
+                        [.., _, last] => *last,
+                        // DAT_143f0dc78, zero-initialised (.bss) and written by nothing
+                        _ => [0.0; 3],
+                    };
+                    let d = crate::fmath::sub(end, target.moved_vector());
+                    let squared = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+                    if !crate::fmath::below_or_unordered(squared, CLOSE) {
+                        self.groups.get_mut(group).expect("held").current_command = FOLLOW;
+                        return Ok(false);
+                    }
+                }
+            }
+            *relayout = true;
+            return Ok(false);
+        }
+        if follows {
+            self.groups.get_mut(group).expect("held").current_command = FOLLOW;
+            return Ok(false);
+        }
+        if g.motion.number_wait_delays != 0 || g.motion.waits_to_move() {
+            return Ok(false);
+        }
+        let patrol = crate::group::formation::top_path(&g.motion.paths)
+            .is_some_and(|p| p.path_flags & 1 != 0);
+        let mut patrolling = true;
+        if !patrol && g.flags >> 11 & 1 == 0 {
+            patrolling = false;
+            let slots = g
+                .current_formation
+                .as_ref()
+                .filter(|f| !f.slots.is_empty() || !f.spare_slots.is_empty())
+                .map(|f| {
+                    (
+                        f.kind,
+                        f.slots
+                            .iter()
+                            .map(|s| (s.unit_id, s.state))
+                            .collect::<Vec<_>>(),
+                    )
+                });
+            if g.command_queue.is_empty()
+                && let Some((kind, slots)) = slots
+            {
+                let target = g.current_target.target;
+                let mut kept = 0;
+                for &(unit, state) in &slots {
+                    if state == 3 {
+                        let _ = self.remove_unit(group, unit, target, false)?;
+                    } else {
+                        kept += 1;
+                    }
+                }
+                if kept != 0 && kept != slots.len() {
+                    self.move_to_desired_positions(group, MOVE_COMMAND, -1)?;
+                    return Ok(false);
+                }
+                if !walks {
+                    if kept == slots.len() {
+                        self.lock_formation(group, kind)?;
+                        self.groups.get_mut(group).expect("held").current_command = NO_COMMAND;
+                        return Ok(false);
+                    }
+                    self.groups.get_mut(group).expect("held").current_command = NO_COMMAND;
+                }
+                return self.move_members_on(group, walks, patrolling);
+            }
+        }
+        if !walks {
+            self.groups.get_mut(group).expect("held").current_command = NO_COMMAND;
+        }
+        self.move_members_on(group, walks, patrolling)
+    }
+
+    /// `FUN_141041420`'s end (`0x1410416dc`): flags bit 2 clears, bit 5 sets, the members move
+    /// to their places ([`Turns::move_to_desired_positions`] with a move and no target); the
+    /// move finished when no path is walked and it was no patrol.
+    fn move_members_on(
+        &mut self,
+        group: i32,
+        walks: bool,
+        patrolling: bool,
+    ) -> Result<bool, Unsupported> {
+        let g = self.groups.get_mut(group).expect("held");
+        g.flags = (g.flags & !4) | 0x20;
+        self.move_to_desired_positions(group, MOVE_COMMAND, -1)?;
+        Ok(!walks && !patrolling)
+    }
+
+    /// `AutomaticMoveUnitsToDesiredPositions` (`FUN_14100aaa0`) of group `group`'s formation
+    /// for command `command` on target `target` (the group update's are a move and -1); its log
+    /// lines aside. Nothing without a formation or its slots' array (`FUN_140fd75d0` lets go of
+    /// the formation's reference). For each slot with a unit (`-1` none) the world holds that is
+    /// free ([`Turns::member_idle`], `FUN_141017f00`): one in its place (slot state 3) on an
+    /// attack (9) on a held target takes the target (slot 0x128 with its x and y); any other
+    /// gets a path to the slot.
+    ///
+    /// # Errors
+    ///
+    /// A unit's attack on the target (its slot 0x128) and its path to the slot (a world path
+    /// record `FUN_14152eea0`, the long or short pather, the path's length against 1.01,
+    /// `DAT_142eb6e48`, which has no image role, then slot 0x5d0, `FUN_140f9b6c0`, slot 0x548
+    /// and the unit's move, slot 0x128): not modelled.
+    ///
+    /// # Panics
+    ///
+    /// When the world does not hold `group`: its callers pass their own.
+    pub fn move_to_desired_positions(
+        &mut self,
+        group: i32,
+        command: i32,
+        target: i32,
+    ) -> Result<(), Unsupported> {
+        let g = self.groups.get(group).expect("the caller holds the group");
+        let Some(f) = g
+            .current_formation
+            .as_ref()
+            .filter(|f| !f.slots.is_empty() || !f.spare_slots.is_empty())
+        else {
+            return Ok(());
+        };
+        let held_target = self.world_object(target).is_some();
+        for slot in &f.slots {
+            if slot.unit_id == -1 || self.world_object(slot.unit_id).is_none() {
+                continue;
+            }
+            if !self.member_idle(slot.unit_id)? {
+                continue;
+            }
+            if slot.state == 3 {
+                if command == ATTACK && held_target {
+                    return Err(Unsupported(
+                        "AutomaticMoveUnitsToDesiredPositions' attack on the target (slot 0x128)",
+                    ));
+                }
+                continue;
+            }
+            return Err(Unsupported(
+                "AutomaticMoveUnitsToDesiredPositions' path to a slot (FUN_14100aaa0: the unit's path, 1.01 of DAT_142eb6e48, slots 0x548 and 0x128)",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The members' own moves past the slots' (`0x14103efc4`..`0x14103f355`): each member whose
+    /// move is active (`mSpecificMoves[i]`) and that is free ([`Turns::member_idle`]) and held:
+    /// one moved aside (reason 2) stops (slot 0x5d0), shows standing (slot 0x660), counts its
+    /// timer down by the update's seconds (`FUN_1415300e0`) and, once at most 0 (`COMISS` then
+    /// `JC`: a NaN keeps it), drops its move (active 0, path and reason -1, the rest 0) and stands
+    /// (slot 0x560). Any other steps (slot 0x608, the unit's own motion step `FUN_141150f00`),
+    /// not modelled.
+    ///
+    /// # Errors
+    ///
+    /// The motion step of a member's move, and what the stop, the stand and the standing sprite
+    /// do not model.
+    fn specific_moves_step(&mut self, group: i32) -> Result<(), Unsupported> {
+        let mut i = 0;
+        loop {
+            let g = self.groups.get(group).expect("held");
+            let Some(m) = g.members.get(i).copied() else {
+                break;
+            };
+            i += 1;
+            if m.specific_move.active == 0 || !self.member_idle(m.id)? {
+                continue;
+            }
+            let Some((_, u)) = self.object_mut(m.id) else {
+                continue;
+            };
+            if m.specific_move.reason != 2 {
+                return Err(Unsupported(
+                    "a member's own move's step (slot 0x608, FUN_141150f00)",
+                ));
+            }
+            if let Some(mover) = u.mover.as_mut() {
+                mover.stop()?;
+            }
+            self.show_standing(m.id)?;
+            let dt = self.dt_seconds;
+            let g = self.groups.get_mut(group).expect("held");
+            let timer = &mut g.members[i - 1].specific_move.timer;
+            *timer -= dt;
+            if !crate::fmath::below_or_unordered(0.0, *timer) {
+                g.members[i - 1].specific_move = SpecificMove {
+                    path_id: -1,
+                    reason: -1,
+                    ..SpecificMove::default()
+                };
+                if let Some((_, u)) = self.object_mut(m.id)
+                    && let Some(mover) = u.mover.as_mut()
+                {
+                    mover.stand()?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_14100d940` (its log lines aside): the order queue's orders whose time (`+0x18`) is not
+    /// past the world's time go, in order; the others stay.
+    pub fn drop_due_orders(&mut self, group: i32) {
+        let now = self.world_time;
+        if let Some(g) = self.groups.get_mut(group) {
+            g.order_queue.retain(|o| now < o.execute_time);
+        }
+    }
+
+    /// The idle timer (`0x14103f370`..`0x14103f3a3`): an idle group ([`Turns::is_idle`]) adds
+    /// the update's milliseconds (`world+0x7c`) to its timer (`+0x3e4`, wrapping), and past
+    /// [`IDLE_LIMIT`] (unsigned) draws it anew ([`Turns::reset_idle_timer`]); a group that is not
+    /// idle draws it anew.
+    fn idle_timer_step(&mut self, group: i32) {
+        if self.is_idle(group) {
+            let dt = self.dt_ms();
+            let g = self.groups.get_mut(group).expect("held");
+            g.idle_timer = g.idle_timer.wrapping_add(dt);
+            if g.idle_timer <= IDLE_LIMIT {
+                return;
+            }
+        }
+        self.reset_idle_timer(group);
+    }
+
+    /// The update's milliseconds (`world+0x7c`), of which [`Turns::dt_seconds`] (`world+0x164`)
+    /// is [`crate::lifecycle::seconds`]: the round trip gives the milliseconds back exactly for
+    /// any update below 2^22 of them.
+    fn dt_ms(&self) -> u32 {
+        (self.dt_seconds * 1000.0).round() as u32
     }
 
     /// `FUN_141007ca0`: the units the group keeps apart (`+0x458`, the save's `objId`, size
@@ -948,6 +1580,7 @@ mod tests {
             search_radius: 3.0,
             radius: [0.2, 0.2],
             standing_sprite: -1,
+            formation_category: 1,
             ..Master::default()
         };
         t.masters = vec![Masters::new([master]); 4];
@@ -1358,6 +1991,439 @@ mod tests {
         assert!(!t.group_update(1).unwrap());
         t.update_groups(1).unwrap();
         assert!(t.groups.get(1).is_none());
+    }
+
+    /// The formation's turn: past π/4 (not a NaN), or with motion flags bit 1 or flags bit 14.
+    #[test]
+    fn the_formation_turns_past_a_quarter_turn() {
+        let mut t = world();
+        let g = t.groups.get_mut(1).unwrap();
+        g.flags = 0;
+        g.motion.flags = 0;
+        g.motion.position[1] = [1.0, 0.0, 0.0];
+        assert!(!t.turns_formation(1, [0.72, 0.0, 0.693_974_1]));
+        assert!(t.turns_formation(1, [0.70, 0.0, 0.714_142_8]));
+        assert!(t.turns_formation(1, [0.0, 0.0, -1.0]));
+        assert!(!t.turns_formation(1, [f32::NAN, 0.0, 0.0]));
+        t.groups.get_mut(1).unwrap().flags = 0x4000;
+        assert!(t.turns_formation(1, [1.0, 0.0, 0.0]));
+        let g = t.groups.get_mut(1).unwrap();
+        g.flags = 0;
+        g.motion.flags = 2;
+        assert!(t.turns_formation(1, [1.0, 0.0, 0.0]));
+    }
+
+    /// `movePositionToFrontUsingCentroid`: the members' mean place (x, height, y) plus the
+    /// forward times 0, as the group's place and new place.
+    #[test]
+    fn the_centroid_front_is_the_members_mean_place() {
+        let mut t = world();
+        t.players[1].objects[2].position = [1.0, 4.0, 3.0];
+        t.groups.get_mut(1).unwrap().motion.position[1] = [1.0, 0.0, 0.0];
+        t.front_by_centroid(1);
+        let g = t.groups.get(1).unwrap();
+        let mean = [4.0 / 3.0, 1.0, 2.0];
+        assert_eq!(g.motion.position[0], mean);
+        assert_eq!(g.motion.new_position[0], mean);
+        // an infinite forward makes the place NaN (inf times 0)
+        t.groups.get_mut(1).unwrap().motion.position[1] = [f32::INFINITY, 0.0, 0.0];
+        t.front_by_centroid(1);
+        assert!(t.groups.get(1).unwrap().motion.position[0][0].is_nan());
+    }
+
+    /// The formation lines' attack ranges: each its slots' units' least weapon range (a combat
+    /// master's; 0 for another type), `f32::MAX` without a held one; a spare slot's index reads
+    /// the spare slot; a place without a slot is not modelled.
+    #[test]
+    fn each_line_takes_its_units_least_range() {
+        let mut t = world();
+        let combat = |id: i16, kind: u8, range: f32| Master {
+            id,
+            kind,
+            weapon_range: range,
+            ..Master::default()
+        };
+        t.masters =
+            vec![Masters::new([combat(4, 70, 3.0), combat(5, 70, 1.5), combat(6, 30, 2.0)]); 4];
+        t.players[1].objects[1].life.master_id = 5;
+        t.players[1].objects[2].life.master_id = 6;
+        let slot = |unit| crate::group::Slot {
+            unit_id: unit,
+            ..crate::group::Slot::default()
+        };
+        let line = |indices: Vec<u32>| crate::group::FormationLine {
+            indices,
+            ..crate::group::FormationLine::default()
+        };
+        t.groups.get_mut(1).unwrap().current_formation = Some(crate::group::Formation {
+            slots: vec![slot(10), slot(11), slot(99)],
+            spare_slots: vec![slot(12)],
+            lines: vec![
+                line(vec![0, 1]),
+                line(vec![2]),
+                line(vec![3, 0]),
+                line(vec![0]),
+            ],
+            number_lines: 3,
+            ..crate::group::Formation::default()
+        });
+        t.line_ranges(1).unwrap();
+        let f = t.groups.get(1).unwrap().current_formation.clone().unwrap();
+        // the fourth line is not in use: it keeps its range
+        assert_eq!(
+            f.lines.iter().map(|l| l.attack_range).collect::<Vec<_>>(),
+            [1.5, f32::MAX, 0.0, 0.0]
+        );
+        t.groups
+            .get_mut(1)
+            .unwrap()
+            .current_formation
+            .as_mut()
+            .unwrap()
+            .lines[1]
+            .indices = vec![u32::MAX];
+        assert!(t.line_ranges(1).is_err());
+    }
+
+    /// The relayout's choice: a changed count sets flags bit 7 at a spacing of at most 6 (a NaN
+    /// too) and relays out above it; an attack's kind-6 formation refills instead; bit 7 above 6
+    /// relays out and clears bits 7 and 1; bit 1 above 6 relays out an idle group.
+    #[test]
+    fn the_relayout_follows_the_count_and_the_spacing() {
+        let mut t = world();
+        let set = |t: &mut Turns, flags: u32, spacing: f32| {
+            let g = t.groups.get_mut(1).unwrap();
+            g.flags = flags;
+            g.total_spacing = spacing;
+        };
+        set(&mut t, 0, 6.0);
+        assert_eq!(t.relayout_choice(1, 3), (false, false));
+        assert_eq!(t.relayout_choice(1, 4), (false, false));
+        assert_eq!(t.groups.get(1).unwrap().flags, 0x80);
+        set(&mut t, 0, f32::NAN);
+        assert_eq!(t.relayout_choice(1, 4), (false, false));
+        assert_eq!(t.groups.get(1).unwrap().flags, 0x80);
+        set(&mut t, 0, 6.5);
+        assert_eq!(t.relayout_choice(1, 4), (true, false));
+        set(&mut t, 0x82, 6.5);
+        assert_eq!(t.relayout_choice(1, 3), (true, false));
+        assert_eq!(t.groups.get(1).unwrap().flags, 0);
+        set(&mut t, 0x2, 6.5);
+        assert_eq!(t.relayout_choice(1, 3), (true, false));
+        assert_eq!(t.groups.get(1).unwrap().flags, 0);
+        t.groups.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
+        set(&mut t, 0x2, 6.5);
+        assert_eq!(t.relayout_choice(1, 3), (false, false));
+        assert_eq!(t.groups.get(1).unwrap().flags, 2);
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_command = 9;
+        g.current_formation = Some(crate::group::Formation {
+            kind: 6,
+            ..crate::group::Formation::default()
+        });
+        set(&mut t, 0, 6.0);
+        assert_eq!(t.relayout_choice(1, 4), (false, true));
+        assert_eq!(t.groups.get(1).unwrap().flags, 0);
+    }
+
+    /// A follow: its target near where the group's target was keeps the group (flags bit 12);
+    /// far, the group moves to it (`commandMoveTo`: the members' seconds since attacking go to
+    /// `f32::MAX`); without the target it ends as a finished move: deleted without queued
+    /// commands, else hibernating.
+    #[test]
+    fn a_follow_moves_to_its_target_when_it_strays() {
+        let mut t = world();
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_command = 2;
+        g.current_target.target = 20;
+        g.current_target.original_position = [3.5, 0.0, 4.5];
+        g.flags = 0;
+        let mut relayout = false;
+        // 1 from the target: within half the lead's line of sight (2)
+        assert!(t.command_update(1, &mut relayout).unwrap());
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(
+            (g.flags, g.members[0].seconds_since_attacking),
+            (0x1000, 0.0)
+        );
+        t.groups
+            .get_mut(1)
+            .unwrap()
+            .current_target
+            .original_position = [3.5, 0.0, 5.5];
+        assert!(t.command_update(1, &mut relayout).unwrap());
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(
+            (g.flags, g.members[0].seconds_since_attacking),
+            (0x1000, f32::MAX)
+        );
+        assert_eq!(g.motion.lead, 12);
+        t.groups.get_mut(1).unwrap().current_target.target = 77;
+        assert!(!t.command_update(1, &mut relayout).unwrap());
+        t.groups.get_mut(1).unwrap().command_queue = vec![crate::group::GroupCommand::default()];
+        assert!(t.command_update(1, &mut relayout).unwrap());
+        assert_eq!(t.groups.get(1).unwrap().hibernating, 1);
+        assert!(!relayout);
+        t.groups.get_mut(1).unwrap().current_command = 3;
+        assert!(t.command_update(1, &mut relayout).is_err());
+    }
+
+    /// `FUN_141041420`: motion flags bit 1 and a moving group ask for a relayout; with flags bit
+    /// 12 a strayed target (a squared 1 from the top path's end) turns the move into a follow;
+    /// wait delays and a group waiting for a path do nothing.
+    #[test]
+    fn a_moving_group_s_move_waits_or_follows() {
+        let mut t = world();
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_command = 1;
+        g.flags = 0;
+        g.motion.flags = 2;
+        let mut relayout = false;
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        assert!(relayout);
+        let g = t.groups.get_mut(1).unwrap();
+        g.motion.flags = 0;
+        g.motion.velocity = [0.0, 0.0, 1.0];
+        let mut relayout = false;
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        assert!(relayout);
+        // a follow's target 20 at (3.5, 3.5) and the top path's end at (3.5, h, 3.5): no change
+        let g = t.groups.get_mut(1).unwrap();
+        g.flags = 0x1000;
+        g.current_target.target = 20;
+        let mut path = crate::movement::PathData::without_path();
+        path.has_path = true;
+        path.points = vec![[0.0; 3], [3.5, 0.0, 3.5]];
+        g.motion.paths = vec![path];
+        let mut relayout = false;
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        assert_eq!(
+            (relayout, t.groups.get(1).unwrap().current_command),
+            (true, 1)
+        );
+        t.groups.get_mut(1).unwrap().motion.paths[0].points[1] = [3.5, 0.0, 4.5];
+        let mut relayout = false;
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        assert_eq!(
+            (relayout, t.groups.get(1).unwrap().current_command),
+            (false, 2)
+        );
+        // standing with bit 12: a follow at once; else wait delays or a level waiting do nothing
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_command = 1;
+        g.motion.velocity = [0.0; 3];
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        assert_eq!(t.groups.get(1).unwrap().current_command, 2);
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_command = 1;
+        g.flags = 0;
+        g.motion.number_wait_delays = 1;
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        let g = t.groups.get_mut(1).unwrap();
+        g.motion.number_wait_delays = 0;
+        g.motion.paths[0].state = 2;
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        assert_eq!(t.groups.get(1).unwrap().current_command, 1);
+    }
+
+    /// `FUN_141041420` for a standing group: without a path walked and no formation the move
+    /// finishes (command -1, flags bit 2 off and bit 5 on); with one walked it goes on; on a
+    /// patrol it does not finish; a formation whose slots are all in their places lets their
+    /// units go and ends the command; one with none in place locks to its kind.
+    #[test]
+    fn a_standing_group_s_move_ends_or_goes_on() {
+        let mut t = world();
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_command = 1;
+        g.flags = 4;
+        g.motion.flags = 0;
+        let mut relayout = false;
+        assert!(t.move_update(1, &mut relayout).unwrap());
+        let g = t.groups.get(1).unwrap();
+        assert_eq!((g.current_command, g.flags), (-1, 0x20));
+        let walked = || {
+            let mut path = crate::movement::PathData::without_path();
+            path.has_path = true;
+            path.points = vec![[0.0; 3], [3.5, 0.0, 3.5]];
+            path
+        };
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_command = 1;
+        g.motion.paths = vec![walked()];
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        assert_eq!(t.groups.get(1).unwrap().current_command, 1);
+        // on a patrol (flags bit 11) without a path walked: the command ends, unfinished
+        let g = t.groups.get_mut(1).unwrap();
+        g.motion.paths[0].has_path = false;
+        g.flags = 0x800;
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        assert_eq!(t.groups.get(1).unwrap().current_command, -1);
+        // every slot in place: its units leave and the command ends
+        let mut t = world();
+        let slot = |unit, state| crate::group::Slot {
+            unit_id: unit,
+            state,
+            ..crate::group::Slot::default()
+        };
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_command = 1;
+        g.motion.flags = 0;
+        g.current_formation = Some(crate::group::Formation {
+            kind: 1,
+            slots: vec![slot(10, 3), slot(11, 3)],
+            ..crate::group::Formation::default()
+        });
+        assert!(t.move_update(1, &mut relayout).unwrap());
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(g.members.iter().map(|m| m.id).collect::<Vec<_>>(), [12]);
+        assert_eq!(g.current_command, -1);
+        // none in place but no free unit: the formation locks to its kind, the command ends
+        let mut t = world();
+        for u in &mut t.players[1].objects {
+            u.ai.as_mut().unwrap().current_action = 0x2c6;
+        }
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_command = 1;
+        g.motion.flags = 0;
+        g.current_formation = Some(crate::group::Formation {
+            kind: 1,
+            slots: vec![slot(10, 0)],
+            ..crate::group::Formation::default()
+        });
+        assert!(!t.move_update(1, &mut relayout).unwrap());
+        assert_eq!(t.groups.get(1).unwrap().current_command, -1);
+    }
+
+    /// `AutomaticMoveUnitsToDesiredPositions`: a slot without a unit, of a unit the world does
+    /// not hold or that is busy, or in its place (on no attack), is passed; a free unit out of
+    /// its place gets a path to it, not modelled.
+    #[test]
+    fn units_out_of_their_places_get_paths() {
+        let mut t = world();
+        let slot = |unit, state| crate::group::Slot {
+            unit_id: unit,
+            state,
+            ..crate::group::Slot::default()
+        };
+        t.players[1].objects[1].ai.as_mut().unwrap().current_action = 0x2c6;
+        t.groups.get_mut(1).unwrap().current_formation = Some(crate::group::Formation {
+            slots: vec![slot(-1, 0), slot(99, 0), slot(11, 0), slot(10, 3)],
+            ..crate::group::Formation::default()
+        });
+        t.move_to_desired_positions(1, 1, -1).unwrap();
+        t.move_to_desired_positions(1, 9, -1).unwrap();
+        assert!(t.move_to_desired_positions(1, 9, 20).is_err());
+        t.groups
+            .get_mut(1)
+            .unwrap()
+            .current_formation
+            .as_mut()
+            .unwrap()
+            .slots[3]
+            .state = 0;
+        assert!(t.move_to_desired_positions(1, 1, -1).is_err());
+    }
+
+    /// The members' own moves: a member moved aside (reason 2) that is free stops, counts its
+    /// timer down and, at 0, drops its move and stands; a busy one or one without an active
+    /// move is passed; another reason's step is not modelled.
+    #[test]
+    fn a_member_moved_aside_waits_out_its_timer() {
+        let mut t = world();
+        t.dt_seconds = 0.5;
+        for u in &mut t.players[1].objects {
+            u.mover = Some(crate::hunt::tests::walker());
+        }
+        let aside = crate::group::SpecificMove {
+            active: 1,
+            path_id: 4,
+            reason: 2,
+            timer: 0.75,
+            ..crate::group::SpecificMove::default()
+        };
+        let g = t.groups.get_mut(1).unwrap();
+        g.members[0].specific_move = aside;
+        g.members[1].specific_move = aside;
+        t.players[1].objects[1].ai.as_mut().unwrap().current_action = 0x2c6;
+        t.specific_moves_step(1).unwrap();
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(g.members[0].specific_move.timer, 0.25);
+        assert_eq!(g.members[1].specific_move, aside);
+        assert!(
+            t.object(10)
+                .unwrap()
+                .1
+                .mover
+                .as_ref()
+                .unwrap()
+                .speed_stopped
+        );
+        assert!(
+            !t.object(11)
+                .unwrap()
+                .1
+                .mover
+                .as_ref()
+                .unwrap()
+                .speed_stopped
+        );
+        t.specific_moves_step(1).unwrap();
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(
+            g.members[0].specific_move,
+            crate::group::SpecificMove {
+                path_id: -1,
+                reason: -1,
+                ..crate::group::SpecificMove::default()
+            }
+        );
+        // a NaN timer keeps the move
+        let g = t.groups.get_mut(1).unwrap();
+        g.members[0].specific_move = crate::group::SpecificMove {
+            timer: f32::NAN,
+            ..aside
+        };
+        t.specific_moves_step(1).unwrap();
+        assert_eq!(t.groups.get(1).unwrap().members[0].specific_move.active, 1);
+        t.groups.get_mut(1).unwrap().members[0].specific_move.reason = 1;
+        assert!(t.specific_moves_step(1).is_err());
+    }
+
+    /// `FUN_14100d940`: the orders whose time has come go; later ones stay.
+    #[test]
+    fn due_orders_leave_the_queue() {
+        let mut t = world();
+        t.world_time = 100;
+        let order = |execute_time| crate::group::GroupOrder {
+            execute_time,
+            ..crate::group::GroupOrder::default()
+        };
+        t.groups.get_mut(1).unwrap().order_queue = vec![order(99), order(101), order(100)];
+        t.drop_due_orders(1);
+        assert_eq!(t.groups.get(1).unwrap().order_queue, [order(101)]);
+    }
+
+    /// The idle timer: an idle group adds the update's milliseconds and draws anew past 3000; a
+    /// busy one draws anew. The milliseconds come back exactly from the update's seconds.
+    #[test]
+    fn the_idle_timer_counts_while_idle() {
+        let mut t = world();
+        t.dt_seconds = crate::lifecycle::seconds(69);
+        t.groups.get_mut(1).unwrap().idle_timer = 2931;
+        t.idle_timer_step(1);
+        assert_eq!(t.groups.get(1).unwrap().idle_timer, 3000);
+        let mut streams = t.streams.clone();
+        let draw = streams.get(crate::rng::Stream::World).rand15();
+        t.idle_timer_step(1);
+        assert_eq!(t.groups.get(1).unwrap().idle_timer, draw % 750);
+        t.groups.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
+        t.groups.get_mut(1).unwrap().idle_timer = 5;
+        t.idle_timer_step(1);
+        assert!(t.groups.get(1).unwrap().idle_timer < 750);
+        for dt in 0..=100_000 {
+            t.dt_seconds = crate::lifecycle::seconds(dt);
+            assert_eq!(t.dt_ms(), dt);
+        }
     }
 
     /// The awake update's ends: an idle group (no command, none queued) whose formation's slots
