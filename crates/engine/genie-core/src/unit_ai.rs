@@ -689,12 +689,9 @@ const STANCE_RANGE_GROWTH: f32 = crate::image::unit_ai::STANCE_RANGE_GROWTH;
 const DEFEND_GROWTH: f32 = crate::image::unit_ai::DEFEND_GROWTH;
 
 /// The squared gap between a point and an object's footprint (`FUN_140a847c0`: per axis the
-/// distance less the radius, at least 0).
+/// distance less the radius, `MAXSS 0` of it, so a gap that is not a number stays one).
 fn point_gap_squared(point: [f32; 2], at: [f32; 3], radius: [f32; 2]) -> f32 {
-    let gap = |d: f32, r: f32| {
-        let g = d.abs() - r;
-        if 0.0 <= g { g } else { 0.0 }
-    };
+    let gap = |d: f32, r: f32| crate::fmath::maxss(0.0, d.abs() - r);
     let x = gap(point[0] - at[0], radius[0]);
     let y = gap(point[1] - at[1], radius[1]);
     y * y + x * x
@@ -1559,6 +1556,10 @@ const LION_SIGHT_DIVISOR: f32 = crate::image::unit_ai::LION_SIGHT_DIVISOR;
 /// The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
 const CLASS_KING: i16 = 59;
 
+/// The walk back's gap and range (`FUN_140c5e7d0`: `DAT_14330eb8c`, 1.0, whose image role in
+/// the unit AI's table is [`RUN_ONE`]'s).
+const WALK_BACK: f32 = RUN_ONE;
+
 /// The action values the full update resets once the unit's actions ended (`0x140c66b10`, the
 /// unit's slot 0x430 false): attack, `0x261`, move, hunt, `0x269`, `0x26b`, `0x26c`, build and
 /// `0x2bf`.
@@ -1961,13 +1962,8 @@ impl UnitAi {
         };
         let leash = h.leash * h.leash;
         if 0.0 < leash {
-            let gap = |d: f32, r: f32| {
-                let g = d.abs() - r;
-                if 0.0 <= g { g } else { 0.0 }
-            };
-            let dx = gap(h.origin[0] - x, at.size[0]);
-            let dy = gap(h.origin[1] - y, at.size[1]);
-            if leash < dy * dy + dx * dx {
+            let gap = point_gap_squared([h.origin[0], h.origin[1]], at.position, at.size);
+            if leash < gap {
                 return Ok(self.move_to(go_home));
             }
         }
@@ -2150,10 +2146,10 @@ impl UnitAi {
     /// (slot 0xb8 forced, [`UnitAi::attack_object`]; then, with retargeting on and off order
     /// 0x2bd, the order goes) and processIdle produced (true); a patrol order's saved patrol data
     /// is not modelled. Else a patrol order stops. The search leaves the alert mode clear, so `+0x1bc`
-    /// stays. In Defend or `StandGround` (stance 1, 2) a unit more than a tile from its state
-    /// position (the squared footprint gap, `FUN_140a847c0`) would walk back (`FUN_140c5e7d0`,
-    /// not modelled); a patrol path (`+0x1c0`) and the healer's ally search (`FUN_140c16f00`, for
-    /// a master with a task of action type 0x69) are not modelled.
+    /// stays. Then, outside a unit group (`+0x6d0` −1; its test is not held), a unit in Defend or
+    /// `StandGround` (stance 1, 2) walks back to its state position ([`UnitAi::walk_back`]),
+    /// which leaves the result 5; a patrol path (`+0x1c0`) and the healer's ally search
+    /// (`FUN_140c16f00`, for a master with a task of action type 0x69) are not modelled.
     fn soldier_idle(
         &mut self,
         at: &Surroundings,
@@ -2166,7 +2162,7 @@ impl UnitAi {
             return Ok(false);
         }
         if self.stance == 3 {
-            return self.no_attack_idle(at, computer, side).map(|()| false);
+            return self.no_attack_idle(at, computer, side, fx).map(|()| false);
         }
         if at.master == SOLDIER_IDLE_MASTER {
             return Ok(false);
@@ -2212,18 +2208,10 @@ impl UnitAi {
         if matches!(self.current_order, PATROL | PATROL_2) {
             return Ok(false);
         }
+        // "I'm in Defend or StandGround, returning to state pos.": the walk back's result does
+        // not make the processIdle's
         if matches!(self.stance, 1 | 2) {
-            let gap = |d: f32, r: f32| {
-                let g = d.abs() - r;
-                if 0.0 <= g { g } else { 0.0 }
-            };
-            let dx = gap(self.state_position[0] - at.position[0], at.size[0]);
-            let dy = gap(self.state_position[1] - at.position[1], at.size[1]);
-            if 1.0 < dy * dy + dx * dx {
-                return Err(Unsupported(
-                    "a soldier walking back to its state position (FUN_140c5e7d0)",
-                ));
-            }
+            let _ = self.walk_back(at, fx);
         }
         if self.patrol_path {
             return Err(Unsupported("a soldier's patrol path in its idle check"));
@@ -2237,17 +2225,17 @@ impl UnitAi {
     /// The soldier's idle check in `NoAttack` (stance 3, `FUN_140c20db0`: "searching and returning
     /// to state pos."): the search alone from its place (slot 0x50, `FUN_140c63e20` with mode 1,
     /// [`Pick::Look`]) leaves the alert mode clear when it finds no enemies; then, but on the
-    /// patrol orders, a unit more than a tile from its state position (the squared footprint gap,
-    /// `FUN_140c5e7d0`) would walk back; last the healer's ally search (`FUN_140c16f00`). Not
-    /// modelled: enemies found (the alert mode on, its object `+0x1bc` from slot 0x1d8, and
-    /// after 10 s without a sighting the player's notify 0x210, slot 0x2e8), a defend order's
-    /// search (from its target's objects), a computer's cared classes (`+0x190` with 10), the
-    /// walk back and the healer's search.
+    /// patrol orders, it walks back to its state position ([`UnitAi::walk_back`], its result
+    /// unread); last the healer's ally search (`FUN_140c16f00`). Not modelled: enemies found (the
+    /// alert mode on, its object `+0x1bc` from slot 0x1d8, and after 10 s without a sighting the
+    /// player's notify 0x210, slot 0x2e8), a defend order's search (from its target's objects), a
+    /// computer's cared classes (`+0x190` with 10) and the healer's search.
     fn no_attack_idle(
         &mut self,
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         if self.current_order == DEFEND_ORDER {
             return Err(Unsupported(
@@ -2273,17 +2261,7 @@ impl UnitAi {
             self.alert_mode = false;
         }
         if !matches!(self.current_order, PATROL | PATROL_2) {
-            let gap = |d: f32, r: f32| {
-                let g = d.abs() - r;
-                if 0.0 <= g { g } else { 0.0 }
-            };
-            let dx = gap(self.state_position[0] - at.position[0], at.size[0]);
-            let dy = gap(self.state_position[1] - at.position[1], at.size[1]);
-            if 1.0 < dy * dy + dx * dx {
-                return Err(Unsupported(
-                    "a soldier walking back to its state position (FUN_140c5e7d0)",
-                ));
-            }
+            let _ = self.walk_back(at, fx);
         }
         if at.task_0x69 {
             return Err(Unsupported("a healer's search for an ally to heal"));
@@ -4187,6 +4165,31 @@ impl UnitAi {
         self.target_point = [-1.0; 3];
     }
 
+    /// `FUN_140c5e7d0`, the walk back to the state position: a unit more than a tile from it
+    /// (the squared footprint gap, `FUN_140a847c0`, against [`WALK_BACK`]; `COMISS` then `JNC`,
+    /// so a gap that is not a number walks) moves there at its own height within [`WALK_BACK`],
+    /// forced and running (the unit's slot 0x340, which the caller runs: it takes the move but
+    /// for classes 51 and 54, whose slot `FUN_141216c50` the caller does not model). On the
+    /// move the action value becomes the move's (`0x262`, the old one the last); the target
+    /// stays. The move gives the unit its `MoveTo` at once: the update's later checks see it
+    /// busy. True when it walks.
+    fn walk_back(&mut self, at: &Surroundings, fx: &mut Vec<Effect>) -> bool {
+        let gap = point_gap_squared(self.state_position, at.position, at.size);
+        if !crate::fmath::below_or_unordered(WALK_BACK, gap) {
+            return false;
+        }
+        let [x, y] = self.state_position;
+        fx.push(Effect::Move(AiMove {
+            point: [x, y, at.position[2]],
+            range: WALK_BACK,
+            force: true,
+            walk: false,
+        }));
+        self.set_action(MOVE_ACTION);
+        self.commanded = true;
+        true
+    }
+
     /// The reset at the full update once the unit's actions ended (the unit's slot 0x430 false):
     /// an action value of [`ENDED_ACTIONS`] goes; `0x2bf` of stance 2 also sets the state
     /// position.
@@ -4548,10 +4551,14 @@ impl UnitAi {
 
     /// Slot 73 (`0x140c567c0`, processMisc). Its order part first, by the order (an action's
     /// value plus 100 without one): the follow order's ([`UnitAi::follow`]); the defend order's
-    /// is not modelled. Then the leash checks: stance 1's is not modelled; stance 2's (stand
-    /// ground) stops a unit with an action that strayed from its state position by more than its
-    /// range plus `DAT_142eb880c` (0.25), which a unit on an order, whose state position this
-    /// update set, never has, and an idle unit has no action to stop. Then the retarget check:
+    /// is not modelled. Then the leash checks (not on the orders 0x2c7, 0x2dd and 0x323): stance
+    /// 1's (Defend) stops a unit more than 5 tiles (`DEFEND_LEASH`, squared) from its state
+    /// position, forgets its target and walks back ([`UnitAi::walk_back`]), then goes on; with
+    /// patrol information (`+0x1c0`, `FUN_140f95e10`) it is not modelled. Stance 2's (stand
+    /// ground) stops a unit with an action (`+0x44`, not `0x2bf` or `0x2c0`) that strayed from its
+    /// state position by more than its range plus `DAT_142eb880c` (0.25), forgets its target and
+    /// walks back (10); a unit without an order but with an action of its own can stray. It is
+    /// not modelled: that 0.25 has no role in the unit AI's image table. Then the retarget check:
     /// with retargeting on (`+0x1d6` 0), a timer used up is redrawn (`750 + r % 500`); a human
     /// player's unit of a range above 3 on the attack order 700 stops there ("I have a range >
     /// 3.0 with an attack order, so I don't retarget."), as does a unit with a target of Gaia's
@@ -4594,18 +4601,12 @@ impl UnitAi {
                     "a defending unit's leash with patrol information",
                 ));
             }
-            let gap = |d: f32, r: f32| {
-                let g = d.abs() - r;
-                if 0.0 <= g { g } else { 0.0 }
-            };
-            let dx = gap(self.state_position[0] - at.position[0], at.size[0]);
-            let dy = gap(self.state_position[1] - at.position[1], at.size[1]);
-            if DEFEND_LEASH < dy * dy + dx * dx {
+            // "We're too far out, returning.": then on to the retarget check
+            let gap = point_gap_squared(self.state_position, at.position, at.size);
+            if DEFEND_LEASH < gap {
                 self.stop_current(true, at, fx)?;
                 self.remove_target();
-                return Err(Unsupported(
-                    "a defending unit's walk back to its state position (FUN_140c5e7d0)",
-                ));
+                let _ = self.walk_back(at, fx);
             }
         }
         if self.retarget_disabled != 0 {
@@ -5738,15 +5739,27 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(fx, Vec::<Effect>::new());
-        // 5.1 tiles off its footprint: it stops and forgets its target (the walk back is not
-        // modelled)
+        // 5.1 tiles off its footprint: it stops, forgets its target and walks back to its state
+        // position (FUN_140c5e7d0), then goes on to the retarget check (its timer not used up)
         let (mut u, at) = defender(15.6);
-        assert!(
-            u.retarget_check(0, false, &at, &mut r, false, &mut fx)
-                .is_err()
+        assert_eq!(
+            u.retarget_check(0, false, &at, &mut r, false, &mut fx),
+            Ok(false)
         );
-        assert_eq!(fx, vec![Effect::Stop]);
-        assert_eq!((u.current_action, u.current_target), (-1, -1));
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Stop,
+                Effect::Move(AiMove {
+                    point: [10.0, 10.0, 0.0],
+                    range: 1.0,
+                    force: true,
+                    walk: false,
+                })
+            ]
+        );
+        assert_eq!((u.current_action, u.current_target), (MOVE_ACTION, -1));
+        assert_eq!(u.last_target, 4321);
     }
 
     #[test]
@@ -7215,11 +7228,26 @@ mod tests {
             })
         };
         assert!(u.update(28, 0, false, &at, &mut rng(), &mut found).is_err());
-        // away from its state position, a stance-2 soldier would walk back
+        // away from its state position, a stance-2 soldier walks back ("I'm in Defend or
+        // StandGround, returning to state pos.", FUN_140c5e7d0), which its processIdle does not
+        // count as an action (5)
         let (mut u, at) = idle_scout();
         u.state_position = [25.0, 92.5];
         let mut none = |_: &Search<'_>| Ok(Found::NONE);
-        assert!(u.update(28, 0, false, &at, &mut rng(), &mut none).is_err());
+        let fx = u.update(28, 0, false, &at, &mut rng(), &mut none).unwrap();
+        assert_eq!(
+            fx,
+            vec![
+                Effect::CapHumanOrder(5000),
+                Effect::Move(AiMove {
+                    point: [25.0, 92.5, 0.0],
+                    range: 1.0,
+                    force: true,
+                    walk: false,
+                })
+            ]
+        );
+        assert_eq!((u.last_action, u.current_action), (-1, MOVE_ACTION));
     }
 
     #[test]
@@ -7727,5 +7755,97 @@ mod tests {
         assert_eq!((u.current_target, u.current_action), (50, ATTACK_ACTION));
         assert_eq!(u.notifies, Vec::new());
         assert_eq!(u.orders, vec![roundup]);
+    }
+
+    /// `FUN_140c5e7d0`: a unit more than a tile (the squared footprint gap, `FUN_140a847c0`)
+    /// from its state position moves there at its height within 1.0, forced and running (the
+    /// unit's slot 0x340); the move action value becomes current, the old one the last, and the
+    /// target stays. Within a tile nothing happens. A gap that is not a number walks too
+    /// (`COMISS 1.0, gap; JNC`).
+    #[test]
+    fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 77,
+            state_position: [10.0, 10.0],
+            ..idle(13)
+        };
+        let at = |x: f32| Surroundings {
+            position: [x, 10.0, 2.5],
+            size: [0.5, 0.5],
+            ..Surroundings::default()
+        };
+        let mut fx = Vec::new();
+        // 1.4 off, 0.9 off its footprint: within a tile
+        assert!(!u.walk_back(&at(11.4), &mut fx));
+        assert_eq!((fx.len(), u.current_action), (0, ATTACK_ACTION));
+        assert!(u.walk_back(&at(11.6), &mut fx));
+        assert_eq!(
+            fx,
+            vec![Effect::Move(AiMove {
+                point: [10.0, 10.0, 2.5],
+                range: 1.0,
+                force: true,
+                walk: false,
+            })]
+        );
+        assert_eq!(
+            (u.last_action, u.current_action),
+            (ATTACK_ACTION, MOVE_ACTION)
+        );
+        assert_eq!(u.current_target, 77);
+        assert!(u.commanded);
+        let mut lost = UnitAi {
+            state_position: [f32::NAN, 10.0],
+            ..idle(13)
+        };
+        assert!(lost.walk_back(&at(10.0), &mut Vec::new()));
+    }
+
+    /// `FUN_140a847c0` clamps each axis by `MAXSS 0, gap`: a gap that is not a number stays one.
+    #[test]
+    fn the_point_gap_keeps_a_gap_that_is_not_a_number() {
+        assert_eq!(
+            point_gap_squared([3.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0]),
+            4.0
+        );
+        assert!(point_gap_squared([f32::NAN, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0]).is_nan());
+    }
+
+    /// `FUN_140c20db0` in `NoAttack` ("searching and returning to state pos."): the search alone
+    /// (slot 0x50 with mode 1), then off the patrol orders the walk back; processIdle stays 5.
+    #[test]
+    fn a_no_attack_soldier_searches_then_walks_back_to_its_state_position() {
+        let (mut u, at) = idle_scout();
+        u.stance = 3;
+        u.state_position = [25.0, 92.5];
+        let mut picks = Vec::new();
+        let mut look = |s: &Search<'_>| {
+            picks.push(s.pick);
+            Ok(Found::NONE)
+        };
+        let fx = u.update(28, 0, false, &at, &mut rng(), &mut look).unwrap();
+        assert_eq!(picks, vec![Pick::Look]);
+        assert_eq!(
+            fx,
+            vec![
+                Effect::CapHumanOrder(5000),
+                Effect::Move(AiMove {
+                    point: [25.0, 92.5, 0.0],
+                    range: 1.0,
+                    force: true,
+                    walk: false,
+                })
+            ]
+        );
+        // on a patrol order it stays
+        let (mut u, at) = idle_scout();
+        u.stance = 3;
+        u.state_position = [25.0, 92.5];
+        u.current_order = PATROL;
+        let mut fx = Vec::new();
+        u.no_attack_idle(&at, false, &mut |_: &Search<'_>| Ok(Found::NONE), &mut fx)
+            .unwrap();
+        assert_eq!(fx, Vec::new());
     }
 }
