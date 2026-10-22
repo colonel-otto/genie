@@ -10337,7 +10337,8 @@ impl Turns {
     /// pay for that many: each cost entry but the population's, paid or not, needs its amount
     /// times the count. With none left nothing is queued and nothing drawn. Then the building's
     /// part (`FUN_1411cbc40`): per unit (it recurses, so the last unit drawn is queued first) the
-    /// villager's male or female draw, then the cost and the queue entry, which keeps the
+    /// villager's male or female draw, then the cost, the queued units' population (attribute
+    /// 80, per villager, any other unit's for all at once) and the queue entry, which keeps the
     /// master's three cost entries (resource and amount) for a cancel's refund. A unit the player
     /// cannot pay for (`FUN_14162fb60` -> `FUN_141618db0`) is not queued; its draw stays. The
     /// limited units' counts (`FUN_1416116c0`, `FUN_141611520`, the master's `+0x5f1` flags) and
@@ -10389,8 +10390,17 @@ impl Turns {
                 other => other,
             })
             .collect();
+        let pop = |master: i16| {
+            self.masters
+                .get(player)
+                .and_then(|m| m.get(master))
+                .map_or(0.0, |m| crate::production::population(&m.storage))
+        };
+        let pops: Vec<f32> = masters.iter().map(|&m| pop(m)).collect();
+        let villagers = matches!(q.unit, VILLAGER | VILLAGER_ANY);
+        let mut queued = 0u16;
         let owner = &mut self.players[player];
-        for master in masters.into_iter().rev() {
+        for (master, pop) in masters.into_iter().zip(pops).rev() {
             let mut can_pay = true;
             for &(resource, amount, _) in cost.iter().filter(|c| 0 <= c.0 && c.0 != POPULATION) {
                 let held = owner
@@ -10409,6 +10419,13 @@ impl Turns {
                     .ok_or(Unsupported("a cost in a resource the slice does not track"))?;
                 *slot -= f32::from(amount);
             }
+            // the queued units' population (attribute 80, the player's slot 0xf8 with the
+            // master's population, FUN_14163b0b0): a villager's per unit, as the routine recurses
+            // for each; a population of 0 changes nothing
+            if villagers && pop != 0.0 {
+                owner.add_attribute(crate::production::QUEUED, pop)?;
+            }
+            queued += 1;
             let production = owner.objects[index]
                 .production
                 .get_or_insert_with(|| Production {
@@ -10428,6 +10445,11 @@ impl Turns {
                 train_time: q.train_time,
                 costs: [entry(0), entry(1), entry(2)],
             });
+        }
+        // any other unit's: its population times the count paid for, at once
+        let pop = pop(q.unit) * f32::from(queued);
+        if !villagers && 0 < queued && pop != 0.0 {
+            self.players[player].add_attribute(crate::production::QUEUED, pop)?;
         }
         Ok(())
     }
@@ -12833,6 +12855,21 @@ mod tests {
         let mut missing = one_player(vec![town_centre(9)], [200.0; 4]);
         missing.tick_with(104, &[queue(9 - 1, 83, 1)]);
         assert!(missing.players[0].unsupported.is_some());
+    }
+
+    /// `FUN_1411cbc40`: a queue adds its units' population to attribute 80 (the queued units),
+    /// which keeps it until the unit spawns; the make action's start counts the one it makes in
+    /// 81.
+    #[test]
+    fn a_queue_counts_its_units_population_as_queued() {
+        let mut t = one_player(vec![town_centre(9)], [1000.0; 4]);
+        t.tick_with(104, &[queue(9, 83, 3)]);
+        let a = &t.players[0].attributes;
+        assert_eq!((a[80], a[81]), (3.0, 1.0));
+        // a unit without population (master 99, no storage of kind 4) adds none
+        let mut other = one_player(vec![town_centre(9)], [1000.0; 4]);
+        other.tick_with(104, &[queue(9, 99, 2)]);
+        assert_eq!(other.players[0].attributes[80], 0.0);
     }
 
     #[test]
