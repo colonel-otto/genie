@@ -1286,12 +1286,12 @@ impl Turns {
         if HERD_MOST <= listed.len() {
             return Ok(());
         }
-        let at = self
-            .spatial
-            .get(sheep)
-            .map(|q| q.position)
-            .ok_or(Unsupported("a herded animal without a place"))?;
-        let (x, y) = (at[0] as i32, at[1] as i32);
+        // the animal's own place (+0x3c8, +0x4c8), truncated; send_to_site found it live
+        let at = self.object(sheep).expect("sent to the site").1.position;
+        let (x, y) = (
+            crate::checkpoint::cvttss2si(at[0]),
+            crate::checkpoint::cvttss2si(at[1]),
+        );
         let [w, h] = self.spatial.map;
         let (x0, x1) = ((x - 3).max(0), if x + 3 < w { x + 3 } else { w - 1 });
         let (y0, y1) = ((y - 3).max(0), if y + 3 < h { y + 3 } else { h - 1 });
@@ -5317,6 +5317,98 @@ mod tests {
         // 118's own task: no change
         assert!(t.find_work_task(1, 0, 60, -1, true).unwrap().is_some());
         assert_eq!(t.players[1].objects[0].life.master_id, 118);
+    }
+
+    /// `0x140ac60e0` case 6 and `FUN_140ac4c60`: the hunt's own sheep goes to the drop site, and
+    /// so does the player's idle livestock in state 2 on a tile within 3 that the player sees,
+    /// then the livestock around that; another player's or one too far stays.
+    #[test]
+    fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
+        let units = [(11, 4, [30.0, 30.0])];
+        let mut t = soldiers(&units, &[]);
+        t.spatial = crate::spatial::Spatial::new([40, 40]);
+        let sight = crate::visibility::Visibility::new(
+            40,
+            40,
+            vec![],
+            vec![u64::MAX; 1600],
+            vec![],
+            0,
+            vec![],
+        );
+        t.spatial.sight = Some(sight);
+        let walker = crate::hunt::tests::walker();
+        let sheep_master = Master {
+            id: 594,
+            kind: 70,
+            class: LIVESTOCK,
+            radius: [0.2, 0.2],
+            moving: Some(walker.stats),
+            ..Master::default()
+        };
+        t.masters[1] = crate::masters::Masters::new([
+            sheep_master.clone(),
+            Master {
+                id: 4,
+                kind: 70,
+                radius: [1.5, 1.5],
+                ..Master::default()
+            },
+        ]);
+        t.players.push(crate::turn::Player::default());
+        t.masters.push(crate::masters::Masters::new([sheep_master]));
+        let sheep = |id, x: f32, y: f32| Unit {
+            id,
+            position: [x, y, 0.0],
+            mover: Some(walker.clone()),
+            life: crate::lifecycle::Lifecycle {
+                master_id: 594,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.players[1].objects.extend([
+            sheep(20, 10.5, 10.5),
+            sheep(21, 12.5, 11.5),
+            sheep(22, 20.5, 10.5),
+        ]);
+        t.players[2].objects.push(sheep(23, 11.5, 10.5));
+        let placed = |player, master, at: [f32; 2], radius| crate::spatial::Placed {
+            position: [at[0], at[1], 0.0],
+            radius: [radius, radius],
+            class: LIVESTOCK,
+            player,
+            master,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: false,
+            speed: 0.8,
+            unknown: None,
+            obstruction: None,
+        };
+        t.spatial.insert(11, placed(1, 4, [30.0, 30.0], 1.5));
+        for (id, p, at) in [
+            (20, 1, [10.5, 10.5]),
+            (21, 1, [12.5, 11.5]),
+            (22, 1, [20.5, 10.5]),
+            (23, 2, [11.5, 10.5]),
+        ] {
+            t.spatial.insert(id, placed(p, 594, at, 0.2));
+        }
+        t.lead_herd(1, 20, 11).unwrap();
+        let goes = |p: usize, id: i32| {
+            t.players[p]
+                .objects
+                .iter()
+                .find(|u| u.id == id)
+                .and_then(|u| u.move_to)
+                .map(|m| m.target)
+        };
+        assert_eq!(goes(1, 20), Some(11));
+        assert_eq!(goes(1, 21), Some(11));
+        assert_eq!(goes(1, 22), None);
+        assert_eq!(goes(2, 23), None);
     }
 
     /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
