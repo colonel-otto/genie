@@ -122,12 +122,16 @@ struct Splittable {
 }
 
 /// What the order splitter makes of an order's units (`FUN_140fd76d0`'s result at
-/// `DAT_143f11960`): the units that move alone, in the order the splitter leaves them, and its
-/// groups, each its first unit first.
+/// `DAT_143f11960`): the units that move alone, in the order the splitter leaves them, its
+/// groups, each its first unit first, and the units a path did not join.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Split {
     pub(crate) loose: Vec<i32>,
     pub(crate) groups: Vec<Vec<i32>>,
+    /// The units a path from them did not join (`+0x3a48`, a `std::unordered_set` the splitter
+    /// fills through `FUN_140a3e380` and the kept-group order `FUN_140fd9f40` reads), as a set:
+    /// its bucket order is not held.
+    pub(crate) far: std::collections::BTreeSet<i32>,
 }
 
 impl Split {
@@ -167,19 +171,22 @@ const SPLIT_BY_PATH: bool = true;
 
 /// `FUN_140fd76d0`'s test whether `b` joins `a`: both above type 69, both of formation category
 /// 0 or neither, the same object flags' bit 1, speeds within [`SPLIT_SPEED_GAP`] where the player
-/// breaks formations by speed, then (`member`: for the chosen unit's group, also `b` in a state
-/// of 2 or more) within the player's influence distance on the ground (between where each last
-/// moved to, slot 0x520: `FUN_14087e560` with the height zeroed). Within [`SPLIT_PATH_REACH`]
-/// the game measures a path instead, when the planner of `b`'s restriction exists: from `b`'s
-/// place to `a`'s (`FUN_140f7c530` with `a`'s radius on x as the radii and `b`'s as the range,
-/// no tile search), which joins `b` when it reaches the goal (result 1) no longer than the
-/// influence distance.
+/// breaks formations by speed (`COMISS`, `JA`: a NaN gap is within), then (`member`: for the
+/// chosen unit's group, also `b` in a state of 2 or more) within the player's influence distance
+/// on the ground (between where each last moved to, slot 0x520: `FUN_14087e560` with the height
+/// zeroed; `COMISS`, `JA`: a NaN distance is within). Below [`SPLIT_PATH_REACH`] (`COMISS`, `JBE`:
+/// a NaN distance is not) the game measures a path instead, when the planner of `b`'s
+/// restriction exists: from `b`'s place to `a`'s (`FUN_140f7c530` with `a`'s radius on x as the
+/// radii and `b`'s as the range, no tile search), which joins `b` when it reaches the goal
+/// (result 1) no longer than the influence distance (a NaN length is not longer); else `b` joins
+/// the splitter's far units (`FUN_140a3e380`).
 fn splits_together(
     a: &Splittable,
     b: &Splittable,
     f: crate::turn::Formations,
     member: bool,
     path: &mut SplitPath<'_>,
+    far: &mut std::collections::BTreeSet<i32>,
 ) -> Result<bool, Unsupported> {
     if a.kind <= MAX_UNGROUPED || b.kind <= MAX_UNGROUPED {
         return Ok(false);
@@ -199,9 +206,13 @@ fn splits_together(
         && d < SPLIT_PATH_REACH
         && let Some((code, length)) = path(a, b)?
     {
-        return Ok(code == 1 && length <= f.influence);
+        let joins = code == 1 && crate::fmath::at_most_or_unordered(length, f.influence);
+        if !joins {
+            let _ = far.insert(b.id);
+        }
+        return Ok(joins);
     }
-    Ok(d <= f.influence)
+    Ok(crate::fmath::at_most_or_unordered(d, f.influence))
 }
 
 /// The class `FUN_140c89760` lets scout without the master's flag when a game setting allows it
@@ -500,7 +511,9 @@ impl Turns {
             for (i, a) in left.iter().enumerate() {
                 let mut n = 1;
                 for b in left.iter().filter(|b| b.id != a.id) {
-                    n += usize::from(splits_together(a, b, formations, false, &mut path)?);
+                    let joins =
+                        splits_together(a, b, formations, false, &mut path, &mut split.far)?;
+                    n += usize::from(joins);
                 }
                 if best.1 < n {
                     best = (i, n);
@@ -511,7 +524,14 @@ impl Turns {
             if !control {
                 let mut i = 0;
                 while i < left.len() {
-                    if splits_together(&chosen, &left[i], formations, true, &mut path)? {
+                    if splits_together(
+                        &chosen,
+                        &left[i],
+                        formations,
+                        true,
+                        &mut path,
+                        &mut split.far,
+                    )? {
                         group.push(left.remove(i).id);
                     } else {
                         i += 1;
@@ -5629,28 +5649,39 @@ mod tests {
         };
         // no planner: the distance decides
         let mut none = |_: &Splittable, _: &Splittable| Ok(None);
+        let mut away = std::collections::BTreeSet::new();
         let scout = unit(9185, true, [42.047_367, 94.338_486, 0.0]);
         let sheep = unit(9529, false, [45.5, 93.5, 0.0]);
-        assert!(!splits_together(&scout, &sheep, f, false, &mut none).unwrap());
+        assert!(!splits_together(&scout, &sheep, f, false, &mut none, &mut away).unwrap());
         // nearer than 20 tiles the planner's path decides: its goal reached (1) within the
         // influence distance
         let other = unit(9186, true, [44.0, 94.0, 0.0]);
         let mut short = |_: &Splittable, _: &Splittable| Ok(Some((1, 2.5)));
-        assert!(splits_together(&scout, &other, f, false, &mut short).unwrap());
+        assert!(splits_together(&scout, &other, f, false, &mut short, &mut away).unwrap());
         let mut long = |_: &Splittable, _: &Splittable| Ok(Some((1, 3.5)));
-        assert!(!splits_together(&scout, &other, f, false, &mut long).unwrap());
+        assert!(!splits_together(&scout, &other, f, false, &mut long, &mut away).unwrap());
         let mut nearest = |_: &Splittable, _: &Splittable| Ok(Some((2, 2.5)));
-        assert!(!splits_together(&scout, &other, f, false, &mut nearest).unwrap());
+        assert!(!splits_together(&scout, &other, f, false, &mut nearest, &mut away).unwrap());
+        // a path that did not join puts the unit among the far ones; a NaN length joins
+        assert_eq!(away, [9186].into());
+        let mut lost = |_: &Splittable, _: &Splittable| Ok(Some((1, f32::NAN)));
+        assert!(splits_together(&scout, &other, f, false, &mut lost, &mut away).unwrap());
+        // a NaN distance takes no path and is within the influence distance
+        let nowhere = Splittable {
+            moved_at: [f32::NAN, 94.0],
+            ..other
+        };
+        assert!(splits_together(&scout, &nowhere, f, false, &mut short, &mut away).unwrap());
         let far = unit(9187, true, [80.0, 94.0, 0.0]);
-        assert!(!splits_together(&scout, &far, f, false, &mut none).unwrap());
+        assert!(!splits_together(&scout, &far, f, false, &mut none, &mut away).unwrap());
         let wide = crate::turn::Formations {
             influence: 40.0,
             ..f
         };
-        assert!(splits_together(&scout, &far, wide, false, &mut none).unwrap());
+        assert!(splits_together(&scout, &far, wide, false, &mut none, &mut away).unwrap());
         // a member must stand in state 2 or more
         let born = Splittable { state: 0, ..far };
-        assert!(!splits_together(&scout, &born, wide, true, &mut none).unwrap());
+        assert!(!splits_together(&scout, &born, wide, true, &mut none, &mut away).unwrap());
     }
 
     #[test]
