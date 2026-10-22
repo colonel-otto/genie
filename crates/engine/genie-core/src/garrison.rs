@@ -443,7 +443,11 @@ impl Turns {
                 let Some(&inside) = self.players[player].objects[idx].garrison.get(i) else {
                     continue;
                 };
-                if !self.unload_picks(player, inside, flag, unit_type)? {
+                // the game skips a null entry; an id the world no longer holds is one
+                let Some((up, u)) = self.object(inside) else {
+                    continue;
+                };
+                if !self.unload_picks(up, u, flag, unit_type)? {
                     continue;
                 }
                 let _ = self.let_out(player, idx, inside, point, (None, sound))?;
@@ -559,26 +563,21 @@ impl Turns {
         Ok(())
     }
 
-    /// `FUN_14118a610`: whether UNLOAD's `flag` and `unit_type` (`param`) pick the unit `id`, by
-    /// its master's class and id: flag 0 every unit but class 42; 1 the units of player `param`;
-    /// 2 a group of classes ([`unload_group_takes`]); 3 the object `param`; with the object
-    /// `param` of the world (`FUN_1415417a0`; the unit's player's or none), 4 the units of its
-    /// master (a villager: any villager for a villager), 5 every unit but it and class 42, 6 the
-    /// units not of its master (no villager for a villager, never class 42). Other flags pick none.
+    /// `FUN_14118a610`: whether UNLOAD's `flag` and `unit_type` (`param`) pick `unit` of player
+    /// `player`, by its master's class and id: flag 0 every unit but class 42; 1 the units of
+    /// player `param`; 2 a group of classes ([`unload_group_takes`]); 3 the object `param`; with
+    /// the object `param` of the world (`FUN_1415417a0`; the unit's player's or none), 4 the units
+    /// of its master (a villager: any villager for a villager), 5 every unit but it and class 42,
+    /// 6 the units not of its master (no villager for a villager, never class 42). Other flags
+    /// pick none.
     fn unload_picks(
         &self,
         player: usize,
-        id: i32,
+        unit: &crate::turn::Unit,
         flag: u8,
         param: i32,
     ) -> Result<bool, Unsupported> {
-        let unit = self.players[player]
-            .objects
-            .iter()
-            .find(|u| u.id == id)
-            .ok_or(Unsupported(
-                "a unit inside a building outside its player's list",
-            ))?;
+        let id = unit.id;
         let master = self.master_of(player, unit.life.master_id)?;
         let class = master.class;
         // the object `param` names, for flags 4 to 6: its master, and whether it is the unit's
@@ -1794,5 +1793,58 @@ mod tests {
         t.players[1].objects.push(held);
         assert!(!room(&t, Some(1000)));
         assert!(room(&t, None));
+    }
+
+    #[test]
+    fn unload_picks_the_units_its_flag_names_of_any_player() {
+        // FUN_14118a610 on the units inside town centre 100: player 1's villager 1000, archer
+        // 1001 and the class-42 1002, and player 2's (an ally's) villager 2000
+        let mut t = garrison_world();
+        let mut relic = garrison_masters();
+        relic = Masters::new(relic.iter().cloned().chain([Master {
+            id: 285,
+            kind: 70,
+            class: WHOLE_SHARE_CLASS,
+            ..Master::default()
+        }]));
+        t.masters = (0..4).map(|_| relic.clone()).collect();
+        for (p, id, m) in [
+            (1, 1000, VILLAGER),
+            (1, 1001, ARCHER),
+            (1, 1002, 285),
+            (2, 2000, VILLAGER),
+            (3, 3000, ARCHER),
+        ] {
+            let mut u = unit(id, m, 25.0);
+            u.life.inside = (p != 3).then_some(100);
+            t.players[p].objects.push(u);
+        }
+        let picks = |t: &Turns, flag, param| {
+            [1000, 1001, 1002, 2000]
+                .into_iter()
+                .filter(|&id| {
+                    let (p, u) = t.object(id).unwrap();
+                    t.unload_picks(p, u, flag, param).unwrap()
+                })
+                .collect::<Vec<i32>>()
+        };
+        assert_eq!(picks(&t, 0, -1), [1000, 1001, 2000]);
+        assert_eq!(picks(&t, 1, 2), [2000]);
+        assert_eq!(picks(&t, 2, 1), [1000, 2000]);
+        assert_eq!(picks(&t, 2, 6), [1002]);
+        assert_eq!(picks(&t, 3, 1001), [1001]);
+        // flag 4: the named object's master (a villager names every villager of its player)
+        assert_eq!(picks(&t, 4, 1000), [1000]);
+        assert_eq!(picks(&t, 4, 2000), [2000]);
+        assert_eq!(picks(&t, 4, 1001), [1001]);
+        assert_eq!(picks(&t, 4, 9999), [0i32; 0]);
+        // flag 5: every unit but it and class 42, of its player or with no named object
+        assert_eq!(picks(&t, 5, 1001), [1000]);
+        assert_eq!(picks(&t, 5, 9999), [1000, 1001, 2000]);
+        // flag 6: not of its master, never class 42, a villager not for a villager
+        assert_eq!(picks(&t, 6, 1001), [1000]);
+        assert_eq!(picks(&t, 6, 1000), [1001]);
+        assert_eq!(picks(&t, 6, 3000), [0i32; 0]);
+        assert_eq!(picks(&t, 7, 1000), [0i32; 0]);
     }
 }
