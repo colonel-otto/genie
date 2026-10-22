@@ -369,9 +369,37 @@ impl PathData {
             .unwrap_or(OUTSIDE_PATH)
     }
 
-    /// The level has waypoints after the current one (`FUN_140f96050` on a top level).
+    /// `FUN_140f96050`'s test of the top level: a level without a path (`+0x18` null and none in
+    /// the world's table by its id `+0x20`) has none (0); else waypoints after the current one:
+    /// not `count - 1 <= waypoint` in 32 bits, so an empty path has more for a waypoint below -1.
     const fn has_more(&self) -> bool {
-        !self.points.is_empty() && self.waypoint < self.points.len() as i32 - 1
+        self.has_path && self.waypoint < self.points.len() as i32 - 1
+    }
+}
+
+/// `FUN_140f98d50`: a path's point `i` goes, the later ones move down (true); an index outside
+/// the path (below 0 or past its last point) changes nothing (false).
+fn remove_point(points: &mut Vec<Vec3>, i: i32) -> bool {
+    match usize::try_from(i) {
+        Ok(k) if k < points.len() => {
+            let _ = points.remove(k);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// `FUN_140f98dd0`: the path ends before its point `i` (the points from `i` on go) and is
+/// measured again (`FUN_140f95a60`, true); an index outside the path, or an empty path, changes
+/// nothing (false).
+fn cut_path(path: &mut Path, i: i32) -> bool {
+    match usize::try_from(i) {
+        Ok(k) if k < path.points.len() => {
+            path.points.truncate(k);
+            path.measure();
+            true
+        }
+        _ => false,
     }
 }
 
@@ -953,11 +981,14 @@ impl Mover {
         let [rx, ry, _] = self.stats.radius;
         let [w, h] = world.map;
         while level.waypoint < level.points.len() as i32 {
-            let [x, _, y] = level.points[level.waypoint as usize];
+            let [x, _, y] = level.point(level.waypoint);
             if rx <= x && ry <= y && x <= w as f32 - rx && y <= h as f32 - ry {
                 break;
             }
-            let _ = level.points.remove(level.waypoint as usize);
+            // the index is the waypoint just incremented, and no writer sets one below -1: it is
+            // never negative, so the point goes (the game's loop would spin on a failed removal)
+            let removed = remove_point(&mut level.points, level.waypoint);
+            debug_assert!(removed, "a waypoint below -1");
         }
         if level.path_flags & 1 != 0 {
             return Err(Unsupported(
@@ -1257,6 +1288,13 @@ impl Mover {
         }
     }
 
+    /// `FUN_140f96050` on the walked level: up its parents (`+0x8`) to the top level, the last of
+    /// [`Mover::paths`], whose path has waypoints after its current one
+    /// ([`PathData::has_more`]).
+    fn top_has_more(&self) -> bool {
+        self.paths.last().is_some_and(PathData::has_more)
+    }
+
     /// Object slot 185 (`0x1411583d0`): the unit has velocity data whose velocity is longer than 0.
     #[must_use]
     pub fn is_moving(&self) -> bool {
@@ -1339,7 +1377,7 @@ impl Mover {
             .last()
             .is_some_and(|t| !t.points.is_empty() && t.path_flags & 1 != 0);
         if !top_loops && !self.attack_moving {
-            let top_has_more = self.paths.last().is_some_and(PathData::has_more);
+            let top_has_more = self.top_has_more();
             let level = &mut self.paths[0];
             level.continue_counter -= 1;
             if level.continue_counter < 1 {
@@ -1738,8 +1776,8 @@ impl Mover {
                     path.points.clear();
                     return Ok(false);
                 }
-                path.points.truncate(i + 1);
-                path.measure();
+                // i + 1 lies inside the path: the cut always happens
+                let _ = cut_path(path, i as i32 + 1);
                 return Ok(true);
             }
         }
@@ -1780,7 +1818,7 @@ impl Mover {
         target: Option<&Placed>,
         to_end: f32,
     ) -> Result<Step, Unsupported> {
-        let top_has_more = self.paths.last().is_some_and(PathData::has_more);
+        let top_has_more = self.top_has_more();
         if target.is_some() && self.paths[0].flags & 4 != 0 {
             // FUN_140f9b4d0(level, 2, 0): bit 2 goes off the level and on for its parents
             self.paths[0].flags &= !4;
@@ -3100,6 +3138,52 @@ mod tests {
             in_the_way: Vec::new(),
             sprite_facets: None,
         }
+    }
+
+    /// `FUN_140f98d50` and `FUN_140f98dd0`: a point goes, or the path ends before it and is
+    /// measured again; an index outside the path, or an empty path, changes nothing.
+    #[test]
+    fn a_path_loses_a_point_or_its_end_only_for_an_index_inside_it() {
+        let mut points = vec![[0.0; 3], [1.0, 0.0, 0.0], [1.0, 0.0, 2.0]];
+        assert!(!remove_point(&mut points, -1));
+        assert!(!remove_point(&mut points, 3));
+        assert!(remove_point(&mut points, 1));
+        assert_eq!(points, [[0.0; 3], [1.0, 0.0, 2.0]]);
+        let mut path = Path {
+            points: vec![[0.0; 3], [3.0, 0.0, 0.0], [3.0, 0.0, 4.0], [0.0; 3]],
+            length: 12.0,
+        };
+        assert!(!cut_path(&mut path, -1));
+        assert!(!cut_path(&mut path, 4));
+        assert_eq!(path.length, 12.0);
+        assert!(cut_path(&mut path, 3));
+        assert_eq!((path.points.len(), path.length), (3, 7.0));
+        assert!(cut_path(&mut path, 0));
+        assert_eq!((path.points.len(), path.length), (0, 0.0));
+        assert!(!cut_path(&mut path, 0));
+    }
+
+    /// `FUN_140f96050`: the top level decides, not the walked one; a level without a path has
+    /// no more; else `count - 1 <= waypoint` in 32 bits says none.
+    #[test]
+    fn the_top_level_has_more_waypoints_unless_its_count_less_one_reaches_its_index() {
+        let mut m = builder_9177();
+        // the top level's two points, its waypoint 1: none after it, whatever the walked level has
+        m.paths[0].waypoint = 0;
+        assert!(!m.top_has_more());
+        m.paths[1].waypoint = 0;
+        assert!(m.top_has_more());
+        // without a path: none
+        m.paths[1].has_path = false;
+        assert!(!m.top_has_more());
+        // an empty path: -1 <= waypoint, but a waypoint below -1 has more
+        m.paths[1].has_path = true;
+        m.paths[1].points.clear();
+        assert!(!m.top_has_more());
+        m.paths[1].waypoint = -2;
+        assert!(m.top_has_more());
+        m.paths.clear();
+        assert!(!m.top_has_more());
     }
 
     /// `FUN_140f9b8f0` compares `i` with the point count less one, signed: an empty path or the
