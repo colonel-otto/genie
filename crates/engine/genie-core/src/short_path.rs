@@ -841,17 +841,19 @@ fn clip(mut a: Point, mut b: Point, bx: [i32; 4]) -> Option<(Point, Point)> {
             return None;
         }
         let c = if ca != 0 { ca } else { cb };
+        // the differences in 32 bits, the products and the division in 64
+        let (dx, dy) = (b[0].wrapping_sub(a[0]), b[1].wrapping_sub(a[1]));
         if c & 1 != 0 {
-            y = a[1].wrapping_add(part(b[1] - a[1], xmin - a[0], b[0] - a[0]));
+            y = a[1].wrapping_add(part(dy, xmin.wrapping_sub(a[0]), dx));
             x = xmin;
         } else if c & 2 != 0 {
-            y = a[1].wrapping_add(part(xmax - a[0], b[1] - a[1], b[0] - a[0]));
+            y = a[1].wrapping_add(part(xmax.wrapping_sub(a[0]), dy, dx));
             x = xmax;
         } else if c & 4 != 0 {
-            x = a[0].wrapping_add(part(ymin - a[1], b[0] - a[0], b[1] - a[1]));
+            x = a[0].wrapping_add(part(ymin.wrapping_sub(a[1]), dx, dy));
             y = ymin;
         } else if c & 8 != 0 {
-            x = a[0].wrapping_add(part(ymax - a[1], b[0] - a[0], b[1] - a[1]));
+            x = a[0].wrapping_add(part(ymax.wrapping_sub(a[1]), dx, dy));
             y = ymax;
         }
         if c == ca {
@@ -2678,6 +2680,57 @@ mod tests {
             ray_rect([0, 3 * ONE], [4 * ONE, 3 * ONE], r, &mut t, &mut side),
             0
         );
+    }
+
+    /// `FUN_140fa16d0`: a segment through the box keeps the part inside, each end moved to the
+    /// edge it crossed (`(dy * (edge - x) >> 22 << 22) / dx`, truncated); a segment beside the
+    /// box is none, one inside it stays; the box's corners may come in any order.
+    #[test]
+    fn a_segment_clipped_to_the_box_keeps_its_part_inside() {
+        let b = [0, 0, 2 * ONE, 2 * ONE];
+        assert_eq!(
+            clip([-ONE, ONE], [3 * ONE, ONE], b),
+            Some(([0, ONE], [2 * ONE, ONE]))
+        );
+        // first the left edge, then the bottom, then the right edge for the far end
+        assert_eq!(
+            clip([-ONE, -ONE], [3 * ONE, 2 * ONE], b),
+            Some(([1_398_101, 0], [2 * ONE, 5_242_880]))
+        );
+        assert_eq!(clip([3 * ONE, 0], [4 * ONE, ONE], b), None);
+        let inside = ([ONE / 2, ONE], [ONE, ONE / 2]);
+        assert_eq!(clip(inside.0, inside.1, b), Some(inside));
+        assert_eq!(
+            clip([-ONE, ONE], [3 * ONE, ONE], [2 * ONE, 2 * ONE, 0, 0]),
+            Some(([0, ONE], [2 * ONE, ONE]))
+        );
+    }
+
+    /// `FUN_140faa170` (through `FUN_140f9d3e0`): blocked when the start, out of range, lies in
+    /// a shape with fewer than two escape candidates; a free start or one in range is not. The
+    /// terrain's temporary shapes leave the mesh after it.
+    #[test]
+    fn a_start_deep_in_blocked_terrain_is_blocked_unless_in_range() {
+        let blocked = |_: u32, _: u32| 1;
+        let free = |_: u32, _: u32| 0;
+        let mut q = Query {
+            from: [5 * ONE + ONE / 2, 5 * ONE + ONE / 2],
+            to: [8 * ONE + ONE / 2, 5 * ONE + ONE / 2],
+            radius: 0.25,
+            target_size: [0.0, 0.0],
+            range: 0.0,
+            blocked: 1,
+        };
+        let mut mesh = Mesh::new(16);
+        let mut pather = Pather::default();
+        // each row of blocked tiles is a shape half a tile wider all round: the start sits 0.75
+        // tiles inside row 5's, beyond twice the radius from its sides
+        assert!(pather.start_blocked(&mut mesh, &blocked, &q));
+        let n = mesh.shapes.len() as u32;
+        assert!(0 < n && (0..n).all(|id| !mesh.is_shape(id)));
+        assert!(!pather.start_blocked(&mut mesh, &free, &q));
+        q.range = 3.0;
+        assert!(!pather.start_blocked(&mut mesh, &blocked, &q));
     }
 
     /// A query from (5, 5) to (7, 5) with a radius of a quarter tile and range `range`.
