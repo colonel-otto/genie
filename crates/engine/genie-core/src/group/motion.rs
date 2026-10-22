@@ -194,8 +194,9 @@ fn ground(a: Vec3, b: Vec3) -> f32 {
 }
 
 /// `FUN_141046130` for a walk from `at` toward `waypoint` that would end at `next`: 0 short of
-/// it, 2 past it (or a step under 0.1), 1 on it.
-fn passes_waypoint(waypoint: Vec3, at: Vec3, next: Vec3) -> u8 {
+/// it (`COMISS` then `JBE`: a NaN step or distance is short), 2 past it (or a step under 0.1),
+/// 1 on it.
+pub(super) fn passes_waypoint(waypoint: Vec3, at: Vec3, next: Vec3) -> u8 {
     let mut a = fmath::sub(waypoint, at);
     let mut b = fmath::sub(waypoint, next);
     let c = fmath::sub(next, at);
@@ -204,7 +205,7 @@ fn passes_waypoint(waypoint: Vec3, at: Vec3, next: Vec3) -> u8 {
     let to_waypoint = fmath::sqrt(a[0] * a[0] + 0.0 + a[2] * a[2]);
     let beyond = fmath::sqrt(b[0] * b[0] + b[1] * b[1] + b[2] * b[2]);
     let step = fmath::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
-    if step <= to_waypoint {
+    if fmath::at_most_or_unordered(step, to_waypoint) {
         0
     } else if to_waypoint < beyond || step < NEAR {
         2
@@ -215,7 +216,7 @@ fn passes_waypoint(waypoint: Vec3, at: Vec3, next: Vec3) -> u8 {
 
 /// `FUN_1411570c0`'s ends held inside the map: below 0 at 0, from the map's size on at the size
 /// less 0.1, per axis.
-fn hold(p: Vec3, map: [i32; 2]) -> [f32; 2] {
+pub(super) fn hold(p: Vec3, map: [i32; 2]) -> [f32; 2] {
     let axis = |v: f32, size: i32| {
         if v < 0.0 {
             0.0
@@ -1252,6 +1253,9 @@ mod tests {
         assert_eq!(passes_waypoint(w, [9.0, 0.0, 0.0], [10.5, 0.0, 0.0]), 1);
         assert_eq!(passes_waypoint(w, [9.0, 0.0, 0.0], [11.0, 0.0, 0.0]), 1);
         assert_eq!(passes_waypoint(w, [9.0, 0.0, 0.0], [12.0, 0.0, 0.0]), 2);
+        // a NaN step is short (COMISS step, to the waypoint; JBE at 0x14104621d), where an
+        // ordered compare would pass it on to the next tests
+        assert_eq!(passes_waypoint(w, [9.0, 0.0, 0.0], [f32::NAN, 0.0, 0.0]), 0);
     }
 
     /// `FUN_1411570c0`'s ends held inside the map.

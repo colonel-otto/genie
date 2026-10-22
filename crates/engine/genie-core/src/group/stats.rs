@@ -9,6 +9,20 @@ use crate::unit_ai::Unsupported;
 /// A group whose `mGroupFlags` bit 9 is set moves at its slowest member's speed divided by this
 /// (`FUN_14100bcb0`, `DAT_142ed66b4`).
 const SLOW_GROUP_FACTOR: f32 = crate::image::group::SLOW_GROUP_FACTOR;
+/// A member farther than this from its slot leaves the group (`FUN_14100bcb0`'s far test,
+/// `DAT_142e7f38c`).
+// role pending: group::FAR, 0x142e7f38c, f32, the MOVSS at 0x14100bd93
+const FAR: f32 = f32::from_bits(0x41a0_0000);
+/// The far test's distance in a formation of type 7, or once a member of radius
+/// [`WIDE_RADIUS`] or more came before (`DAT_142ecbff0`).
+// role pending: group::FAR_WIDE, 0x142ecbff0, f32, the MOVSS at 0x14100bd6d
+const FAR_WIDE: f32 = f32::from_bits(0x4220_0000);
+/// The radius from which the far test takes [`FAR_WIDE`] (`DAT_142e7f384`).
+// role pending: group::WIDE_RADIUS, 0x142e7f384, f32, the MOVSS at 0x14100bd82 (read by the
+// COMISS at 0x14100c194)
+const WIDE_RADIUS: f32 = f32::from_bits(0x3f00_0000);
+/// The types of action objects (`RGE_Action_Object`), whose action list slot 0x538 reads.
+const ACTION_KIND: u8 = 40;
 /// The objects of the members' searches a group keeps at most (`FUN_140c65c60`'s `0x46`).
 const MOST_OBJECTS: usize = 70;
 /// The current action of attacking (600): a member in it has attacked just now
@@ -35,7 +49,10 @@ impl Turns {
     /// `FUN_14100bcb0` with `far` (`param_2`): the statistics start over (the centroid, the
     /// largest radius and range, the spacing sums and the searches' objects at 0, the smallest
     /// radius, range and ranged range at `f32::MAX`); each member the world holds then, in the
-    /// members' order, lists the objects its unit AI's search finds ([`Turns::member_objects`]),
+    /// members' order, lists the objects its unit AI's search finds ([`Turns::member_objects`]);
+    /// with `far`, one far from its slot ([`Turns::far_from_slot`]) leaves the group (`removeUnit`
+    /// with target -1, [`Turns::remove_unit`]) and, when it left, stops (slot 0x5d0) and the next
+    /// member takes its index; either way it counts in no statistic. Any other
     /// adds its place (slot 0x520) to the centroid and its radius ([`FormationUnit`]) to the
     /// spacing, and takes part in the largest and smallest radius, the slowest speed (slot
     /// 0x208) and the ranges (slot 0x230; the ranged ones only above 0); its seconds since
@@ -52,10 +69,9 @@ impl Turns {
     /// ([`Turns::calc_formation_type`]). Without one the smallest radius, the spacing and the
     /// smallest ranges are 0.
     ///
-    /// Not modelled: `far` (members far from their slot leave the group; its limits 20 and 40,
-    /// `DAT_142e7f38c` and `DAT_142ecbff0`, have no image role yet), `+0x478` (a member's
-    /// `+0x30c`; the group holds no such field), a charge's range against a target, and the
-    /// attack plan's re-attack (`FUN_14100f7f0`) against a target the world holds.
+    /// Not modelled: `+0x478` (a member's `+0x30c`; the group holds no such field), a charge's
+    /// range against a target, and the attack plan's re-attack (`FUN_14100f7f0`) against a
+    /// target the world holds.
     pub fn group_statistics(&mut self, group: i32, far: bool) -> Result<(), Unsupported> {
         if self.statistics_only(group, far)? {
             self.calc_formation_type(group)?;
@@ -71,26 +87,23 @@ impl Turns {
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn statistics_only(&mut self, group: i32, far: bool) -> Result<bool, Unsupported> {
-        if far {
-            return Err(Unsupported(
-                "a group's statistics that drop far members (FUN_14100bcb0 with 1)",
-            ));
-        }
         let dt = self.dt_seconds;
-        let ids: Vec<i32> = self
-            .groups
-            .get(group)
-            .expect("the caller holds the group")
-            .members
-            .iter()
-            .map(|m| m.id)
-            .collect();
-        // each member's view, its search first (FUN_140c65c60 before anything else of it)
-        let mut views: Vec<Option<MemberView>> = Vec::with_capacity(ids.len());
+        // each member's view in the members' order, its search first (FUN_140c65c60 before
+        // anything else of it), then the far test; the index the member has then, which a
+        // later member's leaving does not move
+        let mut views: Vec<(usize, MemberView)> = Vec::new();
         let mut objects = Vec::new();
-        for &id in &ids {
+        // `+0x154` as the loop goes, which the far test reads
+        let mut largest = 0.0f32;
+        let mut i = 0;
+        loop {
+            let g = self.groups.get(group).expect("the caller holds the group");
+            let Some(m) = g.members.get(i) else {
+                break;
+            };
+            let id = m.id;
             let Some((p, u)) = self.object(id) else {
-                views.push(None);
+                i += 1;
                 continue;
             };
             let master = self.master_of(p, u.life.master_id)?;
@@ -114,7 +127,22 @@ impl Turns {
                 attacking: ai.current_action == ATTACK_ACTION,
             };
             self.member_objects(id, &mut objects)?;
-            views.push(Some(view));
+            if far && self.far_from_slot(group, &view, largest)? {
+                if self.remove_unit(group, id, -1, false)? {
+                    if let Some(m) = self.object_mut(id).and_then(|(_, u)| u.mover.as_mut()) {
+                        m.stop()?;
+                    }
+                    // the index steps back: the next member takes this one's place
+                    continue;
+                }
+                i += 1;
+                continue;
+            }
+            if largest < view.unit.radius {
+                largest = view.unit.radius;
+            }
+            views.push((i, view));
+            i += 1;
         }
         let g = self.groups.get_mut(group).expect("the group read above");
         g.centroid = [0.0; 3];
@@ -131,10 +159,7 @@ impl Turns {
         let mut slowest = f32::MAX;
         let mut held = 0;
         let mut under_attack = false;
-        for (i, v) in views.iter().enumerate() {
-            let Some(v) = v else {
-                continue;
-            };
+        for &(i, ref v) in &views {
             held += 1;
             g.centroid[0] += v.at[0];
             g.centroid[1] += v.at[1];
@@ -178,7 +203,7 @@ impl Turns {
             return Ok(false);
         }
         // a member inside another object (`+0x2f0`) stops (slot 0x5d0), in the members' order
-        for v in views.iter().flatten() {
+        for (_, v) in &views {
             self.stop_if_inside(v.id)?;
         }
         let g = self.groups.get_mut(group).expect("the group read above");
@@ -516,6 +541,56 @@ impl Turns {
         Ok(weapon_range(master))
     }
 
+    /// `FUN_14100bcb0`'s far test (`0x14100be04`..`0x14100c1c9`, `param_2` 1) of member
+    /// `view` of group `group`, `largest` the largest radius of the members before it: the
+    /// group walks no patrol (the top path's flags bit 0, `FUN_141046500`), its flags lack bit 11,
+    /// the member's action list holds no Attack (slot 0x538 with 9) and it has a slot in the
+    /// formation (the first by its id) farther on the ground from where it last moved to (slot
+    /// 0x520) than [`FAR`], or [`FAR_WIDE`] in a formation of type 7 or once a member of radius
+    /// [`WIDE_RADIUS`] or more came before (`COMISS` with `JC`: a NaN radius is not wide;
+    /// `COMISS` with `JBE`: a NaN distance is not far).
+    ///
+    /// # Errors
+    ///
+    /// An action the slice does not model, and a member of a master the slice does not have.
+    fn far_from_slot(
+        &self,
+        group: i32,
+        view: &MemberView,
+        largest: f32,
+    ) -> Result<bool, Unsupported> {
+        let g = self.groups.get(group).expect("the caller holds the group");
+        let patrol = crate::group::formation::top_path(&g.motion.paths)
+            .is_some_and(|p| p.path_flags & 1 != 0);
+        if patrol || g.flags >> 11 & 1 != 0 {
+            return Ok(false);
+        }
+        let (p, u) = self.object(view.id).expect("the member is held");
+        if self.master_of(p, u.life.master_id)?.kind >= ACTION_KIND {
+            if let Some(e) = u.unmodelled_action {
+                return Err(e);
+            }
+            if u.top_action_kind() == Some(crate::attack::ATTACK) {
+                return Ok(false);
+            }
+        }
+        let Some(f) = g.current_formation.as_ref() else {
+            return Ok(false);
+        };
+        let Some(slot) = f.slots.iter().find(|s| s.unit_id == view.id) else {
+            return Ok(false);
+        };
+        let mut d = crate::fmath::sub(view.at, slot.transform_position);
+        d[1] = 0.0;
+        let limit = if f.kind == 7 || !crate::fmath::below_or_unordered(largest, WIDE_RADIUS) {
+            FAR_WIDE
+        } else {
+            FAR
+        };
+        let gap = crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+        Ok(!crate::fmath::at_most_or_unordered(gap, limit))
+    }
+
     /// A member inside another object (`+0x2f0`: another object's garrison holds it) stops
     /// (slot 0x5d0, `FUN_14108c2f0`, [`crate::movement::Mover`]'s stop), as `FUN_14100bcb0` does
     /// for each such member it reads.
@@ -726,5 +801,106 @@ mod tests {
         g.current_target.target = 20;
         g.attack_plan_type = 1;
         assert!(t.statistics_only(1, false).is_err());
+    }
+
+    /// `FUN_14100bcb0` with `far`: member 11, 24 from its slot on the ground and first, leaves
+    /// the group (its link cleared) and stops, the next member taking its index, and counts in
+    /// no statistic; in a formation of type 7, or after a member of radius 0.5 or more (10's,
+    /// before it), the distance is 40 and it stays; none leaves without `far`, on a patrol or
+    /// with flags bit 11.
+    #[test]
+    fn a_member_far_from_its_slot_leaves_the_group() {
+        let world = |spacing: f32, order: [i32; 2]| {
+            let mut t = searched_world();
+            for masters in &mut t.masters {
+                *masters = Masters::new(masters.iter().cloned().map(|mut m| {
+                    m.height = 1.0;
+                    m.spacing_modifier = spacing;
+                    m
+                }));
+            }
+            let mut stray = t.players[1].objects[0].clone();
+            stray.id = 11;
+            stray.position = [6.0, 6.0, 0.0];
+            stray.mover = Some(crate::hunt::tests::walker());
+            stray.mover.as_mut().unwrap().moved_at = [6.0, 6.0, 0.0];
+            stray.group.id = 1;
+            t.players[1].objects[0].group.id = 1;
+            t.players[1].objects.push(stray);
+            let g = t.groups.get_mut(1).unwrap();
+            g.flags = 0;
+            g.members = order
+                .map(|id| Member {
+                    id,
+                    ..Member::default()
+                })
+                .to_vec();
+            g.unit_types[0].units = order.to_vec();
+            g.current_formation = Some(crate::group::Formation {
+                slots: vec![
+                    crate::group::Slot {
+                        unit_id: 10,
+                        transform_position: [5.0, 0.0, 5.0],
+                        ..crate::group::Slot::default()
+                    },
+                    crate::group::Slot {
+                        unit_id: 11,
+                        transform_position: [30.0, 0.0, 6.0],
+                        ..crate::group::Slot::default()
+                    },
+                ],
+                ..crate::group::Formation::default()
+            });
+            t
+        };
+        let ids = |t: &Turns| -> Vec<i32> {
+            t.groups
+                .get(1)
+                .unwrap()
+                .members
+                .iter()
+                .map(|m| m.id)
+                .collect()
+        };
+        let mut t = world(1.0, [11, 10]);
+        let _ = t.statistics_only(1, true).unwrap();
+        assert_eq!(ids(&t), [10]);
+        let u = t.object(11).unwrap().1;
+        assert_eq!(u.group.id, -1);
+        assert!(u.mover.as_ref().unwrap().speed_stopped);
+        let g = t.groups.get(1).unwrap();
+        assert_eq!(g.centroid, [5.0, 0.0, 5.0]);
+        assert_eq!(g.largest_unit_radius, 0.2);
+        // a formation of type 7, a wide member before it: 40
+        let mut t = world(1.0, [11, 10]);
+        t.groups
+            .get_mut(1)
+            .unwrap()
+            .current_formation
+            .as_mut()
+            .unwrap()
+            .kind = 7;
+        let _ = t.statistics_only(1, true).unwrap();
+        assert_eq!(ids(&t), [11, 10]);
+        let mut t = world(2.5, [10, 11]);
+        let _ = t.statistics_only(1, true).unwrap();
+        assert_eq!(ids(&t), [10, 11]);
+        let mut t = world(2.5, [11, 10]);
+        let _ = t.statistics_only(1, true).unwrap();
+        assert_eq!(ids(&t), [10]);
+        // no far test without far, on a patrol, with flags bit 11
+        let mut t = world(1.0, [11, 10]);
+        let _ = t.statistics_only(1, false).unwrap();
+        assert_eq!(ids(&t), [11, 10]);
+        let mut t = world(1.0, [11, 10]);
+        t.groups.get_mut(1).unwrap().flags = 0x800;
+        let _ = t.statistics_only(1, true).unwrap();
+        assert_eq!(ids(&t), [11, 10]);
+        let mut t = world(1.0, [11, 10]);
+        let paths = &mut t.groups.get_mut(1).unwrap().motion.paths;
+        paths[0].has_path = true;
+        paths[0].path_flags = 1;
+        let _ = t.statistics_only(1, true).unwrap();
+        assert_eq!(ids(&t), [11, 10]);
     }
 }

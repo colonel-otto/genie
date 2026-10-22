@@ -56,8 +56,27 @@ const RELAYOUT_SPACING: f32 = crate::image::missile::VOLLEY_REACH_MARGIN;
 const FOLLOW_SHARE: f32 = crate::image::group::FRONT_SHARE;
 /// A follow's target this near the top path's end (squared, `DAT_14330eb8c`) keeps the move.
 const CLOSE: f32 = crate::image::group::CLOSE;
+/// The differentiator groups' members the update lists for the members' moves, at most this
+/// many (`DAT_143f15860`: `0x8b < n` ends the list).
+const DIFFERENTIATORS: usize = 0x8c;
 /// The idle timer past which an idle group draws it anew (the immediate `0xbb8`).
 pub const IDLE_LIMIT: u32 = 3000;
+/// A trade cart's standing and walking sprites are its trade task's while it carries goods
+/// (`FUN_14106a940`: its carried attributes, `+0x7a0`, which the slice does not hold).
+const TRADE_CART_SPRITES: Unsupported =
+    Unsupported("a trade cart's standing or walking sprite (its goods, FUN_14106a940)");
+
+/// The sprites slots 0x660, 0x658 and 0x650 show.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Shown {
+    /// Slot 0x660's standing sprite.
+    Standing,
+    /// Slot 0x658's walking sprite.
+    Walking,
+    /// Slot 0x650's running sprite.
+    Running,
+}
+
 /// The updates of an attack (`FUN_14103f4e0`) and of the other commands on a target
 /// (`FUN_141040bd0`), and the attack formation's refill (`FUN_1410163f0`): not modelled.
 const OTHER_COMMANDS: Unsupported = Unsupported(
@@ -420,7 +439,8 @@ impl Turns {
     /// current command updates ([`Turns::command_update`], which may delete the group or let it
     /// hibernate). Without a member held there is no relayout; else the formation is laid out
     /// anew (`UpdateDesiredPositions(-1)`). An awake group's motion test (`FUN_141046600`) is
-    /// unread, flags bit 9 clears, and a formation with slots moves its members to them. Then
+    /// unread, flags bit 9 clears, and a formation with slots moves its members to them
+    /// ([`Turns::members_to_slots`], with the differentiator groups' members listed). Then
     /// the members' own moves ([`Turns::specific_moves_step`]), the order queue's due orders go
     /// (`FUN_14100d940`, [`Turns::drop_due_orders`], when it has any), and the idle timer
     /// ([`Turns::idle_timer_step`]). The debug drawing (`DAT_143f15a9c`) and the owner's
@@ -429,11 +449,8 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// What the steps do not model: the members' moves to their slots (the path check, gated by
-    /// a lobby setting `FUN_140c89690` and `FUN_1412ffe10` the slice does not hold and comparing
-    /// with 64, `DAT_142eb5bb8`, which has no image role; then per member `FUN_141025fb0`, the
-    /// units' steering slots 0x610, 0x618, 0x638, 0x598, 0x650, 0x658, 0x600, 0x590 and 0x1f8 and
-    /// their paths), among others.
+    /// What the steps do not model: a member's way round a record to its slot, a member's own
+    /// move's step, an attack's update, among others.
     fn after_motion(&mut self, group: i32, far: bool, forward: Vec3) -> Result<bool, Unsupported> {
         if self.groups.get(group).expect("held").flags & 0x100 != 0 {
             self.turn_formation(group, forward)?;
@@ -443,6 +460,9 @@ impl Turns {
             self.group_statistics(group, far)?;
         }
         self.groups.get_mut(group).expect("held").flags &= !0x1_0000;
+        // DAT_143f15860 (0x14103e3a5..0x14103e442), which only the members' moves read
+        let g = self.groups.get(group).expect("held");
+        let differentiators = self.groups.differentiator_units(g, DIFFERENTIATORS);
         self.line_ranges(group)?;
         let (mut relayout, refill) = self.relayout_choice(group, count);
         if !self.command_update(group, &mut relayout)? {
@@ -467,9 +487,7 @@ impl Turns {
                 .as_ref()
                 .is_some_and(|f| !f.slots.is_empty())
             {
-                return Err(Unsupported(
-                    "the members' moves to their slots (FUN_14103d910 at 0x14103e8e8: the path check's lobby setting and 64.0, FUN_141025fb0's unit steering)",
-                ));
+                self.members_to_slots(group, &differentiators)?;
             }
         }
         self.specific_moves_step(group)?;
@@ -1401,36 +1419,81 @@ impl Turns {
     /// a trade cart (whose goods the slice does not hold), and a standing sprite the slice's
     /// graphics lack.
     pub(crate) fn show_standing(&mut self, id: i32) -> Result<(), Unsupported> {
+        self.show_sprite(id, Shown::Standing).map(|_| ())
+    }
+
+    /// Slot 0x658 of object `id` (an action object's `FUN_14106e340`): it shows its walking
+    /// sprite; false when it has none. A trade cart (class 19) with goods (`FUN_14106a940`)
+    /// shows its trade task's (slot 0x7c8 then slot 0x68); an action object's top action is
+    /// asked next (slot 0x430, then the action's slot 0x58 with 0: only a trade's answers, the
+    /// slice holds none); then `FUN_14115d0e0` shows the walking sprite (slot 0x7c8: the
+    /// master's, `+0x748`; the unit's own `+0x8a9` override is not held) when it has one (slot
+    /// 0x68: the top speed is the walking sprite's, [`crate::movement::MoveStats::walk_speed`]).
+    /// The members it serves are units (type 70).
+    ///
+    /// # Errors
+    ///
+    /// As [`Turns::show_standing`].
+    pub(crate) fn show_walking(&mut self, id: i32) -> Result<bool, Unsupported> {
+        self.show_sprite(id, Shown::Walking)
+    }
+
+    /// Slot 0x650 of object `id` (an action object's `FUN_14106e3c0`): it shows its running
+    /// sprite; false when it has none. An action object's top action is asked first (slot 0x430,
+    /// then the action's slot 0x58 with 1: only a trade's answers); then `FUN_14115d300` shows the
+    /// master's running sprite (`+0x750`) when it has one (slot 0x68: the top speed is the running
+    /// sprite's, [`crate::movement::MoveStats::run_speed`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Turns::show_standing`], a trade cart aside.
+    pub(crate) fn show_running(&mut self, id: i32) -> Result<bool, Unsupported> {
+        self.show_sprite(id, Shown::Running)
+    }
+
+    /// Slots 0x660, 0x658 and 0x650 of object `id` ([`Shown`]): whether it shows the sprite.
+    fn show_sprite(&mut self, id: i32, shown: Shown) -> Result<bool, Unsupported> {
         let Some((p, u)) = self.object(id) else {
-            return Ok(());
+            return Ok(false);
         };
         let master = self.master_of(p, u.life.master_id)?;
         if master.kind < MOVING_KIND {
-            return Ok(());
+            return Ok(false);
+        }
+        let trade_cart = match shown {
+            Shown::Standing => master.kind == COMBAT_KIND && master.class == TRADE_CART,
+            Shown::Walking => ACTION_KIND <= master.kind && master.class == TRADE_CART,
+            Shown::Running => false,
+        };
+        if trade_cart {
+            return Err(TRADE_CART_SPRITES);
         }
         if ACTION_KIND <= master.kind
             && let Some(e) = u.unmodelled_action
         {
             return Err(e);
         }
-        if master.kind == COMBAT_KIND && master.class == TRADE_CART {
-            return Err(Unsupported(
-                "a trade cart's standing sprite (its goods, FUN_14106a940)",
-            ));
+        let sprite = match shown {
+            Shown::Standing => master.standing_sprite,
+            Shown::Walking => master.move_sprite,
+            Shown::Running => master.run_sprite,
+        };
+        if sprite == -1 {
+            return Ok(false);
         }
-        let standing = master.standing_sprite;
-        if standing == -1 {
-            return Ok(());
-        }
-        let graphic = self.graphics.get(&standing).copied();
+        let graphic = self.graphics.get(&sprite).copied();
         let (_, u) = self.object_mut(id).expect("found above");
         if let Some(m) = u.mover.as_mut() {
-            m.shows_standing();
+            m.stats.speed = match shown {
+                Shown::Standing => m.stats.stand_speed,
+                Shown::Walking => m.stats.walk_speed,
+                Shown::Running => m.stats.run_speed,
+            };
         }
         if u.sprite.is_none() {
-            return Ok(());
+            return Ok(true);
         }
-        let g = graphic.ok_or(Unsupported("a unit without its standing sprite"))?;
+        let g = graphic.ok_or(Unsupported("a unit without its sprite's graphic"))?;
         let place = self.place(id).expect("found above");
         let rng = self.streams.get(crate::rng::Stream::Sprite);
         let u = match place {
@@ -1438,7 +1501,7 @@ impl Turns {
             crate::order::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
         };
         crate::attack::set_sprite(&mut u.sprite, g, rng);
-        Ok(())
+        Ok(true)
     }
 
     /// `FUN_141016870`: the group's lead (`+0xc4`) is the member the world holds nearest (in 3D,
@@ -1997,6 +2060,77 @@ mod tests {
         assert!(!t.group_update(1).unwrap());
         t.update_groups(1).unwrap();
         assert!(t.groups.get(1).is_none());
+    }
+
+    /// Slots 0x660, 0x658 and 0x650: a unit with the sprite takes its speed (and the sprite,
+    /// where the slice holds the unit's), one without (-1) shows nothing; a trade cart's
+    /// standing and walking sprites are its goods', which the slice does not hold, its running
+    /// one the master's.
+    #[test]
+    fn a_unit_shows_its_standing_walking_or_running_sprite() {
+        let mut t = world();
+        let mut walker = crate::hunt::tests::walker();
+        walker.stats.walk_speed = 0.9;
+        walker.stats.run_speed = 1.5;
+        walker.stats.stand_speed = 0.1;
+        t.players[1].objects[0].mover = Some(walker);
+        let speed = |t: &Turns| t.object(10).unwrap().1.mover.as_ref().unwrap().stats.speed;
+        let master = |t: &mut Turns, class: i16, sprites: [i16; 3]| {
+            let m = Master {
+                id: 4,
+                kind: 70,
+                class,
+                hit_points: 60,
+                radius: [0.2, 0.2],
+                standing_sprite: sprites[0],
+                move_sprite: sprites[1],
+                run_sprite: sprites[2],
+                formation_category: 1,
+                ..Master::default()
+            };
+            t.masters = vec![Masters::new([m]); 4];
+        };
+        master(&mut t, 6, [-1; 3]);
+        assert_eq!(t.show_walking(10), Ok(false));
+        assert_eq!(t.show_running(10), Ok(false));
+        t.show_standing(10).unwrap();
+        assert_eq!(speed(&t), 0.8);
+        master(&mut t, 6, [6, 7, 8]);
+        assert_eq!(t.show_walking(10), Ok(true));
+        assert_eq!(speed(&t), 0.9);
+        assert_eq!(t.show_running(10), Ok(true));
+        assert_eq!(speed(&t), 1.5);
+        t.show_standing(10).unwrap();
+        assert_eq!(speed(&t), 0.1);
+        // a held sprite needs the graphic
+        let graphic = crate::sprite::Graphic {
+            id: 1,
+            frames: 1,
+            facets: 8,
+            speed_multiplier: 1.0,
+            frame_duration: 0.0,
+            replay_delay: 0.0,
+            flags: 0,
+        };
+        t.players[1].objects[0].sprite = Some(crate::sprite::ActiveSprite {
+            graphic,
+            frame: 0,
+            interval: 0.0,
+            last: 0.0,
+            last_frame: 0,
+            changed: false,
+            looped: false,
+            animate: 0,
+            speed: 0.0,
+        });
+        assert!(t.show_walking(10).is_err());
+        master(&mut t, crate::group::update::TRADE_CART, [6, 7, 8]);
+        let trade = crate::group::update::TRADE_CART_SPRITES;
+        assert_eq!(t.show_walking(10), Err(trade));
+        assert_eq!(t.show_standing(10), Err(trade));
+        t.players[1].objects[0].sprite = None;
+        assert_eq!(t.show_running(10), Ok(true));
+        assert_eq!(t.show_walking(99), Ok(false));
     }
 
     /// The formation's turn: past π/4 (not a NaN), or with motion flags bit 1 or flags bit 14.

@@ -21,6 +21,7 @@ mod layout;
 mod motion;
 mod place;
 mod stats;
+mod steer;
 mod update;
 
 /// An object's link to its group: `mGroupID` (`+0x6d0`) and `mGroupFlag` (`+0x6d4`), -1 and -2
