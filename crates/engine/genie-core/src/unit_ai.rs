@@ -1580,7 +1580,7 @@ const KING_UNLED: i16 = 704;
 
 /// The walk back's gap and range (`FUN_140c5e7d0`: `DAT_14330eb8c`, 1.0, whose image role in
 /// the unit AI's table is [`RUN_ONE`]'s).
-const WALK_BACK: f32 = RUN_ONE;
+const WALK_BACK: f32 = crate::image::unit_ai::RUN_ONE;
 
 /// The action values the full update resets once the unit's actions ended (`0x140c66b10`, the
 /// unit's slot 0x430 false): attack, `0x261`, move, hunt, `0x269`, `0x26b`, `0x26c`, build and
