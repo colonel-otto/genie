@@ -1724,17 +1724,28 @@ impl UnitAi {
         };
     }
 
-    /// The order setter with its history (`FUN_140c64b60` with 1): leaving order 711 or 733
-    /// redraws an adjusted idle timeout of exactly 750 and caps the secondary timer at 750.
+    /// The order setter with its history ([`UnitAi::set_order_with`] with 1).
     pub(crate) fn set_order(&mut self, order: i32, ai: &mut Well512) {
+        self.set_order_with(order, true, ai);
+    }
+
+    /// The order setter (`FUN_140c64b60`): leaving a patrol order (711, 733) redraws an adjusted
+    /// idle timeout of exactly 750 (slot 0x1a8) and caps the secondary timer at 750, the
+    /// compare signed (`0x2ee < (int)+0x16c`); with `history` (its third argument) the order
+    /// before becomes the last (`+0x64`), else the last stays; then the order.
+    pub(crate) fn set_order_with(&mut self, order: i32, history: bool, ai: &mut Well512) {
         let leaving = |o| self.current_order == o && order != o;
-        if leaving(711) || leaving(733) {
+        if leaving(PATROL) || leaving(PATROL_2) {
             if self.adjusted_idle_timeout == 750 {
                 self.update_adjusted_idle_timeout(ai);
             }
-            self.secondary_timer = self.secondary_timer.min(750);
+            if 750 < self.secondary_timer as i32 {
+                self.secondary_timer = 750;
+            }
         }
-        self.last_order = self.current_order;
+        if history {
+            self.last_order = self.current_order;
+        }
         self.current_order = order;
     }
 
@@ -2238,6 +2249,8 @@ impl UnitAi {
             // with retargeting on and off order 0x2bd the order goes (FUN_140c64b60 with -1, 0)
             if self.attack_object(found.id, true, false, at, side, fx)? {
                 if self.retarget_disabled == 0 && self.current_order != 0x2bd {
+                    // FUN_140c64b60 with -1 and 0: the order is no patrol order here (those
+                    // returned above), so only the order changes
                     self.current_order = -1;
                 }
                 return Ok(true);
@@ -3197,12 +3210,14 @@ impl UnitAi {
     /// `HuntObject` ([`UnitAi::hunt_object`]) on classes 9, 10 and 15, else `AttackObject`; then
     /// `+0x1a8` is set and it breaks off. Its evade from another player's attacker is not
     /// modelled.
+    #[allow(clippy::too_many_arguments)]
     fn villager_damaged(
         &mut self,
         n: Notify,
         time: u32,
         at: &Surroundings,
         computer: bool,
+        ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
@@ -3262,12 +3277,7 @@ impl UnitAi {
         // `FUN_140c64b60` with 0: the last order kept) at priority 100
         if self.current_order != -1 && n.caller != self.current_target {
             self.requeue_current(at, fx)?;
-            if matches!(self.current_order, PATROL | PATROL_2) {
-                return Err(Unsupported(
-                    "a villager leaving a patrol order to attack back",
-                ));
-            }
-            self.current_order = crate::ai_kinds::ORDER_ATTACK;
+            self.set_order_with(crate::ai_kinds::ORDER_ATTACK, false, ai_rng);
             self.order_priority = 100;
         }
         // slot 0xb8 forced, the civilian's
@@ -3700,7 +3710,7 @@ impl UnitAi {
                     Err(Unsupported("a computer villager's executed action"))
                 }
                 ACTION_EXECUTED => self.base_notify(n, time, at, computer, ai_rng, side, fx),
-                DAMAGED => self.villager_damaged(n, time, at, computer, side, fx),
+                DAMAGED => self.villager_damaged(n, time, at, computer, ai_rng, side, fx),
                 // its own cases the slice does not model; any other is the base handler's
                 ACTION_INVALIDATED
                 | TARGET_MOVED
@@ -4862,10 +4872,12 @@ impl UnitAi {
         Ok(false)
     }
 
-    /// The AI's move to an object (slot 0x138, `FUN_140c55490`, its fourth argument 1): the
-    /// unit's slot 0x348 ([`Effect::MoveToObject`]) takes a target the world holds, and the AI
-    /// the move action and the target with its class and point (`FUN_140c64c10`; the target and
-    /// class it had become the last).
+    /// The AI's move to an object (slot 0x138, `FUN_140c55490`, its fourth argument 1 as its only
+    /// caller, the follow order, passes it): the unit's slot 0x348 ([`Effect::MoveToObject`])
+    /// takes a target the world holds, and the AI the move action and the target with its class
+    /// and point (`FUN_140c64c10`; the target and class it had become the last). The routine's
+    /// branch for a target the world does not hold after slot 0x348 cannot run: slot 0x348
+    /// (`FUN_141086440`) answers 0 for such a target, and the routine then changes nothing.
     fn move_to_object(&mut self, id: i32, target: Seen, range: f32, fx: &mut Vec<Effect>) {
         fx.push(Effect::MoveToObject { target: id, range });
         self.set_action(MOVE_ACTION);
@@ -5673,7 +5685,7 @@ mod tests {
         };
         let mut side = Recorder::default();
         let mut fx = Vec::new();
-        let r = u.villager_damaged(hit, 0, &at, false, &mut side, &mut fx);
+        let r = u.villager_damaged(hit, 0, &at, false, &mut rng(), &mut side, &mut fx);
         assert_eq!(r, Ok(GO_ON));
         assert_eq!(
             (u.attackers.clone(), side.under_attack),
@@ -5697,7 +5709,7 @@ mod tests {
             ..hit
         };
         assert!(
-            u.villager_damaged(hit, 0, &at, false, &mut side, &mut fx)
+            u.villager_damaged(hit, 0, &at, false, &mut rng(), &mut side, &mut fx)
                 .is_err()
         );
     }
@@ -8724,5 +8736,34 @@ mod tests {
             (40, 9, -1, 9)
         );
         assert_eq!(u.target_point, [4.0, 5.0, 0.5]);
+    }
+
+    /// `FUN_140c64b60`: leaving a patrol order (711, 733) redraws an adjusted idle timeout of
+    /// exactly 750 and caps the secondary timer at 750 by a signed compare (a timer read as
+    /// negative stays); with its third argument 0 the last order stays.
+    #[test]
+    fn the_order_setter_caps_by_a_signed_compare_and_may_keep_the_last_order() {
+        let mut u = UnitAi {
+            current_order: PATROL,
+            last_order: 5,
+            adjusted_idle_timeout: 3000,
+            secondary_timer: 0x8000_0000,
+            ..idle(13)
+        };
+        u.set_order_with(ATTACK_ORDER, false, &mut rng());
+        assert_eq!((u.current_order, u.last_order), (ATTACK_ORDER, 5));
+        assert_eq!(u.secondary_timer, 0x8000_0000);
+        let mut u = UnitAi {
+            current_order: PATROL_2,
+            adjusted_idle_timeout: 750,
+            idle_timeout: 3000,
+            secondary_timer: 900,
+            ..idle(13)
+        };
+        let mut r = rng();
+        u.set_order(-1, &mut r);
+        assert_eq!((u.current_order, u.last_order), (-1, PATROL_2));
+        assert_eq!(u.secondary_timer, 750);
+        assert_eq!(r.draws, 1);
     }
 }
