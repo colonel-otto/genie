@@ -1638,13 +1638,31 @@ mod tests {
         assert_eq!(after_hit(true, 0.0, true, 5, 3, 6), Ready);
         assert_eq!(after_hit(true, f32::NAN, true, 5, 3, 6), Ready);
         assert_eq!(after_hit(true, -1.0, true, -1, 3, 4), Ready);
-        assert_eq!(after_hit(true, 0.0, true, -1, 3, 3), Continue { check: false });
-        assert_eq!(after_hit(true, 0.0, true, 5, 3, 5), Continue { check: true });
+        assert_eq!(
+            after_hit(true, 0.0, true, -1, 3, 3),
+            Continue { check: false }
+        );
+        assert_eq!(
+            after_hit(true, 0.0, true, 5, 3, 5),
+            Continue { check: true }
+        );
         // ranged with time left, or melee: only the interrupt test
-        assert_eq!(after_hit(true, 0.5, false, 5, 3, 9), Continue { check: true });
-        assert_eq!(after_hit(false, 0.0, false, 5, 3, 4), Continue { check: false });
-        assert_eq!(after_hit(false, 0.0, true, 5, 3, 5), Continue { check: true });
-        assert_eq!(after_hit(false, 0.0, true, -1, 3, 9), Continue { check: false });
+        assert_eq!(
+            after_hit(true, 0.5, false, 5, 3, 9),
+            Continue { check: true }
+        );
+        assert_eq!(
+            after_hit(false, 0.0, false, 5, 3, 4),
+            Continue { check: false }
+        );
+        assert_eq!(
+            after_hit(false, 0.0, true, 5, 3, 5),
+            Continue { check: true }
+        );
+        assert_eq!(
+            after_hit(false, 0.0, true, -1, 3, 9),
+            Continue { check: false }
+        );
     }
 
     #[test]

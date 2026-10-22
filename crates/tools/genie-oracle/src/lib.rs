@@ -2150,6 +2150,23 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         terrain.passable().to_vec(),
         header.world.game_type,
     );
+    // the zone maps (`map+0x5e28`) as the save holds them, their adjacency built by the load
+    turns.zones = genie_core::zones::Zones::from_saved(
+        map.map_zones
+            .zone_map
+            .iter()
+            .map(|z| {
+                genie_core::zones::ZoneMap::from_saved(
+                    map.map_width,
+                    map.map_height,
+                    &z.number_tiles_in_zone_value,
+                    &z.zone_map,
+                    &z.float_value,
+                    z.number_zones,
+                )
+            })
+            .collect(),
+    );
     // the players' path caps (saved); their plans start over at each player's update
     turns.pathing.budgets = header
         .players()
