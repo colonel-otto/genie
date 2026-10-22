@@ -1,5 +1,5 @@
 //! A group's update (FD-036): `BUnitGroup::update` (`FUN_14103d910`), which the world runs for
-//! the groups a player owns after the player's objects, and the deletion of a group whose update
+//! the groups a player owns before the player's objects, and the deletion of a group whose update
 //! returns 0 (the world list's unlink, then `BUnitGroup`'s destructor, `FUN_140fe1920`).
 
 use crate::fmath::Vec3;
@@ -109,8 +109,9 @@ impl UnitGroup {
 }
 
 impl Turns {
-    /// The groups player `p` owns update after its objects (`BaseWorld::update` at
-    /// `0x141551796`): `BUnitGroup::update` ([`Turns::group_update`]) for each group of the
+    /// The groups player `p` owns update before its objects (`BaseWorld::update` calls them at
+    /// `0x141551796`, then the player's own update, slot 0x100 at `0x1415518f0`, which updates
+    /// its objects): `BUnitGroup::update` ([`Turns::group_update`]) for each group of the
     /// world's list the player owns; a group whose update returns 0 goes
     /// ([`Turns::delete_group`]), any other runs its vtable slot 8 (`FUN_141040b50`). A stopped
     /// player's groups wait with it.
@@ -2597,6 +2598,27 @@ mod tests {
         assert_eq!(t.groups.get(1).unwrap().members, Vec::new());
         assert_eq!(t.groups.get(1).unwrap().objects, Vec::<i32>::new());
         assert_eq!(t.object(11).unwrap().1.group.id, -1);
+    }
+
+    /// `BaseWorld::update` runs a player's groups (`FUN_14103d910` at `0x14155179b`) before the
+    /// player's own update (slot 0x100 at `0x1415518f0`, which updates its objects): a group
+    /// whose member leaves it (no unit AI) stops the member, which then does not move in the
+    /// same update.
+    #[test]
+    fn a_player_s_groups_update_before_its_objects() {
+        let mut t = world();
+        let walker = crate::hunt::tests::walker();
+        for u in &mut t.players[1].objects {
+            u.mover = Some(walker.clone());
+            u.mover.as_mut().unwrap().moved_at = u.position;
+            u.ai = None;
+        }
+        let before = t.object(10).unwrap().1.position;
+        t.tick(69);
+        let u = t.object(10).unwrap().1;
+        assert_eq!(u.group.id, -1);
+        assert_eq!(u.position, before);
+        assert_eq!(u.mover.as_ref().unwrap().velocity.unwrap().velocity[2], 0.0);
     }
 
     /// `FUN_141040b50`: a motion that moved (bit 0) stores its new position at the front; bit 1
