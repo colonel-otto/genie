@@ -5922,12 +5922,18 @@ impl Unit {
             }
             if step.done {
                 // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
-                // builders (set_state left them) and releases the foundation (slot 0x180)
+                // builders (set_state left them) and releases the foundation it still holds
+                // (slot 0x180)
+                let holds = self.build.is_some_and(|b| b.target != -1);
                 self.build = None;
-                release_own(others, masters, target, by)?;
+                if holds {
+                    release_own(others, masters, target, by)?;
+                }
             }
             if step.released {
                 release_own(others, masters, target, by)?;
+            }
+            if step.notified {
                 self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
             }
             if step.works_it {

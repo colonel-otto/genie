@@ -280,10 +280,12 @@ pub struct BuildStep {
     pub works_it: bool,
     /// The work completed the building: what its owner gains.
     pub completed: Option<Built>,
-    /// The work ended without more work: the action let its foundation go (slot 0x68 with none,
-    /// `FUN_140ab0300` -> `FUN_140a7a230`: the foundation's slot 0x180) and stays in state 3,
-    /// whose `set_state` posted notify 0x202 (602) to the builder's unit AI: the caller's.
+    /// The action let its foundation go (slot 0x68 with none, `FUN_140ab0300` ->
+    /// `FUN_140a7a230`: the foundation's slot 0x180): the caller's.
     pub released: bool,
+    /// Its `set_state(3)` found no orders in its unit AI's queue and posted notify 0x202 (with
+    /// the build action's value) to it: the caller's.
+    pub notified: bool,
     /// The work ended and the builder looks for more work around the building (`FUN_1415cc4e0`,
     /// [`crate::gather_search::more_work`]): the caller's, which works what it finds, else lets
     /// the foundation go ([`BuildAction::no_more_work`], then as [`BuildStep::released`]).
@@ -399,25 +401,43 @@ impl BuildAction {
             drop_site: builder.drop_site,
         };
         let mut site = site;
+        // the target's id names no object of the world (FUN_1415417a0): slot 0x68 with none (its
+        // builders' count went with it); then a Build in state 2 or 8 goes on, any other waits
+        // (set_state 3) and the update returns 0
+        if self.target != -1 && site.is_none() && walk.world.get(self.target).is_none() {
+            self.added = false;
+            self.target = -1;
+            if !matches!(self.state, 2 | 8) {
+                self.idle(&mut walk, None, builder, &mut step)?;
+                return Ok(step);
+            }
+        }
+        let mut walked_from = None;
         if let Some(site) = site.as_mut() {
             let master = site.completion.master;
-            if !computer && master.is_some_and(|m| m.id == MASTER_1889) {
+            let state = site.life.state;
+            if !computer
+                && master.is_some_and(|m| m.id == MASTER_1889)
+                && builder.ai.is_some()
+                && state != 0
+            {
                 return Err(Unsupported("a Build on master 1889"));
             }
-            let state = site.life.state;
             if state != 0 && !matches!(self.state, FINISHED | MOVE | 8) {
-                if master.is_some_and(|m| m.id == MASTER_621) || builder.class == CLASS_39 {
-                    return Err(Unsupported(
-                        "the end of a Build on master 621 or by class 39",
-                    ));
+                // 621 and the gates (class 39) end the work once built, else walk back
+                let special = master.is_some_and(|m| m.id == MASTER_621 || m.class == CLASS_39);
+                let c = &*site.construction;
+                let unbuilt = c.progress < f32::from(c.build_time);
+                if (special || state < 3) && !(special && 2 < state && unbuilt) {
+                    step.dropped = self.finish(&mut walk, Some(&mut *site.construction), load)?;
+                } else {
+                    // set_state(4) toward it, then slot 0x68 with none: the caller releases it
+                    walked_from = Some(self.target);
+                    self.restart(&mut walk, Some(&mut *site.construction))?;
+                    self.target = -1;
+                    step.released = true;
                 }
-                if 3 <= state {
-                    return Err(Unsupported("a Build whose foundation died"));
-                }
-                step.dropped = self.finish(&mut walk, Some(&mut *site.construction), load)?;
             }
-        } else if walk.world.get(self.target).is_none() {
-            return Err(Unsupported("a Build whose foundation is gone"));
         }
         if self.state == FINISHED {
             match self.after_work(&walk, site.as_ref(), computer, builder)? {
@@ -428,18 +448,25 @@ impl BuildAction {
             return Ok(step);
         }
         let mut walk = walk;
-        let waits = builder.waits;
         let r = match (self.state, self.move_to) {
+            // set_state(6) without a target: set_state(3)
+            (4, Some(MoveTo::Arrived)) if self.target == -1 => {
+                return self
+                    .idle(&mut walk, site, builder, &mut step)
+                    .map(|()| step);
+            }
             // set_state(6): the prelude's MoveTo teardown stops the unit (slot 0x5d0)
             (4, Some(MoveTo::Arrived)) => {
                 self.leave(&mut walk, None)?;
                 self.state = WORK;
                 Ok(())
             }
+            // the MoveTo set_state(4) made walks to the foundation it let go
             (4, Some(MoveTo::Start)) => {
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.task.range;
-                self.move_to = Some(start_walk(walk, Goal::Target(self.target), range, false)?);
+                let to = walked_from.unwrap_or(self.target);
+                self.move_to = Some(start_walk(walk, Goal::Target(to), range, false)?);
                 Ok(())
             }
             (4 | CLEAR, Some(MoveTo::Moving)) => {
@@ -447,8 +474,13 @@ impl BuildAction {
                 Ok(())
             }
             (4, None) => Err(Unsupported("a Build action in state 4 without its MoveTo")),
+            // case 0: the update returns 1, the action list removes it
+            (DONE, _) => {
+                step.done = true;
+                Ok(())
+            }
             (WORK, _) => {
-                let look = builder.look;
+                let (waits, look) = (builder.waits, builder.look);
                 // case 5: FUN_141162db0 turns the builder to face its foundation
                 let at = walk
                     .world
@@ -478,7 +510,7 @@ impl BuildAction {
                     return Ok(step);
                 }
                 self.timer = 0.0;
-                self.place(&mut walk, site, (waits, builder.look), &mut step)
+                self.place(&mut walk, site, (builder.waits, builder.look), &mut step)
             }
             (PLACE, _) => self.work(walk, site, load).map(|(c, d)| {
                 step.completed = c;
@@ -590,29 +622,81 @@ impl BuildAction {
             ai.orders.retain(|o| o.order != BUILD_ORDER);
             return Ok(AfterWork::WorksIt);
         }
-        // FUN_140c5dcd0: a build order whose foundation is gone or no longer in state 0 leaves
-        // the queue (the building just completed is in state 2 now)
-        let built = site.map(|s| (s.id, s.life.state));
-        ai.orders.retain(|o| {
-            if o.order != BUILD_ORDER {
-                return true;
-            }
-            let state = match built {
-                Some((id, state)) if id == o.target => Some(state),
-                _ => builder
-                    .build_targets
-                    .iter()
-                    .find(|&&(id, _)| id == o.target)
-                    .and_then(|&(_, s)| s),
-            };
-            state == Some(0)
-        });
+        // FUN_140c5dcd0 (the building just completed is in state 2 now)
+        drop_done_orders(
+            ai,
+            site.map(|s| (s.id, s.life.state)),
+            builder.build_targets,
+        );
         if ai.orders.is_empty() {
             return Ok(AfterWork::Search);
         }
         ai.end_order_and_action()?;
         self.done(walk)?;
         Ok(AfterWork::Done)
+    }
+
+    /// `set_state(4)` (`0x140aae200` case 4) toward its foundation `self.target`: the prelude
+    /// (it leaves the foundation's builders, its `MoveTo` goes: the unit stops), then a new
+    /// `MoveTo` to the foundation (`FUN_140aa0df0`), arrived when the footprints touch; its point
+    /// (`+0x38`..`+0x40`, the foundation's place) is not held.
+    ///
+    /// # Errors
+    ///
+    /// A builder without movement state, a foundation without a place.
+    fn restart(
+        &mut self,
+        walk: &mut Walk<'_>,
+        site: Option<&mut Construction>,
+    ) -> Result<(), Unsupported> {
+        self.leave(walk, site)?;
+        let mover = walk
+            .mover
+            .as_deref()
+            .ok_or(Unsupported("a builder without movement state"))?;
+        let at = walk
+            .world
+            .get_known(self.target)?
+            .ok_or(Unsupported("a foundation that is gone"))?;
+        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let gap = footprint_gap(walk.me.position, ground, at.position, at.radius);
+        *self = Self::start(self.target, gap, self.task);
+        Ok(())
+    }
+
+    /// `set_state(3)` (`0x140aae200` case 3): the prelude (out of the foundation's builders, the
+    /// `MoveTo`'s teardown), then with a unit AI its build orders on foundations gone or no
+    /// longer in state 0 leave its queue (`FUN_140c5dcd0`); with orders left (`FUN_140c564a0`)
+    /// it has no order and no action (`FUN_140c64b60`, `FUN_140c64b50` with −1) and the Build
+    /// ends (`set_state(1)`: the update after removes it); with none it posts notify 0x202 to
+    /// its unit AI ([`BuildStep::notified`]) and takes its standing sprite (slot 0x68, not held).
+    ///
+    /// # Errors
+    ///
+    /// A unit AI on a patrol order.
+    fn idle(
+        &mut self,
+        walk: &mut Walk<'_>,
+        site: Option<Site<'_>>,
+        builder: Builder<'_>,
+        step: &mut BuildStep,
+    ) -> Result<(), Unsupported> {
+        let built = site.as_ref().map(|s| (s.id, s.life.state));
+        self.leave(walk, site.map(|s| s.construction))?;
+        self.state = IDLE;
+        let mut left = 0;
+        if let Some(ai) = builder.ai {
+            drop_done_orders(ai, built, builder.build_targets);
+            if !ai.orders.is_empty() {
+                ai.end_order_and_action()?;
+                self.done(walk)?;
+            }
+            left = ai.orders.len();
+        }
+        if left == 0 {
+            step.notified = true;
+        }
+        Ok(())
     }
 
     /// Slot 0x48 (`FUN_140ab1b30`), the work command's target for the Build's own task, here its
@@ -1194,6 +1278,25 @@ impl crate::turn::Turns {
         }
         Ok(())
     }
+}
+
+/// `FUN_140c5dcd0`: the build orders (`0x2be`) of `ai`'s queue whose foundation is gone or no
+/// longer in state 0 leave it; `site` is the Build's own foundation with its state now, the
+/// others' states are as the update started (`build_targets`, None for one that is gone).
+fn drop_done_orders(ai: &mut UnitAi, site: Option<(i32, u8)>, build_targets: &[(i32, Option<u8>)]) {
+    ai.orders.retain(|o| {
+        if o.order != BUILD_ORDER {
+            return true;
+        }
+        let state = match site {
+            Some((id, state)) if id == o.target => Some(state),
+            _ => build_targets
+                .iter()
+                .find(|&&(id, _)| id == o.target)
+                .and_then(|&(_, s)| s),
+        };
+        state == Some(0)
+    });
 }
 
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments).
@@ -2234,6 +2337,159 @@ mod tests {
         );
     }
 
+    /// census v5's 217 stops "a dying foundation" went on to "a Build whose foundation died":
+    /// a builder at work (state 7, among the builders) on a foundation in state 3
+    /// (`0x140ab0370`'s prelude): `set_state(4)` toward it (out of its builders, a `MoveTo`
+    /// arrived beside it), slot 0x68 with none (the caller releases it); the `MoveTo` is there,
+    /// so `set_state(6)` without a target turns to `set_state(3)`: without a unit AI it tells
+    /// itself 0x202. Master 621 and the gates (class 39) end their work instead once built
+    /// (`set_state(224)`), a foundation in state 1 or 2 too.
+    #[test]
+    fn a_builder_lets_a_dead_foundation_go() {
+        use crate::movement::{MoveStats, Mover};
+        let mover = || Mover {
+            forward: [1.0, 0.0, 0.0],
+            right: [0.0, 0.0, -1.0],
+            velocity: None,
+            paths: vec![],
+            factor: 1.0,
+            stats: MoveStats {
+                fly_mode: 0,
+                speed: 0.8,
+                turn_rate: f32::MAX,
+                turn_radius: 0.0,
+                turn_radius_speed: f32::MAX,
+                radius: [0.2, 0.2, 0.5],
+                restriction: 7,
+                restriction_mask: 6,
+                turn_time: 0.0,
+                move_algorithm: 0,
+                min_collision: 1.0,
+                fast_turn: false,
+                walk_speed: 1.0,
+                stand_speed: 1.0,
+                run_speed: 1.0,
+                facets: None,
+                weapon_range: 0.0,
+            },
+            waiting: 0,
+            wait_delays: 0,
+            attack_moving: false,
+            last_move: 0,
+            moved_at: [0.0; 3],
+            substitute_count: 0,
+            ignore_units: Vec::new(),
+            last_turn: 0.0,
+            angle: 0.0,
+            move_to_point: None,
+            speed_stopped: false,
+            pauses: Vec::new(),
+            in_the_way: Vec::new(),
+            sprite_facets: None,
+        };
+        let run = |master: Master, state: u8, progress: f32| {
+            let mut world = Spatial::default();
+            world.insert(10028, house());
+            let mut life = Lifecycle {
+                state,
+                master_id: master.id,
+                ..Lifecycle::default()
+            };
+            let mut c = Construction {
+                progress,
+                desolid: false,
+                builders: 2,
+                hit_points: 550,
+                build_time: 25,
+                record: Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: false,
+            };
+            let mut b = BuildAction {
+                state: PLACE,
+                move_to: None,
+                added: true,
+                ..BuildAction::start(10028, 0.0, TASK)
+            };
+            let mut m = mover();
+            let mut ai = UnitAi::default();
+            let step = b
+                .update(
+                    Walk {
+                        mover: Some(&mut m),
+                        me: Me {
+                            id: 9,
+                            position: [30.0, 89.1, 0.0],
+                            group: -1,
+                            action_state: 0,
+                        },
+                        dt: 0.02,
+                        world: &mut world,
+                        plan: None,
+                    },
+                    Some(Site {
+                        id: 10028,
+                        life: &mut life,
+                        construction: &mut c,
+                        mover: None,
+                        firepower: None,
+                        completion: Completion {
+                            master: Some(&master),
+                            annexed: false,
+                            attribute_204: false,
+                            mode_680: 0,
+                            farm_bonus: [0.0, -1.0, -1.0],
+                            masters: None,
+                            computer: false,
+                            ai: false,
+                        },
+                    }),
+                    Builder {
+                        class: VILLAGER,
+                        master: 83,
+                        held: 0.0,
+                        held_kind: -1,
+                        drop_site: false,
+                        ai: Some(&mut ai),
+                        waits: &mut 0,
+                        build_targets: &[],
+                        look: Looks(&|_| None),
+                    },
+                )
+                .unwrap();
+            (
+                b.state,
+                b.target,
+                c.builders,
+                step.released,
+                step.notified || step.search,
+            )
+        };
+        let house_master = Master {
+            id: 70,
+            class: 3,
+            ..Master::default()
+        };
+        assert_eq!(
+            run(house_master.clone(), 3, 10.0),
+            (IDLE, -1, 1, true, true)
+        );
+        // a built one in state 2 ends the work
+        assert_eq!(
+            run(house_master, 2, 25.0),
+            (FINISHED, 10028, 1, false, true)
+        );
+        // a dead gate (class 39) not built yet lets go, one built ends the work
+        let gate = Master {
+            id: 1584,
+            class: CLASS_39,
+            ..Master::default()
+        };
+        assert_eq!(run(gate.clone(), 3, 10.0), (IDLE, -1, 1, true, true));
+        assert_eq!(run(gate, 3, 25.0), (FINISHED, 10028, 1, false, true));
+    }
+
     #[test]
     fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it() {
         fn walk(id: i32, world: &mut Spatial) -> Walk<'_> {
@@ -2271,12 +2527,14 @@ mod tests {
         world.insert(10028, house());
         let _ = near.update(walk(1, &mut world), None, builder()).unwrap();
         assert_eq!((near.state, near.move_to), (6, None));
-        // the far one checks its foundation, which must be in the world
+        // census v5's 208 stops "a Build whose foundation is gone": the far one finds its
+        // foundation's id gone from the world (0x140ab0370's prelude): slot 0x68 with none, then
+        // set_state(3): its MoveTo goes, and without orders it tells its unit AI (0x202)
         let mut empty = Spatial::default();
+        let step = far.update(walk(2, &mut empty), None, builder()).unwrap();
         assert_eq!(
-            far.update(walk(2, &mut empty), None, builder()),
-            Err(Unsupported("a Build whose foundation is gone"))
+            (far.state, far.target, far.move_to, step.notified, step.done),
+            (IDLE, -1, None, true, false)
         );
-        assert_eq!(far.move_to, Some(MoveTo::Start));
     }
 }
