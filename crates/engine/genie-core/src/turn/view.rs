@@ -95,9 +95,12 @@ pub(in crate::turn) struct Context<'a> {
     /// The unit's update stopped before its unit AI for the caller's work order
     /// ([`Unit::ai_part`]); given back, the update runs only that part.
     pub(in crate::turn) ai_resume: Option<AiResume>,
-    /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]): the
-    /// update ends with the takeover ([`Step::Captured`]).
-    pub(in crate::turn) taken_over: Option<usize>,
+    /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]) and
+    /// whether it has the unit's master: the update ends with the takeover ([`Step::Captured`]).
+    pub(in crate::turn) taken_over: Option<(usize, bool)>,
+    /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
+    /// caller's ([`crate::turn::unit::Captured::building`]).
+    pub(in crate::turn) building_handover: bool,
     /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.

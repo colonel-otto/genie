@@ -4796,17 +4796,25 @@ impl Unit {
             match new {
                 Some(Handover::Taken { new, .. }) => {
                     let (main, also) = self.capture(c, others, new)?;
-                    captured = Some(Captured { new, main, also });
+                    captured = Some(Captured {
+                        new,
+                        main,
+                        also,
+                        building: std::mem::take(&mut c.building_handover),
+                    });
                 }
                 // state 100: the unit's stop (slot 0x148), then slot 0x70 to Gaia
                 Some(Handover::ToGaia) => {
                     let class = self.placed_class(c)?;
                     self.capture_stop(c, class)?;
-                    if self.change_owner(c, 0)? {
+                    let main = self.change_owner(c, 0)?;
+                    let building = std::mem::take(&mut c.building_handover);
+                    if main || building {
                         captured = Some(Captured {
                             new: 0,
-                            main: true,
+                            main,
                             also: Vec::new(),
+                            building,
                         });
                     }
                 }
@@ -6030,6 +6038,7 @@ impl Unit {
                 new: q,
                 main: true,
                 also: Vec::new(),
+                building: std::mem::take(&mut c.building_handover),
             });
         }
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
@@ -6248,11 +6257,12 @@ impl Unit {
             };
             self.apply(effects, class, c)?;
         }
-        if let Some(new) = c.taken_over.take() {
+        if let Some((new, main)) = c.taken_over.take() {
             captured = Some(Captured {
                 new,
-                main: true,
+                main,
                 also: Vec::new(),
+                building: std::mem::take(&mut c.building_handover),
             });
         }
         if let Some(k) = captured {
@@ -6402,32 +6412,26 @@ impl Unit {
     }
 
     /// The unit's slot 0x70 as its unit AI asks it ([`Effect::ChangeOwner`], the artifact's
-    /// processIdle `FUN_140c1e410`): a combat unit's ([`Unit::change_owner`]); once it changed
-    /// hands the caller moves it to the new owner's list after the update ([`Step::Captured`]).
-    /// A building's (`FUN_1411cd860`) is not modelled.
+    /// processIdle `FUN_140c1e410`): [`Unit::change_owner`]; once it changed hands the caller
+    /// moves it to the new owner's list after the update ([`Step::Captured`]), and a building's
+    /// whole change is the caller's even without the new owner's master.
     pub(in crate::turn) fn ai_change_owner(
         &mut self,
         new: usize,
         c: &mut Context<'_>,
     ) -> Result<(), GenieError> {
-        let master = self
-            .own_master
-            .as_deref()
-            .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
-        if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
-            return Err(HANDS_LEFT);
-        }
-        if self.change_owner(c, new)? {
-            c.taken_over = Some(new);
+        let changed = self.change_owner(c, new)?;
+        if changed || c.building_handover {
+            c.taken_over = Some((new, changed));
         }
         Ok(())
     }
 
     /// `RGE_Combat_Object::update`'s takeover by sight of the unit by player `new`, which has its
-    /// master: slot 0x70 ([`Unit::change_owner`]), then `+0x924` goes 0. The local player's
-    /// sound and its capture notice (`FUN_1414c3380`) are not simulation. Not modelled: a
-    /// building's slot 0x70 (`FUN_1411cd860`) and a siege weapon's (class 13) drop of the units
-    /// it carries (`FUN_14120f800` with `FUN_141192d10`).
+    /// master: slot 0x70 ([`Unit::change_owner`]; a building's is the caller's after the update),
+    /// then `+0x924` goes 0. The local player's sound and its capture notice (`FUN_1414c3380`)
+    /// are not simulation. Not modelled: a siege weapon's (class 13) drop of the units it carries
+    /// (`FUN_14120f800` with `FUN_141192d10`).
     pub(in crate::turn) fn take_by_sight(
         &mut self,
         c: &mut Context<'_>,
@@ -6437,9 +6441,6 @@ impl Unit {
             .own_master
             .as_deref()
             .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
-        if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
-            return Err(HANDS_LEFT);
-        }
         if master.is_some_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty() {
             return Err(HANDS_LEFT);
         }
@@ -6452,12 +6453,25 @@ impl Unit {
     }
 
     /// The ownership change (slot 0x70, [`change_hands`]) of the unit, from its owner to `new`:
-    /// false when `new` has not its master.
+    /// false when `new` has not its master. A building's (`FUN_1411cd860`) is the caller's after
+    /// the update, whole ([`Captured::building`], [`crate::turn::Turns::building_changes_hands`]),
+    /// whether or not `new` has its master.
     pub(in crate::turn) fn change_owner(
         &mut self,
         c: &mut Context<'_>,
         new: usize,
     ) -> Result<bool, GenieError> {
+        let master = self
+            .own_master
+            .as_deref()
+            .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
+        if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
+            c.building_handover = true;
+            return Ok(c
+                .every_masters
+                .get(new)
+                .is_some_and(|m| m.get(self.life.master_id).is_some()));
+        }
         change_hands(
             self,
             (c.player, new),
@@ -6923,6 +6937,10 @@ pub(in crate::turn) struct Captured {
     pub(in crate::turn) new: usize,
     pub(in crate::turn) main: bool,
     pub(in crate::turn) also: Vec<i32>,
+    /// The object is a building: its slot 0x70 (`FUN_1411cd860`) is the caller's, whole
+    /// ([`crate::turn::Turns::building_changes_hands`]); `main` says whether the new owner has
+    /// its master.
+    pub(in crate::turn) building: bool,
 }
 
 /// What a unit's update hands its unit AI part when that runs after the caller gave the work its

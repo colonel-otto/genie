@@ -1153,6 +1153,7 @@ impl Turns {
                     gate_toggle: false,
                     ai_resume: resume.take(),
                     taken_over: None,
+                    building_handover: false,
                     order_on_target: None,
                     works: Vec::new(),
                     build_command: None,
@@ -1590,7 +1591,22 @@ impl Turns {
                         player.sleeping.push(asleep);
                         i += 1;
                     }
-                    Ok(Step::Captured(Captured { new, main, also })) => {
+                    Ok(Step::Captured(Captured { new, building, .. })) if building => {
+                        // a building's slot 0x70 (FUN_1411cd860), whole: its annexes, its
+                        // lists' moves and its new owner's parts
+                        let id = player.objects[i].id;
+                        let watched = player.watched.iter().any(|w| w.id == id);
+                        if let Err(e) = self.building_changes_hands(p, id, new, watched) {
+                            crate::trace::player_unsupported(self.ticks, p, &e);
+                            let _ = self.players[p]
+                                .unsupported
+                                .get_or_insert((self.ticks, i, e));
+                        }
+                        i += 1;
+                    }
+                    Ok(Step::Captured(Captured {
+                        new, main, also, ..
+                    })) => {
                         // the old owner's list loses them (FUN_1411664a0, the last in each
                         // place; the loop goes on past the first) and the new owner's gains
                         // them (FUN_141616200), each with its attributes

@@ -3510,6 +3510,163 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
     );
 }
 
+/// A building's slot 0x70 (`FUN_1411cd860`), as Aftermath's trade workshops change hands: Gaia's
+/// workshop 7 (master 1378, class 1, the artifact's unit AI) finds player 1's villager 500 and
+/// asks to change hands; after the update its whole change runs. Built, it gives its storage
+/// of flag 4 (5 of attribute 4) from Gaia to player 1, leaves Gaia's watched list for player
+/// 1's, completes in player 1's tracker, loses its gather point and its actions, and comes to
+/// the end of player 1's list with its record again.
+#[test]
+fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
+    let master = |id, class, los| Master {
+        id,
+        kind: 70,
+        class,
+        line_of_sight: los,
+        radius: [0.2, 0.2],
+        ..Master::default()
+    };
+    let workshop = Master {
+        kind: 80,
+        build_time: 10,
+        storage: vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)],
+        obstruction_type: 2,
+        obstruction_class: 2,
+        building: Some(crate::masters::BuildingMaster {
+            stack_unit: -1,
+            foundation_terrain: -1,
+            tech: -1,
+            head_unit: -1,
+            transform_unit: -1,
+            ..crate::masters::BuildingMaster::default()
+        }),
+        ..master(1378, 1, 4.0)
+    };
+    let table = Masters::new([workshop, master(83, 4, 4.0)]);
+    let torch = Unit {
+        ai: Some(UnitAi {
+            ai_type: crate::unit_ai::ARTIFACT_AI,
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            idle_timeout: 5000,
+            adjusted_idle_timeout: 4000,
+            retarget_timer: 1000,
+            ..UnitAi::default()
+        }),
+        life: Lifecycle {
+            master_id: 1378,
+            state: 2,
+            hp: 20000.0,
+            ..Lifecycle::default()
+        },
+        construction: Some(Construction {
+            progress: 10.0,
+            desolid: false,
+            builders: 0,
+            hit_points: 20000,
+            build_time: 10,
+            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: true,
+        }),
+        gather_point: Some(GatherPoint {
+            point: [12.0, 12.0, 0.0],
+            target: -1,
+            target_master: -1,
+        }),
+        ..hands_unit(7, 1378)
+    };
+    let villager = Unit {
+        position: [11.5, 10.5, 0.0],
+        ai: None,
+        ..hands_unit(500, 83)
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0, 0],
+        vec![
+            Player {
+                objects: vec![torch],
+                attributes: vec![0.0; 300],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![villager],
+                attributes: vec![0.0; 300],
+                ..Player::default()
+            },
+            Player {
+                attributes: vec![0.0; 300],
+                ..Player::default()
+            },
+        ],
+    );
+    t.masters = vec![table.clone(), table.clone(), table];
+    t.spatial = hands_world(7, 0, 1, 1378, 4.0);
+    t.players[0].attributes[4] = 5.0;
+    t.players[0].watched.push(crate::ghost::Watched {
+        id: 7,
+        cell: crate::ghost::Cell::Tile(10 * 40 + 10),
+        bits: 0,
+    });
+    t.spatial.unit_diplomacy = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
+    t.spatial.insert(
+        500,
+        Placed {
+            position: [11.5, 10.5, 0.0],
+            radius: [0.2, 0.2],
+            class: 4,
+            player: 1,
+            master: 83,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    let v = t.spatial.sight.as_mut().unwrap();
+    v.add_seer(
+        500,
+        Seer {
+            player: 1,
+            master: 83,
+            los: 4.0,
+            state: 2,
+            explored: true,
+            building: None,
+            umv: 0,
+            capture: 0,
+            kind: 70,
+        },
+    );
+    let r = v.registry.as_mut().unwrap();
+    r.entries.entry(500).or_default().mask = 0b11;
+    r.update_unit(500, 1, [11.5, 10.5], [0.2, 0.2], 4, 0, 0b11)
+        .unwrap();
+    t.tick(100);
+    assert_eq!(t.players[0].unsupported, None);
+    assert_eq!(t.players[0].objects.len(), 0);
+    let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
+    assert_eq!(ids, [500, 7]);
+    assert_eq!(t.spatial.get(7).map(|p| p.player), Some(1));
+    assert_eq!(
+        [t.players[0].attributes[4], t.players[1].attributes[4]],
+        [0.0, 5.0]
+    );
+    let watched = |p: usize| t.players[p].watched.iter().any(|w| w.id == 7);
+    assert_eq!([watched(0), watched(1)], [false, true]);
+    let shop = &t.players[1].objects[1];
+    assert_eq!(shop.gather_point, None);
+    assert_eq!(shop.own_master.as_deref().map(|m| m.id), Some(1378));
+    assert!(t.spatial.get(7).is_some_and(|p| p.obstruction.is_some()));
+}
+
 /// The artifact's unit AI in a tick, with Gaia's torch 7 (master 854, class 1, a combat
 /// unit): on Gaia's turn its processMisc (`FUN_140c21d40`) finds player 1's villager 500,
 /// the one player's object in its lists, and asks its unit to change hands (slot 0x70); the

@@ -851,6 +851,197 @@ impl Turns {
         handed
     }
 
+    /// A building's slot 0x70 (`FUN_1411cd860`) from player `old` to `new`, of the building `id`
+    /// in `old`'s live list (from its own update, after it: [`Step::Captured`]'s `building`). In
+    /// order:
+    ///
+    /// - its annexes (`+0xbc0`..), each a building: one its old owner watches leaves the watched
+    ///   list (`FUN_141091310`, `+0xca4` 0), then the annex's own slot 0x70, depth first;
+    /// - below state 3 its record and mesh shape go (`FUN_141055b40`);
+    /// - in state 2 the old owner loses its master's storage of flag 4 and a held attribute 4
+    ///   (slot 0xf8, the amount's sign flipped, `DAT_142e88e80`);
+    /// - a foundation's (state 0) footprint leaves the old owner's map (slot 0x1d8);
+    /// - its action list and production list go (`FUN_140a98620`, [`Turns::clear_actions`],
+    ///   [`Turns::end_production_action`]), then its whole queue ([`Turns::cancel_queue`]);
+    /// - a watched one leaves the old owner's watched list;
+    /// - the combat object's slot 0x70 (`FUN_14120f800`, [`change_hands`]; the lists' moves and the
+    ///   attributes as [`Turns::give_gaia`] does them), unless the new owner lacks its master;
+    /// - built (its build time at most its build points: `COMISS`, a NaN is not), it completes in
+    ///   the new owner's tracker (`FUN_14104eac0`);
+    /// - a watched one joins the new owner's watched list at its tile (`FUN_141090430`);
+    /// - a foundation's footprint comes on the new owner's map (slot 0x1d0);
+    /// - in state 2 its master's stack unit (`+0x986`; 1889's on rice terrain 1893) comes at its
+    ///   place (the master's slot 0x40, [`Turns::remains`]) and its master's technology is
+    ///   researched ([`Turns::research_built`]); then its owner gains the storage of flags 4 and 8
+    ///   and a held attribute 4;
+    /// - the units inside leave it toward no point, from the last ([`Turns::let_out`] with −1, −1,
+    ///   `DAT_14330ec20`); one that finds no spot leaves and is destroyed (slots 0x1a8, 0xd0);
+    /// - below state 3 its record and mesh shape come again (`FUN_141056460`);
+    /// - its gather point goes (`+0xc30`..`+0xc44`).
+    ///
+    /// Not held: the head unit's sprite (`+0xc90`, the drawing's), the semi-asleep lists
+    /// (`+0xc98`, `FUN_14107db90`, `FUN_14107bc80`) and a computer player's AI memory of it
+    /// (`+0x7a8`, `FUN_14160b900`; a playback runs no AI).
+    ///
+    /// # Errors
+    ///
+    /// A building asleep ([`crate::turn::unit::HANDS_LEFT`]), and what the parts do not model.
+    pub(in crate::turn) fn building_changes_hands(
+        &mut self,
+        old: usize,
+        id: i32,
+        new: usize,
+        watched: bool,
+    ) -> Result<(), GenieError> {
+        for annex in self.spatial.annexes_of(id) {
+            let Some((q, a)) = self.object(annex) else {
+                continue;
+            };
+            if self.master_of(q, a.life.master_id)?.kind != BUILDING_KIND {
+                continue;
+            }
+            let annex_watched = self.players[old].watched.iter().any(|w| w.id == annex);
+            if annex_watched {
+                self.unwatch(old, annex);
+            }
+            self.building_changes_hands(q, annex, new, false)?;
+        }
+        let Some(crate::order::Place::Live(_, idx)) = self.place(id) else {
+            return Err(crate::turn::unit::HANDS_LEFT);
+        };
+        let u = &self.players[old].objects[idx];
+        let master = match u.own_master.as_deref() {
+            Some(m) => m.clone(),
+            None => self.master_of(old, u.life.master_id)?.clone(),
+        };
+        let (state, held, amount) = (u.life.state, u.life.attribute_type, u.life.amount);
+        let built = u
+            .construction
+            .is_some_and(|c| f32::from(c.build_time) <= c.progress);
+        let rice = u.rice;
+        let placed = self.spatial.get(id).copied();
+        if state < 3 {
+            self.spatial.drop_record(id);
+            self.pathing.removed(id);
+            self.pathing.tiles_changed(self.spatial.take_changes());
+        }
+        if state == 2 {
+            for &(kind, amount, flag) in &master.storage {
+                if flag == STORAGE_WHILE_BUILT && 0 <= kind {
+                    self.players[old].add_attribute(kind, -amount)?;
+                }
+            }
+            if held == POPULATION_HEADROOM {
+                self.players[old].add_attribute(POPULATION_HEADROOM, -amount)?;
+            }
+        }
+        if state == 0
+            && let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut())
+        {
+            v.sight_off(id, p.position, p.radius, true, false);
+        }
+        self.clear_actions(old, idx)?;
+        self.end_production_action(old, idx)?;
+        self.cancel_queue(old, idx)?;
+        if watched {
+            self.unwatch(old, id);
+        }
+        let mut unit = std::mem::take(&mut self.players[old].objects[idx]);
+        let changed = change_hands(
+            &mut unit,
+            (old, new),
+            &self.masters,
+            &mut self.spatial,
+            self.world_time,
+        );
+        self.players[old].objects[idx] = unit;
+        let owner = if changed? {
+            let unit = self.players[old].objects.swap_remove(idx);
+            let handed = self.hand_over_attributes(old, new, &unit);
+            let master_id = unit.life.master_id;
+            self.players[new].objects.push(unit);
+            self.track_remove(old, id, master_id);
+            self.track_add(new, id, master_id);
+            handed?;
+            new
+        } else {
+            old
+        };
+        if built {
+            self.track_complete(new, id, master.id);
+        }
+        if watched && let Some(p) = placed {
+            let _ = self.watch(
+                new,
+                id,
+                crate::checkpoint::cvttss2si(p.position[0]),
+                crate::checkpoint::cvttss2si(p.position[1]),
+            )?;
+        }
+        if state == 0
+            && let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut())
+        {
+            let _ = v.sight_on(id, p.position, p.radius, true, false);
+        }
+        if state == 2 {
+            let building = master.building.as_ref();
+            if let Some(stack) = building.map(|b| b.stack_unit).filter(|&s| 0 <= s) {
+                let stack = if master.id == crate::build::MASTER_1889 && rice {
+                    crate::build::RICE_PASTURE
+                } else {
+                    stack
+                };
+                let at = self.object(id).map_or([0.0; 3], |(_, u)| u.position);
+                self.remains(owner, stack, at, None)?;
+            }
+            if let Some(tech) = building.map(|b| b.tech).filter(|&t| 0 <= t) {
+                self.research_built(owner, tech)?;
+            }
+            for &(kind, amount, flag) in &master.storage {
+                if matches!(flag, STORAGE_WHILE_BUILT | STORAGE_8) && 0 <= kind {
+                    self.players[owner].add_attribute(kind, amount)?;
+                }
+            }
+            if held == POPULATION_HEADROOM {
+                self.players[owner].add_attribute(POPULATION_HEADROOM, amount)?;
+            }
+        }
+        let inside = self
+            .object(id)
+            .map_or_else(Vec::new, |(_, u)| u.garrison.clone());
+        let mut stayed = Vec::new();
+        for &g in inside.iter().rev() {
+            let Some(crate::order::Place::Live(_, bi)) = self.place(id) else {
+                break;
+            };
+            if !self.let_out(owner, bi, g, [HANDOVER_NO_POINT; 2], (None, true))? {
+                stayed.push(g);
+            }
+        }
+        for g in stayed {
+            if let Some((q, _)) = self.object(g) {
+                self.destroy(q, g)?;
+            }
+        }
+        if state < 3 {
+            let record = crate::spatial::Obstruction {
+                kind: master.obstruction_type,
+                class: master.obstruction_class,
+            };
+            if record.recorded() {
+                self.spatial.add_record(id, record);
+                if let Some(p) = self.spatial.get(id).copied() {
+                    self.pathing.place_shape(id, &p);
+                }
+                self.pathing.tiles_changed(self.spatial.take_changes());
+            }
+        }
+        if let Some((_, u)) = self.object_mut(id) {
+            u.gather_point = None;
+        }
+        Ok(())
+    }
+
     /// The attributes an ownership change ([`change_hands`]) moves with object `u` from player
     /// `old` to `new`, by its master of its own, in the order of `FUN_14120f800`: the storage
     /// the old owner loses (`FUN_1411a56c0` with 1: flags 2, 16 and 32, the amount's sign
@@ -1701,3 +1892,12 @@ pub(crate) fn paid_cost(master: &Master) -> f32 {
     }
     cost
 }
+
+/// A building's storage flag that its owner holds while it stands built (slot 0x70's).
+const STORAGE_WHILE_BUILT: u8 = 4;
+/// The other storage flag a building's new owner gains on an ownership change (slot 0x70's).
+const STORAGE_8: u8 = 8;
+/// The population headroom attribute, which a building's held amount gives (`+0x308` 4).
+const POPULATION_HEADROOM: i16 = 4;
+/// The point a building's units leave toward on an ownership change: none (`DAT_14330ec20`).
+const HANDOVER_NO_POINT: f32 = crate::image::turn::HANDOVER_NO_POINT;

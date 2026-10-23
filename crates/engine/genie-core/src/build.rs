@@ -498,7 +498,9 @@ const BUILDING_TYPE: u8 = 80;
 /// foundations, class 39 among the builders, 1893 and 1897 (`id - 0x765 & !4 == 0`), the fish
 /// trap 199 and farms (class 49, `FUN_141194b20`).
 const MASTER_621: i16 = 621;
-const MASTER_1889: i16 = 1889;
+pub(crate) const MASTER_1889: i16 = 1889;
+/// The pasture master 1889's stack unit on mangrove or rice terrain (`0x765`).
+pub(crate) const RICE_PASTURE: i16 = 0x765;
 const CLASS_39: i16 = 39;
 const FISH_TRAP: i16 = 199;
 const FARM: i16 = 49;
@@ -2049,9 +2051,8 @@ impl Construction {
         world: &mut Spatial,
         pathing: &mut Pathing,
     ) -> Result<Built, GenieError> {
-        /// The pasture master 1889's stack unit on mangrove or rice terrain (`0x765`), and the
-        /// terrain it lays then (`0x3f`).
-        const RICE_PASTURE: i16 = 0x765;
+        /// The terrain the pasture master 1889's stack unit on mangrove or rice terrain lays
+        /// (`0x3f`).
         const RICE_PASTURE_TERRAIN: u8 = 0x3f;
         let id = site.id;
         let done = site.completion;
