@@ -1099,6 +1099,48 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         });
         Ok(true)
     }
+
+    /// Slot 400 at the full update's tail: a wait for a foundation the AI gave (made after the
+    /// update, [`Wait`]) holds no object; else its top action's target ([`Unit::top_target`])
+    /// while the world holds it.
+    fn top_target_now(&mut self) -> Result<Option<i32>, Unsupported> {
+        if !self.waits.is_empty() {
+            return Ok(None);
+        }
+        let target = self.unit.top_target().filter(|&t| t != -1);
+        Ok(target.filter(|&t| self.spatial.get(t).is_some()))
+    }
+
+    /// The object as the full update's tail reads it, found as [`UnitSide::seen_unit`] finds
+    /// it.
+    fn target_flags(
+        &mut self,
+        id: i32,
+    ) -> Result<Option<crate::unit_ai::TargetFlags>, Unsupported> {
+        let Some(seen) = self.seen_unit(id)? else {
+            return Ok(None);
+        };
+        let u = self
+            .others
+            .iter()
+            .find(|u| u.id == id)
+            .or_else(|| self.foreign.find(id).map(|(_, u)| u))
+            .expect("seen_unit found it");
+        let kind = self
+            .every
+            .get(seen.owner)
+            .and_then(|ms| ms.get(u.life.master_id))
+            .expect("seen_unit found its master")
+            .kind;
+        Ok(Some(crate::unit_ai::TargetFlags {
+            owner: seen.owner,
+            kind,
+            capture: u.capture_flag,
+            pasture: u.pasture,
+            untargetable: u.untargetable,
+            attackable: u.attackable,
+        }))
+    }
 }
 
 impl UnitView<'_> {

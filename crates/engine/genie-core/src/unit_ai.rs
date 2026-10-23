@@ -116,6 +116,9 @@ const VILLAGER_CLASS: i16 = 4;
 const GO_ON: u32 = 2;
 /// The defend stance's leash, squared (`DAT_142ed6f20`).
 const DEFEND_LEASH: f32 = crate::image::unit_ai::DEFEND_LEASH;
+/// What the stand ground stance's leash adds to the unit's range (`DAT_142eb880c`, 0.25, read by
+/// `ADDSS` at `0x140c57c6a`): a local value until the image table gives the unit AI its role.
+const STAND_GROUND_SLACK: f32 = 0.25;
 /// "Notify processing returned stop or new action, breaking."
 const BREAK: u32 = 3;
 /// "I'm dead, purging notifyQueue and returning FALSE."
@@ -1413,6 +1416,48 @@ pub trait UnitSide {
     fn wait_solidify(&mut self, _target: i32) -> Result<bool, Unsupported> {
         Err(Unsupported("a wait for a foundation without the world"))
     }
+
+    /// Slot 400 (`FUN_14106d090`) as the full update's tail reads it: the target of the unit's
+    /// top action as it stands now (`FUN_140a78450`: an object the world holds), the commands the
+    /// unit took inside the update included (its attack command, [`UnitSide::attack`]); None
+    /// without one. A side without a unit (the searches' closures, the tests' sides) has no
+    /// action list.
+    ///
+    /// # Errors
+    ///
+    /// An object the slice does not hold.
+    fn top_target_now(&mut self) -> Result<Option<i32>, Unsupported> {
+        Ok(None)
+    }
+
+    /// What the full update's tail tests of object `id`, the target of its unit's top action
+    /// ([`TargetFlags`]); None when the world does not hold it. A side without the world (the
+    /// searches' closures, the tests' sides) holds no object.
+    ///
+    /// # Errors
+    ///
+    /// An object the slice does not hold.
+    fn target_flags(&mut self, _id: i32) -> Result<Option<TargetFlags>, Unsupported> {
+        Ok(None)
+    }
+}
+
+/// What the full update's tail (`0x140c66b10` after the look-around check) tests of the target of
+/// its unit's top action ([`UnitSide::target_flags`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TargetFlags {
+    /// Its owner's id (`+0x138`, `player+0x718`); Gaia is 0.
+    pub owner: usize,
+    /// Its type (`+0xf`).
+    pub kind: u8,
+    /// `capture_flag` (`+0x924`, `FUN_14107cc90`).
+    pub capture: u8,
+    /// `+0x790`, `parent_pasture_id`: the pasture it is in, −1 for none.
+    pub pasture: i32,
+    /// `+0x689`, `mUnitTargetingFlag`, is 0 (`FUN_141188bb0`).
+    pub untargetable: bool,
+    /// `+0x68a`, `unit_attackable_flag` (`FUN_141188b10`).
+    pub attackable: bool,
 }
 
 /// What the unit AI's `ClosestResourceObject` found ([`UnitSide::closest_resource`]): the object,
@@ -1804,6 +1849,32 @@ const PATROL_2: i32 = 0x2dd;
 const CLASS_3: i16 = 3;
 /// A building's master type (`'P'`, `FUN_1411942c0`).
 const BUILDING_KIND: u8 = 80;
+/// The combat type (`0x46`), from which on the full update's tail reads a target's `+0x924`.
+const COMBAT_KIND: u8 = 70;
+
+/// The target of the unit's top action after the [`Effect`]s pending in `fx`, the last that
+/// replaces its actions deciding, and whether the caller gives that command only once the update
+/// ends: a stop leaves none (slot 0x3c0), a move to a point (slots 0x340, 0x148,
+/// `restorePatrolInformation`) or an explore (slot 0x398) an action without an object; a move to
+/// an object (slot 0x348) holds it, as do a hunt, gather and build (slots 0x360, 0x368, 0x380),
+/// which the caller gives after the update. None when no effect replaced the actions.
+fn pending_top_target(fx: &[Effect]) -> Option<(Option<i32>, bool)> {
+    fx.iter().rev().find_map(|e| match *e {
+        Effect::Stop
+        | Effect::Move(_)
+        | Effect::MoveAside(_)
+        | Effect::Explore(_)
+        | Effect::RestorePatrol => Some((None, false)),
+        Effect::MoveToObject { target, .. } => Some((Some(target), false)),
+        Effect::HuntObject(t) | Effect::GatherObject(t) | Effect::BuildObject(t) => {
+            Some((Some(t), true))
+        }
+        Effect::CapHumanOrder(_)
+        | Effect::OrderOnTarget(_)
+        | Effect::AfterOrder(_)
+        | Effect::ChangeOwner(_) => None,
+    })
+}
 /// A building on its make action without a missile and with at most this firepower forgets its
 /// target (`DAT_14330eb8c`).
 const SINGLE_VOLLEY: f32 = crate::image::unit_ai::SINGLE_VOLLEY;
@@ -3326,10 +3397,6 @@ impl UnitAi {
         Ok(())
     }
 
-    const fn is_idle(&self) -> bool {
-        self.current_order == -1 && self.current_action == -1 && self.current_target == -1
-    }
-
     /// The full update (slot 4, `0x140c66b10`; the boar's `0x140c2c010` adds its tail):
     /// `dt` is the time the owner accumulated since its last turn (`world+0x18c[player]`),
     /// `computer` the owner's type test (`player+0x10 == 3`). In the game's order: the target
@@ -3359,7 +3426,7 @@ impl UnitAi {
         let mut fx = Vec::new();
         self.target_block(at, computer, ai, side, &mut fx)?;
         self.keep_attackers(at, side);
-        self.check_busy_order(retarget, at.busy && fx.is_empty())?;
+        self.check_target()?;
         // a unit with an order, or in a group with a command (`+0x3a8`), keeps its place as its
         // state position (0x140c674c9)
         if self.current_order != -1 || at.group.is_some_and(|g| g.commanded) {
@@ -3477,7 +3544,85 @@ impl UnitAi {
         }
         self.idle_part(busy, group, at, computer, ai, side, fx)?;
         self.look_around(computer, ai)?;
+        self.top_target_tail(at, side, fx)?;
+        self.drop_started_builds(side)?;
         self.boar_tail(at, computer, ai, side, fx)
+    }
+
+    /// The full update's tail on the target of its unit's top action (slot 400 at `0x140c684fc`,
+    /// after the look-around check), as the action list stands after the update's commands: the
+    /// last of the [`Effect`]s pending that replaces the actions decides
+    /// ([`pending_top_target`]), else the unit's now ([`UnitSide::top_target_now`]). A Gaia unit
+    /// whose target is a Gaia object of type 70 or above that another player can take more than
+    /// once (`+0x924` 2) lets it go ("Tasking GAIA unit to stop attacking an object which can be
+    /// captured multiple times"): the target goes (`FUN_140c5e1e0`) and the action stops (slot
+    /// 0xb0 with 1). Then a target outside a pasture (`+0x790` −1) that cannot be targeted
+    /// (`+0x689` 0), or cannot be attacked (`+0x68a` 0) while the action value is the attack's
+    /// (600), does the same ("Tasking unit to stop attacking an object which has no targeting
+    /// flag enabled") but on the trade action (`0x267`); it reads the action value the first
+    /// stop left. A stop after a command the caller gives only once the update ends (a hunt,
+    /// gather or build, [`Effect::HuntObject`], [`Effect::GatherObject`],
+    /// [`Effect::BuildObject`]) would reach the unit before the command: not modelled.
+    fn top_target_tail(
+        &mut self,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        let pending = pending_top_target(fx);
+        let id = match pending {
+            Some((id, _)) => id,
+            None => side.top_target_now()?,
+        };
+        let Some(t) = id.map(|id| side.target_flags(id)).transpose()?.flatten() else {
+            return Ok(());
+        };
+        let captured_again =
+            at.player == 0 && t.owner == 0 && COMBAT_KIND <= t.kind && t.capture == 2;
+        let action = if captured_again {
+            -1
+        } else {
+            self.current_action
+        };
+        let untargeted = t.pasture == -1
+            && (t.untargetable || (!t.attackable && action == ATTACK_ACTION))
+            && action != TRADE_ACTION;
+        if !captured_again && !untargeted {
+            return Ok(());
+        }
+        if pending.is_some_and(|(_, deferred)| deferred) {
+            return Err(Unsupported(
+                "a stop of the full update's tail after a command the caller gives later",
+            ));
+        }
+        if captured_again {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        if untargeted {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(())
+    }
+
+    /// The end of the full update (`0x140c686e0`): unless the AI's order is the build order
+    /// (`0x2be`), each queued build order, the last first, whose foundation the world no longer
+    /// holds or holds in a state other than 0 (`+0x640`) leaves the queue.
+    fn drop_started_builds(&mut self, side: &mut dyn UnitSide) -> Result<(), Unsupported> {
+        if self.current_order == BUILD_ORDER {
+            return Ok(());
+        }
+        for k in (0..self.orders.len()).rev() {
+            if self.orders[k].order == BUILD_ORDER
+                && side
+                    .seen_unit(self.orders[k].target)?
+                    .is_none_or(|u| u.state != 0)
+            {
+                let _ = self.orders.remove(k);
+            }
+        }
+        Ok(())
     }
 
     /// The boar's slot 4 (`0x140c2c010`) after the base, however that ended: its second idle
@@ -3768,20 +3913,16 @@ impl UnitAi {
         Ok(())
     }
 
-    /// The units the update models after its target block ([`UnitAi::target_block`]): a target
-    /// only on a villager's build, gather, hunt or garrison (702/602, 709/609, 713/613, 717/617), its attack back
-    /// as a hunt (700/613, [`UnitAi::hunt_object`]), a hunt without an order (−1/613: `HuntObject`
-    /// after a stop that ended the order; the update has no case for the order), on the follow
-    /// order (712 with its action 612, the move's 610 or none), a builder or hunter sent off a
-    /// footprint (702/703, 713/703), a building on MOVE's order with a target (710 and any
-    /// action value), on a boar's or lion's own attack (−1/600) or the attack order
-    /// (700/600), or without an order and an action (a hunt ended by its
-    /// queued orders); busy (`busy`, the actions left), only those or a unit on MOVE's order
-    /// (710/610: without a target, or an animal's own wander; with one, the work command's move to
-    /// an object), and for the types that never retarget also one whose move ended (710 with no
-    /// action value) or a villager waiting for a foundation (734/634 without a target); the
-    /// attacks only for the types that do.
-    fn check_busy_order(&self, retarget: Retarget, busy: bool) -> Result<(), Unsupported> {
+    /// The targets the update models after its target block ([`UnitAi::target_block`]): a
+    /// target only on a villager's build, gather, hunt or garrison (702/602, 709/609, 713/613,
+    /// 717/617), its attack back as a hunt (700/613, [`UnitAi::hunt_object`]), a hunt without an
+    /// order (−1/613: `HuntObject` after a stop that ended the order), on the follow order (712
+    /// with its action 612, the move's 610 or none), a builder or hunter sent off a footprint
+    /// (702/703, 713/703), a building on MOVE's order with a target (710 and any action value),
+    /// on a boar's or lion's own attack (−1/600) or the attack order (700/600, a building's
+    /// make action during it 700/619), a move to an object (710/610), or without an order and
+    /// an action (a stale target the order queue's next order takes over).
+    fn check_target(&self) -> Result<(), Unsupported> {
         let order = (self.current_order, self.current_action);
         let working = matches!(
             order,
@@ -3793,22 +3934,10 @@ impl UnitAi {
                 // sent off a footprint (`sent_off`): the order and target kept
                 | (BUILD_ORDER | HUNT_ORDER, MOVE_ASIDE_ACTION)
         );
-        // a move, or a move off a footprint (slot 0x148's 0x2bf, which keeps the order)
-        let moving = (matches!(order, (MOVE_ORDER | -1, MOVE_ACTION))
-            || order.1 == MOVE_ASIDE_ACTION)
-            && self.current_target == -1;
-        // a move whose action ended (the action value reset) while the default action runs
-        let moved = order == (MOVE_ORDER, -1) && self.current_target == -1;
-        let scouting = order == (AUTO_SCOUT_ORDER, AUTO_SCOUT_ACTION) && self.current_target == -1;
-        let following = order.0 == FOLLOW_ORDER;
-        // a patrol walking its loop (the patrol orders with the move action, no target)
-        let patrolling =
-            matches!(order, (PATROL | PATROL_2, MOVE_ACTION)) && self.current_target == -1;
         // a boar's own attack on its attacker or a lion's on its prey ([`UnitAi::attack_object`]),
-        // or a work command's
-        // attack (the attack order and action, notify kind 9); a building's make action that
-        // started during it takes the action value (619, its constructor `FUN_140acb140`) while
-        // the Attack goes on
+        // or a work command's attack (the attack order and action, notify kind 9); a building's
+        // make action that started during it takes the action value (619, its constructor
+        // `FUN_140acb140`) while the Attack goes on
         let attacking = (matches!(self.ai_type, BOAR_AI | 5) && order == (-1, ATTACK_ACTION))
             || order == (ATTACK_ORDER, ATTACK_ACTION)
             || order == (ATTACK_ORDER, crate::spawn::MAKE_ACTION);
@@ -3816,36 +3945,10 @@ impl UnitAi {
         // MOVE took with a target keeps the order while it trains or researches
         let moving_to =
             order == (MOVE_ORDER, MOVE_ACTION) || (self.ai_type == 17 && order.0 == MOVE_ORDER);
-        // a villager waiting for a foundation (case 0x2de's slot 0x108), without a target: the
-        // update, its target block and the civilian's processMisc have no case for the order or
-        // the action value
-        let waiting =
-            order == (FOUNDATION_ORDER, WAIT_SOLIDIFY_ACTION) && self.current_target == -1;
-        // without an order and an action the target is a stale one: the order queue's next order
-        // takes over
         if self.current_target != -1 && !working && !attacking && !moving_to && order != (-1, -1) {
             return Err(Unsupported("a unit AI's target the slice does not model"));
         }
-        if !busy || self.is_idle() {
-            return Ok(());
-        }
-        match retarget {
-            Retarget::Never | Retarget::Civilian | Retarget::Artifact
-                if working || moving || moving_to || moved || waiting =>
-            {
-                Ok(())
-            }
-            // a move to an object: the retarget check passes over its target unless it is a
-            // building, wall or trebuchet, whose search is not modelled
-            Retarget::Base
-                if moving || moving_to || scouting || following || attacking || patrolling =>
-            {
-                Ok(())
-            }
-            _ => Err(Unsupported(
-                "a busy unit AI on an order the slice does not model",
-            )),
-        }
+        Ok(())
     }
 
     /// The notify processing of the full update: while notifies are queued and the last handler
@@ -6253,14 +6356,15 @@ impl UnitAi {
 
     /// Slot 73 (`0x140c567c0`, processMisc). Its order part first, by the order (an action's
     /// value plus 100 without one): the follow order's ([`UnitAi::follow`]); the defend order's
-    /// is not modelled. Then the leash checks (not on the orders 0x2c7, 0x2dd and 0x323): stance
-    /// 1's (Defend) stops a unit more than 5 tiles (`DEFEND_LEASH`, squared) from its state
-    /// position, forgets its target and walks back ([`UnitAi::walk_back`]), then goes on; with
-    /// patrol information (`+0x1c0`, `FUN_140f95e10`) it is not modelled. Stance 2's (stand
-    /// ground) stops a unit with an action (`+0x44`, not `0x2bf` or `0x2c0`) that strayed from its
-    /// state position by more than its range plus `DAT_142eb880c` (0.25), forgets its target and
-    /// walks back (10); a unit without an order but with an action of its own can stray. It is
-    /// not modelled: that 0.25 has no role in the unit AI's image table. Then the retarget check:
+    /// is not modelled. Then the leash checks (not on the orders 0x2c7, 0x2dd and 0x323, nor in a
+    /// group that patrols, [`GroupState::patrol`]): stance 1's (Defend) stops a unit more than 5
+    /// tiles (`DEFEND_LEASH`, squared) from its state position, forgets its target and walks
+    /// back ([`UnitAi::walk_back`]), then goes on. Stance 2's (stand ground) stops a unit with an
+    /// action value (`+0x44`, not `0x2bf` or `0x2c0`) whose squared gap to its state position
+    /// exceeds its range plus [`STAND_GROUND_SLACK`] (`COMISS`/`JBE`: a gap that is not a number
+    /// stays), forgets its target and walks back, and slot 73 ends there (10); a unit without an
+    /// order but with an action of its own can stray. With patrol information (`+0x1c0`,
+    /// `FUN_140f95e10`) either leash is not modelled. Then the retarget check:
     /// with retargeting on (`+0x1d6` 0), a timer used up is redrawn (`750 + r % 500`); a human
     /// player's unit of a range above 3 on the attack order 700 stops there ("I have a range >
     /// 3.0 with an attack order, so I don't retarget."), as does a unit with a target of Gaia's
@@ -6289,22 +6393,37 @@ impl UnitAi {
         if order == FOLLOW_ORDER && self.follow(at, fx)? {
             return Ok(false);
         }
-        // the defend stance's leash (unless on orders 0x2c7, 0x2dd and 0x323; a unit group's
-        // flags would skip it too, and the slice holds no unit groups): a unit more than 5
-        // tiles (DAT_142ed6f20, squared) from its state position, measured from its footprint
-        // (FUN_140a847c0), stops (slot 0xb0 with 1), forgets its target and walks back
-        if self.stance == 1 && !matches!(self.current_order, 0x2c7 | 0x2dd | 0x323) {
-            if self.patrol_path.is_some() {
-                return Err(Unsupported(
-                    "a defending unit's leash with patrol information",
-                ));
-            }
-            // "We're too far out, returning.": then on to the retarget check
+        // the leashes (unless on orders 0x2c7, 0x2dd and 0x323, or in a group that patrols:
+        // FUN_141017c30, FUN_141017c40), measured from the unit's footprint (FUN_140a847c0)
+        let leashed = matches!(self.stance, 1 | 2)
+            && !matches!(self.current_order, 0x2c7 | 0x2dd | 0x323)
+            && !at.group.is_some_and(|g| g.patrol);
+        if leashed && self.patrol_path.is_some() {
+            return Err(Unsupported(
+                "a stance's leash with patrol information (FUN_140f95e10)",
+            ));
+        }
+        if leashed && self.stance == 1 {
+            // the defend stance's: a unit more than 5 tiles (DAT_142ed6f20, squared) from its
+            // state position stops (slot 0xb0 with 1), forgets its target and walks back ("We're
+            // too far out, returning."), then on to the retarget check
             let gap = point_gap_squared(self.state_position, at.position, at.size);
             if DEFEND_LEASH < gap {
                 self.stop_current(true, at, fx)?;
                 self.remove_target();
                 let _ = self.walk_back(at, fx);
+            }
+        }
+        if leashed && self.stance == 2 && !matches!(self.current_action, 0x2bf | 0x2c0) {
+            // stand ground's: the squared gap against the range plus 0.25 (ADDSS, then COMISS
+            // and JBE); a unit with an action value stops, forgets its target and walks back,
+            // and slot 73 returns 10 ("We're too far out, returning.", "SO Call 40.")
+            let gap = point_gap_squared(self.state_position, at.position, at.size);
+            if at.weapon_range + STAND_GROUND_SLACK < gap && self.current_action != -1 {
+                self.stop_current(true, at, fx)?;
+                self.remove_target();
+                let _ = self.walk_back(at, fx);
+                return Ok(false);
             }
         }
         if self.retarget_disabled != 0 {
@@ -6489,6 +6608,10 @@ mod tests {
     use super::*;
 
     impl UnitAi {
+        const fn is_idle(&self) -> bool {
+            self.current_order == -1 && self.current_action == -1 && self.current_target == -1
+        }
+
         /// The full update of an idle unit (no order, action or target), with its move.
         fn update_idle(
             &mut self,
@@ -7586,9 +7709,15 @@ mod tests {
         assert_eq!(r.draws, 1);
         // the state position follows a unit with an order
         assert_eq!(u.state_position, [29.5, 89.5]);
-        // another order is not modelled
+        // on the attack order, its target gone (the target block forgets it), the civilian's
+        // processMisc stops the action and ends the order (slot 0xb0 with 0)
         u.current_order = 700;
-        assert!(u.update(50, 0, false, &at, &mut r, &mut no_search).is_err());
+        let fx = u.update(50, 0, false, &at, &mut r, &mut no_search).unwrap();
+        assert_eq!(fx, [Effect::Stop]);
+        assert_eq!(
+            (u.current_order, u.last_order, u.current_action),
+            (-1, 700, -1)
+        );
     }
 
     #[test]
@@ -9444,7 +9573,7 @@ mod tests {
             current_target: 29826,
             ..UnitAi::default()
         };
-        assert!(making.check_busy_order(Retarget::Base, true).is_ok());
+        assert!(making.check_target().is_ok());
     }
 
     #[test]
@@ -9458,7 +9587,7 @@ mod tests {
             current_target: 1597,
             ..UnitAi::default()
         };
-        assert!(wolf.check_busy_order(Retarget::Base, true).is_ok());
+        assert!(wolf.check_target().is_ok());
         // a building a MOVE took with a target (its unit AI's order 710), with no action value
         // or its own research's (620)
         for action in [-1, 620] {
@@ -9469,7 +9598,7 @@ mod tests {
                 current_target: 13764,
                 ..UnitAi::default()
             };
-            assert!(building.check_busy_order(Retarget::Base, false).is_ok());
+            assert!(building.check_target().is_ok());
         }
         // a builder and a hunter sent off a footprint (sent_off: the action value 0x2bf, the
         // order and the target kept)
@@ -9479,7 +9608,7 @@ mod tests {
                 current_action: MOVE_ASIDE_ACTION,
                 ..builder_done()
             };
-            assert!(aside.check_busy_order(Retarget::Civilian, true).is_ok());
+            assert!(aside.check_target().is_ok());
         }
     }
 
@@ -9492,14 +9621,14 @@ mod tests {
             current_action: HUNT_ACTION,
             ..builder_done()
         };
-        assert!(hunting.check_busy_order(Retarget::Never, true).is_ok());
+        assert!(hunting.check_target().is_ok());
         // another action without an order and with a target is not modelled
         let other = UnitAi {
             current_order: -1,
             current_action: 0x25b,
             ..builder_done()
         };
-        assert!(other.check_busy_order(Retarget::Never, true).is_err());
+        assert!(other.check_target().is_err());
     }
 
     #[test]
@@ -13041,5 +13170,427 @@ mod tests {
             assert_eq!(r.draws, draws, "order {order}, computer {computer}");
         }
         assert!(matches!(retarget_kind(PRIEST_AI), Ok(Retarget::Priest)));
+    }
+
+    /// A side for the full update's tail: the unit's top action's target now, the objects'
+    /// flags and states.
+    #[derive(Default)]
+    struct TailSide {
+        top: Option<i32>,
+        flags: Vec<(i32, TargetFlags)>,
+        states: Vec<(i32, u8)>,
+    }
+
+    impl UnitSide for TailSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
+            Err(Unsupported("no attack here"))
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn top_target_now(&mut self) -> Result<Option<i32>, Unsupported> {
+            Ok(self.top)
+        }
+        fn target_flags(&mut self, id: i32) -> Result<Option<TargetFlags>, Unsupported> {
+            Ok(self.flags.iter().find(|f| f.0 == id).map(|f| f.1))
+        }
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+            Ok(self
+                .states
+                .iter()
+                .find(|s| s.0 == id)
+                .map(|&(id, state)| UnitSeen {
+                    id,
+                    state,
+                    ..UnitSeen::default()
+                }))
+        }
+    }
+
+    /// A target the tail lets be: a player's, targetable and attackable, outside a pasture.
+    const PLAIN: TargetFlags = TargetFlags {
+        owner: 2,
+        kind: 70,
+        capture: 0,
+        pasture: -1,
+        untargetable: false,
+        attackable: true,
+    };
+
+    fn on_target(action: i32) -> UnitAi {
+        UnitAi {
+            current_action: action,
+            current_target: 500,
+            target_type: 6,
+            target_point: [10.0, 10.0, 0.0],
+            ..idle(5)
+        }
+    }
+
+    fn tail(u: &mut UnitAi, player: usize, flags: TargetFlags, fx: &mut Vec<Effect>) {
+        let at = Surroundings {
+            player,
+            ..Surroundings::default()
+        };
+        let mut side = TailSide {
+            top: Some(500),
+            flags: vec![(500, flags)],
+            ..TailSide::default()
+        };
+        u.top_target_tail(&at, &mut side, fx).unwrap();
+    }
+
+    #[test]
+    fn the_tail_stops_a_gaia_unit_on_a_gaia_object_others_can_take_again() {
+        // 0x140c68519: a Gaia unit, a Gaia target of type 70 or more, its +0x924 2: the target
+        // goes (FUN_140c5e1e0) and the action stops (slot 0xb0 with 1)
+        let again = TargetFlags {
+            owner: 0,
+            capture: 2,
+            ..PLAIN
+        };
+        let mut u = on_target(ATTACK_ACTION);
+        let mut fx = Vec::new();
+        tail(&mut u, 0, again, &mut fx);
+        assert_eq!(fx, [Effect::Stop]);
+        assert_eq!((u.current_target, u.last_target), (-1, 500));
+        assert_eq!((u.current_action, u.last_action), (-1, ATTACK_ACTION));
+        // a player's unit, a player's target, another capture flag or a type below 70 stays
+        for (player, flags) in [
+            (1, again),
+            (0, TargetFlags { owner: 1, ..again }),
+            (
+                0,
+                TargetFlags {
+                    capture: 1,
+                    ..again
+                },
+            ),
+            (0, TargetFlags { kind: 60, ..again }),
+        ] {
+            let mut u = on_target(ATTACK_ACTION);
+            let mut fx = Vec::new();
+            tail(&mut u, player, flags, &mut fx);
+            assert_eq!(fx, Vec::<Effect>::new(), "{player} {flags:?}");
+            assert_eq!(u.current_target, 500);
+        }
+    }
+
+    #[test]
+    fn the_tail_stops_work_on_a_target_without_its_targeting_flag() {
+        // 0x140c685cf: outside a pasture, a target that cannot be targeted (+0x689 0) stops any
+        // action but the trade
+        let untargetable = TargetFlags {
+            untargetable: true,
+            ..PLAIN
+        };
+        for action in [GATHER_ACTION, ATTACK_ACTION, -1] {
+            let mut u = on_target(action);
+            let mut fx = Vec::new();
+            tail(&mut u, 1, untargetable, &mut fx);
+            assert_eq!(fx, [Effect::Stop], "{action}");
+            assert_eq!(u.current_target, -1);
+        }
+        let mut u = on_target(TRADE_ACTION);
+        let mut fx = Vec::new();
+        tail(&mut u, 1, untargetable, &mut fx);
+        assert_eq!(fx, Vec::<Effect>::new());
+        // one in a pasture stays
+        let mut u = on_target(GATHER_ACTION);
+        tail(
+            &mut u,
+            1,
+            TargetFlags {
+                pasture: 77,
+                ..untargetable
+            },
+            &mut fx,
+        );
+        assert_eq!(fx, Vec::<Effect>::new());
+        // one that cannot be attacked (+0x68a 0) stops only the attack
+        let unattackable = TargetFlags {
+            attackable: false,
+            ..PLAIN
+        };
+        let mut u = on_target(GATHER_ACTION);
+        tail(&mut u, 1, unattackable, &mut fx);
+        assert_eq!(fx, Vec::<Effect>::new());
+        let mut u = on_target(ATTACK_ACTION);
+        tail(&mut u, 1, unattackable, &mut fx);
+        assert_eq!(fx, [Effect::Stop]);
+        // both: the second test reads the action value the first stop left (−1), so an
+        // untargetable target stops it again
+        let both = TargetFlags {
+            owner: 0,
+            capture: 2,
+            untargetable: true,
+            ..PLAIN
+        };
+        let mut u = on_target(ATTACK_ACTION);
+        let mut fx = Vec::new();
+        tail(&mut u, 0, both, &mut fx);
+        assert_eq!(fx, [Effect::Stop, Effect::Stop]);
+        assert_eq!((u.current_action, u.last_action), (-1, -1));
+        let unattackable_again = TargetFlags {
+            untargetable: false,
+            attackable: false,
+            ..both
+        };
+        let mut u = on_target(ATTACK_ACTION);
+        let mut fx = Vec::new();
+        tail(&mut u, 0, unattackable_again, &mut fx);
+        assert_eq!(fx, [Effect::Stop]);
+    }
+
+    #[test]
+    fn the_tail_reads_the_top_target_the_update_s_commands_left() {
+        let untargetable = TargetFlags {
+            untargetable: true,
+            ..PLAIN
+        };
+        let at = Surroundings {
+            player: 1,
+            ..Surroundings::default()
+        };
+        let mut side = TailSide {
+            top: Some(500),
+            flags: vec![(500, untargetable), (600, untargetable)],
+            ..TailSide::default()
+        };
+        // a move to a point, a stop or an explore left no object to test
+        for pending in [
+            Effect::Stop,
+            Effect::Explore([1.0, 2.0]),
+            Effect::Move(AiMove {
+                point: [1.0, 2.0, 0.0],
+                range: 0.0,
+                force: true,
+                walk: false,
+            }),
+        ] {
+            let mut u = on_target(GATHER_ACTION);
+            let mut fx = vec![pending];
+            u.top_target_tail(&at, &mut side, &mut fx).unwrap();
+            assert_eq!(fx, [pending]);
+        }
+        // a move to an object holds it
+        let mut u = on_target(MOVE_ACTION);
+        let to = Effect::MoveToObject {
+            target: 600,
+            state: 2,
+            range: 2.0,
+        };
+        let mut fx = vec![to];
+        u.top_target_tail(&at, &mut side, &mut fx).unwrap();
+        assert_eq!(fx, [to, Effect::Stop]);
+        // after a hunt the caller gives once the update ends, the stop would come first
+        let mut u = on_target(HUNT_ACTION);
+        let mut fx = vec![Effect::HuntObject(600)];
+        assert!(u.top_target_tail(&at, &mut side, &mut fx).is_err());
+        // no top action, or one the world no longer holds: nothing
+        let mut u = on_target(GATHER_ACTION);
+        let mut fx = Vec::new();
+        u.top_target_tail(
+            &at,
+            &mut TailSide {
+                top: Some(700),
+                ..TailSide::default()
+            },
+            &mut fx,
+        )
+        .unwrap();
+        u.top_target_tail(&at, &mut TailSide::default(), &mut fx)
+            .unwrap();
+        assert_eq!(fx, Vec::<Effect>::new());
+    }
+
+    #[test]
+    fn queued_builds_on_started_or_gone_foundations_leave_the_queue() {
+        // 0x140c686e0: off the build order, each queued build order (the last first) on a
+        // foundation the world does not hold or holds out of state 0 goes; other orders stay
+        let order = |order: i32, target: i32| QueuedOrder {
+            order,
+            target,
+            ready: true,
+            ..QueuedOrder::default()
+        };
+        let queue = vec![
+            order(BUILD_ORDER, 1),
+            order(BUILD_ORDER, 2),
+            order(MOVE_ORDER, 3),
+            order(BUILD_ORDER, 4),
+            order(BUILD_ORDER, 5),
+        ];
+        let mut side = TailSide {
+            states: vec![(1, 0), (2, 2), (3, 2), (5, 0)],
+            ..TailSide::default()
+        };
+        let mut u = UnitAi {
+            orders: queue.clone(),
+            ..idle(8)
+        };
+        u.drop_started_builds(&mut side).unwrap();
+        let left: Vec<i32> = u.orders.iter().map(|o| o.target).collect();
+        assert_eq!(left, [1, 3, 5]);
+        // on the build order the queue stays
+        let mut u = UnitAi {
+            current_order: BUILD_ORDER,
+            orders: queue,
+            ..idle(8)
+        };
+        u.drop_started_builds(&mut side).unwrap();
+        assert_eq!(u.orders.len(), 5);
+    }
+
+    #[test]
+    fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back() {
+        // slot 73's stand ground leash (0x140c57bc4): the squared gap to the state position
+        // (4 tiles: 16) against the range plus 0.25
+        let at = Surroundings {
+            position: [14.0, 10.0, 0.0],
+            weapon_range: 15.0,
+            player: 1,
+            ..Surroundings::default()
+        };
+        let standing = |action| UnitAi {
+            stance: 2,
+            state_position: [10.0, 10.0],
+            current_action: action,
+            current_target: 500,
+            retarget_timer: 100_000,
+            ..idle(13)
+        };
+        let mut u = standing(ATTACK_ACTION);
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.retarget_check(0, false, &at, &mut rng(), &mut fx),
+            Ok(false)
+        );
+        assert_eq!(fx[0], Effect::Stop);
+        assert_eq!(
+            fx[1],
+            Effect::Move(AiMove {
+                point: [10.0, 10.0, 0.0],
+                range: WALK_BACK,
+                force: true,
+                walk: false,
+            })
+        );
+        assert_eq!((u.current_target, u.current_action), (-1, MOVE_ACTION));
+        // within the range plus 0.25, without an action value, moving aside, on a patrol order
+        // or in a group that patrols: it stays
+        let near = Surroundings {
+            weapon_range: 15.75,
+            ..at.clone()
+        };
+        let patrolling = Surroundings {
+            group: Some(GroupState {
+                patrol: true,
+                ..GroupState::default()
+            }),
+            ..at.clone()
+        };
+        for (mut u, at) in [
+            (standing(ATTACK_ACTION), &near),
+            (standing(-1), &at),
+            (standing(MOVE_ASIDE_ACTION), &at),
+            (standing(GROUP_ASIDE_ACTION), &at),
+            (
+                UnitAi {
+                    current_order: PATROL,
+                    ..standing(ATTACK_ACTION)
+                },
+                &at,
+            ),
+            (standing(ATTACK_ACTION), &patrolling),
+        ] {
+            let mut fx = Vec::new();
+            let _ = u.retarget_check(0, false, at, &mut rng(), &mut fx).unwrap();
+            assert_eq!(fx, Vec::<Effect>::new(), "{:?}", u.current_action);
+        }
+        // a gap that is not a number stays (COMISS, JBE)
+        let mut u = UnitAi {
+            state_position: [f32::NAN, 10.0],
+            ..standing(ATTACK_ACTION)
+        };
+        let mut fx = Vec::new();
+        let _ = u
+            .retarget_check(0, false, &at, &mut rng(), &mut fx)
+            .unwrap();
+        assert_eq!(fx, Vec::<Effect>::new());
+        // with patrol information neither leash is modelled
+        let mut u = UnitAi {
+            patrol_path: Some(PatrolPath::default()),
+            ..standing(ATTACK_ACTION)
+        };
+        assert!(
+            u.retarget_check(0, false, &at, &mut rng(), &mut Vec::new())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn a_busy_villager_on_the_attack_order_runs_its_full_update() {
+        // records (6)/426406723's villagers attacking (order 700, action 600, a target), busy: the
+        // update runs whole (the civilian's processMisc, the idle part keeping the timer of a
+        // player's unit with an action at 0)
+        let mut u = UnitAi {
+            current_order: ATTACK_ORDER,
+            current_action: ATTACK_ACTION,
+            current_target: 18842,
+            target_type: 10,
+            idle_timer: 400,
+            ..idle(8)
+        };
+        let at = Surroundings {
+            busy: true,
+            player: 3,
+            class: CLASS_VILLAGER,
+            state: 2,
+            target: Some(Seen {
+                state: 2,
+                kind: 70,
+                owner: 0,
+                class: 10,
+                ..Seen::default()
+            }),
+            ..Surroundings::default()
+        };
+        let fx = u
+            .update(10, 1000, false, &at, &mut rng(), &mut TailSide::default())
+            .unwrap();
+        assert_eq!(fx, Vec::<Effect>::new());
+        assert_eq!(u.idle_timer, 0);
+        assert_eq!(
+            (u.current_order, u.current_action, u.current_target),
+            (ATTACK_ORDER, ATTACK_ACTION, 18842)
+        );
     }
 }
