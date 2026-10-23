@@ -2308,7 +2308,7 @@ impl Turns {
         let owner = &mut self.players[player];
         owner.add_attribute(QUEUED, pop * f32::from(n))?;
         let costs = as_entry_costs(master_costs(masters, master, &*owner)?);
-        owner.tracker.queued += i32::from(n);
+        owner.tracker.count_queued(n);
         for _ in 0..n {
             owner.tracker.place(master, class);
         }

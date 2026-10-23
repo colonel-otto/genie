@@ -21,7 +21,7 @@
 //! - the production queue's places: a queued unit files a −1 at the end of its master's pending
 //!   list and its class's (`FUN_141050230`, [`Tracker::place`]), its spawn or cancel drops the
 //!   last of each (`FUN_14104f330`, [`Tracker::unplace`]); the counter `+0x60`
-//!   (`FUN_14104fb00`, [`Tracker::queued`]) follows the same writers.
+//!   (`FUN_14104fb00`, [`Tracker::count_queued`]) follows the same writers.
 //!
 //! Not held: the ghosts (they file under the ghosts' master 243) and the counters at `+0x64` to
 //! `+0x6c`. A reader of the done lists ([`Tracker::list`], [`Tracker::class_list`]) needs none of
@@ -218,6 +218,11 @@ impl Tracker {
         self.erase(key.master, id);
     }
 
+    /// `FUN_14104fb00`: the counter of queued units (`+0x60`) changes by `n`.
+    pub fn count_queued(&mut self, n: i16) {
+        self.queued += i32::from(n);
+    }
+
     /// `FUN_141050230`: a queued unit of master `master` (its [`key`]'s class `class`, −1 for
     /// none) files a −1 at the end of the master's pending list (+ 90000, the master itself, not
     /// its key master) and of the class's (+ 90900).
@@ -317,7 +322,7 @@ impl crate::turn::Turns {
                         let class = self.tracker_key(p, e.master).class;
                         for _ in 0..e.count {
                             tracker.place(e.master, class);
-                            tracker.queued += 1;
+                            tracker.count_queued(1);
                         }
                     }
                 }

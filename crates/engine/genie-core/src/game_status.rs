@@ -532,7 +532,7 @@ impl Turns {
         for e in &entries {
             if e.tech == -1 {
                 self.cancel_units(p, e, e.count)?;
-                self.players[p].tracker.queued -= i32::from(e.count);
+                self.players[p].tracker.count_queued(-e.count);
             } else if !self.players[p].techs.is_empty() {
                 self.refund_researches(p, idx, e, e.count)?;
             }
@@ -566,7 +566,7 @@ impl Turns {
             if let Some(m) = &master {
                 refund(m, &e.costs, owner)?;
             }
-            owner.tracker.queued -= 1;
+            owner.tracker.count_queued(-1);
             owner.tracker.unplace(e.master, class);
         }
         let pop = master.as_ref().map_or(0.0, |m| population(&m.storage));
@@ -706,7 +706,7 @@ impl Turns {
         if let Some(m) = &master {
             refund(m, &entry.costs, owner)?;
         }
-        owner.tracker.queued -= 1;
+        owner.tracker.count_queued(-1);
         owner.tracker.unplace(entry.master, class);
         let pop = master
             .as_ref()
@@ -828,7 +828,7 @@ impl Turns {
         let take = count.min(entry.count);
         if tech == -1 {
             self.cancel_units(p, &entry, take)?;
-            self.players[p].tracker.queued -= i32::from(take);
+            self.players[p].tracker.count_queued(-take);
         } else {
             let e = crate::production::Entry { tech, ..entry };
             self.refund_researches(p, idx, &e, take)?;
