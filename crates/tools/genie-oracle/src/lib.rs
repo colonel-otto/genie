@@ -2312,6 +2312,9 @@ pub const fn settings(
 ) -> genie_core::settings::Settings {
     genie_core::settings::Settings {
         game_mode: o.game_mode,
+        ending_age: o.ending_age,
+        visibility_type: o.visibility_type,
+        sub_game_mode_flag: o.sub_game_mode_flag,
         full_tech_tree: o.full_tech_tree_enabled != 0,
         walkable_farms: o.walkable_farms != 0,
         selected_content_mode: o.selected_content_mode,
