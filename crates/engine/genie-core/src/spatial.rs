@@ -1594,13 +1594,15 @@ impl Spatial {
                     reach: reaching,
                 };
                 let checks = (moving, shuns, farm);
-                let id = self.closest_object(v, me, player, found, filter, reach, checks)?;
+                let (id, distance) =
+                    self.closest_object(v, me, player, found, filter, reach, checks)?;
                 Ok(Found {
                     id,
                     enemies: !found[4].is_empty(),
                     position: self.objects.get(&id).map(|p| p.position),
                     fresh,
                     players: players_seen(found),
+                    distance: crate::checkpoint::cvttss2si(distance),
                 })
             }
             Pick::Look => Ok(Found {
@@ -1609,6 +1611,7 @@ impl Spatial {
                 position: None,
                 fresh,
                 players: 0,
+                distance: -1,
             }),
             Pick::Attack { lowest, seeker } => {
                 let id =
@@ -1619,6 +1622,7 @@ impl Spatial {
                     position: self.objects.get(&id).map(|p| p.position),
                     fresh,
                     players: 0,
+                    distance: -1,
                 })
             }
         }
@@ -1646,7 +1650,7 @@ impl Spatial {
         filter: Filter,
         reach: &mut Reach<'_>,
         (moving, shuns, farm): ClosestChecks<'_>,
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<(i32, f32), Unsupported> {
         let class_10 = self.objects.get(&me).is_some_and(|m| m.class == 10);
         let farmer = self
             .objects
@@ -1748,7 +1752,8 @@ impl Spatial {
                 }
             }
         }
-        Ok(best.map_or(-1, |(id, _)| id))
+        // the distance starts at `DAT_14330ec20` (−1) without a find
+        Ok(best.unwrap_or((-1, -1.0)))
     }
 
     /// `bestUnitToAttack` (`FUN_140c44680`) for a unit of `player` (diplomacy `own`, its

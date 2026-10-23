@@ -1276,7 +1276,11 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
     let mut streams = Streams::default();
     streams.seed_all(29910);
     let ai = streams.get(Stream::Ai);
-    let first = UnitAi::constructed(17, [10.0, 10.0, 0.0], ai).unwrap();
+    let new = crate::unit_ai::NewObject {
+        position: [10.0, 10.0, 0.0],
+        ..crate::unit_ai::NewObject::default()
+    };
+    let first = UnitAi::constructed(17, &new, ai).unwrap();
     assert_eq!(foundation.ai, Some(first));
     let next = 750 + ai.rand15() % 500;
     by_hand.tick(40);

@@ -978,6 +978,12 @@ impl Turns {
                 .map(|q| q.attributes.get(97).copied().unwrap_or(0.0))
                 .collect();
             let computers: Vec<bool> = self.players.iter().map(|q| q.computer).collect();
+            let dodge_chances: Vec<u8> = self.players.iter().map(|q| q.dodge_chance).collect();
+            let keep_distance_chances: Vec<u8> = self
+                .players
+                .iter()
+                .map(|q| q.keep_distance_chance)
+                .collect();
             let sight_takers: Vec<(bool, bool)> = self
                 .players
                 .iter()
@@ -1070,6 +1076,8 @@ impl Turns {
                     player_turn: self.player_turn,
                     player_time: &self.player_time,
                     computers: &computers,
+                    dodge_chances: &dodge_chances,
+                    keep_distance_chances: &keep_distance_chances,
                     attribute_204,
                     mode_680: self.mode_680,
                     scenario: scenario_mode(self.settings.game_mode),
@@ -1275,8 +1283,11 @@ impl Turns {
                 }
                 // TRIBE_Building_Object::update: the production after the combat update (once,
                 // with the update's unit AI part)
+                // (after the unit AI's rest, when an order on a target stopped it)
+                let after_order = ordered.as_ref().and_then(|&(_, tail)| tail);
                 if matches!(result, Ok(Step::Stay))
                     && ai_resume.is_none()
+                    && after_order.is_none()
                     && let Err(e) = self.produce(p, i, seconds(dt))
                 {
                     result = Err(e);
@@ -1365,11 +1376,8 @@ impl Turns {
                         result = Err(e);
                     }
                 }
-                if let (Ok(Step::Stay), Some((order, tail))) = (&result, ordered) {
-                    let ran = self
-                        .order_on_target(p, i, order)
-                        .and_then(|()| tail.map_or(Ok(()), |after| self.after_order(p, i, after)));
-                    if let Err(e) = ran {
+                if let (Ok(Step::Stay), Some((order, _))) = (&result, ordered) {
+                    if let Err(e) = self.order_on_target(p, i, order) {
                         result = Err(e);
                     }
                 } else if ordered.is_some() && result.is_ok() {
@@ -1412,6 +1420,18 @@ impl Turns {
                 self.pathing.tiles_changed(self.spatial.take_changes());
                 if matches!(result, Ok(Step::Stay)) && ai_resume.is_some() {
                     resume = ai_resume;
+                    continue;
+                }
+                // the unit AI's rest after the order on a target it took, which the unit's
+                // update runs again from there ([`crate::unit_ai::UnitAi::after_order`])
+                if matches!(result, Ok(Step::Stay))
+                    && let Some(after) = after_order
+                {
+                    resume = Some(AiResume {
+                        captured: None,
+                        leaves: Step::Stay,
+                        after: Some(after),
+                    });
                     continue;
                 }
                 let player = &mut self.players[p];
