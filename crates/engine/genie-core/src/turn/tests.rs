@@ -3782,6 +3782,31 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     assert_eq!(event.data1, 2.0);
 }
 
+/// `FUN_140fde380`: a master of type 70 and up, of class 51 or 54, with a weapon (`+0x810`
+/// above 0) is a trebuchet; the paid cost (`+0x880`) sums the entries with a resource and the
+/// paid flag, as floats in their order.
+#[test]
+fn a_trebuchet_is_a_master_of_class_51_or_54_with_a_weapon() {
+    use crate::turn::world::{is_trebuchet, paid_cost};
+    let m = |kind, class, weapons: Vec<(i16, i16)>| Master {
+        kind,
+        class,
+        weapons,
+        ..Master::default()
+    };
+    assert!(is_trebuchet(&m(80, 54, vec![(4, 200)])));
+    assert!(is_trebuchet(&m(80, 51, vec![(4, 1)])));
+    assert!(is_trebuchet(&m(70, 54, vec![(4, 1)])));
+    assert!(!is_trebuchet(&m(80, 51, vec![])));
+    assert!(!is_trebuchet(&m(60, 54, vec![(4, 1)])));
+    assert!(!is_trebuchet(&m(80, 3, vec![(3, 11)])));
+    let paid = Master {
+        cost: vec![(1, 200, true), (3, 200, true), (-1, 5, true), (2, 7, false)],
+        ..Master::default()
+    };
+    assert_eq!(paid_cost(&paid), 400.0);
+}
+
 /// MarvinBlue/426048731's 1086: SET GATHER POINT on TC 9149 at (107.2451, 46.075863) on the
 /// sheep 9520 (master 705).
 #[test]
