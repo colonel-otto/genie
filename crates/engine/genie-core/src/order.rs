@@ -304,9 +304,7 @@ impl Turns {
         let loose = self.loose_units(units);
         self.groups.count_command();
         let loose = loose?;
-        for &id in &loose {
-            self.leave_group(id)?;
-        }
+        self.leave_groups(player, &loose, order.target)?;
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
         if 1 < loose.len() && self.players[player].computer {
             return Err(Unsupported(
@@ -547,14 +545,25 @@ impl Turns {
         Ok(())
     }
 
-    /// A loose unit of an order leaves its group (`FUN_14102c160` on the group of its `+0x6d0`
-    /// that the world holds): not modelled.
-    fn leave_group(&self, id: i32) -> Result<(), Unsupported> {
-        let group = self.object(id).map_or(-1, |(_, u)| u.group.id);
-        if self.groups.get(group).is_some() {
-            return Err(Unsupported(
-                "a unit in a group that an order moves alone (FUN_14102c160)",
-            ));
+    /// The loose units of a MOVE or an INTERACT of `player` leave their groups (`FUN_14102c160`
+    /// with 0 on the group of each one's `+0x6d0` the world holds, [`Turns::leave_group_of`]),
+    /// in order. With more than one loose unit of a player whose lobby entry is not a computer's
+    /// (`FUN_140d61870`) the routine's target is -1 (MOVE `FUN_140e67800` at `0x140e67e5d`,
+    /// INTERACT `FUN_140e68b90` at `0x140e6913c`); else it is the order's target object's id
+    /// when the world holds it (`FUN_140e6b820`), -1 without (`0x140e6873b`, `0x140e6991e`).
+    fn leave_groups(
+        &mut self,
+        player: usize,
+        loose: &[i32],
+        target: i32,
+    ) -> Result<(), Unsupported> {
+        let target = if 1 < loose.len() && !self.players[player].computer {
+            -1
+        } else {
+            self.world_object(target).map_or(-1, |t| t.id())
+        };
+        for &id in loose {
+            self.leave_group_of(id, target)?;
         }
         Ok(())
     }
@@ -806,7 +815,7 @@ impl Turns {
             }
             &[id] if !order.control => {
                 self.groups.count_command();
-                self.leave_group(id)?;
+                self.leave_groups(player, &[id], order.target)?;
                 return self.move_unit(player, id, &[], None, order);
             }
             _ => {
@@ -815,9 +824,7 @@ impl Turns {
                     .and_then(|s| self.move_groups(player, &s.groups, order).map(|()| s.loose));
                 self.groups.count_command();
                 let loose = loose?;
-                for &id in &loose {
-                    self.leave_group(id)?;
-                }
+                self.leave_groups(player, &loose, order.target)?;
                 loose
             }
         };
@@ -850,7 +857,8 @@ impl Turns {
     /// ([`Turns::set_initial_position`]). Each listed group (60 at most) takes the command count
     /// as its differentiator, with Ctrl held locks its formation to a line
     /// ([`Turns::lock_formation`] with 2) and takes the command ([`Turns::group_command`]); a new
-    /// group of a queued MOVE first takes its first unit's target (not modelled). Then every
+    /// group of a queued MOVE first takes a command on its first unit's target
+    /// ([`Turns::first_unit_target`]), not queued and direct. Then every
     /// listed group lists them all as its differentiator groups (`setDifferentiatorGroups`,
     /// `FUN_1410395a0`).
     fn move_groups(
@@ -894,10 +902,12 @@ impl Turns {
             if order.control {
                 self.lock_formation(id, crate::group::formation::LINE)?;
             }
-            if order.queued {
-                return Err(Unsupported(
-                    "a queued MOVE's new group on its first unit's target (FUN_14100efd0)",
-                ));
+            // a queued MOVE's new group first takes its first unit's target, not queued and
+            // direct (0x140e67b5d..0x140e67cb1)
+            if order.queued
+                && let Some((target, at)) = self.first_unit_target(units)
+            {
+                let _ = self.group_command(id, target, at, (false, true))?;
             }
             let _ =
                 self.group_command(id, order.target, order.point, (order.queued, order.direct))?;
@@ -909,6 +919,20 @@ impl Turns {
             }
         }
         Ok(())
+    }
+
+    /// The target a queued MOVE's new group takes first (`FUN_140e67800` at
+    /// `0x140e67b5d`..`0x140e67cb1`): the first of `units` the world holds, when it has a unit
+    /// AI, names its target (`+0x48`, `FUN_140c4cc40`); the object the world holds for it
+    /// (`FUN_1415417a0`) gives its id and its place (x, y). The unit AI's retarget flag
+    /// (`FUN_140c4ee90`, `+0x1d6` 0), the command's seventh argument, is read only by a command
+    /// on a target ([`Turns::group_command`] does not take one).
+    fn first_unit_target(&self, units: &[i32]) -> Option<(i32, [f32; 2])> {
+        let (_, first) = units.iter().find_map(|&id| self.object(id))?;
+        let ai = first.ai.as_ref()?;
+        let t = self.world_object(ai.current_target)?;
+        let [x, y, _] = t.position();
+        Some((t.id(), [x, y]))
     }
 
     /// FOLLOW (0x14): the command's check (`FUN_140e54c50`, [`Turns::command_check`]), then
@@ -4616,6 +4640,93 @@ mod tests {
         assert_eq!(t.players[1].objects[1].group.id, -1);
         assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
         assert_eq!(t.players[0].objects[0].ai.as_ref().unwrap().orders.len(), 1);
+    }
+
+    /// MOVE and INTERACT (`FUN_140e67800`, `FUN_140e68b90`): their loose units in a group the
+    /// world holds leave it (`FUN_14102c160`), one unit or several; a unit in no group, or in a
+    /// group the world does not hold, stays as it is.
+    #[test]
+    fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
+        let units = [(11, 83, [20.0, 20.0]), (12, 83, [40.0, 20.0])];
+        let order = MoveOrder {
+            target: -1,
+            point: [30.0, 30.0],
+            queued: false,
+            direct: false,
+            human: false,
+            control: false,
+        };
+        let mut t = soldiers(&units, &[11]);
+        t.move_order(1, &[11], &order).unwrap();
+        assert_eq!(t.players[1].objects[0].group.id, -1);
+        assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
+        // two groups' members ordered alone: both loose
+        let two = || {
+            let mut t = soldiers(&units, &[11]);
+            t.groups.groups.push(crate::group::UnitGroup {
+                id: 6,
+                members: vec![crate::group::Member {
+                    id: 12,
+                    ..crate::group::Member::default()
+                }],
+                ..crate::group::UnitGroup::default()
+            });
+            t.players[1].objects[1].group.id = 6;
+            t
+        };
+        let mut t = two();
+        t.move_order(1, &[11, 12], &order).unwrap();
+        assert_eq!(t.players[1].objects[0].group.id, -1);
+        assert_eq!(t.players[1].objects[1].group.id, -1);
+        assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
+        assert_eq!(t.groups.get(6).unwrap().members.len(), 0);
+        // a group link the world does not hold
+        let mut t = soldiers(&units, &[]);
+        t.players[1].objects[0].group.id = 9;
+        t.move_order(1, &[11], &order).unwrap();
+        assert_eq!(t.players[1].objects[0].group.id, 9);
+        let interact = Interact {
+            target: -1,
+            point: [30.0, 30.0],
+            carry_test: false,
+            queued: false,
+            direct: false,
+            human: false,
+            filter: -1,
+        };
+        let mut t = two();
+        for u in &mut t.players[1].objects {
+            u.pasture = -1;
+            u.my_pasture = -1;
+        }
+        t.interact(1, &[11, 12], &interact).unwrap();
+        assert_eq!(t.players[1].objects[0].group.id, -1);
+        assert_eq!(t.players[1].objects[1].group.id, -1);
+    }
+
+    /// A queued MOVE's new group (`FUN_140e67800` at `0x140e67b5d`): the first of its units the
+    /// world holds (99 is not), with a unit AI, names the target the group's first command takes
+    /// when the world holds it, at its place; a unit without a unit AI or a target the world
+    /// does not hold names none.
+    #[test]
+    fn a_queued_move_s_new_group_takes_its_first_unit_s_target() {
+        let units = [(11, 4, [20.0, 20.0]), (13, 4, [21.0, 20.0])];
+        let ai = |target| crate::unit_ai::UnitAi {
+            current_order: -1,
+            current_action: -1,
+            current_target: target,
+            ..crate::unit_ai::UnitAi::default()
+        };
+        let mut t = soldiers(&units, &[]);
+        t.players[1].objects[0].ai = Some(ai(13));
+        t.players[1].objects[1].ai = Some(ai(11));
+        assert_eq!(t.first_unit_target(&[99, 11, 13]), Some((13, [21.0, 20.0])));
+        assert_eq!(t.first_unit_target(&[13, 11]), Some((11, [20.0, 20.0])));
+        t.players[1].objects[0].ai = Some(ai(98));
+        assert_eq!(t.first_unit_target(&[11, 13]), None);
+        t.players[1].objects[0].ai = None;
+        assert_eq!(t.first_unit_target(&[11, 13]), None);
+        assert_eq!(t.first_unit_target(&[99]), None);
     }
 
     /// GATE and `FUN_1411dba30`: player 1's building 50 toggles its lock, a lock setting its last

@@ -7132,6 +7132,16 @@ impl Unit {
                     Some(self.top_action().map_or(0, |a| a.state))
                 },
                 units: self.named_units(c, others, master)?,
+                group: c
+                    .groups
+                    .get(self.group.id)
+                    .map(|g| crate::unit_ai::GroupState {
+                        commanded: g.current_command != -1,
+                        idle: g.is_idle(),
+                        patrol: g.patrols(),
+                        moving: g.motion.moving(),
+                        member_moving: self.mover.as_ref().is_some_and(Mover::is_moving),
+                    }),
             };
             // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
             let mut ai = self.ai.take().expect("filtered above");
@@ -11400,6 +11410,13 @@ impl Turns {
                 self.stop_player(p, e);
             }
             self.pathing.tiles_changed(self.spatial.take_changes());
+            // the player's groups (BaseWorld::update at 0x141551796), then its own update (slot
+            // 0x100 at 0x1415518f0, WorldPlayerBase::update): its plans start over (`+0x67c`),
+            // then its objects update (FUN_141166550 on its list)
+            if let Err(e) = self.update_groups(p) {
+                self.stop_player(p, e);
+            }
+            self.pathing.reset_plans(p);
             // An object whose update is not modelled freezes, and so do all live objects of a
             // player a command stopped; dead objects still run their state steps, which draw
             // nothing and depend on nothing the stop changed.
@@ -11917,13 +11934,8 @@ impl Turns {
                     }
                 }
             }
-            // the player's groups (BaseWorld::update at 0x141551796), before its gates close
-            if let Err(e) = self.update_groups(p) {
-                self.stop_player(p, e);
-            }
-            // the player's own update (WorldPlayerBase::update): its plans start over, and at
-            // its end the tiles its map explored give their resources
-            self.pathing.reset_plans(p);
+            // the end of the player's own update: the tiles its map explored give their
+            // resources
             if let Err(e) = self.process_new_tiles(p) {
                 self.stop_player(p, e);
             }
