@@ -1467,6 +1467,53 @@ fn a_built_farm_s_master_starts_a_make_and_another_default_task_is_reported() {
     assert_eq!(other.default_start(), (false, None));
 }
 
+/// `TRIBE_Building_Object::update`'s whole seconds (`0x1411c95a2`): a built building's
+/// `damaged_lately_timer` (`+0x30d`) loses one in an update that passes whole seconds, however
+/// many, and stays at 0.
+#[test]
+fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
+    let house = Unit {
+        id: 40,
+        life: Lifecycle {
+            master_id: 70,
+            hp: 550.0,
+            state: 2,
+            ..Lifecycle::default()
+        },
+        damaged_lately: 2,
+        ..Unit::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0],
+        vec![Player {
+            objects: vec![house],
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        }],
+    );
+    t.masters = vec![Masters::new([Master {
+        id: 70,
+        kind: 80,
+        class: 3,
+        hit_points: 550,
+        building: Some(crate::masters::BuildingMaster::default()),
+        ..Master::default()
+    }])];
+    let timer = |t: &Turns| t.players[0].objects[0].damaged_lately;
+    t.tick(500);
+    assert_eq!(timer(&t), 2);
+    t.tick(2600);
+    assert_eq!(timer(&t), 1);
+    t.tick(1000);
+    assert_eq!(timer(&t), 0);
+    t.tick(1000);
+    assert_eq!(timer(&t), 0);
+    assert!(t.players[0].unsupported.is_none());
+}
+
 fn town_centre(id: i32) -> Unit {
     Unit {
         id,
