@@ -4000,6 +4000,56 @@ fn set_gather_point_takes_the_point_and_target_or_clears_it() {
     );
 }
 
+/// SET GATHER POINT's test (`FUN_140e7e9a0`): a building whose master does not garrison takes
+/// the gather point when the player trains a unit there (`FUN_141625a20`'s count above 0); one
+/// that neither garrisons nor trains ignores it, and the player goes on.
+#[test]
+fn set_gather_point_takes_a_building_that_trains_without_garrisoning() {
+    let mut barracks = town_centre(10908);
+    barracks.life.master_id = 12;
+    let mut house = town_centre(10909);
+    house.life.master_id = 70;
+    let mut t = one_player(vec![barracks, house], [200.0; 4]);
+    t.masters = vec![Masters::new([
+        Master {
+            id: 12,
+            kind: 80,
+            ..Master::default()
+        },
+        Master {
+            id: 70,
+            kind: 80,
+            ..Master::default()
+        },
+        Master {
+            id: 74,
+            kind: 70,
+            available: true,
+            trained_at: vec![12],
+            ..Master::default()
+        },
+    ])];
+    let set = Command::GatherPoint {
+        player: 0,
+        ids: vec![10908, 10909],
+        point: [20.5, 30.5],
+        target: -1,
+        target_master: -1,
+        own: false,
+    };
+    t.tick_with(25, &[set]);
+    assert_eq!(t.players[0].unsupported, None);
+    assert_eq!(
+        t.players[0].objects[0].gather_point,
+        Some(GatherPoint {
+            point: [20.5, 30.5, 0.0],
+            target: -1,
+            target_master: -1,
+        })
+    );
+    assert_eq!(t.players[0].objects[1].gather_point, None);
+}
+
 /// `BUILDING_COMMAND_QUEUE` on a town centre with a gather point: the gather point goes
 /// into the queue first and clears, then the packet's step; a second packet adds its step
 /// alone; SET GATHER POINT empties the queue.

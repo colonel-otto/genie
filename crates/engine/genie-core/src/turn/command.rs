@@ -64,11 +64,12 @@ pub enum Command {
     /// builders shared out over them ([`crate::wall`]).
     BuildWall(crate::wall::Wall),
     /// SET GATHER POINT (0x78, `FUN_140e7e9a0`): each of the player's objects of `ids` that takes
-    /// a gather point (its master garrisons, `+0x5d4`; the list of units it trains,
-    /// `FUN_141625a20`, is not modelled) takes `point` and `target` with its master, or with
-    /// `own` itself (`FUN_1411c7ff0`); a target of −1 at (−1, −1) clears it. The ids of other
-    /// players' objects are left out (the game setting `+0x1074` that lets them is not modelled),
-    /// and the unit AI's command queue (`+0x1f0`, which its slot 0x210 empties) is not held.
+    /// a gather point (its master garrisons, `+0x5d4`, or its player trains a unit there,
+    /// `FUN_141625a20`'s count with no object, [`Turns::trainable_count`]) takes `point` and
+    /// `target` with its master, or with `own` itself (`FUN_1411c7ff0`); a target of −1 at
+    /// (−1, −1) clears it, and its unit AI's command queue empties (slot 0x210). The ids of
+    /// other players' objects are left out (the game setting `+0x1074` that lets them is not
+    /// modelled), as is the exists byte's value 0xff (`+0xc30`, which keeps the target).
     GatherPoint {
         /// The player whose objects take it.
         player: usize,
@@ -1934,12 +1935,9 @@ impl Turns {
                 .ok_or(GenieError::unsupported(
                     "SET GATHER POINT on a master the slice does not have",
                 ))?;
-            if master.garrison == 0 {
-                return Err(GenieError::unsupported(
-                    "SET GATHER POINT on a building that does not garrison (its train list)",
-                )
-                .with("building", unit.id)
-                .with("master", master.id));
+            // FUN_141625a20's count with no object, for the object's own player
+            if master.garrison == 0 && self.trainable_count(player, master.id) <= 0 {
+                continue;
             }
             let z = unit.gather_point.map_or(0.0, |g| g.point[2]);
             let gather = if own {
