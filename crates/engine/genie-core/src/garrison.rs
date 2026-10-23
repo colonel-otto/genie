@@ -3694,6 +3694,12 @@ pub(crate) mod tests {
             t.object(200).unwrap().1.move_to.unwrap().goal,
             Some([9.5, 19.5, 0.0])
         );
+        // the same order again: the work command finds the Enter's own task, whose slot 9 (the
+        // base's, 0x140a7bf40) takes no new target, so a new Enter replaces it
+        t.object_mut(1000).unwrap().1.enter.as_mut().unwrap().retry = false;
+        t.garrison_order(1, &[1000], 200, false, false).unwrap();
+        let enter = t.object(1000).unwrap().1.enter.unwrap();
+        assert_eq!((enter.target, enter.retry), (200, true));
     }
 
     #[test]

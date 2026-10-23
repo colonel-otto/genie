@@ -2825,6 +2825,12 @@ impl Turns {
                 }
                 took
             }
+            // an Enter's slot 9 is the base's (0x140a7bf40): it takes no new target
+            _ if top == Some(crate::garrison::ENTER)
+                && task.action_type == crate::garrison::ENTER =>
+            {
+                false
+            }
             _ if top == Some(task.action_type) && top != Some(HUNT) => {
                 return Err(Unsupported("a work command on the unit's current task"));
             }
