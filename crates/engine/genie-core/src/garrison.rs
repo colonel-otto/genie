@@ -53,6 +53,30 @@ const COMPUTER_IDS: usize = 500;
 const VILLAGER_CLASS: i16 = 4;
 const VILLAGER_KIND: u8 = 70;
 
+/// The class-flags table `FUN_1411205e0` reads (`DAT_1439e37b0`, a u32 per class; its count,
+/// `DAT_1439e2cf8`, is 64), as the image holds it (nothing writes it). An image role to come:
+/// `garrison::CLASS_FLAGS`.
+const CLASS_FLAGS: [u32; 64] = [
+    0x10103, 0x2, 0x0, 0x2, 0x10163, 0x0, 0x10103, 0x0, 0x0, 0x0, 0x0, 0x0, 0x403, 0x3, 0x0, 0x0,
+    0x0, 0x10, 0x102, 0x2, 0x0, 0x140, 0x1, 0x403, 0x403, 0x103, 0x403, 0x0, 0x103, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x103, 0x403, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x102, 0x10103, 0x10103, 0x10103,
+    0x403, 0x0, 0x0, 0x10103, 0x3, 0x1, 0x3, 0x1, 0x3, 0x10103, 0x403, 0x102, 0x102, 0x0, 0x2, 0x0,
+    0x0,
+];
+/// The class flags a unit garrisons a transport with (`FUN_14120eb10`, `FUN_141621220`).
+const TRANSPORTED: u32 = 0x10002;
+
+/// `FUN_1411205e0`: whether a master's class (`+0x410`, the short `MOVSX` widens) has one of
+/// `flags` in the class-flags table: a class below 0 or not below the table's count
+/// (`CMP`/`JGE`, signed) has none.
+#[must_use]
+pub fn class_has_flags(class: i16, flags: u32) -> bool {
+    usize::try_from(class)
+        .ok()
+        .and_then(|c| CLASS_FLAGS.get(c))
+        .is_some_and(|&f| f & flags != 0)
+}
+
 /// The unit masters whose own rules `FUN_14120eb10` keeps apart from their class's (the game
 /// compares their ids, + 0x609c).
 const MASTER_1263: i16 = 1263;
@@ -875,9 +899,10 @@ impl Turns {
     /// `FUN_14120eb10`: whether `building` takes a unit of `player`'s master `master` in. The
     /// player must have the master; another player's building must be allowed (`others`, the
     /// game's `param_4` 1) and allied both ways (`FUN_141663d90`); the building in state 2. A
-    /// building whose `object_flags` bit 0 is set (a transport) takes a unit of type 70 (or of a
-    /// class of flag 0x10002, `FUN_1411205e0`) with a task of action 3 on its own class
-    /// ([`has_garrison_task`]). Any other takes a unit of type 70 or more when it is of type 80
+    /// building whose `object_flags` bit 0 is set (a transport) takes a unit of type 70 or of a
+    /// class with a flag of 0x10002 ([`class_has_flags`]) when the unit has a task of action 3 on
+    /// its own class ([`has_garrison_task`]); a unit of neither goes on as for a building. Any
+    /// other takes a unit of type 70 or more when it is of type 80
     /// (an annex asks its main building, `+0xbb8`), above [`LEAST_HP_SHARE`] of its master's hit
     /// points, with a capacity (`obj_max`), the unit's master with a garrison task on buildings
     /// and of a kind the building's `garrison_type` takes ([`garrison_type_takes`]). Either then
@@ -910,13 +935,9 @@ impl Turns {
             return Ok(false);
         }
         let own = self.master_of(bp, b.life.master_id)?;
-        if own.object_flags & 1 != 0 {
-            if unit.kind != COMBAT_KIND {
-                return Err(Unsupported(
-                    "a transport's garrison test of a unit not of type 70 (the class flags \
-                     0x10002, FUN_1411205e0)",
-                ));
-            }
+        if own.object_flags & 1 != 0
+            && (unit.kind == COMBAT_KIND || class_has_flags(unit.class, TRANSPORTED))
+        {
             if !has_garrison_task(&unit.tasks, GARRISON, own.class) {
                 return Ok(false);
             }
@@ -1158,8 +1179,9 @@ impl Turns {
 
     /// `FUN_141621220`: each of `units` pairs with each building of `shelters` (type 80) whose
     /// master has a capacity (`obj_max`) and takes the unit's master's copy in
-    /// ([`Turns::takes_in`]), and with each transport of a unit whose master's class has flag
-    /// 0x10002 (`FUN_1411205e0`) and a task of action 3 on the transport's class, within the reach
+    /// ([`Turns::takes_in`]), and with each transport of a unit whose master's class has a flag
+    /// of 0x10002 ([`class_has_flags`]) when the commanding player's master of the unit's master
+    /// id has a task of action 3 on the transport's class ([`has_garrison_task`]), within the reach
     /// (`near`, `param_6`: [`TOWN_BELL_REACH`], else [`FAR`]; `COMISS`/`JBE`: a NaN is out); a
     /// pair names its shelter by its index, a transport's after the buildings. The pairs sorted
     /// by their squared footprint gap (`FUN_1415f0830`, MSVC's `std::sort`) give each unit, in
@@ -1168,8 +1190,7 @@ impl Turns {
     /// (the list holds what its caller pushed, in its own order: an index into it need not be
     /// its shelter's), which each taker raises. The shelters go in a hash map by id
     /// (`FUN_1415f0c40`), whose order ([`crate::msvc::unordered_map_order`]) the next part
-    /// follows ([`Turns::shelter_in`]). Not modelled: a transport with units to pair (the class
-    /// flags' table, `DAT_1439e37b0`, has no image role yet) and the groups the splitter forms.
+    /// follows ([`Turns::shelter_in`]). Not modelled: the groups the splitter forms.
     pub(crate) fn shelter(
         &mut self,
         player: usize,
@@ -1179,11 +1200,6 @@ impl Turns {
         through_ai: bool,
     ) -> Result<(), Unsupported> {
         let reach = if near { TOWN_BELL_REACH } else { FAR };
-        if !units.is_empty() && !shelters.transports.is_empty() {
-            return Err(Unsupported(
-                "a garrison's transports (the class flags 0x10002, FUN_1411205e0)",
-            ));
-        }
         let all: Vec<i32> = shelters
             .buildings
             .iter()
@@ -1198,21 +1214,42 @@ impl Turns {
                 .object(building)
                 .ok_or(Unsupported("a garrison's building is gone"))?;
             let bm = self.master_of(bp, b.life.master_id)?;
-            capacities.push((bm.kind == BUILDING, i32::from(bm.garrison)));
+            capacities.push((bm.kind == BUILDING, i32::from(bm.garrison), bm.class));
         }
+        let first_transport = shelters.buildings.len();
         for (i, &id) in units.iter().enumerate() {
             let (p, u) = self
                 .object(id)
                 .ok_or(Unsupported("a garrison's unit is gone"))?;
-            let copy = self.master_of(p, u.life.master_id)?.copy_id;
+            let own = self.master_of(p, u.life.master_id)?;
+            let (copy, master, class) = (own.copy_id, own.id, own.class);
+            // COMISS reach, gap; JBE: a gap at the reach or past it, or a NaN, pairs nothing
+            let gap_to = |shelter: i32| -> Result<f32, Unsupported> {
+                let (at, r) = self.ground(id)?;
+                let (sat, sr) = self.ground(shelter)?;
+                Ok(footprint_gap_squared(at, r, sat, sr))
+            };
             for (j, &building) in shelters.buildings.iter().enumerate() {
-                let (is_building, capacity) = capacities[j];
+                let (is_building, capacity, _) = capacities[j];
                 if is_building && capacity != 0 && self.takes_in(building, player, copy)? {
-                    let (at, r) = self.ground(id)?;
-                    let (bat, br) = self.ground(building)?;
-                    let gap = footprint_gap_squared(at, r, bat, br);
+                    let gap = gap_to(building)?;
                     if gap < reach {
                         pairs.push((i, j, gap));
+                    }
+                }
+            }
+            if !class_has_flags(class, TRANSPORTED) {
+                continue;
+            }
+            for (k, &transport) in shelters.transports.iter().enumerate() {
+                // FUN_1415c9240 reads the commanding player's master of the unit's master id
+                // (its slot unchecked: one the player lacks would crash the game)
+                let (_, _, transport_class) = capacities[first_transport + k];
+                let list = self.master_of(player, master)?;
+                if has_garrison_task(&list.tasks, GARRISON, transport_class) {
+                    let gap = gap_to(transport)?;
+                    if gap < reach {
+                        pairs.push((i, first_transport + k, gap));
                     }
                 }
             }
@@ -1989,8 +2026,40 @@ pub(crate) mod tests {
         t.players[1].objects.push(v);
         assert_eq!(takes(&t, VILLAGER, false), Ok(false));
         assert_eq!(takes(&t, VILLAGER, true), Ok(true));
-        // a unit of another type needs the class flags (FUN_1411205e0), not modelled
-        assert!(takes(&t, TC, true).is_err());
+        // a unit of another type with no class flags 0x10002 (FUN_1411205e0) goes on as for a
+        // building: the transport is of type 70, so it takes none
+        assert_eq!(takes(&t, TC, true), Ok(false));
+        // a unit of a type below 70 whose class has them (13: 0x3) takes the transport's branch
+        let mut masters = garrison_masters();
+        masters = Masters::new(masters.iter().cloned().chain([Master {
+            id: 1500,
+            kind: 60,
+            class: 13,
+            tasks: vec![task(GARRISON, 20)],
+            ..Master::default()
+        }]));
+        t.masters = (0..4).map(|_| masters.clone()).collect();
+        assert_eq!(takes(&t, 1500, true), Ok(true));
+        // full: no room for one more
+        assert_eq!(takes(&t, 1500, false), Ok(false));
+    }
+
+    #[test]
+    fn the_class_flags_are_the_images_table_by_class() {
+        // FUN_1411205e0 with DAT_1439e37b0: villagers (4, 0x10163), infantry (6, 0x10103) and
+        // siege (13, 0x3) garrison a transport; ships (20, 21, 22) do not
+        for class in [0, 4, 6, 13, 18, 44, 58] {
+            assert!(class_has_flags(class, TRANSPORTED), "class {class}");
+        }
+        for class in [2, 20, 21, 22, 52, 60, 63] {
+            assert!(!class_has_flags(class, TRANSPORTED), "class {class}");
+        }
+        // other flags of the same words; a class outside the table has none (JS, JGE)
+        assert!(class_has_flags(17, 0x10));
+        assert!(class_has_flags(21, 0x100));
+        assert!(!class_has_flags(-1, u32::MAX));
+        assert!(!class_has_flags(64, u32::MAX));
+        assert!(class_has_flags(61, u32::MAX));
     }
 
     #[test]
@@ -2498,16 +2567,62 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
-    fn a_garrison_into_a_transport_needs_the_class_flags() {
-        let mut t = let_out_world();
-        walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
-        assert_eq!(
-            t.garrison_order(1, &[1000], 200, false, false),
-            Err(Unsupported(
-                "a garrison's transports (the class flags 0x10002, FUN_1411205e0)"
-            ))
+    /// [`let_out_world`] with ship 200 at (`x`, `y`) on the map.
+    fn ship_at(t: &mut Turns, at: [f32; 2]) {
+        let ship = t.object_mut(200).expect("the ship").1;
+        ship.position = [at[0], at[1], 0.0];
+        t.spatial.insert(
+            200,
+            crate::spatial::Placed {
+                position: [at[0], at[1], 0.0],
+                radius: [0.5, 0.5],
+                class: 20,
+                player: 1,
+                master: SHIP,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 1.0,
+                unknown: None,
+                obstruction: None,
+            },
         );
+    }
+
+    #[test]
+    fn a_garrison_into_a_transport_pairs_the_units_whose_class_has_the_flags() {
+        // FUN_141621220: a villager (class 4, flags 0x10163) with a garrison task on the ship's
+        // class 20 pairs with it and, through the unit AIs, queues its enter order on it; the
+        // archer (class 0) has no such task, and the ship itself (class 20) no class flags
+        let mut t = let_out_world();
+        ship_at(&mut t, [5.5, 12.5]);
+        walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+        walker(&mut t, 1, 1001, ARCHER, [6.5, 5.5]);
+        t.garrison_order(1, &[1000, 1001, 200], 200, true, false)
+            .unwrap();
+        let orders = |t: &Turns, id| {
+            t.object(id).unwrap().1.ai.as_ref().map(|ai| {
+                ai.orders
+                    .iter()
+                    .map(|o| (o.order, o.target))
+                    .collect::<Vec<_>>()
+            })
+        };
+        assert_eq!(orders(&t, 1000), Some(vec![(ENTER_ORDER, 200)]));
+        assert_eq!(orders(&t, 1001), Some(vec![]));
+        // a transport beyond the town bell's reach (param_6 1) pairs nothing
+        let mut t = sized_world(40, 40);
+        ship_at(&mut t, [5.5, 35.5]);
+        walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+        let shelters = Shelters {
+            buildings: Vec::new(),
+            transports: vec![200],
+            counts: vec![0],
+        };
+        t.shelter(1, &[1000], &shelters, true, true).unwrap();
+        assert_eq!(orders(&t, 1000), Some(vec![]));
+        t.shelter(1, &[1000], &shelters, false, true).unwrap();
+        assert_eq!(orders(&t, 1000), Some(vec![(ENTER_ORDER, 200)]));
         // with no unit the transport is never asked
         assert_eq!(t.garrison_order(1, &[], 200, false, false), Ok(()));
     }
