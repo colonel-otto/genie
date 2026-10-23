@@ -979,6 +979,11 @@ impl Turns {
                 .collect();
             let computers: Vec<bool> = self.players.iter().map(|q| q.computer).collect();
             let dodge_chances: Vec<u8> = self.players.iter().map(|q| q.dodge_chance).collect();
+            let keep_distance_chances: Vec<u8> = self
+                .players
+                .iter()
+                .map(|q| q.keep_distance_chance)
+                .collect();
             let sight_takers: Vec<(bool, bool)> = self
                 .players
                 .iter()
@@ -1072,6 +1077,7 @@ impl Turns {
                     player_time: &self.player_time,
                     computers: &computers,
                     dodge_chances: &dodge_chances,
+                    keep_distance_chances: &keep_distance_chances,
                     attribute_204,
                     mode_680: self.mode_680,
                     scenario: scenario_mode(self.settings.game_mode),

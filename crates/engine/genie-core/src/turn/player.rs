@@ -84,6 +84,10 @@ pub struct Player {
     /// `chance_to_dodge_missiles` (`+0xe10`, saved): a ship's unit AI dodges a missile's warning
     /// (`0x20f`) on a draw below it ([`crate::unit_ai::Surroundings::dodge_chance`]).
     pub dodge_chance: u8,
+    /// `chance_for_archers_to_maintain_distance` (`+0xe11`, saved): a computer player's siege
+    /// unit backs up from its target after a shot on a draw at least this
+    /// ([`crate::unit_ai::Surroundings::keep_distance_chance`]).
+    pub keep_distance_chance: u8,
     /// `allied_LOS_Enable` (`+0x2cc`, saved): the player shares its mutual allies' sight
     /// ([`crate::vision`]).
     pub allied_vision: bool,

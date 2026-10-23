@@ -2168,6 +2168,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 // the load sets it 0 (`FUN_14163e970`)
                 posture: 0,
                 dodge_chance: p.world_player().chance_to_dodge_missiles,
+                keep_distance_chance: p.world_player().chance_for_archers_to_maintain_distance,
                 // the load builds the watched lists (Turns::build_watched)
                 watched: Vec::new(),
                 ghosts: saved_ghosts(p),
