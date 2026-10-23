@@ -100,6 +100,10 @@ pub struct Player {
     /// Its object tracker (`+0x18`, [`crate::tracker`]): not saved; the load files the objects
     /// ([`Turns::load_trackers`]).
     pub tracker: crate::tracker::Tracker,
+    /// `+0x1378` (not saved): in game mode 16 the player has a military unit queued while its
+    /// attribute 6 is at most 1 (QUEUE sets it, `FUN_141614450`; a cancel clears it,
+    /// `FUN_14161e370`).
+    pub one_military_queued: bool,
 }
 
 impl crate::tech::Attributes for Player {

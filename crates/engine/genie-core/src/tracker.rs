@@ -18,10 +18,14 @@
 //! - an upgrade to master 0x67f or 0x6a1 (`FUN_141657d10` -> `FUN_14104fd10`,
 //!   [`Tracker::move_all`]).
 //!
-//! Not held: the production queue's places (`FUN_141050230` files a −1 under the queued master's
-//! pending key, `FUN_14104f330` drops the last), which only the pending lists hold, the ghosts
-//! (they file under the ghosts' master 243), and the counters at `+0x60` to `+0x6c`. A reader of
-//! the done lists ([`Tracker::list`], [`Tracker::class_list`]) needs none of them.
+//! - the production queue's places: a queued unit files a −1 at the end of its master's pending
+//!   list and its class's (`FUN_141050230`, [`Tracker::place`]), its spawn or cancel drops the
+//!   last of each (`FUN_14104f330`, [`Tracker::unplace`]); the counter `+0x60`
+//!   (`FUN_14104fb00`, [`Tracker::count_queued`]) follows the same writers.
+//!
+//! Not held: the ghosts (they file under the ghosts' master 243) and the counters at `+0x64` to
+//! `+0x6c`. A reader of the done lists ([`Tracker::list`], [`Tracker::class_list`]) needs none of
+//! them.
 //!
 //! 158041: the key `FUN_141658430`, a master's list `FUN_14104f960` (an empty one, `+0x40`, for
 //! a key it lacks: `FUN_14104dd80`, `FUN_141050ae0`), a class's `FUN_14104f8f0`, the lists'
@@ -131,6 +135,9 @@ pub fn key(masters: Option<&Masters>, lines: &UnitLines, master: i16) -> Key {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Tracker {
     lists: std::collections::BTreeMap<i32, Vec<i32>>,
+    /// `+0x60` (`FUN_14104fb00`): what the production queues' writers count, units queued and
+    /// spawned or cancelled (a cancel of several counts them twice, as the game does).
+    pub queued: i32,
 }
 
 impl Tracker {
@@ -211,6 +218,35 @@ impl Tracker {
         self.erase(key.master, id);
     }
 
+    /// `FUN_14104fb00`: the counter of queued units (`+0x60`) changes by `n`.
+    pub fn count_queued(&mut self, n: i16) {
+        self.queued += i32::from(n);
+    }
+
+    /// `FUN_141050230`: a queued unit of master `master` (its [`key`]'s class `class`, −1 for
+    /// none) files a −1 at the end of the master's pending list (+ 90000, the master itself, not
+    /// its key master) and of the class's (+ 90900).
+    pub fn place(&mut self, master: i16, class: i32) {
+        self.push(i32::from(master) + PENDING, -1);
+        if class != -1 {
+            self.push(class + CLASS_KEY + PENDING, -1);
+        }
+    }
+
+    /// `FUN_14104f330`: a queued unit's spawn or cancel drops the last id of the same lists
+    /// (`FUN_140a63bd0` at the end; an empty list stays empty).
+    pub fn unplace(&mut self, master: i16, class: i32) {
+        let mut drop_last = |key: i32| {
+            if let Some(list) = self.lists.get_mut(&key) {
+                let _ = list.pop();
+            }
+        };
+        drop_last(i32::from(master) + PENDING);
+        if class != -1 {
+            drop_last(class + CLASS_KEY + PENDING);
+        }
+    }
+
     /// `FUN_14104fb20`: an object changes masters. Out of its old key master's done list it goes
     /// to the end of the new one's, and from the old class's done list to the end of the new
     /// one's (a key without a class has none); one the old done list does not hold stays where
@@ -270,9 +306,10 @@ impl crate::turn::Turns {
     }
 
     /// The load's filing: each player's objects as its lists hold them, the live ones then the
-    /// sleeping ones, each added at the end of its own load (`FUN_14119df60`) and, a building
-    /// whose build points (`+0xc50`) reach its build time (`COMISS`/`JC`: a NaN does not),
-    /// completed at the end of the building's load (`FUN_1411df160`).
+    /// sleeping ones, each added at the end of its own load (`FUN_14119df60`); a building's load
+    /// (`FUN_1411df160`) then places each unit of its queue's entries of a master above 0
+    /// ([`Tracker::place`], one count each) and, a building whose build points (`+0xc50`) reach
+    /// its build time (`COMISS`/`JC`: a NaN does not), completes it at its end.
     pub fn load_trackers(&mut self) {
         for p in 0..self.players.len() {
             let mut tracker = Tracker::default();
@@ -280,6 +317,15 @@ impl crate::turn::Turns {
             for u in player.objects.iter().chain(&player.sleeping) {
                 let k = self.tracker_key(p, u.life.master_id);
                 tracker.add(u.id, k);
+                for e in u.production.iter().flat_map(|q| q.queue.entries()) {
+                    if 0 < e.master && 0 < e.count {
+                        let class = self.tracker_key(p, e.master).class;
+                        for _ in 0..e.count {
+                            tracker.place(e.master, class);
+                            tracker.count_queued(1);
+                        }
+                    }
+                }
                 let building = self
                     .masters
                     .get(p)
@@ -405,6 +451,27 @@ mod tests {
                 ..UnitLine::default()
             }],
         )
+    }
+
+    /// `FUN_141050230` files a −1 under the queued master itself (+ 90000, the crossbowman's
+    /// own 24, not its key master 4) and its key's class (+ 90900); `FUN_14104f330` drops the
+    /// last of each, whatever it is, and leaves an empty list alone.
+    #[test]
+    fn a_queued_unit_places_a_minus_one_and_its_spawn_drops_the_last() {
+        let mut t = Tracker::default();
+        t.place(24, 0);
+        t.place(24, 0);
+        t.place(83, -1);
+        assert_eq!(t.list(24 + PENDING), [-1, -1]);
+        assert_eq!(t.list(CLASS_KEY + PENDING), [-1, -1]);
+        assert_eq!(t.list(83 + PENDING), [-1]);
+        t.lists.get_mut(&(CLASS_KEY + PENDING)).unwrap().push(5);
+        t.unplace(24, 0);
+        assert_eq!(t.list(24 + PENDING), [-1]);
+        assert_eq!(t.list(CLASS_KEY + PENDING), [-1, -1]);
+        t.unplace(83, -1);
+        t.unplace(83, -1);
+        assert_eq!(t.list(83 + PENDING), []);
     }
 
     #[test]

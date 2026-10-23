@@ -1068,7 +1068,7 @@ fn has_actions(u: &Unit) -> bool {
         || u.enter.is_some()
         || u.missile.is_some()
         || u.make.is_some()
-        || u.production.as_ref().is_some_and(|q| q.action)
+        || u.production.as_ref().is_some_and(|q| q.action.is_some())
 }
 
 impl Turns {
