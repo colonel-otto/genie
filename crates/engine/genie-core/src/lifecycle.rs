@@ -154,10 +154,10 @@ impl Lifecycle {
     /// The static update's death (state 3, `set_state` `FUN_14119d710`), then the animated update's
     /// step to state 5. A static object takes its dying sprite (slot 0x68) and, starting on a
     /// random facet, draws it (`rand15 × facets / 0x7fff`, at most the last; the facet, `+0xe`, is
-    /// not held). The storage the caller checks; the players' fog ghosts of a master whose fog
-    /// visibility is 2 (`FUN_14118e990`, for players that explored the tile but do not see it)
-    /// need the visibility map, which the slice does not hold: it assumes none, as for the
-    /// statistics and the sounds. The visible-resource lists (`FUN_1411980b0`) are the caller's
+    /// not held). The storage the caller checks, and the players' fog ghosts of a master whose
+    /// fog visibility is 2 (`FUN_14118e990`, for players that explored the tile but do not see
+    /// it) are the caller's too ([`crate::ghost`]); the statistics and the sounds are not held.
+    /// The visible-resource lists (`FUN_1411980b0`) are the caller's
     /// ([`crate::turn::forget_resource`]).
     fn die(&mut self, object: &mut Well512) -> Result<(), Unsupported> {
         if self.inside.is_some() {

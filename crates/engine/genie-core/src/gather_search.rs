@@ -63,17 +63,18 @@ pub struct Builder {
 /// `blocked` the builder's restriction's planner, `FUN_140f7d470`; None without a planner, when
 /// every tile counts). `objects` lists a tile's objects in the tile's order.
 ///
-/// An object below state 6 whose class the entry takes ([`DropSite::resource_of`]) joins its
-/// resource's group (gold 3, stone 2, food 0 and 15 to 17, wood 1), by its distance from the
-/// builder truncated to whole tiles: the group keeps the first nearest or, at no lesser distance,
-/// the one with fewer workers (its workers less one, at least 0), and its least distance of those
-/// kept. Gold comes first, then stone, food and wood, each taking over only at a lesser least
-/// distance. A farm (class 49) joins only through the entry's farm target, which is not modelled.
+/// The tiles go by columns (x outer, y inner), a tile's objects in its list's order. An object
+/// below state 6 whose class the entry takes ([`DropSite::resource_of`]) joins its resource's
+/// group (gold 3, stone 2, food 0 and 15 to 17, wood 1), by its distance from the builder
+/// truncated to whole tiles (`CVTTSS2SI`): the group keeps the first nearest or, at no lesser
+/// distance, the one with fewer workers (its workers less one, at least 0), and its least
+/// distance of those kept. Gold comes first, then stone, food and wood, each taking over only at
+/// a lesser least distance. A farm (class 49) joins only through the entry's farm target, which
+/// is not modelled.
 ///
 /// # Errors
 ///
-/// A farm on a tile for an entry with a farm target, or two objects of the entry's on one tile
-/// (whose list order the slice does not hold).
+/// A farm on a tile for an entry with a farm target.
 pub fn more_work(
     entry: Option<&DropSite>,
     builder: &Builder,
@@ -121,9 +122,7 @@ pub fn more_work(
             if grid.as_ref().is_some_and(|g| !g[(gx * h + gy) as usize]) {
                 continue;
             }
-            let on_tile = objects(i32::from(x), i32::from(y))?;
-            let mut taken = 0;
-            for o in on_tile {
+            for o in objects(i32::from(x), i32::from(y))? {
                 if o.class == FARM {
                     // its own tests (owner, pasture, the targeting flag, masters 1893 and 1897)
                     // come before the entry's, which takes no farm without a farm target
@@ -138,12 +137,6 @@ pub fn more_work(
                 let Some(resource) = entry.resource_of(o.class, o.state, o.workers) else {
                     continue;
                 };
-                taken += 1;
-                if 1 < taken {
-                    return Err(Unsupported(
-                        "two objects of a drop site's on one tile in a builder's search",
-                    ));
-                }
                 let g = match resource {
                     3 => 0,
                     2 => 1,
@@ -153,7 +146,7 @@ pub fn more_work(
                 };
                 let dx = o.position[0] - builder.position[0];
                 let dy = o.position[1] - builder.position[1];
-                let d = crate::fmath::sqrt(dy * dy + dx * dx) as i32 as f32;
+                let d = crate::checkpoint::cvttss2si(crate::fmath::sqrt(dy * dy + dx * dx)) as f32;
                 let workers = (o.workers - 1).max(0);
                 let take = match groups[g] {
                     Some((_, kept)) if least[g] <= d => workers < kept,
@@ -666,6 +659,35 @@ mod tests {
         // the wood (2 tiles) is nearer than the gold (4 tiles): it takes over
         let found = more_work(Some(&entry), &b, [40, 40], None, &objects).unwrap();
         assert_eq!(found.map(|o| o.id), Some(8));
+    }
+
+    /// `FUN_1415cc4e0` walks a tile's objects in its list's order (`+0x28` up to the count
+    /// `+0x1b`): of two trees on one tile at one distance with as many workers, the first listed
+    /// stays the group's.
+    #[test]
+    fn more_work_takes_the_first_listed_of_two_trees_on_one_tile() {
+        let entry = lumber_camp();
+        let b = Builder {
+            position: [10.5, 10.5, 0.0],
+            radius: 0.2,
+            building: [12.0, 10.0, 0.0],
+            range: 6,
+        };
+        let listed = |first: i32, second: i32| {
+            let trees = [tree(first, 13.2, 10.5), tree(second, 13.6, 10.5)];
+            let objects = |x: i32, y: i32| {
+                Ok(trees
+                    .iter()
+                    .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                    .copied()
+                    .collect())
+            };
+            more_work(Some(&entry), &b, [40, 40], None, &objects)
+                .unwrap()
+                .map(|o| o.id)
+        };
+        assert_eq!(listed(9, 3), Some(9));
+        assert_eq!(listed(3, 9), Some(3));
     }
 
     #[test]

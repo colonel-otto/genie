@@ -620,15 +620,13 @@ impl Turns {
                 "an order to a unit the slice does not hold live",
             ));
         };
-        // the command's check (`FUN_140e55250`) drops another player's unit (its id -1) unless
-        // the game setting `+0x1074` (`FUN_1412ffe00`, not held) lets players order each
-        // other's units; the lookup itself has no owner test (`FUN_140e6b750`)
-        if p != player {
-            return Err(Unsupported(
-                "an order to another player's unit (the setting +0x1074)",
-            ));
-        }
+        // the command's check (`FUN_140e55250`, [`Turns::checked_units`]) dropped another
+        // player's unit (its id -1) unless the game setting `+0x1074` lets players order each
+        // other's units ([`crate::settings::Settings::cheats_enabled`]); the lookup itself has
+        // no owner test (`FUN_140e6b750`): such a unit takes the order as its own player's, the
+        // issuer only queuing it
         let issuer = player;
+        let player = p;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0) {
@@ -2212,15 +2210,12 @@ impl Turns {
         let Place::Live(p, idx) = place else {
             return Err(Unsupported("a move of a unit the slice does not hold live"));
         };
-        // the command's check (`FUN_140e553f0`) drops another player's unit (its id -1) unless
-        // the game setting `+0x1074` (`FUN_1412ffe00`, not held) lets players order each
-        // other's units
-        if p != player {
-            return Err(Unsupported(
-                "a move of another player's unit (the setting +0x1074)",
-            ));
-        }
+        // the command's check (`FUN_140e553f0`, [`Turns::checked_units`]) dropped another
+        // player's unit (its id -1) unless the game setting `+0x1074` lets players order each
+        // other's units ([`crate::settings::Settings::cheats_enabled`]): such a unit takes the
+        // move as its own player's, the issuer only queuing it
         let issuer = player;
+        let player = p;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || speed <= 0.0 {
@@ -4953,6 +4948,51 @@ mod tests {
         assert_eq!(t.players[1].objects[1].group.id, -1);
         assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
         assert_eq!(t.players[0].objects[0].ai.as_ref().unwrap().orders.len(), 1);
+    }
+
+    /// With the game setting `+0x1074` (`mCheatsEnabled`) the command's check passes another
+    /// player's unit, and MOVE and INTERACT (no owner test past it) order it as its own player's:
+    /// a queued order joins its unit AI's queue with the issuer as the order's.
+    #[test]
+    fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
+        let mut t = soldiers(&[(11, 83, [20.0, 20.0])], &[]);
+        t.settings.cheats_enabled = true;
+        t.players.push(crate::turn::Player::default());
+        t.player_time.push(0);
+        t.masters.push(crate::masters::Masters::new([]));
+        let walker = crate::hunt::tests::walker();
+        if let Some(m) = t.masters[1].get_mut(83) {
+            m.moving = Some(walker.stats);
+        }
+        let unit = &mut t.players[1].objects[0];
+        unit.mover = Some(walker);
+        unit.ai = Some(crate::unit_ai::UnitAi::default());
+        assert_eq!(t.checked_units(2, &[11]), [11]);
+        let order = MoveOrder {
+            target: -1,
+            point: [30.0, 30.0],
+            queued: true,
+            direct: false,
+            human: false,
+            control: false,
+        };
+        t.move_order(2, &[11], &order).unwrap();
+        let interact = Interact {
+            target: -1,
+            point: [25.0, 30.0],
+            carry_test: false,
+            queued: true,
+            direct: false,
+            human: false,
+            filter: -1,
+        };
+        t.interact(2, &[11], &interact).unwrap();
+        let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+        let queued: Vec<(i32, i32)> = ai.orders.iter().map(|o| (o.issuer, o.order)).collect();
+        assert_eq!(
+            queued,
+            [(2, MOVE_ORDER), (2, crate::unit_ai::ORDER_ON_TARGET)]
+        );
     }
 
     /// MOVE and INTERACT (`FUN_140e67800`, `FUN_140e68b90`): their loose units in a group the

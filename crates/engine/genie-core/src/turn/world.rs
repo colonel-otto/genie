@@ -416,6 +416,7 @@ impl Turns {
             world.allied(p, attacker, true),
         ];
         v.uncertain = self.spatial.get(id).is_none_or(|o| o.unknown.is_some());
+        v.tile_place = self.spatial.tile_place(id);
         Some(v)
     }
 
@@ -471,8 +472,9 @@ impl Turns {
 
     /// The objects a blast of `unit` (player `p`) may reach while it hits `target`: for a master
     /// with an area effect, the objects but the two on the tiles of the blast's rectangle about
-    /// the unit, a tile wider each way (the unit may step in its update). An object the slice
-    /// cannot read stands in with its place alone, as a guess.
+    /// the unit, a tile wider each way (the unit may step in its update), each with its place in
+    /// its tile's list as the unit's update starts. An object the slice cannot read stands in
+    /// with its place alone, as a guess.
     pub(in crate::turn) fn blasted(&self, unit: &Unit, p: usize, target: i32) -> Vec<Victim> {
         let Some(r) = self
             .masters
@@ -493,6 +495,7 @@ impl Turns {
                     id,
                     position: o.position,
                     uncertain: true,
+                    tile_place: self.spatial.tile_place(id),
                     ..Victim::default()
                 })
             })
@@ -1382,6 +1385,8 @@ pub(crate) fn victim_of(
     let tasks = |kind: i16| master.tasks.iter().any(|t| t.action_type == kind);
     Victim {
         id: u.id,
+        // the caller's, which holds the tile lists
+        tile_place: 0,
         hp: u.life.hp,
         amount: u.life.amount,
         state: u.life.state,
