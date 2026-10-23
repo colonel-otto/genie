@@ -561,6 +561,19 @@ pub enum Command {
         /// The units.
         ids: Vec<i32>,
     },
+    /// PATROL (0x15, `FUN_140e69cc0`): the units `ids` (the packet's count at `+0x4`, the ids
+    /// from `+0x5c`) patrol through `waypoints` (1 to 10, their count at `+0xb`, x from `+0xc`, y
+    /// from `+0x34`); `reset` (`+0x8`) drops their unit AIs' saved patrols ([`Turns::patrol`]).
+    Patrol {
+        /// The player whose units patrol.
+        player: usize,
+        /// The units.
+        ids: Vec<i32>,
+        /// The waypoints.
+        waypoints: Vec<[f32; 2]>,
+        /// `+0x8`.
+        reset: bool,
+    },
     /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`): the villagers of `ids` (at most 60, the decoder's)
     /// seek shelter in the player's buildings ([`Turns::seek_shelter`]).
     SeekShelter {
@@ -8725,6 +8738,8 @@ pub struct Turns {
     pub groups: crate::group::UnitGroups,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
     pub dt_seconds: f32,
+    /// The current update's time in milliseconds (`world+0x7c`, set before the commands run).
+    pub dt: u32,
     /// The history period (`world+0x8b8`, `time_slice`): the `.dat`'s, which the world reads
     /// after its constructor's [`HISTORY_PERIOD`] ([`crate::history::History::update`]).
     pub history_period: i32,
@@ -8927,6 +8942,7 @@ impl Turns {
             techs: Vec::new(),
             groups: crate::group::UnitGroups::default(),
             dt_seconds: 0.0,
+            dt: 0,
             history_period: HISTORY_PERIOD,
         }
     }
@@ -9128,6 +9144,16 @@ impl Turns {
             }
             Command::Stop { player, ref ids } => {
                 if let Err(e) = self.stop_command(player, ids) {
+                    self.stop_player(player, e);
+                }
+            }
+            Command::Patrol {
+                player,
+                ref ids,
+                ref waypoints,
+                reset,
+            } => {
+                if let Err(e) = self.patrol(player, ids, waypoints, reset) {
                     self.stop_player(player, e);
                 }
             }
@@ -11357,6 +11383,7 @@ impl Turns {
         self.ticks += 1;
         self.world_time = self.world_time.wrapping_add(dt);
         self.dt_seconds = seconds(dt);
+        self.dt = dt;
         self.streams.seed_all(self.frame_seed);
         self.sync_moving();
         for command in commands {

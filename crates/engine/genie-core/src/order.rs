@@ -126,6 +126,9 @@ struct Splittable {
 /// groups, each its first unit first, and the units a path did not join.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Split {
+    /// The owner of the list's first unit (`DAT_143f11960`), whose groups a new group of the
+    /// split joins; None for a list whose first unit is gone (the game's −1).
+    pub(crate) owner: Option<usize>,
     pub(crate) loose: Vec<i32>,
     pub(crate) groups: Vec<Vec<i32>>,
     /// The units a path from them did not join (`+0x3a48`, a `std::unordered_set` the splitter
@@ -221,6 +224,11 @@ const AUTO_SCOUT_CLASS: i16 = 58;
 /// The trophy master `TRANSFORM_OBJECT` changes ("Trophy None") and the trophies it may take.
 const TROPHY: i16 = 1649;
 const TROPHIES: std::ops::RangeInclusive<i16> = 1650..=1653;
+/// A patrol's waypoint counts when it is this far from the last one on x or y
+/// (`FUN_14161b970`, `DAT_14330eb8c`), or this far the other way (`DAT_14330ec20`); the image
+/// roles `order::WAYPOINT_APART` and `order::WAYPOINT_APART_LOW` are still to add.
+const WAYPOINT_APART: f32 = 1.0;
+const WAYPOINT_APART_LOW: f32 = -1.0;
 
 impl Turns {
     pub(crate) fn place(&self, id: i32) -> Option<Place> {
@@ -393,7 +401,10 @@ impl Turns {
                 *u = None;
             }
         }
-        let mut split = Split::default();
+        let mut split = Split {
+            owner: Some(owner),
+            ..Split::default()
+        };
         for run in sorted.chunks(60) {
             self.split_run(owner, run, control, &mut split)?;
         }
@@ -933,6 +944,266 @@ impl Turns {
         let t = self.world_object(ai.current_target)?;
         let [x, y, _] = t.position();
         Some((t.id(), [x, y]))
+    }
+
+    /// PATROL (0x15): the command's check (`FUN_140e55590`, [`Turns::command_check`]: of the
+    /// first 60 ids, 500 for a computer player, one the world lacks or another player's becomes
+    /// −1, and a human player's command left with none is refused), then `FUN_140e69cc0`: the
+    /// waypoints (1 to 10, the decoder's), those first ids, the gone ones null (`FUN_140e6b750`),
+    /// the analytics record (`FUN_1409648c0`, no simulation state) and the order
+    /// ([`Turns::patrol_order`]).
+    pub(crate) fn patrol(
+        &mut self,
+        player: usize,
+        ids: &[i32],
+        waypoints: &[[f32; 2]],
+        reset: bool,
+    ) -> Result<(), Unsupported> {
+        let Some(ids) = self.command_check(player, ids) else {
+            return Ok(());
+        };
+        let cap = if self.players[player].computer {
+            500
+        } else {
+            60
+        };
+        self.patrol_order(&ids[..ids.len().min(cap)], waypoints, reset)
+    }
+
+    /// `FUN_14161b970` for PATROL (its patrol flag 1, no target, `param_7` 0, `param_8` 1):
+    /// first each listed unit's AI (the gone entries count in the list) takes an idle timer of
+    /// 0 and an adjusted idle timeout and secondary timer of [`patrol_timeout`]; with `reset`
+    /// (`+0x8`) its saved patrol goes (`zeroPatrolInformation`). The splitter (`FUN_140fd9ae0`, no
+    /// Ctrl, [`Turns::split`]) parts the units. Each of its groups: a new group of the split's
+    /// owner (`FUN_14152efc0`) takes them ([`Turns::add_to_group`]), its statistics and its
+    /// place ([`Turns::group_statistics`], [`Turns::set_initial_position`]), unless they are a
+    /// group the world holds whole, which the splitter keeps ([`Turns::keep_group`]); one the
+    /// world does not hold takes nothing. Each listed group (60 at most, `DAT_143f152b8`) takes
+    /// the command count as its differentiator, the waypoints its place passes ([`waypoints_from`])
+    /// but the last as its own (`FUN_14100f6b0`, the target forgotten) and a patrol's leg to the
+    /// last ([`Turns::command_move_to`]: range 0, the target forgotten, direct). Then every
+    /// listed group lists them all (`FUN_1410395a0`) and the command count goes on. Each loose
+    /// unit last ([`Turns::patrol_unit`]).
+    pub(crate) fn patrol_order(
+        &mut self,
+        ids: &[i32],
+        waypoints: &[[f32; 2]],
+        reset: bool,
+    ) -> Result<(), Unsupported> {
+        /// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
+        const LISTED: usize = 60;
+        let dt = self.dt;
+        for (i, &id) in ids.iter().enumerate() {
+            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
+                ai.idle_timer = 0;
+                let timeout = patrol_timeout(i, dt);
+                ai.adjusted_idle_timeout = timeout;
+                ai.secondary_timer = timeout;
+                if reset {
+                    ai.zero_patrol();
+                }
+            }
+        }
+        let mut split = self.split(ids, &|_| true, false)?;
+        let mut listed: Vec<i32> = Vec::new();
+        for units in split.groups.clone() {
+            let common =
+                crate::group::common_group(&units, |id| self.object(id).map(|(_, u)| u.group.id));
+            let kept = match common {
+                -1 => None,
+                id => match self.groups.get(id) {
+                    None => continue,
+                    Some(g) => (g.members.len() == units.len()).then_some(id),
+                },
+            };
+            let id = if let Some(id) = kept {
+                self.keep_group(&mut split, id)?;
+                id
+            } else {
+                let owner = split.owner.map_or(u32::MAX, |p| p as u32);
+                let id = self.groups.create(owner).id;
+                for &unit in &units {
+                    let _ = self.add_to_group(id, unit)?;
+                }
+                self.group_statistics(id, false)?;
+                self.set_initial_position(id)?;
+                id
+            };
+            if listed.len() < LISTED {
+                listed.push(id);
+            }
+            let commands = self.groups.commands;
+            let g = self
+                .groups
+                .get_mut(id)
+                .expect("the group found or made above");
+            g.differentiator_id = commands;
+            let [x, _, z] = g.motion.position[0];
+            let kept = waypoints_from([x, z], waypoints);
+            let Some((&last, before)) = kept.split_last() else {
+                continue;
+            };
+            for &[x, z] in before {
+                g.add_waypoint(x, z, true);
+            }
+            let leg = crate::group::CommandMoveTo {
+                range: 0.0,
+                leg: true,
+                forget_target: true,
+                hold: false,
+                queued: false,
+                direct: true,
+                keep_flag: false,
+            };
+            let _ = self.command_move_to(id, -1, last, leg)?;
+        }
+        let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
+        for &id in &listed {
+            if let Some(g) = self.groups.get_mut(id) {
+                set_differentiator_groups(g, &list);
+            }
+        }
+        self.groups.count_command();
+        for i in 0..split.loose.len() {
+            self.patrol_unit(&split.loose, i, waypoints)?;
+        }
+        Ok(())
+    }
+
+    /// `FUN_140fd9f40` without a target (the patrol's): the splitter kept group `group`. Each
+    /// loose unit of `split` the world holds, of type 70 or more whose master has a formation
+    /// category (`+0x8bc`) and not among the split's far units, joins it (`FUN_1410083c0`; flags
+    /// bit 17 set) when the tile planner of its terrain restriction, where one exists, finds a
+    /// path from its place to the group's (`FUN_140f7c530`, no radii, no range: result 1) and
+    /// where it last moved to (slot 0x520) is within its owner's influence distance of the
+    /// group's place in three dimensions (`COMISS`/`JC`: a NaN is not); it leaves the loose units,
+    /// and the loop's index goes on past the unit that takes its place, which is passed over.
+    pub(crate) fn keep_group(&mut self, split: &mut Split, group: i32) -> Result<(), Unsupported> {
+        let mut i = 0;
+        while i < split.loose.len() {
+            let id = split.loose[i];
+            let Some((p, u)) = self.object(id) else {
+                i += 1;
+                continue;
+            };
+            let master = self.master_of(p, u.life.master_id)?;
+            if master.kind < 70 || master.formation_category == 0 || split.far.contains(&id) {
+                i += 1;
+                continue;
+            }
+            let g = self.groups.get(group).expect("the caller holds the group");
+            let at = g.motion.position[0];
+            let from = [u.position[0], u.position[1]];
+            let moved = u.mover.as_ref().map_or(u.position, |m| m.moved_at);
+            let restriction = u.mover.as_ref().map(|m| m.stats.restriction);
+            let tiles = self.spatial.tiles();
+            if let Some(planner) = restriction.and_then(|r| self.pathing.planner(r, tiles)) {
+                let req = crate::tile_path::Request {
+                    from,
+                    to: [at[0], at[2]],
+                    radii: 0.0,
+                    range: 0.0,
+                    closed: Vec::new(),
+                    full: false,
+                };
+                let mut path = crate::tile_path::Path::default();
+                if planner
+                    .plan::<Unsupported>(&req, false, &mut path, None)?
+                    .code()
+                    != 1
+                {
+                    i += 1;
+                    continue;
+                }
+            }
+            // slot 0x520: +0x824 as the game holds it (x, height, y)
+            let d = crate::fmath::sub([moved[0], moved[2], moved[1]], at);
+            let influence = self.players[p].formations.influence;
+            if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] <= influence * influence {
+                let _ = split.loose.remove(i);
+                let _ = self.add_to_group(group, id)?;
+                if let Some(g) = self.groups.get_mut(group) {
+                    g.flags |= 0x2_0000;
+                }
+            }
+            i += 1;
+        }
+        Ok(())
+    }
+
+    /// PATROL's loose unit `loose[i]` (`FUN_14161b970`'s loop over the splitter's loose units):
+    /// one the world does not hold takes nothing. It leaves its unit group (`FUN_14102c160` with
+    /// −1); a unit that moves (with movement state: type 30 or more) loses its own waypoints
+    /// (slot 0x450) and its ignore list (`FUN_141197da0`), waits to move (slot 0x2a0 with 1) and
+    /// lists the other loose units (`FUN_14118c790`); an object below type 30 has those slots
+    /// empty, and its ignore list (the static part's, which only a walker's short pather reads)
+    /// is not held. Of the waypoints its place passes ([`waypoints_from`]) none leaves it there;
+    /// else each but the last becomes its own (slot 0x448 at its height) and it moves to the last
+    /// (slot 0x340: range 0, forced, walking): of type 70 or 80 through `FUN_141216c50`
+    /// ([`Turns::move_aside`]; type 50 and 60 run `FUN_1410866e0` without its class test, which
+    /// only masters of type 70 meet), types 30 and 40 not at all (`FUN_14106d330`). Its unit AI
+    /// takes the patrol order and the move action (`FUN_140c64b60` with 1, `FUN_140c64b50`) and
+    /// no target at the command's last waypoint at the unit's height (`FUN_140c64be0`), even
+    /// where the filter left that waypoint out.
+    fn patrol_unit(
+        &mut self,
+        loose: &[i32],
+        i: usize,
+        waypoints: &[[f32; 2]],
+    ) -> Result<(), Unsupported> {
+        use crate::unit_ai::{MOVE_ACTION, PATROL};
+        let id = loose[i];
+        let Some((p, u)) = self.object(id) else {
+            return Ok(());
+        };
+        let kind = self.master_of(p, u.life.master_id)?.kind;
+        self.leave_group_of(id, -1)?;
+        let (_, u) = self.object_mut(id).expect("the unit found above");
+        if let Some(m) = u.mover.as_mut() {
+            m.clear_user_waypoints();
+            m.ignore_units.clear();
+            m.waiting = 1;
+            for (k, &other) in loose.iter().enumerate() {
+                if k != i {
+                    ignore_unit(&mut m.ignore_units, other);
+                }
+            }
+        }
+        let [x, y, z] = u.position;
+        let kept = waypoints_from([x, y], waypoints);
+        let Some((&[lx, ly], before)) = kept.split_last() else {
+            return Ok(());
+        };
+        if let Some(m) = u.mover.as_mut() {
+            for &[wx, wy] in before {
+                m.add_user_waypoint(wx, wy, z);
+            }
+        }
+        // a sleeping object is of a type below 30 (only slot 0x180 puts one to sleep)
+        if 50 <= kind
+            && let Some(Place::Live(p, idx)) = self.place(id)
+        {
+            let walk = crate::unit_ai::AiMove {
+                point: [lx, ly, z],
+                range: 0.0,
+                force: true,
+                walk: true,
+            };
+            self.move_aside(p, idx, walk)?;
+        }
+        let unit = match self.place(id) {
+            Some(Place::Live(p, i)) => &mut self.players[p].objects[i],
+            Some(Place::Sleeping(p, i)) => &mut self.players[p].sleeping[i],
+            None => return Ok(()),
+        };
+        let rng = self.streams.get(Stream::Ai);
+        if let Some(ai) = unit.ai.as_mut() {
+            let shown = waypoints.last().copied().unwrap_or_default();
+            ai.set_order(PATROL, rng);
+            ai.set_action(MOVE_ACTION);
+            ai.set_target(-1, -1, [shown[0], shown[1], z]);
+        }
+        Ok(())
     }
 
     /// FOLLOW (0x14): the command's check (`FUN_140e54c50`, [`Turns::command_check`]), then
@@ -4281,6 +4552,36 @@ const fn clear_powerups(unit: &mut Unit) {
 
 /// `FUN_140c4da50`: the target of the first order in unit AI `ai`'s queue (`+0x20`, count
 /// `+0x18`) that has one (not negative) and that its own unit `id` issued; −1 for none.
+/// The adjusted idle timeout and secondary timer `FUN_14161b970` gives the unit AI of the
+/// order's `i`th entry: 750 ms and the world's dt (`world+0x7c`) more for each six before it
+/// (`(i / 6) as f64 * dt as f64`, `CVTTSD2SI` to 64 bits, the low 32 plus 750; the product
+/// stays below 2^42, so the conversion never sees a value it cannot hold).
+fn patrol_timeout(i: usize, dt: u32) -> u32 {
+    let stagger = ((i / 6) as f64 * f64::from(dt)) as i64;
+    (stagger as u32).wrapping_add(750)
+}
+
+/// The waypoints a walker from `from` passes on its way (`FUN_14161b970`'s two filters): each
+/// one at least [`WAYPOINT_APART`] from the last one kept on x or on y, either way
+/// (`COMISS`/`JNC` on each of the four: a NaN difference is not), the first measured from
+/// `from`.
+fn waypoints_from(from: [f32; 2], waypoints: &[[f32; 2]]) -> Vec<[f32; 2]> {
+    let mut last = from;
+    let mut kept = Vec::with_capacity(waypoints.len());
+    for &w in waypoints {
+        let (dx, dy) = (w[0] - last[0], w[1] - last[1]);
+        if WAYPOINT_APART <= dx
+            || dx <= WAYPOINT_APART_LOW
+            || WAYPOINT_APART <= dy
+            || dy <= WAYPOINT_APART_LOW
+        {
+            kept.push(w);
+            last = w;
+        }
+    }
+    kept
+}
+
 fn own_order_target(ai: &crate::unit_ai::UnitAi, id: i32) -> i32 {
     ai.orders
         .iter()
@@ -5801,6 +6102,227 @@ mod tests {
         assert_eq!(
             offset_point([5.0, 15.0], c, [2.0, 118.0], [120, 120]),
             [1.0, 119.0]
+        );
+    }
+
+    /// `FUN_14161b970`'s timers: 750 ms for the first six entries of the list (the gone ones
+    /// count), the world's dt more for each six after.
+    #[test]
+    fn a_patrol_staggers_its_units_timeouts_by_sixes() {
+        assert_eq!(patrol_timeout(0, 100), 750);
+        assert_eq!(patrol_timeout(5, 100), 750);
+        assert_eq!(patrol_timeout(6, 100), 850);
+        assert_eq!(patrol_timeout(13, 33), 816);
+        assert_eq!(patrol_timeout(499, 0), 750);
+    }
+
+    /// `FUN_14161b970`'s filter: a waypoint less than a tile from the last one kept on both x
+    /// and y is passed over; a NaN difference does not count (`COMISS`/`JNC`).
+    #[test]
+    fn a_patrol_passes_over_a_waypoint_within_a_tile_of_the_last() {
+        let w = [
+            [10.5, 10.5],
+            [11.0, 10.0],
+            [11.5, 10.9],
+            [11.5, 9.0],
+            [f32::NAN, 9.0],
+            [12.5, 9.0],
+        ];
+        assert_eq!(
+            waypoints_from([10.0, 10.0], &w),
+            [[11.0, 10.0], [11.5, 9.0], [12.5, 9.0]]
+        );
+        assert_eq!(
+            waypoints_from([10.0, 10.0], &w[..1]),
+            Vec::<[f32; 2]>::new()
+        );
+    }
+
+    /// Player 1's soldiers of `soldiers`, each walking and with a unit AI off any order, at a
+    /// world dt of 100 ms.
+    fn patrollers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
+        let mut t = soldiers(units, members);
+        t.dt = 100;
+        for u in &mut t.players[1].objects {
+            u.mover = Some(crate::hunt::tests::walker());
+            u.ai = Some(crate::unit_ai::UnitAi {
+                ai_type: 13,
+                current_order: -1,
+                current_action: -1,
+                current_target: -1,
+                target_type: -1,
+                idle_timer: 400,
+                adjusted_idle_timeout: 2000,
+                secondary_timer: 3000,
+                patrol_path: Some(crate::unit_ai::PatrolPath::default()),
+                patrol_waypoint: 2,
+                ..crate::unit_ai::UnitAi::default()
+            });
+        }
+        t
+    }
+
+    /// MarvinBlue/426049701's first PATROL (update 25): player 1's scout alone, one waypoint,
+    /// `+0x8` set. It moves loose (slot 0x340: a forced, walking `MoveTo` to the waypoint at its
+    /// height), waits to move with an empty ignore list and no waypoints of its own; its unit AI
+    /// takes the patrol order, the move action and no target at the waypoint, its timers 0 and
+    /// 750, its saved patrol gone.
+    #[test]
+    fn a_lone_unit_patrols_to_its_waypoint() {
+        let mut t = patrollers(&[(11, 4, [20.0, 20.0])], &[]);
+        t.players[1].objects[0].position[2] = 1.5;
+        t.patrol(1, &[11], &[[30.0, 20.0]], true).unwrap();
+        let u = &t.players[1].objects[0];
+        let move_to = u.move_to.unwrap();
+        assert_eq!(
+            (move_to.goal, move_to.target, move_to.range, move_to.run),
+            (Some([30.0, 20.0, 1.5]), -1, 0.0, false)
+        );
+        let m = u.mover.as_ref().unwrap();
+        assert_eq!(
+            (m.waiting, m.ignore_units.len(), m.user_waypoints.len()),
+            (1, 0, 0)
+        );
+        let ai = u.ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.current_order, ai.last_order, ai.current_action),
+            (crate::unit_ai::PATROL, -1, crate::unit_ai::MOVE_ACTION)
+        );
+        assert_eq!(
+            (ai.current_target, ai.target_type, ai.target_point),
+            (-1, -1, [30.0, 20.0, 1.5])
+        );
+        assert_eq!(
+            (ai.idle_timer, ai.adjusted_idle_timeout, ai.secondary_timer),
+            (0, 750, 750)
+        );
+        assert_eq!((ai.patrol_path.is_none(), ai.patrol_waypoint), (true, 0));
+        assert_eq!(t.groups.commands, 1);
+    }
+
+    /// A lone unit's waypoints but the last become its own (slot 0x448, a whole coordinate moved
+    /// to the tile's middle); the move goes to the last one kept, the unit AI's point is the
+    /// command's last even where the filter left it out. Without `+0x8` the saved patrol stays.
+    #[test]
+    fn a_lone_unit_s_waypoints_but_the_last_become_its_own() {
+        let mut t = patrollers(&[(11, 4, [20.0, 20.0])], &[]);
+        let w = [[25.0, 20.0], [25.5, 20.5], [30.0, 20.0], [30.5, 20.5]];
+        t.patrol(1, &[11], &w, false).unwrap();
+        let u = &t.players[1].objects[0];
+        assert_eq!(u.move_to.unwrap().goal, Some([30.0, 20.0, 0.0]));
+        assert_eq!(
+            u.mover.as_ref().unwrap().user_waypoints,
+            [[25.5, 0.0, 20.5]]
+        );
+        let ai = u.ai.as_ref().unwrap();
+        assert_eq!(ai.target_point, [30.5, 20.5, 0.0]);
+        assert!(ai.patrol_path.is_some());
+    }
+
+    /// Loose units of a PATROL (villagers, category 0) list each other in their ignore lists;
+    /// one whose waypoints all lie within a tile of it stays where it is, its order unchanged.
+    #[test]
+    fn loose_patrollers_ignore_each_other_and_one_at_its_waypoint_stays() {
+        let mut t = patrollers(&[(11, 83, [20.0, 20.0]), (12, 83, [29.5, 20.0])], &[]);
+        t.patrol(1, &[11, 12], &[[30.0, 20.0]], true).unwrap();
+        let [a, b] = &t.players[1].objects[..] else {
+            panic!("two units")
+        };
+        assert_eq!(a.mover.as_ref().unwrap().ignore_units, [12]);
+        assert_eq!(b.mover.as_ref().unwrap().ignore_units, [11]);
+        assert!(a.move_to.is_some() && b.move_to.is_none());
+        assert_eq!(b.ai.as_ref().unwrap().current_order, -1);
+        assert_eq!(b.mover.as_ref().unwrap().waiting, 1);
+    }
+
+    /// `FUN_140fd9f40`: the splitter keeps group 5 (the order's 11 and 12 are all of it); the
+    /// loose 13 of type 70 with a formation category within the owner's influence of the
+    /// group's place joins it (flags bit 17), the villager does not, and a unit among the far
+    /// ones does not either.
+    #[test]
+    fn a_kept_group_takes_the_loose_soldiers_about_it() {
+        let units = [
+            (11, 4, [20.0, 20.0]),
+            (12, 4, [21.0, 20.0]),
+            (13, 4, [22.0, 20.0]),
+            (14, 83, [21.0, 21.0]),
+            (15, 4, [21.0, 19.0]),
+        ];
+        let mut t = soldiers(&units, &[11, 12]);
+        for u in &mut t.players[1].objects {
+            let mut m = crate::hunt::tests::walker();
+            m.moved_at = u.position;
+            u.mover = Some(m);
+        }
+        t.groups.get_mut(5).unwrap().motion.position[0] = [21.0, 0.0, 20.0];
+        let mut split = Split {
+            owner: Some(1),
+            loose: vec![13, 14, 15],
+            groups: vec![vec![11, 12]],
+            far: [15].into(),
+        };
+        t.keep_group(&mut split, 5).unwrap();
+        assert_eq!(split.loose, [14, 15]);
+        let g = t.groups.get(5).unwrap();
+        assert!(g.has(13));
+        assert_eq!(g.flags & 0x2_0000, 0x2_0000);
+        // the unit after one that joins is passed over: 13 joins, 15 slides into its place
+        let mut t = soldiers(&units, &[11, 12]);
+        t.groups.get_mut(5).unwrap().motion.position[0] = [21.0, 0.0, 20.0];
+        let mut split = Split {
+            owner: Some(1),
+            loose: vec![13, 15],
+            ..Split::default()
+        };
+        t.keep_group(&mut split, 5).unwrap();
+        assert_eq!(split.loose, [15]);
+    }
+
+    /// A PATROL of two soldiers near each other: the splitter's group becomes a new group of
+    /// player 1, listed (its differentiators the command count before and itself), with the
+    /// waypoints but the last as its own and a looping path to the last, back and forth from 5
+    /// tiles; the command count goes on.
+    #[test]
+    fn a_patrolling_group_walks_a_loop_through_its_waypoints() {
+        let mut t = patrollers(&[(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])], &[]);
+        // the group's statistics search the members' surroundings
+        let mut s = crate::spatial::Spatial::with_tiles(
+            [60, 60],
+            crate::spatial::Tiles::new(60, 60, vec![1; 3600]),
+        );
+        let kind = crate::terrain::TerrainKind {
+            shown: true,
+            flags: 1,
+            forest: false,
+        };
+        s.terrain = Some(crate::terrain::Terrain::new(
+            60,
+            60,
+            vec![(0, 255, -1); 3600],
+            vec![kind],
+            vec![vec![1.0]],
+        ));
+        s.relations = vec![vec![0, 3], vec![0, 0]];
+        s.unit_diplomacy = vec![vec![1, 4], vec![0, 1]];
+        let mut v = crate::visibility::Visibility::new(60, 60, vec![], vec![], vec![], 0, vec![]);
+        v.registry = Some(crate::registry::Registry::new(2, 65));
+        s.sight = Some(v);
+        t.spatial = s;
+        let w = [[25.0, 25.0], [30.0, 20.0]];
+        t.patrol(1, &[11, 12], &w, true).unwrap();
+        assert_eq!(t.groups.groups.len(), 1);
+        let g = &t.groups.groups[0];
+        assert_eq!((g.owner, g.has(11), g.has(12)), (1, true, true));
+        assert_eq!((g.differentiator_id, g.current_command), (0, 1));
+        let top = g.motion.paths.last().unwrap();
+        assert_eq!(top.path_flags & 3, 3);
+        assert_eq!(top.points.len(), 3);
+        assert_eq!(top.points[1..], [[25.0, 0.0, 25.0], [30.0, 0.0, 20.0]]);
+        assert_eq!(t.groups.commands, 1);
+        let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.adjusted_idle_timeout, ai.patrol_path.is_none()),
+            (750, true)
         );
     }
 }
