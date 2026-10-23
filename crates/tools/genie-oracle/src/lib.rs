@@ -3294,7 +3294,12 @@ fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spat
                         started: b.build_pts != 0.0,
                     }),
                     umv: umv as u8,
-                    capture: capture_kind(player, m.class, s.master_obj),
+                    // the save's +0x924 (a map's objects keep what the map gave them, as
+                    // 426048706's Gaia petards their 0); the setup's rule without a combat part
+                    capture: o.combat().map_or_else(
+                        || capture_kind(player, m.class, s.master_obj),
+                        |c| c.rge_combat_object.capture_flag,
+                    ),
                     // the object's type: the save's factory types 70 and 80, any other below
                     kind: if o.tribe_combat_object.is_some() {
                         70
