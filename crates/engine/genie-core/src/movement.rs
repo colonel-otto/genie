@@ -304,8 +304,8 @@ const ANNEX_GAP: f32 = crate::image::movement::RANGE_FLOOR;
 /// A level's plans before it gives up (`FUN_140f8f670`).
 const CONTINUE: i32 = 10;
 /// The widest unit the new short pather takes (`DAT_142e7f384`, `FUN_140f9e540`'s load at
-/// 0x140f9e713): the address of the old pather's [`crate::image::hull_path::HALF`].
-const NEW_PATHER_RADIUS: f32 = crate::image::hull_path::HALF;
+/// 0x140f9e713).
+const NEW_PATHER_RADIUS: f32 = crate::image::movement::NEW_PATHER_RADIUS;
 /// The motion step's include list (`DAT_143f4a000`, its count `local_19bc`) holds at most 0x100
 /// kept hits (`CMP RCX, 0x100; JGE` at 0x1411547cc).
 const INCLUDED: usize = 0x100;

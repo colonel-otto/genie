@@ -465,6 +465,8 @@ pub mod movement {
     /// 100.0
     pub const LOOK_AHEAD: f32 = f32::from_bits(0x42c8_0000);
     /// 0.5
+    pub const NEW_PATHER_RADIUS: f32 = f32::from_bits(0x3f00_0000);
+    /// 0.5
     pub const OTHER_PAUSE: f32 = f32::from_bits(0x3f00_0000);
     /// 0.25
     pub const PUSHED: f32 = f32::from_bits(0x3e80_0000);
