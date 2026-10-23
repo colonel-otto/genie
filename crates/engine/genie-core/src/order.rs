@@ -832,7 +832,7 @@ impl Turns {
             _ => {
                 let loose = self
                     .split(units, &|_| true, order.control)
-                    .and_then(|s| self.move_groups(player, &s.groups, order).map(|()| s.loose));
+                    .and_then(|mut s| self.move_groups(&mut s, order).map(|()| s.loose));
                 self.groups.count_command();
                 let loose = loose?;
                 self.leave_groups(player, &loose, order.target)?;
@@ -862,8 +862,9 @@ impl Turns {
 
     /// MOVE's groups (`FUN_140e67800`'s loop over the splitter's groups): the group all of a
     /// split group's units are in (`FUN_14152ece0`, [`crate::group::common_group`]) takes the
-    /// order when it holds just them (a kept group, `FUN_140fd9f40`, not modelled); one the world
-    /// does not hold takes nothing; else a new group of the player's (`FUN_14152efc0`) takes them
+    /// order when it holds just them, the splitter keeping it ([`Turns::keep_group`]; with a
+    /// target the world holds, `FUN_140fd9f40`'s range test, not modelled); one the world does not
+    /// hold takes nothing; else a new group of the split's owner (`FUN_14152efc0`) takes them
     /// ([`Turns::add_to_group`]), its statistics ([`Turns::group_statistics`]) and its place
     /// ([`Turns::set_initial_position`]). Each listed group (60 at most) takes the command count
     /// as its differentiator, with Ctrl held locks its formation to a line
@@ -872,16 +873,12 @@ impl Turns {
     /// ([`Turns::first_unit_target`]), not queued and direct. Then every
     /// listed group lists them all as its differentiator groups (`setDifferentiatorGroups`,
     /// `FUN_1410395a0`).
-    fn move_groups(
-        &mut self,
-        player: usize,
-        groups: &[Vec<i32>],
-        order: &MoveOrder,
-    ) -> Result<(), Unsupported> {
+    fn move_groups(&mut self, split: &mut Split, order: &MoveOrder) -> Result<(), Unsupported> {
         /// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
         const LISTED: usize = 60;
         let mut listed: Vec<i32> = Vec::new();
-        for units in groups {
+        for units in split.groups.clone() {
+            let units = &units[..];
             let common =
                 crate::group::common_group(units, |id| self.object(id).map(|(_, u)| u.group.id));
             let new = if common == -1 {
@@ -892,17 +889,25 @@ impl Turns {
                     Some(g) => g.members.len() != units.len(),
                 }
             };
-            if !new {
-                return Err(Unsupported(
-                    "a MOVE of a group the splitter keeps (FUN_140fd9f40)",
-                ));
-            }
-            let id = self.groups.create(player as u32).id;
-            for &unit in units {
-                let _ = self.add_to_group(id, unit)?;
-            }
-            self.group_statistics(id, false)?;
-            self.set_initial_position(id)?;
+            let id = if new {
+                let owner = split.owner.map_or(u32::MAX, |p| p as u32);
+                let id = self.groups.create(owner).id;
+                for &unit in units {
+                    let _ = self.add_to_group(id, unit)?;
+                }
+                self.group_statistics(id, false)?;
+                self.set_initial_position(id)?;
+                id
+            } else {
+                // FUN_140e6b820's target: the order's object while the world holds it
+                if self.world_object(order.target).is_some() {
+                    return Err(Unsupported(
+                        "a MOVE of a group the splitter keeps (FUN_140fd9f40)",
+                    ));
+                }
+                self.keep_group(split, common)?;
+                common
+            };
             if listed.len() < LISTED {
                 listed.push(id);
             }
@@ -915,7 +920,8 @@ impl Turns {
             }
             // a queued MOVE's new group first takes its first unit's target, not queued and
             // direct (0x140e67b5d..0x140e67cb1)
-            if order.queued
+            if new
+                && order.queued
                 && let Some((target, at)) = self.first_unit_target(units)
             {
                 let _ = self.group_command(id, target, at, (false, true))?;
@@ -6324,5 +6330,45 @@ mod tests {
             (ai.adjusted_idle_timeout, ai.patrol_path.is_none()),
             (750, true)
         );
+    }
+
+    /// MOVE (`FUN_140e67800`) of the whole of group 5 and a loose soldier beside it: the
+    /// splitter keeps the group (`FUN_140fd9f40`), which takes the soldier and the command
+    /// (`BUnitGroup::command`); no new group is made. With a target the world holds the kept group's range test is not
+    /// modelled.
+    #[test]
+    fn a_move_of_a_whole_group_keeps_it() {
+        let units = [
+            (11, 4, [20.0, 20.0]),
+            (12, 4, [21.0, 20.0]),
+            (13, 4, [22.0, 20.0]),
+        ];
+        let order = MoveOrder {
+            target: -1,
+            point: [40.0, 40.0],
+            queued: false,
+            direct: false,
+            human: false,
+            control: false,
+        };
+        let kept = || {
+            let mut t = soldiers(&units, &[11, 12]);
+            t.groups.get_mut(5).unwrap().motion.position[0] = [21.0, 0.0, 20.0];
+            t
+        };
+        let mut t = kept();
+        t.move_order(1, &[11, 12, 13], &order).unwrap();
+        assert_eq!(t.groups.groups.len(), 1);
+        let g = t.groups.get(5).unwrap();
+        assert!(g.has(13));
+        // the keep sets flags bit 17, which the group's command then clears
+        assert_eq!((g.flags & 0x2_0000, g.differentiator_id), (0, 0));
+        assert_eq!(t.groups.commands, 1);
+        let mut t = kept();
+        let at_12 = MoveOrder {
+            target: 12,
+            ..order
+        };
+        assert!(t.move_order(1, &[11, 12, 13], &at_12).is_err());
     }
 }
