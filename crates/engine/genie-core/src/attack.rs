@@ -461,8 +461,9 @@ impl Attack {
     ///
     /// # Errors
     ///
-    /// What the start does not model, and a hunter that cannot move: its Attack's `set_state` 6
-    /// or 13 at the start, which no hunt's caller takes.
+    /// What the start does not model, and what no hunt's caller takes: a hunter that cannot move
+    /// (its Attack's `set_state` 6 or 13 at the start), and readyToAttack's failure before the
+    /// start's `set_state(4)` (the unit's `+0x7b8` at 1, [`Commanded::failed_first`]).
     pub fn start(
         target: i32,
         e: &Engagement,
@@ -482,9 +483,14 @@ impl Attack {
                 "an attack that starts in reach and cannot move (set_state 6)",
             ));
         }
-        if begun.failed || begun.failed_first {
+        if begun.failed {
             return Err(Unsupported(
                 "an attack whose unit cannot move to its target",
+            ));
+        }
+        if begun.failed_first {
+            return Err(Unsupported(
+                "a hunt's Attack readyToAttack failed before its start's state 4 (+0x7b8 at 1)",
             ));
         }
         Ok((a, begun.arrived))
