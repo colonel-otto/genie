@@ -64,6 +64,8 @@ pub mod damage {
     pub const FACING: f32 = f32::from_bits(0x3f99_999a);
     /// 1.25
     pub const HIGHER: f32 = f32::from_bits(0x3fa0_0000);
+    /// 0.10000000149011612
+    pub const LEAST_CLASS_HIT: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.75
     pub const LOWER: f32 = f32::from_bits(0x3f40_0000);
     /// -0.5
@@ -74,6 +76,8 @@ pub mod damage {
     pub const MINUS_PI: f32 = f32::from_bits(0xc049_0fdb);
     /// -6.2831854820251465
     pub const MINUS_TWO_PI: f32 = f32::from_bits(0xc0c9_0fdb);
+    /// 1.0
+    pub const ONE: f32 = f32::from_bits(0x3f80_0000);
     /// 3.1415927410125732
     pub const PI: f32 = f32::from_bits(0x4049_0fdb);
     /// 0.20000000298023224

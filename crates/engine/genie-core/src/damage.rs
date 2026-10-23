@@ -61,10 +61,10 @@ const BUILDING: u8 = 80;
 const WALL: i16 = 27;
 /// 1 (`DAT_14330eb8c`, read into `XMM9` at `0x1411cec8e`): a building's least hit, the hit
 /// points below which a hit razes a building or kills a unit, and what each razing count adds.
-const ONE: f32 = 1.0;
+const ONE: f32 = crate::image::damage::ONE;
 /// The least hit of the attacker classes [`LEAST_HIT_CLASSES`] under the game's setting `+0x680`
 /// at 1 (`DAT_142eb5690`, read into `XMM6` at `0x1411ceea4`).
-const LEAST_CLASS_HIT: f32 = 0.1;
+const LEAST_CLASS_HIT: f32 = crate::image::damage::LEAST_CLASS_HIT;
 /// The attacker classes whose least hit on a building is [`LEAST_CLASS_HIT`] (decoded `0`, `0x24`,
 /// `0x16`, `0x2c`, `0x34` at `0x1411ced23`..`0x1411cee9e`).
 const LEAST_HIT_CLASSES: [i16; 5] = [0, 36, 22, 44, 52];
