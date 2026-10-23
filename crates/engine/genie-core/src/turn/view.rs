@@ -203,6 +203,9 @@ pub(in crate::turn) struct Context<'a> {
     /// The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller
     /// runs after the update ([`Turns::move_aside`]).
     pub(in crate::turn) move_aside: Vec<AiMove>,
+    /// The transports an Enter's `set_state(4)` sent to where they meet the unit (slot 0x340),
+    /// which the caller moves after the update ([`Turns::move_transport`]'s move).
+    pub(in crate::turn) transport_moves: Vec<(i32, [f32; 3])>,
     /// The waits for foundations the unit's slot 0x388 found while its unit AI ran, which the
     /// caller makes the unit's after the update ([`Turns::wait_for_foundation`]).
     pub(in crate::turn) waits: Vec<Wait>,

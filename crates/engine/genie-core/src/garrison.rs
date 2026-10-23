@@ -299,11 +299,15 @@ impl Turns {
         Ok(self.garrisoned(b.id)? + with <= capacity)
     }
 
-    /// The work command's Enter (its action type 3): the action takes its building (an annex its
-    /// main building, slot 0x178), the unit AI's notify (slot 0x828: the enter order and action,
-    /// the building with its class and the work's point), the action list's clearing and the
-    /// Enter's start ([`EnterAction::start`]) with the building's place as its point, the task's
-    /// work range and class.
+    /// The work command's Enter (its action type 3): the factory's constructor (`FUN_140a855d0`:
+    /// its target, an annex its main building; the point [`meeting`] gives at the target's
+    /// height, [`Turns::enter_meeting`]) takes the target (slot 0x178), the unit AI hears of it
+    /// (slot 0x828: the enter order and action, the target with its class and the work's point),
+    /// the action list empties and the Enter starts (slot 5, `FUN_140a86f20`): a unit inside an
+    /// object (`set_state(13)`) and a target without room (`FUN_140a864d0`, `set_state(11)`)
+    /// are not modelled; else its `set_state(4)` ([`EnterAction::walk_again`]): a unit in reach
+    /// enters at once ([`Turns::enter_now`]), else it walks, a transport to the point first
+    /// ([`Turns::move_transport`]).
     pub(crate) fn start_enter(
         &mut self,
         player: usize,
@@ -326,10 +330,14 @@ impl Turns {
             .ok_or(Unsupported("an Enter whose building is gone"))?;
         let (tp, t) = self.object(target).expect("found above");
         let tm = self.master_of(tp, t.life.master_id)?;
-        if tm.kind != BUILDING {
-            return Err(Unsupported("an Enter into a unit (a transport)"));
-        }
-        let class = i32::from(tm.class);
+        let (class, height) = (i32::from(tm.class), t.position[2]);
+        let (at, _) = self.enter_meeting(player, idx, target)?;
+        let mut action = EnterAction::new(
+            target,
+            [at[0], at[1], height],
+            task.work_range,
+            task.object_group,
+        );
         self.take(target, self.releaser(player, idx));
         let id = self.players[player].objects[idx].id;
         if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
@@ -355,33 +363,97 @@ impl Turns {
                 "an Enter into a building without room (state 11)",
             ));
         }
-        let me = self
-            .spatial
-            .get_known(id)?
-            .ok_or(Unsupported("an entering unit without a place"))?;
-        let them = self
-            .spatial
-            .get_known(target)?
-            .ok_or(Unsupported("an Enter's building without a place"))?;
-        let gap =
-            crate::movement::footprint_gap(me.position, me.radius, them.position, them.radius);
-        let gap_squared = footprint_gap_squared(me.position, me.radius, them.position, them.radius);
-        let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-        let in_reach = EnterAction::in_reach(task.work_range, gap_squared, 0.0)?;
-        let action = EnterAction::start(
-            target,
-            them.position,
-            task.work_range,
-            task.object_group,
-            gap,
-            speed,
-            in_reach,
-        )?;
+        let (t, (gap, speed), meeting) = self.entering(player, idx, target, task.work_range)?;
+        let walking = action.walk_again(&t, gap, speed, &mut || meeting)?;
         self.players[player].objects[idx].enter = Some(action);
-        if in_reach {
-            self.enter_now(player, idx, target)?;
+        match walking {
+            Walking::Enter => self.enter_now(player, idx, target),
+            Walking::Walk(Some(to)) => self.move_transport(target, to),
+            Walking::Walk(None) => Ok(()),
         }
-        Ok(())
+    }
+
+    /// What the Enter's start reads of unit `idx` of `player` and its target ([`enter_view`],
+    /// room by slot 0x198).
+    #[allow(clippy::type_complexity)]
+    fn entering(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        range: f32,
+    ) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), Unsupported>), Unsupported> {
+        let id = self.players[player].objects[idx].id;
+        let (tp, t) = self.object(target).ok_or(UNPLACED)?;
+        let tm = self.master_of(tp, t.life.master_id)?.clone();
+        let room = self.has_room(tp, t, Some(id))?;
+        let t = match self.place(target) {
+            Some(crate::order::Place::Live(p, i)) => &self.players[p].objects[i],
+            Some(crate::order::Place::Sleeping(p, i)) => &self.players[p].sleeping[i],
+            None => return Err(UNPLACED),
+        };
+        enter_view(
+            &self.spatial,
+            &mut self.zones,
+            &self.masters,
+            &self.players[player].objects[idx],
+            (t, &tm, room),
+            range,
+        )
+    }
+
+    /// `FUN_140a85f30` ([`meeting`]) for unit `idx` of `player` and its target, as the
+    /// constructor reads it ([`enter_view`]).
+    fn enter_meeting(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+    ) -> Result<([f32; 2], u8), Unsupported> {
+        self.entering(player, idx, target, 0.0)?.2
+    }
+
+    /// The transport's part of the Enter's `set_state(4)` with code 1: its slot 0x3d8
+    /// (`FUN_14114ffc0`) asks whether it reaches within 1 of the point's tile (the point
+    /// truncated, [`crate::movement::Mover::reaches`]); then its slot 0x340 (`FUN_141216c50`:
+    /// [`Turns::move_aside`], range 0, forced, running) moves it to the point at its height. One
+    /// that cannot reach it is [`UNREACHED`].
+    pub(crate) fn move_transport(
+        &mut self,
+        transport: i32,
+        to: [f32; 3],
+    ) -> Result<(), Unsupported> {
+        let Some(crate::order::Place::Live(tp, ti)) = self.place(transport) else {
+            return Err(UNREACHED);
+        };
+        let ship = &self.players[tp].objects[ti];
+        let mut plan = crate::movement::Planning {
+            pathing: &mut self.pathing,
+            now: self.world_time,
+            computer: self.players[tp].computer,
+            object: self.streams.get(crate::rng::Stream::Object),
+            construction_rate: self.players[tp].construction_rate,
+            groups: &self.groups,
+        };
+        if !ship_reaches(ship, &self.spatial, &mut plan, to)? {
+            return Err(UNREACHED);
+        }
+        self.ship_move(transport, to)
+    }
+
+    /// The transport's slot 0x340 (`FUN_141216c50`, [`Turns::move_aside`]: range 0, forced,
+    /// running) to `to`, where it meets an entering unit.
+    pub(crate) fn ship_move(&mut self, ship: i32, to: [f32; 3]) -> Result<(), Unsupported> {
+        let Some(crate::order::Place::Live(p, i)) = self.place(ship) else {
+            return Err(UNREACHED);
+        };
+        let walk = crate::unit_ai::AiMove {
+            point: to,
+            range: 0.0,
+            force: true,
+            walk: false,
+        };
+        self.move_aside(p, i, walk)
     }
 
     /// The enter at the Enter's start ([`crate::turn::Unit::enter_building`], then the start's
@@ -1396,20 +1468,29 @@ const ARRIVED: f32 = crate::image::move_to::ARRIVED;
 pub const ENTERED: u8 = 1;
 const WAIT: u8 = 2;
 const WALK: u8 = 4;
+/// `set_state(2)`'s wait before the Enter walks again, in seconds (`FUN_140a87320`, the constant
+/// `0x3f800000` it stores).
+const WAIT_SECONDS: f32 = 1.0;
+/// The class of siege weapons, whose own place an Enter's point keeps (`FUN_140a85f30`, the
+/// short `0xd`).
+const SIEGE_CLASS: i16 = 13;
 
-/// A unit's Enter action (`RGE_Action_Enter`, type 3): it walks to a building and enters it.
+/// A unit's Enter action (`RGE_Action_Enter`, type 3): it walks to a building or a transport and
+/// enters it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EnterAction {
-    /// The building (`+0x20`, its id `+0x30`).
+    /// The building or transport (`+0x20`, its id `+0x30`).
     pub target: i32,
     /// The action state (`+0x18`).
     pub state: u8,
     /// Its `MoveTo` sub-action's state.
     pub move_to: Option<MoveTo>,
-    /// `+0x38`..`+0x40`: where it meets the target (`FUN_140a85f30`: a building's place), which
-    /// a target that moves leaves.
+    /// `+0x38`..`+0x40`: where it meets the target ([`meeting`]: a building's place; for a
+    /// transport where the two meet, its height the target's at the constructor), which a
+    /// target that moves leaves.
     pub point: [f32; 3],
-    /// The task's work range (`+0x30`): its `MoveTo` stops this near, and the enter needs it.
+    /// The task's work range (`+0x30`): a building's `MoveTo` stops this near, and the enter
+    /// needs it.
     pub range: f32,
     /// `+0x44`: state 2's wait, in seconds.
     pub timer: f32,
@@ -1419,7 +1500,7 @@ pub struct EnterAction {
     pub task_class: i16,
 }
 
-/// What an Enter's update reads of its building.
+/// What an Enter's update reads of its target.
 #[derive(Clone, Copy, Debug)]
 pub struct EnterTarget {
     /// Its state (`+0x640`).
@@ -1432,86 +1513,163 @@ pub struct EnterTarget {
     pub position: [f32; 3],
     /// The unit is in reach of it ([`EnterAction::in_reach`]).
     pub in_reach: bool,
+    /// It is a building (type 80); else a transport.
+    pub building: bool,
 }
 
 /// What an Enter's update leaves to its caller.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct EnterStep {
     /// The update returned 1 (state 1): the action list removes it.
     pub done: bool,
-    /// The unit reached the building: the caller enters it (`FUN_140a867b0`), then the action's
-    /// `set_state(1)` ([`EnterAction::entered`]) or, when it could not, `set_state(2)`
-    /// ([`EnterAction::wait`]).
+    /// The unit reached the target: the caller enters it (`FUN_140a867b0`, whose end is the
+    /// action's `set_state(1)`), then the caller's own `set_state(1)`.
     pub enter: bool,
+    /// The enter came from the `set_state(4)` of a target that moved, in state 4: the update then
+    /// finds no `MoveTo` (code 1) with the unit in reach and enters again (`FUN_140a867b0` on a
+    /// unit inside it already: notify 0x1fa and `set_state(1)`), then its own `set_state(1)`.
+    pub again: bool,
+    /// `set_state(2)`: the unit shows its master's standing sprite (slot 0x68 with `+0x470`).
+    pub waits: bool,
+    /// `set_state(4)` found the transport where it meets the unit (its [`meeting`] code 1): the
+    /// caller asks the transport to move there (slot 0x3d8 within 1, then slot 0x340), the
+    /// point's height the transport's.
+    pub order: Option<[f32; 3]>,
+}
+
+/// What [`EnterAction::walk_again`] (`set_state(4)`) leaves to its caller.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Walking {
+    /// The unit is in reach: the caller enters (`FUN_140a867b0`), then `set_state(1)`.
+    Enter,
+    /// A `MoveTo` to the target started; with a point, the transport is to move there first
+    /// ([`EnterStep::order`]).
+    Walk(Option<[f32; 3]>),
 }
 
 impl EnterAction {
-    /// The factory's constructor (`FUN_140a855d0`: the target, an annex's main building, is the
-    /// caller's, as its add, slot 0x178; the point `FUN_140a85f30` gives a building, its place)
-    /// and the install's start (slot 5, `FUN_140a86f20`) with its `set_state(4)` (`FUN_140a87320`)
-    /// on a building with room: a unit in reach (`FUN_140a85c30`) enters at once, which the
-    /// caller does (`FUN_140a867b0`, then `set_state(1)`); else a `MoveTo` to it within the
-    /// task's range (`FUN_140aa0df0`, quiet, its start `0x140aa2100`: within [`ARRIVED`] of its
-    /// footprint already in state 1, else 3). A unit inside an object (`set_state` 13), a
-    /// building without room (`FUN_140a864d0`, then `set_state` 11) and a unit without speed (the
-    /// `MoveTo`'s state 13) are not modelled.
-    pub fn start(
-        target: i32,
-        point: [f32; 3],
-        range: f32,
-        task_class: i16,
-        gap: f32,
-        speed: f32,
-        in_reach: bool,
-    ) -> Result<Self, Unsupported> {
-        let move_to = if in_reach {
-            None
-        } else if ARRIVED < gap {
-            if speed == 0.0 {
-                return Err(Unsupported("an Enter's MoveTo of a unit without speed"));
-            }
-            Some(MoveTo::Start)
-        } else {
-            Some(MoveTo::Arrived)
-        };
-        Ok(Self {
+    /// The factory's constructor (`FUN_140a855d0`): the target (an annex's main building, the
+    /// caller's, as its add, slot 0x178), the point [`meeting`] gives at the target's height,
+    /// the task's range and class, `+0x68` 1; the start (slot 5, `FUN_140a86f20`) and its
+    /// `set_state(4)` are [`EnterAction::walk_again`].
+    #[must_use]
+    pub const fn new(target: i32, point: [f32; 3], range: f32, task_class: i16) -> Self {
+        Self {
             target,
             state: WALK,
-            move_to,
+            move_to: None,
             point,
             range,
             timer: 0.0,
             retry: true,
             task_class,
-        })
+        }
     }
 
-    /// `FUN_140a85c30`: the unit is in reach of the building: their footprints' squared gap
-    /// (`FUN_14118f8c0`) at most the range squared. A range of at most 1 to a target with speed
-    /// (the tile test around the two) is not modelled.
-    pub fn in_reach(range: f32, gap_squared: f32, target_speed: f32) -> Result<bool, Unsupported> {
+    /// `set_state(4)` (`FUN_140a87320` case 4) after the start's or the update's tests: its
+    /// sub-actions go (`FUN_140a98620`; a `MoveTo`'s teardown stops the unit, the caller's), and
+    /// its room test repeats theirs, which nothing between changes. A unit in reach of the
+    /// target (`FUN_140a85c30`) enters it ([`Walking::Enter`]). Else a building's `MoveTo` walks
+    /// to it within the task's range (`FUN_140aa0df0`); a transport's takes the point and code
+    /// of [`meeting`] (`FUN_140a85f30`, the action's `+0x38` and `+0x3c`) and walks to the
+    /// transport within 0 (`FUN_140aa0d30` with range 0, then slot 0x68 with the transport: its
+    /// state 3 goes to the transport's place; a point below 0 would make `FUN_140aa0df0` with the
+    /// unit's slot 0x268, 0, alike), and code 1 asks the transport to move to the point. Both
+    /// `MoveTo`s are quiet (`FUN_140a7a170` with 1) and leave a target that moves (`+0x61` 2);
+    /// their start ([`EnterAction::walk_start`]) is `0x140aa2100`'s, by the footprints' gap
+    /// `gap` and the unit's speed.
+    pub fn walk_again(
+        &mut self,
+        t: &EnterTarget,
+        gap: f32,
+        speed: f32,
+        meeting: &mut impl FnMut() -> Result<([f32; 2], u8), Unsupported>,
+    ) -> Result<Walking, Unsupported> {
+        self.move_to = None;
+        self.state = WALK;
+        if t.in_reach {
+            return Ok(Walking::Enter);
+        }
+        let code = if t.building {
+            0
+        } else {
+            let (point, code) = meeting()?;
+            self.point[..2].copy_from_slice(&point);
+            code
+        };
+        self.move_to = Some(Self::walk_start(gap, speed)?);
+        Ok(Walking::Walk((code == 1).then_some([
+            self.point[0],
+            self.point[1],
+            t.position[2],
+        ])))
+    }
+
+    /// The `MoveTo`'s start (`0x140aa2100` with 1): beyond [`ARRIVED`] of the target's footprint
+    /// (`gap`) state 3, or 13 for a unit without speed (not modelled); else state 1.
+    fn walk_start(gap: f32, speed: f32) -> Result<MoveTo, Unsupported> {
+        if ARRIVED < gap {
+            if speed == 0.0 {
+                return Err(Unsupported("an Enter's MoveTo of a unit without speed"));
+            }
+            return Ok(MoveTo::Start);
+        }
+        Ok(MoveTo::Arrived)
+    }
+
+    /// The range its `MoveTo` stops within: the task's for a building, 0 for a transport.
+    const fn walk_range(&self, building: bool) -> f32 {
+        if building { self.range } else { 0.0 }
+    }
+
+    /// `set_state(2)`: the wait of [`WAIT_SECONDS`] (the standing sprite is the caller's,
+    /// [`EnterStep::waits`]).
+    const fn wait(&mut self, step: &mut EnterStep) {
+        self.move_to = None;
+        self.state = WAIT;
+        self.timer = WAIT_SECONDS;
+        step.waits = true;
+    }
+
+    /// `FUN_140a85c30`: the unit is in reach of the target: their footprints' squared gap
+    /// (`FUN_14118f8c0`; `COMISS`/`JBE`: a NaN gap is not out) at most the range squared; for a
+    /// range of at most 1 (`COMISS`/`JC`: a NaN range is in reach) to a target with speed (slot
+    /// 0x208, above 0) the tiles about the two ([`walled_off`], `tiles`) must not hold exactly
+    /// two buildings.
+    pub fn in_reach(
+        range: f32,
+        gap_squared: f32,
+        target_speed: f32,
+        tiles: impl FnOnce() -> Result<bool, Unsupported>,
+    ) -> Result<bool, Unsupported> {
         if range * range < gap_squared {
             return Ok(false);
         }
-        if range <= 1.0 && 0.0 < target_speed {
-            return Err(Unsupported("an Enter's reach of a target with speed"));
+        if range <= ENTER_NEAR && 0.0 < target_speed {
+            return Ok(!tiles()?);
         }
         Ok(true)
     }
 
-    /// One update (slot 6, `FUN_140a87a80`). It first checks its building: one gone, dead (state
-    /// 3 or more) or of an unallied player, or without room for the unit, makes the action let
-    /// it go and turn to state 11, which is not modelled. State 1 is done; state 2 waits its timer
-    /// (by the world's `dt`), then walks again (`set_state(4)`). State 4: a building that left
-    /// the action's point by more than 0.5 makes it walk again (`FUN_140a7bd10`; a building never
-    /// moves: not modelled); then the `MoveTo` updates (`FUN_140a992b0`: code 1 once it ended, or
-    /// without it): codes 1 and 2 enter in reach ([`EnterStep::enter`]), else wait (2); code 3
-    /// (a `MoveTo` that failed) walks again once (`+0x68`), then waits; codes 4 and 5 let the
-    /// building go (state 11), which is not modelled.
+    /// One update (slot 6, `FUN_140a87a80`). It first checks its target: one gone, dead (state 3
+    /// or more) or of an unallied player, or without room for the unit, makes the action let it
+    /// go and turn to state 11, which is not modelled. State 1 is done; state 2 waits its timer
+    /// (by the world's `dt`), then walks again ([`EnterAction::walk_again`]). State 4: a target
+    /// off the action's point (`FUN_140a7bbf0`: any of x, y and height not equal) by more than
+    /// [`HALF_TILE`] on an axis (`FUN_140a7bd10`: `COMISS`/`JA`, a NaN is not) walks it again; then
+    /// the `MoveTo` updates (`FUN_140a992b0`: code 1 once it ended, or without it): codes 1 and
+    /// 2 enter in reach ([`EnterStep::enter`]), else wait (`set_state(2)`); code 3 (a `MoveTo`
+    /// that failed) walks again once (`+0x68`), then waits; codes 4 and 5 let the target go
+    /// (state 11), which is not modelled. State 13 returns 3, which is not modelled. `gap` and
+    /// `speed` start a new `MoveTo` ([`EnterAction::walk_start`]); `meeting` gives a transport's
+    /// point ([`meeting`]) and `reaches` its reach test there ([`EnterAction::again`]).
     pub fn update(
         &mut self,
-        walk: Walk<'_>,
+        mut walk: Walk<'_>,
         target: Option<EnterTarget>,
+        (gap, speed): (f32, f32),
+        mut meeting: impl FnMut() -> Result<([f32; 2], u8), Unsupported>,
+        mut reaches: impl FnMut(&mut Walk<'_>, [f32; 3]) -> Result<bool, Unsupported>,
     ) -> Result<EnterStep, Unsupported> {
         let mut step = EnterStep::default();
         let Some(t) = target else {
@@ -1532,24 +1690,48 @@ impl EnterAction {
             WAIT => {
                 self.timer -= walk.dt;
                 if self.timer <= 0.0 {
-                    return Err(Unsupported("an Enter walking again after its wait"));
+                    self.again(
+                        &mut walk,
+                        &t,
+                        (gap, speed),
+                        &mut meeting,
+                        &mut reaches,
+                        &mut step,
+                    )?;
                 }
             }
             WALK => {
-                if t.position != self.point {
-                    return Err(Unsupported("an Enter whose building moved"));
+                let [x, y, z] = t.position;
+                let moved = |d: f32| HALF_TILE < d.abs();
+                let walked_again = t.position != self.point
+                    && (moved(x - self.point[0])
+                        || moved(y - self.point[1])
+                        || moved(z - self.point[2]));
+                if walked_again {
+                    self.again(
+                        &mut walk,
+                        &t,
+                        (gap, speed),
+                        &mut meeting,
+                        &mut reaches,
+                        &mut step,
+                    )?;
                 }
+                let range = self.walk_range(t.building);
                 let code = match self.move_to {
                     None | Some(MoveTo::Arrived) => 1,
                     Some(MoveTo::Start) => {
                         self.move_to = Some(MoveTo::Moving);
-                        let range = self.range;
-                        self.move_to =
-                            Some(start_walk(walk, Goal::Target(self.target), range, true)?);
+                        self.move_to = Some(start_walk(
+                            walk.reborrow(),
+                            Goal::Target(self.target),
+                            range,
+                            true,
+                        )?);
                         0
                     }
                     Some(MoveTo::Moving) => {
-                        self.move_to = Some(walk_on(walk)?);
+                        self.move_to = Some(walk_on(walk.reborrow())?);
                         0
                     }
                     Some(MoveTo::Failed) => 3,
@@ -1558,11 +1740,23 @@ impl EnterAction {
                     }
                 };
                 match code {
+                    // the walk again's enter put the unit inside, at the target's place: still
+                    // in reach, it enters again
+                    1 | 2 if walked_again && step.enter => step.again = true,
                     1 | 2 if t.in_reach => step.enter = true,
-                    1 | 2 => {
-                        return Err(Unsupported("an Enter that arrived out of reach (state 2)"));
+                    // a failed MoveTo is none a walk again made in this update
+                    3 if self.retry => {
+                        self.retry = false;
+                        self.again(
+                            &mut walk,
+                            &t,
+                            (gap, speed),
+                            &mut meeting,
+                            &mut reaches,
+                            &mut step,
+                        )?;
                     }
-                    3 => return Err(Unsupported("an Enter whose MoveTo failed")),
+                    1..=3 => self.wait(&mut step),
                     _ => {}
                 }
             }
@@ -1570,6 +1764,375 @@ impl EnterAction {
         }
         Ok(step)
     }
+
+    /// The update's `set_state(4)` ([`EnterAction::walk_again`]): its `MoveTo`'s teardown stops
+    /// the unit (slot 0x5d0); an enter is the caller's. A transport's order first tests that the
+    /// transport reaches within 1 of the point's tile (slot 0x3d8, `FUN_14114ffc0` with the
+    /// point truncated: `reaches`); the move itself (slot 0x340) is the caller's
+    /// ([`EnterStep::order`]). A transport that cannot reach it makes `set_state(13)`, which is
+    /// not modelled.
+    fn again(
+        &mut self,
+        walk: &mut Walk<'_>,
+        t: &EnterTarget,
+        (gap, speed): (f32, f32),
+        meeting: &mut impl FnMut() -> Result<([f32; 2], u8), Unsupported>,
+        reaches: &mut impl FnMut(&mut Walk<'_>, [f32; 3]) -> Result<bool, Unsupported>,
+        step: &mut EnterStep,
+    ) -> Result<(), Unsupported> {
+        if self.move_to.is_some()
+            && let Some(m) = walk.mover.as_deref_mut()
+        {
+            m.stop()?;
+        }
+        match self.walk_again(t, gap, speed, meeting)? {
+            Walking::Enter => step.enter = true,
+            Walking::Walk(Some(at)) => {
+                if !reaches(walk, at)? {
+                    return Err(UNREACHED);
+                }
+                step.order = Some(at);
+            }
+            Walking::Walk(None) => {}
+        }
+        Ok(())
+    }
+}
+
+/// How near the point a transport must reach for an Enter (slot 0x3d8's range), and the range up
+/// to which an Enter's reach of a target with speed tests the tiles about the two
+/// (`FUN_140a85c30`): `DAT_14330eb8c`, 1.0. An image role to come: `garrison::ENTER_NEAR`.
+const ENTER_NEAR: f32 = 1.0;
+/// Half a tile (`DAT_142e7f384`, 0.5): what an Enter's meeting point adds to a tile or to a
+/// place before `floorf` (`FUN_140a85f30`), and how far a target leaves its point before the
+/// Enter walks again (`FUN_140a7bd10`). An image role to come: `garrison::HALF_TILE`.
+const HALF_TILE: f32 = 0.5;
+
+/// An Enter whose transport cannot reach where it meets the unit (`set_state(13)` in
+/// `set_state(4)`), which is not modelled.
+pub(crate) const UNREACHED: Unsupported =
+    Unsupported("an Enter's transport that cannot reach the unit (state 13)");
+
+/// What [`meeting`] (`FUN_140a85f30`) reads of an Enter's target.
+#[derive(Clone, Copy, Debug)]
+pub struct MeetingTarget {
+    /// It has room for the unit (slot 0x198 with the unit).
+    pub room: bool,
+    /// Its speed (slot 0x208).
+    pub speed: f32,
+    /// Its top action's state (slot 0x2b0, `RGE_Action_Object::actionState`; 0 without one).
+    pub state: u8,
+    /// Its class (`+0x410`).
+    pub class: i16,
+    /// Its place, x and y.
+    pub position: [f32; 2],
+    /// Its top action's point (`FUN_140a7be40`, `FUN_140a7be50`), or why the slice has not got it.
+    pub action_point: Result<[f32; 2], Unsupported>,
+}
+
+/// `FUN_140a85f30`: where an Enter meets its target and the code its `set_state(4)` reads (1:
+/// the transport moves there). A target without room for the unit (slot 0x198), or without speed
+/// (`COMISS 0, speed` with `JNC`: a NaN speed has some), is met at its place. One idle (its
+/// action state 0) or in state 2 and with room meets the unit where its slot 0x428
+/// ([`landing_tile`], `landing`) finds the shore, at the tile's centre (code 1), else, the unit
+/// standing on a beach (`beach`, [`crate::terrain::Terrain::beach`]), at the unit's place rounded
+/// to the nearest corner (`floorf` of each plus 0.5, code 1), else at its place. One under an
+/// action in state 3, 4 or 11 meets it where that action goes, but a siege weapon (class 13)
+/// at its place; any other state at its place.
+pub fn meeting(
+    t: &MeetingTarget,
+    unit: [f32; 2],
+    landing: impl FnOnce() -> Result<Option<[i32; 2]>, Unsupported>,
+    beach: impl FnOnce() -> bool,
+) -> Result<([f32; 2], u8), Unsupported> {
+    let at = (t.position, 0);
+    if !t.room || t.speed <= 0.0 {
+        return Ok(at);
+    }
+    if matches!(t.state, 0 | 2) {
+        if let Some([x, y]) = landing()? {
+            return Ok(([x as f32 + HALF_TILE, y as f32 + HALF_TILE], 1));
+        }
+        // the state is 0 or 2 here, never 11, 4 or 3
+        if beach() {
+            return Ok((
+                [(unit[0] + HALF_TILE).floor(), (unit[1] + HALF_TILE).floor()],
+                1,
+            ));
+        }
+        return Ok(at);
+    }
+    if t.class == SIEGE_CLASS || !matches!(t.state, 11 | 4 | 3) {
+        return Ok(at);
+    }
+    Ok((t.action_point?, 0))
+}
+
+/// `FUN_141157840` (a unit's slot 0x428, its last argument 1): from tile `from` (a transport's)
+/// toward tile `to` (the unit's) in twice as many steps as the longer axis's tiles (the `y`
+/// axis only when it is strictly longer), each step adding the whole difference over the step
+/// count in floats, the first new tile on the way that `lands` (its tile and the float place
+/// reached: a beach in the unit's zone where the unit could stand, slot 0x278) is where the two
+/// meet. None when the tiles are one, or no tile lands.
+pub fn landing_tile(
+    from: [i32; 2],
+    to: [i32; 2],
+    mut lands: impl FnMut([i32; 2], [f32; 2]) -> Result<bool, Unsupported>,
+) -> Result<Option<[i32; 2]>, Unsupported> {
+    let (dx, dy) = (to[0].wrapping_sub(from[0]), to[1].wrapping_sub(from[1]));
+    let (fx, fy) = (dx as f32, dy as f32);
+    if fx == 0.0 && fy == 0.0 {
+        return Ok(None);
+    }
+    let longer = if fy.abs() <= fx.abs() { dx } else { dy };
+    let steps = cvttss2si(longer as f32).wrapping_abs().wrapping_mul(2);
+    let (mut x, mut y) = (from[0] as f32, from[1] as f32);
+    let mut last = [-999, -999];
+    for _ in 0..steps.max(0) {
+        x += fx / steps as f32;
+        y += fy / steps as f32;
+        let tile = [cvttss2si(x), cvttss2si(y)];
+        if tile != last {
+            last = tile;
+            if lands(tile, [x, y])? {
+                return Ok(Some(tile));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// `FUN_140a85c30`'s tile test for a range of at most 1 to a target with speed: about the tiles
+/// of the unit's and the target's movement places (slot 0x520, `+0x824`; `me` and `them`),
+/// their box (when it spans more than one tile on an axis, its first tile and the next, within
+/// the map `map`), each tile but those two where the unit could not stand (`stands`, slot 0x278
+/// at the tile's corner) counts the buildings on it (`buildings`, type 80 of the tile's list).
+/// True when they are exactly two: the unit is not in reach.
+pub fn walled_off(
+    me: [f32; 2],
+    them: [f32; 2],
+    map: [i32; 2],
+    mut stands: impl FnMut(i32, i32) -> Result<bool, Unsupported>,
+    mut buildings: impl FnMut(i32, i32) -> Result<usize, Unsupported>,
+) -> Result<bool, Unsupported> {
+    let (mx, my) = (cvttss2si(me[0]), cvttss2si(me[1]));
+    let (tx, ty) = (cvttss2si(them[0]), cvttss2si(them[1]));
+    let (x0, y0) = (mx.min(tx), my.min(ty));
+    let (mut x1, mut y1) = (mx.max(tx), my.max(ty));
+    if 1 < x1.wrapping_sub(x0) || 1 < y1.wrapping_sub(y0) {
+        x1 = (x0 + 1).min(map[0] - 1);
+        y1 = (y0 + 1).min(map[1] - 1);
+    }
+    let mut count = 0usize;
+    for x in x0..=x1 {
+        for y in y0..=y1 {
+            if (x, y) == (mx, my) || (x, y) == (tx, ty) || stands(x, y)? {
+                continue;
+            }
+            count += buildings(x, y)?;
+        }
+    }
+    Ok(count == 2)
+}
+
+/// [`MeetingTarget`] of the target `t` (of master `tm`) with `room` for the unit: its top speed
+/// ([`crate::movement::MoveStats::speed`]), its top action's state and, for a `MoveTo`, its
+/// point (its goal, or for one on an object the mover's [`crate::movement::Mover::move_to_point`]).
+/// An action the slice does not hold has neither; one but a `MoveTo` no point the slice keeps.
+pub(crate) fn meeting_target(
+    t: &crate::turn::Unit,
+    tm: &Master,
+    room: bool,
+) -> Result<MeetingTarget, Unsupported> {
+    if let Some(e) = t.unmodelled_action {
+        return Err(e);
+    }
+    let action_point = match (t.top_action_kind(), t.move_to) {
+        (Some(crate::move_to::MOVE_TO), Some(m)) => m
+            .goal
+            .or_else(|| t.mover.as_ref().and_then(|v| v.move_to_point))
+            .map(|p| [p[0], p[1]])
+            .ok_or(UNPLACED),
+        _ => Err(UNPLACED),
+    };
+    Ok(MeetingTarget {
+        room,
+        speed: t.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+        state: t.top_action().map_or(0, |a| a.state),
+        class: tm.class,
+        position: [t.position[0], t.position[1]],
+        action_point,
+    })
+}
+
+/// A transport's top action whose point the slice does not keep (`FUN_140a7be40`).
+const UNPLACED: Unsupported =
+    Unsupported("an Enter's transport under an action the slice does not place");
+
+/// [`meeting`] for `unit` (with its movement state `stats`) and its target `t`: the shore on the
+/// way from the target's tile to the unit's ([`landing_tile`]): a beach
+/// ([`crate::terrain::Terrain::beach`]) whose zone for the unit's restriction (`FUN_1411958c0`:
+/// 0 for a tile below 0) is the zone of the unit's own tile (`FUN_14118eea0`), where the unit
+/// could stand (slot 0x278, [`crate::spatial::Spatial::point_clear`] with the master's x radius
+/// and the restriction's mask); else a beach under the unit (`FUN_1413fbf30`).
+pub(crate) fn meeting_point(
+    t: &MeetingTarget,
+    unit: (i32, [f32; 3], &crate::movement::MoveStats),
+    spatial: &crate::spatial::Spatial,
+    zones: &mut crate::zones::Zones,
+) -> Result<([f32; 2], u8), Unsupported> {
+    let (id, [ux, uy, _], stats) = unit;
+    let terrain = spatial.terrain.as_ref();
+    let landing = || {
+        let terrain = terrain.ok_or(Unsupported("the map's zones without its terrain"))?;
+        let values = terrain
+            .restrictions
+            .get(stats.restriction)
+            .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+        let [w, h] = spatial.map;
+        let map = zones.of(w, h, &terrain.kinds, values);
+        let own = map.zone(cvttss2si(ux), cvttss2si(uy));
+        let from = [cvttss2si(t.position[0]), cvttss2si(t.position[1])];
+        landing_tile(from, [cvttss2si(ux), cvttss2si(uy)], |[x, y], [fx, fy]| {
+            if !terrain.beach(x, y) {
+                return Ok(false);
+            }
+            let zone = if x < 0 || y < 0 { 0 } else { map.zone(x, y) };
+            if zone != own {
+                return Ok(false);
+            }
+            spatial.point_clear(id, [fx, fy], stats.radius[0], stats.restriction_mask)
+        })
+    };
+    let beach = || terrain.is_some_and(|tr| tr.beach(cvttss2si(ux), cvttss2si(uy)));
+    meeting(t, [ux, uy], landing, beach)
+}
+
+/// [`EnterAction::in_reach`] of the unit `id` (its movement state `stats`, its place in
+/// `spatial`) for its target `target` (its top speed and where it last moved to): the squared
+/// footprints' gap of their places, and the tile test ([`walled_off`]) about where each last
+/// moved to (slot 0x520), its buildings those whose master (`masters`, each player's) is of
+/// type 80.
+pub(crate) fn enter_reach(
+    spatial: &crate::spatial::Spatial,
+    masters: &[Masters],
+    (id, stats, moved_at): (i32, &crate::movement::MoveStats, [f32; 3]),
+    (target, target_mover): (i32, Option<&crate::movement::Mover>),
+    range: f32,
+) -> Result<bool, Unsupported> {
+    let me = spatial
+        .get_known(id)?
+        .ok_or(Unsupported("an entering unit without a place"))?;
+    let them = spatial
+        .get_known(target)?
+        .ok_or(Unsupported("an Enter's building without a place"))?;
+    let gap = footprint_gap_squared(me.position, me.radius, them.position, them.radius);
+    let speed = target_mover.map_or(0.0, |m| m.stats.speed);
+    let them_at = target_mover.map_or(them.position, |m| m.moved_at);
+    EnterAction::in_reach(range, gap, speed, || {
+        walled_off(
+            [moved_at[0], moved_at[1]],
+            [them_at[0], them_at[1]],
+            spatial.map,
+            |x, y| {
+                spatial.point_clear(
+                    id,
+                    [x as f32, y as f32],
+                    stats.radius[0],
+                    stats.restriction_mask,
+                )
+            },
+            |x, y| {
+                let mut n = 0;
+                for (_, o) in spatial.objects_on(x, y) {
+                    let m =
+                        masters
+                            .get(o.player)
+                            .and_then(|m| m.get(o.master))
+                            .ok_or(Unsupported(
+                                "an object on a tile of a master the slice lacks",
+                            ))?;
+                    n += usize::from(m.kind == BUILDING);
+                }
+                Ok(n)
+            },
+        )
+    })
+}
+
+/// What an Enter's update reads of its target `t` (of master `tm`, with `room` for `unit`): the
+/// [`EnterTarget`] (allied: its own player's; the reach by [`enter_reach`] with the task's
+/// `range`), the footprints' gap (`FUN_14118f680`) and the unit's speed for a new `MoveTo`, and
+/// for a transport where the two meet ([`meeting_point`]; nothing the update does before its
+/// `set_state(4)` moves either, so it holds there).
+#[allow(clippy::type_complexity)]
+pub(crate) fn enter_view(
+    spatial: &crate::spatial::Spatial,
+    zones: &mut crate::zones::Zones,
+    masters: &[Masters],
+    unit: &crate::turn::Unit,
+    (t, tm, room): (&crate::turn::Unit, &Master, bool),
+    range: f32,
+) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), Unsupported>), Unsupported> {
+    let building = tm.kind == BUILDING;
+    let mover = unit.mover.as_ref();
+    let stats = mover
+        .map(|m| m.stats)
+        .ok_or(Unsupported("an Enter's MoveTo of a unit without speed"))?;
+    let moved_at = mover.map_or(unit.position, |m| m.moved_at);
+    let target_mover = if building { None } else { t.mover.as_ref() };
+    let in_reach = enter_reach(
+        spatial,
+        masters,
+        (unit.id, &stats, moved_at),
+        (t.id, target_mover),
+        range,
+    )?;
+    let (me, them) = (
+        spatial.get(unit.id).expect("placed: in reach above"),
+        spatial.get(t.id).expect("placed: in reach above"),
+    );
+    let gap = crate::movement::footprint_gap(me.position, me.radius, them.position, them.radius);
+    let meeting = if building {
+        Ok(([t.position[0], t.position[1]], 0))
+    } else {
+        meeting_target(t, tm, room)
+            .and_then(|mt| meeting_point(&mt, (unit.id, unit.position, &stats), spatial, zones))
+    };
+    Ok((
+        EnterTarget {
+            state: t.life.state,
+            allied: true,
+            room,
+            position: t.position,
+            in_reach,
+            building,
+        },
+        (gap, stats.speed),
+        meeting,
+    ))
+}
+
+/// A transport's slot 0x3d8 (`FUN_14114ffc0`) for an Enter: whether `ship` reaches within
+/// [`ENTER_NEAR`] of the point's tile (the point truncated), [`crate::movement::Mover::reaches`]
+/// from where it last moved to; one without movement state does not.
+pub(crate) fn ship_reaches(
+    ship: &crate::turn::Unit,
+    world: &crate::spatial::Spatial,
+    plan: &mut crate::movement::Planning<'_>,
+    to: [f32; 3],
+) -> Result<bool, Unsupported> {
+    let Some(m) = ship.mover.as_ref() else {
+        return Ok(false);
+    };
+    let me = crate::movement::Me {
+        id: ship.id,
+        position: ship.position,
+        action_state: ship.top_action().map_or(0, |a| a.state),
+        group: ship.group.id,
+    };
+    let goal = [cvttss2si(to[0]) as f32, cvttss2si(to[1]) as f32];
+    m.reaches(&me, world, plan, goal, ENTER_NEAR, ship.life.master_id)
 }
 
 /// UNLOAD's flag 2 (`FUN_14118a610`): the classes of group `group` (1 villagers and class 19;
@@ -1703,16 +2266,413 @@ pub(crate) mod tests {
 
     #[test]
     fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
-        // MarvinBlue/426048731's 9171 garrisons the town centre at (104, 47) from 3.5 tiles off
-        let far = EnterAction::start(9149, [104.0, 47.0, 0.0], 1.0, 3, 3.5, 0.8, false).unwrap();
+        // MarvinBlue/426048731's 9171 garrisons the town centre at (104, 47) from 3.5 tiles off:
+        // set_state(4)'s MoveTo to it (FUN_140aa0df0), quiet, starts in state 3
+        let tc = EnterTarget {
+            state: 2,
+            allied: true,
+            room: true,
+            position: [104.0, 47.0, 0.0],
+            in_reach: false,
+            building: true,
+        };
+        let never = || -> Result<([f32; 2], u8), Unsupported> { panic!("a building's point") };
+        let mut far = EnterAction::new(9149, [104.0, 47.0, 0.0], 1.0, 3);
+        assert_eq!(
+            far.walk_again(&tc, 3.5, 0.8, &mut never.clone()),
+            Ok(Walking::Walk(None))
+        );
         assert_eq!((far.state, far.move_to), (WALK, Some(MoveTo::Start)));
+        // within ARRIVED of its footprint the MoveTo starts arrived (state 1)
+        let mut close = EnterAction::new(9149, [104.0, 47.0, 0.0], 1.0, 3);
+        assert_eq!(
+            close.walk_again(&tc, 0.0, 0.8, &mut never.clone()),
+            Ok(Walking::Walk(None))
+        );
+        assert_eq!(close.move_to, Some(MoveTo::Arrived));
         // 10049 of update 4409 stands within the task's range: it enters at once
-        let near = EnterAction::start(9149, [104.0, 47.0, 0.0], 1.0, 3, 0.6, 0.8, true).unwrap();
+        let mut near = EnterAction::new(9149, [104.0, 47.0, 0.0], 1.0, 3);
+        let in_reach = EnterTarget {
+            in_reach: true,
+            ..tc
+        };
+        assert_eq!(
+            near.walk_again(&in_reach, 0.6, 0.8, &mut never.clone()),
+            Ok(Walking::Enter)
+        );
         assert_eq!(near.move_to, None);
-        // the reach is the footprints' squared gap against the range squared
-        assert!(EnterAction::in_reach(1.0, 1.0, 0.0).unwrap());
-        assert!(!EnterAction::in_reach(1.0, 1.01, 0.0).unwrap());
-        assert!(EnterAction::in_reach(1.0, 0.5, 0.8).is_err());
+        // the reach is the footprints' squared gap against the range squared (COMISS/JBE: a NaN
+        // gap is in); a target with speed within a range of 1 (COMISS/JC: a NaN range is not
+        // tested) asks the tiles about the two
+        let no_tiles = || -> Result<bool, Unsupported> { panic!("no tile test") };
+        assert_eq!(EnterAction::in_reach(1.0, 1.0, 0.0, no_tiles), Ok(true));
+        assert_eq!(EnterAction::in_reach(1.0, 1.01, 0.0, no_tiles), Ok(false));
+        assert_eq!(
+            EnterAction::in_reach(1.0, f32::NAN, 0.0, no_tiles),
+            Ok(true)
+        );
+        assert_eq!(EnterAction::in_reach(1.5, 0.5, 0.8, no_tiles), Ok(true));
+        assert_eq!(
+            EnterAction::in_reach(f32::NAN, 0.5, 0.8, no_tiles),
+            Ok(true)
+        );
+        assert_eq!(EnterAction::in_reach(1.0, 0.5, 0.8, || Ok(true)), Ok(false));
+        assert_eq!(EnterAction::in_reach(1.0, 0.5, 0.8, || Ok(false)), Ok(true));
+        assert_eq!(
+            EnterAction::in_reach(1.0, 0.5, f32::NAN, no_tiles),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
+        // FUN_140a87320 case 4 on a transport: the point and code of FUN_140a85f30; code 1 sends
+        // the transport there at its own height, code 0 does not; the MoveTo goes to the
+        // transport within 0
+        let ship = EnterTarget {
+            state: 2,
+            allied: true,
+            room: true,
+            position: [79.5, 92.5, 0.25],
+            in_reach: false,
+            building: false,
+        };
+        let mut enter = EnterAction::new(7420, [79.5, 92.5, 0.0], 1.0, 20);
+        let walking = enter.walk_again(&ship, 6.0, 0.8, &mut || Ok(([82.5, 89.5], 1)));
+        assert_eq!(walking, Ok(Walking::Walk(Some([82.5, 89.5, 0.25]))));
+        assert_eq!(
+            (enter.point, enter.move_to),
+            ([82.5, 89.5, 0.0], Some(MoveTo::Start))
+        );
+        assert_eq!(enter.walk_range(false), 0.0);
+        assert_eq!(enter.walk_range(true), 1.0);
+        let walking = enter.walk_again(&ship, 6.0, 0.8, &mut || Ok(([80.0, 91.0], 0)));
+        assert_eq!(walking, Ok(Walking::Walk(None)));
+        assert_eq!(enter.point, [80.0, 91.0, 0.0]);
+        // a unit without speed beyond ARRIVED: the MoveTo's state 13, not modelled
+        assert!(
+            enter
+                .walk_again(&ship, 6.0, 0.0, &mut || Ok(([80.0, 91.0], 0)))
+                .is_err()
+        );
+    }
+
+    /// A transport target, room for the unit, 1.0 tiles off its point on y.
+    fn moved_ship(y: f32) -> EnterTarget {
+        EnterTarget {
+            state: 2,
+            allied: true,
+            room: true,
+            position: [82.5, y, 0.0],
+            in_reach: false,
+            building: false,
+        }
+    }
+
+    /// A walk of unit 1 without movement state or world, as [`EnterAction::update`] takes it.
+    fn idle_walk(world: &mut crate::spatial::Spatial) -> Walk<'_> {
+        Walk {
+            mover: None,
+            me: crate::movement::Me {
+                id: 1,
+                position: [82.5, 87.5, 0.0],
+                action_state: 4,
+                group: -1,
+            },
+            dt: 0.5,
+            world,
+            plan: None,
+        }
+    }
+
+    #[test]
+    fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
+        // FUN_140a87a80 state 4: FUN_140a7bbf0 (not on the point) and FUN_140a7bd10 (more than
+        // half a tile off: COMISS/JA) set_state(4); then the new MoveTo's update; the transport's
+        // order waits on slot 0x3d8
+        let mut world = crate::spatial::Spatial::new([100, 100]);
+        let point = [82.5, 89.5, 0.0];
+        let mut enter = EnterAction {
+            move_to: Some(MoveTo::Arrived),
+            ..EnterAction::new(7420, point, 1.0, 20)
+        };
+        let reached = std::cell::Cell::new(None);
+        let step = enter
+            .update(
+                idle_walk(&mut world),
+                Some(moved_ship(90.5)),
+                (0.0, 0.8),
+                || Ok(([82.5, 89.5], 1)),
+                |_, to| {
+                    reached.set(Some(to));
+                    Ok(true)
+                },
+            )
+            .unwrap();
+        assert_eq!(reached.get(), Some([82.5, 89.5, 0.0]));
+        assert_eq!(step.order, Some([82.5, 89.5, 0.0]));
+        // the new MoveTo starts arrived (gap 0): code 1 out of reach waits (set_state(2))
+        assert_eq!((enter.state, enter.timer, step.waits), (WAIT, 1.0, true));
+        // within half a tile on each axis it does not walk again; a NaN is not off
+        for y in [90.0, f32::NAN] {
+            let mut enter = EnterAction {
+                move_to: Some(MoveTo::Arrived),
+                ..EnterAction::new(7420, point, 1.0, 20)
+            };
+            let step = enter
+                .update(
+                    idle_walk(&mut world),
+                    Some(moved_ship(y)),
+                    (0.0, 0.8),
+                    || panic!("no walk again"),
+                    |_, _| panic!("no order"),
+                )
+                .unwrap();
+            assert_eq!(step.order, None);
+        }
+        // a transport that cannot reach the point: set_state(13), not modelled
+        let mut enter = EnterAction {
+            move_to: Some(MoveTo::Arrived),
+            ..EnterAction::new(7420, point, 1.0, 20)
+        };
+        let failed = enter.update(
+            idle_walk(&mut world),
+            Some(moved_ship(90.5)),
+            (0.0, 0.8),
+            || Ok(([82.5, 89.5], 1)),
+            |_, _| Ok(false),
+        );
+        assert_eq!(failed, Err(UNREACHED));
+    }
+
+    #[test]
+    fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
+        // the set_state(4) of a moved transport finds the unit in reach: FUN_140a867b0, then the
+        // update's code 1 (no MoveTo) in reach enters again
+        let mut world = crate::spatial::Spatial::new([100, 100]);
+        let mut enter = EnterAction {
+            move_to: Some(MoveTo::Arrived),
+            ..EnterAction::new(7420, [82.5, 89.5, 0.0], 1.0, 20)
+        };
+        let ship = EnterTarget {
+            in_reach: true,
+            ..moved_ship(90.5)
+        };
+        let step = enter
+            .update(
+                idle_walk(&mut world),
+                Some(ship),
+                (0.0, 0.8),
+                || panic!("in reach: no point"),
+                |_, _| panic!("no order"),
+            )
+            .unwrap();
+        assert_eq!((step.enter, step.again, enter.move_to), (true, true, None));
+        // without the walk again, code 1 in reach enters once
+        let mut enter = EnterAction {
+            move_to: Some(MoveTo::Arrived),
+            ..EnterAction::new(7420, [82.5, 90.5, 0.0], 1.0, 20)
+        };
+        let step = enter
+            .update(
+                idle_walk(&mut world),
+                Some(ship),
+                (0.0, 0.8),
+                || panic!("no walk again"),
+                |_, _| panic!("no order"),
+            )
+            .unwrap();
+        assert_eq!((step.enter, step.again), (true, false));
+    }
+
+    #[test]
+    fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
+        // code 3: +0x68 lets one set_state(4); the next waits a second (set_state(2)), whose end
+        // walks again
+        let mut world = crate::spatial::Spatial::new([100, 100]);
+        let ship = moved_ship(89.5);
+        let mut enter = EnterAction {
+            move_to: Some(MoveTo::Failed),
+            ..EnterAction::new(7420, [82.5, 89.5, 0.0], 1.0, 20)
+        };
+        let run = |enter: &mut EnterAction, world: &mut crate::spatial::Spatial| {
+            enter.update(
+                idle_walk(world),
+                Some(ship),
+                (2.0, 0.8),
+                || Ok(([82.5, 89.5], 0)),
+                |_, _| panic!("code 0: no order"),
+            )
+        };
+        let step = run(&mut enter, &mut world).unwrap();
+        assert_eq!(
+            (enter.retry, enter.move_to, step.waits),
+            (false, Some(MoveTo::Start), false)
+        );
+        enter.move_to = Some(MoveTo::Failed);
+        let step = run(&mut enter, &mut world).unwrap();
+        assert_eq!((enter.state, enter.move_to, step.waits), (WAIT, None, true));
+        // the wait counts down by dt (0.5): at 0 it walks again
+        let step = run(&mut enter, &mut world).unwrap();
+        assert_eq!((enter.state, enter.timer, step.waits), (WAIT, 0.5, false));
+        let _ = run(&mut enter, &mut world).unwrap();
+        assert_eq!((enter.state, enter.move_to), (WALK, Some(MoveTo::Start)));
+    }
+
+    #[test]
+    fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
+        // FUN_140a85f30 on an idle transport with room and speed
+        let ship = MeetingTarget {
+            room: true,
+            speed: 1.1,
+            state: 0,
+            class: 20,
+            position: [79.5, 92.5],
+            action_point: Err(UNPLACED),
+        };
+        let unit = [83.5, 86.25];
+        let no_beach = || panic!("no beach test");
+        assert_eq!(
+            meeting(&ship, unit, || Ok(Some([81, 89])), no_beach),
+            Ok(([81.5, 89.5], 1))
+        );
+        // no shore on the way: a beach under the unit gives its place rounded (floorf of x+0.5)
+        assert_eq!(
+            meeting(&ship, unit, || Ok(None), || true),
+            Ok(([84.0, 86.0], 1))
+        );
+        assert_eq!(
+            meeting(&ship, unit, || Ok(None), || false),
+            Ok(([79.5, 92.5], 0))
+        );
+        // no room, no speed (or a negative one; a NaN has some): its place
+        let at_place = |t: MeetingTarget| meeting(&t, unit, || panic!("no landing"), || true);
+        for t in [
+            MeetingTarget {
+                room: false,
+                ..ship
+            },
+            MeetingTarget { speed: 0.0, ..ship },
+            MeetingTarget {
+                speed: -1.0,
+                ..ship
+            },
+        ] {
+            assert_eq!(at_place(t), Ok(([79.5, 92.5], 0)));
+        }
+        let nan = MeetingTarget {
+            speed: f32::NAN,
+            ..ship
+        };
+        assert_eq!(
+            meeting(&nan, unit, || Ok(Some([81, 89])), no_beach),
+            Ok(([81.5, 89.5], 1))
+        );
+        // moving (state 4): where its action goes, but a siege weapon at its place; another
+        // state at its place
+        let moving = MeetingTarget {
+            state: 4,
+            action_point: Ok([60.0, 70.0]),
+            ..ship
+        };
+        assert_eq!(at_place(moving), Ok(([60.0, 70.0], 0)));
+        assert_eq!(
+            at_place(MeetingTarget {
+                class: 13,
+                ..moving
+            }),
+            Ok(([79.5, 92.5], 0))
+        );
+        assert_eq!(
+            at_place(MeetingTarget { state: 7, ..moving }),
+            Ok(([79.5, 92.5], 0))
+        );
+    }
+
+    #[test]
+    fn the_landing_walk_steps_twice_per_tile_of_the_longer_axis() {
+        // FUN_141157840 from (79, 92) to (83, 86): the y axis is longer (6), 12 steps of
+        // (1/3, -1/2) in floats (79 + 3 steps is 80.00001); the tiles in the order they are
+        // first reached
+        let mut seen = Vec::new();
+        let found = landing_tile([79, 92], [83, 86], |tile, _| {
+            seen.push(tile);
+            Ok(false)
+        });
+        assert_eq!(found, Ok(None));
+        assert_eq!(
+            seen,
+            [
+                [79, 91],
+                [80, 90],
+                [80, 89],
+                [81, 89],
+                [81, 88],
+                [82, 87],
+                [82, 86],
+                [83, 86],
+            ]
+        );
+        // the first that lands is the meeting tile, with the float place reached there
+        let found = landing_tile([79, 92], [83, 86], |tile, [x, y]| {
+            if tile == [81, 89] {
+                assert_eq!([x, y], [81.000_015, 89.0]);
+            }
+            Ok(tile == [81, 89])
+        });
+        assert_eq!(found, Ok(Some([81, 89])));
+        // equal axes: x is the longer (`<=`); one tile: none
+        let mut seen = Vec::new();
+        let _ = landing_tile([0, 0], [-2, 2], |tile, _| {
+            seen.push(tile);
+            Ok(false)
+        });
+        assert_eq!(seen, [[0, 0], [-1, 1], [-2, 2]]);
+        assert_eq!(
+            landing_tile([5, 5], [5, 5], |_, _| panic!("no step")),
+            Ok(None)
+        );
+    }
+
+    #[test]
+    fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
+        // FUN_140a85c30 for range <= 1 and a target with speed: the box of the two tiles (one
+        // tile and the next when it spans more than one), the two tiles left out
+        let mut asked = Vec::new();
+        let walled = walled_off(
+            [10.5, 10.5],
+            [11.5, 11.5],
+            [100, 100],
+            |x, y| {
+                asked.push((x, y));
+                Ok(false)
+            },
+            |x, y| Ok(usize::from((x, y) == (10, 11) || (x, y) == (11, 10))),
+        );
+        assert_eq!(walled, Ok(true));
+        assert_eq!(asked, [(10, 11), (11, 10)]);
+        // a tile the unit could stand on does not count
+        let walled = walled_off(
+            [10.5, 10.5],
+            [11.5, 11.5],
+            [100, 100],
+            |x, y| Ok((x, y) == (11, 10)),
+            |_, _| Ok(1),
+        );
+        assert_eq!(walled, Ok(false));
+        // far apart: the first tile of the box and the next, within the map
+        let mut asked = Vec::new();
+        let _ = walled_off(
+            [98.5, 2.5],
+            [95.5, 9.5],
+            [97, 100],
+            |x, y| {
+                asked.push((x, y));
+                Ok(true)
+            },
+            |_, _| Ok(0),
+        );
+        assert_eq!(asked, [(95, 2), (95, 3), (96, 2), (96, 3)]);
     }
 
     #[test]
@@ -2625,6 +3585,144 @@ pub(crate) mod tests {
         assert_eq!(orders(&t, 1000), Some(vec![(ENTER_ORDER, 200)]));
         // with no unit the transport is never asked
         assert_eq!(t.garrison_order(1, &[], 200, false, false), Ok(()));
+    }
+
+    /// [`sized_world`] 40 × 40 with a beach row (terrain 1, flags 0x10) at y = 17 and water
+    /// (terrain 2) from y = 18 on, every terrain passable for restriction 0; the villager's
+    /// garrison task on transports (class 20) has range 1; ship 200 (speed 1.1, type 70) at
+    /// `ship` and villager 1000 at `at`, each where it last moved to its place.
+    fn shore_world(at: [f32; 2], ship: [f32; 2]) -> Turns {
+        let mut t = sized_world(40, 40);
+        for m in &mut t.masters {
+            if let Some(v) = m.get_mut(VILLAGER) {
+                v.tasks = vec![
+                    task(GARRISON, 3),
+                    Task {
+                        work_range: 1.0,
+                        ..task(GARRISON, 20)
+                    },
+                ];
+            }
+        }
+        let tiles = (0..40 * 40)
+            .map(|i| match i / 40 {
+                17 => (1, 255, -1),
+                y if 18 <= y => (2, 255, -1),
+                _ => (0, 255, -1),
+            })
+            .collect();
+        let kind = |flags| crate::terrain::TerrainKind {
+            shown: true,
+            flags,
+            forest: false,
+        };
+        let mut terrain = crate::terrain::Terrain::new(
+            40,
+            40,
+            tiles,
+            vec![kind(0x20), kind(0x10), kind(1)],
+            vec![vec![1.0, 1.0, 1.0]],
+        );
+        terrain.set_elevations(vec![0; 40 * 40]);
+        t.spatial.terrain = Some(terrain);
+        ship_at(&mut t, ship);
+        let mut mover = crate::hunt::tests::walker();
+        mover.stats = crate::movement::MoveStats {
+            speed: 1.1,
+            ..standing()
+        };
+        mover.moved_at = [ship[0], ship[1], 0.0];
+        t.object_mut(200).unwrap().1.mover = Some(mover);
+        walker(&mut t, 1, 1000, VILLAGER, at);
+        t.object_mut(1000)
+            .unwrap()
+            .1
+            .mover
+            .as_mut()
+            .unwrap()
+            .moved_at = [at[0], at[1], 0.0];
+        t
+    }
+
+    #[test]
+    fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
+        // FUN_14161e370 (no +0x1e) -> FUN_141621220's transports -> slot 0x7e8 with filter 3 ->
+        // the finder's LAB_1412796b4 -> the Enter: FUN_140a85f30 walks from the ship's tile
+        // (5, 30) to the villager's (5, 12) and meets it on the beach tile (5, 17), code 1: the
+        // ship reaches within 1 of (5, 17) (slot 0x3d8, the long pather's answer) and moves
+        // there (slot 0x340: a MoveTo, running, range 0)
+        let mut t = shore_world([5.5, 12.5], [5.5, 30.5]);
+        t.garrison_order(1, &[1000], 200, false, false).unwrap();
+        let ship = t.object(200).unwrap().1.move_to.unwrap();
+        assert_eq!(
+            (ship.goal, ship.range, ship.run, ship.target),
+            (Some([5.5, 17.5, 0.0]), 0.0, true, -1)
+        );
+        let enter = t.object(1000).unwrap().1.enter.unwrap();
+        assert_eq!(
+            (enter.target, enter.point, enter.state, enter.move_to),
+            (200, [5.5, 17.5, 0.0], WALK, Some(MoveTo::Start))
+        );
+        // the unit AI holds the enter order and action, the ship its target
+        let ai = t.object(1000).unwrap().1.ai.clone().unwrap();
+        assert_eq!(
+            (ai.current_order, ai.current_action, ai.current_target),
+            (ENTER_ORDER, ENTER_ACTION, 200)
+        );
+    }
+
+    #[test]
+    fn a_villager_meets_a_moving_ship_where_it_goes() {
+        // FUN_140a85f30 on a ship under a MoveTo (state 3): its goal, code 0, no order
+        let mut t = shore_world([5.5, 12.5], [5.5, 30.5]);
+        let ship = t.object_mut(200).unwrap().1;
+        ship.move_to = Some(crate::move_to::MoveToAction {
+            run: false,
+            state: MoveTo::Start,
+            goal: Some([9.5, 19.5, 0.0]),
+            target: -1,
+            range: 0.0,
+            wait: crate::move_to::MoveWait::default(),
+        });
+        t.garrison_order(1, &[1000], 200, false, false).unwrap();
+        let enter = t.object(1000).unwrap().1.enter.unwrap();
+        assert_eq!(
+            (enter.point, enter.move_to),
+            ([9.5, 19.5, 0.0], Some(MoveTo::Start))
+        );
+        assert_eq!(
+            t.object(200).unwrap().1.move_to.unwrap().goal,
+            Some([9.5, 19.5, 0.0])
+        );
+    }
+
+    #[test]
+    fn a_villager_beside_a_ship_enters_it_at_once() {
+        // in reach (gap 0.8, range 1) of a ship with speed: the tiles (5, 19) and (5, 20) are
+        // the two left out, no building between; FUN_140a867b0 -> FUN_1411921d0 -> the ship's
+        // slot 0x1c0 (FUN_14120b790): inside at the ship's place; FUN_1412067f0 with 3 records
+        // the Enter (the ship at its place, the enter action) and leaves the flag clear
+        let mut t = shore_world([5.5, 19.0], [5.5, 20.5]);
+        t.garrison_order(1, &[1000], 200, false, false).unwrap();
+        let v = t.object(1000).unwrap().1;
+        assert_eq!(v.life.inside, Some(200));
+        assert_eq!([v.position[0], v.position[1]], [5.5, 20.5]);
+        assert_eq!(v.enter.map(|e| e.state), Some(ENTERED));
+        assert!(!v.town_bell.flag);
+        assert_eq!(
+            v.town_bell.work,
+            crate::town_bell::BackToWork {
+                target: 200,
+                target_type: -1,
+                action: ENTER_ACTION,
+                target2: -1,
+                point: [5.5, 20.5],
+            }
+        );
+        assert_eq!(t.object(200).unwrap().1.garrison, [1000]);
+        // the transport's count takes it: no room for another
+        let (bp, b) = t.object(200).unwrap();
+        assert!(!t.has_room(bp, b, None).unwrap());
     }
 
     #[test]
