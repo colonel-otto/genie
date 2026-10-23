@@ -401,6 +401,12 @@ pub struct BuildStep {
     /// Its `set_state(3)` found no orders in its unit AI's queue and posted notify 0x202 (with
     /// the build action's value) to it: the caller's.
     pub notified: bool,
+    /// Its failure (the update's case 0xc) posts notify 0x1f9 (with the build action's value)
+    /// to its unit AI: the caller's.
+    pub failed: bool,
+    /// The unit takes its master's standing sprite (slot 0x68 in `set_state` 1, 2, 3 and 13):
+    /// the caller's.
+    pub stands: bool,
     /// The work ended and the builder looks for more work around the building (`FUN_1415cc4e0`,
     /// [`crate::gather_search::more_work`]): the caller's, which works what it finds, else lets
     /// the foundation go ([`BuildAction::no_more_work`], then as [`BuildStep::released`]).
@@ -466,6 +472,8 @@ const DONE: u8 = 1;
 const IDLE: u8 = 3;
 /// `set_state(2)`: the unit's stop halted the Build (slot 0x38); its next update fails it.
 const HALTED: u8 = 2;
+/// 13 (`0xd`): the Build failed; its next update tells its unit AI and halts it.
+const FAILED: u8 = 13;
 /// The buildings' master type (80).
 const BUILDING_TYPE: u8 = 80;
 /// The masters and the class the end of the work treats apart: 621 and 1889 among the
@@ -568,7 +576,7 @@ impl BuildAction {
             }
         }
         if self.state == FINISHED {
-            match self.after_work(&walk, site.as_ref(), computer, builder)? {
+            match self.after_work(&mut walk, site.as_ref(), computer, builder, &mut step)? {
                 AfterWork::Done => step.done = true,
                 AfterWork::Search => step.search = true,
                 AfterWork::WorksIt => step.works_it = true,
@@ -604,6 +612,24 @@ impl BuildAction {
             (4, None) => Err(Unsupported("a Build action in state 4 without its MoveTo")),
             // case 0: the update returns 1, the action list removes it
             (DONE, _) => {
+                step.done = true;
+                Ok(())
+            }
+            // case 1: set_state(13); the update returns 0
+            (HALTED, _) => self.end(&mut walk, site.map(Site::into_builders), FAILED, &mut step),
+            // case 0xc: the unit's slot 0x328 posts notify 0x1f9 (the Build's action value, 0, 0)
+            // to its unit AI; set_state(2) ([`BuildAction::halt`]: out of the builders, the
+            // MoveTo's teardown, the unit's standing sprite, the target let go) and the update
+            // returns 3: the action list removes the Build (FUN_140a98e20), as for 1
+            (FAILED, _) => {
+                step.failed = true;
+                let counted = self.added;
+                let (_, target) = self.halt(walk.mover.as_deref_mut())?;
+                if counted && let Some(b) = site.map(Site::into_builders) {
+                    *b = b.wrapping_sub(1);
+                }
+                step.stands = true;
+                step.released = target != -1;
                 step.done = true;
                 Ok(())
             }
@@ -657,7 +683,11 @@ impl BuildAction {
             (CLEAR, _) => Err(Unsupported(
                 "a builder off its footprint without its MoveTo",
             )),
-            _ => Err(Unsupported("a Build state not modelled")),
+            // case 10: the walk to a point (set_state 11, `FUN_140aa0d30`), which only a loaded
+            // Build can be in
+            (11, _) => Err(Unsupported("a Build state not modelled")),
+            // the default case (states 0, 3, 5, 8 to 10, 12 and 14 to 221): the update returns 0
+            _ => Ok(()),
         };
         r.map(|()| step)
     }
@@ -719,10 +749,11 @@ impl BuildAction {
     /// caller's). A computer player's builder is not modelled.
     fn after_work(
         &mut self,
-        walk: &Walk<'_>,
+        walk: &mut Walk<'_>,
         site: Option<&Site<'_>>,
         computer: bool,
         builder: Builder<'_>,
+        step: &mut BuildStep,
     ) -> Result<AfterWork, Unsupported> {
         if computer {
             return Err(Unsupported("a computer player's builder after its work"));
@@ -758,7 +789,7 @@ impl BuildAction {
             return Ok(AfterWork::Search);
         }
         ai.end_order_and_action()?;
-        self.done(walk)?;
+        self.end(walk, None, DONE, step)?;
         Ok(AfterWork::Done)
     }
 
@@ -795,7 +826,8 @@ impl BuildAction {
     /// longer in state 0 leave its queue (`FUN_140c5dcd0`); with orders left (`FUN_140c564a0`)
     /// it has no order and no action (`FUN_140c64b60`, `FUN_140c64b50` with −1) and the Build
     /// ends (`set_state(1)`: the update after removes it); with none it posts notify 0x202 to
-    /// its unit AI ([`BuildStep::notified`]) and takes its standing sprite (slot 0x68, not held).
+    /// its unit AI ([`BuildStep::notified`]) and takes its standing sprite (slot 0x68,
+    /// [`BuildStep::stands`]).
     ///
     /// # Errors
     ///
@@ -815,12 +847,13 @@ impl BuildAction {
             drop_done_orders(ai, built, builder.build_targets);
             if !ai.orders.is_empty() {
                 ai.end_order_and_action()?;
-                self.done(walk)?;
+                self.end(walk, None, DONE, step)?;
             }
             left = ai.orders.len();
         }
         if left == 0 {
             step.notified = true;
+            step.stands = true;
         }
         Ok(())
     }
@@ -912,7 +945,8 @@ impl BuildAction {
     }
 
     /// The search for more work found nothing (`0x140ab0f00`): slot 0x68 with none lets the
-    /// foundation go (the caller's) and `set_state(3)` waits.
+    /// foundation go (the caller's) and `set_state(3)` waits (the caller's notify 0x202 and
+    /// standing sprite: its unit AI has no orders, or the search would not have run).
     ///
     /// # Errors
     ///
@@ -926,14 +960,21 @@ impl BuildAction {
         Ok(())
     }
 
-    /// `set_state(1)` (`0x140aae200` case 1): the builder takes its standing sprite (slot 0x68,
-    /// not held for builders) and its owner's slot 0x380 hears of it (`FUN_141618d30`: only a
+    /// `set_state(1)` and `set_state(13)` (`0x140aae200` cases 1 and 0xd, one case): the prelude
+    /// ([`BuildAction::leave`]; out of the builders of `builders`), then the builder takes its
+    /// standing sprite (slot 0x68 with its master's `+0x470`, [`BuildStep::stands`], the
+    /// caller's) and, with a target, its owner's slot 0x380 hears of it (`FUN_141618d30`: only a
     /// computer player's AI listens).
-    fn done(&mut self, walk: &Walk<'_>) -> Result<(), Unsupported> {
-        if walk.mover.as_ref().is_some_and(|_| self.move_to.is_some()) {
-            return Err(Unsupported("a Build ending with its MoveTo"));
-        }
-        self.state = DONE;
+    fn end(
+        &mut self,
+        walk: &mut Walk<'_>,
+        builders: Option<&mut u8>,
+        state: u8,
+        step: &mut BuildStep,
+    ) -> Result<(), Unsupported> {
+        self.leave(walk, builders)?;
+        self.state = state;
+        step.stands = true;
         Ok(())
     }
 
@@ -3438,6 +3479,90 @@ mod tests {
             (build.state, build.added, construction.builders),
             (PLACE, true, 1)
         );
+    }
+
+    /// The update's case 1 and case 0xc (`0x140ab0370`): a Build its unit's stop halted (state
+    /// 2) fails (`set_state(13)`, as 1: the unit takes its standing sprite,
+    /// [`BuildStep::stands`]) and the update returns 0; failed, it posts notify 0x1f9 with its
+    /// action value to its unit AI ([`BuildStep::failed`]), halts (`set_state(2)`: the unit
+    /// stands, a target goes, [`BuildStep::released`]) and returns 3, which removes it
+    /// ([`BuildStep::done`]). In state 3 with a target the update does nothing (the default
+    /// case).
+    #[test]
+    fn a_halted_build_fails_and_its_failure_removes_it() {
+        fn update(b: &mut BuildAction, world: &mut Spatial) -> BuildStep {
+            let mut ai = UnitAi::default();
+            let walk = Walk {
+                mover: None,
+                me: Me {
+                    id: 9,
+                    position: [0.0; 3],
+                    group: -1,
+                    action_state: 0,
+                },
+                dt: 0.02,
+                world,
+                plan: None,
+            };
+            let builder = Builder {
+                class: VILLAGER,
+                master: 83,
+                held: 0.0,
+                held_kind: -1,
+                drop_site: false,
+                ai: Some(&mut ai),
+                waits: &mut 0,
+                build_targets: &[],
+                look: Looks(&|_| None),
+            };
+            b.update(walk, None, builder).unwrap()
+        }
+        let mut world = Spatial::default();
+        world.insert(10028, house());
+        let mut b = BuildAction {
+            state: HALTED,
+            move_to: None,
+            target: -1,
+            ..BuildAction::start(10028, 0.0, TASK)
+        };
+        let step = update(&mut b, &mut world);
+        assert_eq!(b.state, FAILED);
+        assert_eq!(
+            step,
+            BuildStep {
+                stands: true,
+                ..BuildStep::default()
+            }
+        );
+        let step = update(&mut b, &mut world);
+        assert_eq!((b.state, b.target), (HALTED, -1));
+        assert_eq!(
+            step,
+            BuildStep {
+                stands: true,
+                failed: true,
+                done: true,
+                ..BuildStep::default()
+            }
+        );
+        // failed with its foundation: the halt lets it go
+        let mut holding = BuildAction {
+            state: FAILED,
+            move_to: None,
+            ..BuildAction::start(10028, 0.0, TASK)
+        };
+        let step = update(&mut holding, &mut world);
+        assert_eq!((holding.state, holding.target), (HALTED, -1));
+        assert!(step.released && step.failed && step.done);
+        // waiting with a target: nothing
+        let mut waiting = BuildAction {
+            state: IDLE,
+            move_to: None,
+            ..BuildAction::start(10028, 0.0, TASK)
+        };
+        let before = waiting;
+        let step = update(&mut waiting, &mut world);
+        assert_eq!((waiting, step), (before, BuildStep::default()));
     }
 
     /// census v5's 217 stops "a dying foundation" went on to "a Build whose foundation died":

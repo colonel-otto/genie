@@ -4693,6 +4693,12 @@ impl Unit {
             if step.notified {
                 self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
             }
+            if step.failed {
+                self.post_own(crate::unit_ai::ACTION_FAILED, [BUILD_ACTION, 0, 0])?;
+            }
+            if step.stands {
+                self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+            }
             if step.works_it {
                 // slot 0x7e8 on the building it built, at its place (the caller's work command)
                 let point = c
@@ -4718,7 +4724,9 @@ impl Unit {
                         b.no_more_work()?;
                     }
                     release_own(others, masters, target, by)?;
+                    // set_state(3) without orders: notify 0x202, then the standing sprite
                     self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
+                    self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
                 }
             }
         }
