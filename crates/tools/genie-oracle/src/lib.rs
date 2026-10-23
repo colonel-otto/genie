@@ -361,6 +361,24 @@ fn unit(
                     .map(|m| &m.rge_combat_object)
             })
             .map_or(0, |c| c.attack_count),
+        roo_called: s.rooalready_called != 0,
+        // mIsOnMangroveShallows (+0xcd0); build 158041's saves all hold it (its version gate
+        // 0x421999 lies before them)
+        rice: object
+            .tribe_building_object
+            .as_deref()
+            .and_then(|b| b.is_on_mangrove_shallows)
+            .is_some_and(|v| v != 0),
+        // the combat object's localResourceStore (+0xae0), a map by attribute saved in its order
+        store: object
+            .combat()
+            .map(|c| {
+                c.local_resource_store
+                    .iter()
+                    .map(|e| (e.attribute_idx as i16, e.value))
+                    .collect()
+            })
+            .unwrap_or_default(),
         ..Unit::default()
     };
     let imported = if saved {
@@ -1319,6 +1337,26 @@ fn saved_actions(
             unit.attack = Some(saved_attack(action, graphics, &move_to_state, run_sprite)?);
             // the attack reads and changes the unit's sprite from here on
             unit.sprite = graphics.and_then(|g| saved_sprite(s, g));
+            Ok(())
+        }
+        genie_core::wait_solidify::WAIT_SOLIDIFY => {
+            // TRIBE_Action_Wait_Solidify's load (FUN_140ae8220): the base action's state and
+            // task, and the foundation it waits for (`mTargetBuildingId`, +0x68); it makes no
+            // sub-action
+            if base.sub_actions.entries().next().is_some() {
+                return Err(Unsupported("a saved Wait_Solidify with a sub-action"));
+            }
+            let target = action
+                .tribe_action_wait_solidify
+                .as_deref()
+                .ok_or(Unsupported("a saved Wait_Solidify without its own part"))?
+                .target_building_id;
+            let mut wait = genie_core::wait_solidify::WaitSolidify::new(
+                task_at(s.master_obj, base.short_val)?,
+                target,
+            );
+            wait.set_state(base.state);
+            unit.wait_solidify = Some(wait);
             Ok(())
         }
         _ => Err(Unsupported("a saved action the slice does not import")),
