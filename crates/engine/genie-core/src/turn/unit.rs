@@ -480,10 +480,13 @@ impl Unit {
     }
 
     /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads of its
-    /// building, one of its own player's (another player's is not modelled): its state, room
-    /// for the unit (its count, the units of the player inside it, plus 1 within its master's
-    /// capacity) and whether the unit is in reach of it. The enter itself (`FUN_140a867b0`) is
-    /// not modelled.
+    /// target, one of its own player's (another player's is not modelled): room for the unit (its
+    /// count, the units of the player inside it, plus 1 within its master's capacity) and the
+    /// rest of [`crate::garrison::enter_view`]; a transport's reach test is
+    /// [`crate::garrison::ship_reaches`]. Then its step: the enter (`FUN_140a867b0`) and the
+    /// update's `set_state(1)`, with an enter again ([`crate::garrison::EnterStep::again`]); a
+    /// wait's standing sprite; the transport's move, the caller's after the update
+    /// ([`Context::transport_moves`]).
     pub(in crate::turn) fn enter_update(
         &mut self,
         c: &mut Context<'_>,
@@ -491,63 +494,78 @@ impl Unit {
         me: Me,
     ) -> Result<(), Unsupported> {
         let enter = self.enter.expect("checked by the caller");
-        let target = others.iter().find(|u| u.id == enter.target);
-        let building = match target {
-            Some(t) => {
+        let found = others
+            .iter()
+            .find(|u| u.id == enter.target)
+            .map(|t| (c.player, t))
+            .or_else(|| c.foreign.find(enter.target));
+        // the units inside the target, any player's (its slot 0x498)
+        let foreign = c.foreign;
+        let inside_of = |others: &[Self], id: i32| {
+            let inside = |u: &&Self| u.life.inside == Some(id);
+            let theirs: usize = (0..foreign.before.len() + 1 + foreign.after.len())
+                .filter_map(|q| foreign.player(q))
+                .map(|p| p.objects.iter().chain(&p.sleeping).filter(inside).count())
+                .sum();
+            others.iter().filter(inside).count() + theirs
+        };
+        let (building, walking, meeting) = match found {
+            Some((tp, t)) => {
                 let master = c
-                    .masters
+                    .every_masters
+                    .get(tp)
                     .and_then(|m| m.get(t.life.master_id))
                     .ok_or(Unsupported(
                         "an Enter's building of a master the slice lacks",
                     ))?;
-                let inside = others
-                    .iter()
-                    .filter(|u| u.life.inside == Some(t.id))
-                    .count();
-                let room = inside < usize::from(master.garrison);
-                let (me_at, me_r) = c
-                    .spatial
-                    .get_known(self.id)?
-                    .map(|p| (p.position, p.radius))
-                    .ok_or(Unsupported("an entering unit without a place"))?;
-                let (t_at, t_r) = c
-                    .spatial
-                    .get_known(t.id)?
-                    .map(|p| (p.position, p.radius))
-                    .ok_or(Unsupported("an Enter's building without a place"))?;
-                let gap = footprint_gap_squared(me_at, me_r, t_at, t_r);
-                Some(crate::garrison::EnterTarget {
-                    state: t.life.state,
-                    allied: true,
-                    room,
-                    position: t.position,
-                    in_reach: crate::garrison::EnterAction::in_reach(enter.range, gap, 0.0)?,
-                })
+                let room = inside_of(others, t.id) < usize::from(master.garrison);
+                let (mut view, walking, meeting) = crate::garrison::enter_view(
+                    c.spatial,
+                    c.zones,
+                    c.every_masters,
+                    self,
+                    (t, master, room),
+                    enter.range,
+                )?;
+                // FUN_141663dc0 with allies, or Gaia's
+                view.allied = tp == 0 || crate::tasks::allied(c.relations, c.player, tp, true);
+                (Some(view), walking, meeting)
             }
-            None if c.foreign.find(enter.target).is_some() => {
-                return Err(Unsupported("an Enter into another player's building"));
-            }
-            None => None,
+            None => (None, (0.0, 0.0), Ok(([0.0; 2], 0))),
         };
+        let ship = found.map(|(_, t)| t);
         let walk = c.walk(self.mover.as_mut(), me);
-        let step = self
-            .enter
-            .as_mut()
-            .expect("checked above")
-            .update(walk, building)?;
+        let step = self.enter.as_mut().expect("checked above").update(
+            walk,
+            building,
+            walking,
+            || meeting,
+            |w, to| {
+                let (Some(ship), Some(plan)) = (ship, w.plan.as_mut()) else {
+                    return Ok(false);
+                };
+                crate::garrison::ship_reaches(ship, w.world, plan, to)
+            },
+        )?;
+        if let Some(to) = step.order {
+            c.transport_moves.push((enter.target, to));
+        }
+        if step.waits {
+            self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+        }
         if step.enter {
-            let building = others
+            let (tp, building) = others
                 .iter()
                 .find(|u| u.id == enter.target)
-                .ok_or(Unsupported("an enter into a building of another player"))?;
-            let inside = others
-                .iter()
-                .filter(|u| u.life.inside == Some(enter.target))
-                .count();
+                .map(|t| (c.player, t))
+                .or_else(|| c.foreign.find(enter.target))
+                .expect("the update found it");
+            let inside = inside_of(others, enter.target);
             let mut w = EnterWorld {
                 spatial: c.spatial,
                 pathing: c.pathing,
                 masters: c.masters,
+                target_masters: c.every_masters.get(tp),
                 graphics: c.graphics,
                 sprite_rng: c.streams.get(Stream::Sprite),
                 drop_sites: c.drop_sites,
@@ -564,11 +582,24 @@ impl Unit {
             }
             // the update's own set_state(1) after the enter's
             self.entered(&mut w)?;
+            if step.again {
+                // FUN_140a867b0 on the unit inside: notify 0x1fa and its set_state(1), then the
+                // update's
+                self.post_own(
+                    crate::ai_kinds::NOTIFY_ACTION_COMPLETED,
+                    [crate::garrison::ENTER_ACTION, 0, 0],
+                )?;
+                self.entered(&mut w)?;
+                self.entered(&mut w)?;
+            }
             let firepower = w.firepower;
             c.left_group = w.left_group.map(|g| (g, enter.target));
             if let Some(b) = others.iter_mut().find(|u| u.id == enter.target) {
                 b.firepower += firepower;
                 b.garrison.push(self.id);
+            } else {
+                // another player's: the caller's after the update
+                c.entered = Some((enter.target, firepower));
             }
         }
         if step.done {
@@ -627,9 +658,13 @@ impl Unit {
             .masters
             .ok_or(Unsupported("an enter without the masters"))?;
         let target = building.id;
-        let bm = masters.get(building.life.master_id).ok_or(Unsupported(
-            "an enter into a building of a master the slice lacks",
-        ))?;
+        let bm = w
+            .target_masters
+            .unwrap_or(masters)
+            .get(building.life.master_id)
+            .ok_or(Unsupported(
+                "an enter into a building of a master the slice lacks",
+            ))?;
         let me = masters
             .get(self.life.master_id)
             .ok_or(Unsupported("an entering unit of a master the slice lacks"))?;
@@ -714,7 +749,8 @@ impl Unit {
         // the building's slot 0x1c0 (FUN_1411cb850 -> FUN_14120b790): a unit (type 70) adds its
         // share to the building's volleys
         if me.kind == 70 {
-            let rate = crate::garrison::attack_rate(bm, masters, building.reload_powerup);
+            let own = w.target_masters.unwrap_or(masters);
+            let rate = crate::garrison::attack_rate(bm, own, building.reload_powerup);
             w.firepower = crate::garrison::share(me, masters, self.reload_powerup, rate)?;
         }
         self.position = [at[0], at[1], self.position[2]];
@@ -733,15 +769,39 @@ impl Unit {
                 // its mask (`+0x8f8`) is none after
                 r.entries.entry(self.id).or_default().mask = 0;
             }
-            let _ = v.sight_on_los(target, at, building_radius, false, 5, false);
+            // a building's sight takes a circle of 5 (FUN_141212e10, type 80 only)
+            if bm.kind == crate::order::BUILDING {
+                let _ = v.sight_on_los(target, at, building_radius, false, 5, false);
+            }
         }
-        if !self.town_bell.flag {
-            return Err(Unsupported(
-                "a town-bell record at the enter (FUN_1412067f0 with 3)",
-            ));
+        // FUN_1412067f0 with 3, for a villager or master 1808: the town-bell record of its work
+        // (FUN_141206a20 with the flag clear: the Enter's target at its place, no target class,
+        // the unit AI's action, no second target), then the flag set for a building in state 2
+        // (its own player's) that takes villagers; with 3 it is never cleared
+        if me.class == 4 || me.id == 1808 {
+            if !self.town_bell.flag {
+                let action = self
+                    .ai
+                    .as_ref()
+                    .map(|ai| ai.current_action)
+                    .ok_or(Unsupported(
+                        "a town-bell record of a unit without a unit AI",
+                    ))?;
+                self.town_bell.record(crate::town_bell::BackToWork {
+                    target,
+                    target_type: -1,
+                    action,
+                    target2: -1,
+                    point: [at[0], at[1]],
+                });
+            }
+            if bm.kind == crate::order::BUILDING
+                && building.life.state == 2
+                && bm.building.is_some_and(|b| b.garrison_type & 1 != 0)
+            {
+                self.town_bell.flag = true;
+            }
         }
-        self.town_bell.flag =
-            bm.building.is_some_and(|b| b.garrison_type & 1 != 0) && building.life.state == 2;
         self.post_own(
             crate::ai_kinds::NOTIFY_ACTION_COMPLETED,
             [crate::garrison::ENTER_ACTION, 0, 0],
@@ -6356,6 +6416,8 @@ pub(crate) struct EnterWorld<'a> {
     pub pathing: &'a mut Pathing,
     /// The owner's masters.
     pub masters: Option<&'a Masters>,
+    /// The target's owner's masters, which its master is (the owner's when None).
+    pub target_masters: Option<&'a Masters>,
     /// The graphics, for the standing sprite.
     pub graphics: &'a std::collections::BTreeMap<i16, Graphic>,
     /// The Sprite stream, which a new sprite may draw from.

@@ -337,6 +337,17 @@ impl Terrain {
             .is_some_and(|k| k.flags & 0x80 != 0)
     }
 
+    /// `FUN_1413fbee0` (`FUN_1413fbf30` on a place's tile) with `FUN_1413fc0f0`: the terrain a map
+    /// read sees on tile (`x`, `y`) (terrain 0 off the map) has the terrain table's bit 4 (the
+    /// `.dat`'s `is_water` 16: a wet beach, where land units and ships meet).
+    #[must_use]
+    pub fn beach(&self, x: i32, y: i32) -> bool {
+        let t = self.index(x, y).map_or(0, |i| self.seen(self.kinds[i]));
+        self.terrains
+            .get(usize::from(t))
+            .is_some_and(|k| k.flags & 0x10 != 0)
+    }
+
     /// The snow check of a completed building on tile (`x`, `y`) (`FUN_1411dbb70`'s "pick snow"):
     /// the tile's terrain (`FUN_1413fbee0`) or its layer read as a terrain (`FUN_1413fbf90`, the
     /// layer's low byte) is snow. Its decal (`FUN_1413b7bf0`, which may draw from the Object

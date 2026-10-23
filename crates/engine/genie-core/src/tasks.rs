@@ -325,8 +325,8 @@ fn general<'m>(
 /// ([`crate::garrison::is_garrison_task`]) when the building's `garrison_type` takes the master
 /// ([`crate::garrison::garrison_type_takes`], class 42 left out); none on a building whose top
 /// action is `0x7c` or `0x7d` (`FUN_1411e8630`; a computer player's production comes first,
-/// `FUN_1411d5520`), which is not modelled. Then none, unless the target's master has object flag
-/// 0 (the garrison into a transport, not modelled).
+/// `FUN_1411d5520`), which is not modelled. Else none: the caller goes on to the rest of the
+/// finder for a target whose master has object flag 0 (a transport, [`find_task`]).
 fn garrison_task<'m>(
     list: &'m Master,
     actor: &Actor<'_>,
@@ -356,12 +356,7 @@ fn garrison_task<'m>(
             return Ok(Some(task));
         }
     }
-    if t.master.object_flags & 1 == 0 {
-        return Ok(None);
-    }
-    Err(Unsupported(
-        "the task finder's garrison into a target with object flag 0",
-    ))
+    Ok(None)
 }
 
 /// The task of `list` (a master's task list) for `actor` on `target` (`FUN_1412784d0` with the
@@ -380,8 +375,16 @@ pub fn find_task<'m>(
     dip: &impl Diplomacy,
 ) -> Result<Option<&'m Task>, Unsupported> {
     let own = actor.master;
+    // the garrison filter (3): a building's garrison task; with none, a target whose master has
+    // object flag 0 (a transport) goes on through the finder to its garrison into the target
+    // (`LAB_1412796b4`), any other has no task
     if filter == 3 {
-        return garrison_task(list, actor, target, dip);
+        if let Some(task) = garrison_task(list, actor, target, dip)? {
+            return Ok(Some(task));
+        }
+        if target.is_none_or(|t| t.master.object_flags & 1 == 0) {
+            return Ok(None);
+        }
     }
     if let Some(t) = target
         && own.object_flags & 0x10 != 0
@@ -417,6 +420,9 @@ pub fn find_task<'m>(
             "the task finder's monk conversion of buildings (attribute 95)",
         ));
     }
+    // a garrison into the target without a task for it ends the finder before its tail, after
+    // the repair and task 0x6f (`LAB_1412796b4`'s flag, with any filter)
+    let mut no_task = false;
     if let Some(t) = target {
         // dropping off what the unit carries at its player's finished drop site: the tasks of
         // gathering (5, 110, 111) for what it carries
@@ -455,12 +461,25 @@ pub fn find_task<'m>(
             || (dip.allied(actor.player, t.player, true)
                 && dip.allied(t.player, actor.player, true)
                 && allied);
+        // the garrison into the target (a transport): the first task of action 3 on its class
+        // (the whole shorts) the filter takes (any, or 3); with none, the garrison filter has
+        // no task, and any filter ends the finder after the repair and task 0x6f below
         if own_or_allied
             && t.state < 3
             && t.master.object_flags & 1 != 0
-            && (t.master.class == class::TRANSPORT || own.class != class::VILLAGER)
+            && (t.master.class == class::TRANSPORT || own.class != class::VILLAGER || filter == 3)
         {
-            return Err(Unsupported("the task finder's garrison into a target"));
+            if let Some(task) = first(list, |task| {
+                task.action_type == crate::order::GARRISON
+                    && task.object_group == t.master.class
+                    && wanted(filter, task)
+            }) {
+                return Ok(Some(task));
+            }
+            if filter == 3 {
+                return Ok(None);
+            }
+            no_task = filter == -1;
         }
         let repairable =
             t.player == actor.player || t.player == 0 || dip.allied(actor.player, t.player, true);
@@ -483,6 +502,9 @@ pub fn find_task<'m>(
         if t.state < 3 && (t.master.id == id::ID_45 || t.master.id == id::ID_84) {
             return Err(Unsupported("the task finder's task 0x6f"));
         }
+    }
+    if no_task {
+        return Ok(None);
     }
     // the tail: conversions, task 0x84, healing, task 0x88, the siege and class-53 tasks
     let monk = own.class == class::MONK;
@@ -671,6 +693,103 @@ mod tests {
             find(&lumberjack, (0, 10.0), &building(&camp, 2, 0)),
             Ok(Some(&task(101, -1, -1, 1.0)))
         );
+    }
+
+    /// A transport of player `player` (object flag 0) in state 2 of class `class`.
+    fn transport(ship: &Master, player: usize) -> TaskTarget<'_> {
+        TaskTarget {
+            id: 7420,
+            hp: 100.0,
+            max_hp: 100.0,
+            ..building(ship, player, 2)
+        }
+    }
+
+    fn find_with<'m>(
+        list: &'m Master,
+        t: &TaskTarget<'_>,
+        filter: i16,
+    ) -> Result<Option<&'m Task>, Unsupported> {
+        find_task(
+            list,
+            &actor(list, (-1, 0.0)),
+            Some(t),
+            Some(t),
+            None,
+            filter,
+            &Alone,
+        )
+    }
+
+    #[test]
+    fn the_garrison_filter_goes_on_to_a_transport_s_class_task() {
+        // FUN_1412784d0 with filter 3 on a transport ship (545, class 20, object flag 0): no
+        // building's task, so LAB_1412796b4's first task of action 3 on class 20
+        let ship = Master {
+            object_flags: 1,
+            garrison: 5,
+            ..master(545, 70, class::TRANSPORT, vec![])
+        };
+        let enter = task(3, class::TRANSPORT, -1, 0.0);
+        let villager = master(293, 70, class::VILLAGER, vec![task(3, 3, -1, 0.0), enter]);
+        assert_eq!(
+            find_with(&villager, &transport(&ship, 2), 3),
+            Ok(Some(&enter))
+        );
+        // any filter takes it too, another not
+        assert_eq!(
+            find_with(&villager, &transport(&ship, 2), -1),
+            Ok(Some(&enter))
+        );
+        // no task on its class: none with the garrison filter, and none with any filter (the
+        // finder ends before the general search, which would give the militia's attack)
+        let attack = Task {
+            owner_type: 0,
+            ..task(7, class::TRANSPORT, -1, 0.0)
+        };
+        let militia = master(74, 70, 6, vec![attack]);
+        assert_eq!(find_with(&militia, &transport(&ship, 2), 3), Ok(None));
+        assert_eq!(find_with(&militia, &transport(&ship, 2), -1), Ok(None));
+        // an enemy's transport is no garrison: the general search with any filter
+        assert_eq!(
+            find_with(&militia, &transport(&ship, 1), -1),
+            Ok(Some(&attack))
+        );
+        // a target without object flag 0 has no task with the garrison filter
+        let galley = Master {
+            object_flags: 0,
+            ..ship
+        };
+        assert_eq!(find_with(&villager, &transport(&galley, 2), 3), Ok(None));
+    }
+
+    #[test]
+    fn a_villager_garrisons_only_a_transport_s_class_without_the_garrison_filter() {
+        // LAB_1412796b4: a villager takes a target with object flag 0 not of class 20 (a ram,
+        // class 13) only under the garrison filter (or mode 1, not modelled)
+        let ram = Master {
+            object_flags: 1,
+            garrison: 4,
+            ..master(35, 70, class::SIEGE, vec![])
+        };
+        let enter = task(3, class::SIEGE, -1, 0.0);
+        let villager = master(293, 70, class::VILLAGER, vec![enter]);
+        assert_eq!(
+            find_with(&villager, &transport(&ram, 2), 3),
+            Ok(Some(&enter))
+        );
+        assert_eq!(find_with(&villager, &transport(&ram, 2), -1), Ok(None));
+        let infantry = master(74, 70, 6, vec![enter]);
+        assert_eq!(
+            find_with(&infantry, &transport(&ram, 2), -1),
+            Ok(Some(&enter))
+        );
+        // a dead ram (state 3) is none of its garrisons
+        let dead = TaskTarget {
+            state: 3,
+            ..transport(&ram, 2)
+        };
+        assert_eq!(find_with(&infantry, &dead, 3), Ok(None));
     }
 
     #[test]
