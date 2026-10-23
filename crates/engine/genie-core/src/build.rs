@@ -607,12 +607,16 @@ impl BuildAction {
         }
         let mut walk = walk;
         // the MoveTo's update first (`0x140aa2a70` through `FUN_140a992b0`, states 4 and 223):
-        // its target gone or in a state above 6 lets it go (slot 0x68 with none) and the quiet
-        // MoveTo returns 5
+        // its target in a state above 6 lets it go (slot 0x68 with none) and the quiet MoveTo
+        // returns 5. A target the world removed is no longer the MoveTo's: its removal let the
+        // MoveTo go (slot 0x180's release clears the pointer and the id), which walks on.
+        if self.walk_target != -1 && builder.walk_target_state.is_none() {
+            self.walk_target = -1;
+        }
         if matches!(self.state, MOVE | CLEAR)
             && self.move_to.is_some()
             && self.walk_target != -1
-            && builder.walk_target_state.is_none_or(|s| 6 < s)
+            && builder.walk_target_state.is_some_and(|s| 6 < s)
         {
             self.walk_target = -1;
             self.lose_foundation(&mut walk, site, &mut step)?;
@@ -2886,10 +2890,11 @@ mod tests {
             )
         );
         assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
-        // a foundation the world no longer holds is the same (the MoveTo's id test)
+        // a foundation the world removed (425984813's 4045, built and replaced by its stack
+        // unit) is no longer the MoveTo's target, which walks on: no walk to the point
         let mut gone = BuildAction {
             target: -1,
-            move_to: Some(MoveTo::Moving),
+            move_to: Some(MoveTo::Arrived),
             ..BuildAction::start(10913, [61.5, 92.5, 0.0], 0.8, TASK)
         };
         let _ = gone
@@ -2899,10 +2904,8 @@ mod tests {
                 builder(&mut waits, None),
             )
             .unwrap();
-        assert_eq!(
-            (gone.state, gone.move_to),
-            (WALK_POINT, Some(MoveTo::Start))
-        );
+        assert_eq!(gone.walk_target, -1);
+        assert_ne!(gone.state, WALK_POINT);
         // a unit without speed: its MoveTo fails at the start (13)
         let mut still = crate::hunt::tests::walker();
         still.stats.speed = 0.0;
