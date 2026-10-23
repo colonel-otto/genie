@@ -2105,20 +2105,24 @@ pub enum Entry {
 impl Call {
     /// `FUN_140f9e540` up to the search: the target's range test, the map test, fixed point by
     /// truncation (`(int)(longlong)(f * 2^22)`); the listed objects' shapes are ignored, except the
-    /// target's when the goal is the target's own position, whose half sizes then count.
+    /// target's when the goal is the target's own position, whose half sizes then count. The
+    /// target's gap (`FUN_14118faf0`) clamps each axis by `MAXSS` (an unordered one is 0) and is
+    /// in range by `COMISS`/`JC` (0x140f9e5f5: an unordered one is not); an end lies off the map
+    /// below 0 (`COMISS`/`JA`) or at the size (`JNC`), so an unordered coordinate is on it.
     #[must_use]
     pub fn entry(&self) -> Entry {
         if let Some(t) = self.target {
-            let fx = (self.from[0] - t.position[0]).abs() - t.half_size[0];
-            let fx = if fx <= 0.0 { 0.0 } else { fx };
-            let fy = (self.from[1] - t.position[1]).abs() - t.half_size[1];
-            let fy = if fy <= 0.0 { 0.0 } else { fy };
+            let fx = fmath::maxss((self.from[0] - t.position[0]).abs() - t.half_size[0], 0.0);
+            let fy = fmath::maxss((self.from[1] - t.position[1]).abs() - t.half_size[1], 0.0);
             if fmath::sqrt(fy * fy + fx * fx) - self.radius <= self.range {
                 return Entry::InRange;
             }
         }
         let on_map = |[x, y]: [f32; 2]| {
-            0.0 <= x && 0.0 <= y && x < self.map[0] as f32 && y < self.map[1] as f32
+            fmath::at_most_or_unordered(0.0, x)
+                && fmath::at_most_or_unordered(0.0, y)
+                && fmath::below_or_unordered(x, self.map[0] as f32)
+                && fmath::below_or_unordered(y, self.map[1] as f32)
         };
         if !on_map(self.from) || !on_map(self.to) {
             return Entry::Invalid;
@@ -2723,6 +2727,41 @@ mod tests {
         assert!(!pather.start_blocked(&mut mesh, &free, &q));
         q.range = 3.0;
         assert!(!pather.start_blocked(&mut mesh, &blocked, &q));
+    }
+
+    /// `FUN_140f9e540`'s entry tests as compiled: the target's gap clamps each axis by `MAXSS`
+    /// (`FUN_14118faf0`: an unordered one is 0) and is in range by `COMISS`/`JC` (0x140f9e5f5);
+    /// each end lies off the map by `COMISS`/`JA` below 0 and `JNC` at the size (0x140f9e67c..
+    /// 0x140f9e6da): an unordered coordinate is on it.
+    #[test]
+    fn the_entry_s_float_tests_take_the_game_s_nan_paths() {
+        let call = |from: [f32; 2], target: Option<Target>| Call {
+            from,
+            to: [7.0, 5.0],
+            radius: 0.2,
+            range: 0.0,
+            target,
+            listed: Vec::new(),
+            map: [16, 16],
+            mask: 6,
+        };
+        let t = Target {
+            id: 9,
+            position: [5.0, 5.0],
+            half_size: [0.5, 0.5],
+        };
+        assert_eq!(call([f32::NAN, 5.0], Some(t)).entry(), Entry::InRange);
+        assert!(matches!(
+            call([f32::NAN, 5.0], None).entry(),
+            Entry::Search { .. }
+        ));
+        assert_eq!(call([-0.1, 5.0], None).entry(), Entry::Invalid);
+        assert_eq!(call([16.0, 5.0], None).entry(), Entry::Invalid);
+        assert_eq!(call([5.0, 16.0], None).entry(), Entry::Invalid);
+        assert!(matches!(
+            call([0.0, 15.9], None).entry(),
+            Entry::Search { .. }
+        ));
     }
 
     /// A query from (5, 5) to (7, 5) with a radius of a quarter tile and range `range`.

@@ -303,6 +303,12 @@ const PLANS: u32 = 3;
 const ANNEX_GAP: f32 = crate::image::movement::RANGE_FLOOR;
 /// A level's plans before it gives up (`FUN_140f8f670`).
 const CONTINUE: i32 = 10;
+/// The widest unit the new short pather takes (`DAT_142e7f384`, `FUN_140f9e540`'s load at
+/// 0x140f9e713): the address of the old pather's [`crate::image::hull_path::HALF`].
+const NEW_PATHER_RADIUS: f32 = crate::image::hull_path::HALF;
+/// The motion step's include list (`DAT_143f4a000`, its count `local_19bc`) holds at most 0x100
+/// kept hits (`CMP RCX, 0x100; JGE` at 0x1411547cc).
+const INCLUDED: usize = 0x100;
 
 /// A position on the map as the game's vector (x, height, y), and back.
 const fn vector([x, y, z]: [f32; 3]) -> Vec3 {
@@ -879,6 +885,9 @@ impl Mover {
         }
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let mut plans = 0;
+        // the walk's kept hits, which the step's short paths include (`DAT_143f4a000`, its count
+        // `local_19bc`, 0 at the step's start)
+        let mut include = Vec::new();
         loop {
             // a level without a path ends the step (`LAB_14115582c`), as no level does
             let Some(level) = self.paths.first().filter(|l| l.has_path) else {
@@ -933,7 +942,7 @@ impl Mover {
                     let plan = plan
                         .as_deref_mut()
                         .ok_or(Unsupported("a path request without the world's planners"))?;
-                    match self.request(me, world, plan, goal, &mut plans)? {
+                    match self.request(me, world, plan, goal, &mut plans, &include)? {
                         Step::Again => continue,
                         Step::Walk => {}
                         Step::Paused => return Ok(Motion::Moving),
@@ -944,7 +953,8 @@ impl Mover {
             }
             let (now, computer) = plan.as_deref().map_or((0, false), |p| (p.now, p.computer));
             let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
-            if let Next::Done(m) = self.walk(me, dt, world, pathing, goal, now, computer)? {
+            let walked = self.walk(me, dt, world, pathing, goal, (now, computer), &mut include);
+            if let Next::Done(m) = walked? {
                 return Ok(m);
             }
         }
@@ -964,8 +974,8 @@ impl Mover {
         world: &Spatial,
         pathing: Option<&mut Pathing>,
         goal: Goal<'_>,
-        now: u32,
-        computer: bool,
+        (now, computer): (u32, bool),
+        include: &mut Vec<i32>,
     ) -> Result<Next, Unsupported> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
@@ -1017,6 +1027,9 @@ impl Mover {
             )?;
             if !hits.is_empty() {
                 let avoided = self.avoid(me, world, &hits, projected, dt, now, computer)?;
+                if !avoided.kept.is_empty() {
+                    include_kept(world, pathing, &avoided.kept, include)?;
+                }
                 if avoided.at_target {
                     // FUN_140f9b4d0 three times: bit 0 on and bit 1 off on the walked level, bit 2
                     // on for it and its parents; then back to the top of the step
@@ -1029,7 +1042,7 @@ impl Mover {
                 }
                 self.pauses.extend(avoided.pauses);
                 if !avoided.kept.is_empty() {
-                    return self.go_round(me, world, pathing, &hits, &avoided.kept, computer);
+                    return self.go_round(me, world, &hits, computer);
                 }
             }
         }
@@ -1435,7 +1448,8 @@ impl Mover {
     /// waypoint, the level spends one of its tries and a new level gets a path to the waypoint:
     /// the short pather's (`FUN_140f9e540`) for a near waypoint, else or when that fails the tile
     /// pathfinder's (`FUN_140f7c530`; a top level's plan becomes a level of its own, whose
-    /// stretches the next pass serves). The new level goes under the walked one, which waits
+    /// stretches the next pass serves; the short pather takes the walk's kept hits, `include`, as
+    /// its include list). The new level goes under the walked one, which waits
     /// (state 0). A waypoint or target nearer than a tile takes the close-in path when the short
     /// pather found none ([`Mover::close_in`]); a far waypoint takes the long pather's path
     /// ([`Mover::long_plan`]). The escape from a game type 12 tile, a trade cart's budget and the
@@ -1447,6 +1461,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         goal: Goal<'_>,
         plans: &mut u32,
+        include: &[i32],
     ) -> Result<Step, Unsupported> {
         let Goal {
             target,
@@ -1569,7 +1584,7 @@ impl Mover {
                                 waypoint,
                                 short_range(near, range),
                                 target_id,
-                                &ignore,
+                                (&ignore, include),
                                 &mut path,
                             )?;
                             path.measure();
@@ -1639,7 +1654,7 @@ impl Mover {
                         waypoint,
                         short_range(near, range),
                         target_id,
-                        &ignore,
+                        (&ignore, include),
                         &mut path,
                     )?;
                     path.measure();
@@ -2171,7 +2186,8 @@ impl Mover {
         }
     }
 
-    /// The short pather (`FUN_140f9e540`) from the unit to `to`, its points appended to `out`;
+    /// The short pather (`FUN_140f9e540`) from the unit to `to` with the ignore and include
+    /// lists `lists`, the owner's number for the player ([`short_path_including`]), into `out`;
     /// returns its result (0 in range, 1 reached, 2 partial, 3 blocked, 4 invalid).
     #[allow(clippy::too_many_arguments)]
     fn short_path(
@@ -2182,18 +2198,19 @@ impl Mover {
         to: Vec3,
         range: f32,
         target: i32,
-        ignore: &[i32],
+        lists: (&[i32], &[i32]),
         out: &mut Path,
     ) -> Result<u8, Unsupported> {
         let walker = self.walker(me.id);
         // from +0x824: the motion step's `local_18c8`, the reach test's start (FUN_14114fea0)
-        short_path_for(
+        short_path_including(
             walker,
             [self.moved_at[0], self.moved_at[1]],
             world,
             plan,
             (to, range, target),
-            ignore,
+            lists,
+            owner_number(world, me.id),
             out,
         )
     }
@@ -2333,8 +2350,10 @@ impl Mover {
     /// the unit's and the target's, the range 3 more for a target of master 45 or class 33) must
     /// reach the goal or its range (result 0 or 1). Then a unit with a footprint and a height
     /// (`FUN_141194060` with 1) no more than 10 tiles from the goal asks the short pather
-    /// (`FUN_140f9e540` with its ignore list, `FUN_14114ece0`), whose path to the goal or into the
-    /// range (a result below 2) answers yes. Otherwise a goal at least a tile from the unit's
+    /// (`FUN_140f9e540` with its ignore list, `FUN_14114ece0`, no include list, and its argument
+    /// 12 the test's 11th: 0 from slot 0x3d8, the caller's from slot 0x3d0, which genie's callers
+    /// give as 0; the old pather would keep its last area and hulls for 1), whose path to the
+    /// goal or into the range (a result below 2) answers yes. Otherwise a goal at least a tile from the unit's
     /// footprint (the squared gap, to the target's footprint for a target, at least 1) is the long
     /// pather's to answer ([`crate::long_path::reaches`], from the unit's tile to the goal's, the
     /// planner's other arguments unset: no path, the reach within a tile, no player's objects); a
@@ -2393,7 +2412,8 @@ impl Mover {
             let line = ([x, height_at], [to[0], height]);
             let ignore =
                 self.ignore_list(me, world, plan, target.map(|(_, t)| t), target_id, line)?;
-            if self.short_path(me, world, plan, goal, range, target_id, &ignore, &mut path)? < 2 {
+            let lists = (&ignore[..], &[][..]);
+            if self.short_path(me, world, plan, goal, range, target_id, lists, &mut path)? < 2 {
                 return Ok(true);
             }
         }
@@ -2584,8 +2604,9 @@ impl Mover {
     /// that moved before the top path was made, or one that moved after the walked path was made
     /// (or at the same time and outranks the unit: a higher player, or the same and a higher id).
     /// A step whose one hit is the walked level's target counts its waypoint reached (the
-    /// caller's, [`Avoided::at_target`]). A kept hit (its temporary shape `FUN_141054fe0`, the
-    /// step's slide `FUN_141159220` and the re-plan) is the caller's ([`Mover::go_round`]).
+    /// caller's, [`Avoided::at_target`]), that hit kept or not. A kept hit (its place in the
+    /// include list and its temporary shape `FUN_141054fe0`, [`include_kept`]; the step's slide
+    /// `FUN_141159220` and the re-plan, [`Mover::go_round`]) is the caller's.
     /// Then, on the walked level's first two waypoints (or the third of a path more
     /// than 500 old), each hit the unit outranks pauses for `dt` when its own pause is shorter: a
     /// human walker outranks another player's unit, or one of its own ordered at another time,
@@ -2653,7 +2674,7 @@ impl Mover {
         // and with no kept hit the slide changes nothing
         if hits.len() == 1 && target_hit {
             return Ok(Avoided {
-                kept: Vec::new(),
+                kept,
                 pauses: Vec::new(),
                 at_target: true,
             });
@@ -2712,9 +2733,8 @@ impl Mover {
             .or_else(|| world.gait(id).and_then(|g| g.pause))
     }
 
-    /// The walk's kept hits (`0x141150f00` after its first hit loop): each kept hit without a
-    /// mesh shape of its own got a temporary one there (`FUN_141054fe0` with 1, not the object's:
-    /// its `+0x64c` stays -1), which the step's every exit removes. Then each hit but the walked
+    /// The walk's kept hits (`0x141150f00` after its first hit loop, which took them into the
+    /// include list with their temporary shapes, [`include_kept`]): each hit but the walked
     /// level's target, a building's annex standing for it: one the walker outranks (as the
     /// pause loop of [`Mover::avoid`] ranks them; any Gaia hit of a walker of a player) pauses
     /// (slot 0x5f0: 0.1 for one of a player the walker's counts an ally, else 0.5), and one of
@@ -2726,25 +2746,9 @@ impl Mover {
         &mut self,
         me: &Me,
         world: &Spatial,
-        pathing: Option<&mut Pathing>,
         hits: &[i32],
-        kept: &[i32],
         computer: bool,
     ) -> Result<Next, Unsupported> {
-        let pathing = pathing.ok_or(Unsupported("a kept hit without the world's mesh"))?;
-        for &id in kept {
-            if pathing.shape(id).is_none() {
-                let p = world
-                    .get_known(id)?
-                    .ok_or(Unsupported("a kept hit without a place"))?;
-                if p.obstruction_type == 11 {
-                    return Err(Unsupported(
-                        "a kept hit of obstruction type 11 (its outline)",
-                    ));
-                }
-                pathing.add_temporary_shape(p);
-            }
-        }
         let level = &self.paths[0];
         let player = world
             .get(me.id)
@@ -3180,24 +3184,105 @@ pub(crate) struct Walker {
     pub(crate) mask: u8,
 }
 
+/// The walk's kept hits (`0x141150f00`'s first hit loop, 0x1411547c0..0x141154855): each joins
+/// the motion step's include list (`DAT_143f4a000`, at most [`INCLUDED`]) and, without a mesh
+/// shape of its own, gets a temporary one there (`FUN_141054fe0` with 1, not the object's: its
+/// `+0x64c` stays -1), which the step's every exit removes; one past the list's end gets
+/// neither. The new pather's test before the shape (`FUN_14152b6e0`) always holds
+/// ([`old_pather_for`]).
+fn include_kept(
+    world: &Spatial,
+    pathing: Option<&mut Pathing>,
+    kept: &[i32],
+    include: &mut Vec<i32>,
+) -> Result<(), Unsupported> {
+    let pathing = pathing.ok_or(Unsupported("a kept hit without the world's mesh"))?;
+    for &id in kept {
+        if INCLUDED <= include.len() {
+            continue;
+        }
+        include.push(id);
+        if pathing.shape(id).is_none() {
+            let p = world
+                .get_known(id)?
+                .ok_or(Unsupported("a kept hit without a place"))?;
+            if p.obstruction_type == 11 {
+                return Err(Unsupported(
+                    "a kept hit of obstruction type 11 (its outline)",
+                ));
+            }
+            pathing.add_temporary_shape(p);
+        }
+    }
+    Ok(())
+}
+
+/// `FUN_140f9e540`'s dispatch: `COMISS` [`NEW_PATHER_RADIUS`], radius; `JC` (0x140f9e71f): a
+/// unit wider than half a tile, or of an unordered radius, takes the old pather. Its other
+/// condition, no new pather (`FUN_14152b6e0`: the manager's `+0` or `+8` null), never holds: the
+/// manager's setup (`FUN_141054660`) makes both when `FUN_14152bc90` answers 1, and its two
+/// switches have no writer (`DAT_1439e60e0` 1 in `.data`, `DAT_143fb54a8` 0 in `.bss`, each read
+/// by it alone).
+fn old_pather_for(radius: f32) -> bool {
+    fmath::below_or_unordered(NEW_PATHER_RADIUS, radius)
+}
+
 /// The short pather (`FUN_140f9e540`) for `walker` from `from` (x, y on the map) to `to` within
-/// `range` of `target` (-1 for none), `ignore` its ignore list; its points appended to `out`.
-/// Returns its result (0 in range, 1 reached, 2 partial, 3 blocked, 4 invalid).
+/// `range` of `target` (-1 for none), `ignore` its ignore list, with no include list and its
+/// owner's number for the player ([`short_path_including`]).
 ///
 /// # Errors
 ///
-/// What the short pather does not model, or a short path without the game's mesh.
+/// As [`short_path_including`].
 pub(crate) fn short_path_for(
     walker: Walker,
     from: [f32; 2],
     world: &Spatial,
     plan: &mut Planning<'_>,
-    (to, range, target): (Vec3, f32, i32),
+    goal: (Vec3, f32, i32),
     ignore: &[i32],
     out: &mut Path,
 ) -> Result<u8, Unsupported> {
+    let player = owner_number(world, walker.id);
+    short_path_including(walker, from, world, plan, goal, (ignore, &[]), player, out)
+}
+
+/// The owner's number (`+0x718` of the object's player, `+0x138`) the short pather takes for
+/// the gates' passage; -1 for an object the world does not place.
+fn owner_number(world: &Spatial, id: i32) -> i32 {
+    world
+        .get(id)
+        .map_or(-1, |p| i32::try_from(p.player).unwrap_or(-1))
+}
+
+/// The short pather (`FUN_140f9e540`) for `walker` from `from` (x, y on the map) to `to` within
+/// `range` of `target` (-1 for none), `ignore` its ignore list (arguments 6 and 7), `include`
+/// the objects the old pather tests even moving (8 and 9), `player` the owner's number (13).
+/// A start within range of the target (`FUN_14118faf0` less the radius) empties `out` and
+/// returns 0; else `out` empties (`+0x440 = +0x438`) and an end off the map returns 4. A unit
+/// wider than half a tile ([`old_pather_for`]) takes the old pather (`FUN_140f89e40` with the
+/// ignore list and the restriction's mask, then `FUN_140f85580` from `from` to `to` with the
+/// radius, the target, the range, the player and the include list, its argument 11 0:
+/// [`HullPather::find`]), whose waypoints `out` takes at height 0; else the new one. Returns
+/// the result (0 in range, 1 reached, 2 partial, 3 blocked, 4 invalid). The path's creation
+/// time (`+8`, the world's time, set past the map tests) is the caller's.
+///
+/// # Errors
+///
+/// What the pathers do not model, or the new pather without the game's mesh.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn short_path_including(
+    walker: Walker,
+    from: [f32; 2],
+    world: &Spatial,
+    plan: &mut Planning<'_>,
+    (to, range, target): (Vec3, f32, i32),
+    (ignore, include): (&[i32], &[i32]),
+    player: i32,
+    out: &mut Path,
+) -> Result<u8, Unsupported> {
     let [x, y] = from;
-    let target = match target {
+    let target_object = match target {
         -1 => None,
         id => world.get_known(id)?.map(|t| short_path::Target {
             id,
@@ -3217,7 +3302,7 @@ pub(crate) fn short_path_for(
         to: [to[0], to[2]],
         radius: walker.radius,
         range,
-        target,
+        target: target_object,
         listed,
         map: world.map,
         mask: walker.mask,
@@ -3230,26 +3315,38 @@ pub(crate) fn short_path_for(
         x.max(to[0]) + reach,
         y.max(to[2]) + reach,
     ])?;
-    match call.entry() {
+    let (query, shapes) = match call.entry() {
         Entry::InRange => {
             out.points.clear();
-            Ok(0)
+            return Ok(0);
         }
-        Entry::Invalid => Ok(4),
-        Entry::Search { query, ignore } => {
-            let tiles = world.tiles();
-            let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);
-            let (mesh, pather) = plan
-                .pathing
-                .mesh_and_pather()
-                .ok_or(Unsupported("a short path without the game's mesh"))?;
-            let found = pather.search(mesh, &words, &query, &ignore)?;
-            for p in short_path::to_path(&found.points).points {
-                let _ = out.push(p);
-            }
-            Ok(found.result)
+        Entry::Invalid => {
+            out.points.clear();
+            return Ok(4);
         }
+        Entry::Search { query, ignore } => (query, ignore),
+    };
+    out.points.clear();
+    if old_pather_for(walker.radius) {
+        let mut pather = HullPather::for_list(world, ignore, walker.mask, walker.radius, player)
+            .including(include);
+        let (result, path) = pather.find(from, [to[0], to[2]], target, range)?;
+        for &[px, py] in &path.points {
+            let _ = out.push([px, 0.0, py]);
+        }
+        return Ok(result);
     }
+    let tiles = world.tiles();
+    let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);
+    let (mesh, pather) = plan
+        .pathing
+        .mesh_and_pather()
+        .ok_or(Unsupported("a short path without the game's mesh"))?;
+    let found = pather.search(mesh, &words, &query, &shapes)?;
+    for p in short_path::to_path(&found.points).points {
+        let _ = out.push(p);
+    }
+    Ok(found.result)
 }
 
 #[cfg(test)]
@@ -3462,6 +3559,257 @@ mod tests {
         // class 1 lies outside the villager's mask (6): every row of tiles is a shape
         assert_eq!(test(1), Ok(true));
         assert_eq!(test(2), Ok(false));
+    }
+
+    /// A 20 × 20 map whose tiles (6, 4..=6) are of a terrain the mask 6 lacks (a wall), with the
+    /// map's links, and player 2's unit 9171 of radius `radius` at (4.5, 5.5).
+    fn walled(radius: f32) -> Spatial {
+        let mut classes = vec![4; 400];
+        for y in 4..=6 {
+            classes[y * 20 + 6] = 1;
+        }
+        let mut w = Spatial::with_tiles([20, 20], crate::spatial::Tiles::new(20, 20, classes));
+        w.sight = Some(crate::visibility::Visibility::new(
+            20,
+            20,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+            Vec::new(),
+        ));
+        w.insert(
+            9171,
+            Placed {
+                position: [4.5, 5.5, 0.0],
+                radius: [radius, radius],
+                class: 4,
+                player: 2,
+                master: 0,
+                obstruction_type: 5,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(Obstruction { kind: 5, class: 2 }),
+            },
+        );
+        w
+    }
+
+    /// `FUN_140f9e540`'s dispatch: `COMISS 0.5, radius; JC` (0x140f9e71f): a radius above half a
+    /// tile, or an unordered one, takes the old pather.
+    #[test]
+    fn a_radius_above_half_a_tile_or_unordered_takes_the_old_pather() {
+        assert!(!old_pather_for(0.2));
+        assert!(!old_pather_for(0.5));
+        assert!(old_pather_for(f32::from_bits(0.5f32.to_bits() + 1)));
+        assert!(old_pather_for(f32::NAN));
+    }
+
+    /// `FUN_140f9e540` for a unit wider than half a tile: the path empties, then the old pather
+    /// (`FUN_140f89e40` with the caller's ignore list, `FUN_140f85580` with the include list and
+    /// the owner's number) writes it, its waypoints at height 0: here around the wall to the
+    /// point (its area, grown once, holds 96 tiles). A unit of half a tile takes the new pather,
+    /// which needs the game's mesh.
+    #[test]
+    fn a_big_unit_s_short_path_takes_the_old_pather() {
+        let world = walled(0.6);
+        let mut pathing = Pathing::default();
+        let mut object = Well512::default();
+        let groups = crate::group::UnitGroups::default();
+        let mut plan = Planning {
+            pathing: &mut pathing,
+            now: 100,
+            computer: false,
+            object: &mut object,
+            construction_rate: 1.0,
+            groups: &groups,
+        };
+        let walker = Walker {
+            id: 9171,
+            radius: 0.6,
+            restriction: 0,
+            mask: 6,
+        };
+        let mut out = Path::default();
+        let _ = out.push([1.0, 0.0, 1.0]);
+        let goal = ([8.5, 0.0, 5.5], 0.0, -1);
+        let r = short_path_for(
+            walker,
+            [4.5, 5.5],
+            &world,
+            &mut plan,
+            goal,
+            &[9171],
+            &mut out,
+        );
+        let mut pather = HullPather::for_list(&world, &[9171], 6, 0.6, 2);
+        let (result, path) = pather.find([4.5, 5.5], [8.5, 5.5], -1, 0.0).unwrap();
+        assert_eq!((r, result), (Ok(1), 1), "{path:?}");
+        let points: Vec<Vec3> = path.points.iter().map(|&[x, y]| [x, 0.0, y]).collect();
+        assert_eq!(out.points, points);
+        assert_eq!(out.points.len(), 4);
+        // off the map: emptied too, 4
+        let r = short_path_for(
+            walker,
+            [4.5, 5.5],
+            &world,
+            &mut plan,
+            ([20.5, 0.0, 5.5], 0.0, -1),
+            &[9171],
+            &mut out,
+        );
+        assert_eq!((r, out.points.len()), (Ok(4), 0));
+        let small = Walker {
+            radius: 0.5,
+            ..walker
+        };
+        let r = short_path_for(
+            small,
+            [4.5, 5.5],
+            &world,
+            &mut plan,
+            goal,
+            &[9171],
+            &mut out,
+        );
+        assert_eq!(r, Err(Unsupported("a short path without the game's mesh")));
+    }
+
+    /// A step whose one hit is the walked level's target counts its waypoint reached; that hit,
+    /// kept, is kept all the same: the first hit loop takes it into the include list and gives
+    /// it its temporary shape (0x1411547c0..0x141154855) before the test (0x1411549ac).
+    #[test]
+    fn a_kept_hit_on_the_target_alone_is_kept_and_reaches_the_waypoint() {
+        let mut w = world();
+        let mut close = *w.get(9175).unwrap();
+        close.position = [28.3, 88.9, 0.0];
+        w.insert(9175, close);
+        w.set_gait(
+            9175,
+            Some(Gait {
+                last_move: 16361,
+                ..Gait::default()
+            }),
+        );
+        let me = Me {
+            id: 9177,
+            position: [28.0, 89.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let mut m = builder_9177();
+        m.paths[0].target = 9175;
+        let position = vector(m.moved_at);
+        let waypoint = m.paths[0].point(1);
+        let projected = m.projected(m.direction_to(position, waypoint), DT);
+        let avoided = m.avoid(&me, &w, &[9175], projected, DT, 16361, false);
+        let avoided = avoided.unwrap();
+        assert!(avoided.at_target);
+        assert_eq!((avoided.kept, avoided.pauses), (vec![9175], Vec::new()));
+    }
+
+    /// The walk's kept hits join the motion step's include list (`DAT_143f4a000`), at most 0x100
+    /// (`CMP RCX, 0x100; JGE` at 0x1411547cc): each it takes without a mesh shape of its own
+    /// gets a temporary one; one past the list's end gets neither.
+    #[test]
+    fn kept_hits_join_the_include_list_up_to_its_room() {
+        let w = world();
+        let mut pathing = Pathing::default();
+        pathing.start_mesh(120);
+        let mut include = vec![0; INCLUDED - 1];
+        let shapes = |p: &Pathing| p.mesh().unwrap().shapes.len();
+        let before = shapes(&pathing);
+        assert_eq!(
+            include_kept(&w, Some(&mut pathing), &[9175, 9177], &mut include),
+            Ok(())
+        );
+        assert_eq!((include.len(), include.last()), (INCLUDED, Some(&9175)));
+        assert_eq!(shapes(&pathing), before + 1);
+        // an object with a shape of its own gets none
+        pathing.place_shape(9177, w.get(9177).unwrap());
+        let mut include = Vec::new();
+        let before = shapes(&pathing);
+        assert_eq!(
+            include_kept(&w, Some(&mut pathing), &[9177], &mut include),
+            Ok(())
+        );
+        assert_eq!((include, shapes(&pathing)), (vec![9177], before));
+    }
+
+    /// The motion step's path request of a unit wider than half a tile (master `+0x5d8` 0.6, no
+    /// planner: the straight way, too short): the short pather is the old one (`FUN_140f9e540`
+    /// at 0x1411524b6 -> `FUN_140f85580`) with the walk's kept hits as its include list
+    /// (`DAT_143f4a000`): a moving unit in the way counts only when included, and the new level
+    /// goes round it.
+    #[test]
+    fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
+        let mut w = Spatial::with_tiles([20, 20], crate::spatial::Tiles::new(20, 20, vec![4; 400]));
+        let unit = |x: f32, r: f32| Placed {
+            position: [x, 5.5, 0.0],
+            radius: [r, r],
+            class: 4,
+            player: 2,
+            master: 0,
+            obstruction_type: 5,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: Some(Obstruction { kind: 5, class: 2 }),
+        };
+        w.insert(9171, unit(4.5, 0.6));
+        w.insert(50, unit(6.5, 0.3));
+        w.set_gait(
+            50,
+            Some(Gait {
+                moving: true,
+                ..Gait::default()
+            }),
+        );
+        let me = Me {
+            id: 9171,
+            position: [4.5, 5.5, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let mut pathing = Pathing::default();
+        let mut object = Well512::default();
+        let groups = crate::group::UnitGroups::default();
+        let mut plan = Planning {
+            pathing: &mut pathing,
+            now: 100,
+            computer: false,
+            object: &mut object,
+            construction_rate: 1.0,
+            groups: &groups,
+        };
+        let goal = Goal {
+            target: None,
+            gap: FAR,
+            to_end: FAR,
+        };
+        let mut request = |include: &[i32]| {
+            let mut m = builder_9177();
+            m.stats.radius = [0.6; 3];
+            m.moved_at = [4.5, 5.5, 0.0];
+            m.request_path([4.5, 5.5, 0.0], [8.5, 5.5, 0.0], 0.0, -1, 100);
+            let mut plans = 0;
+            assert!(
+                m.request(&me, &w, &mut plan, goal, &mut plans, include)
+                    .is_ok()
+            );
+            m.paths[0].points.clone()
+        };
+        assert_eq!(request(&[]), [[4.5, 0.0, 5.5], [8.5, 0.0, 5.5]]);
+        let points = request(&[50]);
+        let [start, by, end] = points[..] else {
+            panic!("{points:?}")
+        };
+        assert_eq!((start, end), ([4.5, 0.0, 5.5], [8.5, 0.0, 5.5]));
+        let off = (0.3 + 0.6) * std::f32::consts::SQRT_2;
+        assert!((by[0] - 6.5).abs() < 1e-5 && (by[2] - (5.5 - off)).abs() < 1e-5);
     }
 
     /// The house the builders of `world` walk to.
