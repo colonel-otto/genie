@@ -4968,3 +4968,90 @@ fn without_a_farm_to_make_the_farmer_idles() {
         Some(crate::gather::DONE)
     );
 }
+
+/// A committing BUILD (`+0x1f` 0) to a builder whose unit AI holds an order not ready
+/// (`FUN_140c4dfa0`): the build order joins its queue, then the readiness pass with 0
+/// (`FUN_140c42b60` at 0x140e7b252) makes every queued order ready, the ready ones kept, and
+/// the unit is not stopped.
+#[test]
+fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
+    let unready = crate::unit_ai::QueuedOrder {
+        order: crate::unit_ai::MOVE_ORDER,
+        ready: false,
+        ..crate::unit_ai::QueuedOrder::default()
+    };
+    let mut t = Turns::new(
+        0,
+        29910,
+        1,
+        vec![0, 0],
+        vec![
+            Player::default(),
+            Player {
+                objects: vec![Unit {
+                    id: 9175,
+                    position: [30.0, 89.0, 0.0],
+                    life: Lifecycle {
+                        class: Class::Animated,
+                        state: 2,
+                        hp: 25.0,
+                        master_id: 83,
+                        ..Lifecycle::default()
+                    },
+                    ai: Some(UnitAi {
+                        ai_type: 8,
+                        current_order: crate::unit_ai::MOVE_ORDER,
+                        current_action: -1,
+                        current_target: -1,
+                        orders: vec![unready],
+                        ..UnitAi::default()
+                    }),
+                    ..Unit::default()
+                }],
+                resources: [200.0, 100.0, 200.0, 100.0],
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+        ],
+    );
+    t.next_object_id = 10028;
+    t.masters = vec![Masters::default(), builder_masters()];
+    placeable(&mut t);
+    let mut wall = t.clone();
+    t.run(&Command::Build {
+        player: 1,
+        master: 70,
+        unit_ai: Ok(None),
+        position: [30.0, 88.0, 0.0],
+        builders: vec![9175],
+        queued: false,
+        commits: true,
+    });
+    assert_eq!(t.players[1].unsupported, None);
+    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+    let queue: Vec<_> = ai.orders.iter().map(|o| (o.order, o.ready)).collect();
+    assert_eq!(
+        queue,
+        [(crate::unit_ai::MOVE_ORDER, true), (BUILD_ORDER, true)]
+    );
+    assert_eq!(ai.current_order, crate::unit_ai::MOVE_ORDER);
+    // BUILD_WALL's line of one tile the same (0x140e7be4b)
+    wall.run(&Command::BuildWall(crate::wall::Wall {
+        player: 1,
+        master: 70,
+        unit_ai: Ok(None),
+        from: [30, 88],
+        to: [30, 88],
+        target: -1,
+        builders: vec![9175],
+        queued: false,
+        commits: true,
+    }));
+    assert_eq!(wall.players[1].unsupported, None);
+    let ai = wall.players[1].objects[0].ai.as_ref().unwrap();
+    let queue: Vec<_> = ai.orders.iter().map(|o| (o.order, o.ready)).collect();
+    assert_eq!(
+        queue,
+        [(crate::unit_ai::MOVE_ORDER, true), (BUILD_ORDER, true)]
+    );
+}

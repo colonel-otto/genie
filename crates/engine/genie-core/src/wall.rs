@@ -191,9 +191,10 @@ impl Turns {
     /// (squared, the farthest first), takes its foundation ([`share`]) directly
     /// ([`Turns::build_task`], [`Turns::build_directly`]) or, on the queue path, a build order on
     /// each foundation ([`Turns::queue_build`]). Not held: the interface's view
-    /// (`FUN_140e6e140`); not modelled: the population test of a master without `+0x5f0` (as
-    /// for BUILD), the readiness pass of a committing line with orders queued (`FUN_140c42b60`),
-    /// more builders than the game's insertion sort takes.
+    /// (`FUN_140e6e140`); a committing line's queue path ends in the readiness pass with 0
+    /// (`FUN_140c42b60` at 0x140e7be4b, [`crate::order::readiness`]). Not modelled: the
+    /// population test of a master without `+0x5f0` (as for BUILD), more builders than the game's
+    /// insertion sort takes.
     pub(crate) fn build_wall(&mut self, w: &Wall) -> Result<(), Unsupported> {
         let player = w.player;
         if w.target != -1 {
@@ -279,11 +280,11 @@ impl Turns {
                 for &(f, p) in &placed {
                     self.queue_build(q, idx, (player, f, w.master), p)?;
                 }
-                if w.commits {
-                    return Err(Unsupported(
-                        "the readiness pass of a committing BUILD_WALL with orders queued \
-                         (FUN_140c42b60)",
-                    ));
+                if w.commits
+                    && let Some(ai) = self.players[q].objects[idx].ai.as_mut()
+                {
+                    // the readiness pass with 0: every queued order is ready
+                    crate::order::readiness(&mut ai.orders, false);
                 }
             }
         }

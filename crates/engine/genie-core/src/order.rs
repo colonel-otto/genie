@@ -604,7 +604,7 @@ impl Turns {
     /// takes the order itself (slot 0x128); any other unit AI queues order `0x2db` on the target at
     /// the unit's point (slot 0x28, or without a centroid slot 0x30, which shows the point it
     /// queues: priority 100, the order's point shown, ready when direct); after an order neither
-    /// queued nor direct the readiness pass ([`readiness_pass`]).
+    /// queued nor direct the readiness pass with 1 and the unit's stop ([`readiness`]).
     fn interact_unit(
         &mut self,
         player: usize,
@@ -706,7 +706,9 @@ impl Turns {
             .ok_or(Unsupported("unreachable: no unit AI"))?;
         let _ = ai.queue_order(state, queued, false, false)?;
         if !order.queued && !order.direct {
-            readiness_pass(&mut ai.orders);
+            readiness(&mut ai.orders, true);
+            // the pass's tail: the unit's stop (its slot 0x148)
+            self.object_stop(player, idx)?;
         }
         Ok(())
     }
@@ -2243,7 +2245,9 @@ impl Turns {
             };
             let _ = ai.queue_order(state, queued, false, false)?;
             if !order.queued && !order.direct {
-                readiness_pass(&mut ai.orders);
+                readiness(&mut ai.orders, true);
+                // the pass's tail: the unit's stop (its slot 0x148)
+                self.object_stop(player, idx)?;
             }
             return Ok(());
         }
@@ -4573,17 +4577,20 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
 /// `+0xa40`, `+0xa50` and `+0x9f8`, empties the powerup map (`+0xa98`, count `+0xaa0`), sets
 /// `+0xa2c` to slot 0x1b8 × 0.05 and takes a sight powerup (`+0xad4`) off (slots 0x1d8, 0x1d0):
 /// none of them is held.
-/// `FUN_140c42b60` with 1, the readiness pass after a MOVE's or INTERACT's order that is
-/// neither queued nor direct: from the last queued order to the first, one not ready becomes
-/// ready and one already ready leaves the queue (the orders after it move up).
-fn readiness_pass(orders: &mut Vec<crate::unit_ai::QueuedOrder>) {
+/// `FUN_140c42b60`, the readiness pass of a unit AI's queue: from the last queued order to the
+/// first, one not ready becomes ready, and with `drop_ready` one already ready leaves the queue
+/// (the orders after it move up). With `drop_ready` (1: after MOVE's and INTERACT's order that
+/// is neither queued nor direct) the pass ends in the unit's stop (its slot 0x148, a tail jump at
+/// 0x140c42cd4), which the caller runs ([`Turns::object_stop`]); with 0 (BUILD's and
+/// `BUILD_WALL`'s) every order is ready after it.
+pub(crate) fn readiness(orders: &mut Vec<crate::unit_ai::QueuedOrder>, drop_ready: bool) {
     let mut i = orders.len();
     while 0 < i {
         i -= 1;
-        if orders[i].ready {
-            let _ = orders.remove(i);
-        } else {
+        if !orders[i].ready {
             orders[i].ready = true;
+        } else if drop_ready {
+            let _ = orders.remove(i);
         }
     }
 }
@@ -5253,8 +5260,53 @@ mod tests {
         assert_eq!(run(true), [crate::unit_ai::ORDER_ON_TARGET]);
     }
 
+    /// INTERACT neither queued nor direct to a unit AI holding an order not ready
+    /// (`FUN_140e68b90` at 0x140e6983a): the order goes into its queue not ready, the readiness
+    /// pass with 1 makes both ready, and its tail stops the unit (the object's slot 0x148,
+    /// `FUN_14108c050`, 0x140c42cd4): the AI's order ends and it forgets its targets.
+    #[test]
+    fn an_order_to_a_busy_unit_ai_readies_its_queue_and_stops_the_unit() {
+        let mut t = soldiers(&[(11, 83, [20.0, 20.0])], &[]);
+        let walker = crate::hunt::tests::walker();
+        if let Some(m) = t.masters[1].get_mut(83) {
+            m.moving = Some(walker.stats);
+        }
+        let unit = &mut t.players[1].objects[0];
+        unit.mover = Some(walker);
+        (unit.pasture, unit.my_pasture) = (-1, -1);
+        unit.ai = Some(crate::unit_ai::UnitAi {
+            current_order: MOVE_ORDER,
+            current_action: crate::unit_ai::MOVE_ACTION,
+            current_target: 99,
+            orders: vec![crate::unit_ai::QueuedOrder {
+                order: MOVE_ORDER,
+                ready: false,
+                ..crate::unit_ai::QueuedOrder::default()
+            }],
+            ..crate::unit_ai::UnitAi::default()
+        });
+        let interact = Interact {
+            target: -1,
+            point: [25.0, 30.0],
+            carry_test: false,
+            queued: false,
+            direct: false,
+            human: false,
+            filter: -1,
+        };
+        t.interact(1, &[11], &interact).unwrap();
+        let ai = t.players[1].objects[0].ai.clone().unwrap();
+        let queue: Vec<_> = ai.orders.iter().map(|o| (o.order, o.ready)).collect();
+        assert_eq!(
+            queue,
+            [(MOVE_ORDER, true), (crate::unit_ai::ORDER_ON_TARGET, true)]
+        );
+        assert_eq!((ai.current_order, ai.current_target), (-1, -1));
+    }
+
     /// `FUN_140c42b60` with 1: from the last order to the first, an order not ready becomes
-    /// ready and a ready one leaves the queue, the others keeping their order.
+    /// ready and a ready one leaves the queue, the others keeping their order; with 0 the ready
+    /// ones stay.
     #[test]
     fn the_readiness_pass_readies_the_unready_and_drops_the_ready() {
         let order = |order, ready| crate::unit_ai::QueuedOrder {
@@ -5268,11 +5320,23 @@ mod tests {
             order(3, true),
             order(4, false),
         ];
-        readiness_pass(&mut orders);
+        let mut kept = orders.clone();
+        readiness(&mut orders, true);
         assert_eq!(orders, [order(2, true), order(4, true)]);
         let mut none: Vec<crate::unit_ai::QueuedOrder> = Vec::new();
-        readiness_pass(&mut none);
+        readiness(&mut none, true);
         assert_eq!(none.len(), 0);
+        // with 0 (BUILD's) the ready ones stay and every order is ready
+        readiness(&mut kept, false);
+        assert_eq!(
+            kept,
+            [
+                order(1, true),
+                order(2, true),
+                order(3, true),
+                order(4, true)
+            ]
+        );
     }
 
     /// `FUN_14106ff70`'s carried-resource test: a gather or hunt task of another resource than

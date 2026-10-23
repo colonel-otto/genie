@@ -1557,8 +1557,8 @@ impl Turns {
     /// foundation: a static object's (types below 40, `FUN_141071bd0`) does nothing, a unit's
     /// takes the Build ([`Turns::build_task`], [`Turns::build_directly`]), another player's
     /// whatever task its slot 0x7e8 finds on the foundation ([`Turns::order_work`]). A unit the world no
-    /// longer holds is passed over. Not modelled: the readiness pass of a committing BUILD with
-    /// orders queued (`FUN_140c42b60`).
+    /// longer holds is passed over. A committing BUILD's queue then takes the readiness pass with
+    /// 0 (`FUN_140c42b60`, [`crate::order::readiness`]): every queued order is ready.
     pub(in crate::turn) fn task_builders(
         &mut self,
         player: usize,
@@ -1593,10 +1593,9 @@ impl Turns {
             };
             if to_queue {
                 self.queue_build(q, idx, site, position)?;
-                if commits {
-                    return Err(Unsupported(
-                        "the readiness pass of a committing BUILD with orders queued (FUN_140c42b60)",
-                    ));
+                if commits && let Some(ai) = self.players[q].objects[idx].ai.as_mut() {
+                    // the readiness pass with 0: every queued order is ready
+                    crate::order::readiness(&mut ai.orders, false);
                 }
             } else if STATIC_TYPES_END <= kind && q == player {
                 let task = self.build_task(q, id, site, position)?;
