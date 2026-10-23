@@ -8662,6 +8662,8 @@ pub struct Turns {
     pub graphics: std::collections::BTreeMap<i16, Graphic>,
     /// The game's drop-site table (`dropsites.json`).
     pub drop_sites: Vec<DropSite>,
+    /// The game's unit lines (`unitlines.json`, [`crate::lines`]); empty when not loaded.
+    pub lines: crate::lines::UnitLines,
     /// The game's linked technologies (`linkedTechs.json`, the table at the game settings'
     /// `+0x18` that `FUN_140f39f40` looks up), by technology; empty when not loaded.
     pub linked_techs: std::collections::BTreeMap<i16, crate::tech::Linked>,
@@ -8897,6 +8899,7 @@ impl Turns {
             pathing: Pathing::default(),
             graphics: std::collections::BTreeMap::default(),
             drop_sites: Vec::new(),
+            lines: crate::lines::UnitLines::default(),
             linked_techs: std::collections::BTreeMap::new(),
             carry_rule: false,
             farm_stops: false,

@@ -55,6 +55,7 @@ pub mod hull_path;
 pub mod hunt;
 pub mod image;
 pub mod lifecycle;
+pub mod lines;
 pub mod long_path;
 pub mod los_tables;
 pub mod make;
