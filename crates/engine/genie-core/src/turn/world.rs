@@ -496,36 +496,50 @@ impl Turns {
         }
     }
 
-    /// The objects a blast of `unit` (player `p`) may reach while it hits `target`: for a master
-    /// with an area effect, the objects but the two on the tiles of the blast's rectangle about
-    /// the unit, a tile wider each way (the unit may step in its update), each with its place in
-    /// its tile's list as the unit's update starts. An object the slice cannot read stands in
-    /// with its place alone, as a guess.
+    /// The objects besides `unit` (player `p`) and its `target` that its hit may reach: for a
+    /// master with an area effect, the objects on the tiles of the blast's rectangle about the
+    /// unit, a tile wider each way (the unit may step in its update), each with its place in its
+    /// tile's list as the unit's update starts (an object the slice cannot read stands in with
+    /// its place alone, as a guess); then the main buildings (`+0xbb8`) of the target and of the
+    /// annexes among them, which the hits on those annexes go to.
     pub(in crate::turn) fn blasted(&self, unit: &Unit, p: usize, target: i32) -> Vec<Victim> {
-        let Some(r) = self
+        let reach = self
             .masters
             .get(p)
             .and_then(|m| m.get(unit.life.master_id))
             .map(|m| m.area_effect)
             .filter(|&r| 0.0 < r)
-        else {
-            return Vec::new();
-        };
-        let [x, y, _] = unit.position;
-        let reach = r + 6.0 + 2.0;
-        self.spatial
-            .objects_within(x - reach, y - reach, x + reach, y + reach)
-            .filter(|&(id, _)| id != unit.id && id != target)
-            .map(|(id, o)| {
-                self.victim(id, p).unwrap_or_else(|| Victim {
-                    id,
-                    position: o.position,
-                    uncertain: true,
-                    tile_place: self.spatial.tile_place(id),
-                    ..Victim::default()
+            .map(|r| r + 6.0 + 2.0);
+        let mut near: Vec<Victim> = reach.map_or_else(Vec::new, |reach| {
+            let [x, y, _] = unit.position;
+            self.spatial
+                .objects_within(x - reach, y - reach, x + reach, y + reach)
+                .filter(|&(id, _)| id != unit.id && id != target)
+                .map(|(id, o)| {
+                    self.victim(id, p).unwrap_or_else(|| Victim {
+                        id,
+                        position: o.position,
+                        uncertain: true,
+                        tile_place: self.spatial.tile_place(id),
+                        ..Victim::default()
+                    })
                 })
-            })
-            .collect()
+                .collect()
+        });
+        let mains: Vec<i32> = std::iter::once(target)
+            .chain(near.iter().map(|v| v.id))
+            .filter_map(|id| self.spatial.annex_of(id))
+            .collect();
+        for m in mains {
+            if m != unit.id
+                && m != target
+                && !near.iter().any(|v| v.id == m)
+                && let Some(v) = self.victim(m, p)
+            {
+                near.push(v);
+            }
+        }
+        near
     }
 
     /// Slot 0x5f0 (`FUN_141158b90`): the unit's walked level, if it has one, pauses for `pause`
@@ -546,7 +560,11 @@ impl Turns {
         }
     }
 
-    /// An attack's hit on its target, written back.
+    /// An attack's hit on its target, written back: its hit points, what it holds, its charge
+    /// and powerups, its damage notify (500), its kill ([`Turns::killed`]); a struck building's
+    /// `damaged_lately_timer` and its annexes' hit points (`+0xbc0`..), then each razing
+    /// ([`crate::damage::Razed`]: the history event of the attacker's player, the attribute adds
+    /// in their order).
     pub(in crate::turn) fn set_victim(&mut self, v: &Victim) -> Result<(), Unsupported> {
         let Some((q, j)) = self.players.iter().enumerate().find_map(|(q, player)| {
             player
@@ -570,6 +588,10 @@ impl Turns {
         }
         // a shield spends its charge
         u.charge = v.source.charge;
+        let struck = v.building.as_ref().filter(|b| b.struck);
+        if let Some(b) = struck {
+            u.damaged_lately = b.damaged_lately;
+        }
         // the damage notify (500) to its unit AI
         if let (Some((attacker, p)), Some(ai)) = (v.damaged, u.ai.as_mut()) {
             let n = Notify {
@@ -580,7 +602,35 @@ impl Turns {
             };
             ai.post(n, u.life.state)?;
         }
-        v.killed.map_or(Ok(()), |kill| self.killed(q, j, kill))
+        for &a in struck.map_or(&[][..], |b| &b.annexes) {
+            if let Some(x) = self
+                .players
+                .iter_mut()
+                .flat_map(|p| p.objects.iter_mut())
+                .find(|x| x.id == a)
+            {
+                x.life.hp = v.hp;
+            }
+        }
+        if let Some(kill) = v.killed {
+            self.killed(q, j, kill)?;
+        }
+        for r in v.building.iter().flat_map(|b| &b.razed) {
+            if let Some(kind) = r.event {
+                let now = self.world_time;
+                self.players[r.attacker_player].history.add_event(
+                    kind,
+                    r.owner as f32,
+                    0.0,
+                    0,
+                    now,
+                );
+            }
+            for &(p, attribute, amount) in &r.adds {
+                self.players[p].add_attribute(attribute, amount)?;
+            }
+        }
+        Ok(())
     }
 
     /// A combat object's death by a hit (`FUN_141082e80`, `FUN_1412108e0`): its owner's computer
@@ -675,12 +725,7 @@ impl Turns {
         }
         self.players[ap].add_attribute(q as i16 + 300, 1.0)?;
         self.players[q].add_attribute(ap as i16 + 325, 1.0)?;
-        let mut cost = 0.0f32;
-        for &(resource, amount, paid) in &master.cost {
-            if resource >= 0 && paid {
-                cost += f32::from(amount);
-            }
-        }
+        let cost = paid_cost(master);
         self.players[ap].add_attribute(170, cost)?;
         self.players[q].add_attribute(152, cost)?;
         self.players[ap].add_attribute(q as i16 + 400, cost)?;
@@ -1408,7 +1453,8 @@ pub(crate) fn change_hands(
 /// What a hit of an attacker of player `attacker` reads of the object `u` of player `p`, of
 /// `master`, its player's `attributes` ([`victim_of`]): its relations to the attacker's player
 /// both ways (`dip`, [`Diplomacy::allied`] with allies), whether its place is a guess (the world
-/// `spatial` holds it as unknown, or not at all) and its place in its tile's list.
+/// `spatial` holds it as unknown, or not at all), its place in its tile's list and a building's
+/// annexes (the world's links).
 pub(crate) fn victim_in(
     u: &Unit,
     (p, master, attributes): (usize, &Master, &[f32]),
@@ -1420,6 +1466,9 @@ pub(crate) fn victim_in(
     v.allied = [dip.allied(attacker, p, true), dip.allied(p, attacker, true)];
     v.uncertain = spatial.get(u.id).is_none_or(|o| o.unknown.is_some());
     v.tile_place = spatial.tile_place(u.id);
+    if let Some(b) = v.building.as_mut() {
+        b.annexes = spatial.annexes_of(u.id);
+    }
     v
 }
 
@@ -1534,5 +1583,40 @@ pub(crate) fn victim_of(
         }),
         damaged: None,
         killed: None,
+        // a building's slot 0xe8 is FUN_1411cea90
+        building: (kind == BUILDING_KIND).then(|| crate::damage::Building {
+            main: u.annex_of,
+            // the caller's, which holds the world's annex links
+            annexes: Vec::new(),
+            // +0xb90 is not saved and not held: a blast resets it on every building of its tiles
+            // before it reads it (FUN_14107f690's first pass), the only other one it reads being
+            // the main building of an annex it reaches, which lies within the annex offset of
+            // that annex, inside the six tiles the pass reaches past the radius; a trample reads
+            // its target's or its main building's after its own blast
+            blast_taken: 0.0,
+            trebuchet: is_trebuchet(master),
+            cost: paid_cost(master),
+            damaged_lately: u.damaged_lately,
+            struck: false,
+            razed: Vec::new(),
+        }),
     }
+}
+
+/// `FUN_140fde380`: `master` is of type 70 and up, of class 51 or 54, with a weapon (`+0x810`
+/// above 0): a trebuchet, packed or not, whose kill counts as a unit's.
+pub(crate) const fn is_trebuchet(master: &Master) -> bool {
+    70 <= master.kind && matches!(master.class, 51 | 54) && !master.weapons.is_empty()
+}
+
+/// `master`'s paid cost (`+0x880`: each entry with a resource and the paid flag), summed as
+/// floats in its order, as the kill counts read it (`FUN_1412005b0`, `FUN_1411cea90`).
+pub(crate) fn paid_cost(master: &Master) -> f32 {
+    let mut cost = 0.0f32;
+    for &(resource, amount, paid) in &master.cost {
+        if resource >= 0 && paid {
+            cost += f32::from(amount);
+        }
+    }
+    cost
 }

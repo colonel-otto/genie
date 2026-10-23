@@ -1,7 +1,9 @@
 //! The damage side of a hit: what it reads of its target and its attacker and what it changes.
 //! The target's slot 0xe8 takes the damage: a static object's (`FUN_14118efd0`), a combat
-//! object's of type 50 or 60 (`FUN_141082e80`) and of type 70 (`FUN_1412108e0`, which adds the
-//! special attack, the retaliation, the least damage and the reflected damage). The damage is the
+//! object's of type 50 or 60 (`FUN_141082e80`), of type 70 (`FUN_1412108e0`, which adds the
+//! special attack, the retaliation, the least damage and the reflected damage) and a building's
+//! (`FUN_1411cea90`: an annex's hit goes to its main building, its least hit, its razing's
+//! counts and history event). The damage is the
 //! armor's (slot 0xf0, `FUN_141082530`), less what a shield blocks (`FUN_14108d8a0`); a charge
 //! (slots 0x2f0, 0x300, 0x318) adds to it, and a blast (slot 0x848, `FUN_14107f690`) spreads it.
 //! When a melee hit lands is [`crate::attack`]'s.
@@ -53,6 +55,19 @@ const ARTIFACT: i16 = 1;
 /// The rams (masters 35, 422, 548 and 1258): their blast reaches only buildings and their
 /// target.
 const RAMS: [i16; 4] = [35, 422, 548, 1258];
+/// The building type (`'P'`): its slot 0xe8 is `FUN_1411cea90` ([`take_building`]).
+const BUILDING: u8 = 80;
+/// The wall class (27): its razing counts nothing.
+const WALL: i16 = 27;
+/// 1 (`DAT_14330eb8c`, read into `XMM9` at `0x1411cec8e`): a building's least hit, the hit
+/// points below which a hit razes a building or kills a unit, and what each razing count adds.
+const ONE: f32 = 1.0;
+/// The least hit of the attacker classes [`LEAST_HIT_CLASSES`] under the game's setting `+0x680`
+/// at 1 (`DAT_142eb5690`, read into `XMM6` at `0x1411ceea4`).
+const LEAST_CLASS_HIT: f32 = 0.1;
+/// The attacker classes whose least hit on a building is [`LEAST_CLASS_HIT`] (decoded `0`, `0x24`,
+/// `0x16`, `0x2c`, `0x34` at `0x1411ced23`..`0x1411cee9e`).
+const LEAST_HIT_CLASSES: [i16; 5] = [0, 36, 22, 44, 52];
 
 /// An object as a hit reads and changes it: the target, and the attacker as the target of a
 /// retaliation or of reflected damage.
@@ -127,6 +142,49 @@ pub struct Victim {
     pub damaged: Option<(i32, [i32; 3])>,
     /// A hit killed it, for the caller's death handling.
     pub killed: Option<Kill>,
+    /// A building's (type 80) part of a hit ([`Building`]); None for other objects.
+    pub building: Option<Building>,
+}
+
+/// What a hit on a building (`TRIBE_Building_Object`, slot 0xe8 `FUN_1411cea90`) reads of it
+/// besides a combat object's values, and what it changes for the write-back.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Building {
+    /// `+0xbb8`: an annex's main building, whose slot 0xe8 takes a hit on the annex.
+    pub main: Option<i32>,
+    /// `+0xbc0`..`+0xbd8`: its annexes, which take its hit points after each hit.
+    pub annexes: Vec<i32>,
+    /// `+0xb90` (not saved): the damage the blast under way has done to it ([`blast`]).
+    pub blast_taken: f32,
+    /// `FUN_140fde380` on its master: of type 70 and up, of class 51 or 54, with a weapon
+    /// (`+0x810` above 0): a trebuchet, whose kill counts as a unit's.
+    pub trebuchet: bool,
+    /// Its master's paid cost (`+0x880`: each entry with a resource and the paid flag, summed as
+    /// floats in their order).
+    pub cost: f32,
+    /// `damaged_lately_timer` (`+0x30d`, saved): 60 after each hit, a second off in its update.
+    pub damaged_lately: u8,
+    /// A hit got past its hit point test: the write-back gives its annexes its hit points and
+    /// its `damaged_lately`.
+    pub struck: bool,
+    /// What each hit that left it below 1 hit point counted, in order, for the write-back.
+    pub razed: Vec<Razed>,
+}
+
+/// What a hit that leaves a player's building below 1 hit point counts (`FUN_1411cea90`), for
+/// the write-back: the history event of the attacker's player (`FUN_141560ae0`, `data1` the
+/// owner's id) and the players' attribute adds (player slot 0xf8) in the game's order.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Razed {
+    /// The attacker's player (`param_5`), whose history takes the event.
+    pub attacker_player: usize,
+    /// The building's owner (`+0x718`), the event's `data1`.
+    pub owner: usize,
+    /// A castle's (master 82) or a wonder's (276) destruction
+    /// ([`crate::history::CASTLE_DESTROYED`], [`crate::history::WONDER_DESTROYED`]).
+    pub event: Option<u8>,
+    /// The attribute adds: (player, attribute, amount).
+    pub adds: Vec<(usize, i16, f32)>,
 }
 
 /// What a killing hit leaves for the caller ([`crate::turn::Turns`]'s write-back).
@@ -589,25 +647,194 @@ pub fn armor_damage(
 /// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
 /// already done to it (`blast_taken`, a building's `+0xb90`): a static, animated, doppelganger,
 /// moving or action object, or a tree (types below 50 and 90: `FUN_14118efd0`,
-/// [`take_static`]), a combat object of type 50 or 60 ([`damage`]) or of type 70
-/// ([`take_unit`]). A building's (`FUN_1411cea90`: its link, its least damage, its kill
-/// statistics) is not modelled.
+/// [`take_static`]), a combat object of type 50 or 60 ([`damage`]), of type 70
+/// ([`take_unit`]) or a building ([`take_building`]). `others` are the objects besides the two
+/// the hit may reach: an annex's main building, which takes a hit on the annex, and the annexes
+/// that take a main building's hit points (every caller passes the flag that forwards an
+/// annex's hit, 1).
+///
+/// # Errors
+///
+/// A part of the hit the slice does not model.
 pub fn take(
     t: &mut Victim,
     src: &mut Victim,
+    others: &mut [&mut Victim],
     weapons: &[(i16, i16)],
     factor: f32,
     blast_taken: f32,
 ) -> Result<(), Unsupported> {
     match t.kind {
-        70 => take_unit(t, src, weapons, factor, blast_taken),
+        70 => take_unit(t, src, others, weapons, factor, blast_taken),
         50 | 60 => damage(t, src, weapons, factor, blast_taken),
-        80 => Err(Unsupported(
-            "a hit on a building (slot 0xe8, FUN_1411cea90)",
-        )),
+        BUILDING => take_building(t, src, others, weapons, factor, true, blast_taken).map(|_| ()),
         _ => {
             take_static(t, &src.source, weapons, factor);
             Ok(())
+        }
+    }
+}
+
+/// A building's slot 0xe8 (`FUN_1411cea90`), `forward` the flag every caller sets (clear for
+/// the main building's hit an annex forwards). Its wake from semi-asleep (`+0xc98`: the flag
+/// cleared, `FUN_14119deb0` with 0, the owner's `+0x80` list, `FUN_14107db90`) never runs here:
+/// only the building's load sets that flag (`FUN_1411df160` -> `FUN_1411ddd20` with the save's
+/// `temp_semi_asleep`), and no saved building of the 158041 recordings has it (1473 headers
+/// read); the slice does not hold it. With `forward`, an annex (`+0xbb8`) gives the hit to its
+/// main building among `others` (whose slot 0xe8 runs with the flag clear and the same
+/// `blast_taken`) and takes its hit points when that hit got past its hit point test. Else at 0
+/// hit points or fewer (`COMISS 0, hp` / `JNC`: a NaN goes on) nothing happens. The damage
+/// ([`damage`]); without a blast's damage so far (`UCOMISS blast_taken, 0`: exactly 0), a hit
+/// that took less than its least ([`ONE`]; [`LEAST_CLASS_HIT`] from the
+/// [`LEAST_HIT_CLASSES`] under the game's setting `+0x680` at 1) takes the least again (slot
+/// 0xb0 with it; `COMISS least, lost` / `JBE` past). Not held: the statistics (`FUN_1417783d0`)
+/// and the local player's telemetry (`FUN_140a4b540`). A player's building (`+0x718` above 0)
+/// left below 1 hit point (`COMISS 1, hp` / `JBE` past) is razed ([`Razed`]): a castle's or a
+/// wonder's history event; but for an annex or a wall (class 27), the razing counts, or a
+/// trebuchet's kill counts unless its kill is counted (`+0x954`, which its damage's kill sets:
+/// slot 0x8b0's `FUN_14107da00`; a building at 0 hit points takes no hit, so no earlier one
+/// did), then the kill bonus ([`kill_bonus`]) and the razing values (172, 153). Then
+/// `damaged_lately_timer` (`+0x30d`) is 60 and its annexes take its hit points (the write-back
+/// gives them to those `others` does not hold, [`Building::struck`]); with `forward`, an
+/// attacker of type 50 and up leaves a building of 1 hit point or more (`COMISS hp, 1` / `JC`
+/// past) to its effects ([`attack_effects`]). Answers whether the hit got past the hit point
+/// test.
+fn take_building(
+    t: &mut Victim,
+    src: &mut Victim,
+    others: &mut [&mut Victim],
+    weapons: &[(i16, i16)],
+    factor: f32,
+    forward: bool,
+    blast_taken: f32,
+) -> Result<bool, Unsupported> {
+    let before = t.hp;
+    let main = t.building.as_ref().and_then(|b| b.main);
+    if forward && let Some(main) = main {
+        let k = others
+            .iter()
+            .position(|v| v.id == main)
+            .ok_or(crate::build::NOT_HELD)?;
+        let mut m = std::mem::replace(&mut *others[k], Victim::placeholder());
+        let struck = take_building(&mut m, src, others, weapons, factor, false, blast_taken);
+        let annexed = m
+            .building
+            .as_ref()
+            .is_some_and(|b| b.annexes.contains(&t.id));
+        if matches!(struck, Ok(true)) && annexed {
+            t.hp = m.hp;
+        }
+        *others[k] = m;
+        return struck.map(|_| false);
+    }
+    if 0.0 >= t.hp {
+        return Ok(false);
+    }
+    damage(t, src, weapons, factor, blast_taken)?;
+    // the kill of its damage ran slot 0x8b0, which counts it (+0x954)
+    let counted = t.killed.is_some();
+    if blast_taken == 0.0 {
+        let least = if src.source.mode_680 == 1 && LEAST_HIT_CLASSES.contains(&src.source.class) {
+            LEAST_CLASS_HIT
+        } else {
+            ONE
+        };
+        if least > before - t.hp {
+            lose(t, least);
+        }
+    }
+    let b = t.building.get_or_insert_with(Building::default);
+    if 0 < t.player && ONE > t.hp {
+        let (ap, q) = (src.player, t.player);
+        let event = match t.master_id {
+            crate::turn::CASTLE => Some(crate::history::CASTLE_DESTROYED),
+            crate::turn::WONDER => Some(crate::history::WONDER_DESTROYED),
+            _ => None,
+        };
+        let mut adds = Vec::new();
+        if b.main.is_none() && t.class != WALL {
+            let cost = b.cost;
+            // 16-bit adds of the players' ids (`ADD DX, word ptr [.. + 0x718]`)
+            let (qa, apa) = (q as i16, ap as i16);
+            if !b.trebuchet {
+                adds.extend([
+                    (ap, 43, ONE),
+                    (ap, 170, cost),
+                    (q, 152, cost),
+                    (q, 155, ONE),
+                    (ap, 350 + qa, ONE),
+                    (q, 375 + apa, ONE),
+                    (ap, 425 + qa, cost),
+                ]);
+            } else if !counted {
+                adds.extend([
+                    (ap, 20, ONE),
+                    (ap, 170, cost),
+                    (q, 154, ONE),
+                    (q, 152, cost),
+                    (ap, 300 + qa, ONE),
+                    (q, 325 + apa, ONE),
+                    (ap, 400 + qa, cost),
+                ]);
+            }
+            kill_bonus(&src.source)?;
+            adds.extend([(ap, 172, cost), (q, 153, cost)]);
+        }
+        b.razed.push(Razed {
+            attacker_player: ap,
+            owner: q,
+            event,
+            adds,
+        });
+    }
+    b.damaged_lately = DAMAGED_LATELY;
+    b.struck = true;
+    let annexes = b.annexes.clone();
+    for a in others.iter_mut().filter(|a| annexes.contains(&a.id)) {
+        a.hp = t.hp;
+    }
+    if forward && 50 <= src.kind && t.hp >= ONE {
+        attack_effects(&src.source, t)?;
+    }
+    Ok(true)
+}
+
+/// `damaged_lately_timer` after a hit on a building (`MOV byte ptr [RBX + 0x30d],0x3c` at
+/// `0x1411cf4d2`).
+const DAMAGED_LATELY: u8 = 0x3c;
+
+/// `FUN_1415c6510`, the kill bonus of the attacker `src` (type 40 and up) for an object it
+/// killed: its master's tasks of action type 0x9a pay their owner's attributes, research
+/// technologies and run effects (not modelled); an attacker without one does nothing.
+const fn kill_bonus(src: &Attacker) -> Result<(), Unsupported> {
+    if 40 <= src.kind && src.kill_bonus_tasks {
+        return Err(Unsupported(
+            "an attacker's kill bonus task (action type 0x9a)",
+        ));
+    }
+    Ok(())
+}
+
+/// `FUN_14107bdf0`, the attacker `src`'s combat ability's effects on its target `t`: only a
+/// combat ability with bit 7, against a target whose player is not allied with the attacker's
+/// both ways (`FUN_141663d90` with the ally flag, [`Victim::allied`]), does anything (its
+/// master's effects on the target, not modelled).
+const fn attack_effects(src: &Attacker, t: &Victim) -> Result<(), Unsupported> {
+    if src.ability & 0x80 != 0 && !(t.allied[0] && t.allied[1]) {
+        return Err(Unsupported(
+            "an attacker whose hits apply effects (FUN_14107bdf0)",
+        ));
+    }
+    Ok(())
+}
+
+impl Victim {
+    /// What stands in a slice of objects for one a hit has taken out for the time it changes it:
+    /// no object's id.
+    fn placeholder() -> Self {
+        Self {
+            id: -1,
+            ..Self::default()
         }
     }
 }
@@ -657,6 +884,7 @@ fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)], factor: f
 fn take_unit(
     t: &mut Victim,
     src: &mut Victim,
+    others: &mut [&mut Victim],
     weapons: &[(i16, i16)],
     factor: f32,
     blast_taken: f32,
@@ -700,7 +928,7 @@ fn take_unit(
                     f *= RETALIATION_SCALE;
                 }
                 let w = t.weapons.clone();
-                take(src, t, &w, f, 0.0)?;
+                take(src, t, others, &w, f, 0.0)?;
                 if src.hp <= 1.0 {
                     factor = 0.0;
                 }
@@ -719,15 +947,13 @@ fn take_unit(
         let d = a.reflection * lost;
         lose(src, if 1.0 <= d { d } else { 1.0 });
     }
-    if t.killed.is_some() && src.source.kill_bonus_tasks {
-        return Err(Unsupported(
-            "an attacker's kill bonus task (action type 0x9a)",
-        ));
+    // COMISS 1, hp / JBE past: below 1 (not NaN) the kill bonus; COMISS hp, 1 / JC past: at 1
+    // or more (not NaN) the attacker's effects
+    if ONE > t.hp {
+        kill_bonus(&src.source)?;
     }
-    if t.killed.is_none() && 50 <= src.kind && src.source.ability & 0x80 != 0 {
-        return Err(Unsupported(
-            "an attacker whose hits apply effects (FUN_14107bdf0)",
-        ));
+    if 50 <= src.kind && t.hp >= ONE {
+        attack_effects(&src.source, t)?;
     }
     Ok(())
 }
@@ -821,8 +1047,11 @@ fn blast_tiles(center: [f32; 3], r: f32) -> ([i32; 2], [i32; 2]) {
 /// alone (slot 0xb0; below 1 it has 0 and holds nothing, `FUN_14119d320`; a combat unit of a
 /// player that had 1 is counted killed, `FUN_1412005b0`). Then the object's slot 0xe8 with the
 /// attacker's weapons ([`take`]), and the attacker's hit is its charge's if any hit was
-/// (slot 0x2f0). A building's blast so far (`+0xb90`) and link (`+0xbb8`) are not modelled
-/// (buildings are not). The compares are the assembly's: a NaN gap past a radius is 0
+/// (slot 0x2f0). Every building on the tiles starts the blast with nothing taken (`+0xb90`, a
+/// first pass over the tiles); a building's hit leaves out what the blast has done to it so far,
+/// its main building's for an annex (`+0xbb8`, which also gives the annex its `area_damage`
+/// share and its blast level, the main building's master's), and adds its loss to it; the
+/// main building of an annex it reaches is among `targets`. The compares are the assembly's: a NaN gap past a radius is 0
 /// (`COMISS`/`JBE`), a NaN square distance is beyond the radius (`JBE`), a NaN facet offset
 /// stays in a cone (`JA` past, both the narrow and the wide one), a NaN `area_damage` leaves the
 /// factor as it is. Answers whether the radius is above 0 (or NaN: `COMISS 0, r`/`JC`), which
@@ -842,13 +1071,26 @@ pub fn blast(
     }
     let wide = if a.blast_level & 0x80 != 0 { r } else { 0.0 };
     let (from, to) = blast_tiles(center, r);
-    let spares_friends = !(1.0 < a.weapon_range && a.blast_level & 4 == 0);
-    attacker.source.charge_hit = false;
-    targets.sort_by_key(|t| (t.position[1] as i32, t.position[0] as i32, t.tile_place));
-    let weapons = attacker.weapons.clone();
-    for t in targets.iter_mut() {
+    let on_tiles = |t: &Victim| {
         let tile = [t.position[0] as i32, t.position[1] as i32];
-        if !(from[0] <= tile[0] && tile[0] < to[0] && from[1] <= tile[1] && tile[1] < to[1]) {
+        from[0] <= tile[0] && tile[0] < to[0] && from[1] <= tile[1] && tile[1] < to[1]
+    };
+    let spares_friends = !(1.0 < a.weapon_range && a.blast_level & 4 == 0);
+    targets.sort_by_key(|t| (t.position[1] as i32, t.position[0] as i32, t.tile_place));
+    // every building on the tiles starts the blast with nothing taken (+0xb90, first pass)
+    for t in targets
+        .iter_mut()
+        .filter(|t| t.kind == BUILDING && on_tiles(t))
+    {
+        if let Some(b) = t.building.as_mut() {
+            b.blast_taken = 0.0;
+        }
+    }
+    attacker.source.charge_hit = false;
+    let weapons = attacker.weapons.clone();
+    for i in 0..targets.len() {
+        let t = &*targets[i];
+        if !on_tiles(t) {
             continue;
         }
         if t.uncertain {
@@ -864,11 +1106,35 @@ pub fn blast(
             continue;
         }
         let is_main = Some(t.id) == main;
-        let defense = t.blast_defense;
+        // a building keeps the blast's damage so far on its main building (+0xbb8), else on
+        // itself; an annex reads its main building's area damage and blast level
+        let ledger = if t.kind == BUILDING {
+            match t.building.as_ref().and_then(|b| b.main) {
+                Some(m) => Some(
+                    targets
+                        .iter()
+                        .position(|v| v.id == m)
+                        .ok_or(crate::build::NOT_HELD)?,
+                ),
+                None => Some(i),
+            }
+        } else {
+            None
+        };
+        let taken = |v: &Victim| v.building.as_ref().map_or(0.0, |b| b.blast_taken);
+        let (share, defense, blast_taken) = match ledger {
+            Some(k) if k != i => {
+                let m = &*targets[k];
+                (m.source.area_damage, m.blast_defense, taken(m))
+            }
+            Some(_) => (a.area_damage, t.blast_defense, taken(t)),
+            None => (a.area_damage, t.blast_defense, 0.0),
+        };
         if !(1 < defense || a.blast_level <= defense) {
             continue;
         }
-        if RAMS.contains(&a.master_id) && t.kind != 80 && !is_main {
+        let t = &mut *targets[i];
+        if RAMS.contains(&a.master_id) && t.kind != BUILDING && !is_main {
             continue;
         }
         let gap = |d: f32, radius: f32| {
@@ -897,7 +1163,7 @@ pub fn blast(
                 f *= (r - fmath::sqrt(d2)) / r;
             }
         } else {
-            let d = if !is_main || t.kind != 80 {
+            let d = if !is_main || t.kind != BUILDING {
                 fmath::sqrt(d2)
             } else {
                 0.0
@@ -931,9 +1197,9 @@ pub fn blast(
             }
             // COMISS share, 0 / JC, then COMISS 0, share / JBE: a share below 0 is a fixed
             // damage, a NaN one goes on to the hit with the factor as it is
-            if a.area_damage < 0.0 {
+            if share < 0.0 {
                 let before = t.hp;
-                lose(t, a.area_damage.abs());
+                lose(t, share.abs());
                 if t.hp < 1.0 {
                     t.hp = 0.0;
                     t.amount = 0.0;
@@ -941,28 +1207,41 @@ pub fn blast(
                         t.amount = f32::from(t.capacity);
                     }
                     if 1.0 <= before && 0 < t.player && t.kind == 70 {
-                        if a.kill_bonus_tasks {
-                            return Err(Unsupported(
-                                "an attacker's kill bonus task (action type 0x9a)",
-                            ));
-                        }
                         t.killed = Some(Kill {
                             attacker: attacker.id,
                             attacker_player: attacker.player,
                             to_gaia: false,
                         });
+                        kill_bonus(&a)?;
                     }
                 }
                 continue;
             }
-            if !a.area_damage.is_nan() {
-                f *= a.area_damage;
+            if !share.is_nan() {
+                f *= share;
             }
         }
-        take(t, attacker, &weapons, f * factor, 0.0)?;
-        if !attacker.source.charge_hit {
-            attacker.source.charge_hit = charge_hit(&attacker.source, t);
+        // the target leaves the slice while its hit may reach the others (its main building)
+        let before = t.hp;
+        let mut t = std::mem::replace(&mut *targets[i], Victim::placeholder());
+        let hit = take(&mut t, attacker, targets, &weapons, f * factor, blast_taken);
+        if hit.is_ok() {
+            if !attacker.source.charge_hit {
+                attacker.source.charge_hit = charge_hit(&attacker.source, &t);
+            }
+            let lost = before - t.hp;
+            let ledger = match ledger {
+                Some(k) if k == i => t.building.as_mut(),
+                Some(k) => targets[k].building.as_mut(),
+                None => None,
+            };
+            // ADDSS of the loss and the blast so far (commutative)
+            if let Some(b) = ledger {
+                b.blast_taken += lost;
+            }
         }
+        *targets[i] = t;
+        hit?;
     }
     Ok(true)
 }
@@ -1090,18 +1369,18 @@ mod tests {
         };
         let mut hunter = hunter();
         let mut t = bird(10.0);
-        take(&mut t, &mut hunter, &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
+        take(&mut t, &mut hunter, &mut [], &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
         assert_eq!((t.hp, t.amount, t.goto_sleep), (5.0, 50.0, true));
-        take(&mut t, &mut hunter, &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
+        take(&mut t, &mut hunter, &mut [], &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
         // a villager's hit leaves what it holds
         assert_eq!((t.hp, t.amount, t.goto_sleep), (0.0, 50.0, false));
         let mut archer = hunter.clone();
         archer.source.class = 0;
         let mut t = bird(4.0);
-        take(&mut t, &mut archer, &[(3, 4)], 1.0, 0.0).unwrap();
+        take(&mut t, &mut archer, &mut [], &[(3, 4)], 1.0, 0.0).unwrap();
         assert_eq!((t.hp, t.amount), (0.0, 0.0));
         let mut t = bird(f32::NAN);
-        take(&mut t, &mut archer, &[(3, 4)], 1.0, 0.0).unwrap();
+        take(&mut t, &mut archer, &mut [], &[(3, 4)], 1.0, 0.0).unwrap();
         assert!(t.hp.is_nan() && t.amount == 50.0 && t.goto_sleep);
     }
 
@@ -1113,11 +1392,11 @@ mod tests {
             armor_damage(&sheep, &weapons, 1.0, &hunter.source),
             Ok(12.0)
         );
-        take(&mut sheep, &mut hunter, &weapons, 1.0, 0.0).unwrap();
+        take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
         assert_eq!(sheep.hp, 2.0);
         assert_eq!(sheep.damaged, Some((10029, [10029, 2, 14])));
         // the next hit kills it, and Gaia takes a player's livestock
-        take(&mut sheep, &mut hunter, &weapons, 1.0, 0.0).unwrap();
+        take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
         assert_eq!(sheep.hp, 0.0);
         assert_eq!(
             sheep.killed,
@@ -1171,7 +1450,7 @@ mod tests {
             armor_damage(&sheep, &[(4, 3), (3, 2)], 1.0, &hunter.source),
             Ok(5.0 + 3.0 + 2.0)
         );
-        take(&mut sheep, &mut hunter, &[(4, 3)], 1.0, 0.0).unwrap();
+        take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
         assert_eq!(sheep.hp, 14.0 - 8.0);
         assert!(hunter.source.charge_hit);
         assert_eq!(hunter.source.charge, 0.0);
@@ -1258,17 +1537,17 @@ mod tests {
             angle: std::f32::consts::FRAC_PI_2,
             facets: 8,
         });
-        take(&mut sheep, &mut hunter, &[(4, 10)], 1.0, 0.0).unwrap();
+        take(&mut sheep, &mut hunter, &mut [], &[(4, 10)], 1.0, 0.0).unwrap();
         assert_eq!(sheep.hp, 14.0 - 10.0 * SPECIAL);
         // a busy target does not, and an unknown facing is not modelled
         let mut busy = self::sheep();
         busy.armored.as_mut().unwrap().special_attack = 1;
         busy.armored.as_mut().unwrap().busy = true;
-        take(&mut busy, &mut hunter, &[(4, 10)], 1.0, 0.0).unwrap();
+        take(&mut busy, &mut hunter, &mut [], &[(4, 10)], 1.0, 0.0).unwrap();
         assert_eq!(busy.hp, 4.0);
         let mut unknown = self::sheep();
         unknown.armored.as_mut().unwrap().special_attack = 1;
-        assert!(take(&mut unknown, &mut hunter, &[(4, 10)], 1.0, 0.0).is_err());
+        assert!(take(&mut unknown, &mut hunter, &mut [], &[(4, 10)], 1.0, 0.0).is_err());
     }
 
     /// A retaliation (flag 2) strikes a melee attacker first; an attacker it leaves at 1 hit
@@ -1285,11 +1564,11 @@ mod tests {
             angle: std::f32::consts::FRAC_PI_2,
             facets: 8,
         });
-        take(&mut sheep, &mut hunter, &[(4, 3)], 1.0, 0.0).unwrap();
+        take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
         assert_eq!((hunter.hp, sheep.hp), (20.0, 11.0));
         assert_eq!(hunter.damaged, Some((9520, [9520, 20, 25])));
         hunter.hp = 5.0;
-        take(&mut sheep, &mut hunter, &[(4, 3)], 1.0, 0.0).unwrap();
+        take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
         // the hunter dies; the sheep loses the least, one hit point
         assert_eq!((hunter.hp, sheep.hp), (0.0, 10.0));
         assert!(hunter.killed.is_some());
@@ -1300,9 +1579,9 @@ mod tests {
     fn reflected_damage_comes_back_at_least_one() {
         let (mut sheep, mut hunter) = (sheep(), hunter());
         sheep.armored.as_mut().unwrap().reflection = 0.5;
-        take(&mut sheep, &mut hunter, &[(4, 6)], 1.0, 0.0).unwrap();
+        take(&mut sheep, &mut hunter, &mut [], &[(4, 6)], 1.0, 0.0).unwrap();
         assert_eq!((sheep.hp, hunter.hp), (8.0, 22.0));
-        take(&mut sheep, &mut hunter, &[(4, 1)], 1.0, 0.0).unwrap();
+        take(&mut sheep, &mut hunter, &mut [], &[(4, 1)], 1.0, 0.0).unwrap();
         assert_eq!((sheep.hp, hunter.hp), (7.0, 21.0));
         assert!(hunter.damaged.is_none() && hunter.killed.is_none());
     }
@@ -1430,6 +1709,324 @@ mod tests {
         let dx = (10.8f32 - 10.5f32).abs();
         let f = (1.0 - fmath::sqrt(0.0 * 0.0 + dx * dx)) / 1.0 * 0.5;
         assert_eq!(near.hp, 14.0 - 10.0 * f);
+    }
+
+    /// A player's house (master 70, class 3, type 80) of 550 hit points: melee armor 0, pierce
+    /// armor 7; it cost 25 wood, paid.
+    fn house() -> Victim {
+        Victim {
+            id: 500,
+            hp: 550.0,
+            kind: BUILDING,
+            class: 3,
+            master_id: 70,
+            player: 2,
+            position: [20.5, 20.5, 0.0],
+            armored: Some(Armored {
+                armors: vec![(4, 0), (3, 7)],
+                terrain_bonus: -1,
+                master_hp: 550,
+                friendly_fire: 1.0,
+                ..Armored::default()
+            }),
+            building: Some(Building {
+                cost: 25.0,
+                ..Building::default()
+            }),
+            ..Victim::default()
+        }
+    }
+
+    /// `FUN_1411cea90`: a hit on a building is its damage (`FUN_141082e80`), then 60 for
+    /// `damaged_lately_timer` (`+0x30d`). Without a blast's damage so far (`param_8`, `UCOMISS`
+    /// with 0: exactly 0), a hit that took less than its least takes the least again (slot
+    /// 0xb0 with it, not the difference: `MOVAPS XMM1,XMM6` at `0x1411cef02`): 1, or 0.1 for an
+    /// attacker of class 0, 22, 36, 44 or 52 under the game's setting `+0x680` at 1.
+    #[test]
+    fn a_building_takes_its_damage_and_at_least_its_least_hit() {
+        let mut villager = hunter();
+        let mut h = house();
+        take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        assert_eq!(h.hp, 547.0);
+        assert_eq!(h.damaged, Some((10029, [10029, 547, 550])));
+        let b = h.building.as_ref().unwrap();
+        assert_eq!((b.damaged_lately, b.struck, b.razed.len()), (60, true, 0));
+        // at 1 a hit may do nothing: the least takes 1 more
+        villager.source.mode_680 = 1;
+        let mut h = house();
+        h.armored.as_mut().unwrap().armors = vec![(4, 10)];
+        take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        assert_eq!(h.hp, 549.0);
+        // half a hit point taken: the least is taken whole again
+        let mut h = house();
+        take(&mut h, &mut villager, &mut [], &[(4, 1)], 0.5, 0.0).unwrap();
+        assert_eq!(h.hp, 548.5);
+        // an archer's least is a tenth
+        let mut archer = villager.clone();
+        archer.source.class = 0;
+        let mut h = house();
+        h.armored.as_mut().unwrap().armors = vec![(4, 10)];
+        take(&mut h, &mut archer, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        assert_eq!(h.hp, 550.0 - LEAST_CLASS_HIT);
+        // a blast's damage so far, even a NaN one, takes no least
+        let mut h = house();
+        h.armored.as_mut().unwrap().armors = vec![(4, 10)];
+        take(&mut h, &mut archer, &mut [], &[(4, 3)], 1.0, 2.0).unwrap();
+        assert_eq!(h.hp, 550.0);
+        take(&mut h, &mut archer, &mut [], &[(4, 3)], 1.0, f32::NAN).unwrap();
+        assert_eq!(h.hp, 550.0);
+    }
+
+    /// `COMISS 0, hp` / `JNC` past: a building at 0 hit points or fewer takes nothing (and is not
+    /// struck); a NaN goes on.
+    #[test]
+    fn a_building_without_hit_points_takes_no_hit() {
+        let mut villager = hunter();
+        let mut h = Victim { hp: 0.0, ..house() };
+        take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        assert_eq!((h.hp, h.damaged), (0.0, None));
+        assert!(!h.building.as_ref().unwrap().struck);
+        let mut h = Victim {
+            hp: f32::NAN,
+            ..house()
+        };
+        take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        assert!(h.damaged.is_some() && h.building.as_ref().unwrap().struck);
+        // a NaN is not below 1: no razing
+        assert_eq!(h.building.as_ref().unwrap().razed, Vec::new());
+    }
+
+    /// An annex (`+0xbb8`) gives a hit with the flag set (every caller's) to its main building's
+    /// slot 0xe8 with the flag clear: the main building's armor takes it, and each of its annexes
+    /// (`+0xbc0`..) takes its hit points; the annex itself is not struck. A main building the hit
+    /// does not hold is not modelled.
+    #[test]
+    fn a_hit_on_an_annex_goes_to_its_main_building() {
+        let mut villager = hunter();
+        let mut main = Victim {
+            id: 10,
+            hp: 2400.0,
+            building: Some(Building {
+                annexes: vec![11, 12],
+                cost: 275.0,
+                ..Building::default()
+            }),
+            ..house()
+        };
+        main.armored.as_mut().unwrap().armors = vec![(4, 1)];
+        let annex = |id| Victim {
+            id,
+            hp: 2400.0,
+            building: Some(Building {
+                main: Some(10),
+                ..Building::default()
+            }),
+            ..house()
+        };
+        let (mut a, mut other) = (annex(11), annex(12));
+        take(
+            &mut a,
+            &mut villager,
+            &mut [&mut main, &mut other],
+            &[(4, 3)],
+            1.0,
+            0.0,
+        )
+        .unwrap();
+        assert_eq!((main.hp, a.hp, other.hp), (2398.0, 2398.0, 2398.0));
+        assert!(main.building.as_ref().unwrap().struck);
+        assert!(!a.building.as_ref().unwrap().struck);
+        assert_eq!(main.damaged, Some((10029, [10029, 2398, 550])));
+        assert_eq!(a.damaged, None);
+        let mut alone = annex(11);
+        assert_eq!(
+            take(&mut alone, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0),
+            Err(crate::build::NOT_HELD)
+        );
+    }
+
+    /// A player's building left below 1 hit point (`COMISS 1, hp` / `JBE` past) is razed: a
+    /// castle (82) adds event 7 and a wonder (276) event 5 to the attacker's player's history;
+    /// then, but for an annex or a wall (class 27), the razing counts (attacker's player 43,
+    /// 170; owner 152, 155; 350 + owner; owner 375 + attacker's player; 425 + owner) and 172
+    /// and 153 with the paid cost. Gaia's buildings count nothing.
+    #[test]
+    fn a_player_s_building_below_one_hit_point_is_razed() {
+        let mut villager = hunter();
+        let mut castle = Victim {
+            hp: 1.5,
+            master_id: 82,
+            ..house()
+        };
+        take(&mut castle, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        assert_eq!(castle.hp, 0.0);
+        assert!(castle.killed.is_some());
+        let razed = &castle.building.as_ref().unwrap().razed;
+        assert_eq!(
+            razed,
+            &[Razed {
+                attacker_player: 1,
+                owner: 2,
+                event: Some(crate::history::CASTLE_DESTROYED),
+                adds: vec![
+                    (1, 43, 1.0),
+                    (1, 170, 25.0),
+                    (2, 152, 25.0),
+                    (2, 155, 1.0),
+                    (1, 352, 1.0),
+                    (2, 376, 1.0),
+                    (1, 427, 25.0),
+                    (1, 172, 25.0),
+                    (2, 153, 25.0),
+                ],
+            }]
+        );
+        let mut wonder = Victim {
+            hp: 1.5,
+            master_id: 276,
+            class: WALL,
+            ..house()
+        };
+        take(&mut wonder, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        let razed = &wonder.building.as_ref().unwrap().razed;
+        assert_eq!(
+            (razed[0].event, razed[0].adds.len()),
+            (Some(crate::history::WONDER_DESTROYED), 0)
+        );
+        let mut gaia = Victim {
+            hp: 1.5,
+            player: 0,
+            ..house()
+        };
+        take(&mut gaia, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        assert_eq!(gaia.building.as_ref().unwrap().razed, Vec::new());
+    }
+
+    /// A trebuchet (`FUN_140fde380`) counts as a unit's kill (attacker's player 20, 170; owner
+    /// 154, 152; 300 + owner; owner 325 + attacker's player; 400 + owner) unless its kill is
+    /// counted (`+0x954`: its damage's kill ran slot 0x8b0); 172 and 153 either way.
+    #[test]
+    fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
+        let trebuchet = |hp| Victim {
+            hp,
+            class: 54,
+            master_id: 42,
+            building: Some(Building {
+                trebuchet: true,
+                cost: 400.0,
+                ..Building::default()
+            }),
+            ..house()
+        };
+        let mut villager = hunter();
+        villager.source.mode_680 = 1;
+        // no damage at 1, the least takes it below 1 but its damage did not kill it
+        let mut t = trebuchet(1.5);
+        t.armored.as_mut().unwrap().armors = vec![(4, 10)];
+        take(&mut t, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        assert_eq!((t.hp, t.killed), (0.5, None));
+        assert_eq!(
+            t.building.as_ref().unwrap().razed[0].adds,
+            vec![
+                (1, 20, 1.0),
+                (1, 170, 400.0),
+                (2, 154, 1.0),
+                (2, 152, 400.0),
+                (1, 302, 1.0),
+                (2, 326, 1.0),
+                (1, 402, 400.0),
+                (1, 172, 400.0),
+                (2, 153, 400.0),
+            ]
+        );
+        let mut t = trebuchet(2.0);
+        take(&mut t, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        assert!(t.killed.is_some());
+        assert_eq!(
+            t.building.as_ref().unwrap().razed[0].adds,
+            vec![(1, 172, 400.0), (2, 153, 400.0)]
+        );
+    }
+
+    /// With the flag, an attacker of type 50 and up leaves a building of 1 hit point or more
+    /// (`COMISS hp, 1` / `JC` past) to its combat ability's effects (`FUN_14107bdf0`): only bit 7
+    /// against a player not allied both ways does anything, which is not modelled. The kill
+    /// bonus (`FUN_1415c6510`) of a razing: only an attacker of type 40 and up with a task of
+    /// action type 0x9a does anything, which is not modelled.
+    #[test]
+    fn a_building_s_attacker_effects_and_kill_bonus_are_the_game_s() {
+        let mut villager = hunter();
+        villager.source.ability = 0x80;
+        let mut h = house();
+        assert!(take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).is_err());
+        let mut h = Victim {
+            allied: [true, true],
+            ..house()
+        };
+        take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        let mut h = Victim { hp: 2.0, ..house() };
+        take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+        let mut villager = hunter();
+        villager.source.kill_bonus_tasks = true;
+        let mut h = Victim { hp: 2.0, ..house() };
+        assert!(take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).is_err());
+        let mut h = Victim {
+            hp: 2.0,
+            class: WALL,
+            ..house()
+        };
+        take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    }
+
+    /// `FUN_14107f690` on buildings: every building on its tiles starts it with nothing taken
+    /// (`+0xb90`); an annex reads its main building's `area_damage` (`+0x834`), blast level
+    /// (`+0x62b`) and blast so far, which its loss adds to; a building's hit is less what the
+    /// blast has done to it (`FUN_141082e80`'s `param_8`). Here the annex (area damage 0: a
+    /// least hit of 1 on the main building) comes first in the walk; the main building's own hit
+    /// of 5 then takes 4.
+    #[test]
+    fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
+        let mut mangonel = hunter();
+        mangonel.source.area_effect = 2.0;
+        mangonel.source.blast_level = 2;
+        mangonel.source.area_damage = 0.5;
+        mangonel.weapons = vec![(4, 10)];
+        mangonel.position = [10.5, 10.5, 0.0];
+        let center = mangonel.position;
+        let mut main = Victim {
+            id: 20,
+            hp: 100.0,
+            position: [11.5, 10.5, 0.0],
+            radius: [1.0, 1.0],
+            blast_defense: 2,
+            building: Some(Building {
+                annexes: vec![21],
+                blast_taken: 7.0,
+                ..Building::default()
+            }),
+            ..house()
+        };
+        main.source.area_damage = 0.0;
+        let mut annex = Victim {
+            id: 21,
+            hp: 100.0,
+            position: [10.5, 10.5, 0.0],
+            radius: [0.5, 0.5],
+            blast_defense: 0,
+            building: Some(Building {
+                main: Some(20),
+                ..Building::default()
+            }),
+            ..house()
+        };
+        let mut all = [&mut main, &mut annex];
+        assert_eq!(
+            blast(&mut mangonel, center, None, None, &mut all, 1.0),
+            Ok(true)
+        );
+        assert_eq!(all.map(|t| t.id), [21, 20]);
+        assert_eq!((main.hp, annex.hp), (95.0, 95.0));
+        assert_eq!(main.building.as_ref().unwrap().blast_taken, 5.0);
     }
 
     /// `FUN_14107f690` walks the rows (y outer, x inner) and a tile's objects in its list's

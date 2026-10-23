@@ -311,6 +311,7 @@ fn unit(
             .tribe_building_object
             .as_deref()
             .map_or([0; 2], |b| [b.relic_count, b.specific_relic_count]),
+        damaged_lately: s.damaged_lately_timer as u8,
         livestock_summation: object
             .tribe_building_object
             .as_deref()

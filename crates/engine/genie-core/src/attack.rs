@@ -1655,15 +1655,20 @@ impl Attack {
         Ok(())
     }
 
-    /// `FUN_1412115e0`'s trample: the blast about the unit, past its target ([`damage::blast`]);
-    /// the unit tells its unit AI the action executed (0x200, whatever its master); the 64-bit
-    /// Object-stream draw against the hit chance; a hit the target's shield does not block
-    /// (`FUN_14108d8a0`, on a target of any type) is its slot 0xe8 at the elevation factor times
-    /// the hit's 1. A charge of type 1 or 3 the blast or the hit was for (`+0x8a8`) is emptied.
+    /// `FUN_1412115e0`'s trample: the blast about the unit, past its target ([`damage::blast`];
+    /// the target stays among the objects on its tiles, the main building its annexes' hits
+    /// go to); a building target's blast so far (`+0xb90`, its main building's for an annex,
+    /// `0x141211933`) is what its hit leaves out; the unit tells its unit AI the action executed
+    /// (0x200, whatever its master); the 64-bit Object-stream draw against the hit chance; a hit
+    /// the target's shield does not block (`FUN_14108d8a0`, on a target of any type) is its slot
+    /// 0xe8 at the elevation factor times the hit's 1. A charge of type 1 or 3 the blast or the
+    /// hit was for (`+0x8a8`) is emptied.
     fn trample(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
         let (center, target) = (s.own.position, s.victim.id);
         let mut targets: Vec<&mut Victim> = s.blasted.iter_mut().collect();
+        targets.push(&mut *s.victim);
         let _ = damage::blast(&mut s.own, center, Some(target), None, &mut targets, 1.0)?;
+        let taken = blast_so_far(s.victim, s.blasted)?;
         s.executed = Some(target);
         let draw = object_rng.raw64();
         let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
@@ -1672,7 +1677,8 @@ impl Attack {
                 damage::elevation_factor(s.own.position[2], s.own.attack_elevation, s.victim);
             if !damage::shield(s.victim, false) {
                 let weapons = s.own.weapons.clone();
-                damage::take(s.victim, &mut s.own, &weapons, factor, 0.0)?;
+                let mut others: Vec<&mut Victim> = s.blasted.iter_mut().collect();
+                damage::take(s.victim, &mut s.own, &mut others, &weapons, factor, taken)?;
             }
         }
         let a = &mut s.own.source;
@@ -1801,8 +1807,26 @@ pub(crate) fn strike(
         damage::elevation_factor(z, own.attack_elevation, victim)
     });
     let weapons = own.weapons.clone();
-    damage::take(victim, own, &weapons, factor, 0.0)?;
+    let mut others: Vec<&mut Victim> = blasted.iter_mut().collect();
+    damage::take(victim, own, &mut others, &weapons, factor, 0.0)?;
     Ok(struck)
+}
+
+/// The blast's damage so far that a trample's hit on `victim` leaves out (`0x141211933`): a
+/// building's `+0xb90`, its main building's (`+0xbb8`, among `blasted`) for an annex; 0 for
+/// another object.
+fn blast_so_far(victim: &Victim, blasted: &[Victim]) -> Result<f32, Unsupported> {
+    let Some(b) = victim.building.as_ref().filter(|_| victim.kind == BUILDING) else {
+        return Ok(0.0);
+    };
+    let Some(main) = b.main else {
+        return Ok(b.blast_taken);
+    };
+    blasted
+        .iter()
+        .find(|v| v.id == main)
+        .map(|m| m.building.as_ref().map_or(0.0, |mb| mb.blast_taken))
+        .ok_or(crate::build::NOT_HELD)
 }
 
 /// The Attack constructor's sprites and frames (`FUN_140a7c210`) for a unit that shows its
@@ -2396,6 +2420,162 @@ mod tests {
                 sends_home: false,
             }
         }
+    }
+
+    /// A building of player 2 at `at` (radius 0.5, 100 hit points, no armor, reached by blasts
+    /// of level 2) with its `building` part.
+    fn struck_building(id: i32, at: [f32; 3], building: damage::Building) -> Victim {
+        Victim {
+            id,
+            hp: 100.0,
+            kind: BUILDING,
+            class: 3,
+            player: 2,
+            position: at,
+            radius: [0.5, 0.5],
+            blast_defense: 2,
+            armored: Some(damage::Armored {
+                armors: vec![(4, 0)],
+                terrain_bonus: -1,
+                master_hp: 100,
+                friendly_fire: 1.0,
+                ..damage::Armored::default()
+            }),
+            building: Some(building),
+            ..Victim::default()
+        }
+    }
+
+    /// `FUN_141084230`'s hit on an annex is its main building's (`FUN_1411cea90`'s forward):
+    /// the main building among the objects the hit may reach loses it, and the annex takes its
+    /// hit points.
+    #[test]
+    fn a_strike_on_an_annex_hits_its_main_building() {
+        let mut annex = struck_building(
+            21,
+            [10.5, 10.0, 0.0],
+            damage::Building {
+                main: Some(20),
+                ..damage::Building::default()
+            },
+        );
+        let mut blasted = vec![struck_building(
+            20,
+            [11.5, 10.0, 0.0],
+            damage::Building {
+                annexes: vec![21],
+                ..damage::Building::default()
+            },
+        )];
+        let mut own = Victim {
+            id: 1,
+            kind: 70,
+            class: 6,
+            player: 1,
+            source: damage::Attacker {
+                id: 1,
+                kind: 70,
+                class: 6,
+                missile: -1,
+                player: 1,
+                ..damage::Attacker::default()
+            },
+            weapons: vec![(4, 4)],
+            ..Victim::default()
+        };
+        let hit = Hit {
+            at: own.position,
+            from_z: Some(0.0),
+            missile: false,
+            chance: 100,
+        };
+        let struck = strike(
+            &mut own,
+            &mut annex,
+            &mut blasted,
+            hit,
+            &mut Well512::default(),
+        )
+        .unwrap();
+        assert_eq!(struck.result, 1);
+        assert_eq!((blasted[0].hp, annex.hp), (96.0, 96.0));
+        assert!(blasted[0].building.as_ref().is_some_and(|b| b.struck));
+    }
+
+    /// `FUN_1412115e0`'s trample: its blast about the unit passes its target but reaches the
+    /// target's main building (5 of 10 at half the damage), whose blast so far (`+0xb90`,
+    /// `0x141211933`) the hit on the annex then leaves out: 10 less 5.
+    #[test]
+    fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
+        let mut rig = Rig::new(struck_building(
+            21,
+            [10.2, 10.0, 0.0],
+            damage::Building {
+                main: Some(20),
+                ..damage::Building::default()
+            },
+        ));
+        rig.blasted = vec![struck_building(
+            20,
+            [10.5, 10.0, 0.0],
+            damage::Building {
+                annexes: vec![21],
+                ..damage::Building::default()
+            },
+        )];
+        let mut s = rig.strike();
+        s.own.position = [10.0, 10.0, 0.0];
+        s.own.weapons = vec![(4, 10)];
+        s.own.source = damage::Attacker {
+            id: 1,
+            kind: 70,
+            class: 6,
+            missile: -1,
+            player: 1,
+            area_effect: 1.0,
+            blast_level: 2,
+            area_damage: 0.5,
+            ..damage::Attacker::default()
+        };
+        let a = own_attack(21, READY, 0.0);
+        a.hit(&mut s, &mut Well512::default()).unwrap();
+        assert_eq!(s.executed, Some(21));
+        drop(s);
+        assert_eq!((rig.blasted[0].hp, rig.victim.hp), (90.0, 90.0));
+        assert_eq!(
+            rig.blasted[0].building.as_ref().map(|b| b.blast_taken),
+            Some(5.0)
+        );
+    }
+
+    /// The blast so far a trample's hit leaves out: a building's own, an annex's main building's
+    /// (one the hit does not hold is not modelled), none for another object.
+    #[test]
+    fn a_trample_reads_a_building_s_blast_so_far_or_its_main_building_s() {
+        let building = |main, blast_taken| {
+            struck_building(
+                21,
+                [0.0; 3],
+                damage::Building {
+                    main,
+                    blast_taken,
+                    ..damage::Building::default()
+                },
+            )
+        };
+        assert_eq!(blast_so_far(&building(None, 3.0), &[]), Ok(3.0));
+        let main = building(None, 5.0);
+        let main = Victim { id: 20, ..main };
+        assert_eq!(blast_so_far(&building(Some(20), 3.0), &[main]), Ok(5.0));
+        assert_eq!(
+            blast_so_far(&building(Some(20), 3.0), &[]),
+            Err(crate::build::NOT_HELD)
+        );
+        let unit = Victim {
+            kind: 70,
+            ..Victim::default()
+        };
+        assert_eq!(blast_so_far(&unit, &[]), Ok(0.0));
     }
 
     /// A world holding the target `id` of `player` and class `class` at `at`, radius 0.2.
