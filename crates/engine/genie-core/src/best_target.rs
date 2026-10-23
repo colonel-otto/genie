@@ -400,6 +400,521 @@ pub fn order_weights(history: &[crate::unit_ai::OrderRecord], now: u32) -> [f32;
 /// The order history's window (`DAT_142efe420`, 60000 ms as a float).
 const ORDER_WINDOW: f32 = crate::image::best_target::ORDER_WINDOW;
 
+/// What `bestUnitToAttack` reads of the unit whose AI searches, and of that AI.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Searcher {
+    /// The unit.
+    pub id: i32,
+    /// Its unit AI's current target (`+0x48`), −1 for none.
+    pub target: i32,
+    /// The AI's target's class (`+0x4c`) and its last target's (`+0x70`).
+    pub target_types: [i32; 2],
+    /// The AI's order (`+0x3c`) and action (`+0x44`).
+    pub order: i32,
+    /// The AI's action (`+0x44`).
+    pub action: i32,
+    /// The unit's master's id, class and type (`+0x5d7`, `+0x98f`, the master's `+0x8`).
+    pub master: i16,
+    /// Its master's class.
+    pub class: i16,
+    /// Its master's type (`'F'`, 70: the combat type).
+    pub kind: u8,
+    /// Its master's `attack_priority` (`+0x92c`, `FUN_141202220`).
+    pub attack_priority: u8,
+    /// Its owner is a computer player (`FUN_141659cf0`).
+    pub computer: bool,
+    /// Its owner may attack walls (`player+0x611`, the AI's slot 0x18's player).
+    pub walls_allowed: bool,
+    /// The AI's slot 0x1d0 with −1: the unit may move to attack.
+    pub can_move: bool,
+    /// `FUN_140c47f90`: the farthest it looks (a human player's twice its line of sight).
+    pub sight: f32,
+    /// Its weapon range against its current target (slot 0x238 with it, or with none).
+    pub range: f32,
+    /// Its weapon range (slot 0x230) and least range (slot 0x240).
+    pub weapon_range: f32,
+    /// Its least range (slot 0x240).
+    pub min_range: f32,
+    /// Its top speed (slot 0x208).
+    pub speed: f32,
+    /// The game mode is a scenario's (`FUN_141302540`).
+    pub scenario: bool,
+    /// Its owner's targeting mode and factor (`player+0x614`, `+0x618`).
+    pub targeting: (i32, i32),
+    /// The order history's weights ([`order_weights`]).
+    pub weights: [f32; 12],
+    /// The AI's retarget entries' targets (`+0x1e0`).
+    pub retries: Vec<i32>,
+    /// The world's time (`FUN_1415300d0`).
+    pub now: u32,
+}
+
+/// `bestUnitToAttack`'s arguments past its reference point (the search's, the caller's).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Ask {
+    /// The reference distance (0: none).
+    pub distance: f32,
+    /// An idle check: the current target narrows nothing and is no shortcut.
+    pub idle: bool,
+    /// The path checks: 1 on, 0 off (the shortcuts answer without a path).
+    pub paths: u8,
+    /// Extra objects for the statistics (`int*`, count).
+    pub extra: Vec<i32>,
+    /// Any class: walls, gates, buildings, towers and packed units are not passed over.
+    pub any_class: bool,
+    /// The unit is in an attack work state: a current target on top answers at once.
+    pub work_state: bool,
+}
+
+/// What `bestUnitToAttack` reads of an object of the world (`FUN_1415417a0`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Thing {
+    /// Its owner's id.
+    pub owner: usize,
+    /// The unit's owner counts its owner an ally (`FUN_141663d90` with the ally flag).
+    pub allied: bool,
+    /// `+0x640`.
+    pub state: u8,
+    /// It has a unit AI (`+0x6b0`).
+    pub has_ai: bool,
+    /// It is inside another (`+0x2f0`).
+    pub inside: bool,
+    /// Its master's id, class and type.
+    pub master: i16,
+    /// Its master's class.
+    pub class: i16,
+    /// Its master's type.
+    pub kind: u8,
+    /// Its `+0x924` (`FUN_14107cc90`): others take it over by seeing it.
+    pub capture: bool,
+    /// Its targeting flag (`+0x689`, `FUN_141188bb0`).
+    pub targetable: bool,
+    /// Its attackable flag (`+0x68a`, `FUN_141188b10`).
+    pub attackable: bool,
+    /// What it holds (`+0x310`).
+    pub held: f32,
+    /// The footprints' gap to the unit (`FUN_14118f680`).
+    pub distance: f32,
+    /// Its top speed (slot 0x208).
+    pub speed: f32,
+}
+
+/// What `bestUnitToAttack` asks of the world while its unit AI runs.
+pub trait Battlefield {
+    /// The object `id` as the world holds it, None for one it does not.
+    ///
+    /// # Errors
+    ///
+    /// An object the slice does not hold.
+    fn thing(&mut self, id: i32) -> Result<Option<Thing>, crate::GenieError>;
+
+    /// The unit AI's attack check (slot 0xa0 with 0) on object `id`.
+    ///
+    /// # Errors
+    ///
+    /// What the check does not model.
+    fn can_attack(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+
+    /// The unit AI's neutral test (slot 0xa8) of an object of `class`.
+    ///
+    /// # Errors
+    ///
+    /// What the test does not model.
+    fn attacks_neutral(&mut self, class: i16) -> Result<bool, crate::GenieError>;
+
+    /// `FUN_14120e4e0` of a unit of the combat type on object `id`: it spares its friends.
+    ///
+    /// # Errors
+    ///
+    /// What the test does not model.
+    fn spares_friends(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+
+    /// `FUN_140c41690`: a computer player's unit passes object `id` over.
+    ///
+    /// # Errors
+    ///
+    /// What the test does not model.
+    fn shuns(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+
+    /// What the statistics read of object `id` at `distance` of `category`
+    /// ([`Candidate`]).
+    ///
+    /// # Errors
+    ///
+    /// What the reads do not model.
+    fn candidate(
+        &mut self,
+        id: i32,
+        distance: f32,
+        category: i32,
+    ) -> Result<Candidate, crate::GenieError>;
+
+    /// The shown armor of object `id` is at least 100 (slot 0x870's first).
+    ///
+    /// # Errors
+    ///
+    /// What the read does not model.
+    fn armored(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+
+    /// Object `id`'s weapon range (slot 0x230).
+    ///
+    /// # Errors
+    ///
+    /// What the read does not model.
+    fn weapon_range(&mut self, id: i32) -> Result<f32, crate::GenieError>;
+
+    /// The current target `id` engages: its attacks sum above 0 (slot 0x228) or its unit AI
+    /// could work on the unit (slot 0x1b8 with 1).
+    ///
+    /// # Errors
+    ///
+    /// What the reads do not model.
+    fn engages(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+
+    /// The unit's quick path to object `id` within `range` (slot 0x3e0).
+    ///
+    /// # Errors
+    ///
+    /// What the path does not model.
+    fn quick_path(&mut self, id: i32, range: f32) -> Result<bool, crate::GenieError>;
+
+    /// The unit's path to object `id` within `range` (slot 0x3d0).
+    ///
+    /// # Errors
+    ///
+    /// What the path does not model.
+    fn path(&mut self, id: i32, range: f32) -> Result<bool, crate::GenieError>;
+}
+
+/// The boats' classes (2, 20, 21, 22, 53), which a computer player's land unit passes over.
+const BOATS: [i16; 5] = [2, 20, 21, 22, 53];
+/// The classes a search without `any_class` passes over: buildings, walls, towers, gates and
+/// the packed units.
+const NOT_ANY: [i16; 5] = [3, 27, 52, 39, 51];
+/// The wall's and the gate's classes.
+const WALL: i16 = 27;
+const GATE: i16 = 39;
+/// The masters whose units attack by priority 0 without the moving rule: the rams, the siege
+/// masters 1744 and 1746, 420 and 691.
+const PRIORITY_0_MASTERS: [i16; 8] = [35, 422, 548, 1258, 1744, 1746, 420, 691];
+/// A computer player's unit of these masters passes no boat over: the castle, 45, the town
+/// centre.
+const BOAT_HUNTERS: [i16; 3] = [82, 45, 109];
+/// The moving targets past which the current target and the closest moving one answer.
+const FEW_MOVING: i32 = 5;
+/// The orders of the defend patrol (`0x2dd`) and class 13 (siege), whose units keep the walls'
+/// owner flag.
+const DEFEND_PATROL: i32 = 0x2dd;
+const SIEGE: i16 = 13;
+/// The retarget entries' times: a moving object's 1 s, another's 2 s.
+const RETRY_MOVING: u32 = 1000;
+const RETRY_OTHER: u32 = 2000;
+
+/// What `bestUnitToAttack` found: the object to attack (−1 for none) and the retarget entries
+/// its failed paths add (`FUN_140c42320`: each target and the world time until which it is
+/// ignored), the caller's for the unit AI.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Choice {
+    /// The object, −1 for none.
+    pub target: i32,
+    /// The retarget entries to add, in order.
+    pub retries: Vec<(i32, u32)>,
+}
+
+/// The object tests the statistics' main and retry walks share: the world holds it with a unit
+/// AI, alive, not allied, not inside another; the unit AI's attack check; a combat unit's
+/// friends' scan; a neutral object's test; a Gaia unit others take by sight is passed outside
+/// the scenarios; its flags; a computer player's tests; the classes without `any_class`; a
+/// computer player's unit's Gaia holdings and boats. The object and its category, or None.
+fn tested(
+    me: &Searcher,
+    ask: &Ask,
+    id: i32,
+    kind: usize,
+    world: &mut dyn Battlefield,
+) -> Result<Option<Thing>, crate::GenieError> {
+    let Some(t) = world.thing(id)? else {
+        return Ok(None);
+    };
+    if !t.has_ai || 3 <= t.state || t.allied || t.inside || !world.can_attack(id)? {
+        return Ok(None);
+    }
+    if me.kind == 70 && !world.spares_friends(id)? {
+        return Ok(None);
+    }
+    if kind == 3 && !world.attacks_neutral(t.class)? {
+        return Ok(None);
+    }
+    let gaia_taken = !me.scenario && t.owner == 0 && 0x45 < t.kind;
+    if gaia_taken && t.capture {
+        return Ok(None);
+    }
+    if !t.targetable || (!t.attackable && me.action == 600) || world.shuns(id)? {
+        return Ok(None);
+    }
+    if !ask.any_class && NOT_ANY.contains(&t.class) {
+        return Ok(None);
+    }
+    let captured = 0x45 < t.kind && t.capture;
+    if me.computer && t.owner == 0 {
+        // nothing held (`+0x310` at most 0) and not taken by sight
+        let free = t.held <= 0.0 && !captured;
+        if !free {
+            return Ok(None);
+        }
+    }
+    let boat_free =
+        me.class == 52 || BOAT_HUNTERS.contains(&me.master) || !BOATS.contains(&t.class);
+    let is_boat = BOATS.contains(&me.class);
+    if me.computer && !boat_free && !is_boat {
+        return Ok(None);
+    }
+    Ok(Some(t))
+}
+
+/// The ranges the statistics' walks test an object at `gap` by: at least the least range,
+/// within the weapon range unless the unit moves, within `near` (the main walk's sight, the
+/// retry walk's range) unless it may move, within the reference distance when there is one, and
+/// within the sight.
+fn within(me: &Searcher, ask: &Ask, gap: f32, near: f32) -> bool {
+    me.min_range <= gap
+        && (gap <= me.weapon_range || me.speed != 0.0)
+        && (me.can_move || gap <= near)
+        && (ask.distance <= 0.0 || gap <= ask.distance)
+        && gap <= me.sight
+}
+
+/// `UnitAIModule::bestUnitToAttack` (`FUN_140c44680`) for the unit `me`, over what its search
+/// (slot 0x50, the caller's) left in the relation lists `lists` (0 Gaia .. 4 enemies). The
+/// statistics ([`Statistics`]) take:
+///
+/// - the current target (the world holds it alive, not allied) when within the unit's range
+///   against it or the unit moves; outside an idle check, one within the reference distance
+///   that is no building (3) nor farm (49) narrows the search to its category;
+/// - the extra objects but the current target, by the attack check, one under the least range
+///   at its gap plus the weapon range plus 1 (none for a unit that does not move);
+/// - each list from enemies down to Gaia's (a human player's down to 2 in a scenario), each
+///   record but the current target and the extra objects: a retarget entry's target waits for
+///   the retry walk; the others pass the shared tests ([`tested`]), then the ranges (the least
+///   range, the weapon range unless the unit moves, the sight unless it may move, the reference
+///   distance, the sight), the category; the closest gate and the closest wall are noted, and
+///   count only for a unit that attacks walls (its targets' classes, or its owner's flag
+///   outside the defend patrol of a unit that is no siege).
+///
+/// With walls to attack and nothing but walls, the closest gate answers. Without statistics the
+/// retry walk adds its targets the same way (by the unit's range, not the sight, unless it
+/// may move); still none, the closest wall answers (a unit that attacks walls) or −1. Then the
+/// scores ([`Statistics::score`]), the ranks (a fixed entry but category 6 by its weapon range:
+/// 3 above the epsilon, else 2, a farm 1; the others 4 for a unit of priority 1 or of 0 but
+/// [`PRIORITY_0_MASTERS`], else 0) and the sort. Fewer than 5 moving entries and a current
+/// target that moves (or nothing moves at all), outside an idle check, when it engages or
+/// nothing is armed: the current target, by its path (without path checks at once). Then the
+/// first three entries by the quick path (a moving one, or with nothing moving or a unit of
+/// another rank rule); more than 5 moving entries outside an idle check: the closest moving one
+/// by its path; in an attack work state a current target on top; without path checks the top;
+/// else the first three by their paths, each one that fails ignored for 1 s (moving) or 2 s.
+/// Last the closest wall (a unit that attacks walls) or −1.
+///
+/// # Errors
+///
+/// What the world's reads and tests do not model.
+pub fn best_unit_to_attack(
+    me: &Searcher,
+    ask: &Ask,
+    lists: &[Vec<i32>; 5],
+    world: &mut dyn Battlefield,
+) -> Result<Choice, crate::GenieError> {
+    let mut choice = Choice::default();
+    let defending = me.order == DEFEND_PATROL && me.class != SIEGE;
+    let current = if me.target == -1 {
+        None
+    } else {
+        world
+            .thing(me.target)?
+            .filter(|t| t.state <= 2 && !t.allied)
+    };
+    let mut st = Statistics::default();
+    let walls = matches!(me.target_types[0], 27 | 39)
+        || matches!(me.target_types[1], 27 | 39)
+        || (me.walls_allowed && !defending);
+    let range = me.range;
+    let mut narrowed = -1;
+    if let Some(t) = current.filter(|t| t.distance <= range || 0.0 < me.speed) {
+        let k = category(t.master, t.class);
+        st.add(&world.candidate(me.target, t.distance, k)?);
+        if !ask.idle && t.distance <= ask.distance && !matches!(t.class, 3 | 49) {
+            narrowed = k;
+        }
+    }
+    for &id in &ask.extra {
+        if id == me.target {
+            continue;
+        }
+        let Some(t) = world.thing(id)? else {
+            continue;
+        };
+        if !world.can_attack(id)? {
+            continue;
+        }
+        let mut gap = t.distance;
+        if gap < me.min_range {
+            if me.speed == 0.0 {
+                continue;
+            }
+            gap = gap + me.weapon_range + ONE;
+        }
+        st.add(&world.candidate(id, gap, category(t.master, t.class))?);
+    }
+    let lowest = if me.scenario && !me.computer { 2 } else { 0 };
+    let mut later = Vec::new();
+    let (mut gate, mut gate_gap) = (-1, -1.0f32);
+    let (mut wall, mut wall_gap) = (-1, -1.0f32);
+    let mut beyond_walls = false;
+    'lists: for kind in (lowest..=4).rev() {
+        for &id in &lists[kind] {
+            if STATISTICS <= st.entries.len() {
+                break 'lists;
+            }
+            if id == me.target || ask.extra.contains(&id) {
+                continue;
+            }
+            if me.retries.contains(&id) {
+                later.push((id, kind));
+                continue;
+            }
+            let Some(t) = tested(me, ask, id, kind, world)? else {
+                continue;
+            };
+            let gap = t.distance;
+            if !within(me, ask, gap, me.sight) {
+                continue;
+            }
+            let k = category(t.master, t.class);
+            if narrowed != -1 && k != narrowed {
+                continue;
+            }
+            if t.class == GATE {
+                if gate_gap < 0.0 || gap < gate_gap {
+                    (gate, gate_gap) = (id, gap);
+                }
+                if !walls {
+                    continue;
+                }
+            } else if t.class == WALL {
+                if wall_gap < 0.0 || gap < wall_gap {
+                    (wall, wall_gap) = (id, gap);
+                }
+                if !walls {
+                    continue;
+                }
+            } else {
+                beyond_walls = true;
+            }
+            st.add(&world.candidate(id, gap, k)?);
+        }
+    }
+    if walls && !beyond_walls && gate != -1 {
+        choice.target = gate;
+        return Ok(choice);
+    }
+    if st.entries.is_empty() {
+        for &(id, kind) in &later {
+            let Some(t) = tested(me, ask, id, kind, world)? else {
+                continue;
+            };
+            let gap = t.distance;
+            if !within(me, ask, gap, range) {
+                continue;
+            }
+            let k = category(t.master, t.class);
+            if narrowed != -1 && k != narrowed {
+                continue;
+            }
+            if t.class == GATE {
+                if !walls {
+                    continue;
+                }
+            } else if t.class == WALL {
+                if wall_gap < 0.0 || gap < wall_gap {
+                    (wall, wall_gap) = (id, gap);
+                }
+                if !walls {
+                    continue;
+                }
+            }
+            st.add(&world.candidate(id, gap, k)?);
+        }
+        if st.entries.is_empty() {
+            choice.target = if walls { wall } else { -1 };
+            return Ok(choice);
+        }
+    }
+    st.score(&me.weights, me.targeting, &mut |id| world.armored(id))?;
+    let ranked = me.attack_priority == 1
+        || (me.attack_priority == 0 && !PRIORITY_0_MASTERS.contains(&me.master));
+    st.rank(&mut |e| {
+        if !e.fixed || e.category == 6 {
+            return Ok(i32::from(ranked) << 2);
+        }
+        if EPSILON < world.weapon_range(e.id)? {
+            return Ok(3);
+        }
+        let class = world.thing(e.id)?.map_or(-1, |t| t.class);
+        Ok(if class == 49 { 1 } else { 2 })
+    })?;
+    st.sort();
+    if let Some(t) = current
+        && st.moving < FEW_MOVING
+        && ((t.speed < EPSILON && st.moving == 0) || 0.0 < t.speed)
+        && !ask.idle
+        && (world.engages(me.target)? || st.armed < 1)
+        && (ask.paths == 0 || world.path(me.target, range)?)
+    {
+        choice.target = me.target;
+        return Ok(choice);
+    }
+    for &i in st.order.iter().take(3) {
+        let e = st.entries[i];
+        if (e.moving || st.moving < 1 || !ranked) && world.quick_path(e.id, range)? {
+            choice.target = e.id;
+            return Ok(choice);
+        }
+    }
+    let mut tried = -1;
+    if !ask.idle && FEW_MOVING < st.moving {
+        let closest = st.closest_moving.1;
+        if ask.paths == 0 || world.path(closest, range)? {
+            choice.target = closest;
+            return Ok(choice);
+        }
+        tried = closest;
+    }
+    let top = st.entries[st.order[0]].id;
+    if ask.work_state && top == me.target {
+        choice.target = me.target;
+        return Ok(choice);
+    }
+    if ask.paths == 0 {
+        choice.target = top;
+        return Ok(choice);
+    }
+    for &i in st.order.iter().take(3) {
+        let e = st.entries[i];
+        if e.id != tried && world.path(e.id, range)? {
+            choice.target = e.id;
+            return Ok(choice);
+        }
+        let wait = if e.moving { RETRY_MOVING } else { RETRY_OTHER };
+        choice.retries.push((e.id, me.now.wrapping_add(wait)));
+    }
+    choice.target = if walls { wall } else { -1 };
+    Ok(choice)
+}
+
+/// 1 (`DAT_14330eb8c`): an extra object under the least range counts this much beyond the
+/// weapon range.
+const ONE: f32 = crate::image::best_target::ONE;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,6 +1037,208 @@ mod tests {
         assert_eq!(w[1], 1.0 + 30_000.0 / 60_000.0);
         assert_eq!(w[3], 0.0);
         assert_eq!(w[2], 0.0);
+    }
+
+    /// A world of objects by id: each a [`Thing`] and its candidate's values; the paths that
+    /// succeed and the calls made.
+    #[derive(Default)]
+    struct Field {
+        things: std::collections::BTreeMap<i32, (Thing, Candidate)>,
+        quick: Vec<i32>,
+        paths: Vec<i32>,
+        asked: Vec<(char, i32)>,
+    }
+
+    impl Battlefield for Field {
+        fn thing(&mut self, id: i32) -> Result<Option<Thing>, crate::GenieError> {
+            Ok(self.things.get(&id).map(|t| t.0))
+        }
+        fn can_attack(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+            Ok(true)
+        }
+        fn attacks_neutral(&mut self, _: i16) -> Result<bool, crate::GenieError> {
+            Ok(true)
+        }
+        fn spares_friends(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+            Ok(true)
+        }
+        fn shuns(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+            Ok(false)
+        }
+        fn candidate(
+            &mut self,
+            id: i32,
+            distance: f32,
+            category: i32,
+        ) -> Result<Candidate, crate::GenieError> {
+            Ok(Candidate {
+                distance,
+                category,
+                ..self.things[&id].1
+            })
+        }
+        fn armored(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+            Ok(false)
+        }
+        fn weapon_range(&mut self, _: i32) -> Result<f32, crate::GenieError> {
+            Ok(0.0)
+        }
+        fn engages(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+            Ok(true)
+        }
+        fn quick_path(&mut self, id: i32, _: f32) -> Result<bool, crate::GenieError> {
+            self.asked.push(('q', id));
+            Ok(self.quick.contains(&id))
+        }
+        fn path(&mut self, id: i32, _: f32) -> Result<bool, crate::GenieError> {
+            self.asked.push(('p', id));
+            Ok(self.paths.contains(&id))
+        }
+    }
+
+    fn soldier() -> Searcher {
+        Searcher {
+            id: 1,
+            target: -1,
+            target_types: [-1, -1],
+            order: -1,
+            action: -1,
+            master: 74,
+            class: 6,
+            kind: 70,
+            attack_priority: 1,
+            can_move: true,
+            sight: 12.0,
+            range: 0.5,
+            weapon_range: 0.5,
+            speed: 1.0,
+            now: 10_000,
+            ..Searcher::default()
+        }
+    }
+
+    fn enemy(id: i32, class: i16, distance: f32, hp: f32) -> (Thing, Candidate) {
+        (
+            Thing {
+                owner: 2,
+                state: 2,
+                has_ai: true,
+                master: 4,
+                class,
+                kind: 70,
+                targetable: true,
+                attackable: true,
+                distance,
+                speed: 1.0,
+                ..Thing::default()
+            },
+            Candidate {
+                speed: 1.0,
+                hp,
+                ..candidate(id, distance, 1.0)
+            },
+        )
+    }
+
+    /// `bestUnitToAttack` over three enemies (an idle check, path checks on): the statistics
+    /// rank them (the nearest's distance score outweighs the weakest's kill score: 7, 9, 8); the
+    /// quick paths of the first three (moving objects) are asked, 9's answers.
+    #[test]
+    fn the_best_unit_to_attack_ranks_then_takes_the_first_quick_path() {
+        let mut field = Field::default();
+        let _ = field.things.insert(7, enemy(7, 0, 3.0, 40.0));
+        let _ = field.things.insert(8, enemy(8, 0, 9.0, 40.0));
+        let _ = field.things.insert(9, enemy(9, 0, 5.0, 10.0));
+        field.quick = vec![9];
+        let lists = [vec![], vec![], vec![], vec![], vec![8, 7, 9]];
+        let ask = Ask {
+            idle: true,
+            paths: 1,
+            any_class: true,
+            ..Ask::default()
+        };
+        let c = best_unit_to_attack(&soldier(), &ask, &lists, &mut field).unwrap();
+        assert_eq!(c.target, 9);
+        assert_eq!(field.asked, [('q', 7), ('q', 9)]);
+        assert_eq!(c.retries, []);
+        // without a quick path the paths follow; 7's fails (a moving object: ignored for 1 s)
+        field.quick.clear();
+        field.paths = vec![9];
+        field.asked.clear();
+        let c = best_unit_to_attack(&soldier(), &ask, &lists, &mut field).unwrap();
+        assert_eq!(c.target, 9);
+        assert_eq!(
+            field.asked,
+            [('q', 7), ('q', 9), ('q', 8), ('p', 7), ('p', 9)]
+        );
+        assert_eq!(c.retries, [(7, 11_000)]);
+    }
+
+    /// Each of the first three whose path fails is ignored for 1 s (a moving object) or 2 s
+    /// (a still one), and nothing found answers −1. A retarget entry's target waits for the
+    /// retry walk, which runs only without other statistics.
+    #[test]
+    fn failed_paths_become_retarget_entries() {
+        let mut field = Field::default();
+        let _ = field.things.insert(7, enemy(7, 0, 3.0, 40.0));
+        let mut still = enemy(9, 0, 5.0, 10.0);
+        still.0.speed = 0.0;
+        still.1.speed = 0.0;
+        let _ = field.things.insert(9, still);
+        let lists = [vec![], vec![], vec![], vec![], vec![7, 9]];
+        let ask = Ask {
+            idle: true,
+            paths: 1,
+            any_class: true,
+            ..Ask::default()
+        };
+        let c = best_unit_to_attack(&soldier(), &ask, &lists, &mut field).unwrap();
+        assert_eq!(c.target, -1);
+        let mut retries = c.retries;
+        retries.sort_unstable();
+        assert_eq!(retries, [(7, 11_000), (9, 12_000)]);
+        let me = Searcher {
+            retries: vec![9],
+            ..soldier()
+        };
+        field.asked.clear();
+        let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
+        assert_eq!(c.target, -1);
+        assert_eq!(field.asked, [('q', 7), ('p', 7)]);
+        // with 7 a retarget entry too, the retry walk takes both
+        let me = Searcher {
+            retries: vec![9, 7],
+            ..soldier()
+        };
+        field.paths = vec![9];
+        field.asked.clear();
+        let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
+        assert_eq!(c.target, 9);
+    }
+
+    /// A unit that attacks walls (its last target a wall) and finds only walls and gates takes
+    /// the closest gate; one that does not passes them over.
+    #[test]
+    fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
+        let mut field = Field::default();
+        let _ = field.things.insert(20, enemy(20, 27, 2.0, 100.0));
+        let _ = field.things.insert(21, enemy(21, 39, 4.0, 100.0));
+        let _ = field.things.insert(22, enemy(22, 39, 3.0, 100.0));
+        let lists = [vec![], vec![], vec![], vec![], vec![20, 21, 22]];
+        let ask = Ask {
+            idle: true,
+            paths: 1,
+            any_class: true,
+            ..Ask::default()
+        };
+        let me = Searcher {
+            target_types: [-1, 27],
+            ..soldier()
+        };
+        let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
+        assert_eq!(c.target, 22);
+        let c = best_unit_to_attack(&soldier(), &ask, &lists, &mut field).unwrap();
+        assert_eq!(c.target, -1);
     }
 
     /// `FUN_140c4c8e0`'s switch: the archers' class 0 is 3, but masters 6 and 7 (the crossbowman
