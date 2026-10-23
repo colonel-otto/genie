@@ -2545,7 +2545,8 @@ impl Turns {
     /// task found is worked at once (slot 0x7e8 with filter 3, outside slot 0x128: `+0xa14` 1);
     /// else, and for any other target, slot 0x128 works it (`notified`, any task). An unloaded
     /// unit's caller goes to slot 0x128 at once (`finder` clear). A gather point on its own
-    /// building (a garrison) is not modelled.
+    /// building takes the unit in at once ([`Turns::enter_forced`]) while the building holds
+    /// fewer than 10 or fewer than its capacity.
     pub(crate) fn gather(
         &mut self,
         p: usize,
@@ -2558,10 +2559,17 @@ impl Turns {
         if g.target == -1 {
             return self.gather_move(p, new, [g.point[0], g.point[1], 0.0], notified);
         }
-        if g.target == building {
-            return Err(Unsupported(
-                "a gather point on its own building (a garrison)",
-            ));
+        // its own building takes it at once (slot 0x1a0 forced) while it holds fewer than 10 or
+        // fewer than its master's capacity (its slot 0x498 against `+0x5d4`); else the building
+        // is a target as any other
+        if g.target == building
+            && let Some((bp, b)) = self.object(building)
+        {
+            let room = i32::from(self.master_of(bp, b.life.master_id)?.garrison);
+            let held = self.garrisoned(building)?;
+            if held < 10 || held < room {
+                return self.enter_forced(p, new, building);
+            }
         }
         let target = if self.object(g.target).is_some() {
             g.target

@@ -22,6 +22,10 @@ const FAR: f32 = crate::image::garrison::FAR;
 pub(crate) const NEARBY: f32 = crate::image::garrison::NEARBY;
 /// The squared footprint gap within which the town bell reaches (its ring `FUN_14163a650`, its
 /// end `FUN_14163ab80`, and `FUN_141621220` with `param_6` 1: `DAT_142ef3e70`, 625.0, 25 tiles).
+/// An enter into an object the world holds asleep.
+const ENTER_SLEEPING: Unsupported = Unsupported("an enter into a sleeping object");
+/// An enter without its owner's masters.
+pub(crate) const NO_MASTERS: Unsupported = Unsupported("an enter without the masters");
 pub(crate) const TOWN_BELL_REACH: f32 = crate::image::garrison::TOWN_BELL_REACH;
 
 /// The shelters `FUN_141621220` sends units to: the buildings (its `param_3`), the transports
@@ -460,7 +464,7 @@ impl Turns {
             .filter(|u| u.life.inside == Some(target))
             .count();
         let Some(crate::order::Place::Live(tp, ti)) = self.place(target) else {
-            return Err(Unsupported("an enter into a sleeping object"));
+            return Err(ENTER_SLEEPING);
         };
         let mut unit = std::mem::take(&mut self.players[player].objects[idx]);
         let mut adds = Vec::new();
@@ -502,6 +506,62 @@ impl Turns {
         for (kind, amount) in adds {
             self.players[player].add_attribute(kind, amount)?;
         }
+        Ok(())
+    }
+
+    /// The unit at `idx` of player `player` goes into `target` at once, its slot 0x1a0 forced
+    /// (`FUN_141212e10` with 1: `FUN_1411921d0` passes over the room test, slot 0x198;
+    /// [`crate::turn::Unit::go_inside`]): no load given, no notify, no state change. The
+    /// building's list takes it and its volleys its share.
+    pub(crate) fn enter_forced(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+    ) -> Result<(), Unsupported> {
+        let Some(crate::order::Place::Live(tp, ti)) = self.place(target) else {
+            return Err(ENTER_SLEEPING);
+        };
+        let me = self
+            .master_of(player, self.players[player].objects[idx].life.master_id)?
+            .clone();
+        let bm = self
+            .master_of(tp, self.players[tp].objects[ti].life.master_id)?
+            .clone();
+        let mut unit = std::mem::take(&mut self.players[player].objects[idx]);
+        let mut adds = Vec::new();
+        let result = (|| {
+            let building = &self.players[tp].objects[ti];
+            let owner = &self.players[player];
+            let masters = self.masters.get(player).ok_or(NO_MASTERS)?;
+            let mut w = crate::turn::EnterWorld {
+                spatial: &mut self.spatial,
+                pathing: &mut self.pathing,
+                masters: Some(masters),
+                target_masters: self.masters.get(tp),
+                graphics: &self.graphics,
+                sprite_rng: self.streams.get(crate::rng::Stream::Sprite),
+                drop_sites: &self.drop_sites,
+                attributes: &owner.attributes,
+                civ: owner.civ,
+                sharing: owner.sharing,
+                player,
+                attribute_adds: &mut adds,
+                firepower: 0.0,
+                left_group: None,
+            };
+            unit.go_inside(building, (masters, &me, &bm), &mut w)?;
+            Ok((w.firepower, w.left_group))
+        })();
+        self.players[player].objects[idx] = unit;
+        let (firepower, left_group) = result?;
+        let id = self.players[player].objects[idx].id;
+        if let Some(g) = left_group.filter(|&g| self.groups.get(g).is_some()) {
+            let _ = self.remove_unit(g, id, target, false)?;
+        }
+        let b = &mut self.players[tp].objects[ti];
+        b.firepower += firepower;
+        b.garrison.push(id);
         Ok(())
     }
 
@@ -3196,6 +3256,37 @@ pub(crate) mod tests {
     /// `FUN_1411921d0`, the enter itself: a member of a unit group (`+0x6d0`) leaves the group
     /// the world holds (removeUnit with the building and 0, `FUN_14102c160`) and stands (slot
     /// 0x560) between leaving the mesh and joining the building.
+    /// A new unit whose building's gather point is the building itself (`FUN_140ace9c0`): with
+    /// fewer than 10 inside, or fewer than its capacity, its slot 0x1a0 forced (1:
+    /// `FUN_1411921d0` passes over the room test, slot 0x198) takes it in at once: no notify,
+    /// no state change, no move; the building's sight takes its circle of 5 and the villager's
+    /// town-bell record its work.
+    #[test]
+    fn a_gather_point_on_its_own_building_takes_the_new_unit_in() {
+        let mut t = let_out_world();
+        walker(&mut t, 1, 1000, VILLAGER, [12.5, 10.0]);
+        let idx = t.players[1].objects.len() - 1;
+        let state = t.players[1].objects[idx].life.state;
+        let g = crate::turn::GatherPoint {
+            point: [10.0, 10.0, 0.0],
+            target: 100,
+            target_master: TC,
+        };
+        t.gather(1, idx, g, 100, true, true).unwrap();
+        let v = &t.players[1].objects[idx];
+        assert_eq!(
+            (
+                v.life.inside,
+                v.life.state,
+                v.move_to.is_some(),
+                v.enter.is_some()
+            ),
+            (Some(100), state, false, false)
+        );
+        assert_eq!(v.town_bell.work.target, 100);
+        assert_eq!(t.object(100).unwrap().1.garrison, [1000]);
+    }
+
     #[test]
     fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
         let mut t = let_out_world();

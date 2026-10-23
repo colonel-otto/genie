@@ -659,10 +659,7 @@ impl Unit {
         inside: usize,
         w: &mut EnterWorld<'_>,
     ) -> Result<bool, Unsupported> {
-        let masters = w
-            .masters
-            .ok_or(Unsupported("an enter without the masters"))?;
-        let target = building.id;
+        let masters = w.masters.ok_or(crate::garrison::NO_MASTERS)?;
         let bm = w
             .target_masters
             .unwrap_or(masters)
@@ -723,6 +720,29 @@ impl Unit {
         if usize::from(bm.garrison) <= inside {
             return Ok(false);
         }
+        self.go_inside(building, (masters, me, bm), w)?;
+        self.post_own(
+            crate::ai_kinds::NOTIFY_ACTION_COMPLETED,
+            [crate::garrison::ENTER_ACTION, 0, 0],
+        )?;
+        self.entered(w)?;
+        Ok(true)
+    }
+
+    /// The unit's slot 0x1a0 into `building` (`FUN_141212e10`; the room test, slot 0x198, is the
+    /// caller's): its sight goes from its tile, it leaves its tile's list, the obstruction
+    /// manager and the mesh, a member of a unit group leaves it and stands, it joins the
+    /// building's, its records leave the registry's lists; the building's sight takes a circle
+    /// of 5 and the villager's town-bell flag follows the garrison (`FUN_1412067f0` with 3).
+    /// The building's `+0x9a8` (the units inside the unit), and a siege building's slot 0x1b0
+    /// are not modelled.
+    pub(crate) fn go_inside(
+        &mut self,
+        building: &Self,
+        (masters, me, bm): (&Masters, &Master, &Master),
+        w: &mut EnterWorld<'_>,
+    ) -> Result<(), Unsupported> {
+        let target = building.id;
         if self.life.inside.is_some() {
             return Err(Unsupported("an enter of a unit inside another"));
         }
@@ -807,12 +827,7 @@ impl Unit {
                 self.town_bell.flag = true;
             }
         }
-        self.post_own(
-            crate::ai_kinds::NOTIFY_ACTION_COMPLETED,
-            [crate::garrison::ENTER_ACTION, 0, 0],
-        )?;
-        self.entered(w)?;
-        Ok(true)
+        Ok(())
     }
 
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])
