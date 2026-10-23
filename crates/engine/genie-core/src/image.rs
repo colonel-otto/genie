@@ -36,6 +36,30 @@ pub mod attack {
     pub const TOUCH: f32 = f32::from_bits(0x3c23_d70b);
 }
 
+/// The values `crate::best_target`'s port reads.
+pub mod best_target {
+    /// 75.0
+    pub const DISTANCE_SCORE: f32 = f32::from_bits(0x4296_0000);
+    /// 1.0000000116860974e-07
+    pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 5.0
+    pub const FIVE: f32 = f32::from_bits(0x40a0_0000);
+    /// 3.4028234663852886e+38
+    pub const NEVER: f32 = f32::from_bits(0x7f7f_ffff);
+    /// 1.0
+    pub const ONE: f32 = f32::from_bits(0x3f80_0000);
+    /// 60000.0
+    pub const ORDER_WINDOW: f32 = f32::from_bits(0x476a_6000);
+    /// 0.009999999776482582
+    pub const PER_CENT: f32 = f32::from_bits(0x3c23_d70a);
+    /// 10.0
+    pub const SCORE: f32 = f32::from_bits(0x4120_0000);
+    /// 100.0
+    pub const SIGHT_PER_CENT: f32 = f32::from_bits(0x42c8_0000);
+    /// 10000.0
+    pub const TIER: f32 = f32::from_bits(0x461c_4000);
+}
+
 /// The values `crate::build`'s port reads.
 pub mod build {
     /// 0.009999999776482582
