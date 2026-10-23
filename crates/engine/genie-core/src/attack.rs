@@ -284,7 +284,7 @@ const SHORT_RANGE_GAP: f32 = crate::image::attack::SHORT_RANGE_GAP;
 
 /// readyToAttack's leash of stance 1 lets a target this much past the range from the unit AI's
 /// `state_position` (`DAT_14330ebb8`, read by `ADDSS` at `0x140a80051`).
-const LEASH_SLACK: f32 = 5.0;
+const LEASH_SLACK: f32 = crate::image::attack::LEASH_SLACK;
 
 /// The masters readyToAttack does not turn to face their target (`0x6744`, `0x6746` raw).
 const MASTER_1704: i16 = 1704;

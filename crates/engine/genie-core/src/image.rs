@@ -24,6 +24,8 @@ pub mod attack {
     pub const ARRIVED: f32 = f32::from_bits(0x3c23_d70a);
     /// 1.0000000116860974e-07
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 5.0
+    pub const LEASH_SLACK: f32 = f32::from_bits(0x40a0_0000);
     /// -1.0
     pub const NONE: f32 = f32::from_bits(0xbf80_0000);
     /// 1000.0
