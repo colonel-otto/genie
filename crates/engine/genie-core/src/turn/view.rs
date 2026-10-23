@@ -1061,10 +1061,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             });
         }
         crate::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
-        let mover = unit
-            .mover
-            .as_mut()
-            .ok_or(Unsupported("an attacker without movement state"))?;
+        let mover = unit.mover.as_mut().expect("its speed read above");
         let crate::attack::Commanded {
             mut attack,
             arrived,
@@ -1083,10 +1080,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             posted.extend(self.ready_at_start(&mut attack, master, ai)?);
         }
         let unit = &mut *self.unit;
-        let mover = unit
-            .mover
-            .as_mut()
-            .ok_or(Unsupported("an attacker without movement state"))?;
+        let mover = unit.mover.as_mut().expect("its speed read above");
         if arrived {
             // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): the master's standing
             // sprite with its speed, `+0x7b8` cleared; the next update's state 4 ends the MoveTo
