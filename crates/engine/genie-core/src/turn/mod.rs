@@ -1383,8 +1383,8 @@ impl Turns {
                 {
                     result = result.and(Err(e));
                 }
-                for id in takes {
-                    self.take(id);
+                for (id, by) in takes {
+                    self.take(id, by);
                 }
                 for id in builder_leaves {
                     if let Err(e) = self.leave_builders(id) {

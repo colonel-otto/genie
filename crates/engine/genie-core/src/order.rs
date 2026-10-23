@@ -1466,7 +1466,7 @@ impl Turns {
         let t_state = t.life.state;
         let t_master = self.master_of(tp, t.life.master_id)?.id;
         if crate::move_to::holds_object(livestock, t_master, t_state) {
-            self.take(target);
+            self.take(target, self.releaser(player, idx));
         }
         self.clear_actions(player, idx)?;
         let unit = &mut self.players[player].objects[idx];
@@ -1586,7 +1586,7 @@ impl Turns {
             self.release(t, by)?;
         }
         if let Some(t) = targets.taken {
-            self.take(t);
+            self.take(t, by);
         }
         if walked {
             self.players[player].objects[idx]
@@ -1775,7 +1775,7 @@ impl Turns {
                 let result = unit.gather_drop_off_in(world, &player.objects);
                 self.players[p].objects[idx] = unit;
                 if let Some(site) = result? {
-                    self.take(site);
+                    self.take(site, self.releaser(p, idx));
                 }
                 continue;
             }
@@ -1815,7 +1815,7 @@ impl Turns {
             let result = unit.drop_off_in(world, &player.objects);
             self.players[p].objects[idx] = unit;
             if let Some(site) = result? {
-                self.take(site);
+                self.take(site, self.releaser(p, idx));
             }
         }
         Ok(())
@@ -3150,7 +3150,7 @@ impl Turns {
             work_value: task.work_val1,
             work_rate: builder.work_rate + unit.work_rate_powerup,
         };
-        self.take(target);
+        self.take(target, self.releaser(player, idx));
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
@@ -3361,7 +3361,7 @@ impl Turns {
             ai.set_action(600);
             ai.set_target(aimed, aimed_class, aimed_at);
         }
-        self.take(target);
+        self.take(target, self.releaser(player, idx));
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.last_retarget_time = world_time;
@@ -3521,7 +3521,7 @@ impl Turns {
         }
         attack.target2 = target;
         unit.attack = Some(attack);
-        self.take(target);
+        self.take(target, self.releaser(player, idx));
         Ok(())
     }
 
@@ -3602,7 +3602,7 @@ impl Turns {
             return Ok(-1);
         }
         if !quiet {
-            self.take(new);
+            self.take(new, self.releaser(player, idx));
         }
         Ok(new)
     }
@@ -3704,12 +3704,12 @@ impl Turns {
                     self.release(old, by)?;
                 }
                 if new != -1 {
-                    self.take(new);
+                    self.take(new, by);
                 }
             }
         }
         if waits && old_target != target {
-            self.take(target);
+            self.take(target, by);
             self.release(target, by)?;
         }
         Ok(took)
@@ -3760,7 +3760,7 @@ impl Turns {
                     self.release(old, by)?;
                 }
                 if new != -1 {
-                    self.take(new);
+                    self.take(new, by);
                 }
             }
         }
@@ -3842,7 +3842,7 @@ impl Turns {
             if old_second != -1 {
                 self.release(old_second, by)?;
             }
-            self.take(new_second);
+            self.take(new_second, by);
         }
         Ok(true)
     }
@@ -3925,7 +3925,7 @@ impl Turns {
         };
         let mut gather =
             crate::gather::GatherAction::new(task, &resource, self.settings.walkable_farms, rate)?;
-        self.take(target);
+        self.take(target, self.releaser(player, idx));
         let unit = &mut self.players[player].objects[idx];
         if let (Some(ai), Some((point, clears))) = (unit.ai.as_mut(), notify) {
             ai.notify_work(
@@ -3956,7 +3956,7 @@ impl Turns {
         let waits = gather.target == -1 && gather.carry_to != target;
         unit.gather = Some(gather);
         if drops {
-            self.take(target);
+            self.take(target, self.releaser(player, idx));
         }
         if drops || waits {
             let by = self.releaser(player, idx);
@@ -4016,7 +4016,7 @@ impl Turns {
     ) -> Result<(), Unsupported> {
         let mut quarry = self.quarry(player, target)?;
         quarry.drop_site = self.drops_at_main(player, idx, target)?;
-        self.take(target);
+        self.take(target, self.releaser(player, idx));
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut().filter(|_| notify) {
             ai.notify_work(
@@ -4067,25 +4067,32 @@ impl Turns {
         // a load to its own drop site: the target taken as the second (FUN_140a7a190), then let
         // go as the first (slot 0x68 with none)
         if drops {
-            self.take(target);
+            self.take(target, self.releaser(player, idx));
             let by = self.releaser(player, idx);
             self.release(target, by)?;
         }
         Ok(())
     }
 
-    /// Slot 0x178 on the object an action takes as its target (`FUN_14119d3e0`): its worker
-    /// count (`+0x644`) rises, to at most 550; a sleeping object wakes: it leaves its player's
-    /// sleeping list (slot 0x2d8, the last object taking its place) for the end of the live list
-    /// (slot 0x2d0). A live object flagged to sleep only drops the flags.
-    pub(crate) fn take(&mut self, id: i32) {
+    /// Slot 0x178 on the object an action of `by` takes as its target: a building's
+    /// (`FUN_1411dba70`) first lists an unallied taker of a foundation with a stack unit
+    /// ([`Unit::taken`]); then the base take (`FUN_14119d3e0`): its worker count (`+0x644`)
+    /// rises, to at most 550; a sleeping object (static, never a building) wakes: it leaves its
+    /// player's sleeping list (slot 0x2d8, the last object taking its place) for the end of the
+    /// live list (slot 0x2d0). A live object flagged to sleep only drops the flags.
+    pub(crate) fn take(&mut self, id: i32, by: Releaser) {
         match self.place(id) {
             Some(Place::Live(p, i)) => {
-                let u = &mut self.players[p].objects[i];
-                if u.workers < 550 {
-                    u.workers += 1;
-                }
-                u.life.goto_sleep = false;
+                let world = World {
+                    players: &self.players,
+                    drop_sites: &self.drop_sites,
+                };
+                let allied = world.allied(by.player, p, true);
+                let u = &self.players[p].objects[i];
+                let listed = self
+                    .master_of(p, u.life.master_id)
+                    .is_ok_and(|m| u.lists_taker(m, allied));
+                self.players[p].objects[i].taken(listed, by.id);
             }
             Some(Place::Sleeping(p, i)) => {
                 let owner = &mut self.players[p];
@@ -4102,24 +4109,27 @@ impl Turns {
         }
     }
 
-    /// Slot 0x180 on the object an action lets go: its worker count falls. A static object (type
-    /// below 30, `FUN_141197d00`) that no one works on any more and is alive (state 2 with hit
-    /// points at least 0) or in state 6 is flagged to sleep (`+0x641`, `+0x643`). A building's
-    /// repairer list (`FUN_1411d6020`) and a unit's notify (`FUN_141086e60`, 699) are not held.
+    /// Slot 0x180 on the object an action of `by` lets go ([`crate::turn::released`]): a
+    /// building's (`FUN_1411d6020`) drops an unallied releaser from the attacking units of a
+    /// foundation with a stack unit ([`Unit::lists_taker`]); its worker count falls; a static
+    /// object (type below 30, `FUN_141197d00`) that no one works on any more and is alive (state
+    /// 2 with hit points at least 0) or in state 6 is flagged to sleep (`+0x641`, `+0x643`); a
+    /// combat object (`FUN_141086e60`) tells its unit AI (notify 699).
     pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), Unsupported> {
         let Some(Place::Live(p, i)) = self.place(id) else {
             return Ok(());
-        };
-        let kind = {
-            let u = &self.players[p].objects[i];
-            self.master_of(p, u.life.master_id)?.kind
         };
         let world = World {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
         let allied = world.allied(by.player, p, true);
-        crate::turn::released(&mut self.players[p].objects[i], kind, by, allied)
+        let (kind, listed) = {
+            let u = &self.players[p].objects[i];
+            let master = self.master_of(p, u.life.master_id)?;
+            (master.kind, u.lists_taker(master, allied))
+        };
+        crate::turn::released(&mut self.players[p].objects[i], kind, listed, by)
     }
 
     /// Object `idx` of player `player` as the releaser of its actions' targets.

@@ -1604,9 +1604,10 @@ impl crate::turn::Turns {
     /// new one's slot 0x208 per order, `FUN_140c15d00`) and its gather point (`+0xc30`..: a
     /// target that is the old building names the new one; a target the world no longer holds
     /// keeps the point alone, and with x or y −1 none); then the new object loses the hit points
-    /// the old one lacked. Not modelled: units of players the owner is not allied with that
-    /// took the foundation (`+0xce0`: slot 0x140 on the new object each) and a gate's stack gate
-    /// (slot 0x670 with the old one's lock). Not held: `+0xcb0` (the new id) and the local
+    /// the old one lacked. Not modelled: the attacking units of the foundation the world still
+    /// holds (`+0xce0`, [`crate::turn::Unit::attacking_units`]: slot 0x140 on each with the new
+    /// object, a repeat of the last skipped) and a gate's stack gate (slot 0x670 with the old
+    /// one's lock). Not held: `+0xcb0` (the new id) and the local
     /// player's tracker (`FUN_14165c2a0`, `FUN_14165c470`).
     ///
     /// # Errors
@@ -1627,17 +1628,12 @@ impl crate::turn::Turns {
             old.gather_point,
         );
         let old_class = self.master_of(p, old.life.master_id)?.class;
-        let world = crate::turn::World {
-            players: &self.players,
-            drop_sites: &self.drop_sites,
-        };
-        let enemies = self.players.iter().enumerate().any(|(q, player)| {
-            !crate::tasks::Diplomacy::allied(&world, q, p, true)
-                && player
-                    .objects
-                    .iter()
-                    .any(|u| u.top_target() == Some(building))
-        });
+        // its attacking units (+0xce0) the world still holds each hear of the new object (their
+        // slot 0x140), which is not modelled
+        let enemies = old
+            .attacking_units
+            .iter()
+            .any(|&id| self.object(id).is_some());
         if enemies {
             return Err(Unsupported(
                 "a stack unit's completion with other players' units on it (+0xce0)",
@@ -3715,5 +3711,24 @@ mod stack_tests {
         let gone = unit(8759);
         assert_eq!((gone.life.hp, gone.roo_called), (0.0, true));
         assert_eq!(t.spatial.get(8759).unwrap().obstruction, None);
+    }
+
+    /// The stack unit's completion tells each attacking unit of the foundation (`+0xce0`) the
+    /// world still holds of the new object (slot 0x140, not modelled); one it no longer holds
+    /// is passed over.
+    #[test]
+    fn a_stack_unit_s_completion_reads_the_foundation_s_attacking_units() {
+        let mut gone = world();
+        gone.players[1].objects[0].attacking_units = vec![99_999];
+        assert_eq!(gone.work_building(8759, 1.0), Ok(()));
+        let mut held = world();
+        let first = held.players[1].objects[0].id;
+        held.players[1].objects[0].attacking_units = vec![first];
+        assert_eq!(
+            held.work_building(8759, 1.0),
+            Err(Unsupported(
+                "a stack unit's completion with other players' units on it (+0xce0)"
+            ))
+        );
     }
 }

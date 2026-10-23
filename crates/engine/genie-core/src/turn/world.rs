@@ -302,9 +302,6 @@ pub(in crate::turn) fn nearest_drop_site(
     best
 }
 
-/// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
-/// update: its worker count falls, and a static object no one works on any more that is alive is
-/// flagged to sleep.
 /// `ClosestObject`'s "Sheep is moving" (`FUN_140c488b0`): the object's top action is the Artifact
 /// (slot 0x530 107) with a point (slot 0x288, the action's `+0x38`, not −1).
 pub(in crate::turn) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
@@ -321,6 +318,8 @@ pub(in crate::turn) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) ->
         })
 }
 
+/// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
+/// update ([`released`]; the releaser's own player is allied).
 pub(in crate::turn) fn release_own(
     others: &mut [Unit],
     masters: Option<&Masters>,
@@ -336,8 +335,8 @@ pub(in crate::turn) fn release_own(
             "a released object of a master the slice does not have",
         ))?
         .kind;
-    // one of the releaser's own player: allied
-    released(u, kind, by, true)
+    // one of the releaser's own player: allied, never listed
+    released(u, kind, false, by)
 }
 
 /// The object whose action lets its target go (the target's slot 0x180 takes it): its id, its
@@ -349,20 +348,22 @@ pub(crate) struct Releaser {
     pub(crate) player: usize,
 }
 
-/// Slot 0x180 on object `u` of master type `kind`, let go by `by` (`allied` to its owner):
-/// the static object's (`FUN_141197d00`) counts a worker less and a static one without workers
-/// left, alive (state 2 with hit points, or 6), goes to sleep. A combat object's
-/// (`FUN_141086e60`) counts the worker less (`FUN_141071ea0`) and tells its unit AI that the
-/// releaser no longer acts on it (notify 699, the releaser's master class as its first
-/// parameter; none from an object of a negative id). A building's (`FUN_1411d6020`) first drops
-/// an unallied releaser from a list of its own while it stands in state 0 or 1, which is not
-/// modelled.
+/// Slot 0x180 on object `u` of master type `kind`, let go by `by`: the static object's
+/// (`FUN_141197d00`) counts a worker less and a static one without workers left, alive (state 2
+/// with hit points, or 6), goes to sleep. A combat object's (`FUN_141086e60`) counts the worker
+/// less (`FUN_141071ea0`) and tells its unit AI that the releaser no longer acts on it (notify
+/// 699, the releaser's master class as its first parameter; none from an object of a negative
+/// id). A building's (`FUN_1411d6020`) first drops the releaser's first entry from its attacking
+/// units (`+0xce0`, the rest keeping their order) when it lists it (`listed`, [`Unit::lists_taker`]).
 pub(crate) fn released(
     u: &mut Unit,
     kind: u8,
+    listed: bool,
     by: Releaser,
-    allied: bool,
 ) -> Result<(), Unsupported> {
+    if listed && let Some(i) = u.attacking_units.iter().position(|&t| t == by.id) {
+        let _ = u.attacking_units.remove(i);
+    }
     if 0 < u.workers {
         u.workers -= 1;
     }
@@ -372,11 +373,6 @@ pub(crate) fn released(
     }
     if !u.combat {
         return Ok(());
-    }
-    if kind == 80 && u.life.state < 2 && !allied {
-        return Err(Unsupported(
-            "an enemy's release of a building in state 0 or 1 (FUN_1411d6020)",
-        ));
     }
     if 0 <= by.id
         && let Some(ai) = u.ai.as_mut()

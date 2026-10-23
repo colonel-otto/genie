@@ -306,7 +306,7 @@ impl Turns {
             return Err(Unsupported("an Enter into a unit (a transport)"));
         }
         let class = i32::from(tm.class);
-        self.take(target);
+        self.take(target, self.releaser(player, idx));
         let id = self.players[player].objects[idx].id;
         if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
             ai.notify_work(

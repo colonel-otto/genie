@@ -2914,6 +2914,97 @@ fn a_second_target_past_state_6_is_let_go_and_one_gone_dropped() {
     assert_eq!(second_target_checked(-1, false, None), (-1, None));
 }
 
+/// A foundation's attacking units (`+0xce0`): slot 0x178 of a building (`FUN_1411dba70`) below
+/// state 2 whose master has a stack unit (`+0x986`) lists each taker of a player its owner is
+/// not allied with, once per take; slot 0x180 (`FUN_1411d6020`) drops the releaser's first entry,
+/// the others keeping their order. An ally's take, a built building's and one of a master
+/// without a stack unit list nothing. Both still count the workers.
+#[test]
+fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
+    let unit = |id, master| Unit {
+        id,
+        life: Lifecycle {
+            master_id: master,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let foundation = |id, master| Unit {
+        life: Lifecycle {
+            state: 0,
+            ..unit(id, master).life
+        },
+        combat: true,
+        ..unit(id, master)
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0, 0, 0],
+        vec![
+            Player::default(),
+            Player {
+                objects: vec![foundation(10028, 621), foundation(10029, 70)],
+                relations: vec![0, 0, 2, 4],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![unit(40, 83), unit(41, 83)],
+                relations: vec![0, 2, 0, 2],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![unit(50, 83)],
+                relations: vec![0, 4, 2, 0],
+                ..Player::default()
+            },
+        ],
+    );
+    let building = |id, stack_unit| Master {
+        id,
+        kind: 80,
+        class: 3,
+        building: Some(crate::masters::BuildingMaster {
+            stack_unit,
+            ..crate::masters::BuildingMaster::default()
+        }),
+        ..Master::default()
+    };
+    let table = Masters::new([
+        building(621, 109),
+        building(70, -1),
+        Master {
+            id: 83,
+            kind: 70,
+            class: 4,
+            ..Master::default()
+        },
+    ]);
+    t.masters = vec![table.clone(), table.clone(), table.clone(), table];
+    let by = |t: &Turns, p, i| t.releaser(p, i);
+    let (enemy, other, ally) = (by(&t, 2, 0), by(&t, 2, 1), by(&t, 3, 0));
+    for taker in [enemy, other, enemy, ally] {
+        t.take(10028, taker);
+        t.take(10029, taker);
+    }
+    let site = |t: &Turns| t.players[1].objects[0].clone();
+    assert_eq!(site(&t).attacking_units, [40, 41, 40]);
+    assert_eq!(site(&t).workers, 4);
+    assert_eq!(t.players[1].objects[1].attacking_units, Vec::<i32>::new());
+    t.release(10028, enemy).unwrap();
+    assert_eq!(
+        (site(&t).attacking_units, site(&t).workers),
+        (vec![41, 40], 3)
+    );
+    t.release(10028, ally).unwrap();
+    assert_eq!(site(&t).attacking_units, [41, 40]);
+    t.players[1].objects[0].life.state = 2;
+    t.take(10028, other);
+    t.release(10028, enemy).unwrap();
+    assert_eq!(site(&t).attacking_units, [41, 40]);
+}
+
 /// The Wonder (master 276) keeps its action list up to state 5 (`0x14106ac90`'s threshold 5,
 /// any other object's 2).
 #[test]

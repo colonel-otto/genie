@@ -977,6 +977,7 @@ impl Turns {
             store: Vec::new(),
             own_master: None,
             dead_master: None,
+            attacking_units: Vec::new(),
         });
         // the static init's add to its player (slot 0x2d0): it waits in the tracker's pending
         // lists
@@ -1722,7 +1723,7 @@ impl Turns {
         if self.players[player].objects[idx].life.master_id != with {
             self.change_master(player, idx, with)?;
         }
-        self.take(foundation);
+        self.take(foundation, self.releaser(player, idx));
         // the work command's notify (slot 0x828): the build order and the foundation, with
         // the point slot 0x128 passes (BUILD's x and y, on the ground)
         let unit = &mut self.players[player].objects[idx];
@@ -1878,7 +1879,7 @@ impl Turns {
         if let Some(m) = switch.map(|m| m.id) {
             self.change_master(player, idx, m)?;
         }
-        self.take(foundation);
+        self.take(foundation, self.releaser(player, idx));
         self.clear_actions(player, idx)?;
         self.players[player].objects[idx].build = Some(build);
         Ok((class, f_at))

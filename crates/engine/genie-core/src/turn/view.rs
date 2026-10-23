@@ -88,7 +88,7 @@ pub(in crate::turn) struct Context<'a> {
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.
     pub(in crate::turn) releases: Vec<(i32, Releaser)>,
-    pub(in crate::turn) takes: Vec<i32>,
+    pub(in crate::turn) takes: Vec<(i32, Releaser)>,
     /// The foundations a counted builder's Build leaves as the unit's action list goes
     /// ([`Unit::delete_actions`], `FUN_140aadbf0`): the building `FUN_140aaddb0` gives counts one
     /// builder less ([`Turns::leave_builders`]), the caller's before the releases.
@@ -360,7 +360,7 @@ pub(in crate::turn) struct UnitView<'u> {
     /// The sprites.
     pub(in crate::turn) graphics: &'u std::collections::BTreeMap<i16, Graphic>,
     /// The objects an action took (slot 0x178), the caller's.
-    pub(in crate::turn) takes: &'u mut Vec<i32>,
+    pub(in crate::turn) takes: &'u mut Vec<(i32, Releaser)>,
     /// The objects an action let go (slot 0x180), the caller's.
     pub(in crate::turn) releases: &'u mut Vec<(i32, Releaser)>,
     /// The foundations a counted builder's Build left ([`Context::builder_leaves`]), the
@@ -955,7 +955,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             unit.shows_standing_sprite(self.masters, self.graphics, self.sprite)?;
         }
         unit.attack = Some(attack);
-        self.takes.push(target);
+        self.takes.push((target, by));
         Ok(crate::unit_ai::Attacked {
             attacks: true,
             posted,

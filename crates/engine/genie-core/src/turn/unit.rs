@@ -204,6 +204,11 @@ pub struct Unit {
     /// took ([`change_hands`]), which its death spawn makes its dead object of
     /// (`FUN_1411a5090`); None for none.
     pub dead_master: Option<Box<Master>>,
+    /// `+0xce0`, `attackingUnits` (saved): the units of players its owner is not allied with
+    /// that took this foundation (a building below state 2 whose master has a stack unit,
+    /// `+0x986`) as their target, once per take, in order ([`Unit::lists_taker`]); its stack
+    /// unit's completion tells each of the new object.
+    pub attacking_units: Vec<i32>,
 }
 
 /// The sprite a hunt's walk shows ([`crate::hunt::walk_sprite`]) from its task's sprites.
@@ -267,6 +272,34 @@ pub(in crate::turn) const fn loses_actions(life: &Lifecycle) -> bool {
 }
 
 impl Unit {
+    /// Whether a building's slot 0x178 or 0x180 (`FUN_1411dba70`, `FUN_1411d6020`) lists its taker
+    /// among the attacking units (`+0xce0`, [`Unit::attacking_units`]): this object of `master` is a
+    /// building (type 80) below state 2 whose master has a stack unit (`+0x986`), and the taker's
+    /// player is not allied with its owner (`FUN_141663d90` with 1: `allied` false).
+    pub(crate) fn lists_taker(&self, master: &Master, allied: bool) -> bool {
+        master.kind == BUILDING_KIND
+            && self.life.state < 2
+            && master.building.is_some_and(|b| b.stack_unit != -1)
+            && !allied
+    }
+
+    /// Slot 0x178 on this object of its player's live list, taken by the object `by` (`listed`,
+    /// [`Unit::lists_taker`]). A building's (`FUN_1411dba70`) first lists the taker among its attacking
+    /// units (`+0xce0`, [`Unit::attacking_units`]; once per take). Then the base take
+    /// (`FUN_14119d3e0`): its worker count (`+0x644`) rises, to at most 550, and a live object flagged
+    /// to sleep drops the flags (a sleeping one's wake is [`crate::turn::Turns::take`]'s). The
+    /// building's wake from semi-asleep (`+0xc98`) after it never runs in a game: only a scenario
+    /// save's load (`FUN_1411df160`) sets that flag, which the slice does not hold.
+    pub(crate) fn taken(&mut self, listed: bool, by: i32) {
+        if listed {
+            self.attacking_units.push(by);
+        }
+        if self.workers < 550 {
+            self.workers += 1;
+        }
+        self.life.goto_sleep = false;
+    }
+
     /// The target of its hunt, which it attacks or gathers from.
     pub(in crate::turn) fn attack_target(&self) -> Option<i32> {
         self.hunt
@@ -1331,6 +1364,7 @@ impl Unit {
         let arms = crate::attack::arms(master, c.graphics, sprites, moving);
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let held = self.life.amount;
+        let by = self.releaser(c);
         let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
             return Err(Unsupported("a hunter without its hunt or movement state"));
         };
@@ -1352,16 +1386,14 @@ impl Unit {
                 )?;
             }
             if owner == c.player {
+                // one of its own player's: allied, never listed
                 let u = others
                     .iter_mut()
                     .find(|u| u.id == found)
                     .expect("found above");
-                if u.workers < 550 {
-                    u.workers += 1;
-                }
-                u.life.goto_sleep = false;
+                u.taken(false, by.id);
             } else {
-                c.takes.push(found);
+                c.takes.push((found, by));
             }
         }
         if hunt.state == crate::hunt::FAILED
@@ -1404,7 +1436,7 @@ impl Unit {
             groups: c.groups,
         };
         if let Some(site) = self.drop_off_in(w, others)? {
-            c.takes.push(site);
+            c.takes.push((site, self.releaser(c)));
         }
         Ok(())
     }
@@ -1914,16 +1946,14 @@ impl Unit {
                 }
                 if new != -1 {
                     if owner == c.player && new == found {
+                        // one of its own player's: allied, never listed
                         let u = others
                             .iter_mut()
                             .find(|u| u.id == found)
                             .expect("found above");
-                        if u.workers < 550 {
-                            u.workers += 1;
-                        }
-                        u.life.goto_sleep = false;
+                        u.taken(false, by.id);
                     } else {
-                        c.takes.push(new);
+                        c.takes.push((new, self.releaser(c)));
                     }
                 }
             }
@@ -1953,7 +1983,7 @@ impl Unit {
             groups: c.groups,
         };
         if let Some(site) = self.gather_drop_off_in(w, others)? {
-            c.takes.push(site);
+            c.takes.push((site, self.releaser(c)));
         }
         Ok(())
     }
@@ -2601,7 +2631,7 @@ impl Unit {
             }
             // slot 0x68 (FUN_140a7a230): the old target goes, the new one is taken
             self.hunt_release(c, [old]);
-            c.takes.push(found);
+            c.takes.push((found, self.releaser(c)));
         }
         Ok(true)
     }
@@ -3193,12 +3223,15 @@ impl Unit {
             },
             met: Vec::new(),
         };
-        c.takes.push(aimed.target);
+        let missile = Releaser {
+            id,
+            class: made.class,
+            player: c.player,
+        };
+        c.takes.push((aimed.target, missile));
         if shot.shooter {
-            if self.workers < 550 {
-                self.workers += 1;
-            }
-            self.life.goto_sleep = false;
+            // the shooter, of the missile's own player: never listed
+            self.taken(false, id);
         }
         let point = {
             let draws = c.streams.get(Stream::Action);
@@ -6088,7 +6121,7 @@ impl Unit {
             .ok_or(crate::move_to::TARGET_LACKING)?
             .master;
         if crate::move_to::holds_object(livestock, master, state) {
-            c.takes.push(target);
+            c.takes.push((target, self.releaser(c)));
         }
         let by = self.releaser(c);
         self.delete_actions(&mut c.releases, &mut c.builder_leaves, by)?;
