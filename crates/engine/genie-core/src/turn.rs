@@ -5887,12 +5887,16 @@ impl Unit {
         }
         if !self.life.is_alive() {
             // RGE_Action_Object::update deletes a dead object's action list: the Artifact's
-            // MoveTo's teardown (0x140aa1f30) stops the unit (slot 0x5d0)
-            if let Some(artifact) = self.artifact.take()
-                && artifact.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
+            // teardown lets its target go, and its MoveTo's (0x140aa1f30) stops the unit (slot
+            // 0x5d0)
+            if let Some(mut artifact) = self.artifact.take() {
+                let (walked, released) = artifact.tear_down();
+                if walked && let Some(m) = self.mover.as_mut() {
+                    m.stop()?;
+                }
+                if let Some(t) = released {
+                    c.releases.push((t, self.releaser(c)));
+                }
             }
             if let Some(explore) = self.explore.take()
                 && explore.move_to.is_some()
@@ -5977,14 +5981,19 @@ impl Unit {
             action_state: self.top_action().map_or(0, |a| a.state),
         };
         let mut captured = None;
+        let by = self.releaser(c);
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
             let dt = c.dt;
             let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
-            // an ended MoveTo (codes 1 to 5) goes (FUN_140a98620): its teardown stops the unit
+            // an ended MoveTo (codes 1 to 5) goes (FUN_140a98620): its teardown stops the unit,
+            // quiet or not; the action lets its target go
             if ended.is_some()
                 && let Some(m) = self.mover.as_mut()
             {
                 m.stop()?;
+            }
+            if let Some(t) = ended.and_then(|e| e.released) {
+                c.releases.push((t, by));
             }
             // FUN_14107cc90: an object of the combat types whose +0x924 is 0 never changes hands
             let capture = c
@@ -6000,10 +6009,16 @@ impl Unit {
             let new = artifact.step(dt, searches, &mut || {
                 spatial.artifact_owner(id, attribute_97)
             })?;
-            if let Some(kind) = ended {
+            // the check's sub-actions went: a walking MoveTo's teardown stops the unit
+            if new.is_some_and(|(_, walked)| walked)
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+            if let Some(kind) = ended.and_then(|e| e.notify) {
                 self.post_own(kind, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
             }
-            if let Some(new) = new {
+            if let Some((new, _)) = new {
                 let (main, also) = self.capture(c, others, new)?;
                 captured = Some(Captured { new, main, also });
             }
@@ -7354,11 +7369,15 @@ impl Unit {
         if class != LIVESTOCK && self.ai.is_some() {
             return Err(Unsupported("a captured unit's unit AI stop (slot 0xb0)"));
         }
-        if self.artifact.as_mut().is_some_and(Artifact::stop) {
+        let (walked, released) = self.artifact.as_mut().map_or((false, None), Artifact::stop);
+        if walked {
             self.mover
                 .as_mut()
                 .ok_or(Unsupported("a walking animal without movement state"))?
                 .stop()?;
+        }
+        if let Some(t) = released {
+            c.releases.push((t, self.releaser(c)));
         }
         let changed = self.change_owner(c, new)?;
         // the scan reads the owner after the change: the old one when `new` lacks the master
@@ -7633,11 +7652,17 @@ fn scan_livestock(
                 [k] => {
                     let mut unit = std::mem::take(&mut others[k]);
                     let done = (|| {
-                        if unit.artifact.as_mut().is_some_and(Artifact::stop) {
+                        // its stop: a walk's MoveTo goes and the action lets its target go
+                        let (walked, released) =
+                            unit.artifact.as_mut().map_or((false, None), Artifact::stop);
+                        if walked {
                             unit.mover
                                 .as_mut()
                                 .ok_or(Unsupported("a walking animal without movement state"))?
                                 .stop()?;
+                        }
+                        if let Some(t) = released {
+                            c.releases.push((t, unit.releaser(c)));
                         }
                         unit.change_owner(c, new)
                     })();
@@ -14770,6 +14795,215 @@ mod tests {
         t.allow_gaia_capture = vec![false, true, false];
         t.tick(100);
         assert_eq!(t.spatial.get(21712).map(|p| p.player), Some(1));
+    }
+
+    /// A world for the teardowns: player 1 holds the sheep 20 (master 705), the bird 30 (96),
+    /// the villager 40 (83) and town centres 9149 and 9150 (109, one worker each); player 2 (an
+    /// ally) holds the foundation 10028 (70) with one builder.
+    fn teardown_world() -> Turns {
+        let walker = crate::hunt::tests::walker();
+        let unit = |id, master| Unit {
+            id,
+            position: [10.5, 10.5, 0.0],
+            mover: Some(walker.clone()),
+            life: Lifecycle {
+                master_id: master,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let tc = |id| Unit {
+            id,
+            position: [20.0, 20.0, 0.0],
+            workers: 1,
+            combat: true,
+            life: Lifecycle {
+                master_id: 109,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let foundation = Unit {
+            id: 10028,
+            position: [30.0, 30.0, 0.0],
+            workers: 1,
+            life: Lifecycle {
+                state: 0,
+                master_id: 70,
+                ..Lifecycle::default()
+            },
+            construction: Some(Construction {
+                progress: 0.0,
+                desolid: false,
+                builders: 1,
+                hit_points: 550,
+                build_time: 25,
+                record: crate::spatial::Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: true,
+            }),
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0, 0],
+            vec![
+                Player::default(),
+                Player {
+                    objects: vec![
+                        unit(20, 705),
+                        unit(30, 96),
+                        unit(40, 83),
+                        tc(9149),
+                        tc(9150),
+                    ],
+                    relations: vec![0, 1, 2],
+                    ..Player::default()
+                },
+                Player {
+                    objects: vec![foundation],
+                    relations: vec![0, 2, 1],
+                    ..Player::default()
+                },
+            ],
+        );
+        let master = |id, kind, class| Master {
+            id,
+            kind,
+            class,
+            ..Master::default()
+        };
+        let table = Masters::new([
+            master(705, 70, LIVESTOCK),
+            master(96, 70, 11),
+            master(83, 70, 4),
+            master(109, 80, 52),
+            master(70, 80, 3),
+        ]);
+        t.masters = vec![table.clone(), table.clone(), table];
+        t
+    }
+
+    /// The action list's clearing (`FUN_140a98620`): the Artifact's teardown (`FUN_140aab0d0`)
+    /// lets its town centre go and its `MoveTo`'s stops the sheep; the Fly's (`FUN_140a84750`)
+    /// gives the bird its top speed as its animation speed, then its `MoveTo`'s stops it; the
+    /// Enter's lets its building go; a counted builder's Build leaves another player's
+    /// foundation's builders (`Turns::leave_builders`) and lets it go; a wait for a foundation
+    /// goes.
+    #[test]
+    fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
+        let mut t = teardown_world();
+        t.players[1].objects[0].artifact = Some(Artifact {
+            target: 9149,
+            goal: Some([20.0, 20.0, 0.0]),
+            walk_to: Some((crate::move_to::Goal::Target(9149), 1.0)),
+            move_to: Some(MoveTo::Moving),
+            ..Artifact::new(false)
+        });
+        t.clear_actions(1, 0).unwrap();
+        let sheep = &t.players[1].objects[0];
+        assert_eq!(sheep.artifact, None);
+        assert!(sheep.mover.as_ref().unwrap().speed_stopped);
+        assert_eq!(t.players[1].objects[3].workers, 0);
+        let bird = &mut t.players[1].objects[1];
+        bird.fly = Some(Fly {
+            state: 3,
+            timer: 1.0,
+            move_to: Some(MoveTo::Moving),
+            goal: Some([12.0, 12.0, 0.0]),
+            home: [10.0, 10.0],
+            task: crate::masters::Task::default(),
+        });
+        bird.mover.as_mut().unwrap().stats.speed = 1.3;
+        t.clear_actions(1, 1).unwrap();
+        let bird = &t.players[1].objects[1];
+        assert_eq!((bird.fly, bird.anim_speed), (None, Some(1.3)));
+        assert!(bird.mover.as_ref().unwrap().speed_stopped);
+        let villager = &mut t.players[1].objects[2];
+        villager.enter = Some(crate::garrison::EnterAction {
+            target: 9150,
+            state: 3,
+            move_to: None,
+            point: [20.0, 20.0, 0.0],
+            range: 0.0,
+            timer: 0.0,
+            retry: true,
+            task_class: 0,
+        });
+        villager.wait_solidify = Some(crate::wait_solidify::WaitSolidify::new(
+            crate::masters::Task::default(),
+            10028,
+        ));
+        t.clear_actions(1, 2).unwrap();
+        let villager = &t.players[1].objects[2];
+        assert_eq!((villager.enter, villager.wait_solidify), (None, None));
+        assert!(!villager.mover.as_ref().unwrap().speed_stopped);
+        assert_eq!(t.players[1].objects[4].workers, 0);
+        t.players[1].objects[2].build = Some(BuildAction {
+            target: 10028,
+            state: 3,
+            move_to: None,
+            goal: None,
+            task: BuildTask {
+                range: 0.0,
+                work_value: 0.0,
+                work_rate: 1.0,
+            },
+            added: true,
+            timer: 0.0,
+        });
+        t.clear_actions(1, 2).unwrap();
+        let foundation = &t.players[2].objects[0];
+        assert_eq!(foundation.workers, 0);
+        assert_eq!(foundation.construction.map(|k| k.builders), Some(0));
+    }
+
+    /// The Artifact's move to an object (slot 8 with an object, `FUN_140aaca30`): the old target
+    /// is let go, then the new one taken (slot 0x68 twice, `+0x60` 0).
+    #[test]
+    fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
+        let mut t = teardown_world();
+        for (id, at) in [(9149, [20.0, 20.0]), (9150, [25.0, 20.0])] {
+            t.spatial.insert(
+                id,
+                Placed {
+                    position: [at[0], at[1], 0.0],
+                    radius: [2.0, 2.0],
+                    class: 52,
+                    player: 1,
+                    master: 109,
+                    obstruction_type: 2,
+                    buildable_on: 0,
+                    tall: true,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+        }
+        t.players[1].objects[0].artifact = Some(Artifact::new(false));
+        t.artifact_take_object(1, 0, 9149).unwrap();
+        assert_eq!(t.players[1].objects[3].workers, 2);
+        t.artifact_take_object(1, 0, 9150).unwrap();
+        assert_eq!(
+            [
+                t.players[1].objects[3].workers,
+                t.players[1].objects[4].workers
+            ],
+            [1, 2]
+        );
+        let a = t.players[1].objects[0].artifact.unwrap();
+        assert_eq!((a.target, a.goal), (9150, Some([25.0, 20.0, 0.0])));
+        assert!(
+            t.players[1].objects[0]
+                .mover
+                .as_ref()
+                .unwrap()
+                .speed_stopped
+        );
     }
 
     /// `FUN_141302450`: the scenario modes' descriptors have `+0x9c` 0; a mode above 16 reads the
