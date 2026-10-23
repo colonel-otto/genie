@@ -559,6 +559,24 @@ struct Within {
     left_boxes: bool,
 }
 
+/// What the obstruction manager's one old pather (`+0x380`) carries from a search to the next:
+/// its area and its hulls, which a kept search (`FindShortPath`'s argument 11) reuses. The
+/// default is the constructor's (`FUN_140f84e40`): the area -1, no hulls.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KeptHulls {
+    area: [i32; 4],
+    hulls: Vec<Hull>,
+}
+
+impl Default for KeptHulls {
+    fn default() -> Self {
+        Self {
+            area: [-1; 4],
+            hulls: Vec::new(),
+        }
+    }
+}
+
 /// Slot 0x678 of an object for a player (`FUN_1411d4a30`, a gate's): whether the player may pass
 /// it, `passes(object, player)`. The world's update knows the gates' states and the players'
 /// diplomacy; the pather does not.
@@ -738,6 +756,27 @@ impl<'w> HullPather<'w> {
     pub fn including(mut self, ids: &[i32]) -> Self {
         self.include = ids.to_vec();
         self
+    }
+
+    /// The pather with the area and the hulls a search of the manager's one pather left
+    /// ([`HullPather::kept`]), which a kept search (`FindShortPath`'s argument 11,
+    /// [`HullPather::find_keeping`]) reuses.
+    #[must_use]
+    pub fn with_kept(mut self, kept: KeptHulls) -> Self {
+        self.area = kept.area;
+        self.hulls = kept.hulls;
+        self
+    }
+
+    /// What this pather's searches leave for the next search of the manager's one pather
+    /// (`+0x380`): its area (`+0xe8`) and its hulls (`+0x8`, `+0x10`), the only state a search
+    /// reads that an earlier one wrote.
+    #[must_use]
+    pub fn kept(&self) -> KeptHulls {
+        KeptHulls {
+            area: self.area,
+            hulls: self.hulls.clone(),
+        }
     }
 
     // The node lists.
@@ -3706,6 +3745,38 @@ mod tests {
         let mut q = HullPather::for_list(&w, &[9171, 50], 6, 0.6, 1).including(&[50]);
         q.buffer = Some(0.3);
         assert!(!q.blocked([2.0, 5.5], [10.0, 5.5]).unwrap());
+    }
+
+    /// The manager keeps one pather: a search's area and hulls ([`KeptHulls`]) carried into the
+    /// next pather make its kept search (argument 11) the one search the game's lasting pather
+    /// makes; the constructor's state has no area, so a kept search builds its own.
+    #[test]
+    fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
+        let w = walled(6, [2.0, 5.5]);
+        let mut first = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let found = first.find([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+        let kept = first.kept();
+        assert_eq!((kept.area, kept.hulls.len()), ([0, 3, 14, 7], 2));
+        // a kept search from another start reuses them as they are
+        let mut next = HullPather::new(&w, 9171, 9149, 6, 0.2).with_kept(kept.clone());
+        let mut same = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        same.area = kept.area;
+        same.hulls = kept.hulls;
+        assert_eq!(
+            next.find_keeping([3.0, 5.5], [12.5, 5.5], 9149, 0.1),
+            same.find_keeping([3.0, 5.5], [12.5, 5.5], 9149, 0.1)
+        );
+        assert_eq!(next.kept().area, [0, 3, 14, 7]);
+        // the constructor's state: no area, no hulls
+        let none = HullPather::new(&w, 9171, 9149, 6, 0.2).kept();
+        assert_eq!((none.area, none.hulls.len()), ([-1; 4], 0));
+        let mut fresh = HullPather::new(&w, 9171, 9149, 6, 0.2).with_kept(none);
+        assert_eq!(
+            fresh
+                .find_keeping([2.0, 5.5], [12.5, 5.5], 9149, 0.1)
+                .unwrap(),
+            found
+        );
     }
 
     #[test]
