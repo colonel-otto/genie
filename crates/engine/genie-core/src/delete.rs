@@ -488,7 +488,7 @@ impl Turns {
 
     /// `FUN_14119deb0` with 0: an object asleep wakes to the end of its player's live list, a
     /// live one flagged to sleep drops the flag; its index in the live list.
-    fn wake(&mut self, id: i32) -> usize {
+    pub(crate) fn wake(&mut self, id: i32) -> usize {
         match self.place(id).expect("the caller's") {
             Place::Live(p, i) => {
                 self.players[p].objects[i].life.goto_sleep = false;

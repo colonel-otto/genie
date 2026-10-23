@@ -1071,9 +1071,20 @@ impl Turns {
                     .map(|ai| ai.current_target)
                     .filter(|&t| t != -1)
                     .map_or(Ok(None), |t| self.seen(t, p));
-                let blasted = victim
-                    .as_ref()
-                    .map_or_else(Vec::new, |v| self.blasted(&unit, p, v.id));
+                // the objects a hit's blast may reach about its target, or about the unit for
+                // its blast at death (TRIBE_Combat_Object::update)
+                let blasted = match victim.as_ref() {
+                    Some(v) => self.blasted(&unit, p, v.id),
+                    None if self
+                        .masters
+                        .get(p)
+                        .and_then(|m| m.get(unit.life.master_id))
+                        .is_some_and(|m| unit::blasts_at_death(m, &unit.life)) =>
+                    {
+                        self.blasted(&unit, p, -1)
+                    }
+                    None => Vec::new(),
+                };
                 let (before, rest) = self.players.split_at_mut(p);
                 let (player, after) = rest.split_first_mut().expect("the player updating");
                 let mut c = Context {

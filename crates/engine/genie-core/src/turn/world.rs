@@ -448,14 +448,19 @@ impl Turns {
         left
     }
 
-    /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): a
-    /// live object the slice holds, with its relations to the attacker's player and whether its
+    /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): an
+    /// object the slice holds, live or asleep (the world's table holds both, and a blast walks
+    /// the tiles' lists of both), with its relations to the attacker's player and whether its
     /// place is a guess.
     pub(crate) fn victim(&self, id: i32, attacker: usize) -> Option<Victim> {
-        let (p, u) =
-            self.players.iter().enumerate().find_map(|(p, player)| {
-                player.objects.iter().find(|u| u.id == id).map(|u| (p, u))
-            })?;
+        let (p, u) = self.players.iter().enumerate().find_map(|(p, player)| {
+            player
+                .objects
+                .iter()
+                .chain(&player.sleeping)
+                .find(|u| u.id == id)
+                .map(|u| (p, u))
+        })?;
         let master = self.masters.get(p)?.get(u.life.master_id)?;
         let world = World {
             players: &self.players,
@@ -592,14 +597,22 @@ impl Turns {
     /// ([`crate::damage::Razed`]: the history event of the attacker's player, the attribute adds
     /// in their order).
     pub(in crate::turn) fn set_victim(&mut self, v: &Victim) -> Result<(), GenieError> {
-        let Some((q, j)) = self.players.iter().enumerate().find_map(|(q, player)| {
-            player
-                .objects
-                .iter()
-                .position(|u| u.id == v.id)
-                .map(|j| (q, j))
-        }) else {
-            return Ok(());
+        let (q, j) = match self.place(v.id) {
+            Some(crate::order::Place::Live(q, j)) => (q, j),
+            // an object asleep (a tree a blast reached) holds what the hit left; below 1 hit
+            // point (COMISS/JBE: a NaN sleeps on) the hit woke it (FUN_14119deb0 with 0) to the
+            // end of its player's live list, where the rest is written back
+            Some(crate::order::Place::Sleeping(q, j)) => {
+                let u = &mut self.players[q].sleeping[j];
+                u.life.hp = v.hp;
+                u.life.amount = v.amount;
+                if crate::fmath::at_most_or_unordered(1.0, v.hp) {
+                    return Ok(());
+                }
+                let j = self.wake(v.id);
+                (q, j)
+            }
+            None => return Ok(()),
         };
         let u = &mut self.players[q].objects[j];
         u.life.hp = v.hp;

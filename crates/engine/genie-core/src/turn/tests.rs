@@ -4204,6 +4204,225 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
     );
 }
 
+/// `TRIBE_Combat_Object::update` (`0x141208440`) before `RGE_Combat_Object::update`: a unit
+/// of class 35 (the petard; also 64 and the masters 527, 528, 1104, 2133 to 2135) below 1 hit
+/// point in state 2 blasts about its place (slot 0x848, `FUN_14107f690`, factor 1, itself left
+/// out, no main target), then dies. 426048706 (Aftermath): Gaia's petards 7948.. placed at −1
+/// hit points blast the players' walls in update 1.
+#[test]
+fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
+    use crate::spatial::Placed;
+    let petard = Master {
+        id: 706,
+        kind: 70,
+        class: 35,
+        hit_points: 45,
+        weapons: vec![(4, 100)],
+        area_effect: 2.0,
+        area_damage: 1.0,
+        missile: -1,
+        death_sprite: 1751,
+        ..Master::default()
+    };
+    let wall = Master {
+        id: 117,
+        kind: 80,
+        class: 27,
+        hit_points: 1800,
+        armors: vec![(4, 0)],
+        terrain_bonus: -1,
+        ..Master::default()
+    };
+    let unit = |id, master, hp, position| Unit {
+        id,
+        position,
+        pasture: -1,
+        my_pasture: -1,
+        life: Lifecycle {
+            master_id: master,
+            state: 2,
+            hp,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0],
+        vec![
+            Player {
+                objects: vec![unit(7948, 706, -1.0, [101.5, 158.5, 0.0])],
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![unit(7231, 117, 1080.0, [102.5, 158.5, 0.0])],
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+        ],
+    );
+    let tree = Master {
+        id: 1250,
+        kind: 10,
+        class: 15,
+        hit_points: 500,
+        ..Master::default()
+    };
+    t.masters = vec![Masters::new([petard, tree]), Masters::new([wall])];
+    // a sleeping tree beside it (426048706's 8858): the blast walks the sleeping too
+    t.players[0].sleeping.push(Unit {
+        life: Lifecycle {
+            class: Class::Static,
+            ..unit(8858, 1250, 500.0, [100.5, 158.5, 0.0]).life
+        },
+        ..unit(8858, 1250, 500.0, [100.5, 158.5, 0.0])
+    });
+    t.graphics = std::collections::BTreeMap::from([(
+        1751,
+        Graphic {
+            id: 1751,
+            frames: 10,
+            facets: 1,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 1,
+        },
+    )]);
+    let placed = |x: f32, class, player, master| Placed {
+        position: [x, 158.5, 0.0],
+        radius: [0.5, 0.5],
+        class,
+        player,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial = crate::spatial::Spatial::new([200, 200]);
+    t.spatial.insert(7948, placed(101.5, 35, 0, 706));
+    t.spatial.insert(7231, placed(102.5, 27, 1, 117));
+    t.spatial.insert(8858, placed(100.5, 15, 0, 1250));
+    t.tick(100);
+    assert_eq!(t.players[0].unsupported, None);
+    assert_eq!(t.players[1].objects[0].life.hp, 980.0);
+    // the sleeping tree is among the objects the blast walks; a petard's blast (its weapon
+    // range at most 1) spares its own player's objects, so Gaia's tree sleeps on untouched
+    assert_eq!(
+        t.players[0]
+            .sleeping
+            .iter()
+            .map(|u| (u.id, u.life.hp))
+            .collect::<Vec<_>>(),
+        [(8858, 500.0)]
+    );
+    assert!(3 <= t.players[0].objects[0].life.state);
+}
+
+/// A building's `set_state` takes its annexes along (`FUN_1411dbb70`): a gate (426048706's 7228,
+/// master 88) at no hit points dies (3) and goes on to its dying sprite (the animated update's
+/// `set_state(4)`); its annex (7229, master 95, holding nothing) follows it into state 4 in the
+/// same update, not on to 7 by its own static update.
+#[test]
+fn an_annex_follows_its_dying_main_building_into_state_4() {
+    let g = Graphic {
+        id: 1751,
+        frames: 10,
+        facets: 1,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let gate = |id| Master {
+        id,
+        kind: 80,
+        class: 39,
+        hit_points: 1650,
+        standing_sprite: 1751,
+        death_sprite: 1751,
+        building: Some(crate::masters::BuildingMaster {
+            stack_unit: -1,
+            foundation_terrain: -1,
+            tech: -1,
+            head_unit: -1,
+            transform_unit: -1,
+            ..crate::masters::BuildingMaster::default()
+        }),
+        ..Master::default()
+    };
+    let building = |id, master, hp| Unit {
+        id,
+        position: [124.5, 174.5, 0.0],
+        pasture: -1,
+        my_pasture: -1,
+        sprite: Some(crate::sprite::ActiveSprite::start(
+            g,
+            &mut Well512::default(),
+        )),
+        life: Lifecycle {
+            class: Class::Animated,
+            master_id: master,
+            state: 2,
+            hp,
+            dying_sprite: Some(1751),
+            master: Some(MasterData::default()),
+            ..Lifecycle::default()
+        },
+        construction: Some(Construction {
+            progress: 100.0,
+            desolid: false,
+            builders: 0,
+            hit_points: 1650,
+            build_time: 100,
+            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        }),
+        ..Unit::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0],
+        vec![
+            Player {
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![
+                    building(7228, 88, -58.0),
+                    Unit {
+                        annex_of: Some(7228),
+                        ..building(7229, 95, 1650.0)
+                    },
+                ],
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+        ],
+    );
+    t.masters = vec![Masters::new([]), Masters::new([gate(88), gate(95)])];
+    t.graphics = std::collections::BTreeMap::from([(1751, g)]);
+    t.tick(100);
+    assert_eq!(t.players[1].unsupported, None);
+    let states: Vec<(i32, u8)> = t.players[1]
+        .objects
+        .iter()
+        .map(|u| (u.id, u.life.state))
+        .collect();
+    assert_eq!(states, [(7228, 4), (7229, 4)]);
+}
+
 /// `RGE_Combat_Object::update`: the attack timer runs down by dt times the object's rate
 /// (`+0x87c`), which a terrain look sets ([`crate::abilities`]).
 #[test]

@@ -1100,7 +1100,8 @@ pub fn blast(
         if t.uncertain {
             return Err(GenieError::unsupported(
                 "a blast over an object whose player's update is not modelled",
-            ));
+            )
+            .with("blasted", t.id));
         }
         if (spares_friends && t.allied[0])
             || Some(t.id) == exclude

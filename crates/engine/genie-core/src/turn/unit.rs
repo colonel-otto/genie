@@ -4354,6 +4354,39 @@ impl Unit {
         }
     }
 
+    /// `TRIBE_Combat_Object::update` (`0x141208440`) before `RGE_Combat_Object::update`: a unit
+    /// that blasts at its death ([`blasts_at_death`]) blasts about its place (slot 0x848,
+    /// `FUN_14107f690`, [`crate::damage::blast`]: itself left out, no main target, the factor
+    /// 1, the hit info `FUN_140aa8720` gives) over the objects its caller gathered
+    /// ([`Context::blasted`], written back after the update); its death follows in the static
+    /// update. Its own part of the blast is written back ([`Unit::hit_back`]); a kill of it
+    /// changes nothing, as it dies anyway.
+    ///
+    /// # Errors
+    ///
+    /// What the blast does not model.
+    fn death_blast(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
+            return Ok(());
+        };
+        if !blasts_at_death(master, &self.life) {
+            return Ok(());
+        }
+        let terrain = c.spatial.terrain.as_ref();
+        let mut own = victim_of(self, master, c.attributes, c.player, terrain, c.mode_680);
+        let mut targets: Vec<&mut Victim> = c.blasted.iter_mut().collect();
+        let _ = crate::damage::blast(
+            &mut own,
+            self.position,
+            Some(self.id),
+            None,
+            &mut targets,
+            DEATH_BLAST_FACTOR,
+        )?;
+        let _ = self.hit_back(own)?;
+        Ok(())
+    }
+
     pub(in crate::turn) fn update(
         &mut self,
         c: &mut Context<'_>,
@@ -4362,6 +4395,7 @@ impl Unit {
         if let Some(resume) = c.ai_resume.take() {
             return self.ai_part(c, others, resume);
         }
+        self.death_blast(c)?;
         // RGE_Static_Object::update (0x14118ad50): an object flagged to sleep (`+0x643`) drops
         // the flag, is marked asleep (`+0x641`) and moves to its player's sleeping list (player
         // slots 0x2d8 and 0x2d0), and its update ends; only static objects (type 10) are flagged
@@ -4466,6 +4500,20 @@ impl Unit {
                 .is_some_and(|m| m.ghost_on_death == crate::ghost::LEAVES_GHOSTS)
             {
                 c.ghost_deaths.push(self.id);
+            }
+        }
+        // a building's set_states after its death's 3 take its annexes along too
+        // (FUN_1411dbb70): the animated update's 4 or 5 from 3, the static update's 7 and 8; the
+        // dying sprite's end (4 to 5) writes the state without a set_state
+        if 3 < after
+            && after != before
+            && !(before == 4 && after == 5)
+            && c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .is_some_and(|m| m.kind == 80)
+        {
+            for annex in c.spatial.annexes_of(self.id) {
+                c.annex_states.push((annex, after));
             }
         }
         if after != before {
@@ -6817,4 +6865,25 @@ pub(in crate::turn) struct Shot {
     pub(in crate::turn) shooter: bool,
     pub(in crate::turn) aimer: crate::missile::Aimer,
     pub(in crate::turn) attack_count: i32,
+}
+
+/// The masters whose units blast about themselves below 1 hit point
+/// (`TRIBE_Combat_Object::update`, `0x141208440`): the demolition ships 527 and 528, the
+/// demolition raft 1104 and the incendiary raft and ships 2133 to 2135.
+const DEATH_BLAST_MASTERS: [i16; 6] = [527, 528, 1104, 2133, 2134, 2135];
+/// The classes whose units blast so: 35 (petards) and 64.
+const DEATH_BLAST_CLASSES: [i16; 2] = [35, 64];
+/// The hit points below which they blast (`DAT_14330eb8c`; `COMISS`, a NaN does not).
+const DEATH_BLAST_HP: f32 = crate::image::turn::DEATH_BLAST_HP;
+/// The blast's damage factor (`XMM11`, the same constant).
+const DEATH_BLAST_FACTOR: f32 = crate::image::turn::DEATH_BLAST_FACTOR;
+
+/// `TRIBE_Combat_Object::update`'s test for the blast at death: a unit of one of
+/// [`DEATH_BLAST_MASTERS`] or [`DEATH_BLAST_CLASSES`] below [`DEATH_BLAST_HP`] hit points in state
+/// 2. The update runs for the combat objects and buildings (types 70 and 80).
+pub(in crate::turn) fn blasts_at_death(master: &Master, life: &Lifecycle) -> bool {
+    70 <= master.kind
+        && life.hp < DEATH_BLAST_HP
+        && life.state == 2
+        && (DEATH_BLAST_MASTERS.contains(&master.id) || DEATH_BLAST_CLASSES.contains(&master.class))
 }
