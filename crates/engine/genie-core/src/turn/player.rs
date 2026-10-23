@@ -100,6 +100,8 @@ pub struct Player {
     /// `mSharingIsCaring` (`+0x1426`, `FUN_141626780`, saved): the player's gathered resources go
     /// to its allies too.
     pub sharing: bool,
+    /// `commodity_volumn_delta` (`+0x140c`, saved): the lot a market trade moves (100).
+    pub commodity_volume: i32,
     /// The objects whose ghosts the player's list follows (`+0x78`, [`crate::ghost`]): not
     /// saved; the load builds it ([`Turns::build_watched`]).
     pub watched: Vec<crate::ghost::Watched>,

@@ -2183,6 +2183,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 // mTCFlared bit is set; the saved map then already holds the revealed tiles
                 tc_flared: p.world_player().tcflared.iter().map(|&b| b != 0).collect(),
                 sharing: p.world_player().sharing_is_caring != 0,
+                commodity_volume: p.world_player().commodity_volumn_delta,
                 victory: victory.get(i).map_or(0, |v| v.victory),
                 fealty: p.world_player().fealty as i16,
                 // the load sets it 0 (`FUN_14163e970`)
@@ -2225,6 +2226,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         players,
     );
     turns.next_object_id = world.next_object_id;
+    turns.market = market(&header.world);
     turns.recycling.next_id = world.next_reusable_object_id;
     turns.local_player = usize::try_from(world.local_player_index).unwrap_or(0);
     let none = TerrainTable::default();
@@ -3616,6 +3618,9 @@ impl Decoder {
                     ],
                 });
             }
+            // SELL_COMMODITY and BUY_COMMODITY: food, wood or stone (the low byte), else nothing
+            Packet::SellCommodity(c) => return trade(c.commp_id, c.attr, c.amt, false),
+            Packet::BuyCommodity(c) => return trade(c.commp_id, c.attr, c.amt, true),
             Packet::Flare(c) => {
                 return Some(Command::Flare {
                     player: c.commp_id as usize,
@@ -3837,6 +3842,40 @@ fn queue_command(packet: &de::command::MultiQueue, sections: &[PlayerSection<'_>
         unit: packet.t_id,
         amount: packet.count.max(0) as u16,
         button: packet.button_location_id,
+    }
+}
+
+/// `SELL_COMMODITY`'s and `BUY_COMMODITY`'s command: the dispatcher trades food, wood and stone
+/// only (`+0x4`'s low byte).
+fn trade(player: u8, attribute: u16, times: u16, buy: bool) -> Option<Command> {
+    let attribute = attribute as u8;
+    (attribute <= 2).then_some(Command::Trade {
+        player: usize::from(player),
+        attribute,
+        times,
+        buy,
+    })
+}
+
+/// The world's market as the save holds it: the save names the int net trades `*_price_delta`
+/// (their bits) and the swings `old_*_price_adj`.
+fn market(w: &genie_save::generated::world::World) -> genie_core::market::Market {
+    let commodity = |price: f32, trades: f32, swing: f32| genie_core::market::Commodity {
+        price,
+        trades: trades.to_bits().cast_signed(),
+        swing,
+    };
+    genie_core::market::Market {
+        min_price: w.world_min_price,
+        max_price: w.world_max_price,
+        food: commodity(w.world_food_price, w.food_price_delta, w.old_food_price_adj),
+        wood: commodity(w.world_wood_price, w.wood_price_delta, w.old_wood_price_adj),
+        stone: commodity(
+            w.world_stone_price,
+            w.stone_price_delta,
+            w.old_stone_price_adj,
+        ),
+        ore: commodity(w.world_ore_price, w.ore_price_delta, w.old_ore_price_adj),
     }
 }
 
@@ -6637,6 +6676,38 @@ mod tests {
         assert_eq!(d.command(&patrol(4, vec![9397, 9398], 1, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 0, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 11, 0), &[]), None);
+    }
+
+    /// `SELL_COMMODITY` and `BUY_COMMODITY`: the commodity is `+0x4`'s low byte, food, wood or
+    /// stone; another trades nothing.
+    #[test]
+    fn a_trade_packet_decodes_food_wood_or_stone_only() {
+        assert_eq!(
+            trade(2, 0x0101, 3, true),
+            Some(Command::Trade {
+                player: 2,
+                attribute: 1,
+                times: 3,
+                buy: true,
+            })
+        );
+        assert_eq!(trade(2, 3, 1, false), None);
+        let packet = de::command::SellCommodity {
+            commp_id: 1,
+            attr: 2,
+            amt: 5,
+            u_id: 77,
+        }
+        .encode();
+        assert_eq!(
+            Decoder::default().command(&packet, &[]),
+            Some(Command::Trade {
+                player: 1,
+                attribute: 2,
+                times: 5,
+                buy: false,
+            })
+        );
     }
 
     /// QUEUE (0x81): `num` buildings of the ids that follow (a packet may hold more), the unit

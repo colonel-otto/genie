@@ -520,6 +520,8 @@ pub struct Turns {
     /// The world's effect table (`+0x128`, `TRIBE_Effects`): every effect's commands by id, the
     /// `.dat`'s.
     pub effects: Vec<Vec<crate::tech::EffectCommand>>,
+    /// The market's prices (`+0x868`.., saved).
+    pub market: crate::market::Market,
     /// The world's unit groups ([`crate::group`]).
     pub groups: crate::group::UnitGroups,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
@@ -594,6 +596,7 @@ impl Turns {
             streams: Streams::default(),
             techs: Vec::new(),
             effects: Vec::new(),
+            market: crate::market::Market::default(),
             groups: crate::group::UnitGroups::default(),
             dt_seconds: 0.0,
             dt: 0,

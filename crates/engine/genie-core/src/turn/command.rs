@@ -213,6 +213,20 @@ pub enum Command {
         /// The four entries.
         gifts: [crate::tribute::Gift; 4],
     },
+    /// `SELL_COMMODITY` (0x7a) and `BUY_COMMODITY` (0x7b), `do_command`'s cases: the player trades
+    /// `times` lots (`+0x6`) of the commodity `attribute` (`+0x4`'s low byte: food, wood or
+    /// stone; the decoder drops another) at the market ([`Turns::sell`], [`Turns::buy`]). The
+    /// market building (`+0x8`) is not read. Not held: the interface's view (`FUN_140e6de20`).
+    Trade {
+        /// The player who trades.
+        player: usize,
+        /// The commodity.
+        attribute: u8,
+        /// How many lots.
+        times: u16,
+        /// A purchase, else a sale.
+        buy: bool,
+    },
     /// GATE (0x72, `do_command` case 0x72): the player's building `id` toggles its gate lock
     /// ([`Turns::gate`]).
     Gate {
@@ -481,6 +495,18 @@ impl Turns {
             Command::Posture { player } => {
                 let owner = &mut self.players[player];
                 owner.posture = i32::from(owner.posture == 0);
+            }
+            Command::Trade {
+                player,
+                attribute,
+                times,
+                buy,
+            } => {
+                if buy {
+                    self.buy(player, attribute, times);
+                } else {
+                    self.sell(player, attribute, times);
+                }
             }
             Command::Cheat { player, code: _ } => {
                 if self.settings.cheats_enabled {

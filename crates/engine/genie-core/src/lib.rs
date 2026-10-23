@@ -60,6 +60,7 @@ pub mod lines;
 pub mod long_path;
 pub mod los_tables;
 pub mod make;
+pub mod market;
 pub mod masters;
 pub mod mesh;
 pub mod missile;

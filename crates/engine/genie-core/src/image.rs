@@ -430,6 +430,30 @@ pub mod long_path {
     pub const TILE_CENTRE: f32 = f32::from_bits(0x3f00_0000);
 }
 
+/// The values `crate::market`'s port reads.
+pub mod market {
+    /// -1.0
+    pub const FLIP: f32 = f32::from_bits(0xbf80_0000);
+    /// 1.149999976158142
+    pub const FOOD_START: f32 = f32::from_bits(0x3f93_3333);
+    /// 21.0
+    pub const LEAST_COST: f32 = f32::from_bits(0x41a8_0000);
+    /// 1.0
+    pub const ORE_START: f32 = f32::from_bits(0x3f80_0000);
+    /// 100.0
+    pub const PERCENT: f32 = f32::from_bits(0x42c8_0000);
+    /// 0.5
+    pub const ROUND: f32 = f32::from_bits(0x3f00_0000);
+    /// 1.2999999523162842
+    pub const STONE_START: f32 = f32::from_bits(0x3fa6_6666);
+    /// 2.0
+    pub const SWING: f32 = f32::from_bits(0x4000_0000);
+    /// -1.0
+    pub const UNKNOWN_PRICE: f32 = f32::from_bits(0xbf80_0000);
+    /// 1.0
+    pub const WOOD_START: f32 = f32::from_bits(0x3f80_0000);
+}
+
 /// The values `crate::masters`'s port reads.
 pub mod masters {
     /// 1.0
