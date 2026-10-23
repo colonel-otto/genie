@@ -150,12 +150,16 @@ pub mod garrison {
     pub const FAR: f32 = f32::from_bits(0x7f7f_ffff);
     /// 0.2
     pub const LEAST_HP_SHARE: f64 = f64::from_bits(0x3fc9_9999_9999_999a);
+    /// 100.0
+    pub const NEARBY: f32 = f32::from_bits(0x42c8_0000);
     /// -1.0
     pub const NO_POINT: f32 = f32::from_bits(0xbf80_0000);
     /// 1.0
     pub const ONE_MISSILE: f32 = f32::from_bits(0x3f80_0000);
     /// 1.0
     pub const RATE_RANGE: f32 = f32::from_bits(0x3f80_0000);
+    /// 625.0
+    pub const TOWN_BELL_REACH: f32 = f32::from_bits(0x441c_4000);
 }
 
 /// The values `crate::gather`'s port reads.

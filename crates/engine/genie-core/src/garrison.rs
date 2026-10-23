@@ -18,13 +18,11 @@ use crate::unit_ai::Unsupported;
 /// no limit).
 const FAR: f32 = crate::image::garrison::FAR;
 /// The squared footprint gap within which a garrison order's target's neighbours shelter units
-/// too (`FUN_14161e370` with `+0x1e`, `DAT_14330ebcc`, 100.0: ten tiles). An image role to add:
-/// `garrison::NEARBY`.
-pub(crate) const NEARBY: f32 = f32::from_bits(0x42c8_0000);
+/// too (`FUN_14161e370` with `+0x1e`, `DAT_14330ebcc`, 100.0: ten tiles).
+pub(crate) const NEARBY: f32 = crate::image::garrison::NEARBY;
 /// The squared footprint gap within which the town bell reaches (its ring `FUN_14163a650`, its
 /// end `FUN_14163ab80`, and `FUN_141621220` with `param_6` 1: `DAT_142ef3e70`, 625.0, 25 tiles).
-/// An image role to add: `garrison::TOWN_BELL_REACH`.
-pub(crate) const TOWN_BELL_REACH: f32 = f32::from_bits(0x441c_4000);
+pub(crate) const TOWN_BELL_REACH: f32 = crate::image::garrison::TOWN_BELL_REACH;
 
 /// The shelters `FUN_141621220` sends units to: the buildings (its `param_3`), the transports
 /// (`param_4`), and the count list (`param_5`) its pairs index by their shelter's index, a
