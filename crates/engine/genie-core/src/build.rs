@@ -19,6 +19,7 @@ use crate::movement::footprint_gap;
 use crate::order::Place;
 use crate::pathing::Pathing;
 use crate::spatial::{Obstruction, Spatial};
+use crate::turn::{CASTLE, CASTLES, MONASTERIES, MONASTERY, WONDERS};
 use crate::unit_ai::{UnitAi, Unsupported};
 
 /// The Build action's type, which word 9 adds.
@@ -299,6 +300,9 @@ pub const CART_TASK: i16 = 0x99;
 pub struct Built {
     /// The attributes it gains, (attribute, amount), in the order the game adds them.
     pub attributes: Vec<(i16, f32)>,
+    /// The event its owner's history records with the owner's id (`FUN_141560ae0`, the
+    /// caller's): the castle's (6) and the wonder's (4), none for other masters.
+    pub history: Option<u8>,
     /// The master's technology (`+0x98c`, the building's `tech`), which the completion researches
     /// last (`FUN_1413cdcd0` without a building): the caller's.
     pub tech: Option<i16>,
@@ -435,6 +439,12 @@ const STARTED: u32 = 0x2edb_e6ff;
 /// `DAT_142ed66b4`.
 const WONDER: i16 = 0x114;
 const WONDER_RATE: f32 = crate::image::build::WONDER_RATE;
+/// The castles and the wonders their owner built (attributes 173 and 174: their completion adds
+/// 1, their death takes nothing), and the attribute their paid cost goes to rather than 98 and
+/// 165 (184), all `FUN_1411dbb70`.
+const CASTLES_BUILT: i16 = 173;
+const WONDERS_BUILT: i16 = 174;
+const CASTLE_WONDER_COST: i16 = 184;
 /// The wall class (27, `0x1b`): two walls beside a builder on a footprint's diagonal stop it.
 const WALL: i16 = 27;
 
@@ -1561,7 +1571,9 @@ impl crate::turn::Turns {
     }
 
     /// What a completion leaves the owner `p` of the building `id` ([`Built`]), in the game's
-    /// order: the attributes it gains, a mule cart's search (`FUN_1411c6bd0`'s tail), the watch of
+    /// order: its history event (the owner's id, `+0x718`, as `data1`; the game records it
+    /// between the storage's attributes and the counts, which it does not read), the attributes
+    /// it gains, a mule cart's search (`FUN_1411c6bd0`'s tail), the watch of
     /// a construction that started (`FUN_1411e5670`), the stack unit
     /// ([`crate::turn::Turns::stack_unit`]), the technology (`FUN_1413cdcd0`,
     /// [`crate::turn::Turns::research_built`]) and the destroy of a building that disappears
@@ -1571,6 +1583,12 @@ impl crate::turn::Turns {
     ///
     /// What the parts do not model.
     pub(crate) fn built(&mut self, p: usize, id: i32, built: Built) -> Result<(), Unsupported> {
+        if let Some(kind) = built.history {
+            let now = self.world_time;
+            self.players[p]
+                .history
+                .add_event(kind, p as f32, 0.0, 0, now);
+        }
         for (kind, amount) in built.attributes {
             self.players[p].add_attribute(kind, amount)?;
         }
@@ -1871,15 +1889,17 @@ impl Construction {
     /// under master 1889's pasture, [`crate::terrain::Terrain::cover`]; the tile it stands on,
     /// `+0x2e8`, keeps no terrain to restore in the slice); its owner's attributes 98 and 165
     /// grow by its paid cost (`0x1411dd3ee`: the sum of its cost entries flagged paid) unless it
-    /// is an annex or has a stack unit; then the combat object's and the base `set_state`
+    /// is an annex or has a stack unit; the castle (82) and the wonder (276) instead record
+    /// their building in their owner's history ([`Built::history`]), count in attributes 134
+    /// and 173, 42 and 174, and add their paid cost to 184 (an annex too); the monastery (104)
+    /// counts in 52; then the combat object's and the base `set_state`
     /// (`FUN_14121cc40`, `FUN_14119d710`) put it in state 2. The local player's sound (slot
     /// 0x4c0), the event 0x69 (`FUN_140c898a0`), the owner's AI (slot 0x388) and the snow decal
     /// are not held. Last, the master's technology is researched (`FUN_1413cdcd0` with `param_3`
     /// 0 and no building; [`Built::tech`], the caller's), and a master that disappears when built
     /// is destroyed (slot 0xd0, the caller's, [`Built::vanishes`]; its hit points are 0 already,
-    /// as the builder's test after the work reads them). The castle (82),
-    /// the monastery (104), the wonder (276) and masters with object flag 0x40 are not modelled;
-    /// a wall's (`adjacent_mode`) facets, its own and its neighbours' (`FUN_1411ce890`), are not
+    /// as the builder's test after the work reads them). A master with object flag 0x40 and a
+    /// foundation terrain (its tiles' classes again, `FUN_141055790`) is not modelled; a wall's (`adjacent_mode`) facets, its own and its neighbours' (`FUN_1411ce890`), are not
     /// held.
     ///
     /// # Errors
@@ -1923,9 +1943,9 @@ impl Construction {
             *f = master.volley_fire;
         }
         // a wall's (adjacent mode) facets and its neighbours' (FUN_1411ce890) are not held
-        if matches!(master.id, 82 | 104 | 276) || master.object_flags & 0x40 != 0 {
+        if 0 <= building.foundation_terrain && master.object_flags & 0x40 != 0 {
             return Err(Unsupported(
-                "a completion of the castle, the monastery, the wonder or object flag 0x40",
+                "a completion of a master of object flag 0x40 (its tiles' classes, FUN_141055790)",
             ));
         }
         let c = &mut *site.construction;
@@ -2007,14 +2027,29 @@ impl Construction {
                 mode_680: done.mode_680,
             })?;
         }
+        // the castle's and the wonder's history event (0x1411dd094), the counts (slot 0xf8 with
+        // 1.0, 0x14330eb8c)
+        let history = match master.id {
+            CASTLE => Some(crate::history::CASTLE_BUILT),
+            WONDER => Some(crate::history::WONDER_BUILT),
+            _ => None,
+        };
+        match master.id {
+            MONASTERY => attributes.push((MONASTERIES, 1.0)),
+            WONDER => attributes.extend([(WONDERS, 1.0), (WONDERS_BUILT, 1.0)]),
+            CASTLE => attributes.extend([(CASTLES, 1.0), (CASTLES_BUILT, 1.0)]),
+            _ => {}
+        }
         // its paid cost: the cost entries of a resource flagged paid (`+0x880`), summed as shorts
-        if !done.main && building.stack_unit == -1 {
-            let paid: i32 = master
-                .cost
-                .iter()
-                .filter(|&&(resource, _, paid)| 0 <= resource && paid)
-                .map(|&(_, amount, _)| i32::from(amount))
-                .sum();
+        let paid: i32 = master
+            .cost
+            .iter()
+            .filter(|&&(resource, _, paid)| 0 <= resource && paid)
+            .map(|&(_, amount, _)| i32::from(amount))
+            .sum();
+        if matches!(master.id, CASTLE | WONDER) {
+            attributes.push((CASTLE_WONDER_COST, paid as f32));
+        } else if !done.main && building.stack_unit == -1 {
             attributes.push((98, paid as f32));
             attributes.push((165, paid as f32));
         }
@@ -2027,6 +2062,7 @@ impl Construction {
         }
         Ok(Built {
             attributes,
+            history,
             tech: (0 <= building.tech).then_some(building.tech),
             cart: first.cart.then_some(before),
             stack,
@@ -2733,6 +2769,7 @@ mod tests {
             worked,
             Ok(Worked::Completed(Built {
                 attributes: vec![(4, 5.0), (98, 25.0), (165, 25.0)],
+                history: None,
                 tech: None,
                 cart: None,
                 stack: None,
@@ -2743,6 +2780,138 @@ mod tests {
         assert_eq!((life.state, c.progress, c.snow), (2, 25.0, true));
         let t = world.terrain.as_ref().unwrap();
         assert_eq!((t.kinds[5], t.layers[5], t.kinds[0]), (6, 32, 32));
+    }
+
+    /// `FUN_1411dbb70`'s tail (`0x1411dd094`..): the castle (82) and the wonder (276) record
+    /// their building in their owner's history (events 6 and 4, [`Built::history`]), count in
+    /// attributes 134 and 173, 42 and 174, and add their paid cost to 184 rather than to 98 and
+    /// 165, an annex's too; the monastery (104) counts in 52 and adds its paid cost to 98 and
+    /// 165 as other buildings do, but as an annex.
+    #[test]
+    fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
+        use crate::history::{CASTLE_BUILT, WONDER_BUILT};
+        use crate::spatial::Tiles;
+        use crate::terrain::{Terrain, TerrainKind};
+        fn complete(id: i16, cost: Vec<(i16, i16, bool)>, main: bool) -> Built {
+            let mut world = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
+            world.insert(
+                10026,
+                crate::spatial::Placed {
+                    position: [2.0, 2.0, 0.0],
+                    master: id,
+                    ..house()
+                },
+            );
+            let kind = TerrainKind {
+                shown: true,
+                flags: 0x20,
+                forest: false,
+            };
+            world.terrain = Some(Terrain::new(
+                4,
+                4,
+                vec![(0, 255, -1); 16],
+                vec![kind; 40],
+                vec![vec![0.0; 40]; 5],
+            ));
+            let master = Master {
+                id,
+                kind: 80,
+                class: 3,
+                cost,
+                building: Some(crate::masters::BuildingMaster {
+                    adjacent_mode: 0,
+                    disappears_when_built: false,
+                    stack_unit: -1,
+                    foundation_terrain: -1,
+                    tech: -1,
+                    garrison_type: 0,
+                    garrison_heal_rate: 0.0,
+                    garrison_repair_rate: 0.0,
+                    annexes: [-1; 4],
+                    annex_offsets: [[0.0; 2]; 4],
+                    head_unit: -1,
+                    transform_unit: -1,
+                    destruction_sprite: -1,
+                }),
+                ..Master::default()
+            };
+            let mut life = Lifecycle {
+                state: 0,
+                hp: 100.0,
+                master_id: id,
+                ..Lifecycle::default()
+            };
+            let mut c = Construction {
+                progress: 100.0,
+                desolid: false,
+                builders: 1,
+                hit_points: 100,
+                build_time: 100,
+                record: Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: false,
+            };
+            let mut site = Site {
+                id: 10026,
+                life: &mut life,
+                construction: &mut c,
+                mover: None,
+                firepower: None,
+                roo_called: None,
+                store: None,
+                completion: Completion {
+                    master: Some(&master),
+                    annexed: false,
+                    attribute_204: false,
+                    mode_680: 0,
+                    farm_bonus: [0.0, -1.0, -1.0],
+                    masters: None,
+                    computer: false,
+                    ai: false,
+                    main,
+                    now: 0,
+                    rice: false,
+                },
+                chain: WorkChain::default(),
+                main_builders: None,
+            };
+            let built = Construction::complete(&mut site, &mut world, &mut Pathing::default());
+            assert_eq!(life.state, 2);
+            built.unwrap()
+        }
+        let castle = || vec![(2, 650, true)];
+        let wonder = || vec![(0, 1000, true), (1, 1000, true), (2, 1000, false)];
+        let built = |attributes, history| Built {
+            attributes,
+            history,
+            ..Built::default()
+        };
+        for main in [false, true] {
+            assert_eq!(
+                complete(82, castle(), main),
+                built(
+                    vec![(134, 1.0), (173, 1.0), (184, 650.0)],
+                    Some(CASTLE_BUILT)
+                )
+            );
+            assert_eq!(
+                complete(276, wonder(), main),
+                built(
+                    vec![(42, 1.0), (174, 1.0), (184, 2000.0)],
+                    Some(WONDER_BUILT)
+                )
+            );
+        }
+        assert_eq!(
+            complete(104, vec![(1, 175, true)], false),
+            built(vec![(52, 1.0), (98, 175.0), (165, 175.0)], None)
+        );
+        assert_eq!(
+            complete(104, vec![(1, 175, true)], true),
+            built(vec![(52, 1.0)], None)
+        );
     }
 
     /// MarvinBlue/426048731's house 10028 in update 731: 9177's first work starts it (its record
@@ -3651,6 +3820,38 @@ mod stack_tests {
         t.next_object_id = 8768;
         t.masters = vec![ms.clone(), ms];
         t
+    }
+
+    /// A completion's history event goes to its owner's history first, the owner's id as
+    /// `data1` at the world's time (`FUN_1411dbb70`: `FUN_141560ae0` on `+0xdb8` with
+    /// `(float)+0x718`, 0 and 0), then its attributes.
+    #[test]
+    fn a_castle_s_completion_records_its_owner_s_id_in_its_history() {
+        let mut t = world();
+        t.world_time = 912_000;
+        t.players[1].history.add_entry(0, 3.0, 0.0);
+        t.built(
+            1,
+            8759,
+            Built {
+                attributes: vec![(134, 1.0)],
+                history: Some(crate::history::CASTLE_BUILT),
+                ..Built::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            t.players[1].history.events,
+            [crate::history::Event {
+                kind: crate::history::CASTLE_BUILT,
+                time_slice: 1,
+                world_time: 912_000,
+                data1: 1.0,
+                data2: 0.0,
+                data3: 0.0,
+            }]
+        );
+        assert_eq!(t.players[1].attributes[134], 1.0);
     }
 
     /// census v5's 273 stops "a completion of a stack unit or a vanishing building" (records/

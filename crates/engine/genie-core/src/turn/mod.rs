@@ -166,11 +166,11 @@ const PLANNED_MASTERS: [i16; 2] = [83, 535];
 /// The masters whose death lowers a count of their owner's (`FUN_1411dbb70`, raw `0x6104`,
 /// `0x61b0`, `0x60ee`): the monastery's ([`MONASTERY`]) in attribute 52, the wonder's in 42,
 /// the castle's in 134.
-const WONDER: i16 = 276;
-const CASTLE: i16 = 82;
-const MONASTERIES: i16 = 52;
-const WONDERS: i16 = 42;
-const CASTLES: i16 = 134;
+pub(crate) const WONDER: i16 = 276;
+pub(crate) const CASTLE: i16 = 82;
+pub(crate) const MONASTERIES: i16 = 52;
+pub(crate) const WONDERS: i16 = 42;
+pub(crate) const CASTLES: i16 = 134;
 /// The foundation terrain a building's death covers with terrain 1 (`FUN_1411dbb70`: `0x1c`).
 const RESTORED_FOUNDATION: i16 = 28;
 
@@ -198,7 +198,7 @@ const BUILDING_TERRAIN: usize = 255;
 /// A building at most this share of its hit points lets its garrison out (`DAT_142eae8d0`).
 const EJECT_SHARE: f32 = crate::image::turn::EJECT_SHARE;
 /// The monastery (master 104, `0x6104` raw), whose relics give goods every second.
-const MONASTERY: i16 = 104;
+pub(crate) const MONASTERY: i16 = 104;
 /// The petard (master 440, `0x6254` raw), which a class-10 searcher passes (`FUN_140c488b0`).
 const PETARD: i16 = 440;
 /// The villager's class (4), which a building's repair by its garrison counts.
