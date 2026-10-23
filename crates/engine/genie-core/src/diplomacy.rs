@@ -345,7 +345,7 @@ impl Turns {
 }
 
 /// The point of an unload toward none (`DAT_14330ec20`, the unload's own role).
-const NO_POINT: f32 = crate::image::garrison::NO_POINT;
+const NO_POINT: f32 = crate::image::diplomacy::NO_POINT;
 
 #[cfg(test)]
 mod tests {

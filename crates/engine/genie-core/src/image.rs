@@ -92,6 +92,12 @@ pub mod damage {
     pub const WIDE_CONE: f32 = f32::from_bits(0x3fd5_c28f);
 }
 
+/// The values `crate::diplomacy`'s port reads.
+pub mod diplomacy {
+    /// -1.0
+    pub const NO_POINT: f32 = f32::from_bits(0xbf80_0000);
+}
+
 /// The values `crate::effect`'s port reads.
 pub mod effect {
     /// -1.0
@@ -142,6 +148,14 @@ pub mod facing {
     pub const TWO: f32 = f32::from_bits(0x4000_0000);
     /// 6.2831854820251465
     pub const TWO_PI: f32 = f32::from_bits(0x40c9_0fdb);
+}
+
+/// The values `crate::farm_queue`'s port reads.
+pub mod farm_queue {
+    /// -1.0
+    pub const NO_FARM: f32 = f32::from_bits(0xbf80_0000);
+    /// 1.0
+    pub const ONE_FARM: f32 = f32::from_bits(0x3f80_0000);
 }
 
 /// The values `crate::fly`'s port reads.
@@ -202,6 +216,8 @@ pub mod gather {
     pub const DROP_REACH: f32 = f32::from_bits(0x3f80_0000);
     /// 0.0010000000474974513
     pub const LAST_BIT: f32 = f32::from_bits(0x3a83_126f);
+    /// -1.0
+    pub const NO_GATHER_POINT: f32 = f32::from_bits(0xbf80_0000);
     /// 0.10000000149011612
     pub const REMAINDER: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.5
@@ -698,6 +714,14 @@ pub mod tile_path {
     pub const TILE_SEARCH_LENGTH: f32 = f32::from_bits(0x420c_0000);
 }
 
+/// The values `crate::treason`'s port reads.
+pub mod treason {
+    /// 400.0
+    pub const TREASON_COST: f32 = f32::from_bits(0x43c8_0000);
+    /// 200.0
+    pub const TREASON_DISCOUNT_COST: f32 = f32::from_bits(0x4348_0000);
+}
+
 /// The values `crate::turn`'s port reads.
 pub mod turn {
     /// 1.0
@@ -724,6 +748,8 @@ pub mod turn {
     pub const SHORT_DROP_REACH: f32 = f32::from_bits(0x4120_0000);
     /// 1.0000000116860974e-07
     pub const SPEED_EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 400.0
+    pub const TREASON_COST: f32 = f32::from_bits(0x43c8_0000);
     /// 8.0
     pub const TREE_SEARCH_WITHIN: f32 = f32::from_bits(0x4100_0000);
 }

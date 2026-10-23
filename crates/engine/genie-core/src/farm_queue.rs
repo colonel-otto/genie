@@ -32,10 +32,10 @@ const FISHING_SHIP_CLASS: i16 = 21;
 const TOWN_CENTRE_621: i16 = 0x26d;
 const TOWN_CENTRE_LIMIT: usize = 218;
 /// A reseeding gatherer's farm spot of none (`DAT_14330ec20`, −1.0, read at `0x140a8aa9e`).
-const NO_FARM: f32 = -1.0;
+const NO_FARM: f32 = crate::image::farm_queue::NO_FARM;
 /// The one farm or fish trap a reseed pays (`DAT_14330eb8c`, 1.0, read at `0x140a8ac75` and
 /// `0x140a8b025`).
-const ONE_FARM: f32 = 1.0;
+const ONE_FARM: f32 = crate::image::farm_queue::ONE_FARM;
 
 /// Which of a player's queues.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
