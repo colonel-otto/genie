@@ -94,6 +94,9 @@ pub struct Gait {
     /// without a level or a path: a drop-off walker's ignore list passes a worker whose path is
     /// this update's.
     pub path_made: Option<u32>,
+    /// Its unit group (`mGroupID`, `+0x6d0`), none for −1: a walker of the same group ranks it by
+    /// the group's member order.
+    pub group: Option<i32>,
 }
 
 /// One object as movement sees it.

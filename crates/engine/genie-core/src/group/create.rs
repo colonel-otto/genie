@@ -198,6 +198,9 @@ impl Turns {
                     m.stand()?;
                 }
                 u.group.id = -1;
+                // the walks that meet it read its group
+                let gait = u.gait();
+                self.spatial.set_gait(id, gait);
             }
         }
         let g = self.groups.get_mut(group).expect("the group found above");
@@ -366,6 +369,9 @@ impl Turns {
             }
             ai.orders.clear();
         }
+        // the walks that meet it read its group
+        let gait = u.gait();
+        self.spatial.set_gait(id, gait);
         let masters: Vec<(i32, i16)> = self
             .players
             .iter()
