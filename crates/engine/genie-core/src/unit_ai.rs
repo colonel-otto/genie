@@ -5536,7 +5536,7 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         match n.kind {
-            ACTION_COMPLETED => self.action_completed(n, at, fx),
+            ACTION_COMPLETED => self.action_completed(n, at, computer, ai_rng, side, fx),
             ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, side, fx),
             ACTION_INVALIDATED => self.action_invalidated(n, at, computer, ai_rng, side, fx),
             crate::explore::WANTS_POINT if self.explorer() => {
@@ -5888,20 +5888,30 @@ impl UnitAi {
         Ok(GO_ON)
     }
 
-    /// The base handler's case `0x1fa` (`FUN_140c589c0`): without an order, a completion of the
-    /// current action (or of an attack) stops it. With one, the state position takes the unit's
-    /// place; the completion of the order's own action (action + 100 = order) stops it, and so
-    /// do an attack's; order 724 and 701 end their move, 712 a heal's. The attack order 700's
-    /// own case (processIdle with 0) is not modelled.
+    /// The base handler's case `0x1fa` (`FUN_140c589c0`): with an order, or in a group with a
+    /// command (`+0x3a8`), the state position takes the unit's place. Without an order, a
+    /// completion of the current action (or of an attack) stops it. On the attack order 700 an
+    /// attack's completion ("I have an attack order and my attack action has completed.") runs
+    /// processIdle (slot 0x240 with 0): when it produced an action the processing breaks (0xd),
+    /// else the target goes and the action stops, ending the order (slot 0xb0 with 0). With
+    /// another order, the completion of the order's own action (action + 100 = order) stops it,
+    /// and so do an attack's; order 724 and 701 end their move, 712 a heal's.
+    #[allow(clippy::too_many_arguments)]
     fn action_completed(
         &mut self,
         n: Notify,
         at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         let p1 = n.p[0];
         let order = self.current_order;
         let action = self.current_action;
+        if order != -1 || at.group.is_some_and(|g| g.commanded) {
+            self.state_position = [at.position[0], at.position[1]];
+        }
         if order == -1 {
             if action == p1 || p1 == 600 {
                 self.remove_target();
@@ -5909,9 +5919,13 @@ impl UnitAi {
             }
             return Ok(GO_ON);
         }
-        self.state_position = [at.position[0], at.position[1]];
         if order == 700 && p1 == 600 {
-            return Err(Unsupported("a completed attack on the attack order"));
+            if self.process_idle(at, computer, ai_rng, side, fx)? {
+                return Ok(PRODUCED);
+            }
+            self.remove_target();
+            self.stop_current(false, at, fx)?;
+            return Ok(GO_ON);
         }
         if action == p1 && action + 100 == order {
             self.remove_target();
@@ -15414,5 +15428,89 @@ mod tests {
         let (r, _, _) = handled(&mut u, invalid, &at, false);
         assert!(r.is_ok());
         assert_eq!(u.current_action, -1);
+    }
+
+    /// The base handler's completion (`FUN_140c589c0` case 0x1fa; the villager's own case takes
+    /// it before) of an attack on the attack order 700: processIdle with 0; when it produced an action the processing breaks (0xd),
+    /// else the target goes and slot 0xb0 with 0 ends the order. A unit without an order in a
+    /// group with a command keeps its place as its state position.
+    #[test]
+    fn an_attack_completed_on_the_attack_order_looks_for_the_next_or_ends_it() {
+        let done = Notify::own(9, ACTION_COMPLETED, [ATTACK_ACTION, 0, 0]);
+        // a transport ship's processIdle only caps its last human order time (5)
+        let mut u = UnitAi {
+            current_order: ATTACK_ORDER,
+            order_priority: 100,
+            current_action: ATTACK_ACTION,
+            current_target: 70,
+            ..idle(11)
+        };
+        let here = Surroundings {
+            position: [5.0, 6.0, 0.0],
+            class: 20,
+            ..Surroundings::default()
+        };
+        let (r, fx, _) = handled(&mut u, done, &here, false);
+        assert_eq!(r, Ok(GO_ON));
+        assert_eq!(fx, [Effect::CapHumanOrder(HUMAN_ORDER_CAP), Effect::Stop]);
+        assert_eq!(
+            (u.current_order, u.order_priority, u.last_order),
+            (-1, -1, ATTACK_ORDER)
+        );
+        assert_eq!(
+            (u.current_target, u.last_target, u.current_action),
+            (-1, 70, -1)
+        );
+        assert_eq!(u.state_position, [5.0, 6.0]);
+        // a boar beyond its leash heads home (6): the processing breaks there
+        let mut u = UnitAi {
+            current_order: ATTACK_ORDER,
+            current_action: ATTACK_ACTION,
+            current_target: 70,
+            ..boar()
+        };
+        let mut fx = Vec::new();
+        let r = u.handle(
+            done,
+            0,
+            &at([43.5, 105.5, 0.0]),
+            false,
+            &mut seed_for(false),
+            &mut Recorder::default(),
+            &mut fx,
+        );
+        assert_eq!(r, Ok(PRODUCED));
+        assert!(matches!(
+            fx[..],
+            [Effect::CapHumanOrder(HUMAN_ORDER_CAP), Effect::Move(_)]
+        ));
+        // (its move forgot the target: FUN_140c64c10 with -1)
+        assert_eq!(
+            (u.current_order, u.current_target, u.last_target),
+            (ATTACK_ORDER, -1, 70)
+        );
+        // without an order, in a group with a command: the state position, then the stop
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 70,
+            ..idle(SOLDIER_AI)
+        };
+        let grouped = Surroundings {
+            group: Some(GroupState {
+                commanded: true,
+                ..GroupState::default()
+            }),
+            ..here.clone()
+        };
+        let (r, fx, _) = handled(&mut u, done, &grouped, false);
+        assert_eq!((r, fx), (Ok(GO_ON), vec![Effect::Stop]));
+        assert_eq!(u.state_position, [5.0, 6.0]);
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            current_target: 70,
+            ..idle(SOLDIER_AI)
+        };
+        let _ = handled(&mut u, done, &here, false);
+        assert_eq!(u.state_position, [0.0, 0.0]);
     }
 }
