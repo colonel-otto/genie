@@ -4199,7 +4199,7 @@ pub fn object_rows(turns: &Turns, player: usize) -> Vec<ObjectRow> {
 /// What the comparison with the game's saves checks of one live object: its master, state, hit
 /// points, held amount and position in full f32, its top action (type, state) and its unit AI's
 /// retarget timer.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ObjectRow {
     /// The object's id.
     pub id: i32,
@@ -6241,10 +6241,55 @@ pub fn planner_from_save(
     ))
 }
 
-/// Where two object lists differ, one line per object and field: `slice` from the slice, `game`
-/// from the game's save, matched by id. Equal lists give none.
+/// One field of one object where the slice's row and the game's save differ
+/// ([`object_field_differences`]); its text is [`object_differences`]' line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Difference {
+    /// The object's id.
+    pub id: i32,
+    /// Its master: the game's, or the slice's for an object only the slice holds.
+    pub master: i16,
+    /// The field's name, or [`ONLY_IN_THE_GAME`], [`ONLY_IN_THE_SLICE`].
+    pub field: String,
+    /// The slice's value (its whole row for an object only the slice holds).
+    pub slice: String,
+    /// The game's value (its whole row for an object only the game holds).
+    pub game: String,
+}
+
+/// [`Difference::field`] of an object the game's save holds and the slice does not.
+pub const ONLY_IN_THE_GAME: &str = "only in the game";
+/// [`Difference::field`] of an object the slice holds and the game's save does not.
+pub const ONLY_IN_THE_SLICE: &str = "only in the slice";
+
+impl std::fmt::Display for Difference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.field.as_str() {
+            ONLY_IN_THE_GAME => write!(f, "{}: {} ({})", self.id, self.field, self.game),
+            ONLY_IN_THE_SLICE => write!(f, "{}: {} ({})", self.id, self.field, self.slice),
+            _ => write!(
+                f,
+                "{}: {} slice {} game {}",
+                self.id, self.field, self.slice, self.game
+            ),
+        }
+    }
+}
+
+/// Where two object lists differ, one line per object and field ([`object_field_differences`]).
 #[must_use]
 pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String> {
+    object_field_differences(slice, game)
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// Where two object lists differ, one [`Difference`] per object and field: `slice` from the
+/// slice, `game` from the game's save, matched by id, in the game's order, then the objects only
+/// the slice holds. Equal lists give none.
+#[must_use]
+pub fn object_field_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<Difference> {
     let mut out = Vec::new();
     // the first slice row of each id, as a search from the front finds it
     let mut by_id = std::collections::HashMap::with_capacity(slice.len());
@@ -6253,7 +6298,13 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
     }
     for g in game {
         let Some(&s) = by_id.get(&g.id) else {
-            out.push(format!("{}: only in the game ({g:?})", g.id));
+            out.push(Difference {
+                id: g.id,
+                master: g.master,
+                field: ONLY_IN_THE_GAME.to_owned(),
+                slice: String::new(),
+                game: format!("{g:?}"),
+            });
             continue;
         };
         // a row the same to the bit has no field that differs: skip the fields' texts
@@ -6262,7 +6313,13 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
         }
         let mut field = |name: &str, a: String, b: String| {
             if a != b {
-                out.push(format!("{}: {name} slice {a} game {b}", g.id));
+                out.push(Difference {
+                    id: g.id,
+                    master: g.master,
+                    field: name.to_owned(),
+                    slice: a,
+                    game: b,
+                });
             }
         };
         field("master", s.master.to_string(), g.master.to_string());
@@ -6412,7 +6469,13 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
         }
     }
     for s in slice.iter().filter(|s| !game.iter().any(|g| g.id == s.id)) {
-        out.push(format!("{}: only in the slice ({s:?})", s.id));
+        out.push(Difference {
+            id: s.id,
+            master: s.master,
+            field: ONLY_IN_THE_SLICE.to_owned(),
+            slice: format!("{s:?}"),
+            game: String::new(),
+        });
     }
     out
 }
@@ -6420,6 +6483,43 @@ pub fn object_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Each differing field of a matched object is one difference with the game's master; an
+    /// object in one list alone is one too; the lines are the differences' texts.
+    #[test]
+    fn differences_name_the_object_its_master_and_the_field() {
+        let row = |id, master, hp| ObjectRow {
+            id,
+            master,
+            hp,
+            ..ObjectRow::default()
+        };
+        let slice = [row(1, 83, 25.0), row(2, 83, 25.0), row(4, 4, 1.0)];
+        let game = [row(1, 83, 25.0), row(2, 293, 24.0), row(3, 59, 1.0)];
+        let d = object_field_differences(&slice, &game);
+        let fields: Vec<(i32, i16, &str)> = d
+            .iter()
+            .map(|d| (d.id, d.master, d.field.as_str()))
+            .collect();
+        assert_eq!(
+            fields,
+            [
+                (2, 293, "master"),
+                (2, 293, "hp"),
+                (3, 59, ONLY_IN_THE_GAME),
+                (4, 4, ONLY_IN_THE_SLICE)
+            ]
+        );
+        assert_eq!(d[1].to_string(), "2: hp slice 25.0 game 24.0");
+        assert!(
+            d[2].to_string()
+                .starts_with("3: only in the game (ObjectRow {")
+        );
+        assert_eq!(
+            object_differences(&slice, &game),
+            d.iter().map(ToString::to_string).collect::<Vec<_>>()
+        );
+    }
 
     /// A PATROL packet of `num` counted units and `count` waypoints (x 10.0 + i, y 20.0 + i).
     fn patrol(num: u16, ids: Vec<i32>, count: u8, flag: u8) -> Vec<u8> {

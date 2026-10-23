@@ -191,8 +191,8 @@ pub enum Followed {
 pub struct Divergence {
     /// The updates run when the player's objects first differ from the game's save.
     pub update: usize,
-    /// What differs ([`crate::object_differences`]).
-    pub differences: Vec<String>,
+    /// What differs ([`crate::object_field_differences`]).
+    pub differences: Vec<crate::Difference>,
 }
 
 /// The recording run from its header as the census runs it, the objects of each of `players`
@@ -257,7 +257,7 @@ pub fn header_divergences(
             if done[k] {
                 continue;
             }
-            let differences = crate::object_differences(
+            let differences = crate::object_field_differences(
                 &crate::object_rows(&turns, p as usize),
                 &crate::header_objects(&saved, p)?,
             );
