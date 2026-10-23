@@ -4163,3 +4163,193 @@ fn an_ai_move_of_a_unit_without_speed_fails_at_its_start_standing() {
     assert_eq!(u.move_to.map(|m| m.state), Some(MoveTo::Failed));
     assert_eq!(u.anim_speed, Some(0.0));
 }
+
+/// The unit AI's attack command ([`crate::unit_ai::UnitSide::attack`]) of the scout 123 (master
+/// 448, class 47, 426049998's) on Gaia's wolf 50 half a tile east, its attack timer `timer`, inside
+/// `inside` if any: the scout and what the command answered and took.
+fn scout_attack(timer: f32, inside: Option<i32>) -> (Unit, crate::unit_ai::Attacked, Vec<i32>) {
+    use crate::unit_ai::UnitSide;
+    let standing = Graphic {
+        id: 300,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let graphics = std::collections::BTreeMap::from([
+        (300, standing),
+        (
+            301,
+            Graphic {
+                id: 301,
+                ..standing
+            },
+        ),
+    ]);
+    let scout = Master {
+        id: 448,
+        kind: 70,
+        class: 47,
+        standing_sprite: 300,
+        attack_sprite: 301,
+        weapon_range: 1.0,
+        reload: 2.0,
+        ..Master::default()
+    };
+    let wolf = Master {
+        id: 126,
+        kind: 70,
+        class: 10,
+        ..Master::default()
+    };
+    let placed = |x: f32, class, player, master| Placed {
+        position: [x, 10.0, 0.0],
+        radius: [0.2, 0.2],
+        class,
+        player,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    let mut spatial = Spatial::new([120, 120]);
+    spatial.insert(123, placed(10.0, 47, 1, 448));
+    spatial.insert(50, placed(10.5, 10, 0, 126));
+    let gaia = Player {
+        objects: vec![Unit {
+            id: 50,
+            position: [10.5, 10.0, 0.0],
+            life: Lifecycle {
+                master_id: 126,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        }],
+        ..Player::default()
+    };
+    let players = [gaia];
+    let mut rng = Well512::default();
+    let mut walker = crate::hunt::tests::walker();
+    walker.stats.speed = 1.2;
+    let mut unit = Unit {
+        id: 123,
+        position: [10.0, 10.0, 0.0],
+        mover: Some(walker),
+        sprite: Some(crate::sprite::ActiveSprite::start(standing, &mut rng)),
+        attack_timer: timer,
+        life: Lifecycle {
+            master_id: 448,
+            inside,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let ai = UnitAi {
+        stance: 2,
+        current_order: -1,
+        ai_type: 13,
+        ..UnitAi::default()
+    };
+    let masters = Masters::new([scout]);
+    let every = [Masters::new([wolf]), masters.clone()];
+    let (mut pathing, mut zones) = (Pathing::default(), crate::zones::Zones::default());
+    let groups = crate::group::UnitGroups::default();
+    let (mut object, mut sprite) = (Well512::default(), Well512::default());
+    let (mut takes, mut releases, mut leaves, mut waits) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let attacked = {
+        let mut side = view::UnitView {
+            unit: &mut unit,
+            attacker: crate::unit_ai::Attacker {
+                ai_type: 13,
+                player: 1,
+                computer: false,
+                state: 2,
+                held: -1,
+                top_action: None,
+                master: 448,
+                kind: 70,
+                class: 47,
+                attack_priority: 0,
+                missile: -1,
+                range: 1.0,
+                min_range: 0.0,
+                charge_type: 0,
+                area_effect: 0.0,
+                blast_level: 0,
+                los: 4.0,
+                position: [10.0, 10.0, 0.0],
+                radius: [0.2, 0.2],
+                speed: 1.2,
+                scenario: false,
+                firepower: 0.0,
+                capture: 0,
+            },
+            player: 1,
+            computer: false,
+            spatial: &mut spatial,
+            pathing: &mut pathing,
+            groups: &groups,
+            object: &mut object,
+            sprite: &mut sprite,
+            world_time: 0,
+            construction_rate: 1.0,
+            others: &[],
+            zones: &mut zones,
+            foreign: Foreign {
+                before: &players,
+                after: &[],
+                left: None,
+            },
+            every: &every,
+            masters: Some(&masters),
+            graphics: &graphics,
+            takes: &mut takes,
+            releases: &mut releases,
+            builder_leaves: &mut leaves,
+            waits: &mut waits,
+            relations: &[0, 0],
+            attributes: &[],
+            civ: 0,
+            drop_sites: &[],
+            mode_680: 0,
+        };
+        side.attack(50, false, &ai).unwrap()
+    };
+    (unit, attacked, takes.into_iter().map(|(t, _)| t).collect())
+}
+
+/// `FUN_141081a80`'s start (`0x140a7f8c0`) of a unit that cannot move (stance 2, no order) in
+/// reach: `set_state(6)` at once (426049998's scout 123 in update 1222). Its readyToAttack finds
+/// the target on the point; facing it with its attack timer run out the scout swings
+/// (`set_state(7)`: the attack sprite, a hit pending); with time left it waits in state 6 on the
+/// standing sprite. The constructor takes the target either way. A unit inside another fails at
+/// the start (`set_state(13)`: speed 1, the standing sprite).
+#[test]
+fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() {
+    let (unit, attacked, takes) = scout_attack(0.0, None);
+    assert_eq!((attacked.attacks, attacked.posted), (true, vec![]));
+    assert_eq!(takes, vec![50]);
+    let attack = unit.attack.expect("the scout's Attack");
+    assert_eq!(
+        (attack.state, attack.pending, attack.point),
+        (crate::attack::SWING, true, [10.5, 10.0, 0.0])
+    );
+    assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(301));
+    let (unit, _, _) = scout_attack(0.5, None);
+    let attack = unit.attack.expect("the scout's Attack");
+    assert_eq!(
+        (attack.state, attack.pending),
+        (crate::attack::READY, false)
+    );
+    assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
+    let (unit, attacked, takes) = scout_attack(0.0, Some(9149));
+    assert_eq!((attacked.attacks, takes), (true, vec![50]));
+    assert_eq!(unit.attack.map(|a| a.state), Some(crate::attack::FAILED));
+    assert_eq!(unit.anim_speed, Some(1.0));
+}
