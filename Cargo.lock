@@ -483,6 +483,7 @@ dependencies = [
  "byteorder",
  "encoding_rs",
  "flate2",
+ "genie-error",
  "genie-support",
  "jascpal",
  "thiserror",
@@ -583,6 +584,7 @@ dependencies = [
  "byteorder",
  "flate2",
  "genie-dat",
+ "genie-error",
  "genie-save",
  "genie-scx",
  "genie-support",
@@ -594,7 +596,7 @@ name = "genie-save"
 version = "0.1.0"
 dependencies = [
  "binrw",
- "thiserror",
+ "genie-error",
 ]
 
 [[package]]

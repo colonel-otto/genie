@@ -32,6 +32,8 @@ pub enum ErrorKind {
     MissingData,
     /// Input that breaks its format: a recording's command, a save's field, a file's layout.
     InvalidInput,
+    /// Reading or writing failed underneath: a file, a stream, an inflate.
+    Io,
 }
 
 impl fmt::Display for ErrorKind {
@@ -41,6 +43,7 @@ impl fmt::Display for ErrorKind {
             Self::Unreachable => "unreachable",
             Self::MissingData => "missing data",
             Self::InvalidInput => "invalid input",
+            Self::Io => "input or output",
         })
     }
 }
@@ -100,6 +103,13 @@ impl GenieError {
     #[track_caller]
     pub const fn invalid_input(reason: &'static str) -> Self {
         Self::new(ErrorKind::InvalidInput, reason)
+    }
+
+    /// Reading or writing failed underneath ([`ErrorKind::Io`]).
+    #[must_use]
+    #[track_caller]
+    pub const fn io(reason: &'static str) -> Self {
+        Self::new(ErrorKind::Io, reason)
     }
 
     /// The error with `key` and `value` added to its context.

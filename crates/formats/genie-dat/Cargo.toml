@@ -17,6 +17,7 @@ byteorder.workspace = true
 encoding_rs.workspace = true
 binrw.workspace = true
 flate2.workspace = true
+genie-error = { path = "../../base/genie-error" }
 genie-support = { version = "^1.0.0", path = "../genie-support" }
 jascpal = { version = "^0.1.0", path = "../jascpal" }
 thiserror.workspace = true

@@ -478,8 +478,13 @@ impl MasterTable {
     ///
     /// When the data file cannot be read, or a table beside it is out of shape.
     pub fn read(path: &std::path::Path) -> Result<Self, ReadError> {
-        let file =
-            std::fs::File::open(path).map_err(|e| ReadError::Dat(genie_dat::de::Error::Io(e)))?;
+        let file = std::fs::File::open(path).map_err(|e| {
+            ReadError::Dat(
+                genie_core::GenieError::io("a data file that does not open")
+                    .with("path", path.display())
+                    .with_source(e),
+            )
+        })?;
         let dat = DatFile::read_from(file).map_err(ReadError::Dat)?;
         let mut table = Self::from_dat(&dat);
         if let Ok(json) = std::fs::read_to_string(path.with_file_name("dropsites.json")) {

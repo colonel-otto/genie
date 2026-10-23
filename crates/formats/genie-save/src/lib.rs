@@ -40,30 +40,14 @@ use binrw::io::{Read, Seek, SeekFrom};
 /// The oldest save version this reader supports (66.0).
 pub const MIN_HUNDREDTHS: u32 = 6600;
 
-/// Errors while reading a world save. Offsets are byte offsets into the save.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum Error {
-    /// The bytes are not a save this reader takes: too old, cut short, or not the layout.
-    #[error("world save: {message}")]
-    Read {
-        /// What went wrong, with where.
-        message: String,
-    },
-    /// Writing a parsed save failed.
-    #[error("world save written: {message}")]
-    Write {
-        /// What went wrong.
-        message: String,
-    },
-    /// A part of the layout the generator does not derive yet.
-    #[error("unsupported in this reader yet: {what} at save byte {at:#x}")]
-    Unsupported {
-        /// The part.
-        what: &'static str,
-        /// Where it starts in the save.
-        at: usize,
-    },
-}
+pub use genie_error::{ErrorKind, GenieError};
+
+/// The errors of reading and writing a world save: [`GenieError`]s.
+///
+/// Bytes that are not a save this reader takes (too old, cut short, not the layout) are [`ErrorKind::InvalidInput`]; a part
+/// of the layout the generator does not derive yet [`ErrorKind::Unsupported`], its place in the
+/// context (`at`, a byte offset into the save); a failed write [`ErrorKind::Io`].
+pub type Error = GenieError;
 
 /// The version fields at the start of a save.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,8 +147,8 @@ where
 ///
 /// # Errors
 ///
-/// [`Error::Read`] for bytes that are not a save of 66.0 or later or do not end where the world
-/// does, [`Error::Unsupported`] for a part the reader does not derive yet.
+/// [`ErrorKind::InvalidInput`] for bytes that are not a save of 66.0 or later or do not end
+/// where the world does, [`ErrorKind::Unsupported`] for a part the reader does not derive yet.
 pub fn parse(save: &[u8]) -> Result<Header, Error> {
     parse_reader(&mut binrw::io::Cursor::new(save))
 }
@@ -189,9 +173,7 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
     }
     .hundredths();
     if v < MIN_HUNDREDTHS {
-        return Err(Error::Read {
-            message: format!("save version {v} is older than 66.0"),
-        });
+        return Err(GenieError::invalid_input("a save older than 66.0").with("version", v));
     }
     let _ = r
         .seek(SeekFrom::Start(start as u64))
@@ -201,7 +183,9 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
     let world =
         World::read_args(r, (file_header.new_save_game_version,)).map_err(
             |e| match unsupported_in(&e) {
-                Some((what, at)) => Error::Unsupported { what, at },
+                Some((what, at)) => {
+                    GenieError::unsupported(what).with("at", format_args!("{at:#x}"))
+                }
                 None => read_error(&e),
             },
         )?;
@@ -210,19 +194,18 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
         .seek(SeekFrom::End(0))
         .map_err(|e| read_error(&e.into()))? as usize;
     if here != end {
-        return Err(Error::Read {
-            message: format!(
-                "the world ends at {here}, {} bytes before the save's end",
-                end - here
-            ),
-        });
+        return Err(
+            GenieError::invalid_input("a world that ends before the save's end")
+                .with("world end", here)
+                .with("bytes after it", end - here),
+        );
     }
     for p in &world.base_world.players {
         if p.val.world_player().is_none() {
             // the game's WorldPlayerFactory.cpp: "InvalidPlayerType: %d"
-            return Err(Error::Read {
-                message: format!("InvalidPlayerType: {} at {}", p.val.type_, p.pos),
-            });
+            return Err(GenieError::invalid_input("InvalidPlayerType")
+                .with("type", p.val.type_)
+                .with("at", p.pos));
         }
     }
     let map = &world.base_world.map;
@@ -248,26 +231,23 @@ pub fn parse_reader<R: Read + Seek>(r: &mut R) -> Result<Header, Error> {
 ///
 /// # Errors
 ///
-/// [`Error::Write`] when the writer fails or a value cannot be written back.
+/// [`ErrorKind::Io`] when the writer fails or a value cannot be written back.
 pub fn write<W: binrw::io::Write + Seek>(h: &Header, w: &mut W) -> Result<(), Error> {
     use binrw::BinWrite;
     (|| {
         h.file_header.write_le(w)?;
         h.world.write_le(w)
     })()
-    .map_err(|e| Error::Write {
-        message: e.to_string(),
-    })
+    .map_err(|e| GenieError::io("a save that does not write").with("binrw", e))
 }
 
 fn position<R: Seek>(r: &mut R) -> Result<usize, Error> {
     Ok(r.stream_position().map_err(|e| read_error(&e.into()))? as usize)
 }
 
+#[track_caller]
 fn read_error(e: &binrw::Error) -> Error {
-    Error::Read {
-        message: e.to_string(),
-    }
+    GenieError::invalid_input("a save that does not read").with("binrw", e)
 }
 
 #[cfg(test)]
@@ -289,11 +269,8 @@ mod tests {
         let mut save = b"VER 9.4\0".to_vec();
         save.extend((-1.0f32).to_le_bytes());
         save.extend(0x0041_0000u32.to_le_bytes());
-        assert_eq!(
-            parse(&save),
-            Err(Error::Read {
-                message: "save version 6500 is older than 66.0".into()
-            })
-        );
+        let e = parse(&save).unwrap_err();
+        assert_eq!(e, GenieError::invalid_input("a save older than 66.0"));
+        assert_eq!(e.context().collect::<Vec<_>>(), [("version", "6500")]);
     }
 }

@@ -141,9 +141,7 @@ impl<'a> OpReader<'a> {
     /// The next `n` bytes, or `Truncated` at the start of the current record.
     fn take(&mut self, n: usize, record: usize) -> Result<&'a [u8], Error> {
         if self.remaining() < n {
-            return Err(Error::Truncated {
-                at: self.base + record,
-            });
+            return Err(crate::de::truncated(self.base + record));
         }
         let bytes = &self.data[self.pos..self.pos + n];
         self.pos += n;
@@ -161,9 +159,8 @@ impl<'a> OpReader<'a> {
         T: for<'b> binrw::BinRead<Args<'b> = ()>,
     {
         let bytes = self.take(size, record)?;
-        T::read_le(&mut binrw::io::Cursor::new(bytes)).map_err(|_| Error::Truncated {
-            at: self.base + record,
-        })
+        T::read_le(&mut binrw::io::Cursor::new(bytes))
+            .map_err(|_| crate::de::truncated(self.base + record))
     }
 
     fn read_op(&mut self) -> Result<Op<'a>, Error> {
@@ -202,10 +199,7 @@ impl<'a> OpReader<'a> {
                 self.done = true;
                 Ok(Op::End { trailer })
             }
-            op => Err(Error::UnknownOp {
-                op,
-                at: self.base + record,
-            }),
+            op => Err(crate::de::unknown_op(op, self.base + record)),
         }
     }
 }
@@ -417,20 +411,27 @@ mod tests {
     fn a_truncated_record_reports_its_file_offset_and_stops() {
         let mut body = le(&[2, 20, 1, 10]);
         body.extend([1, 2, 3]);
+        let ops = read(&body, false);
         assert_eq!(
-            read(&body, false),
-            vec![
-                Ok(Op::Sync { dt: 20 }),
-                Err(Error::Truncated { at: BASE + 8 })
-            ]
+            ops,
+            vec![Ok(Op::Sync { dt: 20 }), Err(crate::de::truncated(BASE + 8))]
+        );
+        let e = ops[1].clone().unwrap_err();
+        assert_eq!(
+            e.context().collect::<Vec<_>>(),
+            [("at", format!("{:#x}", BASE + 8).as_str())]
         );
     }
 
     #[test]
     fn an_unknown_op_is_an_error() {
+        let body = le(&[9]);
+        let ops = read(&body, false);
+        assert_eq!(ops, vec![Err(crate::de::unknown_op(9, BASE))]);
+        let e = ops[0].clone().unwrap_err();
         assert_eq!(
-            read(&le(&[9]), false),
-            vec![Err(Error::UnknownOp { op: 9, at: BASE })]
+            e.context().collect::<Vec<_>>(),
+            [("op", "9"), ("at", format!("{BASE:#x}").as_str())]
         );
     }
 

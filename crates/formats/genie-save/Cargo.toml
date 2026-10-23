@@ -12,7 +12,7 @@ readme = "./README.md"
 
 [dependencies]
 binrw.workspace = true
-thiserror.workspace = true
+genie-error = { path = "../../base/genie-error" }
 
 [lints]
 workspace = true

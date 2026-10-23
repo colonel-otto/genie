@@ -43,46 +43,14 @@ impl Version {
     }
 }
 
-/// Why a file could not be read.
-#[derive(Debug)]
-pub enum Error {
-    /// Reading the input failed, or it did not inflate.
-    Io(std::io::Error),
-    /// The file version is not one of VER 7.1 to VER 8.9.
-    UnsupportedVersion([u8; 8]),
-    /// The data does not follow the format, or writing it failed.
-    Parse(binrw::Error),
-}
+pub use genie_error::{ErrorKind, GenieError};
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io(e) => write!(f, "{e}"),
-            Self::UnsupportedVersion(v) => {
-                write!(
-                    f,
-                    "unsupported file version {:?}",
-                    String::from_utf8_lossy(v)
-                )
-            }
-            Self::Parse(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Self::Io(e)
-    }
-}
-
-impl From<binrw::Error> for Error {
-    fn from(e: binrw::Error) -> Self {
-        Self::Parse(e)
-    }
-}
+/// The errors of reading and writing a data file: [`GenieError`]s.
+///
+/// Reading, inflating or writing that fails underneath is [`ErrorKind::Io`]; a file version other than `VER 7.1` to `VER 8.9`
+/// [`ErrorKind::Unsupported`]; data that does not follow the format
+/// [`ErrorKind::InvalidInput`].
+pub type Error = GenieError;
 
 /// A string as DE stores it (`serializeDebugString`): the marker 0x0A60, a u16 length, the bytes.
 #[binrw]
@@ -228,12 +196,16 @@ impl DatFile {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] if reading or inflating fails, and otherwise the errors of
-    /// [`Self::from_inflated`].
+    /// Returns an [`ErrorKind::Io`] error if reading or inflating fails, and otherwise the errors
+    /// of [`Self::from_inflated`].
     pub fn read_from(input: impl Read) -> Result<Self, Error> {
         let mut data = Vec::new();
         // The byte count is `data.len()`.
-        let _ = DeflateDecoder::new(input).read_to_end(&mut data)?;
+        let _ = DeflateDecoder::new(input)
+            .read_to_end(&mut data)
+            .map_err(|e| {
+                GenieError::io("a data file that does not read or inflate").with_source(e)
+            })?;
         Self::from_inflated(&data)
     }
 
@@ -241,23 +213,31 @@ impl DatFile {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnsupportedVersion`] if the data does not start with `VER 7.1` to
-    /// `VER 8.9`, and [`Error::Parse`] if the data does not follow the format.
+    /// Returns an [`ErrorKind::Unsupported`] error if the data does not start with `VER 7.1` to
+    /// `VER 8.9`, and an [`ErrorKind::InvalidInput`] one if the data does not follow the format.
     pub fn from_inflated(data: &[u8]) -> Result<Self, Error> {
-        let mut version = [0u8; 8];
-        version.copy_from_slice(data.get(..8).ok_or(Error::UnsupportedVersion([0; 8]))?);
-        let v = Version::of(&version).ok_or(Error::UnsupportedVersion(version))?;
-        Ok(Self::read_le_args(&mut Cursor::new(data), (v,))?)
+        let version = |v: &[u8]| {
+            GenieError::unsupported("a data file version other than VER 7.1 to VER 8.9")
+                .with("version", String::from_utf8_lossy(v))
+        };
+        let mut start = [0u8; 8];
+        start.copy_from_slice(data.get(..8).ok_or_else(|| version(&[]))?);
+        let v = Version::of(&start).ok_or_else(|| version(&start))?;
+        Self::read_le_args(&mut Cursor::new(data), (v,)).map_err(|e| {
+            GenieError::invalid_input("a data file that does not follow the format")
+                .with("binrw", e)
+        })
     }
 
     /// The inflated bytes the file writes.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] if a field cannot be written.
+    /// Returns an [`ErrorKind::Io`] error if a field cannot be written.
     pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut out = Cursor::new(Vec::new());
-        self.write_le(&mut out)?;
+        self.write_le(&mut out)
+            .map_err(|e| GenieError::io("a data file that does not write").with("binrw", e))?;
         Ok(out.into_inner())
     }
 

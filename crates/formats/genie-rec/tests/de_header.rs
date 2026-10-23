@@ -202,9 +202,10 @@ fn every_corpus_header_parses() {
                         path.strip_prefix(&dir).unwrap().display()
                     ));
                 }
-                match e {
-                    genie_save::Error::Unsupported { what, .. } => format!("unsupported: {what}"),
-                    _ => "failed".to_string(),
+                if e.kind() == genie_save::ErrorKind::Unsupported {
+                    format!("unsupported: {}", e.reason())
+                } else {
+                    "failed".to_string()
                 }
             }
         };
