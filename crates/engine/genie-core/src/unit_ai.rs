@@ -3566,7 +3566,6 @@ impl UnitAi {
         let mut fx = Vec::new();
         self.target_block(at, computer, ai, side, &mut fx)?;
         self.keep_attackers(at, side);
-        self.check_target()?;
         // a unit with an order, or in a group with a command (`+0x3a8`), keeps its place as its
         // state position (0x140c674c9)
         if self.current_order != -1 || at.group.is_some_and(|g| g.commanded) {
@@ -4064,44 +4063,6 @@ impl UnitAi {
         self.last_order = self.current_order;
         self.current_order = -1;
         self.order_priority = -1;
-        Ok(())
-    }
-
-    /// The targets the update models after its target block ([`UnitAi::target_block`]): a
-    /// target only on a villager's build, gather, hunt or garrison (702/602, 709/609, 713/613,
-    /// 717/617), its attack back as a hunt (700/613, [`UnitAi::hunt_object`]), a hunt without an
-    /// order (−1/613: `HuntObject` after a stop that ended the order), on the follow order (712
-    /// with its action 612, the move's 610 or none), a builder or hunter sent off a footprint
-    /// (702/703, 713/703), a building on MOVE's order with a target (710 and any action value),
-    /// on a boar's or lion's own attack (−1/600) or the attack order (700/600, a building's
-    /// make action during it 700/619), a move to an object (710/610), or without an order and
-    /// an action (a stale target the order queue's next order takes over).
-    fn check_target(&self) -> Result<(), Unsupported> {
-        let order = (self.current_order, self.current_action);
-        let working = matches!(
-            order,
-            (BUILD_ORDER, BUILD_ACTION)
-                | (HUNT_ORDER | ATTACK_ORDER | -1, HUNT_ACTION)
-                | (crate::ai_kinds::ORDER_GATHER, GATHER_ACTION)
-                | (crate::garrison::ENTER_ORDER, crate::garrison::ENTER_ACTION)
-                | (FOLLOW_ORDER, FOLLOW_ACTION | MOVE_ACTION | -1)
-                // sent off a footprint (`sent_off`): the order and target kept
-                | (BUILD_ORDER | HUNT_ORDER, MOVE_ASIDE_ACTION)
-        );
-        // a boar's own attack on its attacker or a lion's on its prey ([`UnitAi::attack_object`]),
-        // or a work command's attack (the attack order and action, notify kind 9); a building's
-        // make action that started during it takes the action value (619, its constructor
-        // `FUN_140acb140`) while the Attack goes on
-        let attacking = (matches!(self.ai_type, BOAR_AI | 5) && order == (-1, ATTACK_ACTION))
-            || order == (ATTACK_ORDER, ATTACK_ACTION)
-            || order == (ATTACK_ORDER, crate::spawn::MAKE_ACTION);
-        // a move to an object (the work command's without a task, slot 0x138); a building a
-        // MOVE took with a target keeps the order while it trains or researches
-        let moving_to =
-            order == (MOVE_ORDER, MOVE_ACTION) || (self.ai_type == 17 && order.0 == MOVE_ORDER);
-        if self.current_target != -1 && !working && !attacking && !moving_to && order != (-1, -1) {
-            return Err(Unsupported("a unit AI's target the slice does not model"));
-        }
         Ok(())
     }
 
@@ -10363,73 +10324,53 @@ mod tests {
         assert_eq!((u.current_target, u.idle_timer), (29826, 4000));
     }
 
+    /// The full update with a target on the orders and action values the recordings met (it
+    /// reads the target generally, whatever the order): a town centre's make action on the
+    /// attack order (6091, p6's 27171), a wolf's own attack, a building a MOVE took (no action
+    /// value, its research's 620), a builder and a hunter sent off a footprint, a hunt without
+    /// an order after `HuntObject`, a villager waiting for its foundation (734/634 with the
+    /// foundation), a boar moved aside off its attacker (-1/703).
     #[test]
-    fn a_building_s_attack_order_with_its_make_action_is_modelled() {
-        // 6091, p6's town centre 27171: on the attack order against the boar 29826, the
-        // villager it starts making takes the action value (619) while its Attack goes on
-        let making = UnitAi {
-            ai_type: 15,
-            current_order: ATTACK_ORDER,
-            current_action: crate::spawn::MAKE_ACTION,
-            current_target: 29826,
-            ..UnitAi::default()
+    fn a_unit_ai_with_a_target_runs_its_update_on_any_order() {
+        let at = Surroundings {
+            busy: true,
+            player: 1,
+            state: 2,
+            target: Some(Seen {
+                state: 2,
+                kind: 70,
+                owner: 2,
+                class: 4,
+                ..Seen::default()
+            }),
+            ..Surroundings::default()
         };
-        assert!(making.check_target().is_ok());
-    }
-
-    #[test]
-    fn a_lion_s_own_attack_a_moved_building_and_a_worker_moved_off_a_footprint_are_modelled() {
-        // a wolf's attack from its idle search (lion_idle): no order, the attack action, its
-        // target; as the boar's
-        let wolf = UnitAi {
-            ai_type: 5,
-            current_order: -1,
-            current_action: ATTACK_ACTION,
-            current_target: 1597,
-            ..UnitAi::default()
-        };
-        assert!(wolf.check_target().is_ok());
-        // a building a MOVE took with a target (its unit AI's order 710), with no action value
-        // or its own research's (620)
-        for action in [-1, 620] {
-            let building = UnitAi {
-                ai_type: 17,
-                current_order: MOVE_ORDER,
+        for (ai_type, order, action) in [
+            (15, ATTACK_ORDER, crate::spawn::MAKE_ACTION),
+            (5, -1, ATTACK_ACTION),
+            (17, MOVE_ORDER, -1),
+            (17, MOVE_ORDER, 620),
+            (CIVILIAN, BUILD_ORDER, MOVE_ASIDE_ACTION),
+            (CIVILIAN, HUNT_ORDER, MOVE_ASIDE_ACTION),
+            (CIVILIAN, -1, HUNT_ACTION),
+            (CIVILIAN, FOUNDATION_ORDER, WAIT_SOLIDIFY_ACTION),
+            (BOAR_AI, -1, MOVE_ASIDE_ACTION),
+        ] {
+            let mut u = UnitAi {
+                ai_type,
+                current_order: order,
                 current_action: action,
-                current_target: 13764,
+                current_target: 14230,
+                adjusted_idle_timeout: 9000,
+                look_around_timeout: 9000,
+                retarget_timer: 90_000,
+                home: (ai_type == BOAR_AI).then(Home::default),
                 ..UnitAi::default()
             };
-            assert!(building.check_target().is_ok());
+            let r = u.update(10, 100, false, &at, &mut rng(), &mut TailSide::default());
+            assert_eq!(r, Ok(Vec::new()), "{ai_type} {order} {action}");
+            assert_eq!(u.current_target, 14230, "{ai_type} {order} {action}");
         }
-        // a builder and a hunter sent off a footprint (sent_off: the action value 0x2bf, the
-        // order and the target kept)
-        for order in [BUILD_ORDER, HUNT_ORDER] {
-            let aside = UnitAi {
-                current_order: order,
-                current_action: MOVE_ASIDE_ACTION,
-                ..builder_done()
-            };
-            assert!(aside.check_target().is_ok());
-        }
-    }
-
-    #[test]
-    fn a_hunt_without_an_order_after_hunt_object_is_modelled() {
-        // 5622, p5 31126: the villager's HuntObject after its stop ended order 713 leaves order
-        // -1 with the hunt action and its target; the full update has no case for the order
-        let hunting = UnitAi {
-            current_order: -1,
-            current_action: HUNT_ACTION,
-            ..builder_done()
-        };
-        assert!(hunting.check_target().is_ok());
-        // another action without an order and with a target is not modelled
-        let other = UnitAi {
-            current_order: -1,
-            current_action: 0x25b,
-            ..builder_done()
-        };
-        assert!(other.check_target().is_err());
     }
 
     #[test]
