@@ -104,6 +104,22 @@ pub struct Player {
     /// attribute 6 is at most 1 (QUEUE sets it, `FUN_141614450`; a cancel clears it,
     /// `FUN_14161e370`).
     pub one_military_queued: bool,
+    /// `mUpdateTime` (`+0x7a4`, saved): the seconds the world player's update has not yet run
+    /// its per-second loop for ([`crate::world_player`]); Gaia's stays 0.
+    pub update_time: f32,
+    /// Gaia's own `update_time` (`WorldPlayerGaia` `+0x1468`, saved): its update's seconds.
+    pub gaia_update_time: f32,
+    /// `escrow` (`+0x6dc`, saved): what a computer player's income set aside of food, wood,
+    /// stone and gold ([`Turns::add_resource`]).
+    pub escrow: [f32; 4],
+    /// `escrow_percentage` (`+0x6ec`, saved): the shares of its income a computer player sets
+    /// aside.
+    pub escrow_percentage: [f32; 4],
+    /// `mSuddenDeathCanBeEliminated` (`+0x1380`, saved): under the sudden death rule the player
+    /// had a town centre, and loses without one.
+    pub sudden_death_eliminable: bool,
+    /// The victory timers that keep a defeated player in the game ([`crate::world_player`]).
+    pub victory_times: crate::world_player::VictoryTimes,
 }
 
 impl crate::tech::Attributes for Player {

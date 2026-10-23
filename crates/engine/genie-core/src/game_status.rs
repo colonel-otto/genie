@@ -137,8 +137,13 @@ impl Turns {
     }
 
     /// The status setter (slot 1, `FUN_141639860`) of player `p`: `FUN_1416768e0` takes the new
-    /// status unless the player resigned (a defeat it always takes; one without a resignation
-    /// would tell the comm handler, which the slice does not hold). A status that turned won or
+    /// status unless the player resigned (a defeat it always takes). A defeat without a
+    /// resignation (the world player's defeat check, [`Turns::defeat_check`]) then posts the
+    /// interface's event 6 (`FUN_140c898a0`), the local player's comm message
+    /// (`FUN_140d3c710`) and, with a comm handler in session (`DAT_143e8d7d0`'s `+0x388`), marks
+    /// the player's comm players defeated or dropped in the game object (`+0xb1c`, `+0xb13`)
+    /// and the local one's map flags (`FUN_140c915d0`, `FUN_140c915b0`): the lobby's and the
+    /// local view's, which a playback has none of. A status that turned won or
     /// lost while the game goes on reveals the map to the player (`FUN_1412847b0`, with no lobby
     /// settings object or its setting `FUN_141300cd0`, as the playback holds it,
     /// [`Spatial::reveal_to`]); the battle royale's is not modelled. A lost player's objects stop
@@ -148,11 +153,6 @@ impl Turns {
     pub(crate) fn set_status(&mut self, p: usize, status: u8) -> Result<(), Unsupported> {
         let old = self.players[p].game_status;
         if status != old && (!self.players[p].resigned || status == LOST) {
-            if status == LOST && !self.players[p].resigned {
-                return Err(Unsupported(
-                    "a defeat without a resignation (its comm players, FUN_1416768e0)",
-                ));
-            }
             self.players[p].game_status = status;
         }
         let now = self.players[p].game_status;

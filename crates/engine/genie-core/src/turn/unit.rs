@@ -123,6 +123,9 @@ pub struct Unit {
     pub garrison_time: u32,
     /// A building's `relic_count` and `specific_relic_count` (`+0xc20`, `+0xc24`).
     pub relics: [i32; 2],
+    /// A building's `mLivestockSummation` (`+0xc28`, saved): the livestock inside it (their
+    /// master's `+0x610`, `FUN_1411cb850`), whose food a mill makes ([`crate::world_player`]).
+    pub livestock_summation: f32,
     /// A combat object's `raider_build_countdown` (`+0x9a0`): the seconds it may stay inside a
     /// building.
     pub raider_countdown: i32,
