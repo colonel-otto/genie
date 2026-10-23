@@ -66,6 +66,16 @@ impl PlayerObjects {
             .map(|m| &m.master)
             .find(|m| m.static_part().is_some_and(|s| s.id() == id))
     }
+
+    /// The `.dat` master whose values the player's master `id` holds where the save does not
+    /// ([`RgeMasterStaticObject::copy_id`]): `id` itself unless an effect upgraded it, and `id`
+    /// for a master the save does not hold.
+    #[must_use]
+    pub fn dat_master(&self, id: i16) -> i16 {
+        self.master(id)
+            .and_then(Master::static_part)
+            .map_or(id, RgeMasterStaticObject::copy_id)
+    }
 }
 
 impl Master {
@@ -113,6 +123,14 @@ impl RgeMasterStaticObject {
     #[must_use]
     pub const fn id(&self) -> i16 {
         self.read_temp
+    }
+
+    /// The master's `copy_id` (`+0x158`): the save writes it second. A master an effect upgraded
+    /// (`UPGRADE_UNIT`) names the master it copies; the `.dat` values the save does not hold
+    /// (its tasks, its default task) are that master's.
+    #[must_use]
+    pub const fn copy_id(&self) -> i16 {
+        self.read_temp_2
     }
 }
 

@@ -743,11 +743,12 @@ fn mover(
         ))?
     };
     let speed = if 0.0 < factor { base * factor } else { base };
-    let turning = table
-        .turning(civ, s.master_obj)
-        .ok_or(GenieError::unsupported(
-            "a moving master the data file does not have",
-        ))?;
+    let turning =
+        table
+            .turning(civ, objects.dat_master(s.master_obj))
+            .ok_or(GenieError::unsupported(
+                "a moving master the data file does not have",
+            ))?;
     let (turn_speed, walking, running) = turn.ok_or(GenieError::unsupported(
         "a moving master without a moving part",
     ))?;
@@ -781,7 +782,9 @@ fn mover(
         paths: levels,
         factor: 1.0,
         stats: MoveStats {
-            fly_mode: table.fly_mode(civ, s.master_obj).unwrap_or(0),
+            fly_mode: table
+                .fly_mode(civ, objects.dat_master(s.master_obj))
+                .unwrap_or(0),
             speed,
             turn_rate: genie_core::movement::turn_rate(turn_speed, facets),
             turn_radius: 0.0,
@@ -1638,7 +1641,7 @@ fn fly_task(
             ));
     }
     masters
-        .and_then(|t| t.work(civ, master))
+        .and_then(|t| t.work(civ, objects.dat_master(master)))
         .and_then(|w| w.tasks.iter().find(|t| t.action_type == fly))
         .copied()
         .ok_or(GenieError::unsupported(
@@ -1648,7 +1651,7 @@ fn fly_task(
 
 /// The work range and value of a builder master's Build task.
 fn build_range(
-    _objects: &PlayerObjects,
+    objects: &PlayerObjects,
     civ: u8,
     masters: Option<&MasterTable>,
     m: &Master,
@@ -1672,7 +1675,7 @@ fn build_range(
             ));
     }
     masters
-        .and_then(|t| t.work(civ, master))
+        .and_then(|t| t.work(civ, objects.dat_master(master)))
         .and_then(|w| w.tasks.iter().find(|t| t.action_type == build))
         .map(|t| (t.work_range, t.work_val1))
         .ok_or(GenieError::unsupported(
@@ -1842,7 +1845,7 @@ fn default_task(
             .ok_or(GenieError::unsupported(
                 "no master table: the default task is unknown",
             ))?
-            .default_action(civ, s.master_obj)
+            .default_action(civ, objects.dat_master(s.master_obj))
             .ok_or(GenieError::unsupported("a master the table does not have"))?,
     };
     match action {
@@ -1946,7 +1949,7 @@ fn lifecycle(
             (
                 player.map(|m| m.death_sprite_id).filter(|&d| d >= 0),
                 player.map_or([-1, -1], |m| [m.death_spawn_obj_id, m.death_spawn_obj_id2]),
-                masters.and_then(|t| t.get(civ, s.master_obj)),
+                masters.and_then(|t| t.get(civ, objects.dat_master(s.master_obj))),
             )
         },
         |own| {
@@ -2763,7 +2766,7 @@ fn task_at(
             ));
     }
     masters
-        .and_then(|t| t.work(civ, master))
+        .and_then(|t| t.work(civ, objects.dat_master(master)))
         .and_then(|w| w.tasks.get(i))
         .copied()
         .ok_or(GenieError::unsupported(
@@ -2812,7 +2815,9 @@ fn work_masters(
     let saved = objects.masters.iter().flatten().map(|m| &m.master);
     genie_core::masters::Masters::new(saved.filter_map(|m| {
         let s = m.static_part()?;
-        let mut work = table.work(civ, s.id())?.clone();
+        // the `.dat` values of the master it copies (an upgraded one's), under its own id
+        let mut work = table.work(civ, s.copy_id())?.clone();
+        work.id = s.id();
         work.class = s.read_temp_5;
         work.radius = [s.radius_x, s.radius_y];
         work.tall = 0.0 < s.radius_z;
@@ -2932,14 +2937,14 @@ fn work_masters(
             .and_then(|r| r.rge_master_missile_object.as_deref())
         {
             work.missile_stats = Some(genie_core::missile::MissileStats {
-                projectile_type: table.projectile_type(civ, s.id()).unwrap_or(0),
+                projectile_type: table.projectile_type(civ, s.copy_id()).unwrap_or(0),
                 smart_mode: mm.targetting_type,
                 hit_mode: mm.missile_hit_info,
                 vanish_mode: mm.missile_die_info,
                 arc: mm.ballistics_ratio,
                 speed: animated_master(m).map_or(0.0, |a| a.max_speed),
                 radius: [s.radius_x, s.radius_y, s.radius_z],
-                fly_mode: table.fly_mode(civ, s.id()).unwrap_or(0),
+                fly_mode: table.fly_mode(civ, s.copy_id()).unwrap_or(0),
             });
         }
         work.damage_sprites = !s.damage_sprite.is_empty();
@@ -2972,7 +2977,7 @@ fn work_masters(
                     })
                     .collect()
             });
-        work.fly_mode = table.fly_mode(civ, s.id()).unwrap_or(0);
+        work.fly_mode = table.fly_mode(civ, s.copy_id()).unwrap_or(0);
         work.standing_sprite = s.idle_sprite_id;
         work.standing_sprite_2 = (0 <= s.idle2_sprite_id).then_some(s.idle2_sprite_id);
         (work.move_sprite, work.run_sprite) =
@@ -2981,7 +2986,7 @@ fn work_masters(
         work.garrison = s.obj_max;
         work.death_spawns = [s.death_spawn_obj_id, s.death_spawn_obj_id2];
         work.terrain_restriction = s.terrain_restriction_mask_id;
-        work.life = table.get(civ, s.id());
+        work.life = table.get(civ, s.copy_id());
         work.moving = moving_stats(m, s, civ, table);
         Some(work)
     }))
@@ -3005,11 +3010,11 @@ fn moving_stats(
     };
     let base = moving.rge_master_animated_object.max_speed;
     let factor = table.sprite_speed(sprite).unwrap_or(0.0);
-    let turning = table.turning(civ, s.id())?;
+    let turning = table.turning(civ, s.copy_id())?;
     let restriction = usize::try_from(s.terrain_restriction_mask_id).ok()?;
     let facets = table.graphics.get(&moving.move_sprite_id).map(|g| g.facets);
     Some(genie_core::movement::MoveStats {
-        fly_mode: table.fly_mode(civ, s.id()).unwrap_or(0),
+        fly_mode: table.fly_mode(civ, s.copy_id()).unwrap_or(0),
         speed: if 0.0 < factor { base * factor } else { base },
         turn_rate: genie_core::movement::turn_rate(moving.turn_speed, facets),
         turn_radius: 0.0,
