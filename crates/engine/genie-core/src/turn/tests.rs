@@ -4601,15 +4601,9 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
     assert_eq!(unit.anim_speed, Some(1.0));
 }
 
-/// BUILD's foundation is a moving object (type 80): the moving setup (`FUN_1411580a0`) gives it
-/// its movement state, though it never moves (speed 0), and the position setter makes its place
-/// a move at the world time (`+0x870`), which the walk reads of a building it meets (slot 0x5e8,
-/// `FUN_14106d2d0`): a foundation made after a unit's path was can be kept as a hit.
-#[test]
-fn a_build_command_s_foundation_holds_its_movement_state() {
-    let mut masters = builder_masters();
-    let house = masters.get_mut(70).unwrap();
-    house.moving = Some(crate::movement::MoveStats {
+/// A house's movement values: it never moves (speed 0).
+const fn house_moves() -> crate::movement::MoveStats {
+    crate::movement::MoveStats {
         fly_mode: 0,
         speed: 0.0,
         turn_rate: f32::MAX,
@@ -4627,7 +4621,18 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
         run_speed: 0.0,
         facets: None,
         weapon_range: 0.0,
-    });
+    }
+}
+
+/// BUILD's foundation is a moving object (type 80): the moving setup (`FUN_1411580a0`) gives it
+/// its movement state, though it never moves (speed 0), and the position setter makes its place
+/// a move at the world time (`+0x870`), which the walk reads of a building it meets (slot 0x5e8,
+/// `FUN_14106d2d0`): a foundation made after a unit's path was can be kept as a hit.
+#[test]
+fn a_build_command_s_foundation_holds_its_movement_state() {
+    let mut masters = builder_masters();
+    let house = masters.get_mut(70).unwrap();
+    house.moving = Some(house_moves());
     let mut t = Turns::new(
         0,
         29910,
@@ -4694,4 +4699,100 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
         (gait.moving, gait.last_move, gait.pause),
         (false, 72890, None)
     );
+}
+
+/// BUILD's foundation takes the setups' draws a new unit takes (`FUN_1411aca00`'s combat setup
+/// `FUN_14121df60` and the setups it runs first), with its master's standing sprite current
+/// (slot 0x798, `FUN_1412029f0`): a sprite of several facets with sequence flag 2 draws the
+/// facet the building faces (the moving setup `FUN_141161450`, "setup" line 0x2c3), before the
+/// powerup offset (line 0x1c1). 429730863's palisade 15472 (standing sprite 588: 5 facets,
+/// sequence type 3) faces facet 4, 5.0265484.
+#[test]
+fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
+    let build = |flags: u8| {
+        let mut masters = builder_masters();
+        let house = masters.get_mut(70).unwrap();
+        house.standing_sprite = 588;
+        house.moving = Some(house_moves());
+        let mut t = Turns::new(
+            0,
+            29910,
+            1,
+            vec![0, 0],
+            vec![
+                Player::default(),
+                Player {
+                    objects: vec![Unit {
+                        id: 9175,
+                        position: [30.0, 89.0, 0.0],
+                        life: Lifecycle {
+                            class: Class::Animated,
+                            state: 2,
+                            hp: 25.0,
+                            master_id: 83,
+                            ..Lifecycle::default()
+                        },
+                        ai: Some(UnitAi {
+                            ai_type: 8,
+                            current_order: -1,
+                            current_action: -1,
+                            current_target: -1,
+                            ..UnitAi::default()
+                        }),
+                        ..Unit::default()
+                    }],
+                    resources: [200.0, 100.0, 200.0, 100.0],
+                    attributes: vec![0.0; 250],
+                    ..Player::default()
+                },
+            ],
+        );
+        t.next_object_id = 10028;
+        t.masters = vec![Masters::default(), masters];
+        t.streams.seed_all(0x5eed);
+        let _ = t.graphics.insert(
+            588,
+            Graphic {
+                id: 588,
+                frames: 1,
+                facets: 5,
+                speed_multiplier: 1.0,
+                frame_duration: 0.0,
+                replay_delay: 0.0,
+                flags,
+            },
+        );
+        placeable(&mut t);
+        let before = t.streams.get(Stream::Object).clone();
+        t.run(&Command::Build {
+            player: 1,
+            master: 70,
+            unit_ai: Ok(None),
+            position: [30.0, 88.0, 0.0],
+            builders: vec![9175],
+            queued: false,
+            commits: false,
+        });
+        assert_eq!(t.players[1].unsupported, None);
+        (t, before)
+    };
+    // sequence type 3: the facing's draw, then the powerup offset's
+    let (mut t, mut before) = build(3);
+    let facing = before.rand15();
+    let _ = before.rand15();
+    assert_eq!(t.streams.get(Stream::Object), &before);
+    let facets = crate::facing::SpriteFacets {
+        count: 5,
+        flag_1: true,
+    };
+    let foundation = t.players[1].objects.last().unwrap();
+    let angle = crate::facing::drawn_angle(facing, facets);
+    assert_ne!(angle, 0.0);
+    assert_eq!(foundation.mover.as_ref().map(|m| m.angle), Some(angle));
+    // without sequence flag 2 only the powerup offset's
+    let (mut t, mut before) = build(1);
+    let _ = before.rand15();
+    assert_eq!(t.streams.get(Stream::Object), &before);
+    let foundation = t.players[1].objects.last().unwrap();
+    assert_eq!(foundation.mover.as_ref().map(|m| m.angle), Some(0.0));
 }

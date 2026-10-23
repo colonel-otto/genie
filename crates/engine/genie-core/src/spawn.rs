@@ -15,7 +15,7 @@ use crate::order::Work;
 use crate::production::{IN_PRODUCTION, MakeObj, MakeTech, Making, QUEUED, housed, population};
 use crate::rng::Stream;
 use crate::spatial::{Obstruction, Placed};
-use crate::sprite::ActiveSprite;
+use crate::sprite::{ActiveSprite, Graphic};
 use crate::turn::{GatherPoint, Turns, Unit};
 use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi, Unsupported, factory_type};
 use crate::visibility::{Seer, capture_kind};
@@ -1741,6 +1741,33 @@ impl Turns {
     /// a villager's (class 4) attribute 248 by one, and its class counts
     /// ([`crate::turn::count_class`]). It joins its player's list last; its
     /// index there.
+    /// The static, animated and moving setups' draws (`FUN_1411a45a0`, `FUN_141072690`,
+    /// `FUN_141161450`) of a new object whose current sprite is `standing` (slot 0x798: its
+    /// master's standing sprite, a building's too, `FUN_1412029f0`): a sprite with a random first
+    /// frame and several facets draws its facet (Object stream), the sprite starts (Sprite stream,
+    /// [`ActiveSprite::start`]), and one of several facets with sequence flag 2 draws the angle the
+    /// object faces (Object stream, "setup" line 0x2c3). Its sprite, its facets and its angle.
+    pub(crate) fn setup_draws(
+        &mut self,
+        standing: Graphic,
+    ) -> (ActiveSprite, crate::facing::SpriteFacets, f32) {
+        if standing.flags & 4 != 0 && 1 < standing.facets {
+            let _ = self.streams.get(Stream::Object).rand15();
+        }
+        let sprite = ActiveSprite::start(standing, self.streams.get(Stream::Sprite));
+        let facets = crate::facing::SpriteFacets {
+            count: standing.facets,
+            flag_1: standing.flags & 2 != 0,
+        };
+        let angle = if crate::facing::draws_angle(Some(facets)) {
+            let r = self.streams.get(Stream::Object).rand15();
+            crate::facing::drawn_angle(r, facets)
+        } else {
+            0.0
+        };
+        (sprite, facets, angle)
+    }
+
     pub(crate) fn combat_object(
         &mut self,
         p: usize,
@@ -1791,21 +1818,7 @@ impl Turns {
             ))?;
         let id = self.next_object_id;
         self.next_object_id += 1;
-        // the setups' draws
-        if standing.flags & 4 != 0 && 1 < standing.facets {
-            let _ = self.streams.get(Stream::Object).rand15();
-        }
-        let sprite = ActiveSprite::start(standing, self.streams.get(Stream::Sprite));
-        let facets = crate::facing::SpriteFacets {
-            count: standing.facets,
-            flag_1: standing.flags & 2 != 0,
-        };
-        let angle = if crate::facing::draws_angle(Some(facets)) {
-            let r = self.streams.get(Stream::Object).rand15();
-            crate::facing::drawn_angle(r, facets)
-        } else {
-            0.0
-        };
+        let (sprite, facets, angle) = self.setup_draws(standing);
         let ai = UnitAi::constructed(ai_type, &new_object, self.streams.get(Stream::Ai));
         let _ = self.streams.get(Stream::Object).rand15();
         // its place, record, mesh shape and sight (new_position, slot 0x58, and FUN_141054fe0)
@@ -2342,7 +2355,8 @@ impl Turns {
                 master: made.life,
             },
             ai,
-            // the moving setup (FUN_1411580a0): a building is a moving object
+            // the moving setup (FUN_1411580a0): a building is a moving object; without a
+            // standing sprite it draws no angle
             mover: made
                 .moving
                 .map(|stats| Mover::new_object(stats, at, self.world_time, 0.0, None)),

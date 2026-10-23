@@ -134,7 +134,7 @@ pub enum Command {
         /// The fish trap queue flips (0x13), else the farm queue (0x10).
         fishtrap: bool,
     },
-    /// GAME (0x67, `0x140e7c330`) sub-command 0x14 [`default_stance`]: the player's offensive
+    /// GAME (0x67, `0x140e7c330`) sub-command 0x14 `default_stance`: the player's offensive
     /// posture (`+0x71c`, `WorldPlayer` slot 0x14 `FUN_14163a630`) flips between 0 and 1.
     Posture {
         /// The player.
@@ -760,8 +760,10 @@ impl Turns {
     /// A new building (the master's slot 0x40 or 0x108, `FUN_1411ac5c0` / `FUN_1411aca00` with
     /// their init: the static, animated, moving and combat setups, then the constructor
     /// `FUN_1411de5f0`) of `master` for `player` at `position`, the ground's height: its id
-    /// (`mNextObjectId`), its unit AI of the given type if its class gets one, the combat setup's
-    /// class counters ([`count_class`]), its powerup offset (the Object stream's "setup" draw)
+    /// (`mNextObjectId`), its unit AI of the given type if its class gets one, the setups' draws
+    /// with its master's standing sprite current ([`Turns::setup_draws`]: the angle it faces), its
+    /// movement state ([`Mover::new_object`]), the combat setup's class counters
+    /// ([`count_class`]), its powerup offset (the Object stream's "setup" draw)
     /// and a building with a train location its paid cost (attribute 247); the static init's
     /// storage; its place and sight (its place links its tiles to its anchor, `FUN_1411e6780`).
     /// The constructor: masters 50 and 1889 on snow keep their snow (`+0xc61` 2); a master
@@ -776,7 +778,7 @@ impl Turns {
     /// owner's watched list unless the building is a gate (39), desolid when its master is tall,
     /// its own footprint cleared; `+0xcd0` notes mangrove or rice terrain under it
     /// (`FUN_141188db0`); last its owner watches it (`FUN_1411cc980`, [`Turns::watch_started`]).
-    /// Not held: the construction sprite, the facets, the world's `+0x154`, slot 0x840's
+    /// Not held: the construction sprite and its facets, the world's `+0x154`, slot 0x840's
     /// `+0xba0` and `+0xbf8`, and the wonder's `FUN_1411665c0`.
     ///
     /// # Errors
@@ -819,6 +821,13 @@ impl Turns {
             turn.stopped = true;
             None
         });
+        // the setups the combat setup runs first, with its master's standing sprite current
+        // (slot 0x798, FUN_1412029f0): their draws and the angle it faces; the constructor
+        // replaces the sprite (not held)
+        let angle = (0 <= made.standing_sprite)
+            .then(|| self.graphics.get(&made.standing_sprite).copied())
+            .flatten()
+            .map_or(0.0, |standing| self.setup_draws(standing).2);
         // the combat setup (FUN_14121df60): its class counters (FUN_141226060), its powerup
         // offset (`+0xa54`, the "setup" draw) and, for a building with a train location (an
         // entry of `+0x898` other than -1), its paid cost in attribute 247 (slot 0xf8)
@@ -879,7 +888,7 @@ impl Turns {
             .get(player)
             .and_then(|m| m.get(master))
             .and_then(|m| m.moving)
-            .map(|stats| Mover::new_object(stats, position, self.world_time, 0.0, None));
+            .map(|stats| Mover::new_object(stats, position, self.world_time, angle, None));
         // the constructor (FUN_1411de5f0)
         let [x, y, _] = position;
         let (tx, ty) = (
