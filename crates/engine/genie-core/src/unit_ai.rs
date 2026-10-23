@@ -130,6 +130,10 @@ pub(crate) const SOLDIER_AI: u32 = 13;
 const TOWER_AI: u32 = 15;
 /// The siege tower's factory type (`TribeSiegeTowerUnitAIModule`, master 1105's).
 const SIEGE_TOWER_AI: u32 = 0x12;
+/// The priest's factory type (`TribePriestUnitAIModule`: classes 18, 43 and 53), whose slot 72,
+/// notify handler and attack checks (its conversions and heals, `FUN_140c1feb0`,
+/// `FUN_140c26f60`, `FUN_140c19020`, `FUN_140c1af00`) are not modelled.
+const PRIEST_AI: u32 = 9;
 /// The siege unit's factory type (`TribeSiegeUnitAIModule`: classes 13, 51, 54, 55, masters 1744
 /// and 1746).
 const SIEGE_AI: u32 = 0x10;
@@ -1821,7 +1825,7 @@ pub struct AiMove {
 pub struct Unsupported(pub &'static str);
 
 /// What slot 73 does for a factory type.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Retarget {
     /// The base slot 73: the retarget check.
     Base,
@@ -1833,6 +1837,9 @@ enum Retarget {
     /// The artifact's override (14, `FUN_140c21d40`, [`UnitAi::artifact_misc`]): its
     /// processIdle, no check.
     Artifact,
+    /// The priest's override (9, `FUN_140c21f30`): the base's check but on the order on a target
+    /// (`0x2db`) and for a computer player's priest, which return 9.
+    Priest,
 }
 
 const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
@@ -1841,6 +1848,7 @@ const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
         8 => Ok(Retarget::Civilian),
         19 => Ok(Retarget::Never),
         ARTIFACT_AI => Ok(Retarget::Artifact),
+        PRIEST_AI => Ok(Retarget::Priest),
         // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), lion (5,
         // slot 72 FUN_140c1fb70), trade ship (0xa, slot 72 FUN_140c21930), transport ship (11,
         // slot 72 0x140c21d20), fishing ship (0xc, slot 72 FUN_140c1eab0), soldier (13, slot 72
@@ -3453,6 +3461,12 @@ impl UnitAi {
         match retarget {
             Retarget::Base => {
                 let _ = self.retarget_check(world_time, computer, at, ai, fx)?;
+            }
+            // the priest's checks but on the order on a target and for a computer player's
+            Retarget::Priest => {
+                if self.current_order != ORDER_ON_TARGET && !computer {
+                    let _ = self.retarget_check(world_time, computer, at, ai, fx)?;
+                }
             }
             Retarget::Civilian => self.civilian_misc(at, fx)?,
             Retarget::Never => {}
@@ -12983,5 +12997,41 @@ mod tests {
             Ok(false)
         );
         assert_eq!(fx, Vec::new());
+    }
+
+    /// The priest's slot 73 (`FUN_140c21f30`): the base's retarget check (a used timer redrawn),
+    /// but on the order on a target and for a computer player's priest none.
+    #[test]
+    fn a_priest_retargets_but_on_an_order_on_a_target() {
+        let at = Surroundings {
+            player: 1,
+            ..Surroundings::default()
+        };
+        let priest = |order| UnitAi {
+            current_order: order,
+            retarget_timer: 900,
+            last_retarget_time: 0,
+            adjusted_idle_timeout: 9000,
+            look_around_timeout: 9000,
+            ..idle(PRIEST_AI)
+        };
+        for (order, computer, draws) in [(-1, false, 1), (ORDER_ON_TARGET, false, 0), (-1, true, 0)]
+        {
+            let mut u = priest(order);
+            let mut r = rng();
+            let _ = u.update_tail(
+                Retarget::Priest,
+                10_000,
+                computer,
+                false,
+                None,
+                &at,
+                &mut r,
+                &mut Recorder::default(),
+                &mut Vec::new(),
+            );
+            assert_eq!(r.draws, draws, "order {order}, computer {computer}");
+        }
+        assert!(matches!(retarget_kind(PRIEST_AI), Ok(Retarget::Priest)));
     }
 }
