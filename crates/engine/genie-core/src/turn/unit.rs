@@ -5654,6 +5654,7 @@ impl Unit {
                 top_target: self.top_target_seen(c, others),
                 min_range: master.map_or(0.0, |m| m.min_range),
                 attack_moving: self.mover.as_ref().is_some_and(|m| m.attack_moving),
+                dodge_chance: c.dodge_chances.get(player).copied().unwrap_or(0),
             };
             // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
             let mut ai = self.ai.take().expect("filtered above");

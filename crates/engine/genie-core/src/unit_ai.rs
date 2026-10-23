@@ -94,6 +94,9 @@ pub const SENT_OFF_GROUP: i32 = 0x21b;
 /// The action value of a unit moving off a footprint (slot 0x148, `FUN_140c4d0d0`), and of one
 /// moving off with a group (the base handler's case 0x21b).
 pub const MOVE_ASIDE_ACTION: i32 = 0x2bf;
+/// `0x20f`: a missile's warning, which a shot whose blast does not spare friends sends its
+/// target when a computer player owns it (`FUN_141081020`).
+const MISSILE_WARNING: i32 = 0x20f;
 /// The action value of a unit moving off a footprint with a group.
 pub const GROUP_ASIDE_ACTION: i32 = 0x2c0;
 /// The order on a foundation a villager sent off its footprint takes up again (slot 0x108,
@@ -1469,6 +1472,9 @@ pub struct Surroundings {
     pub min_range: f32,
     /// The unit's `+0x7fb`, `mAttackMoving`.
     pub attack_moving: bool,
+    /// Its owner's `chance_to_dodge_missiles` (`player+0xe10`, saved): a ship's handler takes a
+    /// missile's warning (`0x20f`) as damage unless a draw below it dodges.
+    pub dodge_chance: u8,
 }
 
 /// The target of a unit's top action as its unit AI reads it ([`Surroundings::top_target`]).
@@ -1925,6 +1931,43 @@ const fn siege_stance(new: &NewObject) -> u8 {
         return new.posture as u8;
     }
     1
+}
+
+/// A ship's draw on a missile's warning (`0x20f`, `processNotify`): `r * 100 / 0x7fff` below
+/// its owner's `chance_to_dodge_missiles` ([`Surroundings::dodge_chance`]) dodges it.
+fn dodges(at: &Surroundings, ai: &mut Well512) -> bool {
+    // IMUL by 100, then IDIV by 0x7fff: a 15-bit draw stays positive
+    let r = ai.rand15() as i32;
+    r * 100 / 0x7fff < i32::from(at.dodge_chance)
+}
+
+/// The owner's slot 0x2e8 with an alert of its unit's (0x201 under attack, 0x209 dead,
+/// `FUN_14162dab0`): a human player's alert list and the old pather's hulled-area reset, not
+/// held; a computer player's AI hears it (slot 0x3c8), which is not modelled.
+const fn alert_owner(computer: bool) -> Result<(), Unsupported> {
+    if computer {
+        return Err(Unsupported(
+            "a computer player's AI hearing its unit's alert (slot 0x2e8, then slot 0x3c8)",
+        ));
+    }
+    Ok(())
+}
+
+/// `AskForHelp` (`FUN_140c42ce0`): a unit attacked by a new attacker asks the units its search
+/// finds (slot 0x50) that may attack the attacker (their slot 0xa0) to help; not modelled.
+const fn call_for_help() -> Result<(), Unsupported> {
+    Err(Unsupported("a call for help (AskForHelp, FUN_140c42ce0)"))
+}
+
+/// The state of the unit's top action (slot 0x2b0) as [`Surroundings::action_state`] holds it,
+/// for an action the slice holds.
+const fn held_action_state(state: Option<u8>) -> Result<u8, Unsupported> {
+    match state {
+        Some(s) => Ok(s),
+        None => Err(Unsupported(
+            "an action the slice does not hold (its state, slot 0x2b0)",
+        )),
+    }
 }
 
 impl UnitAi {
@@ -3562,13 +3605,9 @@ impl UnitAi {
             self.end_notifies(time, at, fx)?;
             return Ok(DEAD);
         }
-        // an animal that is not Gaia's alerts its owner (slot 0x2e8 with 0x201,
-        // `FUN_14162dab0`): a human player's alert list and the old pather's hulled-area reset,
-        // not held; a computer player's AI hears it (slot 0x3c8)
-        if at.player != 0 && computer {
-            return Err(Unsupported(
-                "a computer player's hunted animal under attack (its AI hears 0x201)",
-            ));
+        // an animal that is not Gaia's alerts its owner (slot 0x2e8 with 0x201)
+        if at.player != 0 {
+            alert_owner(computer)?;
         }
         let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
@@ -3803,15 +3842,11 @@ impl UnitAi {
         let added = self.add_attacker(n.caller);
         let fierce = attacker.class == CLASS_10 && attacker.combat_level == 1;
         if added && self.current_target != n.caller && !fierce {
-            return Err(Unsupported(
-                "a villager's call for help (AskForHelp, FUN_140c42ce0)",
-            ));
+            call_for_help()?;
         }
         side.set_under_attack(true);
         let order = self.current_order;
-        let state = at.action_state.ok_or(Unsupported(
-            "a villager's damage notify with an action the slice does not hold",
-        ))?;
+        let state = held_action_state(at.action_state)?;
         let gathers = matches!(
             order,
             crate::ai_kinds::ORDER_HUNT
@@ -3853,6 +3888,48 @@ impl UnitAi {
         Ok(BREAK)
     }
 
+    /// The transport ship's damage notify (`FUN_140c2a580`, cases 500 and a missile's warning
+    /// it did not dodge, "I took some damage from Unit #%d"): the unit's group only logs it
+    /// (`FUN_140c55c00`, `FUN_141027d60`). At no hit points left (`p[1]` below 1) it gives up
+    /// ("I'm dead, I give up."): the owner's alert (slot 0x2e8 with 0x209, [`alert_owner`]),
+    /// the notifies end (`FUN_140c5dc10`) and it returns 4. Else the owner's alert (0x201); a
+    /// new attacker (`FUN_140bf4cb0`) that is not its target makes a human player's ship call
+    /// for help ([`call_for_help`]); the attacker joins the set (`FUN_140b43f30`) and the unit
+    /// is under attack (`FUN_14119d2d0` with 1). With an order it ignores the damage ("I have an
+    /// order, I'm ignoring this damage notify.", 2); else, with no action or its top action in
+    /// state 2, it runs from its attackers (slot 0x160 with 1, [`UnitAi::run_away`]) and
+    /// returns 3.
+    #[allow(clippy::too_many_arguments)]
+    fn transport_damaged(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        alert_owner(computer)?;
+        if n.p[1] < 1 {
+            self.end_notifies(time, at, fx)?;
+            return Ok(DEAD);
+        }
+        let new = self.attackers.binary_search(&n.caller).is_err();
+        if new && !computer && self.current_target != n.caller {
+            call_for_help()?;
+        }
+        let _ = self.add_attacker(n.caller);
+        side.set_under_attack(true);
+        if self.current_order != -1 {
+            return Ok(GO_ON);
+        }
+        if !at.busy || held_action_state(at.action_state)? == 2 {
+            let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+        }
+        Ok(BREAK)
+    }
+
     /// The building's damage notify (`FUN_140c22610`, case 500): at no hit points left it gives
     /// up ("I'm dead, I give up."): the owner's alert (slot 0x2e8 with 0x209), the notifies end
     /// (`FUN_140c5dc10`) and it returns 4. Else the owner hears 0x201, as does each other owner
@@ -3872,11 +3949,9 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         let new = self.attackers.binary_search(&n.caller).is_err();
-        let asks = n.p[1] >= 1 && new && self.current_target != n.caller;
-        if computer || asks {
-            return Err(Unsupported(
-                "a building's damage notify (its computer owner's AI, AskForHelp)",
-            ));
+        alert_owner(computer)?;
+        if n.p[1] >= 1 && new && self.current_target != n.caller {
+            call_for_help()?;
         }
         if n.p[1] < 1 {
             self.end_notifies(time, at, fx)?;
@@ -4292,6 +4367,15 @@ impl UnitAi {
                 | 0x217..=0x21a
                 | 0x21c
                 | 0x21d => Err(Unsupported("a villager's notify the slice does not model")),
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            },
+            // the transport ship (FUN_140c2a580): its damage notify, and a missile's warning it
+            // takes as damage unless it dodges; any other notify is the base handler's
+            11 => match n.kind {
+                MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
+                DAMAGED | MISSILE_WARNING => {
+                    self.transport_damaged(n, time, at, computer, ai_rng, side, fx)
+                }
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the soldier (FUN_140c28bb0): its own cases are the computer's, a backing-up and a
@@ -5602,14 +5686,8 @@ impl UnitAi {
             return Ok(());
         }
         // "I have an game attack action without an order ... inAttackWorkState"
-        match action_state {
-            Some(6 | 7) if !search => return Ok(()),
-            Some(_) => {}
-            None => {
-                return Err(Unsupported(
-                    "a retarget check of an action the slice does not hold (slot 0x2b0)",
-                ));
-            }
+        if matches!(held_action_state(action_state)?, 6 | 7) && !search {
+            return Ok(());
         }
         Err(Unsupported(
             "a unit AI's search for a better target (slot 0x538 with 9, then slot 0x520)",
@@ -11283,5 +11361,160 @@ mod tests {
             .after_order(busy, 10_000, false, &gaia, &mut rng(), &mut no_search)
             .unwrap();
         assert_eq!(u.idle_timer, 5000);
+    }
+
+    /// A human player's transport ship at (20, 30) attacked by unit 77 two tiles east of it,
+    /// already among its attackers.
+    fn attacked_transport() -> (UnitAi, Surroundings) {
+        let u = UnitAi {
+            attackers: vec![77],
+            ..idle(11)
+        };
+        let at = Surroundings {
+            id: 500,
+            position: [20.0, 30.0, 0.0],
+            speed: 1.0,
+            map: [64, 64],
+            player: 1,
+            class: 20,
+            state: 2,
+            units: vec![UnitSeen {
+                id: 77,
+                class: 22,
+                owner: 2,
+                state: 2,
+                target: Some(500),
+                position: [22.0, 30.0, 0.0],
+                ..UnitSeen::default()
+            }],
+            ..Surroundings::default()
+        };
+        (u, at)
+    }
+
+    /// The transport ship's handler (`FUN_140c2a580`): a notify other than damage and a
+    /// missile's warning is the base handler's, as it answers it.
+    #[test]
+    fn the_transport_ship_passes_other_notifies_to_the_base_handler() {
+        let (mut u, at) = attacked_transport();
+        u.current_action = MOVE_ACTION;
+        u.current_order = MOVE_ORDER;
+        let mut base = u.clone();
+        let n = Notify::own(500, ACTION_COMPLETED, [MOVE_ACTION, 0, 0]);
+        let (mut fx, mut base_fx) = (Vec::new(), Vec::new());
+        let r = u.handle(
+            n,
+            0,
+            &at,
+            false,
+            &mut rng(),
+            &mut Recorder::default(),
+            &mut fx,
+        );
+        let b = base.base_notify(
+            n,
+            0,
+            &at,
+            false,
+            &mut rng(),
+            &mut Recorder::default(),
+            &mut base_fx,
+        );
+        assert_eq!((r, fx), (b, base_fx));
+        assert_eq!(u, base);
+    }
+
+    /// Its damage notify: the attacker it knows joins no one new (no call for help), the unit is
+    /// under attack; without an order or an action it runs from its attackers by twice its speed
+    /// (slot 0x160 with 1) and breaks off (3). With an order it ignores the damage (2). At no hit
+    /// points left it gives up (4). A computer player's AI would hear the alert (not modelled).
+    #[test]
+    fn a_transport_ship_runs_from_its_attackers_without_an_order() {
+        let (mut u, at) = attacked_transport();
+        let n = Notify::own(77, DAMAGED, [77, 40, 0]);
+        let mut side = StandSide {
+            refusals: 0,
+            tested: Vec::new(),
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(u.attackers, vec![77]);
+        assert_eq!(
+            fx,
+            vec![Effect::Move(AiMove {
+                point: [18.0, 30.0, 0.0],
+                range: 0.0,
+                force: true,
+                walk: false,
+            })]
+        );
+        let (mut u, at) = attacked_transport();
+        u.current_order = MOVE_ORDER;
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(GO_ON)
+        );
+        assert_eq!(fx, Vec::<Effect>::new());
+        // busy with its top action in state 2 it runs too; in another state it stays
+        let (mut u, mut at) = attacked_transport();
+        at.busy = true;
+        at.action_state = Some(4);
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(fx, Vec::<Effect>::new());
+        let (mut u, at) = attacked_transport();
+        let dead = Notify::own(77, DAMAGED, [77, 0, 0]);
+        assert_eq!(
+            u.handle(dead, 0, &at, false, &mut rng(), &mut side, &mut Vec::new()),
+            Ok(DEAD)
+        );
+        let (mut u, at) = attacked_transport();
+        assert!(
+            u.handle(n, 0, &at, true, &mut rng(), &mut side, &mut Vec::new())
+                .is_err()
+        );
+        // a new attacker that is not its target: the call for help is not modelled
+        let (mut u, at) = attacked_transport();
+        u.attackers.clear();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut Vec::new()),
+            Err(Unsupported("a call for help (AskForHelp, FUN_140c42ce0)"))
+        );
+    }
+
+    /// A missile's warning (`0x20f`): one draw, `r * 100 / 0x7fff` below the owner's
+    /// `chance_to_dodge_missiles` dodges it (2); else it is damage.
+    #[test]
+    fn a_transport_ship_dodges_a_missile_s_warning_by_its_owner_s_chance() {
+        let r = rng().rand15() as i32 * 100 / 0x7fff;
+        let warning = Notify::own(77, MISSILE_WARNING, [77, 40, 0]);
+        let mut side = StandSide {
+            refusals: 0,
+            tested: Vec::new(),
+        };
+        let (mut u, mut at) = attacked_transport();
+        at.dodge_chance = u8::try_from(r + 1).unwrap();
+        let mut ai = rng();
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(warning, 0, &at, false, &mut ai, &mut side, &mut fx),
+            Ok(GO_ON)
+        );
+        assert_eq!((ai.draws, fx.len()), (1, 0));
+        let (mut u, mut at) = attacked_transport();
+        at.dodge_chance = u8::try_from(r).unwrap();
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(warning, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(fx.len(), 1);
     }
 }

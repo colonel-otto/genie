@@ -2167,6 +2167,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 fealty: p.world_player().fealty as i16,
                 // the load sets it 0 (`FUN_14163e970`)
                 posture: 0,
+                dodge_chance: p.world_player().chance_to_dodge_missiles,
                 // the load builds the watched lists (Turns::build_watched)
                 watched: Vec::new(),
                 ghosts: saved_ghosts(p),

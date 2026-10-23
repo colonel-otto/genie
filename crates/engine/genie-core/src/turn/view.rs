@@ -138,6 +138,8 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) player_turn: usize,
     pub(in crate::turn) player_time: &'a [u32],
     pub(in crate::turn) computers: &'a [bool],
+    /// Each player's `chance_to_dodge_missiles` ([`crate::turn::Player::dodge_chance`]).
+    pub(in crate::turn) dodge_chances: &'a [u8],
     /// Some player's attribute 204 is not 0, which a building's completion reads.
     pub(in crate::turn) attribute_204: bool,
     /// [`Turns::mode_680`].
