@@ -1758,7 +1758,7 @@ pub(crate) fn search_radius(los: f32, search_radius: f32) -> f32 {
 }
 
 /// `UpdateAdjustedIdleTimeout` (`0x140c41e00`): `r % (base / 2) + 3 * base / 4`, one AI draw.
-const fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
+fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
     ai.rand15() % (base >> 1) + ((base * 3) >> 2)
 }
 
@@ -1815,7 +1815,7 @@ impl UnitAi {
     /// and the civilian's (8, `TribeCivilianUnitAIModule` `0x140c115d0`, [`CIVILIAN_CARED`]) are
     /// modelled, each of which sets the stance (`+0x1a9`) to 0 after the base's 3; for any other
     /// type nothing is drawn.
-    pub const fn constructed(
+    pub fn constructed(
         ai_type: u32,
         position: [f32; 3],
         ai: &mut Well512,
@@ -1984,7 +1984,7 @@ impl UnitAi {
 
     /// `UpdateAdjustedIdleTimeout` (slot 0x1a8): the base draws around the idle timeout
     /// (`0x140c41e00`); a deer's or fox's (factory type 2, `FUN_140c17170`) is 5/4 of it.
-    const fn update_adjusted_idle_timeout(&mut self, ai: &mut Well512) {
+    fn update_adjusted_idle_timeout(&mut self, ai: &mut Well512) {
         self.adjusted_idle_timeout = if self.ai_type == 2 {
             self.idle_timeout.wrapping_mul(5) >> 2
         } else {
@@ -4834,7 +4834,7 @@ impl UnitAi {
     /// (`FUN_140c4eea0` with 0) ends, its target removed (`FUN_140c5e1e0`), the patrol order 733
     /// resetting its timers ([`UnitAi::leave_patrol_timers`]); its priority and the last order
     /// stay. The patrol order 711 is not among them.
-    const fn check_order(&mut self, at: &Surroundings, ai: &mut Well512) {
+    fn check_order(&mut self, at: &Surroundings, ai: &mut Well512) {
         let ends = matches!(
             self.current_order,
             0x269 | 700 | 0x2c5 | 0x2c6 | 0x2c9 | 0x2cf | 0x2d0 | 0x2dd | 0x322
@@ -4863,7 +4863,7 @@ impl UnitAi {
     /// What leaving a patrol order (711, 733) does to the timers wherever the game sets the
     /// order by hand: an adjusted idle timeout of exactly 750 is redrawn (slot 0x1a8) and the
     /// secondary timer is capped at 750 (`0x2ee < (int)+0x16c`).
-    const fn leave_patrol_timers(&mut self, ai: &mut Well512) {
+    fn leave_patrol_timers(&mut self, ai: &mut Well512) {
         if matches!(self.current_order, PATROL | PATROL_2) {
             if self.adjusted_idle_timeout == 750 {
                 self.update_adjusted_idle_timeout(ai);
@@ -5509,7 +5509,7 @@ impl UnitAi {
 
     /// The look-around check at the end of the full update (`LAB_140c6809c`): a timer past its
     /// timeout restarts with a timeout drawn around 5 s.
-    const fn look_around(&mut self, computer: bool, ai: &mut Well512) -> Result<(), Unsupported> {
+    fn look_around(&mut self, computer: bool, ai: &mut Well512) -> Result<(), Unsupported> {
         if self.look_around_timer > self.look_around_timeout {
             // the human branch; `FUN_14152b470` sends players allied with a computer elsewhere
             if computer {

@@ -19,6 +19,11 @@
 //!   and `to_state`) or its unit AI (`unit_ai`: `from_order`, `to_order`, `from_ai_action`,
 //!   `to_ai_action`, `from_target`, `to_target`); −1 stands for none. Each carries `tick`,
 //!   `player` and `object`.
+//! - `genie_core::draws` (TRACE): each step of a random generator (the event `draw`: `stream`,
+//!   the [`crate::rng::Stream`] as its number, 255 for a generator outside the eleven; `draw`,
+//!   the generator's draw count after it; `value`, the raw step; `at`, the engine's line that
+//!   asked for it). Compared with the tick oracle's `ai_draws`, it finds the update where a
+//!   stream's draws part from the game's.
 
 use crate::turn::Unit;
 use crate::unit_ai::Unsupported;
@@ -29,6 +34,20 @@ pub const UPDATE: &str = "genie_core::update";
 pub const UNSUPPORTED: &str = "genie_core::unsupported";
 /// The target of the state change events.
 pub const STATE: &str = "genie_core::state";
+/// The target of the random generators' steps.
+pub const DRAWS: &str = "genie_core::draws";
+
+/// A random generator's step ([`DRAWS`]); `at` is the line of the engine that asked for it.
+#[track_caller]
+pub(crate) fn draw(stream: u8, draw: u32, value: u32) {
+    tracing::trace!(
+        target: DRAWS,
+        stream,
+        draw,
+        value,
+        at = %std::panic::Location::caller()
+    );
+}
 
 /// An object's update meets a case the engine does not model: the object freezes.
 pub(crate) fn object_freezes(tick: u32, player: usize, object: i32, why: Unsupported) {
@@ -211,7 +230,7 @@ mod tests {
     /// The lines a subscriber hears while `run` runs. The interest cache is rebuilt inside the
     /// scope: a callsite another test registered at the same time, with no subscriber yet, may
     /// hold a stale "never".
-    fn heard(run: impl FnOnce()) -> Vec<String> {
+    fn heard_with_draws(run: impl FnOnce()) -> Vec<String> {
         let recorder = Recorder::default();
         tracing::subscriber::with_default(recorder.clone(), || {
             tracing::callsite::rebuild_interest_cache();
@@ -220,12 +239,51 @@ mod tests {
         recorder.lines()
     }
 
+    /// [`heard_with_draws`] without the random generators' steps.
+    fn heard(run: impl FnOnce()) -> Vec<String> {
+        let mut lines = heard_with_draws(run);
+        lines.retain(|l| !l.contains(DRAWS));
+        lines
+    }
+
     fn one(objects: Vec<Unit>) -> Turns {
         let player = Player {
             objects,
             ..Player::default()
         };
         Turns::new(0, 1, 0, vec![0], vec![player])
+    }
+
+    /// Each step names its stream, the draw count, the raw value and the engine's line that
+    /// asked for it, through every draw helper.
+    #[test]
+    fn a_draw_tells_its_stream_value_and_the_line_that_asked() {
+        let mut streams = crate::rng::Streams::default();
+        streams.seed_all(29910);
+        let ai = streams.get(crate::rng::Stream::Ai);
+        let mut copy = ai.clone();
+        let (lines, line) = (
+            heard_with_draws(|| {
+                let _ = ai.rand15();
+            }),
+            line!() - 2,
+        );
+        let value = copy.raw();
+        let draws: Vec<&String> = lines.iter().filter(|l| l.contains(DRAWS)).collect();
+        assert_eq!(draws.len(), 1, "{lines:?}");
+        let head = format!(
+            "TRACE {DRAWS} stream=4 draw={} value={value} at=crates/engine/genie-core/src/trace.rs:{line}:",
+            copy.draws
+        );
+        assert!(draws[0].starts_with(&head), "{} against {head}", draws[0]);
+        // a generator outside the streams, and a helper of two steps
+        let mut lone = crate::rng::Well512::default();
+        lone.set_seed(1);
+        let lines = heard_with_draws(|| {
+            let _ = lone.raw64();
+        });
+        let lone_draws = lines.iter().filter(|l| l.contains("stream=255")).count();
+        assert_eq!(lone_draws, 2, "{lines:?}");
     }
 
     #[test]

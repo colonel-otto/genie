@@ -76,7 +76,7 @@ impl Fly {
     /// (`position`), then `set_state(3)` draws the flight's time from the Action stream. The
     /// first's other parts are the caller's: a player's bird whose task has `+0x15` set goes to
     /// state 1 first, and a master of fly mode 1 lifts the bird to [`HEIGHT`] (slot 0x58).
-    pub const fn start(task: Task, position: [f32; 3], action: &mut Well512) -> Self {
+    pub fn start(task: Task, position: [f32; 3], action: &mut Well512) -> Self {
         let mut fly = Self {
             state: 0,
             timer: 0.0,
@@ -93,7 +93,7 @@ impl Fly {
     /// caller's: the returned flag); 2 gives the bird its master's sprite (slot 0x68, not held
     /// for a bird); 3 draws the flight's time, `r * 10 / 0x7fff + 5` seconds, from the Action
     /// stream.
-    const fn set_state(&mut self, state: u8, action: &mut Well512) -> bool {
+    fn set_state(&mut self, state: u8, action: &mut Well512) -> bool {
         self.state = state;
         if state == FLYING {
             return false;

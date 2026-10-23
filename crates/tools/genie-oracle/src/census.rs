@@ -273,6 +273,36 @@ pub fn header_divergences(
     Ok(out)
 }
 
+/// The recording run from its header as the census runs it, to update `last`; `before` is called
+/// before each update with its number (1 the first), so a caller can listen to one update's
+/// trace ([`genie_core::trace`]).
+///
+/// # Errors
+///
+/// When the recording or its header cannot be read.
+pub fn header_run(
+    recording: &[u8],
+    masters: Option<&MasterTable>,
+    last: usize,
+    before: &mut dyn FnMut(usize),
+) -> Result<(), Error> {
+    let chapter = de::chapters(recording)?[0];
+    let header = chapter.header()?;
+    let sections = header.players();
+    let mut turns = header_slice(&header, masters);
+    let mut decoder = Decoder::default();
+    for (i, frame) in frames(&chapter, last)?.iter().enumerate() {
+        before(i + 1);
+        run(
+            &mut turns,
+            &mut decoder,
+            std::slice::from_ref(frame),
+            &sections,
+        );
+    }
+    Ok(())
+}
+
 /// [`header_divergences`] of one player.
 ///
 /// # Errors

@@ -17,7 +17,13 @@ pub struct Well512 {
     pub draws: u32,
     /// The last `rand15` value; the constructor sets it to `u32::MAX`.
     pub last: u32,
+    /// Which of the eleven streams it is ([`Stream`] as its number, [`NO_STREAM`] for a
+    /// generator outside [`Streams`]): the draw trace's only ([`crate::trace::DRAWS`]).
+    pub stream: u8,
 }
+
+/// [`Well512::stream`] of a generator outside [`Streams`].
+pub const NO_STREAM: u8 = 255;
 
 impl Default for Well512 {
     fn default() -> Self {
@@ -26,6 +32,7 @@ impl Default for Well512 {
             index: 0,
             draws: 0,
             last: u32::MAX,
+            stream: NO_STREAM,
         }
     }
 }
@@ -47,8 +54,10 @@ impl Well512 {
     }
 
     /// One step. The engine's variant of `WELL512a`: taps at index − 3 and index − 7, the mask
-    /// `0xfed22169`, and an extra `^ z1` in the new word.
-    pub const fn raw(&mut self) -> u32 {
+    /// `0xfed22169`, and an extra `^ z1` in the new word. Each step is traced
+    /// ([`crate::trace::DRAWS`]) with the engine's line that asked for it.
+    #[track_caller]
+    pub fn raw(&mut self) -> u32 {
         self.draws = self.draws.wrapping_add(1);
         let i = self.index as usize;
         let s = &mut self.state;
@@ -63,12 +72,14 @@ impl Well512 {
         self.index = j as u32;
         let z0 = s[j];
         s[j] = z0 ^ ((((z2 << 10) ^ z1) << 16 ^ z0) << 2) ^ ((new1 & 0xfed2_2169) << 5) ^ new1 ^ z1;
+        crate::trace::draw(self.stream, self.draws, s[j]);
         s[j]
     }
 
     /// `rand15`: a step masked to 15 bits, kept as `last`.
     /// A 64-bit draw (`FUN_140811100`): two steps, the first one's word high and the second
     /// one's low, counted as one draw.
+    #[track_caller]
     pub fn raw64(&mut self) -> u64 {
         let hi = self.raw();
         let lo = self.raw();
@@ -77,13 +88,15 @@ impl Well512 {
     }
 
     /// The next draw, 15 bits (`rand15`).
-    pub const fn rand15(&mut self) -> u32 {
+    #[track_caller]
+    pub fn rand15(&mut self) -> u32 {
         self.last = self.raw() & 0x7fff;
         self.last
     }
 
     /// `GetRandFloat0to1` (`FUN_1408115a0`): a step times `2^-32` (`DAT_142ea7c48`, in f64), as
     /// f32, held to 0..1; `last` stays.
+    #[track_caller]
     pub fn float01(&mut self) -> f32 {
         /// The step's scale (`DAT_142ea7c48`).
         const SCALE: f64 = crate::image::rng::FLOAT_SCALE;
@@ -100,12 +113,14 @@ impl Well512 {
     }
 
     /// A step scaled to `0..n` (`FUN_140810cb0`): `step × n >> 32`; `last` stays.
+    #[track_caller]
     pub fn below(&mut self, n: u32) -> u32 {
         ((u64::from(self.raw()) * u64::from(n)) >> 32) as u32
     }
 
     /// A step scaled to `0..n` that takes no step for `n` 0 (`FUN_140810fc0`): the draw counts
     /// either way, then 0 for `n` 0, else [`Well512::below`]'s `step × n >> 32`; `last` stays.
+    #[track_caller]
     pub fn below_checked(&mut self, n: u32) -> u32 {
         if n == 0 {
             self.draws = self.draws.wrapping_add(1);
@@ -118,7 +133,8 @@ impl Well512 {
     /// engine (MSVC `_Rng_from_urng`, 32 bits a step): a step, again while it falls in the last
     /// incomplete span of `n` (`step / n` is not below `u32::MAX / n`, unless `u32::MAX % n` is
     /// `n − 1`), then `step % n`.
-    pub const fn index(&mut self, n: u32) -> u32 {
+    #[track_caller]
+    pub fn index(&mut self, n: u32) -> u32 {
         loop {
             let v = self.raw();
             if v / n < u32::MAX / n || u32::MAX % n == n - 1 {
@@ -129,6 +145,7 @@ impl Well512 {
 
     /// `std::shuffle` with the generator as its engine: each place from the second on swaps
     /// with an [`Well512::index`] up to it.
+    #[track_caller]
     pub fn shuffle<T>(&mut self, items: &mut [T]) {
         for i in 1..items.len() {
             let j = self.index(i as u32 + 1) as usize;
@@ -177,9 +194,20 @@ pub enum Stream {
 }
 
 /// All eleven generators.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Streams {
     rngs: [Well512; 11],
+}
+
+impl Default for Streams {
+    fn default() -> Self {
+        Self {
+            rngs: std::array::from_fn(|i| Well512 {
+                stream: i as u8,
+                ..Well512::default()
+            }),
+        }
+    }
 }
 
 impl Streams {
