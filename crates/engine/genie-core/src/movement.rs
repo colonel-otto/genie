@@ -2827,17 +2827,17 @@ impl Mover {
             .player;
         let [rx, ry, _] = self.stats.radius;
         let at = vector(me.position);
-        let met = |id: i32| -> Result<(i32, &Placed), Unsupported> {
+        // a hit the world holds no object of (a map edge's record) is passed over
+        let met = |id: i32| -> Result<Option<(i32, &Placed)>, Unsupported> {
             let id = world.annex_of(id).unwrap_or(id);
-            let p = world
-                .get_known(id)?
-                .ok_or(Unsupported("a met object without a place"))?;
-            Ok((id, p))
+            Ok(world.get_known(id)?.map(|p| (id, p)))
         };
         let mut target_hit = false;
         let mut kept = Vec::new();
         for &hit in hits {
-            let (id, other) = met(hit)?;
+            let Some((id, other)) = met(hit)? else {
+                continue;
+            };
             if 0 <= level.target && id == level.target {
                 target_hit = true;
             }
@@ -2882,7 +2882,9 @@ impl Mover {
         let mut pauses = Vec::new();
         if level.waypoint < 2 || (level.waypoint < 3 && level.created.wrapping_add(500) < now) {
             for &hit in hits {
-                let (id, other) = met(hit)?;
+                let Some((id, other)) = met(hit)? else {
+                    continue;
+                };
                 if 0 <= level.target && id == level.target {
                     continue;
                 }
@@ -3910,6 +3912,45 @@ mod tests {
         let avoided = avoided.unwrap();
         assert!(avoided.at_target);
         assert_eq!((avoided.kept, avoided.pauses), (vec![9175], Vec::new()));
+    }
+
+    /// A map edge's record (id `x << 12 | y | 0xff000000`, [`Spatial::edge_records`]) is a hit
+    /// without an object: the hit loops pass over it (`FUN_1415417a0` finds none,
+    /// 0x141154709), while it counts among the hits (`local_1758`'s count, 0x14115488a): the
+    /// walked level's target alone among two hits is no lone target.
+    #[test]
+    fn a_map_edge_s_record_is_a_hit_without_an_object() {
+        let w = world();
+        let me = Me {
+            id: 9177,
+            position: [28.0, 89.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let mut m = builder_9177();
+        m.paths[0].target = 9175;
+        let position = vector(m.moved_at);
+        let waypoint = m.paths[0].point(1);
+        let projected = m.projected(m.direction_to(position, waypoint), DT);
+        let edge = (5 << 12) | 3 | 0xff00_0000_u32 as i32;
+        let avoided = m
+            .avoid(&me, (&w, None), &[edge], projected, DT, (16361, false))
+            .unwrap();
+        assert_eq!(
+            (avoided.kept, avoided.pauses, avoided.at_target),
+            (Vec::new(), Vec::new(), false)
+        );
+        let avoided = m
+            .avoid(
+                &me,
+                (&w, None),
+                &[edge, 9175],
+                projected,
+                DT,
+                (16361, false),
+            )
+            .unwrap();
+        assert!(!avoided.at_target);
     }
 
     /// The walk's kept hits join the motion step's include list (`DAT_143f4a000`), at most 0x100
