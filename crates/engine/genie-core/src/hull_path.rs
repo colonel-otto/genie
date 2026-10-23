@@ -22,10 +22,10 @@
 //! pather's ignore list: the caller's objects (slot 0x3e8's the unit and its target) and the tile
 //! under a listed one-tile object that the unit's terrain cannot cross.
 
+use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::fmath::{at_most_or_unordered, below_or_unordered, maxss, minss, sqrt};
 use crate::spatial::{GATE_CLASS, Hit, Placed, Spatial, tile_record_id};
-use crate::unit_ai::Unsupported;
 
 /// A point on the map, x and y.
 type Point = [f32; 2];
@@ -637,10 +637,12 @@ pub fn quick_reach(
     mask: u8,
     radius: f32,
     range: f32,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     let from = world
         .get(me)
-        .ok_or(Unsupported("a quick path of an object without a place"))?
+        .ok_or(GenieError::unsupported(
+            "a quick path of an object without a place",
+        ))?
         .position;
     let reach = quick_reach_from(world, me, [from[0], from[1]], target, mask, radius, range)?;
     Ok(reach.is_some())
@@ -664,7 +666,7 @@ pub fn quick_reach_from(
     mask: u8,
     radius: f32,
     range: f32,
-) -> Result<Option<f32>, Unsupported> {
+) -> Result<Option<f32>, GenieError> {
     let Some(t) = world.get_known(target)? else {
         return Ok(None);
     };
@@ -977,7 +979,7 @@ impl<'w> HullPather<'w> {
     /// The manager's line test (`FUN_141052b90`, then `FUN_141052350` with flags 0x40) with the
     /// pather's buffer, ignore list and include list: Spatial's pather query, which leaves every
     /// moving record out, or an included one that moves ([`HullPather::included_movers`]).
-    fn blocked(&self, a: Point, b: Point) -> Result<bool, Unsupported> {
+    fn blocked(&self, a: Point, b: Point) -> Result<bool, GenieError> {
         if self
             .world
             .pather_blocked(a, b, self.buffer, self.mask, &self.ignore)?
@@ -991,7 +993,7 @@ impl<'w> HullPather<'w> {
     /// `FUN_141051900` with flags 0x40), with the pather's buffer, ignore list and include list:
     /// Spatial's pather query and the included objects that move
     /// ([`HullPather::included_movers`]). The callers read how many and which, not their order.
-    fn hits(&self, a: Point, b: Point) -> Result<Vec<Hit>, Unsupported> {
+    fn hits(&self, a: Point, b: Point) -> Result<Vec<Hit>, GenieError> {
         let mut hits = self
             .world
             .pather_hits(a, b, self.buffer, self.mask, &self.ignore)?;
@@ -1014,7 +1016,7 @@ impl<'w> HullPather<'w> {
     /// (flags 0x10) tests the same records alike, the buffer the grow, and leaves none out, at
     /// most [`LINE_HITS`] a call: what it lists goes into its ignore list until a call lists
     /// fewer.
-    fn included_movers(&self, a: Point, b: Point) -> Result<Vec<i32>, Unsupported> {
+    fn included_movers(&self, a: Point, b: Point) -> Result<Vec<i32>, GenieError> {
         let movers: Vec<i32> = self
             .include
             .iter()
@@ -1048,7 +1050,7 @@ impl<'w> HullPather<'w> {
 
     /// `MShortPather::buildPath` (`FUN_140f8bcd0`): from `end` back, a node that sees its
     /// grandparent skips its parent; then the nodes from the first into `path`.
-    fn build_path(&mut self, path: &mut Waypoints, end: usize) -> Result<(), Unsupported> {
+    fn build_path(&mut self, path: &mut Waypoints, end: usize) -> Result<(), GenieError> {
         let mut cur = Some(end);
         while let Some(c) = cur {
             let Some(p) = self.nodes[c].parent else {
@@ -1176,7 +1178,7 @@ impl<'w> HullPather<'w> {
         y: i32,
         hull: Option<usize>,
         player: i32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let world = self.world;
         for &id in world.tiles().list(x, y) {
             let Some(p) = world.get(id) else {
@@ -1198,11 +1200,11 @@ impl<'w> HullPather<'w> {
     /// Slot 0x678 of object `id` for `player`: only a gate's (`FUN_1411d4a30`) answers yes, and
     /// never for player -1 (`processCliffs`'): its ally test `FUN_141663dc0` takes no number at
     /// or above the player count, unsigned.
-    fn passes(&self, id: i32, p: &Placed, player: i32) -> Result<bool, Unsupported> {
+    fn passes(&self, id: i32, p: &Placed, player: i32) -> Result<bool, GenieError> {
         if p.class != GATE_CLASS || player < 0 {
             return Ok(false);
         }
-        let gates = self.gates.ok_or(Unsupported(
+        let gates = self.gates.ok_or(GenieError::unsupported(
             "a gate in the old short pather's area (its players' passage, slot 0x678)",
         ))?;
         Ok((gates.0)(id, player))
@@ -1234,7 +1236,7 @@ impl<'w> HullPather<'w> {
         y: i32,
         area: [i32; 4],
         hull: Option<usize>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let [w, h] = self.world.map;
         if x < 0 || y < 0 || w <= x || h <= y {
             return Ok(());
@@ -1260,7 +1262,7 @@ impl<'w> HullPather<'w> {
             }
         }
         self.add_tile_objects(x, y, hull, self.player)?;
-        let sight = self.world.sight.as_ref().ok_or(Unsupported(
+        let sight = self.world.sight.as_ref().ok_or(GenieError::unsupported(
             "the old short pather without the map's building links",
         ))?;
         if sight.link(x, y).0 & 0x60 != 0
@@ -1276,7 +1278,7 @@ impl<'w> HullPather<'w> {
     /// the unit cannot cross (its terrain, or a static record's mark but a class 5 one) is one box
     /// whose tiles' boxes and small objects go into its hull; each other tile's objects go each to
     /// its own place. Then the cliffs about the area.
-    fn build_hulls(&mut self) -> Result<(), Unsupported> {
+    fn build_hulls(&mut self) -> Result<(), GenieError> {
         self.hulls.clear();
         let [w, h] = self.world.map;
         self.area[0] = self.area[0].max(0);
@@ -1310,7 +1312,7 @@ impl<'w> HullPather<'w> {
     }
 
     /// A run of tiles `x0`..`x1` of row `y` the unit cannot cross: one box, then its tiles.
-    fn add_run(&mut self, x0: i32, x1: i32, y: i32, r: f32) -> Result<(), Unsupported> {
+    fn add_run(&mut self, x0: i32, x1: i32, y: i32, r: f32) -> Result<(), GenieError> {
         let min = [x0 as f32 - r, y as f32 - r];
         let max = [x1 as f32 + r, (y + 1) as f32 + r];
         let hull = self.add_shape(min, max);
@@ -1322,7 +1324,7 @@ impl<'w> HullPather<'w> {
 
     /// `MShortPather::processCliffs` (`FUN_140f8e020`): the objects of the cliff tiles (a static
     /// record of class 6) within two tiles about the area.
-    fn process_cliffs(&mut self) -> Result<(), Unsupported> {
+    fn process_cliffs(&mut self) -> Result<(), GenieError> {
         let [w, h] = self.world.map;
         let [x0, y0, x1, y1] = self.area;
         let (ex0, ey0) = ((x0 - 2).max(0), (y0 - 2).max(0));
@@ -1342,7 +1344,7 @@ impl<'w> HullPather<'w> {
 
     /// `FUN_140f8a890`: a cliff tile's objects (its word's static class 6), each to its own place
     /// ([`HullPather::add_tile_objects`] with no hull and player -1: no gate passes).
-    fn cliff(&mut self, x: i32, y: i32) -> Result<(), Unsupported> {
+    fn cliff(&mut self, x: i32, y: i32) -> Result<(), GenieError> {
         let word = self.world.tiles().word(x, y).unwrap_or(0);
         if word & 0x3f00 == 0x600 {
             self.add_tile_objects(x, y, None, -1)?;
@@ -1397,7 +1399,7 @@ impl<'w> HullPather<'w> {
         to: Point,
         target: Option<i32>,
         path: &mut Waypoints,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let hits = self.hits(from, to)?;
         let is_target = |id: i32| target.is_some_and(|t| t == id);
         let obstacle = match hits[..] {
@@ -1619,7 +1621,7 @@ impl<'w> HullPather<'w> {
         paths: &mut [Waypoints],
         count: &mut usize,
         end: usize,
-    ) -> Result<Option<usize>, Unsupported> {
+    ) -> Result<Option<usize>, GenieError> {
         let at = self.nodes[end].at;
         let cost = self.nodes[end].cost;
         let mut k = 0;
@@ -1665,7 +1667,7 @@ impl<'w> HullPather<'w> {
         paths: &mut [Waypoints],
         most: usize,
         count: &mut usize,
-    ) -> Result<Within, Unsupported> {
+    ) -> Result<Within, GenieError> {
         *count = 0;
         let mut left_boxes = false;
         self.empty(1);
@@ -1813,7 +1815,7 @@ impl<'w> HullPather<'w> {
         sides_out: &mut [usize; PATHS],
         most: usize,
         count: &mut usize,
-    ) -> Result<Within, Unsupported> {
+    ) -> Result<Within, GenieError> {
         *count = 0;
         let mut left_boxes = false;
         self.empty(1);
@@ -1923,7 +1925,7 @@ impl<'w> HullPather<'w> {
         to: Point,
         target_id: i32,
         range: f32,
-    ) -> Result<(u8, Waypoints), Unsupported> {
+    ) -> Result<(u8, Waypoints), GenieError> {
         self.find_with(from, to, target_id, range, false, false)
     }
 
@@ -1939,7 +1941,7 @@ impl<'w> HullPather<'w> {
         to: Point,
         target_id: i32,
         range: f32,
-    ) -> Result<(u8, Waypoints), Unsupported> {
+    ) -> Result<(u8, Waypoints), GenieError> {
         self.find_with(from, to, target_id, range, true, false)
     }
 
@@ -1955,7 +1957,7 @@ impl<'w> HullPather<'w> {
         to: Point,
         target_id: i32,
         range: f32,
-    ) -> Result<(u8, Waypoints), Unsupported> {
+    ) -> Result<(u8, Waypoints), GenieError> {
         self.find_with(from, to, target_id, range, false, true)
     }
 
@@ -1972,7 +1974,7 @@ impl<'w> HullPather<'w> {
         range: f32,
         mut keep: bool,
         quick_only: bool,
-    ) -> Result<(u8, Waypoints), Unsupported> {
+    ) -> Result<(u8, Waypoints), GenieError> {
         let r = self.radius;
         let [w, h] = self.world.map;
         let mut path = Waypoints::default();
@@ -2416,7 +2418,7 @@ impl<'w> HullPather<'w> {
     /// have no object. The records come in the grid's order and each cell's list in the order
     /// the records joined it, which the slice does not hold: the answer is exact for one object
     /// holding the goal or none.
-    fn goal_record(&self, to: Point) -> Result<Option<Target>, Unsupported> {
+    fn goal_record(&self, to: Point) -> Result<Option<Target>, GenieError> {
         let grow = self.buffer.unwrap_or(0.0);
         if !self.world.point_hit(to, grow, &self.ignore, false)? {
             return Ok(None);
@@ -2456,7 +2458,7 @@ impl<'w> HullPather<'w> {
                 radius: p.radius,
                 speed: p.speed,
             })),
-            _ => Err(Unsupported(
+            _ => Err(GenieError::unsupported(
                 "the old short pather's goal held by two objects or more (the grid's order)",
             )),
         }
@@ -2466,7 +2468,7 @@ impl<'w> HullPather<'w> {
     /// on it (`UCOMISS`, an unordered coordinate does not), and the goal lie on the map itself
     /// (`FUN_140f89d80` with the bounds the map's: `COMISS`/`JA` each way, an unordered
     /// coordinate on it); then the bounds go back to the map less the radius.
-    fn edge_goal(&mut self, to: Point, target_id: i32) -> Result<bool, Unsupported> {
+    fn edge_goal(&mut self, to: Point, target_id: i32) -> Result<bool, GenieError> {
         if target_id == -1 {
             return Ok(false);
         }
@@ -2515,7 +2517,7 @@ impl<'w> HullPather<'w> {
 
     /// The area grows by two tiles each way on the map (its new tiles' obstructions, then the
     /// cliffs about it); false when it would hold more than [`MOST_AREA`] tiles.
-    fn grow_area(&mut self) -> Result<bool, Unsupported> {
+    fn grow_area(&mut self) -> Result<bool, GenieError> {
         let [w, h] = self.world.map;
         let x0 = (self.area[0] - 2).max(0);
         let y0 = (self.area[1] - 2).max(0);

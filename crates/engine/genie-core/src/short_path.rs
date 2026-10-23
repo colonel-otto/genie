@@ -5,9 +5,9 @@
 //! shape shrunk by `d = 0x200000 - r` (shapes are stored grown by half a tile). The map of the
 //! search, its node types and its ties: `docs/AoE2DE_s_exe_SHORT_PATHER.md`.
 
+use crate::GenieError;
 use crate::fmath;
 use crate::mesh::{Mesh, ONE, Rect};
-use crate::unit_ai::Unsupported;
 
 /// A point in fixed point.
 pub type Point = [i32; 2];
@@ -1108,7 +1108,7 @@ impl Search<'_> {
         s0: u32,
         start: Option<Point>,
         poly: &mut Poly,
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<i32, GenieError> {
         let d = self.ctx.d;
         let mesh = self.ctx.mesh;
         let b = self.bounds;
@@ -1664,7 +1664,7 @@ impl Search<'_> {
         a: u8,
         second: u8,
         delta: Point,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let p = b.at;
         let m = if a == 1 || a == 3 {
             [c[0], p[1]]
@@ -1693,7 +1693,7 @@ impl Search<'_> {
             )
         };
         let (Some(shape), Some(side), Some(at)) = (sw.shape, sw.side, sw.point) else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an L toward a shape's centre that meets nothing (stack garbage)",
             ));
         };
@@ -1711,7 +1711,7 @@ impl Search<'_> {
         n: Node,
         shape: u32,
         side: u8,
-    ) -> Result<Option<ShortPath>, Unsupported> {
+    ) -> Result<Option<ShortPath>, GenieError> {
         let p = n.at;
         let d = self.ctx.d;
         for i in 0..self.polys.len() {
@@ -1858,13 +1858,7 @@ impl Search<'_> {
     /// Type 3, a polygon corner: the raycast toward the goal's range point ignoring the corner's
     /// own touch (the token); a touch tries the four nudged points; then a crossing becomes a side
     /// node, a clear ray a terminal goal candidate, and a ray that still touches the axis L.
-    fn corner_expand(
-        &mut self,
-        n: Node,
-        token: u32,
-        prev: u8,
-        next: u8,
-    ) -> Result<(), Unsupported> {
+    fn corner_expand(&mut self, n: Node, token: u32, prev: u8, next: u8) -> Result<(), GenieError> {
         let p = n.at;
         self.token = token;
         let mut t = range_point(self.goal.range, p, self.goal.at)?;
@@ -2237,7 +2231,7 @@ impl Pather {
         words: &dyn Fn(u32, u32) -> u64,
         q: &Query,
         ignore: &[u32],
-    ) -> Result<ShortPath, Unsupported> {
+    ) -> Result<ShortPath, GenieError> {
         if self.ignore.len() < mesh.shapes.len() {
             self.ignore.resize(mesh.shapes.len(), false);
         }
@@ -2335,7 +2329,7 @@ impl Pather {
         mesh: &mut Mesh,
         words: &dyn Fn(u32, u32) -> u64,
         q: &Fixed,
-    ) -> Result<ShortPath, Unsupported> {
+    ) -> Result<ShortPath, GenieError> {
         let r = q.radius;
         let d = 0x20_0000 - r;
         let w = mesh.width as i32;
@@ -2409,7 +2403,7 @@ impl Pather {
 
 impl Search<'_> {
     /// The search itself, after the prologue: the start, the main loop, the path.
-    fn run(&mut self, start: Point) -> Result<ShortPath, Unsupported> {
+    fn run(&mut self, start: Point) -> Result<ShortPath, GenieError> {
         let res4410 = self.start(start);
         match res4410 {
             3 => {
@@ -2505,7 +2499,7 @@ impl Search<'_> {
     }
 
     /// One popped node of the main loop; Some when the search ends at once (the direct path).
-    fn expand(&mut self, n: Node, start: Point) -> Result<Option<ShortPath>, Unsupported> {
+    fn expand(&mut self, n: Node, start: Point) -> Result<Option<ShortPath>, GenieError> {
         let p = n.at;
         let d = self.ctx.d;
         match n.kind {
@@ -2571,7 +2565,7 @@ impl Search<'_> {
         t: Point,
         hit_t: i32,
         hit: Hit,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let mut frac = hit_t - 0x6_6666;
         let mut base = n;
         while 1 <= frac {
@@ -2623,7 +2617,7 @@ impl Search<'_> {
 
 /// `FUN_140fa31b0`: the point on the circle of `range` around `goal` toward `p` (the goal itself
 /// for no range).
-fn range_point(range: i32, p: Point, goal: Point) -> Result<Point, Unsupported> {
+fn range_point(range: i32, p: Point, goal: Point) -> Result<Point, GenieError> {
     let mut out = goal;
     if range != 0 {
         let dx = i64::from(p[0].wrapping_sub(goal[0]));
@@ -2631,7 +2625,7 @@ fn range_point(range: i32, p: Point, goal: Point) -> Result<Point, Unsupported> 
         let len = isqrt(((dy * dy) as u64 & !0x3f_ffff).wrapping_add((dx * dx) as u64 & !0x3f_ffff))
             as i32;
         if len == 0 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "the range point of a point on the goal (a division by zero)",
             ));
         }

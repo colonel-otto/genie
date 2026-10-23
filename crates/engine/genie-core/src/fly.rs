@@ -3,11 +3,11 @@
 //! (state 3) and flies there with a `MoveTo` sub-action (state 4) until its flight time runs out or
 //! the `MoveTo` ends; then it rests for its task's wait time, or picks the next flight at once.
 
+use crate::GenieError;
 use crate::fmath::{cos, sin};
 use crate::masters::Task;
 use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_or_give_up};
 use crate::rng::Well512;
-use crate::unit_ai::Unsupported;
 
 /// The Fly action's type, which word 9 adds.
 pub const FLY: i16 = 10;
@@ -113,7 +113,7 @@ impl Fly {
     /// (its list's update returns 1) it rests for the rest time more, or chooses at once.
     /// Returns whether the bird stopped (a dropped `MoveTo`'s teardown, slot 0x5d0) and whether
     /// its failed `MoveTo` posted its failure.
-    pub fn update(&mut self, mut walk: Walk<'_>, sky: Sky<'_>) -> Result<FlyStep, Unsupported> {
+    pub fn update(&mut self, mut walk: Walk<'_>, sky: Sky<'_>) -> Result<FlyStep, GenieError> {
         if 0.0 < self.timer {
             self.timer -= walk.dt;
         }
@@ -143,7 +143,9 @@ impl Fly {
                 let done = match self.move_to {
                     None | Some(MoveTo::Arrived) => true,
                     Some(MoveTo::Start) => {
-                        let goal = self.goal.ok_or(Unsupported("a flight without its point"))?;
+                        let goal = self
+                            .goal
+                            .ok_or(GenieError::unsupported("a flight without its point"))?;
                         self.move_to = Some(MoveTo::Moving);
                         self.move_to =
                             Some(start_walk(walk.reborrow(), Goal::Point(goal), 0.0, false)?);
@@ -162,7 +164,7 @@ impl Fly {
                         true
                     }
                     Some(MoveTo::Waiting) => {
-                        return Err(Unsupported("a Fly's waiting MoveTo (state 2)"));
+                        return Err(GenieError::unsupported("a Fly's waiting MoveTo (state 2)"));
                     }
                 };
                 if !done {
@@ -176,7 +178,7 @@ impl Fly {
                 step.stopped |= self.set_state(CHOOSING, sky.action);
                 Ok(step)
             }
-            _ => Err(Unsupported(
+            _ => Err(GenieError::unsupported(
                 "a Fly action in a state the slice does not model",
             )),
         }
@@ -190,7 +192,7 @@ impl Fly {
     /// class to keep away from are not modelled. A task with sprites draws which one the flight
     /// takes (`r % 3`, not held). The `MoveTo` to the point at the bird's height within 0 starts
     /// (state 3) and the bird flies (`set_state` 4); with no distance or no point it rests.
-    fn choose(&mut self, sky: Sky<'_>) -> Result<bool, Unsupported> {
+    fn choose(&mut self, sky: Sky<'_>) -> Result<bool, GenieError> {
         let t = self.task;
         let leash = f32::from(t.holding_attr) * f32::from(t.holding_attr);
         let mut angle = sky.action.below_checked(360) as i32;
@@ -226,20 +228,26 @@ impl Fly {
             }
         };
         if t.terrain != -1 {
-            return Err(Unsupported("a flight to a terrain of its task's"));
+            return Err(GenieError::unsupported(
+                "a flight to a terrain of its task's",
+            ));
         }
         if t.work_val2 as i32 as i16 != -1 && 0.0 < t.work_range {
-            return Err(Unsupported("a flight keeping away from a class"));
+            return Err(GenieError::unsupported(
+                "a flight keeping away from a class",
+            ));
         }
         if EPSILON < t.work_val1 {
-            return Err(Unsupported("a flight's animation speed (+0x7b8)"));
+            return Err(GenieError::unsupported(
+                "a flight's animation speed (+0x7b8)",
+            ));
         }
         let [moving, proceeding, working, carrying] = t.sprites;
         if moving != -1 || carrying != -1 || proceeding != -1 {
             // the moving, working or proceeding sprite, the first there from r % 3 on
             let _ = sky.action.rand15();
             if moving == -1 && working == -1 && proceeding == -1 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a flight whose task has only a carrying sprite",
                 ));
             }

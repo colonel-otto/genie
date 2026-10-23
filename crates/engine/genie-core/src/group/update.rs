@@ -2,11 +2,11 @@
 //! the groups a player owns before the player's objects, and the deletion of a group whose update
 //! returns 0 (the world list's unlink, then `BUnitGroup`'s destructor, `FUN_140fe1920`).
 
+use crate::GenieError;
 use crate::fmath::Vec3;
 use crate::group::command::MOVE_COMMAND;
 use crate::group::{SpecificMove, UnitGroup, WorldObject};
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The group's current command (`mCurrentCommand`, `+0x3a8`) without one.
 const NO_COMMAND: i32 = -1;
@@ -63,8 +63,8 @@ const DIFFERENTIATORS: usize = 0x8c;
 pub const IDLE_LIMIT: u32 = 3000;
 /// A trade cart's standing and walking sprites are its trade task's while it carries goods
 /// (`FUN_14106a940`: its carried attributes, `+0x7a0`, which the slice does not hold).
-const TRADE_CART_SPRITES: Unsupported =
-    Unsupported("a trade cart's standing or walking sprite (its goods, FUN_14106a940)");
+const TRADE_CART_SPRITES: GenieError =
+    GenieError::unsupported("a trade cart's standing or walking sprite (its goods, FUN_14106a940)");
 
 /// The sprites slots 0x660, 0x658 and 0x650 show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,7 +79,7 @@ enum Shown {
 
 /// The updates of an attack (`FUN_14103f4e0`) and of the other commands on a target
 /// (`FUN_141040bd0`), and the attack formation's refill (`FUN_1410163f0`): not modelled.
-const OTHER_COMMANDS: Unsupported = Unsupported(
+const OTHER_COMMANDS: GenieError = GenieError::unsupported(
     "a group command's update other than a move or a follow (FUN_14103f4e0, FUN_141040bd0)",
 );
 
@@ -141,7 +141,7 @@ impl Turns {
     /// # Errors
     ///
     /// What the update does not model.
-    pub(crate) fn update_groups(&mut self, p: usize) -> Result<(), Unsupported> {
+    pub(crate) fn update_groups(&mut self, p: usize) -> Result<(), GenieError> {
         if self.players.get(p).is_some_and(|q| q.stopped) {
             return Ok(());
         }
@@ -189,7 +189,7 @@ impl Turns {
     /// # Errors
     ///
     /// A member the slice cannot stand or show standing.
-    pub(crate) fn delete_group(&mut self, group: i32) -> Result<(), Unsupported> {
+    pub(crate) fn delete_group(&mut self, group: i32) -> Result<(), GenieError> {
         let Some(index) = self.groups.groups.iter().position(|g| g.id == group) else {
             return Ok(());
         };
@@ -236,7 +236,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn group_update(&mut self, group: i32) -> Result<bool, Unsupported> {
+    pub fn group_update(&mut self, group: i32) -> Result<bool, GenieError> {
         self.groups
             .get_mut(group)
             .expect("the caller holds the group")
@@ -257,7 +257,7 @@ impl Turns {
     /// The members' check of `BUnitGroup::update` (`0x14103d9c0`..`0x14103daf7`): see
     /// [`Turns::group_update`]. A member that left takes its index with it, so the next member
     /// is checked at the same index.
-    fn drop_lost_members(&mut self, group: i32) -> Result<(), Unsupported> {
+    fn drop_lost_members(&mut self, group: i32) -> Result<(), GenieError> {
         let mut removed = false;
         let mut i = 0;
         loop {
@@ -292,7 +292,7 @@ impl Turns {
     /// A hibernating group's check (`0x14103db22`..`0x14103dd5b`): false deletes the group;
     /// else the queued commands run (`checkQueuedOrders`, [`Turns::check_queued_orders`]) when
     /// [`Turns::hibernation`] asks for them.
-    fn hibernating_update(&mut self, group: i32) -> Result<bool, Unsupported> {
+    fn hibernating_update(&mut self, group: i32) -> Result<bool, GenieError> {
         let Some(runs_queue) = self.hibernation(group)? else {
             return Ok(false);
         };
@@ -320,7 +320,7 @@ impl Turns {
     /// # Panics
     ///
     /// When the world does not hold `group`.
-    fn hibernation(&self, group: i32) -> Result<Option<bool>, Unsupported> {
+    fn hibernation(&self, group: i32) -> Result<Option<bool>, GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let (target, owner) = (g.current_target.target, g.owner as usize);
         Ok(Some(match g.current_command {
@@ -342,12 +342,12 @@ impl Turns {
     ///
     /// A ghost target, whose hit points (`+0x278`) the slice does not hold, and a target of a
     /// master the slice does not have.
-    fn repair_waits(&self, target: i32, owner: usize) -> Result<bool, Unsupported> {
+    fn repair_waits(&self, target: i32, owner: usize) -> Result<bool, GenieError> {
         let Some(object) = self.world_object(target) else {
             return Ok(false);
         };
         let WorldObject::Unit(p, u) = object else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hibernating repair of a ghost (its hit points, +0x278)",
             ));
         };
@@ -380,7 +380,7 @@ impl Turns {
     /// # Errors
     ///
     /// What the update does not model.
-    fn awake_update(&mut self, group: i32) -> Result<bool, Unsupported> {
+    fn awake_update(&mut self, group: i32) -> Result<bool, GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let mut far = false;
         if g.command_queue.is_empty() {
@@ -477,7 +477,7 @@ impl Turns {
     ///
     /// What the steps do not model: a member's way round a record to its slot, a member's own
     /// move's step, an attack's update, among others.
-    fn after_motion(&mut self, group: i32, far: bool, forward: Vec3) -> Result<bool, Unsupported> {
+    fn after_motion(&mut self, group: i32, far: bool, forward: Vec3) -> Result<bool, GenieError> {
         if self.groups.get(group).expect("held").flags & 0x100 != 0 {
             self.turn_formation(group, forward)?;
         }
@@ -535,7 +535,7 @@ impl Turns {
     /// update runs again with a budget, the formation transforms at the new place
     /// ([`Turns::formation_transform`], `param_4` 0) and flags bit 8 clears. The debug drawing
     /// (`DAT_143f15a9c`) holds no state.
-    fn turn_formation(&mut self, group: i32, forward: Vec3) -> Result<(), Unsupported> {
+    fn turn_formation(&mut self, group: i32, forward: Vec3) -> Result<(), GenieError> {
         if self.turns_formation(group, forward) {
             let g = self.groups.get(group).expect("held");
             let without_path = g.motion.paths.first().is_some_and(|l| !l.has_path);
@@ -637,7 +637,7 @@ impl Turns {
     ///
     /// A line place without a slot (index -1 or past the slots, where the game reads outside the
     /// slots' array), and a unit of a master the slice does not have.
-    pub(crate) fn line_ranges(&mut self, group: i32) -> Result<(), Unsupported> {
+    pub(crate) fn line_ranges(&mut self, group: i32) -> Result<(), GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let Some(f) = g.current_formation.as_ref() else {
             return Ok(());
@@ -655,7 +655,7 @@ impl Turns {
                             .get(i)
                             .or_else(|| f.spare_slots.get(i.checked_sub(f.slots.len())?))
                     })
-                    .ok_or(Unsupported(
+                    .ok_or(GenieError::unsupported(
                         "a formation line's place without a slot (the update reads outside the slots, 0x14103e4ce)",
                     ))?;
                 let Some(object) = self.world_object(slot.unit_id) else {
@@ -724,7 +724,7 @@ impl Turns {
     /// (`+0x3c8`, the height left out), and sets flags bit 12; without the target or a lead it
     /// ends as a finished move. An attack (`FUN_14103f4e0`) and the other commands
     /// (`FUN_141040bd0`) are not modelled.
-    fn command_update(&mut self, group: i32, relayout: &mut bool) -> Result<bool, Unsupported> {
+    fn command_update(&mut self, group: i32, relayout: &mut bool) -> Result<bool, GenieError> {
         let g = self.groups.get(group).expect("held");
         let finished = match g.current_command {
             NO_COMMAND => false,
@@ -818,7 +818,7 @@ impl Turns {
     /// # Panics
     ///
     /// When the world does not hold `group`: the group update passes its own.
-    pub fn move_update(&mut self, group: i32, relayout: &mut bool) -> Result<bool, Unsupported> {
+    pub fn move_update(&mut self, group: i32, relayout: &mut bool) -> Result<bool, GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         if g.motion.flags & 2 != 0 {
             *relayout = true;
@@ -918,7 +918,7 @@ impl Turns {
         group: i32,
         walks: bool,
         patrolling: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let g = self.groups.get_mut(group).expect("held");
         g.flags = (g.flags & !4) | 0x20;
         self.move_to_desired_positions(group, MOVE_COMMAND, -1)?;
@@ -948,7 +948,7 @@ impl Turns {
         group: i32,
         command: i32,
         target: i32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let Some(f) = g
             .current_formation
@@ -967,13 +967,13 @@ impl Turns {
             }
             if slot.state == 3 {
                 if command == ATTACK && held_target {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "AutomaticMoveUnitsToDesiredPositions' attack on the target (slot 0x128)",
                     ));
                 }
                 continue;
             }
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "AutomaticMoveUnitsToDesiredPositions' path to a slot (FUN_14100aaa0: the unit's path, 1.01 of DAT_142eb6e48, slots 0x548 and 0x128)",
             ));
         }
@@ -992,7 +992,7 @@ impl Turns {
     ///
     /// The motion step of a member's move, and what the stop, the stand and the standing sprite
     /// do not model.
-    fn specific_moves_step(&mut self, group: i32) -> Result<(), Unsupported> {
+    fn specific_moves_step(&mut self, group: i32) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
             let g = self.groups.get(group).expect("held");
@@ -1007,7 +1007,7 @@ impl Turns {
                 continue;
             };
             if m.specific_move.reason != 2 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a member's own move's step (slot 0x608, FUN_141150f00)",
                 ));
             }
@@ -1087,7 +1087,7 @@ impl Turns {
     /// # Panics
     ///
     /// When the world does not hold `group`.
-    pub(crate) fn keep_apart(&mut self, group: i32) -> Result<(), Unsupported> {
+    pub(crate) fn keep_apart(&mut self, group: i32) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
             let g = self.groups.get(group).expect("the caller holds the group");
@@ -1134,7 +1134,7 @@ impl Turns {
                     }
                 }
                 if found {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a kept-apart attacker near a member's target (FUN_14100d2a0, AttackObject)",
                     ));
                 }
@@ -1159,7 +1159,7 @@ impl Turns {
     ///
     /// An object of a master the slice does not have, and what [`crate::turn::Unit::interruptible`] does not
     /// model.
-    fn may_interrupt(&self, object: WorldObject<'_>) -> Result<bool, Unsupported> {
+    fn may_interrupt(&self, object: WorldObject<'_>) -> Result<bool, GenieError> {
         let WorldObject::Unit(p, u) = object else {
             return Ok(false);
         };
@@ -1204,14 +1204,14 @@ impl Turns {
     fn action_target(
         &self,
         object: WorldObject<'_>,
-    ) -> Result<Option<WorldObject<'_>>, Unsupported> {
+    ) -> Result<Option<WorldObject<'_>>, GenieError> {
         let WorldObject::Unit(p, u) = object else {
             return Ok(None);
         };
         if self.master_of(p, u.life.master_id)?.kind < ACTION_KIND {
             return Ok(None);
         }
-        if let Some(e) = u.unmodelled_action {
+        if let Some(e) = u.unmodelled_action.clone() {
             return Err(e);
         }
         Ok(u.top_target()
@@ -1229,7 +1229,7 @@ impl Turns {
         &self,
         a: WorldObject<'_>,
         b: WorldObject<'_>,
-    ) -> Result<f32, Unsupported> {
+    ) -> Result<f32, GenieError> {
         let ra = self.master_of(a.player(), a.master_id())?.radius;
         let rb = self.master_of(b.player(), b.master_id())?.radius;
         Ok(crate::movement::footprint_gap_squared(
@@ -1252,7 +1252,7 @@ impl Turns {
     /// # Errors
     ///
     /// An object of a master the slice does not have, or what the sight test does not hold.
-    pub fn target_pending(&self, group: i32) -> Result<bool, Unsupported> {
+    pub fn target_pending(&self, group: i32) -> Result<bool, GenieError> {
         let Some(g) = self.groups.get(group) else {
             return Ok(false);
         };
@@ -1283,7 +1283,7 @@ impl Turns {
     /// ([`Turns::has_task`]) pick up relics (132) and its target (the unit AI's, `+0x48`) is a
     /// relic (its master's class `0x2a`), or deliver them (136) and its target is a relic or
     /// none the world holds.
-    fn relic_pickup_pending(&self, g: &UnitGroup) -> Result<bool, Unsupported> {
+    fn relic_pickup_pending(&self, g: &UnitGroup) -> Result<bool, GenieError> {
         let owner = g.owner as usize;
         for m in &g.members {
             let Some(WorldObject::Unit(_, u)) = self.world_object(m.id) else {
@@ -1312,7 +1312,7 @@ impl Turns {
     /// `FUN_141017850`: as [`Turns::relic_pickup_pending`], on a group still delivering a relic
     /// (136): the target is a monastery (master 104) and the member's master's tasks deliver or
     /// pick up relics.
-    fn relic_delivery_pending(&self, g: &UnitGroup) -> Result<bool, Unsupported> {
+    fn relic_delivery_pending(&self, g: &UnitGroup) -> Result<bool, GenieError> {
         let owner = g.owner as usize;
         for m in &g.members {
             let Some(WorldObject::Unit(_, u)) = self.world_object(m.id) else {
@@ -1343,7 +1343,7 @@ impl Turns {
     /// # Errors
     ///
     /// A player whose masters the slice does not have.
-    fn has_task(&self, player: usize, master: i16, action: i16) -> Result<bool, Unsupported> {
+    fn has_task(&self, player: usize, master: i16, action: i16) -> Result<bool, GenieError> {
         let Some(masters) = self.masters.get(player) else {
             return self.master_of(player, master).map(|_| false);
         };
@@ -1361,7 +1361,7 @@ impl Turns {
     ///
     /// An object of a master the slice does not have, and the explored test without the
     /// players' sight.
-    fn sees_object(&self, object: WorldObject<'_>, player: usize) -> Result<bool, Unsupported> {
+    fn sees_object(&self, object: WorldObject<'_>, player: usize) -> Result<bool, GenieError> {
         let master = self.master_of(object.player(), object.master_id())?;
         let [x, y, _] = object.position();
         let (x, y) = (
@@ -1387,7 +1387,7 @@ impl Turns {
     ///
     /// An object of a master the slice does not have, or with an action the slice does not
     /// model.
-    pub fn member_idle(&self, id: i32) -> Result<bool, Unsupported> {
+    pub fn member_idle(&self, id: i32) -> Result<bool, GenieError> {
         let Some(object) = self.world_object(id) else {
             return Ok(false);
         };
@@ -1398,7 +1398,7 @@ impl Turns {
         let state = if master.kind < ACTION_KIND {
             0
         } else {
-            if let Some(e) = u.unmodelled_action {
+            if let Some(e) = u.unmodelled_action.clone() {
                 return Err(e);
             }
             u.top_action().map_or(0, |a| a.state)
@@ -1444,7 +1444,7 @@ impl Turns {
     /// An object of a master the slice does not have, with an action the slice does not model,
     /// a trade cart (whose goods the slice does not hold), and a standing sprite the slice's
     /// graphics lack.
-    pub(crate) fn show_standing(&mut self, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn show_standing(&mut self, id: i32) -> Result<(), GenieError> {
         self.show_sprite(id, Shown::Standing).map(|_| ())
     }
 
@@ -1460,7 +1460,7 @@ impl Turns {
     /// # Errors
     ///
     /// As [`Turns::show_standing`].
-    pub(crate) fn show_walking(&mut self, id: i32) -> Result<bool, Unsupported> {
+    pub(crate) fn show_walking(&mut self, id: i32) -> Result<bool, GenieError> {
         self.show_sprite(id, Shown::Walking)
     }
 
@@ -1473,12 +1473,12 @@ impl Turns {
     /// # Errors
     ///
     /// As [`Turns::show_standing`], a trade cart aside.
-    pub(crate) fn show_running(&mut self, id: i32) -> Result<bool, Unsupported> {
+    pub(crate) fn show_running(&mut self, id: i32) -> Result<bool, GenieError> {
         self.show_sprite(id, Shown::Running)
     }
 
     /// Slots 0x660, 0x658 and 0x650 of object `id` ([`Shown`]): whether it shows the sprite.
-    fn show_sprite(&mut self, id: i32, shown: Shown) -> Result<bool, Unsupported> {
+    fn show_sprite(&mut self, id: i32, shown: Shown) -> Result<bool, GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(false);
         };
@@ -1495,7 +1495,7 @@ impl Turns {
             return Err(TRADE_CART_SPRITES);
         }
         if ACTION_KIND <= master.kind
-            && let Some(e) = u.unmodelled_action
+            && let Some(e) = u.unmodelled_action.clone()
         {
             return Err(e);
         }
@@ -1522,7 +1522,9 @@ impl Turns {
         if u.sprite.is_none() {
             return Ok(true);
         }
-        let g = graphic.ok_or(Unsupported("a unit without its sprite's graphic"))?;
+        let g = graphic.ok_or(GenieError::unsupported(
+            "a unit without its sprite's graphic",
+        ))?;
         let place = self.place(id).expect("found above");
         let rng = self.streams.get(crate::rng::Stream::Sprite);
         let u = match place {
@@ -2145,7 +2147,7 @@ mod tests {
         assert!(t.show_walking(10).is_err());
         master(&mut t, crate::group::update::TRADE_CART, [6, 7, 8]);
         let trade = crate::group::update::TRADE_CART_SPRITES;
-        assert_eq!(t.show_walking(10), Err(trade));
+        assert_eq!(t.show_walking(10), Err(trade.clone()));
         assert_eq!(t.show_standing(10), Err(trade));
         t.players[1].objects[0].sprite = None;
         assert_eq!(t.show_running(10), Ok(true));

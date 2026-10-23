@@ -22,9 +22,9 @@
 //! cheat that reveals the map (`DAT_143f68a30`, probed 0), shared sight (`+0x798`, `+0x79c`, 0 in
 //! every object probed) and the line-of-sight powerup (`+0xad4`, unsaved, 0 after a load).
 
+use crate::GenieError;
 use crate::los_tables::{CENTRED, OFFSET};
 use crate::registry::{MASK, Registry};
-use crate::unit_ai::Unsupported;
 use std::collections::BTreeMap;
 
 /// The map tile's `+0x19` bit of a building's tile that is not its anchor (`FUN_140f73900`).
@@ -239,7 +239,7 @@ pub struct Visibility {
     /// Each player's visible-resource lists.
     pub resources: Vec<VisibleResources>,
     /// The first part of the game the slice met and does not model, for its caller.
-    unsupported: Option<Unsupported>,
+    unsupported: Option<GenieError>,
 }
 
 /// `+0x924` as a combat object's setup sets it (`FUN_14121df60`): 1 for Gaia's objects other
@@ -334,12 +334,14 @@ impl Visibility {
     }
 
     /// The first unmodelled case met since the last call.
-    pub const fn take_unsupported(&mut self) -> Option<Unsupported> {
+    pub const fn take_unsupported(&mut self) -> Option<GenieError> {
         self.unsupported.take()
     }
 
     fn unsupported(&mut self, what: &'static str) {
-        let _ = self.unsupported.get_or_insert(Unsupported(what));
+        let _ = self
+            .unsupported
+            .get_or_insert_with(|| GenieError::unsupported(what));
     }
 
     /// `RGE_Tile_List::add_node` (`FUN_14165d500`) on player `player`'s tile list.
@@ -1055,7 +1057,7 @@ impl Visibility {
         radius: [f32; 2],
         class: i16,
         main: Option<([f32; 3], u8)>,
-    ) -> Result<Option<u64>, Unsupported> {
+    ) -> Result<Option<u64>, GenieError> {
         let Some(s) = self.seers.get(&id).copied() else {
             return Ok(None);
         };
@@ -1073,7 +1075,9 @@ impl Visibility {
                 .extents
                 .get(usize::from(umv) - 1)
                 .map(|e| e.offsets.clone())
-                .ok_or(Unsupported("an object's UMV entry beyond the list"))?;
+                .ok_or(GenieError::unsupported(
+                    "an object's UMV entry beyond the list",
+                ))?;
             for [dx, dy] in offsets {
                 let (fx, fy) = (dx as f32 + x, dy as f32 + y);
                 let on_map =
@@ -1120,7 +1124,7 @@ impl Visibility {
         at: [f32; 3],
         old: ([f32; 2], i16),
         new: ([f32; 2], i16),
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
             return Ok(());
         };
@@ -1138,7 +1142,7 @@ impl Visibility {
         at: [f32; 3],
         radius: [f32; 2],
         class: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
             return Ok(());
         };
@@ -1159,7 +1163,7 @@ impl Visibility {
     /// An ownership change's records (`FUN_14120f800`, first of all and whatever the new owner's
     /// masters): an object with an id (`+0x8` not below 0) writes the new owner's id into each of
     /// its records (`+0x8b0`..`+0x8f0`), which keep their place in every list.
-    pub fn records_owner(&mut self, id: i32, new: usize) -> Result<(), Unsupported> {
+    pub fn records_owner(&mut self, id: i32, new: usize) -> Result<(), GenieError> {
         match self.registry.as_mut() {
             Some(r) if 0 <= id => r.owner_changed(id, new),
             _ => Ok(()),

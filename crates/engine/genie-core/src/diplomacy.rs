@@ -10,15 +10,15 @@
 //! slot 0x120 of a combat object `FUN_141217120` and of a building `FUN_1411d50e0`; the teams
 //! `FUN_1415e23f0`; the revealed units `FUN_14152bcb0`; the tile list's refill `FUN_141285cb0`.
 
+use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::masters::master_type;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The reveal of a player's units of a kind to the others (its attribute 204 not 0,
 /// `FUN_14152bcb0`): their per-player marks (`+0x798`, `+0x79c`) and flares are not modelled.
-pub(crate) const REVEAL_UNITS: Unsupported =
-    Unsupported("a player's attribute 204 (FUN_14152bcb0)");
+pub(crate) const REVEAL_UNITS: GenieError =
+    GenieError::unsupported("a player's attribute 204 (FUN_14152bcb0)");
 
 /// The attribute naming the units a player reveals to the others (204, `+0x660`).
 const REVEAL_UNIT: usize = 204;
@@ -92,7 +92,7 @@ impl Turns {
         p: usize,
         other: i32,
         relation: u32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let stance = match relation {
             0 => ALLY_STANCE,
             1 => NEUTRAL_STANCE,
@@ -121,7 +121,7 @@ impl Turns {
 
     /// `FUN_1416397d0`: player `p`'s stance toward `q` takes `stance`; one that makes a relation
     /// ([`relation_of_stance`]) sets it ([`Turns::set_relation`]).
-    pub(crate) fn set_stance(&mut self, p: usize, q: usize, stance: u8) -> Result<(), Unsupported> {
+    pub(crate) fn set_stance(&mut self, p: usize, q: usize, stance: u8) -> Result<(), GenieError> {
         let diplomacy = &mut self.players[p].diplomacy;
         if diplomacy.len() <= q {
             diplomacy.resize(q + 1, 0);
@@ -139,7 +139,7 @@ impl Turns {
         p: usize,
         q: usize,
         relation: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let set = |row: &mut Vec<u8>| {
             if row.len() <= q {
                 row.resize(q + 1, 0);
@@ -187,7 +187,7 @@ impl Turns {
         id: i32,
         q: usize,
         relation: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
@@ -250,12 +250,12 @@ impl Turns {
     }
 
     /// The index of object `id` in player `p`'s live list.
-    fn live_index(&self, p: usize, id: i32) -> Result<usize, Unsupported> {
+    fn live_index(&self, p: usize, id: i32) -> Result<usize, GenieError> {
         self.players[p]
             .objects
             .iter()
             .position(|u| u.id == id)
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a unit inside a building outside the live lists",
             ))
     }
@@ -332,7 +332,7 @@ impl Turns {
     /// `FUN_14152bcb0`: outside the editor's screen (mode 4, which a playback is not) each
     /// player with attribute 204 (`+0x660`, truncated, `CVTTSS2SI`) not 0 reveals its units of
     /// that kind to the others: not modelled ([`REVEAL_UNITS`]); without one nothing happens.
-    pub(crate) fn reveal_units(&self) -> Result<(), Unsupported> {
+    pub(crate) fn reveal_units(&self) -> Result<(), GenieError> {
         let reveals = self
             .players
             .iter()

@@ -12,8 +12,8 @@
 //! are engine constants; the game stores them encoded (a class as its value − 0xeac, a master id as
 //! its id + 0x609c), the port compares the decoded values and names the encoded ones.
 
+use crate::GenieError;
 use crate::masters::{Master, Task};
-use crate::unit_ai::Unsupported;
 
 /// A building's master type (`'P'`).
 const BUILDING: u8 = 80;
@@ -332,7 +332,7 @@ fn garrison_task<'m>(
     actor: &Actor<'_>,
     target: Option<&TaskTarget<'_>>,
     dip: &impl Diplomacy,
-) -> Result<Option<&'m Task>, Unsupported> {
+) -> Result<Option<&'m Task>, GenieError> {
     let Some(t) = target else {
         return Ok(None);
     };
@@ -349,7 +349,7 @@ fn garrison_task<'m>(
         let takes = crate::garrison::garrison_type_takes(garrison_type, list.class, list.id, false);
         if let Some(task) = first(list, crate::garrison::is_garrison_task).filter(|_| takes) {
             if matches!(t.top_action, Some(0x7c | 0x7d)) {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a garrison task on a building at work 0x7c or 0x7d (FUN_1411e8630)",
                 ));
             }
@@ -373,7 +373,7 @@ pub fn find_task<'m>(
     terrain: Option<i16>,
     filter: i16,
     dip: &impl Diplomacy,
-) -> Result<Option<&'m Task>, Unsupported> {
+) -> Result<Option<&'m Task>, GenieError> {
     let own = actor.master;
     // the garrison filter (3): a building's garrison task; with none, a target whose master has
     // object flag 0 (a transport) goes on through the finder to its garrison into the target
@@ -390,7 +390,7 @@ pub fn find_task<'m>(
         && own.object_flags & 0x10 != 0
         && t.master.class == class::PREY
     {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "the task finder on prey for a hunter master (+0x610)",
         ));
     }
@@ -408,7 +408,7 @@ pub fn find_task<'m>(
         && monk_master
         && target.is_some_and(|t| t.master.class == class::VILLAGER)
     {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "the task finder's monk conversion of villagers (attribute 95)",
         ));
     }
@@ -416,7 +416,7 @@ pub fn find_task<'m>(
         && monk_master
         && target.is_some_and(|t| t.master.class == class::BUILDING)
     {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "the task finder's monk conversion of buildings (attribute 95)",
         ));
     }
@@ -453,7 +453,7 @@ pub fn find_task<'m>(
             return Ok(build_task(list, t, filter));
         }
         if t.master.id == id::ID_199 {
-            return Err(Unsupported("the task finder on master 199"));
+            return Err(GenieError::unsupported("the task finder on master 199"));
         }
         // LAB_141279cfa -> LAB_1412796b4: garrisoning, repairing, task 0x6f
         let allied = dip.allied(actor.player, t.player, false);
@@ -497,10 +497,10 @@ pub fn find_task<'m>(
             ]
             .contains(&t.master.class);
         if repairable && repair_class && t.hp < t.max_hp && t.state < 3 {
-            return Err(Unsupported("the task finder's repair (106)"));
+            return Err(GenieError::unsupported("the task finder's repair (106)"));
         }
         if t.state < 3 && (t.master.id == id::ID_45 || t.master.id == id::ID_84) {
-            return Err(Unsupported("the task finder's task 0x6f"));
+            return Err(GenieError::unsupported("the task finder's task 0x6f"));
         }
     }
     if no_task {
@@ -510,26 +510,30 @@ pub fn find_task<'m>(
     let monk = own.class == class::MONK;
     let converts = list.tasks.iter().any(|t| t.action_type == 0x68);
     if target.is_some() && (monk || (converts && filter == 0x68)) {
-        return Err(Unsupported("the task finder's conversion (0x68)"));
+        return Err(GenieError::unsupported(
+            "the task finder's conversion (0x68)",
+        ));
     }
     if list.tasks.iter().any(|t| t.action_type == 0x84)
         && target.is_some_and(|t| t.master.class == class::CLASS_42)
     {
-        return Err(Unsupported("the task finder's task 0x84"));
+        return Err(GenieError::unsupported("the task finder's task 0x84"));
     }
     if list.tasks.iter().any(|t| t.action_type == 0x69) && target.is_some() {
-        return Err(Unsupported("the task finder's healing (0x69)"));
+        return Err(GenieError::unsupported("the task finder's healing (0x69)"));
     }
     if own.class == class::CLASS_43 && target.is_some() {
-        return Err(Unsupported("the task finder's task 0x88"));
+        return Err(GenieError::unsupported("the task finder's task 0x88"));
     }
     if own.class == class::CLASS_53 && target.is_some() {
-        return Err(Unsupported("the task finder's class-53 conversion"));
+        return Err(GenieError::unsupported(
+            "the task finder's class-53 conversion",
+        ));
     }
     let mut inside = false;
     if let Some(t) = target {
         if own.class == class::SIEGE && own.id == id::ID_1105 {
-            return Err(Unsupported("the task finder for master 1105"));
+            return Err(GenieError::unsupported("the task finder for master 1105"));
         }
         // LAB_14127ba9e: a list with task 13 takes it, under that filter alone, for an own,
         // allied or artifact target in a state below 3
@@ -649,7 +653,7 @@ mod tests {
         list: &'m Master,
         held: (i16, f32),
         t: &TaskTarget<'_>,
-    ) -> Result<Option<&'m Task>, Unsupported> {
+    ) -> Result<Option<&'m Task>, GenieError> {
         find_task(list, &actor(list, held), Some(t), Some(t), None, -1, &Alone)
     }
 
@@ -709,7 +713,7 @@ mod tests {
         list: &'m Master,
         t: &TaskTarget<'_>,
         filter: i16,
-    ) -> Result<Option<&'m Task>, Unsupported> {
+    ) -> Result<Option<&'m Task>, GenieError> {
         find_task(
             list,
             &actor(list, (-1, 0.0)),

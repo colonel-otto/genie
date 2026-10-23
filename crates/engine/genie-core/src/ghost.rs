@@ -14,10 +14,10 @@
 //! original `FUN_14108f9b0`, the twin check `FUN_1410928a0`, its update `FUN_141090000`, its
 //! destroy `FUN_14118f1e0` and its leaving `FUN_141090ad0`.
 
+use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::registry::MASK;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The ghosts' master in every player's list (`player+0x28`'s entry 243, "DOPL").
 pub const GHOST_MASTER: i16 = 243;
@@ -127,7 +127,7 @@ impl Turns {
     }
 
     /// What a cell shows now.
-    fn cell_bits(&self, cell: Cell) -> Result<u64, Unsupported> {
+    fn cell_bits(&self, cell: Cell) -> Result<u64, GenieError> {
         match cell {
             Cell::Tile(i) => Ok(self
                 .spatial
@@ -141,7 +141,7 @@ impl Turns {
                     .sight
                     .as_ref()
                     .and_then(|v| v.registry.as_ref())
-                    .ok_or(Unsupported(
+                    .ok_or(GenieError::unsupported(
                         "a watched building without the objects-in-sight registry",
                     ))?;
                 Ok(registry.entries.get(&id).map_or(0, |e| e.mask) & MASK)
@@ -159,7 +159,7 @@ impl Turns {
         id: i32,
         x: i32,
         y: i32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(false);
         };
@@ -226,7 +226,7 @@ impl Turns {
 
     /// A building whose construction started (`FUN_1411e5670`): its owner watches it
     /// ([`Turns::watches_building`]).
-    pub(crate) fn watch_started(&mut self, p: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn watch_started(&mut self, p: usize, id: i32) -> Result<(), GenieError> {
         if !self.watches_building(p, id) {
             return Ok(());
         }
@@ -245,7 +245,7 @@ impl Turns {
     /// `FUN_1411ac170`, at what it follows, an annex's link not known yet); then the rehook lets
     /// every annex but a gate's go (`TRIBE_Building_Object::rehook`). A building's mask is empty
     /// at a load.
-    pub fn build_watched(&mut self) -> Result<(), Unsupported> {
+    pub fn build_watched(&mut self) -> Result<(), GenieError> {
         for p in 0..self.players.len() {
             self.players[p].watched.clear();
             let ids: Vec<i32> = self.players[p]
@@ -303,7 +303,7 @@ impl Turns {
     /// player who explored its tile but does not see it, Gaia aside, gets a ghost of it
     /// ([`Turns::make_ghost`]), in the players' order; the first bit past the players ends it.
     /// Then its owner's list watches it at its tile ([`Turns::watch`]).
-    pub(crate) fn ghosts_at_death(&mut self, _owner: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn ghosts_at_death(&mut self, _owner: usize, id: i32) -> Result<(), GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(());
         };
@@ -358,7 +358,7 @@ impl Turns {
         viewer: usize,
         at: [f32; 3],
         original: Original,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let recyclable = self.master_of(viewer, GHOST_MASTER)?.recyclable;
         let kind = self.master_of(original.owner, original.master)?.kind;
         let umv = self
@@ -454,7 +454,7 @@ impl Turns {
     /// the last ghost taking its place in the list, and to the pool of type 25
     /// (`RGE_Static_Object::recycle_out_of_game`), or for a master that is not recyclable it is
     /// deleted. The viewer's `+0x2b0` table is not held (empty).
-    pub(crate) fn update_ghosts(&mut self, p: usize) -> Result<(), Unsupported> {
+    pub(crate) fn update_ghosts(&mut self, p: usize) -> Result<(), GenieError> {
         let mut k = 0;
         while k < self.players[p].ghosts.len() {
             let leaves = self.update_ghost(p, k)?;
@@ -463,7 +463,7 @@ impl Turns {
                 if g.original_master
                     .is_some_and(|m| TERRAIN_ORIGINALS.contains(&m))
                 {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a farm's ghost leaving (the local player's terrain, FUN_141092190)",
                     ));
                 }
@@ -478,7 +478,7 @@ impl Turns {
         Ok(())
     }
 
-    fn update_ghost(&mut self, p: usize, k: usize) -> Result<bool, Unsupported> {
+    fn update_ghost(&mut self, p: usize, k: usize) -> Result<bool, GenieError> {
         let g = self.players[p].ghosts[k];
         let leaves = match g.state {
             7 => {
@@ -513,7 +513,9 @@ impl Turns {
                 .as_ref()
                 .and_then(|v| v.extents.get(usize::from(g.footprint) - 1))
                 .map(|e| e.offsets.clone())
-                .ok_or(Unsupported("a building's ghost without its UMV entry"))?;
+                .ok_or(GenieError::unsupported(
+                    "a building's ghost without its UMV entry",
+                ))?;
             for [ox, oy] in offsets {
                 bits |= self.tile_bits(px as i32 + ox, py as i32 + oy);
             }
@@ -565,7 +567,7 @@ impl Turns {
     /// in the players' order, and takes the new bits; the last entry whose object is gone leaves
     /// the list (the last entry taking its place). A computer player's AI then hears of its ghost
     /// (its slot 0x2e8 with notify 0x20d), which is not modelled.
-    pub(crate) fn watch_pass(&mut self, p: usize) -> Result<(), Unsupported> {
+    pub(crate) fn watch_pass(&mut self, p: usize) -> Result<(), GenieError> {
         let mut gone = None;
         for k in 0..self.players[p].watched.len() {
             let w = self.players[p].watched[k];
@@ -589,7 +591,7 @@ impl Turns {
                         if lost & 1 != 0 && i != p {
                             self.make_ghost(i, at, original)?;
                             if self.players.get(i).is_some_and(|q| q.computer) {
-                                return Err(Unsupported(
+                                return Err(GenieError::unsupported(
                                     "a computer player's notify of its ghost (0x20d)",
                                 ));
                             }

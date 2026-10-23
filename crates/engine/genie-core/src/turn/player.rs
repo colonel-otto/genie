@@ -1,8 +1,8 @@
 //! A player ([`Player`]): its objects, attributes and formations, and the stop of its update.
 
+use crate::GenieError;
 use crate::turn::Turns;
 use crate::turn::unit::Unit;
-use crate::unit_ai::Unsupported;
 
 /// A player's settings for the groups an order's splitter forms ([`Player::formations`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -116,9 +116,9 @@ pub struct Player {
     /// The player's state of each technology (`player+0x760`'s, saved).
     pub techs: Vec<crate::tech::TechState>,
     /// The first update this slice could not model, with the tick (1-based) and object index.
-    pub unsupported: Option<(u32, usize, Unsupported)>,
+    pub unsupported: Option<(u32, usize, GenieError)>,
     /// Every object the slice stopped updating, with the tick and why.
-    pub freezes: Vec<(u32, i32, Unsupported)>,
+    pub freezes: Vec<(u32, i32, GenieError)>,
     /// A command the slice could not model stopped the whole player: its objects freeze.
     pub stopped: bool,
     /// `game_status` (`+0x89`, saved): playing, won or lost ([`crate::game_status`]).
@@ -191,29 +191,30 @@ pub struct Player {
 
 impl crate::tech::Attributes for Player {
     /// An attribute's value (the resources' from [`Player::resources`]).
-    fn get(&self, i: i16) -> Result<f32, Unsupported> {
+    fn get(&self, i: i16) -> Result<f32, GenieError> {
         match usize::try_from(i) {
             Ok(r @ 0..=3) => Ok(self.resources[r]),
             Ok(k) => self
                 .attributes
                 .get(k)
                 .copied()
-                .ok_or(Unsupported("an attribute the player does not have")),
-            Err(_) => Err(Unsupported("a negative attribute")),
+                .ok_or(GenieError::unsupported(
+                    "an attribute the player does not have",
+                )),
+            Err(_) => Err(GenieError::unsupported("a negative attribute")),
         }
     }
 
     /// An attribute set to `v`, as a technology's payment writes it (no side effects).
-    fn set(&mut self, i: i16, v: f32) -> Result<(), Unsupported> {
+    fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError> {
         match usize::try_from(i) {
             Ok(r @ 0..=3) => self.resources[r] = v,
             Ok(k) => {
-                *self
-                    .attributes
-                    .get_mut(k)
-                    .ok_or(Unsupported("an attribute the player does not have"))? = v;
+                *self.attributes.get_mut(k).ok_or(GenieError::unsupported(
+                    "an attribute the player does not have",
+                ))? = v;
             }
-            Err(_) => return Err(Unsupported("a negative attribute")),
+            Err(_) => return Err(GenieError::unsupported("a negative attribute")),
         }
         Ok(())
     }
@@ -222,15 +223,15 @@ impl crate::tech::Attributes for Player {
 impl Turns {
     /// A command or a pass the slice does not model for player `p`: the player stops
     /// ([`Player::stop`]), and a subscriber hears why ([`crate::trace`]).
-    pub(crate) fn stop_player(&mut self, p: usize, why: Unsupported) {
-        crate::trace::player_stops(self.ticks, p, why);
+    pub(crate) fn stop_player(&mut self, p: usize, why: GenieError) {
+        crate::trace::player_stops(self.ticks, p, &why);
         self.players[p].stop(self.ticks, why);
     }
 }
 
 impl Player {
     /// A command the slice does not model for this player: the player stops.
-    pub(crate) fn stop(&mut self, tick: u32, why: Unsupported) {
+    pub(crate) fn stop(&mut self, tick: u32, why: GenieError) {
         let _ = self.unsupported.get_or_insert((tick, 0, why));
         self.stopped = true;
     }
@@ -247,19 +248,21 @@ impl Player {
     /// by `amount` (`FUN_14165d040`; the peak of attribute 11, `+0x6fc`, and the resource events of
     /// `FUN_140c898a0` are not held). Food, wood, stone and gold are the slice's `resources`; the
     /// attributes whose change has side effects (50, 183, 196) are not modelled.
-    pub fn add_attribute(&mut self, kind: i16, amount: f32) -> Result<(), Unsupported> {
-        let i = usize::try_from(kind).map_err(|_| Unsupported("a negative attribute"))?;
+    pub fn add_attribute(&mut self, kind: i16, amount: f32) -> Result<(), GenieError> {
+        let i =
+            usize::try_from(kind).map_err(|_| GenieError::unsupported("a negative attribute"))?;
         match i {
-            50 | 183 | 196 => Err(Unsupported("an attribute whose change has side effects")),
+            50 | 183 | 196 => Err(GenieError::unsupported(
+                "an attribute whose change has side effects",
+            )),
             0..=3 => {
                 self.resources[i] += amount;
                 Ok(())
             }
             _ => {
-                let v = self
-                    .attributes
-                    .get_mut(i)
-                    .ok_or(Unsupported("an attribute the player does not have"))?;
+                let v = self.attributes.get_mut(i).ok_or(GenieError::unsupported(
+                    "an attribute the player does not have",
+                ))?;
                 *v += amount;
                 Ok(())
             }

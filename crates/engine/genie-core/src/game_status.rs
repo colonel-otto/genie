@@ -11,7 +11,7 @@
 use crate::production::{Making, refund, refund_research};
 use crate::rng::Stream;
 use crate::turn::Turns;
-use crate::unit_ai::{Effect, Unsupported};
+use crate::unit_ai::{Effect, GenieError};
 
 /// The player still plays.
 pub const PLAYING: u8 = 0;
@@ -127,11 +127,10 @@ impl Turns {
     /// once every comm player of its world player has (one each in the slice's games), the
     /// world player's slot 3 (`FUN_1416610f0`): `+0x8c` takes the drop, `+0x8b` is set and the
     /// status becomes lost ([`Turns::set_status`]); its message is the interface's.
-    pub(crate) fn resign(&mut self, player: usize, dropped: bool) -> Result<(), Unsupported> {
-        let p = self
-            .players
-            .get_mut(player)
-            .ok_or(Unsupported("RESIGN of a player the slice does not have"))?;
+    pub(crate) fn resign(&mut self, player: usize, dropped: bool) -> Result<(), GenieError> {
+        let p = self.players.get_mut(player).ok_or(GenieError::unsupported(
+            "RESIGN of a player the slice does not have",
+        ))?;
         p.dropped = dropped;
         p.resigned = true;
         self.set_status(player, LOST)
@@ -151,7 +150,7 @@ impl Turns {
     /// ([`Turns::stop_everything`]) once the game is a minute old; its fealty (`+0x12f8`) would
     /// give its resources and units away while the game goes on, which is not modelled. A
     /// newly lost player's history takes its defeat ([`Turns::defeat_event`]).
-    pub(crate) fn set_status(&mut self, p: usize, status: u8) -> Result<(), Unsupported> {
+    pub(crate) fn set_status(&mut self, p: usize, status: u8) -> Result<(), GenieError> {
         let old = self.players[p].game_status;
         if status != old && (!self.players[p].resigned || status == LOST) {
             self.players[p].game_status = status;
@@ -164,7 +163,7 @@ impl Turns {
             self.spatial.reveal_to(p);
         }
         if self.settings.game_mode == BATTLE_ROYALE {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a status change in a battle royale (game mode 12)",
             ));
         }
@@ -176,7 +175,7 @@ impl Turns {
                 self.defeat_event(p);
             }
             if old != LOST && 0 < self.players[p].fealty && self.game_state == 0 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a defeated player's fealty (its resources and units given away)",
                 ));
             }
@@ -218,13 +217,13 @@ impl Turns {
     /// `FUN_14165d720`: player `i`'s status for the victory check. A player still playing whose
     /// victory conditions are met (`FUN_1414f35d0`) wins (slot 1 with won; the world's `+0x8c`,
     /// 2, is not held); one counting its allies' victory as its own is not modelled.
-    fn own_victory(&mut self, i: usize) -> Result<u8, Unsupported> {
+    fn own_victory(&mut self, i: usize) -> Result<u8, GenieError> {
         let p = &self.players[i];
         if p.game_status == LOST || p.victory != 2 {
             return Ok(p.game_status);
         }
         if p.allied_victory != 0 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a player's victory with its allies' (allied victory)",
             ));
         }
@@ -279,7 +278,7 @@ impl Turns {
     /// `FUN_140f98e80`); a building stops but for a few masters (`FUN_1411e6290`) and gives
     /// back its queue ([`Turns::cancel_queue`]); every unit AI's orders go (`FUN_140c5e010`). The
     /// slice holds no unit groups (`+0x6d0`).
-    fn stop_everything(&mut self, p: usize) -> Result<(), Unsupported> {
+    fn stop_everything(&mut self, p: usize) -> Result<(), GenieError> {
         use crate::explore::EXPLORE_ACTION;
         use crate::unit_ai::AUTO_SCOUT_ACTION;
         for idx in 0..self.players[p].objects.len() {
@@ -319,7 +318,7 @@ impl Turns {
     /// a class other than 58 whose action value is not `0x2c2` and whose top action is no trade
     /// (0x6f) with a load stops (slot 0xb0 with 0: the order ends, and stopAction, slot 0x3c0)
     /// and forgets its target and its last target (`FUN_140c4dcb0`).
-    pub(crate) fn object_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+    pub(crate) fn object_stop(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[idx];
         let master = self.master_of(p, unit.life.master_id)?;
         let class = master.class;
@@ -327,11 +326,13 @@ impl Turns {
             .top_action_kind()
             .is_some_and(|k| KEEPING_TYPES.contains(&k))
         {
-            return Err(Unsupported("a stop of an action of type 0x7c or 0x7d"));
+            return Err(GenieError::unsupported(
+                "a stop of an action of type 0x7c or 0x7d",
+            ));
         }
         let keeps = self.halt_top_action(p, idx)?;
         if keeps && class == TRADE_CART {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a trade cart's goods after its stop (+0x7a0, FUN_141188160)",
             ));
         }
@@ -358,7 +359,7 @@ impl Turns {
         for e in fx {
             match e {
                 Effect::Stop => self.command_stop(p, idx)?,
-                _ => return Err(Unsupported("a stop's effect not modelled")),
+                _ => return Err(GenieError::unsupported("a stop's effect not modelled")),
             }
         }
         if let Some(ai) = self.players[p].objects[idx].ai.as_mut() {
@@ -376,7 +377,7 @@ impl Turns {
     /// tends lets it go (`FUN_141189ca0` with −1), and the answer is true. The Fly (Bird), the
     /// missile's, the Make and the wait for a foundation keep the base's too; the Gather, the
     /// Build, the Attack and the Artifact halt ([`Turns::halt_other`]).
-    fn halt_top_action(&mut self, p: usize, idx: usize) -> Result<bool, Unsupported> {
+    fn halt_top_action(&mut self, p: usize, idx: usize) -> Result<bool, GenieError> {
         let computer = self.players[p].computer;
         let by = self.releaser(p, idx);
         let master_id = self.players[p].objects[idx].life.master_id;
@@ -399,7 +400,7 @@ impl Turns {
             _ => return self.halt_other(p, idx, kind),
         }
         if computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer player's hunt stopped (set_state 1)",
             ));
         }
@@ -423,7 +424,9 @@ impl Turns {
             crate::attack::set_sprite(&mut unit.sprite, g, self.streams.get(Stream::Sprite));
         }
         if unit.my_pasture != -1 {
-            return Err(Unsupported("a stopped hunter that tends a pasture"));
+            return Err(GenieError::unsupported(
+                "a stopped hunter that tends a pasture",
+            ));
         }
         for t in released {
             if t != -1 {
@@ -443,7 +446,7 @@ impl Turns {
     /// master's standing sprite (the Gather the task's carrying one while it carries at least 1 of
     /// the task's resource, `FUN_140a8b6b0`). [`crate::turn::Unit::top_action`] holds no other
     /// kind.
-    fn halt_other(&mut self, p: usize, idx: usize, kind: i16) -> Result<bool, Unsupported> {
+    fn halt_other(&mut self, p: usize, idx: usize, kind: i16) -> Result<bool, GenieError> {
         let by = self.releaser(p, idx);
         let master_id = self.players[p].objects[idx].life.master_id;
         let standing = self.master_of(p, master_id)?.standing_sprite;
@@ -500,7 +503,9 @@ impl Turns {
                 if walked {
                     unit.mover
                         .as_mut()
-                        .ok_or(Unsupported("a walking animal without movement state"))?
+                        .ok_or(GenieError::unsupported(
+                            "a walking animal without movement state",
+                        ))?
                         .stop()?;
                 }
                 if let Some(t) = released {
@@ -509,7 +514,7 @@ impl Turns {
                 self.standing_sprite(p, idx)?;
             }
             _ => {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a stop of an action whose slot 0x38 is not modelled",
                 ));
             }
@@ -525,7 +530,7 @@ impl Turns {
     /// ([`Turns::refund_researches`]). Then the interface's `+0xc02` (the local player's event
     /// 0x7d) is left; the entries go, the production list's action goes
     /// ([`Turns::end_production_action`]), the change counter grows and the total is 0.
-    pub(crate) fn cancel_queue(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+    pub(crate) fn cancel_queue(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let Some(production) = self.players[p].objects[idx].production.as_ref() else {
             return Ok(());
         };
@@ -558,7 +563,7 @@ impl Turns {
         p: usize,
         e: &crate::production::Entry,
         count: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::production::{QUEUED, population};
         let class = self.tracker_key(p, e.master).class;
         let master = self.masters.get(p).and_then(|m| m.get(e.master)).cloned();
@@ -587,7 +592,7 @@ impl Turns {
         idx: usize,
         e: &crate::production::Entry,
         count: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         // the entry's technology is one of the tree: RESEARCH queued it, the load read it
         let Some(t) = usize::try_from(e.tech)
             .ok()
@@ -638,7 +643,7 @@ impl Turns {
         idx: usize,
         index: u32,
         all: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(production) = self.players[p].objects[idx].production.as_ref() else {
             return Ok(());
         };
@@ -696,7 +701,7 @@ impl Turns {
         &mut self,
         p: usize,
         entry: &crate::production::Entry,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let class = self.tracker_key(p, entry.master).class;
         let master = self
             .masters
@@ -730,7 +735,7 @@ impl Turns {
         idx: usize,
         index: u32,
         e: usize,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         fn queue(t: &Turns, p: usize, idx: usize) -> &crate::production::Queue {
             &t.players[p].objects[idx]
                 .production
@@ -803,7 +808,7 @@ impl Turns {
         (master, count): (i16, i16),
         from: i32,
         tech: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(production) = self.players[p].objects[idx].production.as_ref() else {
             return Ok(());
         };
@@ -872,7 +877,7 @@ impl Turns {
         p: usize,
         idx: usize,
         index: u32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.settings.game_mode != ONE_UNIT_MODE {
             return Ok(());
         }

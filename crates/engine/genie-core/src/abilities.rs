@@ -32,11 +32,11 @@
 //! Poles' stone miners' gold, the Shu lumberjacks' food. The routine runs whatever the masters
 //! hold.
 
+use crate::GenieError;
 use crate::damage::Victim;
 use crate::fmath;
 use crate::masters::Task;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The action type of a generation task (151): the Feitoria's trickle and the like.
 pub const GENERATE: i16 = 0x97;
@@ -473,7 +473,7 @@ impl Turns {
         owner: usize,
         leaves: bool,
         pending: &mut Pending<'_>,
-    ) -> Result<Vec<Reward>, Unsupported> {
+    ) -> Result<Vec<Reward>, GenieError> {
         let i = match self.players[p].objects.get(i) {
             Some(u) if u.id == id => i,
             _ => match self.place(id) {
@@ -554,7 +554,7 @@ impl Turns {
         master: Own,
         task: &Task,
         pending: &mut Pending<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[i];
         let flags = task.combat_level_flag;
         let short_cut = match master.kind {
@@ -564,7 +564,7 @@ impl Turns {
         let top = if short_cut || master.kind != COMBAT_KIND {
             None
         } else {
-            if let Some(e) = unit.unmodelled_action {
+            if let Some(e) = unit.unmodelled_action.clone() {
                 return Err(e);
             }
             unit.top_action().map(|a| {
@@ -665,7 +665,7 @@ impl Turns {
         master: Own,
         task: &Task,
         pending: &mut Pending<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let dt = self.dt_seconds;
         let unit = &mut self.players[p].objects[i];
         if !movement_damage_due(&mut unit.abilities.movement_damage_timer, dt) {
@@ -719,7 +719,7 @@ impl Turns {
         id: i32,
         owner: usize,
         pending: &mut Pending<'_>,
-    ) -> Result<Option<Bystander>, Unsupported> {
+    ) -> Result<Option<Bystander>, GenieError> {
         let allied =
             |q: usize| crate::tasks::allied(&self.players[owner].relations, owner, q, true);
         if let Some(v) = pending.get(id) {
@@ -780,7 +780,7 @@ impl Turns {
         owner: usize,
         damage: f32,
         pending: &mut Pending<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if b.kind == crate::ghost::GHOST {
             return Ok(());
         }

@@ -23,6 +23,7 @@ mod unit;
 mod view;
 mod world;
 
+use crate::GenieError;
 use crate::lifecycle::seconds;
 use crate::masters::Masters;
 use crate::movement::Mover;
@@ -44,7 +45,6 @@ pub(crate) use crate::turn::world::{
     Releaser, World, built_death, combat_dies, count_class, farm_bonus, forget_resource, refund_of,
     released, storage_leaves, victim_of,
 };
-use crate::unit_ai::Unsupported;
 
 /// What every building holds of a gate: `mGateLocked` (`+0xc7c`; a lock also sets the
 /// building's last move time, [`Mover::last_move`], slot 0x670, `FUN_1411dba30`), `mFirstUpdate`
@@ -83,7 +83,8 @@ const GATE_QUERY_RECORDS: usize = 10;
 const GATE_COUNT_CAP: usize = 25;
 /// A unit's build command (a Gather's on its target not built yet, or its reseed) after an
 /// update in which the unit left its list: in the game it ran inside the update, before.
-const LEAVES_ITS_LIST: Unsupported = Unsupported("a build command of a unit that leaves its list");
+const LEAVES_ITS_LIST: GenieError =
+    GenieError::unsupported("a build command of a unit that leaves its list");
 
 /// The world constructor's history period (`FUN_141599e50`'s immediate 0x19 at `world+0x8b8`),
 /// until the `.dat`'s `time_slice` replaces it.
@@ -101,15 +102,15 @@ pub(crate) fn gate_units(
     spatial: &Spatial,
     gate: i32,
     annexes: &[i32],
-) -> Result<(Vec<i32>, usize), Unsupported> {
+) -> Result<(Vec<i32>, usize), GenieError> {
     let [a, b] = annexes[..] else {
-        return Err(Unsupported("a gate without its two annexes"));
+        return Err(GenieError::unsupported("a gate without its two annexes"));
     };
     let place = |id| {
         spatial
             .get(id)
             .map(|p| [p.position[0], p.position[1]])
-            .ok_or(Unsupported("a gate's annex without a place"))
+            .ok_or(GenieError::unsupported("a gate's annex without a place"))
     };
     let (from, to) = (place(a)?, place(b)?);
     let rect = [
@@ -121,7 +122,7 @@ pub(crate) fn gate_units(
     let owner = spatial
         .get(gate)
         .map(|p| p.player)
-        .ok_or(Unsupported("a gate without a place"))?;
+        .ok_or(GenieError::unsupported("a gate without a place"))?;
     spatial.check_known_records([
         rect[0] - GATE_GROW,
         rect[1] - GATE_GROW,
@@ -130,7 +131,9 @@ pub(crate) fn gate_units(
     ])?;
     let hits = spatial.walk_hits(from, to, rect, GATE_GROW, 1.0, Some(owner), &[gate, a, b])?;
     if GATE_QUERY_RECORDS < hits.len() {
-        return Err(Unsupported("a gate's query of more than 10 records"));
+        return Err(GenieError::unsupported(
+            "a gate's query of more than 10 records",
+        ));
     }
     let (mut units, mut allied) = (Vec::new(), 0);
     for id in hits {
@@ -326,7 +329,7 @@ impl Turns {
     /// what could not be forced (an object that changed hands or masters, or
     /// that the game made and the slice did not). Not part of a replay: a dev hook to see past a
     /// freeze.
-    pub fn force(&mut self, game: &GameState) -> Vec<(usize, i32, Unsupported)> {
+    pub fn force(&mut self, game: &GameState) -> Vec<(usize, i32, GenieError)> {
         let mut notes = Vec::new();
         self.frame_seed = game.frame_seed;
         self.game_state = game.game_state;
@@ -391,7 +394,11 @@ impl Turns {
                 let Some(g) = theirs.iter().find(|g| g.id == id) else {
                     let elsewhere = game.players.iter().any(|q| q.iter().any(|g| g.id == id));
                     if elsewhere {
-                        notes.push((p, id, Unsupported("a forced object changed hands")));
+                        notes.push((
+                            p,
+                            id,
+                            GenieError::unsupported("a forced object changed hands"),
+                        ));
                         i += 1;
                         continue;
                     }
@@ -402,7 +409,11 @@ impl Turns {
                     continue;
                 };
                 if g.life.master_id != unit.life.master_id {
-                    notes.push((p, id, Unsupported("a forced object changed masters")));
+                    notes.push((
+                        p,
+                        id,
+                        GenieError::unsupported("a forced object changed masters"),
+                    ));
                     i += 1;
                     continue;
                 }
@@ -452,7 +463,7 @@ impl Turns {
                     notes.push((
                         p,
                         g.id,
-                        Unsupported("an object the game made and the slice did not"),
+                        GenieError::unsupported("an object the game made and the slice did not"),
                     ));
                 }
             }
@@ -671,7 +682,7 @@ impl Turns {
     /// (`open`, the update's flags), open for `p` (`q`'s slot 0x318, `FUN_14162faf0`): each gate
     /// `p` may pass ([`Turns::gate_passes`]) loses its record, its tiles' marks and its mesh shape
     /// (`FUN_141055b40`), so `p`'s units walk and plan through it.
-    fn open_gates(&mut self, p: usize, open: &mut [bool]) -> Result<(), Unsupported> {
+    fn open_gates(&mut self, p: usize, open: &mut [bool]) -> Result<(), GenieError> {
         if p == 0 {
             return Ok(());
         }
@@ -692,7 +703,7 @@ impl Turns {
                     .get(id)
                     .is_some_and(|g| g.obstruction.is_some_and(|o| o.kind == 10))
                 {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a gate of obstruction kind 10 opens (FUN_140f65580)",
                     ));
                 }
@@ -768,7 +779,7 @@ impl Turns {
     /// An object of a master the slice does not have.
     ///
     /// [`VisibleResources::add`]: crate::visibility::VisibleResources::add
-    pub(crate) fn process_new_tiles(&mut self, p: usize) -> Result<(), Unsupported> {
+    pub(crate) fn process_new_tiles(&mut self, p: usize) -> Result<(), GenieError> {
         let Some(sight) = self.spatial.sight.as_ref() else {
             return Ok(());
         };
@@ -812,7 +823,7 @@ impl Turns {
     /// # Errors
     ///
     /// A master the slice does not have, or no players' sight.
-    pub(crate) fn made_new_object(&mut self, p: usize) -> Result<(), Unsupported> {
+    pub(crate) fn made_new_object(&mut self, p: usize) -> Result<(), GenieError> {
         let Some(u) = self.players[p].objects.last() else {
             return Ok(());
         };
@@ -913,7 +924,20 @@ impl Turns {
         self.sync_moving();
         for command in commands {
             tracing::debug!(target: crate::trace::UPDATE, ?command, "command");
+            let stopped: Vec<bool> = self
+                .players
+                .iter()
+                .map(|p| p.unsupported.is_some())
+                .collect();
             self.run(command);
+            // a player the command stopped: its error names the command
+            for (p, was) in self.players.iter_mut().zip(stopped) {
+                if let (false, Some((_, _, why))) = (was, p.unsupported.as_mut()) {
+                    let text = format!("{command:?}");
+                    let name = text.split([' ', '{', '(']).next().unwrap_or_default();
+                    *why = why.clone().with("command", name);
+                }
+            }
         }
         self.sync_moving();
     }
@@ -1353,7 +1377,7 @@ impl Turns {
                 }
                 if let Some(work) = work_order {
                     if !matches!(result, Ok(Step::Stay)) {
-                        result = result.and(Err(Unsupported(
+                        result = result.and(Err(GenieError::unsupported(
                             "a builder's work order of a unit that leaves its list",
                         )));
                     } else if let Err(e) = self.order_work(p, i, &work) {
@@ -1373,7 +1397,7 @@ impl Turns {
                 // gave them
                 for work in works {
                     if !matches!(result, Ok(Step::Stay)) {
-                        result = result.and(Err(Unsupported(
+                        result = result.and(Err(GenieError::unsupported(
                             "a HuntObject or GatherObject of a unit that leaves its list",
                         )));
                         break;
@@ -1390,7 +1414,7 @@ impl Turns {
                 // the unit AI's moves off footprints (slot 0x148)
                 for m in move_aside {
                     if !matches!(result, Ok(Step::Stay)) {
-                        result = result.and(Err(Unsupported(
+                        result = result.and(Err(GenieError::unsupported(
                             "a move off a footprint of a unit that leaves its list",
                         )));
                     } else if let Err(e) = self.move_aside(p, i, m) {
@@ -1443,7 +1467,7 @@ impl Turns {
                 // the unit AI's BuildObject on a foundation its builder's search found
                 if let Some(foundation) = build_object {
                     if !matches!(result, Ok(Step::Stay)) {
-                        result = result.and(Err(Unsupported(
+                        result = result.and(Err(GenieError::unsupported(
                             "a BuildObject of a unit that leaves its list",
                         )));
                     } else if let Err(e) = self.build_object(p, i, foundation) {
@@ -1455,7 +1479,7 @@ impl Turns {
                         result = Err(e);
                     }
                 } else if ordered.is_some() && result.is_ok() {
-                    result = Err(Unsupported(
+                    result = Err(GenieError::unsupported(
                         "an order on a target of a unit that leaves its list",
                     ));
                 }
@@ -1526,7 +1550,7 @@ impl Turns {
                     Ok(Step::Leave) => {
                         let gone = player.objects.swap_remove(i);
                         if let Err(e) = self.leave_world(p, &gone) {
-                            crate::trace::player_unsupported(self.ticks, p, e);
+                            crate::trace::player_unsupported(self.ticks, p, &e);
                             let _ = self.players[p]
                                 .unsupported
                                 .get_or_insert((self.ticks, i, e));
@@ -1569,7 +1593,7 @@ impl Turns {
                             }
                         }
                         if let Some(e) = failed {
-                            crate::trace::player_unsupported(self.ticks, p, e);
+                            crate::trace::player_unsupported(self.ticks, p, &e);
                             let _ = self.players[p]
                                 .unsupported
                                 .get_or_insert((self.ticks, i, e));
@@ -1588,8 +1612,11 @@ impl Turns {
                     }
                     Ok(Step::Stay) => i += 1,
                     Err(e) => {
-                        crate::trace::object_freezes(self.ticks, p, player.objects[i].id, e);
-                        player.freezes.push((self.ticks, player.objects[i].id, e));
+                        let e = player.objects[i].in_context(e);
+                        crate::trace::object_freezes(self.ticks, p, player.objects[i].id, &e);
+                        player
+                            .freezes
+                            .push((self.ticks, player.objects[i].id, e.clone()));
                         let _ = player.unsupported.get_or_insert((self.ticks, i, e));
                         player.objects[i].stopped = true;
                         self.spatial.freeze(player.objects[i].id);

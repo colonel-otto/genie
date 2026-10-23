@@ -12,9 +12,9 @@
 //! sheep (update 1170). The charges, shields, blasts, terrain bonuses, special attacks,
 //! retaliations and reflections are ports of the code, checked by the unit tests alone.
 
+use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::fmath;
-use crate::unit_ai::Unsupported;
 
 /// Elevation: a higher attacker hits at 1.25 (`DAT_142eb56a8`), a lower one at 0.75
 /// (`DAT_142e7f388`), each plus its player's and the target's player's attributes (211/272,
@@ -401,16 +401,18 @@ pub fn charge_hit(a: &Attacker, v: &Victim) -> bool {
 
 /// `FUN_1412161b0`: a master of special attack 3 whose charge is ready on its unit AI's (or
 /// group's) target in reach; false for other masters. Special attack 3 is not modelled.
-const fn special_charge_ready(a: &Attacker) -> Result<bool, Unsupported> {
+const fn special_charge_ready(a: &Attacker) -> Result<bool, GenieError> {
     if a.special_attack == 3 {
-        return Err(Unsupported("a charge of special attack 3 (FUN_1412161b0)"));
+        return Err(GenieError::unsupported(
+            "a charge of special attack 3 (FUN_1412161b0)",
+        ));
     }
     Ok(false)
 }
 
 /// `FUN_141202580`: the damage a ready charge adds, the charge itself; a master of special
 /// attack 3 adds it only while [`special_charge_ready`] holds.
-fn charge_damage(a: &Attacker) -> Result<f32, Unsupported> {
+fn charge_damage(a: &Attacker) -> Result<f32, GenieError> {
     if a.special_attack == 3 && !special_charge_ready(a)? {
         return Ok(0.0);
     }
@@ -547,16 +549,15 @@ pub fn armor_damage(
     weapons: &[(i16, i16)],
     factor: f32,
     attacker: &Attacker,
-) -> Result<f32, Unsupported> {
-    let a = v
-        .armored
-        .as_ref()
-        .ok_or(Unsupported("the armor of an object without combat values"))?;
+) -> Result<f32, GenieError> {
+    let a = v.armored.as_ref().ok_or(GenieError::unsupported(
+        "the armor of an object without combat values",
+    ))?;
     let (own_class, kind, state) = (v.class, v.kind, v.state);
     let terrain = if a.terrain_bonus < 0 {
         1.0f32
     } else {
-        a.terrain.ok_or(Unsupported(
+        a.terrain.ok_or(GenieError::unsupported(
             "a terrain defense bonus without the map's terrain or the restriction",
         ))?
     };
@@ -611,7 +612,7 @@ pub fn armor_damage(
             }
             if pierce_or_melee && !bonused {
                 if attacker.bonus_tasks {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "an attacker with bonus damage tasks (FUN_14107ce60)",
                     ));
                 }
@@ -663,7 +664,7 @@ pub fn take(
     weapons: &[(i16, i16)],
     factor: f32,
     blast_taken: f32,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     match t.kind {
         70 => take_unit(t, src, others, weapons, factor, blast_taken),
         50 | 60 => damage(t, src, weapons, factor, blast_taken),
@@ -707,7 +708,7 @@ fn take_building(
     factor: f32,
     forward: bool,
     blast_taken: f32,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     let before = t.hp;
     let main = t.building.as_ref().and_then(|b| b.main);
     if forward && let Some(main) = main {
@@ -806,9 +807,9 @@ const DAMAGED_LATELY: u8 = 0x3c;
 /// `FUN_1415c6510`, the kill bonus of the attacker `src` (type 40 and up) for an object it
 /// killed: its master's tasks of action type 0x9a pay their owner's attributes, research
 /// technologies and run effects (not modelled); an attacker without one does nothing.
-const fn kill_bonus(src: &Attacker) -> Result<(), Unsupported> {
+const fn kill_bonus(src: &Attacker) -> Result<(), GenieError> {
     if 40 <= src.kind && src.kill_bonus_tasks {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "an attacker's kill bonus task (action type 0x9a)",
         ));
     }
@@ -819,9 +820,9 @@ const fn kill_bonus(src: &Attacker) -> Result<(), Unsupported> {
 /// combat ability with bit 7, against a target whose player is not allied with the attacker's
 /// both ways (`FUN_141663d90` with the ally flag, [`Victim::allied`]), does anything (its
 /// master's effects on the target, not modelled).
-const fn attack_effects(src: &Attacker, t: &Victim) -> Result<(), Unsupported> {
+const fn attack_effects(src: &Attacker, t: &Victim) -> Result<(), GenieError> {
     if src.ability & 0x80 != 0 && !(t.allied[0] && t.allied[1]) {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "an attacker whose hits apply effects (FUN_14107bdf0)",
         ));
     }
@@ -888,18 +889,17 @@ fn take_unit(
     weapons: &[(i16, i16)],
     factor: f32,
     blast_taken: f32,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     let before = effective(t);
     if t.hp < 1.0 {
         return Ok(());
     }
-    let a = t
-        .armored
-        .clone()
-        .ok_or(Unsupported("a combat object without its combat values"))?;
+    let a = t.armored.clone().ok_or(GenieError::unsupported(
+        "a combat object without its combat values",
+    ))?;
     let mut factor = factor;
-    let facing_to = |at: [f32; 3], src: &Victim| -> Result<f32, Unsupported> {
-        let facing = a.facing.ok_or(Unsupported(
+    let facing_to = |at: [f32; 3], src: &Victim| -> Result<f32, GenieError> {
+        let facing = a.facing.ok_or(GenieError::unsupported(
             "the facing of a target with a special attack or a retaliation (+0x7e8)",
         ))?;
         Ok(facing_offset(at, facing, src.position))
@@ -909,7 +909,9 @@ fn take_unit(
         if MINUS_FACING < off && off < FACING {
             factor *= SPECIAL;
             if a.special_graphic {
-                return Err(Unsupported("a special attack's sprite (master +0x8e8)"));
+                return Err(GenieError::unsupported(
+                    "a special attack's sprite (master +0x8e8)",
+                ));
             }
         }
     }
@@ -917,7 +919,7 @@ fn take_unit(
     let melee = reach <= RETALIATION_RANGE && RETALIATION_RANGE != reach;
     // the conditions are pure: the ones the slice holds decide first
     if a.special_attack == 2 && a.unit_ai && !a.busy && melee {
-        let idle = a.alert_idle.ok_or(Unsupported(
+        let idle = a.alert_idle.ok_or(GenieError::unsupported(
             "the alert mode and attackers of a retaliating target's unit AI (FUN_140c42b30)",
         ))?;
         if idle {
@@ -974,7 +976,7 @@ fn damage(
     weapons: &[(i16, i16)],
     factor: f32,
     blast_taken: f32,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     let d = armor_damage(t, weapons, factor, &src.source)?;
     if blast_taken < d {
         if 70 <= src.kind {
@@ -988,7 +990,7 @@ fn damage(
     }
     let marks = t.kind == 70 || (t.kind == 80 && matches!(t.class, 51 | 54));
     if 60 <= src.kind && src.source.ability & 4 != 0 && marks {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "an attacker whose combat ability marks its target (FUN_141206250)",
         ));
     }
@@ -1004,7 +1006,9 @@ fn damage(
     if t.hp < 1.0 {
         t.hp = 0.0;
         if t.armored.as_ref().is_some_and(|a| a.kill_tasks) {
-            return Err(Unsupported("a kill reward task (action type 0xa1)"));
+            return Err(GenieError::unsupported(
+                "a kill reward task (action type 0xa1)",
+            ));
         }
         t.killed = Some(Kill {
             attacker: src.id,
@@ -1063,7 +1067,7 @@ pub fn blast(
     main: Option<i32>,
     targets: &mut [&mut Victim],
     factor: f32,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     let a = attacker.source;
     let r = a.area_effect;
     if !fmath::below_or_unordered(0.0, r) {
@@ -1094,7 +1098,7 @@ pub fn blast(
             continue;
         }
         if t.uncertain {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a blast over an object whose player's update is not modelled",
             ));
         }
@@ -1172,14 +1176,9 @@ pub fn blast(
         }
         if !is_main {
             if a.blast_level & 0x80 != 0 {
-                let facing =
-                    attacker
-                        .armored
-                        .as_ref()
-                        .and_then(|x| x.facing)
-                        .ok_or(Unsupported(
-                            "the facing of an attacker with a cone blast (+0x7e8)",
-                        ))?;
+                let facing = attacker.armored.as_ref().and_then(|x| x.facing).ok_or(
+                    GenieError::unsupported("the facing of an attacker with a cone blast (+0x7e8)"),
+                )?;
                 if a.blast_level & 0x20 == 0 {
                     let off = facing_offset(attacker.position, facing, t.position);
                     if CONE < off || off < MINUS_CONE {

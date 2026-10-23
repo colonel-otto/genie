@@ -2,9 +2,9 @@
 //! speed of the members, the objects their searches list, and the formation's type after a
 //! change of members (`FUN_14100b940`).
 
+use crate::GenieError;
 use crate::group::create::FormationUnit;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// A group whose `mGroupFlags` bit 9 is set moves at its slowest member's speed divided by this
 /// (`FUN_14100bcb0`, `DAT_142ed66b4`).
@@ -68,7 +68,7 @@ impl Turns {
     /// Not modelled: `+0x478` (a member's `+0x30c`; the group holds no such field), a charge's
     /// range against a target, and the attack plan's re-attack (`FUN_14100f7f0`) against a
     /// target the world holds.
-    pub fn group_statistics(&mut self, group: i32, far: bool) -> Result<(), Unsupported> {
+    pub fn group_statistics(&mut self, group: i32, far: bool) -> Result<(), GenieError> {
         if self.statistics_only(group, far)? {
             self.calc_formation_type(group)?;
         }
@@ -82,7 +82,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn statistics_only(&mut self, group: i32, far: bool) -> Result<bool, Unsupported> {
+    pub fn statistics_only(&mut self, group: i32, far: bool) -> Result<bool, GenieError> {
         let dt = self.dt_seconds;
         // each member's view in the members' order, its search first (FUN_140c65c60 before
         // anything else of it), then the far test; the index the member has then, which a
@@ -106,7 +106,7 @@ impl Turns {
             let unit = FormationUnit::of(master);
             let ai =
                 u.ai.as_ref()
-                    .ok_or(Unsupported("a group member without a unit AI"))?;
+                    .ok_or(GenieError::unsupported("a group member without a unit AI"))?;
             let view = MemberView {
                 id,
                 unit,
@@ -265,7 +265,7 @@ impl Turns {
             && target != -1
             && self.world_object(target).is_some()
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a group's attack plan that attacks again (FUN_14100f7f0)",
             ));
         }
@@ -284,7 +284,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn calc_formation_type(&mut self, group: i32) -> Result<(), Unsupported> {
+    pub fn calc_formation_type(&mut self, group: i32) -> Result<(), GenieError> {
         let ids: Vec<i32> = self
             .groups
             .get(group)
@@ -341,7 +341,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn lock_formation(&mut self, group: i32, kind: i32) -> Result<(), Unsupported> {
+    pub fn lock_formation(&mut self, group: i32, kind: i32) -> Result<(), GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         // the spacing is read again for every member held (0x14102500a): the first whose
         // radius gives one above it sets it, and every later member finds it set
@@ -428,24 +428,24 @@ impl Turns {
     /// A member without a unit AI (the game calls through its null pointer), of a unit-AI type
     /// other than the soldier's (13) or of a computer player (slot 0x50's and 0xa8's per type),
     /// and the search's.
-    fn member_objects(&mut self, id: i32, objects: &mut Vec<i32>) -> Result<(), Unsupported> {
+    fn member_objects(&mut self, id: i32, objects: &mut Vec<i32>) -> Result<(), GenieError> {
         if MOST_OBJECTS <= objects.len() {
             return Ok(());
         }
         let on_entry = objects.len();
-        let (p, u) = self
-            .object(id)
-            .ok_or(Unsupported("a group member's search for a unit not held"))?;
+        let (p, u) = self.object(id).ok_or(GenieError::unsupported(
+            "a group member's search for a unit not held",
+        ))?;
         let ai =
             u.ai.as_ref()
-                .ok_or(Unsupported("a group member without a unit AI"))?;
+                .ok_or(GenieError::unsupported("a group member without a unit AI"))?;
         if ai.ai_type != crate::unit_ai::SOLDIER_AI {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a group member's search of a unit-AI type not modelled (FUN_140c65c60)",
             ));
         }
         if self.players[p].computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer player's group member's search (its cared classes)",
             ));
         }
@@ -459,7 +459,7 @@ impl Turns {
             pick: crate::unit_ai::Pick::Look,
         };
         let fresh = self.spatial.search_query(p, &search)?;
-        let lists = self.spatial.searched().ok_or(Unsupported(
+        let lists = self.spatial.searched().ok_or(GenieError::unsupported(
             "a group member's search that reads the registry's last answer (before any query)",
         ))?;
         if fresh {
@@ -515,7 +515,7 @@ impl Turns {
         &self,
         object: crate::group::WorldObject<'_>,
         target: Option<crate::group::WorldObject<'_>>,
-    ) -> Result<f32, Unsupported> {
+    ) -> Result<f32, GenieError> {
         let master = self.master_of(object.player(), object.master_id())?;
         if !COMBAT_KINDS.contains(&master.kind) {
             return Ok(0.0);
@@ -529,7 +529,7 @@ impl Turns {
                 crate::group::WorldObject::Ghost(..) => None,
             };
             if target.or(action_target).is_some() {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a charge's range against its target (slot 0x2f8, charge_event +0x920)",
                 ));
             }
@@ -554,7 +554,7 @@ impl Turns {
         group: i32,
         view: &MemberView,
         largest: f32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let patrol = crate::group::formation::top_path(&g.motion.paths)
             .is_some_and(|p| p.path_flags & 1 != 0);
@@ -563,7 +563,7 @@ impl Turns {
         }
         let (p, u) = self.object(view.id).expect("the member is held");
         if self.master_of(p, u.life.master_id)?.kind >= ACTION_KIND {
-            if let Some(e) = u.unmodelled_action {
+            if let Some(e) = u.unmodelled_action.clone() {
                 return Err(e);
             }
             if u.top_action_kind() == Some(crate::attack::ATTACK) {
@@ -594,7 +594,7 @@ impl Turns {
     /// # Errors
     ///
     /// What the stop does not model.
-    fn stop_if_inside(&mut self, id: i32) -> Result<(), Unsupported> {
+    fn stop_if_inside(&mut self, id: i32) -> Result<(), GenieError> {
         let inside = self
             .players
             .iter()

@@ -1,6 +1,7 @@
 //! A group's formation (FD-036): `BFormation`, its slots and lines, and the layouts that fill
 //! them (createColumnLine `FUN_141012280`, ...).
 
+use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::fmath::{Vec3, add, scale, sub};
 use crate::group::layout::{clear_line, reset_line};
@@ -8,7 +9,6 @@ use crate::group::{Formation, FormationLine, Slot, UnitGroup, sub_formation};
 use crate::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
 use crate::movement::PathData;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The formation types (`mType`; the log names of `FUN_14103fd00`).
 pub const HORDE: i32 = 0;
@@ -429,7 +429,7 @@ impl Turns {
         g: &UnitGroup,
         column: bool,
         staggered_flanked: (bool, bool),
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !column_line_slots(formation, g, column, staggered_flanked, self.world_time) {
             return Ok(false);
         }
@@ -492,7 +492,7 @@ impl Turns {
     /// # Errors
     ///
     /// A member of a master the slice does not have.
-    pub fn own_formation_type(&self, g: &UnitGroup) -> Result<i32, Unsupported> {
+    pub fn own_formation_type(&self, g: &UnitGroup) -> Result<i32, GenieError> {
         let current = g.current_formation.as_ref().map_or(HORDE, |f| f.kind);
         let mut kind = LINE;
         if let Some(path) = measured_path(&g.motion.paths) {
@@ -544,7 +544,7 @@ impl Turns {
     /// # Errors
     ///
     /// As [`Turns::own_formation_type`].
-    pub fn formation_type(&self, g: &UnitGroup, given: i32) -> Result<i32, Unsupported> {
+    pub fn formation_type(&self, g: &UnitGroup, given: i32) -> Result<i32, GenieError> {
         Ok(if given != -1 {
             given
         } else if matches!(g.formation_locked_type, -1 | 0) {
@@ -580,7 +580,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn update_desired_positions(&mut self, group: i32, given: i32) -> Result<(), Unsupported> {
+    pub fn update_desired_positions(&mut self, group: i32, given: i32) -> Result<(), GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         if g.members.is_empty() {
             return Ok(());
@@ -791,7 +791,7 @@ impl Turns {
     pub(crate) fn unit_category(
         &self,
         object: Option<crate::group::WorldObject<'_>>,
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<i32, GenieError> {
         let Some(object) = object else {
             return Ok(-1);
         };
@@ -814,7 +814,7 @@ impl Turns {
         category: i32,
         sub_category: i32,
         used: &[i32],
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<i32, GenieError> {
         let mut best = FARTHEST;
         let mut closest = -1;
         for m in &g.members {
@@ -873,7 +873,7 @@ impl Turns {
         &self,
         formation: &mut Formation,
         g: &UnitGroup,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         // what the slots ask for (the assignments change only their units)
         let asks: Vec<(Vec3, i32, i32)> = formation
             .slots
@@ -1010,7 +1010,7 @@ impl Turns {
         formation: &mut Formation,
         g: &UnitGroup,
         costs: &mut Vec<f32>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let n = g.members.len();
         let s = formation.slots.len();
         if costs.len() < ASSIGNMENT_CELLS {
@@ -1140,7 +1140,7 @@ impl Turns {
         g: &UnitGroup,
         n: usize,
         order: &[i32],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let n = n.min(g.members.len());
         let mut list: Vec<i32> = Vec::new();
         for i in 0..n {
@@ -1203,7 +1203,7 @@ impl Turns {
         &self,
         formation: &mut Formation,
         g: &UnitGroup,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let previous_column = g
             .previous_formation
             .as_ref()
@@ -1259,7 +1259,7 @@ impl Turns {
         formation: &mut Formation,
         g: &UnitGroup,
         after_column: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.formation_transform(formation, g, after_column)? {
             return Ok(());
         }
@@ -1298,7 +1298,7 @@ impl Turns {
         formation: &mut Formation,
         g: &UnitGroup,
         column_to_line: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if formation.slots.is_empty() {
             return Ok(false);
         }
@@ -1336,7 +1336,9 @@ impl Turns {
                     let line = formation
                         .lines
                         .get(i as usize)
-                        .ok_or(Unsupported("a formation line past the lines' array"))?;
+                        .ok_or(GenieError::unsupported(
+                            "a formation line past the lines' array",
+                        ))?;
                     let mut back = 0.0;
                     if 0 < i {
                         back = line.distance_back;
@@ -1424,7 +1426,7 @@ impl Turns {
     ///
     /// Never: an active slot was found, so the nearest one is too (its distance is finite).
     #[allow(clippy::too_many_lines)]
-    fn passable_slots(&self, formation: &mut Formation, g: &UnitGroup) -> Result<(), Unsupported> {
+    fn passable_slots(&self, formation: &mut Formation, g: &UnitGroup) -> Result<(), GenieError> {
         let tester = self.lead_object(&g.motion).or_else(|| {
             formation
                 .slots

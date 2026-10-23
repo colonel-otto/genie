@@ -3,11 +3,11 @@
 //! slot, with the member's steering (`FUN_141025fb0`) and the setter of a member's own move
 //! (`FUN_141039f60`).
 
+use crate::GenieError;
 use crate::fmath::{self, Vec3, at_most_or_unordered, below_or_unordered};
 use crate::group::SpecificMove;
 use crate::group::motion::{hold, moved_vector, passes_waypoint};
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// A member this near its slot on the ground is in place (`DAT_142eb0c60`, `0x14102629e`).
 const EPSILON: f32 = crate::image::group::EPSILON;
@@ -47,7 +47,7 @@ const BUILDING_KIND: u8 = 80;
 /// (`FUN_141039f60` at `0x14102778f`) and the slice does not hold; the pathers on it
 /// (`FUN_140f9e540`, `FUN_140f7c530`), the position test (slot 0x270), `FUN_140a847c0` and
 /// slot 0x540 follow.
-const BLOCKED_WAY: Unsupported = Unsupported(
+const BLOCKED_WAY: GenieError = GenieError::unsupported(
     "a member's way to its slot blocked (FUN_141025fb0 at 0x14102683b: the world's path records' ids)",
 );
 
@@ -88,7 +88,7 @@ impl Turns {
         &mut self,
         group: i32,
         differentiators: &[i32],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
             let g = self.groups.get(group).expect("the caller holds the group");
@@ -146,7 +146,7 @@ impl Turns {
     /// A member in no slot (`0x14103ef2e`): it stops (slot 0x5d0) when its action list holds no
     /// `MoveTo` (slot 0x538 with 1), its top action is not in state 4, 5 or 11 (slot 0x2b0) and
     /// it moves (slot 0x5c8).
-    fn stop_free_member(&mut self, id: i32) -> Result<(), Unsupported> {
+    fn stop_free_member(&mut self, id: i32) -> Result<(), GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(());
         };
@@ -175,11 +175,11 @@ impl Turns {
     /// # Errors
     ///
     /// An action the slice does not model, and an object of a master the slice does not have.
-    fn action_list(&self, p: usize, u: &crate::turn::Unit) -> Result<(bool, u8), Unsupported> {
+    fn action_list(&self, p: usize, u: &crate::turn::Unit) -> Result<(bool, u8), GenieError> {
         if self.master_of(p, u.life.master_id)?.kind < ACTION_KIND {
             return Ok((false, 0));
         }
-        if let Some(e) = u.unmodelled_action {
+        if let Some(e) = u.unmodelled_action.clone() {
             return Err(e);
         }
         let top = u.top_action();
@@ -207,7 +207,7 @@ impl Turns {
         to: Vec3,
         grow: f32,
         ignore: &[i32],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let mover = u.mover.as_ref().expect(MOVES);
         let own = [u.id];
         let ignore = if ignore.is_empty() { &own[..] } else { ignore };
@@ -283,7 +283,7 @@ impl Turns {
         index: usize,
         slot: usize,
         differentiators: &[i32],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let id = g.members[index].id;
         let Some((p, u)) = self.object(id) else {
@@ -352,7 +352,7 @@ impl Turns {
 
     /// `FUN_141025fb0` for a slot whose time is past (`0x1410263e4`..`0x1410267c5`): true when
     /// it ends the routine (slot state 2 or 3). See [`Turns::steer_to_slot`].
-    fn slot_due(&mut self, group: i32, index: usize, slot: usize) -> Result<bool, Unsupported> {
+    fn slot_due(&mut self, group: i32, index: usize, slot: usize) -> Result<bool, GenieError> {
         let g = self.groups.get(group).expect("held");
         let id = g.members[index].id;
         let s = g.current_formation.as_ref().expect("a formation").slots[slot];
@@ -390,7 +390,7 @@ impl Turns {
     /// # Errors
     ///
     /// What the pathers and the position setter do not model.
-    fn try_slot(&mut self, group: i32, id: i32, to: Vec3) -> Result<bool, Unsupported> {
+    fn try_slot(&mut self, group: i32, id: i32, to: Vec3) -> Result<bool, GenieError> {
         let (p, u) = self.object(id).expect("the member is held");
         let mover = u.mover.as_ref().expect(MOVES);
         let g = self.groups.get(group).expect("held");
@@ -455,7 +455,7 @@ impl Turns {
         slot: usize,
         id: i32,
         gap: f32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let g = self.groups.get(group).expect("held");
         let to = g.current_formation.as_ref().expect("a formation").slots[slot].transform_position;
         let dt = self.dt_seconds;
@@ -542,7 +542,7 @@ impl Turns {
     }
 
     /// Slot 0x5d0 of member `id`: it stops ([`crate::movement::Mover::stop`]).
-    fn stop_member(&mut self, id: i32) -> Result<(), Unsupported> {
+    fn stop_member(&mut self, id: i32) -> Result<(), GenieError> {
         if let Some((_, u)) = self.object_mut(id)
             && let Some(mover) = u.mover.as_mut()
         {
@@ -586,7 +586,7 @@ impl Turns {
     /// # Errors
     ///
     /// An object of a master the slice does not have.
-    fn place_member(&mut self, id: i32, [x, h, y]: Vec3) -> Result<(), Unsupported> {
+    fn place_member(&mut self, id: i32, [x, h, y]: Vec3) -> Result<(), GenieError> {
         let Some(place) = self.place(id) else {
             return Ok(());
         };

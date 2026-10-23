@@ -27,10 +27,10 @@
 //! beside a player's objects when the caller names one (argument 11, `FUN_14152f790`). The pather's flag at `+0x2db638` (terrain the unit
 //! may cross anyway, `FUN_1413fc2b0`) is never set in this build: no instruction writes it.
 
+use crate::GenieError;
 use crate::fmath::Vec3;
 use crate::spatial::{BLOCKED, Tiles};
 use crate::tile_path::Path;
-use crate::unit_ai::Unsupported;
 
 /// The search expands at most this many tiles (`FUN_140f9eb70`: `20000 < n` breaks).
 const MOST_EXPANSIONS: i32 = 20000;
@@ -230,7 +230,7 @@ enum Searched {
 }
 
 /// `FUN_140f9eb70` for a goal point without a path to write: whether the unit reaches it.
-pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, Unsupported> {
+pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, GenieError> {
     Ok(match search(tiles, map, req)? {
         Searched::Refused => false,
         Searched::InRange => true,
@@ -251,7 +251,7 @@ pub fn path(
     map: [i32; 2],
     req: &LongRequest,
     z: f32,
-) -> Result<(bool, Path), Unsupported> {
+) -> Result<(bool, Path), GenieError> {
     Ok(match search(tiles, map, req)? {
         Searched::Refused => (false, Path::default()),
         Searched::InRange => (true, Path::default()),
@@ -296,7 +296,7 @@ fn trace(
 }
 
 /// The search of `FUN_140f9eb70` ([`reaches`], [`path`]).
-fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, Unsupported> {
+fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, GenieError> {
     let [w, h] = map;
     let [x0, y0] = req.from;
     let [x1, y1] = req.to;
@@ -438,7 +438,7 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, U
                 // 0x678); another's gate is closed
                 let owner = (word(nx, ny) >> 16) & 0x7f;
                 if req.allies & (1 << owner) != 0 {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "the long pather at an allied gate's tile (slot 0x678)",
                     ));
                 }
@@ -449,7 +449,7 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, U
             };
             if !open {
                 if req.near_player {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "the long pather beside a player's objects (FUN_14152f790)",
                     ));
                 }

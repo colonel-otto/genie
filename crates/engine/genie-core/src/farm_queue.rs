@@ -8,9 +8,9 @@
 //! ([`crate::production::pay`]) and the refund `FUN_141630770`
 //! ([`crate::production::refund_master`]).
 
+use crate::GenieError;
 use crate::production::{cost_test, pay, refund_master};
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// A queue takes a purchase only below this count (`0x28`).
 pub const QUEUE_LIMIT: i32 = 40;
@@ -54,13 +54,13 @@ impl Turns {
         p: usize,
         count: i32,
         master: i16,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.buy_ahead(p, count, master, Queue::Farms)
     }
 
     /// `FUN_141616540`: player `p` buys `count` fish traps (199) for its dock's queue
     /// ([`Turns::buy_ahead`]).
-    pub(crate) fn queue_fish_traps(&mut self, p: usize, count: i32) -> Result<bool, Unsupported> {
+    pub(crate) fn queue_fish_traps(&mut self, p: usize, count: i32) -> Result<bool, GenieError> {
         self.buy_ahead(p, count, FISH_TRAP, Queue::FishTraps)
     }
 
@@ -71,13 +71,13 @@ impl Turns {
         p: usize,
         count: i32,
         master: i16,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.give_back(p, count, master, Queue::Farms)
     }
 
     /// `FUN_1416308f0`: player `p` takes back `count` fish traps from its dock's queue
     /// ([`Turns::give_back`]).
-    pub(crate) fn unqueue_fish_traps(&mut self, p: usize, count: i32) -> Result<bool, Unsupported> {
+    pub(crate) fn unqueue_fish_traps(&mut self, p: usize, count: i32) -> Result<bool, GenieError> {
         self.give_back(p, count, FISH_TRAP, Queue::FishTraps)
     }
 
@@ -93,7 +93,7 @@ impl Turns {
         count: i32,
         master: i16,
         queue: Queue,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if count < 1 || QUEUE_LIMIT <= self.queued(p, queue) {
             return Ok(false);
         }
@@ -130,7 +130,7 @@ impl Turns {
         count: i32,
         master: i16,
         queue: Queue,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let n = count.min(self.queued(p, queue));
         if n < 1 {
             return Ok(false);
@@ -222,7 +222,7 @@ impl Turns {
     /// modelled) would build it too; then the gatherer's ignore list empties (`FUN_141197da0`)
     /// and its slot 0x128 sends it to build the foundation at the spot ([`Turns::build_task`],
     /// [`Turns::build_directly`]). True when the foundation was made.
-    pub(crate) fn reseed(&mut self, p: usize, idx: usize) -> Result<bool, Unsupported> {
+    pub(crate) fn reseed(&mut self, p: usize, idx: usize) -> Result<bool, GenieError> {
         let unit = &self.players[p].objects[idx];
         let Some(gather) = unit.gather else {
             return Ok(false);
@@ -321,7 +321,7 @@ impl Turns {
         p: usize,
         idx: usize,
         arrived: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.reseed(p, idx)? {
             return Ok(());
         }

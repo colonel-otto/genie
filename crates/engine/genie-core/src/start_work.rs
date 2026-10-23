@@ -13,12 +13,12 @@
 //! (`FUN_141070c90`) then gives the unit its work on the target at the target's place
 //! ([`Turns::order_work`], slot 0x7e8; `+0x888`, the work's count, is not held).
 
+use crate::GenieError;
 use crate::gather_search::{self, Candidate};
 use crate::movement::{Me, Planning};
 use crate::order::Work;
 use crate::rng::Stream;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The game mode that puts the villagers to work at the start (`+0x34` 13, Empire Wars).
 pub const EMPIRE_WARS: i32 = 13;
@@ -41,7 +41,7 @@ impl Turns {
     ///
     /// The pass without the game's farm setting (the player's nearest unworked farm), a fishing
     /// ship's own search (its unit AI's slot 0x80), and what the work command does not model.
-    pub(crate) fn start_work(&mut self, p: usize) -> Result<(), Unsupported> {
+    pub(crate) fn start_work(&mut self, p: usize) -> Result<(), GenieError> {
         let mut i = 0;
         while i < self.players[p].objects.len() {
             let unit = &self.players[p].objects[i];
@@ -52,14 +52,14 @@ impl Turns {
                 continue;
             }
             if !self.settings.walkable_farms {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "the Empire Wars start without the farm setting (the nearest unworked farm)",
                 ));
             }
             let target = match self.farm_under(p, i, class)? {
                 Some(farm) => Some(farm),
                 None if class == FISHING_SHIP => {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "the Empire Wars start of a fishing ship (its unit AI's slot 0x80)",
                     ));
                 }
@@ -69,7 +69,7 @@ impl Turns {
                 let point = self
                     .spatial
                     .get_known(target)?
-                    .ok_or(Unsupported(
+                    .ok_or(GenieError::unsupported(
                         "the Empire Wars start's target without a place",
                     ))?
                     .position;
@@ -88,14 +88,14 @@ impl Turns {
     }
 
     /// The first farm in the object list of the unit's tile (a fish trap for a fishing ship).
-    fn farm_under(&self, p: usize, i: usize, class: i16) -> Result<Option<i32>, Unsupported> {
+    fn farm_under(&self, p: usize, i: usize, class: i16) -> Result<Option<i32>, GenieError> {
         let at = self.players[p].objects[i].position;
         let (x, y) = (at[0] as i32, at[1] as i32);
         self.spatial.check_known([at[0], at[1], at[0], at[1]])?;
         for (id, _) in self.spatial.objects_on(x, y) {
-            let (owner, o) = self
-                .object(id)
-                .ok_or(Unsupported("an object on a tile the slice does not hold"))?;
+            let (owner, o) = self.object(id).ok_or(GenieError::unsupported(
+                "an object on a tile the slice does not hold",
+            ))?;
             let m = self.master_of(owner, o.life.master_id)?;
             if m.class == FARM && (class != FISHING_SHIP || m.id == FISH_TRAP) {
                 return Ok(Some(id));
@@ -106,7 +106,7 @@ impl Turns {
 
     /// The unit AI's `ClosestResourceObject` for each gather group (no drop site, any workers,
     /// `param_6` 2, no point): the answer at the least distance, the first group at a tie.
-    fn closest_of_groups(&mut self, p: usize, i: usize) -> Result<Option<i32>, Unsupported> {
+    fn closest_of_groups(&mut self, p: usize, i: usize) -> Result<Option<i32>, GenieError> {
         let mut best = (NO_DISTANCE, None);
         for kind in 0..GROUPS {
             let (id, distance) = self.resource_search_from(p, i, kind)?;
@@ -125,17 +125,15 @@ impl Turns {
         p: usize,
         i: usize,
         kind: u8,
-    ) -> Result<(i32, Option<i32>), Unsupported> {
+    ) -> Result<(i32, Option<i32>), GenieError> {
         let unit = &self.players[p].objects[i];
         let master = self.master_of(p, unit.life.master_id)?;
-        let mover = unit
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("a resource search without movement state"))?;
-        let ai = unit
-            .ai
-            .as_ref()
-            .ok_or(Unsupported("a resource search without a unit AI"))?;
+        let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+            "a resource search without movement state",
+        ))?;
+        let ai = unit.ai.as_ref().ok_or(GenieError::unsupported(
+            "a resource search without a unit AI",
+        ))?;
         let seeker = gather_search::Seeker {
             player: p,
             position: unit.position,
@@ -153,7 +151,7 @@ impl Turns {
         };
         let (mask, master_id) = (mover.stats.restriction_mask, unit.life.master_id);
         let (players, masters, spatial) = (&self.players, &self.masters, &self.spatial);
-        let candidate = |id: i32| -> Result<Candidate, Unsupported> {
+        let candidate = |id: i32| -> Result<Candidate, GenieError> {
             let (owner, u) = players
                 .iter()
                 .enumerate()
@@ -165,11 +163,15 @@ impl Turns {
                         .find(|u| u.id == id)
                         .map(|u| (q, u))
                 })
-                .ok_or(Unsupported("an object on a tile the slice does not hold"))?;
+                .ok_or(GenieError::unsupported(
+                    "an object on a tile the slice does not hold",
+                ))?;
             let m = masters
                 .get(owner)
                 .and_then(|m| m.get(u.life.master_id))
-                .ok_or(Unsupported("an object of a master the slice does not have"))?;
+                .ok_or(GenieError::unsupported(
+                    "an object of a master the slice does not have",
+                ))?;
             let position = spatial.get(id).map_or(u.position, |o| o.position);
             Ok(Candidate {
                 id,
@@ -187,7 +189,7 @@ impl Turns {
                 gather_group: m.gather_group,
             })
         };
-        let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, Unsupported> {
+        let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
             spatial
                 .objects_on(x, y)
                 .map(|(id, _)| candidate(id))

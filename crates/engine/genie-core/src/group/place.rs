@@ -2,12 +2,12 @@
 //! clear point of a spiral round the centroid (`FUN_141007630`), `SetInitialOrientation`
 //! (`FUN_141039680`) and the motion's orientation (`FUN_141049e10`).
 
+use crate::GenieError;
 use crate::fmath::{self, Vec3, cross, normalize};
 use crate::group::Motion;
 use crate::group::formation::on_map;
 use crate::group::motion::moved_vector;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The spiral's steps (`FUN_141007630`'s table from `DAT_142f49460` and `DAT_142f49480`), x and y:
 /// up y, up x, down y, down x.
@@ -103,7 +103,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, and its
     /// callers pass a group they hold.
-    pub fn set_initial_position(&mut self, group: i32) -> Result<(), Unsupported> {
+    pub fn set_initial_position(&mut self, group: i32) -> Result<(), GenieError> {
         let g = self
             .groups
             .get_mut(group)
@@ -141,12 +141,12 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn clear_spot(&self, group: i32, centroid: Vec3) -> Result<Vec3, Unsupported> {
+    pub fn clear_spot(&self, group: i32, centroid: Vec3) -> Result<Vec3, GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         let Some(first) = g.members.first() else {
             return Ok(centroid);
         };
-        let (p, u) = self.object(first.id).ok_or(Unsupported(
+        let (p, u) = self.object(first.id).ok_or(GenieError::unsupported(
             "a group's clear spot without its first member (a null object)",
         ))?;
         let mask = self.master_mask(p, u.life.master_id)?;
@@ -154,7 +154,7 @@ impl Turns {
             .spatial
             .makes_tile_record([centroid[0], centroid[2]], mask)
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a group's clear spot on a tile its first member's terrain lacks (the tile record \
                  FUN_141007630 leaves)",
             ));
@@ -242,7 +242,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn move_position_to_front(&mut self, group: i32, ahead: f32) -> Result<(), Unsupported> {
+    pub fn move_position_to_front(&mut self, group: i32, ahead: f32) -> Result<(), GenieError> {
         let Some(g) = self.groups.get(group) else {
             return Ok(());
         };
@@ -351,14 +351,18 @@ impl Turns {
     ///
     /// No such master, a master without a restriction (the game indexes before the table) and a
     /// map without its terrain.
-    pub(crate) fn master_mask(&self, p: usize, master: i16) -> Result<u8, Unsupported> {
-        let restriction = usize::try_from(self.master_of(p, master)?.terrain_restriction)
-            .map_err(|_| Unsupported("a terrain mask of a master without a restriction"))?;
+    pub(crate) fn master_mask(&self, p: usize, master: i16) -> Result<u8, GenieError> {
+        let restriction =
+            usize::try_from(self.master_of(p, master)?.terrain_restriction).map_err(|_| {
+                GenieError::unsupported("a terrain mask of a master without a restriction")
+            })?;
         Ok(self
             .spatial
             .terrain
             .as_ref()
-            .ok_or(Unsupported("a terrain mask without the map's terrain"))?
+            .ok_or(GenieError::unsupported(
+                "a terrain mask without the map's terrain",
+            ))?
             .restriction_mask(restriction))
     }
 }

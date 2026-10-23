@@ -5,9 +5,9 @@
 //! ([`Master::follow`]). The values are game data: the player's masters in the save, with the
 //! `.dat`'s values for what the save does not carry.
 
+use crate::GenieError;
 use crate::movement::MoveStats;
 use crate::tasks::{Actor, Diplomacy, TaskTarget, find_task};
-use crate::unit_ai::Unsupported;
 
 /// One task of a master's task list (`RGE_Task`), with the memory offsets the task finder reads
 /// (the save's names; the `.dat`'s in brackets where they differ).
@@ -115,12 +115,14 @@ impl Master {
     /// default task's action the slice does not model; nothing for a type the factory makes no
     /// action of.
     #[must_use]
-    pub fn default_start(&self) -> (bool, Option<Unsupported>) {
+    pub fn default_start(&self) -> (bool, Option<GenieError>) {
         match self.default_task() {
             Some(t) if t.action_type == crate::make::MAKE => (true, None),
             Some(t) if ACTION_FACTORY_TYPES.contains(&t.action_type) => (
                 false,
-                Some(Unsupported("a new object's default task other than a Make")),
+                Some(GenieError::unsupported(
+                    "a new object's default task other than a Make",
+                )),
             ),
             _ => (false, None),
         }
@@ -578,11 +580,11 @@ impl Masters {
         general: &TaskTarget<'_>,
         filter: i16,
         dip: &impl Diplomacy,
-    ) -> Result<Option<(i16, &'m Task)>, Unsupported> {
+    ) -> Result<Option<(i16, &'m Task)>, GenieError> {
         let own = actor.master;
-        let own_list = self
-            .get(own.id)
-            .ok_or(Unsupported("a unit of a master the player does not have"))?;
+        let own_list = self.get(own.id).ok_or(GenieError::unsupported(
+            "a unit of a master the player does not have",
+        ))?;
         let own_task = find_task(
             own_list,
             actor,

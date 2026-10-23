@@ -1,12 +1,12 @@
 //! A group's orders (FD-036): `BUnitGroup::command` (`FUN_14100efd0`), `commandMoveTo`
 //! (`FUN_141010a80`) and `stopAllUnits` (`FUN_14103a0d0`), the HD PDB's names.
 
+use crate::GenieError;
 use crate::group::{GroupCommand, SpecificMove, UnitGroup};
 use crate::movement::PathData;
 use crate::order::Place;
 use crate::tile_path::Path;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// A group whose top speed is below this does not move (`commandMoveTo`, `DAT_142eb0c60`); nor is
 /// a path shorter than it one.
@@ -118,7 +118,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn all_horde_units(&self, group: i32) -> Result<bool, Unsupported> {
+    pub fn all_horde_units(&self, group: i32) -> Result<bool, GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
         self.horde_units_only(g)
     }
@@ -128,7 +128,7 @@ impl Turns {
     /// # Errors
     ///
     /// A member of a master the slice does not have.
-    pub fn horde_units_only(&self, g: &UnitGroup) -> Result<bool, Unsupported> {
+    pub fn horde_units_only(&self, g: &UnitGroup) -> Result<bool, GenieError> {
         for m in &g.members {
             if let Some((p, u)) = self.object(m.id) {
                 let master = self.master_of(p, u.life.master_id)?;
@@ -165,19 +165,19 @@ impl Turns {
         target: i32,
         point: [f32; 2],
         (queued, direct): (bool, bool),
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let g = self
             .groups
             .get_mut(group)
             .expect("the caller holds the group");
         g.flags &= !0x20;
         if target != -1 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a group's command on a target (its task, slot 0x130)",
             ));
         }
         if self.all_horde_units(group)? {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a horde's command (commandHorde, FUN_141010180)",
             ));
         }
@@ -250,7 +250,7 @@ impl Turns {
         target: i32,
         point: [f32; 2],
         how: MoveTo,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let world_time = self.world_time;
         let g = self
             .groups
@@ -300,7 +300,9 @@ impl Turns {
             m.seconds_since_attacking = f32::MAX;
         }
         if self.all_horde_units(group)? {
-            return Err(Unsupported("a horde's move (commandHorde, FUN_141010180)"));
+            return Err(GenieError::unsupported(
+                "a horde's move (commandHorde, FUN_141010180)",
+            ));
         }
         let g = self.groups.get_mut(group).expect("the group found above");
         // FUN_141046500: the top ancestor's path, else the walked level's
@@ -440,7 +442,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn check_queued_orders(&mut self, group: i32) -> Result<(), Unsupported> {
+    pub fn check_queued_orders(&mut self, group: i32) -> Result<(), GenieError> {
         let g = self
             .groups
             .get_mut(group)
@@ -469,10 +471,14 @@ impl Turns {
                 let g = self.groups.get_mut(group).expect("the group found above");
                 match node.command {
                     c if TARGET_COMMANDS.contains(&c) && held => {
-                        return Err(Unsupported("a queued command on a target (FUN_14100fc50)"));
+                        return Err(GenieError::unsupported(
+                            "a queued command on a target (FUN_14100fc50)",
+                        ));
                     }
                     c if ATTACK_COMMANDS.contains(&c) && held => {
-                        return Err(Unsupported("a queued attack on a target (FUN_14100f7f0)"));
+                        return Err(GenieError::unsupported(
+                            "a queued attack on a target (FUN_14100f7f0)",
+                        ));
                     }
                     c if (c == MOVE_COMMAND
                         || TARGET_COMMANDS.contains(&c)
@@ -494,7 +500,7 @@ impl Turns {
                 }
             }
             if ran {
-                let last = kept.ok_or(Unsupported(
+                let last = kept.ok_or(GenieError::unsupported(
                     "checkQueuedOrders' move to a command it freed (a null command in the game)",
                 ))?;
                 let _ = self.command_move_to(
@@ -534,7 +540,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn stop_all_units(&mut self, group: i32, all: bool) -> Result<(), Unsupported> {
+    pub fn stop_all_units(&mut self, group: i32, all: bool) -> Result<(), GenieError> {
         let ids: Vec<i32> = self
             .groups
             .get(group)
@@ -553,7 +559,7 @@ impl Turns {
                 Place::Sleeping(p, i) => &self.players[p].sleeping[i],
             };
             if u.unmodelled_action.is_some() {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "stopAllUnits of a member with an action the slice does not model",
                 ));
             }
@@ -562,7 +568,7 @@ impl Turns {
                 continue;
             }
             let Place::Live(p, idx) = place else {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "stopAllUnits' stop of a sleeping member (the stop takes the live list)",
                 ));
             };

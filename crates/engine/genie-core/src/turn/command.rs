@@ -18,7 +18,7 @@ use crate::turn::{
     ONE_UNIT_GAME, PASTURE_1889, QUEUE_LIMIT, RESEARCH_ACTION, RICE_FARM, STATIC_TYPES_END, Turns,
     VILLAGER, VILLAGER_ANY, villager,
 };
-use crate::unit_ai::{BUILD_ACTION, BUILD_ORDER, Notify, UnitAi, Unsupported};
+use crate::unit_ai::{BUILD_ACTION, BUILD_ORDER, GenieError, Notify, UnitAi};
 use crate::visibility::{BuildingSight, Seer, capture_kind};
 
 /// A building's gather point (`+0xc30`..`+0xc44`: it exists, x, y, z, the target and the target's
@@ -49,7 +49,7 @@ pub enum Command {
         /// The foundation's master.
         master: i16,
         /// The unit AI type its class gets, if any, or why the slice cannot tell.
-        unit_ai: Result<Option<u32>, Unsupported>,
+        unit_ai: Result<Option<u32>, GenieError>,
         /// Where it is placed.
         position: [f32; 3],
         /// The units told to build it, in packet order.
@@ -123,7 +123,7 @@ pub enum Command {
         /// The issuing player.
         player: usize,
         /// Why its command is not modelled.
-        why: Unsupported,
+        why: GenieError,
     },
     /// GAME (0x67): `do_command`'s case and its switch on the sub-command (`0x140e7c330`,
     /// [`Turns::game`]).
@@ -383,7 +383,7 @@ impl Turns {
             Command::Build {
                 player,
                 master,
-                unit_ai,
+                ref unit_ai,
                 position,
                 ref builders,
                 queued,
@@ -412,18 +412,18 @@ impl Turns {
                         return;
                     }
                 }
-                let built =
-                    self.found(player, master, unit_ai, position)
-                        .and_then(|(id, position)| {
-                            self.task_builders(
-                                player,
-                                id,
-                                master,
-                                position,
-                                builders,
-                                (queued, commits),
-                            )
-                        });
+                let built = self
+                    .found(player, master, unit_ai.clone(), position)
+                    .and_then(|(id, position)| {
+                        self.task_builders(
+                            player,
+                            id,
+                            master,
+                            position,
+                            builders,
+                            (queued, commits),
+                        )
+                    });
                 if let Err(e) = built {
                     self.stop_player(player, e);
                 }
@@ -466,8 +466,8 @@ impl Turns {
                     self.stop_player(player, e);
                 }
             }
-            Command::Unmodelled { player, why } => {
-                self.stop_player(player, why);
+            Command::Unmodelled { player, ref why } => {
+                self.stop_player(player, why.clone());
             }
             Command::Game(ref g) => {
                 // what the slice cannot model stops the player the sub-command is for
@@ -686,7 +686,7 @@ impl Turns {
                     Some(Order::Interact(o)) => self.interact(player, units, &o),
                     Some(Order::Move(o)) => self.move_order(player, units, &o),
                     Some(Order::Follow(target)) => self.follow(player, units, target),
-                    None => Err(Unsupported("an order moves its units")),
+                    None => Err(GenieError::unsupported("an order moves its units")),
                 };
                 if let Err(e) = result {
                     self.stop_player(player, e);
@@ -719,9 +719,9 @@ impl Turns {
         &mut self,
         player: usize,
         master: i16,
-        unit_ai: Result<Option<u32>, Unsupported>,
+        unit_ai: Result<Option<u32>, GenieError>,
         position: [f32; 3],
-    ) -> Result<(i32, [f32; 3]), Unsupported> {
+    ) -> Result<(i32, [f32; 3]), GenieError> {
         let made = self.make_building(player, master, unit_ai, position)?;
         let cost = self.master_of(player, master)?.cost.clone();
         let owner = &mut self.players[player];
@@ -729,7 +729,9 @@ impl Turns {
             let slot = usize::try_from(resource)
                 .ok()
                 .and_then(|r| owner.resources.get_mut(r))
-                .ok_or(Unsupported("a cost in a resource other than the four"))?;
+                .ok_or(GenieError::unsupported(
+                    "a cost in a resource other than the four",
+                ))?;
             if paid {
                 *slot -= f32::from(amount);
             }
@@ -769,11 +771,11 @@ impl Turns {
         &mut self,
         player: usize,
         master: i16,
-        unit_ai: Result<Option<u32>, Unsupported>,
+        unit_ai: Result<Option<u32>, GenieError>,
         position: [f32; 3],
-    ) -> Result<(i32, [f32; 3]), Unsupported> {
+    ) -> Result<(i32, [f32; 3]), GenieError> {
         let made = self.master_of(player, master)?.clone();
-        let building = made.building.ok_or(Unsupported(
+        let building = made.building.ok_or(GenieError::unsupported(
             "a building constructor of a master without its building part",
         ))?;
         let given_z = position[2];
@@ -794,7 +796,7 @@ impl Turns {
             });
         let ai = ai.unwrap_or_else(|e| {
             // the constructor's draws are unknown, so the turn player's are too
-            crate::trace::player_unsupported(self.ticks, self.player_turn, e);
+            crate::trace::player_unsupported(self.ticks, self.player_turn, &e);
             let turn = &mut self.players[self.player_turn];
             let at = turn.objects.len();
             let _ = turn.unsupported.get_or_insert((self.ticks, at, e));
@@ -1056,16 +1058,16 @@ impl Turns {
         aid: i32,
         made: &Master,
         am: &Master,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let not_held = crate::build::NOT_HELD;
-        let (_, a) = self.object_mut(aid).ok_or(not_held)?;
+        let (_, a) = self.object_mut(aid).ok_or_else(|| not_held.clone())?;
         a.annex_of = Some(id);
         self.spatial.set_annex(aid, Some(id));
         if made.class != GATE {
             self.unwatch(player, aid);
         }
         if 0.0 < am.height {
-            let (_, a) = self.object_mut(aid).ok_or(not_held)?;
+            let (_, a) = self.object_mut(aid).ok_or_else(|| not_held.clone())?;
             let c = a
                 .construction
                 .as_mut()
@@ -1103,12 +1105,14 @@ impl Turns {
         &mut self,
         player: usize,
         master: i16,
-    ) -> Result<(), Unsupported> {
-        let site = self
-            .masters
-            .get(player)
-            .and_then(|m| m.get(master))
-            .ok_or(Unsupported("BUILD of a master the player does not have"))?;
+    ) -> Result<(), GenieError> {
+        let site =
+            self.masters
+                .get(player)
+                .and_then(|m| m.get(master))
+                .ok_or(GenieError::unsupported(
+                    "BUILD of a master the player does not have",
+                ))?;
         let mut listed = [0i16; 4];
         for &(resource, amount, _) in &site.cost {
             if let Some(r) = usize::try_from(resource).ok().filter(|&r| r < 4) {
@@ -1129,7 +1133,7 @@ impl Turns {
         player: usize,
         master: i16,
         builders: &[i32],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if self.players[player].computer {
             return Ok(true);
         }
@@ -1152,7 +1156,7 @@ impl Turns {
         player: usize,
         master: i16,
         at: [f32; 2],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let human = !self.players[player].computer;
         if self.placement_code(player, master, at, human)? != 0 {
             return Ok(false);
@@ -1169,7 +1173,7 @@ impl Turns {
         master: i16,
         at: [f32; 2],
         human: bool,
-    ) -> Result<u8, Unsupported> {
+    ) -> Result<u8, GenieError> {
         self.placement_code_beside(player, master, at, human, &[])
     }
 
@@ -1182,10 +1186,10 @@ impl Turns {
         at: [f32; 2],
         human: bool,
         own: &[i32],
-    ) -> Result<u8, Unsupported> {
+    ) -> Result<u8, GenieError> {
         let site = self.master_of(player, master)?;
         if self.spatial.sight.is_none() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "BUILD's placement test without the players' sight",
             ));
         }
@@ -1198,7 +1202,7 @@ impl Turns {
                     .ok()
                     .and_then(|r| t.restrictions.get(r))
             })
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a foundation's terrain restriction the data file does not have",
             ))?;
         let build = crate::spawn::BuildSite {
@@ -1220,7 +1224,7 @@ impl Turns {
     /// The payment's test of a foundation of `master` for `player` (`FUN_14162fb60` ->
     /// `FUN_141618db0`): every cost entry of a resource, paid or not, at most what the player
     /// holds. A cost in population (attribute 4) is not modelled.
-    pub(crate) fn affords(&self, player: usize, master: i16) -> Result<bool, Unsupported> {
+    pub(crate) fn affords(&self, player: usize, master: i16) -> Result<bool, GenieError> {
         let site = self.master_of(player, master)?;
         let owner = &self.players[player];
         for &(resource, amount, _) in &site.cost {
@@ -1228,7 +1232,9 @@ impl Turns {
                 continue;
             };
             if r == 4 {
-                return Err(Unsupported("a BUILD whose cost lists the population"));
+                return Err(GenieError::unsupported(
+                    "a BUILD whose cost lists the population",
+                ));
             }
             let held = if r < 4 {
                 owner.resources[r]
@@ -1256,10 +1262,10 @@ impl Turns {
         &mut self,
         foundation: i32,
         units: &[i32],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         /// The notify's radii are hundredths (`DAT_14330ebcc`).
         const RADIUS_SCALE: f32 = crate::image::unit_ai::RADIUS_SCALE;
-        let (site_owner, site) = self.object(foundation).ok_or(Unsupported(
+        let (site_owner, site) = self.object(foundation).ok_or(GenieError::unsupported(
             "a footprint's foundation the slice does not hold",
         ))?;
         let radius = self.master_of(site_owner, site.life.master_id)?.radius;
@@ -1300,7 +1306,9 @@ impl Turns {
             }
             let state = u.life.state;
             let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
-                return Err(Unsupported("a sleeping unit sent off a footprint"));
+                return Err(GenieError::unsupported(
+                    "a sleeping unit sent off a footprint",
+                ));
             };
             if let Some(ai) = self.players[q].objects[i].ai.as_mut() {
                 ai.post(Notify::own(id, crate::unit_ai::SENT_OFF, p), state)?;
@@ -1325,19 +1333,20 @@ impl Turns {
         foundation: i32,
         radius: [f32; 2],
         units: &[i32],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let site_at = self
             .spatial
             .get(foundation)
-            .ok_or(Unsupported("a footprint's foundation without a place"))?
+            .ok_or(GenieError::unsupported(
+                "a footprint's foundation without a place",
+            ))?
             .position;
         let (_, first) = self
             .object(units[0])
-            .ok_or(Unsupported("a unit sent off that is gone"))?;
-        let mover = first
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("a unit sent off without movement state"))?;
+            .ok_or(GenieError::unsupported("a unit sent off that is gone"))?;
+        let mover = first.mover.as_ref().ok_or(GenieError::unsupported(
+            "a unit sent off without movement state",
+        ))?;
         let spot = self.spatial.spot_off(
             first.position,
             (first.id, mover.stats.radius[0]),
@@ -1386,7 +1395,7 @@ impl Turns {
         player: usize,
         master: i16,
         position: [f32; 3],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         /// The farms and the terrain their foundations lay (`0x1d`, `0x41`).
         const LAID: [(i16, u8); 2] = [(50, 29), (1187, 65)];
         let Some(&(_, laid)) = LAID.iter().find(|(m, _)| *m == master) else {
@@ -1409,7 +1418,9 @@ impl Turns {
         self.spatial
             .terrain
             .as_mut()
-            .ok_or(Unsupported("a farm's foundation without the map's terrain"))?
+            .ok_or(GenieError::unsupported(
+                "a farm's foundation without the map's terrain",
+            ))?
             .cover(&f)
     }
 
@@ -1428,7 +1439,7 @@ impl Turns {
         master: i16,
         at: [f32; 2],
         trees: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(m) = self.masters.get(player).and_then(|m| m.get(master)) else {
             return Ok(());
         };
@@ -1449,7 +1460,7 @@ impl Turns {
             }
             // FUN_141189670 after its destroy: unless +0x686 is set, a tall master's (COMISS: a
             // NaN height too) or a recorded object's record goes; then +0x686 (FUN_141189b60)
-            let look = self.clear_look(cl.id).ok_or(Unsupported(
+            let look = self.clear_look(cl.id).ok_or(GenieError::unsupported(
                 "a footprint clearing of an object the slice does not hold",
             ))?;
             let recorded = self
@@ -1488,8 +1499,8 @@ impl Turns {
         &mut self,
         cl: crate::build::Cleared,
         roo_done: bool,
-    ) -> Result<(), Unsupported> {
-        let (owner, _) = self.object(cl.id).ok_or(Unsupported(
+    ) -> Result<(), GenieError> {
+        let (owner, _) = self.object(cl.id).ok_or(GenieError::unsupported(
             "a footprint clearing of an object the slice does not hold",
         ))?;
         if cl.wall {
@@ -1580,7 +1591,7 @@ impl Turns {
         position: [f32; 3],
         builders: &[i32],
         (queued, commits): (bool, bool),
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         // the builders go through the order splitter, which counts the command
         self.groups.count_command();
         let site = (player, foundation, master);
@@ -1642,16 +1653,17 @@ impl Turns {
         id: i32,
         (fp, foundation, master): (usize, i32, i16),
         position: [f32; 3],
-    ) -> Result<(i16, BuildAction), Unsupported> {
-        let masters = self
-            .masters
-            .get(q)
-            .ok_or(Unsupported("BUILD tasks the builders: no master table"))?;
-        let site = self
-            .masters
-            .get(fp)
-            .and_then(|m| m.get(master))
-            .ok_or(Unsupported("BUILD of a master the player does not have"))?;
+    ) -> Result<(i16, BuildAction), GenieError> {
+        let masters = self.masters.get(q).ok_or(GenieError::unsupported(
+            "BUILD tasks the builders: no master table",
+        ))?;
+        let site =
+            self.masters
+                .get(fp)
+                .and_then(|m| m.get(master))
+                .ok_or(GenieError::unsupported(
+                    "BUILD of a master the player does not have",
+                ))?;
         let target = TaskTarget {
             id: foundation,
             master: site,
@@ -1673,15 +1685,19 @@ impl Turns {
             .objects
             .iter()
             .find(|o| o.id == id)
-            .ok_or(Unsupported("a builder the slice does not have"))?;
+            .ok_or(GenieError::unsupported("a builder the slice does not have"))?;
         if unit.artifact.is_some() || unit.production.is_some() || unit.fly.is_some() {
-            return Err(Unsupported("a builder with an action (its replacement)"));
+            return Err(GenieError::unsupported(
+                "a builder with an action (its replacement)",
+            ));
         }
         let actor = Actor {
             id,
             master: masters
                 .get(unit.life.master_id)
-                .ok_or(Unsupported("a unit of a master the player does not have"))?,
+                .ok_or(GenieError::unsupported(
+                    "a unit of a master the player does not have",
+                ))?,
             player: q,
             held: (unit.life.attribute_type, unit.life.amount),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
@@ -1689,14 +1705,18 @@ impl Turns {
         };
         let (with, task) = masters
             .work_master(&actor, &target, &target, -1, &world)?
-            .ok_or(Unsupported("a builder with no task for its foundation"))?;
+            .ok_or(GenieError::unsupported(
+                "a builder with no task for its foundation",
+            ))?;
         if task.action_type != BUILD {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a builder whose task for its foundation is not Build",
             ));
         }
         if !crate::tasks::enabled(&owner.attributes, task.enablement) {
-            return Err(Unsupported("a builder whose Build task is not enabled"));
+            return Err(GenieError::unsupported(
+                "a builder whose Build task is not enabled",
+            ));
         }
         let builder = masters
             .get(with)
@@ -1720,7 +1740,7 @@ impl Turns {
         idx: usize,
         (fp, foundation, master): (usize, i32, i16),
         position: [f32; 3],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let unit = &mut self.players[q].objects[idx];
         if let Some(m) = unit.mover.as_mut() {
             m.ignore_units.clear();
@@ -1738,10 +1758,9 @@ impl Turns {
             ready: true,
             target_type: i32::from(master),
         };
-        let ai = unit
-            .ai
-            .as_mut()
-            .ok_or(Unsupported("a queued build order without a unit AI"))?;
+        let ai = unit.ai.as_mut().ok_or(GenieError::unsupported(
+            "a queued build order without a unit AI",
+        ))?;
         let _ = ai.queue_order(state, order, false, false)?;
         Ok(())
     }
@@ -1758,7 +1777,7 @@ impl Turns {
         (with, build): (i16, BuildAction),
         (fp, foundation, master): (usize, i32, i16),
         position: [f32; 3],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let site_class = i32::from(self.master_of(fp, master)?.class);
         if let Some(m) = self.players[player].objects[idx].mover.as_mut() {
             m.ignore_units.clear();
@@ -1800,12 +1819,12 @@ impl Turns {
         player: usize,
         idx: usize,
         order: crate::unit_ai::QueuedOrder,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.build_object(player, idx, order.target)?;
         let ai = self.players[player].objects[idx]
             .ai
             .as_mut()
-            .ok_or(Unsupported("a build order without a unit AI"))?;
+            .ok_or(GenieError::unsupported("a build order without a unit AI"))?;
         // the tail (`LAB_140c5d432`); only the attack order reads the class
         let _ = ai.order_tail(
             BUILD_ORDER,
@@ -1827,12 +1846,12 @@ impl Turns {
         player: usize,
         idx: usize,
         foundation: i32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let (class, f_at) = self.build_command(player, idx, foundation)?;
         let ai = self.players[player].objects[idx]
             .ai
             .as_mut()
-            .ok_or(Unsupported("a BuildObject without a unit AI"))?;
+            .ok_or(GenieError::unsupported("a BuildObject without a unit AI"))?;
         // FUN_140c47d80
         ai.last_action = ai.current_action;
         ai.current_action = BUILD_ACTION;
@@ -1855,7 +1874,7 @@ impl Turns {
         player: usize,
         idx: usize,
         wait: Wait,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if let Some(master) = wait.switch {
             self.change_master(player, idx, master)?;
         }
@@ -1878,25 +1897,29 @@ impl Turns {
         player: usize,
         idx: usize,
         foundation: i32,
-    ) -> Result<(i32, [f32; 3]), Unsupported> {
+    ) -> Result<(i32, [f32; 3]), GenieError> {
         if self.players[player].objects[idx].top_action_kind() == Some(BUILD) {
             let class = self.build_take(player, idx, foundation)?;
-            let f_at = self
-                .object(foundation)
-                .map(|(_, f)| f.position)
-                .ok_or(Unsupported("a BuildObject on a foundation that is gone"))?;
+            let f_at =
+                self.object(foundation)
+                    .map(|(_, f)| f.position)
+                    .ok_or(GenieError::unsupported(
+                        "a BuildObject on a foundation that is gone",
+                    ))?;
             return Ok((class, f_at));
         }
-        let gone = Unsupported("a build order on a foundation that is gone");
-        let (fp, f) = self.object(foundation).ok_or(gone)?;
+        let gone = GenieError::unsupported("a build order on a foundation that is gone");
+        let (fp, f) = self.object(foundation).ok_or_else(|| gone.clone())?;
         let (site, f_at) = (self.master_of(fp, f.life.master_id)?, f.position);
         let find = |id: i32| self.object(id);
-        let t = task_target_with(foundation, 1, &find, &self.masters)?.ok_or(gone)?;
-        let general = task_target_with(foundation, 2, &find, &self.masters)?.ok_or(gone)?;
+        let t =
+            task_target_with(foundation, 1, &find, &self.masters)?.ok_or_else(|| gone.clone())?;
+        let general =
+            task_target_with(foundation, 2, &find, &self.masters)?.ok_or_else(|| gone.clone())?;
         let masters = self
             .masters
             .get(player)
-            .ok_or(Unsupported("a build order: no master table"))?;
+            .ok_or(GenieError::unsupported("a build order: no master table"))?;
         let world = World {
             players: &self.players,
             drop_sites: &self.drop_sites,
@@ -1907,7 +1930,9 @@ impl Turns {
             id: unit.id,
             master: masters
                 .get(unit.life.master_id)
-                .ok_or(Unsupported("a unit of a master the player does not have"))?,
+                .ok_or(GenieError::unsupported(
+                    "a unit of a master the player does not have",
+                ))?,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
@@ -1915,8 +1940,9 @@ impl Turns {
         };
         // slot 0x820 with any action type (0xffff): whatever task it finds, the Build takes
         // (FUN_140aad4e0 on it), its type and its enablement unread
-        let (task, switch) = task_search(masters, &actor, &t, &general, -1, &world)?
-            .ok_or(Unsupported("a build order with no task for its foundation"))?;
+        let (task, switch) = task_search(masters, &actor, &t, &general, -1, &world)?.ok_or(
+            GenieError::unsupported("a build order with no task for its foundation"),
+        )?;
         let builder = switch.unwrap_or(actor.master);
         let gap = footprint_gap(unit.position, builder.radius, f_at, site.radius);
         let build = BuildAction::start(
@@ -1946,7 +1972,7 @@ impl Turns {
         [x, y]: [f32; 2],
         (target, target_master): (i32, i16),
         own: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         for &id in ids {
             // another player's object (the game clears its id) or one that is gone
             let Some(i) = self.players[player].objects.iter().position(|u| u.id == id) else {
@@ -1957,11 +1983,11 @@ impl Turns {
                 .masters
                 .get(player)
                 .and_then(|m| m.get(unit.life.master_id))
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "SET GATHER POINT on a master the slice does not have",
                 ))?;
             if master.garrison == 0 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "SET GATHER POINT on a building that does not garrison (its train list)",
                 ));
             }
@@ -2005,11 +2031,11 @@ impl Turns {
         ids: &[i32],
         target: i32,
         [x, y]: [f32; 2],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let step = |turns: &Self,
                     t: i32,
                     at: [f32; 2]|
-         -> Result<crate::unit_ai::QueuedOrder, Unsupported> {
+         -> Result<crate::unit_ai::QueuedOrder, GenieError> {
             let named = if t == -1 { None } else { turns.object(t) };
             let (target, owner, class) = match named {
                 Some((tp, u)) => (
@@ -2039,7 +2065,9 @@ impl Turns {
         for &id in ids {
             let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
                 if self.place(id).is_some() {
-                    return Err(Unsupported("a command queue on a sleeping object"));
+                    return Err(GenieError::unsupported(
+                        "a command queue on a sleeping object",
+                    ));
                 }
                 continue;
             };
@@ -2090,16 +2118,15 @@ impl Turns {
         &mut self,
         player: usize,
         r: &ResearchAt,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let owner = &self.players[player];
         if r.target != -1 || r.tech < 0 || owner.techs.len() <= r.tech as usize {
             return Ok(());
         }
         let tech = r.tech as usize;
-        let def = self
-            .techs
-            .get(tech)
-            .ok_or(Unsupported("a technology the data file has not got"))?;
+        let def = self.techs.get(tech).ok_or(GenieError::unsupported(
+            "a technology the data file has not got",
+        ))?;
         let get = |i: i16| crate::tech::Attributes::get(owner, i);
         let factors = crate::tech::factors(r.tech, &get)?;
         let listed = owner.techs[tech].listed_costs(def, factors);
@@ -2116,13 +2143,13 @@ impl Turns {
         let state = &owner.techs[tech];
         let repeatable = state.repeatable(def, false);
         if def.kind == crate::tech::SHARED_KIND {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "RESEARCH of the shared kind (FUN_1411c3fd0 over the packet's buildings)",
             ));
         }
         let building_id = self.least_loaded(player, r);
         if self.linked_techs.contains_key(&r.tech) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "RESEARCH of a linked technology (FUN_140f3a0f0, FUN_140f39e80)",
             ));
         }
@@ -2139,7 +2166,9 @@ impl Turns {
                     .any(|u| u.id == building_id)
             });
             return if elsewhere {
-                Err(Unsupported("RESEARCH at another player's object"))
+                Err(GenieError::unsupported(
+                    "RESEARCH at another player's object",
+                ))
             } else {
                 Ok(())
             };
@@ -2154,13 +2183,13 @@ impl Turns {
             return Ok(());
         }
         if owner.computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer player's RESEARCH (FUN_1411d5520, player+0x7a8)",
             ));
         }
         let top = building.top_action_kind().unwrap_or(0);
         if building.unmodelled_action.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "RESEARCH at a building with an unmodelled action",
             ));
         }
@@ -2168,7 +2197,7 @@ impl Turns {
             return Ok(());
         }
         if r.tech == 0x66 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "RESEARCH of Castle Age (the game's +0x820 flag)",
             ));
         }
@@ -2192,7 +2221,7 @@ impl Turns {
         i: usize,
         tech: i16,
         shift: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let t = usize::try_from(tech).expect("RESEARCH queues a technology of the tree");
         let def = &self.techs[t];
         let state = &self.players[player].techs[t];
@@ -2227,7 +2256,7 @@ impl Turns {
     /// # Errors
     ///
     /// A building of another player (with cheats) or asleep, and what the parts do not model.
-    pub(in crate::turn) fn queue(&mut self, player: usize, q: &QueueAt) -> Result<(), Unsupported> {
+    pub(in crate::turn) fn queue(&mut self, player: usize, q: &QueueAt) -> Result<(), GenieError> {
         let Some(ids) = self.command_check(player, &q.buildings) else {
             return Ok(());
         };
@@ -2245,10 +2274,14 @@ impl Turns {
             .flatten()
         {
             let crate::order::Place::Live(p, i) = place else {
-                return Err(Unsupported("QUEUE at a building the slice does not have"));
+                return Err(GenieError::unsupported(
+                    "QUEUE at a building the slice does not have",
+                ));
             };
             if p != player {
-                return Err(Unsupported("QUEUE at a building the slice does not have"));
+                return Err(GenieError::unsupported(
+                    "QUEUE at a building the slice does not have",
+                ));
             }
             let listed = owner.objects[i]
                 .production
@@ -2286,7 +2319,7 @@ impl Turns {
                 return Ok(());
             }
             let (costed, annex) = crate::production::costed(masters, unit);
-            let short = |count: i32| -> Result<bool, Unsupported> {
+            let short = |count: i32| -> Result<bool, GenieError> {
                 for &(attribute, each, paid) in costed.cost.iter().take(3) {
                     if attribute < 0 || (annex && !paid) || attribute == POPULATION {
                         continue;
@@ -2454,7 +2487,7 @@ impl Turns {
         count: u16,
         tech: i16,
         button: i32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let mut master = if unit == VILLAGER_ANY { VILLAGER } else { unit };
         let mut count = count;
         if master == VILLAGER {
@@ -2500,7 +2533,7 @@ impl Turns {
         master: i16,
         count: i16,
         button: i32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         use crate::production::{QUEUED, as_entry_costs, master_costs, pay, population};
         let empty = Masters::default();
         let mut n = count;
@@ -2563,12 +2596,11 @@ impl Turns {
         (master, tech): (i16, i16),
         count: i16,
         button: i32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let t = usize::try_from(tech).expect("RESEARCH queues a technology of the tree");
-        let def = self
-            .techs
-            .get(t)
-            .ok_or(Unsupported("a technology the data file has not got"))?;
+        let def = self.techs.get(t).ok_or(GenieError::unsupported(
+            "a technology the data file has not got",
+        ))?;
         let owner = &mut self.players[player];
         let state = &owner.techs[t];
         let done = state.pending.wrapping_add(state.times_researched);
@@ -2638,7 +2670,7 @@ impl Turns {
         n: i16,
         button: i32,
         time: Option<i16>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let queue = &self.players[player].objects[i]
             .production
             .as_ref()
@@ -2684,7 +2716,7 @@ impl Turns {
         player: usize,
         tech: i16,
         master: i16,
-    ) -> Result<[(i32, f32); 3], Unsupported> {
+    ) -> Result<[(i32, f32); 3], GenieError> {
         use crate::production::{NO_COSTS, as_entry_costs, master_costs};
         let owner = &self.players[player];
         if master != -1 {

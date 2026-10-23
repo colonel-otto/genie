@@ -12,7 +12,7 @@ use crate::masters::Master;
 use crate::rng::Stream;
 use crate::tasks::{Actor, Diplomacy, TaskTarget, enabled};
 use crate::turn::{Releaser, Turns, Unit, World};
-use crate::unit_ai::{HUNT_ACTION, HUNT_ORDER, MOVE_ORDER, Unsupported};
+use crate::unit_ai::{GenieError, HUNT_ACTION, HUNT_ORDER, MOVE_ORDER};
 
 /// INTERACT's fields past its units (`+0x4`..`+0x16`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -160,7 +160,7 @@ struct Followed {
 /// The splitter's path from one unit to another (`FUN_140f7cb30` -> `FUN_140f7c530`): the
 /// planner's result code and the path's length; None without a planner for the restriction.
 type SplitPath<'a> =
-    dyn FnMut(&Splittable, &Splittable) -> Result<Option<(u8, f32)>, Unsupported> + 'a;
+    dyn FnMut(&Splittable, &Splittable) -> Result<Option<(u8, f32)>, GenieError> + 'a;
 
 /// The splitter groups units of a type above this (`0x45`).
 const MAX_UNGROUPED: u8 = 69;
@@ -190,7 +190,7 @@ fn splits_together(
     member: bool,
     path: &mut SplitPath<'_>,
     far: &mut std::collections::BTreeSet<i32>,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     if a.kind <= MAX_UNGROUPED || b.kind <= MAX_UNGROUPED {
         return Ok(false);
     }
@@ -255,16 +255,18 @@ impl Turns {
         }
     }
 
-    pub(crate) fn master_of(&self, player: usize, master: i16) -> Result<&Master, Unsupported> {
+    pub(crate) fn master_of(&self, player: usize, master: i16) -> Result<&Master, GenieError> {
         self.masters
             .get(player)
             .and_then(|m| m.get(master))
-            .ok_or(Unsupported("an object of a master the slice does not have"))
+            .ok_or(GenieError::unsupported(
+                "an object of a master the slice does not have",
+            ))
     }
 
     /// What the task finder reads of object `id`; an annex stands for its main building (`+0xbb8`),
     /// `steps` times.
-    fn task_target(&self, id: i32, steps: usize) -> Result<TaskTarget<'_>, Unsupported> {
+    fn task_target(&self, id: i32, steps: usize) -> Result<TaskTarget<'_>, GenieError> {
         let mut id = id;
         for _ in 0..steps {
             match self.object(id).and_then(|(_, u)| u.annex_of) {
@@ -274,7 +276,7 @@ impl Turns {
         }
         let (player, u) = self
             .object(id)
-            .ok_or(Unsupported("a target the slice does not hold"))?;
+            .ok_or(GenieError::unsupported("a target the slice does not hold"))?;
         let master = self.master_of(player, u.life.master_id)?;
         let [powerup, max_powerup] = u.hp_powerups;
         Ok(TaskTarget {
@@ -302,7 +304,7 @@ impl Turns {
         player: usize,
         units: &[i32],
         order: &Interact,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         match units {
             [] => return Ok(()),
             &[id] if self.place(id).is_none() => return Ok(()),
@@ -314,7 +316,7 @@ impl Turns {
         self.leave_groups(player, &loose, order.target)?;
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
         if 1 < loose.len() && self.players[player].computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an order to several units of a computer player (FUN_140d61870)",
             ));
         }
@@ -337,7 +339,7 @@ impl Turns {
 
     /// The units of an order that move alone ([`Turns::split`] without Ctrl held); a group it
     /// makes is not modelled.
-    pub(crate) fn loose_units(&mut self, units: &[i32]) -> Result<Vec<i32>, Unsupported> {
+    pub(crate) fn loose_units(&mut self, units: &[i32]) -> Result<Vec<i32>, GenieError> {
         self.loose_units_kept(units, &|_| true)
     }
 
@@ -347,10 +349,12 @@ impl Turns {
         &mut self,
         units: &[i32],
         kept: &dyn Fn(i32) -> bool,
-    ) -> Result<Vec<i32>, Unsupported> {
+    ) -> Result<Vec<i32>, GenieError> {
         let split = self.split(units, kept, false)?;
         if !split.groups.is_empty() {
-            return Err(Unsupported("a unit group the order splitter forms"));
+            return Err(GenieError::unsupported(
+                "a unit group the order splitter forms",
+            ));
         }
         Ok(split.loose)
     }
@@ -382,7 +386,7 @@ impl Turns {
         units: &[i32],
         kept: &dyn Fn(i32) -> bool,
         control: bool,
-    ) -> Result<Split, Unsupported> {
+    ) -> Result<Split, GenieError> {
         // FUN_140fd9ae0 splits only when the list's first unit exists (its owner): else no unit
         // takes the order
         let Some((owner, _)) = units.first().and_then(|&id| self.object(id)) else {
@@ -418,7 +422,7 @@ impl Turns {
         run: &[Option<i32>],
         control: bool,
         split: &mut Split,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let mut left: Vec<Splittable> = Vec::with_capacity(run.len());
         for (i, &u) in run.iter().enumerate() {
             let Some(id) = u else {
@@ -493,7 +497,7 @@ impl Turns {
         // it to the first (FUN_140f7c530, its result and the measured path's length)
         let tiles = self.spatial.tiles();
         let pathing = &mut self.pathing;
-        let mut path = |a: &Splittable, b: &Splittable| -> Result<Option<(u8, f32)>, Unsupported> {
+        let mut path = |a: &Splittable, b: &Splittable| -> Result<Option<(u8, f32)>, GenieError> {
             let Some(restriction) = b.restriction else {
                 return Ok(None);
             };
@@ -509,7 +513,7 @@ impl Turns {
                 full: false,
             };
             let mut p = crate::tile_path::Path::default();
-            let found = planner.plan::<Unsupported>(&req, false, &mut p, None)?;
+            let found = planner.plan::<GenieError>(&req, false, &mut p, None)?;
             p.measure();
             Ok(Some((found.code(), p.length)))
         };
@@ -566,7 +570,7 @@ impl Turns {
         player: usize,
         loose: &[i32],
         target: i32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let target = if 1 < loose.len() && !self.players[player].computer {
             -1
         } else {
@@ -580,7 +584,7 @@ impl Turns {
 
     /// The centroid of an order's loose units ([`centroid`]) over those that move (above type 29
     /// with speed), or all of a queued order.
-    fn order_spread(&self, loose: &[i32], queued: bool) -> Result<Option<[f32; 2]>, Unsupported> {
+    fn order_spread(&self, loose: &[i32], queued: bool) -> Result<Option<[f32; 2]>, GenieError> {
         let mut points = Vec::with_capacity(loose.len());
         for &id in loose {
             let Some((p, u)) = self.object(id) else {
@@ -612,12 +616,12 @@ impl Turns {
         others: &[i32],
         centroid: Option<[f32; 2]>,
         order: &Interact,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(place) = self.place(id) else {
             return Ok(());
         };
         let Place::Live(p, idx) = place else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an order to a unit the slice does not hold live",
             ));
         };
@@ -655,7 +659,11 @@ impl Turns {
                 }
             }
             None if still => {}
-            None => return Err(Unsupported("an ordered unit without movement state")),
+            None => {
+                return Err(GenieError::unsupported(
+                    "an ordered unit without movement state",
+                ));
+            }
         }
         let point = match centroid {
             None => order.point,
@@ -703,7 +711,7 @@ impl Turns {
         let ai = unit
             .ai
             .as_mut()
-            .ok_or(Unsupported("unreachable: no unit AI"))?;
+            .ok_or(GenieError::unreachable("unreachable: no unit AI"))?;
         let _ = ai.queue_order(state, queued, false, false)?;
         if !order.queued && !order.direct {
             readiness(&mut ai.orders, true);
@@ -723,7 +731,7 @@ impl Turns {
         idx: usize,
         target: i32,
         point: [f32; 2],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
@@ -754,13 +762,13 @@ impl Turns {
         player: usize,
         idx: usize,
         order: crate::unit_ai::QueuedOrder,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if order.order == crate::unit_ai::BUILD_ORDER {
             return self.build_order(player, idx, order);
         }
-        let (_, t) = self
-            .object(order.target)
-            .ok_or(Unsupported("a queued order on a target that is gone"))?;
+        let (_, t) = self.object(order.target).ok_or(GenieError::unsupported(
+            "a queued order on a target that is gone",
+        ))?;
         let point = t.position;
         if order.target != self.players[player].objects[idx].id {
             let work = Work {
@@ -778,7 +786,9 @@ impl Turns {
         let ai = self.players[player].objects[idx]
             .ai
             .as_mut()
-            .ok_or(Unsupported("an order on a target without a unit AI"))?;
+            .ok_or(GenieError::unsupported(
+                "an order on a target without a unit AI",
+            ))?;
         // the tail (`LAB_140c5d432`) with the order the work left the AI
         let _ = ai.order_tail(
             ai.current_order,
@@ -801,7 +811,7 @@ impl Turns {
         player: usize,
         units: &[i32],
         order: &MoveOrder,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         // the groups take the command count, which then counts up whatever the units do
         let loose = match units {
             [] => {
@@ -825,7 +835,7 @@ impl Turns {
         };
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
         if 1 < loose.len() && self.players[player].computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a move of several units of a computer player (FUN_140d61870)",
             ));
         }
@@ -857,7 +867,7 @@ impl Turns {
     /// ([`Turns::first_unit_target`]), not queued and direct. Then every
     /// listed group lists them all as its differentiator groups (`setDifferentiatorGroups`,
     /// `FUN_1410395a0`).
-    fn move_groups(&mut self, split: &mut Split, order: &MoveOrder) -> Result<(), Unsupported> {
+    fn move_groups(&mut self, split: &mut Split, order: &MoveOrder) -> Result<(), GenieError> {
         /// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
         const LISTED: usize = 60;
         let mut listed: Vec<i32> = Vec::new();
@@ -885,7 +895,7 @@ impl Turns {
             } else {
                 // FUN_140e6b820's target: the order's object while the world holds it
                 if self.world_object(order.target).is_some() {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a MOVE of a group the splitter keeps (FUN_140fd9f40)",
                     ));
                 }
@@ -948,7 +958,7 @@ impl Turns {
         ids: &[i32],
         waypoints: &[[f32; 2]],
         reset: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(ids) = self.command_check(player, ids) else {
             return Ok(());
         };
@@ -979,7 +989,7 @@ impl Turns {
         ids: &[i32],
         waypoints: &[[f32; 2]],
         reset: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         /// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
         const LISTED: usize = 60;
         let dt = self.dt;
@@ -1068,7 +1078,7 @@ impl Turns {
     /// where it last moved to (slot 0x520) is within its owner's influence distance of the
     /// group's place in three dimensions (`COMISS`/`JC`: a NaN is not); it leaves the loose units,
     /// and the loop's index goes on past the unit that takes its place, which is passed over.
-    pub(crate) fn keep_group(&mut self, split: &mut Split, group: i32) -> Result<(), Unsupported> {
+    pub(crate) fn keep_group(&mut self, split: &mut Split, group: i32) -> Result<(), GenieError> {
         let mut i = 0;
         while i < split.loose.len() {
             let id = split.loose[i];
@@ -1098,7 +1108,7 @@ impl Turns {
                 };
                 let mut path = crate::tile_path::Path::default();
                 if planner
-                    .plan::<Unsupported>(&req, false, &mut path, None)?
+                    .plan::<GenieError>(&req, false, &mut path, None)?
                     .code()
                     != 1
                 {
@@ -1140,7 +1150,7 @@ impl Turns {
         loose: &[i32],
         i: usize,
         waypoints: &[[f32; 2]],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::unit_ai::{MOVE_ACTION, PATROL};
         let id = loose[i];
         let Some((p, u)) = self.object(id) else {
@@ -1211,7 +1221,7 @@ impl Turns {
         player: usize,
         units: &[i32],
         target: i32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(ids) = self.command_check(player, units) else {
             return Ok(());
         };
@@ -1232,7 +1242,7 @@ impl Turns {
         let ids = &ids[..ids.len().min(cap)];
         let split = self.split(ids, &|_| true, false)?;
         if !split.groups.is_empty() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a FOLLOW whose units the splitter groups (FUN_141007320, FUN_140fd9f40)",
             ));
         }
@@ -1261,7 +1271,7 @@ impl Turns {
 
     /// Unit `id` leaves the unit group the world holds of its link (`FUN_14102c160` with `target`
     /// and 0, [`Turns::remove_unit`]); a unit the world does not hold or in no group, nothing.
-    fn leave_group_of(&mut self, id: i32, target: i32) -> Result<(), Unsupported> {
+    fn leave_group_of(&mut self, id: i32, target: i32) -> Result<(), GenieError> {
         let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
         if link != -1 {
             let _ = self.remove_unit(link, id, target, false)?;
@@ -1272,7 +1282,7 @@ impl Turns {
     /// FOLLOW's test of a unit (`FUN_14161c920`): one the world holds, of a type of 30 or more
     /// whose master moves (slot 0xe8 above 0; `COMISS`, `JNC`: a NaN speed moves), gives its
     /// place on the ground.
-    fn follower(&self, id: i32) -> Result<Option<[f32; 2]>, Unsupported> {
+    fn follower(&self, id: i32) -> Result<Option<[f32; 2]>, GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(None);
         };
@@ -1286,16 +1296,18 @@ impl Turns {
     /// (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the other loose units
     /// ([`ignore_unit`]); its place in the live list. A sleeping object is of a type below 30
     /// (only slot 0x180 puts one to sleep), which [`Turns::follower`] passed over.
-    fn follower_start(&mut self, loose: &[i32], i: usize) -> Result<(usize, usize), Unsupported> {
+    fn follower_start(&mut self, loose: &[i32], i: usize) -> Result<(usize, usize), GenieError> {
         let Some(Place::Live(p, idx)) = self.place(loose[i]) else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a FOLLOW of a sleeping object of a type of 30 or more",
             ));
         };
         let mover = self.players[p].objects[idx]
             .mover
             .as_mut()
-            .ok_or(Unsupported("a followed unit without movement state"))?;
+            .ok_or(GenieError::unsupported(
+                "a followed unit without movement state",
+            ))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
         for (k, &other) in loose.iter().enumerate() {
@@ -1319,7 +1331,7 @@ impl Turns {
         loose: &[i32],
         i: usize,
         followed: Followed,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::unit_ai::{FOLLOW_ACTION, FOLLOW_ORDER};
         self.leave_group_of(loose[i], followed.id)?;
         if self.follower(loose[i])?.is_none() {
@@ -1353,7 +1365,7 @@ impl Turns {
         i: usize,
         followed: Followed,
         mean: [f32; 2],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::unit_ai::MOVE_ACTION;
         let Some([x, y]) = self.follower(loose[i])? else {
             return Ok(());
@@ -1389,7 +1401,7 @@ impl Turns {
         idx: usize,
         target: i32,
         point: [f32; 3],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.move_to_object_with(player, idx, target, point, true)
             .map(|_| ())
     }
@@ -1414,7 +1426,7 @@ impl Turns {
         target: i32,
         point: [f32; 3],
         a14: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let world_time = self.world_time;
         let villager = self
             .master_of(player, self.players[player].objects[idx].life.master_id)?
@@ -1442,7 +1454,9 @@ impl Turns {
         }
         let unit = &self.players[player].objects[idx];
         if unit.unmodelled_action.is_some() {
-            return Err(Unsupported("a move to an object of a unit with an action"));
+            return Err(GenieError::unsupported(
+                "a move to an object of a unit with an action",
+            ));
         }
         // FUN_140aa0df0 makes the MoveTo first, which takes its target (slot 0x178, quiet 0);
         // slot 0x808 then clears the list (the old actions' teardowns) and starts it
@@ -1455,10 +1469,9 @@ impl Turns {
         }
         self.clear_actions(player, idx)?;
         let unit = &mut self.players[player].objects[idx];
-        let mover = unit
-            .mover
-            .as_mut()
-            .ok_or(Unsupported("a moved unit without movement state"))?;
+        let mover = unit.mover.as_mut().ok_or(GenieError::unsupported(
+            "a moved unit without movement state",
+        ))?;
         let move_to = crate::move_to::MoveToAction::to_object(
             &self.spatial,
             unit.position,
@@ -1493,7 +1506,7 @@ impl Turns {
         idx: usize,
         target: Option<i32>,
         point: [f32; 3],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let unit = &mut self.players[player].objects[idx];
         let Some(target) = target else {
             return match unit.head_takes_point(point, player)? {
@@ -1507,7 +1520,7 @@ impl Turns {
             };
         };
         if unit.unmodelled_action.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "slot 0x40 of an action the slice does not hold",
             ));
         }
@@ -1547,11 +1560,11 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let by = self.releaser(player, idx);
         let unit = &self.players[player].objects[idx];
         let livestock = self.master_of(player, unit.life.master_id)?.class == LIVESTOCK;
-        let (tp, t) = self.object(target).ok_or(Unsupported(
+        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "an Artifact's move to an object the slice does not hold",
         ))?;
         let alive = t.life.state < 7;
@@ -1562,7 +1575,7 @@ impl Turns {
             .spatial
             .get(target)
             .map(|p| p.position)
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "an Artifact's move to an object without a place",
             ))?;
         let unit = &mut self.players[player].objects[idx];
@@ -1580,7 +1593,7 @@ impl Turns {
             self.players[player].objects[idx]
                 .mover
                 .as_mut()
-                .ok_or(Unsupported("a walker without movement state"))?
+                .ok_or(GenieError::unsupported("a walker without movement state"))?
                 .stop()?;
         }
         Ok(())
@@ -1593,7 +1606,7 @@ impl Turns {
     /// # Errors
     ///
     /// What the moves do not model.
-    pub(crate) fn lead_herd(&mut self, p: usize, sheep: i32, site: i32) -> Result<(), Unsupported> {
+    pub(crate) fn lead_herd(&mut self, p: usize, sheep: i32, site: i32) -> Result<(), GenieError> {
         self.send_to_site(p, sheep, site)?;
         let mut listed = Vec::new();
         self.herd_from(p, sheep, site, &mut listed)
@@ -1611,7 +1624,7 @@ impl Turns {
         sheep: i32,
         site: i32,
         listed: &mut Vec<i32>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         listed.push(sheep);
         if HERD_MOST <= listed.len() {
             return Ok(());
@@ -1656,18 +1669,20 @@ impl Turns {
     }
 
     /// Slot 0x138 of player `p`'s animal `sheep` to the drop site `site` at its place.
-    fn send_to_site(&mut self, p: usize, sheep: i32, site: i32) -> Result<(), Unsupported> {
+    fn send_to_site(&mut self, p: usize, sheep: i32, site: i32) -> Result<(), GenieError> {
         let Some(Place::Live(q, idx)) = self.place(sheep) else {
-            return Err(Unsupported("a led animal the slice does not hold live"));
+            return Err(GenieError::unsupported(
+                "a led animal the slice does not hold live",
+            ));
         };
         if q != p {
-            return Err(Unsupported("a led animal of another player"));
+            return Err(GenieError::unsupported("a led animal of another player"));
         }
         let point = self
             .spatial
             .get(site)
             .map(|s| s.position)
-            .ok_or(Unsupported("a drop site without a place"))?;
+            .ok_or(GenieError::unsupported("a drop site without a place"))?;
         self.move_to_object(p, idx, site, point)
     }
 
@@ -1680,13 +1695,13 @@ impl Turns {
         ids: &[i32],
         index: u32,
         all: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         for &id in ids {
             let Some(place) = self.place(id) else {
                 continue;
             };
             let Place::Live(p, idx) = place else {
-                return Err(Unsupported("a cancel at a sleeping object"));
+                return Err(GenieError::unsupported("a cancel at a sleeping object"));
             };
             let unit = &self.players[p].objects[idx];
             if unit.life.state != 2 || self.master_of(p, unit.life.master_id)?.kind < 80 {
@@ -1711,9 +1726,9 @@ impl Turns {
         player: usize,
         ids: &[i32],
         action: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if action != 8 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a UNIT_ORDER other than the garrison (5) and the drop-off (8)",
             ));
         }
@@ -1722,10 +1737,12 @@ impl Turns {
                 continue;
             };
             let Place::Live(p, idx) = place else {
-                return Err(Unsupported("a UNIT_ORDER to a sleeping object"));
+                return Err(GenieError::unsupported("a UNIT_ORDER to a sleeping object"));
             };
             if p != player {
-                return Err(Unsupported("a UNIT_ORDER to another player's unit"));
+                return Err(GenieError::unsupported(
+                    "a UNIT_ORDER to another player's unit",
+                ));
             }
             let unit = &self.players[p].objects[idx];
             let kind = self.master_of(p, unit.life.master_id)?.kind;
@@ -1733,7 +1750,9 @@ impl Turns {
                 continue;
             }
             if unit.unmodelled_action.is_some() {
-                return Err(Unsupported("a UNIT_ORDER drop-off of an action not held"));
+                return Err(GenieError::unsupported(
+                    "a UNIT_ORDER drop-off of an action not held",
+                ));
             }
             if let Some(gather) = unit
                 .gather
@@ -1741,7 +1760,7 @@ impl Turns {
                 .filter(|_| unit.top_action_kind() == Some(crate::gather::GATHER))
             {
                 if gather.target == -1 && gather.point[0] == -1.0 && gather.point[1] == -1.0 {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a UNIT_ORDER drop-off of a Gather without a target (FUN_141206a20)",
                     ));
                 }
@@ -1770,7 +1789,9 @@ impl Turns {
                 continue;
             }
             if unit.top_action_kind() == Some(crate::build::BUILD) {
-                return Err(Unsupported("a UNIT_ORDER drop-off of a Build (slot 0x78)"));
+                return Err(GenieError::unsupported(
+                    "a UNIT_ORDER drop-off of a Build (slot 0x78)",
+                ));
             }
             let Some(hunt) = unit
                 .hunt
@@ -1781,7 +1802,7 @@ impl Turns {
                 continue;
             };
             if hunt.target == -1 && hunt.point[0] == -1.0 && hunt.point[1] == -1.0 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a UNIT_ORDER drop-off of a Hunt without a target (FUN_141206a20)",
                 ));
             }
@@ -1818,11 +1839,11 @@ impl Turns {
     /// its held resource from its class: entries of its class with resource types, for its civ.
     /// With none the unit does nothing (a livestock with its food); a building found (the
     /// player's closest in state 2, then the work command on it, slot 0x7e8) is not modelled.
-    fn drop_off_unasked(&self, p: usize, idx: usize) -> Result<(), Unsupported> {
+    fn drop_off_unasked(&self, p: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[idx];
         let master = self.master_of(p, unit.life.master_id)?;
         if master.drop_sites.iter().any(|&d| 0 <= d) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a UNIT_ORDER drop-off of a unit with drop sites and no gather action (FUN_1411671e0)",
             ));
         }
@@ -1833,7 +1854,7 @@ impl Turns {
             .iter()
             .any(|d| d.worker_class == class && (d.civs.is_empty() || d.civs.contains(&civ)))
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a UNIT_ORDER drop-off at a building of the drop-site table (slot 0x7e8)",
             ));
         }
@@ -1850,7 +1871,7 @@ impl Turns {
         player: usize,
         ids: &[i32],
         state: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(ids) = self.command_check(player, ids) else {
             return Ok(());
         };
@@ -1869,7 +1890,7 @@ impl Turns {
                 // unit AI: the handler passes it over
                 Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
                 Place::Sleeping(..) => {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a UNIT_AI_STATE of a sleeping object with a unit AI",
                     ));
                 }
@@ -1893,7 +1914,11 @@ impl Turns {
             for e in fx {
                 match e {
                     crate::unit_ai::Effect::Stop => self.command_stop(p, idx)?,
-                    _ => return Err(Unsupported("a stance's stop effect not modelled")),
+                    _ => {
+                        return Err(GenieError::unsupported(
+                            "a stance's stop effect not modelled",
+                        ));
+                    }
                 }
             }
         }
@@ -1906,7 +1931,7 @@ impl Turns {
     /// The object, live or sleeping (`FUN_1415417a0`), of a master of type 80 toggles its gate
     /// lock: slot 0x670 ([`lock_gate`]) with slot 0x668's value negated. Its sound (slot 0x4c0)
     /// and the UI's flag are not held.
-    pub(crate) fn gate(&mut self, player: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn gate(&mut self, player: usize, id: i32) -> Result<(), GenieError> {
         let Some((p, unit)) = self.object(id) else {
             return Ok(());
         };
@@ -1932,7 +1957,7 @@ impl Turns {
     /// scout's already, else the auto scout order, from the object's owner (`+0x718`), without
     /// a target, at the point (−1, −1) at the unit's height, range 1, priority 100, shown at
     /// (−1, −1) and ready. Its sound and the UI's flags are not held.
-    pub(crate) fn auto_scout(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
+    pub(crate) fn auto_scout(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
         use crate::unit_ai::{
             AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER, Effect, QueuedOrder, STOP_ORDER,
         };
@@ -1951,7 +1976,7 @@ impl Turns {
                 // unit AI: the handler passes it over
                 Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
                 Place::Sleeping(..) => {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "an AUTO_SCOUT of a sleeping object with a unit AI",
                     ));
                 }
@@ -1963,7 +1988,9 @@ impl Turns {
             let master = self.master_of(p, unit.life.master_id)?;
             if master.object_flags & 0x10 == 0 {
                 if master.class == AUTO_SCOUT_CLASS {
-                    return Err(Unsupported("AUTO_SCOUT's class 58 rule (FUN_140eca780)"));
+                    return Err(GenieError::unsupported(
+                        "AUTO_SCOUT's class 58 rule (FUN_140eca780)",
+                    ));
                 }
                 continue;
             }
@@ -1999,7 +2026,11 @@ impl Turns {
                 match e {
                     Effect::Stop => self.command_stop(p, idx)?,
                     Effect::Explore(point) => self.command_explore(p, idx, point)?,
-                    _ => return Err(Unsupported("an order effect of AUTO_SCOUT not modelled")),
+                    _ => {
+                        return Err(GenieError::unsupported(
+                            "an order effect of AUTO_SCOUT not modelled",
+                        ));
+                    }
                 }
             }
         }
@@ -2019,7 +2050,7 @@ impl Turns {
     /// (`FUN_141197da0`), the object stops (slot 0x148, [`Turns::object_stop`]) and its movement
     /// stands (slot 0x560, `FUN_1411616f0`: slot 0x5d0, then `FUN_140f98e80` on its walked
     /// level).
-    pub(crate) fn stop_command(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
+    pub(crate) fn stop_command(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
         let Some(ids) = self.command_check(player, ids) else {
             return Ok(());
         };
@@ -2049,7 +2080,9 @@ impl Turns {
                 .get(group)
                 .is_some_and(|g| g.members.len() == list.len())
             {
-                return Err(Unsupported("a STOP of a whole unit group (FUN_1410110c0)"));
+                return Err(GenieError::unsupported(
+                    "a STOP of a whole unit group (FUN_1410110c0)",
+                ));
             }
         }
         for &id in &units {
@@ -2116,9 +2149,9 @@ impl Turns {
     /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: the action list empties
     /// (`FUN_140a98620`, [`Turns::clear_actions`]) and a unit in state 2 takes its standing
     /// sprite (slot 0x798, then slot 0x68) where the slice holds its sprite.
-    pub(crate) fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+    pub(crate) fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         if self.players[p].objects[idx].unmodelled_action.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a command's stop of an action in the command phase",
             ));
         }
@@ -2132,16 +2165,13 @@ impl Turns {
     /// The unit's explore (slot 0x398) in the command phase: a unit without an Explore takes a
     /// new one ([`crate::explore::ExploreAction::new`]) at its height; its `set_state`'s notify and
     /// standing sprite follow.
-    fn command_explore(
-        &mut self,
-        p: usize,
-        idx: usize,
-        point: [f32; 2],
-    ) -> Result<(), Unsupported> {
+    fn command_explore(&mut self, p: usize, idx: usize, point: [f32; 2]) -> Result<(), GenieError> {
         use crate::explore::{EXPLORE_ACTION, ExploreAction, Owner, WANTS_POINT};
         let unit = &mut self.players[p].objects[idx];
         if unit.explore.is_some() || unit.top_action().is_some() {
-            return Err(Unsupported("a command's explore of a unit with an action"));
+            return Err(GenieError::unsupported(
+                "a command's explore of a unit with an action",
+            ));
         }
         let (e, owner) = ExploreAction::new([point[0], point[1], unit.position[2]]);
         unit.explore = Some(e);
@@ -2155,7 +2185,11 @@ impl Turns {
                 }
             }
             Owner::Standing => {}
-            Owner::Stopped => return Err(Unsupported("an Explore's set_state 2 (slots 0x68)")),
+            Owner::Stopped => {
+                return Err(GenieError::unsupported(
+                    "an Explore's set_state 2 (slots 0x68)",
+                ));
+            }
         }
         {
             self.standing_sprite(p, idx)?;
@@ -2166,7 +2200,7 @@ impl Turns {
     /// Slot 0x68 with the master's standing sprite (`+0x470`): the unit's top speed is the
     /// sprite's ([`crate::movement::Mover::shows_standing`]), and the sprite itself where the
     /// slice holds it.
-    pub(crate) fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+    pub(crate) fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
         if let Some(m) = unit.mover.as_mut() {
             m.shows_standing();
@@ -2180,7 +2214,9 @@ impl Turns {
             .graphics
             .get(&standing)
             .copied()
-            .ok_or(Unsupported("a unit without its standing sprite"))?;
+            .ok_or(GenieError::unsupported(
+                "a unit without its standing sprite",
+            ))?;
         let rng = self.streams.get(Stream::Sprite);
         crate::attack::set_sprite(&mut self.players[p].objects[idx].sprite, g, rng);
         Ok(())
@@ -2200,13 +2236,15 @@ impl Turns {
         others: &[i32],
         cell: Option<[f32; 2]>,
         order: &MoveOrder,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let point2 = cell.unwrap_or(order.point);
         let Some(place) = self.place(id) else {
             return Ok(());
         };
         let Place::Live(p, idx) = place else {
-            return Err(Unsupported("a move of a unit the slice does not hold live"));
+            return Err(GenieError::unsupported(
+                "a move of a unit the slice does not hold live",
+            ));
         };
         // the command's check (`FUN_140e553f0`, [`Turns::checked_units`]) dropped another
         // player's unit (its id -1) unless the game setting `+0x1074` lets players order each
@@ -2218,7 +2256,9 @@ impl Turns {
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
         if master.kind < MOVING || speed <= 0.0 {
             if order.queued {
-                return Err(Unsupported("a queued move of an object that does not move"));
+                return Err(GenieError::unsupported(
+                    "a queued move of an object that does not move",
+                ));
             }
             return Ok(());
         }
@@ -2227,10 +2267,9 @@ impl Turns {
             .map(|(tp, t)| (t.life.master_id, tp));
         let unit = &mut self.players[player].objects[idx];
         // FUN_141197da0, then slot 0x2a0 with 1: it waits to move
-        let mover = unit
-            .mover
-            .as_mut()
-            .ok_or(Unsupported("a moved unit without movement state"))?;
+        let mover = unit.mover.as_mut().ok_or(GenieError::unsupported(
+            "a moved unit without movement state",
+        ))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
         for &other in others {
@@ -2277,7 +2316,7 @@ impl Turns {
             return Ok(());
         }
         if order.target != -1 {
-            return Err(Unsupported("a move that follows an object"));
+            return Err(GenieError::unsupported("a move that follows an object"));
         }
         let order = &MoveOrder {
             point: point2,
@@ -2308,7 +2347,7 @@ impl Turns {
         player: usize,
         idx: usize,
         point: [f32; 3],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
         // head action's slot 0x40 take the point unless it stops after a kill (FUN_140c41c10)
         let world_time = self.world_time;
@@ -2348,7 +2387,7 @@ impl Turns {
         player: usize,
         idx: usize,
         m: crate::unit_ai::AiMove,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let unit = &self.players[player].objects[idx];
         let class = self.master_of(player, unit.life.master_id)?.class;
         let by = self.releaser(player, idx);
@@ -2387,7 +2426,7 @@ impl Turns {
         player: usize,
         idx: usize,
         order: &Work,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         // the class-54 test of its top action comes first in the game, but either way the order
@@ -2406,10 +2445,10 @@ impl Turns {
                 let (me, them) = (
                     self.spatial
                         .get(unit.id)
-                        .ok_or(Unsupported("an ordered unit without a place"))?,
+                        .ok_or(GenieError::unsupported("an ordered unit without a place"))?,
                     self.spatial
                         .get_known(order.target)?
-                        .ok_or(Unsupported("a target without a place"))?,
+                        .ok_or(GenieError::unsupported("a target without a place"))?,
                 );
                 let (_, gap) = gaps(me.position, me.radius, them.position, them.radius);
                 Some(work_reach(gap, master.weapon_range, master.min_range))
@@ -2422,7 +2461,7 @@ impl Turns {
         };
         // a class 54 under an action the slice does not hold may be under its Pack or Unpack
         if packs || (class == CLASS_54 && unit.unmodelled_action.is_some()) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a Pack or Unpack of class 54 or 51 (FUN_140ad4ff0, FUN_140ae58a0)",
             ));
         }
@@ -2441,7 +2480,7 @@ impl Turns {
             self.town_bell_order(player, idx, -1, order.filter)?;
             self.work_command(player, idx, &order)?;
             if self.players[player].objects[idx].my_pasture != -1 {
-                return Err(Unsupported("a unit that leaves its pasture"));
+                return Err(GenieError::unsupported("a unit that leaves its pasture"));
             }
             return Ok(());
         }
@@ -2451,14 +2490,14 @@ impl Turns {
         let mut order = *order;
         if master.class == LIVESTOCK {
             if self.livestock_enters(player, idx, order.target)? {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "livestock entering its target (slot 0x3a0's Enter)",
                 ));
             }
             let at = self
                 .spatial
                 .get_known(order.target)?
-                .ok_or(Unsupported("a target without a place"))?
+                .ok_or(GenieError::unsupported("a target without a place"))?
                 .position;
             (order.point[0], order.point[1], order.target) = (at[0], at[1], -1);
         }
@@ -2473,12 +2512,14 @@ impl Turns {
                 && target.master.kind == BUILDING
                 && matches!(target.master.id, MASTER_1893 | MASTER_1897)
             {
-                return Err(Unsupported("a villager's order on master 1893 or 1897"));
+                return Err(GenieError::unsupported(
+                    "a villager's order on master 1893 or 1897",
+                ));
             }
         }
         let unit = &mut self.players[player].objects[idx];
         if unit.my_pasture != -1 {
-            return Err(Unsupported("a unit that leaves its pasture"));
+            return Err(GenieError::unsupported("a unit that leaves its pasture"));
         }
         Ok(())
     }
@@ -2493,7 +2534,7 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if self.object(target).is_none() {
             return Ok(false);
         }
@@ -2515,7 +2556,7 @@ impl Turns {
         player: usize,
         idx: usize,
         point: [f32; 3],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.move_point_order_with(player, idx, point, true)
     }
 
@@ -2530,7 +2571,7 @@ impl Turns {
         idx: usize,
         point: [f32; 3],
         a14: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let villager = self
             .master_of(player, self.players[player].objects[idx].life.master_id)?
             .class
@@ -2557,7 +2598,7 @@ impl Turns {
         idx: usize,
         target: i32,
         filter: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         if !(master.class == VILLAGER || master.id == MASTER_1808) {
@@ -2594,18 +2635,16 @@ impl Turns {
     /// place. Then a Gather's or Hunt's target class (`+0x68`), its unit AI's current action
     /// (`+0x44`) and the top action's second target (`FUN_140a78430`). The targets count only
     /// where the world holds them.
-    pub(crate) fn record_town_bell(
-        &mut self,
-        player: usize,
-        idx: usize,
-    ) -> Result<(), Unsupported> {
+    pub(crate) fn record_town_bell(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
         use crate::town_bell::BackToWork;
         let unit = &self.players[player].objects[idx];
         if unit.town_bell.flag {
             return Ok(());
         }
         if unit.unmodelled_action.is_some() {
-            return Err(Unsupported("a town-bell record of an action not held"));
+            return Err(GenieError::unsupported(
+                "a town-bell record of an action not held",
+            ));
         }
         let held = |id: i32| (0 <= id).then(|| self.object(id)).flatten();
         let mut found = unit.top_target().and_then(held).map(|(_, t)| t);
@@ -2629,7 +2668,7 @@ impl Turns {
             Some(crate::gather::GATHER) => unit.gather.map_or(-1, |g| g.target_type),
             _ => -1,
         };
-        let ai = unit.ai.as_ref().ok_or(Unsupported(
+        let ai = unit.ai.as_ref().ok_or(GenieError::unsupported(
             "a town-bell record of a unit without a unit AI",
         ))?;
         let target2 = unit
@@ -2661,7 +2700,7 @@ impl Turns {
         filter: i16,
         point: [f32; 3],
         clears: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let unit = &self.players[player].objects[idx];
         let top = unit.top_action_kind();
         let attacking = unit
@@ -2673,9 +2712,9 @@ impl Turns {
         if !a.keeps(target)? {
             return Ok(false);
         }
-        let (tp, t) = self
-            .object(target)
-            .ok_or(Unsupported("an attack's target the slice does not hold"))?;
+        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
+            "an attack's target the slice does not hold",
+        ))?;
         let class = i32::from(self.master_of(tp, t.life.master_id)?.class);
         let world_time = self.world_time;
         let unit = &mut self.players[player].objects[idx];
@@ -2701,7 +2740,7 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let unit = &self.players[player].objects[idx];
         let owner = &self.players[player];
         let master = self.master_of(player, unit.life.master_id)?;
@@ -2736,7 +2775,7 @@ impl Turns {
         player: usize,
         idx: usize,
         task: &crate::masters::Task,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let food = |k: i16| k == 0 || (15..=17).contains(&k);
         let class = self
             .master_of(player, self.players[player].objects[idx].life.master_id)?
@@ -2762,7 +2801,7 @@ impl Turns {
     /// task of [`crate::masters::Masters::work_master`] (the master changes, slot 0x90), the task's
     /// requirement, then the task's action from the action list's factory (slot 0x10), the unit
     /// AI's notify (slot 0x828) and the install (slot 0x808).
-    fn work_command(&mut self, player: usize, idx: usize, order: &Work) -> Result<(), Unsupported> {
+    fn work_command(&mut self, player: usize, idx: usize, order: &Work) -> Result<(), GenieError> {
         let Work {
             target,
             point,
@@ -2783,7 +2822,7 @@ impl Turns {
             let masters = self
                 .masters
                 .get(player)
-                .ok_or(Unsupported("a work command: no master table"))?;
+                .ok_or(GenieError::unsupported("a work command: no master table"))?;
             let owner = &self.players[player];
             let actor = Actor {
                 id: unit.id,
@@ -2830,7 +2869,9 @@ impl Turns {
             Some(h) if task.action_type == HUNT && h.task.id == task.id => {
                 let t = self.task_target(target, 0)?;
                 if t.master.id == MASTER_84 && t.player == player {
-                    return Err(Unsupported("a hunt sent to its player's master 84"));
+                    return Err(GenieError::unsupported(
+                        "a hunt sent to its player's master 84",
+                    ));
                 }
                 let class = i32::from(t.master.class);
                 self.retarget_hunt(player, idx, target)?;
@@ -2849,7 +2890,7 @@ impl Turns {
             }
             _ if top == Some(task.action_type) && task.action_type == crate::build::BUILD => {
                 if !same_master {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a work command on the Build task of the unit's former master",
                     ));
                 }
@@ -2862,7 +2903,9 @@ impl Turns {
             {
                 let t = self.task_target(target, 0)?;
                 if t.master.id == MASTER_84 && t.player == player {
-                    return Err(Unsupported("a gather sent to its player's master 84"));
+                    return Err(GenieError::unsupported(
+                        "a gather sent to its player's master 84",
+                    ));
                 }
                 let class = i32::from(t.master.class);
                 let took = self.retarget_gather(player, idx, target)?;
@@ -2893,7 +2936,11 @@ impl Turns {
                     | crate::make::MAKE
                     | crate::wait_solidify::WAIT_SOLIDIFY,
                 ) => false,
-                _ => return Err(Unsupported("a work command on the unit's current task")),
+                _ => {
+                    return Err(GenieError::unsupported(
+                        "a work command on the unit's current task",
+                    ));
+                }
             },
             _ => false,
         };
@@ -2940,7 +2987,7 @@ impl Turns {
             crate::gather::GATHER => {
                 self.start_gather(player, idx, target, &task, Some((point, clears)))
             }
-            _ => Err(Unsupported(
+            _ => Err(GenieError::unsupported(
                 "the action factory for a task the slice does not model",
             )),
         }
@@ -2958,7 +3005,7 @@ impl Turns {
         target: i32,
         point: [f32; 3],
         (clears, notified): (bool, bool),
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         if !master.moving.is_some_and(|m| 0.0 < m.speed) {
@@ -2971,7 +3018,7 @@ impl Turns {
         let named = if target == -1 {
             None
         } else {
-            let (tp, t) = self.object(target).ok_or(Unsupported(
+            let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
                 "a work command's target the slice does not hold",
             ))?;
             Some((
@@ -3022,7 +3069,7 @@ impl Turns {
         target: i32,
         filter: i16,
         change: bool,
-    ) -> Result<Option<crate::masters::Task>, Unsupported> {
+    ) -> Result<Option<crate::masters::Task>, GenieError> {
         let unit = &self.players[player].objects[idx];
         let own = self.master_of(player, unit.life.master_id)?;
         let owner = &self.players[player];
@@ -3091,18 +3138,18 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.clear_actions(player, idx)?;
         if self.players[player].objects[idx].life.state == 2 {
             self.standing_sprite(player, idx)?;
         }
-        let (_, t) = self.object(target).ok_or(Unsupported(
+        let (_, t) = self.object(target).ok_or(GenieError::unsupported(
             "a hunt command on an object the world does not hold",
         ))?;
         let point = t.position;
         let task = self
             .find_work_task(player, idx, target, -1, true)?
-            .ok_or(Unsupported("a hunt command without a task"))?;
+            .ok_or(GenieError::unsupported("a hunt command without a task"))?;
         self.start_hunt(
             player,
             idx,
@@ -3137,15 +3184,15 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.object(target).is_none() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gather command on an object the world does not hold",
             ));
         }
         let task = self
             .find_work_task(player, idx, target, -1, true)?
-            .ok_or(Unsupported("a gather command without a task"))?;
+            .ok_or(GenieError::unsupported("a gather command without a task"))?;
         let unit = &self.players[player].objects[idx];
         if unit.top_action_kind() == Some(crate::gather::GATHER)
             && unit.gather.is_some_and(|g| g.task.id == task.id)
@@ -3172,10 +3219,10 @@ impl Turns {
         task: &crate::masters::Task,
         point: [f32; 3],
         clears: bool,
-    ) -> Result<(), Unsupported> {
-        let (tp, t) = self
-            .object(target)
-            .ok_or(Unsupported("a Build's foundation the slice does not hold"))?;
+    ) -> Result<(), GenieError> {
+        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
+            "a Build's foundation the slice does not hold",
+        ))?;
         let tm = self.master_of(tp, t.life.master_id)?;
         let (t_at, t_radius, class) = (t.position, tm.radius, i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
@@ -3220,7 +3267,7 @@ impl Turns {
         target: i32,
         point: [f32; 3],
         clears: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let class = self.build_take(player, idx, target)?;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
@@ -3243,21 +3290,21 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-    ) -> Result<i32, Unsupported> {
-        let (tp, t) = self
-            .object(target)
-            .ok_or(Unsupported("a Build's foundation the slice does not hold"))?;
+    ) -> Result<i32, GenieError> {
+        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
+            "a Build's foundation the slice does not hold",
+        ))?;
         if tp != player {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a Build retargeted to another player's object (set_state 11)",
             ));
         }
         let tm = self.master_of(tp, t.life.master_id)?;
         let (t_at, t_radius, class) = (t.position, tm.radius, i32::from(tm.class));
         let unit = &self.players[player].objects[idx];
-        let old = unit
-            .build
-            .ok_or(Unsupported("a Build's retarget without its Build"))?;
+        let old = unit.build.ok_or(GenieError::unsupported(
+            "a Build's retarget without its Build",
+        ))?;
         let builder = self.master_of(player, unit.life.master_id)?;
         let gap = crate::movement::footprint_gap(unit.position, builder.radius, t_at, t_radius);
         if old.target != target {
@@ -3265,14 +3312,16 @@ impl Turns {
             let _ = self.build_set_target(player, idx, (old.target, old.added), target)?;
             let unit = &mut self.players[player].objects[idx];
             let (Some(build), mover) = (unit.build.as_mut(), unit.mover.as_mut()) else {
-                return Err(Unsupported("a Build's retarget without its Build"));
+                return Err(GenieError::unsupported(
+                    "a Build's retarget without its Build",
+                ));
             };
             build.retarget(target, gap, mover)?;
             return Ok(class);
         }
         let computer = self.players[player].computer;
         let Some(Place::Live(fp, fi)) = self.place(target) else {
-            return Err(Unsupported("a Build's foundation that sleeps"));
+            return Err(GenieError::unsupported("a Build's foundation that sleeps"));
         };
         let (mut build, mut mover) = {
             let unit = &mut self.players[player].objects[idx];
@@ -3308,7 +3357,7 @@ impl Turns {
         idx: usize,
         (old, added): (i32, bool),
         new: i32,
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<i32, GenieError> {
         let leaves = old != new && added;
         if leaves {
             self.leave_builders(old)?;
@@ -3324,7 +3373,7 @@ impl Turns {
     /// `FUN_140aaddb0`: the building a Build on `id` counts its builder in, when the world holds
     /// `id` (live or sleeping, `FUN_1415417a0`): the object itself, or for a building (type 80)
     /// that is an annex (`+0xbb8`) its main building.
-    pub(crate) fn counted_building(&self, id: i32) -> Result<Option<i32>, Unsupported> {
+    pub(crate) fn counted_building(&self, id: i32) -> Result<Option<i32>, GenieError> {
         let Some((p, f)) = self.object(id) else {
             return Ok(None);
         };
@@ -3339,14 +3388,16 @@ impl Turns {
     /// The builder count: the building `FUN_140aaddb0` gives for the foundation `id` a Build
     /// counted its builder among ([`Turns::counted_building`]) counts one builder less
     /// (`+0x9e8`, held in its construction record); none once the world no longer holds `id`.
-    pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), GenieError> {
         let Some(site) = self.counted_building(id)? else {
             return Ok(());
         };
         let c = self
             .object_mut(site)
             .and_then(|(_, b)| b.construction.as_mut())
-            .ok_or(Unsupported("a Build's foundation without its construction"))?;
+            .ok_or(GenieError::unsupported(
+                "a Build's foundation without its construction",
+            ))?;
         c.builders = c.builders.wrapping_sub(1);
         Ok(())
     }
@@ -3370,13 +3421,15 @@ impl Turns {
         task: &crate::masters::Task,
         point: [f32; 3],
         clears: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::attack::Strike;
         use crate::move_to::Walk;
         if task.work_range != 0.0 {
-            return Err(Unsupported("an attack task with a range of its own"));
+            return Err(GenieError::unsupported(
+                "an attack task with a range of its own",
+            ));
         }
-        let (tp, t) = self.object(target).ok_or(Unsupported(
+        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "an attack task's target the slice does not hold",
         ))?;
         let tm = self.master_of(tp, t.life.master_id)?;
@@ -3386,9 +3439,9 @@ impl Turns {
             target
         };
         let (class, fog_visibility) = (i32::from(tm.class), tm.fog_visibility);
-        let (ap, a) = self
-            .object(aimed)
-            .ok_or(Unsupported("an attack task's main building is gone"))?;
+        let (ap, a) = self.object(aimed).ok_or(GenieError::unsupported(
+            "an attack task's main building is gone",
+        ))?;
         let aimed_at = a.position;
         let aimed_class = i32::from(self.master_of(ap, a.life.master_id)?.class);
         let world_time = self.world_time;
@@ -3414,17 +3467,19 @@ impl Turns {
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         // the task factory (`FUN_140a97e00` case 7) gives the Attack the task's moving sprite
         let arms = crate::attack::arms(master, &self.graphics, task.sprites, task.sprites[0]);
-        let standing = arms
-            .idle_sprite
-            .ok_or(Unsupported("an attacker without its standing sprite"))?;
+        let standing = arms.idle_sprite.ok_or(GenieError::unsupported(
+            "an attacker without its standing sprite",
+        ))?;
         let me_at = *self
             .spatial
             .get(self.players[player].objects[idx].id)
-            .ok_or(Unsupported("an attacker without a place"))?;
+            .ok_or(GenieError::unsupported("an attacker without a place"))?;
         let t_at = *self
             .spatial
             .get_known(target)?
-            .ok_or(Unsupported("an attack's target without a place"))?;
+            .ok_or(GenieError::unsupported(
+                "an attack's target without a place",
+            ))?;
         let (tx, ty) = (t_at.position[0] as i32, t_at.position[1] as i32);
         let visible = self.spatial.sees_tile(player, tx, ty)
             || (fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
@@ -3438,7 +3493,7 @@ impl Turns {
             .masters
             .get(player)
             .is_some_and(|m| crate::attack::volleys(master, m));
-        let mut victim = self.victim(target, player).ok_or(Unsupported(
+        let mut victim = self.victim(target, player).ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         ))?;
         let own = {
@@ -3467,16 +3522,15 @@ impl Turns {
         )?;
         let unit = &mut self.players[player].objects[idx];
         if unit.sprite.is_none() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an attack task of a unit whose sprite the slice does not hold",
             ));
         }
         unit.attack_count = 0;
         crate::attack::set_sprite(&mut unit.sprite, standing, self.streams.get(Stream::Sprite));
-        let mover = unit
-            .mover
-            .as_mut()
-            .ok_or(Unsupported("an attacker without movement state"))?;
+        let mover = unit.mover.as_mut().ok_or(GenieError::unsupported(
+            "an attacker without movement state",
+        ))?;
         let crate::attack::Commanded {
             mut attack,
             arrived,
@@ -3496,7 +3550,9 @@ impl Turns {
             unit.anim_speed = Some(1.0);
         }
         if arrived {
-            return Err(Unsupported("an attack task whose MoveTo starts arrived"));
+            return Err(GenieError::unsupported(
+                "an attack task whose MoveTo starts arrived",
+            ));
         }
         let (id, state) = (unit.id, unit.life.state);
         for (kind, p) in posted {
@@ -3565,7 +3621,9 @@ impl Turns {
             };
             attack.enter_ready(walk, &mut strike)?;
             if strike.executed.is_some() || strike.fire.is_some() || !strike.posted.is_empty() {
-                return Err(Unsupported("an attack task's swing at its start"));
+                return Err(GenieError::unsupported(
+                    "an attack task's swing at its start",
+                ));
             }
         }
         attack.target2 = target;
@@ -3577,13 +3635,15 @@ impl Turns {
     /// The hunt's slot 9 (`0x140ac97c0`) on the work command's new target: a new target is
     /// released for the old one (slot 0x68, `FUN_140ac7980`, through `FUN_140a7a230`) and the hunt
     /// starts over.
-    fn retarget_hunt(&mut self, player: usize, idx: usize, target: i32) -> Result<(), Unsupported> {
+    fn retarget_hunt(&mut self, player: usize, idx: usize, target: i32) -> Result<(), GenieError> {
         let quarry = self.quarry(player, target)?;
         let engagement = self.engagement(player, idx, target)?;
         let task = self.players[player].objects[idx]
             .hunt
             .map(|h| h.task)
-            .ok_or(Unsupported("a hunt's retarget without its hunt"))?;
+            .ok_or(GenieError::unsupported(
+                "a hunt's retarget without its hunt",
+            ))?;
         let arms = self.arms(player, idx, &task)?;
         // FUN_14109d4f0: the target's master is one of the unit's master's drop sites
         let target_master = self.object(target).map(|(_, t)| t.life.master_id);
@@ -3596,7 +3656,9 @@ impl Turns {
         let old = unit.hunt.map(|h| h.target).filter(|&t| t != -1);
         let held = unit.life.amount;
         let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.mover.as_mut()) else {
-            return Err(Unsupported("a hunter without its hunt or movement state"));
+            return Err(GenieError::unsupported(
+                "a hunter without its hunt or movement state",
+            ));
         };
         let unit_player = player;
         if let Some(arrived) = hunt.retarget(
@@ -3636,7 +3698,7 @@ impl Turns {
         old: i32,
         new: i32,
         quiet: bool,
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<i32, GenieError> {
         if old == new {
             return Ok(old);
         }
@@ -3667,29 +3729,29 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-    ) -> Result<bool, Unsupported> {
-        let (tp, t) = self
-            .object(target)
-            .ok_or(Unsupported("a gather's target the slice does not hold"))?;
+    ) -> Result<bool, GenieError> {
+        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
+            "a gather's target the slice does not hold",
+        ))?;
         let tm = self.master_of(tp, t.life.master_id)?;
         if tm.kind == BUILDING {
             if t.top_action_kind() == Some(PACK_ACTION) || t.unmodelled_action.is_some() {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a gather retargeted to a building with an action (packing)",
                 ));
             }
             if tm.object_flags & GATHERED_BUILDING == 0 {
                 let (mp, main) = match t.annex_of {
-                    Some(m) => self
-                        .object(m)
-                        .ok_or(Unsupported("an annex whose main building is gone"))?,
+                    Some(m) => self.object(m).ok_or(GenieError::unsupported(
+                        "an annex whose main building is gone",
+                    ))?,
                     None => (tp, t),
                 };
                 let main_master = self.master_of(mp, main.life.master_id)?.id;
                 if (main.life.state < 2 || matches!(main_master, MASTER_1893 | MASTER_1897))
                     && mp == player
                 {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a gather retargeted to its player's foundation (its build)",
                     ));
                 }
@@ -3729,7 +3791,7 @@ impl Turns {
         let unit = &mut self.players[player].objects[idx];
         let held = unit.life.amount;
         let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.mover.as_mut()) else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
         };
@@ -3773,10 +3835,10 @@ impl Turns {
         idx: usize,
         target: i32,
         point: [f32; 3],
-    ) -> Result<bool, Unsupported> {
-        let (tp, o) = self
-            .object(target)
-            .ok_or(Unsupported("a move to an object the slice does not hold"))?;
+    ) -> Result<bool, GenieError> {
+        let (tp, o) = self.object(target).ok_or(GenieError::unsupported(
+            "a move to an object the slice does not hold",
+        ))?;
         let tm = self.master_of(tp, o.life.master_id)?;
         let (at, radius) = (o.position, tm.radius);
         let unit = &self.players[player].objects[idx];
@@ -3791,7 +3853,7 @@ impl Turns {
         let unit = &mut self.players[player].objects[idx];
         let held = unit.life.amount;
         let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.mover.as_mut()) else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
         };
@@ -3813,10 +3875,10 @@ impl Turns {
 
     /// `FUN_14109d4f0` of the unit at `idx` on `target`, or on a building annex's main building
     /// (`+0xbb8`): the unit's master has that master among its drop sites.
-    fn drops_at_main(&self, player: usize, idx: usize, target: i32) -> Result<bool, Unsupported> {
-        let (tp, t) = self
-            .object(target)
-            .ok_or(Unsupported("a hunt's target the slice does not hold"))?;
+    fn drops_at_main(&self, player: usize, idx: usize, target: i32) -> Result<bool, GenieError> {
+        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
+            "a hunt's target the slice does not hold",
+        ))?;
         let tm = self.master_of(tp, t.life.master_id)?;
         let main = if tm.kind == BUILDING {
             t.annex_of.unwrap_or(target)
@@ -3846,7 +3908,7 @@ impl Turns {
         idx: usize,
         target: i32,
         point: [f32; 3],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let mut q = self.quarry(player, target)?;
         q.drop_site = self.drops_at_main(player, idx, target)?;
         let quarry = Some(q);
@@ -3855,7 +3917,9 @@ impl Turns {
         let unit = &mut self.players[player].objects[idx];
         let (held, my_pasture) = (unit.life.amount, unit.my_pasture);
         let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.mover.as_mut()) else {
-            return Err(Unsupported("a hunter without its hunt or movement state"));
+            return Err(GenieError::unsupported(
+                "a hunter without its hunt or movement state",
+            ));
         };
         let (old_target, old_second) = (hunt.target, hunt.carry_to);
         if !hunt.take_move(
@@ -3884,10 +3948,10 @@ impl Turns {
     }
 
     /// What a hunt reads of its target.
-    fn quarry(&self, player: usize, target: i32) -> Result<Quarry, Unsupported> {
-        let (tp, t) = self
-            .object(target)
-            .ok_or(Unsupported("a hunt's target the slice does not hold"))?;
+    fn quarry(&self, player: usize, target: i32) -> Result<Quarry, GenieError> {
+        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
+            "a hunt's target the slice does not hold",
+        ))?;
         let t_master = self.master_of(tp, t.life.master_id)?;
         let world = World {
             players: &self.players,
@@ -3921,10 +3985,10 @@ impl Turns {
         target: i32,
         task: &crate::masters::Task,
         notify: Option<([f32; 3], bool)>,
-    ) -> Result<(), Unsupported> {
-        let (tp, t) = self
-            .object(target)
-            .ok_or(Unsupported("a gather's target the slice does not hold"))?;
+    ) -> Result<(), GenieError> {
+        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
+            "a gather's target the slice does not hold",
+        ))?;
         let tm = self.master_of(tp, t.life.master_id)?;
         let (t_at, t_radius) = (t.position, tm.radius);
         let unit = &self.players[player].objects[idx];
@@ -3980,7 +4044,7 @@ impl Turns {
         let mover = unit
             .mover
             .as_mut()
-            .ok_or(Unsupported("a gatherer without movement state"))?;
+            .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let rng = self.streams.get(Stream::Action);
         gather.start(
@@ -4003,7 +4067,7 @@ impl Turns {
 
     /// [`crate::attack::arms`] of the unit at `idx` for its hunt's Attack (Hunt's `set_state` 12:
     /// the `MoveTo` shows the hunt's walking sprite, [`HuntTask::walk_sprite_id`]).
-    fn arms(&self, player: usize, idx: usize, task: &HuntTask) -> Result<Arms, Unsupported> {
+    fn arms(&self, player: usize, idx: usize, task: &HuntTask) -> Result<Arms, GenieError> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         let moving = task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
@@ -4016,22 +4080,19 @@ impl Turns {
     }
 
     /// [`crate::attack::engagement`] of the unit at `idx` with `target`.
-    fn engagement(
-        &self,
-        player: usize,
-        idx: usize,
-        target: i32,
-    ) -> Result<Engagement, Unsupported> {
+    fn engagement(&self, player: usize, idx: usize, target: i32) -> Result<Engagement, GenieError> {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         let me = self
             .spatial
             .get(unit.id)
-            .ok_or(Unsupported("an attacker without a place"))?;
+            .ok_or(GenieError::unsupported("an attacker without a place"))?;
         let them = self
             .spatial
             .get_known(target)?
-            .ok_or(Unsupported("an attack's target without a place"))?;
+            .ok_or(GenieError::unsupported(
+                "an attack's target without a place",
+            ))?;
         let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
         crate::attack::engagement(unit.ai.as_ref(), speed, master, me, them, self.world_time)
     }
@@ -4049,7 +4110,7 @@ impl Turns {
         point: [f32; 3],
         clears: bool,
         notify: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let mut quarry = self.quarry(player, target)?;
         quarry.drop_site = self.drops_at_main(player, idx, target)?;
         self.take(target, self.releaser(player, idx));
@@ -4073,7 +4134,7 @@ impl Turns {
         let mover = unit
             .mover
             .as_mut()
-            .ok_or(Unsupported("a hunter without movement state"))?;
+            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
             task,
@@ -4090,9 +4151,9 @@ impl Turns {
         // an Attack whose MoveTo started arrived: the unit shows the idle sprite (slot 0x68) and
         // its `+0x7b8` clears (`Attack::arrived_sprite`)
         if arrived {
-            let g = arms
-                .idle_sprite
-                .ok_or(Unsupported("an attacker without its standing sprite"))?;
+            let g = arms.idle_sprite.ok_or(GenieError::unsupported(
+                "an attacker without its standing sprite",
+            ))?;
             crate::attack::set_sprite(&mut unit.sprite, g, self.streams.get(Stream::Sprite));
             if let Some(a) = unit.anim_speed.as_mut() {
                 *a = 0.0;
@@ -4151,7 +4212,7 @@ impl Turns {
     /// object (type below 30, `FUN_141197d00`) that no one works on any more and is alive (state
     /// 2 with hit points at least 0) or in state 6 is flagged to sleep (`+0x641`, `+0x643`); a
     /// combat object (`FUN_141086e60`) tells its unit AI (notify 699).
-    pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), Unsupported> {
+    pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), GenieError> {
         let (p, i) = match self.place(id) {
             Some(Place::Live(p, i)) => (p, i),
             // a sleeping object (static: only those sleep) found by FUN_1415417a0 counts a worker
@@ -4195,7 +4256,7 @@ impl Turns {
     /// counted builder leaves its building (`FUN_140aadbf0` before its base teardown,
     /// [`Turns::leave_builders`]), then the targets go (slot 0x180, [`Turns::release`]). A
     /// building's production is a list of its own, which stays.
-    pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
+    pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
         let by = self.releaser(player, idx);
         let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
         self.players[player].objects[idx].clear_own_actions(
@@ -4221,7 +4282,7 @@ impl Turns {
         player: usize,
         id: i32,
         master: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(Place::Live(p, idx)) = self.place(id) else {
             return Ok(());
         };
@@ -4244,7 +4305,7 @@ impl Turns {
         player: usize,
         idx: usize,
         new: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.change_master(player, idx, new)?;
         let build_time = self.master_of(player, new)?.build_time;
         let unit = &mut self.players[player].objects[idx];
@@ -4262,10 +4323,10 @@ impl Turns {
     /// gate that shut (the new master's height above 0) kills the units in it (slot 0xd8 on
     /// those its count finds, [`Turns::shut_in_gate`]) and takes the world time plus 1 as its
     /// last move time (`+0x870`).
-    pub(crate) fn toggle_gate(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
+    pub(crate) fn toggle_gate(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &self.players[player].objects[idx];
         if unit.gate.is_some_and(|g| g.other_masters) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gate's toggle to a master of its own or its original owner's",
             ));
         }
@@ -4290,7 +4351,9 @@ impl Turns {
             self.players[player].objects[idx]
                 .mover
                 .as_mut()
-                .ok_or(Unsupported("a shut gate without its moving part"))?
+                .ok_or(GenieError::unsupported(
+                    "a shut gate without its moving part",
+                ))?
                 .last_move = now.wrapping_add(1);
         }
         Ok(())
@@ -4302,7 +4365,7 @@ impl Turns {
     /// object asleep wakes to the end of its player's live list (slots 0x2d8, 0x2d0), one flagged
     /// to sleep drops the flag, and its hit points go to 0. Its place in its player's
     /// special-object list (`+0x30c` bit 0, `FUN_141677380`) is not held.
-    fn shut_in_gate(&mut self, id: i32) -> Result<(), Unsupported> {
+    fn shut_in_gate(&mut self, id: i32) -> Result<(), GenieError> {
         /// The first master type whose slot 0xd8 is `FUN_141211340` (`TRIBE_Combat_Object`).
         const TRIBE_COMBAT: u8 = 70;
         /// The class `FUN_141211340` always spares.
@@ -4346,14 +4409,16 @@ impl Turns {
         player: usize,
         idx: usize,
         new: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.clear_actions(player, idx)?;
         let unit = &self.players[player].objects[idx];
         let old = self.master_of(player, unit.life.master_id)?.clone();
         let next = self.master_of(player, new)?.clone();
         if unit.life.state < 3 {
             if unit.life.inside.is_some() {
-                return Err(Unsupported("a master change of an object inside another"));
+                return Err(GenieError::unsupported(
+                    "a master change of an object inside another",
+                ));
             }
             let owner = &mut self.players[player];
             for &(kind, amount, flag) in &old.storage {
@@ -4379,7 +4444,7 @@ impl Turns {
                 && (damage_share(old_hp, old.hit_points, old.class)?
                     != damage_share(unit.life.hp, next.hit_points, next.class)?)
             {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a master change that changes the damage sprites (FUN_1411859a0)",
                 ));
             }
@@ -4389,9 +4454,9 @@ impl Turns {
                 .as_ref()
                 .is_some_and(crate::movement::Mover::is_moving);
             if let Some(m) = unit.mover.as_mut() {
-                m.stats = next
-                    .moving
-                    .ok_or(Unsupported("a moving unit's new master does not move"))?;
+                m.stats = next.moving.ok_or(GenieError::unsupported(
+                    "a moving unit's new master does not move",
+                ))?;
             }
             let id = unit.id;
             if let Some(mut placed) = self.spatial.get(id).copied() {
@@ -4420,7 +4485,7 @@ impl Turns {
                 let g = (0 <= next.standing_sprite)
                     .then(|| self.graphics.get(&next.standing_sprite).copied())
                     .flatten()
-                    .ok_or(Unsupported(
+                    .ok_or(GenieError::unsupported(
                         "a new master's standing sprite the data file does not have",
                     ))?;
                 let rng = self.streams.get(Stream::Sprite);
@@ -4669,7 +4734,7 @@ fn set_stance(
     state: u8,
     place: ([f32; 2], i16),
     fx: &mut Vec<crate::unit_ai::Effect>,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     ai.stance = state;
     ai.state_position = place.0;
     if state == 3 && (ai.current_order == 700 || ai.current_action == 600) {
@@ -4682,16 +4747,17 @@ fn set_stance(
 /// A building's slot 0x670 (`FUN_1411dba30`): its gate lock (`mGateLocked`, `+0xc7c`, an int its
 /// callers set to 0 or 1) takes `locked`; a lock also sets its last move time (`+0x870`,
 /// [`crate::movement::Mover::last_move`]) to the world time (`FUN_1415300d0`) plus 1.
-fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), Unsupported> {
-    let gate = unit
-        .gate
-        .as_mut()
-        .ok_or(Unsupported("a GATE of a building without its gate state"))?;
+fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), GenieError> {
+    let gate = unit.gate.as_mut().ok_or(GenieError::unsupported(
+        "a GATE of a building without its gate state",
+    ))?;
     gate.locked = locked;
     if locked {
         unit.mover
             .as_mut()
-            .ok_or(Unsupported("a locked gate without its moving part"))?
+            .ok_or(GenieError::unsupported(
+                "a locked gate without its moving part",
+            ))?
             .last_move = now.wrapping_add(1);
     }
     Ok(())
@@ -4731,12 +4797,12 @@ const DAMAGE_WHOLE: f32 = crate::image::order::DAMAGE_WHOLE;
 /// The damage share `FUN_1411859a0` picks damage sprites by: `100 − hp × 100 / hit points`,
 /// whole, of hit points at most the master's. An object whose share is its resource's (the
 /// classes `FUN_141193590` names; its master's `+0x681` would add any) is not modelled.
-fn damage_share(hp: f32, hit_points: i16, class: i16) -> Result<u8, Unsupported> {
+fn damage_share(hp: f32, hit_points: i16, class: i16) -> Result<u8, GenieError> {
     if matches!(
         class,
         5 | 7 | 8 | 9 | 10 | 15 | 29 | 31 | 32 | 33 | 38 | 40 | 41 | 48 | 58 | 61 | 63
     ) {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "the damage share of a resource object (FUN_141193590)",
         ));
     }
@@ -5601,7 +5667,8 @@ mod tests {
         let artifact = t.players[1].objects[0].artifact.unwrap();
         assert_eq!(artifact.goal, Some(point));
         t.players[1].objects[0].artifact = None;
-        t.players[1].objects[0].unmodelled_action = Some(Unsupported("a test's action"));
+        t.players[1].objects[0].unmodelled_action =
+            Some(GenieError::unsupported("a test's action"));
         assert!(t.head_takes_move(1, 0, None, point).is_err());
     }
 

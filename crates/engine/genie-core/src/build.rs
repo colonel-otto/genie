@@ -20,7 +20,7 @@ use crate::order::Place;
 use crate::pathing::Pathing;
 use crate::spatial::{Obstruction, Spatial};
 use crate::turn::{CASTLE, CASTLES, MONASTERIES, MONASTERY, WONDERS};
-use crate::unit_ai::{UnitAi, Unsupported};
+use crate::unit_ai::{GenieError, UnitAi};
 
 /// The Build action's type, which word 9 adds.
 pub const BUILD: i16 = 101;
@@ -235,18 +235,20 @@ impl Completion<'_> {
     /// # Errors
     ///
     /// What it does not model.
-    pub fn first_part(&self, c: &Construction) -> Result<FirstPart, Unsupported> {
+    pub fn first_part(&self, c: &Construction) -> Result<FirstPart, GenieError> {
         use crate::checkpoint::cvttss2si;
-        let master = self.master.ok_or(Unsupported(
+        let master = self.master.ok_or(GenieError::unsupported(
             "a completion of a master the slice does not have",
         ))?;
         if self.computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer player's building part (FUN_1411e7ca0)",
             ));
         }
         if c.sprite_override {
-            return Err(Unsupported("a completion of an overridden sprite"));
+            return Err(GenieError::unsupported(
+                "a completion of an overridden sprite",
+            ));
         }
         let mut part = FirstPart::default();
         if master.class == FARM && f32::from(c.build_time) <= c.progress {
@@ -258,12 +260,16 @@ impl Completion<'_> {
                     .and_then(|m| self.masters?.get(m))
                     .is_some();
                 if has {
-                    return Err(Unsupported("a farm's bonus near a master (FUN_1411d3cd0)"));
+                    return Err(GenieError::unsupported(
+                        "a farm's bonus near a master (FUN_1411d3cd0)",
+                    ));
                 }
                 part.attributes.push((resource as i16, amount));
             }
             if matches!(master.id, 1893 | 1897) {
-                return Err(Unsupported("a pasture's completion (FUN_1411c8410)"));
+                return Err(GenieError::unsupported(
+                    "a pasture's completion (FUN_1411c8410)",
+                ));
             }
         }
         part.cart = self.ai && master.tasks.iter().any(|t| t.action_type == CART_TASK);
@@ -524,7 +530,7 @@ impl BuildAction {
         mut walk: Walk<'_>,
         site: Option<Site<'_>>,
         builder: Builder<'_>,
-    ) -> Result<BuildStep, Unsupported> {
+    ) -> Result<BuildStep, GenieError> {
         let mut step = BuildStep::default();
         // state 3 without a target: the update does nothing (0x140ab0370's default case)
         if self.state == IDLE && self.target == -1 {
@@ -557,7 +563,7 @@ impl BuildAction {
                 && builder.ai.is_some()
                 && state != 0
             {
-                return Err(Unsupported("a Build on master 1889"));
+                return Err(GenieError::unsupported("a Build on master 1889"));
             }
             if state != 0 && !matches!(self.state, FINISHED | MOVE | 8) {
                 // 621 and the gates (class 39) end the work once built, else walk back
@@ -609,7 +615,9 @@ impl BuildAction {
                 self.move_to = Some(walk_on(walk)?);
                 Ok(())
             }
-            (4, None) => Err(Unsupported("a Build action in state 4 without its MoveTo")),
+            (4, None) => Err(GenieError::unsupported(
+                "a Build action in state 4 without its MoveTo",
+            )),
             // case 0: the update returns 1, the action list removes it
             (DONE, _) => {
                 step.done = true;
@@ -643,15 +651,17 @@ impl BuildAction {
                 let to = walk
                     .world
                     .get_known(self.target)?
-                    .ok_or(Unsupported("a builder's foundation without a place"))?
+                    .ok_or(GenieError::unsupported(
+                        "a builder's foundation without a place",
+                    ))?
                     .position;
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a builder without movement state"))?;
+                    .ok_or(GenieError::unsupported("a builder without movement state"))?;
                 let now = walk.plan.as_ref().map_or(0, |p| p.now);
                 if !crate::attack::face_target(mover, at, to, now)? {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a builder that turns over time to face its foundation",
                     ));
                 }
@@ -680,12 +690,12 @@ impl BuildAction {
             // case 0xde: the MoveTo ended (its update in state 1 returns 1): a villager goes
             // back to the foundation (set_state 4)
             (CLEAR, Some(MoveTo::Arrived)) => self.back(&walk),
-            (CLEAR, _) => Err(Unsupported(
+            (CLEAR, _) => Err(GenieError::unsupported(
                 "a builder off its footprint without its MoveTo",
             )),
             // case 10: the walk to a point (set_state 11, `FUN_140aa0d30`), which only a loaded
             // Build can be in
-            (11, _) => Err(Unsupported("a Build state not modelled")),
+            (11, _) => Err(GenieError::unsupported("a Build state not modelled")),
             // the default case (states 0, 3, 5, 8 to 10, 12 and 14 to 221): the update returns 0
             _ => Ok(()),
         };
@@ -696,7 +706,7 @@ impl BuildAction {
     /// of `FUN_140aaddb0`'s building (`builders`, [`Site::builders`]: none once its foundation
     /// is gone) leaves them, and the sub-actions go (`FUN_140a98620`: a `MoveTo`'s teardown
     /// stops the unit, slot 0x5d0).
-    fn leave(&mut self, walk: &mut Walk<'_>, builders: Option<&mut u8>) -> Result<(), Unsupported> {
+    fn leave(&mut self, walk: &mut Walk<'_>, builders: Option<&mut u8>) -> Result<(), GenieError> {
         if self.added {
             if let Some(b) = builders {
                 *b = b.wrapping_sub(1);
@@ -720,9 +730,9 @@ impl BuildAction {
         walk: &mut Walk<'_>,
         builders: Option<&mut u8>,
         load: Load,
-    ) -> Result<Dropped, Unsupported> {
+    ) -> Result<Dropped, GenieError> {
         if self.added && builders.is_none() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "the end of a Build counted among another player's builders",
             ));
         }
@@ -754,13 +764,17 @@ impl BuildAction {
         computer: bool,
         builder: Builder<'_>,
         step: &mut BuildStep,
-    ) -> Result<AfterWork, Unsupported> {
+    ) -> Result<AfterWork, GenieError> {
         if computer {
-            return Err(Unsupported("a computer player's builder after its work"));
+            return Err(GenieError::unsupported(
+                "a computer player's builder after its work",
+            ));
         }
-        let master = site.and_then(|s| s.completion.master).ok_or(Unsupported(
-            "the end of a Build on a foundation the slice does not read",
-        ))?;
+        let master = site
+            .and_then(|s| s.completion.master)
+            .ok_or(GenieError::unsupported(
+                "the end of a Build on a foundation the slice does not read",
+            ))?;
         // LAB_140ab09af: a villager works the farm it built (FUN_141194b20, FUN_141195750), a
         // fishing ship its fish trap (FUN_141194640, FUN_1411945a0): its unit AI drops its build
         // orders (FUN_140c5e020 with 0x2be), then slot 0x7e8 on the building (the caller's)
@@ -768,13 +782,13 @@ impl BuildAction {
         let works_it = (farm && builder.class == VILLAGER)
             || (master.id == FISH_TRAP && FISHING_SHIPS.contains(&builder.master));
         if matches!(master.id, 1893 | 1897) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "the end of a Build on a pasture (its animals, slot 0x780)",
             ));
         }
-        let ai = builder
-            .ai
-            .ok_or(Unsupported("a builder without a unit AI after its work"))?;
+        let ai = builder.ai.ok_or(GenieError::unsupported(
+            "a builder without a unit AI after its work",
+        ))?;
         if works_it {
             ai.orders.retain(|o| o.order != BUILD_ORDER);
             return Ok(AfterWork::WorksIt);
@@ -805,16 +819,16 @@ impl BuildAction {
         &mut self,
         walk: &mut Walk<'_>,
         builders: Option<&mut u8>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.leave(walk, builders)?;
         let mover = walk
             .mover
             .as_deref()
-            .ok_or(Unsupported("a builder without movement state"))?;
+            .ok_or(GenieError::unsupported("a builder without movement state"))?;
         let at = walk
             .world
             .get_known(self.target)?
-            .ok_or(Unsupported("a foundation that is gone"))?;
+            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(walk.me.position, ground, at.position, at.radius);
         *self = Self::start(self.target, gap, self.task);
@@ -838,7 +852,7 @@ impl BuildAction {
         site: Option<Site<'_>>,
         builder: Builder<'_>,
         step: &mut BuildStep,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let built = site.as_ref().map(|s| (s.id, s.life.state));
         self.leave(walk, site.map(Site::into_builders))?;
         self.state = IDLE;
@@ -874,12 +888,12 @@ impl BuildAction {
         mover: Option<&mut crate::movement::Mover>,
         builders: Option<&mut u8>,
         computer: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.state == WORK || (self.state == MOVE && computer) {
             return Ok(());
         }
         if self.added {
-            let b = builders.ok_or(Unsupported(
+            let b = builders.ok_or(GenieError::unsupported(
                 "a builder retaking a foundation the slice does not hold",
             ))?;
             *b = b.wrapping_sub(1);
@@ -907,7 +921,7 @@ impl BuildAction {
         target: i32,
         gap: f32,
         mover: Option<&mut crate::movement::Mover>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.move_to.is_some()
             && let Some(m) = mover
         {
@@ -931,7 +945,7 @@ impl BuildAction {
     pub(crate) fn halt(
         &mut self,
         mover: Option<&mut crate::movement::Mover>,
-    ) -> Result<(bool, i32), Unsupported> {
+    ) -> Result<(bool, i32), GenieError> {
         let counted = std::mem::replace(&mut self.added, false);
         if self.move_to.take().is_some()
             && let Some(m) = mover
@@ -951,9 +965,9 @@ impl BuildAction {
     /// # Errors
     ///
     /// A Build with its `MoveTo` (`set_state`'s teardown is not modelled for it).
-    pub const fn no_more_work(&mut self) -> Result<(), Unsupported> {
+    pub const fn no_more_work(&mut self) -> Result<(), GenieError> {
         if self.move_to.is_some() {
-            return Err(Unsupported("a Build waiting with its MoveTo"));
+            return Err(GenieError::unsupported("a Build waiting with its MoveTo"));
         }
         self.target = -1;
         self.state = IDLE;
@@ -971,7 +985,7 @@ impl BuildAction {
         builders: Option<&mut u8>,
         state: u8,
         step: &mut BuildStep,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.leave(walk, builders)?;
         self.state = state;
         step.stands = true;
@@ -990,8 +1004,8 @@ impl BuildAction {
         site: Option<Site<'_>>,
         (waits, look): (&mut u8, Looks<'_>),
         step: &mut BuildStep,
-    ) -> Result<(), Unsupported> {
-        let mut site = site.ok_or(Unsupported("a foundation of another player"))?;
+    ) -> Result<(), GenieError> {
+        let mut site = site.ok_or(GenieError::unsupported("a foundation of another player"))?;
         // every set_state first takes the builder out of FUN_140aaddb0's building's builders
         if self.added {
             let b = site.builders();
@@ -1007,7 +1021,7 @@ impl BuildAction {
         let placed = *walk
             .world
             .get_known(self.target)?
-            .ok_or(Unsupported("a foundation that is gone"))?;
+            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
         let clearing = ClearingSite {
             player: placed.player,
             master: placed.master,
@@ -1042,7 +1056,9 @@ impl BuildAction {
             .filter(|&id| id != walk.me.id)
             .collect();
         if world.foreign_marks(site) {
-            return Err(Unsupported("another player's marks on the footprint"));
+            return Err(GenieError::unsupported(
+                "another player's marks on the footprint",
+            ));
         }
         if occupants.is_empty() {
             return self.join(walk, site_ref);
@@ -1055,7 +1071,7 @@ impl BuildAction {
         }
         // LAB_140aaf5d4: the builder waits a second (set_state 222) up to 21 times
         if MAX_WAITS <= *waits {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a builder gives up on its occupied footprint (event 0x88, set_state 2)",
             ));
         }
@@ -1068,11 +1084,11 @@ impl BuildAction {
     /// `LAB_140aaf9f4`: the builder joins the work: unless walls of other players stand on both
     /// tiles beside it on the footprint's diagonal (`set_state` 2, not modelled), it counts among
     /// the foundation's builders. Its work sprite and sound are not held by the slice.
-    fn join(&mut self, walk: &Walk<'_>, site: &mut Site<'_>) -> Result<(), Unsupported> {
+    fn join(&mut self, walk: &Walk<'_>, site: &mut Site<'_>) -> Result<(), GenieError> {
         let placed = walk
             .world
             .get(self.target)
-            .ok_or(Unsupported("a foundation that is gone"))?;
+            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
         let [bx, by] = [walk.me.position[0] as i32, walk.me.position[1] as i32];
         let [tx, mut ty] = [placed.position[0] as i32, placed.position[1] as i32];
         let [rx, ry] = placed.radius;
@@ -1094,7 +1110,9 @@ impl BuildAction {
                     .object_on_tile(x, y, |o| o.class == WALL && o.player != player)
             };
             if walled(a) && walled(b) {
-                return Err(Unsupported("walls beside a diagonal builder (set_state 2)"));
+                return Err(GenieError::unsupported(
+                    "walls beside a diagonal builder (set_state 2)",
+                ));
             }
         }
         // FUN_140aaddb0's building counts it: an annex's main building
@@ -1116,12 +1134,12 @@ impl BuildAction {
         mut walk: Walk<'_>,
         site: Option<Site<'_>>,
         load: Load,
-    ) -> Result<(Option<Built>, Dropped, Option<f32>), Unsupported> {
-        let mut site = site.ok_or(Unsupported("a foundation of another player"))?;
+    ) -> Result<(Option<Built>, Dropped, Option<f32>), GenieError> {
+        let mut site = site.ok_or(GenieError::unsupported("a foundation of another player"))?;
         let plan = walk
             .plan
             .as_mut()
-            .ok_or(Unsupported("work without the world's planners"))?;
+            .ok_or(GenieError::unsupported("work without the world's planners"))?;
         let mut rate = self.task.work_rate * self.task.work_value * walk.dt;
         let mut factor = plan.construction_rate;
         if site.life.master_id == WONDER && WONDER_RATE < factor {
@@ -1160,18 +1178,20 @@ impl BuildAction {
     /// foundation again and a new `MoveTo` to it (`FUN_140aa0df0`) starts arrived if the footprints
     /// touch, as [`BuildAction::start`]'s. Only a villager returns at once (`0x140ab0370` case
     /// 0xde; any other builder in range would work, state 6).
-    fn back(&mut self, walk: &Walk<'_>) -> Result<(), Unsupported> {
+    fn back(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
         let mover = walk
             .mover
             .as_deref()
-            .ok_or(Unsupported("a builder without movement state"))?;
+            .ok_or(GenieError::unsupported("a builder without movement state"))?;
         if walk.world.get(walk.me.id).map(|p| p.class) != Some(VILLAGER) {
-            return Err(Unsupported("a builder other than a villager returns"));
+            return Err(GenieError::unsupported(
+                "a builder other than a villager returns",
+            ));
         }
         let site = walk
             .world
             .get_known(self.target)?
-            .ok_or(Unsupported("a foundation that is gone"))?;
+            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(walk.me.position, ground, site.position, site.radius);
         *self = Self::start(self.target, gap, self.task);
@@ -1180,11 +1200,11 @@ impl BuildAction {
 
     /// `set_state(223)`: a `MoveTo` to the free tile beside the footprint (`FUN_1411566b0`); it starts
     /// in state 3, as a `MoveTo` to a point is far from it (`FUN_140aa2100`).
-    fn clear(&mut self, walk: &Walk<'_>) -> Result<(), Unsupported> {
+    fn clear(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
         let mover = walk
             .mover
             .as_deref()
-            .ok_or(Unsupported("a builder without movement state"))?;
+            .ok_or(GenieError::unsupported("a builder without movement state"))?;
         let site = walk.world.get(self.target).expect("place found it");
         let spot = walk
             .world
@@ -1194,11 +1214,13 @@ impl BuildAction {
                 mover.stats.restriction_mask,
                 site,
             )?
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "no free tile beside the footprint (set_state 2)",
             ))?;
         if mover.stats.speed == 0.0 {
-            return Err(Unsupported("a builder that cannot move (MoveTo state 13)"));
+            return Err(GenieError::unsupported(
+                "a builder that cannot move (MoveTo state 13)",
+            ));
         }
         self.state = CLEAR;
         self.move_to = Some(MoveTo::Start);
@@ -1299,7 +1321,7 @@ pub(crate) fn footprint_clearing(
     world: &Spatial,
     site: &ClearingSite,
     look: &dyn Fn(i32) -> Option<ClearLook>,
-) -> Result<Vec<Cleared>, Unsupported> {
+) -> Result<Vec<Cleared>, GenieError> {
     use crate::checkpoint::cvttss2si;
     use crate::fmath::below_or_unordered;
     let [rx, ry] = site.radius;
@@ -1346,7 +1368,7 @@ pub(crate) fn footprint_clearing(
                 if o.buildable_on == 0 && !own_wall && !tree {
                     continue;
                 }
-                let seen = look(id).ok_or(Unsupported(
+                let seen = look(id).ok_or(GenieError::unsupported(
                     "a footprint clearing of an object the slice does not hold",
                 ))?;
                 // the tree's test: COMISS 1.0 against its hit points, JC passes it over (a NaN
@@ -1396,7 +1418,7 @@ impl crate::turn::Turns {
         owner: usize,
         id: i32,
         master: &Master,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
         for (kind, amount) in crate::turn::storage_leaves(u, master) {
             self.players[owner].add_attribute(kind, amount)?;
@@ -1416,7 +1438,7 @@ impl crate::turn::Turns {
         owner: usize,
         id: i32,
         master: &Master,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let (_, u) = self.object(id).ok_or(NOT_HELD)?;
         let construction = u.construction.ok_or(NO_CONSTRUCTION)?;
         let completion = Completion {
@@ -1451,7 +1473,7 @@ impl crate::turn::Turns {
     /// # Errors
     ///
     /// What the start does not model.
-    pub(crate) fn construction_starts(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn construction_starts(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         let place = self.place(id).ok_or(NOT_HELD)?;
         let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
         let master = held(&mut self.players, place).life.master_id;
@@ -1487,10 +1509,12 @@ const STACK_WORK: f32 = crate::image::build::STACK_WORK;
 
 /// The guard of an object the routines here reach through the object itself (their callers
 /// hold it): the slice's lists hold every object the world does.
-pub(crate) const NOT_HELD: Unsupported = Unsupported("an object the slice does not hold");
+pub(crate) const NOT_HELD: GenieError =
+    GenieError::unsupported("an object the slice does not hold");
 
 /// The guard of a building without its construction: the slice gives every building one.
-pub(crate) const NO_CONSTRUCTION: Unsupported = Unsupported("a building without its construction");
+pub(crate) const NO_CONSTRUCTION: GenieError =
+    GenieError::unsupported("a building without its construction");
 
 /// The object at `place`, in its player's live or sleeping list (the world's table,
 /// `FUN_1415417a0`, holds both).
@@ -1514,7 +1538,7 @@ impl crate::turn::Turns {
     /// # Errors
     ///
     /// What the starts and the completion do not model.
-    pub(crate) fn work_building(&mut self, id: i32, amount: f32) -> Result<(), Unsupported> {
+    pub(crate) fn work_building(&mut self, id: i32, amount: f32) -> Result<(), GenieError> {
         let mut at = id;
         loop {
             for annex in self.spatial.annexes_of(at) {
@@ -1564,7 +1588,7 @@ impl crate::turn::Turns {
     /// # Errors
     ///
     /// What the completion does not model.
-    pub(crate) fn complete_building(&mut self, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn complete_building(&mut self, id: i32) -> Result<(), GenieError> {
         let attribute_204 = self
             .players
             .iter()
@@ -1623,7 +1647,7 @@ impl crate::turn::Turns {
     /// # Errors
     ///
     /// What the parts do not model.
-    pub(crate) fn built(&mut self, p: usize, id: i32, built: Built) -> Result<(), Unsupported> {
+    pub(crate) fn built(&mut self, p: usize, id: i32, built: Built) -> Result<(), GenieError> {
         if let Some(kind) = built.history {
             let now = self.world_time;
             self.players[p]
@@ -1677,7 +1701,7 @@ impl crate::turn::Turns {
         p: usize,
         building: i32,
         stack: StackUnit,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let (_, old) = self.object(building).ok_or(NOT_HELD)?;
         let (orders, gather) = (
             old.ai
@@ -1694,7 +1718,7 @@ impl crate::turn::Turns {
             .iter()
             .any(|&id| self.object(id).is_some());
         if enemies {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a stack unit's completion with other players' units on it (+0xce0)",
             ));
         }
@@ -1707,7 +1731,7 @@ impl crate::turn::Turns {
         let building_made = new_master.kind == BUILDING_TYPE;
         if building_made {
             if old_class == CLASS_39 && new_master.class == CLASS_39 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a gate's stack gate (slot 0x670 with the old one's lock)",
                 ));
             }
@@ -1762,12 +1786,12 @@ impl crate::turn::Turns {
         master: i16,
         at: [f32; 3],
         flagged: bool,
-    ) -> Result<Option<i32>, Unsupported> {
+    ) -> Result<Option<i32>, GenieError> {
         let Some(made) = self.masters.get(p).and_then(|m| m.get(master)).cloned() else {
             return Ok(None);
         };
         if made.kind != BUILDING_TYPE {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "the player's slot 0x1c0 for an object other than a building",
             ));
         }
@@ -1784,7 +1808,7 @@ impl crate::turn::Turns {
         }
         if made.auto_gather {
             if self.players[p].objects.last().map(|u| u.id) != Some(id) {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an auto-gathered new building with annexes (its visible resources)",
                 ));
             }
@@ -1845,7 +1869,7 @@ impl Construction {
         world: &mut Spatial,
         pathing: &mut Pathing,
         now: u32,
-    ) -> Result<Worked, Unsupported> {
+    ) -> Result<Worked, GenieError> {
         if let Some(main) = site.chain.main {
             let MainWork {
                 mut construction,
@@ -1950,19 +1974,19 @@ impl Construction {
         site: &mut Site<'_>,
         world: &mut Spatial,
         pathing: &mut Pathing,
-    ) -> Result<Built, Unsupported> {
+    ) -> Result<Built, GenieError> {
         /// The pasture master 1889's stack unit on mangrove or rice terrain (`0x765`), and the
         /// terrain it lays then (`0x3f`).
         const RICE_PASTURE: i16 = 0x765;
         const RICE_PASTURE_TERRAIN: u8 = 0x3f;
         let id = site.id;
         let done = site.completion;
-        let master = done.master.ok_or(Unsupported(
+        let master = done.master.ok_or(GenieError::unsupported(
             "a completion of a master the slice does not have",
         ))?;
-        let building = master
-            .building
-            .ok_or(Unsupported("a completion of a master that is no building"))?;
+        let building = master.building.ok_or(GenieError::unsupported(
+            "a completion of a master that is no building",
+        ))?;
         if done.attribute_204 {
             return Err(crate::diplomacy::REVEAL_UNITS);
         }
@@ -1983,7 +2007,7 @@ impl Construction {
         }
         // a wall's (adjacent mode) facets and its neighbours' (FUN_1411ce890) are not held
         if 0 <= building.foundation_terrain && master.object_flags & 0x40 != 0 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a completion of a master of object flag 0x40 (its tiles' classes, FUN_141055790)",
             ));
         }
@@ -2009,9 +2033,9 @@ impl Construction {
                 }
             }
         }
-        let placed = *world
-            .get(id)
-            .ok_or(Unsupported("a completed building without a place"))?;
+        let placed = *world.get(id).ok_or(GenieError::unsupported(
+            "a completed building without a place",
+        ))?;
         if !matches!(master.class, 51 | 54)
             && let Some(v) = world.sight.as_mut()
         {
@@ -2041,10 +2065,9 @@ impl Construction {
                 *r = true;
             }
         }
-        let terrain = world
-            .terrain
-            .as_mut()
-            .ok_or(Unsupported("a completion without the map's terrain"))?;
+        let terrain = world.terrain.as_mut().ok_or(GenieError::unsupported(
+            "a completion without the map's terrain",
+        ))?;
         let [x, y, _] = placed.position;
         if !c.snow && 0 <= x as i32 && 0 <= y as i32 && terrain.snow_under(x as i32, y as i32)? {
             c.snow = true;
@@ -2132,13 +2155,13 @@ impl Construction {
         world: &mut Spatial,
         pathing: &mut Pathing,
         now: u32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !c.desolid {
             return Ok(false);
         }
         let placed = *world
             .get(id)
-            .ok_or(Unsupported("a foundation that is gone"))?;
+            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
         c.desolid = false;
         c.started = true;
         c.progress = f32::from_bits(STARTED);
@@ -2396,7 +2419,9 @@ mod tests {
         );
         assert_eq!(
             part([45.0, 0.0, 68.0], &built),
-            Err(Unsupported("a farm's bonus near a master (FUN_1411d3cd0)"))
+            Err(GenieError::unsupported(
+                "a farm's bonus near a master (FUN_1411d3cd0)"
+            ))
         );
         // not built yet: nothing
         let going = Construction {
@@ -4055,7 +4080,7 @@ mod stack_tests {
         held.players[1].objects[0].attacking_units = vec![first];
         assert_eq!(
             held.work_building(8759, 1.0),
-            Err(Unsupported(
+            Err(GenieError::unsupported(
                 "a stack unit's completion with other players' units on it (+0xce0)"
             ))
         );

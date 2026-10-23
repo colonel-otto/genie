@@ -5,8 +5,8 @@
 //! 158041: the castle test `FUN_14160ffb0`; the treason `FUN_141620400`; the flare is the
 //! player's slot 0x1c0 with master 697 ([`Turns::remains`]).
 
+use crate::GenieError;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The castle (`0x52`), and the building of the content mode 1 (`0xd1`) that stands for it
 /// (`FUN_140fe0ec0`).
@@ -50,7 +50,7 @@ impl Turns {
     /// player from 1 the player counts as its own or allied a flare at its place (that player's
     /// slot 0x1c0 with master 697, [`Turns::remains`]); the sound and the minimap's mark
     /// (`FUN_140c7d6c0`, the game's `+0xa78`) are the interface's, as the local player's message.
-    pub(crate) fn treason(&mut self, p: usize) -> Result<(), Unsupported> {
+    pub(crate) fn treason(&mut self, p: usize) -> Result<(), GenieError> {
         let discount = self.players[p].attribute(DISCOUNT).unwrap_or(0.0);
         let cost = if 0.0 < discount {
             TREASON_DISCOUNT_COST

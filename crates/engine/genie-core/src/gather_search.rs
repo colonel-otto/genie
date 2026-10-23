@@ -3,9 +3,9 @@
 //! `ClosestResourceObject` (`FUN_140c49760`, slot 0x80), which the builder's Build asks next
 //! (`0x140ab0370` case 0xdf).
 
+use crate::GenieError;
 use crate::msvc;
 use crate::tasks::DropSite;
-use crate::unit_ai::Unsupported;
 
 /// What the searches read of an object in a map tile's list.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,8 +80,8 @@ pub fn more_work(
     builder: &Builder,
     map: [i32; 2],
     blocked: Option<&dyn Fn(i32, i32) -> bool>,
-    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, Unsupported>,
-) -> Result<Option<Candidate>, Unsupported> {
+    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, GenieError>,
+) -> Result<Option<Candidate>, GenieError> {
     let Some(entry) = entry.filter(|e| e.auto_work) else {
         return Ok(None);
     };
@@ -127,7 +127,9 @@ pub fn more_work(
                     // its own tests (owner, pasture, the targeting flag, masters 1893 and 1897)
                     // come before the entry's, which takes no farm without a farm target
                     if entry.targets.iter().any(|t| t.class == FARM) {
-                        return Err(Unsupported("a farm in a builder's search for more work"));
+                        return Err(GenieError::unsupported(
+                            "a farm in a builder's search for more work",
+                        ));
                     }
                     continue;
                 }
@@ -289,11 +291,11 @@ pub fn closest_resource(
     kind: u8,
     max_workers: i32,
     map: [i32; 2],
-    explored: &dyn Fn(i32, i32) -> Result<bool, Unsupported>,
+    explored: &dyn Fn(i32, i32) -> Result<bool, GenieError>,
     passable: &dyn Fn(i32, i32) -> bool,
-    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, Unsupported>,
-    reach: &mut dyn FnMut(i32) -> Result<bool, Unsupported>,
-) -> Result<i32, Unsupported> {
+    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, GenieError>,
+    reach: &mut dyn FnMut(i32) -> Result<bool, GenieError>,
+) -> Result<i32, GenieError> {
     closest_resource_at(
         seeker,
         None,
@@ -334,11 +336,11 @@ pub fn closest_resource_at(
     kind: u8,
     max_workers: i32,
     map: [i32; 2],
-    explored: &dyn Fn(i32, i32) -> Result<bool, Unsupported>,
+    explored: &dyn Fn(i32, i32) -> Result<bool, GenieError>,
     passable: &dyn Fn(i32, i32) -> bool,
-    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, Unsupported>,
-    reach: &mut dyn FnMut(i32) -> Result<bool, Unsupported>,
-) -> Result<(i32, Option<i32>), Unsupported> {
+    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, GenieError>,
+    reach: &mut dyn FnMut(i32) -> Result<bool, GenieError>,
+) -> Result<(i32, Option<i32>), GenieError> {
     /// The fallback's steps before it has one (`1000000`).
     const NO_STEPS: i32 = 1_000_000;
     const DIAGONAL: f32 = crate::image::gather_search::DIAGONAL;
@@ -350,7 +352,7 @@ pub fn closest_resource_at(
         return Ok((-1, None));
     }
     if seeker.my_pasture != -1 {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "a resource search by a unit with a pasture of its own",
         ));
     }
@@ -503,7 +505,7 @@ pub fn closest_resource_at(
 /// The object of a tile's list `ClosestResourceObject` takes: the first in a pasture or
 /// targetable whose master gathers by itself as `kind` with some amount held; with none, the
 /// last object when it is neither in a pasture nor targetable.
-fn first_resource(on_tile: &[Candidate], kind: u8) -> Result<Option<Candidate>, Unsupported> {
+fn first_resource(on_tile: &[Candidate], kind: u8) -> Result<Option<Candidate>, GenieError> {
     let open = |o: &Candidate| o.pasture != -1 || !o.untargetable;
     let found: Vec<&Candidate> = on_tile
         .iter()
@@ -513,7 +515,7 @@ fn first_resource(on_tile: &[Candidate], kind: u8) -> Result<Option<Candidate>, 
         [one] => Ok(Some(**one)),
         [] if on_tile.iter().all(open) => Ok(None),
         [] if on_tile.len() == 1 => Ok(on_tile.first().copied()),
-        _ => Err(Unsupported(
+        _ => Err(GenieError::unsupported(
             "a tile whose order of objects decides a resource search",
         )),
     }

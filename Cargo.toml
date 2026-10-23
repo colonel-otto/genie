@@ -3,8 +3,11 @@
 # Engine crates (AGPL-3.0) set their own licence, edition and authors; engine crates may depend on
 # format crates, never the reverse (a GPL crate must not pull in AGPL code).
 # Tool crates (AGPL-3.0, crates/tools/) follow the engine crates' rules and may depend on both.
+# Base crates (GPL-3.0, crates/base/) depend on no crate of the workspace; every crate may depend
+# on them (genie-error, the error every crate returns).
 resolver = "2"
 members = [
+  "crates/base/genie-error",
   "crates/formats/genie-formats",
   "crates/formats/genie-cpx",
   "crates/formats/genie-dat",

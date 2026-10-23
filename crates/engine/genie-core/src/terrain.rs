@@ -7,7 +7,7 @@
 //! which a terrain change does not update; the map's render caches (`FUN_140f741b0`'s blends and
 //! minimap) are not held.
 
-use crate::unit_ai::Unsupported;
+use crate::GenieError;
 
 /// What the `.dat` says of a terrain (its record at map `+0x6238`, 0x1f0 bytes each).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -289,12 +289,12 @@ impl Terrain {
     /// The ground's height under (`x`, `y`) on the map (the static `new_position`'s,
     /// `0x1411a58b0`, which slot 0x60 takes): the tile's elevation plus its slope's share by the
     /// tile's shape ([`slope_share`] of the place within the tile).
-    pub fn ground(&self, x: f32, y: f32) -> Result<f32, Unsupported> {
+    pub fn ground(&self, x: f32, y: f32) -> Result<f32, GenieError> {
         let (tx, ty) = (x as i32, y as i32);
         let i = self
             .index(tx, ty)
             .filter(|&i| i < self.elevations.len() && i < self.shapes.len())
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "the ground's height where the elevations are not known",
             ))?;
         let (fx, fy) = (x - tx as f32, y - ty as f32);
@@ -353,10 +353,10 @@ impl Terrain {
     /// layer's low byte) is snow. Its decal (`FUN_1413b7bf0`, which may draw from the Object
     /// stream between a push and a pop of its state, `FUN_140811270`/`FUN_140811210`) is not
     /// held.
-    pub fn snow_under(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+    pub fn snow_under(&self, x: i32, y: i32) -> Result<bool, GenieError> {
         let i = self
             .index(x, y)
-            .ok_or(Unsupported("a building off the map's tiles"))?;
+            .ok_or(GenieError::unsupported("a building off the map's tiles"))?;
         let kind = self.seen(self.kinds[i]);
         let layer = self.seen(self.layers[i] as u8);
         Ok(self.snowy(kind) || self.snowy(layer))
@@ -379,11 +379,13 @@ impl Terrain {
     /// # Panics
     ///
     /// Never: the tiles it covers are held on the map.
-    pub fn cover(&mut self, f: &Foundation) -> Result<(), Unsupported> {
+    pub fn cover(&mut self, f: &Foundation) -> Result<(), GenieError> {
         /// `DAT_142eb1e9c`.
         const INSIDE: f32 = crate::image::terrain::INSIDE;
         if matches!(f.master, 357 | 1188) {
-            return Err(Unsupported("a foundation terrain of master 357 or 1188"));
+            return Err(GenieError::unsupported(
+                "a foundation terrain of master 357 or 1188",
+            ));
         }
         let [x, y, _] = f.position;
         let [cx, cy] = f.clearance;
@@ -397,7 +399,7 @@ impl Terrain {
         }
         let (w, h) = (self.width - 1, self.height - 1);
         if x0 > w || y0 > h || x1 < 0 || y1 < 0 {
-            return Err(Unsupported("a foundation terrain off the map"));
+            return Err(GenieError::unsupported("a foundation terrain off the map"));
         }
         let (x0, y0, x1, y1) = (x0.max(0), y0.max(0), x1.min(w), y1.min(h));
         // the town centre's (109) gap: the clamped rectangle's first two columns of its third
@@ -412,9 +414,9 @@ impl Terrain {
         let bonus = usize::try_from(f.terrain_bonus)
             .ok()
             .map(|r| {
-                self.restrictions
-                    .get(r)
-                    .ok_or(Unsupported("a terrain bonus the data file does not have"))
+                self.restrictions.get(r).ok_or(GenieError::unsupported(
+                    "a terrain bonus the data file does not have",
+                ))
             })
             .transpose()?
             .cloned();

@@ -13,7 +13,8 @@
 //!   `master`; TRACE) of each object's update.
 //! - `genie_core::unsupported` (WARN): where a case the engine does not model lands: an object
 //!   freezes (`object`) or a whole player stops, with the update (`tick`), the player and the
-//!   case (`why`, the text of its [`Unsupported`]).
+//!   case: `why`, the reason of its [`GenieError`]; `at`, where it was raised; `context`, what
+//!   its site attached, when it did.
 //! - `genie_core::state` (DEBUG): an object's update changed its state (the event `object_state`,
 //!   `from` and `to`), its top action (`action`: the type `from` and `to`, the state `from_state`
 //!   and `to_state`) or its unit AI (`unit_ai`: `from_order`, `to_order`, `from_ai_action`,
@@ -25,8 +26,8 @@
 //!   asked for it). Compared with the tick oracle's `ai_draws`, it finds the update where a
 //!   stream's draws part from the game's.
 
+use crate::GenieError;
 use crate::turn::Unit;
-use crate::unit_ai::Unsupported;
 
 /// The target of the update, player and object spans and the command events.
 pub const UPDATE: &str = "genie_core::update";
@@ -49,39 +50,88 @@ pub(crate) fn draw(stream: u8, draw: u32, value: u32) {
     );
 }
 
+/// The context of `why` as one text (`key: value, …`), none without any.
+fn context_of(why: &GenieError) -> Option<String> {
+    let parts: Vec<String> = why.context().map(|(k, v)| format!("{k}: {v}")).collect();
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
 /// An object's update meets a case the engine does not model: the object freezes.
-pub(crate) fn object_freezes(tick: u32, player: usize, object: i32, why: Unsupported) {
-    tracing::warn!(
-        target: UNSUPPORTED,
-        tick,
-        player,
-        object,
-        why = why.0,
-        "an object freezes"
-    );
+pub(crate) fn object_freezes(tick: u32, player: usize, object: i32, why: &GenieError) {
+    let (reason, at) = (why.reason(), why.location());
+    if let Some(context) = context_of(why) {
+        tracing::warn!(
+            target: UNSUPPORTED,
+            tick,
+            player,
+            object,
+            why = reason,
+            at = %at,
+            context,
+            "an object freezes"
+        );
+    } else {
+        tracing::warn!(
+            target: UNSUPPORTED,
+            tick,
+            player,
+            object,
+            why = reason,
+            at = %at,
+            "an object freezes"
+        );
+    }
 }
 
 /// A command or a pass meets a case the engine does not model: the whole player stops.
-pub(crate) fn player_stops(tick: u32, player: usize, why: Unsupported) {
-    tracing::warn!(
-        target: UNSUPPORTED,
-        tick,
-        player,
-        why = why.0,
-        "a player stops"
-    );
+pub(crate) fn player_stops(tick: u32, player: usize, why: &GenieError) {
+    let (reason, at) = (why.reason(), why.location());
+    if let Some(context) = context_of(why) {
+        tracing::warn!(
+            target: UNSUPPORTED,
+            tick,
+            player,
+            why = reason,
+            at = %at,
+            context,
+            "a player stops"
+        );
+    } else {
+        tracing::warn!(
+            target: UNSUPPORTED,
+            tick,
+            player,
+            why = reason,
+            at = %at,
+            "a player stops"
+        );
+    }
 }
 
 /// A case the engine does not model after an object's update (its leave, a capture's transfer,
 /// a new object's unit AI): the player's first unmodelled case, without a freeze.
-pub(crate) fn player_unsupported(tick: u32, player: usize, why: Unsupported) {
-    tracing::warn!(
-        target: UNSUPPORTED,
-        tick,
-        player,
-        why = why.0,
-        "a case not modelled"
-    );
+pub(crate) fn player_unsupported(tick: u32, player: usize, why: &GenieError) {
+    let (reason, at) = (why.reason(), why.location());
+    if let Some(context) = context_of(why) {
+        tracing::warn!(
+            target: UNSUPPORTED,
+            tick,
+            player,
+            why = reason,
+            at = %at,
+            context,
+            "a case not modelled"
+        );
+    } else {
+        tracing::warn!(
+            target: UNSUPPORTED,
+            tick,
+            player,
+            why = reason,
+            at = %at,
+            "a case not modelled"
+        );
+    }
 }
 
 /// What the state events compare of an object before and after its update.
@@ -312,7 +362,9 @@ mod tests {
 
     #[test]
     fn an_unmodelled_action_tells_why_its_object_freezes() {
-        let why = Unsupported("a default task the slice does not model");
+        let why =
+            GenieError::unsupported("a default task the slice does not model").with("site", 1);
+        let at = why.location();
         let mut t = one(vec![Unit {
             id: 5,
             unmodelled_action: Some(why),
@@ -322,26 +374,25 @@ mod tests {
         let warned: Vec<_> = lines.iter().filter(|l| l.starts_with("WARN")).collect();
         assert_eq!(
             warned,
-            [
+            [&format!(
                 "WARN genie_core::unsupported an object freezes tick=1 player=0 object=5 \
-                 why=\"a default task the slice does not model\""
-            ]
+                 why=\"a default task the slice does not model\" at={at} \
+                 context=\"site: 1, object: 5, master: -1\""
+            )]
         );
     }
 
     #[test]
     fn an_unmodelled_command_tells_the_command_and_why_its_player_stops() {
-        let why = Unsupported("QUEUE at two buildings");
+        let why = GenieError::unsupported("QUEUE at two buildings");
+        let at = why.location();
         let mut t = one(Vec::new());
         let lines = heard(|| t.tick_with(104, &[Command::Unmodelled { player: 0, why }]));
         assert!(lines[1].starts_with("DEBUG genie_core::update command command=Unmodelled"));
-        assert!(
-            lines.contains(
-                &"WARN genie_core::unsupported a player stops tick=1 player=0 \
-              why=\"QUEUE at two buildings\""
-                    .to_owned()
-            )
-        );
+        assert!(lines.contains(&format!(
+            "WARN genie_core::unsupported a player stops tick=1 player=0 \
+             why=\"QUEUE at two buildings\" at={at}"
+        )));
     }
 
     #[test]

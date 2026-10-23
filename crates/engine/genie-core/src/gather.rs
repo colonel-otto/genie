@@ -14,6 +14,7 @@
 //! the waits after a failed walk or a drop-off out of reach (the Action stream's `"update"`
 //! draws) and a gather left without a target and a load.
 
+use crate::GenieError;
 use crate::attack::set_sprite;
 use crate::damage::Victim;
 use crate::hunt::{Dropped, HuntSprites, HuntTask, walk_sprite};
@@ -23,7 +24,6 @@ use crate::move_to::{
 use crate::movement::Mover;
 use crate::rng::Well512;
 use crate::sprite::ActiveSprite;
-use crate::unit_ai::Unsupported;
 
 /// The Gather action's type, which word 9 adds.
 pub const GATHER: i16 = 5;
@@ -375,7 +375,7 @@ impl GatherAction {
         target: &Resource,
         farm_stops: bool,
         rate: StopRate,
-    ) -> Result<Self, Unsupported> {
+    ) -> Result<Self, GenieError> {
         let farm = if target.class == FARM_CLASS || SPECIAL_TARGETS.contains(&target.master) {
             [target.position[0], target.position[1]]
         } else {
@@ -432,7 +432,7 @@ impl GatherAction {
         held: &mut (i16, f32),
         mover: &mut Mover,
         rng: &mut Well512,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let kind = self.task.resource;
         let both_food = food(kind) && food(held.0);
         let drops = computer && held.1 == 0.0;
@@ -494,7 +494,7 @@ impl GatherAction {
         (farm_stops, rate): (bool, StopRate),
         mover: &mut Mover,
         rng: &mut Well512,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.worked = false;
         if target.id == self.target {
             match self.state {
@@ -562,12 +562,12 @@ impl GatherAction {
         gap: f32,
         mover: &mut Mover,
         rng: &mut Well512,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = WALK;
         self.timer = 0.0;
         if self.target == -1 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gather's walk without its target (set_state 13)",
             ));
         }
@@ -577,7 +577,9 @@ impl GatherAction {
             self.last_stop = [x, y];
             self.move_wait = MoveWait::default();
             if mover.stats.speed == 0.0 {
-                return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+                return Err(GenieError::unsupported(
+                    "a MoveTo of a unit without speed (state 13)",
+                ));
             }
             self.walk_to = Some([x, y, position[2]]);
             self.walk_range = self.task.range;
@@ -594,12 +596,12 @@ impl GatherAction {
     /// # Errors
     ///
     /// No drop site (the unit AI's part); a unit that cannot move.
-    pub fn set_drop(&mut self, gap: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+    pub fn set_drop(&mut self, gap: f32, mover: &mut Mover) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = DROP;
         self.current_stop = 0;
         if self.carry_to == -1 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gather's drop-off without a drop site (notify 0x203)",
             ));
         }
@@ -607,13 +609,15 @@ impl GatherAction {
     }
 
     /// A new quiet `MoveTo` within the task's range: arrived within 0.01 of its goal's footprint.
-    fn start_move(&mut self, gap: f32, mover: &Mover) -> Result<(), Unsupported> {
+    fn start_move(&mut self, gap: f32, mover: &Mover) -> Result<(), GenieError> {
         self.move_wait = MoveWait::default();
         self.walk_to = None;
         self.walk_range = self.task.range;
         self.move_to = Some(if ARRIVED < gap {
             if mover.stats.speed == 0.0 {
-                return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+                return Err(GenieError::unsupported(
+                    "a MoveTo of a unit without speed (state 13)",
+                ));
             }
             MoveTo::Start
         } else {
@@ -640,7 +644,7 @@ impl GatherAction {
         player: usize,
         held: f32,
         mover: &mut Mover,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         match target.filter(|t| t.player == player && t.drop_site && 0.0 < held) {
             Some(t) if t.id == self.carry_to && self.state == DROP => Ok(()),
             Some(t) => {
@@ -664,17 +668,19 @@ impl GatherAction {
     /// # Errors
     ///
     /// A unit that cannot move.
-    pub fn set_moved(&mut self, mover: &mut Mover) -> Result<(), Unsupported> {
+    pub fn set_moved(&mut self, mover: &mut Mover) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = MOVED;
         self.timer = 0.0;
         if self.target != -1 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gather's walk to a point with a target (its radius)",
             ));
         }
         if mover.stats.speed == 0.0 {
-            return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+            return Err(GenieError::unsupported(
+                "a MoveTo of a unit without speed (state 13)",
+            ));
         }
         self.move_wait = MoveWait::default();
         self.walk_to = Some(self.point);
@@ -712,7 +718,7 @@ impl GatherAction {
         stand: Option<crate::sprite::Graphic>,
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
-    ) -> Result<[i32; 2], Unsupported> {
+    ) -> Result<[i32; 2], GenieError> {
         self.tear_down(mover)?;
         self.state = IDLE;
         self.timer = 0.0;
@@ -733,7 +739,7 @@ impl GatherAction {
     /// # Errors
     ///
     /// A unit that cannot move (`set_state(13)`).
-    fn set_walk_back(&mut self, radius: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+    fn set_walk_back(&mut self, radius: f32, mover: &mut Mover) -> Result<(), GenieError> {
         self.walk_back(radius, mover)
     }
 
@@ -743,7 +749,7 @@ impl GatherAction {
     /// # Errors
     ///
     /// A unit that cannot move (`set_state(13)`).
-    pub fn walk_back(&mut self, radius: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+    pub fn walk_back(&mut self, radius: f32, mover: &mut Mover) -> Result<(), GenieError> {
         self.walk_to_point(WALK_BACK, radius, mover)
     }
 
@@ -754,7 +760,7 @@ impl GatherAction {
     /// # Errors
     ///
     /// A unit that cannot move (`set_state(13)`).
-    fn begin_reseed_walk(&mut self, radius: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+    fn begin_reseed_walk(&mut self, radius: f32, mover: &mut Mover) -> Result<(), GenieError> {
         if self.gather_at[0] != NO_GATHER_POINT {
             self.point[0] = self.gather_at[0];
             self.point[1] = self.gather_at[1];
@@ -770,12 +776,14 @@ impl GatherAction {
         state: u8,
         radius: f32,
         mover: &mut Mover,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = state;
         self.timer = 0.0;
         if mover.stats.speed == 0.0 {
-            return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+            return Err(GenieError::unsupported(
+                "a MoveTo of a unit without speed (state 13)",
+            ));
         }
         self.move_wait = MoveWait::default();
         self.walk_to = Some(self.point);
@@ -791,7 +799,7 @@ impl GatherAction {
         &mut self,
         mut walk: Walk<'_>,
         g: &mut Gatherer<'_>,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         match self.move_to {
             Some(MoveTo::Arrived | MoveTo::Failed) => {
                 self.begin_search(walk.mover.as_deref_mut(), g)
@@ -800,7 +808,9 @@ impl GatherAction {
                 self.step_move(walk.reborrow(), g)?;
                 Ok(Next::Stay)
             }
-            None => Err(Unsupported("a Gather in state 11 without its MoveTo")),
+            None => Err(GenieError::unsupported(
+                "a Gather in state 11 without its MoveTo",
+            )),
         }
     }
 
@@ -810,7 +820,7 @@ impl GatherAction {
         &mut self,
         mover: Option<&mut Mover>,
         g: &mut Gatherer<'_>,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         self.tear_down(mover)?;
         self.state = FARM_WAIT;
         self.timer = FARM_WAIT_TIME;
@@ -833,7 +843,7 @@ impl GatherAction {
         target: Option<&Victim>,
         g: &mut Gatherer<'_>,
         dt: f32,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         if 0.0 <= self.timer {
             return Ok(Next::Stay);
         }
@@ -853,7 +863,7 @@ impl GatherAction {
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a gatherer without movement state"))?;
+                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                 self.set_walk_back(radius, mover)?;
                 self.target = -1;
                 return Ok(Next::Stay);
@@ -865,7 +875,7 @@ impl GatherAction {
         let mover = walk
             .mover
             .as_deref_mut()
-            .ok_or(Unsupported("a gatherer without movement state"))?;
+            .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         self.begin_reseed_walk(radius, mover)?;
         Ok(Next::Stay)
     }
@@ -880,14 +890,14 @@ impl GatherAction {
         mut walk: Walk<'_>,
         target: Option<&Victim>,
         g: &mut Gatherer<'_>,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         match self.move_to {
             Some(MoveTo::Arrived) => {
                 self.move_to = None;
                 self.walk_to = None;
                 walk.mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a gatherer without movement state"))?
+                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?
                     .stop()?;
                 if let Some(t) = target
                     && !(2 < t.state && t.state != 6)
@@ -922,7 +932,7 @@ impl GatherAction {
         stand: Option<crate::sprite::Graphic>,
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
-    ) -> Result<[i32; 2], Unsupported> {
+    ) -> Result<[i32; 2], GenieError> {
         self.tear_down(mover)?;
         self.timer = 0.0;
         if let Some(s) = stand {
@@ -947,7 +957,7 @@ impl GatherAction {
         &mut self,
         mover: Option<&mut Mover>,
         g: &mut Gatherer<'_>,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         self.tear_down(mover)?;
         self.state = SEARCH;
         self.timer = SEARCH_WAIT;
@@ -983,7 +993,7 @@ impl GatherAction {
         &mut self,
         mut walk: Walk<'_>,
         g: &mut Gatherer<'_>,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         match self.move_to {
             Some(MoveTo::Arrived | MoveTo::Failed) => {
                 let arrived = self.move_to == Some(MoveTo::Arrived);
@@ -991,7 +1001,7 @@ impl GatherAction {
                 self.walk_to = None;
                 walk.mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a gatherer without movement state"))?
+                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?
                     .stop()?;
                 if arrived && g.computer {
                     self.set_done(g);
@@ -1004,7 +1014,9 @@ impl GatherAction {
                 self.step_move(walk, g)?;
                 Ok(Next::Stay)
             }
-            None => Err(Unsupported("a Gather in state 15 without its MoveTo")),
+            None => Err(GenieError::unsupported(
+                "a Gather in state 15 without its MoveTo",
+            )),
         }
     }
 
@@ -1014,7 +1026,7 @@ impl GatherAction {
     /// # Errors
     ///
     /// A load of another resource (notify 0x21c).
-    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, Unsupported> {
+    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, GenieError> {
         crate::hunt::asked_drop_off(self.task.resource, held_kind, attributes)
     }
 
@@ -1024,7 +1036,7 @@ impl GatherAction {
     /// # Errors
     ///
     /// The unit's stop that the motion step does not model.
-    pub fn tear_down(&mut self, mover: Option<&mut Mover>) -> Result<(), Unsupported> {
+    pub fn tear_down(&mut self, mover: Option<&mut Mover>) -> Result<(), GenieError> {
         self.walk_to = None;
         if self.move_to.take().is_some()
             && let Some(m) = mover
@@ -1055,7 +1067,7 @@ impl GatherAction {
         target: Option<&mut Victim>,
         g: &mut Gatherer<'_>,
         dt: f32,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         // a farm's time per stop follows the gatherer's work rate, every update
         if target
             .as_deref()
@@ -1100,7 +1112,7 @@ impl GatherAction {
                 }
                 return self.begin_search(walk.mover.as_deref_mut(), g);
             }
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a Gather action in a state the slice does not model",
             ));
         };
@@ -1116,7 +1128,7 @@ impl GatherAction {
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a gatherer without movement state"))?;
+                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                 if self.stops < 2 {
                     let radius = if STOP_FARMS.contains(&target.master_id) {
                         0.0
@@ -1139,7 +1151,7 @@ impl GatherAction {
                         return self.begin_search(walk.mover.as_deref_mut(), g);
                     }
                     if (target.master_id - 0x765) & !4 == 0 {
-                        return Err(Unsupported(
+                        return Err(GenieError::unsupported(
                             "a gather facing a pasture (its animals, slot 0x780)",
                         ));
                     }
@@ -1155,9 +1167,9 @@ impl GatherAction {
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a gatherer without movement state"))?;
+                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                 if !crate::attack::face_target(mover, at, target.position, g.world_time)? {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a gatherer that turns over time to face its target",
                     ));
                 }
@@ -1166,7 +1178,7 @@ impl GatherAction {
                     self.time_at_stop = 0.0;
                     return Ok(Next::Stay);
                 }
-                Err(Unsupported(
+                Err(GenieError::unsupported(
                     "a gather's target empty when faced (set_state 3)",
                 ))
             }
@@ -1185,14 +1197,14 @@ impl GatherAction {
                         let mover = walk
                             .mover
                             .as_deref_mut()
-                            .ok_or(Unsupported("a gatherer without movement state"))?;
+                            .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                         self.set_walk(target.position, target.radius, 0.0, mover, g.action_rng)?;
                         return Ok(Next::Stay);
                     }
                 }
                 Ok(self.gather(target, g, dt))
             }
-            _ => Err(Unsupported(
+            _ => Err(GenieError::unsupported(
                 "a Gather action in a state the slice does not model",
             )),
         }
@@ -1207,7 +1219,7 @@ impl GatherAction {
         mut walk: Walk<'_>,
         target: &Victim,
         g: &mut Gatherer<'_>,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         match self.move_to {
             Some(MoveTo::Start | MoveTo::Moving | MoveTo::Waiting) => {
                 self.step_move(walk, g).map(|()| Next::Stay)
@@ -1217,7 +1229,7 @@ impl GatherAction {
                 self.walk_to = None;
                 walk.mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a gatherer without movement state"))?
+                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?
                     .stop()?;
                 self.set_face(target, g)
             }
@@ -1227,7 +1239,7 @@ impl GatherAction {
                 let mover = walk
                     .mover
                     .as_deref()
-                    .ok_or(Unsupported("a gatherer without movement state"))?;
+                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                 let me = [mover.stats.radius[0], mover.stats.radius[1]];
                 let at = walk
                     .world
@@ -1241,7 +1253,9 @@ impl GatherAction {
                 }
                 self.begin_search(walk.mover.as_deref_mut(), g)
             }
-            None => Err(Unsupported("a Gather in state 4 without its MoveTo")),
+            None => Err(GenieError::unsupported(
+                "a Gather in state 4 without its MoveTo",
+            )),
         }
     }
 
@@ -1249,7 +1263,7 @@ impl GatherAction {
     /// it starts (a target's or a point's, within [`GatherAction::walk_range`]), walks, waits
     /// after the motion step gave up (a villager once); a `MoveTo` to the target asks again
     /// when the target left its point.
-    fn step_move(&mut self, mut walk: Walk<'_>, g: &mut Gatherer<'_>) -> Result<(), Unsupported> {
+    fn step_move(&mut self, mut walk: Walk<'_>, g: &mut Gatherer<'_>) -> Result<(), GenieError> {
         match self.move_to {
             Some(MoveTo::Start) => {
                 if self.move_wait.state == 1 {
@@ -1322,22 +1336,26 @@ impl GatherAction {
     /// built (state below 2, the unit's slot 0x380) are not modelled; the timer clears and the
     /// unit takes the walking sprite (`FUN_140a8b660`; slot 0x68 takes the standing one for
     /// none).
-    fn set_face(&mut self, target: &Victim, g: &mut Gatherer<'_>) -> Result<Next, Unsupported> {
+    fn set_face(&mut self, target: &Victim, g: &mut Gatherer<'_>) -> Result<Next, GenieError> {
         self.state = FACE;
         // another player's farm is the gatherer's to take (FUN_141185360, FUN_1411858f0)
         if target.class == FARM_CLASS && target.player != g.player {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gather's set_state 6 on another player's farm (FUN_141185360)",
             ));
         }
         if SPECIAL_TARGETS.contains(&target.master_id) {
-            return Err(Unsupported("a gather's set_state 6 on master 357 or 1188"));
+            return Err(GenieError::unsupported(
+                "a gather's set_state 6 on master 357 or 1188",
+            ));
         }
         if target.state < 2 {
             return Ok(Next::Build);
         }
         if (target.master_id - 0x765) & !4 == 0 {
-            return Err(Unsupported("a gather's set_state 6 on master 1893 or 1897"));
+            return Err(GenieError::unsupported(
+                "a gather's set_state 6 on master 1893 or 1897",
+            ));
         }
         self.timer = 0.0;
         if let Some(s) = self.walk_sprite(g).or(g.sprites.standing) {
@@ -1433,7 +1451,7 @@ impl GatherAction {
         g: &mut Gatherer<'_>,
         attributes: usize,
         site: Option<crate::hunt::DropOff>,
-    ) -> Result<Dropped, Unsupported> {
+    ) -> Result<Dropped, GenieError> {
         if self.timer < 0.0 {
             self.timer += walk.dt;
             if self.timer < 0.0 {
@@ -1496,10 +1514,14 @@ impl GatherAction {
                 self.move_to = None;
                 walk.mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a gatherer without movement state"))?
+                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?
                     .stop()?;
             }
-            None => return Err(Unsupported("a Gather in state 8 without its MoveTo")),
+            None => {
+                return Err(GenieError::unsupported(
+                    "a Gather in state 8 without its MoveTo",
+                ));
+            }
         }
         // the drop site gone: set_state(8) again
         let Some(site) = site else {
@@ -1918,7 +1940,7 @@ mod tests {
         target: Option<&mut Victim>,
         dt: f32,
         computer: bool,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         let mut mover = crate::hunt::tests::walker();
         let mut world = crate::spatial::Spatial::default();
         let walk = Walk {

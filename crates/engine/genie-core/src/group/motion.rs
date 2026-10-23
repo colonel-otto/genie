@@ -3,6 +3,7 @@
 //! group's lead from the group's place, the walk toward the walked level's waypoint with its turn
 //! (`FUN_141046270`, `FUN_14104c150`), then the velocity along the vectors.
 
+use crate::GenieError;
 use crate::fmath::{self, Vec3};
 use crate::group::Motion;
 use crate::movement::{
@@ -12,7 +13,6 @@ use crate::movement::{
 use crate::spatial::{Placed, Spatial};
 use crate::tile_path::Path;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// A move or a turn below this counts as none (`DAT_142eb0c60`).
 const EPSILON: f32 = crate::image::group::EPSILON;
@@ -362,7 +362,7 @@ pub(crate) fn path_step(
     lead: &Lead,
     world: &mut World<'_, '_>,
     budget: bool,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     if motion.paths.is_empty() {
         return Ok(false);
     }
@@ -398,7 +398,7 @@ fn pass(
     lead: &Lead,
     world: &mut World<'_, '_>,
     budget: bool,
-) -> Result<Pass, Unsupported> {
+) -> Result<Pass, GenieError> {
     let spatial = world.spatial;
     let level = &motion.paths[0];
     if !level.has_path {
@@ -532,7 +532,7 @@ fn request(
     budget: bool,
     target: Option<&Placed>,
     target_gap2: f32,
-) -> Result<Option<Pass>, Unsupported> {
+) -> Result<Option<Pass>, GenieError> {
     let spatial = world.spatial;
     let now = world.plan.now;
     if budget
@@ -827,7 +827,7 @@ fn steer(
     lead: &Lead,
     world: &World<'_, '_>,
     target: Option<&Placed>,
-) -> Result<Pass, Unsupported> {
+) -> Result<Pass, GenieError> {
     let spatial = world.spatial;
     let dt = world.dt;
     let level = &motion.paths[0];
@@ -1001,7 +1001,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn motion_update(&mut self, group: i32, budget: bool) -> Result<(), Unsupported> {
+    pub fn motion_update(&mut self, group: i32, budget: bool) -> Result<(), GenieError> {
         let Some(g) = self.groups.get(group) else {
             return Ok(());
         };

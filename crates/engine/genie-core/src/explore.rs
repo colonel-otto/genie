@@ -7,8 +7,8 @@
 //! player's turn); with a point it walks there in state 11 with a quiet `MoveTo`, and when the `MoveTo`
 //! is done it goes back to state 3.
 
+use crate::GenieError;
 use crate::move_to::MoveTo;
-use crate::unit_ai::Unsupported;
 
 /// The Explore action's type.
 pub const EXPLORE: i16 = 4;
@@ -118,10 +118,10 @@ impl ExploreAction {
     /// What the update does after its `MoveTo`'s update returned `code` (`0x140a880c0` in state 11,
     /// `FUN_140a992b0`): 0 goes on; 1, 2, 3 and 5 make it wait for a new point (`set_state` 3); 4
     /// runs the action's slot 0x68 and walks again (`set_state` 11), which is not modelled.
-    pub const fn after_walk(&mut self, code: u8) -> Result<Owner, Unsupported> {
+    pub const fn after_walk(&mut self, code: u8) -> Result<Owner, GenieError> {
         match code {
             1 | 2 | 3 | 5 => Ok(self.set_state(WAIT)),
-            4 => Err(Unsupported(
+            4 => Err(GenieError::unsupported(
                 "an Explore whose MoveTo returned 4 (its slot 0x68)",
             )),
             // 0 (and any other code) goes on
@@ -200,17 +200,17 @@ const AROUND: [[i32; 2]; 8] = [
 /// What the search asks of a point (x, y, whole tiles on the map's grid).
 pub trait Area {
     /// The player saw the tile or sees it (`FUN_141285350` not 0).
-    fn explored(&self, x: i32, y: i32) -> Result<bool, Unsupported>;
+    fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError>;
     /// The tile's zone for the unit's restriction (`FUN_1411958c0`), and the unit's own
     /// (`FUN_14118eea0`).
     fn zone(&mut self, x: i32, y: i32) -> u16;
     /// The unit's own zone (`FUN_14118eea0`).
     fn own_zone(&mut self) -> u16;
     /// The unit could stand at the point (slot 0x278, [`crate::spatial::Spatial::point_clear`]).
-    fn clear(&self, x: i32, y: i32) -> Result<bool, Unsupported>;
+    fn clear(&self, x: i32, y: i32) -> Result<bool, GenieError>;
     /// The unit reaches the point within its line of sight less a tile (slot 0x3d8,
     /// [`crate::movement::Mover::reaches`]).
-    fn reaches(&mut self, x: i32, y: i32) -> Result<bool, Unsupported>;
+    fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError>;
     /// The gap from the unit's footprint to the point (`FUN_14118faf0`).
     fn distance(&self, x: i32, y: i32) -> f32;
 }
@@ -227,7 +227,7 @@ pub fn unexplored_area(
     tc: Option<[i32; 2]>,
     map: [i32; 2],
     area: &mut dyn Area,
-) -> Result<Option<[i32; 2]>, Unsupported> {
+) -> Result<Option<[i32; 2]>, GenieError> {
     let Some([cx, cy]) = tc else {
         return Ok(None);
     };
@@ -291,7 +291,7 @@ pub fn closest_undiscovered(
     seeker: Seeker,
     map: [i32; 2],
     ai: &mut crate::rng::Well512,
-) -> Result<Option<[i32; 2]>, Unsupported> {
+) -> Result<Option<[i32; 2]>, GenieError> {
     if seeker.computer {
         return Ok(None);
     }
@@ -358,7 +358,7 @@ pub fn beyond_sight(
     line_of_sight: f32,
     map: [i32; 2],
     ai: &mut crate::rng::Well512,
-) -> Result<Option<[i32; 2]>, Unsupported> {
+) -> Result<Option<[i32; 2]>, GenieError> {
     let own = area.own_zone();
     let [w, h] = map;
     let r = line_of_sight as i32 + SQUARE_PAST_SIGHT;
@@ -380,7 +380,7 @@ pub fn beyond_sight(
         edge.extend((y0 + 1..=y1).filter(|&y| on_y(y)).map(|y| [x0, y]));
     }
     ai.shuffle(&mut edge);
-    let counts = |area: &mut dyn Area, x: i32, y: i32| -> Result<bool, Unsupported> {
+    let counts = |area: &mut dyn Area, x: i32, y: i32| -> Result<bool, GenieError> {
         Ok(area.zone(x, y) == own && area.clear(x, y)? && area.reaches(x, y)?)
     };
     for &[x, y] in &edge {
@@ -462,7 +462,7 @@ mod tests {
     }
 
     impl Area for Open {
-        fn explored(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
             Ok(self.explored.contains(&[x, y]))
         }
         fn zone(&mut self, _: i32, _: i32) -> u16 {
@@ -471,10 +471,10 @@ mod tests {
         fn own_zone(&mut self) -> u16 {
             1
         }
-        fn clear(&self, _: i32, _: i32) -> Result<bool, Unsupported> {
+        fn clear(&self, _: i32, _: i32) -> Result<bool, GenieError> {
             Ok(true)
         }
-        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
             Ok(!self.unreachable.contains(&[x, y]))
         }
         fn distance(&self, x: i32, y: i32) -> f32 {
@@ -544,7 +544,7 @@ mod tests {
     }
 
     impl Area for Zoned {
-        fn explored(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
             self.open.explored(x, y)
         }
         fn zone(&mut self, _: i32, _: i32) -> u16 {
@@ -553,10 +553,10 @@ mod tests {
         fn own_zone(&mut self) -> u16 {
             1
         }
-        fn clear(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        fn clear(&self, x: i32, y: i32) -> Result<bool, GenieError> {
             self.open.clear(x, y)
         }
-        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
             self.open.reaches(x, y)
         }
         fn distance(&self, x: i32, y: i32) -> f32 {
@@ -596,7 +596,7 @@ mod tests {
     }
 
     impl Area for Patch {
-        fn explored(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
             Ok(!self.unexplored.contains(&[x, y]))
         }
         fn zone(&mut self, _: i32, _: i32) -> u16 {
@@ -605,10 +605,10 @@ mod tests {
         fn own_zone(&mut self) -> u16 {
             1
         }
-        fn clear(&self, _: i32, _: i32) -> Result<bool, Unsupported> {
+        fn clear(&self, _: i32, _: i32) -> Result<bool, GenieError> {
             Ok(true)
         }
-        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, Unsupported> {
+        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
             Ok(!self.unreachable.contains(&[x, y]))
         }
         fn distance(&self, _: i32, _: i32) -> f32 {

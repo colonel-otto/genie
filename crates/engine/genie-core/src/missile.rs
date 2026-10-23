@@ -8,8 +8,8 @@
 //! `0x140a9e6e0`, `set_state` slot 16 `0x140a9de70`); `RGE_Missile_Object` vtable `0x142f57fe8`
 //! (update `0x14113e520`).
 
+use crate::GenieError;
 use crate::fmath;
-use crate::unit_ai::Unsupported;
 
 /// The missile action's type, which word 9 adds when it is the top action.
 pub const MISSILE: i16 = 8;
@@ -268,7 +268,7 @@ pub fn aim(
     attack_count: i32,
     hit_mode: &mut u8,
     draw: &mut dyn FnMut() -> u32,
-) -> Result<[f32; 3], Unsupported> {
+) -> Result<[f32; 3], GenieError> {
     let [mut x, mut y, mut z] = point;
     if let Some((radius, _)) = target {
         z += radius[2] / HEIGHT_SHARE;
@@ -317,7 +317,7 @@ impl MissileAction {
         from: [f32; 3],
         aimed: [f32; 3],
         stats: &MissileStats,
-    ) -> Result<Option<f32>, Unsupported> {
+    ) -> Result<Option<f32>, GenieError> {
         let dx = aimed[0] - from[0];
         let dy = aimed[1] - from[1];
         let dz = aimed[2] - from[2];
@@ -325,7 +325,9 @@ impl MissileAction {
         let way = fmath::sqrt(dy * dy + dx * dx + dz2);
         self.distance = way;
         if stats.smart_mode & 1 != 0 && self.target != -1 {
-            return Err(Unsupported("a smart missile leading its target"));
+            return Err(GenieError::unsupported(
+                "a smart missile leading its target",
+            ));
         }
         let angle = match stats.projectile_type {
             0 => {
@@ -341,7 +343,11 @@ impl MissileAction {
                 self.direction = [dx, dy, dz];
                 Some(fmath::atan2(dy, dx))
             }
-            _ => return Err(Unsupported("a missile of projectile type 1 or 2")),
+            _ => {
+                return Err(GenieError::unsupported(
+                    "a missile of projectile type 1 or 2",
+                ));
+            }
         };
         let (acceleration, velocity) = if way <= 0.0 || stats.arc == 0.0 {
             (0.0, 0.0)
@@ -377,7 +383,7 @@ impl MissileAction {
         dt: f32,
         max_range: f32,
         stats: &MissileStats,
-    ) -> Result<([f32; 3], bool), Unsupported> {
+    ) -> Result<([f32; 3], bool), GenieError> {
         let mut step = match stats.projectile_type {
             0 => {
                 let way = stats.speed * dt;
@@ -397,7 +403,11 @@ impl MissileAction {
                 self.distance = 0.0;
                 self.direction
             }
-            _ => return Err(Unsupported("a missile of projectile type 1 or 2")),
+            _ => {
+                return Err(GenieError::unsupported(
+                    "a missile of projectile type 1 or 2",
+                ));
+            }
         };
         if stats.arc != 0.0 {
             step[2] += (dt * self.ballistic_acceleration * HALF + self.ballistic_velocity) * dt;

@@ -3,7 +3,7 @@
 //!
 //! 158041: the full update is `UnitAIModule` slot 4 (`0x140c66b10`); slot 73 (`0x140c567c0`) redraws
 //! the retarget timer, slot 72 is the idle check (`processIdle`). Only an idle unit is modelled: no
-//! order, no action, no target, no actions in its list. Anything else is [`Unsupported`]. A boar
+//! order, no action, no target, no actions in its list. Anything else is [`GenieError`]. A boar
 //! (factory type 4, `TribeElephantUnitAIModule`, slot 4 `0x140c2c010`) wanders around its origin
 //! ([`Home`]); its moves go to the unit as an [`AiMove`]. A hunted animal (type 2,
 //! `TribeHuntedAnimalUnitAIModule`: deer, foxes) looks for the closest object of the classes it
@@ -757,12 +757,12 @@ const TOWER_SPARED: [i16; 2] = [50, 1187];
 /// Slot 0xa0 of `me`'s unit AI with 0, `CanAttack`: whether it may attack `t`: the tower's
 /// ([`tower_can_attack`]) or the soldier's ([`soldier_can_attack`]); the other types' are not
 /// modelled.
-pub fn can_attack(me: &Attacker, seeker: &Seeker, t: &Target) -> Result<bool, Unsupported> {
+pub fn can_attack(me: &Attacker, seeker: &Seeker, t: &Target) -> Result<bool, GenieError> {
     match me.ai_type {
         15 => tower_can_attack(me, t),
         13 => soldier_can_attack(me, seeker, t),
         SIEGE_AI => siege_can_attack(me, seeker, t, false),
-        _ => Err(Unsupported(
+        _ => Err(GenieError::unsupported(
             "an attack check (slot 0xa0) of a unit-AI type not modelled",
         )),
     }
@@ -775,7 +775,7 @@ pub fn can_attack(me: &Attacker, seeker: &Seeker, t: &Target) -> Result<bool, Un
 /// priority below 3 only of combat level 4 (`FUN_140fde120`); else when the tower is armed
 /// (`FUN_14120ea30`: classes 51 and 54, or a missile, or else a firepower, `+0xa00`, above 1)
 /// and its attack priority is not 3 or the class one of [`PRIORITY_3_CLASSES`].
-pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
+pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
     if me.player == 0 || matches!(t.class, 1 | 42) {
         return Ok(false);
     }
@@ -828,9 +828,9 @@ impl Attacker {
     /// # Errors
     ///
     /// A charge of type 6 or 7.
-    pub const fn range_against(&self) -> Result<f32, Unsupported> {
+    pub const fn range_against(&self) -> Result<f32, GenieError> {
         if matches!(self.charge_type, 6 | 7) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an attacker whose charge adds to its range (slot 0x2f8)",
             ));
         }
@@ -849,7 +849,7 @@ impl Attacker {
 /// `FUN_140a847c0`), but on order `0x2bd`; in Defend (1) within 5 more, the patrol orders' and a
 /// patrol path's tests not modelled. Then an attack priority of 3 takes only
 /// [`PRIORITY_3_CLASSES`].
-pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool, Unsupported> {
+pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool, GenieError> {
     if t.class == 64 {
         return Ok(false);
     }
@@ -864,7 +864,9 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
         return Ok(false);
     }
     if me.computer {
-        return Err(Unsupported("a computer player's soldier's attack check"));
+        return Err(GenieError::unsupported(
+            "a computer player's soldier's attack check",
+        ));
     }
     if me.class == 51 || me.master == SOLDIER_NEVER {
         return Ok(false);
@@ -905,13 +907,13 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
 /// [`PRIORITY_3_CLASSES`]; a ranged one (range above 1) with a blast (`+0x82c` above 0) whose
 /// `area_effect_level` has neither bit 2 nor 3 (`FUN_1410bf160`, `FUN_1410bfcb0`) scans the tiles
 /// of the blast around the target for its own or allied objects (not modelled).
-fn spares_friends(me: &Attacker, t: &Target) -> Result<bool, Unsupported> {
+fn spares_friends(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
     if me.attack_priority == 3 && !PRIORITY_3_CLASSES.contains(&t.class) {
         return Ok(false);
     }
     let ranged = 1.0 < me.range;
     if ranged && me.blast_level & 8 == 0 && 0.0 < me.area_effect && me.blast_level & 4 == 0 {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "a blast attacker's scan for friends near its target (FUN_14120e4e0)",
         ));
     }
@@ -940,14 +942,14 @@ pub trait AttackPicker {
     /// # Errors
     ///
     /// What the tests do not model.
-    fn candidate(&self, id: i32, list: Option<usize>) -> Result<Option<AttackStat>, Unsupported>;
+    fn candidate(&self, id: i32, list: Option<usize>) -> Result<Option<AttackStat>, GenieError>;
 
     /// The object to attack among the statistics, −1 for none.
     ///
     /// # Errors
     ///
     /// What the choice does not model.
-    fn choose(&mut self, stats: &[AttackStat]) -> Result<i32, Unsupported>;
+    fn choose(&mut self, stats: &[AttackStat]) -> Result<i32, GenieError>;
 }
 
 /// An [`AttackPicker`] for searches that pick no attack: a test of an object fails.
@@ -955,14 +957,14 @@ pub trait AttackPicker {
 pub struct NoAttack;
 
 impl AttackPicker for NoAttack {
-    fn candidate(&self, _: i32, _: Option<usize>) -> Result<Option<AttackStat>, Unsupported> {
-        Err(Unsupported(
+    fn candidate(&self, _: i32, _: Option<usize>) -> Result<Option<AttackStat>, GenieError> {
+        Err(GenieError::unsupported(
             "an attack test in a search that picks no attack",
         ))
     }
 
-    fn choose(&mut self, _: &[AttackStat]) -> Result<i32, Unsupported> {
-        Err(Unsupported(
+    fn choose(&mut self, _: &[AttackStat]) -> Result<i32, GenieError> {
+        Err(GenieError::unsupported(
             "an attack choice in a search that picks no attack",
         ))
     }
@@ -981,20 +983,20 @@ impl AttackPicker for NoAttack {
 /// What the choice does not model.
 pub fn choose_attack(
     stats: &[AttackStat],
-    quick: &mut dyn FnMut(i32) -> Result<bool, Unsupported>,
-) -> Result<i32, Unsupported> {
+    quick: &mut dyn FnMut(i32) -> Result<bool, GenieError>,
+) -> Result<i32, GenieError> {
     match stats {
         [] => Ok(-1),
         [one] => {
             if quick(one.id)? {
                 Ok(one.id)
             } else {
-                Err(Unsupported(
+                Err(GenieError::unsupported(
                     "bestUnitToAttack's path test after its quick path (slot 0x3d0)",
                 ))
             }
         }
-        _ => Err(Unsupported(
+        _ => Err(GenieError::unsupported(
             "bestUnitToAttack's scoring of several candidates (FUN_140c48150)",
         )),
     }
@@ -1019,20 +1021,24 @@ pub fn soldier_attacks_neutral(attack_priority: u8, class: i16) -> bool {
 
 /// A computer player's soldier's or siege unit's idle check past its target: its target test
 /// (`FUN_140c41690`) and its saved patrol's leash (`player+0x624`); not modelled.
-const fn computer_idle_check() -> Result<(), Unsupported> {
-    Err(Unsupported("a computer player's soldier's idle check"))
+const fn computer_idle_check() -> Result<(), GenieError> {
+    Err(GenieError::unsupported(
+        "a computer player's soldier's idle check",
+    ))
 }
 
 /// A unit's back-up from a target under its least range (`FUN_140c43de0`, the soldier's and the
 /// siege unit's case 0x1fe); not modelled.
-const fn back_up() -> Result<u32, Unsupported> {
-    Err(Unsupported("a soldier's target under its least range"))
+const fn back_up() -> Result<u32, GenieError> {
+    Err(GenieError::unsupported(
+        "a soldier's target under its least range",
+    ))
 }
 
 /// A defending unit's range on a patrol order or with a patrol path (slot 0x470, `FUN_140f95e10`),
 /// which the soldier's and the siege unit's attack checks read; not modelled.
-const fn defend_patrol_range() -> Result<(), Unsupported> {
-    Err(Unsupported(
+const fn defend_patrol_range() -> Result<(), GenieError> {
+    Err(GenieError::unsupported(
         "a defending soldier's patrol range (slot 0x470, FUN_140f95e10)",
     ))
 }
@@ -1102,7 +1108,7 @@ pub fn siege_can_attack(
     s: &Seeker,
     t: &Target,
     any: bool,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     if matches!(t.class, 1 | 42) || s.stance == 3 {
         return Ok(false);
     }
@@ -1179,9 +1185,11 @@ pub fn attack_candidate(
     s: &Seeker,
     t: &Target,
     list: Option<usize>,
-) -> Result<Option<f32>, Unsupported> {
+) -> Result<Option<f32>, GenieError> {
     if me.computer {
-        return Err(Unsupported("a computer player's bestUnitToAttack"));
+        return Err(GenieError::unsupported(
+            "a computer player's bestUnitToAttack",
+        ));
     }
     let gap = crate::movement::footprint_gap(me.position, me.radius, t.position, t.radius);
     let Some(list) = list else {
@@ -1200,7 +1208,7 @@ pub fn attack_candidate(
             13 => soldier_attacks_neutral(me.attack_priority, t.class),
             SIEGE_AI => siege_attacks_neutral(me.attack_priority, t.class),
             _ => {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a neutral object's test (slot 0xa8) of a unit-AI type not modelled",
                 ));
             }
@@ -1224,7 +1232,7 @@ pub fn attack_candidate(
     if matches!(t.class, 27 | 39) {
         let walls = matches!(s.target_type, 27 | 39) || matches!(s.last_target_type, 27 | 39);
         if walls {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "bestUnitToAttack of a unit that attacks walls (the closest wall)",
             ));
         }
@@ -1277,7 +1285,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the search does not model.
-    fn closest(&mut self, search: &Search<'_>) -> Result<Found, Unsupported>;
+    fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError>;
 
     /// The unit's attack command on object `target` (slot 0x338, `FUN_14120cea0`), forced or
     /// not, while its unit AI stands as `ai`: true when the unit attacks it, with the notifies
@@ -1286,7 +1294,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the command does not model.
-    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<Attacked, Unsupported>;
+    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<Attacked, GenieError>;
 
     /// The unit's `+0x685`, `underAttackValue`, becomes `value` (`FUN_14119d2d0`).
     fn set_under_attack(&mut self, value: bool);
@@ -1298,7 +1306,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the stop does not model.
-    fn stop(&mut self) -> Result<(), Unsupported>;
+    fn stop(&mut self) -> Result<(), GenieError>;
 
     /// `AttackObject`'s test of object `target` (`FUN_140c43720`): the world holds it and the unit
     /// AI's attack check (slot 0xa0, [`can_attack`], as `seeker` stands) passes; then its master's
@@ -1311,7 +1319,7 @@ pub trait UnitSide {
         &mut self,
         target: i32,
         seeker: &Seeker,
-    ) -> Result<Option<(i16, [f32; 3])>, Unsupported>;
+    ) -> Result<Option<(i16, [f32; 3])>, GenieError>;
 
     /// The explorer's point to explore (the base handler's case 0x202 for the auto scout): the
     /// search around its town centre (`FUN_140c65490`), else its unit AI's (`ai`) slot 0x90 with
@@ -1324,7 +1332,7 @@ pub trait UnitSide {
         &mut self,
         ai: &UnitAi,
         rng: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, Unsupported>;
+    ) -> Result<Option<[i32; 2]>, GenieError>;
 
     /// The auto scout's last search (`FUN_140c4b130`, [`crate::explore::beyond_sight`]), drawing
     /// from the AI stream (`rng`); None when it finds no point.
@@ -1332,7 +1340,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the search does not model.
-    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported>;
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError>;
 
     /// The player's scout map, made when the auto scout's last search found nothing
     /// (`FUN_140c589c0`'s case 0x202).
@@ -1340,7 +1348,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// A unit without its player's sight.
-    fn make_scout_map(&mut self) -> Result<(), Unsupported>;
+    fn make_scout_map(&mut self) -> Result<(), GenieError>;
 
     /// The unit's slot 0x468 (`FUN_141157c50`, `getPatrolInformation`): a copy of its top path
     /// (`FUN_140f960f0`; `FUN_140f95c00` into a new path: its points, its length, its flags) and
@@ -1352,8 +1360,10 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the search does not model.
-    fn foundation_search(&mut self) -> Result<i32, Unsupported> {
-        Err(Unsupported("a builder's search without the world"))
+    fn foundation_search(&mut self) -> Result<i32, GenieError> {
+        Err(GenieError::unsupported(
+            "a builder's search without the world",
+        ))
     }
 
     /// Slot 0x3d0: whether the unit reaches object `target` within `range`.
@@ -1361,8 +1371,8 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the reach test does not model.
-    fn reaches(&mut self, _target: i32, _range: f32) -> Result<bool, Unsupported> {
-        Err(Unsupported("a reach test without the world"))
+    fn reaches(&mut self, _target: i32, _range: f32) -> Result<bool, GenieError> {
+        Err(GenieError::unsupported("a reach test without the world"))
     }
 
     /// What the base handler's case 0x216 reads ([`OffFootprint`]) for a unit sent off the
@@ -1371,12 +1381,10 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the spot's search does not model.
-    fn off_footprint(
-        &mut self,
-        _site: i32,
-        _radius: [f32; 2],
-    ) -> Result<OffFootprint, Unsupported> {
-        Err(Unsupported("a unit sent off a footprint without the world"))
+    fn off_footprint(&mut self, _site: i32, _radius: [f32; 2]) -> Result<OffFootprint, GenieError> {
+        Err(GenieError::unsupported(
+            "a unit sent off a footprint without the world",
+        ))
     }
 
     /// The unit's slot 0x278: whether it could stand at `point`.
@@ -1384,8 +1392,8 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the test does not model.
-    fn can_stand(&mut self, _point: [f32; 2]) -> Result<bool, Unsupported> {
-        Err(Unsupported("a stand test without the world"))
+    fn can_stand(&mut self, _point: [f32; 2]) -> Result<bool, GenieError> {
+        Err(GenieError::unsupported("a stand test without the world"))
     }
 
     /// The object `id` as the unit AI reads it ([`UnitSeen`]): None when the world does not
@@ -1394,8 +1402,10 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// An object the slice does not hold.
-    fn seen_unit(&mut self, _id: i32) -> Result<Option<UnitSeen>, Unsupported> {
-        Err(Unsupported("an object's look without the world"))
+    fn seen_unit(&mut self, _id: i32) -> Result<Option<UnitSeen>, GenieError> {
+        Err(GenieError::unsupported(
+            "an object's look without the world",
+        ))
     }
 
     /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) as `search` asks it:
@@ -1407,8 +1417,10 @@ pub trait UnitSide {
     fn closest_resource(
         &mut self,
         _search: ResourceSearch,
-    ) -> Result<Option<Gatherable>, Unsupported> {
-        Err(Unsupported("a resource search without the world"))
+    ) -> Result<Option<Gatherable>, GenieError> {
+        Err(GenieError::unsupported(
+            "a resource search without the world",
+        ))
     }
 
     /// The class of master `master` of player `player` (`FUN_14152fe40`, the player's master
@@ -1417,8 +1429,10 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// A side without the players' masters.
-    fn master_class(&mut self, _player: i32, _master: i32) -> Result<Option<i16>, Unsupported> {
-        Err(Unsupported("a master's class without the world"))
+    fn master_class(&mut self, _player: i32, _master: i32) -> Result<Option<i16>, GenieError> {
+        Err(GenieError::unsupported(
+            "a master's class without the world",
+        ))
     }
 
     /// The unit's slot 0x388 (`FUN_141226fc0`) on object `target`: when the world holds it
@@ -1430,8 +1444,10 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the task search does not model.
-    fn wait_solidify(&mut self, _target: i32) -> Result<bool, Unsupported> {
-        Err(Unsupported("a wait for a foundation without the world"))
+    fn wait_solidify(&mut self, _target: i32) -> Result<bool, GenieError> {
+        Err(GenieError::unsupported(
+            "a wait for a foundation without the world",
+        ))
     }
 
     /// Slot 400 (`FUN_14106d090`) as the full update's tail reads it: the target of the unit's
@@ -1443,7 +1459,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// An object the slice does not hold.
-    fn top_target_now(&mut self) -> Result<Option<i32>, Unsupported> {
+    fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
         Ok(None)
     }
 
@@ -1454,7 +1470,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// An object the slice does not hold.
-    fn target_flags(&mut self, _id: i32) -> Result<Option<TargetFlags>, Unsupported> {
+    fn target_flags(&mut self, _id: i32) -> Result<Option<TargetFlags>, GenieError> {
         Ok(None)
     }
 
@@ -1464,8 +1480,8 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// The commands the slice holds no action for.
-    fn command(&mut self, _command: UnitCommand) -> Result<bool, Unsupported> {
-        Err(Unsupported(
+    fn command(&mut self, _command: UnitCommand) -> Result<bool, GenieError> {
+        Err(GenieError::unsupported(
             "a unit command the slice does not model (heal, conversion, repair, enter, transport, \
              unload)",
         ))
@@ -1479,8 +1495,8 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the stop does not model.
-    fn group_attack_stop(&mut self) -> Result<(), Unsupported> {
-        Err(Unsupported(
+    fn group_attack_stop(&mut self) -> Result<(), GenieError> {
+        Err(GenieError::unsupported(
             "a soldier's attack in a group without its unit",
         ))
     }
@@ -1596,39 +1612,45 @@ pub struct OffFootprint {
     pub action_target: Option<Named>,
 }
 
-impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
-    fn closest(&mut self, search: &Search<'_>) -> Result<Found, Unsupported> {
+impl<F: FnMut(&Search<'_>) -> Result<Found, GenieError>> UnitSide for F {
+    fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
         self(search)
     }
 
-    fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
-        Err(Unsupported("a unit AI's attack without its unit"))
+    fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+        Err(GenieError::unsupported(
+            "a unit AI's attack without its unit",
+        ))
     }
 
     fn set_under_attack(&mut self, _: bool) {}
 
-    fn stop(&mut self) -> Result<(), Unsupported> {
-        Err(Unsupported("a unit AI's stop without its unit"))
+    fn stop(&mut self) -> Result<(), GenieError> {
+        Err(GenieError::unsupported("a unit AI's stop without its unit"))
     }
 
-    fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
-        Err(Unsupported("an attack test without the world"))
+    fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+        Err(GenieError::unsupported("an attack test without the world"))
     }
 
     fn seek_unexplored(
         &mut self,
         _: &UnitAi,
         _: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, Unsupported> {
-        Err(Unsupported("an explorer's search without its unit"))
+    ) -> Result<Option<[i32; 2]>, GenieError> {
+        Err(GenieError::unsupported(
+            "an explorer's search without its unit",
+        ))
     }
 
-    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-        Err(Unsupported("an explorer's search without its unit"))
+    fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+        Err(GenieError::unsupported(
+            "an explorer's search without its unit",
+        ))
     }
 
-    fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-        Err(Unsupported("a scout map without the world"))
+    fn make_scout_map(&mut self) -> Result<(), GenieError> {
+        Err(GenieError::unsupported("a scout map without the world"))
     }
 
     /// A side of searches alone stands for no unit with movement state, whose slot 0x468 (the
@@ -1708,8 +1730,10 @@ pub fn flood_search(
 }
 
 /// A search that never runs (units without a search).
-pub const fn no_search(_: &Search<'_>) -> Result<Found, Unsupported> {
-    Err(Unsupported("a unit AI's search the caller does not answer"))
+pub const fn no_search(_: &Search<'_>) -> Result<Found, GenieError> {
+    Err(GenieError::unsupported(
+        "a unit AI's search the caller does not answer",
+    ))
 }
 
 /// A boar's part of its unit AI (`TribeElephantUnitAIModule`, factory type 4), which its idle check
@@ -1960,7 +1984,7 @@ const fn changes_actions(e: &Effect) -> bool {
 /// slot 0x398, an action without an object; a move to an object, slot 0x348, holds it, as do a
 /// hunt, gather and build, slots 0x360, 0x368, 0x380); without one the unit's now
 /// ([`UnitSide::top_target_now`]).
-fn top_target_after(fx: &[Effect], side: &mut dyn UnitSide) -> Result<Option<i32>, Unsupported> {
+fn top_target_after(fx: &[Effect], side: &mut dyn UnitSide) -> Result<Option<i32>, GenieError> {
     for e in fx.iter().rev() {
         match *e {
             Effect::Stop
@@ -2001,9 +2025,8 @@ pub struct AiMove {
     pub walk: bool,
 }
 
-/// Why an update was not modelled.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Unsupported(pub &'static str);
+/// The engine's error ([`genie_error::GenieError`]), here for the modules' imports.
+pub use crate::GenieError;
 
 /// What slot 73 does for a factory type.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -2023,7 +2046,7 @@ enum Retarget {
     Priest,
 }
 
-const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
+const fn retarget_kind(ai_type: u32) -> Result<Retarget, GenieError> {
     match ai_type {
         // villagers (0x140c21da0) and livestock (0x140c21f20) return 9 from slot 73
         8 => Ok(Retarget::Civilian),
@@ -2039,7 +2062,7 @@ const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
         2 | 4 | 5 | TRADE_AI | 11 | FISHING_AI | 13 | 15 | SIEGE_AI | 17 | SIEGE_TOWER_AI => {
             Ok(Retarget::Base)
         }
-        _ => Err(Unsupported("unit-AI type not modelled")),
+        _ => Err(GenieError::unsupported("unit-AI type not modelled")),
     }
 }
 
@@ -2375,9 +2398,9 @@ fn dodges(at: &Surroundings, ai: &mut Well512) -> bool {
 /// The owner's slot 0x2e8 with an alert of its unit's (0x201 under attack, 0x209 dead,
 /// `FUN_14162dab0`): a human player's alert list and the old pather's hulled-area reset, not
 /// held; a computer player's AI hears it (slot 0x3c8), which is not modelled.
-const fn alert_owner(computer: bool) -> Result<(), Unsupported> {
+const fn alert_owner(computer: bool) -> Result<(), GenieError> {
     if computer {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "a computer player's AI hearing its unit's alert (slot 0x2e8, then slot 0x3c8)",
         ));
     }
@@ -2386,24 +2409,26 @@ const fn alert_owner(computer: bool) -> Result<(), Unsupported> {
 
 /// `AskForHelp` (`FUN_140c42ce0`): a unit attacked by a new attacker asks the units its search
 /// finds (slot 0x50) that may attack the attacker (their slot 0xa0) to help; not modelled.
-const fn call_for_help() -> Result<(), Unsupported> {
-    Err(Unsupported("a call for help (AskForHelp, FUN_140c42ce0)"))
+const fn call_for_help() -> Result<(), GenieError> {
+    Err(GenieError::unsupported(
+        "a call for help (AskForHelp, FUN_140c42ce0)",
+    ))
 }
 
 /// The unit AI's slot 0x90 (`closestUndiscoveredTile`, `FUN_140c4bd40`) for an explorer other
 /// than the auto scout, then its explore there (slot 0x100); not modelled.
-const fn closest_undiscovered_tile() -> Result<(), Unsupported> {
-    Err(Unsupported(
+const fn closest_undiscovered_tile() -> Result<(), GenieError> {
+    Err(GenieError::unsupported(
         "an explorer's search for the closest undiscovered tile (slot 0x90)",
     ))
 }
 
 /// The state of the unit's top action (slot 0x2b0) as [`Surroundings::action_state`] holds it,
 /// for an action the slice holds.
-const fn held_action_state(state: Option<u8>) -> Result<u8, Unsupported> {
+const fn held_action_state(state: Option<u8>) -> Result<u8, GenieError> {
     match state {
         Some(s) => Ok(s),
-        None => Err(Unsupported(
+        None => Err(GenieError::unsupported(
             "an action the slice does not hold (its state, slot 0x2b0)",
         )),
     }
@@ -2703,9 +2728,11 @@ impl UnitAi {
     /// action (`FUN_140c64b60` with −1 and 1, `FUN_140c64b50` with −1); leaving a patrol order
     /// caps the secondary timer ([`UnitAi::cap_patrol_secondary`]); the redraw of an adjusted
     /// idle timeout of exactly 750 (slot 0x1a8, the AI stream's) is not modelled here.
-    pub const fn end_order_and_action(&mut self) -> Result<(), Unsupported> {
+    pub const fn end_order_and_action(&mut self) -> Result<(), GenieError> {
         if self.patrol_redraws() {
-            return Err(Unsupported("the end of a Build on a patrol order"));
+            return Err(GenieError::unsupported(
+                "the end of a Build on a patrol order",
+            ));
         }
         self.cap_patrol_secondary();
         self.last_order = self.current_order;
@@ -2757,7 +2784,7 @@ impl UnitAi {
         point: [f32; 3],
         clears: bool,
         ai: &mut Well512,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.set_order(order, ai);
         self.set_action(action);
         let (id, class) = target.unwrap_or((-1, -1));
@@ -2922,7 +2949,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let [x, y, z] = at.position;
         let reach = at.speed * EVADE_REACH;
         let (dx, dy) = (other[0] - x, other[1] - y);
@@ -2939,13 +2966,13 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.cap_human_order(fx);
         if at.class == CLASS_KING {
             let led =
                 at.master != KING_UNLED && !at.garrisoned && self.current_order == -1 && computer;
             if led {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a computer player's king's idle check (FUN_140c16930, slot 0x7e8)",
                 ));
             }
@@ -2961,10 +2988,10 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
-        let h = self
-            .hunted
-            .ok_or(Unsupported("a hunted animal without its origin"))?;
+    ) -> Result<bool, GenieError> {
+        let h = self.hunted.ok_or(GenieError::unsupported(
+            "a hunted animal without its origin",
+        ))?;
         let [x, y, z] = at.position;
         let go_home = AiMove {
             point: [h.origin[0], h.origin[1], z],
@@ -2981,7 +3008,7 @@ impl UnitAi {
             }
         }
         if at.mode_1 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hunted animal's idle check in mode 1 (its herd)",
             ));
         }
@@ -3010,7 +3037,7 @@ impl UnitAi {
         if found.id != -1 {
             let other = found
                 .position
-                .ok_or(Unsupported("a found object without its place"))?;
+                .ok_or(GenieError::unsupported("a found object without its place"))?;
             return self.evade(at, other, ai, side, fx);
         }
         let r = ai.rand15();
@@ -3057,7 +3084,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.cap_human_order(fx);
         self.set_idle_timeout(LION_IDLE_TIMEOUT, ai);
         let sight = at.los + HUNTED_SIGHT_GROWTH;
@@ -3087,7 +3114,9 @@ impl UnitAi {
             at.los * LION_SIGHT_SHARE
         };
         if at.scenario {
-            return Err(Unsupported("a lion's reach in the scenario modes"));
+            return Err(GenieError::unsupported(
+                "a lion's reach in the scenario modes",
+            ));
         }
         // each search that queries sets the alert mode (`FUN_140c63e20`)
         let mut found = side.closest(&search(4))?;
@@ -3128,7 +3157,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         match self.ai_type {
             2 => self.hunted_idle(at, computer, ai, side, fx),
             BOAR_AI => Ok(self.boar_idle(at, ai, fx)),
@@ -3145,7 +3174,7 @@ impl UnitAi {
             TOWER_AI => self.tower_idle(at, computer, side, fx),
             ARTIFACT_AI => self.artifact_idle(at, side, fx),
             17 | 19 => Ok(false),
-            _ => Err(Unsupported(
+            _ => Err(GenieError::unsupported(
                 "processIdle (slot 0x240) of a unit-AI type not modelled",
             )),
         }
@@ -3166,7 +3195,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.cap_human_order(fx);
         if !computer || at.garrisoned {
             return Ok(false);
@@ -3239,7 +3268,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.cap_human_order(fx);
         let searches = !at.scenario && 70 <= at.kind && at.capture == 0;
         if at.player == 0 && !searches {
@@ -3335,7 +3364,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.cap_human_order(fx);
         let searches = !at.scenario && 70 <= at.kind && at.capture == 0;
         if at.player == 0 && !searches {
@@ -3404,7 +3433,9 @@ impl UnitAi {
             return Ok(true);
         }
         if at.task_0x69 {
-            return Err(Unsupported("a healer's search for an ally to heal"));
+            return Err(GenieError::unsupported(
+                "a healer's search for an ally to heal",
+            ));
         }
         Ok(false)
     }
@@ -3423,14 +3454,16 @@ impl UnitAi {
         computer: bool,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.current_order == DEFEND_ORDER {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a defend order's search (its target's objects)",
             ));
         }
         if computer {
-            return Err(Unsupported("a computer player's soldier's NoAttack search"));
+            return Err(GenieError::unsupported(
+                "a computer player's soldier's NoAttack search",
+            ));
         }
         let found = side.closest(&Search {
             at: [at.position[0], at.position[1]],
@@ -3440,7 +3473,7 @@ impl UnitAi {
             pick: Pick::Look,
         })?;
         if found.enemies {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a NoAttack soldier's search that finds enemies",
             ));
         }
@@ -3451,7 +3484,9 @@ impl UnitAi {
             let _ = self.walk_back(at, fx);
         }
         if at.task_0x69 {
-            return Err(Unsupported("a healer's search for an ally to heal"));
+            return Err(GenieError::unsupported(
+                "a healer's search for an ally to heal",
+            ));
         }
         Ok(())
     }
@@ -3470,7 +3505,7 @@ impl UnitAi {
         computer: bool,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.cap_human_order(fx);
         if self.stance == 3 {
             let found = side.closest(&Search {
@@ -3525,14 +3560,14 @@ impl UnitAi {
     /// more than 10 s without a sighting (`+0x1b4`) the owner hears of it (its slot 0x2e8 with
     /// `0x210`, `FUN_14162dab0`: no case for it, only the reset of the old short pather's hulled
     /// area, and a computer player's AI's notify, not modelled), and the time restarts.
-    fn attack_search_alert(&mut self, found: Found, computer: bool) -> Result<(), Unsupported> {
+    fn attack_search_alert(&mut self, found: Found, computer: bool) -> Result<(), GenieError> {
         if !found.fresh {
             return Ok(());
         }
         self.alert_mode = found.enemies;
         if found.enemies {
             if ENEMY_SIGHTING_GAP < self.time_since_enemy && computer {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a computer player's notify of enemies sighted (0x210, slot 0x3c8)",
                 ));
             }
@@ -3562,7 +3597,7 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-    ) -> Result<Vec<Effect>, Unsupported> {
+    ) -> Result<Vec<Effect>, GenieError> {
         let retarget = retarget_kind(self.ai_type)?;
         self.commanded = false;
         // the full update's start: the time since the last enemy sighting grows by the world's dt
@@ -3636,7 +3671,7 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
-    ) -> Result<Vec<Effect>, Unsupported> {
+    ) -> Result<Vec<Effect>, GenieError> {
         let retarget = retarget_kind(self.ai_type)?;
         let mut fx = Vec::new();
         self.update_tail(
@@ -3670,7 +3705,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         match retarget {
             Retarget::Base => {
                 let _ = self.retarget_check(world_time, computer, at, ai, fx)?;
@@ -3711,7 +3746,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let id = top_target_after(fx, side)?;
         // a hunt, gather or build the caller gives once the update ends (after the stops)
         let deferred = fx
@@ -3741,7 +3776,7 @@ impl UnitAi {
             && (t.untargetable || (!t.attackable && action == ATTACK_ACTION))
             && action != TRADE_ACTION;
         if deferred && (captured_again || untargeted) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a stop of the full update's tail after a command the caller gives later",
             ));
         }
@@ -3759,7 +3794,7 @@ impl UnitAi {
     /// The end of the full update (`0x140c686e0`): unless the AI's order is the build order
     /// (`0x2be`), each queued build order, the last first, whose foundation the world no longer
     /// holds or holds in a state other than 0 (`+0x640`) leaves the queue.
-    fn drop_started_builds(&mut self, side: &mut dyn UnitSide) -> Result<(), Unsupported> {
+    fn drop_started_builds(&mut self, side: &mut dyn UnitSide) -> Result<(), GenieError> {
         if self.current_order == BUILD_ORDER {
             return Ok(());
         }
@@ -3785,7 +3820,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if let Some(home) = self.home
             && !home.furious
             && self.adjusted_idle_timeout < self.idle_timer
@@ -3815,7 +3850,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.current_target != -1 && at.garrisoned {
             self.current_target = -1;
         }
@@ -3833,7 +3868,7 @@ impl UnitAi {
             Some(t) => {
                 if at.state == 2 && 2 < t.state && t.kind != 80 {
                     let attack_over = action == ATTACK_ACTION
-                        && at.action_state.ok_or(Unsupported(
+                        && at.action_state.ok_or(GenieError::unsupported(
                             "an attack whose target died, its top action not held",
                         ))? != 2;
                     if self.stop_after_kill || LIVE_TARGET_ACTIONS.contains(&action) || attack_over
@@ -3854,21 +3889,23 @@ impl UnitAi {
                     && (matches!(self.current_order, PATROL | PATROL_2)
                         || at.group.is_some_and(|g| g.patrol))
                 {
-                    return Err(Unsupported("the patrol range of a unit AI's target"));
+                    return Err(GenieError::unsupported(
+                        "the patrol range of a unit AI's target",
+                    ));
                 }
                 // order 0x262, which is MOVE's action value
                 if computer
                     && (0..100).contains(&self.order_priority)
                     && self.current_order == 0x262
                 {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a computer's order priority by its target's distance",
                     ));
                 }
             }
         }
         if self.current_action == BUILD_ORDER {
-            return Err(Unsupported("action 0x2be's target check"));
+            return Err(GenieError::unsupported("action 0x2be's target check"));
         }
         Ok(())
     }
@@ -3890,7 +3927,7 @@ impl UnitAi {
         computer: bool,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let mut class = n.p[1];
         if class == -1 {
             class = self.target_type;
@@ -3904,7 +3941,7 @@ impl UnitAi {
             return Ok(GO_ON);
         }
         if civilian_kind(class) != -1 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hunter's search by kind (ClosestResourceObject, slot 0x80)",
             ));
         }
@@ -3926,16 +3963,18 @@ impl UnitAi {
         self.alert(found, at.dt_seconds);
         if found.id == -1 {
             if computer {
-                return Err(Unsupported("a computer player's hunter that found nothing"));
+                return Err(GenieError::unsupported(
+                    "a computer player's hunter that found nothing",
+                ));
             }
             return Ok(GO_ON);
         }
         if class == 49 {
-            return Err(Unsupported("a hunter's search finding a farm"));
+            return Err(GenieError::unsupported("a hunter's search finding a farm"));
         }
         let point = found
             .position
-            .ok_or(Unsupported("a found object without its place"))?;
+            .ok_or(GenieError::unsupported("a found object without its place"))?;
         self.hunt_object(found.id, class, point, at, fx)?;
         Ok(BREAK)
     }
@@ -3958,7 +3997,7 @@ impl UnitAi {
         computer: bool,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let mut class = self.target_type;
         if class == -1 {
             class = self.last_target_type;
@@ -4002,7 +4041,7 @@ impl UnitAi {
                     class: class as i16,
                 }),
                 None if found.id != -1 => {
-                    return Err(Unsupported("a found object without its place"));
+                    return Err(GenieError::unsupported("a found object without its place"));
                 }
                 _ => None,
             }
@@ -4052,7 +4091,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let produced = self.process_idle(at, computer, ai, side, fx)?;
         if !produced {
             let m = self.move_to(AiMove {
@@ -4083,7 +4122,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let mut result = GO_ON;
         while !self.notifies.is_empty() && result == GO_ON {
             self.processing = true;
@@ -4119,7 +4158,7 @@ impl UnitAi {
         time: u32,
         at: &Surroundings,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let completed = self.notifies.iter().any(|n| {
             n.kind == ACTION_COMPLETED && self.current_order == -1 && self.current_action == n.p[0]
         });
@@ -4134,11 +4173,11 @@ impl UnitAi {
 
     /// `FUN_140c5dc10` from outside the full update (a MOVE, an ownership change: `time` is the
     /// world time), where a completion it would stop on is not modelled.
-    pub fn clear_notifies(&mut self, time: u32) -> Result<(), Unsupported> {
+    pub fn clear_notifies(&mut self, time: u32) -> Result<(), GenieError> {
         let mut fx = Vec::new();
         self.end_notifies(time, &Surroundings::default(), &mut fx)?;
         if !fx.is_empty() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a completion stopping the action outside the full update",
             ));
         }
@@ -4150,7 +4189,7 @@ impl UnitAi {
     /// 0x38 ([`UnitAi::accept`]). A notify the AI does not take (any but 699) goes to the
     /// owner's slot 0x2e8 (`FUN_14162dab0`, the human player's alerts), which the slice does not
     /// hold.
-    pub fn post(&mut self, n: Notify, unit_state: u8) -> Result<(), Unsupported> {
+    pub fn post(&mut self, n: Notify, unit_state: u8) -> Result<(), GenieError> {
         let _ = self.accept(n, unit_state);
         Ok(())
     }
@@ -4223,7 +4262,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         if n.p[1] < 1 {
             self.end_notifies(time, at, fx)?;
             return Ok(DEAD);
@@ -4255,7 +4294,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         // the siege unit's slot 0x160 (FUN_140c2a8f0): with a top action's target or of class 54
         // it does not run; a computer player's first lets the units inside it go
         // (FUN_141225c40 with −1, −1)
@@ -4264,7 +4303,7 @@ impl UnitAi {
                 return Ok(false);
             }
             if computer {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a computer player's siege unit running away (FUN_141225c40)",
                 ));
             }
@@ -4287,12 +4326,14 @@ impl UnitAi {
             class_22 |= u.class == CLASS_22;
         }
         if computer && class_22 && 0.0 < at.speed {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer's unit running from class 22 (its group's runs)",
             ));
         }
         if computer && at.class == 20 {
-            return Err(Unsupported("a computer's transport ship running away"));
+            return Err(GenieError::unsupported(
+                "a computer's transport ship running away",
+            ));
         }
         let reach = at.speed * RUN_REACH;
         let mut d = crate::fmath::sqrt(vy * vy + vx * vx);
@@ -4332,7 +4373,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !uncon && self.current_action != -1 {
             return Ok(false);
         }
@@ -4403,7 +4444,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         if n.p[1] < 1 {
             self.end_notifies(time, at, fx)?;
             return Ok(DEAD);
@@ -4423,10 +4464,9 @@ impl UnitAi {
             self.idle_timer = 0;
             villager
         };
-        let home = self
-            .home
-            .as_mut()
-            .ok_or(Unsupported("a boar's unit AI without its own part"))?;
+        let home = self.home.as_mut().ok_or(GenieError::unsupported(
+            "a boar's unit AI without its own part",
+        ))?;
         home.furious = furious;
         Ok(BREAK)
     }
@@ -4462,7 +4502,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         if n.p[1] < 1 {
             self.end_notifies(time, at, fx)?;
             return Ok(DEAD);
@@ -4471,7 +4511,7 @@ impl UnitAi {
             return Ok(GO_ON);
         };
         if computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer villager's damage notify (its slot 0x50)",
             ));
         }
@@ -4493,7 +4533,7 @@ impl UnitAi {
             order,
             crate::ai_kinds::ORDER_MOVEMENT | crate::ai_kinds::ORDER_ENTER
         ) && 0.0
-            < at.anim_speed.ok_or(Unsupported(
+            < at.anim_speed.ok_or(GenieError::unsupported(
                 "a moving villager's damage notify without its animation speed",
             ))?;
         let ignores = moves
@@ -4508,7 +4548,7 @@ impl UnitAi {
             return Ok(GO_ON);
         }
         if attacker.owner != 0 {
-            return Err(Unsupported("a villager evading its attackers"));
+            return Err(GenieError::unsupported("a villager evading its attackers"));
         }
         // "I have a GAIA attacker": with an order not on the attacker, the current order goes back
         // into the queue at once (slot 0x30) and the order becomes the attack (700,
@@ -4547,7 +4587,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         alert_owner(computer)?;
         if n.p[1] < 1 {
             self.end_notifies(time, at, fx)?;
@@ -4598,9 +4638,9 @@ impl UnitAi {
         &mut self,
         at: &Surroundings,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         if self.current_action == TRADE_ACTION {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a trader's search for another dock or market (slot 0xf8, its Trade action)",
             ));
         }
@@ -4632,7 +4672,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         if n.p[1] < 1 {
             alert_owner(computer)?;
             self.end_notifies(time, at, fx)?;
@@ -4674,7 +4714,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         alert_owner(computer)?;
         if n.p[1] < 1 {
             self.end_notifies(time, at, fx)?;
@@ -4711,7 +4751,7 @@ impl UnitAi {
         computer: bool,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let mut best = (-1, FISHING_BUILD_FAR);
         for class in FISHING_BUILDS {
             let found = side.closest(&Search {
@@ -4752,7 +4792,7 @@ impl UnitAi {
     /// owner −1, the target point, the range `+0x5c`, the priority `+0x40`, the point shown,
     /// ready): a unit above state 2 or without an order takes none; else the order goes to the
     /// queue's end ([`UnitAi::queue_order`]).
-    fn queue_current(&mut self, at: &Surroundings) -> Result<(), Unsupported> {
+    fn queue_current(&mut self, at: &Surroundings) -> Result<(), GenieError> {
         let record = QueuedOrder {
             issuer: at.id,
             order: self.current_order,
@@ -4785,7 +4825,7 @@ impl UnitAi {
         computer: bool,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let new = self.attackers.binary_search(&n.caller).is_err();
         alert_owner(computer)?;
         if n.p[1] >= 1 && new && self.current_target != n.caller {
@@ -4836,11 +4876,11 @@ impl UnitAi {
         point: [f32; 3],
         at: &Surroundings,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.stop_current(true, at, fx)?;
         // the unit's stopAction goes with its hunt command, which runs it first
         if fx.pop() != Some(Effect::Stop) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a HuntObject whose stop the slice did not make",
             ));
         }
@@ -4864,7 +4904,7 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if 2 < at.state || self.current_order == -1 {
             return Ok(());
         }
@@ -4911,7 +4951,7 @@ impl UnitAi {
         world: Option<(&Surroundings, &mut dyn UnitSide, bool)>,
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if let Some(unit) = keep_from
             && self.current_order != -1
         {
@@ -4971,7 +5011,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !force && self.current_action != -1 {
             return Ok(false);
         }
@@ -5000,7 +5040,7 @@ impl UnitAi {
         any: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-    ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+    ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
         if matches!(self.ai_type, 13 | 15 | SIEGE_AI) {
             return side.may_attack(target, &self.seeker(at));
         }
@@ -5017,7 +5057,7 @@ impl UnitAi {
             // FUN_140c18b60
             17 => false,
             _ => {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "AttackObject's slot 0xa0 of a unit AI type not modelled",
                 ));
             }
@@ -5039,10 +5079,10 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if fx.contains(&Effect::Stop) {
             if fx.iter().any(|e| *e != Effect::Stop) {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an attack command after a stop with other effects pending",
                 ));
             }
@@ -5071,7 +5111,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let t = match at.unit(target) {
             Some(t) => *t,
             None => match side.seen_unit(target)? {
@@ -5118,7 +5158,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         match self.ai_type {
             // TribeHuntedAnimalUnitAIModule (FUN_140c26420): its damage notify evades
             2 => match n.kind {
@@ -5225,7 +5265,9 @@ impl UnitAi {
                         return Ok(BREAK);
                     }
                     if computer {
-                        return Err(Unsupported("a computer builder without a foundation"));
+                        return Err(GenieError::unsupported(
+                            "a computer builder without a foundation",
+                        ));
                     }
                     fx.push(Effect::Stop);
                     Ok(BREAK)
@@ -5238,9 +5280,9 @@ impl UnitAi {
                     }
                     Ok(GO_ON)
                 }
-                ACTION_EXECUTED if computer => {
-                    Err(Unsupported("a computer villager's executed action"))
-                }
+                ACTION_EXECUTED if computer => Err(GenieError::unsupported(
+                    "a computer villager's executed action",
+                )),
                 ACTION_EXECUTED => self.base_notify(n, time, at, computer, ai_rng, side, fx),
                 DAMAGED => self.villager_damaged(n, time, at, computer, ai_rng, side, fx),
                 // its own cases the slice does not model; any other is the base handler's
@@ -5250,7 +5292,9 @@ impl UnitAi {
                 | 0x20f
                 | 0x217..=0x21a
                 | 0x21c
-                | 0x21d => Err(Unsupported("a villager's notify the slice does not model")),
+                | 0x21d => Err(GenieError::unsupported(
+                    "a villager's notify the slice does not model",
+                )),
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the transport ship (FUN_140c2a580): its damage notify, and a missile's warning it
@@ -5327,10 +5371,10 @@ impl UnitAi {
             13 => match n.kind {
                 0x1fe => back_up(),
                 ACTION_EXECUTED | 0x20f if computer => {
-                    Err(Unsupported("a computer soldier's notify"))
+                    Err(GenieError::unsupported("a computer soldier's notify"))
                 }
                 0x202 if self.current_action == 0x25b => {
-                    Err(Unsupported("a healer's search notify"))
+                    Err(GenieError::unsupported("a healer's search notify"))
                 }
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
@@ -5345,7 +5389,7 @@ impl UnitAi {
                     self.end_notifies(time, at, fx)?;
                     Ok(DEAD)
                 }
-                DAMAGED => Err(Unsupported(
+                DAMAGED => Err(GenieError::unsupported(
                     "a tower's damage notify (its computer owner's AI, the base handler's case)",
                 )),
                 // "I am a defensive building and my current target has been destroyed, purging
@@ -5385,7 +5429,7 @@ impl UnitAi {
             // the action value (FUN_140c64b50) and breaks off
             19 => match n.kind {
                 SENT_OFF => self.base_notify(n, time, at, computer, ai_rng, side, fx),
-                0x202 => Err(Unsupported(
+                0x202 => Err(GenieError::unsupported(
                     "a livestock's notify 0x202 (its settings' test)",
                 )),
                 _ => {
@@ -5394,7 +5438,7 @@ impl UnitAi {
                 }
             },
             ARTIFACT_AI => self.artifact_notify(n, time, at, computer, ai_rng, side, fx),
-            _ => Err(Unsupported(
+            _ => Err(GenieError::unsupported(
                 "the notify handler of a unit-AI type not modelled",
             )),
         }
@@ -5420,7 +5464,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let stops = match n.kind {
             500
             | 0x1f6..=0x1f8
@@ -5474,7 +5518,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let found = side.closest(&Search {
             at: [at.position[0], at.position[1]],
             radius: search_radius(at.los, at.search_radius),
@@ -5511,7 +5555,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.artifact_idle(at, side, fx)? {
             self.remove_target();
             self.stop_current(true, at, fx)?;
@@ -5534,7 +5578,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         match n.kind {
             ACTION_COMPLETED => self.action_completed(n, at, computer, ai_rng, side, fx),
             ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, side, fx),
@@ -5589,7 +5633,9 @@ impl UnitAi {
                 }
                 Ok(GO_ON)
             }
-            _ => Err(Unsupported("a notify kind the base handler does not model")),
+            _ => Err(GenieError::unsupported(
+                "a notify kind the base handler does not model",
+            )),
         }
     }
 
@@ -5605,7 +5651,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let boar = at.class == 10 && at.combat_level == 1;
         if !boar
             && at.unit(n.p[0]).is_some()
@@ -5632,7 +5678,7 @@ impl UnitAi {
         n: Notify,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let radius = [n.p[0] as f32 / RADIUS_SCALE, n.p[1] as f32 / RADIUS_SCALE];
         let off = side.off_footprint(n.p[2], radius)?;
         if let Some([x, y]) = off.spot {
@@ -5714,7 +5760,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let action = self.current_action;
         if action != AUTO_SCOUT_ACTION {
             closest_undiscovered_tile()?;
@@ -5726,7 +5772,7 @@ impl UnitAi {
             return Ok(BREAK);
         }
         match self.current_order {
-            crate::ai_kinds::ORDER_SCOUT => Err(Unsupported(
+            crate::ai_kinds::ORDER_SCOUT => Err(GenieError::unsupported(
                 "a scout that finds no undiscovered tile (the player's slot 0x2e8 with 0x211)",
             )),
             AUTO_SCOUT_ORDER => {
@@ -5737,7 +5783,7 @@ impl UnitAi {
                     // computer player's AI would hear it); processing breaks
                     side.make_scout_map()?;
                     if computer && self.current_action == AUTO_SCOUT_ACTION {
-                        return Err(Unsupported(
+                        return Err(GenieError::unsupported(
                             "a computer player's AI told its scout found nothing (0x202)",
                         ));
                     }
@@ -5777,12 +5823,12 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
         if order != -1 {
             self.state_position = [at.position[0], at.position[1]];
             if order == crate::ai_kinds::ORDER_SCOUT {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a failed action on the scout order (the player's slot 0x2e8 with 0x211)",
                 ));
             }
@@ -5793,7 +5839,7 @@ impl UnitAi {
                 return Ok(PRODUCED);
             }
             if computer {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a computer player's failed attack without a new action",
                 ));
             }
@@ -5850,11 +5896,11 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
         if (order == 700 || n.p[2] == 0x202) && p0 == 600 {
             if self.retarget_disabled != 0 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an invalidated attack with retargeting off (+0x1d6)",
                 ));
             }
@@ -5863,7 +5909,7 @@ impl UnitAi {
                 return Ok(GO_ON);
             }
             if computer {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a computer player's invalidated attack (slot 0x130)",
                 ));
             }
@@ -5875,7 +5921,7 @@ impl UnitAi {
             action == p0
         } else {
             if matches!(order, 0x2d4 | 0x2bd) && p0 == 0x262 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an invalidated action 0x262 on order 0x2d4 or 0x2bd",
                 ));
             }
@@ -5905,7 +5951,7 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         let p1 = n.p[0];
         let order = self.current_order;
         let action = self.current_action;
@@ -5990,7 +6036,7 @@ impl UnitAi {
         keep_order: bool,
         at: &Surroundings,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.stop_with(
             keep_order,
             Some(([at.position[0], at.position[1]], at.class)),
@@ -6005,11 +6051,11 @@ impl UnitAi {
         keep_order: bool,
         place: Option<([f32; 2], i16)>,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let action = self.current_action;
         let order = self.current_order;
         if self.patrol_redraws() {
-            return Err(Unsupported("a stop on a patrol order"));
+            return Err(GenieError::unsupported("a stop on a patrol order"));
         }
         self.last_action = action;
         if !keep_order || action + 100 == order || matches!(order, PATROL | PATROL_2) {
@@ -6017,7 +6063,7 @@ impl UnitAi {
             self.last_order = order;
             self.current_order = -1;
             self.order_priority = -1;
-            let (position, class) = place.ok_or(Unsupported(
+            let (position, class) = place.ok_or(GenieError::unsupported(
                 "a stop ending an order without the unit's place",
             ))?;
             if class != CLASS_18 {
@@ -6149,7 +6195,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         computer: bool,
         ai: &mut Well512,
-    ) -> Result<Vec<Effect>, Unsupported> {
+    ) -> Result<Vec<Effect>, GenieError> {
         let mut fx = Vec::new();
         if !self.notifies.is_empty() || self.orders.is_empty() {
             return Ok(fx);
@@ -6174,7 +6220,7 @@ impl UnitAi {
         order: QueuedOrder,
         immediate: bool,
         in_front: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if 2 < unit_state {
             return Ok(false);
         }
@@ -6184,7 +6230,9 @@ impl UnitAi {
         if immediate {
             // the immediate branch is [`UnitAi::order_now`], which reads the unit's id and place
             // and gives effects; [`UnitAi::take_order_now`] is its entry
-            return Err(Unsupported("an immediate order for the unit AI's queue"));
+            return Err(GenieError::unsupported(
+                "an immediate order for the unit AI's queue",
+            ));
         }
         self.insert_order(order, in_front);
         Ok(true)
@@ -6212,7 +6260,7 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let mut k = 0;
         while k < self.orders.len() {
             if self.current_action != -1 && self.orders[k].priority < 100 {
@@ -6297,7 +6345,7 @@ impl UnitAi {
         place: Option<([f32; 2], i16)>,
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         if !o.ready {
             return Ok(0xe);
         }
@@ -6306,7 +6354,8 @@ impl UnitAi {
             .map(|(at, _, _)| ([at.position[0], at.position[1]], at.class))
             .or(place);
         let class = place.map_or(-1, |(_, class)| class);
-        let outside = Unsupported("an order on an object run outside the unit AI's update");
+        let outside =
+            GenieError::unsupported("an order on an object run outside the unit AI's update");
         let tile = |v: f32| crate::checkpoint::cvttss2si(v);
         let mv = |o: &QueuedOrder| AiMove {
             point: o.point,
@@ -6503,7 +6552,7 @@ impl UnitAi {
         id: i32,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-    ) -> Result<Option<UnitSeen>, Unsupported> {
+    ) -> Result<Option<UnitSeen>, GenieError> {
         if id == at.id {
             return Ok(Some(UnitSeen {
                 id,
@@ -6539,7 +6588,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         match self.ai_type {
             CIVILIAN => self.civilian_attack(target, at, side, fx),
             SOLDIER_AI => {
@@ -6569,7 +6618,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if self.current_target == target {
             return Ok(false);
         }
@@ -6598,7 +6647,7 @@ impl UnitAi {
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !force && self.current_action != -1 {
             return Ok(false);
         }
@@ -6647,7 +6696,7 @@ impl UnitAi {
         command: UnitCommand,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !force && self.current_action == action {
             return Ok(false);
         }
@@ -6672,7 +6721,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let Some(t) = Self::world_object(target, at, side)? else {
             return Ok(false);
         };
@@ -6697,7 +6746,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let Some(t) = Self::world_object(target, at, side)? else {
             self.stop_current(true, at, fx)?;
             return Ok(false);
@@ -6720,7 +6769,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !force && self.current_action != -1 {
             return Ok(false);
         }
@@ -6753,7 +6802,7 @@ impl UnitAi {
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let held = Self::world_object(target, at, side)?;
         if self.ai_type == CIVILIAN && held.is_none() {
             return Ok(false);
@@ -6778,7 +6827,7 @@ impl UnitAi {
         point: [f32; 3],
         force: bool,
         side: &mut dyn UnitSide,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !force && self.current_action != -1 {
             return Ok(false);
         }
@@ -6802,7 +6851,7 @@ impl UnitAi {
         over_wall: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !force && self.current_action != -1 {
             return Ok(false);
         }
@@ -6831,7 +6880,7 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !force && self.current_action != -1 {
             return Ok(false);
         }
@@ -6878,7 +6927,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
-    ) -> Result<u32, Unsupported> {
+    ) -> Result<u32, GenieError> {
         if Self::world_object(o.target, at, side)?.is_some() {
             fx.push(Effect::OrderOnTarget(*o));
             return Ok(1);
@@ -6954,7 +7003,7 @@ impl UnitAi {
         target: i32,
         force: bool,
         side: &mut dyn UnitSide,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !force && self.current_action != -1 {
             return Ok(false);
         }
@@ -6995,7 +7044,7 @@ impl UnitAi {
         place: ([f32; 2], i16),
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if 2 < unit_state || order.order == -1 {
             return Ok(());
         }
@@ -7018,7 +7067,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let class_20 = busy && at.class == CLASS_20;
         if !class_20
             && self.adjusted_idle_timeout < self.idle_timer
@@ -7053,7 +7102,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.secondary_timer != 0 {
             return Ok(());
         }
@@ -7088,7 +7137,7 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.current_target != -1
             && at.kind == BUILDING_KIND
             && !at.ranged
@@ -7113,12 +7162,14 @@ impl UnitAi {
         class: i16,
         player: usize,
         group: Option<GroupState>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.patrols(group) {
-            return Err(Unsupported("a patrol order's idle part"));
+            return Err(GenieError::unsupported("a patrol order's idle part"));
         }
         if matches!(class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
-            return Err(Unsupported("a unit of class 3 or 52 on action 0x26b/0x26c"));
+            return Err(GenieError::unsupported(
+                "a unit of class 3 or 52 on action 0x26b/0x26c",
+            ));
         }
         if self.current_action == GROUP_ASIDE_ACTION {
             if group.is_none_or(|g| !g.moving) {
@@ -7160,14 +7211,14 @@ impl UnitAi {
         at: &Surroundings,
         ai: &mut Well512,
         fx: &mut Vec<Effect>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let order = match (self.current_order, self.current_action) {
             (-1, -1) => -1,
             (-1, action) => action + 100,
             (order, _) => order,
         };
         if order == DEFEND_ORDER {
-            return Err(Unsupported("a defend order's processMisc"));
+            return Err(GenieError::unsupported("a defend order's processMisc"));
         }
         if order == FOLLOW_ORDER && self.follow(at, fx)? {
             return Ok(false);
@@ -7178,7 +7229,7 @@ impl UnitAi {
             && !matches!(self.current_order, 0x2c7 | 0x2dd | 0x323)
             && !at.group.is_some_and(|g| g.patrol);
         if leashed && self.patrol_path.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a stance's leash with patrol information (FUN_140f95e10)",
             ));
         }
@@ -7236,7 +7287,7 @@ impl UnitAi {
         computer: bool,
         action_state: Option<u8>,
         attack_listed: Option<bool>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let attack_order = self.current_order == ATTACK_ORDER;
         if attack_order && RETARGET_RANGE < weapon_range && !computer {
             return Ok(());
@@ -7271,7 +7322,7 @@ impl UnitAi {
         if matches!(held_action_state(action_state)?, 6 | 7) && !search {
             return Ok(());
         }
-        Err(Unsupported(
+        Err(GenieError::unsupported(
             "a unit AI's search for a better target (slot 0x538 with 9, then slot 0x520)",
         ))
     }
@@ -7281,11 +7332,7 @@ impl UnitAi {
     /// player's villager whose player's `+0x622` is 1 also stops on the attack order or action
     /// when its target, a player's object, is beyond its range plus 1 (`FUN_141193e30`), which
     /// is not modelled: `+0x622` is not held. It returns 9 (no retarget).
-    fn civilian_misc(
-        &mut self,
-        at: &Surroundings,
-        fx: &mut Vec<Effect>,
-    ) -> Result<(), Unsupported> {
+    fn civilian_misc(&mut self, at: &Surroundings, fx: &mut Vec<Effect>) -> Result<(), GenieError> {
         if self.current_order == ATTACK_ORDER && self.current_target == -1 {
             self.stop_current(false, at, fx)?;
         }
@@ -7301,7 +7348,7 @@ impl UnitAi {
     /// either axis gives the point its place (x, y, z); when the footprints' squared gap
     /// (`FUN_14118f8c0`) then exceeds the desired distance squared, the AI moves to it
     /// ([`UnitAi::move_to_object`] within the desired distance). True when the check ends there.
-    fn follow(&mut self, at: &Surroundings, fx: &mut Vec<Effect>) -> Result<bool, Unsupported> {
+    fn follow(&mut self, at: &Surroundings, fx: &mut Vec<Effect>) -> Result<bool, GenieError> {
         let target = match at.target {
             Some(t) if t.state <= 2 && t.visible => t,
             _ => {
@@ -7367,11 +7414,13 @@ impl UnitAi {
 
     /// The look-around check at the end of the full update (`LAB_140c6809c`): a timer past its
     /// timeout restarts with a timeout drawn around 5 s.
-    fn look_around(&mut self, computer: bool, ai: &mut Well512) -> Result<(), Unsupported> {
+    fn look_around(&mut self, computer: bool, ai: &mut Well512) -> Result<(), GenieError> {
         if self.look_around_timer > self.look_around_timeout {
             // the human branch; `FUN_14152b470` sends players allied with a computer elsewhere
             if computer {
-                return Err(Unsupported("look-around timer of a computer player"));
+                return Err(GenieError::unsupported(
+                    "look-around timer of a computer player",
+                ));
             }
             self.look_around_timer = 0;
             self.look_around_timeout = 4500 + ai.rand15() % 1000;
@@ -7409,9 +7458,9 @@ mod tests {
             at: &Surroundings,
             ai: &mut Well512,
             side: &mut dyn UnitSide,
-        ) -> Result<Option<AiMove>, Unsupported> {
+        ) -> Result<Option<AiMove>, GenieError> {
             if !self.is_idle() {
-                return Err(Unsupported("unit is not idle"));
+                return Err(GenieError::unsupported("unit is not idle"));
             }
             self.update(dt, world_time, computer, at, ai, side)
                 .map(|fx| first_move(&fx))
@@ -7479,16 +7528,11 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
 
-        fn attack(
-            &mut self,
-            target: i32,
-            force: bool,
-            _: &UnitAi,
-        ) -> Result<Attacked, Unsupported> {
+        fn attack(&mut self, target: i32, force: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
             self.attacks.push((target, force));
             Ok(Attacked {
                 attacks: true,
@@ -7500,7 +7544,7 @@ mod tests {
             self.under_attack = Some(value);
         }
 
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             self.stops.push(self.attacks.len());
             Ok(())
         }
@@ -7509,24 +7553,24 @@ mod tests {
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
-            Err(Unsupported("no world here"))
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
 
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
 
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
 
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
     }
 
@@ -7537,41 +7581,41 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
-            Err(Unsupported("no attack here"))
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+            Err(GenieError::unsupported("no attack here"))
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
-            Err(Unsupported("no world here"))
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
         fn off_footprint(
             &mut self,
             site: i32,
             radius: [f32; 2],
-        ) -> Result<OffFootprint, Unsupported> {
+        ) -> Result<OffFootprint, GenieError> {
             self.1.push((site, radius));
             Ok(self.0)
         }
@@ -7653,37 +7697,37 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
-            Err(Unsupported("no attack here"))
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+            Err(GenieError::unsupported("no attack here"))
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
-            Err(Unsupported("no world here"))
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
-        fn wait_solidify(&mut self, target: i32) -> Result<bool, Unsupported> {
+        fn wait_solidify(&mut self, target: i32) -> Result<bool, GenieError> {
             self.1.push(target);
             Ok(self.0)
         }
@@ -7813,40 +7857,40 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
-            Err(Unsupported("no attack here"))
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+            Err(GenieError::unsupported("no attack here"))
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
-            Err(Unsupported("no world here"))
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
         fn closest_resource(
             &mut self,
             search: ResourceSearch,
-        ) -> Result<Option<Gatherable>, Unsupported> {
+        ) -> Result<Option<Gatherable>, GenieError> {
             assert_eq!((search.point, search.min_state), (NO_POINT, 2));
             self.1
                 .push((search.kind, search.cap, search.site, search.current));
@@ -8046,7 +8090,7 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
             let id = self.found[self.searches];
             self.searches += 1;
             Ok(Found {
@@ -8058,12 +8102,7 @@ mod tests {
                 distance: -1,
             })
         }
-        fn attack(
-            &mut self,
-            target: i32,
-            force: bool,
-            _: &UnitAi,
-        ) -> Result<Attacked, Unsupported> {
+        fn attack(&mut self, target: i32, force: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
             self.attacks.push((target, force));
             Ok(Attacked {
                 attacks: true,
@@ -8071,30 +8110,30 @@ mod tests {
             })
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
-            Err(Unsupported("no world here"))
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
-        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
             Ok((id == self.seen.id).then_some(self.seen))
         }
     }
@@ -8159,7 +8198,7 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             self.patrol.clone()
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
             Ok(Found {
                 id: self.found,
                 enemies: self.found != -1,
@@ -8169,12 +8208,7 @@ mod tests {
                 distance: -1,
             })
         }
-        fn attack(
-            &mut self,
-            target: i32,
-            force: bool,
-            _: &UnitAi,
-        ) -> Result<Attacked, Unsupported> {
+        fn attack(&mut self, target: i32, force: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
             self.attacks.push((target, force));
             Ok(Attacked {
                 attacks: true,
@@ -8182,28 +8216,28 @@ mod tests {
             })
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
             Ok(Some((58, [10.0, 11.0, 0.0])))
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
     }
 
@@ -8926,7 +8960,7 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, search: &Search<'_>) -> Result<Found, Unsupported> {
+        fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
             let reach = match search.pick {
                 Pick::Closest { reach, .. } => reach,
                 _ => true,
@@ -8935,7 +8969,7 @@ mod tests {
                 .push((search.radius, search.classes.to_vec(), reach));
             Ok(self.found)
         }
-        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
             Ok(Attacked {
                 attacks: false,
                 posted: Vec::new(),
@@ -8944,30 +8978,30 @@ mod tests {
         fn set_under_attack(&mut self, value: bool) {
             self.under_attack = value;
         }
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
             Ok(None)
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
+        ) -> Result<Option<[i32; 2]>, GenieError> {
             Ok(None)
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
             Ok(None)
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
-        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
             Ok(self.owner.map(|owner| UnitSeen {
                 id,
                 owner,
@@ -10362,7 +10396,10 @@ mod tests {
         assert_eq!(u.idle_timer, 900);
         // past it without a target the timer restarts and processIdle runs: the tower's search
         let mut u = tc(-1);
-        assert_eq!(run(&mut u, &at), Err(Unsupported("no search here")));
+        assert_eq!(
+            run(&mut u, &at),
+            Err(GenieError::unsupported("no search here"))
+        );
         assert_eq!(u.idle_timer, 0);
         // a building without a missile and a single volley forgets its target, then searches
         let single = Surroundings {
@@ -10371,7 +10408,10 @@ mod tests {
             ..at
         };
         let mut u = tc(29826);
-        assert_eq!(run(&mut u, &single), Err(Unsupported("no search here")));
+        assert_eq!(
+            run(&mut u, &single),
+            Err(GenieError::unsupported("no search here"))
+        );
         assert_eq!((u.current_target, u.last_target), (-1, 29826));
         // with units inside it shoots more and keeps it
         let manned = Surroundings {
@@ -11524,7 +11564,9 @@ mod tests {
         );
         assert_eq!(
             u.target_block(&target_at, true, &mut rng(), &mut no_search, &mut fx),
-            Err(Unsupported("the patrol range of a unit AI's target"))
+            Err(GenieError::unsupported(
+                "the patrol range of a unit AI's target"
+            ))
         );
         // action 0x2c0 ends unless the group moves
         for (g, after) in [
@@ -11850,7 +11892,7 @@ mod tests {
         n: Notify,
         at: &Surroundings,
         computer: bool,
-    ) -> (Result<u32, Unsupported>, Vec<Effect>, Recorder) {
+    ) -> (Result<u32, GenieError>, Vec<Effect>, Recorder) {
         let mut side = Recorder::default();
         let mut fx = Vec::new();
         let r = u.handle(n, 0, at, computer, &mut rng(), &mut side, &mut fx);
@@ -12093,37 +12135,37 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
-            Err(Unsupported("no attack here"))
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+            Err(GenieError::unsupported("no attack here"))
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
-            Err(Unsupported("no world here"))
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
-        fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, Unsupported> {
+        fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, GenieError> {
             self.tested.push(point);
             if self.refusals == 0 {
                 return Ok(true);
@@ -13145,7 +13187,9 @@ mod tests {
         u.attackers.clear();
         assert_eq!(
             u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut Vec::new()),
-            Err(Unsupported("a call for help (AskForHelp, FUN_140c42ce0)"))
+            Err(GenieError::unsupported(
+                "a call for help (AskForHelp, FUN_140c42ce0)"
+            ))
         );
     }
 
@@ -13275,7 +13319,7 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, search: &Search<'_>) -> Result<Found, Unsupported> {
+        fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
             self.searched
                 .push((search.radius, search.classes.to_vec(), search.pick));
             Ok(if self.found.is_empty() {
@@ -13284,40 +13328,40 @@ mod tests {
                 self.found.remove(0)
             })
         }
-        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
-            Err(Unsupported("no attack here"))
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+            Err(GenieError::unsupported("no attack here"))
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
-            Err(Unsupported("no world here"))
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
-        fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, Unsupported> {
+        fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, GenieError> {
             Ok(true)
         }
-        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
             Ok(self.units.iter().find(|u| u.id == id).copied())
         }
-        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, Unsupported> {
+        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, GenieError> {
             Ok(self.reach)
         }
     }
@@ -13743,16 +13787,11 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
             self.searches += 1;
             Ok(self.found.unwrap_or(Found::NONE))
         }
-        fn attack(
-            &mut self,
-            target: i32,
-            force: bool,
-            _: &UnitAi,
-        ) -> Result<Attacked, Unsupported> {
+        fn attack(&mut self, target: i32, force: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
             self.attacks.push((target, force));
             Ok(Attacked {
                 attacks: true,
@@ -13760,30 +13799,30 @@ mod tests {
             })
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
             Ok(self.allowed)
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
-        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, Unsupported> {
+        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, GenieError> {
             Ok(self.reach)
         }
     }
@@ -14025,43 +14064,43 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
-            Err(Unsupported("no attack here"))
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+            Err(GenieError::unsupported("no attack here"))
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             Ok(())
         }
         fn may_attack(
             &mut self,
             _: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
-            Err(Unsupported("no world here"))
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
-        fn top_target_now(&mut self) -> Result<Option<i32>, Unsupported> {
+        fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
             Ok(self.top)
         }
-        fn target_flags(&mut self, id: i32) -> Result<Option<TargetFlags>, Unsupported> {
+        fn target_flags(&mut self, id: i32) -> Result<Option<TargetFlags>, GenieError> {
             Ok(self.flags.iter().find(|f| f.0 == id).map(|f| f.1))
         }
-        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
             Ok(self
                 .states
                 .iter()
@@ -14479,15 +14518,10 @@ mod tests {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
-        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn attack(
-            &mut self,
-            target: i32,
-            force: bool,
-            _: &UnitAi,
-        ) -> Result<Attacked, Unsupported> {
+        fn attack(&mut self, target: i32, force: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
             self.attacks.push((target, force));
             Ok(Attacked {
                 attacks: !self.refuses,
@@ -14495,7 +14529,7 @@ mod tests {
             })
         }
         fn set_under_attack(&mut self, _: bool) {}
-        fn stop(&mut self) -> Result<(), Unsupported> {
+        fn stop(&mut self) -> Result<(), GenieError> {
             self.stops += 1;
             Ok(())
         }
@@ -14503,51 +14537,51 @@ mod tests {
             &mut self,
             target: i32,
             _: &Seeker,
-        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
             Ok(self.seen_unit(target)?.map(|t| (t.class, t.position)))
         }
         fn seek_unexplored(
             &mut self,
             _: &UnitAi,
             _: &mut Well512,
-        ) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
-            Err(Unsupported("no search here"))
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
         }
-        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
-            Err(Unsupported("no world here"))
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
         }
-        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, Unsupported> {
+        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, GenieError> {
             Ok(self.reach)
         }
-        fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, Unsupported> {
+        fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, GenieError> {
             Ok(true)
         }
-        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
             Ok(self.world.iter().find(|u| u.id == id).copied())
         }
-        fn wait_solidify(&mut self, target: i32) -> Result<bool, Unsupported> {
+        fn wait_solidify(&mut self, target: i32) -> Result<bool, GenieError> {
             self.waits.push(target);
             Ok(!self.refuses)
         }
-        fn command(&mut self, command: UnitCommand) -> Result<bool, Unsupported> {
+        fn command(&mut self, command: UnitCommand) -> Result<bool, GenieError> {
             self.commands.push(command);
             Ok(!self.refuses)
         }
-        fn group_attack_stop(&mut self) -> Result<(), Unsupported> {
+        fn group_attack_stop(&mut self) -> Result<(), GenieError> {
             self.group_stops += 1;
             Ok(())
         }
         fn closest_resource(
             &mut self,
             search: ResourceSearch,
-        ) -> Result<Option<Gatherable>, Unsupported> {
+        ) -> Result<Option<Gatherable>, GenieError> {
             self.searches.push(search);
             Ok(self.resource)
         }
-        fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, Unsupported> {
+        fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, GenieError> {
             Ok(self
                 .classes
                 .iter()
@@ -14579,7 +14613,7 @@ mod tests {
         o: QueuedOrder,
         class: i16,
         side: &mut OrderSide,
-    ) -> (Result<u32, Unsupported>, Vec<Effect>, u32) {
+    ) -> (Result<u32, GenieError>, Vec<Effect>, u32) {
         let at = Surroundings {
             id: 9,
             position: [5.0, 6.0, 0.25],

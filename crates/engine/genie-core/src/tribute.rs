@@ -2,9 +2,9 @@
 //! `FUN_140e7d040`). A player with a market gives up to four of its resources to another, and
 //! pays the market's fee on top; what it lacks lowers both alike.
 
+use crate::GenieError;
 use crate::fmath::maxss;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The masters one of which a player needs to pay tribute (`FUN_1416259e0`: its tracker's count
 /// of the market, 84, or of 1647 above 0).
@@ -78,7 +78,7 @@ impl Turns {
         from: usize,
         to: usize,
         gifts: &[Gift; 4],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if from == to || !self.pays_tribute(from) {
             return Ok(());
         }
@@ -99,7 +99,7 @@ impl Turns {
             receiver.add_attribute(TRIBUTE_RECEIVED, given)?;
             receiver.add_attribute(TRIBUTE_FROM + i16::from(from as u8), given)?;
             if receiver.computer {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a computer player's AI told of a tribute (0x20a, slot 0x3c8)",
                 ));
             }

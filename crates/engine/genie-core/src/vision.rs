@@ -8,8 +8,8 @@
 //!
 //! 158041: the rebuild `FUN_141552df0`; the attribute setter `FUN_141616820` (attributes 50, 183).
 
+use crate::GenieError;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The visible bit no tile has that every player's mask carries.
 pub const NO_TILE: u64 = 1 << 29;
@@ -51,7 +51,7 @@ impl Turns {
     /// bits of each other player past Gaia it and who both count each other as allies (relation
     /// 0), and with attribute 183 not 0 the bits of every player past Gaia. The players' share
     /// flags (`+0x290`) and the third parties' table (`+0x2b0`, `+0x2b8`) are not held.
-    pub fn rebuild_vision(&mut self) -> Result<(), Unsupported> {
+    pub fn rebuild_vision(&mut self) -> Result<(), GenieError> {
         let n = self.players.len();
         let mut masks: Vec<[u64; 2]> = self
             .players
@@ -102,7 +102,7 @@ impl Turns {
             if SHARED_MASKS[1] < me.attributes.len()
                 && SHARED_MASKS.iter().any(|&i| attribute(i) != 0.0)
             {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a scenario's shared vision masks (attributes 285, 286)",
                 ));
             }

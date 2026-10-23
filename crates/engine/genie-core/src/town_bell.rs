@@ -3,8 +3,8 @@
 //! to, and the flag a garrison order sets (`FUN_1412067f0`). Saved as `mTownBellFlag`,
 //! `mBackToWork1` and `mBackToWork2`.
 
+use crate::GenieError;
 use crate::movement::footprint_gap_squared;
-use crate::unit_ai::Unsupported;
 
 /// One back-to-work record.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -189,7 +189,7 @@ impl crate::turn::Turns {
         player: usize,
         id: i32,
         activate: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some((owner, _)) = (id != -1).then(|| self.object(id)).flatten() else {
             return Ok(());
         };
@@ -211,7 +211,7 @@ impl crate::turn::Turns {
     /// with its count ([`crate::turn::Turns::garrisoned`]) and its bell flag (`+0x9dc`) set (its
     /// sound, slot 0x4c0, is not simulation); then [`crate::turn::Turns::shelter`] with the
     /// reach (`param_6` 1), no transports, not through the unit AIs.
-    pub(crate) fn ring_town_bell(&mut self, owner: usize, tc: i32) -> Result<(), Unsupported> {
+    pub(crate) fn ring_town_bell(&mut self, owner: usize, tc: i32) -> Result<(), GenieError> {
         let Some((_, t)) = self.object(tc) else {
             return Ok(());
         };
@@ -232,7 +232,7 @@ impl crate::turn::Turns {
             let m = self.master_of(owner, o.life.master_id)?;
             let (kind, class, master) = (m.kind, m.class, m.id);
             let takes_villagers = m.building.is_some_and(|b| b.garrison_type & 1 != 0);
-            let near = |t: &Self| -> Result<bool, Unsupported> {
+            let near = |t: &Self| -> Result<bool, GenieError> {
                 let (o_at, o_radius) = t.ground(id)?;
                 let gap = footprint_gap_squared(o_at, o_radius, at, radius);
                 // COMISS REACH, gap; JC: a gap above it, or a NaN, is out
@@ -260,7 +260,7 @@ impl crate::turn::Turns {
     /// 0x4c0, is not simulation). Then every unit its owner's tracker files under class 4
     /// (`FUN_14104f8f0`) and master 1808 (`FUN_14104f960`), in that order, not inside another
     /// (`+0x2f0`) goes back to work from where it is.
-    pub(crate) fn end_town_bell(&mut self, owner: usize, tc: i32) -> Result<(), Unsupported> {
+    pub(crate) fn end_town_bell(&mut self, owner: usize, tc: i32) -> Result<(), GenieError> {
         let Some((_, t)) = self.object(tc) else {
             return Ok(());
         };
@@ -301,7 +301,7 @@ impl crate::turn::Turns {
     /// work, from the last in; then the units its owner's tracker files under class 4 and master
     /// 1808 not inside another go back from where they are. The game screen's flag (`+0x1874`) is
     /// not simulation.
-    pub(crate) fn all_back_to_work(&mut self, player: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn all_back_to_work(&mut self, player: usize, id: i32) -> Result<(), GenieError> {
         let Some((owner, _)) = self.object(id) else {
             return Ok(());
         };
@@ -337,7 +337,7 @@ impl crate::turn::Turns {
     /// The building at `idx` of player `owner` lets each unit inside of type 70 or more that is a
     /// villager (class 4) or of master 1808 back to work, from the last in
     /// ([`crate::turn::Turns::back_to_work`]; its sound, slot 0x4c0, is not simulation).
-    fn workers_out(&mut self, owner: usize, idx: usize) -> Result<(), Unsupported> {
+    fn workers_out(&mut self, owner: usize, idx: usize) -> Result<(), GenieError> {
         let mut i = self.players[owner].objects[idx].garrison.len();
         while 0 < i {
             i -= 1;
@@ -359,7 +359,7 @@ impl crate::turn::Turns {
     /// Every unit player `owner`'s tracker files under class 4 (`FUN_14104f8f0`) and master
     /// 1808 (`FUN_14104f960`), in that order, not inside another (`+0x2f0`) goes back to work
     /// from where it is.
-    fn workers_back(&mut self, owner: usize) -> Result<(), Unsupported> {
+    fn workers_back(&mut self, owner: usize) -> Result<(), GenieError> {
         let tracker = &self.players[owner].tracker;
         let mut ids = tracker.class_list(i32::from(VILLAGER_CLASS)).to_vec();
         ids.extend_from_slice(tracker.list(i32::from(MASTER_1808)));
@@ -388,7 +388,7 @@ impl crate::turn::Turns {
         id: i32,
         work_on: Option<i32>,
         point: [f32; 2],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let Some(crate::order::Place::Live(up, ui)) = self.place(id) else {
             return Ok(false);
         };

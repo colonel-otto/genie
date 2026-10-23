@@ -28,9 +28,11 @@
     // a routine is ported whole, its documentation opens with the routine and its addresses
     clippy::too_many_lines,
     clippy::too_long_first_doc_paragraph,
-    // every error is `Unsupported`, which names the part the slice does not model
+    // every error is a `GenieError`, which names the part the slice does not model
     clippy::missing_errors_doc
 )]
+
+pub use genie_error::{ErrorKind, GenieError, GenieResult};
 
 pub mod abilities;
 pub mod ai_kinds;

@@ -5,9 +5,9 @@
 //! `0x140aa29e0`. A `MoveTo` in state 3 asks for a path (`FUN_14114e410`) and turns to state 4; in
 //! state 4 each update runs the motion step (object slot 193, [`Mover::motion`]).
 
+use crate::GenieError;
 use crate::movement::{Me, Motion, Mover, PathAsk, Planning, footprint_gap, footprint_gap_squared};
 use crate::spatial::Spatial;
-use crate::unit_ai::Unsupported;
 
 /// The `MoveTo` action's type, which word 9 adds when it is a unit's top action.
 pub const MOVE_TO: i16 = 1;
@@ -122,9 +122,10 @@ pub fn start_walk(
     goal: Goal,
     range: f32,
     quiet: bool,
-) -> Result<MoveTo, Unsupported> {
-    start_walk_or_give_up(walk, goal, range, quiet)?
-        .ok_or(Unsupported("a MoveTo whose unit cannot move on"))
+) -> Result<MoveTo, GenieError> {
+    start_walk_or_give_up(walk, goal, range, quiet)?.ok_or(GenieError::unsupported(
+        "a MoveTo whose unit cannot move on",
+    ))
 }
 
 /// [`start_walk`] for a `MoveTo` that handles the motion step giving up in the update its
@@ -135,7 +136,7 @@ pub fn start_walk_or_give_up(
     goal: Goal,
     range: f32,
     quiet: bool,
-) -> Result<Option<MoveTo>, Unsupported> {
+) -> Result<Option<MoveTo>, GenieError> {
     start_walk_asked(walk, goal, range, quiet, PathAsk::default())
 }
 
@@ -148,20 +149,20 @@ pub fn start_walk_asked(
     range: f32,
     quiet: bool,
     ask: PathAsk,
-) -> Result<Option<MoveTo>, Unsupported> {
+) -> Result<Option<MoveTo>, GenieError> {
     let (point, target, radius) = match goal {
         Goal::Target(id) => {
             let t = walk
                 .world
                 .get_known(id)?
-                .ok_or(Unsupported("a MoveTo whose target is gone"))?;
+                .ok_or(GenieError::unsupported("a MoveTo whose target is gone"))?;
             (t.position, id, t.radius)
         }
         Goal::Point(p) => (p, -1, [0.0, 0.0]),
     };
     let mover = walk
         .mover
-        .ok_or(Unsupported("a walker without movement state"))?;
+        .ok_or(GenieError::unsupported("a walker without movement state"))?;
     let ground = [mover.stats.radius[0], mover.stats.radius[1]];
     let squared = if target == -1 {
         let gap = footprint_gap(walk.me.position, ground, point, radius);
@@ -190,17 +191,19 @@ pub fn start_walk_asked(
 /// (`set_state` 1, `0x140aa29e0`, which also sets the unit's idle sprite and clears its `+0x7b8`,
 /// and `FUN_14114d810` its facet; the slice holds neither). A unit that cannot go on (`set_state` 2
 /// or 13) and a `MoveTo` without its path are not modelled.
-pub fn walk_on(walk: Walk<'_>) -> Result<MoveTo, Unsupported> {
-    walk_or_give_up(walk)?.ok_or(Unsupported("a MoveTo whose unit cannot move on"))
+pub fn walk_on(walk: Walk<'_>) -> Result<MoveTo, GenieError> {
+    walk_or_give_up(walk)?.ok_or(GenieError::unsupported(
+        "a MoveTo whose unit cannot move on",
+    ))
 }
 
 /// [`walk_on`] for a `MoveTo` that handles the motion step giving up (it returns 1): None then.
-pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, Unsupported> {
+pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, GenieError> {
     let mover = walk
         .mover
-        .ok_or(Unsupported("a walker without movement state"))?;
+        .ok_or(GenieError::unsupported("a walker without movement state"))?;
     if mover.paths.is_empty() {
-        return Err(Unsupported("the path request (FUN_14114e410)"));
+        return Err(GenieError::unsupported("the path request (FUN_14114e410)"));
     }
     let mut plan = walk.plan;
     let mut me = walk.me;
@@ -243,11 +246,11 @@ impl Follow {
 /// # Errors
 ///
 /// A walker without movement state.
-pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Unsupported> {
+pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), GenieError> {
     let mover = walk
         .mover
         .as_deref_mut()
-        .ok_or(Unsupported("a walker without movement state"))?;
+        .ok_or(GenieError::unsupported("a walker without movement state"))?;
     mover.follow_path_end(point);
     mover.move_to_point = Some(point);
     Ok(())
@@ -264,17 +267,17 @@ pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Unsup
 /// obstruction manager's buffer radius and ignore list, which nothing set, none), and walks on;
 /// else it tells the unit (notify 0x1fc), turns to state 3 and the motion step runs on. True when
 /// the `MoveTo` turns to state 3.
-pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow, Unsupported> {
+pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow, GenieError> {
     let t = walk
         .world
         .get_known(target)?
-        .ok_or(Unsupported("a MoveTo whose target is gone"))?;
+        .ok_or(GenieError::unsupported("a MoveTo whose target is gone"))?;
     let point = walk
         .mover
         .as_deref()
-        .ok_or(Unsupported("a walker without movement state"))?
+        .ok_or(GenieError::unsupported("a walker without movement state"))?
         .move_to_point
-        .ok_or(Unsupported(
+        .ok_or(GenieError::unsupported(
             "a MoveTo to a target whose point the slice does not hold",
         ))?;
     let (dx, dy) = (point[0] - t.position[0], point[1] - t.position[1]);
@@ -287,7 +290,7 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
     let mover = walk
         .mover
         .as_deref()
-        .ok_or(Unsupported("a walker without movement state"))?;
+        .ok_or(GenieError::unsupported("a walker without movement state"))?;
     if mover.walks_to_path_end()? {
         let me = walk
             .world
@@ -334,7 +337,8 @@ pub struct MoveToAction {
 /// `DAT_142eb99cc`).
 const ARRIVED: f32 = crate::image::move_to::ARRIVED;
 /// A `MoveTo` to an object the world does not hold.
-pub(crate) const TARGET_LACKING: Unsupported = Unsupported("a MoveTo to an object the world lacks");
+pub(crate) const TARGET_LACKING: GenieError =
+    GenieError::unsupported("a MoveTo to an object the world lacks");
 /// Livestock's `MoveTo` to a town centre walks to its place less this on both axes
 /// (`FUN_140aa0df0`, `DAT_142eae8d0`).
 const TOWN_CENTRE_OFFSET: f32 = crate::image::artifact::TOWN_CENTRE_OFFSET;
@@ -382,7 +386,7 @@ impl MoveToAction {
         target: i32,
         range: f32,
         run: bool,
-    ) -> Result<Self, Unsupported> {
+    ) -> Result<Self, GenieError> {
         let t = world.get_known(target)?.ok_or(TARGET_LACKING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         mover.move_to_point = Some(t.position);
@@ -425,7 +429,7 @@ impl MoveToAction {
         (target, state): (i32, u8),
         range: f32,
         (run, livestock): (bool, bool),
-    ) -> Result<Self, Unsupported> {
+    ) -> Result<Self, GenieError> {
         let t = world.get_known(target)?.ok_or(TARGET_LACKING)?;
         let at = t.position;
         let goal = if livestock && t.master == TOWN_CENTRE {
@@ -503,10 +507,12 @@ impl MoveToAction {
     /// One update (`0x140aa2240`), its state 3 with what the unit's AI says (`ask`,
     /// [`start_walk_asked`]). A target that is gone (the update's first check: notify 0x1fb,
     /// code 4) is not modelled.
-    pub fn update(&mut self, mut walk: Walk<'_>, ask: PathAsk) -> Result<MoveStep, Unsupported> {
+    pub fn update(&mut self, mut walk: Walk<'_>, ask: PathAsk) -> Result<MoveStep, GenieError> {
         let mut step = MoveStep::default();
         if self.target != -1 && walk.world.get_known(self.target)?.is_none() {
-            return Err(Unsupported("a MoveTo of its own whose target is gone"));
+            return Err(GenieError::unsupported(
+                "a MoveTo of its own whose target is gone",
+            ));
         }
         match self.state {
             MoveTo::Moving => {
@@ -541,7 +547,11 @@ impl MoveToAction {
                 }
                 let goal = match (self.target, self.goal) {
                     (-1, Some(point)) => Goal::Point(point),
-                    (-1, None) => return Err(Unsupported("a MoveTo of its own without a goal")),
+                    (-1, None) => {
+                        return Err(GenieError::unsupported(
+                            "a MoveTo of its own without a goal",
+                        ));
+                    }
                     (id, _) => Goal::Target(id),
                 };
                 // its sprite, the running or the walking one, sets the unit's speed

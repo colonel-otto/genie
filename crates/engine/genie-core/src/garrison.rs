@@ -4,6 +4,7 @@
 //! the garrison work on it (slot 0x7e8 with task filter 3); and a building's test whether it takes
 //! a unit in (`FUN_14120eb10`).
 
+use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::fmath::{at_most_or_unordered, maxss};
 use crate::masters::{Master, Masters, Task};
@@ -12,7 +13,6 @@ use crate::movement::footprint_gap_squared;
 use crate::order::{BUILDING, GARRISON, Work};
 use crate::tasks::Diplomacy;
 use crate::turn::{Turns, World};
-use crate::unit_ai::Unsupported;
 
 /// The squared footprint gap past which a garrison order sends no unit (`FUN_141621220` with 0:
 /// no limit).
@@ -23,9 +23,9 @@ pub(crate) const NEARBY: f32 = crate::image::garrison::NEARBY;
 /// The squared footprint gap within which the town bell reaches (its ring `FUN_14163a650`, its
 /// end `FUN_14163ab80`, and `FUN_141621220` with `param_6` 1: `DAT_142ef3e70`, 625.0, 25 tiles).
 /// An enter into an object the world holds asleep.
-const ENTER_SLEEPING: Unsupported = Unsupported("an enter into a sleeping object");
+const ENTER_SLEEPING: GenieError = GenieError::unsupported("an enter into a sleeping object");
 /// An enter without its owner's masters.
-pub(crate) const NO_MASTERS: Unsupported = Unsupported("an enter without the masters");
+pub(crate) const NO_MASTERS: GenieError = GenieError::unsupported("an enter without the masters");
 pub(crate) const TOWN_BELL_REACH: f32 = crate::image::garrison::TOWN_BELL_REACH;
 
 /// The shelters `FUN_141621220` sends units to: the buildings (its `param_3`), the transports
@@ -254,7 +254,7 @@ pub fn share(
     masters: &Masters,
     reload_powerup: f32,
     rate: f32,
-) -> Result<f32, Unsupported> {
+) -> Result<f32, GenieError> {
     if rate == 0.0 {
         return Ok(0.0);
     }
@@ -287,7 +287,7 @@ impl Turns {
         bp: usize,
         b: &crate::turn::Unit,
         unit: Option<i32>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let capacity = i32::from(self.master_of(bp, b.life.master_id)?.garrison);
         let with = match unit {
             Some(u) => self.garrisoned(u)? + 1,
@@ -313,7 +313,7 @@ impl Turns {
         task: &Task,
         point: [f32; 3],
         clears: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let target = self
             .object(target)
             .and_then(|(tp, t)| {
@@ -324,7 +324,7 @@ impl Turns {
                     target
                 })
             })
-            .ok_or(Unsupported("an Enter whose building is gone"))?;
+            .ok_or(GenieError::unsupported("an Enter whose building is gone"))?;
         let (tp, t) = self.object(target).expect("found above");
         let tm = self.master_of(tp, t.life.master_id)?;
         let (class, height) = (i32::from(tm.class), t.position[2]);
@@ -350,18 +350,18 @@ impl Turns {
         self.clear_actions(player, idx)?;
         let unit = &self.players[player].objects[idx];
         if unit.life.inside.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an Enter of a unit inside an object (state 13)",
             ));
         }
         let (tp, t) = self.object(target).expect("found above");
         if !self.has_room(tp, t, Some(id))? {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an Enter into a building without room (state 11)",
             ));
         }
         let (t, (gap, speed), meeting) = self.entering(player, idx, target, task.work_range)?;
-        let walking = action.walk_again(&t, gap, speed, &mut || meeting)?;
+        let walking = action.walk_again(&t, gap, speed, &mut || meeting.clone())?;
         self.players[player].objects[idx].enter = Some(action);
         match walking {
             Walking::Enter => self.enter_now(player, idx, target),
@@ -379,7 +379,7 @@ impl Turns {
         idx: usize,
         target: i32,
         range: f32,
-    ) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), Unsupported>), Unsupported> {
+    ) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), GenieError>), GenieError> {
         let id = self.players[player].objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
         let tm = self.master_of(tp, t.life.master_id)?.clone();
@@ -406,7 +406,7 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-    ) -> Result<([f32; 2], u8), Unsupported> {
+    ) -> Result<([f32; 2], u8), GenieError> {
         self.entering(player, idx, target, 0.0)?.2
     }
 
@@ -419,7 +419,7 @@ impl Turns {
         &mut self,
         transport: i32,
         to: [f32; 3],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(crate::order::Place::Live(tp, ti)) = self.place(transport) else {
             return Err(UNREACHED);
         };
@@ -440,7 +440,7 @@ impl Turns {
 
     /// The transport's slot 0x340 (`FUN_141216c50`, [`Turns::move_aside`]: range 0, forced,
     /// running) to `to`, where it meets an entering unit.
-    pub(crate) fn ship_move(&mut self, ship: i32, to: [f32; 3]) -> Result<(), Unsupported> {
+    pub(crate) fn ship_move(&mut self, ship: i32, to: [f32; 3]) -> Result<(), GenieError> {
         let Some(crate::order::Place::Live(p, i)) = self.place(ship) else {
             return Err(UNREACHED);
         };
@@ -456,7 +456,7 @@ impl Turns {
     /// The enter at the Enter's start ([`crate::turn::Unit::enter_building`] into its target,
     /// any player's live object, then the start's own `set_state(1)`); the load it gives goes to
     /// the owner's attributes at once.
-    fn enter_now(&mut self, player: usize, idx: usize, target: i32) -> Result<(), Unsupported> {
+    fn enter_now(&mut self, player: usize, idx: usize, target: i32) -> Result<(), GenieError> {
         let inside = self
             .players
             .iter()
@@ -488,7 +488,9 @@ impl Turns {
                 left_group: None,
             };
             if !unit.enter_building(building, inside, &mut w)? {
-                return Err(Unsupported("an Enter in reach that did not get in"));
+                return Err(GenieError::unsupported(
+                    "an Enter in reach that did not get in",
+                ));
             }
             unit.entered(&mut w)?;
             Ok((w.firepower, w.left_group))
@@ -518,7 +520,7 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(crate::order::Place::Live(tp, ti)) = self.place(target) else {
             return Err(ENTER_SLEEPING);
         };
@@ -584,7 +586,7 @@ impl Turns {
         flag: u8,
         unit_type: i32,
         sound: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         for &id in ids {
             let Some(idx) = self.players[player].objects.iter().position(|u| u.id == id) else {
                 continue;
@@ -605,7 +607,7 @@ impl Turns {
                     _ => None,
                 };
                 let Some((cp, ci)) = building else {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "an unload of a unit inside a transport (or a sleeping building)",
                     ));
                 };
@@ -627,7 +629,7 @@ impl Turns {
                 if unit.garrison.is_empty() {
                     continue;
                 }
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an unload of a unit with units inside (a transport)",
                 ));
             }
@@ -636,7 +638,7 @@ impl Turns {
                 .as_ref()
                 .is_some_and(|ai| !ai.building_orders.is_empty())
             {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an unload toward a building's command queue location",
                 ));
             }
@@ -676,17 +678,15 @@ impl Turns {
     /// order each other's, [`crate::settings::Settings::cheats_enabled`]; the cheat `+0xb12` is not held): a building
     /// lets out, from the last in, each unit inside of type 70 or more that is a villager (class
     /// 4) or of master 1808, back to its work ([`Turns::back_to_work`]).
-    pub(crate) fn go_back_to_work(
-        &mut self,
-        player: usize,
-        ids: &[i32],
-    ) -> Result<(), Unsupported> {
+    pub(crate) fn go_back_to_work(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
         for id in self.checked_units(player, ids) {
             let Some((p, _)) = self.object(id) else {
                 continue;
             };
             let Some(idx) = self.players[p].objects.iter().position(|u| u.id == id) else {
-                return Err(Unsupported("a GO_BACK_TO_WORK of a sleeping object"));
+                return Err(GenieError::unsupported(
+                    "a GO_BACK_TO_WORK of a sleeping object",
+                ));
             };
             let b = &self.players[p].objects[idx];
             if self.master_of(p, b.life.master_id)?.kind != BUILDING {
@@ -727,7 +727,7 @@ impl Turns {
         &mut self,
         from: Option<(usize, usize)>,
         id: i32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         use crate::town_bell::RecordTarget;
         let (up, ui) = match from {
             Some(_) => self.live_inside(id)?,
@@ -786,7 +786,7 @@ impl Turns {
         unit: &crate::turn::Unit,
         flag: u8,
         param: i32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let id = unit.id;
         let master = self.master_of(player, unit.life.master_id)?;
         let class = master.class;
@@ -827,10 +827,10 @@ impl Turns {
     }
 
     /// The player and live index of the unit `id` inside a building, whoever's it is.
-    fn live_inside(&self, id: i32) -> Result<(usize, usize), Unsupported> {
+    fn live_inside(&self, id: i32) -> Result<(usize, usize), GenieError> {
         match self.place(id) {
             Some(crate::order::Place::Live(p, i)) => Ok((p, i)),
-            _ => Err(Unsupported(
+            _ => Err(GenieError::unsupported(
                 "a unit inside a building outside the live lists",
             )),
         }
@@ -864,7 +864,7 @@ impl Turns {
         id: i32,
         point: [f32; 2],
         (work_on, _sound): (Option<i32>, bool),
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let b = &self.players[player].objects[building];
         let bid = b.id;
         let bm = self.master_of(player, b.life.master_id)?.clone();
@@ -877,7 +877,7 @@ impl Turns {
             Some(point)
         };
         if point[0] == NO_POINT && gather.is_none() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an unload without a gather point (the unit AI's command queue location)",
             ));
         }
@@ -889,15 +889,17 @@ impl Turns {
             return Err(SIEGE_UNLOAD);
         }
         if made.class == WHOLE_SHARE_CLASS || made.class == 58 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a class 42 or livestock unit leaving a building (its player's counts)",
             ));
         }
         if !unit.garrison.is_empty() {
-            return Err(Unsupported("a unit with units inside leaving a building"));
+            return Err(GenieError::unsupported(
+                "a unit with units inside leaving a building",
+            ));
         }
         let Ok(spot) = self.spot_beside(player, building, &made, toward) else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an unload whose unit finds no spot (its later rings)",
             ));
         };
@@ -907,7 +909,7 @@ impl Turns {
         // volleys (the building's rate by its player's masters, the unit's share by its own)
         let share = if made.kind == COMBAT_KIND {
             let (Some(own), Some(theirs)) = (self.masters.get(player), self.masters.get(up)) else {
-                return Err(Unsupported("an unload without the masters"));
+                return Err(GenieError::unsupported("an unload without the masters"));
             };
             let b = &self.players[player].objects[building];
             let unit = &self.players[up].objects[ui];
@@ -933,10 +935,9 @@ impl Turns {
             v.sight_off_los(bid, b_at, b_radius, false, 5, false);
         }
         // slot 0x58: on the map at the spot (new_position: its tile's list, its sight)
-        let mut placed = self
-            .spatial
-            .come_out(id)
-            .ok_or(Unsupported("a unit inside a building without its record"))?;
+        let mut placed = self.spatial.come_out(id).ok_or(GenieError::unsupported(
+            "a unit inside a building without its record",
+        ))?;
         placed.position = at;
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         placed.obstruction =
@@ -994,7 +995,7 @@ impl Turns {
             _ => point,
         };
         if to[0] == NO_POINT || to[1] == NO_POINT {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an unloaded unit without a point (its unit AI's slots 0xb0 and 0x1c0)",
             ));
         }
@@ -1013,7 +1014,7 @@ impl Turns {
         building: i32,
         player: usize,
         master: i16,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.takes_in_as(building, player, master, true, true)
     }
 
@@ -1036,7 +1037,7 @@ impl Turns {
         master: i16,
         others: bool,
         unchecked: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let Some(unit) = self.masters.get(player).and_then(|m| m.get(master)) else {
             return Ok(false);
         };
@@ -1068,9 +1069,9 @@ impl Turns {
             return Ok(false);
         }
         let (bp, b) = match b.annex_of {
-            Some(main) => self
-                .object(main)
-                .ok_or(Unsupported("an annex whose main building is gone"))?,
+            Some(main) => self.object(main).ok_or(GenieError::unsupported(
+                "an annex whose main building is gone",
+            ))?,
             None => (bp, b),
         };
         let bm = self.master_of(bp, b.life.master_id)?;
@@ -1097,7 +1098,7 @@ impl Turns {
     /// running `raider_build_countdown` (`+0x9a0`, `FUN_1411cb850`/`FUN_1411d6ad0`). Not
     /// modelled: an object inside that holds others (the slice reads no `+0x9a8`) and, in a
     /// building, a unit with its countdown set (`+0xc2c`, which the slice does not keep).
-    pub(crate) fn garrisoned(&self, building: i32) -> Result<i32, Unsupported> {
+    pub(crate) fn garrisoned(&self, building: i32) -> Result<i32, GenieError> {
         let holds = |id: i32| {
             self.players.iter().any(|q| {
                 q.objects
@@ -1122,12 +1123,12 @@ impl Turns {
                 }
                 let kind = self.master_of(p, u.life.master_id)?.kind;
                 if is_building && kind == COMBAT_KIND && u.raider_countdown != 0 {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a unit inside a building with its raider_build_countdown (+0xc2c)",
                     ));
                 }
                 if holds(u.id) {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "an object inside a building that holds others (+0x9a8)",
                     ));
                 }
@@ -1159,7 +1160,7 @@ impl Turns {
         target: i32,
         through_ai: bool,
         nearby: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some((tp, t)) = self.object(target) else {
             return Ok(());
         };
@@ -1208,7 +1209,7 @@ impl Turns {
     /// another (`+0x2f0`, `FUN_141188da0`), whose master's `garrison_type` has bit 0
     /// (`FUN_1411ccb60` with 1), each with its count ([`Turns::garrisoned`]); then
     /// [`Turns::shelter`] (`FUN_141622450`).
-    pub(crate) fn seek_shelter(&mut self, player: usize, ids: &[i32]) -> Result<(), Unsupported> {
+    pub(crate) fn seek_shelter(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
         let cap = if self.players[player].computer {
             COMPUTER_IDS
         } else {
@@ -1245,7 +1246,7 @@ impl Turns {
         let counts = buildings
             .iter()
             .map(|&b| self.garrisoned(b))
-            .collect::<Result<Vec<_>, Unsupported>>()?;
+            .collect::<Result<Vec<_>, GenieError>>()?;
         let shelters = Shelters {
             buildings,
             transports: Vec::new(),
@@ -1263,7 +1264,7 @@ impl Turns {
         tp: usize,
         target: i32,
         master: i16,
-    ) -> Result<Shelters, Unsupported> {
+    ) -> Result<Shelters, GenieError> {
         let mut shelters = Shelters::default();
         let key = self.lines.base(i32::from(master));
         let (at, radius) = self.ground(target)?;
@@ -1291,11 +1292,13 @@ impl Turns {
     }
 
     /// The place and master radii of the object `id` (what `FUN_14118f8c0` reads of it).
-    pub(crate) fn ground(&self, id: i32) -> Result<([f32; 3], [f32; 2]), Unsupported> {
+    pub(crate) fn ground(&self, id: i32) -> Result<([f32; 3], [f32; 2]), GenieError> {
         self.spatial
             .get_known(id)?
             .map(|p| (p.position, p.radius))
-            .ok_or(Unsupported("a garrison's object without a place"))
+            .ok_or(GenieError::unsupported(
+                "a garrison's object without a place",
+            ))
     }
 
     /// `FUN_141621220`: each of `units` pairs with each building of `shelters` (type 80) whose
@@ -1319,7 +1322,7 @@ impl Turns {
         shelters: &Shelters,
         near: bool,
         through_ai: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let reach = if near { TOWN_BELL_REACH } else { FAR };
         let all: Vec<i32> = shelters
             .buildings
@@ -1333,7 +1336,7 @@ impl Turns {
         for &building in &all {
             let (bp, b) = self
                 .object(building)
-                .ok_or(Unsupported("a garrison's building is gone"))?;
+                .ok_or(GenieError::unsupported("a garrison's building is gone"))?;
             let bm = self.master_of(bp, b.life.master_id)?;
             capacities.push((bm.kind == BUILDING, i32::from(bm.garrison), bm.class));
         }
@@ -1341,11 +1344,11 @@ impl Turns {
         for (i, &id) in units.iter().enumerate() {
             let (p, u) = self
                 .object(id)
-                .ok_or(Unsupported("a garrison's unit is gone"))?;
+                .ok_or(GenieError::unsupported("a garrison's unit is gone"))?;
             let own = self.master_of(p, u.life.master_id)?;
             let (copy, master, class) = (own.copy_id, own.id, own.class);
             // COMISS reach, gap; JBE: a gap at the reach or past it, or a NaN, pairs nothing
-            let gap_to = |shelter: i32| -> Result<f32, Unsupported> {
+            let gap_to = |shelter: i32| -> Result<f32, GenieError> {
                 let (at, r) = self.ground(id)?;
                 let (sat, sr) = self.ground(shelter)?;
                 Ok(footprint_gap_squared(at, r, sat, sr))
@@ -1421,7 +1424,7 @@ impl Turns {
         b: &crate::turn::Unit,
         player: usize,
         master: i16,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if self.master_of(bp, b.life.master_id)?.kind < COMBAT_KIND {
             return Ok(false);
         }
@@ -1441,12 +1444,12 @@ impl Turns {
         building: i32,
         going: &[i32],
         through_ai: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let (bp, b) = self
             .object(building)
-            .ok_or(Unsupported("a garrison's building is gone"))?;
+            .ok_or(GenieError::unsupported("a garrison's building is gone"))?;
         // the splitter tests a unit with a unit AI only
-        let keeps = |id: i32| -> Result<bool, Unsupported> {
+        let keeps = |id: i32| -> Result<bool, GenieError> {
             let (p, u) = self.object(id).expect("a going unit");
             if u.ai.is_none() {
                 return Ok(true);
@@ -1463,7 +1466,7 @@ impl Turns {
         let loose = self.loose_units_kept(going, &|id| kept.contains(&id))?;
         for id in loose {
             let Some(crate::order::Place::Live(p, idx)) = self.place(id) else {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a garrison of a unit the slice does not hold live",
                 ));
             };
@@ -1526,8 +1529,8 @@ const SIEGE_CLASS: i16 = 13;
 
 /// An unload of a siege building or tower (class 13: its spot search `FUN_141192d10` and the
 /// unit's leave), not modelled.
-pub(crate) const SIEGE_UNLOAD: Unsupported =
-    Unsupported("an unload of a siege building (class 13)");
+pub(crate) const SIEGE_UNLOAD: GenieError =
+    GenieError::unsupported("an unload of a siege building (class 13)");
 
 /// A unit's Enter action (`RGE_Action_Enter`, type 3): it walks to a building or a transport and
 /// enters it.
@@ -1637,8 +1640,8 @@ impl EnterAction {
         t: &EnterTarget,
         gap: f32,
         speed: f32,
-        meeting: &mut impl FnMut() -> Result<([f32; 2], u8), Unsupported>,
-    ) -> Result<Walking, Unsupported> {
+        meeting: &mut impl FnMut() -> Result<([f32; 2], u8), GenieError>,
+    ) -> Result<Walking, GenieError> {
         self.move_to = None;
         self.state = WALK;
         if t.in_reach {
@@ -1661,10 +1664,12 @@ impl EnterAction {
 
     /// The `MoveTo`'s start (`0x140aa2100` with 1): beyond [`ARRIVED`] of the target's footprint
     /// (`gap`) state 3, or 13 for a unit without speed (not modelled); else state 1.
-    fn walk_start(gap: f32, speed: f32) -> Result<MoveTo, Unsupported> {
+    fn walk_start(gap: f32, speed: f32) -> Result<MoveTo, GenieError> {
         if ARRIVED < gap {
             if speed == 0.0 {
-                return Err(Unsupported("an Enter's MoveTo of a unit without speed"));
+                return Err(GenieError::unsupported(
+                    "an Enter's MoveTo of a unit without speed",
+                ));
             }
             return Ok(MoveTo::Start);
         }
@@ -1694,8 +1699,8 @@ impl EnterAction {
         range: f32,
         gap_squared: f32,
         target_speed: f32,
-        tiles: impl FnOnce() -> Result<bool, Unsupported>,
-    ) -> Result<bool, Unsupported> {
+        tiles: impl FnOnce() -> Result<bool, GenieError>,
+    ) -> Result<bool, GenieError> {
         if range * range < gap_squared {
             return Ok(false);
         }
@@ -1722,20 +1727,22 @@ impl EnterAction {
         mut walk: Walk<'_>,
         target: Option<EnterTarget>,
         (gap, speed): (f32, f32),
-        mut meeting: impl FnMut() -> Result<([f32; 2], u8), Unsupported>,
-        mut reaches: impl FnMut(&mut Walk<'_>, [f32; 3]) -> Result<bool, Unsupported>,
-    ) -> Result<EnterStep, Unsupported> {
+        mut meeting: impl FnMut() -> Result<([f32; 2], u8), GenieError>,
+        mut reaches: impl FnMut(&mut Walk<'_>, [f32; 3]) -> Result<bool, GenieError>,
+    ) -> Result<EnterStep, GenieError> {
         let mut step = EnterStep::default();
         let Some(t) = target else {
-            return Err(Unsupported("an Enter whose building is gone (state 11)"));
+            return Err(GenieError::unsupported(
+                "an Enter whose building is gone (state 11)",
+            ));
         };
         if 3 <= t.state || !t.allied {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an Enter whose building died or is not allied (state 11)",
             ));
         }
         if !t.room {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an Enter whose building has no room (state 11)",
             ));
         }
@@ -1790,7 +1797,7 @@ impl EnterAction {
                     }
                     Some(MoveTo::Failed) => 3,
                     Some(MoveTo::Waiting) => {
-                        return Err(Unsupported("an Enter's waiting MoveTo"));
+                        return Err(GenieError::unsupported("an Enter's waiting MoveTo"));
                     }
                 };
                 match code {
@@ -1814,7 +1821,7 @@ impl EnterAction {
                     _ => {}
                 }
             }
-            _ => return Err(Unsupported("an Enter state not modelled")),
+            _ => return Err(GenieError::unsupported("an Enter state not modelled")),
         }
         Ok(step)
     }
@@ -1830,10 +1837,10 @@ impl EnterAction {
         walk: &mut Walk<'_>,
         t: &EnterTarget,
         (gap, speed): (f32, f32),
-        meeting: &mut impl FnMut() -> Result<([f32; 2], u8), Unsupported>,
-        reaches: &mut impl FnMut(&mut Walk<'_>, [f32; 3]) -> Result<bool, Unsupported>,
+        meeting: &mut impl FnMut() -> Result<([f32; 2], u8), GenieError>,
+        reaches: &mut impl FnMut(&mut Walk<'_>, [f32; 3]) -> Result<bool, GenieError>,
         step: &mut EnterStep,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.move_to.is_some()
             && let Some(m) = walk.mover.as_deref_mut()
         {
@@ -1864,11 +1871,11 @@ const HALF_TILE: f32 = crate::image::garrison::HALF_TILE;
 
 /// An Enter whose transport cannot reach where it meets the unit (`set_state(13)` in
 /// `set_state(4)`), which is not modelled.
-pub(crate) const UNREACHED: Unsupported =
-    Unsupported("an Enter's transport that cannot reach the unit (state 13)");
+pub(crate) const UNREACHED: GenieError =
+    GenieError::unsupported("an Enter's transport that cannot reach the unit (state 13)");
 
 /// What [`meeting`] (`FUN_140a85f30`) reads of an Enter's target.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct MeetingTarget {
     /// It has room for the unit (slot 0x198 with the unit).
     pub room: bool,
@@ -1881,7 +1888,7 @@ pub struct MeetingTarget {
     /// Its place, x and y.
     pub position: [f32; 2],
     /// Its top action's point (`FUN_140a7be40`, `FUN_140a7be50`), or why the slice has not got it.
-    pub action_point: Result<[f32; 2], Unsupported>,
+    pub action_point: Result<[f32; 2], GenieError>,
 }
 
 /// `FUN_140a85f30`: where an Enter meets its target and the code its `set_state(4)` reads (1:
@@ -1896,9 +1903,9 @@ pub struct MeetingTarget {
 pub fn meeting(
     t: &MeetingTarget,
     unit: [f32; 2],
-    landing: impl FnOnce() -> Result<Option<[i32; 2]>, Unsupported>,
+    landing: impl FnOnce() -> Result<Option<[i32; 2]>, GenieError>,
     beach: impl FnOnce() -> bool,
-) -> Result<([f32; 2], u8), Unsupported> {
+) -> Result<([f32; 2], u8), GenieError> {
     let at = (t.position, 0);
     if !t.room || t.speed <= 0.0 {
         return Ok(at);
@@ -1919,7 +1926,7 @@ pub fn meeting(
     if t.class == SIEGE_CLASS || !matches!(t.state, 11 | 4 | 3) {
         return Ok(at);
     }
-    Ok((t.action_point?, 0))
+    Ok((t.action_point.clone()?, 0))
 }
 
 /// `FUN_141157840` (a unit's slot 0x428, its last argument 1): from tile `from` (a transport's)
@@ -1931,8 +1938,8 @@ pub fn meeting(
 pub fn landing_tile(
     from: [i32; 2],
     to: [i32; 2],
-    mut lands: impl FnMut([i32; 2], [f32; 2]) -> Result<bool, Unsupported>,
-) -> Result<Option<[i32; 2]>, Unsupported> {
+    mut lands: impl FnMut([i32; 2], [f32; 2]) -> Result<bool, GenieError>,
+) -> Result<Option<[i32; 2]>, GenieError> {
     let (dx, dy) = (to[0].wrapping_sub(from[0]), to[1].wrapping_sub(from[1]));
     let (fx, fy) = (dx as f32, dy as f32);
     if fx == 0.0 && fy == 0.0 {
@@ -1966,9 +1973,9 @@ pub fn walled_off(
     me: [f32; 2],
     them: [f32; 2],
     map: [i32; 2],
-    mut stands: impl FnMut(i32, i32) -> Result<bool, Unsupported>,
-    mut buildings: impl FnMut(i32, i32) -> Result<usize, Unsupported>,
-) -> Result<bool, Unsupported> {
+    mut stands: impl FnMut(i32, i32) -> Result<bool, GenieError>,
+    mut buildings: impl FnMut(i32, i32) -> Result<usize, GenieError>,
+) -> Result<bool, GenieError> {
     let (mx, my) = (cvttss2si(me[0]), cvttss2si(me[1]));
     let (tx, ty) = (cvttss2si(them[0]), cvttss2si(them[1]));
     let (x0, y0) = (mx.min(tx), my.min(ty));
@@ -1997,8 +2004,8 @@ pub(crate) fn meeting_target(
     t: &crate::turn::Unit,
     tm: &Master,
     room: bool,
-) -> Result<MeetingTarget, Unsupported> {
-    if let Some(e) = t.unmodelled_action {
+) -> Result<MeetingTarget, GenieError> {
+    if let Some(e) = t.unmodelled_action.clone() {
         return Err(e);
     }
     let action_point = match (t.top_action_kind(), t.move_to) {
@@ -2020,8 +2027,8 @@ pub(crate) fn meeting_target(
 }
 
 /// A transport's top action whose point the slice does not keep (`FUN_140a7be40`).
-const UNPLACED: Unsupported =
-    Unsupported("an Enter's transport under an action the slice does not place");
+const UNPLACED: GenieError =
+    GenieError::unsupported("an Enter's transport under an action the slice does not place");
 
 /// [`meeting`] for `unit` (with its movement state `stats`) and its target `t`: the shore on the
 /// way from the target's tile to the unit's ([`landing_tile`]): a beach
@@ -2034,15 +2041,19 @@ pub(crate) fn meeting_point(
     unit: (i32, [f32; 3], &crate::movement::MoveStats),
     spatial: &crate::spatial::Spatial,
     zones: &mut crate::zones::Zones,
-) -> Result<([f32; 2], u8), Unsupported> {
+) -> Result<([f32; 2], u8), GenieError> {
     let (id, [ux, uy, _], stats) = unit;
     let terrain = spatial.terrain.as_ref();
     let landing = || {
-        let terrain = terrain.ok_or(Unsupported("the map's zones without its terrain"))?;
+        let terrain = terrain.ok_or(GenieError::unsupported(
+            "the map's zones without its terrain",
+        ))?;
         let values = terrain
             .restrictions
             .get(stats.restriction)
-            .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+            .ok_or(GenieError::unsupported(
+                "a restriction the slice's data has not got",
+            ))?;
         let [w, h] = spatial.map;
         let map = zones.of(w, h, &terrain.kinds, values);
         let own = map.zone(cvttss2si(ux), cvttss2si(uy));
@@ -2073,13 +2084,13 @@ pub(crate) fn enter_reach(
     (id, stats, moved_at): (i32, &crate::movement::MoveStats, [f32; 3]),
     (target, target_mover): (i32, Option<&crate::movement::Mover>),
     range: f32,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     let me = spatial
         .get_known(id)?
-        .ok_or(Unsupported("an entering unit without a place"))?;
-    let them = spatial
-        .get_known(target)?
-        .ok_or(Unsupported("an Enter's building without a place"))?;
+        .ok_or(GenieError::unsupported("an entering unit without a place"))?;
+    let them = spatial.get_known(target)?.ok_or(GenieError::unsupported(
+        "an Enter's building without a place",
+    ))?;
     let gap = footprint_gap_squared(me.position, me.radius, them.position, them.radius);
     let speed = target_mover.map_or(0.0, |m| m.stats.speed);
     let them_at = target_mover.map_or(them.position, |m| m.moved_at);
@@ -2099,13 +2110,9 @@ pub(crate) fn enter_reach(
             |x, y| {
                 let mut n = 0;
                 for (_, o) in spatial.objects_on(x, y) {
-                    let m =
-                        masters
-                            .get(o.player)
-                            .and_then(|m| m.get(o.master))
-                            .ok_or(Unsupported(
-                                "an object on a tile of a master the slice lacks",
-                            ))?;
+                    let m = masters.get(o.player).and_then(|m| m.get(o.master)).ok_or(
+                        GenieError::unsupported("an object on a tile of a master the slice lacks"),
+                    )?;
                     n += usize::from(m.kind == BUILDING);
                 }
                 Ok(n)
@@ -2127,12 +2134,12 @@ pub(crate) fn enter_view(
     unit: &crate::turn::Unit,
     (t, tm, room): (&crate::turn::Unit, &Master, bool),
     range: f32,
-) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), Unsupported>), Unsupported> {
+) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), GenieError>), GenieError> {
     let building = tm.kind == BUILDING;
     let mover = unit.mover.as_ref();
-    let stats = mover
-        .map(|m| m.stats)
-        .ok_or(Unsupported("an Enter's MoveTo of a unit without speed"))?;
+    let stats = mover.map(|m| m.stats).ok_or(GenieError::unsupported(
+        "an Enter's MoveTo of a unit without speed",
+    ))?;
     let moved_at = mover.map_or(unit.position, |m| m.moved_at);
     let target_mover = if building { None } else { t.mover.as_ref() };
     let in_reach = enter_reach(
@@ -2175,7 +2182,7 @@ pub(crate) fn ship_reaches(
     world: &crate::spatial::Spatial,
     plan: &mut crate::movement::Planning<'_>,
     to: [f32; 3],
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     let Some(m) = ship.mover.as_ref() else {
         return Ok(false);
     };
@@ -2330,7 +2337,7 @@ pub(crate) mod tests {
             in_reach: false,
             building: true,
         };
-        let never = || -> Result<([f32; 2], u8), Unsupported> { panic!("a building's point") };
+        let never = || -> Result<([f32; 2], u8), GenieError> { panic!("a building's point") };
         let mut far = EnterAction::new(9149, [104.0, 47.0, 0.0], 1.0, 3);
         assert_eq!(
             far.walk_again(&tc, 3.5, 0.8, &mut never.clone()),
@@ -2358,7 +2365,7 @@ pub(crate) mod tests {
         // the reach is the footprints' squared gap against the range squared (COMISS/JBE: a NaN
         // gap is in); a target with speed within a range of 1 (COMISS/JC: a NaN range is not
         // tested) asks the tiles about the two
-        let no_tiles = || -> Result<bool, Unsupported> { panic!("no tile test") };
+        let no_tiles = || -> Result<bool, GenieError> { panic!("no tile test") };
         assert_eq!(EnterAction::in_reach(1.0, 1.0, 0.0, no_tiles), Ok(true));
         assert_eq!(EnterAction::in_reach(1.0, 1.01, 0.0, no_tiles), Ok(false));
         assert_eq!(
@@ -2604,19 +2611,22 @@ pub(crate) mod tests {
         for t in [
             MeetingTarget {
                 room: false,
-                ..ship
+                ..ship.clone()
             },
-            MeetingTarget { speed: 0.0, ..ship },
+            MeetingTarget {
+                speed: 0.0,
+                ..ship.clone()
+            },
             MeetingTarget {
                 speed: -1.0,
-                ..ship
+                ..ship.clone()
             },
         ] {
             assert_eq!(at_place(t), Ok(([79.5, 92.5], 0)));
         }
         let nan = MeetingTarget {
             speed: f32::NAN,
-            ..ship
+            ..ship.clone()
         };
         assert_eq!(
             meeting(&nan, unit, || Ok(Some([81, 89])), no_beach),
@@ -2629,11 +2639,11 @@ pub(crate) mod tests {
             action_point: Ok([60.0, 70.0]),
             ..ship
         };
-        assert_eq!(at_place(moving), Ok(([60.0, 70.0], 0)));
+        assert_eq!(at_place(moving.clone()), Ok(([60.0, 70.0], 0)));
         assert_eq!(
             at_place(MeetingTarget {
                 class: 13,
-                ..moving
+                ..moving.clone()
             }),
             Ok(([79.5, 92.5], 0))
         );

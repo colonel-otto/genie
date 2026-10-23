@@ -15,7 +15,7 @@ use crate::turn::{
     BUILDING_KIND, BuildingDeath, CASTLE, CASTLES, MONASTERIES, MONASTERY, RESTORED_FOUNDATION,
     Turns, WONDER, WONDERS,
 };
-use crate::unit_ai::{Notify, OWNER_CHANGED, Unsupported};
+use crate::unit_ai::{GenieError, Notify, OWNER_CHANGED};
 
 /// The unit a drop-site search goes from ([`drop_site_search`]).
 pub(in crate::turn) struct Seeker<'a, 'b> {
@@ -50,11 +50,13 @@ pub(in crate::turn) fn drop_site_search(
     at: [f32; 3],
     mut seeker: Option<Seeker<'_, '_>>,
     outside: bool,
-) -> Result<Option<i32>, Unsupported> {
+) -> Result<Option<i32>, GenieError> {
     const AT_WORK: [i16; 2] = [0x7d, 0x7c];
     let [x, y, _] = at;
     if seeker.as_ref().is_some_and(|s| s.class == 21) {
-        return Err(Unsupported("a drop-site search of class 21 (its gap test)"));
+        return Err(GenieError::unsupported(
+            "a drop-site search of class 21 (its gap test)",
+        ));
     }
     let own_zone = seeker.as_ref().map(|s| s.zones.zone(x as i32, y as i32));
     let mut best: Option<i32> = None;
@@ -64,9 +66,11 @@ pub(in crate::turn) fn drop_site_search(
         if !sites.contains(&o.life.master_id) || o.life.state != 2 {
             continue;
         }
-        let master = masters.get(o.life.master_id).ok_or(Unsupported(
-            "a drop site of a master the slice does not have",
-        ))?;
+        let master = masters
+            .get(o.life.master_id)
+            .ok_or(GenieError::unsupported(
+                "a drop site of a master the slice does not have",
+            ))?;
         if let (Some(s), Some(zone)) = (seeker.as_ref(), own_zone)
             && s.zones.zone(o.position[0] as i32, o.position[1] as i32) != zone
         {
@@ -150,7 +154,7 @@ pub(in crate::turn) fn closest_resource_of(
     others: &[Unit],
     (kind, cap, site): (u8, i32, i32),
     (current, min_state, point): (i32, u8, [f32; 2]),
-) -> Result<(i32, Option<i32>), Unsupported> {
+) -> Result<(i32, Option<i32>), GenieError> {
     use crate::gather_search::{self, Candidate};
     /// The site masters whose search starts from their footprint in any zone.
     const DOCKS: [i16; 2] = [45, 2172];
@@ -163,33 +167,35 @@ pub(in crate::turn) fn closest_resource_of(
             .find(|u| u.id == site)
             .map(|u| (c.player, u))
             .or_else(|| c.foreign.find(site))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a resource search's drop site the slice does not hold",
             ))?;
         let m = c
             .every
             .get(sp)
             .and_then(|m| m.get(s.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a resource search's drop site of a master the slice lacks",
             ))?;
         let footprint = DOCKS.contains(&m.id) || {
             let restriction = unit
                 .mover
                 .as_ref()
-                .ok_or(Unsupported("a resource search without movement state"))?
+                .ok_or(GenieError::unsupported(
+                    "a resource search without movement state",
+                ))?
                 .stats
                 .restriction;
             let [w, h] = c.spatial.map;
-            let terrain = c
-                .spatial
-                .terrain
-                .as_ref()
-                .ok_or(Unsupported("the map's zones without its terrain"))?;
+            let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
+                "the map's zones without its terrain",
+            ))?;
             let values = terrain
                 .restrictions
                 .get(restriction)
-                .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+                .ok_or(GenieError::unsupported(
+                    "a restriction the slice's data has not got",
+                ))?;
             let zones = c.zones.of(w, h, &terrain.kinds, values);
             let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
             zone(s.position) == zone(unit.position)
@@ -201,23 +207,26 @@ pub(in crate::turn) fn closest_resource_of(
             footprint,
         })
     };
-    let masters = c.masters.ok_or(Unsupported(
+    let masters = c.masters.ok_or(GenieError::unsupported(
         "a resource search without its player's masters",
     ))?;
-    let master = masters.get(unit.life.master_id).ok_or(Unsupported(
-        "a searcher of a master the slice does not have",
+    let master = masters
+        .get(unit.life.master_id)
+        .ok_or(GenieError::unsupported(
+            "a searcher of a master the slice does not have",
+        ))?;
+    let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+        "a resource search without movement state",
     ))?;
-    let mover = unit
-        .mover
-        .as_ref()
-        .ok_or(Unsupported("a resource search without movement state"))?;
     let mask = mover.stats.restriction_mask;
     let (player, me_id, foreign, every) = (c.player, unit.id, c.foreign, c.every);
     let candidate = |id: i32, owner: usize, u: &Unit, position: [f32; 3]| {
         let m = every
             .get(owner)
             .and_then(|m| m.get(u.life.master_id))
-            .ok_or(Unsupported("an object of a master the slice does not have"))?;
+            .ok_or(GenieError::unsupported(
+                "an object of a master the slice does not have",
+            ))?;
         Ok(Candidate {
             id,
             player: owner,
@@ -236,7 +245,7 @@ pub(in crate::turn) fn closest_resource_of(
     };
     let me = candidate(me_id, player, unit, unit.position)?;
     let spatial: &Spatial = c.spatial;
-    let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, Unsupported> {
+    let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
         spatial
             .objects_on(x, y)
             .map(|(id, p)| {
@@ -248,7 +257,9 @@ pub(in crate::turn) fn closest_resource_of(
                     .find(|u| u.id == id)
                     .map(|u| (player, u))
                     .or_else(|| foreign.find(id))
-                    .ok_or(Unsupported("an object on a tile the slice does not hold"))?;
+                    .ok_or(GenieError::unsupported(
+                        "an object on a tile the slice does not hold",
+                    ))?;
                 candidate(id, owner, u, p.position)
             })
             .collect()
@@ -339,13 +350,16 @@ pub(in crate::turn) fn release_own(
     masters: Option<&Masters>,
     id: i32,
     by: Releaser,
-) -> Result<(), Unsupported> {
-    let u = others.iter_mut().find(|u| u.id == id).ok_or(Unsupported(
-        "a release of an object not in the unit's live list",
-    ))?;
+) -> Result<(), GenieError> {
+    let u = others
+        .iter_mut()
+        .find(|u| u.id == id)
+        .ok_or(GenieError::unsupported(
+            "a release of an object not in the unit's live list",
+        ))?;
     let kind = masters
         .and_then(|m| m.get(u.life.master_id))
-        .ok_or(Unsupported(
+        .ok_or(GenieError::unsupported(
             "a released object of a master the slice does not have",
         ))?
         .kind;
@@ -379,7 +393,7 @@ pub(crate) fn released(
     kind: u8,
     listed: bool,
     by: Releaser,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     if listed && let Some(i) = u.attacking_units.iter().position(|&t| t == by.id) {
         let _ = u.attacking_units.remove(i);
     }
@@ -416,11 +430,7 @@ impl Turns {
     /// owner's watched list (`FUN_141091310`), a recyclable master's missile goes to the pool of
     /// type 60 (the world's `+0x1d8`), and it leaves the mesh. Every step runs; returns the
     /// world's leave of the place that the slice does not model.
-    pub(in crate::turn) fn leave_world(
-        &mut self,
-        p: usize,
-        gone: &Unit,
-    ) -> Result<(), Unsupported> {
+    pub(in crate::turn) fn leave_world(&mut self, p: usize, gone: &Unit) -> Result<(), GenieError> {
         self.track_remove(p, gone.id, gone.life.master_id);
         let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
         forget_resource(&mut self.spatial, master, gone.id, gone.position);
@@ -468,7 +478,7 @@ impl Turns {
         &self,
         id: i32,
         viewer: usize,
-    ) -> Result<Option<crate::unit_ai::Seen>, Unsupported> {
+    ) -> Result<Option<crate::unit_ai::Seen>, GenieError> {
         for (p, player) in self.players.iter().enumerate() {
             if let Some(u) = player
                 .objects
@@ -480,7 +490,7 @@ impl Turns {
                     .masters
                     .get(p)
                     .and_then(|m| m.get(u.life.master_id))
-                    .ok_or(Unsupported(
+                    .ok_or(GenieError::unsupported(
                         "a unit AI's target of a master the slice does not have",
                     ))?;
                 let [x, y, _] = u.position;
@@ -505,7 +515,9 @@ impl Turns {
             }
         }
         match self.spatial.get(id) {
-            Some(_) => Err(Unsupported("a unit AI's target the slice cannot read")),
+            Some(_) => Err(GenieError::unsupported(
+                "a unit AI's target the slice cannot read",
+            )),
             None => Ok(None),
         }
     }
@@ -579,7 +591,7 @@ impl Turns {
     /// `damaged_lately_timer` and its annexes' hit points (`+0xbc0`..), then each razing
     /// ([`crate::damage::Razed`]: the history event of the attacker's player, the attribute adds
     /// in their order).
-    pub(in crate::turn) fn set_victim(&mut self, v: &Victim) -> Result<(), Unsupported> {
+    pub(in crate::turn) fn set_victim(&mut self, v: &Victim) -> Result<(), GenieError> {
         let Some((q, j)) = self.players.iter().enumerate().find_map(|(q, player)| {
             player
                 .objects
@@ -665,9 +677,9 @@ impl Turns {
         q: usize,
         j: usize,
         kill: crate::damage::Kill,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.players[q].computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer player's killed object (its AI's slot 0x2f0)",
             ));
         }
@@ -676,13 +688,13 @@ impl Turns {
             .masters
             .get(q)
             .and_then(|m| m.get(u.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a killed object of a master the slice does not have",
             ))?
             .clone();
         let ap = kill.attacker_player;
         if master.class == 4 {
-            let (bp, by) = self.object(kill.attacker).ok_or(Unsupported(
+            let (bp, by) = self.object(kill.attacker).ok_or(GenieError::unsupported(
                 "a killed villager's attacker the slice does not hold",
             ))?;
             if matches!(self.master_of(bp, by.life.master_id)?.class, 9 | 10) {
@@ -713,7 +725,7 @@ impl Turns {
     ///
     /// An object the slice does not hold, and an attribute whose change the slice does not
     /// model.
-    pub(crate) fn count_kill(&mut self, id: i32, killer: usize) -> Result<(), Unsupported> {
+    pub(crate) fn count_kill(&mut self, id: i32, killer: usize) -> Result<(), GenieError> {
         let (q, u) = self.object(id).ok_or(crate::build::NOT_HELD)?;
         let master = u
             .own_master
@@ -728,7 +740,7 @@ impl Turns {
     /// unless its class is one of the non-military ones (`FUN_141188b20`) `ap` counts a kill
     /// (attribute 20) and `q` a loss (154); `ap` counts it against `q` (300 + `q`) and `q`
     /// against `ap` (325 + `ap`); both count its paid cost (170 and 152, and 400 + `q`).
-    fn count_kill_of(&mut self, q: usize, master: &Master, ap: usize) -> Result<(), Unsupported> {
+    fn count_kill_of(&mut self, q: usize, master: &Master, ap: usize) -> Result<(), GenieError> {
         const PEACEFUL: [i16; 26] = [
             1, 3, 5, 7, 8, 9, 10, 11, 14, 15, 16, 27, 29, 30, 31, 32, 33, 34, 38, 39, 40, 48, 52,
             58, 60, 63,
@@ -752,7 +764,7 @@ impl Turns {
     /// attributes ([`Turns::hand_over_attributes`]). Its only callers give livestock, which
     /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
     /// on the Player stream).
-    pub(in crate::turn) fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), Unsupported> {
+    pub(in crate::turn) fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), GenieError> {
         let mut unit = std::mem::take(&mut self.players[q].objects[j]);
         let changed = change_hands(
             &mut unit,
@@ -799,7 +811,7 @@ impl Turns {
         old: usize,
         new: usize,
         u: &Unit,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(m) = u.own_master.as_deref() else {
             return Ok(());
         };
@@ -901,7 +913,7 @@ pub(in crate::turn) fn task_target_with<'a>(
     steps: usize,
     find: &impl Fn(i32) -> Option<(usize, &'a Unit)>,
     every: &'a [Masters],
-) -> Result<Option<TaskTarget<'a>>, Unsupported> {
+) -> Result<Option<TaskTarget<'a>>, GenieError> {
     let mut id = id;
     for _ in 0..steps {
         match find(id).and_then(|(_, u)| u.annex_of) {
@@ -915,7 +927,9 @@ pub(in crate::turn) fn task_target_with<'a>(
     let master = every
         .get(player)
         .and_then(|m| m.get(u.life.master_id))
-        .ok_or(Unsupported("an object of a master the slice does not have"))?;
+        .ok_or(GenieError::unsupported(
+            "an object of a master the slice does not have",
+        ))?;
     let [powerup, max_powerup] = u.hp_powerups;
     Ok(Some(TaskTarget {
         id,
@@ -948,7 +962,7 @@ pub(in crate::turn) fn task_search<'m>(
     general: &TaskTarget<'_>,
     filter: i16,
     dip: &impl Diplomacy,
-) -> Result<Option<(crate::masters::Task, Option<&'m Master>)>, Unsupported> {
+) -> Result<Option<(crate::masters::Task, Option<&'m Master>)>, GenieError> {
     let own = actor.master;
     let find = |list: &Master, filter: i16| {
         crate::tasks::find_task(list, actor, Some(t), Some(general), None, filter, dip)
@@ -1021,7 +1035,7 @@ impl Turns {
     /// below 99999, `DAT_142ef9008`); then slot 0x140 (`FUN_141070c90`): the work command toward
     /// it at its place, else at the cart's own (slot 0x7e8: no carried-resource test, any task;
     /// `+0x888`'s count is not held). A cart with a target moves to it (slot 0x138): not modelled.
-    pub(crate) fn cart_search(&mut self, p: usize, id: i32, state: u8) -> Result<(), Unsupported> {
+    pub(crate) fn cart_search(&mut self, p: usize, id: i32, state: u8) -> Result<(), GenieError> {
         const CART_REACH: f32 = crate::image::turn::CART_REACH;
         let Some(idx) = self.players[p].objects.iter().position(|u| u.id == id) else {
             return Ok(());
@@ -1035,7 +1049,7 @@ impl Turns {
         };
         let found = if current == -1 && !self.players[p].computer {
             if self.players[p].objects[idx].mover.is_none() {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a mule cart's search without its movement state (a moving building's setup)",
                 ));
             }
@@ -1092,7 +1106,7 @@ impl Turns {
                         found.push(f);
                     }
                 }
-                Ok::<_, Unsupported>(found)
+                Ok::<_, GenieError>(found)
             })();
             self.players[p].objects[idx] = cart;
             let found = result?;
@@ -1138,7 +1152,7 @@ impl Turns {
             {
                 self.move_to_object(p, idx, target, at)?;
             }
-            Ok::<_, Unsupported>(())
+            Ok::<_, GenieError>(())
         })();
         self.players[p].objects[idx].life.state = built;
         result
@@ -1194,12 +1208,14 @@ pub(crate) fn combat_dies(
     master: &Master,
     spatial: &mut Spatial,
     pathing: &mut Pathing,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     if u.pasture != -1 || u.my_pasture != -1 {
-        return Err(Unsupported("a dying unit in a pasture (FUN_141189ca0)"));
+        return Err(GenieError::unsupported(
+            "a dying unit in a pasture (FUN_141189ca0)",
+        ));
     }
     if matches!(master.class, 1 | 13 | 43) {
-        return Err(Unsupported("a dying unit of class 1, 13 or 43"));
+        return Err(GenieError::unsupported("a dying unit of class 1, 13 or 43"));
     }
     u.life.hp = 0.0;
     if u.roo_called {
@@ -1276,18 +1292,18 @@ pub(crate) fn built_death(
     u: &mut Unit,
     master: &Master,
     computer: bool,
-) -> Result<BuiltDeath, Unsupported> {
-    let building = master.building.ok_or(Unsupported(
+) -> Result<BuiltDeath, GenieError> {
+    let building = master.building.ok_or(GenieError::unsupported(
         "a dying building of a master without its building part",
     ))?;
     if computer || u.pasture != -1 || u.my_pasture != -1 || !u.garrison.is_empty() {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "a dying building of a computer player, with a pasture or units inside",
         ));
     }
     let adds = storage_leaves(u, master);
     if building.foundation_terrain == RESTORED_FOUNDATION {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "a dying building of foundation terrain 28 (its terrain 1, FUN_1411ce250)",
         ));
     }
@@ -1422,7 +1438,7 @@ pub(crate) fn change_hands(
     masters: &[Masters],
     spatial: &mut Spatial,
     world_time: u32,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     spatial.records_owner(u.id, new)?;
     let Some(to) = masters.get(new).and_then(|m| m.get(u.life.master_id)) else {
         return Ok(false);
@@ -1433,7 +1449,7 @@ pub(crate) fn change_hands(
         None => Box::new(
             old_table
                 .and_then(|m| m.get(u.life.master_id))
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "an ownership change of an object whose master the slice does not have",
                 ))?
                 .clone(),

@@ -12,7 +12,7 @@
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
 use crate::registry::Record;
-use crate::unit_ai::{Found, Pick, Search, Unsupported};
+use crate::unit_ai::{Found, GenieError, Pick, Search};
 use crate::visibility::Visibility;
 use std::collections::BTreeMap;
 
@@ -28,7 +28,7 @@ const PASTURE_CLASS: i32 = 49;
 const LIVESTOCK_CLASS: i32 = 58;
 
 /// The caller's reachability check of a found object (slot 0x3d0 within a range).
-pub type Reach<'a> = dyn FnMut(i32, f32) -> Result<bool, Unsupported> + 'a;
+pub type Reach<'a> = dyn FnMut(i32, f32) -> Result<bool, GenieError> + 'a;
 
 /// What `ClosestObject` keeps of the objects found (its arguments 2 to 6; each −1 for any): the
 /// master class, the relation (0 itself or friends, 1 neutrals, 2 enemies, 3 itself), the state,
@@ -476,7 +476,7 @@ struct SearchCache {
 /// class-10 searcher passes.
 type ClosestChecks<'a> = (
     &'a dyn Fn(i32) -> bool,
-    &'a dyn Fn(&Placed) -> Result<bool, Unsupported>,
+    &'a dyn Fn(&Placed) -> Result<bool, GenieError>,
     &'a FarmLook<'a>,
 );
 
@@ -688,9 +688,9 @@ impl Spatial {
 
     /// An object whose place the slice knows: an object of a player the slice stopped is known
     /// while it cannot have moved.
-    pub fn get_known(&self, id: i32) -> Result<Option<&Placed>, Unsupported> {
+    pub fn get_known(&self, id: i32) -> Result<Option<&Placed>, GenieError> {
         match self.get(id) {
-            Some(p) if p.unknown.is_some_and(|u| 0.0 < u) => Err(Unsupported(
+            Some(p) if p.unknown.is_some_and(|u| 0.0 < u) => Err(GenieError::unsupported(
                 "an object of a stopped player (its place is unknown)",
             )),
             found => Ok(found),
@@ -732,19 +732,19 @@ impl Spatial {
     /// player's unit (Gaia's animals do not work on objects) may have reached it: a frozen unit
     /// within what it may have moved, or a unit a stopped player's building may have made since,
     /// at the fastest speed of the players' units, each plus the farthest reach.
-    pub fn check_known(&self, rect: [f32; 4]) -> Result<(), Unsupported> {
+    pub fn check_known(&self, rect: [f32; 4]) -> Result<(), GenieError> {
         self.check_known_of(rect, false, None)
     }
 
     /// [`Spatial::check_known`] for a query over obstruction records and the mesh (the motion
     /// step's and the short pather's): a frozen object without a record (a bird) has no say.
-    pub fn check_known_records(&self, rect: [f32; 4]) -> Result<(), Unsupported> {
+    pub fn check_known_records(&self, rect: [f32; 4]) -> Result<(), GenieError> {
         self.check_known_of(rect, true, None)
     }
 
     /// [`Spatial::check_known`] for a query over the registry's lists of `classes`: a frozen
     /// object of another class has no say.
-    pub fn check_known_classes(&self, rect: [f32; 4], classes: &[i32]) -> Result<(), Unsupported> {
+    pub fn check_known_classes(&self, rect: [f32; 4], classes: &[i32]) -> Result<(), GenieError> {
         self.check_known_of(rect, false, Some(classes))
     }
 
@@ -753,7 +753,7 @@ impl Spatial {
         rect: [f32; 4],
         records: bool,
         classes: Option<&[i32]>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         // only a frozen object has an unknown place, and each is in `frozen_for`
         let near = self.frozen().any(|(id, p)| {
             if records && p.obstruction.is_none() {
@@ -772,7 +772,9 @@ impl Spatial {
             })
         });
         if near {
-            return Err(Unsupported("an object of a stopped player may be near"));
+            return Err(GenieError::unsupported(
+                "an object of a stopped player may be near",
+            ));
         }
         Ok(())
     }
@@ -856,7 +858,7 @@ impl Spatial {
 
     /// The object leaves the world: its place, its sight's state and its records in the registry
     /// (its destructor, `FUN_141073060`) go.
-    pub fn leave(&mut self, id: i32) -> Result<(), Unsupported> {
+    pub fn leave(&mut self, id: i32) -> Result<(), GenieError> {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
             v.registry_leave(id, p.player, p.position, p.radius, p.class)?;
             v.remove_seer(id);
@@ -1171,7 +1173,7 @@ impl Spatial {
         ally_factor: f32,
         player: Option<usize>,
         ignore: &[i32],
-    ) -> Result<Vec<i32>, Unsupported> {
+    ) -> Result<Vec<i32>, GenieError> {
         let [w, h] = self.map;
         let walk = [from[0], from[1], to[0], to[1]];
         let query = [
@@ -1215,7 +1217,7 @@ impl Spatial {
                 continue;
             }
             let g = if self.gaits.get(&id).is_some_and(|g| g.moving) {
-                let player = player.ok_or(Unsupported("a walker without a place"))?;
+                let player = player.ok_or(GenieError::unsupported("a walker without a place"))?;
                 if self.allied(p.player, player) {
                     ally_factor * grow
                 } else {
@@ -1260,7 +1262,7 @@ impl Spatial {
         grow: f32,
         mask: Option<u8>,
         ignore: &[i32],
-    ) -> Result<Vec<i32>, Unsupported> {
+    ) -> Result<Vec<i32>, GenieError> {
         const MOST_HITS: usize = 25;
         let rect = [
             from[0].min(to[0]),
@@ -1361,7 +1363,7 @@ impl Spatial {
         to: [f32; 2],
         temporary: ([f32; 4], u8),
         ignore: &[i32],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let rect = [
             if to[0] <= from[0] { to[0] } else { from[0] },
             if to[1] <= from[1] { to[1] } else { from[1] },
@@ -1440,7 +1442,7 @@ impl Spatial {
     /// Fails when a frozen object of `player` that may have moved sees, or saw, near `rect`: the
     /// player's visible map there, and the registry's records the objects' masks keep, may differ
     /// from the game's (its sight, plus a tile, beyond what it may have moved).
-    pub fn check_sight(&self, player: usize, rect: [f32; 4]) -> Result<(), Unsupported> {
+    pub fn check_sight(&self, player: usize, rect: [f32; 4]) -> Result<(), GenieError> {
         let Some(v) = self.sight.as_ref() else {
             return Ok(());
         };
@@ -1460,7 +1462,9 @@ impl Spatial {
                 && y0 - grow <= rect[3]
         });
         if near {
-            return Err(Unsupported("a stopped object's sight may reach the search"));
+            return Err(GenieError::unsupported(
+                "a stopped object's sight may reach the search",
+            ));
         }
         Ok(())
     }
@@ -1480,20 +1484,18 @@ impl Spatial {
         attack: &mut dyn crate::unit_ai::AttackPicker,
         reach: &mut Reach<'_>,
         moving: &dyn Fn(i32) -> bool,
-        shuns: &dyn Fn(&Placed) -> Result<bool, Unsupported>,
+        shuns: &dyn Fn(&Placed) -> Result<bool, GenieError>,
         farm: &FarmLook<'_>,
-    ) -> Result<Found, Unsupported> {
-        let v = self
-            .sight
-            .as_ref()
-            .ok_or(Unsupported("a search without the players' sight"))?;
-        let own = self
-            .relations
-            .get(player)
-            .ok_or(Unsupported("a search of a player without relations"))?;
+    ) -> Result<Found, GenieError> {
+        let v = self.sight.as_ref().ok_or(GenieError::unsupported(
+            "a search without the players' sight",
+        ))?;
+        let own = self.relations.get(player).ok_or(GenieError::unsupported(
+            "a search of a player without relations",
+        ))?;
         let fresh = self.search_query(player, search)?;
         let cache = self.search_cache.borrow();
-        let found = cache.last.as_ref().ok_or(Unsupported(
+        let found = cache.last.as_ref().ok_or(GenieError::unsupported(
             "a search that reads the registry's last answer (before any query)",
         ))?;
         self.pick_found(
@@ -1517,22 +1519,24 @@ impl Spatial {
     /// # Errors
     ///
     /// A player whose kinds the slice did not load.
-    pub fn query_kinds(&self, player: usize, players: usize) -> Result<Vec<u32>, Unsupported> {
-        let kinds = self.unit_diplomacy.get(player).ok_or(Unsupported(
-            "a search of a player without its unit diplomacy",
-        ))?;
+    pub fn query_kinds(&self, player: usize, players: usize) -> Result<Vec<u32>, GenieError> {
+        let kinds = self
+            .unit_diplomacy
+            .get(player)
+            .ok_or(GenieError::unsupported(
+                "a search of a player without its unit diplomacy",
+            ))?;
         Ok(kinds.iter().take(players).map(|&k| k as u32).collect())
     }
 
     /// The query of a unit AI's search (`FUN_140c63e20`'s first part): over the player's
     /// registry unless the [`SearchCache`] holds near the place; true when it queried afresh. The
     /// lists it leaves are [`Spatial::searched`]'s.
-    pub fn search_query(&self, player: usize, search: &Search<'_>) -> Result<bool, Unsupported> {
-        let v = self
-            .sight
-            .as_ref()
-            .ok_or(Unsupported("a search without the players' sight"))?;
-        let r = v.registry.as_ref().ok_or(Unsupported(
+    pub fn search_query(&self, player: usize, search: &Search<'_>) -> Result<bool, GenieError> {
+        let v = self.sight.as_ref().ok_or(GenieError::unsupported(
+            "a search without the players' sight",
+        ))?;
+        let r = v.registry.as_ref().ok_or(GenieError::unsupported(
             "a search without the objects-in-sight registry",
         ))?;
         let relations = self.query_kinds(player, r.players)?;
@@ -1591,9 +1595,9 @@ impl Spatial {
         attack: &mut dyn crate::unit_ai::AttackPicker,
         reach: &mut Reach<'_>,
         moving: &dyn Fn(i32) -> bool,
-        shuns: &dyn Fn(&Placed) -> Result<bool, Unsupported>,
+        shuns: &dyn Fn(&Placed) -> Result<bool, GenieError>,
         farm: &FarmLook<'_>,
-    ) -> Result<Found, Unsupported> {
+    ) -> Result<Found, GenieError> {
         match search.pick {
             Pick::Closest {
                 group,
@@ -1670,7 +1674,7 @@ impl Spatial {
         filter: Filter,
         reach: &mut Reach<'_>,
         (moving, shuns, farm): ClosestChecks<'_>,
-    ) -> Result<(i32, f32), Unsupported> {
+    ) -> Result<(i32, f32), GenieError> {
         let class_10 = self.objects.get(&me).is_some_and(|m| m.class == 10);
         let farmer = self
             .objects
@@ -1720,22 +1724,25 @@ impl Spatial {
                     continue;
                 }
                 if filter.workers != -1 {
-                    return Err(Unsupported("ClosestObject's workers cap (+0x644)"));
+                    return Err(GenieError::unsupported(
+                        "ClosestObject's workers cap (+0x644)",
+                    ));
                 }
                 if filter.state == 0 {
-                    return Err(Unsupported("ClosestObject's unbuilt farm test"));
+                    return Err(GenieError::unsupported("ClosestObject's unbuilt farm test"));
                 }
                 // a farm (class 49): not a pasture's livestock (`+0x790`); a pasture is not
                 // modelled; without a master asked for, one without workers that the unit
                 // gathers from (a fish trap for a fishing ship, any other for a villager)
                 if filter.group == PASTURE_CLASS {
-                    let (workers, parent) = farm(record.id)
-                        .ok_or(Unsupported("a found farm the slice does not hold"))?;
+                    let (workers, parent) = farm(record.id).ok_or(GenieError::unsupported(
+                        "a found farm the slice does not hold",
+                    ))?;
                     if parent != -1 {
                         continue;
                     }
                     if PASTURES.contains(&p.master) {
-                        return Err(Unsupported(
+                        return Err(GenieError::unsupported(
                             "ClosestObject over pastures (their workers and livestock)",
                         ));
                     }
@@ -1794,7 +1801,7 @@ impl Spatial {
         lowest: usize,
         current: i32,
         attack: &mut dyn crate::unit_ai::AttackPicker,
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<i32, GenieError> {
         let mut stats = Vec::new();
         if current != -1
             && let (Some(seer), Some(p)) = (v.seer(current), self.objects.get(&current))
@@ -1839,13 +1846,13 @@ impl Spatial {
         &self,
         me: i32,
         attribute_97: &[f32],
-    ) -> Result<Option<usize>, Unsupported> {
+    ) -> Result<Option<usize>, GenieError> {
         const KEPT: [i16; 16] = [1, 60, 42, 11, 14, 30, 58, 3, 52, 27, 39, 49, 37, 9, 10, 38];
         // a world without the players' sight (the unit tests') holds nobody near
         let Some(v) = self.sight.as_ref() else {
             return Ok(None);
         };
-        let p = self.objects.get(&me).ok_or(Unsupported(
+        let p = self.objects.get(&me).ok_or(GenieError::unsupported(
             "an owner search of an object the world does not hold",
         ))?;
         let reach = (p.radius[0] as i32 as i16).wrapping_add(3);
@@ -1877,7 +1884,7 @@ impl Spatial {
             })
         });
         if unsure {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an owner search near a stopped unit that counts",
             ));
         }
@@ -1901,7 +1908,7 @@ impl Spatial {
             }
             let o = q.player;
             if players <= o {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an owner search's unit of a player beyond the list",
                 ));
             }
@@ -1954,7 +1961,7 @@ impl Spatial {
     }
 
     /// An ownership change's records ([`Visibility::records_owner`]), which come first.
-    pub fn records_owner(&mut self, id: i32, new: usize) -> Result<(), Unsupported> {
+    pub fn records_owner(&mut self, id: i32, new: usize) -> Result<(), GenieError> {
         self.sight
             .as_mut()
             .map_or(Ok(()), |v| v.records_owner(id, new))
@@ -1969,9 +1976,9 @@ impl Spatial {
         new: usize,
         los: f32,
         sees: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(p) = self.objects.get_mut(&id) else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an ownership change of an object the world does not hold",
             ));
         };
@@ -2100,10 +2107,12 @@ impl Spatial {
 
     /// [`Spatial::tile_sight`] is not 0: player `player` sees tile (`x`, `y`) or explored it.
     /// Unknown without the players' sight.
-    pub fn explored(&self, player: usize, x: i32, y: i32) -> Result<bool, Unsupported> {
-        let answer = self.tile_sight(player, x, y).ok_or(Unsupported(
-            "a test of explored tiles without the players' sight",
-        ))?;
+    pub fn explored(&self, player: usize, x: i32, y: i32) -> Result<bool, GenieError> {
+        let answer = self
+            .tile_sight(player, x, y)
+            .ok_or(GenieError::unsupported(
+                "a test of explored tiles without the players' sight",
+            ))?;
         Ok(answer != 0)
     }
 
@@ -2116,7 +2125,7 @@ impl Spatial {
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its
     /// main building's place and UMV entry. The changed mask of an object others take over by
     /// seeing it is the answer.
-    pub fn combat_sight(&mut self, id: i32) -> Result<Option<u64>, Unsupported> {
+    pub fn combat_sight(&mut self, id: i32) -> Result<Option<u64>, GenieError> {
         let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) else {
             return Ok(None);
         };
@@ -2145,7 +2154,7 @@ impl Spatial {
         class: i16,
         master: i16,
         los: f32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
             v.master_changed(id, p.position, p.radius, radius, master, los);
             v.registry_master(
@@ -2160,7 +2169,7 @@ impl Spatial {
     }
 
     /// The first part of the players' sight the slice met and does not model.
-    pub fn take_sight_unsupported(&mut self) -> Option<Unsupported> {
+    pub fn take_sight_unsupported(&mut self) -> Option<GenieError> {
         self.sight.as_mut().and_then(Visibility::take_unsupported)
     }
 
@@ -2238,7 +2247,7 @@ impl Spatial {
         mask: u8,
         me: i32,
         radius_x: f32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let Some(word) = self.tiles.word(x, y) else {
             return Ok(false);
         };
@@ -2263,7 +2272,7 @@ impl Spatial {
         me: (i32, f32),
         mask: u8,
         site: &Placed,
-    ) -> Result<Option<[f32; 2]>, Unsupported> {
+    ) -> Result<Option<[f32; 2]>, GenieError> {
         self.spot_off(from, me, mask, (site.position, site.radius), false)
     }
 
@@ -2285,7 +2294,7 @@ impl Spatial {
         mask: u8,
         (at, radius): ([f32; 3], [f32; 2]),
         farthest: bool,
-    ) -> Result<Option<[f32; 2]>, Unsupported> {
+    ) -> Result<Option<[f32; 2]>, GenieError> {
         /// The footprint's last tile stops short of its edge by this (`DAT_142eb1e9c`).
         const EDGE: f32 = crate::image::spatial::FOOTPRINT_EDGE;
         /// A tile's centre (`DAT_142e7f384`).
@@ -2366,7 +2375,7 @@ impl Spatial {
         site_id: i32,
         site: &Placed,
         obstructs: bool,
-    ) -> Result<Vec<i32>, Unsupported> {
+    ) -> Result<Vec<i32>, GenieError> {
         let [sx, sy, _] = site.position;
         let [rx, ry] = site.radius;
         self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
@@ -2390,7 +2399,7 @@ impl Spatial {
     /// (`FUN_1415c3620`): those whose footprint overlaps the site's, of another master, that may
     /// be built over (`can_be_built_on`) or are trees (class 15, which it clears when their hit
     /// points are at most 1).
-    pub fn footprint_clearing(&self, site_id: i32, site: &Placed) -> Result<Vec<i32>, Unsupported> {
+    pub fn footprint_clearing(&self, site_id: i32, site: &Placed) -> Result<Vec<i32>, GenieError> {
         let [sx, sy, _] = site.position;
         let [rx, ry] = site.radius;
         self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
@@ -2444,7 +2453,7 @@ impl Spatial {
         point: [f32; 2],
         grow: f32,
         mask: u8,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let [x, y] = point;
         let (tx, ty) = (x as i32, y as i32);
         let Some(word) = self.tiles.word(tx, ty) else {
@@ -2473,7 +2482,7 @@ impl Spatial {
         grow: f32,
         mask: u8,
         ignore: &[i32],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         use crate::checkpoint::cvttss2si;
         // CVTTSS2SI: a NaN or huge coordinate is i32::MIN, off the map
         let Some(word) = self.tiles.word(cvttss2si(point[0]), cvttss2si(point[1])) else {
@@ -2503,7 +2512,7 @@ impl Spatial {
         grow: f32,
         ignore: &[i32],
         still: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let [x, y] = point;
         let [w, h] = self.map;
         let rect = [x - grow, y - grow, grow + x, grow + y];
@@ -2608,7 +2617,7 @@ impl Spatial {
         mask: u8,
         ignore: &[i32],
         first: bool,
-    ) -> Result<Vec<Hit>, Unsupported> {
+    ) -> Result<Vec<Hit>, GenieError> {
         const MOST_HITS: usize = 25;
         let lo_x = if b[0] <= a[0] { b[0] } else { a[0] };
         let hi_x = if a[0] <= b[0] { b[0] } else { a[0] };
@@ -2677,12 +2686,12 @@ impl Spatial {
                 continue;
             }
             if kind == 11 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a pather query meeting a record of kind 11 (its own radii)",
                 ));
             }
             if p.class == GATE_CLASS {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a pather query meeting a gate (its players' passage, slot 0x678)",
                 ));
             }
@@ -2703,7 +2712,7 @@ impl Spatial {
         buffer: Option<f32>,
         mask: u8,
         ignore: &[i32],
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         Ok(!self
             .pather_query(a, b, buffer, mask, ignore, true)?
             .is_empty())
@@ -2718,7 +2727,7 @@ impl Spatial {
         buffer: Option<f32>,
         mask: u8,
         ignore: &[i32],
-    ) -> Result<Vec<Hit>, Unsupported> {
+    ) -> Result<Vec<Hit>, GenieError> {
         self.pather_query(a, b, buffer, mask, ignore, false)
     }
 }

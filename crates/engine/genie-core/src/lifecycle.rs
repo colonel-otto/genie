@@ -5,10 +5,10 @@
 //!
 //! The states are the save's `object_state`: 2 alive, 3 dying, 4 playing its dying sprite, 5
 //! dead, 7 its resource going back, 8 gone. An object's death spawn (state 7) and an undead state
-//! are [`Unsupported`].
+//! are [`GenieError`].
 
+use crate::GenieError;
 use crate::rng::Well512;
-use crate::unit_ai::Unsupported;
 
 /// What the dead-object steps read from an object's master that the header save does not hold;
 /// they come from the `.dat`.
@@ -110,10 +110,10 @@ impl Lifecycle {
         dt_seconds: f32,
         object: &mut Well512,
         animating: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if self.goto_sleep {
             // the object's update moves it to the sleeping list first (`Unit::update`)
-            return Err(Unsupported("the object goes to sleep"));
+            return Err(GenieError::unsupported("the object goes to sleep"));
         }
         match self.state {
             0 | 2 => {
@@ -147,7 +147,7 @@ impl Lifecycle {
                 Ok(false)
             }
             8 => Ok(true),
-            _ => Err(Unsupported("object state not modelled")),
+            _ => Err(GenieError::unsupported("object state not modelled")),
         }
     }
 
@@ -159,9 +159,9 @@ impl Lifecycle {
     /// it) are the caller's too ([`crate::ghost`]); the statistics and the sounds are not held.
     /// The visible-resource lists (`FUN_1411980b0`) are the caller's
     /// ([`crate::turn::forget_resource`]).
-    fn die(&mut self, object: &mut Well512) -> Result<(), Unsupported> {
+    fn die(&mut self, object: &mut Well512) -> Result<(), GenieError> {
         if self.inside.is_some() {
-            return Err(Unsupported("an object inside another dies"));
+            return Err(GenieError::unsupported("an object inside another dies"));
         }
         // master 61 (the marlin) of Gaia, without a dying sprite and first holding fish (17),
         // goes to state 5 at once in its state-2 update (`FUN_14118ad50`, `set_state(5)`): the
@@ -182,13 +182,13 @@ impl Lifecycle {
 
     /// States 3 and 5: once nothing is held the object moves on to state 7; until then the held
     /// amount decays, never below 0.
-    fn dead(&mut self, dt_seconds: f32) -> Result<(), Unsupported> {
+    fn dead(&mut self, dt_seconds: f32) -> Result<(), GenieError> {
         let master = self
             .master
-            .ok_or(Unsupported("no master data for a dead object"))?;
+            .ok_or(GenieError::unsupported("no master data for a dead object"))?;
         if self.attribute_type == -1 || self.amount <= 0.0 {
             if master.undead {
-                return Err(Unsupported("an undead object (state 6)"));
+                return Err(GenieError::unsupported("an undead object (state 6)"));
             }
             // set_state(7), then its death spawn (slot 0x160, the caller's)
             self.state = 7;

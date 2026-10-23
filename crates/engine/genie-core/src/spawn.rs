@@ -17,7 +17,7 @@ use crate::rng::Stream;
 use crate::spatial::{Obstruction, Placed};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::turn::{GatherPoint, Turns, Unit};
-use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi, Unsupported, factory_type};
+use crate::unit_ai::{ACTION_COMPLETED, GenieError, NewObject, Notify, UnitAi, factory_type};
 use crate::visibility::{Seer, capture_kind};
 
 /// A unit smaller than this on both axes (`DAT_142f5d120`) steps by twice its radius plus
@@ -103,8 +103,8 @@ struct Spot {
 /// the spot.
 fn try_spot(
     spot: &Spot,
-    test: &mut dyn FnMut([f32; 2]) -> Result<Tested, Unsupported>,
-) -> Result<Option<[f32; 2]>, Unsupported> {
+    test: &mut dyn FnMut([f32; 2]) -> Result<Tested, GenieError>,
+) -> Result<Option<[f32; 2]>, GenieError> {
     for i in 0..=spot.count {
         let x = spot.dir[0] as f32 * spot.step[0] * i as f32 + spot.at[0];
         let y = spot.dir[1] as f32 * spot.step[1] * i as f32 + spot.at[1];
@@ -127,8 +127,8 @@ fn try_spot(
 pub fn spawn_point(
     site: &Site,
     unit: [f32; 2],
-    test: &mut dyn FnMut([f32; 2]) -> Result<Tested, Unsupported>,
-) -> Result<[f32; 2], Unsupported> {
+    test: &mut dyn FnMut([f32; 2]) -> Result<Tested, GenieError>,
+) -> Result<[f32; 2], GenieError> {
     let [mut sx, mut sy] = unit;
     if sx < SMALL && sy < SMALL {
         sx = sx + sx + GAP;
@@ -174,7 +174,7 @@ pub fn spawn_point(
     for pass in 1..=2 {
         let second = pass == 2;
         let mut tries: Vec<Spot> = Vec::new();
-        let mut run = |spots: &mut Vec<Spot>| -> Result<Option<[f32; 2]>, Unsupported> {
+        let mut run = |spots: &mut Vec<Spot>| -> Result<Option<[f32; 2]>, GenieError> {
             for s in spots.drain(..) {
                 if let Some(p) = try_spot(&s, test)? {
                     return Ok(Some(p));
@@ -298,7 +298,7 @@ pub fn spawn_point(
             break;
         }
     }
-    Err(Unsupported(
+    Err(GenieError::unsupported(
         "a spawn point beyond the building's sides (the search's later rings)",
     ))
 }
@@ -397,7 +397,7 @@ pub trait PlaceMap {
     /// The map's size in tiles.
     fn size(&self) -> [i32; 2];
     /// A tile's terrain (the map tile's `+0x9`).
-    fn terrain(&self, x: i32, y: i32) -> Result<u8, Unsupported>;
+    fn terrain(&self, x: i32, y: i32) -> Result<u8, GenieError>;
     /// Terrain `t`'s flags (the `.dat`'s `is_water` byte, the map's terrain record `+2`), None
     /// beyond the terrains.
     fn terrain_flags(&self, _t: usize) -> Option<u8> {
@@ -423,7 +423,7 @@ pub trait PlaceMap {
     fn allied(&self, a: usize, b: usize, with_4: bool) -> bool;
     /// The objects on tile (`x`, `y`) (their centre there), in the tile list's order; `Err` where
     /// it cannot tell.
-    fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, Unsupported>;
+    fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError>;
 }
 
 /// The tiles within `REACH` of a point, clamped to the map (`(int)` of each bound, then the map's
@@ -446,7 +446,7 @@ fn overlapping(
     p: [f32; 2],
     r: [f32; 2],
     counts: &dyn Fn(&Near) -> Option<bool>,
-) -> Result<Vec<Found>, Unsupported> {
+) -> Result<Vec<Found>, GenieError> {
     let mut out = Vec::new();
     for (tx, ty) in reach(map.size(), p) {
         for o in map.objects(tx, ty)? {
@@ -500,9 +500,9 @@ fn hill_fails(
     (tx, ty): (i32, i32),
     (x0, y1): (i32, i32),
     base: Option<u8>,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     let shape = || {
-        map.shape(tx, ty).ok_or(Unsupported(
+        map.shape(tx, ty).ok_or(GenieError::unsupported(
             "a hill mode where the tiles' shapes are not known",
         ))
     };
@@ -510,7 +510,7 @@ fn hill_fails(
         1 => !matches!(shape()?, 0 | 5..=8),
         2 => shape()? != 0,
         3 if tx == x0 || ty == y1 => {
-            let e = i32::from(map.elevation(tx, ty).ok_or(Unsupported(
+            let e = i32::from(map.elevation(tx, ty).ok_or(GenieError::unsupported(
                 "a hill mode where the elevations are not known",
             ))?);
             let b = i32::from(base.unwrap_or(0));
@@ -538,13 +538,13 @@ pub fn placement_terrains(
     map: &dyn PlaceMap,
     p: [f32; 2],
     b: [i32; 4],
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     let [side1, side2, t1, t2] = placement;
     let flags = |t: i16| {
         usize::try_from(t)
             .ok()
             .and_then(|t| map.terrain_flags(t))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "placement terrains with one of -1 or beyond the terrains",
             ))
     };
@@ -623,7 +623,7 @@ pub fn build_placement(
     site: &BuildSite<'_>,
     map: &dyn PlaceMap,
     p: [f32; 2],
-) -> Result<u8, Unsupported> {
+) -> Result<u8, GenieError> {
     let [x, y] = p;
     let [rx, ry] = site.clearance;
     let [w, h] = map.size();
@@ -638,7 +638,7 @@ pub fn build_placement(
     }
     // hill mode 3 measures the box's edge against the elevation of its first column's last row
     let base = if site.hill_mode == 3 {
-        Some(map.elevation(x0, y1).ok_or(Unsupported(
+        Some(map.elevation(x0, y1).ok_or(GenieError::unsupported(
             "a hill mode where the elevations are not known",
         ))?)
     } else {
@@ -650,7 +650,9 @@ pub fn build_placement(
             let value = site
                 .restriction
                 .get(usize::from(t))
-                .ok_or(Unsupported("a terrain its restriction does not list"))?;
+                .ok_or(GenieError::unsupported(
+                    "a terrain its restriction does not list",
+                ))?;
             if *value <= PASSABLE {
                 return Ok(2);
             }
@@ -664,7 +666,9 @@ pub fn build_placement(
         return Ok(5);
     }
     if (0.0 < rx || 0.0 < ry) && site.zones {
-        return Err(Unsupported("BUILD's placement test in a zone mode"));
+        return Err(GenieError::unsupported(
+            "BUILD's placement test in a zone mode",
+        ));
     }
     // FUN_14123aee0's scan
     let near = |v: f32, size: i32| {
@@ -691,7 +695,7 @@ pub fn build_placement(
                 if !(seen && visible) {
                     let fog = if seen { o.fog_visibility } else { 1 };
                     if fog == 3 {
-                        return Err(Unsupported(
+                        return Err(GenieError::unsupported(
                             "a fogged object of fog visibility 3 near a BUILD",
                         ));
                     }
@@ -738,7 +742,7 @@ pub fn build_placement(
                     continue;
                 }
                 if (11..=13).contains(&o.obstruction_type) {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "an object of obstruction types 11 to 13 near a BUILD (its outline radii)",
                     ));
                 }
@@ -765,7 +769,7 @@ const BUILD_SCAN: f32 = crate::image::spawn::BUILD_SCAN;
 
 /// The first object of a scan, which the game reports as the blocker. Objects on one tile come
 /// in its list's order, which the slice does not hold: several there must agree on staying.
-fn first(found: &[Found]) -> Result<Option<Near>, Unsupported> {
+fn first(found: &[Found]) -> Result<Option<Near>, GenieError> {
     let Some(&(tile, o)) = found.first() else {
         return Ok(None);
     };
@@ -774,7 +778,7 @@ fn first(found: &[Found]) -> Result<Option<Near>, Unsupported> {
         .take_while(|(t, _)| *t == tile)
         .any(|(_, other)| other.stays() != o.stays());
     if disagree {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "objects on one tile that block a spawn point differently (the tile list's order)",
         ));
     }
@@ -792,7 +796,7 @@ pub fn placement(
     map: &dyn PlaceMap,
     p: [f32; 2],
     zones: bool,
-) -> Result<Tested, Unsupported> {
+) -> Result<Tested, GenieError> {
     let [x, y] = p;
     let [rx, ry] = me.radius;
     let [w, h] = map.size();
@@ -818,14 +822,16 @@ pub fn placement(
                 let value = me
                     .restriction
                     .get(usize::from(t))
-                    .ok_or(Unsupported("a terrain its restriction does not list"))?;
+                    .ok_or(GenieError::unsupported(
+                        "a terrain its restriction does not list",
+                    ))?;
                 if *value <= PASSABLE {
                     passable = false;
                     break 'tiles;
                 }
                 seen = seen || map.explored(me.player, tx, ty);
                 if me.hill_mode != 0 {
-                    return Err(Unsupported("a placement test of a hill mode"));
+                    return Err(GenieError::unsupported("a placement test of a hill mode"));
                 }
             }
         }
@@ -833,7 +839,7 @@ pub fn placement(
             false
         } else if 0.0 < rx || 0.0 < ry {
             if zones {
-                return Err(Unsupported("a placement test in a zone mode"));
+                return Err(GenieError::unsupported("a placement test in a zone mode"));
             }
             let counts = |o: &Near| {
                 let listed =
@@ -926,15 +932,18 @@ impl PlaceMap for WorldMap<'_> {
         self.turns.spatial.map
     }
 
-    fn terrain(&self, x: i32, y: i32) -> Result<u8, Unsupported> {
+    fn terrain(&self, x: i32, y: i32) -> Result<u8, GenieError> {
         let t = self
             .turns
             .spatial
             .terrain
             .as_ref()
-            .ok_or(Unsupported("a placement test without the map's terrain"))?;
-        t.kind(x, y)
-            .ok_or(Unsupported("a placement test off the map's tiles"))
+            .ok_or(GenieError::unsupported(
+                "a placement test without the map's terrain",
+            ))?;
+        t.kind(x, y).ok_or(GenieError::unsupported(
+            "a placement test off the map's tiles",
+        ))
     }
 
     fn explored(&self, player: usize, x: i32, y: i32) -> bool {
@@ -975,12 +984,12 @@ impl PlaceMap for WorldMap<'_> {
                 }))
     }
 
-    fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, Unsupported> {
+    fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {
         let t = self.turns;
         t.spatial
             .objects_on(x, y)
             .map(|(id, placed)| {
-                let (owner, unit) = t.object(id).ok_or(Unsupported(
+                let (owner, unit) = t.object(id).ok_or(GenieError::unsupported(
                     "an object near a spawn point the slice does not update",
                 ))?;
                 let master = t.master_of(owner, unit.life.master_id)?;
@@ -1060,7 +1069,7 @@ impl Turns {
         p: usize,
         i: usize,
         dt_seconds: f32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[i];
         let Some(production) = unit.production.as_ref() else {
             return Ok(());
@@ -1162,7 +1171,7 @@ impl Turns {
         p: usize,
         i: usize,
         making: Making,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::tech::Attributes;
         if 3 <= self.players[p].objects[i].life.state {
             return self.destroy_action(p, i, making);
@@ -1187,7 +1196,7 @@ impl Turns {
                     .and_then(|q| q.queue.first())
                     .map_or(crate::production::NO_COSTS, |e| e.costs);
                 if !owner.techs[t].start_test(def, factors, &paid, &get)? {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a research whose start test fails (its refund)",
                     ));
                 }
@@ -1212,7 +1221,7 @@ impl Turns {
         p: usize,
         i: usize,
         dt_seconds: f32,
-    ) -> Result<u8, Unsupported> {
+    ) -> Result<u8, GenieError> {
         let action = self.players[p].objects[i]
             .production
             .as_ref()
@@ -1233,7 +1242,7 @@ impl Turns {
     /// difficulty's factors on the rate), the game's instant work (`+0xc14`,
     /// `FUN_140c884c0`, 0 as the tick oracle holds it), the spot search's failure (state 10's
     /// timer, `FUN_140ace630`).
-    fn make_step(&mut self, p: usize, i: usize, dt_seconds: f32) -> Result<u8, Unsupported> {
+    fn make_step(&mut self, p: usize, i: usize, dt_seconds: f32) -> Result<u8, GenieError> {
         let building = &self.players[p].objects[i];
         let Some(Some(Making::Unit(make))) = building.production.as_ref().map(|q| q.action) else {
             unreachable!("the caller's make action");
@@ -1273,7 +1282,7 @@ impl Turns {
     /// The production list's first action goes (`FUN_140a98e20`, and `FUN_140a98620` for the
     /// list of one the building's update makes) at the building at `i` of player `p`: its
     /// destructor ([`Turns::destroy_action`]).
-    pub(crate) fn end_production_action(&mut self, p: usize, i: usize) -> Result<(), Unsupported> {
+    pub(crate) fn end_production_action(&mut self, p: usize, i: usize) -> Result<(), GenieError> {
         let Some(making) = self.players[p].objects[i]
             .production
             .as_mut()
@@ -1290,7 +1299,7 @@ impl Turns {
     /// the master's paid costs come back ([`crate::production::refund_master`]); the building's
     /// unit AI is told the make action completed (0x1fa with 0x26b). The research's: its
     /// destructor ([`Turns::research_destroyed`]).
-    fn destroy_action(&mut self, p: usize, i: usize, making: Making) -> Result<(), Unsupported> {
+    fn destroy_action(&mut self, p: usize, i: usize, making: Making) -> Result<(), GenieError> {
         let make = match making {
             Making::Unit(make) => make,
             Making::Research(r) => return self.research_destroyed(p, i, &r),
@@ -1339,17 +1348,16 @@ impl Turns {
         &self,
         p: usize,
         tech: i16,
-    ) -> Result<(usize, &crate::tech::TechDef), Unsupported> {
+    ) -> Result<(usize, &crate::tech::TechDef), GenieError> {
         let t = usize::try_from(tech)
             .ok()
             .filter(|&t| t < self.players[p].techs.len())
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a research of a technology the tree has not got",
             ))?;
-        let def = self
-            .techs
-            .get(t)
-            .ok_or(Unsupported("a technology the data file has not got"))?;
+        let def = self.techs.get(t).ok_or(GenieError::unsupported(
+            "a technology the data file has not got",
+        ))?;
         Ok((t, def))
     }
 
@@ -1362,10 +1370,12 @@ impl Turns {
     /// adjustment ([`Turns::research_done`]). Not held: the human player's sound; not
     /// modelled: a computer player's handicaps and the game's instant work (`FUN_140c884c0`,
     /// 0 as the tick oracle holds it).
-    fn research_step(&mut self, p: usize, i: usize, dt_seconds: f32) -> Result<u8, Unsupported> {
+    fn research_step(&mut self, p: usize, i: usize, dt_seconds: f32) -> Result<u8, GenieError> {
         use crate::tech::Attributes;
         if self.players[p].computer {
-            return Err(Unsupported("a computer player's research (its handicaps)"));
+            return Err(GenieError::unsupported(
+                "a computer player's research (its handicaps)",
+            ));
         }
         let owner = &self.players[p];
         let building = &owner.objects[i];
@@ -1387,7 +1397,9 @@ impl Turns {
         let location = state
             .location(master)
             .copied()
-            .ok_or(Unsupported("a research at a technology without locations"))?;
+            .ok_or(GenieError::unsupported(
+                "a research at a technology without locations",
+            ))?;
         let times = state.times_researched;
         let owner = &mut self.players[p];
         let state = &mut owner.techs[t];
@@ -1412,7 +1424,9 @@ impl Turns {
         }
         if location.adjustment + time <= progress {
             if 0xff < times {
-                return Err(Unsupported("a research done 0x100 times (set_state 1)"));
+                return Err(GenieError::unsupported(
+                    "a research done 0x100 times (set_state 1)",
+                ));
             }
             self.research_done(p, i, t, master, repeatable)?;
             return Ok(1);
@@ -1439,7 +1453,7 @@ impl Turns {
         t: usize,
         master: i16,
         repeat: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::tech::Attributes;
         let owner = &self.players[p];
         let state = &owner.techs[t];
@@ -1499,7 +1513,7 @@ impl Turns {
     /// location's adjustment; `COMISS`, `SETNC`), counts one more researched and one less
     /// queued, in state 1 while one more stays below the cap and it may be queued again (its
     /// `+0xe` set and its effect no upgrade), else in state 3; not done, state 1.
-    fn research_destroyed(&mut self, p: usize, i: usize, r: &MakeTech) -> Result<(), Unsupported> {
+    fn research_destroyed(&mut self, p: usize, i: usize, r: &MakeTech) -> Result<(), GenieError> {
         use crate::tech::Attributes;
         let (t, _) = self.research_tech(p, r.tech)?;
         let def = &self.techs[t];
@@ -1585,19 +1599,21 @@ impl Turns {
     /// Not held: its facet and angle, its powerup offset, the building's `+0xc1c` group (unsaved), the game's events
     /// (`FUN_140c898a0`), the per-master counts (slot 0x398's `+0x13b0`), the sounds and
     /// particles (`FUN_1411a52e0`).
-    fn spawn(&mut self, p: usize, i: usize, master: i16, pop: f32) -> Result<(), Unsupported> {
+    fn spawn(&mut self, p: usize, i: usize, master: i16, pop: f32) -> Result<(), GenieError> {
         if self.players[p].computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer player's new unit (its AI's slot 0x398)",
             ));
         }
         if self.spatial.sight.is_none() {
-            return Err(Unsupported("a spawn without the players' sight"));
+            return Err(GenieError::unsupported(
+                "a spawn without the players' sight",
+            ));
         }
         let building = &self.players[p].objects[i];
         let made = self.master_of(p, master)?.clone();
         if made.recyclable {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a new object of a recyclable master (a negative id)",
             ));
         }
@@ -1617,7 +1633,9 @@ impl Turns {
                 .map(|g| [g.point[0], g.point[1]]),
         };
         if made.moving.is_none() {
-            return Err(Unsupported("a new unit of a master that does not move"));
+            return Err(GenieError::unsupported(
+                "a new unit of a master that does not move",
+            ));
         }
         let point = self.spot_beside(p, i, &made, toward)?;
         let new = self.combat_object(p, master, &made, [point[0], point[1], position[2]])?;
@@ -1649,7 +1667,9 @@ impl Turns {
             .iter()
             .any(|t| t.action_type == 0x9c)
         {
-            return Err(Unsupported("a new unit's task that spawns more units"));
+            return Err(GenieError::unsupported(
+                "a new unit's task that spawns more units",
+            ));
         }
         Ok(())
     }
@@ -1667,7 +1687,7 @@ impl Turns {
         new: usize,
         queue: &[crate::unit_ai::QueuedOrder],
         z: f32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         /// The monastery, which a unit carrying a relic's order keeps (`FUN_141188e10`).
         const MONASTERY: i16 = 104;
         /// The target type whose queued order keeps a monastery's (`FUN_140c417f0` with 0x2a).
@@ -1688,7 +1708,7 @@ impl Turns {
                     && t_master.garrison != 0
                     && self.takes_in(o.target, p, master)?
                 {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a command queue's order on a building the unit may enter (its room, slot 0x198)",
                     ));
                 }
@@ -1722,7 +1742,7 @@ impl Turns {
         master: i16,
         made: &crate::masters::Master,
         position: [f32; 3],
-    ) -> Result<NewObject, Unsupported> {
+    ) -> Result<NewObject, GenieError> {
         let owner = &self.players[p];
         Ok(NewObject {
             computer: owner.computer,
@@ -1780,23 +1800,25 @@ impl Turns {
         master: i16,
         made: &crate::masters::Master,
         position: [f32; 3],
-    ) -> Result<usize, Unsupported> {
+    ) -> Result<usize, GenieError> {
         if self.players[p].computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer player's new unit (its AI's slot 0x398)",
             ));
         }
         if self.spatial.sight.is_none() {
-            return Err(Unsupported("a spawn without the players' sight"));
+            return Err(GenieError::unsupported(
+                "a spawn without the players' sight",
+            ));
         }
         if made.recyclable {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a new object of a recyclable master (a negative id)",
             ));
         }
-        let moving = made
-            .moving
-            .ok_or(Unsupported("a new unit of a master that does not move"))?;
+        let moving = made.moving.ok_or(GenieError::unsupported(
+            "a new unit of a master that does not move",
+        ))?;
         // the constructor's new_position: the ground's height by the master's fly mode (slot
         // 0x60, FUN_141193a10)
         let position = self.spatial.terrain.as_ref().map_or(position, |t| {
@@ -1814,12 +1836,14 @@ impl Turns {
             made.volley_missile.unwrap_or(-1),
             made.combat_level,
         )
-        .ok_or(Unsupported("a new combat unit without a unit AI"))?;
+        .ok_or(GenieError::unsupported(
+            "a new combat unit without a unit AI",
+        ))?;
         let new_object = self.new_object(p, master, made, position)?;
         let standing = (0 <= made.standing_sprite)
             .then(|| self.graphics.get(&made.standing_sprite).copied())
             .flatten()
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a new unit's standing sprite the data file does not have",
             ))?;
         let id = self.next_object_id;
@@ -1942,7 +1966,7 @@ impl Turns {
         i: usize,
         made: &crate::masters::Master,
         toward: Option<[f32; 2]>,
-    ) -> Result<[f32; 2], Unsupported> {
+    ) -> Result<[f32; 2], GenieError> {
         let building = &self.players[p].objects[i];
         let site_master = self.master_of(p, building.life.master_id)?;
         let position = building.position;
@@ -1966,7 +1990,7 @@ impl Turns {
             gather: toward,
             walls,
         };
-        let moving = made.moving.ok_or(Unsupported(
+        let moving = made.moving.ok_or(GenieError::unsupported(
             "a unit beside a building of a master that does not move",
         ))?;
         let restriction = self
@@ -1974,7 +1998,7 @@ impl Turns {
             .terrain
             .as_ref()
             .and_then(|t| t.restrictions.get(moving.restriction))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a unit's terrain restriction the data file does not have",
             ))?;
         let placing = Placing {
@@ -2015,7 +2039,7 @@ impl Turns {
         master: i16,
         at: [f32; 3],
         facet: Option<u8>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let made = self.master_of(p, master)?.clone();
         if made.kind == BUILDING {
             return self.new_building(p, &made, at);
@@ -2043,13 +2067,17 @@ impl Turns {
             return Ok(());
         }
         if made.kind != 10 && !(20..40).contains(&made.kind) {
-            return Err(Unsupported("remains of a type other than 10 and 20 to 39"));
+            return Err(GenieError::unsupported(
+                "remains of a type other than 10 and 20 to 39",
+            ));
         }
         if 0 < made.hit_points {
-            return Err(Unsupported("remains with hit points (the sleeping list)"));
+            return Err(GenieError::unsupported(
+                "remains with hit points (the sleeping list)",
+            ));
         }
         if made.recyclable {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a new object of a recyclable master (a negative id)",
             ));
         }
@@ -2072,7 +2100,7 @@ impl Turns {
             if standing.is_some_and(|g| g.flags & 2 != 0 && 1 < g.facets) {
                 let _ = self.streams.get(Stream::Object).rand15();
             }
-            let facet = facet.ok_or(Unsupported(
+            let facet = facet.ok_or(GenieError::unsupported(
                 "moving remains of an object without a facet the slice holds",
             ))?;
             let own = standing.map_or(
@@ -2086,10 +2114,9 @@ impl Turns {
                 },
             );
             angle = crate::facing::angle_of_facet(facet, own);
-            Some(
-                made.moving
-                    .ok_or(Unsupported("moving remains without a moving master"))?,
-            )
+            Some(made.moving.ok_or(GenieError::unsupported(
+                "moving remains without a moving master",
+            ))?)
         } else {
             None
         };
@@ -2217,7 +2244,7 @@ impl Turns {
         target: i32,
         point: [f32; 2],
         players: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         /// The flare's master (`0x112`, FLARE2).
         const FLARE: i16 = 274;
         if self.players.len() < usize::from(players) {
@@ -2256,31 +2283,33 @@ impl Turns {
         p: usize,
         made: &crate::masters::Master,
         at: [f32; 3],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let master = made.id;
-        let building = made.building.ok_or(Unsupported(
+        let building = made.building.ok_or(GenieError::unsupported(
             "a new building of a master without its building part",
         ))?;
         if self.players[p].computer {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a computer player's new building (its AI's slot 0x398)",
             ));
         }
         if 0 < made.build_time || 0.0 < made.radius[0] || 0.0 < made.radius[1] {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a new building with a build time or radii (its construction, its footprint)",
             ));
         }
         if 0 <= made.standing_sprite || 0.0 < made.line_of_sight {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a new building with a standing sprite or sight (its setups' draws, its watch)",
             ));
         }
         if building.annexes.iter().any(|&a| 0 <= a) || 0 <= building.head_unit {
-            return Err(Unsupported("a new building with annexes or of an annex"));
+            return Err(GenieError::unsupported(
+                "a new building with annexes or of an annex",
+            ));
         }
         if matches!(made.class, 51 | 54) || matches!(master, 50 | 70 | 276 | 357 | 1187 | 1188) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a new building of classes 51, 54 or masters 50, 70, 276, 357, 1187, 1188",
             ));
         }
@@ -2290,7 +2319,7 @@ impl Turns {
                 .iter()
                 .any(|&(r, a, paid)| 0 <= r && paid && a != 0)
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a new building of a recyclable master or with a paid cost",
             ));
         }
@@ -2418,7 +2447,7 @@ impl Turns {
         new: usize,
         point: [f32; 3],
         notified: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let world_time = self.world_time;
         let villager = self
             .master_of(p, self.players[p].objects[new].life.master_id)?
@@ -2429,7 +2458,7 @@ impl Turns {
             m.waiting = 1;
         }
         if unit.top_action_kind().is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gather point's move of a unit with an action",
             ));
         }
@@ -2438,7 +2467,7 @@ impl Turns {
             return Ok(());
         }
         if unit.life.state != 2 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gather point's move of a unit not in state 2",
             ));
         }
@@ -2490,7 +2519,7 @@ impl Turns {
         p: usize,
         new: usize,
         g: GatherPoint,
-    ) -> Result<Option<i32>, Unsupported> {
+    ) -> Result<Option<i32>, GenieError> {
         let class = self
             .masters
             .first()
@@ -2503,8 +2532,8 @@ impl Turns {
         let gaia = self
             .players
             .first()
-            .ok_or(Unsupported("a world without Gaia"))?;
-        let closest = |list: &[Unit]| -> Result<Option<i32>, Unsupported> {
+            .ok_or(GenieError::unsupported("a world without Gaia"))?;
+        let closest = |list: &[Unit]| -> Result<Option<i32>, GenieError> {
             let mut best: Option<(&Unit, f32)> = None;
             for u in list {
                 if self.master_of(0, u.life.master_id)?.class != class {
@@ -2531,7 +2560,7 @@ impl Turns {
             return Ok(Some(id));
         }
         if matches!(class, 5 | 29 | 33) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gather point's lost target of class 5, 29 or 33 (the unit AI's slot 0x80)",
             ));
         }
@@ -2555,7 +2584,7 @@ impl Turns {
         building: i32,
         notified: bool,
         finder: bool,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if g.target == -1 {
             return self.gather_move(p, new, [g.point[0], g.point[1], 0.0], notified);
         }
@@ -2581,9 +2610,9 @@ impl Turns {
                 }
             }
         };
-        let (owner, t) = self
-            .object(target)
-            .ok_or(Unsupported("unreachable: a gather point's target found"))?;
+        let (owner, t) = self.object(target).ok_or(GenieError::unreachable(
+            "unreachable: a gather point's target found",
+        ))?;
         let on_building = self.master_of(owner, t.life.master_id)?.kind == BUILDING;
         if let Some(m) = self.players[p].objects[new].mover.as_mut() {
             m.waiting = 1;
@@ -2676,7 +2705,7 @@ mod tests {
         fn size(&self) -> [i32; 2] {
             [10, 10]
         }
-        fn terrain(&self, _: i32, _: i32) -> Result<u8, Unsupported> {
+        fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
             Ok(0)
         }
         fn explored(&self, _: usize, _: i32, _: i32) -> bool {
@@ -2697,7 +2726,7 @@ mod tests {
         fn allied(&self, a: usize, b: usize, _: bool) -> bool {
             a == b
         }
-        fn objects(&self, _: i32, _: i32) -> Result<Vec<Near>, Unsupported> {
+        fn objects(&self, _: i32, _: i32) -> Result<Vec<Near>, GenieError> {
             Ok(Vec::new())
         }
     }
@@ -2806,7 +2835,7 @@ mod tests {
         fn size(&self) -> [i32; 2] {
             [120, 120]
         }
-        fn terrain(&self, _: i32, _: i32) -> Result<u8, Unsupported> {
+        fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
             Ok(0)
         }
         fn explored(&self, _: usize, _: i32, _: i32) -> bool {
@@ -2827,7 +2856,7 @@ mod tests {
         fn allied(&self, a: usize, b: usize, _: bool) -> bool {
             a == b
         }
-        fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, Unsupported> {
+        fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {
             Ok(self
                 .0
                 .iter()
@@ -2898,7 +2927,7 @@ mod tests {
         fn size(&self) -> [i32; 2] {
             [120, 120]
         }
-        fn terrain(&self, _: i32, _: i32) -> Result<u8, Unsupported> {
+        fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
             Ok(0)
         }
         fn explored(&self, _: usize, _: i32, _: i32) -> bool {
@@ -2919,7 +2948,7 @@ mod tests {
         fn allied(&self, a: usize, b: usize, _: bool) -> bool {
             a == b
         }
-        fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, Unsupported> {
+        fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {
             Ok(self
                 .0
                 .iter()

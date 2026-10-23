@@ -9,11 +9,11 @@
 //! spawns and cost entries. The objects' parts an upgrade, a spawn and the objects' own masters
 //! need are the objects' routines, which this file leaves to them.
 
+use crate::GenieError;
 use crate::masters::{AttributeWorld, Master, Masters, master_type};
 use crate::rng::Stream;
 use crate::tech::EffectCommand;
 use crate::turn::{Turns, Unit};
-use crate::unit_ai::Unsupported;
 
 /// The attribute counting the technologies researched (`0x15`) and the one summing their costs
 /// (`0x63`), which a research done at a location with a button adds to.
@@ -53,7 +53,7 @@ impl Turns {
         p: usize,
         t: usize,
         building: Option<i16>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         use crate::tech::Attributes;
         let def = self.techs[t].clone();
         let state = &self.players[p].techs[t];
@@ -61,7 +61,9 @@ impl Turns {
             return Ok(false);
         }
         if def.costs[0].attribute == 7 {
-            return Err(Unsupported("a research paid in relics (FUN_1413d0e70)"));
+            return Err(GenieError::unsupported(
+                "a research paid in relics (FUN_1413d0e70)",
+            ));
         }
         self.research_effect_known(p, t)?;
         self.players[p].techs[t].state = 3;
@@ -98,7 +100,7 @@ impl Turns {
     /// `param_4`, which the callers do not pass yet): an effect that reaches its object (an
     /// enable for one building, an upgrade of the object, the object's kinds 203 to 206, a
     /// disable of a building's own technology) would differ without it.
-    fn research_effect_known(&self, p: usize, t: usize) -> Result<(), Unsupported> {
+    fn research_effect_known(&self, p: usize, t: usize) -> Result<(), GenieError> {
         let def = &self.techs[t];
         let state = &self.players[p].techs[t];
         let shared = |c: &EffectCommand| {
@@ -115,10 +117,10 @@ impl Turns {
             k => (kind::OBJECT_SET..=kind::OBJECT_UPGRADE).contains(&k),
         });
         if state.effect_override != -1 && state.effect_override != def.effect_id {
-            return Err(Unsupported("a technology's effect override"));
+            return Err(GenieError::unsupported("a technology's effect override"));
         }
         if reaches_object {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a research's effect on its building (FUN_1413cdcd0's param_4, not passed)",
             ));
         }
@@ -129,10 +131,10 @@ impl Turns {
     /// `set_state(2)`): [`Turns::complete_research`] with `param_3` 0 and no building, so the
     /// technology's first location decides its statistics; a technology beyond the player's tree
     /// is not researched.
-    pub(crate) fn research_built(&mut self, p: usize, t: i16) -> Result<(), Unsupported> {
+    pub(crate) fn research_built(&mut self, p: usize, t: i16) -> Result<(), GenieError> {
         let tree = self.players[p].techs.len();
         if tree == 0 || self.techs.len() != tree {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a completion's technology without the player's tech tree",
             ));
         }
@@ -151,7 +153,7 @@ impl Turns {
         p: usize,
         master: i16,
         tech: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let owner = &self.players[p];
         if owner
             .objects
@@ -183,7 +185,7 @@ impl Turns {
     /// location's time), which completes it ([`Turns::complete_research`]). Each such technology, and each in
     /// state 2, counts; none counted sets attribute 39 to 1 where it is 0. The game's lists hold
     /// the dependents by id, as the `.dat`'s requirements give them.
-    pub(crate) fn update_dependents(&mut self, p: usize, t: usize) -> Result<(), Unsupported> {
+    pub(crate) fn update_dependents(&mut self, p: usize, t: usize) -> Result<(), GenieError> {
         let mut counted = 0;
         let civ = i16::from(self.players[p].civ);
         for d in 0..self.techs.len() {
@@ -220,7 +222,7 @@ impl Turns {
             }
             // FUN_1413cf2f0: modes 0 and 1 are for every game
             if !matches!(def.mode, 0 | 1) {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a technology for some game modes (FUN_1413cf2f0)",
                 ));
             }
@@ -317,12 +319,7 @@ impl Turns {
     /// building's list `+0xd00`, which the slice does not hold); any other goes through
     /// `FUN_1413cdb00`: a technology of type 0x21 turns to 1 (it may be researched), any other
     /// but a researched one (state 3) to −1; a negative id does so to every technology.
-    fn disable_tech(
-        &mut self,
-        p: usize,
-        tech: i32,
-        object: Option<i32>,
-    ) -> Result<(), Unsupported> {
+    fn disable_tech(&mut self, p: usize, tech: i32, object: Option<i32>) -> Result<(), GenieError> {
         let count = self.players[p].techs.len().min(self.techs.len());
         let held = usize::try_from(tech).ok().filter(|&t| t < count);
         if held.is_some_and(|t| self.techs[t].kind == crate::tech::SHARED_KIND) {
@@ -331,7 +328,9 @@ impl Turns {
                     .is_ok_and(|m| m.kind == master_type::BUILDING)
             });
             if building {
-                return Err(Unsupported("a research of the shared kind (FUN_1411c49a0)"));
+                return Err(GenieError::unsupported(
+                    "a research of the shared kind (FUN_1411c49a0)",
+                ));
             }
             return Ok(());
         }
@@ -373,7 +372,7 @@ impl Turns {
         enable: u8,
         one: bool,
         object: Option<i32>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.masters.get(p).and_then(|m| m.get(master)).is_none() {
             return Ok(());
         }
@@ -383,7 +382,7 @@ impl Turns {
             if self.settings.game_mode == MODE_WITHOUT_0X26D {
                 return Ok(());
             }
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "the enabling of master 0x26d (the game's mode)",
             ));
         }
@@ -393,7 +392,9 @@ impl Turns {
                     .is_ok_and(|m| m.kind == master_type::BUILDING)
             });
             if building {
-                return Err(Unsupported("an enable command for one building"));
+                return Err(GenieError::unsupported(
+                    "an enable command for one building",
+                ));
             }
             return Ok(());
         }
@@ -481,7 +482,7 @@ impl Turns {
         p: usize,
         effect: &[EffectCommand],
         object: Option<i32>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         for c in effect {
             // the technology commands read the third argument's low byte as the mode
             let mode = (c.c & 0xff) as u8;
@@ -511,7 +512,7 @@ impl Turns {
         p: usize,
         effect: &[EffectCommand],
         object: Option<i32>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let mut farms: Option<(f32, f32)> = None;
         for c in effect {
             if kind::OBJECTS_SET <= c.kind && c.kind <= kind::OBJECT_UPGRADE {
@@ -746,7 +747,7 @@ impl Turns {
         change: Change,
         v: f32,
         attribute: u8,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let Some((owner, u)) = self.object(id) else {
             return Ok(false);
         };
@@ -776,7 +777,7 @@ impl Turns {
         change: Change,
         v: f32,
         attribute: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => {
@@ -861,7 +862,7 @@ impl Turns {
         change: Change,
         v: f32,
         attribute: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::masters::attribute as a;
         match (attribute, change) {
             (a::HERO_STATUS, Change::Set | Change::Add) => Ok(()),
@@ -888,7 +889,7 @@ impl Turns {
     /// to `+0x60e`, their amounts `+0x610` on), one of the headroom (4) adds the old amount's
     /// magnitude then `v`; one of the population (11) or resource 19 its negation then `v`'s
     /// magnitude (slot 0xf8 each).
-    fn population_storage(&mut self, p: usize, master: &Master, v: f32) -> Result<(), Unsupported> {
+    fn population_storage(&mut self, p: usize, master: &Master, v: f32) -> Result<(), GenieError> {
         let owner = &mut self.players[p];
         for &(kind, amount, _) in master.storage.iter().take(3) {
             match kind {
@@ -919,7 +920,7 @@ impl Turns {
         change: Change,
         v: f32,
         attribute: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::masters::attribute as a;
         match (attribute, change) {
             (a::BUILDING_ICON_OVERRIDE, Change::Set) => Ok(()),
@@ -1012,13 +1013,13 @@ impl Turns {
         class: i16,
         v: f32,
         attribute: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if let Some(why) = self
             .reached_masters(p, unit, class)
             .iter()
             .find_map(|&id| self.masters[p].get(id)?.unloaded_for(attribute))
         {
-            return Err(Unsupported(why));
+            return Err(GenieError::unsupported(why));
         }
         self.effect_hooks(p, false, unit, class, attribute)?;
         self.change_attribute(p, change, unit, class, v, attribute)?;
@@ -1038,7 +1039,7 @@ impl Turns {
         unit: i16,
         class: i16,
         attribute: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let ids: Vec<i32> = self.players[p].objects.iter().map(|u| u.id).collect();
         for id in ids {
             let Some((_, u)) = self.object(id) else {
@@ -1060,7 +1061,7 @@ impl Turns {
     /// with units inside, a reload above 0 and an attack rate above 0 (`COMISS`, `JBE`: not a
     /// NaN; [`crate::garrison::attack_rate`]), each combat unit inside takes its share
     /// ([`crate::garrison::share`]) off its volleys (`+0xa00`), or adds it.
-    fn garrison_volleys(&mut self, p: usize, id: i32, after: bool) -> Result<(), Unsupported> {
+    fn garrison_volleys(&mut self, p: usize, id: i32, after: bool) -> Result<(), GenieError> {
         use crate::fmath::at_most_or_unordered;
         let Some((_, u)) = self.object(id) else {
             return Ok(());
@@ -1109,7 +1110,7 @@ impl Turns {
     /// attack and second attack sprites; a `MoveTo` keeps the sprite it holds (it is not one of
     /// the master's new ones) and shows it again (slot 0x60, which the unit shows already); the
     /// other actions' slot 0x50 does nothing.
-    fn show_changed_sprite(&mut self, p: usize, id: i32, attribute: u8) -> Result<(), Unsupported> {
+    fn show_changed_sprite(&mut self, p: usize, id: i32, attribute: u8) -> Result<(), GenieError> {
         use crate::masters::attribute as a;
         let Some((_, u)) = self.object(id) else {
             return Ok(());
@@ -1196,7 +1197,7 @@ impl Turns {
         class: i16,
         v: f32,
         attribute: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(masters) = self.masters.get(p) else {
             return Ok(());
         };
@@ -1278,7 +1279,7 @@ impl Turns {
         unit: i16,
         v: f32,
         attribute: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::masters::attribute as a;
         let master = self.master_of(p, unit)?.clone();
         let (done, pending) = self.tracked_master(p, &master);
@@ -1327,7 +1328,7 @@ impl Turns {
                 a::OBSTRUCTION_TYPE => self.give_record(id, &master),
                 _ => {
                     if self.object(id).is_some_and(|(_, u)| u.group.id != -1) {
-                        return Err(Unsupported(
+                        return Err(GenieError::unsupported(
                             "a hero status change of a unit in a group (removeUnit, FUN_14102c160)",
                         ));
                     }
@@ -1500,7 +1501,7 @@ impl Turns {
         attribute: i16,
         amount: f32,
         mode: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.all_garrison_volleys(p, false)?;
         if mode == 0 {
             self.set_player_attribute(p, attribute, amount)?;
@@ -1512,7 +1513,7 @@ impl Turns {
 
     /// Slot 0x1b8 (`FUN_141620e30`) of player `p` on resource `attribute` by `v`: as
     /// [`Turns::modify_resource`], the attribute set to its value times `v` (`FUN_1416614c0`).
-    fn multiply_resource(&mut self, p: usize, attribute: i16, v: f32) -> Result<(), Unsupported> {
+    fn multiply_resource(&mut self, p: usize, attribute: i16, v: f32) -> Result<(), GenieError> {
         self.all_garrison_volleys(p, false)?;
         let value = self.attribute_of(p, attribute) * v;
         self.set_player_attribute(p, attribute, value)?;
@@ -1521,7 +1522,7 @@ impl Turns {
 
     /// `FUN_141217ac0` (`after` false) or `FUN_14120b910` on each of player `p`'s live combat
     /// units and buildings ([`Turns::garrison_volleys`]).
-    fn all_garrison_volleys(&mut self, p: usize, after: bool) -> Result<(), Unsupported> {
+    fn all_garrison_volleys(&mut self, p: usize, after: bool) -> Result<(), GenieError> {
         let ids: Vec<i32> = self.players[p].objects.iter().map(|u| u.id).collect();
         for id in ids {
             let kind = self
@@ -1564,7 +1565,7 @@ impl Turns {
         p: usize,
         attribute: i16,
         v: f32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         match attribute {
             ALLIED_VISION => self.allied_vision_on(p)?,
             SPREAD_ATTRIBUTE => {
@@ -1579,7 +1580,7 @@ impl Turns {
                 }
             }
             EFFECT_FUNCTION if 0.0 < v => {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an effect's script function (attribute 0x21, EffectFunction in Effects.xs)",
                 ));
             }
@@ -1602,7 +1603,7 @@ impl Turns {
         p: usize,
         attribute: i16,
         v: f32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         match attribute {
             ALLIED_VISION => self.allied_vision_on(p)?,
             SHARED_VISION => self.rebuild_vision()?,
@@ -1628,7 +1629,7 @@ impl Turns {
     /// Attribute 0x32's side effect: player `p`'s allied vision (`+0x2cc`) on, the masks rebuilt
     /// (the world's slot 0x78, `FUN_1415e92b0`) and its tile list refilled
     /// ([`Turns::refill_tiles`], `FUN_141285cb0`).
-    fn allied_vision_on(&mut self, p: usize) -> Result<(), Unsupported> {
+    fn allied_vision_on(&mut self, p: usize) -> Result<(), GenieError> {
         self.players[p].allied_vision = true;
         self.rebuild_vision()?;
         self.refill_tiles(p);
@@ -1641,7 +1642,7 @@ impl Turns {
     /// [`Turns::tracked_key`]) from type 40 on with an action (its Make) has the food still to make (`+0x44`) grow: with `held` its food
     /// (`+0x310`) and `f = held + still to make`, it takes `(f / before)^exponent × amount + f −
     /// held` (`powf`, here libm's).
-    fn farm_food(&mut self, p: usize, before: f32, amount: f32) -> Result<(), Unsupported> {
+    fn farm_food(&mut self, p: usize, before: f32, amount: f32) -> Result<(), GenieError> {
         let exponent = self.attribute_of(p, FARM_EXPONENT);
         if crate::fmath::below_or_unordered(exponent, 0.0) {
             return Ok(());
@@ -1720,7 +1721,7 @@ impl Turns {
         mode: i16,
         v: f32,
         location: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(t) = usize::try_from(tech)
             .ok()
             .filter(|&t| t < self.players[p].techs.len())
@@ -1798,7 +1799,7 @@ impl Turns {
                 let state = &mut self.players[p].techs[t];
                 state.effect_override = short;
                 if state.state == RESEARCHED {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a researched technology's new effect (the world's effect table)",
                     ));
                 }
@@ -1812,7 +1813,7 @@ impl Turns {
     /// state 0 to 2 completes as [`Turns::complete_research`] (the civ's disabled technologies are
     /// not asked); any other gives its effect again and counts in attributes 0x15 and 0x63 (its
     /// listed costs) whatever its location, its state left.
-    fn force_research(&mut self, p: usize, t: usize) -> Result<bool, Unsupported> {
+    fn force_research(&mut self, p: usize, t: usize) -> Result<bool, GenieError> {
         if (0..=2).contains(&self.players[p].techs[t].state) {
             return self.complete_research(p, t, None);
         }
@@ -1845,7 +1846,7 @@ impl Turns {
         v: f32,
         mode: u8,
         location: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(t) = usize::try_from(tech)
             .ok()
             .filter(|&t| t < self.players[p].techs.len())
@@ -1930,7 +1931,7 @@ impl Turns {
         to: i16,
         mode: i16,
         object: Option<i32>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.all_garrison_volleys(p, false)?;
         self.upgrade_objects(p, from, to, mode, object)?;
         self.all_garrison_volleys(p, true)
@@ -1944,7 +1945,7 @@ impl Turns {
         to: i16,
         mode: i16,
         object: Option<i32>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(masters) = self.masters.get(p) else {
             return Ok(());
         };
@@ -1962,7 +1963,7 @@ impl Turns {
         let both = mode == -1 || mode == 3;
         let same_type = old.kind == new.kind;
         if mode == 2 && object.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an upgrade of the effect's object (mode 2, slot 0x98 on a master of its own)",
             ));
         }
@@ -1972,7 +1973,7 @@ impl Turns {
             .clone()
             .any(|u| u.life.master_id == from || Some(u.life.master_id) == dead)
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an upgrade of objects (slot 0x98, FUN_141201a60 down to FUN_141186580)",
             ));
         }
@@ -1999,7 +2000,7 @@ impl Turns {
     /// draws its sex from the `SpawnObject` stream, half of them 0x125; its walk to the gather
     /// point) is the spawning's, which this file does not hold: a spawn that makes an object
     /// stops. The local player's statistics of effect 0x318's spawns are not simulation.
-    fn spawn_at(&self, p: usize, master: i16, at: i16, count: i16) -> Result<(), Unsupported> {
+    fn spawn_at(&self, p: usize, master: i16, at: i16, count: i16) -> Result<(), GenieError> {
         let has = |q: usize, id: i16| self.masters.get(q).is_some_and(|m| m.get(id).is_some());
         let building = self
             .masters
@@ -2014,7 +2015,7 @@ impl Turns {
             .iter()
             .any(|u| u.life.master_id == at && u.life.state == 2)
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an effect's spawn of objects (slot 0x1a8, FUN_1416136f0: slot 0x1c0)",
             ));
         }
@@ -2026,13 +2027,13 @@ impl Turns {
     /// holds no own masters: none); 203 to 205 the effect's object, which first takes a master of
     /// its own (`FUN_14165abe0`, `FUN_141186d10`, not held); 206 changes the effect's object's
     /// master (`FUN_14165ae40`). Without an object only 200 to 202 run.
-    const fn object_effect(c: &EffectCommand, object: Option<i32>) -> Result<(), Unsupported> {
+    const fn object_effect(c: &EffectCommand, object: Option<i32>) -> Result<(), GenieError> {
         match (c.kind, object) {
             (kind::OBJECTS_SET..kind::OBJECT_SET, _) | (_, None) => Ok(()),
-            (kind::OBJECT_UPGRADE, Some(_)) => Err(Unsupported(
+            (kind::OBJECT_UPGRADE, Some(_)) => Err(GenieError::unsupported(
                 "an effect's master change of its object (kind 206, FUN_14165ae40)",
             )),
-            (_, Some(_)) => Err(Unsupported(
+            (_, Some(_)) => Err(GenieError::unsupported(
                 "an effect on its object's own master (kinds 203 to 205, FUN_141186d10)",
             )),
         }

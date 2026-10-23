@@ -34,7 +34,7 @@
     // a routine is ported whole, its documentation opens with the routine and its addresses
     clippy::too_many_lines,
     clippy::too_long_first_doc_paragraph,
-    // every error is `Unsupported`, which names the part the slice does not model
+    // every error is `GenieError`, which names the part the slice does not model
     clippy::missing_errors_doc
 )]
 
@@ -46,11 +46,11 @@ pub mod views;
 
 pub use masters::{DefaultAction, MasterTable, ReadError, TerrainTable};
 
+use genie_core::GenieError;
 use genie_core::artifact::ARTIFACT_TYPE;
 use genie_core::checkpoint::{ObjectState, PlayerState, TopAction, player_block};
 use genie_core::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::turn::{Command, Player, Turns, Unit};
-use genie_core::unit_ai::Unsupported;
 use genie_core::visibility::{
     BuildingSight, Extent, Seer, Visibility, VisibleMap, VisibleResource, VisibleResources,
     capture_kind,
@@ -100,7 +100,7 @@ pub enum Error {
     /// A player the save does not have.
     NoPlayer(usize),
     /// What the slice does not model of the save.
-    Unmodelled(Unsupported),
+    Unmodelled(GenieError),
 }
 
 impl From<de::Error> for Error {
@@ -121,7 +121,7 @@ impl std::fmt::Display for Error {
             Self::BadTileDump => write!(f, "the tile list dump is out of shape"),
             Self::BadPoolDump => write!(f, "the recycled pools dump is out of shape"),
             Self::NoChapter => write!(f, "the recording has no chapter"),
-            Self::Unmodelled(u) => write!(f, "not modelled: {}", u.0),
+            Self::Unmodelled(u) => write!(f, "not modelled: {u}"),
             Self::NoPlayer(p) => write!(f, "no player {p} in the save"),
         }
     }
@@ -237,7 +237,7 @@ pub struct GroupCommand {
 }
 
 /// Word 9 of one player's first checkpoint, from the unit-AI slice and as recorded.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Word9 {
     /// The player's id.
     pub id: u32,
@@ -248,7 +248,7 @@ pub struct Word9 {
     /// The first command before the checkpoint, by any player, that may create a unit group.
     pub group_command: Option<GroupCommand>,
     /// The first unit update of this player the slice could not model.
-    pub unsupported: Option<(u32, usize, Unsupported)>,
+    pub unsupported: Option<(u32, usize, GenieError)>,
 }
 
 /// The slice's view of one saved object: its lifecycle, its unit AI and its actions. A save from
@@ -265,7 +265,7 @@ fn unit(
     let Some(s) = object.static_part() else {
         return Unit {
             id: -1,
-            unmodelled_action: Some(Unsupported("an object without a static part")),
+            unmodelled_action: Some(GenieError::unsupported("an object without a static part")),
             ..Unit::default()
         };
     };
@@ -421,7 +421,7 @@ fn unit(
     // (whose restart the slice does not model) or something not modelled
     unit.default_task = match default_task(object, s, objects, civ, masters) {
         Ok(None | Some(DefaultStart::Fly(_) | DefaultStart::Make)) => None,
-        Ok(Some(DefaultStart::Artifact(_))) => Some(Unsupported(
+        Ok(Some(DefaultStart::Artifact(_))) => Some(GenieError::unsupported(
             "the default task's restart (the Artifact action)",
         )),
         Err(e) => Some(e),
@@ -618,13 +618,18 @@ fn moving_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterM
 }
 
 /// One saved level of path data, with its path's waypoints from the world's path table.
-fn path_level(d: &PathData, paths: &[Path]) -> Result<genie_core::movement::PathData, Unsupported> {
+fn path_level(d: &PathData, paths: &[Path]) -> Result<genie_core::movement::PathData, GenieError> {
     // a level without a path (id -1) holds none: a bird's top level
     let path = match d.path_id {
         -1 => None,
-        id => Some(paths.iter().find(|p| p.idvalue == id).ok_or(Unsupported(
-            "path data whose path is not in the world's table",
-        ))?),
+        id => Some(
+            paths
+                .iter()
+                .find(|p| p.idvalue == id)
+                .ok_or(GenieError::unsupported(
+                    "path data whose path is not in the world's table",
+                ))?,
+        ),
     };
     Ok(genie_core::movement::PathData {
         level: d.waypoint_level,
@@ -668,13 +673,13 @@ fn mover(
     paths: &[Path],
     civ: u8,
     masters: Option<&MasterTable>,
-) -> Result<Option<genie_core::movement::Mover>, Unsupported> {
+) -> Result<Option<genie_core::movement::Mover>, GenieError> {
     use genie_core::movement::{MoveStats, Mover, Velocity};
     let Some(m) = object.moving_part() else {
         return Ok(None);
     };
     if m.future_path_data.is_some() {
-        return Err(Unsupported("saved future path data"));
+        return Err(GenieError::unsupported("saved future path data"));
     }
     // an object with its own master (a copy, say a captured animal's) moves by its own values
     let (radius, restriction, base, turn, flags, standing, sprite_facets) =
@@ -694,19 +699,21 @@ fn mover(
                 }),
             ),
             (Some(_), None) => {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a moving object's own master without an animated part",
                 ));
             }
             (None, _) => {
-                let master = objects
-                    .master(s.master_obj)
-                    .ok_or(Unsupported("a moving object whose master is not saved"))?;
-                let placement = master
-                    .static_part()
-                    .ok_or(Unsupported("a moving master without a static part"))?;
+                let master = objects.master(s.master_obj).ok_or(GenieError::unsupported(
+                    "a moving object whose master is not saved",
+                ))?;
+                let placement = master.static_part().ok_or(GenieError::unsupported(
+                    "a moving master without a static part",
+                ))?;
                 let base = animated_master(master)
-                    .ok_or(Unsupported("a moving master without an animated part"))?
+                    .ok_or(GenieError::unsupported(
+                        "a moving master without an animated part",
+                    ))?
                     .max_speed;
                 (
                     [placement.radius_x, placement.radius_y, placement.radius_z],
@@ -720,21 +727,26 @@ fn mover(
                 )
             }
         };
-    let table = masters.ok_or(Unsupported("no master table: turning is unknown"))?;
+    let table = masters.ok_or(GenieError::unsupported(
+        "no master table: turning is unknown",
+    ))?;
     // without a sprite (−1: the empty town-centre annex 890, say) no factor
     let factor = if s.sprite == -1 {
         0.0
     } else {
-        table
-            .sprite_speed(s.sprite)
-            .ok_or(Unsupported("a sprite the data file does not have"))?
+        table.sprite_speed(s.sprite).ok_or(GenieError::unsupported(
+            "a sprite the data file does not have",
+        ))?
     };
     let speed = if 0.0 < factor { base * factor } else { base };
     let turning = table
         .turning(civ, s.master_obj)
-        .ok_or(Unsupported("a moving master the data file does not have"))?;
-    let (turn_speed, walking, running) =
-        turn.ok_or(Unsupported("a moving master without a moving part"))?;
+        .ok_or(GenieError::unsupported(
+            "a moving master the data file does not have",
+        ))?;
+    let (turn_speed, walking, running) = turn.ok_or(GenieError::unsupported(
+        "a moving master without a moving part",
+    ))?;
     // the top speed with a sprite: the master's speed times the sprite's factor above 0
     let with = |sprite: i16| {
         let f = table.sprite_speed(sprite).unwrap_or(0.0);
@@ -772,12 +784,12 @@ fn mover(
             turn_radius_speed: f32::MAX,
             radius,
             restriction: usize::try_from(restriction)
-                .map_err(|_| Unsupported("a negative terrain restriction"))?,
+                .map_err(|_| GenieError::unsupported("a negative terrain restriction"))?,
             restriction_mask: usize::try_from(restriction)
                 .ok()
                 .and_then(|r| table.terrain.masks().get(r))
                 .copied()
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "a terrain restriction the data file does not have",
                 ))?,
             turn_time: turn_speed,
@@ -864,12 +876,12 @@ fn saved_actions(
     object: &genie_save::Object,
     s: &RgeStaticObject,
     objects: &PlayerObjects,
-    work: impl Fn(i16) -> Result<genie_core::build::BuildTask, Unsupported>,
-    fly_task: impl Fn(i16) -> Result<genie_core::masters::Task, Unsupported>,
-    task_at: impl Fn(i16, i16) -> Result<genie_core::masters::Task, Unsupported>,
+    work: impl Fn(i16) -> Result<genie_core::build::BuildTask, GenieError>,
+    fly_task: impl Fn(i16) -> Result<genie_core::masters::Task, GenieError>,
+    task_at: impl Fn(i16, i16) -> Result<genie_core::masters::Task, GenieError>,
     graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
     unit: &mut Unit,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     use genie_core::build::{BUILD, BuildAction, MoveTo};
     use genie_core::fly::{FLY, Fly};
     use genie_core::move_to::{MOVE_TO, MoveToAction};
@@ -879,7 +891,7 @@ fn saved_actions(
         3 => Ok(MoveTo::Start),
         4 => Ok(MoveTo::Moving),
         13 => Ok(MoveTo::Failed),
-        _ => Err(Unsupported(
+        _ => Err(GenieError::unsupported(
             "a saved MoveTo in a state the slice does not model",
         )),
     };
@@ -897,7 +909,7 @@ fn saved_actions(
         .map_or(-1, |m| m.run_sprite_id);
     let base = action
         .base()
-        .ok_or(Unsupported("a saved action without its base"))?;
+        .ok_or(GenieError::unsupported("a saved action without its base"))?;
     // the second target (+0x34): only the Hunt and the Gather (their drop site), the missile (its
     // shooter) and the Attack hold one in the slice
     if base.target2_id != -1
@@ -909,7 +921,9 @@ fn saved_actions(
                 | genie_core::attack::ATTACK
         )
     {
-        return Err(Unsupported("a saved action with a second target"));
+        return Err(GenieError::unsupported(
+            "a saved action with a second target",
+        ));
     }
     match kind {
         ARTIFACT_TYPE => {
@@ -917,7 +931,7 @@ fn saved_actions(
                 None => None,
                 Some((MOVE_TO, sub)) => Some(sub),
                 Some(_) => {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a saved Artifact action with another sub-action",
                     ));
                 }
@@ -931,17 +945,18 @@ fn saved_actions(
                 Some(sub) if base.target_id != -1 => {
                     let b = sub
                         .base()
-                        .ok_or(Unsupported("a saved MoveTo without its base"))?;
-                    let goal = if b.target_id == -1 {
-                        genie_core::move_to::Goal::Point(
-                            point(b).ok_or(Unsupported("a saved MoveTo without its point"))?,
-                        )
-                    } else {
-                        genie_core::move_to::Goal::Target(b.target_id)
-                    };
+                        .ok_or(GenieError::unsupported("a saved MoveTo without its base"))?;
+                    let goal =
+                        if b.target_id == -1 {
+                            genie_core::move_to::Goal::Point(point(b).ok_or(
+                                GenieError::unsupported("a saved MoveTo without its point"),
+                            )?)
+                        } else {
+                            genie_core::move_to::Goal::Target(b.target_id)
+                        };
                     let range = sub
                         .move_to_range()
-                        .ok_or(Unsupported("a saved MoveTo without its range"))?;
+                        .ok_or(GenieError::unsupported("a saved MoveTo without its range"))?;
                     Some((goal, range))
                 }
                 _ => None,
@@ -969,7 +984,7 @@ fn saved_actions(
                 target: base.target_id,
                 range: action
                     .move_to_range()
-                    .ok_or(Unsupported("a saved MoveTo without its range"))?,
+                    .ok_or(GenieError::unsupported("a saved MoveTo without its range"))?,
                 // its sprite (`+0x48`'s id) is the master's running one
                 run: objects
                     .master(s.master_obj)
@@ -999,17 +1014,19 @@ fn saved_actions(
                 .rge_action_by_type
                 .as_deref()
                 .and_then(|t| t.rge_action_missile.as_deref())
-                .ok_or(Unsupported("a saved missile action without its part"))?;
+                .ok_or(GenieError::unsupported(
+                    "a saved missile action without its part",
+                ))?;
             let mo = object
                 .rge_object
                 .as_deref()
                 .and_then(|r| r.rge_missile_object.as_deref())
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "a missile action of an object that is not a missile",
                 ))?;
             let moving = object
                 .moving_part()
-                .ok_or(Unsupported("a missile without its moving part"))?;
+                .ok_or(GenieError::unsupported("a missile without its moving part"))?;
             // the hit mode copies the master's (`+0x80`, a miss's 1 is not saved)
             let hit_mode = objects
                 .master(s.master_obj)
@@ -1046,9 +1063,9 @@ fn saved_actions(
                 .rge_action_by_type
                 .as_deref()
                 .and_then(|t| t.rge_action_make.as_deref())
-                .ok_or(Unsupported("a saved Make without its part"))?;
+                .ok_or(GenieError::unsupported("a saved Make without its part"))?;
             if base.sub_actions.entries().next().is_some() {
-                return Err(Unsupported("a saved Make with a sub-action"));
+                return Err(GenieError::unsupported("a saved Make with a sub-action"));
             }
             unit.make = Some(genie_core::make::MakeAction {
                 state: base.state,
@@ -1062,7 +1079,11 @@ fn saved_actions(
             let sub = match base.sub_actions.entries().next() {
                 None => None,
                 Some((MOVE_TO, sub)) => sub.base(),
-                Some(_) => return Err(Unsupported("a saved Fly action with another sub-action")),
+                Some(_) => {
+                    return Err(GenieError::unsupported(
+                        "a saved Fly action with another sub-action",
+                    ));
+                }
             };
             let move_to = sub.map(|b| move_to_state(b.state)).transpose()?;
             unit.fly = Some(Fly {
@@ -1079,7 +1100,11 @@ fn saved_actions(
             let move_to = match base.sub_actions.entries().next() {
                 None => None,
                 Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
-                Some(_) => return Err(Unsupported("a saved Build action with another sub-action")),
+                Some(_) => {
+                    return Err(GenieError::unsupported(
+                        "a saved Build action with another sub-action",
+                    ));
+                }
             };
             // a MoveTo to a point has no target; its point is the action's target point
             let goal = base
@@ -1113,7 +1138,7 @@ fn saved_actions(
             let part = action
                 .tribe_action_hunt
                 .as_deref()
-                .ok_or(Unsupported("a saved Hunt without its own part"))?;
+                .ok_or(GenieError::unsupported("a saved Hunt without its own part"))?;
             if !matches!(
                 base.state,
                 IDLE | SEARCH
@@ -1126,7 +1151,7 @@ fn saved_actions(
                     | WALK_SEARCH
                     | WALK_POINT
             ) {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a saved Hunt in a state the slice does not model",
                 ));
             }
@@ -1169,12 +1194,12 @@ fn saved_actions(
                     // a swing past its hit: the swing's times (`+0xb0`, `+0xb4`, unsaved) are what
                     // the hit left, the reload less the attack sprite's length
                     if attack.state == genie_core::attack::SWING && !attack.pending {
-                        let reload = saved_reload(object, s, objects)
-                            .ok_or(Unsupported("a saved swing without its unit's reload"))?;
-                        let g = attack
-                            .arms
-                            .sprite
-                            .ok_or(Unsupported("a saved swing without its attack sprite"))?;
+                        let reload = saved_reload(object, s, objects).ok_or(
+                            GenieError::unsupported("a saved swing without its unit's reload"),
+                        )?;
+                        let g = attack.arms.sprite.ok_or(GenieError::unsupported(
+                            "a saved swing without its attack sprite",
+                        ))?;
                         let rest = reload - f32::from(g.frames) * g.frame_duration;
                         attack.swing = rest;
                         attack.rest = rest.max(0.0);
@@ -1187,7 +1212,7 @@ fn saved_actions(
                     hunt.move_to = Some(move_to_state(sub.base().map_or(0, |b| b.state))?);
                     hunt.walk_range = sub
                         .move_to_range()
-                        .ok_or(Unsupported("a saved MoveTo without its range"))?;
+                        .ok_or(GenieError::unsupported("a saved MoveTo without its range"))?;
                     // its wait (`+0x6c`, `+0x70`, `+0x74`)
                     if let Some(m) = sub
                         .rge_action_by_type
@@ -1201,7 +1226,11 @@ fn saved_actions(
                         };
                     }
                 }
-                Some(_) => return Err(Unsupported("a saved Hunt with another sub-action")),
+                Some(_) => {
+                    return Err(GenieError::unsupported(
+                        "a saved Hunt with another sub-action",
+                    ));
+                }
             }
             unit.hunt = Some(hunt);
             Ok(())
@@ -1214,12 +1243,14 @@ fn saved_actions(
                 .rge_action_by_type
                 .as_deref()
                 .and_then(|b| b.rge_action_gather.as_deref())
-                .ok_or(Unsupported("a saved Gather without its own part"))?;
+                .ok_or(GenieError::unsupported(
+                    "a saved Gather without its own part",
+                ))?;
             if !matches!(
                 base.state,
                 WALK | FACE | WORK | DROP | DONE | IDLE | MOVED | SEARCH | WALK_BACK
             ) {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a saved Gather in a state the slice does not model",
                 ));
             }
@@ -1266,7 +1297,7 @@ fn saved_actions(
                         .map(|b| [b.target_x, b.target_y, b.target_z]);
                     gather.walk_range = sub
                         .move_to_range()
-                        .ok_or(Unsupported("a saved MoveTo without its range"))?;
+                        .ok_or(GenieError::unsupported("a saved MoveTo without its range"))?;
                     if let Some(m) = sub
                         .rge_action_by_type
                         .as_deref()
@@ -1279,7 +1310,11 @@ fn saved_actions(
                         };
                     }
                 }
-                Some(_) => return Err(Unsupported("a saved Gather with another sub-action")),
+                Some(_) => {
+                    return Err(GenieError::unsupported(
+                        "a saved Gather with another sub-action",
+                    ));
+                }
             }
             unit.gather = Some(gather);
             Ok(())
@@ -1289,15 +1324,21 @@ fn saved_actions(
             let first_time = action
                 .rge_action_enter
                 .as_deref()
-                .ok_or(Unsupported("a saved Enter without its own part"))?
+                .ok_or(GenieError::unsupported(
+                    "a saved Enter without its own part",
+                ))?
                 .first_time_enter;
             let move_to = match base.sub_actions.entries().next() {
                 None => None,
                 Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
-                Some(_) => return Err(Unsupported("a saved Enter with another sub-action")),
+                Some(_) => {
+                    return Err(GenieError::unsupported(
+                        "a saved Enter with another sub-action",
+                    ));
+                }
             };
             if !matches!(base.state, ENTERED | 2 | 4) {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a saved Enter in a state the slice does not model",
                 ));
             }
@@ -1319,14 +1360,16 @@ fn saved_actions(
                 None => None,
                 Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
                 Some(_) => {
-                    return Err(Unsupported("a saved Explore with another sub-action"));
+                    return Err(GenieError::unsupported(
+                        "a saved Explore with another sub-action",
+                    ));
                 }
             };
             if !matches!(
                 base.state,
                 genie_core::explore::WAIT | genie_core::explore::WALK
             ) {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a saved Explore in a state the slice does not model",
                 ));
             }
@@ -1361,12 +1404,16 @@ fn saved_actions(
             // task, and the foundation it waits for (`mTargetBuildingId`, +0x68); it makes no
             // sub-action
             if base.sub_actions.entries().next().is_some() {
-                return Err(Unsupported("a saved Wait_Solidify with a sub-action"));
+                return Err(GenieError::unsupported(
+                    "a saved Wait_Solidify with a sub-action",
+                ));
             }
             let target = action
                 .tribe_action_wait_solidify
                 .as_deref()
-                .ok_or(Unsupported("a saved Wait_Solidify without its own part"))?
+                .ok_or(GenieError::unsupported(
+                    "a saved Wait_Solidify without its own part",
+                ))?
                 .target_building_id;
             let mut wait = genie_core::wait_solidify::WaitSolidify::new(
                 task_at(s.master_obj, base.short_val)?,
@@ -1376,7 +1423,9 @@ fn saved_actions(
             unit.wait_solidify = Some(wait);
             Ok(())
         }
-        _ => Err(Unsupported("a saved action the slice does not import")),
+        _ => Err(GenieError::unsupported(
+            "a saved action the slice does not import",
+        )),
     }
 }
 
@@ -1448,19 +1497,23 @@ fn saved_sprite(
 fn saved_attack(
     sub: &genie_save::generated::world::Action,
     graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
-    move_to_state: &dyn Fn(u8) -> Result<genie_core::move_to::MoveTo, Unsupported>,
+    move_to_state: &dyn Fn(u8) -> Result<genie_core::move_to::MoveTo, GenieError>,
     run_sprite: i16,
-) -> Result<genie_core::attack::Attack, Unsupported> {
+) -> Result<genie_core::attack::Attack, GenieError> {
     use genie_core::move_to::MOVE_TO;
     let b = sub
         .base()
-        .ok_or(Unsupported("a saved Attack without its base"))?;
+        .ok_or(GenieError::unsupported("a saved Attack without its base"))?;
     let a = sub
         .rge_action_by_type
         .as_deref()
         .and_then(|t| t.rge_action_attack.as_deref())
-        .ok_or(Unsupported("a saved Attack without its own part"))?;
-    let graphics = graphics.ok_or(Unsupported("a saved Attack without the sprites' table"))?;
+        .ok_or(GenieError::unsupported(
+            "a saved Attack without its own part",
+        ))?;
+    let graphics = graphics.ok_or(GenieError::unsupported(
+        "a saved Attack without the sprites' table",
+    ))?;
     let g = |id: u16| {
         let id = id as i16;
         (0 <= id).then(|| graphics.get(&id).copied()).flatten()
@@ -1481,7 +1534,11 @@ fn saved_attack(
                     }
                 }),
         ),
-        Some(_) => return Err(Unsupported("a saved Attack with another sub-action")),
+        Some(_) => {
+            return Err(GenieError::unsupported(
+                "a saved Attack with another sub-action",
+            ));
+        }
     };
     Ok(genie_core::attack::Attack {
         target: b.target_id,
@@ -1527,13 +1584,15 @@ fn build_task(
     civ: u8,
     masters: Option<&MasterTable>,
     master: i16,
-) -> Result<genie_core::build::BuildTask, Unsupported> {
-    let m = objects
-        .master(master)
-        .ok_or(Unsupported("a builder whose master is not saved"))?;
+) -> Result<genie_core::build::BuildTask, GenieError> {
+    let m = objects.master(master).ok_or(GenieError::unsupported(
+        "a builder whose master is not saved",
+    ))?;
     let work_rate = combat_master(m)
         .map(|c| c.rge_master_action_object.work_rate)
-        .ok_or(Unsupported("a builder master without an action part"))?;
+        .ok_or(GenieError::unsupported(
+            "a builder master without an action part",
+        ))?;
     let (range, work_value) = build_range(objects, civ, masters, m, master)?;
     Ok(genie_core::build::BuildTask {
         range,
@@ -1548,7 +1607,7 @@ fn fly_task(
     civ: u8,
     masters: Option<&MasterTable>,
     master: i16,
-) -> Result<genie_core::masters::Task, Unsupported> {
+) -> Result<genie_core::masters::Task, GenieError> {
     let fly = genie_core::fly::FLY;
     let saved = objects
         .master(master)
@@ -1561,13 +1620,17 @@ fn fly_task(
             .iter()
             .find(|e| e.task.action_type == fly)
             .map(|e| core_task(&e.task))
-            .ok_or(Unsupported("a bird whose master has no Fly task"));
+            .ok_or(GenieError::unsupported(
+                "a bird whose master has no Fly task",
+            ));
     }
     masters
         .and_then(|t| t.work(civ, master))
         .and_then(|w| w.tasks.iter().find(|t| t.action_type == fly))
         .copied()
-        .ok_or(Unsupported("a bird whose Fly task is not in the data file"))
+        .ok_or(GenieError::unsupported(
+            "a bird whose Fly task is not in the data file",
+        ))
 }
 
 /// The work range and value of a builder master's Build task.
@@ -1577,7 +1640,7 @@ fn build_range(
     masters: Option<&MasterTable>,
     m: &Master,
     master: i16,
-) -> Result<(f32, f32), Unsupported> {
+) -> Result<(f32, f32), GenieError> {
     let saved = m.tribe_master_combat_object.as_deref().and_then(|c| {
         c.rge_master_combat_object
             .rge_master_action_object
@@ -1591,13 +1654,15 @@ fn build_range(
             .iter()
             .find(|e| e.task.action_type == build)
             .map(|e| (e.task.work_range, e.task.work_val1))
-            .ok_or(Unsupported("a builder whose master has no Build task"));
+            .ok_or(GenieError::unsupported(
+                "a builder whose master has no Build task",
+            ));
     }
     masters
         .and_then(|t| t.work(civ, master))
         .and_then(|w| w.tasks.iter().find(|t| t.action_type == build))
         .map(|t| (t.work_range, t.work_val1))
-        .ok_or(Unsupported(
+        .ok_or(GenieError::unsupported(
             "a builder whose Build task is not in the data file",
         ))
 }
@@ -1611,7 +1676,7 @@ fn build_range(
 /// without slots, action or local lists.
 fn production(
     object: &genie_save::Object,
-) -> Result<Option<genie_core::production::Production>, Unsupported> {
+) -> Result<Option<genie_core::production::Production>, GenieError> {
     use genie_core::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
     let Some(building) = object.tribe_building_object.as_deref() else {
         return Ok(None);
@@ -1646,10 +1711,12 @@ fn production(
             let make = action
                 .tribe_action_make_obj
                 .as_deref()
-                .ok_or(Unsupported("a saved make action without its part"))?;
-            let base = action
-                .base()
-                .ok_or(Unsupported("a saved make action without its base"))?;
+                .ok_or(GenieError::unsupported(
+                    "a saved make action without its part",
+                ))?;
+            let base = action.base().ok_or(GenieError::unsupported(
+                "a saved make action without its base",
+            ))?;
             Some(Making::Unit(MakeObj {
                 state: base.state,
                 paid: base.sub_action_value != 0,
@@ -1664,10 +1731,12 @@ fn production(
             let tech = action
                 .tribe_action_make_tech
                 .as_deref()
-                .ok_or(Unsupported("a saved research action without its part"))?;
-            let base = action
-                .base()
-                .ok_or(Unsupported("a saved research action without its base"))?;
+                .ok_or(GenieError::unsupported(
+                    "a saved research action without its part",
+                ))?;
+            let base = action.base().ok_or(GenieError::unsupported(
+                "a saved research action without its base",
+            ))?;
             Some(Making::Research(MakeTech {
                 state: base.state,
                 paid: base.sub_action_value != 0,
@@ -1677,7 +1746,7 @@ fn production(
             }))
         }
         Some(_) => {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a saved production action other than making a unit",
             ));
         }
@@ -1743,19 +1812,25 @@ fn default_task(
     objects: &PlayerObjects,
     civ: u8,
     masters: Option<&MasterTable>,
-) -> Result<Option<DefaultStart>, Unsupported> {
+) -> Result<Option<DefaultStart>, GenieError> {
     if !is_action_object(object) {
         return Ok(None);
     }
     let action = match s.own_master() {
         Some(_) => match own_default_task(s) {
             Some(-1) | None => DefaultAction::None,
-            Some(_) => return Err(Unsupported("the default task of an object's own master")),
+            Some(_) => {
+                return Err(GenieError::unsupported(
+                    "the default task of an object's own master",
+                ));
+            }
         },
         None => masters
-            .ok_or(Unsupported("no master table: the default task is unknown"))?
+            .ok_or(GenieError::unsupported(
+                "no master table: the default task is unknown",
+            ))?
             .default_action(civ, s.master_obj)
-            .ok_or(Unsupported("a master the table does not have"))?,
+            .ok_or(GenieError::unsupported("a master the table does not have"))?,
     };
     match action {
         DefaultAction::None => Ok(None),
@@ -1770,8 +1845,12 @@ fn default_task(
         // no action of the other types: the default task starts nothing (wild animals' Explore,
         // type 6)
         DefaultAction::Type(t) if !ACTION_FACTORY_TYPES.contains(&t) => Ok(None),
-        DefaultAction::Type(_) => Err(Unsupported("a default task other than the Artifact action")),
-        DefaultAction::NoSuchTask => Err(Unsupported("a default task id that names no task")),
+        DefaultAction::Type(_) => Err(GenieError::unsupported(
+            "a default task other than the Artifact action",
+        )),
+        DefaultAction::NoSuchTask => Err(GenieError::unsupported(
+            "a default task id that names no task",
+        )),
     }
 }
 
@@ -2327,7 +2406,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         Ok(g) => turns.groups = g,
         Err(e) => {
             for p in &mut turns.players {
-                let _ = p.unsupported.get_or_insert((0, 0, e));
+                let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
                 p.stopped = true;
             }
         }
@@ -2377,7 +2456,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     // the players' vision masks, which the world's load rebuilds (its slot 0x78)
     if let Err(e) = turns.rebuild_vision() {
         for p in &mut turns.players {
-            let _ = p.unsupported.get_or_insert((0, 0, e));
+            let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
             p.stopped = true;
         }
     }
@@ -2654,8 +2733,9 @@ fn task_at(
     masters: Option<&MasterTable>,
     master: i16,
     index: i16,
-) -> Result<genie_core::masters::Task, Unsupported> {
-    let i = usize::try_from(index).map_err(|_| Unsupported("a saved action without its task"))?;
+) -> Result<genie_core::masters::Task, GenieError> {
+    let i = usize::try_from(index)
+        .map_err(|_| GenieError::unsupported("a saved action without its task"))?;
     let saved = objects
         .master(master)
         .and_then(action_part)
@@ -2665,7 +2745,7 @@ fn task_at(
             .list
             .get(i)
             .map(|e| core_task(&e.task))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a saved action's task beyond its master's list",
             ));
     }
@@ -2673,7 +2753,7 @@ fn task_at(
         .and_then(|t| t.work(civ, master))
         .and_then(|w| w.tasks.get(i))
         .copied()
-        .ok_or(Unsupported(
+        .ok_or(GenieError::unsupported(
             "a saved action's task the data file does not have",
         ))
 }
@@ -3796,7 +3876,7 @@ impl Decoder {
                 let player = *packet.get(1)? as usize;
                 return Some(Command::Unmodelled {
                     player,
-                    why: Unsupported(unmodelled_command(&other)),
+                    why: GenieError::unsupported(unmodelled_command(&other)),
                 });
             }
         };
@@ -3875,7 +3955,7 @@ fn queue_command(packet: &de::command::MultiQueue, sections: &[PlayerSection<'_>
     let player = packet.commp_id as usize;
     let unmodelled = |why| Command::Unmodelled {
         player,
-        why: Unsupported(why),
+        why: GenieError::unsupported(why),
     };
     if sections.get(player).is_none() {
         return unmodelled("QUEUE by a player the save does not have");
@@ -3941,13 +4021,15 @@ fn build_command(packet: &de::command::Build, sections: &[PlayerSection<'_>]) ->
     let player = packet.commp_id as usize;
     let master = packet.o_id as i16;
     let unit_ai = sections.get(player).map_or(
-        Err(Unsupported("BUILD names a player the save does not have")),
+        Err(GenieError::unsupported(
+            "BUILD names a player the save does not have",
+        )),
         |section| new_unit_ai(section.objects(), master),
     );
     if packet.num == LAST_COMMANDED {
         return Command::Unmodelled {
             player,
-            why: Unsupported("BUILD by the last commanded units"),
+            why: GenieError::unsupported("BUILD by the last commanded units"),
         };
     }
     Command::Build {
@@ -3975,11 +4057,11 @@ fn build_wall_command(packet: &de::command::BuildWall, sections: &[PlayerSection
     if packet.num == LAST_COMMANDED {
         return Command::Unmodelled {
             player,
-            why: Unsupported("BUILD_WALL by the last commanded units"),
+            why: GenieError::unsupported("BUILD_WALL by the last commanded units"),
         };
     }
     let unit_ai = sections.get(player).map_or(
-        Err(Unsupported(
+        Err(GenieError::unsupported(
             "BUILD_WALL names a player the save does not have",
         )),
         |section| new_unit_ai(section.objects(), master),
@@ -4006,13 +4088,13 @@ fn build_wall_command(packet: &de::command::BuildWall, sections: &[PlayerSection
 /// [`genie_core::unit_ai::factory_type`]): by its class (the master's fifth saved short), its id,
 /// its volley missile (the tribe combat master's `volley_missile_id`, the game's `+0x8d4`: a
 /// building with one gets the tower's unit AI and its fourth draw) and its combat level.
-fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, Unsupported> {
-    let m = objects
-        .master(master)
-        .ok_or(Unsupported("BUILD of a master the player does not have"))?;
-    let static_part = m
-        .static_part()
-        .ok_or(Unsupported("BUILD of a master without a static part"))?;
+fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, GenieError> {
+    let m = objects.master(master).ok_or(GenieError::unsupported(
+        "BUILD of a master the player does not have",
+    ))?;
+    let static_part = m.static_part().ok_or(GenieError::unsupported(
+        "BUILD of a master without a static part",
+    ))?;
     let class = static_part.read_temp_5;
     // the factory (`FUN_141215a90`) gives a building with a volley missile (the master's
     // `+0x8d4`, `volley_missile_id`) the tower's unit AI, as genie-core's `factory_type` does
@@ -4144,7 +4226,7 @@ pub fn simulate_word9(
                 simulated: lane_block(section, id, simulated)[9],
                 checkpoint: lane[9],
                 group_command,
-                unsupported: simulated.unsupported,
+                unsupported: simulated.unsupported.clone(),
             })
         })
         .collect()
@@ -4302,7 +4384,7 @@ fn header_slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
 fn watch_at_load(turns: &mut Turns) {
     if let Err(e) = turns.build_watched() {
         for p in &mut turns.players {
-            let _ = p.unsupported.get_or_insert((0, 0, e));
+            let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
             p.stopped = true;
         }
     }
@@ -4785,11 +4867,11 @@ pub struct SliceRun {
     /// Every object the player holds after the run.
     pub objects: Vec<ObjectRow>,
     /// The first update the slice could not model: the tick, the object's index and why.
-    pub unsupported: Option<(u32, usize, Unsupported)>,
+    pub unsupported: Option<(u32, usize, GenieError)>,
     /// The id of the object whose update was not modelled.
     pub unsupported_id: Option<i32>,
     /// Every player's first unsupported update, by player.
-    pub stopped: Vec<Option<(u32, usize, Unsupported)>>,
+    pub stopped: Vec<Option<(u32, usize, GenieError)>>,
     /// What the players see after the run.
     pub visibility: Option<Visibility>,
     /// The map's terrain after the run.
@@ -4797,7 +4879,7 @@ pub struct SliceRun {
     /// The objects the slice stopped updating, of every player.
     pub frozen: Vec<i32>,
     /// Every object's freeze, by player: the tick, the object and why.
-    pub freezes: Vec<Vec<(u32, i32, Unsupported)>>,
+    pub freezes: Vec<Vec<(u32, i32, GenieError)>>,
 }
 
 /// The live objects of player `id` in a save (a recording's header, or the tick oracle's
@@ -5098,11 +5180,16 @@ pub fn objects_from_save(
             .filter(|u| listed(u))
             .map(ObjectRow::of_unit)
             .collect(),
-        unsupported: player.unsupported,
+        unsupported: player.unsupported.clone(),
         unsupported_id: player
             .unsupported
-            .and_then(|(_, i, _)| player.objects.get(i).map(|u| u.id)),
-        stopped: turns.players.iter().map(|p| p.unsupported).collect(),
+            .as_ref()
+            .and_then(|&(_, i, _)| player.objects.get(i).map(|u| u.id)),
+        stopped: turns
+            .players
+            .iter()
+            .map(|p| p.unsupported.clone())
+            .collect(),
         visibility: turns.spatial.sight.take(),
         terrain: turns.spatial.terrain.take(),
         frozen: turns
@@ -5145,7 +5232,7 @@ pub fn old_pather_paths(
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
     calls: &[(i32, [f32; 2], i32, f32)],
-) -> Result<Vec<Result<PatherAnswer, Unsupported>>, Error> {
+) -> Result<Vec<Result<PatherAnswer, GenieError>>, Error> {
     let mut turns = turns_from_save(save, recording, start_tick, masters, dumps)?;
     let mut out = Vec::new();
     for &(id, from, target, range) in calls {
@@ -5155,11 +5242,13 @@ pub fn old_pather_paths(
             .flat_map(|p| &p.objects)
             .find(|u| u.id == id)
         else {
-            out.push(Err(Unsupported("a caller the save does not hold")));
+            out.push(Err(GenieError::unsupported(
+                "a caller the save does not hold",
+            )));
             continue;
         };
         let Some(mover) = unit.mover.as_ref() else {
-            out.push(Err(Unsupported("a caller that does not move")));
+            out.push(Err(GenieError::unsupported("a caller that does not move")));
             continue;
         };
         let (mask, radius) = (mover.stats.restriction_mask, mover.stats.radius[0]);
@@ -5170,7 +5259,9 @@ pub fn old_pather_paths(
             .get(target)
             .map(|p| [p.position[0], p.position[1]])
         else {
-            out.push(Err(Unsupported("a target the save does not hold")));
+            out.push(Err(GenieError::unsupported(
+                "a target the save does not hold",
+            )));
             continue;
         };
         let mut pather =
@@ -5198,7 +5289,7 @@ pub struct TickReport {
     pub differences: Vec<(u32, String)>,
     /// What the slice could not model: the player, the object (None for the player's stop), the
     /// update and why.
-    pub unsupported: Vec<(u32, Option<i32>, u32, Unsupported)>,
+    pub unsupported: Vec<(u32, Option<i32>, u32, GenieError)>,
     /// The players' attributes past the resources that differ, apart from the differences (the
     /// slice does not keep every statistic yet): the player, the attribute, the slice's value
     /// and the game's (their f32 bits).
@@ -5656,7 +5747,11 @@ fn compare_players(
     for (p, player) in turns.players.iter().enumerate() {
         let id = p as u32;
         let now = |t: u32| tick.is_none_or(|n| n == t);
-        if let Some((t, _, why)) = player.unsupported.filter(|u| player.stopped && now(u.0)) {
+        if let Some((t, _, why)) = player
+            .unsupported
+            .clone()
+            .filter(|u| player.stopped && now(u.0))
+        {
             report.unsupported.push((id, None, t, why));
         }
         let frozen: Vec<i32> = player
@@ -5666,8 +5761,8 @@ fn compare_players(
             .map(|u| u.id)
             .chain(player.freezes.iter().map(|&(_, o, _)| o))
             .collect();
-        for &(t, o, why) in player.freezes.iter().filter(|f| now(f.0)) {
-            report.unsupported.push((id, Some(o), t, why));
+        for (t, o, why) in player.freezes.iter().filter(|f| now(f.0)) {
+            report.unsupported.push((id, Some(*o), *t, why.clone()));
         }
         let rows: Vec<ObjectRow> = player
             .objects

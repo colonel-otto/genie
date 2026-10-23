@@ -6,6 +6,7 @@
 //! 158041: constructor `FUN_140ac2dd0`, start (slot 5) `0x140ac49b0`, update (slot 6)
 //! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.
 
+use crate::GenieError;
 use crate::attack::{Arms, Attack, Engagement, Strike, set_sprite};
 use crate::damage::Victim;
 use crate::move_to::{
@@ -13,7 +14,6 @@ use crate::move_to::{
 };
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::sprite::Graphic;
-use crate::unit_ai::Unsupported;
 
 /// The Hunt action's type, which word 9 adds.
 pub const HUNT: i16 = 110;
@@ -225,10 +225,12 @@ pub(crate) fn asked_drop_off(
     resource: i16,
     held_kind: i16,
     attributes: usize,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     if resource != -1 && resource_kind(held_kind, attributes) != resource_kind(resource, attributes)
     {
-        return Err(Unsupported("a drop-off of another resource (notify 0x21c)"));
+        return Err(GenieError::unsupported(
+            "a drop-off of another resource (notify 0x21c)",
+        ));
     }
     Ok(true)
 }
@@ -462,7 +464,7 @@ impl HuntAction {
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
-    ) -> Result<(Self, bool), Unsupported> {
+    ) -> Result<(Self, bool), GenieError> {
         let mut hunt = Self {
             target: target.id,
             state: 0,
@@ -521,7 +523,7 @@ impl HuntAction {
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.tear_down(Some(mover))?;
         self.state = 4;
         self.timer = 0.0;
@@ -536,7 +538,9 @@ impl HuntAction {
             };
             self.move_to = Some(if ARRIVED < attack.gap {
                 if mover.stats.speed == 0.0 {
-                    return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+                    return Err(GenieError::unsupported(
+                        "a MoveTo of a unit without speed (state 13)",
+                    ));
                 }
                 MoveTo::Start
             } else {
@@ -577,9 +581,11 @@ impl HuntAction {
         attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
-    ) -> Result<Option<bool>, Unsupported> {
+    ) -> Result<Option<bool>, GenieError> {
         if target.kind == BUILDING && target.top_action == Some(FARM_AT_WORK) {
-            return Err(Unsupported("a hunt sent to a farm at work (set_state 15)"));
+            return Err(GenieError::unsupported(
+                "a hunt sent to a farm at work (set_state 15)",
+            ));
         }
         if target.player == player && drops_here && 0.0 < held {
             self.target = -1;
@@ -620,12 +626,14 @@ impl HuntAction {
         my_pasture: i32,
         gap: f32,
         mover: &mut Mover,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if target.is_none() && self.task.range != 0.0 {
             return Ok(false);
         }
         if my_pasture != -1 && target.is_none_or(|t| t.id != my_pasture) {
-            return Err(Unsupported("a hunter leaving its pasture (FUN_141189ca0)"));
+            return Err(GenieError::unsupported(
+                "a hunter leaving its pasture (FUN_141189ca0)",
+            ));
         }
         if let Some(t) = target.filter(|t| t.player == player && drops_here && 0.0 < held) {
             if t.id == self.carry_to && self.state == DROP {
@@ -651,21 +659,23 @@ impl HuntAction {
     /// # Errors
     ///
     /// A unit without speed.
-    pub fn search_walk(&mut self, mover: &mut Mover) -> Result<(), Unsupported> {
+    pub fn search_walk(&mut self, mover: &mut Mover) -> Result<(), GenieError> {
         self.set_point_walk(WALK_SEARCH, mover)
     }
 
     /// `set_state` 11 and 15 (`0x140ac60e0` case 0xb): the sub-actions go, the timer clears and a
     /// quiet `MoveTo` to the point within the task's range starts (`FUN_140aa0d30`, showing the
     /// walking sprite of [`walk_sprite`]).
-    fn set_point_walk(&mut self, state: u8, mover: &mut Mover) -> Result<(), Unsupported> {
+    fn set_point_walk(&mut self, state: u8, mover: &mut Mover) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = state;
         self.timer = 0.0;
         self.walk_range = self.task.range;
         self.move_wait = MoveWait::default();
         if mover.stats.speed == 0.0 {
-            return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+            return Err(GenieError::unsupported(
+                "a MoveTo of a unit without speed (state 13)",
+            ));
         }
         self.move_to = Some(MoveTo::Start);
         Ok(())
@@ -678,7 +688,7 @@ impl HuntAction {
     /// # Errors
     ///
     /// A unit that cannot move.
-    pub fn wait_then_walk(&mut self, dt: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+    pub fn wait_then_walk(&mut self, dt: f32, mover: &mut Mover) -> Result<(), GenieError> {
         self.timer += dt;
         if self.timer < 0.0 {
             return Ok(());
@@ -702,7 +712,7 @@ impl HuntAction {
         mut walk: Walk<'_>,
         who: PointWalker,
         mut shown: Shown<'_>,
-    ) -> Result<PointWalk, Unsupported> {
+    ) -> Result<PointWalk, GenieError> {
         let ended = match self.move_to {
             Some(MoveTo::Start) => {
                 // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
@@ -738,10 +748,14 @@ impl HuntAction {
             }
             Some(MoveTo::Arrived) => true,
             Some(MoveTo::Failed) => false,
-            None => return Err(Unsupported("a Hunt's walk to a point without its MoveTo")),
+            None => {
+                return Err(GenieError::unsupported(
+                    "a Hunt's walk to a point without its MoveTo",
+                ));
+            }
         };
         if who.computer {
-            return Err(Unsupported(if ended {
+            return Err(GenieError::unsupported(if ended {
                 "a computer player's hunt after its walk (set_state 1)"
             } else {
                 "a computer player's hunt whose walk to a point failed (set_state 13)"
@@ -750,7 +764,7 @@ impl HuntAction {
         self.move_to = None;
         walk.mover
             .as_deref_mut()
-            .ok_or(Unsupported("a hunter without movement state"))?
+            .ok_or(GenieError::unsupported("a hunter without movement state"))?
             .stop()?;
         if self.state == WALK_SEARCH {
             self.state = SEARCH;
@@ -784,17 +798,21 @@ impl HuntAction {
     /// the drop site search `FUN_1411671e0` would find it, not modelled): the sub-actions go and a
     /// quiet `MoveTo` to the drop site within the task's range starts (`FUN_140aa0df0`, as
     /// [`HuntAction::set_walk`]'s: within 0.01 of its footprint (`gap`) the unit is there already).
-    pub(crate) fn set_drop(&mut self, gap: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+    pub(crate) fn set_drop(&mut self, gap: f32, mover: &mut Mover) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = DROP;
         if self.carry_to == -1 {
-            return Err(Unsupported("a drop-off without its drop site (its search)"));
+            return Err(GenieError::unsupported(
+                "a drop-off without its drop site (its search)",
+            ));
         }
         self.walk_range = self.task.range;
         self.move_wait = MoveWait::default();
         self.move_to = Some(if ARRIVED < gap {
             if mover.stats.speed == 0.0 {
-                return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+                return Err(GenieError::unsupported(
+                    "a MoveTo of a unit without speed (state 13)",
+                ));
             }
             MoveTo::Start
         } else {
@@ -827,7 +845,7 @@ impl HuntAction {
         mut shown: Shown<'_>,
         who: PointWalker,
         anim_speed: &mut Option<f32>,
-    ) -> Result<Dropped, Unsupported> {
+    ) -> Result<Dropped, GenieError> {
         if self.timer < 0.0 {
             self.timer += walk.dt;
             if self.timer < 0.0 {
@@ -878,14 +896,20 @@ impl HuntAction {
                 self.move_to = None;
                 walk.mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a hunter without movement state"))?
+                    .ok_or(GenieError::unsupported("a hunter without movement state"))?
                     .stop()?;
             }
-            None => return Err(Unsupported("a Hunt in state 8 without its MoveTo")),
+            None => {
+                return Err(GenieError::unsupported(
+                    "a Hunt in state 8 without its MoveTo",
+                ));
+            }
         }
-        let site = site.ok_or(Unsupported("a drop-off whose drop site is gone"))?;
+        let site = site.ok_or(GenieError::unsupported(
+            "a drop-off whose drop site is gone",
+        ))?;
         if !site.takes {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a drop site that does not take the load (set_state 2)",
             ));
         }
@@ -905,7 +929,7 @@ impl HuntAction {
     /// some of `held_kind` (`+0x310` above 0, which the caller checked): a load of the task's resource (`+0x20`, of any with −1; compared by
     /// [`resource_kind`]) asks the caller for `set_state(8)` (true). A load of another resource
     /// would post notify 0x21c to the unit AI, which is not modelled.
-    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, Unsupported> {
+    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, GenieError> {
         asked_drop_off(self.task.resource, held_kind, attributes)
     }
 
@@ -924,7 +948,7 @@ impl HuntAction {
 
     /// The teardown (`FUN_140a73fc0`): the sub-actions go; the caller releases the target (slot
     /// 0x180).
-    pub fn tear_down(&mut self, mut mover: Option<&mut Mover>) -> Result<(), Unsupported> {
+    pub fn tear_down(&mut self, mut mover: Option<&mut Mover>) -> Result<(), GenieError> {
         if let Some(mut a) = self.attack.take() {
             a.tear_down(mover.as_deref_mut())?;
         }
@@ -960,9 +984,11 @@ impl HuntAction {
         strike: &mut Strike<'_>,
         gather: &mut Gatherer<'_>,
         herd: Option<Herd>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if computer {
-            return Err(Unsupported("a computer player's hunt (FUN_140fde4f0)"));
+            return Err(GenieError::unsupported(
+                "a computer player's hunt (FUN_140fde4f0)",
+            ));
         }
         let mut full = false;
         // a target gone or past state 6 went at the update's start (slot 0x68 with none, the
@@ -973,10 +999,9 @@ impl HuntAction {
         }
         let r = match self.state {
             ATTACK => {
-                let attack = self
-                    .attack
-                    .as_mut()
-                    .ok_or(Unsupported("a Hunt in state 12 without its Attack"))?;
+                let attack = self.attack.as_mut().ok_or(GenieError::unsupported(
+                    "a Hunt in state 12 without its Attack",
+                ))?;
                 match attack.update(walk.reborrow(), strike)? {
                     0 | 6.. => Ok(()),
                     // the Attack ended (1, 2, 5): with no target left set_state(3); a predator
@@ -994,7 +1019,7 @@ impl HuntAction {
                             && strike.victim.class == PREDATOR
                             && !strike.queue_empty =>
                     {
-                        Err(Unsupported(
+                        Err(GenieError::unsupported(
                             "a hunt that ends with its Attack on a predator (set_state 1)",
                         ))
                     }
@@ -1016,7 +1041,7 @@ impl HuntAction {
                         let mover = walk
                             .mover
                             .as_deref_mut()
-                            .ok_or(Unsupported("a hunter without movement state"))?;
+                            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
                         self.set_point_walk(WALK_SEARCH, mover)
                     }
                 }
@@ -1026,7 +1051,7 @@ impl HuntAction {
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a hunter without movement state"))?;
+                    .ok_or(GenieError::unsupported("a hunter without movement state"))?;
                 self.wait_then_walk(walk.dt, mover)
             }
             WALK => match self.move_to {
@@ -1087,7 +1112,7 @@ impl HuntAction {
                             class
                         };
                         if class == TREE_CLASS && !gather.tree_searched {
-                            return Err(Unsupported(
+                            return Err(GenieError::unsupported(
                                 "a hunt's search for another tree (FUN_140ac4670)",
                             ));
                         }
@@ -1111,12 +1136,14 @@ impl HuntAction {
                     self.move_to = None;
                     walk.mover
                         .as_deref_mut()
-                        .ok_or(Unsupported("a hunter without movement state"))?
+                        .ok_or(GenieError::unsupported("a hunter without movement state"))?
                         .stop()?;
                     self.decay_check(gather.stops_decay, strike.victim);
                     self.set_face(walk, strike, gather, herd)
                 }
-                None => Err(Unsupported("a Hunt in state 4 without its MoveTo")),
+                None => Err(GenieError::unsupported(
+                    "a Hunt in state 4 without its MoveTo",
+                )),
             },
             LEAD => self.update_lead(walk, strike, gather, herd),
             FACE => {
@@ -1129,14 +1156,14 @@ impl HuntAction {
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("a hunter without movement state"))?;
+                    .ok_or(GenieError::unsupported("a hunter without movement state"))?;
                 if !crate::attack::face_target(
                     mover,
                     at,
                     strike.victim.position,
                     strike.world_time,
                 )? {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a hunter that turns over time to face its target",
                     ));
                 }
@@ -1162,7 +1189,7 @@ impl HuntAction {
                 full = self.gather(walk.dt, strike.victim, gather)?;
                 Ok(())
             }
-            _ => Err(Unsupported(
+            _ => Err(GenieError::unsupported(
                 "a Hunt action in a state the slice does not model",
             )),
         };
@@ -1177,7 +1204,7 @@ impl HuntAction {
         &mut self,
         walk: &mut Walk<'_>,
         gather: &Gatherer<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if let Some(class) = gather.ai_class {
             let class = if class == -1 {
                 i32::from(self.target_class)
@@ -1185,7 +1212,7 @@ impl HuntAction {
                 class
             };
             if class == TREE_CLASS && !gather.tree_searched {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a hunt's search for another tree (FUN_140ac4670)",
                 ));
             }
@@ -1193,7 +1220,7 @@ impl HuntAction {
         let mover = walk
             .mover
             .as_deref_mut()
-            .ok_or(Unsupported("a hunter without movement state"))?;
+            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
         self.set_point_walk(WALK_SEARCH, mover)
     }
 
@@ -1205,10 +1232,10 @@ impl HuntAction {
         walk: Walk<'_>,
         strike: &mut Strike<'_>,
         herd: &Herd,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let mover = walk
             .mover
-            .ok_or(Unsupported("a hunter without movement state"))?;
+            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
         self.move_to = None;
         self.state = ATTACK;
         let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover)?;
@@ -1228,7 +1255,7 @@ impl HuntAction {
         mut walk: Walk<'_>,
         strike: &mut Strike<'_>,
         herd: &Herd,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.tear_down(walk.mover.as_deref_mut())?;
         self.state = LEAD;
         self.lead.still_time = 0;
@@ -1244,7 +1271,7 @@ impl HuntAction {
 
     /// `FUN_141162db0` on the target at once (a unit without a turn time turns by the facets
     /// between).
-    fn face_animal(&self, walk: &mut Walk<'_>, strike: &Strike<'_>) -> Result<(), Unsupported> {
+    fn face_animal(&self, walk: &mut Walk<'_>, strike: &Strike<'_>) -> Result<(), GenieError> {
         let at = walk
             .world
             .get(walk.me.id)
@@ -1252,9 +1279,9 @@ impl HuntAction {
         let mover = walk
             .mover
             .as_deref_mut()
-            .ok_or(Unsupported("a hunter without movement state"))?;
+            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
         if !crate::attack::face_target(mover, at, strike.victim.position, strike.world_time)? {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hunter that turns over time to face its target",
             ));
         }
@@ -1273,13 +1300,15 @@ impl HuntAction {
         strike: &mut Strike<'_>,
         gather: &mut Gatherer<'_>,
         herd: Option<Herd>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.target == -1 {
             self.state = SEARCH;
             gather.searches = true;
             return Ok(());
         }
-        let herd = herd.ok_or(Unsupported("a hunt leading livestock unprepared"))?;
+        let herd = herd.ok_or(GenieError::unsupported(
+            "a hunt leading livestock unprepared",
+        ))?;
         if herd.idle {
             return self.start_attack(walk, strike, &herd);
         }
@@ -1299,7 +1328,7 @@ impl HuntAction {
             .mover
             .as_deref()
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-            .ok_or(Unsupported("a hunter without movement state"))?;
+            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
         if footprint_gap_squared(at, ground, v, strike.victim.radius) <= LEAD_REACH {
             self.lead.start = [v[0], v[1]];
             self.face_animal(&mut walk, strike)?;
@@ -1339,20 +1368,20 @@ impl HuntAction {
         walk: &mut Walk<'_>,
         victim: &Victim,
         player: usize,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.tear_down(walk.mover.as_deref_mut())?;
         self.state = WALK;
         self.timer = 0.0;
         let own_livestock = victim.class == LIVESTOCK && victim.player == player;
         if victim.state <= 2 && !own_livestock {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hunt's set_state 4 on a live target after its attack",
             ));
         }
         let t = walk
             .world
             .get_known(self.target)?
-            .ok_or(Unsupported("a hunt's target without a place"))?;
+            .ok_or(GenieError::unsupported("a hunt's target without a place"))?;
         self.point = t.position;
         self.walk_range = if victim.state <= 2 {
             OWN_LIVESTOCK_RANGE
@@ -1363,12 +1392,14 @@ impl HuntAction {
         let mover = walk
             .mover
             .as_deref()
-            .ok_or(Unsupported("a hunter without movement state"))?;
+            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(walk.me.position, ground, t.position, t.radius);
         self.move_to = Some(if ARRIVED < gap {
             if mover.stats.speed == 0.0 {
-                return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
+                return Err(GenieError::unsupported(
+                    "a MoveTo of a unit without speed (state 13)",
+                ));
             }
             MoveTo::Start
         } else {
@@ -1391,15 +1422,17 @@ impl HuntAction {
         strike: &mut Strike<'_>,
         gather: &mut Gatherer<'_>,
         herd: Option<Herd>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if gather.target_class == CLASS_49 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hunt facing a target of class 49 (set_state 6)",
             ));
         }
         if gather.target_class == LIVESTOCK {
             if strike.victim.state <= 2 {
-                let herd = herd.ok_or(Unsupported("a hunt facing live livestock unprepared"))?;
+                let herd = herd.ok_or(GenieError::unsupported(
+                    "a hunt facing live livestock unprepared",
+                ))?;
                 // own livestock more than 3 tiles from its drop site is led there: once sent
                 // (`moved_sheep`) the hunt waits for it; nearer than 30 tiles an animal that
                 // stands is sent (its slot 0x138) with the herd around it (`FUN_140ac4c60`, the
@@ -1419,13 +1452,13 @@ impl HuntAction {
             let t = walk
                 .world
                 .get_known(self.target)?
-                .ok_or(Unsupported("a hunt's target without a place"))?;
+                .ok_or(GenieError::unsupported("a hunt's target without a place"))?;
             let me = walk.me.position;
             let ground = walk
                 .mover
                 .as_deref()
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-                .ok_or(Unsupported("a hunter without movement state"))?;
+                .ok_or(GenieError::unsupported("a hunter without movement state"))?;
             if self.task.range + GAP < footprint_gap(me, ground, t.position, t.radius) {
                 let mut walk = walk;
                 let player = strike.own.player;
@@ -1476,7 +1509,7 @@ impl HuntAction {
         dt: f32,
         victim: &mut Victim,
         g: &mut Gatherer<'_>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let work = (g.work_rate * self.task.work_value) * dt;
         let take = if work <= victim.amount {
             work
@@ -1506,7 +1539,7 @@ impl HuntAction {
             *g.held += over;
         }
         if matches!(g.target_class, 9 | 10) && *g.held_kind == 3 && self.task.resource == 3 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gold load of class 9 or 10 (its player's attribute 3)",
             ));
         }

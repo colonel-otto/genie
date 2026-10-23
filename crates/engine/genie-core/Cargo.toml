@@ -7,6 +7,8 @@ license = "AGPL-3.0-only"
 repository.workspace = true
 
 [dependencies]
+# the error every crate returns: its kind, reason, place and context
+genie-error = { path = "../../base/genie-error" }
 # floorf, which the game imports from the CRT (api-ms-win-crt-math): an exact operation, so libm's
 # gives its bits (src/facing.rs); the image's own math routines are ported in src/fmath.rs, and
 # tests/crt_math.rs's ignored sweeps check them against libm

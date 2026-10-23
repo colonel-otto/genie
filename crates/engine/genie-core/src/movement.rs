@@ -9,6 +9,7 @@
 //!
 //! Vectors are the game's `BVector`s ([`fmath::Vec3`]: x, height, y).
 
+use crate::GenieError;
 use crate::fmath::{self, Vec3};
 use crate::hull_path::HullPather;
 use crate::pathing::{Pathing, PlanBudget};
@@ -16,7 +17,6 @@ use crate::rng::Well512;
 use crate::short_path::{self, Call, Entry, Listed};
 use crate::spatial::{Placed, Spatial};
 use crate::tile_path::{Path, Request};
-use crate::unit_ai::Unsupported;
 
 /// The velocity data (`+0x868`): velocity and acceleration in the unit's own frame; component 2 is
 /// along the forward vector.
@@ -931,7 +931,7 @@ impl Mover {
         dt: f32,
         world: &mut Spatial,
         mut plan: Option<&mut Planning<'_>>,
-    ) -> Result<Motion, Unsupported> {
+    ) -> Result<Motion, GenieError> {
         let result = self.motion_passes(me, dt, world, plan.as_deref_mut());
         // every exit of the step removes the kept hits' temporary shapes (FUN_141055970)
         if let Some(p) = plan {
@@ -947,7 +947,7 @@ impl Mover {
         dt: f32,
         world: &mut Spatial,
         mut plan: Option<&mut Planning<'_>>,
-    ) -> Result<Motion, Unsupported> {
+    ) -> Result<Motion, GenieError> {
         if self.stats.speed == 0.0 {
             return Ok(Motion::Done);
         }
@@ -1023,9 +1023,9 @@ impl Mover {
                     Next::LoopEnd => unreachable!("only a reached waypoint ends a loop's step"),
                 },
                 2 => {
-                    let plan = plan
-                        .as_deref_mut()
-                        .ok_or(Unsupported("a path request without the world's planners"))?;
+                    let plan = plan.as_deref_mut().ok_or(GenieError::unsupported(
+                        "a path request without the world's planners",
+                    ))?;
                     match self.request(me, world, plan, goal, &mut plans, &include)? {
                         Step::Again => continue,
                         Step::Walk => {}
@@ -1073,7 +1073,7 @@ impl Mover {
         (now, computer): (u32, bool),
         include: &mut Vec<i32>,
         walked: &mut Vec3,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
         // (slot 0x638) and its query (FUN_14114cc60) start at +0x824, where the unit last moved to
@@ -1183,7 +1183,7 @@ impl Mover {
     /// zeroes the height; `FUN_141027d00` divides by the length; [`Mover::steer`]), controls its
     /// speed toward `walked` (slot 0x630, [`Mover::control_speed`]) and, its level waiting for a
     /// path (state 2), stops (slot 0x5d0).
-    fn loop_end(&mut self, dt: f32, walked: Vec3) -> Result<Motion, Unsupported> {
+    fn loop_end(&mut self, dt: f32, walked: Vec3) -> Result<Motion, GenieError> {
         let mut d = self.forward;
         d[1] = 0.0;
         let length = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
@@ -1214,7 +1214,7 @@ impl Mover {
         pathing: Option<&mut Pathing>,
         goal: Goal<'_>,
         now: u32,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let level = &mut self.paths[0];
         if level.flags & 2 != 0 {
@@ -1261,7 +1261,9 @@ impl Mover {
                     .obstruction_candidates([x, y, x, y], 0.0, &[])
                     .is_empty()
                 {
-                    return Err(Unsupported("a next waypoint some object stands on"));
+                    return Err(GenieError::unsupported(
+                        "a next waypoint some object stands on",
+                    ));
                 }
             }
         }
@@ -1311,7 +1313,7 @@ impl Mover {
                 return Ok(Next::Dispatch);
             }
             if level.level == 2 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a top level short of its goal at its end stops the unit",
                 ));
             }
@@ -1325,7 +1327,7 @@ impl Mover {
     /// first within 10 tiles (squared, `DAT_14330ebcc`) that the unit can walk to straight
     /// (`FUN_141142750`) becomes the parent's waypoint; level 0 goes, and the parent asks for a
     /// path (state 2) as the motion step starts again. True when it did.
-    fn look_ahead(&mut self, me: &Me, world: &Spatial) -> Result<bool, Unsupported> {
+    fn look_ahead(&mut self, me: &Me, world: &Spatial) -> Result<bool, GenieError> {
         let target = self.paths[0].target;
         let parent = &self.paths[1];
         // the motion step's place of the unit: +0x824, where it last moved to
@@ -1360,13 +1362,7 @@ impl Mover {
     /// annexes ([`Spatial::query_ignore`]): no tile its
     /// terrain mask lacks, no static record (kinds 2, 11, 13) ([`Spatial::segment_blocked`]).
     /// The game also writes the straight path into a scratch path, which it drops.
-    fn straight(
-        &self,
-        me: &Me,
-        p: Vec3,
-        target: i32,
-        world: &Spatial,
-    ) -> Result<bool, Unsupported> {
+    fn straight(&self, me: &Me, p: Vec3, target: i32, world: &Spatial) -> Result<bool, GenieError> {
         let [rx, ry, rz] = self.stats.radius;
         let [w, h] = world.map;
         let (x, y) = (p[0], p[2]);
@@ -1392,13 +1388,7 @@ impl Mover {
     /// with the tiles' records, flags `0x90`, its radius) must find nothing but the unit and its
     /// target: no tile its terrain mask lacks ([`Spatial::tiles_block`]) and no record the walk
     /// hits ([`Spatial::walk_hits`]). The game writes the straight path into the new level.
-    fn close_in(
-        &self,
-        me: &Me,
-        p: Vec3,
-        target: i32,
-        world: &Spatial,
-    ) -> Result<bool, Unsupported> {
+    fn close_in(&self, me: &Me, p: Vec3, target: i32, world: &Spatial) -> Result<bool, GenieError> {
         let [rx, ry, rz] = self.stats.radius;
         let [w, h] = world.map;
         let (x, y) = (p[0], p[2]);
@@ -1436,7 +1426,7 @@ impl Mover {
     /// other hands over to its parent by its link (`mLinkedPathType`): 1 marks the parent's
     /// waypoint reached, 2 has the parent ask again (a looping parent moves on first), 3 has it
     /// ask again; the step starts again with the parent.
-    fn arrived(&mut self, goal: Goal<'_>) -> Result<Next, Unsupported> {
+    fn arrived(&mut self, goal: Goal<'_>) -> Result<Next, GenieError> {
         let level = &self.paths[0];
         if self.paths.len() == 1 || goal.gap <= level.range {
             self.reset_level();
@@ -1503,7 +1493,7 @@ impl Mover {
     /// # Errors
     ///
     /// As [`Mover::stop`].
-    pub(crate) fn stand(&mut self) -> Result<(), Unsupported> {
+    pub(crate) fn stand(&mut self) -> Result<(), GenieError> {
         self.stop()?;
         if !self.paths.is_empty() {
             self.reset_level();
@@ -1517,9 +1507,9 @@ impl Mover {
     /// empties. `+0x7b8` is cleared too ([`Mover::speed_stopped`]); a master whose move
     /// algorithm has bit 0 also resets the unit's sprite (`+0x78c`, `+0x958`), which is not
     /// modelled.
-    pub(crate) fn stop(&mut self) -> Result<(), Unsupported> {
+    pub(crate) fn stop(&mut self) -> Result<(), GenieError> {
         if self.stats.move_algorithm & 1 != 0 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a stop that resets the sprite (move algorithm bit 0)",
             ));
         }
@@ -1587,7 +1577,7 @@ impl Mover {
         goal: Goal<'_>,
         plans: &mut u32,
         include: &[i32],
-    ) -> Result<Step, Unsupported> {
+    ) -> Result<Step, GenieError> {
         let Goal {
             target,
             gap,
@@ -1679,7 +1669,7 @@ impl Mover {
             let way = ground(waypoint, position);
             // FUN_141158210 is 1 only on an `E` tile in game type 12
             if plan.pathing.game_type == 12 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a path request in game type 12 (its tile escape)",
                 ));
             }
@@ -1951,7 +1941,7 @@ impl Mover {
         range: f32,
         target: Option<(i32, &Placed)>,
         path: &mut Path,
-    ) -> Result<Option<(bool, Option<f32>)>, Unsupported> {
+    ) -> Result<Option<(bool, Option<f32>)>, GenieError> {
         let master = world.get(me.id).map_or(-1, |p| p.master);
         let walker = LongWalker {
             id: me.id,
@@ -2003,7 +1993,7 @@ impl Mover {
         world: &Spatial,
         target_id: i32,
         path: &mut Path,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let me_at = world.get(me.id);
         if me_at.is_some_and(|p| p.class == VILLAGER_CLASS) {
             return Ok(true);
@@ -2086,7 +2076,7 @@ impl Mover {
         found: bool,
         target: Option<&Placed>,
         to_end: f32,
-    ) -> Result<Step, Unsupported> {
+    ) -> Result<Step, GenieError> {
         let top_has_more = self.top_has_more();
         if target.is_some() && self.paths[0].flags & 4 != 0 {
             // FUN_140f9b4d0(level, 2, 0): bit 2 goes off the level and on for its parents
@@ -2106,18 +2096,22 @@ impl Mover {
                     return Ok(Step::Paused);
                 }
                 if level.path_flags & 1 != 0 || self.attack_moving {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a looping level without a path pauses the unit",
                     ));
                 }
                 if 1 < level.level || !top_has_more {
-                    return Err(Unsupported("a level without a path stops the unit"));
+                    return Err(GenieError::unsupported(
+                        "a level without a path stops the unit",
+                    ));
                 }
                 level.state = 5;
                 return Ok(Step::Again);
             }
         } else if level.path_flags & 1 == 0 {
-            return Err(Unsupported("a found path without length stops the unit"));
+            return Err(GenieError::unsupported(
+                "a found path without length stops the unit",
+            ));
         }
         level.flags |= 1;
         Ok(Step::Again)
@@ -2205,7 +2199,7 @@ impl Mover {
         target: Option<&Placed>,
         target_id: i32,
         line: ([f32; 2], [f32; 2]),
-    ) -> Result<Vec<i32>, Unsupported> {
+    ) -> Result<Vec<i32>, GenieError> {
         let now = plan.now;
         let mut list = vec![me.id];
         if target.is_some() {
@@ -2282,7 +2276,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         target: &Placed,
         (from, to): ([f32; 2], [f32; 2]),
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         // CVTTSS2SI into a 64-bit register, its low 32 bits kept
         let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * short_path::TO_FIXED) as i32;
         let query = short_path::Query {
@@ -2298,7 +2292,9 @@ impl Mover {
         let (mesh, pather) = plan
             .pathing
             .mesh_and_pather()
-            .ok_or(Unsupported("a start test without the game's mesh"))?;
+            .ok_or(GenieError::unsupported(
+                "a start test without the game's mesh",
+            ))?;
         Ok(pather.start_blocked(mesh, &words, &query))
     }
 
@@ -2325,7 +2321,7 @@ impl Mover {
         target: i32,
         lists: (&[i32], &[i32]),
         out: &mut Path,
-    ) -> Result<u8, Unsupported> {
+    ) -> Result<u8, GenieError> {
         let walker = self.walker(me.id);
         // from +0x824: the motion step's `local_18c8`, the reach test's start (FUN_14114fea0)
         short_path_including(
@@ -2364,7 +2360,7 @@ impl Mover {
         range: f32,
         target: Option<&Placed>,
         out: &mut Path,
-    ) -> Result<Option<u8>, Unsupported> {
+    ) -> Result<Option<u8>, GenieError> {
         // the smoothing's ignore list: the unit and the level's target object (the planner's
         // argument 12, the object the world holds)
         let level_target = self
@@ -2396,7 +2392,7 @@ impl Mover {
         to: [f32; 2],
         range: f32,
         master: i16,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         self.reach_test(me, world, plan, to, None, range, master)
     }
 
@@ -2411,7 +2407,7 @@ impl Mover {
         target: i32,
         range: f32,
         master: i16,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let Some(t) = world.get_known(target)? else {
             return Ok(false);
         };
@@ -2430,7 +2426,7 @@ impl Mover {
         world: &Spatial,
         target: i32,
         range: f32,
-    ) -> Result<Option<f32>, Unsupported> {
+    ) -> Result<Option<f32>, GenieError> {
         let Some(t) = world.get_known(target)? else {
             return Ok(None);
         };
@@ -2451,7 +2447,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         to: [f32; 2],
         radii: f32,
-    ) -> Result<Option<(u8, f32)>, Unsupported> {
+    ) -> Result<Option<(u8, f32)>, GenieError> {
         let full = !plan.computer;
         let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) else {
             return Ok(None);
@@ -2465,7 +2461,7 @@ impl Mover {
             full,
         };
         let mut path = Path::default();
-        let found = planner.plan::<Unsupported>(&req, false, &mut path, None)?;
+        let found = planner.plan::<GenieError>(&req, false, &mut path, None)?;
         path.measure();
         Ok(Some((found.code(), path.length)))
     }
@@ -2494,7 +2490,7 @@ impl Mover {
         target: Option<(i32, &Placed)>,
         range: f32,
         master: i16,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         // FUN_14114fea0 and FUN_14114ffc0 hand the unit's +0x824 (x, height, y) as the start
         let [x, y, height_at] = self.moved_at;
         let [w, h] = world.map;
@@ -2522,7 +2518,7 @@ impl Mover {
                 closed: Vec::new(),
                 full: false,
             };
-            let found = planner.plan::<Unsupported>(&req, false, &mut path, None)?;
+            let found = planner.plan::<GenieError>(&req, false, &mut path, None)?;
             if 1 < found.code() {
                 return Ok(false);
             }
@@ -2608,7 +2604,7 @@ impl Mover {
     /// level 0, are both held, and the level's current waypoint (`FUN_140f9bcd0`) is the top
     /// path's last point (`FUN_140f95fb0`, compared x, y, z). A top path of one point, where the
     /// game compares with its static point, is not modelled.
-    pub fn walks_to_path_end(&self) -> Result<bool, Unsupported> {
+    pub fn walks_to_path_end(&self) -> Result<bool, GenieError> {
         let Some(level) = self
             .paths
             .first()
@@ -2620,7 +2616,9 @@ impl Mover {
             return Ok(false);
         };
         let [.., _, last] = top.as_slice() else {
-            return Err(Unsupported("a top path of one point (FUN_140f95fb0)"));
+            return Err(GenieError::unsupported(
+                "a top path of one point (FUN_140f95fb0)",
+            ));
         };
         Ok(point_or_zero_of(level, level.waypoint) == *last)
     }
@@ -2818,17 +2816,17 @@ impl Mover {
         projected: Vec3,
         dt: f32,
         (now, computer): (u32, bool),
-    ) -> Result<Avoided, Unsupported> {
+    ) -> Result<Avoided, GenieError> {
         let level = &self.paths[0];
         let top = self.paths.last().filter(|l| !l.points.is_empty());
         let player = world
             .get(me.id)
-            .ok_or(Unsupported("a walker without a place"))?
+            .ok_or(GenieError::unsupported("a walker without a place"))?
             .player;
         let [rx, ry, _] = self.stats.radius;
         let at = vector(me.position);
         // a hit the world holds no object of (a map edge's record) is passed over
-        let met = |id: i32| -> Result<Option<(i32, &Placed)>, Unsupported> {
+        let met = |id: i32| -> Result<Option<(i32, &Placed)>, GenieError> {
             let id = world.annex_of(id).unwrap_or(id);
             Ok(world.get_known(id)?.map(|p| (id, p)))
         };
@@ -2951,11 +2949,11 @@ impl Mover {
         world: &Spatial,
         hits: &[i32],
         computer: bool,
-    ) -> Result<Next, Unsupported> {
+    ) -> Result<Next, GenieError> {
         let level = &self.paths[0];
         let player = world
             .get(me.id)
-            .ok_or(Unsupported("a walker without a place"))?
+            .ok_or(GenieError::unsupported("a walker without a place"))?
             .player;
         for &hit in hits {
             let id = world.annex_of(hit).unwrap_or(hit);
@@ -2993,7 +2991,7 @@ impl Mover {
             }
         }
         if self.paths.len() < 2 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a kept hit on a walk without a parent level (its stop)",
             ));
         }
@@ -3024,7 +3022,7 @@ impl Mover {
     /// renormalised, with [`Mover::turn_dt`]), then the yaw by the turn ([`Mover::yaw`]) unless
     /// the walked level's flags have bit 0 and the turn is 0. Returns whether the turn fell short
     /// (the angle was above the most), which brakes the unit ([`Mover::control_speed`]).
-    fn steer(&mut self, direction: Vec3, dt: f32) -> Result<bool, Unsupported> {
+    fn steer(&mut self, direction: Vec3, dt: f32) -> Result<bool, GenieError> {
         let mut flat = self.forward;
         flat[1] = 0.0;
         let flat = fmath::normalize(flat);
@@ -3082,11 +3080,11 @@ impl Mover {
         &mut self,
         turn: f32,
         facets: Option<crate::facing::SpriteFacets>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let m = fmath::rotation(turn, UP);
         let forward = fmath::normalize(fmath::rotate(&m, self.forward));
         self.set_orientation(forward, UP);
-        let facets = facets.ok_or(Unsupported(
+        let facets = facets.ok_or(GenieError::unsupported(
             "the yaw of a unit whose sprites differ in their facets",
         ))?;
         let facet = crate::facing::facet_of_forward(forward, facets);
@@ -3281,7 +3279,7 @@ pub(crate) fn long_path_for(
     computer: bool,
     (to, range): (Vec3, f32),
     target: Option<(i32, &Placed)>,
-) -> Result<(bool, Path), Unsupported> {
+) -> Result<(bool, Path), GenieError> {
     let long_target = target.map(|(_, t)| {
         let gap2 = footprint_gap_squared(walker.position, walker.radius, t.position, t.radius);
         let gap = footprint_gap(walker.position, walker.radius, t.position, t.radius);
@@ -3334,7 +3332,7 @@ pub(crate) fn tile_plan_for(
     (to, radii, range): (Vec3, f32, f32),
     target: Option<&Placed>,
     out: &mut Path,
-) -> Result<Option<u8>, Unsupported> {
+) -> Result<Option<u8>, GenieError> {
     let target_box = target
         .and_then(|t| t.obstruction)
         .is_some_and(|o| matches!(o.kind, 2 | 10 | 11 | 13));
@@ -3398,8 +3396,10 @@ fn include_kept(
     pathing: Option<&mut Pathing>,
     kept: &[i32],
     include: &mut Vec<i32>,
-) -> Result<(), Unsupported> {
-    let pathing = pathing.ok_or(Unsupported("a kept hit without the world's mesh"))?;
+) -> Result<(), GenieError> {
+    let pathing = pathing.ok_or(GenieError::unsupported(
+        "a kept hit without the world's mesh",
+    ))?;
     for &id in kept {
         if INCLUDED <= include.len() {
             continue;
@@ -3408,9 +3408,9 @@ fn include_kept(
         if pathing.shape(id).is_none() {
             let p = world
                 .get_known(id)?
-                .ok_or(Unsupported("a kept hit without a place"))?;
+                .ok_or(GenieError::unsupported("a kept hit without a place"))?;
             if p.obstruction_type == 11 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a kept hit of obstruction type 11 (its outline)",
                 ));
             }
@@ -3445,7 +3445,7 @@ pub(crate) fn short_path_for(
     goal: (Vec3, f32, i32),
     ignore: &[i32],
     out: &mut Path,
-) -> Result<u8, Unsupported> {
+) -> Result<u8, GenieError> {
     let player = owner_number(world, walker.id);
     short_path_including(walker, from, world, plan, goal, (ignore, &[]), player, out)
 }
@@ -3483,7 +3483,7 @@ pub(crate) fn short_path_including(
     (ignore, include): (&[i32], &[i32]),
     player: i32,
     out: &mut Path,
-) -> Result<u8, Unsupported> {
+) -> Result<u8, GenieError> {
     let [x, y] = from;
     let target_object = match target {
         -1 => None,
@@ -3544,7 +3544,9 @@ pub(crate) fn short_path_including(
     let (mesh, pather) = plan
         .pathing
         .mesh_and_pather()
-        .ok_or(Unsupported("a short path without the game's mesh"))?;
+        .ok_or(GenieError::unsupported(
+            "a short path without the game's mesh",
+        ))?;
     let found = pather.search(mesh, &words, &query, &shapes)?;
     for p in short_path::to_path(&found.points).points {
         let _ = out.push(p);
@@ -3878,7 +3880,12 @@ mod tests {
             &[9171],
             &mut out,
         );
-        assert_eq!(r, Err(Unsupported("a short path without the game's mesh")));
+        assert_eq!(
+            r,
+            Err(GenieError::unsupported(
+                "a short path without the game's mesh"
+            ))
+        );
     }
 
     /// A step whose one hit is the walked level's target counts its waypoint reached; that hit,
@@ -4844,7 +4851,9 @@ mod tests {
         };
         assert_eq!(
             m.motion(&mut me, DT, &mut Spatial::new([120, 120]), None),
-            Err(Unsupported("a path request without the world's planners"))
+            Err(GenieError::unsupported(
+                "a path request without the world's planners"
+            ))
         );
     }
 

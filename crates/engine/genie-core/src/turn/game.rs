@@ -5,9 +5,9 @@
 //! 158041: the switch `FUN_140e7c330`; the world player's lookup `FUN_14152fe40`; the cases'
 //! handlers are named at each.
 
+use crate::GenieError;
 use crate::farm_queue::{FARM, PASTURE};
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// GAME's packet as `FUN_140e7c330` reads it: the sub-command at `+4` and its arguments.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -70,7 +70,7 @@ pub mod sub {
 
 /// A cheat with the game's cheats on: the cheat code's handler (`FUN_1415c62c0`) and the
 /// quick-build cheat's instant work (`+0xc14`, which the work actions take as 0) are not modelled.
-pub(crate) const CHEAT: Unsupported = Unsupported("a cheat code (FUN_1415c62c0)");
+pub(crate) const CHEAT: GenieError = GenieError::unsupported("a cheat code (FUN_1415c62c0)");
 
 impl GameCommand {
     /// `+8` as a world player of `count` players (`FUN_14152fe40`: none outside 0 to count − 1).
@@ -131,7 +131,7 @@ impl Turns {
     ///   ([`Turns::queue_fish_traps`], [`Turns::unqueue_fish_traps`]).
     /// - 0x14: the offensive posture (`+0x71c`, slot 0xa0 `FUN_14163a630`, Gaia's too) flips
     ///   between 0 and 1.
-    pub(crate) fn game(&mut self, g: &GameCommand) -> Result<(), Unsupported> {
+    pub(crate) fn game(&mut self, g: &GameCommand) -> Result<(), GenieError> {
         if !self.game_allowed(g) {
             return Ok(());
         }

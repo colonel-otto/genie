@@ -4,7 +4,7 @@
 //! `FUN_1413d4a00`, the research test `FUN_1413cd600`, the payment `FUN_1413d4370` (from
 //! `FUN_14162fd90`), the repeat test `FUN_1413d1050`.
 
-use crate::unit_ai::Unsupported;
+use crate::GenieError;
 
 /// The age technologies (`FUN_1413cc3c0`: 101 to 103), whose costs the research cost modifier
 /// leaves alone.
@@ -171,10 +171,10 @@ pub struct TechState {
 /// adjustments (1; attribute 38 for 0x2f3). Spies is not modelled.
 pub fn factors(
     tech: i16,
-    attribute: &dyn Fn(i16) -> Result<f32, Unsupported>,
-) -> Result<(f32, i16), Unsupported> {
+    attribute: &dyn Fn(i16) -> Result<f32, GenieError>,
+) -> Result<(f32, i16), GenieError> {
     if tech == SPIES {
-        return Err(Unsupported("the cost of Spies (FUN_1413cbd80)"));
+        return Err(GenieError::unsupported("the cost of Spies (FUN_1413cbd80)"));
     }
     let modifier = if is_age(tech) {
         0.0
@@ -239,8 +239,8 @@ impl TechState {
         def: &TechDef,
         factors: (f32, i16),
         paid: &[(i32, f32); 3],
-        attribute: &dyn Fn(i16) -> Result<f32, Unsupported>,
-    ) -> Result<bool, Unsupported> {
+        attribute: &dyn Fn(i16) -> Result<f32, GenieError>,
+    ) -> Result<bool, GenieError> {
         let (modifier, scale) = factors;
         for j in 0..3 {
             let (amount, attr, used) = self.overrides[j];
@@ -263,7 +263,7 @@ impl TechState {
                 .map(|&(_, a)| a)
                 .fold(0.0, |s, a| s + a);
             if c.paid == 2 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a research cost the building holds (FUN_141204310)",
                 ));
             }
@@ -271,7 +271,7 @@ impl TechState {
                 return Ok(false);
             }
             if 0.0 < v - before {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a research's start that pays a difference (FUN_1411c68b0)",
                 ));
             }
@@ -351,8 +351,8 @@ impl TechState {
         def: &TechDef,
         factors: (f32, i16),
         repeat: bool,
-        attribute: &dyn Fn(i16) -> Result<f32, Unsupported>,
-    ) -> Result<bool, Unsupported> {
+        attribute: &dyn Fn(i16) -> Result<f32, GenieError>,
+    ) -> Result<bool, GenieError> {
         let shared = def.kind == SHARED_KIND;
         if self.state != 1
             && (!repeat || self.state == -1 || self.state == 0 || !self.allow_multiple)
@@ -365,7 +365,7 @@ impl TechState {
                 continue;
             };
             if paid == 2 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a research cost the building holds (FUN_141204310)",
                 ));
             }
@@ -389,7 +389,7 @@ impl TechState {
         repeat: bool,
         building: i16,
         attributes: &mut dyn Attributes,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !self.can_research(def, factors, repeat, &|i| attributes.get(i))? {
             return Ok(false);
         }
@@ -398,7 +398,7 @@ impl TechState {
                 continue;
             };
             if paid == 2 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a research cost the building pays (FUN_1411c7470)",
                 ));
             }
@@ -412,7 +412,9 @@ impl TechState {
             }
         }
         if def.kind == SHARED_KIND {
-            return Err(Unsupported("a research of the shared kind (FUN_1411c49a0)"));
+            return Err(GenieError::unsupported(
+                "a research of the shared kind (FUN_1411c49a0)",
+            ));
         }
         self.state = 4;
         self.building_master = building;
@@ -440,9 +442,9 @@ impl TechState {
 /// The player's attributes as a technology's costs read and write them.
 pub trait Attributes {
     /// Attribute `i`.
-    fn get(&self, i: i16) -> Result<f32, Unsupported>;
+    fn get(&self, i: i16) -> Result<f32, GenieError>;
     /// Attribute `i` set to `v`.
-    fn set(&mut self, i: i16, v: f32) -> Result<(), Unsupported>;
+    fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError>;
 }
 
 #[cfg(test)]
@@ -485,10 +487,10 @@ mod tests {
     struct Held([f32; 4]);
 
     impl Attributes for Held {
-        fn get(&self, i: i16) -> Result<f32, Unsupported> {
+        fn get(&self, i: i16) -> Result<f32, GenieError> {
             Ok(self.0[i as usize])
         }
-        fn set(&mut self, i: i16, v: f32) -> Result<(), Unsupported> {
+        fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError> {
             self.0[i as usize] = v;
             Ok(())
         }

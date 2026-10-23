@@ -19,14 +19,32 @@ pub enum CensusEnd {
 }
 
 /// The first update a player's slice could not model.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CensusStop {
     /// The update (1-based, as the slice counts its ticks).
     pub update: u32,
     /// The index of the object in the player's list.
     pub object: usize,
-    /// What the slice does not model.
+    /// What the slice does not model: the error's reason.
     pub reason: &'static str,
+    /// Where the engine raised it (`file:line:column`).
+    pub at: String,
+    /// What its site attached (key and value).
+    pub context: Vec<(&'static str, String)>,
+}
+
+impl CensusStop {
+    /// The stop of `why` at `update` on the object at `object`.
+    #[must_use]
+    pub fn of(update: u32, object: usize, why: &genie_core::GenieError) -> Self {
+        Self {
+            update,
+            object,
+            reason: why.reason(),
+            at: why.location().to_string(),
+            context: why.context().map(|(k, v)| (k, v.to_owned())).collect(),
+        }
+    }
 }
 
 /// The first recorded checkpoint whose block differs from the slice's.
@@ -122,13 +140,10 @@ pub fn census_run(
         updates += 1;
         for (p, player) in players.iter_mut().enumerate() {
             if player.stop.is_none()
-                && let Some((tick, object, why)) = turns.players.get(p).and_then(|q| q.unsupported)
+                && let Some((tick, object, why)) =
+                    turns.players.get(p).and_then(|q| q.unsupported.as_ref())
             {
-                player.stop = Some(CensusStop {
-                    update: tick,
-                    object,
-                    reason: why.0,
-                });
+                player.stop = Some(CensusStop::of(*tick, *object, why));
             }
         }
         while let Some(&(at, lanes)) = checkpoints.get(next).filter(|(at, _)| *at <= updates) {
@@ -232,13 +247,9 @@ pub fn header_divergences(
         let update = i + 1;
         for (k, &p) in players.iter().enumerate() {
             if let (false, Some((tick, object, why))) =
-                (done[k], turns.players[p as usize].unsupported)
+                (done[k], turns.players[p as usize].unsupported.as_ref())
             {
-                out[k] = Followed::Stops(CensusStop {
-                    update: tick,
-                    object,
-                    reason: why.0,
-                });
+                out[k] = Followed::Stops(CensusStop::of(*tick, *object, why));
                 done[k] = true;
             }
         }

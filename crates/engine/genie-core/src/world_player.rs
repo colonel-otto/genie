@@ -30,9 +30,9 @@
 //! world player's attribute add (slot 0xf8) `FUN_141616820` and its base's `FUN_14165d040`, the
 //! scout map's set `FUN_140f4d5e0`.
 
+use crate::GenieError;
 use crate::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// One second (`DAT_14330eb8c`): the loop's step.
 const SECOND: f32 = crate::image::world_player::SECOND;
@@ -336,7 +336,7 @@ impl Turns {
     /// # Errors
     ///
     /// The second's work met a part of the game the slice does not model.
-    pub fn update_world_player(&mut self, p: usize) -> Result<(), Unsupported> {
+    pub fn update_world_player(&mut self, p: usize) -> Result<(), GenieError> {
         let dt = self.dt_seconds;
         let player = &mut self.players[p];
         if player.kind == GAIA_TYPE {
@@ -368,7 +368,7 @@ impl Turns {
     /// # Errors
     ///
     /// The defeat check's ([`Turns::defeat_check`]).
-    fn world_player_second(&mut self, p: usize, time: f32) -> Result<(), Unsupported> {
+    fn world_player_second(&mut self, p: usize, time: f32) -> Result<(), GenieError> {
         let (world_time, period) = (self.world_time, self.history_period);
         let player = &mut self.players[p];
         player
@@ -426,7 +426,7 @@ impl Turns {
     /// # Errors
     ///
     /// An object of a master the slice does not have; the status setter's.
-    pub fn defeat_check(&mut self, p: usize) -> Result<(), Unsupported> {
+    pub fn defeat_check(&mut self, p: usize) -> Result<(), GenieError> {
         let mut stays = self.players[p].victory_times.running();
         if !stays {
             for unit in &self.players[p].objects {
@@ -474,7 +474,7 @@ impl Turns {
     /// # Errors
     ///
     /// An object of a master the slice does not have.
-    pub fn keeps_alive(&self, p: usize, unit: &crate::turn::Unit) -> Result<bool, Unsupported> {
+    pub fn keeps_alive(&self, p: usize, unit: &crate::turn::Unit) -> Result<bool, GenieError> {
         let master = self.master_of(p, unit.life.master_id)?;
         let state = unit.life.state;
         if (1..=4).contains(&state)

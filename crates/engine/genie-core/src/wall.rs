@@ -13,10 +13,10 @@
 //! player that is both a computer and not (`FUN_141659cf0` decides their flags and their test),
 //! so never.
 
+use crate::GenieError;
 use crate::build::BuildAction;
 use crate::order::Place;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The snap's half tile and its step up (`FUN_141123ac0`).
 const HALF: f32 = crate::image::wall::HALF;
@@ -47,7 +47,7 @@ pub struct Wall {
     /// The wall's master (`+0x10`).
     pub master: i16,
     /// The unit AI type its class gets, if any, or why the slice cannot tell.
-    pub unit_ai: Result<Option<u32>, Unsupported>,
+    pub unit_ai: Result<Option<u32>, GenieError>,
     /// The line's first tile (`+0x8`, `+0xa`).
     pub from: [u16; 2],
     /// The line's last tile (`+0xc`, `+0xe`).
@@ -103,10 +103,12 @@ pub fn segments(from: [i32; 2], to: [i32; 2]) -> Vec<([i32; 2], [i32; 2])> {
 /// # Errors
 ///
 /// For a segment neither straight nor diagonal.
-pub fn tiles(from: [i32; 2], to: [i32; 2]) -> Result<Vec<[i32; 2]>, Unsupported> {
+pub fn tiles(from: [i32; 2], to: [i32; 2]) -> Result<Vec<[i32; 2]>, GenieError> {
     let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
     if dx != 0 && dy != 0 && dx.abs() != dy.abs() {
-        return Err(Unsupported("a wall segment neither straight nor diagonal"));
+        return Err(GenieError::unsupported(
+            "a wall segment neither straight nor diagonal",
+        ));
     }
     let (sx, sy) = (dx.signum(), dy.signum());
     let n = dx.abs().max(dy.abs());
@@ -195,7 +197,7 @@ impl Turns {
     /// (`FUN_140c42b60` at 0x140e7be4b, [`crate::order::readiness`]). Not modelled: the
     /// population test of a master without `+0x5f0` (as for BUILD), more builders than the game's
     /// insertion sort takes.
-    pub(crate) fn build_wall(&mut self, w: &Wall) -> Result<(), Unsupported> {
+    pub(crate) fn build_wall(&mut self, w: &Wall) -> Result<(), GenieError> {
         let player = w.player;
         if w.target != -1 {
             return Ok(());
@@ -233,7 +235,12 @@ impl Turns {
                 if !self.affords(player, w.master)? {
                     break;
                 }
-                placed.push(self.found(player, w.master, w.unit_ai, [at[0], at[1], 0.0])?);
+                placed.push(self.found(
+                    player,
+                    w.master,
+                    w.unit_ai.clone(),
+                    [at[0], at[1], 0.0],
+                )?);
             }
         }
         // the builders, the farthest from the line's last tile first
@@ -252,7 +259,7 @@ impl Turns {
             sorted.push((id, gy * gy + gx * gx));
         }
         if INSERTION_SORT_MAX < sorted.len() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "BUILD_WALL with more builders than the insertion sort takes (FUN_140e6eee0)",
             ));
         }
@@ -261,12 +268,14 @@ impl Turns {
             return Ok(());
         }
         for (i, &(id, _)) in sorted.iter().enumerate() {
-            let k = share(i, capable, placed.len()).ok_or(Unsupported(
+            let k = share(i, capable, placed.len()).ok_or(GenieError::unsupported(
                 "a wall builder past the foundations the game shares out",
             ))?;
             let (foundation, at) = placed[k];
             let Some(Place::Live(q, idx)) = self.place(id) else {
-                return Err(Unsupported("a wall builder the slice does not have"));
+                return Err(GenieError::unsupported(
+                    "a wall builder the slice does not have",
+                ));
             };
             let direct = self.players[q].objects[idx]
                 .ai
@@ -300,7 +309,7 @@ impl Turns {
         &self,
         (building, trained_at): (i16, &[i16]),
         id: i32,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if id == -1 {
             return Ok(false);
         }

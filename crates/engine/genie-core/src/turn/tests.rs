@@ -18,7 +18,7 @@ use crate::turn::world::{
     SideWorld, World, change_hands, count_class, search_origin, task_search, task_target_with,
     wait_progress,
 };
-use crate::unit_ai::{BUILD_ORDER, Notify, OWNER_CHANGED, UnitAi, Unsupported};
+use crate::unit_ai::{BUILD_ORDER, GenieError, Notify, OWNER_CHANGED, UnitAi};
 use crate::visibility::{Seer, capture_kind};
 
 fn player(objects: Vec<Option<UnitAi>>) -> Player {
@@ -138,7 +138,7 @@ fn an_unsupported_unit_stops_and_is_recorded() {
     t.tick(10);
     assert_eq!(
         t.players[0].unsupported,
-        Some((1, 0, Unsupported("unit-AI type not modelled")))
+        Some((1, 0, GenieError::unsupported("unit-AI type not modelled")))
     );
 }
 
@@ -811,7 +811,11 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     );
     assert_eq!(
         p.unsupported,
-        Some((1, 1, Unsupported("a walker without movement state")))
+        Some((
+            1,
+            1,
+            GenieError::unsupported("a walker without movement state")
+        ))
     );
 }
 
@@ -1408,20 +1412,23 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
 
 #[test]
 fn an_unmodelled_action_stops_its_player_unless_the_object_dies_first() {
-    let task = Unsupported("a default task the slice does not model");
+    let task = GenieError::unsupported("a default task the slice does not model");
     let with_task = |life| Unit {
         id: 5,
         life,
-        unmodelled_action: Some(task),
+        unmodelled_action: Some(task.clone()),
         ..Unit::default()
     };
     let run = |unit| {
         let mut t = Turns::new(0, 1, 0, vec![0], vec![player(vec![])]);
         t.players[0].objects.push(unit);
         t.tick(10);
-        t.players[0].unsupported
+        t.players[0].unsupported.clone()
     };
-    assert_eq!(run(with_task(Lifecycle::default())), Some((1, 0, task)));
+    assert_eq!(
+        run(with_task(Lifecycle::default())),
+        Some((1, 0, task.clone()))
+    );
     let dying = Lifecycle {
         class: Class::Animated,
         hp: 0.0,
@@ -1898,7 +1905,7 @@ fn the_forced_replay_takes_the_game_s_state_for_what_froze() {
         vec![(
             0,
             10,
-            Unsupported("an object the game made and the slice did not")
+            GenieError::unsupported("an object the game made and the slice did not")
         )]
     );
 }
@@ -2263,8 +2270,14 @@ fn game_mode_16_queues_one_military_unit_at_a_time() {
 #[test]
 fn an_unmodelled_command_stops_its_player() {
     let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
-    let why = Unsupported("QUEUE at two buildings");
-    t.tick_with(104, &[Command::Unmodelled { player: 0, why }]);
+    let why = GenieError::unsupported("QUEUE at two buildings");
+    t.tick_with(
+        104,
+        &[Command::Unmodelled {
+            player: 0,
+            why: why.clone(),
+        }],
+    );
     assert_eq!(t.players[0].unsupported, Some((1, 0, why)));
 }
 
@@ -2883,7 +2896,10 @@ fn a_dead_unit_s_actions_go_and_let_their_targets_go_in_the_update_of_its_death(
     let mut t = deaths_world();
     t.tick(100);
     assert_eq!(
-        (t.players[0].unsupported, t.players[1].unsupported),
+        (
+            t.players[0].unsupported.clone(),
+            t.players[1].unsupported.clone()
+        ),
         (None, None)
     );
     let villagers = &t.players[1].objects;
@@ -2925,7 +2941,10 @@ fn a_build_on_an_annex_counts_its_builder_in_the_main_building() {
     assert_eq!(t.counted_building(999), Ok(None));
     t.tick(100);
     assert_eq!(
-        (t.players[0].unsupported, t.players[1].unsupported),
+        (
+            t.players[0].unsupported.clone(),
+            t.players[1].unsupported.clone()
+        ),
         (None, None)
     );
     let builders = |id| {
@@ -3049,7 +3068,10 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
     );
     t.tick(100);
     assert_eq!(
-        (t.players[0].unsupported, t.players[1].unsupported),
+        (
+            t.players[0].unsupported.clone(),
+            t.players[1].unsupported.clone()
+        ),
         (None, None)
     );
     assert_eq!(t.players[1].objects[0].move_to, None);
@@ -3172,7 +3194,10 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     t.players[1].objects[1].hunt.as_mut().unwrap().carry_to = 9149;
     t.tick(100);
     assert_eq!(
-        (t.players[0].unsupported, t.players[1].unsupported),
+        (
+            t.players[0].unsupported.clone(),
+            t.players[1].unsupported.clone()
+        ),
         (None, None)
     );
     let workers = |t: &Turns| {
@@ -3216,7 +3241,10 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     gone.spatial = Spatial::default();
     t.tick(100);
     assert_eq!(
-        (t.players[0].unsupported, t.players[1].unsupported),
+        (
+            t.players[0].unsupported.clone(),
+            t.players[1].unsupported.clone()
+        ),
         (None, None)
     );
     assert_eq!(workers(&t), 0);
@@ -4013,8 +4041,10 @@ fn a_unit_due_to_spawn_stops_the_player() {
     assert_eq!(t.players[0].attributes[81], 1.0);
     t.tick(1000);
     assert_eq!(
-        t.players[0].freezes.first().map(|f| f.2),
-        Some(Unsupported("a spawn without the players' sight"))
+        t.players[0].freezes.first().map(|f| f.2.clone()),
+        Some(GenieError::unsupported(
+            "a spawn without the players' sight"
+        ))
     );
 }
 
@@ -4270,11 +4300,7 @@ fn own_attack(target: i32, target2: i32, state: u8) -> crate::attack::Attack {
 
 /// The unit's slot 0x340 ([`Unit::ai_move_with`]) for the unit of class `class` of player 1:
 /// what it let go, or why it stopped.
-fn ai_move_of(
-    u: &mut Unit,
-    m: crate::unit_ai::AiMove,
-    class: i16,
-) -> Result<Vec<i32>, Unsupported> {
+fn ai_move_of(u: &mut Unit, m: crate::unit_ai::AiMove, class: i16) -> Result<Vec<i32>, GenieError> {
     let by = Releaser {
         id: u.id,
         class,
@@ -4446,7 +4472,7 @@ fn an_ai_move_of_a_trebuchet_packs_and_the_base_slot_takes_nothing() {
     ));
     assert_eq!(u.head_takes_point(AI_POINT, 1), Ok(PointMove::Declined));
     let mut u = mover_unit(7);
-    u.unmodelled_action = Some(Unsupported("a test's action"));
+    u.unmodelled_action = Some(GenieError::unsupported("a test's action"));
     assert!(ai_move_of(&mut u, forced(false), 47).is_err());
 }
 
@@ -5114,4 +5140,35 @@ fn a_resource_search_starts_from_its_point_unless_it_is_none_or_has_a_site() {
     assert_eq!(search_origin([12.5, 30.5], true, unit), unit);
     assert_eq!(search_origin([-1.0, 3.0], false, unit), [-1.0, 3.0, 0.5]);
     assert!(search_origin([f32::NAN, -1.0], false, unit)[0].is_nan());
+}
+
+/// Where a stop lands its error names what was running: a command's stop the command, an
+/// object's freeze the object, its master, its top action and its unit AI's order.
+#[test]
+fn a_stop_s_error_names_the_command_or_the_object_it_happened_on() {
+    let why = GenieError::unsupported("QUEUE at two buildings");
+    let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
+    t.tick_with(104, &[Command::Unmodelled { player: 0, why }]);
+    let (_, _, stopped) = t.players[0].unsupported.clone().unwrap();
+    assert_eq!(
+        stopped.context().collect::<Vec<_>>(),
+        [("command", "Unmodelled")]
+    );
+    let task = GenieError::unsupported("a default task the slice does not model");
+    let mut t = Turns::new(0, 1, 0, vec![0], vec![player(vec![])]);
+    t.players[0].objects.push(Unit {
+        id: 5,
+        unmodelled_action: Some(task),
+        life: Lifecycle {
+            master_id: 83,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    });
+    t.tick(10);
+    let (_, _, frozen) = t.players[0].freezes[0].clone();
+    assert_eq!(
+        frozen.context().collect::<Vec<_>>(),
+        [("object", "5"), ("master", "83")]
+    );
 }

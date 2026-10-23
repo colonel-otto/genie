@@ -1,9 +1,9 @@
 //! A group's members (FD-036): `AddUnit` (`FUN_1410083c0`) with its sub-formation statistics
 //! (`FUN_141008d90`, `FUN_1410116c0`) and a unit's radius in a formation (`FUN_141025920`).
 
+use crate::GenieError;
 use crate::group::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// A unit's radius in a formation where its master has no full footprint (`FUN_141025920`,
 /// `DAT_142e7f384`).
@@ -179,7 +179,7 @@ impl Turns {
         id: i32,
         target: i32,
         keep_moving: bool,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let _ = target;
         let Some(g) = self.groups.get(group) else {
             return Ok(false);
@@ -247,7 +247,7 @@ impl Turns {
     /// # Panics
     ///
     /// When the world does not hold `group`: its caller (`removeUnit`) holds it.
-    pub(crate) fn leave_statistic(&mut self, group: i32, id: i32) -> Result<bool, Unsupported> {
+    pub(crate) fn leave_statistic(&mut self, group: i32, id: i32) -> Result<bool, GenieError> {
         let category = match self.world_object(id) {
             Some(object) => Some(self.unit_category(Some(object))?),
             None => None,
@@ -327,7 +327,7 @@ impl Turns {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn add_to_group(&mut self, group: i32, id: i32) -> Result<bool, Unsupported> {
+    pub fn add_to_group(&mut self, group: i32, id: i32) -> Result<bool, GenieError> {
         let Some(object) = self.world_object(id) else {
             return Ok(false);
         };

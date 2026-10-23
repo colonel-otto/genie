@@ -3,11 +3,11 @@
 //! with `FUN_14102ab30` and `CreateLines` `FUN_1410143a0`), as `UpdateDesiredPositions`
 //! (`FUN_14103fd00`) makes them.
 
+use crate::GenieError;
 use crate::fmath::{self, Vec3};
 use crate::group::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::group::{Formation, FormationLine, Slot, UnitGroup};
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// A horde's and a user defined formation's slots lie at most this far from the group's place
 /// (`DAT_14330ebb8`).
@@ -440,7 +440,7 @@ pub(crate) fn box_slots(
     formation: &mut Formation,
     group: &UnitGroup,
     world_time: u32,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     if group.members.is_empty() {
         return Ok(false);
     }
@@ -466,7 +466,7 @@ pub(crate) fn box_slots(
         };
         let count = stat.units.len();
         if BOX_POSITIONS < count {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a box side of more than 60 units (FUN_14102ab30 refuses it, the slots read past \
                  the buffer DAT_143f15f00)",
             ));
@@ -532,7 +532,7 @@ impl Turns {
         &self,
         formation: &mut Formation,
         g: &UnitGroup,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let members = self.member_places(g)?;
         Ok(slots_by_place(
             formation,
@@ -553,7 +553,7 @@ impl Turns {
         &self,
         formation: &mut Formation,
         g: &UnitGroup,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let members = self.member_places(g)?;
         Ok(slots_by_place(
             formation,
@@ -566,7 +566,7 @@ impl Turns {
 
     /// What `createHorde` and `createUDF` read of each member (`FUN_1415417a0`, slot 0x520,
     /// `FUN_141011300` with 0), None for one the world's table does not hold.
-    fn member_places(&self, g: &UnitGroup) -> Result<Vec<Option<MemberPlace>>, Unsupported> {
+    fn member_places(&self, g: &UnitGroup) -> Result<Vec<Option<MemberPlace>>, GenieError> {
         let mut places = Vec::with_capacity(g.members.len());
         for m in &g.members {
             let place = match self.world_object(m.id) {
@@ -595,7 +595,7 @@ impl Turns {
         &self,
         formation: &mut Formation,
         g: &UnitGroup,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !phalanx_slots(formation, g, self.world_time) {
             return Ok(false);
         }
@@ -614,7 +614,7 @@ impl Turns {
         &self,
         formation: &mut Formation,
         g: &UnitGroup,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         if !box_slots(formation, g, self.world_time)? {
             return Ok(false);
         }

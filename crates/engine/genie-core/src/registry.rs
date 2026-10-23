@@ -7,7 +7,7 @@
 //! (`load_oracle/probes/registry.py`). A list's order is its history's: records join at its end and
 //! leave by a swap with its last.
 
-use crate::unit_ai::Unsupported;
+use crate::GenieError;
 use std::collections::BTreeMap;
 
 /// The unified map bits an object's mask keeps (`0x1ffffff01ffffff`): 25 visible and 25 explored.
@@ -104,11 +104,11 @@ impl Registry {
         class: i16,
         old: u64,
         new: u64,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let mut changed = (old ^ new) & 0xffff;
         let mut seen = new;
         if class < 0 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a registry update for a master without a class",
             ));
         }
@@ -132,7 +132,7 @@ impl Registry {
                 let list = &mut self.lists[p][class];
                 if seen & 1 == 0 {
                     if !list.is_empty() {
-                        let i = slot.ok_or(Unsupported(
+                        let i = slot.ok_or(GenieError::unsupported(
                             "a registry removal of an object without its record",
                         ))?;
                         let last = list.len() - 1;
@@ -175,7 +175,7 @@ impl Registry {
     }
 
     /// An ownership change (`FUN_14120f800`): the object's records take the new owner's id.
-    pub fn owner_changed(&mut self, id: i32, owner: usize) -> Result<(), Unsupported> {
+    pub fn owner_changed(&mut self, id: i32, owner: usize) -> Result<(), GenieError> {
         let Some(e) = self.entries.get(&id).copied() else {
             return Ok(());
         };
@@ -185,7 +185,9 @@ impl Registry {
                 .iter_mut()
                 .filter_map(|list| list.get_mut(i))
                 .find(|r| r.id == id)
-                .ok_or(Unsupported("an object's registry slot without its record"))?;
+                .ok_or(GenieError::unsupported(
+                    "an object's registry slot without its record",
+                ))?;
             record.owner = owner as u8;
         }
         Ok(())
@@ -224,7 +226,7 @@ impl Registry {
         relations: &[u32],
         [rx, ry]: [f32; 2],
         wanted: u8,
-    ) -> Result<Option<[Vec<Record>; 5]>, Unsupported> {
+    ) -> Result<Option<[Vec<Record>; 5]>, GenieError> {
         if classes.is_empty() || self.players <= player {
             return Ok(None);
         }
@@ -243,11 +245,16 @@ impl Registry {
             let list = usize::try_from(class)
                 .ok()
                 .and_then(|c| self.lists[player].get(c))
-                .ok_or(Unsupported("a query of a class beyond the registry's"))?;
+                .ok_or(GenieError::unsupported(
+                    "a query of a class beyond the registry's",
+                ))?;
             for r in list {
-                let relation = *relations
-                    .get(usize::from(r.owner))
-                    .ok_or(Unsupported("a record of an owner without a relation"))?;
+                let relation =
+                    *relations
+                        .get(usize::from(r.owner))
+                        .ok_or(GenieError::unsupported(
+                            "a record of an owner without a relation",
+                        ))?;
                 if relation > 4 || wanted & (1 << relation) == 0 {
                     continue;
                 }

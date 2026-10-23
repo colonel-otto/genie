@@ -13,8 +13,8 @@
 //! cleared: a field a new entry does not write (a research's train time) keeps an old entry's
 //! value, and the buffer's regrowth by ten copies them with the rest.
 
+use crate::GenieError;
 use crate::masters::{Master, Masters, TrainLocation};
-use crate::unit_ai::Unsupported;
 
 /// One slot of a building's queue (`+0xbe8`, 0x30 bytes; the save's `mProductionQueue[i]`). A
 /// slot the buffer's growth adds is zeroed (`calloc`), as [`Entry::default`] is.
@@ -404,12 +404,11 @@ pub const IN_PRODUCTION: i16 = 81;
 /// `FUN_1411e7dc0`'s test before it makes a unit's make action: the population with the units in
 /// production and this one stays within the cap (`COMISS`, `JBE`: a NaN passes), and the
 /// headroom covers them. A building that fails it waits (housed).
-pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, Unsupported> {
+pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, GenieError> {
     let a = |i: usize| {
-        attributes
-            .get(i)
-            .copied()
-            .ok_or(Unsupported("an attribute the player does not have"))
+        attributes.get(i).copied().ok_or(GenieError::unsupported(
+            "an attribute the player does not have",
+        ))
     };
     let in_production = a(IN_PRODUCTION as usize)?;
     Ok(a(POPULATION_CAP)? < a(POPULATION)? + in_production + pop
@@ -424,7 +423,7 @@ pub fn refund(
     master: &Master,
     costs: &[(i32, f32); 3],
     attributes: &mut dyn crate::tech::Attributes,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     if master.kind < COMBAT_MASTER {
         return Ok(());
     }
@@ -450,7 +449,7 @@ pub fn refund_research(
     costs: &[(i32, f32); 3],
     count: i16,
     attributes: &mut dyn crate::tech::Attributes,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     for &(attribute, amount) in costs {
         // the entry's attributes are the costs' i16 attributes (FUN_1411c3190, the load)
         let Ok(attribute) = i16::try_from(attribute) else {
@@ -472,7 +471,7 @@ pub fn refund_master(
     master: &Master,
     n: i32,
     attributes: &mut dyn crate::tech::Attributes,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     if master.kind < COMBAT_MASTER {
         return Ok(());
     }
@@ -500,7 +499,7 @@ pub fn refund_tech(
     def: &crate::tech::TechDef,
     tech: i16,
     attributes: &mut dyn crate::tech::Attributes,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     use crate::checkpoint::cvttss2si;
     if !matches!(state.state, 2 | 4) {
         return Ok(false);
@@ -575,7 +574,7 @@ pub fn cost_test(
     count: f32,
     population: bool,
     attributes: &dyn crate::tech::Attributes,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     let Some(m) = masters.get(master).filter(|m| COMBAT_MASTER <= m.kind) else {
         return Ok(false);
     };
@@ -621,7 +620,7 @@ pub fn pay(
     master: i16,
     count: f32,
     attributes: &mut dyn crate::tech::Attributes,
-) -> Result<bool, Unsupported> {
+) -> Result<bool, GenieError> {
     if !cost_test(masters, master, count, false, &*attributes)? {
         return Ok(false);
     }
@@ -651,7 +650,7 @@ pub fn master_costs(
     masters: &Masters,
     master: i16,
     attributes: &dyn crate::tech::Attributes,
-) -> Result<[(i16, i16); 3], Unsupported> {
+) -> Result<[(i16, i16); 3], GenieError> {
     use crate::checkpoint::cvttss2si;
     let mut out = [(-1i16, 0i16); 3];
     let can = cost_test(masters, master, ONE, true, attributes)?;
@@ -870,10 +869,10 @@ mod tests {
     struct Held(Vec<f32>);
 
     impl crate::tech::Attributes for Held {
-        fn get(&self, i: i16) -> Result<f32, Unsupported> {
+        fn get(&self, i: i16) -> Result<f32, GenieError> {
             Ok(self.0[i as usize])
         }
-        fn set(&mut self, i: i16, v: f32) -> Result<(), Unsupported> {
+        fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError> {
             self.0[i as usize] = v;
             Ok(())
         }

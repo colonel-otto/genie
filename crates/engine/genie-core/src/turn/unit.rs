@@ -30,8 +30,8 @@ use crate::turn::{
     SPEED_EPSILON, TREE_NEAR, TREE_SEARCH_WITHIN, VILLAGER_CLASS, WONDER, gate_units,
 };
 use crate::unit_ai::{
-    ACTION_COMPLETED, ACTION_EXECUTED, AiMove, BUILD_ACTION, BUILD_ORDER, Effect, Notify, Search,
-    Surroundings, TARGET_MOVED, UnitAi, Unsupported,
+    ACTION_COMPLETED, ACTION_EXECUTED, AiMove, BUILD_ACTION, BUILD_ORDER, Effect, GenieError,
+    Notify, Search, Surroundings, TARGET_MOVED, UnitAi,
 };
 use crate::visibility::{Seer, capture_kind};
 
@@ -53,7 +53,7 @@ pub struct Unit {
     /// A default task other than the Artifact action. `RGE_Action_Object::update` (0x14106ac90)
     /// starts it in an object's first update if the object is still in state 2 after its static
     /// step; the slice does not model it, so that update stops the player.
-    pub unmodelled_action: Option<Unsupported>,
+    pub unmodelled_action: Option<GenieError>,
     /// A building's production queue and make action.
     pub production: Option<Production>,
     /// A building's gather point, which its new units go to.
@@ -178,7 +178,7 @@ pub struct Unit {
     pub combat: bool,
     /// What its master's default task would start once its action list is empty, when the
     /// slice does not model it (None: nothing, as a wild animal's Explore).
-    pub default_task: Option<Unsupported>,
+    pub default_task: Option<GenieError>,
     /// The Fly task its master's default task starts once its action list is empty (a bird at
     /// a game's start, before its first update).
     pub default_fly: Option<crate::masters::Task>,
@@ -326,6 +326,28 @@ impl Unit {
             })
     }
 
+    /// `why` with what this object was doing in its context: its id and master, its top action
+    /// (type and state) and its unit AI's order, action and target.
+    #[must_use]
+    pub fn in_context(&self, why: GenieError) -> GenieError {
+        let mut why = why
+            .with("object", self.id)
+            .with("master", self.life.master_id);
+        if let Some(a) = self.top_action() {
+            why = why.with("action", format_args!("{} state {}", a.kind, a.state));
+        }
+        if let Some(ai) = &self.ai {
+            why = why.with(
+                "unit AI",
+                format_args!(
+                    "order {} action {} target {}",
+                    ai.current_order, ai.current_action, ai.current_target
+                ),
+            );
+        }
+        why
+    }
+
     /// What the walk reads of it when it meets it ([`crate::spatial::Gait`]).
     #[must_use]
     pub fn gait(&self) -> Option<crate::spatial::Gait> {
@@ -356,9 +378,9 @@ impl Unit {
     /// # Errors
     ///
     /// A top action the slice does not model.
-    pub fn top_action_idle(&self) -> Result<bool, Unsupported> {
+    pub fn top_action_idle(&self) -> Result<bool, GenieError> {
         if self.unmodelled_action.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "slots 0x190 and 0x288 of an action the slice does not model",
             ));
         }
@@ -367,7 +389,7 @@ impl Unit {
             Some(crate::artifact::ARTIFACT_TYPE) => Ok(self.artifact.is_some_and(|a| a.idle())),
             // a Make has no target, but its point (`+0x38`) is the base constructor's 0.0
             Some(crate::move_to::MOVE_TO | crate::make::MAKE) => Ok(false),
-            Some(_) => Err(Unsupported(
+            Some(_) => Err(GenieError::unsupported(
                 "slots 0x190 and 0x288 of an action the slice does not model",
             )),
         }
@@ -463,9 +485,9 @@ impl Unit {
     /// 0xd and 0xe may, 2 unless an Attack (9); in any other state only an Artifact (`0x6b`)
     /// without a target or a point (`+0x30`, `+0x38` = −1). A trade (`0x6f`) in state 4 is not
     /// modelled, nor is an action the slice does not hold.
-    pub(crate) fn interruptible(&self) -> Result<bool, Unsupported> {
+    pub(crate) fn interruptible(&self) -> Result<bool, GenieError> {
         if self.unmodelled_action.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "slot 0x2d0 of an action the slice does not model",
             ));
         }
@@ -474,7 +496,7 @@ impl Unit {
         };
         Ok(match (kind, state) {
             (0x7e, _) => false,
-            (0x6f, 4) => return Err(Unsupported("slot 0x2d0 of a trade in state 4")),
+            (0x6f, 4) => return Err(GenieError::unsupported("slot 0x2d0 of a trade in state 4")),
             (_, 0 | 1 | 3 | 0xd | 0xe) => true,
             (_, 2) => kind != crate::attack::ATTACK,
             (crate::artifact::ARTIFACT_TYPE, _) => self
@@ -497,7 +519,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &mut [Self],
         me: Me,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let enter = self.enter.expect("checked by the caller");
         let found = others
             .iter()
@@ -520,7 +542,7 @@ impl Unit {
                     .every_masters
                     .get(tp)
                     .and_then(|m| m.get(t.life.master_id))
-                    .ok_or(Unsupported(
+                    .ok_or(GenieError::unsupported(
                         "an Enter's building of a master the slice lacks",
                     ))?;
                 let room = inside_of(others, t.id) < usize::from(master.garrison);
@@ -544,7 +566,7 @@ impl Unit {
             walk,
             building,
             walking,
-            || meeting,
+            || meeting.clone(),
             |w, to| {
                 let (Some(ship), Some(plan)) = (ship, w.plan.as_mut()) else {
                     return Ok(false);
@@ -583,7 +605,9 @@ impl Unit {
                 left_group: None,
             };
             if !self.enter_building(building, inside, &mut w)? {
-                return Err(Unsupported("an Enter that did not get in (state 2)"));
+                return Err(GenieError::unsupported(
+                    "an Enter that did not get in (state 2)",
+                ));
             }
             // the update's own set_state(1) after the enter's
             self.entered(&mut w)?;
@@ -608,7 +632,7 @@ impl Unit {
             }
         }
         if step.done {
-            return Err(Unsupported("a done Enter outside its building"));
+            return Err(GenieError::unsupported("a done Enter outside its building"));
         }
         Ok(())
     }
@@ -617,11 +641,11 @@ impl Unit {
     /// `MoveTo`'s teardown stops the unit, slot 0x5d0), the unit shows its master's standing
     /// sprite ([`Unit::shows_standing_sprite`]) and, the Enter not being quiet, its unit AI gets
     /// notify 0x1f9 with the enter action value.
-    pub(crate) fn entered(&mut self, w: &mut EnterWorld<'_>) -> Result<(), Unsupported> {
+    pub(crate) fn entered(&mut self, w: &mut EnterWorld<'_>) -> Result<(), GenieError> {
         let enter = self
             .enter
             .as_mut()
-            .ok_or(Unsupported("an entered unit without its Enter"))?;
+            .ok_or(GenieError::unsupported("an entered unit without its Enter"))?;
         if enter.move_to.take().is_some()
             && let Some(m) = self.mover.as_mut()
         {
@@ -658,18 +682,20 @@ impl Unit {
         building: &Self,
         inside: usize,
         w: &mut EnterWorld<'_>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         let masters = w.masters.ok_or(crate::garrison::NO_MASTERS)?;
         let bm = w
             .target_masters
             .unwrap_or(masters)
             .get(building.life.master_id)
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "an enter into a building of a master the slice lacks",
             ))?;
         let me = masters
             .get(self.life.master_id)
-            .ok_or(Unsupported("an entering unit of a master the slice lacks"))?;
+            .ok_or(GenieError::unsupported(
+                "an entering unit of a master the slice lacks",
+            ))?;
         let actor = Actor {
             id: self.id,
             master: me,
@@ -703,7 +729,7 @@ impl Unit {
         if bm.kind == crate::order::BUILDING
             && building.life.hp <= f32::from(bm.hit_points) * crate::image::garrison::ENTER_HP_SHARE
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an enter into a building at a fifth of its hit points (state 13)",
             ));
         }
@@ -713,7 +739,7 @@ impl Unit {
             .find(|t| t.action_type == 0x88)
             .is_some_and(|t| t.object_id == bm.id)
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an enter of a master that transforms (task 0x88)",
             ));
         }
@@ -741,20 +767,22 @@ impl Unit {
         building: &Self,
         (masters, me, bm): (&Masters, &Master, &Master),
         w: &mut EnterWorld<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let target = building.id;
         if self.life.inside.is_some() {
-            return Err(Unsupported("an enter of a unit inside another"));
+            return Err(GenieError::unsupported("an enter of a unit inside another"));
         }
         // the building's `+0x9a8` takes the units inside the unit (slot 0x498)
         if !self.garrison.is_empty() {
-            return Err(Unsupported("an enter of a unit with units inside it"));
+            return Err(GenieError::unsupported(
+                "an enter of a unit with units inside it",
+            ));
         }
         let placed = w
             .spatial
             .get(self.id)
             .copied()
-            .ok_or(Unsupported("an entering unit without a place"))?;
+            .ok_or(GenieError::unsupported("an entering unit without a place"))?;
         if let Some(v) = w.spatial.sight.as_mut() {
             v.sight_off(self.id, self.position, placed.radius, false, false);
         }
@@ -805,13 +833,13 @@ impl Unit {
         // (its own player's) that takes villagers; with 3 it is never cleared
         if me.class == 4 || me.id == 1808 {
             if !self.town_bell.flag {
-                let action = self
-                    .ai
-                    .as_ref()
-                    .map(|ai| ai.current_action)
-                    .ok_or(Unsupported(
-                        "a town-bell record of a unit without a unit AI",
-                    ))?;
+                let action =
+                    self.ai
+                        .as_ref()
+                        .map(|ai| ai.current_action)
+                        .ok_or(GenieError::unsupported(
+                            "a town-bell record of a unit without a unit AI",
+                        ))?;
                 self.town_bell.record(crate::town_bell::BackToWork {
                     target,
                     target_type: -1,
@@ -833,7 +861,7 @@ impl Unit {
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])
     /// and a unit in state 2 takes its standing sprite (slot 0x68 with slot 0x798's,
     /// [`crate::attack::set_sprite`]) where the slice holds its sprite.
-    pub(in crate::turn) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+    pub(in crate::turn) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let sprite = c.streams.get(Stream::Sprite);
         let lets = (&mut c.releases, &mut c.builder_leaves);
@@ -850,7 +878,7 @@ impl Unit {
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite: &mut Well512,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.tear_down_actions(releases, builder_leaves, by)?;
         if self.life.state == 2 {
             self.show_standing(masters, graphics, sprite)?;
@@ -866,9 +894,9 @@ impl Unit {
         releases: &mut Vec<(i32, Releaser)>,
         builder_leaves: &mut Vec<i32>,
         by: Releaser,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.unmodelled_action.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a unit AI's stop of an action list the slice does not model",
             ));
         }
@@ -884,7 +912,7 @@ impl Unit {
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite: &mut Well512,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if let Some(m) = self.mover.as_mut() {
             m.shows_standing();
         }
@@ -895,7 +923,9 @@ impl Unit {
                 .or_else(|| masters.and_then(|m| m.get(self.life.master_id)))
                 .map(|m| m.standing_sprite)
                 .and_then(|id| graphics.get(&id).copied())
-                .ok_or(Unsupported("a stopped unit without its standing sprite"))?;
+                .ok_or(GenieError::unsupported(
+                    "a stopped unit without its standing sprite",
+                ))?;
             crate::attack::set_sprite(&mut self.sprite, standing, sprite);
         }
         Ok(())
@@ -925,7 +955,7 @@ impl Unit {
         releases: &mut Vec<(i32, Releaser)>,
         builder_leaves: &mut Vec<i32>,
         by: Releaser,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let mut release = |t: i32| {
             if t != -1 {
                 releases.push((t, by));
@@ -1008,7 +1038,7 @@ impl Unit {
         effects: Vec<Effect>,
         class: Option<i16>,
         c: &mut Context<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         for e in effects {
             match e {
                 Effect::Stop => self.stop_action(c)?,
@@ -1017,7 +1047,7 @@ impl Unit {
                     c.spatial.set_gait(self.id, self.gait());
                 }
                 Effect::Move(_) | Effect::RestorePatrol => {
-                    let class = class.ok_or(Unsupported(
+                    let class = class.ok_or(GenieError::unsupported(
                         "an AI move of a master the slice does not have",
                     ))?;
                     let m = match e {
@@ -1031,11 +1061,13 @@ impl Unit {
                 Effect::MoveAside(m) => c.move_aside.push(m),
                 Effect::OrderOnTarget(order) => {
                     if c.order_on_target.replace((order, None)).is_some() {
-                        return Err(Unsupported("two orders on targets in one update"));
+                        return Err(GenieError::unsupported(
+                            "two orders on targets in one update",
+                        ));
                     }
                 }
                 Effect::AfterOrder(after) => {
-                    let (_, tail) = c.order_on_target.as_mut().ok_or(Unsupported(
+                    let (_, tail) = c.order_on_target.as_mut().ok_or(GenieError::unsupported(
                         "a unit AI's tail after an order it did not take",
                     ))?;
                     *tail = Some(after);
@@ -1054,7 +1086,7 @@ impl Unit {
                 }
                 Effect::BuildObject(target) => {
                     if c.build_object.replace(target).is_some() {
-                        return Err(Unsupported("two BuildObjects in one update"));
+                        return Err(GenieError::unsupported("two BuildObjects in one update"));
                     }
                 }
                 Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
@@ -1078,7 +1110,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let hunt = self.hunt.as_mut().expect("the caller's hunt");
         if hunt.target_class != 10 {
             let target = std::mem::replace(&mut hunt.target, -1);
@@ -1095,13 +1127,13 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let hunt = self.hunt.as_mut().expect("the caller's hunt");
         let task = hunt.task;
         if hunt.target_class == 10 {
             // a human player's hunt is done (set_state 2), a computer player's ends (1)
             if c.computer {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a computer player's hunt of class 10's search (set_state 1)",
                 ));
             }
@@ -1121,11 +1153,13 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         task: &crate::hunt::HuntTask,
-    ) -> Result<(), Unsupported> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+    ) -> Result<(), GenieError> {
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a hunter of a master the slice does not have",
+                ))?;
         let stand = crate::hunt::stand_sprite(
             task,
             master.standing_sprite,
@@ -1155,13 +1189,15 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let hunt = self.hunt.as_ref().expect("the caller's hunt");
         let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a hunter of a master the slice does not have",
+                ))?;
         let site = if carry_to != -1 {
             carry_to
         } else if master.drop_sites.first().is_none_or(|&d| d == -1) {
@@ -1209,18 +1245,19 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let hunt = self.hunt.as_ref().expect("the caller's hunt");
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a hunter of a master the slice does not have",
+                ))?;
         if hunt.target != -1 {
             // back to the target: the drop site goes (FUN_140a7a190 with none), set_state(4)
-            let v = c
-                .victim
-                .as_deref()
-                .ok_or(Unsupported("a hunt's target the slice does not hold live"))?;
+            let v = c.victim.as_deref().ok_or(GenieError::unsupported(
+                "a hunt's target the slice does not hold live",
+            ))?;
             let quarry = crate::hunt::Quarry {
                 id: v.id,
                 position: v.position,
@@ -1236,10 +1273,10 @@ impl Unit {
             let (me_at, them) = (
                 c.spatial
                     .get_known(self.id)?
-                    .ok_or(Unsupported("a hunter without a place"))?,
+                    .ok_or(GenieError::unsupported("a hunter without a place"))?,
                 c.spatial
                     .get_known(v.id)?
-                    .ok_or(Unsupported("a hunt's target without a place"))?,
+                    .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
             );
             let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
             let engagement = crate::attack::engagement(
@@ -1261,24 +1298,25 @@ impl Unit {
                 c.releases.push((site, by));
             }
             let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
-                return Err(Unsupported("a hunter without its hunt or movement state"));
+                return Err(GenieError::unsupported(
+                    "a hunter without its hunt or movement state",
+                ));
             };
             if hunt.chase(&quarry, c.player, &engagement, arms, mover)? {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a hunt's Attack whose MoveTo starts arrived after its drop-off",
                 ));
             }
             if hunt.state == crate::hunt::FAILED {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a hunt failing on its target after its drop-off",
                 ));
             }
             return Ok(());
         }
-        let ai = self
-            .ai
-            .as_mut()
-            .ok_or(Unsupported("a hunt without a unit AI after its drop-off"))?;
+        let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
+            "a hunt without a unit AI after its drop-off",
+        ))?;
         let spatial: &Spatial = c.spatial;
         let gone = |id: i32| match spatial.get(id) {
             None => true,
@@ -1307,7 +1345,7 @@ impl Unit {
             ai.target_type
         };
         if ai.ai_type != crate::unit_ai::CIVILIAN {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "slot 0x1b0 of another unit AI than the civilian's",
             ));
         }
@@ -1317,12 +1355,14 @@ impl Unit {
             -1
         } else if kind == -1 {
             if self.my_pasture != -1 {
-                return Err(Unsupported("a hunter tending a pasture (FUN_1411c7670)"));
+                return Err(GenieError::unsupported(
+                    "a hunter tending a pasture (FUN_1411c7670)",
+                ));
             }
             let mover = self
                 .mover
                 .as_ref()
-                .ok_or(Unsupported("a hunter without movement state"))?;
+                .ok_or(GenieError::unsupported("a hunter without movement state"))?;
             let radius =
                 crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
             let search = Search {
@@ -1361,8 +1401,10 @@ impl Unit {
             let mut no_attack = crate::unit_ai::NoAttack;
             let foreign = c.foreign;
             let moving = |id: i32| herded(others, foreign, id);
-            let shuns = |_: &Placed| -> Result<bool, Unsupported> {
-                Err(Unsupported("a class-10 searcher in a hunt's search"))
+            let shuns = |_: &Placed| -> Result<bool, GenieError> {
+                Err(GenieError::unsupported(
+                    "a class-10 searcher in a hunt's search",
+                ))
             };
             let farm = |id: i32| {
                 others
@@ -1383,7 +1425,7 @@ impl Unit {
             )?;
             if result.fresh {
                 if result.enemies {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a hunt's search after its drop-off finding enemies",
                     ));
                 }
@@ -1402,34 +1444,34 @@ impl Unit {
             // (set_state 11, its second target kept); without a point it would wait
             // (set_state 2)
             if c.computer && kind != 0 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a computer player's hunt that found nothing after its drop-off (set_state 1)",
                 ));
             }
             let hunt = self.hunt.as_mut().expect("the caller's hunt");
             if hunt.point[0] == -1.0 || hunt.point[1] == -1.0 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a hunt without a point that found nothing after its drop-off (set_state 2)",
                 ));
             }
             let mover = self
                 .mover
                 .as_mut()
-                .ok_or(Unsupported("a hunter without movement state"))?;
+                .ok_or(GenieError::unsupported("a hunter without movement state"))?;
             return hunt.search_walk(mover);
         }
         let foreign = c.foreign;
         let (owner, t) = match others.iter().find(|u| u.id == found) {
             Some(t) => (c.player, t),
-            None => foreign
-                .find(found)
-                .ok_or(Unsupported("a hunt's new target the slice does not hold"))?,
+            None => foreign.find(found).ok_or(GenieError::unsupported(
+                "a hunt's new target the slice does not hold",
+            ))?,
         };
         let t_master = c
             .every_masters
             .get(owner)
             .and_then(|m| m.get(t.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a hunt's target of a master the slice does not have",
             ))?;
         let relations = c
@@ -1438,7 +1480,9 @@ impl Unit {
             .get(c.player)
             .map_or(&[][..], |r| &r[..]);
         if matches!(t.life.master_id, 1893 | 1897) {
-            return Err(Unsupported("a hunt finding a farm (FUN_1411c7670)"));
+            return Err(GenieError::unsupported(
+                "a hunt finding a farm (FUN_1411c7670)",
+            ));
         }
         let quarry = crate::hunt::Quarry {
             id: found,
@@ -1455,10 +1499,10 @@ impl Unit {
         let (me_at, them) = (
             c.spatial
                 .get_known(self.id)?
-                .ok_or(Unsupported("a hunter without a place"))?,
+                .ok_or(GenieError::unsupported("a hunter without a place"))?,
             c.spatial
                 .get_known(found)?
-                .ok_or(Unsupported("a hunt's target without a place"))?,
+                .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
         );
         let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
         let engagement =
@@ -1474,7 +1518,9 @@ impl Unit {
         let held = self.life.amount;
         let by = self.releaser(c);
         let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
-            return Err(Unsupported("a hunter without its hunt or movement state"));
+            return Err(GenieError::unsupported(
+                "a hunter without its hunt or movement state",
+            ));
         };
         if let Some(arrived) = hunt.retarget(
             &quarry,
@@ -1510,11 +1556,13 @@ impl Unit {
             m.shows_standing();
         }
         if hunt.state == crate::hunt::FAILED && self.sprite.is_some() {
-            let standing = c
-                .graphics
-                .get(&master.standing_sprite)
-                .copied()
-                .ok_or(Unsupported("a hunter without its standing sprite"))?;
+            let standing =
+                c.graphics
+                    .get(&master.standing_sprite)
+                    .copied()
+                    .ok_or(GenieError::unsupported(
+                        "a hunter without its standing sprite",
+                    ))?;
             crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
         }
         Ok(())
@@ -1531,7 +1579,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let w = DropWorld {
             masters: c.masters,
             spatial: c.spatial,
@@ -1563,7 +1611,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &mut [Self],
         me: Me,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let gather = self.gather.as_mut().expect("the caller's gather");
         if gather.target != -1 {
@@ -1575,7 +1623,9 @@ impl Unit {
             let gone = match state {
                 Some(s) => 6 < s,
                 None if c.spatial.get(gather.target).is_some() => {
-                    return Err(Unsupported("a gather's target the slice cannot read"));
+                    return Err(GenieError::unsupported(
+                        "a gather's target the slice cannot read",
+                    ));
                 }
                 None => true,
             };
@@ -1593,12 +1643,12 @@ impl Unit {
         if let Some(t) = let_go {
             c.releases.push((t, by));
         }
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported(
-                "a gatherer of a master the slice does not have",
-            ))?;
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a gatherer of a master the slice does not have",
+                ))?;
         let g = |id: i16| (0 <= id).then(|| c.graphics.get(&id).copied()).flatten();
         let task = gather.task;
         let sprites = HuntSprites {
@@ -1632,7 +1682,7 @@ impl Unit {
             let me_at = c
                 .spatial
                 .get_known(self.id)?
-                .ok_or(Unsupported("a gatherer without a place"))?;
+                .ok_or(GenieError::unsupported("a gatherer without a place"))?;
             let (me_position, me_radius) = (me_at.position, me_at.radius);
             let site = match c.spatial.get_known(gather.carry_to)? {
                 Some(s) => {
@@ -1721,7 +1771,7 @@ impl Unit {
             let t = c
                 .spatial
                 .get_known(gather.target)?
-                .ok_or(Unsupported("a gather's target without a place"))?;
+                .ok_or(GenieError::unsupported("a gather's target without a place"))?;
             let gap = footprint_gap(
                 self.position,
                 [me_radius[0], me_radius[1]],
@@ -1731,7 +1781,7 @@ impl Unit {
             let mover = self
                 .mover
                 .as_mut()
-                .ok_or(Unsupported("a gatherer without movement state"))?;
+                .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
             let rng = c.streams.get(Stream::Action);
             return gather.set_walk(t.position, t.radius, gap, mover, rng);
         }
@@ -1815,7 +1865,7 @@ impl Unit {
             crate::gather::Next::Build => {
                 let target = self.gather.as_ref().map_or(-1, |g| g.target);
                 if c.build_command.replace(target).is_some() {
-                    return Err(Unsupported("two build commands in one update"));
+                    return Err(GenieError::unsupported("two build commands in one update"));
                 }
             }
             // state 0xf2's walk ended: the caller reseeds after the update
@@ -1834,15 +1884,15 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let gather = self.gather.as_ref().expect("the caller's gather");
         let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported(
-                "a gatherer of a master the slice does not have",
-            ))?;
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a gatherer of a master the slice does not have",
+                ))?;
         let site = if carry_to != -1 {
             carry_to
         } else if master.drop_sites.first().is_some_and(|&d| d != -1) {
@@ -1883,7 +1933,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let spatial: &Spatial = c.spatial;
         let gone = |id: i32| match spatial.get(id) {
@@ -1916,7 +1966,7 @@ impl Unit {
                     ai.target_type
                 };
                 if ai.ai_type != crate::unit_ai::CIVILIAN {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "slot 0x1b0 of another unit AI than the civilian's",
                     ));
                 }
@@ -1937,7 +1987,7 @@ impl Unit {
             let gather = self.gather.as_mut().expect("the caller's gather");
             if gather.point[0] != -1.0 && gather.point[1] != -1.0 {
                 if farm_waits {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a farmer that found nothing after its drop-off (set_state 0xf3)",
                     ));
                 }
@@ -1945,7 +1995,7 @@ impl Unit {
                 let mover = self
                     .mover
                     .as_mut()
-                    .ok_or(Unsupported("a gatherer without movement state"))?;
+                    .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                 return gather.walk_back(0.0, mover);
             }
             // LAB_140a8ed55: a computer player's Gather is done, a human's idles
@@ -1954,12 +2004,9 @@ impl Unit {
                 let mut gather = self.gather.take().expect("the caller's gather");
                 gather.tear_down(self.mover.as_mut())?;
             } else {
-                let master =
-                    c.masters
-                        .and_then(|m| m.get(self.life.master_id))
-                        .ok_or(Unsupported(
-                            "a gatherer of a master the slice does not have",
-                        ))?;
+                let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
+                    GenieError::unsupported("a gatherer of a master the slice does not have"),
+                )?;
                 let standing = (0 <= master.standing_sprite)
                     .then(|| c.graphics.get(&master.standing_sprite).copied())
                     .flatten();
@@ -1995,21 +2042,21 @@ impl Unit {
         let foreign = c.foreign;
         let (owner, t) = match others.iter().find(|u| u.id == found) {
             Some(t) => (c.player, t),
-            None => foreign
-                .find(found)
-                .ok_or(Unsupported("a gather's new target the slice does not hold"))?,
+            None => foreign.find(found).ok_or(GenieError::unsupported(
+                "a gather's new target the slice does not hold",
+            ))?,
         };
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported(
-                "a gatherer of a master the slice does not have",
-            ))?;
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a gatherer of a master the slice does not have",
+                ))?;
         let t_master = c
             .every_masters
             .get(owner)
             .and_then(|m| m.get(t.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a gather's target of a master the slice does not have",
             ))?;
         let resource = crate::gather::Resource {
@@ -2033,7 +2080,7 @@ impl Unit {
             ),
         };
         let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut()) else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
         };
@@ -2080,7 +2127,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let w = DropWorld {
             masters: c.masters,
             spatial: c.spatial,
@@ -2104,9 +2151,9 @@ impl Unit {
         &mut self,
         mut c: DropWorld<'_>,
         others: &[Self],
-    ) -> Result<Option<i32>, Unsupported> {
+    ) -> Result<Option<i32>, GenieError> {
         if self.life.amount <= 0.0 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gather's drop-off carrying nothing (set_state 3)",
             ));
         }
@@ -2114,7 +2161,7 @@ impl Unit {
         let (carry_to, state) = (gather.carry_to, gather.state);
         let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
         let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut()) else {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
         };
@@ -2129,9 +2176,9 @@ impl Unit {
         &mut self,
         mut c: DropWorld<'_>,
         others: &[Self],
-    ) -> Result<Option<i32>, Unsupported> {
+    ) -> Result<Option<i32>, GenieError> {
         if self.life.amount <= 0.0 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hunt's drop-off carrying nothing (set_state 3)",
             ));
         }
@@ -2139,12 +2186,14 @@ impl Unit {
         let (carry_to, state) = (hunt.carry_to, hunt.state);
         let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
         if site == -1 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hunt without a drop site (notify 0x203, set_state 2)",
             ));
         }
         let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
-            return Err(Unsupported("a hunter without its hunt or movement state"));
+            return Err(GenieError::unsupported(
+                "a hunter without its hunt or movement state",
+            ));
         };
         hunt.carry_to = site;
         hunt.set_drop(gap, mover)?;
@@ -2161,22 +2210,22 @@ impl Unit {
         others: &[Self],
         carry_to: i32,
         state: u8,
-    ) -> Result<(i32, f32), Unsupported> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported(
-                "a gatherer of a master the slice does not have",
-            ))?;
+    ) -> Result<(i32, f32), GenieError> {
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a gatherer of a master the slice does not have",
+                ))?;
         let mover = self
             .mover
             .as_ref()
-            .ok_or(Unsupported("a gatherer without movement state"))?;
+            .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let mut site = carry_to;
         if site == -1 && master.drop_sites.first().is_some_and(|&d| d != -1) {
-            let masters = c
-                .masters
-                .ok_or(Unsupported("a drop-off of a player without masters"))?;
+            let masters = c.masters.ok_or(GenieError::unsupported(
+                "a drop-off of a player without masters",
+            ))?;
             let sites = &master.drop_sites;
             site = match self.drop_site_from(c, others, state, true)? {
                 Some(s) => Some(s),
@@ -2191,7 +2240,7 @@ impl Unit {
         let s = c
             .spatial
             .get_known(site)?
-            .ok_or(Unsupported("a drop site without a place"))?;
+            .ok_or(GenieError::unsupported("a drop site without a place"))?;
         Ok((
             site,
             footprint_gap(self.position, ground, s.position, s.radius),
@@ -2208,27 +2257,30 @@ impl Unit {
         others: &[Self],
         state: u8,
         outside: bool,
-    ) -> Result<Option<i32>, Unsupported> {
-        let masters = c
-            .masters
-            .ok_or(Unsupported("a drop-off of a player without masters"))?;
-        let master = masters.get(self.life.master_id).ok_or(Unsupported(
-            "a gatherer of a master the slice does not have",
+    ) -> Result<Option<i32>, GenieError> {
+        let masters = c.masters.ok_or(GenieError::unsupported(
+            "a drop-off of a player without masters",
         ))?;
+        let master = masters
+            .get(self.life.master_id)
+            .ok_or(GenieError::unsupported(
+                "a gatherer of a master the slice does not have",
+            ))?;
         let mover = self
             .mover
             .as_ref()
-            .ok_or(Unsupported("a gatherer without movement state"))?;
+            .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let [w, h] = c.spatial.map;
-        let terrain = c
-            .spatial
-            .terrain
-            .as_ref()
-            .ok_or(Unsupported("the map's zones without its terrain"))?;
-        let values = terrain
-            .restrictions
-            .get(mover.stats.restriction)
-            .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+        let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
+            "the map's zones without its terrain",
+        ))?;
+        let values =
+            terrain
+                .restrictions
+                .get(mover.stats.restriction)
+                .ok_or(GenieError::unsupported(
+                    "a restriction the slice's data has not got",
+                ))?;
         let zones = c.zones.of(w, h, &terrain.kinds, values);
         let me = Me {
             id: self.id,
@@ -2274,7 +2326,7 @@ impl Unit {
         &mut self,
         point: [f32; 2],
         c: &mut Context<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let at = [point[0], point[1], self.position[2]];
         let owner = if let Some(e) = self.explore.as_mut() {
             let walked = e.move_to.is_some();
@@ -2285,7 +2337,9 @@ impl Unit {
             owner
         } else {
             if self.top_action().is_some() || self.unmodelled_action.is_some() {
-                return Err(Unsupported("an Explore replacing another action"));
+                return Err(GenieError::unsupported(
+                    "an Explore replacing another action",
+                ));
             }
             let (e, owner) = crate::explore::ExploreAction::new(at);
             self.explore = Some(e);
@@ -2302,11 +2356,15 @@ impl Unit {
         &mut self,
         owner: crate::explore::Owner,
         c: &mut Context<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         use crate::explore::Owner;
         match owner {
             Owner::Nothing => return Ok(()),
-            Owner::Stopped => return Err(Unsupported("an Explore's set_state 2 (slots 0x68)")),
+            Owner::Stopped => {
+                return Err(GenieError::unsupported(
+                    "an Explore's set_state 2 (slots 0x68)",
+                ));
+            }
             Owner::WantsPoint => self.post_own(
                 crate::explore::WANTS_POINT,
                 [crate::explore::EXPLORE_ACTION, 0, 0],
@@ -2322,17 +2380,19 @@ impl Unit {
                 .and_then(|m| m.get(self.life.master_id))
                 .map(|m| m.standing_sprite)
                 .and_then(|id| c.graphics.get(&id).copied())
-                .ok_or(Unsupported("an explorer without its standing sprite"))?;
+                .ok_or(GenieError::unsupported(
+                    "an explorer without its standing sprite",
+                ))?;
             crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
         }
         Ok(())
     }
 
     /// Slot 0x5d0 of a unit whose `MoveTo` went.
-    pub(in crate::turn) fn stop_mover(&mut self) -> Result<(), Unsupported> {
+    pub(in crate::turn) fn stop_mover(&mut self) -> Result<(), GenieError> {
         self.mover
             .as_mut()
-            .ok_or(Unsupported("a walker without movement state"))?
+            .ok_or(GenieError::unsupported("a walker without movement state"))?
             .stop()
     }
 
@@ -2351,9 +2411,9 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         task: crate::masters::Task,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if c.player != 0 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a player's bird's default Fly (its task's +0x15)",
             ));
         }
@@ -2361,7 +2421,9 @@ impl Unit {
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .map(|m| m.fly_mode)
-            .ok_or(Unsupported("a bird of a master the slice does not have"))?;
+            .ok_or(GenieError::unsupported(
+                "a bird of a master the slice does not have",
+            ))?;
         self.fly = Some(Fly::start(
             task,
             self.position,
@@ -2391,10 +2453,10 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         before: u8,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
             if self.life.dying_sprite.is_some() {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a dying object of a master the slice does not have",
                 ));
             }
@@ -2419,7 +2481,7 @@ impl Unit {
         } else if master.kind != 70 {
             // a static object's dying sprite is the lifecycle's ([`Lifecycle::die`])
             if self.life.class == Class::Animated && self.life.dying_sprite.is_some() {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a dying sprite of an object of another type than 70",
                 ));
             }
@@ -2439,11 +2501,9 @@ impl Unit {
             crate::sprite::dying(master, look)
         };
         if let Some(id) = shown {
-            let g = c
-                .graphics
-                .get(&id)
-                .copied()
-                .ok_or(Unsupported("a dying sprite the data file does not have"))?;
+            let g = c.graphics.get(&id).copied().ok_or(GenieError::unsupported(
+                "a dying sprite the data file does not have",
+            ))?;
             crate::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
         }
         Ok(())
@@ -2460,7 +2520,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         master: &Master,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let construction = self
             .construction
             .as_mut()
@@ -2519,24 +2579,25 @@ impl Unit {
         others: &[Self],
         building: i32,
         built: i16,
-    ) -> Result<Option<crate::order::Work>, Unsupported> {
+    ) -> Result<Option<crate::order::Work>, GenieError> {
         use crate::gather_search::{self, Candidate};
         use crate::image::gather_search::{REACH_CAP, REACH_FLOOR};
         /// The reach a line of sight below the floor takes (the Build's immediate 4.0).
         const REACH_LOW: f32 = 4.0;
-        let masters = c
-            .masters
-            .ok_or(Unsupported("a builder without its player's masters"))?;
+        let masters = c.masters.ok_or(GenieError::unsupported(
+            "a builder without its player's masters",
+        ))?;
         let master = masters
             .get(self.life.master_id)
-            .ok_or(Unsupported("a builder of a master the slice does not have"))?;
-        let site = masters.get(built).ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
+                "a builder of a master the slice does not have",
+            ))?;
+        let site = masters.get(built).ok_or(GenieError::unsupported(
             "a building of a master the slice does not have",
         ))?;
-        let at = *c
-            .spatial
-            .get(building)
-            .ok_or(Unsupported("a builder's building without a place"))?;
+        let at = *c.spatial.get(building).ok_or(GenieError::unsupported(
+            "a builder's building without a place",
+        ))?;
         let entry = crate::tasks::drop_site(c.drop_sites, built, master.class, c.civ);
         let los = site.line_of_sight;
         let held = if REACH_FLOOR <= los { los } else { REACH_LOW };
@@ -2550,14 +2611,16 @@ impl Unit {
         let mover = self
             .mover
             .as_ref()
-            .ok_or(Unsupported("a builder without movement state"))?;
+            .ok_or(GenieError::unsupported("a builder without movement state"))?;
         let restriction = mover.stats.restriction;
         let (player, me_id, foreign, every) = (c.player, self.id, c.foreign, c.every_masters);
         let candidate = |id: i32, owner: usize, u: &Self, position: [f32; 3]| {
             let m = every
                 .get(owner)
                 .and_then(|m| m.get(u.life.master_id))
-                .ok_or(Unsupported("an object of a master the slice does not have"))?;
+                .ok_or(GenieError::unsupported(
+                    "an object of a master the slice does not have",
+                ))?;
             Ok(Candidate {
                 id,
                 player: owner,
@@ -2576,7 +2639,7 @@ impl Unit {
         };
         let me = candidate(me_id, player, self, self.position)?;
         let spatial: &Spatial = c.spatial;
-        let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, Unsupported> {
+        let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
             spatial
                 .objects_on(x, y)
                 .map(|(id, p)| {
@@ -2588,27 +2651,30 @@ impl Unit {
                         .find(|u| u.id == id)
                         .map(|u| (player, u))
                         .or_else(|| foreign.find(id))
-                        .ok_or(Unsupported("an object on a tile the slice does not hold"))?;
+                        .ok_or(GenieError::unsupported(
+                            "an object on a tile the slice does not hold",
+                        ))?;
                     candidate(id, owner, u, p.position)
                 })
                 .collect()
         };
-        let found = {
-            let planner = c
-                .pathing
-                .planner(restriction, spatial.tiles())
-                .ok_or(Unsupported("a builder's restriction without a planner"))?;
-            let width = i64::from(planner.level_sizes().0[0]);
-            let cells = planner.level(0);
-            let blocked =
-                move |x: i32, y: i32| cells[(width * i64::from(y) + i64::from(x)) as usize][0] == 0;
-            gather_search::more_work(entry, &builder, spatial.map, Some(&blocked), &objects)?
-        };
+        let found =
+            {
+                let planner = c.pathing.planner(restriction, spatial.tiles()).ok_or(
+                    GenieError::unsupported("a builder's restriction without a planner"),
+                )?;
+                let width = i64::from(planner.level_sizes().0[0]);
+                let cells = planner.level(0);
+                let blocked = move |x: i32, y: i32| {
+                    cells[(width * i64::from(y) + i64::from(x)) as usize][0] == 0
+                };
+                gather_search::more_work(entry, &builder, spatial.map, Some(&blocked), &objects)?
+            };
         let Some(found) = found else {
             return Ok(None);
         };
         if found.class == gather_search::FARM {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a builder's search for more work finding a farm",
             ));
         }
@@ -2622,7 +2688,9 @@ impl Unit {
         };
         let point = spatial
             .get(target)
-            .ok_or(Unsupported("a builder's new work without a place"))?
+            .ok_or(GenieError::unsupported(
+                "a builder's new work without a place",
+            ))?
             .position;
         Ok(Some(crate::order::Work {
             target,
@@ -2649,7 +2717,7 @@ impl Unit {
         others: &[Self],
         within: Option<f32>,
         near: Option<f32>,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         // NaN compares false as the game's `comiss` does
         let beyond = |a: [f32; 3], b: [f32; 3], limit: f32| {
             let (dx, dz, dy) = (a[0] - b[0], a[2] - b[2], a[1] - b[1]);
@@ -2672,7 +2740,9 @@ impl Unit {
             .find(|u| u.id == found)
             .map(|u| (c.player, u))
             .or_else(|| c.foreign.find(found))
-            .ok_or(Unsupported("a hunt's next tree the slice does not hold"))?;
+            .ok_or(GenieError::unsupported(
+                "a hunt's next tree the slice does not hold",
+            ))?;
         if let Some(near) = near {
             let (dx, dz, dy) = (
                 self.position[0] - t.position[0],
@@ -2687,14 +2757,16 @@ impl Unit {
             .every_masters
             .get(tp)
             .and_then(|m| m.get(t.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a hunt's next tree of a master the slice lacks",
             ))?;
         let own = c
             .spatial
             .relations
             .get(c.player)
-            .ok_or(Unsupported("a hunter's player without relations"))?;
+            .ok_or(GenieError::unsupported(
+                "a hunter's player without relations",
+            ))?;
         let quarry = crate::hunt::Quarry {
             id: found,
             position: t.position,
@@ -2707,15 +2779,17 @@ impl Unit {
             top_action: t.top_action_kind(),
             drop_site: false,
         };
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a hunter of a master the slice does not have",
+                ))?;
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let at = |id| {
             c.spatial
                 .get_known(id)?
-                .ok_or(Unsupported("a hunt's object without a place"))
+                .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
         let (me_at, them) = (at(self.id)?, at(found)?);
         let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
@@ -2730,7 +2804,7 @@ impl Unit {
         let mover = self
             .mover
             .as_mut()
-            .ok_or(Unsupported("a hunter without movement state"))?;
+            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
         if let Some(arrived) = hunt.retarget(
             &quarry,
             c.player,
@@ -2766,7 +2840,7 @@ impl Unit {
         others: &[Self],
         kind: u8,
         cap: i32,
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<i32, GenieError> {
         self.resource_search_from(c, others, kind, cap, -1)
     }
 
@@ -2781,11 +2855,13 @@ impl Unit {
         kind: u8,
         cap: i32,
         site: i32,
-    ) -> Result<i32, Unsupported> {
+    ) -> Result<i32, GenieError> {
         let current = self
             .ai
             .as_ref()
-            .ok_or(Unsupported("a resource search without a unit AI"))?
+            .ok_or(GenieError::unsupported(
+                "a resource search without a unit AI",
+            ))?
             .current_target;
         let mut w = ResourceWorld {
             player: c.player,
@@ -2828,7 +2904,7 @@ impl Unit {
         c: &Context<'_>,
         view: &OwnerView<'_>,
         master: Option<&Master>,
-    ) -> Result<Vec<crate::unit_ai::UnitSeen>, Unsupported> {
+    ) -> Result<Vec<crate::unit_ai::UnitSeen>, GenieError> {
         let Some(ai) = self.ai.as_ref() else {
             return Ok(Vec::new());
         };
@@ -2866,10 +2942,10 @@ impl Unit {
                 .every_masters
                 .get(owner)
                 .and_then(|ms| ms.get(u.life.master_id))
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "a named object of a master the slice does not have",
                 ))?;
-            let me = master.ok_or(Unsupported(
+            let me = master.ok_or(GenieError::unsupported(
                 "a unit AI's unit of a master the slice does not have",
             ))?;
             seen.push(crate::unit_ai::UnitSeen {
@@ -2886,7 +2962,7 @@ impl Unit {
         Ok(seen)
     }
 
-    pub(crate) fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), Unsupported> {
+    pub(crate) fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), GenieError> {
         let (id, state) = (self.id, self.life.state);
         self.ai
             .as_mut()
@@ -2900,7 +2976,7 @@ impl Unit {
     pub(in crate::turn) fn hit_back(
         &mut self,
         own: Victim,
-    ) -> Result<Option<crate::damage::Kill>, Unsupported> {
+    ) -> Result<Option<crate::damage::Kill>, GenieError> {
         self.life.hp = own.hp;
         if let Some(a) = own.armored.as_ref() {
             self.hp_powerups = a.hp_powerups;
@@ -2917,7 +2993,9 @@ impl Unit {
             ai.post(n, self.life.state)?;
         }
         if own.killed.is_some_and(|k| k.to_gaia) {
-            return Err(Unsupported("a killed attacker that goes to Gaia"));
+            return Err(GenieError::unsupported(
+                "a killed attacker that goes to Gaia",
+            ));
         }
         Ok(own.killed)
     }
@@ -2925,10 +3003,7 @@ impl Unit {
     /// The action list's deletion of the unit's own Attack (`FUN_140a98e20`): its teardown (a
     /// `MoveTo`'s stops the unit) and the base teardown (`FUN_140a73fc0`), which lets its target,
     /// then its second target go (slot 0x180).
-    pub(in crate::turn) fn delete_attack(
-        &mut self,
-        c: &mut Context<'_>,
-    ) -> Result<(), Unsupported> {
+    pub(in crate::turn) fn delete_attack(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let Some(mut a) = self.attack.take() else {
             return Ok(());
         };
@@ -2960,22 +3035,22 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         aimed: Aimed,
-    ) -> Result<(), Unsupported> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported(
-                "an attacker of a master the slice does not have",
-            ))?;
+    ) -> Result<(), GenieError> {
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "an attacker of a master the slice does not have",
+                ))?;
         if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135) || matches!(master.class, 35 | 64))
             && self.life.state == 2
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a self-destructing attacker's hit (its object 112 and its death)",
             ));
         }
         if matches!(master.charge_type, 6 | 7) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a charged hit (slot 0x2f8 with charge types 6 and 7)",
             ));
         }
@@ -3013,7 +3088,7 @@ impl Unit {
         };
         if missile || 0 < extra {
             if 0 < aimed.player {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a hit on a player's object (its player's object 112, slot 0x1c0)",
                 ));
             }
@@ -3029,7 +3104,7 @@ impl Unit {
             }
         }
         if (extra != 0 || missile) && c.computers.get(aimed.player).copied().unwrap_or(false) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hit on a computer player's object (its notify 0x214)",
             ));
         }
@@ -3052,16 +3127,16 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         aimed: &Aimed,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.attack_count += 1;
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported(
-                "a ranged unit of a master the slice does not have",
-            ))?;
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a ranged unit of a master the slice does not have",
+                ))?;
         if matches!(master.charge_type, 6 | 7) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a charge projectile (charge types 6 and 7, slot 0x2f8)",
             ));
         }
@@ -3069,7 +3144,7 @@ impl Unit {
             .mover
             .as_ref()
             .map(|m| m.angle)
-            .ok_or(Unsupported("a ranged unit that does not move"))?;
+            .ok_or(GenieError::unsupported("a ranged unit that does not move"))?;
         let shot = Shot {
             made: master.missile,
             at: crate::missile::spawn_point(self.position, facing, master.weapon_offset),
@@ -3091,7 +3166,7 @@ impl Unit {
         // spare friends
         let spares_friends = !(1.0 < master.weapon_range && master.blast_level & 4 == 0);
         if !spares_friends && c.computers.get(aimed.player).copied().unwrap_or(false) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a missile fired at a computer player's object (its notify 0x20f)",
             ));
         }
@@ -3112,18 +3187,20 @@ impl Unit {
         c: &mut Context<'_>,
         aimed: &Aimed,
         scatter: [f32; 2],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let masters = c
             .masters
-            .ok_or(Unsupported("a volley without the masters"))?;
-        let master = masters.get(self.life.master_id).ok_or(Unsupported(
-            "a ranged unit of a master the slice does not have",
-        ))?;
+            .ok_or(GenieError::unsupported("a volley without the masters"))?;
+        let master = masters
+            .get(self.life.master_id)
+            .ok_or(GenieError::unsupported(
+                "a ranged unit of a master the slice does not have",
+            ))?;
         let facing = self
             .mover
             .as_ref()
             .map(|m| m.angle)
-            .ok_or(Unsupported("a ranged unit that does not move"))?;
+            .ok_or(GenieError::unsupported("a ranged unit that does not move"))?;
         let building = master.class == crate::garrison::BUILDING_CLASS;
         let at = crate::missile::volley_spawn_point(
             self.position,
@@ -3136,17 +3213,17 @@ impl Unit {
         let volley = master.volley_missile.and_then(|id| masters.get(id));
         let made = match volley {
             Some(v) => v,
-            None if 0 <= master.missile => masters
-                .get(master.missile)
-                .ok_or(Unsupported("a missile its player's masters do not have"))?,
+            None if 0 <= master.missile => masters.get(master.missile).ok_or(
+                GenieError::unsupported("a missile its player's masters do not have"),
+            )?,
             None => {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a volley's extra missile of a master without a missile",
                 ));
             }
         };
         if matches!(made.id, 527 | 528) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a volley's extra missile of master 527 or 528 (its attack count)",
             ));
         }
@@ -3197,20 +3274,24 @@ impl Unit {
         c: &mut Context<'_>,
         aimed: &Aimed,
         shot: &Shot,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let made = c
             .masters
             .and_then(|m| m.get(shot.made))
-            .ok_or(Unsupported("a missile its player's masters do not have"))?;
-        let stats = made
-            .missile_stats
-            .ok_or(Unsupported("a missile master without its flight"))?;
+            .ok_or(GenieError::unsupported(
+                "a missile its player's masters do not have",
+            ))?;
+        let stats = made.missile_stats.ok_or(GenieError::unsupported(
+            "a missile master without its flight",
+        ))?;
         if !made.recyclable {
-            return Err(Unsupported("a missile of a master that is not recyclable"));
+            return Err(GenieError::unsupported(
+                "a missile of a master that is not recyclable",
+            ));
         }
-        let moving = made
-            .moving
-            .ok_or(Unsupported("a missile master that does not move"))?;
+        let moving = made.moving.ok_or(GenieError::unsupported(
+            "a missile master that does not move",
+        ))?;
         let (id, flying) = if let Some(pooled) = c.recycling.missiles.pop() {
             pooled
         } else {
@@ -3266,7 +3347,9 @@ impl Unit {
                 .spatial
                 .terrain
                 .as_ref()
-                .ok_or(Unsupported("a missile without the map's terrain"))?
+                .ok_or(GenieError::unsupported(
+                    "a missile without the map's terrain",
+                ))?
                 .ground(position[0], position[1])?;
             position[2] = crate::missile::grounded(position[2], ground, false, stats.fly_mode);
         }
@@ -3421,7 +3504,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(mut missile) = self.missile.take() else {
             return Ok(());
         };
@@ -3435,14 +3518,16 @@ impl Unit {
         missile: &mut crate::missile::Missile,
         c: &mut Context<'_>,
         others: &mut [Self],
-    ) -> Result<(), Unsupported> {
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported("a missile of a master the slice does not have"))?;
-        let stats = master
-            .missile_stats
-            .ok_or(Unsupported("a missile whose master has no flight"))?;
+    ) -> Result<(), GenieError> {
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a missile of a master the slice does not have",
+                ))?;
+        let stats = master.missile_stats.ok_or(GenieError::unsupported(
+            "a missile whose master has no flight",
+        ))?;
         let Some(action) = missile.action.as_mut() else {
             return Ok(());
         };
@@ -3457,13 +3542,17 @@ impl Unit {
             .map(|u| u.life.state);
         if action.target != -1 && target_state.is_none() {
             if c.spatial.get(action.target).is_some() {
-                return Err(Unsupported("a missile's target the slice cannot read"));
+                return Err(GenieError::unsupported(
+                    "a missile's target the slice cannot read",
+                ));
             }
             action.target = -1;
         }
         if action.fired_from != -1 && shooter_state.is_none() {
             if c.spatial.get(action.fired_from).is_some() {
-                return Err(Unsupported("a missile's shooter the slice cannot read"));
+                return Err(GenieError::unsupported(
+                    "a missile's shooter the slice cannot read",
+                ));
             }
             action.fired_from = -1;
         }
@@ -3472,16 +3561,22 @@ impl Unit {
             action.target = -1;
         }
         if action.fired_from != -1 && shooter_state.is_some_and(dead) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a missile whose shooter died (its weapons, FUN_14113e170)",
             ));
         }
         match action.state {
             crate::missile::FLYING => {}
             crate::missile::DONE => {
-                return Err(Unsupported("a missile action's update in state 1"));
+                return Err(GenieError::unsupported(
+                    "a missile action's update in state 1",
+                ));
             }
-            _ => return Err(Unsupported("a missile action in a state but 1 and 4")),
+            _ => {
+                return Err(GenieError::unsupported(
+                    "a missile action in a state but 1 and 4",
+                ));
+            }
         }
         let (step, flying) = action.fly(c.dt_seconds, missile.max_range, &stats)?;
         missile.step = step;
@@ -3495,13 +3590,15 @@ impl Unit {
         let mover = self
             .mover
             .as_mut()
-            .ok_or(Unsupported("a missile without its moving part"))?;
+            .ok_or(GenieError::unsupported("a missile without its moving part"))?;
         let mut at = mover.set_position(to, [w, h]);
         let ground = c
             .spatial
             .terrain
             .as_ref()
-            .ok_or(Unsupported("a missile without the map's terrain"))?
+            .ok_or(GenieError::unsupported(
+                "a missile without the map's terrain",
+            ))?
             .ground(at[0], at[1])?;
         at[2] = crate::missile::grounded(at[2], ground, flying, stats.fly_mode);
         mover.mark_move(at, c.world_time);
@@ -3540,7 +3637,7 @@ impl Unit {
         old: [f32; 3],
         c: &mut Context<'_>,
         others: &mut [Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if !(0.0 < stats.radius[0] && 0.0 < stats.radius[1]) {
             return Ok(());
         }
@@ -3586,7 +3683,7 @@ impl Unit {
                 .every_masters
                 .get(p.player)
                 .and_then(|m| m.get(p.master))
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "an object a missile meets of a master the slice does not have",
                 ))?;
             if crate::missile::meets_height(p.position[2], m.height, at[2], stats.radius[2]) {
@@ -3623,7 +3720,7 @@ impl Unit {
                         continue;
                     }
                     if other {
-                        return Err(Unsupported(
+                        return Err(GenieError::unsupported(
                             "a missed missile meeting another object than its target",
                         ));
                     }
@@ -3635,7 +3732,7 @@ impl Unit {
                     }
                     self.end_missile(action);
                 }
-                _ => return Err(Unsupported("a missile of hit mode 2")),
+                _ => return Err(GenieError::unsupported("a missile of hit mode 2")),
             }
         }
         if !met.is_empty() {
@@ -3668,9 +3765,9 @@ impl Unit {
         fired: Fired,
         c: &mut Context<'_>,
         others: &mut [Self],
-    ) -> Result<u8, Unsupported> {
+    ) -> Result<u8, GenieError> {
         if fired.charge {
-            return Err(Unsupported("a charge projectile's own hit"));
+            return Err(GenieError::unsupported("a charge projectile's own hit"));
         }
         if action.fired_from == -1 {
             return self.own_strike(action, fired.by, c);
@@ -3678,18 +3775,22 @@ impl Unit {
         let shooter = others
             .iter_mut()
             .find(|u| u.id == action.fired_from)
-            .ok_or(Unsupported("a missile's shooter outside its list"))?;
+            .ok_or(GenieError::unsupported(
+                "a missile's shooter outside its list",
+            ))?;
         let master = c
             .masters
             .and_then(|m| m.get(shooter.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a missile's shooter of a master the slice does not have",
             ))?;
         if 0.0 < master.area_effect {
-            return Err(Unsupported("a missile of a shooter with an area effect"));
+            return Err(GenieError::unsupported(
+                "a missile of a shooter with an area effect",
+            ));
         }
         if master.kind == crate::order::BUILDING {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a building's missile hit (its elevation factor, FUN_1411cc890)",
             ));
         }
@@ -3699,7 +3800,7 @@ impl Unit {
             .victim
             .as_deref_mut()
             .filter(|v| v.id == action.target)
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a missile's target the slice does not hold live",
             ))?;
         let hit = crate::attack::Hit {
@@ -3714,7 +3815,9 @@ impl Unit {
             shooter.post_own(ACTION_EXECUTED, [600, target, 0])?;
         }
         if shooter.hit_back(own)?.is_some() {
-            return Err(Unsupported("a retaliation killing a missile's shooter"));
+            return Err(GenieError::unsupported(
+                "a retaliation killing a missile's shooter",
+            ));
         }
         Ok(struck.result)
     }
@@ -3732,18 +3835,22 @@ impl Unit {
         action: &crate::missile::MissileAction,
         fired_from: i32,
         c: &mut Context<'_>,
-    ) -> Result<u8, Unsupported> {
+    ) -> Result<u8, GenieError> {
         if action.origin.owner != -1 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a shooterless missile with an origin (its elevation, FUN_14113e550)",
             ));
         }
-        let master = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported("a missile of a master the slice does not have"))?;
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a missile of a master the slice does not have",
+                ))?;
         if 0.0 < master.area_effect {
-            return Err(Unsupported("a shooterless missile with an area effect"));
+            return Err(GenieError::unsupported(
+                "a shooterless missile with an area effect",
+            ));
         }
         let terrain = c.spatial.terrain.as_ref();
         let mut own = victim_of(self, master, c.attributes, c.player, terrain, c.mode_680);
@@ -3753,7 +3860,7 @@ impl Unit {
             .victim
             .as_deref_mut()
             .filter(|v| v.id == action.target)
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a missile's target the slice does not hold live",
             ))?;
         let hit = crate::attack::Hit {
@@ -3765,7 +3872,7 @@ impl Unit {
         let object = c.streams.get(Stream::Object);
         let struck = crate::attack::strike(&mut own, victim, &mut c.blasted, hit, object)?;
         if self.hit_back(own)?.is_some() {
-            return Err(Unsupported("a retaliation killing a missile"));
+            return Err(GenieError::unsupported("a retaliation killing a missile"));
         }
         Ok(struck.result)
     }
@@ -3785,7 +3892,7 @@ impl Unit {
         stats: &crate::missile::MissileStats,
         c: &mut Context<'_>,
         others: &mut [Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let fired = Fired {
             charge: missile.charge,
             by: missile.fired_from,
@@ -3802,7 +3909,7 @@ impl Unit {
                 .victim
                 .as_deref()
                 .filter(|v| v.id == action.target)
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "a missile's target the slice does not hold live",
                 ))?;
             let (target_at, target_radius, target_player) = (v.position, v.radius, v.player);
@@ -3832,11 +3939,11 @@ impl Unit {
             let area = blaster
                 .and_then(|id| c.masters.and_then(|m| m.get(id)))
                 .map(|m| m.area_effect)
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "a landed missile's blast of a master the slice does not have",
                 ))?;
             if 0.0 < area {
-                return Err(Unsupported("a landed missile's blast"));
+                return Err(GenieError::unsupported("a landed missile's blast"));
             }
         }
         self.end_missile(action);
@@ -3852,7 +3959,7 @@ impl Unit {
             }
             if self.life.state < 7 {
                 if self.life.inside.is_some() {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a destroyed object inside another (slot 0x1a8)",
                     ));
                 }
@@ -3883,7 +3990,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
             return Ok(());
         };
@@ -3898,7 +4005,7 @@ impl Unit {
         let gate = self
             .gate
             .as_mut()
-            .ok_or(Unsupported("a gate without its gate state"))?;
+            .ok_or(GenieError::unsupported("a gate without its gate state"))?;
         gate.first_update = false;
         let shut = GATE_EPSILON < height;
         if gate.locked && shut {
@@ -3932,7 +4039,7 @@ impl Unit {
         &self,
         c: &Context<'_>,
         others: &[Self],
-    ) -> Result<(usize, usize), Unsupported> {
+    ) -> Result<(usize, usize), GenieError> {
         let (units, allied) = gate_units(c.spatial, self.id, &annexes_of(self.id, others))?;
         Ok((units.len(), allied))
     }
@@ -3943,7 +4050,7 @@ impl Unit {
     /// (`FUN_1411ce250` -> `FUN_1411ddd90`, [`crate::terrain::Terrain::cover`]); the rice farms'
     /// (1187, 1889: their foundation terrain plus 2, or 65, plus the stage by `+0xcd0`) are not
     /// modelled.
-    pub(in crate::turn) fn farm_stage(&self, c: &mut Context<'_>) -> Result<(), Unsupported> {
+    pub(in crate::turn) fn farm_stage(&self, c: &mut Context<'_>) -> Result<(), GenieError> {
         /// The stages over the build time (`DAT_142eb1c98`).
         const STAGES: f32 = crate::image::turn::FARM_STAGES;
         /// A farm's first stage terrain (`0x1d`).
@@ -3959,7 +4066,11 @@ impl Unit {
         };
         match m.id {
             50 => {}
-            1187 | 1889 => return Err(Unsupported("a rice farm's stage terrain (+0xcd0)")),
+            1187 | 1889 => {
+                return Err(GenieError::unsupported(
+                    "a rice farm's stage terrain (+0xcd0)",
+                ));
+            }
             _ => return Ok(()),
         }
         let stage = ((cons.progress * STAGES) / f32::from(cons.build_time)) as i32 as u8;
@@ -3976,7 +4087,9 @@ impl Unit {
         c.spatial
             .terrain
             .as_mut()
-            .ok_or(Unsupported("a farm's foundation without the map's terrain"))?
+            .ok_or(GenieError::unsupported(
+                "a farm's foundation without the map's terrain",
+            ))?
             .cover(&f)
     }
 
@@ -3992,7 +4105,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.farm_stage(c)?;
         let due = self.life.state == 0
             && self
@@ -4073,7 +4186,7 @@ impl Unit {
         &mut self,
         c: &Context<'_>,
         others: &mut [Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.life.state != 2 {
             return Ok(());
         }
@@ -4087,12 +4200,12 @@ impl Unit {
         // (FUN_1411e7220 for each from the last, then their slots 0x1a8 and 0xd0); its master's
         // slot 0x110 only sets a sound flag
         if self.life.hp <= f32::from(master.hit_points) * EJECT_SHARE && !self.garrison.is_empty() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a damaged building lets its garrison out (a fifth of its hit points)",
             ));
         }
         if c.attributes.get(BUILDING_TERRAIN) == Some(&f32::from(master.id)) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a building whose master attribute 255 names (FUN_1411c39b0)",
             ));
         }
@@ -4105,7 +4218,9 @@ impl Unit {
             self.damaged_lately -= 1;
         }
         if master.id == MONASTERY && self.relics != [0; 2] {
-            return Err(Unsupported("a monastery's relics' goods (its seconds)"));
+            return Err(GenieError::unsupported(
+                "a monastery's relics' goods (its seconds)",
+            ));
         }
         let inside = |id: i32, others: &[Self]| others.iter().position(|u| u.id == id);
         for &id in self.garrison.iter().rev() {
@@ -4117,7 +4232,7 @@ impl Unit {
                 .and_then(|m| m.get(others[i].life.master_id))
                 .map(|m| m.kind);
             if kind == Some(70) && 0 < others[i].raider_countdown {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a unit inside whose raider_build_countdown runs (FUN_1411e7220)",
                 ));
             }
@@ -4131,7 +4246,7 @@ impl Unit {
             let m = c
                 .masters
                 .and_then(|m| m.get(others[i].life.master_id))
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "a unit inside of a master the slice does not have",
                 ))?;
             if m.class == VILLAGER_CLASS {
@@ -4145,7 +4260,7 @@ impl Unit {
             && 0.0 < bm.garrison_repair_rate
             && self.life.hp < f32::from(master.hit_points)
         {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a building its villagers inside repair (FUN_1411d33e0)",
             ));
         }
@@ -4158,13 +4273,11 @@ impl Unit {
     /// powerup (`+0xa38`, never below 0; the hit point transforms of `FUN_141204450`, empty in
     /// the recordings, are not held); healed to its full hit points (slot 0xc0 at least slot
     /// 200), it holds exactly its master's. The heal timer `+0x9e4` a full heal clears is not held.
-    pub(in crate::turn) fn heal(
-        &mut self,
-        master: &Master,
-        amount: f32,
-    ) -> Result<(), Unsupported> {
+    pub(in crate::turn) fn heal(&mut self, master: &Master, amount: f32) -> Result<(), GenieError> {
         if matches!(master.class, 2 | 20 | 21 | 22 | 53) {
-            return Err(Unsupported("a heal at a cost (FUN_141213b10's classes)"));
+            return Err(GenieError::unsupported(
+                "a heal at a cost (FUN_141213b10's classes)",
+            ));
         }
         let full = f32::from(master.hit_points);
         let [mut up, room] = self.hp_powerups;
@@ -4249,7 +4362,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
-    ) -> Result<Step, Unsupported> {
+    ) -> Result<Step, GenieError> {
         if let Some(resume) = c.ai_resume.take() {
             return self.ai_part(c, others, resume);
         }
@@ -4258,7 +4371,9 @@ impl Unit {
         // slots 0x2d8 and 0x2d0), and its update ends; only static objects (type 10) are flagged
         if self.life.goto_sleep {
             if self.life.class != Class::Static || self.mover.is_some() || self.ai.is_some() {
-                return Err(Unsupported("an object above the static type goes to sleep"));
+                return Err(GenieError::unsupported(
+                    "an object above the static type goes to sleep",
+                ));
             }
             self.life.goto_sleep = false;
             return Ok(Step::Sleep);
@@ -4329,7 +4444,7 @@ impl Unit {
         }
         let before = self.life.state;
         if before == 4 && self.sprite.is_none() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a dying object whose sprite the slice does not hold",
             ));
         }
@@ -4377,7 +4492,7 @@ impl Unit {
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
                 .map(|m| m.kind)
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "a dead object of a master the slice does not have",
                 ))?;
             if kind < 80 && 0 <= self.life.remains {
@@ -4398,7 +4513,7 @@ impl Unit {
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
                 .map(|m| m.death_spawns[0])
-                .ok_or(Unsupported(
+                .ok_or(GenieError::unsupported(
                     "a dead object of a master the slice does not have",
                 ))?;
             let facet = self
@@ -4416,7 +4531,11 @@ impl Unit {
                 self.idle_swap(master, c.graphics, c.streams.get(Stream::Sprite));
             }
         }
-        if let Some(e) = self.unmodelled_action.filter(|_| self.life.state == 2) {
+        if let Some(e) = self
+            .unmodelled_action
+            .clone()
+            .filter(|_| self.life.state == 2)
+        {
             return Err(e);
         }
         // RGE_Action_Object::update (0x14106ac90), after the moving update: an object past
@@ -4447,7 +4566,9 @@ impl Unit {
                 .and_then(|m| m.get(self.life.master_id))
                 .and_then(Master::default_task)
                 .copied()
-                .ok_or(Unsupported("a Make whose master the slice does not have"))?;
+                .ok_or(GenieError::unsupported(
+                    "a Make whose master the slice does not have",
+                ))?;
             self.make = Some(crate::make::MakeAction::start(
                 task,
                 c.attributes,
@@ -4461,7 +4582,7 @@ impl Unit {
         if self.life.state == 2
             && self.top_action_kind().is_none()
             && self.production.is_none()
-            && let Some(e) = self.default_task
+            && let Some(e) = self.default_task.clone()
         {
             return Err(e);
         }
@@ -4800,7 +4921,9 @@ impl Unit {
                 let point = c
                     .spatial
                     .get(target)
-                    .ok_or(Unsupported("a builder's building without a place"))?
+                    .ok_or(GenieError::unsupported(
+                        "a builder's building without a place",
+                    ))?
                     .position;
                 c.work_order = Some(crate::order::Work {
                     target,
@@ -4811,8 +4934,9 @@ impl Unit {
                 });
             }
             if step.search {
-                let built =
-                    built.ok_or(Unsupported("a builder's building the slice does not hold"))?;
+                let built = built.ok_or(GenieError::unsupported(
+                    "a builder's building the slice does not hold",
+                ))?;
                 if let Some(work) = self.more_work(c, others, target, built)? {
                     c.work_order = Some(work);
                 } else {
@@ -4833,11 +4957,15 @@ impl Unit {
         if self.life.inside.is_some() {
             if let Some(e) = self.enter.take() {
                 if e.move_to.is_some() {
-                    return Err(Unsupported("an inside unit's Enter with its MoveTo"));
+                    return Err(GenieError::unsupported(
+                        "an inside unit's Enter with its MoveTo",
+                    ));
                 }
                 c.releases.push((e.target, self.releaser(c)));
             } else if self.top_action_kind().is_some() || self.unmodelled_action.is_some() {
-                return Err(Unsupported("the inside update of an action not an Enter"));
+                return Err(GenieError::unsupported(
+                    "the inside update of an action not an Enter",
+                ));
             }
         } else if self.enter.is_some() {
             self.enter_update(c, others, me)?;
@@ -4912,10 +5040,14 @@ impl Unit {
             // restart is not modelled), 11 walks, 13 fails; the others wait
             match explore.state {
                 crate::explore::DONE => {
-                    return Err(Unsupported("a done Explore (the action list after it)"));
+                    return Err(GenieError::unsupported(
+                        "a done Explore (the action list after it)",
+                    ));
                 }
                 crate::explore::FAILED => {
-                    return Err(Unsupported("a failed Explore (notify 0x1f9, set_state 2)"));
+                    return Err(GenieError::unsupported(
+                        "a failed Explore (notify 0x1f9, set_state 2)",
+                    ));
                 }
                 crate::explore::WALK => {
                     // the MoveTo's update code (FUN_140a992b0): 1 once it arrived, 1 without it
@@ -4983,7 +5115,7 @@ impl Unit {
             let mover = self
                 .mover
                 .as_mut()
-                .ok_or(Unsupported("a bird without movement state"))?;
+                .ok_or(GenieError::unsupported("a bird without movement state"))?;
             let (speed, radius) = (
                 mover.stats.speed,
                 [mover.stats.radius[0], mover.stats.radius[1]],
@@ -5010,10 +5142,9 @@ impl Unit {
             }
         }
         if let Some(make) = self.make.as_mut().filter(|_| !makes_from_now) {
-            let master = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(Unsupported("a Make of a master the slice does not have"))?;
+            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
+                GenieError::unsupported("a Make of a master the slice does not have"),
+            )?;
             let farm = crate::make::Farm {
                 master_id: master.id,
                 kind: master.kind,
@@ -5057,7 +5188,9 @@ impl Unit {
             let gone = match state {
                 Some(s) => 6 < s,
                 None if c.spatial.get(target).is_some() => {
-                    return Err(Unsupported("a hunt's target the slice cannot read"));
+                    return Err(GenieError::unsupported(
+                        "a hunt's target the slice cannot read",
+                    ));
                 }
                 None => true,
             };
@@ -5127,14 +5260,13 @@ impl Unit {
             }
         } else if let Some(hunt) = self.hunt.as_mut().filter(|h| h.state == crate::hunt::DROP) {
             // state 8 has no target: its drop site (the second target) is what it walks to
-            let master = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
+                GenieError::unsupported("a hunter of a master the slice does not have"),
+            )?;
             let me_at = c
                 .spatial
                 .get_known(self.id)?
-                .ok_or(Unsupported("a hunter without a place"))?;
+                .ok_or(GenieError::unsupported("a hunter without a place"))?;
             let (me_position, me_radius) = (me_at.position, me_at.radius);
             let site = match c.spatial.get_known(hunt.carry_to)? {
                 Some(s) => {
@@ -5204,7 +5336,9 @@ impl Unit {
                     self.hunt_drop_off(c, others)?;
                 }
                 crate::hunt::Dropped::Idle => {
-                    return Err(Unsupported("a hunt's drop-off idling (set_state 2)"));
+                    return Err(GenieError::unsupported(
+                        "a hunt's drop-off idling (set_state 2)",
+                    ));
                 }
             }
         } else if let Some(hunt) = self
@@ -5217,7 +5351,7 @@ impl Unit {
             // lets its target, then its second target go
             let (target, site) = (hunt.target, hunt.carry_to);
             if hunt.attack.is_some() || hunt.move_to.is_some() {
-                return Err(Unsupported("a failed hunt with a sub-action"));
+                return Err(GenieError::unsupported("a failed hunt with a sub-action"));
             }
             self.post_own(
                 crate::unit_ai::ACTION_FAILED,
@@ -5243,10 +5377,9 @@ impl Unit {
             // states 15 and 11: the walk to a point; state 15's end is set_state(2): the unit
             // takes the hunt's sprite to stand with (slot 0x68 with FUN_140ac5210's), the target
             // and the second target go; state 11's is set_state(3), the search
-            let master = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
+                GenieError::unsupported("a hunter of a master the slice does not have"),
+            )?;
             let who = crate::hunt::PointWalker {
                 computer: c.computer,
                 villager: master.class == 4,
@@ -5290,7 +5423,9 @@ impl Unit {
             // state 2 (case 1): a done hunt waits; one of a tree's target class would search
             // again (set_state 3)
             if self.hunt.as_ref().is_some_and(|h| h.target_class == 15) {
-                return Err(Unsupported("a done hunt of a tree's class (set_state 3)"));
+                return Err(GenieError::unsupported(
+                    "a done hunt of a tree's class (set_state 3)",
+                ));
             }
         } else if let Some(hunt) = self
             .hunt
@@ -5302,7 +5437,7 @@ impl Unit {
             let mover = self
                 .mover
                 .as_mut()
-                .ok_or(Unsupported("a hunter without movement state"))?;
+                .ok_or(GenieError::unsupported("a hunter without movement state"))?;
             hunt.wait_then_walk(c.dt_seconds, mover)?;
         } else if self
             .hunt
@@ -5316,14 +5451,15 @@ impl Unit {
             // the hunt took the next tree (slot 0x48): its MoveTo's code 5 ends the update
         } else if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;
-            let master = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(Unsupported("a hunter of a master the slice does not have"))?;
-            let victim = c.victim.take().ok_or(Unsupported(
+            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
+                GenieError::unsupported("a hunter of a master the slice does not have"),
+            )?;
+            let victim = c.victim.take().ok_or(GenieError::unsupported(
                 "an attack's target the slice does not hold live",
             ))?;
-            let own = own.ok_or(Unsupported("a hunter of a master the slice does not have"))?;
+            let own = own.ok_or(GenieError::unsupported(
+                "a hunter of a master the slice does not have",
+            ))?;
             // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
             let productivity = usize::try_from(hunt.task.productivity)
                 .ok()
@@ -5365,7 +5501,7 @@ impl Unit {
                 let at = |id| {
                     c.spatial
                         .get_known(id)?
-                        .ok_or(Unsupported("a hunt's object without a place"))
+                        .ok_or(GenieError::unsupported("a hunt's object without a place"))
                 };
                 let (me_at, them) = (at(self.id)?, at(hunt.target)?);
                 let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
@@ -5391,7 +5527,7 @@ impl Unit {
                     })
                 } else {
                     if computer {
-                        return Err(Unsupported(
+                        return Err(GenieError::unsupported(
                             "a computer player's hunt of its livestock (its drop-site search)",
                         ));
                     }
@@ -5402,7 +5538,7 @@ impl Unit {
                         .map(|d| d.building)
                         .collect();
                     nearest_drop_site(others, &sites, them.position)
-                        .map(|(id, _)| -> Result<(i32, f32), Unsupported> {
+                        .map(|(id, _)| -> Result<(i32, f32), GenieError> {
                             let s = at(id)?;
                             Ok((
                                 id,
@@ -5432,14 +5568,11 @@ impl Unit {
                     arms,
                     idle,
                     special_graphic: if master.kind == 70 && master.special_graphic {
-                        Some(
-                            c.graphics
-                                .get(&master.special_sprite)
-                                .copied()
-                                .ok_or(Unsupported(
-                                    "a special graphic the data file does not have",
-                                ))?,
-                        )
+                        Some(c.graphics.get(&master.special_sprite).copied().ok_or(
+                            GenieError::unsupported(
+                                "a special graphic the data file does not have",
+                            ),
+                        )?)
                     } else {
                         None
                     },
@@ -5546,12 +5679,9 @@ impl Unit {
             c.leads = leads;
         } else if let Some(attack) = self.attack.as_mut().filter(|a| a.target == -1) {
             // the unit's own Attack after its target went ([`Attack::lost`])
-            let master = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(Unsupported(
-                    "an attacker of a master the slice does not have",
-                ))?;
+            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
+                GenieError::unsupported("an attacker of a master the slice does not have"),
+            )?;
             let armed = armed(master, self.firepower);
             let (code, disarmed) =
                 attack.update_targetless(c.dt_seconds, armed, &mut self.anim_speed)?;
@@ -5571,18 +5701,15 @@ impl Unit {
         } else if let Some(attack) = self.attack.as_mut() {
             // the unit's own Attack (slot 6, 0x140a82ae0), its notifies posted to its unit AI
             // (slot 0x328); codes 1 and 3 delete it (RGE_Action_Object::update)
-            let master = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(Unsupported(
-                    "an attacker of a master the slice does not have",
-                ))?;
+            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
+                GenieError::unsupported("an attacker of a master the slice does not have"),
+            )?;
             let armed = armed(master, self.firepower);
             let computer = c.computers.get(c.player).copied().unwrap_or(false);
-            let victim = c.victim.take().ok_or(Unsupported(
+            let victim = c.victim.take().ok_or(GenieError::unsupported(
                 "an attack's target the slice does not hold live",
             ))?;
-            let own = own.ok_or(Unsupported(
+            let own = own.ok_or(GenieError::unsupported(
                 "an attacker of a master the slice does not have",
             ))?;
             let mut blasted = std::mem::take(&mut c.blasted);
@@ -5671,7 +5798,7 @@ impl Unit {
         if let Some(m) = self.mover.as_mut() {
             c.pauses.append(&mut m.pauses);
             if !m.in_the_way.is_empty() {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a walk's unit in the way (notify 0x215) the action does not pass on",
                 ));
             }
@@ -5700,7 +5827,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
         resume: AiResume,
-    ) -> Result<Step, Unsupported> {
+    ) -> Result<Step, GenieError> {
         let AiResume {
             captured,
             leaves,
@@ -5782,7 +5909,7 @@ impl Unit {
             .map(|ai| !ai.orders.is_empty())
         {
             if turn.is_some() && busy && self.life.inside.is_some() && self.enter.is_none() {
-                return Err(Unsupported("a busy unit inside another"));
+                return Err(GenieError::unsupported("a busy unit inside another"));
             }
             // slot 0x2d0 matters only to a queue with orders
             let interruptible = match self.interruptible() {
@@ -5801,7 +5928,7 @@ impl Unit {
                 class: match class {
                     Some(class) => class,
                     None if busy => {
-                        return Err(Unsupported(
+                        return Err(GenieError::unsupported(
                             "a busy unit of a master the slice does not have",
                         ));
                     }
@@ -5830,7 +5957,7 @@ impl Unit {
                 scenario: c.scenario,
                 task_0x69: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x69)),
                 // a new owner sees the target with its own map
-                target: match c.ai_target? {
+                target: match c.ai_target.clone()? {
                     Some(t) if view.player != c.player => {
                         let [x, y, _] = t.position;
                         let (tx, ty) = (
@@ -6031,7 +6158,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &mut [Self],
         new: usize,
-    ) -> Result<(bool, Vec<i32>), Unsupported> {
+    ) -> Result<(bool, Vec<i32>), GenieError> {
         let class = self.placed_class(c)?;
         self.capture_stop(c, class)?;
         let changed = self.change_owner(c, new)?;
@@ -6044,11 +6171,13 @@ impl Unit {
     }
 
     /// The master class the world files the captured object under.
-    pub(in crate::turn) fn placed_class(&self, c: &Context<'_>) -> Result<i16, Unsupported> {
+    pub(in crate::turn) fn placed_class(&self, c: &Context<'_>) -> Result<i16, GenieError> {
         c.spatial
             .get(self.id)
             .map(|p| p.class)
-            .ok_or(Unsupported("a captured object the world does not hold"))
+            .ok_or(GenieError::unsupported(
+                "a captured object the world does not hold",
+            ))
     }
 
     /// The stop (slot 0x148, `FUN_14108c050`) of an animal or artifact of master class `class`
@@ -6065,14 +6194,16 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         class: i16,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         if let Some(artifact) = self.artifact.as_mut() {
             let (walked, released) = artifact.stop();
             if walked {
                 self.mover
                     .as_mut()
-                    .ok_or(Unsupported("a walking animal without movement state"))?
+                    .ok_or(GenieError::unsupported(
+                        "a walking animal without movement state",
+                    ))?
                     .stop()?;
             }
             if let Some(t) = released {
@@ -6110,7 +6241,7 @@ impl Unit {
         &mut self,
         new: usize,
         c: &mut Context<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let master = self
             .own_master
             .as_deref()
@@ -6133,7 +6264,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         new: usize,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let master = self
             .own_master
             .as_deref()
@@ -6158,7 +6289,7 @@ impl Unit {
         &mut self,
         c: &mut Context<'_>,
         new: usize,
-    ) -> Result<bool, Unsupported> {
+    ) -> Result<bool, GenieError> {
         change_hands(
             self,
             (c.player, new),
@@ -6175,7 +6306,7 @@ impl Unit {
         m: AiMove,
         class: i16,
         c: &mut Context<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let sprite_rng = c.streams.get(Stream::Sprite);
         self.ai_move_with(
@@ -6213,9 +6344,9 @@ impl Unit {
             &std::collections::BTreeMap<i16, Graphic>,
             &mut Well512,
         ),
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if class == UNPACKED_TREBUCHET {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an AI move of an unpacked trebuchet (class 54: its Pack action, FUN_140ad4ff0)",
             ));
         }
@@ -6265,9 +6396,9 @@ impl Unit {
         &mut self,
         point: [f32; 3],
         player: usize,
-    ) -> Result<PointMove, Unsupported> {
+    ) -> Result<PointMove, GenieError> {
         if self.unmodelled_action.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "slot 0x40 of an action the slice does not hold",
             ));
         }
@@ -6289,7 +6420,7 @@ impl Unit {
                 if walked {
                     self.mover
                         .as_mut()
-                        .ok_or(Unsupported("a walker without movement state"))?
+                        .ok_or(GenieError::unsupported("a walker without movement state"))?
                         .stop()?;
                 }
                 Ok(PointMove::Taken(None))
@@ -6297,7 +6428,9 @@ impl Unit {
             Some(crate::hunt::HUNT) => {
                 let (held, my_pasture) = (self.life.amount, self.my_pasture);
                 let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
-                    return Err(Unsupported("a hunter without its hunt or movement state"));
+                    return Err(GenieError::unsupported(
+                        "a hunter without its hunt or movement state",
+                    ));
                 };
                 let old = hunt.target;
                 if !hunt.take_move(None, point, player, held, false, my_pasture, 0.0, mover)? {
@@ -6309,7 +6442,7 @@ impl Unit {
                 let held = self.life.amount;
                 let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut())
                 else {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a gatherer without its gather or movement state",
                     ));
                 };
@@ -6334,14 +6467,14 @@ impl Unit {
         (target, state): (i32, u8),
         range: f32,
         c: &mut Context<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.unmodelled_action.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an AI move to an object of a unit with an action",
             ));
         }
         if self.mover.is_none() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an AI move to an object of a unit that does not move",
             ));
         }
@@ -6383,13 +6516,15 @@ impl Unit {
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite_rng: &mut Well512,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.sprite.is_some() {
             let standing = masters
                 .and_then(|m| m.get(self.life.master_id))
                 .map(|m| m.standing_sprite)
                 .and_then(|id| graphics.get(&id).copied())
-                .ok_or(Unsupported("an arrived walker without its standing sprite"))?;
+                .ok_or(GenieError::unsupported(
+                    "an arrived walker without its standing sprite",
+                ))?;
             crate::attack::set_sprite(&mut self.sprite, standing, sprite_rng);
         }
         if let Some(a) = self.anim_speed.as_mut() {
@@ -6424,11 +6559,11 @@ pub(crate) fn give_load(
     adds: &mut Vec<(i16, f32)>,
     kind: i16,
     amount: f32,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     let own = relations.get(player).map_or(&[][..], |r| &r[..]);
     let allied = (1..own.len()).any(|q| q != player && crate::tasks::allied(own, player, q, true));
     if sharing && allied {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "a load given to a player with allies (+0x1426)",
         ));
     }
@@ -6497,8 +6632,9 @@ pub(in crate::turn) const SIEGE_CLASS: i16 = 13;
 /// the artifact's ask for one reach, and a siege weapon's with units inside (`FUN_14120f800`'s
 /// class 13 branch: `FUN_141192d10`, each unit's leave, slot 0x1a8, with the siege weapon's slot
 /// 0x1b0, and the rest destroyed, slot 0xd0).
-pub(in crate::turn) const HANDS_LEFT: Unsupported =
-    Unsupported("an ownership change of a building or of a siege weapon with units inside");
+pub(in crate::turn) const HANDS_LEFT: GenieError = GenieError::unsupported(
+    "an ownership change of a building or of a siege weapon with units inside",
+);
 
 /// The trade action's type (slot 0x438), whose load keeps a captured unit's unit AI going
 /// (`FUN_14108c050`).
@@ -6516,7 +6652,7 @@ pub(in crate::turn) fn scan_livestock(
     at: [f32; 3],
     new: usize,
     taken: &mut Vec<i32>,
-) -> Result<(), Unsupported> {
+) -> Result<(), GenieError> {
     let (tx, ty) = (at[0] as i32, at[1] as i32);
     let [w, h] = c.spatial.map;
     for x in (tx - 3).max(0)..=(tx + 3).min(w - 1) {
@@ -6555,7 +6691,7 @@ pub(in crate::turn) fn scan_livestock(
                     }
                 }
                 _ => {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "two livestock to take on one tile (its object list's order)",
                     ));
                 }

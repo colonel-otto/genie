@@ -1,0 +1,17 @@
+[package]
+name = "genie-error"
+version = "0.1.0"
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license = "GPL-3.0-only"
+description = "The error every genie crate returns: its kind, its reason, where it was raised and its context"
+homepage = "https://github.com/librematch/genie/tree/main/crates/base/genie-error"
+documentation = "https://docs.rs/genie-error"
+repository.workspace = true
+readme = "./README.md"
+
+[dependencies]
+
+[lints]
+workspace = true

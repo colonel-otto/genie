@@ -456,6 +456,7 @@ dependencies = [
 name = "genie-core"
 version = "0.1.0"
 dependencies = [
+ "genie-error",
  "libm",
  "tracing",
 ]
@@ -496,6 +497,10 @@ dependencies = [
  "sorted-vec",
  "thiserror",
 ]
+
+[[package]]
+name = "genie-error"
+version = "0.1.0"
 
 [[package]]
 name = "genie-formats"

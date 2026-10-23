@@ -11,6 +11,7 @@
 //! `FUN_1412115e0` -> `FUN_141084230` -> the target's slot 0xe8, whose damage is
 //! [`crate::damage`]'s).
 
+use crate::GenieError;
 use crate::damage::{self, Victim};
 use crate::move_to::{
     Follow, Goal, MoveTo, MoveWait, Walk, follow_path_end, start_walk_or_give_up, target_moved,
@@ -19,7 +20,6 @@ use crate::move_to::{
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::rng::Well512;
 use crate::sprite::{ActiveSprite, Graphic};
-use crate::unit_ai::Unsupported;
 
 /// The Attack action's type, which word 9 adds.
 pub const ATTACK: i16 = 9;
@@ -322,10 +322,10 @@ pub(crate) fn show_arrived(
     sprite: &mut Option<ActiveSprite>,
     anim_speed: &mut Option<f32>,
     rng: &mut Well512,
-) -> Result<(), Unsupported> {
-    let g = arms
-        .idle_sprite
-        .ok_or(Unsupported("an attacker without its standing sprite"))?;
+) -> Result<(), GenieError> {
+    let g = arms.idle_sprite.ok_or(GenieError::unsupported(
+        "an attacker without its standing sprite",
+    ))?;
     set_sprite(sprite, g, rng);
     if let Some(a) = anim_speed.as_mut() {
         *a = 0.0;
@@ -482,7 +482,7 @@ impl Attack {
         e: &Engagement,
         arms: Arms,
         mover: &mut Mover,
-    ) -> Result<(Self, bool), Unsupported> {
+    ) -> Result<(Self, bool), GenieError> {
         let mut a = Self {
             sub_action: true,
             repaths: true,
@@ -490,22 +490,24 @@ impl Attack {
             ..Self::own(target, e, arms)
         };
         if e.target_class == GATE {
-            return Err(Unsupported("a hunt's Attack on a gate (its parts' gaps)"));
+            return Err(GenieError::unsupported(
+                "a hunt's Attack on a gate (its parts' gaps)",
+            ));
         }
         let mut posted = Vec::new();
         let begun = a.begin((e, e.gap), (true, 0), mover, &mut posted)?;
         if begun.ready {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an attack that starts in reach and cannot move (set_state 6)",
             ));
         }
         if begun.failed {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an attack whose unit cannot move to its target",
             ));
         }
         if begun.failed_first {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a hunt's Attack readyToAttack failed before its start's state 4 (+0x7b8 at 1)",
             ));
         }
@@ -528,10 +530,10 @@ impl Attack {
         arms: Arms,
         (visible, target_owner): (bool, usize),
         mover: &mut Mover,
-    ) -> Result<Commanded, Unsupported> {
+    ) -> Result<Commanded, GenieError> {
         let t = *world
             .get_known(target)?
-            .ok_or(Unsupported("an Attack whose target is gone"))?;
+            .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let reach_gap =
             crate::movement::gate_gap(world, (e.position, ground), (target, &t), e.gap, |g| g);
@@ -578,7 +580,7 @@ impl Attack {
         (visible, target_owner): (bool, usize),
         mover: &mut Mover,
         posted: &mut Vec<(i32, [i32; 3])>,
-    ) -> Result<Begun, Unsupported> {
+    ) -> Result<Begun, GenieError> {
         let movable = e.speed != 0.0 && e.can_move;
         let mut failed_first = false;
         let mut ready_end = false;
@@ -650,13 +652,12 @@ impl Attack {
         sprite: &mut Option<ActiveSprite>,
         anim_speed: &mut Option<f32>,
         rng: &mut Well512,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.state = FAILED;
         *anim_speed = Some(1.0);
-        let idle = self
-            .arms
-            .idle_sprite
-            .ok_or(Unsupported("an Attack's unit without a standing sprite"))?;
+        let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
+            "an Attack's unit without a standing sprite",
+        ))?;
         set_sprite(sprite, idle, rng);
         Ok(())
     }
@@ -671,17 +672,16 @@ impl Attack {
         &mut self,
         mut walk: Walk<'_>,
         s: &mut Strike<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.ready(&mut walk, s)
     }
 
     /// A `MoveTo` of the attack that starts arrived (its `set_state` 1, not quiet): the unit shows
     /// its idle sprite (slot 0x68) and its `+0x7b8` clears.
-    pub(crate) fn arrived_sprite(&self, s: &mut Strike<'_>) -> Result<(), Unsupported> {
-        let g = self
-            .arms
-            .idle_sprite
-            .ok_or(Unsupported("an attacker without its standing sprite"))?;
+    pub(crate) fn arrived_sprite(&self, s: &mut Strike<'_>) -> Result<(), GenieError> {
+        let g = self.arms.idle_sprite.ok_or(GenieError::unsupported(
+            "an attacker without its standing sprite",
+        ))?;
         set_sprite(s.sprite, g, s.sprite_rng);
         if let Some(a) = s.anim_speed.as_mut() {
             *a = 0.0;
@@ -702,7 +702,7 @@ impl Attack {
     /// slot 0x5d0), the range is slot 0x238's again, and a `MoveTo` to the target with that range
     /// starts (`FUN_140aa0df0`, start `FUN_140aa2100`): arrived within 0.01, else in state 3 for a
     /// unit with speed. True when it arrived.
-    fn set_move(&mut self, e: &Engagement, mover: &mut Mover) -> Result<bool, Unsupported> {
+    fn set_move(&mut self, e: &Engagement, mover: &mut Mover) -> Result<bool, GenieError> {
         if self.move_to.take().is_some() {
             mover.stop()?;
         }
@@ -726,7 +726,7 @@ impl Attack {
 
     /// The teardown of the sub-actions (`FUN_140a73fc0` on the action list): a `MoveTo` stops the
     /// unit.
-    pub fn tear_down(&mut self, mover: Option<&mut Mover>) -> Result<(), Unsupported> {
+    pub fn tear_down(&mut self, mover: Option<&mut Mover>) -> Result<(), GenieError> {
         if self.move_to.take().is_some()
             && let Some(m) = mover
         {
@@ -742,11 +742,13 @@ impl Attack {
         state: u8,
         walk: &mut Walk<'_>,
         s: &mut Strike<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.move_to.take().is_some() {
             walk.mover
                 .as_deref_mut()
-                .ok_or(Unsupported("an attacker without movement state"))?
+                .ok_or(GenieError::unsupported(
+                    "an attacker without movement state",
+                ))?
                 .stop()?;
             if let Some(a) = s.anim_speed.as_mut() {
                 *a = 0.0;
@@ -764,7 +766,7 @@ impl Attack {
     /// returns 5, which keeps it in the list. A dead tree (class 15) up to state 5, which keeps
     /// a non-villager at it, and a mover of stance 0 that waits instead (`set_state` 5) are not
     /// modelled.
-    fn lost(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
+    fn lost(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, GenieError> {
         if s.ai_order.is_some() && (s.victim.player != 0 || s.own.class != VILLAGER) {
             s.forgets = true;
         }
@@ -775,7 +777,7 @@ impl Attack {
         if human && s.ai_order.is_none_or(|o| o != -1 && s.queue_empty) {
             let speed = walk.mover.as_ref().map_or(0.0, |m| m.stats.speed);
             if s.stance == 0 && 0.0 < speed && s.own.class != VILLAGER {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an Attack whose target died waiting for another (set_state 5)",
                 ));
             }
@@ -792,7 +794,7 @@ impl Attack {
     /// (`FUN_140c5e1e0`), a predator's unit AI's slot 0x1f0 runs (the boar's sends it home at its
     /// next idle check, `sends_home`; the lion's does nothing) and a unit's own Attack whose unit AI's queue is empty posts 0x1f9 with 600;
     /// returns 3, which deletes it.
-    fn out_of_sight(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
+    fn out_of_sight(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, GenieError> {
         s.let_go = Some(self.target);
         self.target = -1;
         self.finish_in(FAILED, walk, s)?;
@@ -802,7 +804,7 @@ impl Attack {
                 Some(BOAR_AI) => s.sends_home = true,
                 Some(LION_AI) | None => {}
                 Some(_) => {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a predator's failed Attack whose unit AI is not a boar's or a lion's (slot 0x1f0)",
                     ));
                 }
@@ -816,7 +818,7 @@ impl Attack {
 
     /// `set_state(1)` (case 1): the unit's animation runs at speed 1 and it takes the sprite it
     /// stands with.
-    fn finish(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
+    fn finish(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), GenieError> {
         self.finish_in(DONE, walk, s)
     }
 
@@ -834,10 +836,12 @@ impl Attack {
         anim_speed: &mut Option<f32>,
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         if self.move_to.take().is_some() {
             mover
-                .ok_or(Unsupported("an attacker without movement state"))?
+                .ok_or(GenieError::unsupported(
+                    "an attacker without movement state",
+                ))?
                 .stop()?;
             if let Some(a) = anim_speed.as_mut() {
                 *a = 0.0;
@@ -845,10 +849,9 @@ impl Attack {
         }
         self.state = DONE;
         *anim_speed = Some(1.0);
-        let idle = self
-            .arms
-            .idle_sprite
-            .ok_or(Unsupported("an Attack's unit without a standing sprite"))?;
+        let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
+            "an Attack's unit without a standing sprite",
+        ))?;
         set_sprite(sprite, idle, rng);
         Ok(())
     }
@@ -859,13 +862,12 @@ impl Attack {
         state: u8,
         walk: &mut Walk<'_>,
         s: &mut Strike<'_>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.enter(state, walk, s)?;
         *s.anim_speed = Some(1.0);
-        let idle = self
-            .arms
-            .idle_sprite
-            .ok_or(Unsupported("an Attack's unit without a standing sprite"))?;
+        let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
+            "an Attack's unit without a standing sprite",
+        ))?;
         set_sprite(s.sprite, idle, s.sprite_rng);
         Ok(())
     }
@@ -877,7 +879,7 @@ impl Attack {
     /// which the slice does not hold ([`Attack::set_swing`]); readyToAttack never answers 2, so
     /// the `set_state(13)` after it is not reached. Without either a unit's own Attack posts
     /// 0x1fa with 600 (the action completed) and ends (`set_state` 1, [`Attack::finish`]).
-    fn ready(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
+    fn ready(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), GenieError> {
         self.enter(READY, walk, s)?;
         if self.target == -1 && self.point[0] == NONE {
             if !self.sub_action {
@@ -901,7 +903,7 @@ impl Attack {
         walk: &mut Walk<'_>,
         s: &mut Strike<'_>,
         gap: f32,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         self.enter(MOVE, walk, s)?;
         if self.moving(s.own.source.weapon_range, gap) {
             self.arrived_sprite(s)?;
@@ -934,15 +936,17 @@ impl Attack {
         walk: &mut Walk<'_>,
         s: &mut Strike<'_>,
         skip_ready: bool,
-    ) -> Result<Readiness, Unsupported> {
+    ) -> Result<Readiness, GenieError> {
         let t = *walk
             .world
             .get_known(self.target)?
-            .ok_or(Unsupported("an Attack whose target is gone"))?;
+            .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
         let speed = walk
             .mover
             .as_deref()
-            .ok_or(Unsupported("an attacker without movement state"))?
+            .ok_or(GenieError::unsupported(
+                "an attacker without movement state",
+            ))?
             .stats
             .speed;
         let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
@@ -951,7 +955,7 @@ impl Attack {
             && !(s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?)
         {
             if s.stance == 0 && 0.0 < speed && s.can_move {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "readyToAttack's wait for a target out of sight (set_state 5)",
                 ));
             }
@@ -961,10 +965,9 @@ impl Attack {
             .world
             .get(walk.me.id)
             .map_or(walk.me.position, |p| p.position);
-        let mover = walk
-            .mover
-            .as_deref_mut()
-            .ok_or(Unsupported("an attacker without movement state"))?;
+        let mover = walk.mover.as_deref_mut().ok_or(GenieError::unsupported(
+            "an attacker without movement state",
+        ))?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(at, ground, t.position, t.radius);
         let near = if self.range <= NO_RANGE {
@@ -1014,7 +1017,7 @@ impl Attack {
     }
 
     /// readyToAttack's `set_state(13)` (as [`Attack::finish_in`]); it answers 0.
-    fn fail(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<Readiness, Unsupported> {
+    fn fail(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<Readiness, GenieError> {
         self.finish_in(FAILED, walk, s)?;
         Ok(Readiness::Waiting)
     }
@@ -1029,7 +1032,7 @@ impl Attack {
         at: [f32; 3],
         to: [f32; 3],
         s: &Strike<'_>,
-    ) -> Result<Readiness, Unsupported> {
+    ) -> Result<Readiness, GenieError> {
         if !matches!(s.own.master_id, MASTER_1704 | MASTER_1706)
             && !face_target(mover, at, to, s.world_time)?
         {
@@ -1048,16 +1051,20 @@ impl Attack {
     /// picked by an Object-stream draw, is not modelled; without one slot 0x68 shows its master's
     /// standing sprite) from its first frame (`FUN_1413b9f00`); a hit is pending; a reload shorter
     /// than the sprite speeds the animation up to fit it.
-    fn set_swing(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), Unsupported> {
+    fn set_swing(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), GenieError> {
         self.enter(SWING, walk, s)?;
         if self.arms.second_sprite.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an attacker with a second attack sprite (its draw)",
             ));
         }
-        let g = self.arms.sprite.or(s.standing).ok_or(Unsupported(
-            "an attacker without an attack or standing sprite",
-        ))?;
+        let g = self
+            .arms
+            .sprite
+            .or(s.standing)
+            .ok_or(GenieError::unsupported(
+                "an attacker without an attack or standing sprite",
+            ))?;
         set_sprite(s.sprite, g, s.sprite_rng);
         // FUN_1413b9f00 on the unit's sprite list with its sprite (`+0x140`)
         if let Some(current) = s.sprite.map(|sp| sp.graphic) {
@@ -1079,11 +1086,11 @@ impl Attack {
     /// states 4 to 7 or 11 keeps it as it is. The rest of the slot (the main building of an area
     /// effect's building target, the range test, the new target) is [`Attack::work`]'s, which
     /// needs the unit's and the target's values.
-    pub const fn keeps(&self, target: i32) -> Result<bool, Unsupported> {
+    pub const fn keeps(&self, target: i32) -> Result<bool, GenieError> {
         if target == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
             return Ok(true);
         }
-        Err(Unsupported(
+        Err(GenieError::unsupported(
             "an Attack's slot 9 on a target out of its states 4 to 7 and 11",
         ))
     }
@@ -1175,14 +1182,16 @@ impl Attack {
         dt: f32,
         armed: bool,
         anim_speed: &mut Option<f32>,
-    ) -> Result<(u8, bool), Unsupported> {
+    ) -> Result<(u8, bool), GenieError> {
         self.timer += dt;
         if !armed {
             self.state = DONE;
             return Ok((1, true));
         }
         if self.state != DONE {
-            return Err(Unsupported("an Attack without a target in a state but 1"));
+            return Err(GenieError::unsupported(
+                "an Attack without a target in a state but 1",
+            ));
         }
         *anim_speed = Some(0.0);
         Ok((1, false))
@@ -1196,15 +1205,14 @@ impl Attack {
         sprite: &mut Option<ActiveSprite>,
         anim_speed: &mut Option<f32>,
         rng: &mut Well512,
-    ) -> Result<Option<(i32, [i32; 3])>, Unsupported> {
+    ) -> Result<Option<(i32, [i32; 3])>, GenieError> {
         if self.move_to.is_some() {
-            return Err(Unsupported("a building's Attack with a MoveTo"));
+            return Err(GenieError::unsupported("a building's Attack with a MoveTo"));
         }
         *anim_speed = Some(1.0);
-        let idle = self
-            .arms
-            .idle_sprite
-            .ok_or(Unsupported("an Attack's unit without a standing sprite"))?;
+        let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
+            "an Attack's unit without a standing sprite",
+        ))?;
         set_sprite(sprite, idle, rng);
         Ok((!self.sub_action).then_some((0x1fb, [600, self.target, 0])))
     }
@@ -1212,7 +1220,7 @@ impl Attack {
     /// One update (slot 6, `0x140a82ae0`): the timer runs, the target is still there and where it
     /// was seen; then the state's step. Returns the action list's code: 0 under way, 5 done after
     /// its target died.
-    pub fn update(&mut self, mut walk: Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
+    pub fn update(&mut self, mut walk: Walk<'_>, s: &mut Strike<'_>) -> Result<u8, GenieError> {
         self.timer += walk.dt;
         // a dead tree (class 15) up to state 5 keeps a non-villager's attack going: its update
         // goes on, the target not alive (`0x140a8342e`)
@@ -1230,12 +1238,12 @@ impl Attack {
                 return self.lost(&mut walk, s);
             }
             if s.own.class != VILLAGER {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an Attack of a unit other than a villager whose target died",
                 ));
             }
             if s.victim.player != 0 {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a villager's Attack whose player-owned target died (its unit AI forgets it)",
                 ));
             }
@@ -1247,7 +1255,7 @@ impl Attack {
         let t = *walk
             .world
             .get_known(self.target)?
-            .ok_or(Unsupported("an Attack whose target is gone"))?;
+            .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
         if self.state != KILLED && (t.position[0] != self.seen[0] || t.position[1] != self.seen[1])
         {
             // the target moved: where it was seen follows (`+0xa4`..`+0xac`); one the unit's
@@ -1266,13 +1274,13 @@ impl Attack {
                     return self.out_of_sight(&mut walk, s);
                 }
                 if self.state != GOTO_SEEN {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "an Attack whose target moved out of its player's sight waiting (set_state 5)",
                     ));
                 }
             }
             if seen && matches!(self.state, GOTO_SEEN | 11) {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "an Attack in state 5 or 11 whose target moved (set_state 4)",
                 ));
             }
@@ -1365,7 +1373,7 @@ impl Attack {
                 Ok(3)
             }
             // cases 4 and 10 walk a MoveTo to where the target was seen
-            GOTO_SEEN | 11 => Err(Unsupported(
+            GOTO_SEEN | 11 => Err(GenieError::unsupported(
                 "an Attack in state 5 or 11 (its MoveTo to where its target was seen)",
             )),
             // the states without a case (0, 3, 8 to 10, 12, 14 and above) return 0
@@ -1389,7 +1397,7 @@ impl Attack {
         s: &mut Strike<'_>,
         target: [f32; 3],
         radius: [f32; 2],
-    ) -> Result<u8, Unsupported> {
+    ) -> Result<u8, GenieError> {
         let code = match self.move_to {
             Some(MoveTo::Start) => {
                 // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
@@ -1418,10 +1426,9 @@ impl Attack {
                     // clears `+0x7b8` as an arrived one does
                     self.give_up(s);
                     if self.move_to == Some(MoveTo::Failed) {
-                        let g = self
-                            .arms
-                            .idle_sprite
-                            .ok_or(Unsupported("an attacker without its standing sprite"))?;
+                        let g = self.arms.idle_sprite.ok_or(GenieError::unsupported(
+                            "an attacker without its standing sprite",
+                        ))?;
                         set_sprite(s.sprite, g, s.sprite_rng);
                         if let Some(a) = s.anim_speed.as_mut() {
                             *a = 0.0;
@@ -1432,10 +1439,9 @@ impl Attack {
                 if state == MoveTo::Arrived {
                     // in range at its start: the MoveTo, not quiet, shows the idle sprite and
                     // clears `+0x7b8`
-                    let g = self
-                        .arms
-                        .idle_sprite
-                        .ok_or(Unsupported("an attacker without its standing sprite"))?;
+                    let g = self.arms.idle_sprite.ok_or(GenieError::unsupported(
+                        "an attacker without its standing sprite",
+                    ))?;
                     set_sprite(s.sprite, g, s.sprite_rng);
                     if let Some(a) = s.anim_speed.as_mut() {
                         *a = 0.0;
@@ -1491,12 +1497,18 @@ impl Attack {
                 self.move_to = None;
                 walk.mover
                     .as_deref_mut()
-                    .ok_or(Unsupported("an attacker without movement state"))?
+                    .ok_or(GenieError::unsupported(
+                        "an attacker without movement state",
+                    ))?
                     .stop()?;
                 self.ready(&mut walk, s)?;
                 return Ok(0);
             }
-            None => return Err(Unsupported("an Attack in state 4 without its MoveTo")),
+            None => {
+                return Err(GenieError::unsupported(
+                    "an Attack in state 4 without its MoveTo",
+                ));
+            }
             // case 3, the quiet MoveTo's failure (its update returns 3 without a notify):
             // set_state(13); a unit's own Attack (`+0x60` 0) posts 0x1f9 with 600; the update
             // returns 3 and the list removes the Attack
@@ -1513,7 +1525,9 @@ impl Attack {
             .mover
             .as_ref()
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-            .ok_or(Unsupported("an attacker without movement state"))?;
+            .ok_or(GenieError::unsupported(
+                "an attacker without movement state",
+            ))?;
         let at = walk
             .world
             .get(walk.me.id)
@@ -1532,17 +1546,19 @@ impl Attack {
     /// swing (`set_state` 2). A ranged unit's swing does not count down and fires at its firing
     /// frame (at once with frame 0): its missile ([`Strike::fire`]). After the hit, the swing's
     /// sprite looping makes the unit ready again (`set_state` 6).
-    fn swing(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, Unsupported> {
+    fn swing(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<u8, GenieError> {
         let ranged = self.arms.missile != -1;
         let Some(sprite) = *s.sprite else {
-            return Err(Unsupported("a swing without the unit's sprite"));
+            return Err(GenieError::unsupported("a swing without the unit's sprite"));
         };
         if self.pending {
             if s.own.class == 51 || (!ranged && matches!(s.own.class, 35 | 64)) {
-                return Err(Unsupported("a swing of class 35, 51 or 64"));
+                return Err(GenieError::unsupported("a swing of class 35, 51 or 64"));
             }
             if ranged && self.arms.fire_frame < 0 {
-                return Err(Unsupported("a ranged swing without a firing frame"));
+                return Err(GenieError::unsupported(
+                    "a ranged swing without a firing frame",
+                ));
             }
             let fire = if ranged {
                 self.arms.fire_frame
@@ -1572,7 +1588,7 @@ impl Attack {
                 s.fire = Some(self.target);
             } else {
                 if matches!(s.own.master_id, 527 | 528 | 1104 | 2133..=2135) {
-                    return Err(Unsupported(
+                    return Err(GenieError::unsupported(
                         "a self-destructing attacker's hit (masters 527, 528, 1104, 2133..2135)",
                     ));
                 }
@@ -1580,7 +1596,7 @@ impl Attack {
                     .plan
                     .as_mut()
                     .map(|p| &mut *p.object)
-                    .ok_or(Unsupported("a hit without the Object stream"))?;
+                    .ok_or(GenieError::unsupported("a hit without the Object stream"))?;
                 self.hit(s, object)?;
             }
             self.pending = false;
@@ -1637,7 +1653,9 @@ impl Attack {
                 .arms
                 .idle_attack_sprite
                 .or(self.arms.idle_sprite)
-                .ok_or(Unsupported("a swing's end without a sprite to wait with"))?;
+                .ok_or(GenieError::unsupported(
+                    "a swing's end without a sprite to wait with",
+                ))?;
             let changed = sprite.graphic.id != g.id;
             set_sprite(s.sprite, g, s.sprite_rng);
             if changed && let Some(current) = s.sprite.map(|sp| sp.graphic) {
@@ -1656,7 +1674,7 @@ impl Attack {
     /// damaged flag of masters 83, 293, 122 and 216 (`+0x683`); masters 122 and 123 under the
     /// game's `+0xc14` (`FUN_140c884c0`, 0 as the tick oracle holds it) would take the target at
     /// once.
-    fn hit(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
+    fn hit(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), GenieError> {
         let a = s.own.source;
         if 0.0 < a.area_effect
             && a.weapon_range < damage::BLAST_RANGE
@@ -1668,7 +1686,7 @@ impl Attack {
     }
 
     /// `FUN_141084230` with the unit's own place as the hit's origin ([`strike`]).
-    fn strike(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
+    fn strike(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), GenieError> {
         let hit = Hit {
             at: s.own.position,
             from_z: Some(s.own.position[2]),
@@ -1688,7 +1706,7 @@ impl Attack {
     /// the target's shield does not block (`FUN_14108d8a0`, on a target of any type) is its slot
     /// 0xe8 at the elevation factor times the hit's 1. A charge of type 1 or 3 the blast or the
     /// hit was for (`+0x8a8`) is emptied.
-    fn trample(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
+    fn trample(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), GenieError> {
         let (center, target) = (s.own.position, s.victim.id);
         let mut targets: Vec<&mut Victim> = s.blasted.iter_mut().collect();
         targets.push(&mut *s.victim);
@@ -1795,7 +1813,7 @@ pub(crate) fn strike(
     blasted: &mut [Victim],
     hit: Hit,
     object_rng: &mut Well512,
-) -> Result<Struck, Unsupported> {
+) -> Result<Struck, GenieError> {
     if victim.kind == 70 && damage::shield(victim, hit.missile) {
         let master_hp = own.armored.as_ref().map_or(0, |a| i32::from(a.master_hp));
         victim.damaged = Some((own.id, [own.id, own.hp as i32, master_hp]));
@@ -1840,7 +1858,7 @@ pub(crate) fn strike(
 /// The blast's damage so far that a trample's hit on `victim` leaves out (`0x141211933`): a
 /// building's `+0xb90`, its main building's (`+0xbb8`, among `blasted`) for an annex; 0 for
 /// another object.
-fn blast_so_far(victim: &Victim, blasted: &[Victim]) -> Result<f32, Unsupported> {
+fn blast_so_far(victim: &Victim, blasted: &[Victim]) -> Result<f32, GenieError> {
     let Some(b) = victim.building.as_ref().filter(|_| victim.kind == BUILDING) else {
         return Ok(0.0);
     };
@@ -1906,9 +1924,9 @@ pub fn engagement(
     me: &crate::spatial::Placed,
     them: &crate::spatial::Placed,
     world_time: u32,
-) -> Result<Engagement, Unsupported> {
+) -> Result<Engagement, GenieError> {
     if matches!(master.charge_type, 6 | 7) {
-        return Err(Unsupported(
+        return Err(GenieError::unsupported(
             "an attacker whose charge adds to its range (slot 0x2f8)",
         ));
     }
@@ -1947,8 +1965,8 @@ pub(crate) fn face_target(
     at: [f32; 3],
     to: [f32; 3],
     world_time: u32,
-) -> Result<bool, Unsupported> {
-    let facets = mover.facets().ok_or(Unsupported(
+) -> Result<bool, GenieError> {
+    let facets = mover.facets().ok_or(GenieError::unsupported(
         "a unit facing a target whose sprites differ in their facets",
     ))?;
     let (at, to) = ([at[0], at[1]], [to[0], to[1]]);
@@ -3013,7 +3031,9 @@ mod tests {
         let mut anim = Some(0.5);
         assert_eq!(
             a.clone().update_targetless(0.028, true, &mut anim),
-            Err(Unsupported("an Attack without a target in a state but 1"))
+            Err(GenieError::unsupported(
+                "an Attack without a target in a state but 1"
+            ))
         );
         assert_eq!(a.update_targetless(0.028, false, &mut anim), Ok((1, true)));
         assert_eq!(a.state, DONE);

@@ -17,7 +17,7 @@ use crate::turn::world::{
     victim_in, victim_of,
 };
 use crate::turn::{BuildingDeath, PETARD, Recycling};
-use crate::unit_ai::{AiMove, Search, UnitAi, Unsupported};
+use crate::unit_ai::{AiMove, GenieError, Search, UnitAi};
 
 /// What a tick's update of one object needs from the world.
 /// What a hunt's drop-off ([`Unit::drop_off_in`]) reads besides its unit: the owner's masters,
@@ -71,7 +71,7 @@ pub(in crate::turn) struct Context<'a> {
     /// the objects about a unit with an area effect, which its blast may reach.
     pub(in crate::turn) victim: Option<&'a mut Victim>,
     /// The unit AI's current target as its target block reads it ([`Turns::seen`]).
-    pub(in crate::turn) ai_target: Result<Option<crate::unit_ai::Seen>, Unsupported>,
+    pub(in crate::turn) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
     pub(in crate::turn) blasted: Vec<Victim>,
     /// The unit was killed in its update (a retaliation), which the caller handles after it.
     pub(in crate::turn) own_killed: Option<crate::damage::Kill>,
@@ -446,10 +446,12 @@ impl UnitView<'_> {
         attack: &mut crate::attack::Attack,
         master: &crate::masters::Master,
         ai: &UnitAi,
-    ) -> Result<Vec<(i32, [i32; 3])>, Unsupported> {
-        let mut victim = self.victim_of_target(attack.target).ok_or(Unsupported(
-            "an attack's target the slice does not hold live",
-        ))?;
+    ) -> Result<Vec<(i32, [i32; 3])>, GenieError> {
+        let mut victim = self
+            .victim_of_target(attack.target)
+            .ok_or(GenieError::unsupported(
+                "an attack's target the slice does not hold live",
+            ))?;
         let unit = &mut *self.unit;
         let own = victim_of(
             unit,
@@ -542,7 +544,7 @@ impl WorldPicker<'_> {
     pub(in crate::turn) fn target(
         &self,
         id: i32,
-    ) -> Result<(crate::unit_ai::Target, bool), Unsupported> {
+    ) -> Result<(crate::unit_ai::Target, bool), GenieError> {
         let (owner, t) = self
             .foreign
             .find(id)
@@ -552,18 +554,20 @@ impl WorldPicker<'_> {
                     .find(|u| u.id == id)
                     .map(|u| (self.player, u))
             })
-            .ok_or(Unsupported("a found object the slice does not hold"))?;
+            .ok_or(GenieError::unsupported(
+                "a found object the slice does not hold",
+            ))?;
         let m = self
             .every
             .get(owner)
             .and_then(|ms| ms.get(t.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a found object of a master the slice does not have",
             ))?;
         let placed = self
             .spatial
             .get_known(id)?
-            .ok_or(Unsupported("a found object without a place"))?;
+            .ok_or(GenieError::unsupported("a found object without a place"))?;
         let capture = self
             .spatial
             .sight
@@ -595,10 +599,10 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
         &self,
         id: i32,
         list: Option<usize>,
-    ) -> Result<Option<crate::unit_ai::AttackStat>, Unsupported> {
-        let seeker = self
-            .seeker
-            .ok_or(Unsupported("an attack test outside bestUnitToAttack"))?;
+    ) -> Result<Option<crate::unit_ai::AttackStat>, GenieError> {
+        let seeker = self.seeker.ok_or(GenieError::unsupported(
+            "an attack test outside bestUnitToAttack",
+        ))?;
         let (target, moving) = self.target(id)?;
         let gap = crate::unit_ai::attack_candidate(self.attacker, &seeker, &target, list)?;
         Ok(gap.map(|gap| crate::unit_ai::AttackStat { id, gap, moving }))
@@ -606,7 +610,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
 
     /// The quick path (slot 0x3e0) within the unit's range against the object (slot 0x238), with
     /// its master's terrain mask and radius on x.
-    fn choose(&mut self, stats: &[crate::unit_ai::AttackStat]) -> Result<i32, Unsupported> {
+    fn choose(&mut self, stats: &[crate::unit_ai::AttackStat]) -> Result<i32, GenieError> {
         if stats.is_empty() {
             return Ok(-1);
         }
@@ -615,9 +619,12 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
             .spatial
             .terrain
             .as_ref()
-            .ok_or(Unsupported("a quick path without the map's terrain"))?;
-        let restriction = usize::try_from(self.restriction)
-            .map_err(|_| Unsupported("a quick path of a master without a terrain restriction"))?;
+            .ok_or(GenieError::unsupported(
+                "a quick path without the map's terrain",
+            ))?;
+        let restriction = usize::try_from(self.restriction).map_err(|_| {
+            GenieError::unsupported("a quick path of a master without a terrain restriction")
+        })?;
         let mask = terrain.restriction_mask(restriction);
         let (spatial, me, radius) = (self.spatial, self.me, self.attacker.radius[0]);
         crate::unit_ai::choose_attack(stats, &mut |id| {
@@ -653,12 +660,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     /// Slot 0x278 (`FUN_141158720`, [`Spatial::point_clear`]): the unit, of its radius and its
     /// restriction's terrain classes, could stand at `point`.
-    fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, Unsupported> {
+    fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, GenieError> {
         let unit = &*self.unit;
-        let mover = unit
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("a stand test of a unit without movement state"))?;
+        let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+            "a stand test of a unit without movement state",
+        ))?;
         self.spatial.point_clear(
             unit.id,
             point,
@@ -674,12 +680,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         &mut self,
         site: i32,
         radius: [f32; 2],
-    ) -> Result<crate::unit_ai::OffFootprint, Unsupported> {
+    ) -> Result<crate::unit_ai::OffFootprint, GenieError> {
         let unit = &*self.unit;
         let master = self
             .masters
             .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a unit sent off of a master the slice does not have",
             ))?;
         let (player, others, foreign) = (self.player, self.others, &self.foreign);
@@ -702,10 +708,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         };
         let spot = match self.spatial.get(site) {
             Some(placed) => {
-                let mover = unit
-                    .mover
-                    .as_ref()
-                    .ok_or(Unsupported("a unit sent off without movement state"))?;
+                let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+                    "a unit sent off without movement state",
+                ))?;
                 self.spatial.spot_off(
                     unit.position,
                     (unit.id, mover.stats.radius[0]),
@@ -732,12 +737,14 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// larger of its search radius (slot 0x2c8) and its line of sight, truncated, testing each tile
     /// it reaches (`FUN_140c2b950`: the first object of its tile's list, in order, of type 80 or
     /// more in state 0 of the unit's player); −1 for none.
-    fn foundation_search(&mut self) -> Result<i32, Unsupported> {
+    fn foundation_search(&mut self) -> Result<i32, GenieError> {
         let unit = &*self.unit;
         let master = self
             .masters
             .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(Unsupported("a builder of a master the slice does not have"))?;
+            .ok_or(GenieError::unsupported(
+                "a builder of a master the slice does not have",
+            ))?;
         let r = if master.search_radius <= master.line_of_sight {
             master.line_of_sight
         } else {
@@ -759,7 +766,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         Ok(crate::unit_ai::flood_search((ux, uy), r, foundation_on).unwrap_or(-1))
     }
 
-    fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, Unsupported> {
+    fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, GenieError> {
         let Some(p) = self.spatial.get(id) else {
             return Ok(None);
         };
@@ -769,16 +776,18 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .find(|u| u.id == id)
             .map(|u| (self.player, u))
             .or_else(|| self.foreign.find(id))
-            .ok_or(Unsupported("an object the slice does not hold"))?;
+            .ok_or(GenieError::unsupported("an object the slice does not hold"))?;
         let m = self
             .every
             .get(owner)
             .and_then(|ms| ms.get(u.life.master_id))
-            .ok_or(Unsupported("an object of a master the slice does not have"))?;
+            .ok_or(GenieError::unsupported(
+                "an object of a master the slice does not have",
+            ))?;
         let me = self
             .masters
             .and_then(|ms| ms.get(self.unit.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a unit AI's unit of a master the slice does not have",
             ))?;
         Ok(Some(crate::unit_ai::UnitSeen {
@@ -796,7 +805,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     fn closest_resource(
         &mut self,
         search: crate::unit_ai::ResourceSearch,
-    ) -> Result<Option<crate::unit_ai::Gatherable>, Unsupported> {
+    ) -> Result<Option<crate::unit_ai::Gatherable>, GenieError> {
         let mut w = ResourceWorld {
             player: self.player,
             spatial: self.spatial,
@@ -829,12 +838,16 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .find(|u| u.id == id)
             .map(|u| (self.player, u))
             .or_else(|| self.foreign.find(id))
-            .ok_or(Unsupported("a resource found that the slice does not hold"))?;
+            .ok_or(GenieError::unsupported(
+                "a resource found that the slice does not hold",
+            ))?;
         let class = self
             .every
             .get(owner)
             .and_then(|m| m.get(u.life.master_id))
-            .ok_or(Unsupported("a resource found of a master the slice lacks"))?
+            .ok_or(GenieError::unsupported(
+                "a resource found of a master the slice lacks",
+            ))?
             .class;
         Ok(Some(crate::unit_ai::Gatherable {
             id,
@@ -845,7 +858,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     /// The player's master table (`FUN_14152fe40`, `+0x28`): the masters the slice holds of each
     /// player.
-    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, Unsupported> {
+    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, GenieError> {
         let class = usize::try_from(player)
             .ok()
             .and_then(|p| self.every.get(p))
@@ -855,7 +868,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         Ok(class)
     }
 
-    fn reaches(&mut self, target: i32, range: f32) -> Result<bool, Unsupported> {
+    fn reaches(&mut self, target: i32, range: f32) -> Result<bool, GenieError> {
         let mut plan = Planning {
             pathing: self.pathing,
             now: self.world_time,
@@ -871,10 +884,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        let mover = unit
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("a reach test of a unit that does not move"))?;
+        let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+            "a reach test of a unit that does not move",
+        ))?;
         mover.reaches_object(
             &walker,
             self.spatial,
@@ -885,7 +897,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         )
     }
 
-    fn closest(&mut self, search: &Search<'_>) -> Result<crate::unit_ai::Found, Unsupported> {
+    fn closest(&mut self, search: &Search<'_>) -> Result<crate::unit_ai::Found, GenieError> {
         let seeker = match search.pick {
             crate::unit_ai::Pick::Attack { seeker, .. } => Some(seeker),
             _ => None,
@@ -924,18 +936,17 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let (mover, master_id, spatial) =
             (unit.mover.as_ref(), unit.life.master_id, &*self.spatial);
         let mut reach = |id: i32, range: f32| {
-            let m = mover.ok_or(Unsupported("a reach test of a unit that does not move"))?;
+            let m = mover.ok_or(GenieError::unsupported(
+                "a reach test of a unit that does not move",
+            ))?;
             m.reaches_object(&walker, spatial, &mut plan, id, range, master_id)
         };
         let moving = |id: i32| herded(others, foreign, id);
         // a class-10 searcher passes master 440 and the masters with object flag 0x10
         let shuns = |p: &Placed| {
-            let m = every
-                .get(p.player)
-                .and_then(|ms| ms.get(p.master))
-                .ok_or(Unsupported(
-                    "a found object of a master the slice does not have",
-                ))?;
+            let m = every.get(p.player).and_then(|ms| ms.get(p.master)).ok_or(
+                GenieError::unsupported("a found object of a master the slice does not have"),
+            )?;
             Ok(p.master == PETARD || m.object_flags & 0x10 != 0)
         };
         // a farm's workers (`+0x644`) and its pasture (`+0x790`)
@@ -962,7 +973,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         &mut self,
         target: i32,
         seeker: &crate::unit_ai::Seeker,
-    ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+    ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
         let picker = WorldPicker {
             attacker: &self.attacker,
             seeker: Some(*seeker),
@@ -1006,16 +1017,16 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         target: i32,
         force: bool,
         ai: &UnitAi,
-    ) -> Result<crate::unit_ai::Attacked, Unsupported> {
+    ) -> Result<crate::unit_ai::Attacked, GenieError> {
         let unit = &mut *self.unit;
         let master = self
             .masters
             .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "an attacker of a master the slice does not have",
             ))?;
         if matches!(master.class, 51 | 54) {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "the attack command of a unit of class 51 or 54",
             ));
         }
@@ -1025,7 +1036,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         };
         if unit.attack.is_some_and(|a| a.target == target) {
             if force {
-                return Err(Unsupported(
+                return Err(GenieError::unsupported(
                     "a forced attack command on its own Attack's target (slot 0x48)",
                 ));
             }
@@ -1035,19 +1046,19 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             });
         }
         if master.class == 4 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a villager's attack command (its master switch, slot 0x90)",
             ));
         }
         let me_at = *self
             .spatial
             .get(unit.id)
-            .ok_or(Unsupported("an attacker without a place"))?;
+            .ok_or(GenieError::unsupported("an attacker without a place"))?;
         let t_master = self
             .every
             .get(t.player)
             .and_then(|m| m.get(t.master))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "an attack's target of a master the slice does not have",
             ))?;
         let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
@@ -1056,11 +1067,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the unit's
         let look = unit.abilities.look.as_ref();
         let arms = crate::attack::arms_looking(master, look, self.graphics, [-1; 4], -1);
-        let standing = arms
-            .idle_sprite
-            .ok_or(Unsupported("an attacker without its standing sprite"))?;
+        let standing = arms.idle_sprite.ok_or(GenieError::unsupported(
+            "an attacker without its standing sprite",
+        ))?;
         if unit.sprite.is_none() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "an attack command of a unit whose sprite the slice does not hold",
             ));
         }
@@ -1075,7 +1086,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let speed = unit
             .mover
             .as_ref()
-            .ok_or(Unsupported("an attacker without movement state"))?
+            .ok_or(GenieError::unsupported(
+                "an attacker without movement state",
+            ))?
             .stats
             .speed;
         let e = crate::attack::engagement(Some(ai), speed, master, &me_at, &t, self.world_time)?;
@@ -1136,7 +1149,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         self.unit.under_attack = value;
     }
 
-    fn stop(&mut self) -> Result<(), Unsupported> {
+    fn stop(&mut self) -> Result<(), GenieError> {
         let masters = self.masters;
         let by = Releaser {
             id: self.unit.id,
@@ -1154,7 +1167,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         &mut self,
         ai: &UnitAi,
         rng: &mut Well512,
-    ) -> Result<Option<[i32; 2]>, Unsupported> {
+    ) -> Result<Option<[i32; 2]>, GenieError> {
         let tc = town_centre(self.others)?;
         let (at, computer) = (self.unit.position, self.computer);
         // the search about the town centre only while the player has no scout map
@@ -1174,7 +1187,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         crate::explore::closest_undiscovered(&mut area, seeker, map, rng)
     }
 
-    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
         let (at, player) = (self.unit.position, self.player);
         let scouted = self.spatial.scout_map(player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
@@ -1190,7 +1203,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// The player's scout map (`FUN_140c589c0`'s case 0x202 when the auto scout found nothing):
     /// a new `InfluenceMap` of 480 by 480 (`FUN_140f4a240`, the old one goes, `+0x1368` 1) marks
     /// every tile the player sees now (its visible map's `FUN_141285350` 0xf) with 1.
-    fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+    fn make_scout_map(&mut self) -> Result<(), GenieError> {
         let size = crate::explore::SCOUT_MAP_SIZE;
         let mut m = crate::explore::InfluenceMap::new([size, size], 0);
         let [w, h] = self.spatial.map;
@@ -1211,7 +1224,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// type (`0xffff`) and the switch ([`task_search`] on the target and its main building);
     /// with a task the new wait replaces the unit's actions, which the caller makes after the
     /// update ([`Wait`], [`Turns::wait_for_foundation`]).
-    fn wait_solidify(&mut self, target: i32) -> Result<bool, Unsupported> {
+    fn wait_solidify(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (self.player, self.others, self.foreign);
         let find = |id: i32| {
@@ -1233,7 +1246,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let (masters, own) = self
             .masters
             .and_then(|m| Some((m, m.get(unit.life.master_id)?)))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "a unit AI's unit of a master the slice does not have",
             ))?;
         let actor = Actor {
@@ -1265,7 +1278,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// (slot 0x550), which the slice holds none of, goes; then a unit that moves (slot 0x5c8) or
     /// speeds up (slot 0x5a0: its forward acceleration above 0, `COMISS`/`JBE`) stops (slot
     /// 0x5d0).
-    fn group_attack_stop(&mut self) -> Result<(), Unsupported> {
+    fn group_attack_stop(&mut self) -> Result<(), GenieError> {
         let Some(m) = self.unit.mover.as_mut() else {
             return Ok(());
         };
@@ -1279,7 +1292,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// Slot 400 at the full update's tail: a wait for a foundation the AI gave (made after the
     /// update, [`Wait`]) holds no object; else its top action's target ([`Unit::top_target`])
     /// while the world holds it.
-    fn top_target_now(&mut self) -> Result<Option<i32>, Unsupported> {
+    fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
         if !self.waits.is_empty() {
             return Ok(None);
         }
@@ -1289,10 +1302,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     /// The object as the full update's tail reads it, found as [`UnitSide::seen_unit`] finds
     /// it.
-    fn target_flags(
-        &mut self,
-        id: i32,
-    ) -> Result<Option<crate::unit_ai::TargetFlags>, Unsupported> {
+    fn target_flags(&mut self, id: i32) -> Result<Option<crate::unit_ai::TargetFlags>, GenieError> {
         let Some(seen) = self.seen_unit(id)? else {
             return Ok(None);
         };
@@ -1323,28 +1333,32 @@ impl UnitView<'_> {
     /// What an explorer's searches ask of the world, the map's size and the unit's line of sight.
     pub(in crate::turn) fn scout_area(
         &mut self,
-    ) -> Result<(ScoutArea<'_>, [i32; 2], f32), Unsupported> {
+    ) -> Result<(ScoutArea<'_>, [i32; 2], f32), GenieError> {
         let unit = &*self.unit;
         let master = self
             .masters
             .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(Unsupported(
+            .ok_or(GenieError::unsupported(
                 "an auto scout of a master the slice does not have",
             ))?;
-        let mover = unit
-            .mover
-            .as_ref()
-            .ok_or(Unsupported("an auto scout without movement state"))?;
+        let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+            "an auto scout without movement state",
+        ))?;
         let [w, h] = self.spatial.map;
         let terrain = self
             .spatial
             .terrain
             .as_ref()
-            .ok_or(Unsupported("the map's zones without its terrain"))?;
-        let values = terrain
-            .restrictions
-            .get(mover.stats.restriction)
-            .ok_or(Unsupported("a restriction the slice's data has not got"))?;
+            .ok_or(GenieError::unsupported(
+                "the map's zones without its terrain",
+            ))?;
+        let values =
+            terrain
+                .restrictions
+                .get(mover.stats.restriction)
+                .ok_or(GenieError::unsupported(
+                    "a restriction the slice's data has not got",
+                ))?;
         let zones = self.zones.of(w, h, &terrain.kinds, values);
         let me = Me {
             id: unit.id,
@@ -1492,12 +1506,12 @@ pub(in crate::turn) const TOWN_CENTRES: [i16; 2] = [109, 444];
 /// master (`player+0x18`, `FUN_14104f560`: those of master 109, then 444), as its tile. The
 /// index's order within a master is not held: two objects of the first master found are not
 /// modelled.
-pub(in crate::turn) fn town_centre(units: &[Unit]) -> Result<Option<[i32; 2]>, Unsupported> {
+pub(in crate::turn) fn town_centre(units: &[Unit]) -> Result<Option<[i32; 2]>, GenieError> {
     for master in TOWN_CENTRES {
         let mut found = units.iter().filter(|u| u.life.master_id == master);
         let Some(first) = found.next() else { continue };
         if found.next().is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "two town centres (the order of the player's index)",
             ));
         }
@@ -1523,14 +1537,14 @@ pub(in crate::turn) struct ScoutArea<'a> {
 }
 
 impl crate::explore::Area for ScoutArea<'_> {
-    fn explored(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+    fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
         if self.scouted {
             return self
                 .spatial
                 .scout_map(self.player)
                 .and_then(|m| m.get(x, y))
                 .map(|v| v == 1)
-                .ok_or(Unsupported("a tile off the player's scout map"));
+                .ok_or(GenieError::unsupported("a tile off the player's scout map"));
         }
         self.spatial.explored(self.player, x, y)
     }
@@ -1544,13 +1558,13 @@ impl crate::explore::Area for ScoutArea<'_> {
         self.zones.zone(x as i32, y as i32)
     }
 
-    fn clear(&self, x: i32, y: i32) -> Result<bool, Unsupported> {
+    fn clear(&self, x: i32, y: i32) -> Result<bool, GenieError> {
         let mask = self.mover.stats.restriction_mask;
         self.spatial
             .point_clear(self.me.id, [x as f32, y as f32], self.radius[0], mask)
     }
 
-    fn reaches(&mut self, x: i32, y: i32) -> Result<bool, Unsupported> {
+    fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
         let to = [x as f32, y as f32];
         self.mover.reaches(
             &self.me,

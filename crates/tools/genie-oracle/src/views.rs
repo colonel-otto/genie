@@ -45,7 +45,7 @@ pub fn groups(data: &[u8], full: bool) -> Result<String, Error> {
                 }
             }
             Err(e) => {
-                let _ = writeln!(out, "the groups do not import: {}", e.0);
+                let _ = writeln!(out, "the groups do not import: {e}");
             }
         }
         return Ok(out);

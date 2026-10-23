@@ -6,11 +6,11 @@
 //! (`FUN_1411cd780` -> `FUN_1411ccbb0`) gives back what is left of a foundation's cost and takes
 //! its hit points too. The object dies in its next update.
 
+use crate::GenieError;
 use crate::build::held;
 use crate::masters::Master;
 use crate::order::Place;
 use crate::turn::Turns;
-use crate::unit_ai::Unsupported;
 
 /// The classes no delete takes (`DAT_142f925c0`, and `FUN_14120f620`'s own test): livestock,
 /// class 42, artifacts and class 60.
@@ -53,7 +53,7 @@ impl Turns {
     /// # Errors
     ///
     /// What the deletes do not model.
-    pub(crate) fn delete(&mut self, player: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn delete(&mut self, player: usize, id: i32) -> Result<(), GenieError> {
         let Some((owner, unit)) = self.object(id) else {
             return Ok(());
         };
@@ -84,7 +84,7 @@ impl Turns {
     /// and explored the tile ([`crate::spatial::Spatial::sees_and_explored`]) and whose box
     /// overlaps its own (on each axis the gap below the two radii summed) is removed
     /// ([`Turns::remove_building`]) and its `mROOAlreadyCalled` (`+0x686`) set.
-    pub(crate) fn clear_foundations_under(&mut self, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn clear_foundations_under(&mut self, id: i32) -> Result<(), GenieError> {
         const AROUND: i32 = 5;
         let Some(site) = self.spatial.get(id).copied() else {
             return Ok(());
@@ -147,7 +147,7 @@ impl Turns {
     /// livestock holding some, else `FUN_14118f580`: a sleeping unit wakes to the end of its
     /// player's live list and its hit points go to 0. Not held: the deleted mark, the killer
     /// (`+0x690`, its owner) and the special-object list (`+0x30c` bit 0).
-    fn delete_unit(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+    fn delete_unit(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         let (_, unit) = self.object(id).expect("the caller's");
         let class = self.master_of(owner, unit.life.master_id)?.class;
         if UNDELETABLE.contains(&class) {
@@ -171,7 +171,7 @@ impl Turns {
     /// zones first ([`Turns::clear_treaty_zones`]). Not held: the deleted marks (`+0xa0c`, `+0xc`, `+0xb9c`), the
     /// semi-asleep list (`+0xc98`), the killer (`+0x690`) and a computer player's AI event (slot
     /// 0x380).
-    fn delete_building(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+    fn delete_building(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         let (_, unit) = self.object(id).expect("the caller's");
         let master = self.master_of(owner, unit.life.master_id)?;
         if master.id == TOWN_CENTRE_621 {
@@ -184,10 +184,10 @@ impl Turns {
     /// construction start's clearing ([`Turns::clear_foundations_under`]): the building wakes,
     /// a foundation's paid cost comes back by the share its build time has still to go, its hit
     /// points go to 0 and a desolid foundation is destroyed at once.
-    pub(crate) fn remove_building(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
-        let (_, unit) = self
-            .object(id)
-            .ok_or(Unsupported("a removed building the slice does not hold"))?;
+    pub(crate) fn remove_building(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+        let (_, unit) = self.object(id).ok_or(GenieError::unsupported(
+            "a removed building the slice does not hold",
+        ))?;
         let master = self.master_of(owner, unit.life.master_id)?;
         let cost = master.cost.clone();
         let (state, hp) = (unit.life.state, unit.life.hp);
@@ -221,7 +221,7 @@ impl Turns {
     }
 
     /// A foundation's destroy (slot 0xd0, [`Turns::destroy`]) from its delete.
-    fn destroy_foundation(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+    fn destroy_foundation(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         self.destroy(owner, id)
     }
 
@@ -239,7 +239,7 @@ impl Turns {
     /// # Errors
     ///
     /// An object the slice does not hold, and what the parts do not model.
-    pub(crate) fn destroy(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn destroy(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         let (_, u) = self.object(id).ok_or(crate::build::NOT_HELD)?;
         let state = u.life.state;
         let master = self.master_of(owner, u.life.master_id)?.clone();
@@ -272,9 +272,9 @@ impl Turns {
     ///
     /// A game with a treaty ([`crate::settings::Settings::treaty_length`]), whose zones the slice
     /// does not hold.
-    const fn clear_treaty_zones(&self) -> Result<(), Unsupported> {
+    const fn clear_treaty_zones(&self) -> Result<(), GenieError> {
         if self.settings.treaty_length != 0 {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a deleted town centre 621 during a treaty (its owner's treaty zones)",
             ));
         }
@@ -292,13 +292,13 @@ impl Turns {
     /// [`Turns::set_state`]). An object inside another would leave it first (slot 0x1a8): not
     /// modelled. Not held: the special-object list (`+0x30c` bit 0, `FUN_141677380`) and the log
     /// line.
-    pub(crate) fn base_destroy(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn base_destroy(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         let (_, u) = self.object(id).ok_or(crate::build::NOT_HELD)?;
         if 7 <= u.life.state {
             return Ok(());
         }
         if u.life.inside.is_some() {
-            return Err(Unsupported(
+            return Err(GenieError::unsupported(
                 "a destroyed object inside another (slot 0x1a8)",
             ));
         }
@@ -316,8 +316,8 @@ impl Turns {
     /// # Errors
     ///
     /// What the parts do not model.
-    pub(crate) fn set_state(&mut self, owner: usize, id: i32, new: u8) -> Result<(), Unsupported> {
-        let (_, u) = self.object(id).ok_or(Unsupported(
+    pub(crate) fn set_state(&mut self, owner: usize, id: i32, new: u8) -> Result<(), GenieError> {
+        let (_, u) = self.object(id).ok_or(GenieError::unsupported(
             "a set_state of an object the slice does not hold",
         ))?;
         let master = self.master_of(owner, u.life.master_id)?.clone();
@@ -341,7 +341,7 @@ impl Turns {
         id: i32,
         new: u8,
         master: &Master,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         for annex in self.spatial.annexes_of(id) {
             if let Some((q, a)) = self.object(annex)
                 && self.master_of(q, a.life.master_id)?.kind == BUILDING
@@ -377,7 +377,7 @@ impl Turns {
         id: i32,
         new: u8,
         master: &Master,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         // an object the slice does not hold fails in the base set_state
         let Some(place) = self.place(id) else {
             return self.base_set_state(owner, id, new, master);
@@ -415,8 +415,8 @@ impl Turns {
         id: i32,
         new: u8,
         master: &Master,
-    ) -> Result<(), Unsupported> {
-        let (_, u) = self.object(id).ok_or(Unsupported(
+    ) -> Result<(), GenieError> {
+        let (_, u) = self.object(id).ok_or(GenieError::unsupported(
             "a set_state of an object the slice does not hold",
         ))?;
         let (old, position) = (u.life.state, u.position);
@@ -461,7 +461,7 @@ impl Turns {
         owner: usize,
         id: i32,
         master: &Master,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<(), GenieError> {
         let computer = self.players[owner].computer;
         let (_, u) = self.object_mut(id).ok_or(crate::build::NOT_HELD)?;
         let death = crate::turn::built_death(u, master, computer)?;
@@ -671,7 +671,7 @@ mod tests {
         t.settings.treaty_length = 10;
         assert_eq!(
             t.delete(1, 11),
-            Err(Unsupported(
+            Err(GenieError::unsupported(
                 "a deleted town centre 621 during a treaty (its owner's treaty zones)"
             ))
         );

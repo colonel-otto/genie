@@ -5,11 +5,11 @@
 //! The mapping is the only place that knows the build's save layout of a group: a later build
 //! with another layout maps into the same state here.
 
+use genie_core::GenieError;
 use genie_core::group::{
     Formation, FormationLine, GroupCommand, GroupOrder, LinePoint, Member, Motion, PointLine, Slot,
     SpecificMove, TargetData, UnitGroup, UnitGroups, UnitTypeStatistic,
 };
-use genie_core::unit_ai::Unsupported;
 use genie_save::generated::world as saved;
 
 use crate::{path_level, vec3};
@@ -33,7 +33,7 @@ fn words(b: &[u8; 200]) -> Vec<u32> {
         .collect()
 }
 
-fn motion(m: &saved::Motion, paths: &[saved::Path]) -> Result<Motion, Unsupported> {
+fn motion(m: &saved::Motion, paths: &[saved::Path]) -> Result<Motion, GenieError> {
     Ok(Motion {
         position: frame(&m.position),
         new_position: frame(&m.new_position),
@@ -105,7 +105,7 @@ fn formation(f: &saved::Formation) -> Formation {
     }
 }
 
-fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Unsupported> {
+fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, GenieError> {
     let t = &g.current_target;
     Ok(UnitGroup {
         motion: motion(&g.motion, paths)?,
@@ -233,7 +233,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Unsup
 /// # Errors
 ///
 /// When a group's path data names a path the world's table does not hold.
-pub fn unit_groups(world: &saved::BaseWorld) -> Result<UnitGroups, Unsupported> {
+pub fn unit_groups(world: &saved::BaseWorld) -> Result<UnitGroups, GenieError> {
     let g = &world.unit_groups;
     let groups: Vec<UnitGroup> = g
         .unit_group

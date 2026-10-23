@@ -7,8 +7,8 @@
 //! action type 107. An idle animal holds this action as its top action, so checkpoint word 9 counts
 //! `107 + state` for it.
 
+use crate::GenieError;
 use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_or_give_up};
-use crate::unit_ai::Unsupported;
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
 /// caller: the action is not quiet (`+0x60` 0, its constructors' `FUN_140a73e90` with 1), so the
@@ -218,8 +218,8 @@ impl Artifact {
         walk: Option<Walk<'_>>,
         dt_ms: u32,
         searches: bool,
-        owner: &mut dyn FnMut() -> Result<Option<usize>, Unsupported>,
-    ) -> Result<Option<Handover>, Unsupported> {
+        owner: &mut dyn FnMut() -> Result<Option<usize>, GenieError>,
+    ) -> Result<Option<Handover>, GenieError> {
         let _ = self.walk(walk)?;
         self.step(dt_ms, searches, owner)
     }
@@ -233,17 +233,16 @@ impl Artifact {
     /// (`FUN_140a98620`: its teardown stops the unit, slot 0x5d0, the caller's), its point (−1)
     /// and its target (slot 0x68 with none: let go, the caller's release). A waiting `MoveTo` is
     /// not modelled.
-    pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<Option<Ended>, Unsupported> {
-        let need = || Unsupported("a walking animal without its walk");
+    pub fn walk(&mut self, walk: Option<Walk<'_>>) -> Result<Option<Ended>, GenieError> {
+        let need = || GenieError::unsupported("a walking animal without its walk");
         match self.move_to {
             Some(MoveTo::Start) => {
                 let (goal, range, quiet) = match self.walk_to {
                     Some((goal, range)) => (goal, range, true),
                     None => (
-                        Goal::Point(
-                            self.goal
-                                .ok_or(Unsupported("an Artifact MoveTo without its point"))?,
-                        ),
+                        Goal::Point(self.goal.ok_or(GenieError::unsupported(
+                            "an Artifact MoveTo without its point",
+                        ))?),
                         0.0,
                         false,
                     ),
@@ -266,7 +265,9 @@ impl Artifact {
                 return Ok(Some(Ended { notify, released }));
             }
             Some(MoveTo::Waiting) => {
-                return Err(Unsupported("an Artifact's waiting MoveTo (state 2)"));
+                return Err(GenieError::unsupported(
+                    "an Artifact's waiting MoveTo (state 2)",
+                ));
             }
             None => {}
         }
@@ -289,8 +290,8 @@ impl Artifact {
         &mut self,
         dt_ms: u32,
         searches: bool,
-        owner: &mut dyn FnMut() -> Result<Option<usize>, Unsupported>,
-    ) -> Result<Option<Handover>, Unsupported> {
+        owner: &mut dyn FnMut() -> Result<Option<usize>, GenieError>,
+    ) -> Result<Option<Handover>, GenieError> {
         match self.state {
             CHECK => {
                 if searches && let Some(new) = owner()? {
@@ -467,7 +468,7 @@ mod tests {
             ..Artifact::new(false)
         };
         let found = a
-            .step(50, true, &mut || Err(Unsupported("no search")))
+            .step(50, true, &mut || Err(GenieError::unsupported("no search")))
             .unwrap();
         assert_eq!((found, a.state), (Some(Handover::ToGaia), CHECK));
     }
