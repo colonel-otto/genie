@@ -14,6 +14,7 @@ use crate::turn::player::Player;
 use crate::turn::unit::{AiResume, Unit};
 use crate::turn::world::{
     Releaser, ResourceWorld, SideWorld, closest_resource_of, herded, task_search, task_target_with,
+    victim_in, victim_of,
 };
 use crate::turn::{BuildingDeath, PETARD, Recycling};
 use crate::unit_ai::{AiMove, Search, UnitAi, Unsupported};
@@ -382,6 +383,113 @@ pub(in crate::turn) struct UnitView<'u> {
     pub(in crate::turn) attributes: &'u [f32],
     pub(in crate::turn) civ: u8,
     pub(in crate::turn) drop_sites: &'u [DropSite],
+    /// The game's setting at `+0x680` ([`Turns::mode_680`]), which a hit's source carries.
+    pub(in crate::turn) mode_680: i32,
+}
+
+impl UnitView<'_> {
+    /// What a hit of the unit reads of the object `id` ([`victim_in`]): one of the owner's live
+    /// objects or another player's; None for an object the view does not hold (the owner's
+    /// sleeping objects, or the old owner's of a unit taken over in its update, whose attributes
+    /// it does not hold).
+    fn victim_of_target(&self, id: i32) -> Option<Victim> {
+        let (q, t, attributes) = if let Some(t) = self.others.iter().find(|u| u.id == id) {
+            (self.player, t, self.attributes)
+        } else {
+            let (q, t) = self.foreign.find(id)?;
+            (q, t, &self.foreign.player(q)?.attributes[..])
+        };
+        let master = self.every.get(q)?.get(t.life.master_id)?;
+        let dip = SideWorld {
+            player: self.player,
+            relations: self.relations,
+            foreign: self.foreign,
+            drop_sites: self.drop_sites,
+        };
+        Some(victim_in(
+            t,
+            (q, master, attributes),
+            (self.player, &dip),
+            self.spatial,
+            self.mode_680,
+        ))
+    }
+
+    /// The start's `set_state(6)` of the unit's new Attack ([`crate::attack::Attack::enter_ready`])
+    /// with what its readyToAttack and its swing read: the target as a hit reads it
+    /// ([`UnitView::victim_of_target`]), the unit as a combat object, its unit AI's stance, leash
+    /// and queue. Returns the notifies it posted. Its swing lands no hit and fires nothing before
+    /// its update, nor does readyToAttack let the target go or send the unit home there.
+    fn ready_at_start(
+        &mut self,
+        attack: &mut crate::attack::Attack,
+        master: &crate::masters::Master,
+        ai: &UnitAi,
+    ) -> Result<Vec<(i32, [i32; 3])>, Unsupported> {
+        let mut victim = self.victim_of_target(attack.target).ok_or(Unsupported(
+            "an attack's target the slice does not hold live",
+        ))?;
+        let unit = &mut *self.unit;
+        let own = victim_of(
+            unit,
+            master,
+            self.attributes,
+            self.player,
+            self.spatial.terrain.as_ref(),
+            self.mode_680,
+        );
+        let me = Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: crate::attack::READY,
+        };
+        let walk = Walk {
+            mover: unit.mover.as_mut(),
+            me,
+            dt: 0.0,
+            world: self.spatial,
+            plan: None,
+        };
+        let mut blasted = Vec::new();
+        let mut strike = crate::attack::Strike {
+            sprite: &mut unit.sprite,
+            anim_speed: &mut unit.anim_speed,
+            standing: self.graphics.get(&master.standing_sprite).copied(),
+            volleys: self
+                .masters
+                .is_some_and(|m| crate::attack::volleys(master, m)),
+            attack_timer: &mut unit.attack_timer,
+            reload_worldtime: &mut unit.reload_worldtime,
+            reload: unit.reload_stinger + (master.reload - unit.reload_powerup),
+            hit_chance: master.hit_chance,
+            victim: &mut victim,
+            blasted: &mut blasted,
+            sprite_rng: self.sprite,
+            own,
+            executed: None,
+            fire: None,
+            can_move: ai.current_order != -1 || ai.stance <= 1,
+            stance: ai.stance,
+            state_position: ai.state_position,
+            posted: Vec::new(),
+            queue_empty: ai.orders.is_empty(),
+            world_time: self.world_time,
+            ai_order: Some(ai.current_order),
+            ai_type: Some(ai.ai_type),
+            computer: self.computer,
+            armed: crate::turn::unit::armed(master, unit.firepower),
+            volley_under_way: unit.next_volley != 0,
+            let_go: None,
+            forgets: false,
+            sends_home: false,
+        };
+        attack.enter_ready(walk, &mut strike)?;
+        // set_state 6 and 7 hit nothing, fire nothing and let nothing go: the update does
+        debug_assert!(strike.executed.is_none() && strike.fire.is_none());
+        debug_assert!(strike.let_go.is_none() && !strike.forgets && !strike.sends_home);
+        Ok(std::mem::take(&mut strike.posted))
+    }
 }
 
 /// What `bestUnitToAttack` reads of the world for the unit whose AI runs
@@ -854,9 +962,14 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// then, not modelled); a villager's master switch (slot 0x90) is not modelled. Then the new
     /// Attack ([`crate::attack::Attack::command`]): the constructor takes its target (slot 0x178,
     /// the caller's), the action list clears (the old actions' teardowns), and the install's start
-    /// clears `+0x900`, puts the unit on its standing sprite (slot 0x68 with `+0x80`) and runs the
-    /// range test; a `MoveTo` that starts arrived shows the standing sprite. A notify posted while
-    /// the AI runs (its buffer, `FUN_140c55270`) is not modelled.
+    /// (`0x140a7f8c0`) of a unit inside another fails it at once (`set_state(13)`,
+    /// [`crate::attack::Attack::fail_at_start`]); else it clears `+0x900`, puts the unit on its
+    /// standing sprite (slot 0x68 with `+0x80`) and runs the range test: readyToAttack's failure
+    /// before a `set_state(4)` leaves the animation at speed 1; a `MoveTo` that starts arrived
+    /// shows the standing sprite; a unit that cannot move in reach goes ready (`set_state(6)`,
+    /// [`crate::attack::Attack::enter_ready`]: readyToAttack again, then the swing, `set_state(7)`,
+    /// when it faces its target and may attack), whose notifies join the start's. A notify posted
+    /// while the AI runs (its buffer, `FUN_140c55270`) is not modelled.
     fn attack(
         &mut self,
         target: i32,
@@ -928,35 +1041,52 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             player: self.player,
         };
         unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+        let speed = unit
+            .mover
+            .as_ref()
+            .ok_or(Unsupported("an attacker without movement state"))?
+            .stats
+            .speed;
+        let e = crate::attack::engagement(Some(ai), speed, master, &me_at, &t, self.world_time)?;
+        // the constructor clears +0x900 for a target other than its own (none yet)
         unit.attack_count = 0;
+        if unit.life.inside.is_some() {
+            let mut attack = crate::attack::Attack::own(target, &e, arms);
+            attack.fail_at_start(&mut unit.sprite, &mut unit.anim_speed, self.sprite)?;
+            unit.attack = Some(attack);
+            self.takes.push((target, by));
+            return Ok(crate::unit_ai::Attacked {
+                attacks: true,
+                posted: Vec::new(),
+            });
+        }
         crate::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
         let mover = unit
             .mover
             .as_mut()
             .ok_or(Unsupported("an attacker without movement state"))?;
-        let e = crate::attack::engagement(
-            Some(ai),
-            mover.stats.speed,
-            master,
-            &me_at,
-            &t,
-            self.world_time,
-        )?;
         let crate::attack::Commanded {
             mut attack,
             arrived,
-            posted,
+            mut posted,
             ready,
             failed,
+            failed_first,
         } = crate::attack::Attack::command(target, &e, arms, visible, t.player, mover)?;
+        if failed_first {
+            unit.anim_speed = Some(1.0);
+        }
         if failed {
             attack.fail_at_start(&mut unit.sprite, &mut unit.anim_speed, self.sprite)?;
         }
         if ready {
-            return Err(Unsupported(
-                "an attack command of a unit that cannot move (its set_state 6)",
-            ));
+            posted.extend(self.ready_at_start(&mut attack, master, ai)?);
         }
+        let unit = &mut *self.unit;
+        let mover = unit
+            .mover
+            .as_mut()
+            .ok_or(Unsupported("an attacker without movement state"))?;
         if arrived {
             // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): the master's standing
             // sprite with its speed, `+0x7b8` cleared; the next update's state 4 ends the MoveTo

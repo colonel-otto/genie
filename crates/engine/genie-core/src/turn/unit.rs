@@ -5370,6 +5370,7 @@ impl Unit {
                 fire: None,
                 can_move,
                 stance,
+                state_position: self.ai.as_ref().map_or([0.0; 2], |ai| ai.state_position),
                 posted: Vec::new(),
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
                 world_time,
@@ -5506,6 +5507,7 @@ impl Unit {
                 fire: None,
                 can_move,
                 stance,
+                state_position: self.ai.as_ref().map_or([0.0; 2], |ai| ai.state_position),
                 posted: Vec::new(),
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
                 world_time,
@@ -5821,6 +5823,7 @@ impl Unit {
                             attributes: view.attributes,
                             civ: view.civ,
                             drop_sites: c.drop_sites,
+                            mode_680: c.mode_680,
                         };
                         // an order on a target comes only from a full update, on the owner's turn
                         match (turn, after) {

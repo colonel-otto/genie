@@ -1652,7 +1652,10 @@ pub(crate) mod tests {
             min_range: 0.0,
             can_move: true,
             stance: 0,
+            state_position: [0.0; 2],
             world_time: 0,
+            master: 83,
+            target_class: 15,
         }
     }
 

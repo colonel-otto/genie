@@ -3420,7 +3420,12 @@ impl Turns {
             posted,
             ready,
             failed,
+            failed_first,
         } = crate::attack::Attack::command(target, &e, arms, visible, tp, mover)?;
+        if failed_first {
+            // readyToAttack's set_state(13) before the start's set_state(4)
+            unit.anim_speed = Some(1.0);
+        }
         if arrived {
             return Err(Unsupported("an attack task whose MoveTo starts arrived"));
         }
@@ -3449,6 +3454,7 @@ impl Turns {
                 .as_ref()
                 .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
             let stance = unit.ai.as_ref().map_or(0, |ai| ai.stance);
+            let state_position = unit.ai.as_ref().map_or([0.0; 2], |ai| ai.state_position);
             let queue_empty = unit.ai.as_ref().is_some_and(|ai| ai.orders.is_empty());
             let walk = Walk {
                 mover: unit.mover.as_mut(),
@@ -3475,6 +3481,7 @@ impl Turns {
                 fire: None,
                 can_move,
                 stance,
+                state_position,
                 posted: Vec::new(),
                 queue_empty,
                 world_time,
