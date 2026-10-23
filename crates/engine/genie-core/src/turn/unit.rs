@@ -239,6 +239,26 @@ pub(crate) fn annexes_of(id: i32, objects: &[Unit]) -> Vec<i32> {
     annexes
 }
 
+/// The second target's checks at the start of a Gather's or a Hunt's update (`0x140a8e1d0`,
+/// `0x140ac7a00`) on `site` (−1 for none), which the world's table holds (`held`,
+/// `FUN_1415417a0`) in `state`: one the table lacks goes (`FUN_140a7a190` with none, with nothing
+/// to let go); one past state 6 is let go (slot 0x180) and goes. The game checks the second
+/// target's absence before the first target's state; the two touch different objects. Returns
+/// the second target after them and the object let go.
+pub(in crate::turn) const fn second_target_checked(
+    site: i32,
+    held: bool,
+    state: Option<u8>,
+) -> (i32, Option<i32>) {
+    if site == -1 || !held {
+        return (-1, None);
+    }
+    match state {
+        Some(s) if 6 < s => (-1, Some(site)),
+        _ => (site, None),
+    }
+}
+
 /// `RGE_Action_Object::update` (`0x14106ac90`): the action list of an object past state 2 goes
 /// (`FUN_140a98620`), the Wonder's (master 276, `0x61b0` raw) only past state 5.
 pub(in crate::turn) const fn loses_actions(life: &Lifecycle) -> bool {
@@ -1391,7 +1411,8 @@ impl Unit {
 
     /// The Gather's update (slot 6, `0x140a8e1d0`). It first checks its targets: a target gone
     /// from the world's table goes (slot 0x68 with none), one past state 6 is let go (slot 0x180)
-    /// and goes; a second target gone goes (`FUN_140a7a190` with none). Then state 8 walks the
+    /// and goes; a second target gone goes (`FUN_140a7a190` with none), one past state 6 is let
+    /// go and goes. Then state 8 walks the
     /// load to its drop site ([`crate::gather::GatherAction::update_drop`]): the load goes to the
     /// player, the drop site goes (`FUN_140a7a190` with none) and the gather walks back to its
     /// target (`set_state(4)`); without a target the unit AI's search is not modelled. The other
@@ -1425,8 +1446,12 @@ impl Unit {
                 gather.target = -1;
             }
         }
-        if gather.carry_to != -1 && c.spatial.get(gather.carry_to).is_none() {
-            gather.carry_to = -1;
+        let site = gather.carry_to;
+        let held = c.spatial.get(site).is_some();
+        let (kept, let_go) = second_target_checked(site, held, state_of(site, others, c.foreign));
+        gather.carry_to = kept;
+        if let Some(t) = let_go {
+            c.releases.push((t, by));
         }
         let master = c
             .masters
@@ -4856,14 +4881,8 @@ impl Unit {
             self.gather_update(c, others, me)?;
         }
         // the Hunt's update (0x140ac7a00) first checks its targets: one gone from the world's
-        // table is dropped (slot 0x68 with none; the second target FUN_140a7a190 with none), one
-        // past state 6 is let go (slot 0x180, its `+0x60` being 0) and dropped
-        if let Some(site) = self.hunt.map(|h| h.carry_to).filter(|&t| t != -1)
-            && c.spatial.get(site).is_none()
-            && let Some(h) = self.hunt.as_mut()
-        {
-            h.carry_to = -1;
-        }
+        // table is dropped (slot 0x68 with none), one past state 6 is let go (slot 0x180, its
+        // `+0x60` being 0) and dropped; then the second target ([`second_target_checked`])
         if let Some(target) = self.hunt.map(|h| h.target).filter(|&t| t != -1) {
             let state = c
                 .victim
@@ -4886,13 +4905,15 @@ impl Unit {
                 }
             }
         }
-        // a second target past state 6 is let go (FUN_140a7a190 with none: slot 0x180)
-        if let Some(site) = self.hunt.map(|h| h.carry_to).filter(|&t| t != -1)
-            && state_of(site, others, c.foreign).is_some_and(|s| 6 < s)
-        {
-            self.hunt_release(c, [site]);
+        if let Some(site) = self.hunt.map(|h| h.carry_to) {
+            let held = c.spatial.get(site).is_some();
+            let (kept, let_go) =
+                second_target_checked(site, held, state_of(site, others, c.foreign));
             if let Some(h) = self.hunt.as_mut() {
-                h.carry_to = -1;
+                h.carry_to = kept;
+            }
+            if let Some(t) = let_go {
+                self.hunt_release(c, [t]);
             }
         }
         // the hunter as a combat object, which its hits read and change

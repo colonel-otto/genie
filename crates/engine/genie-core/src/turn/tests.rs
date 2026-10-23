@@ -2901,6 +2901,19 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     assert_eq!(failed.players[1].objects[1].hunt, None);
 }
 
+/// A Gather's and a Hunt's second target at the start of their updates (`0x140a8e1d0`,
+/// `0x140ac7a00`): a drop site past state 6 is let go and goes, one the world's table lacks only
+/// goes, one in state 2 (or 6) stays.
+#[test]
+fn a_second_target_past_state_6_is_let_go_and_one_gone_dropped() {
+    use crate::turn::unit::second_target_checked;
+    assert_eq!(second_target_checked(9149, true, Some(7)), (-1, Some(9149)));
+    assert_eq!(second_target_checked(9149, true, Some(6)), (9149, None));
+    assert_eq!(second_target_checked(9149, true, Some(2)), (9149, None));
+    assert_eq!(second_target_checked(9149, false, None), (-1, None));
+    assert_eq!(second_target_checked(-1, false, None), (-1, None));
+}
+
 /// The Wonder (master 276) keeps its action list up to state 5 (`0x14106ac90`'s threshold 5,
 /// any other object's 2).
 #[test]
