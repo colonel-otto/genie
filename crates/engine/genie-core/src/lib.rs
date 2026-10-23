@@ -84,6 +84,7 @@ pub mod tile_path;
 pub mod town_bell;
 pub mod trace;
 pub mod tracker;
+pub mod tribute;
 pub mod turn;
 pub mod unit_ai;
 pub mod visibility;

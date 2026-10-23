@@ -3597,6 +3597,23 @@ impl Decoder {
                     ids,
                 });
             }
+            Packet::TribeGiveAttributes(c) => {
+                let gift = |attribute, amount, fee| genie_core::tribute::Gift {
+                    attribute,
+                    amount,
+                    fee,
+                };
+                return Some(Command::Tribute {
+                    player: c.commp_id as usize,
+                    to: usize::from(c.to),
+                    gifts: [
+                        gift(c.attr, c.amt, c.cost),
+                        gift(c.field_0x26, c.field_0x08, c.field_0x18),
+                        gift(c.field_0x28, c.field_0x0c, c.field_0x1c),
+                        gift(c.field_0x2a, c.field_0x10, c.field_0x20),
+                    ],
+                });
+            }
             Packet::Flare(c) => {
                 return Some(Command::Flare {
                     player: c.commp_id as usize,
@@ -6606,5 +6623,46 @@ mod tests {
         assert_eq!(d.command(&patrol(4, vec![9397, 9398], 1, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 0, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 11, 0), &[]), None);
+    }
+
+    /// GIVE ATTRIBUTES (0xc4): the four entries' attributes (`+0x24`..), amounts (`+0x04`..)
+    /// and fees (`+0x14`..), the receiver at `+0x2c`.
+    #[test]
+    fn a_tribute_packet_decodes_its_four_entries() {
+        let packet = de::command::TribeGiveAttributes {
+            commp_id: 3,
+            amt: 100.0,
+            field_0x08: 0.0,
+            field_0x0c: 0.0,
+            field_0x10: 200.0,
+            cost: 0.3,
+            field_0x18: 0.3,
+            field_0x1c: 0.3,
+            field_0x20: 0.25,
+            attr: 1,
+            field_0x26: 0,
+            field_0x28: 2,
+            field_0x2a: 3,
+            to: 5,
+        }
+        .encode();
+        let gift = |attribute, amount, fee| genie_core::tribute::Gift {
+            attribute,
+            amount,
+            fee,
+        };
+        assert_eq!(
+            Decoder::default().command(&packet, &[]),
+            Some(Command::Tribute {
+                player: 3,
+                to: 5,
+                gifts: [
+                    gift(1, 100.0, 0.3),
+                    gift(0, 0.0, 0.3),
+                    gift(2, 0.0, 0.3),
+                    gift(3, 200.0, 0.25),
+                ],
+            })
+        );
     }
 }

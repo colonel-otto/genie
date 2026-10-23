@@ -190,6 +190,16 @@ pub enum Command {
         /// The players the command counts (`+0x10`).
         players: u8,
     },
+    /// GIVE ATTRIBUTES (0xc4, `FUN_140e7d040`): the player's tribute to player `to`
+    /// ([`Turns::tribute`]).
+    Tribute {
+        /// The player who gives.
+        player: usize,
+        /// The player who receives (`+0x2c`).
+        to: usize,
+        /// The four entries.
+        gifts: [crate::tribute::Gift; 4],
+    },
     /// GATE (0x72, `do_command` case 0x72): the player's building `id` toggles its gate lock
     /// ([`Turns::gate`]).
     Gate {
@@ -502,6 +512,15 @@ impl Turns {
                 players,
             } => {
                 if let Err(e) = self.flare(target, point, players) {
+                    self.stop_player(player, e);
+                }
+            }
+            Command::Tribute {
+                player,
+                to,
+                ref gifts,
+            } => {
+                if let Err(e) = self.tribute(player, to, gifts) {
                     self.stop_player(player, e);
                 }
             }
