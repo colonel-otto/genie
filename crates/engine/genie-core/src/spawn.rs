@@ -12,7 +12,7 @@
 use crate::lifecycle::{Class, Lifecycle};
 use crate::movement::Mover;
 use crate::order::Work;
-use crate::production::{IN_PRODUCTION, QUEUED, housed, population};
+use crate::production::{IN_PRODUCTION, MakeObj, MakeTech, Making, QUEUED, housed, population};
 use crate::rng::Stream;
 use crate::spatial::{Obstruction, Placed};
 use crate::sprite::ActiveSprite;
@@ -1014,6 +1014,11 @@ impl PlaceMap for WorldMap<'_> {
     }
 }
 
+/// The make action's type (`+0x8`, 0x66, `TRIBE_Action_Make_Obj`).
+const MAKE_OBJ: i16 = 0x66;
+/// The research action's type (0x67, `TRIBE_Action_Make_Tech`).
+const MAKE_TECH: i16 = 0x67;
+
 /// The attribute that scales research times above 0 (`+0x2b0`: 86).
 const RESEARCH_TIME_MODIFIER: i16 = 86;
 /// The attribute whose value above 0 gives the world's effect after a research (`+0x868`: 269).
@@ -1021,17 +1026,26 @@ const WORLD_EFFECT: i16 = 269;
 
 impl Turns {
     /// The building update's production step (`FUN_1411e7dc0`, after its combat update) for the
-    /// building at `i` of player `p`: with a queue and no make action, a unit's make action comes
-    /// (its constructor `FUN_140acb140` gives the building's unit AI action 619 with
-    /// `FUN_140c64b50`; the list's add starts it, slot 0x28 `FUN_140acf0a0`: attribute 81 grows by
-    /// the unit's population, state 6); then the make action's update (`0x140ad0490`) works. A
-    /// unit that is due spawns ([`Turns::spawn`]); its action ends (state 1, its destructor
-    /// `FUN_140ace3f0` notifies the building's unit AI 506 with 619 again) and the queue lets it
-    /// go (attribute 80 lowers by its population). A building whose population test fails
-    /// ([`housed`]) waits without a make action. Not modelled: a computer player's housed
-    /// building (it cancels its queue, `FUN_1411cff00`), the computer players' list, a research
-    /// in the queue or the work-rate bonuses of `0x140ad0490` (`FUN_140c884c0`'s game mode, the
-    /// AI difficulty under `FUN_141659cf0`).
+    /// building at `i` of player `p`. A disabled queue (`+0xbf6`) or an empty one does nothing.
+    /// For a player not of type 3 a top action of the building's own (`FUN_141227a00`) that is a
+    /// make, a research or of types 0x7b to 0x7d sets `+0xc01` and nothing more happens; else
+    /// `+0xc01` clears. Without an action in its production list the first entry's comes: for a
+    /// unit the population test first ([`housed`]): a housed building waits (its reason
+    /// `+0xc02`, 0x20 or 4, and the events 0x7c and 0x7d are the interface's), a computer
+    /// player's cancels its queue ([`Turns::cancel_queue`]); then the make action
+    /// ([`MakeObj::for_entry`]; its constructor `FUN_140acb140` gives the building's unit AI the
+    /// action 619, `FUN_140c64b50`; the headroom's sound and event 0xa9 are the interface's), or
+    /// the research's ([`Turns::make_research`]). The list's add (`FUN_140a977e0`) starts it
+    /// for a building in a state below 3 (slot 0x28): a make action of a master the player has
+    /// (`FUN_140acf0a0`) adds its population to attribute 81 and takes state 6, one of a master
+    /// it lacks stays in state 0 ("Canceling Train #1a"); a building in state 3 or more deletes
+    /// it at once ([`Turns::end_production_action`]). Then the list's update (`FUN_140a992b0`,
+    /// the first action's slot 0x30; an empty list answers done): the make action's
+    /// ([`Turns::make_step`]) or the research's ([`Turns::research_step`]). Done (1) or failed
+    /// (2, 3): after a research of the shared kind the technology joins the building's lists
+    /// ([`crate::production::Production::note_shared_research`]); the action goes ([`Turns::end_production_action`])
+    /// and the first entry lets one go: a unit's population leaves attribute 80
+    /// ([`crate::production::Queue::release_first`]).
     pub(crate) fn produce(
         &mut self,
         p: usize,
@@ -1042,96 +1056,319 @@ impl Turns {
         let Some(production) = unit.production.as_ref() else {
             return Ok(());
         };
-        if 2 < unit.life.state {
-            return Err(Unsupported(
-                "a dying building's production (its list's teardown)",
-            ));
+        if !production.queue.enabled || production.queue.count == 0 {
+            return Ok(());
         }
-        let Some(front) = production.queue.front() else {
+        let busy = !self.players[p].computer
+            && unit
+                .top_action_kind()
+                .is_some_and(|k| matches!(k, MAKE_OBJ | MAKE_TECH | 0x7b..=0x7d));
+        if let Some(production) = self.players[p].objects[i].production.as_mut() {
+            production.queue.waiting = busy;
+        }
+        if busy {
+            return Ok(());
+        }
+        let production = self.players[p].objects[i]
+            .production
+            .as_ref()
+            .expect("above");
+        if production.action.is_none() {
+            let first = *production.queue.first().expect("an entry");
+            let making = if first.tech == -1 {
+                let pop = self
+                    .masters
+                    .get(p)
+                    .and_then(|m| m.get(first.master))
+                    .map_or(0.0, |m| population(&m.storage));
+                if housed(&self.players[p].attributes, pop)? {
+                    if self.players[p].computer {
+                        return self.cancel_queue(p, i);
+                    }
+                    return Ok(());
+                }
+                if let Some(ai) = self.players[p].objects[i].ai.as_mut() {
+                    ai.set_action(MAKE_ACTION);
+                }
+                Making::Unit(MakeObj::for_entry(&first))
+            } else {
+                self.make_research(p, &first)?
+            };
+            self.start_production_action(p, i, making)?;
+        }
+        let code = self.update_production_action(p, i, dt_seconds)?;
+        if !matches!(code, 1..=3) {
+            return Ok(());
+        }
+        if code == 1
+            && let Some(tech) = self.players[p].objects[i]
+                .production
+                .as_ref()
+                .and_then(|q| q.queue.first())
+                .map(|e| e.tech)
+                .filter(|&t| 0 <= t)
+            && self
+                .techs
+                .get(tech as usize)
+                .is_some_and(|d| d.kind == crate::tech::SHARED_KIND)
+            && (tech as usize) < self.players[p].techs.len()
+            && let Some(production) = self.players[p].objects[i].production.as_mut()
+        {
+            production.note_shared_research(tech);
+        }
+        self.end_production_action(p, i)?;
+        let Some(first) = self.players[p].objects[i]
+            .production
+            .as_ref()
+            .and_then(|q| q.queue.first().copied())
+        else {
             return Ok(());
         };
-        if front.tech != -1 {
-            return self.research_step(p, i, dt_seconds);
+        if first.tech == -1 {
+            let pop = self
+                .masters
+                .get(p)
+                .and_then(|m| m.get(first.master))
+                .map_or(0.0, |m| population(&m.storage));
+            self.players[p].add_attribute(QUEUED, -pop)?;
         }
-        let master = front.master;
-        let pop = population(&self.master_of(p, master)?.storage);
-        if !production.action {
-            if housed(&self.players[p].attributes, pop)? {
-                // the building waits: its reason (`+0xc02`, 0x20 or 4) and the events 0x7c and
-                // 0x7d are the interface's; a computer player's cancels its queue
-                if self.players[p].computer {
+        if let Some(production) = self.players[p].objects[i].production.as_mut() {
+            production.queue.release_first();
+        }
+        Ok(())
+    }
+
+    /// The list's add (`FUN_140a977e0`) of `making` to the production list of the building at
+    /// `i` of player `p`: for a building in a state below 3 it joins the list and starts
+    /// (slot 0x28 with 1). A make action (`FUN_140acf0a0`) of a master the player has adds its
+    /// population to attribute 81 and takes state 6; one of a master it lacks stays in state 0
+    /// ("Canceling Train #1a"). (The building's update makes it paid, so the payment test of an
+    /// unpaid one never runs here.) A research (`0x140ad1d80`): its start test
+    /// ([`crate::tech::TechState::start_test`] against what the first entry paid) puts the
+    /// technology in state 2 at the building's master and the action in state 6, with no work
+    /// done; a failed test (its refund, `FUN_1413d15e0`) is not modelled. A building in state 3
+    /// or more deletes the action unstarted (its destructor runs, [`Turns::destroy_action`]).
+    fn start_production_action(
+        &mut self,
+        p: usize,
+        i: usize,
+        making: Making,
+    ) -> Result<(), Unsupported> {
+        use crate::tech::Attributes;
+        if 3 <= self.players[p].objects[i].life.state {
+            return self.destroy_action(p, i, making);
+        }
+        let mut making = making;
+        match &mut making {
+            Making::Unit(make) => {
+                if let Some(m) = self.masters.get(p).and_then(|m| m.get(make.master)) {
+                    let pop = population(&m.storage);
+                    self.players[p].add_attribute(IN_PRODUCTION, pop)?;
+                    make.state = MakeObj::MAKING;
+                }
+            }
+            Making::Research(r) => {
+                let owner = &self.players[p];
+                let t = usize::try_from(r.tech)
+                    .ok()
+                    .filter(|&t| t < owner.techs.len())
+                    .ok_or(Unsupported(
+                        "a research of a technology the tree has not got",
+                    ))?;
+                let def = self
+                    .techs
+                    .get(t)
+                    .ok_or(Unsupported("a technology the data file has not got"))?;
+                let get = |k: i16| owner.get(k);
+                let factors = crate::tech::factors(r.tech, &get)?;
+                let paid = owner.objects[i]
+                    .production
+                    .as_ref()
+                    .and_then(|q| q.queue.first())
+                    .map_or(crate::production::NO_COSTS, |e| e.costs);
+                if !owner.techs[t].start_test(def, factors, &paid, &get)? {
                     return Err(Unsupported(
-                        "a computer player's housed building cancels its queue (FUN_1411cff00)",
+                        "a research whose start test fails (its refund)",
                     ));
                 }
-                return Ok(());
+                let master = owner.objects[i].life.master_id;
+                let state = &mut self.players[p].techs[t];
+                state.state = 2;
+                state.building_master = master;
+                r.state = MakeObj::MAKING;
+                r.progress = 0.0;
             }
-            let unit = &mut self.players[p].objects[i];
-            if let Some(ai) = unit.ai.as_mut() {
-                ai.set_action(MAKE_ACTION);
-            }
-            if let Some(production) = unit.production.as_mut() {
-                production.action = true;
-                // the queue paid for the unit (FUN_1411e7dc0 makes it with 0): `+0x60` set
-                production.make_paid = true;
-            }
-            self.players[p].add_attribute(IN_PRODUCTION, pop)?;
         }
-        let due = self.players[p].objects[i]
+        if let Some(production) = self.players[p].objects[i].production.as_mut() {
+            production.action = Some(making);
+        }
+        Ok(())
+    }
+
+    /// The production list's update (`FUN_140a992b0`) of the building at `i` of player `p`:
+    /// the first action's slot 0x30, or 1 for an empty list.
+    fn update_production_action(
+        &mut self,
+        p: usize,
+        i: usize,
+        dt_seconds: f32,
+    ) -> Result<u8, Unsupported> {
+        let action = self.players[p].objects[i]
+            .production
+            .as_ref()
+            .and_then(|q| q.action);
+        match action {
+            None => Ok(1),
+            Some(Making::Unit(_)) => self.make_step(p, i, dt_seconds),
+            Some(Making::Research(_)) => self.research_step(p, i, dt_seconds),
+        }
+    }
+
+    /// The make action's update (`0x140ad0490`) at the building at `i` of player `p`: in state
+    /// 1 it is done; in state 6 the building's work rate (its powerup, slot 0x6e8, plus its
+    /// master's `work_rate`) times dt adds to its progress, and once its train time
+    /// ([`MakeObj::time`]) is reached (`COMISS`, `JC`: a NaN waits) its unit spawns
+    /// ([`Turns::spawn`]) and it is done; any other state waits. Not modelled: a computer
+    /// player's handicaps (`FUN_141659cf0`), the game's instant work (`+0xc14`,
+    /// `FUN_140c884c0`, 0 as the tick oracle holds it), the spot search's failure (state 10's
+    /// timer, `FUN_140ace630`).
+    fn make_step(&mut self, p: usize, i: usize, dt_seconds: f32) -> Result<u8, Unsupported> {
+        let building = &self.players[p].objects[i];
+        let Some(Some(Making::Unit(make))) = building.production.as_ref().map(|q| q.action) else {
+            unreachable!("the caller's make action");
+        };
+        match make.state {
+            MakeObj::DONE => return Ok(1),
+            MakeObj::MAKING => {}
+            _ => return Ok(0),
+        }
+        if self.players[p].computer {
+            return Err(Unsupported(
+                "a computer player's make action (its handicaps)",
+            ));
+        }
+        let site = self.master_of(p, building.life.master_id)?;
+        let rate = building.work_rate_powerup + site.work_rate;
+        let made = self.masters.get(p).and_then(|m| m.get(make.master));
+        let time = f32::from(make.time(made, building.life.master_id));
+        let progress = rate * dt_seconds + make.progress;
+        if let Some(Some(Making::Unit(m))) = self.players[p].objects[i]
             .production
             .as_mut()
-            .and_then(|production| production.work(dt_seconds).map(|q| q.master));
-        let Some(master) = due else {
+            .map(|q| q.action.as_mut())
+        {
+            m.progress = progress;
+        }
+        if crate::fmath::below_or_unordered(progress, time) {
+            return Ok(0);
+        }
+        let pop = made.map_or(0.0, |m| population(&m.storage));
+        self.spawn(p, i, make.master, pop)?;
+        if let Some(Some(Making::Unit(m))) = self.players[p].objects[i]
+            .production
+            .as_mut()
+            .map(|q| q.action.as_mut())
+        {
+            m.state = MakeObj::DONE;
+        }
+        Ok(1)
+    }
+
+    /// The production list's first action goes (`FUN_140a98e20`, and `FUN_140a98620` for the
+    /// list of one the building's update makes) at the building at `i` of player `p`: its
+    /// destructor ([`Turns::destroy_action`]).
+    pub(crate) fn end_production_action(&mut self, p: usize, i: usize) -> Result<(), Unsupported> {
+        let Some(making) = self.players[p].objects[i]
+            .production
+            .as_mut()
+            .and_then(|q| q.action.take())
+        else {
             return Ok(());
         };
-        self.spawn(p, i, master, pop)?;
+        self.destroy_action(p, i, making)
+    }
+
+    /// A production action's destructor at the building at `i` of player `p`. The make
+    /// action's (`FUN_140ace3f0`): in state 6 or 2, while the game is not over, its unit's
+    /// population leaves attribute 81 and, made without the queue's payment (`+0x60` clear),
+    /// the master's paid costs come back ([`crate::production::refund_master`]); the building's
+    /// unit AI is told the make action completed (0x1fa with 0x26b). The research's: its
+    /// destructor ([`Turns::research_destroyed`]).
+    fn destroy_action(&mut self, p: usize, i: usize, making: Making) -> Result<(), Unsupported> {
+        let make = match making {
+            Making::Unit(make) => make,
+            Making::Research(r) => return self.research_destroyed(p, i, &r),
+        };
+        if matches!(make.state, MakeObj::MAKING | 2) && self.game_state == 0 {
+            let made = self.masters.get(p).and_then(|m| m.get(make.master));
+            let pop = made.map_or(0.0, |m| population(&m.storage));
+            let refund = (!make.paid).then(|| made.cloned()).flatten();
+            let owner = &mut self.players[p];
+            owner.add_attribute(IN_PRODUCTION, -pop)?;
+            if let Some(m) = refund {
+                crate::production::refund_master(&m, 1, owner)?;
+            }
+        }
         let building = &mut self.players[p].objects[i];
-        let state = building.life.state;
-        let id = building.id;
+        let (id, state) = (building.id, building.life.state);
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
                 Notify::own(id, ACTION_COMPLETED, [MAKE_ACTION, 0, 0]),
                 state,
             )?;
         }
-        if let Some(production) = building.production.as_mut() {
-            production.spawned();
-        }
-        self.players[p].add_attribute(QUEUED, -pop)
+        Ok(())
     }
 
-    /// The production step for a research at the front of the queue of the building at `i` of
-    /// player `p` (`FUN_1411e7dc0`). Without a make action the research's comes
-    /// (`TRIBE_Action_Make_Tech`, constructor `FUN_140ad0700`; its effect's first preparation,
-    /// `FUN_1413d1530`, loads graphics and marks the masters an upgrade turns into, `+0x330`:
-    /// the save does not hold the mark, and its readers, the object search `FUN_1411650e0` and
-    /// the masters' slot 0xc0, are not modelled) and
-    /// starts (slot 0x28, `0x140ad1d80`): its start test
-    /// ([`crate::tech::TechState::start_test`] against
-    /// what the queue entry paid) puts the technology in state 2 at the building's master, the
-    /// action in state 6; a failed test (its refund, `FUN_1413d15e0`) is not modelled. Then its
-    /// update (slot 0x30, `0x140ad2a20`) in state 6: the building's work rate (its powerup and
-    /// its master's rate) times dt adds to the progress, 32767 once the technology was
-    /// researched 0x100 times, which the technology's work done takes; a repeatable technology
-    /// or one of the shared kind turns to state 2 first. The research is done once the progress
-    /// reaches the location's time, times the research time modifier (attribute 86, above 0 and
-    /// not an age), plus its adjustment, which is not modelled (`FUN_1413d1740`). Not held: the
-    /// start time (`+0x74`), the human player's sound; not modelled: a computer player's
-    /// handicaps and the game mode `FUN_140c884c0`'s instant research (0 for this recording, as
-    /// for the make action of a unit).
-    fn research_step(&mut self, p: usize, i: usize, dt_seconds: f32) -> Result<(), Unsupported> {
+    /// The research's action (`TRIBE_Action_Make_Tech`, constructor `FUN_140ad0700` with the
+    /// first entry's technology and master and 0, so paid; state 0, nothing done) for player
+    /// `p`: its effect's first preparation (`FUN_1413d1530`) loads graphics and marks the
+    /// masters an upgrade turns into (`+0x330`: the save does not hold the mark, and its
+    /// readers, the object search `FUN_1411650e0` and the masters' slot 0xc0, are not
+    /// modelled); the human player's sound is the interface's. Not held: the start time
+    /// (`+0x74`). A computer player's research (its handicaps) is not modelled.
+    fn make_research(
+        &self,
+        p: usize,
+        first: &crate::production::Entry,
+    ) -> Result<Making, Unsupported> {
+        if self.players[p].computer {
+            return Err(Unsupported("a computer player's research (its handicaps)"));
+        }
+        Ok(Making::Research(MakeTech {
+            state: 0,
+            paid: true,
+            tech: first.tech,
+            master: i32::from(first.master),
+            progress: 0.0,
+        }))
+    }
+
+    /// The research's update (slot 0x30, `0x140ad2a20`) at the building at `i` of player `p`:
+    /// in state 1 it is done, in a state other than 6 it waits; in state 6 the building's work rate (its powerup and its master's rate) times dt adds to
+    /// the progress, 32767 once the technology was researched 0x100 times, which the
+    /// technology's work done takes; a repeatable technology or one of the shared kind turns to
+    /// state 2 first. The research is done once the progress reaches the location's time,
+    /// times the research time modifier (attribute 86, above 0 and not an age), plus its
+    /// adjustment ([`Turns::research_done`]). Not held: the human player's sound; not
+    /// modelled: a computer player's handicaps and the game's instant work (`FUN_140c884c0`,
+    /// 0 as the tick oracle holds it).
+    fn research_step(&mut self, p: usize, i: usize, dt_seconds: f32) -> Result<u8, Unsupported> {
         use crate::tech::Attributes;
         if self.players[p].computer {
             return Err(Unsupported("a computer player's research (its handicaps)"));
         }
         let owner = &self.players[p];
         let building = &owner.objects[i];
-        let production = building
-            .production
-            .as_ref()
-            .expect("the caller's production");
-        let front = production.queue.front().expect("the caller's front");
-        let t = usize::try_from(front.tech)
+        let Some(Some(Making::Research(r))) = building.production.as_ref().map(|q| q.action) else {
+            unreachable!("the caller's research");
+        };
+        match r.state {
+            MakeObj::DONE => return Ok(1),
+            MakeObj::MAKING => {}
+            _ => return Ok(0),
+        }
+        let t = usize::try_from(r.tech)
             .ok()
             .filter(|&t| t < owner.techs.len())
             .ok_or(Unsupported(
@@ -1142,23 +1379,7 @@ impl Turns {
             .get(t)
             .ok_or(Unsupported("a technology the data file has not got"))?;
         let master = building.life.master_id;
-        let tech = front.tech;
-        let get = |k: i16| owner.get(k);
-        let factors = crate::tech::factors(tech, &get)?;
-        if !production.action {
-            if !owner.techs[t].start_test(def, factors, &front.costs, &get)? {
-                return Err(Unsupported(
-                    "a research whose start test fails (its refund)",
-                ));
-            }
-            let owner = &mut self.players[p];
-            owner.techs[t].state = 2;
-            owner.techs[t].building_master = master;
-            let production = owner.objects[i].production.as_mut().expect("above");
-            production.action = true;
-            production.progress = 0.0;
-        }
-        let owner = &self.players[p];
+        let rate = building.work_rate_powerup + self.master_of(p, master)?.work_rate;
         let state = &owner.techs[t];
         let repeatable = state.repeatable(def, false);
         let shared = def.kind == crate::tech::SHARED_KIND;
@@ -1169,28 +1390,34 @@ impl Turns {
             .ok_or(Unsupported("a research at a technology without locations"))?;
         let times = state.times_researched;
         let owner = &mut self.players[p];
-        let production = owner.objects[i].production.as_mut().expect("above");
-        let gain = production.rate * dt_seconds;
         let state = &mut owner.techs[t];
         if state.state != 2 && (repeatable || shared) {
             state.state = 2;
         }
-        production.progress += gain;
+        let mut progress = r.progress + rate * dt_seconds;
         if 0xff < times {
-            production.progress = 32767.0;
+            progress = 32767.0;
         }
-        state.research_done = production.progress;
+        state.research_done = progress;
+        if let Some(Some(Making::Research(r))) = owner.objects[i]
+            .production
+            .as_mut()
+            .map(|q| q.action.as_mut())
+        {
+            r.progress = progress;
+        }
         let mut time = f32::from(location.time as i16);
-        if !crate::tech::is_age(tech) && 0.0 < time_modifier {
+        if !crate::tech::is_age(r.tech) && 0.0 < time_modifier {
             time *= time_modifier;
         }
-        if location.adjustment + time <= production.progress {
+        if location.adjustment + time <= progress {
             if 0xff < times {
                 return Err(Unsupported("a research done 0x100 times (set_state 1)"));
             }
-            return self.research_done(p, i, t, master, repeatable);
+            self.research_done(p, i, t, master, repeatable)?;
+            return Ok(1);
         }
-        Ok(())
+        Ok(0)
     }
 
     /// The research's end in its update (`0x140ad2a20`) once its progress reaches its time:
@@ -1198,11 +1425,10 @@ impl Turns {
     /// technology in state 2 (or with `repeat`) whose work done reaches the `.dat`'s time at the
     /// building (−1 without), times the research time modifier (attribute 86, above 0, not an
     /// age), plus the location's adjustment, is done ([`Turns::complete_research`]); else, or
-    /// without `repeat`, it is left. Then the action ends (`set_state` 1; the event 100 and the
-    /// computer players' slot 0x3a8 are not held), the building's unit AI is told 0x1fa with the
-    /// action value 0x26c, and the production step lets the research go from the queue (the
-    /// action list deletes it, the entry's count lowers). Attribute 269 above 0 (the world's
-    /// effect `+0x128` slot 0x10) is not modelled.
+    /// without `repeat`, it is left. Then the action takes state 1 (the event 100 and the
+    /// computer players' slot 0x3a8 are not held) and the building's unit AI is told 0x1fa with
+    /// the action value 0x26c. Attribute 269 above 0 (the world's effect `+0x128` slot 0x10) is
+    /// not modelled.
     ///
     /// [`TechState::repeatable`]: crate::tech::TechState::repeatable
     fn research_done(
@@ -1237,14 +1463,107 @@ impl Turns {
         }
         let building = &mut self.players[p].objects[i];
         let (id, state) = (building.id, building.life.state);
+        if let Some(Some(Making::Research(r))) =
+            building.production.as_mut().map(|q| q.action.as_mut())
+        {
+            r.state = MakeObj::DONE;
+        }
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
                 Notify::own(id, ACTION_COMPLETED, [crate::turn::RESEARCH_ACTION, 0, 0]),
                 state,
             )?;
         }
-        if let Some(production) = building.production.as_mut() {
-            production.spawned();
+        Ok(())
+    }
+
+    /// The research action's destructor (`FUN_140ad0be0`) at the building at `i` of player
+    /// `p`. Done (state 1), the human player's sound is the interface's; else, while the game is
+    /// not over, a research made unpaid (`+0x60` clear) gives its technology's costs back
+    /// ([`crate::production::refund_tech`]) and the building's unit AI is told the research
+    /// failed (0x1f9 with 0x26c). Then a technology of the shared kind (`FUN_1413d1020`) is in
+    /// state 1 again, neither researched nor queued; another that stacks below its cap (`+0x56`,
+    /// 0x100 above 0x7fff; the player's `+0x648`, which would count too, is not held) takes the
+    /// action's progress as its work done and, done (the progress at least the `.dat`'s time at
+    /// the building times the research time modifier, above 0 and not an age, plus the
+    /// location's adjustment; `COMISS`, `SETNC`), counts one more researched and one less
+    /// queued, in state 1 while one more stays below the cap and it may be queued again (its
+    /// `+0xe` set and its effect no upgrade), else in state 3; not done, state 1.
+    fn research_destroyed(&mut self, p: usize, i: usize, r: &MakeTech) -> Result<(), Unsupported> {
+        use crate::tech::Attributes;
+        let Some(t) = usize::try_from(r.tech)
+            .ok()
+            .filter(|&t| t < self.players[p].techs.len())
+        else {
+            return Ok(());
+        };
+        let def = self
+            .techs
+            .get(t)
+            .ok_or(Unsupported("a technology the data file has not got"))?;
+        if r.state != MakeObj::DONE && self.game_state == 0 {
+            if !r.paid {
+                let owner = &mut self.players[p];
+                let mut state = std::mem::take(&mut owner.techs[t]);
+                let done = crate::production::refund_tech(&mut state, def, r.tech, owner);
+                owner.techs[t] = state;
+                let _ = done?;
+            }
+            let building = &mut self.players[p].objects[i];
+            let (id, state) = (building.id, building.life.state);
+            if let Some(ai) = building.ai.as_mut() {
+                ai.post(
+                    Notify::own(
+                        id,
+                        crate::unit_ai::ACTION_FAILED,
+                        [crate::turn::RESEARCH_ACTION, 0, 0],
+                    ),
+                    state,
+                )?;
+            }
+        }
+        let owner = &self.players[p];
+        let state = &owner.techs[t];
+        if def.kind == crate::tech::SHARED_KIND {
+            let state = &mut self.players[p].techs[t];
+            state.state = 1;
+            state.times_researched = 0;
+            state.pending = 0;
+            return Ok(());
+        }
+        let cap = if 0x7fff < state.research_cap as u16 {
+            0x100
+        } else {
+            state.research_cap
+        };
+        if !(state.stack && state.times_researched < cap) {
+            return Ok(());
+        }
+        let once = !state.allow_multiple || def.upgrades();
+        let master = owner.objects[i].life.master_id;
+        let mut time = def
+            .locations
+            .iter()
+            .find(|l| l.0 == master)
+            .map_or(-1.0, |l| f32::from(l.1));
+        let adjustment = state.location(master).map_or(0.0, |l| l.adjustment);
+        let modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
+        if !crate::tech::is_age(r.tech) && 0.0 < modifier {
+            time *= modifier;
+        }
+        let done = adjustment + time <= r.progress;
+        let state = &mut self.players[p].techs[t];
+        state.research_done = r.progress;
+        if done {
+            state.times_researched = state.times_researched.wrapping_add(1);
+            state.pending = state.pending.wrapping_sub(1);
+            state.state = if i32::from(state.times_researched) < i32::from(cap) && !once {
+                1
+            } else {
+                3
+            };
+        } else {
+            state.state = 1;
         }
         Ok(())
     }
@@ -1258,9 +1577,12 @@ impl Turns {
     /// building without a gather point (`+0xc30` 0) spawns the unit idle, its spot facing nothing;
     /// one whose unit AI holds a command queue (slot 0x218) is not modelled.
     ///
+    /// The player's tracker lets its queue place go ([`crate::tracker::Tracker::unplace`], the
+    /// counter one less).
+    ///
     /// Not held: its facet and angle, its powerup offset, the building's `+0xc1c` group (unsaved), the game's events
-    /// (`FUN_140c898a0`), the player's queue counts (`+0x18`, `FUN_14104f330`) and per-master
-    /// counts (slot 0x398's `+0x13b0`), the sounds and particles (`FUN_1411a52e0`).
+    /// (`FUN_140c898a0`), the per-master counts (slot 0x398's `+0x13b0`), the sounds and
+    /// particles (`FUN_1411a52e0`).
     fn spawn(&mut self, p: usize, i: usize, master: i16, pop: f32) -> Result<(), Unsupported> {
         if self.players[p].computer {
             return Err(Unsupported(
@@ -1297,8 +1619,12 @@ impl Turns {
         }
         let point = self.spot_beside(p, i, &made, toward)?;
         let new = self.combat_object(p, master, &made, [point[0], point[1], position[2]])?;
+        let class = self.tracker_key(p, master).class;
         let owner = &mut self.players[p];
         owner.add_attribute(IN_PRODUCTION, -pop)?;
+        // its queue place goes (FUN_14104fb00 with -1, FUN_14104f330)
+        owner.tracker.queued -= 1;
+        owner.tracker.unplace(master, class);
         let (building_id, state) = (owner.objects[i].id, owner.objects[i].life.state);
         if let Some(ai) = owner.objects[i].ai.as_mut() {
             ai.post(

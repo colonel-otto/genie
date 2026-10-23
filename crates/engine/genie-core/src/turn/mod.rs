@@ -210,9 +210,9 @@ const DROP_SITE_MASTERS: [i16; 8] = [562, 584, 621, 68, 1808, 50, 1187, 199];
 const QUEUE_LIMIT: usize = 15;
 /// A computer player's QUEUE fills a building's queue to at most 2 (`FUN_141614450`).
 const COMPUTER_QUEUE_LIMIT: usize = 2;
-/// The game type whose QUEUE trains one unit in the first age (`FUN_141614450`, the settings'
-/// `+0x34`).
-const ONE_UNIT_GAME: u8 = 0x10;
+/// The game mode whose QUEUE trains one military unit at a time in the first age
+/// (`FUN_141614450`, the settings' `+0x34`).
+const ONE_UNIT_GAME: i32 = 0x10;
 /// The Hunt's search timer: it tells its unit AI again every 10 seconds (`0xc1200000`, in
 /// `0x140ac60e0` and `0x140ac7a00`).
 const SEARCH_AGAIN: f32 = -10.0;

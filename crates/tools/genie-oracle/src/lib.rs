@@ -436,7 +436,7 @@ fn unit(
             action: None,
         });
     }
-    let production = production(object, objects).map(|p| unit.production = p);
+    let production = production(object).map(|p| unit.production = p);
     let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.mover = m);
     unit.unmodelled_action = imported.and(production).and(moving).err();
     unit
@@ -1586,21 +1586,25 @@ fn build_range(
         ))
 }
 
-/// A saved building's production (`TRIBE_Building_Object`'s queue and its make action): each queued
-/// unit with its train time, the make action's work done, and the building's work rate (its
-/// `mWorkRatePowerup` plus its master's `work_rate`). `Ok(None)`: the building produces nothing.
+/// A saved building's production (`TRIBE_Building_Object`'s queue, its production list's action
+/// and its local lists, `FUN_1411df160`): every slot of the queue (`mProductionQueueSize` of them,
+/// the stale ones past the count too) with its count, total and enabled flag; the load numbers the
+/// slots' serials from 0 and leaves the building's next serial (`+0xcd8`) at the slot count; the
+/// change counter (`+0xc00`) and `+0xc01` start at 0. The action: a unit's make action or a
+/// research, each with its state and `+0x60` (the base's `subActionValue`). `Ok(None)`: a building
+/// without slots, action or local lists.
 fn production(
     object: &genie_save::Object,
-    objects: &PlayerObjects,
 ) -> Result<Option<genie_core::production::Production>, Unsupported> {
+    use genie_core::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
     let Some(building) = object.tribe_building_object.as_deref() else {
         return Ok(None);
     };
-    let queue: std::collections::VecDeque<_> = building
+    let slots: Vec<Entry> = building
         .production_queue
         .iter()
-        .take(building.production_queue_count.max(0) as usize)
-        .flat_map(|e| {
+        .enumerate()
+        .map(|(k, e)| {
             let c = &e.production_queue_costs;
             let word = |k: usize| [c[k], c[k + 1], c[k + 2], c[k + 3]];
             let cost = |j: usize| {
@@ -1609,40 +1613,52 @@ fn production(
                     f32::from_le_bytes(word(8 * j + 4)),
                 )
             };
-            let unit = genie_core::production::Queued {
+            Entry {
                 master: e.production_queue_master_unit_id,
+                count: e.production_queue_unit_count,
                 tech: e.production_queue_tech_id,
-                train_time: f32::from(e.production_queue_train_time),
                 costs: [cost(0), cost(1), cost(2)],
-            };
-            std::iter::repeat_n(unit, e.production_queue_unit_count.max(0) as usize)
+                serial: k as i64,
+                button: e.production_queue_button_location_id,
+                train_time: e.production_queue_train_time,
+            }
         })
         .collect();
-    // the make action, if the building made it yet (it comes in the building's next update)
-    let progress = match building.production_queue_actions.entries().next() {
-        None if queue.is_empty() => return Ok(None),
+    let action = match building.production_queue_actions.entries().next() {
         None => None,
-        Some((102, action)) => Some((
-            action
+        Some((102, action)) => {
+            let make = action
                 .tribe_action_make_obj
                 .as_deref()
-                .ok_or(Unsupported("a saved make action without its part"))?
-                .work_done,
-            // `+0x60` is the base's subActionValue
-            action.base().is_some_and(|b| b.sub_action_value != 0),
-        )),
-        // a research's make action: its progress (its state, 6, and start time are not held)
+                .ok_or(Unsupported("a saved make action without its part"))?;
+            let base = action
+                .base()
+                .ok_or(Unsupported("a saved make action without its base"))?;
+            Some(Making::Unit(MakeObj {
+                state: base.state,
+                paid: base.sub_action_value != 0,
+                master: make.obj_id,
+                progress: make.work_done,
+                unique_id: make.unique_id,
+                button: make.button_location_id,
+                train_time: make.train_time,
+            }))
+        }
         Some((103, action)) => {
             let tech = action
                 .tribe_action_make_tech
                 .as_deref()
                 .ok_or(Unsupported("a saved research action without its part"))?;
-            if action.base().is_some_and(|b| b.state != 6) {
-                return Err(Unsupported(
-                    "a saved research action in a state other than 6",
-                ));
-            }
-            Some((tech.m_research_progress, false))
+            let base = action
+                .base()
+                .ok_or(Unsupported("a saved research action without its base"))?;
+            Some(Making::Research(MakeTech {
+                state: base.state,
+                paid: base.sub_action_value != 0,
+                tech: tech.tech_id,
+                master: tech.unique_id,
+                progress: tech.m_research_progress,
+            }))
         }
         Some(_) => {
             return Err(Unsupported(
@@ -1650,25 +1666,30 @@ fn production(
             ));
         }
     };
-    let master = building
-        .tribe_combat_object
-        .rge_combat_object
-        .rge_action_object
-        .rge_moving_object
-        .rge_animated_object
-        .rge_static_object
-        .master_obj;
-    let work_rate = objects
-        .master(master)
-        .and_then(combat_master)
-        .map(|c| c.rge_master_action_object.work_rate)
-        .ok_or(Unsupported("a building master without an action part"))?;
-    Ok(Some(genie_core::production::Production {
-        queue,
-        action: progress.is_some(),
-        make_paid: progress.is_some_and(|(_, paid)| paid),
-        progress: progress.map_or(0.0, |(work, _)| work),
-        rate: building.tribe_combat_object.work_rate_powerup + work_rate,
+    let (disabled, available, researched) = (&building.value, &building.value_2, &building.value_3);
+    if slots.is_empty()
+        && action.is_none()
+        && disabled.is_empty()
+        && available.is_empty()
+        && researched.is_empty()
+    {
+        return Ok(None);
+    }
+    let next_serial = slots.len() as i64;
+    Ok(Some(Production {
+        queue: Queue {
+            slots,
+            count: building.production_queue_count,
+            total: building.production_queue_total_units,
+            enabled: building.production_queue_enabled != 0,
+            changes: 0,
+            waiting: false,
+            next_serial,
+        },
+        action,
+        disabled_techs: disabled.clone(),
+        researched_techs: researched.clone(),
+        available_units: available.clone(),
     }))
 }
 
@@ -2150,6 +2171,8 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 history: history(&p.world_player().history),
                 // the load files the objects (Turns::load_trackers, once the masters are in)
                 tracker: genie_core::tracker::Tracker::default(),
+                // +0x1378 is not saved
+                one_military_queued: false,
             }
         })
         .collect();
@@ -3695,9 +3718,8 @@ fn patrol_command(c: &de::command::Patrol) -> Option<Command> {
 }
 
 /// QUEUE (`do_command` case 0x81, `MULTI_QUEUE)`: `num` buildings, the unit `t_id`, `count` of it and
-/// the train button (`button_location_id`, -1 for none); the building ids follow. The cost, the
-/// train time and the building's work rate come from the save (the player's masters and the
-/// building).
+/// the train button (`button_location_id`, -1 for none); the building ids follow. genie-core reads
+/// the costs, the train time and the building's work rate from its own state.
 fn queue_command(packet: &de::command::MultiQueue, sections: &[PlayerSection<'_>]) -> Command {
     let player = packet.commp_id as usize;
     let unmodelled = |why| Command::Unmodelled {
@@ -3710,103 +3732,16 @@ fn queue_command(packet: &de::command::MultiQueue, sections: &[PlayerSection<'_>
     if packet.num != 1 {
         return unmodelled("QUEUE at several buildings");
     }
-    let (unit, amount, button) = (packet.t_id, packet.count, packet.button_location_id);
-    let Some(section) = sections.get(player) else {
+    if sections.get(player).is_none() {
         return unmodelled("QUEUE by a player the save does not have");
-    };
-    // the generic villager becomes the villager before anything is read (FUN_1411cbc40)
-    let master_id = if unit == 0x712 { 0x53 } else { unit };
-    match queue_data(section, (unit, master_id), button, building) {
-        Ok(QueueData {
-            train_time,
-            rate,
-            cost,
-        }) => Command::Queue {
-            player,
-            building,
-            unit,
-            amount: amount.max(0) as u16,
-            train_time,
-            rate,
-            cost,
-        },
-        Err(why) => Command::Unmodelled { player, why },
     }
-}
-
-/// What QUEUE needs from the save: the unit's train time at the building, the building's work rate,
-/// and the unit's cost entries `(resource, amount, paid)`.
-struct QueueData {
-    train_time: f32,
-    rate: f32,
-    cost: Vec<(i16, i16, bool)>,
-}
-
-/// QUEUE's train time, the building's work rate and the unit's cost, from the save.
-fn queue_data(
-    section: &PlayerSection<'_>,
-    (raw_id, master_id): (i16, i16),
-    button: i32,
-    building: i32,
-) -> Result<QueueData, Unsupported> {
-    let objects = section.objects();
-    let combat = |id| {
-        objects
-            .master(id)
-            .and_then(|m| m.tribe_master_combat_object.as_deref())
-    };
-    let unit = combat(master_id).ok_or(Unsupported("QUEUE of a master without a combat part"))?;
-    let building_object = section
-        .live_objects()
-        .find(|o| o.static_part().is_some_and(|s| s.id == building))
-        .ok_or(Unsupported("QUEUE at a building not in the save"))?;
-    let building_master = building_object
-        .static_part()
-        .expect("found by it")
-        .master_obj;
-    let powerup = building_object
-        .combat()
-        .map_or(0.0, |c| c.work_rate_powerup);
-    let work_rate = objects
-        .master(building_master)
-        .and_then(|m| combat_master(m))
-        .map(|c| c.rge_master_action_object.work_rate)
-        .ok_or(Unsupported("a building master without an action part"))?;
-    // FUN_140acf280: the train location of this building and button, else the first
-    let train_time = |c: &genie_save::generated::world::TribeMasterCombatObject| {
-        c.train_location
-            .iter()
-            .find(|t| {
-                button != -1
-                    && t.train_location_id == building_master
-                    && t.button_location_id == button as u8
-            })
-            .or_else(|| c.train_location.first())
-            .map(|t| t.train_time)
-    };
-    let time = train_time(unit).ok_or(Unsupported("a master without a train location"))?;
-    // a villager is drawn male or female, and each pays and trains by its own master: the slice
-    // takes one cost and one time, so both must agree
-    if master_id == 0x53 {
-        let female = combat(0x125).ok_or(Unsupported("no female villager master"))?;
-        if female.build_inventory != unit.build_inventory || train_time(female) != Some(time) {
-            return Err(Unsupported("villager sexes that cost or train differently"));
-        }
+    Command::Queue {
+        player,
+        building,
+        unit: packet.t_id,
+        amount: packet.count.max(0) as u16,
+        button: packet.button_location_id,
     }
-    // the player's part tests the cost of the packet's master, the generic villager's for 0x712
-    if raw_id == 0x712 {
-        let generic = combat(0x712).ok_or(Unsupported("no generic villager master"))?;
-        if generic.build_inventory != unit.build_inventory {
-            return Err(Unsupported("a generic villager that costs differently"));
-        }
-    }
-    // the three entries as the master holds them: the queue entry keeps them all
-    let cost = build_entries(&unit.build_inventory);
-    Ok(QueueData {
-        train_time: f32::from(time),
-        rate: powerup + work_rate,
-        cost,
-    })
 }
 
 /// BUILD (`FUN_140e7a400`): `num` builders put a foundation of master `o_id` at (`x`, `y`); the
@@ -4038,10 +3973,10 @@ fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32;
             top_action: top_action(unit).or_else(|| {
                 unit.production
                     .as_ref()
-                    .filter(|p| p.action)
-                    .map(|_| TopAction {
+                    .and_then(|p| p.action)
+                    .map(|a| TopAction {
                         kind: -1,
-                        state: genie_core::production::Production::MAKING,
+                        state: a.state(),
                     })
             }),
         })

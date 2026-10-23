@@ -1674,7 +1674,8 @@ impl Turns {
 
     /// `UNIT_ORDER`'s action 4 (`FUN_14161e370` case 4) to the objects `ids`: each the world
     /// holds (any player's) that is a building in state 2 cancels the `index`-th unit of its
-    /// queue ([`Turns::cancel_queued`], `all` the command's `+0x1d`).
+    /// queue ([`Turns::cancel_queued`], `all` the command's `+0x1d`), then game mode 16's tail
+    /// ([`Turns::cancel_tail`]).
     pub(crate) fn cancel_order(
         &mut self,
         ids: &[i32],
@@ -1692,7 +1693,8 @@ impl Turns {
             if unit.life.state != 2 || self.master_of(p, unit.life.master_id)?.kind < 80 {
                 continue;
             }
-            self.cancel_queued(p, idx, index as usize, all)?;
+            self.cancel_queued(p, idx, index, all)?;
+            self.cancel_tail(p, idx, index)?;
         }
         Ok(())
     }
