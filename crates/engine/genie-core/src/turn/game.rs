@@ -275,7 +275,8 @@ impl Turns {
 
 /// The pending debit's entry of gold (`FUN_141630ef0` with 3).
 const GOLD: usize = 3;
-/// What Treason's command takes off the pending debit of gold (`DAT_142eb5bd4`, 400.0).
+/// What Treason's command takes off the pending debit of gold (`DAT_142eb5bd4`, 400.0, read at
+/// `0x140e7c73d`).
 const TREASON_COST: f32 = 400.0;
 
 #[cfg(test)]

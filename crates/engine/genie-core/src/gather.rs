@@ -59,7 +59,7 @@ pub const FARM_WAIT: u8 = 0xf3;
 const SEARCH_WAIT: f32 = -10.0;
 /// `set_state(0xf3)`'s timer: a second (`0xbf800000`, an immediate in `0x140a8cd40`).
 const FARM_WAIT_TIME: f32 = -1.0;
-/// `mGatherX` of none (`DAT_14330ec20`, −1.0).
+/// `mGatherX` of none (`DAT_14330ec20`, −1.0, read at `0x140a8d1c6`).
 const NO_GATHER_POINT: f32 = -1.0;
 /// The gatherers whose gather without a target waits for another farm (`set_state(0xf3)`,
 /// `0x140a8e1d0`'s cases 3, 5 and 6: masters 259, 214, 1891 and 1892).

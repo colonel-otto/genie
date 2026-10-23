@@ -16,8 +16,8 @@ const CASTLE_MODE_1: i16 = 0xd1;
 const KING: i16 = 0x1b2;
 /// The flare each ally gets at a king (`0x2b9`).
 const FLARE4: i16 = 0x2b9;
-/// The gold (attribute 3) the treason costs: 400 (`DAT_142eb5bd4`), 200 (`DAT_142eb0f54`) with
-/// attribute 197 above 0.
+/// The gold (attribute 3) the treason costs: 400 (`DAT_142eb5bd4`, read at `0x141620446`), 200
+/// (`DAT_142eb0f54`, read at `0x1416204d5`) with attribute 197 above 0.
 const GOLD: usize = 3;
 const TREASON_COST: f32 = 400.0;
 const TREASON_DISCOUNT_COST: f32 = 200.0;

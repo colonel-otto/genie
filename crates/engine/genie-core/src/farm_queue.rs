@@ -31,8 +31,11 @@ const FISHING_SHIP_CLASS: i16 = 21;
 /// against attribute 218 (`FUN_141663f80`).
 const TOWN_CENTRE_621: i16 = 0x26d;
 const TOWN_CENTRE_LIMIT: usize = 218;
-/// A reseeding gatherer's farm spot of none (`DAT_14330ec20`, −1.0).
+/// A reseeding gatherer's farm spot of none (`DAT_14330ec20`, −1.0, read at `0x140a8aa9e`).
 const NO_FARM: f32 = -1.0;
+/// The one farm or fish trap a reseed pays (`DAT_14330eb8c`, 1.0, read at `0x140a8ac75` and
+/// `0x140a8b025`).
+const ONE_FARM: f32 = 1.0;
 
 /// Which of a player's queues.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -271,8 +274,8 @@ impl Turns {
                 .masters
                 .get(p)
                 .ok_or(Unsupported("a reseed without the player's masters"))?;
-            if cost_test(masters, master, 1.0, false, &self.players[p])? {
-                if !pay(masters, master, 1.0, &mut self.players[p])? {
+            if cost_test(masters, master, ONE_FARM, false, &self.players[p])? {
+                if !pay(masters, master, ONE_FARM, &mut self.players[p])? {
                     return Ok(false);
                 }
             } else {
