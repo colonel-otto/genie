@@ -128,6 +128,8 @@ const BOAR_AI: u32 = 4;
 pub(crate) const SOLDIER_AI: u32 = 13;
 /// The tower's factory type (`TribeTowerUnitAIModule`, the town centre's too).
 const TOWER_AI: u32 = 15;
+/// The siege tower's factory type (`TribeSiegeTowerUnitAIModule`, master 1105's).
+const SIEGE_TOWER_AI: u32 = 0x12;
 /// The seconds without a sighting after which enemies found are the owner's news
 /// (`DAT_142eb0f4c`).
 const ENEMY_SIGHTING_GAP: f32 = crate::image::unit_ai::ENEMY_SIGHTING_GAP;
@@ -1642,8 +1644,8 @@ const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
         // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), lion (5,
         // slot 72 FUN_140c1fb70), transport ship (11, slot 72 0x140c21d20), soldier (13, slot 72
         // FUN_140c20db0), tower (15, the base's slot 72 FUN_140c564c0), building (17, slot 72
-        // 0x140c1e600, which does nothing)
-        2 | 4 | 5 | 11 | 13 | 15 | 17 => Ok(Retarget::Base),
+        // 0x140c1e600, which does nothing), siege tower (0x12, slot 72 FUN_140c20690)
+        2 | 4 | 5 | 11 | 13 | 15 | 17 | SIEGE_TOWER_AI => Ok(Retarget::Base),
         _ => Err(Unsupported("unit-AI type not modelled")),
     }
 }
@@ -2693,7 +2695,9 @@ impl UnitAi {
             2 => self.hunted_idle(at, computer, ai, side, fx),
             BOAR_AI => Ok(self.boar_idle(at, ai, fx)),
             5 => self.lion_idle(at, ai, side, fx),
-            CIVILIAN | 11 => {
+            // the civilian's (FUN_140c1e610), the transport ship's (0x140c21d20) and the siege
+            // tower's (FUN_140c20690): the cap, then 5
+            CIVILIAN | 11 | SIEGE_TOWER_AI => {
                 self.cap_human_order(fx);
                 Ok(false)
             }
@@ -3896,9 +3900,11 @@ impl UnitAi {
     /// new attacker (`FUN_140bf4cb0`) that is not its target makes a human player's ship call
     /// for help ([`call_for_help`]); the attacker joins the set (`FUN_140b43f30`) and the unit
     /// is under attack (`FUN_14119d2d0` with 1). With an order it ignores the damage ("I have an
-    /// order, I'm ignoring this damage notify.", 2); else, with no action or its top action in
-    /// state 2, it runs from its attackers (slot 0x160 with 1, [`UnitAi::run_away`]) and
-    /// returns 3.
+    /// order, I'm ignoring this damage notify.", 2); the siege tower's (`FUN_140c28400`) also
+    /// when a human player's tower is in a group (`+0x6d0`) that is not idle (`FUN_141017ad0`:
+    /// "I have a group that won't let me move and a human owner"). Else, with no action or its
+    /// top action in state 2, it runs from its attackers (slot 0x160 with 1,
+    /// [`UnitAi::run_away`]) and returns 3.
     #[allow(clippy::too_many_arguments)]
     fn transport_damaged(
         &mut self,
@@ -3922,6 +3928,10 @@ impl UnitAi {
         let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
         if self.current_order != -1 {
+            return Ok(GO_ON);
+        }
+        let held_by_group = at.group.is_some_and(|g| !g.idle) && !computer;
+        if self.ai_type == SIEGE_TOWER_AI && held_by_group {
             return Ok(GO_ON);
         }
         if !at.busy || held_action_state(at.action_state)? == 2 {
@@ -4111,8 +4121,8 @@ impl UnitAi {
 
     /// `AttackObject` (slot 0xb8, `FUN_140c43720`): `+0x1d5` clears; not `force`d, an AI with an
     /// action fails (false). The target must be in the world; its slot 0xa0 with `any` must let it
-    /// attack the target: the boar's, the transport ship's and the livestock's
-    /// (`FUN_140c48400`) anything, the building's (`FUN_140c18b60`) nothing, the lion's
+    /// attack the target: the base's (`FUN_140c48400`: the boar's, the ranged units', the
+    /// ships', the artifact's, the siege tower's and the livestock's) anything, the building's (`FUN_140c18b60`) nothing, the lion's
     /// ([`lion_may_attack`]), the civilian's ([`civilian_may_attack`]), the soldier's and the
     /// tower's ([`UnitSide::may_attack`]; the hunted animal's, `FUN_140c18d00`, reads its action
     /// list, slot 0x538, and is not modelled); then the unit's attack command
@@ -4148,8 +4158,10 @@ impl UnitAi {
                 },
             };
             let may = match self.ai_type {
-                // FUN_140c48400: the boar's, the transport ship's and the livestock's
-                4 | 11 | 19 => true,
+                // FUN_140c48400, the base's: the boar's, the ranged units' (6, 7), the trade
+                // ship's, the transport ship's, the fishing ship's, the artifact's, the siege
+                // tower's and the livestock's
+                4 | 6 | 7 | 10 | 11 | 12 | ARTIFACT_AI | SIEGE_TOWER_AI | 19 => true,
                 5 => any || lion_may_attack(at.attack_priority, t.class),
                 CIVILIAN => civilian_may_attack(at.attack_priority, t.class),
                 // FUN_140c18b60
@@ -4372,6 +4384,15 @@ impl UnitAi {
             // the transport ship (FUN_140c2a580): its damage notify, and a missile's warning it
             // takes as damage unless it dodges; any other notify is the base handler's
             11 => match n.kind {
+                MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
+                DAMAGED | MISSILE_WARNING => {
+                    self.transport_damaged(n, time, at, computer, ai_rng, side, fx)
+                }
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            },
+            // the siege tower (FUN_140c28400): as the transport ship's, but a human player's
+            // tower in a group that is not idle ignores the damage
+            SIEGE_TOWER_AI => match n.kind {
                 MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
                 DAMAGED | MISSILE_WARNING => {
                     self.transport_damaged(n, time, at, computer, ai_rng, side, fx)
@@ -11516,5 +11537,87 @@ mod tests {
             Ok(BREAK)
         );
         assert_eq!(fx.len(), 1);
+    }
+
+    /// The siege tower (0x12): its idle check (`FUN_140c20690`) only caps the last human order
+    /// time; its damage notify (`FUN_140c28400`) is the transport ship's, but a human player's
+    /// tower in a group that is not idle ignores the damage (2), and one in an idle group runs.
+    #[test]
+    fn a_siege_tower_in_a_busy_group_ignores_its_damage() {
+        let mut u = idle(SIEGE_TOWER_AI);
+        let mut fx = Vec::new();
+        let mut r = rng();
+        assert_eq!(
+            u.process_idle(
+                &Surroundings::default(),
+                false,
+                &mut r,
+                &mut Recorder::default(),
+                &mut fx
+            ),
+            Ok(false)
+        );
+        assert_eq!(
+            (fx, r.draws),
+            (vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)], 0)
+        );
+        let n = Notify::own(77, DAMAGED, [77, 40, 0]);
+        let mut side = StandSide {
+            refusals: 0,
+            tested: Vec::new(),
+        };
+        let tower = |idle_group: bool| {
+            let (mut u, mut at) = attacked_transport();
+            u.ai_type = SIEGE_TOWER_AI;
+            at.group = Some(GroupState {
+                idle: idle_group,
+                ..GroupState::default()
+            });
+            (u, at)
+        };
+        let (mut u, at) = tower(false);
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(GO_ON)
+        );
+        assert_eq!((fx.len(), u.attackers.clone()), (0, vec![77]));
+        let (mut u, at) = tower(true);
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(fx.len(), 1);
+    }
+
+    /// `AttackObject` (slot 0xb8) of the types whose slot 0xa0 is the base's (`FUN_140c48400`,
+    /// anything): the ranged units', the ships', the artifact's and the siege tower's attack a
+    /// unit the world holds; the AI takes the attack and the target.
+    #[test]
+    fn the_base_attack_check_lets_every_type_without_its_own_attack() {
+        for ai_type in [6, 7, 10, 11, 12, ARTIFACT_AI, SIEGE_TOWER_AI] {
+            let mut u = idle(ai_type);
+            let at = Surroundings {
+                units: vec![UnitSeen {
+                    id: 77,
+                    class: 6,
+                    position: [3.0, 4.0, 0.0],
+                    ..UnitSeen::default()
+                }],
+                ..Surroundings::default()
+            };
+            let mut side = Recorder::default();
+            let mut fx = Vec::new();
+            assert_eq!(
+                u.attack_object(77, true, false, &at, &mut side, &mut fx),
+                Ok(true),
+                "type {ai_type}"
+            );
+            assert_eq!(
+                (side.attacks, u.current_action, u.current_target),
+                (vec![(77, true)], ATTACK_ACTION, 77)
+            );
+        }
     }
 }
