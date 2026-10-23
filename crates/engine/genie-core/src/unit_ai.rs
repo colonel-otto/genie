@@ -246,12 +246,13 @@ pub enum Effect {
 }
 
 /// What a full update that took an order on a target ([`Effect::OrderOnTarget`]) leaves for
-/// after it: the game runs the order inside the update (slot 0x230), so the retarget check's
-/// outcome and the idle part's end read the action, target and order it gave the AI.
+/// its rest ([`UnitAi::after_order`]): the game runs the order inside the update (slot 0x230),
+/// so slot 73 and the idle part read the action, target and order it gave the AI; the idle part
+/// reads what the update read of its unit before the order.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AfterOrder {
-    /// The retarget check's timer ran out (it was redrawn): its outcome is to come.
-    pub retargeted: bool,
+    /// The unit was busy after the notifies (slot 0x430 again, the update's `busy`).
+    pub busy: bool,
     /// The unit's group as the update read it ([`Surroundings::group`]).
     pub group: Option<GroupState>,
 }
@@ -2954,40 +2955,27 @@ impl UnitAi {
         {
             self.run_orders(at, side, &mut fx)?;
         }
-        let ordered = fx.iter().any(|e| matches!(e, Effect::OrderOnTarget(_)));
-        let mut retargeted = false;
-        match retarget {
-            Retarget::Base => {
-                retargeted = self.retarget_check(world_time, computer, at, ai, ordered, &mut fx)?;
-            }
-            // with an order on a target taken, the game's slot 73 reads what the order's work
-            // gave the AI, which the caller runs after the update: the check is not run then
-            Retarget::Civilian if !ordered => self.civilian_misc(at, &mut fx)?,
-            Retarget::Civilian | Retarget::Never => {}
-            Retarget::Artifact => self.artifact_misc(at, side, &mut fx)?,
-        }
-        if ordered {
-            self.idle_part_before_order(busy, at)?;
-        } else {
-            self.idle_part(busy, at, computer, ai, side, &mut fx)?;
-        }
-        self.look_around(computer, ai)?;
-        self.boar_tail(at, computer, ai, side, &mut fx)?;
-        if ordered {
+        // an order on a target ran its work here (slot 0x230's case 0x2db, the unit's slot
+        // 0x128): the caller gives it, then the rest of the update reads what it gave the AI
+        // ([`UnitAi::after_order`])
+        if fx.iter().any(|e| matches!(e, Effect::OrderOnTarget(_))) {
             fx.push(Effect::AfterOrder(AfterOrder {
-                retargeted,
+                busy,
                 group: at.group,
             }));
+            return Ok(fx);
         }
+        self.update_tail(
+            retarget, world_time, computer, busy, at.group, at, ai, side, &mut fx,
+        )?;
         Ok(fx)
     }
 
-    /// The full update's tail after the order on a target it took ([`AfterOrder`]), with what the
-    /// order gave the AI: processMisc's order part on a defend or follow order is not modelled;
-    /// a retarget check whose timer ran out decides on the order's target (`target`: its owner
-    /// and class) and the unit's weapon range ([`UnitAi::retarget_outcome`]); then the idle
-    /// part's end ([`UnitAi::idle_part`] past its slot 72): an action or a target keeps the idle
-    /// timer of a player above Gaia at 0.
+    /// The full update's rest after the order on a target it took ([`AfterOrder`]), which the
+    /// game runs after the order's work inside the update and the caller once it gave the work:
+    /// [`UnitAi::update`]'s tail with what the order gave the AI and the unit, `at` its
+    /// surroundings then; the idle part reads the update's own `busy` and group from before the
+    /// order.
     ///
     /// # Errors
     ///
@@ -2995,26 +2983,57 @@ impl UnitAi {
     pub fn after_order(
         &mut self,
         after: AfterOrder,
-        player: usize,
-        class: i16,
-        weapon_range: f32,
-        target: Option<(usize, i16)>,
+        world_time: u32,
         computer: bool,
+        at: &Surroundings,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+    ) -> Result<Vec<Effect>, Unsupported> {
+        let retarget = retarget_kind(self.ai_type)?;
+        let mut fx = Vec::new();
+        self.update_tail(
+            retarget,
+            world_time,
+            computer,
+            after.busy,
+            after.group,
+            at,
+            ai,
+            side,
+            &mut fx,
+        )?;
+        Ok(fx)
+    }
+
+    /// The full update after its order queue (`0x140c66b10` from its slot 73 call on): slot 73
+    /// (the base's retarget check [`UnitAi::retarget_check`], the villager's
+    /// [`UnitAi::civilian_misc`], the artifact's [`UnitAi::artifact_misc`], livestock's
+    /// nothing), the idle part ([`UnitAi::idle_part`]), the look-around check and the boar's
+    /// tail. `busy` and `group` are what the update read before its order queue.
+    #[allow(clippy::too_many_arguments)]
+    fn update_tail(
+        &mut self,
+        retarget: Retarget,
+        world_time: u32,
+        computer: bool,
+        busy: bool,
+        group: Option<GroupState>,
+        at: &Surroundings,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
-        let order = match (self.current_order, self.current_action) {
-            (-1, -1) => -1,
-            (-1, action) => action + 100,
-            (order, _) => order,
-        };
-        if matches!(order, DEFEND_ORDER | FOLLOW_ORDER) {
-            return Err(Unsupported(
-                "processMisc's defend or follow order after an order on a target",
-            ));
+        match retarget {
+            Retarget::Base => {
+                let _ = self.retarget_check(world_time, computer, at, ai, fx)?;
+            }
+            Retarget::Civilian => self.civilian_misc(at, fx)?,
+            Retarget::Never => {}
+            Retarget::Artifact => self.artifact_misc(at, side, fx)?,
         }
-        if after.retargeted {
-            self.retarget_outcome(target, weapon_range, computer, None)?;
-        }
-        self.idle_part_end(class, player, after.group)
+        self.idle_part(busy, group, at, computer, ai, side, fx)?;
+        self.look_around(computer, ai)?;
+        self.boar_tail(at, computer, ai, side, fx)
     }
 
     /// The boar's slot 4 (`0x140c2c010`) after the base, however that ended: its second idle
@@ -4458,9 +4477,7 @@ impl UnitAi {
     /// The artifact's slot 73 (`FUN_140c21d40`): its processIdle (slot 0x240 with 1,
     /// [`UnitAi::artifact_idle`]); once another player took it over (6) its target goes
     /// (`FUN_140c5e1e0`), its action stops (slot 0xb0 with 1) and its idle timer is 0 (it
-    /// answers 10), else 9. With an order on a target taken in the same update, the game runs the
-    /// order's work first; the slice's runs after the update (the caller's,
-    /// [`Effect::OrderOnTarget`]).
+    /// answers 10), else 9.
     fn artifact_misc(
         &mut self,
         at: &Surroundings,
@@ -5343,14 +5360,17 @@ impl UnitAi {
         self.order_now(order, None, Some(place), None, fx)
     }
 
-    /// The idle part of the full update: a unit without an action value (and without a target
-    /// or not busy) runs slot 72 once its idle timer passes its timeout, unless it is a busy unit
-    /// of class 20; otherwise an action or a target keeps the idle timer of a player above Gaia
-    /// at 0. Patrol orders, class 3's and 52's actions `0x26b`/`0x26c` and action `0x2c0` take
-    /// branches the slice does not model.
+    /// The idle part of the full update (`0x140c66b10` after slot 73): a unit without an action
+    /// value (and without a target or not busy) runs slot 72 once its idle timer passes its
+    /// timeout, unless it is a busy unit of class 20 or its group ([`group_lets_idle`]) holds it;
+    /// else the patrol branch ([`UnitAi::patrol_idle_part`]), class 3's and 52's on actions
+    /// `0x26b`/`0x26c` ([`UnitAi::making_idle_part`]) or the end ([`UnitAi::idle_part_end`]).
+    /// `busy` and `group` are what the update read before its order queue.
+    #[allow(clippy::too_many_arguments)]
     fn idle_part(
         &mut self,
         busy: bool,
+        group: Option<GroupState>,
         at: &Surroundings,
         computer: bool,
         ai: &mut Well512,
@@ -5362,20 +5382,20 @@ impl UnitAi {
             && self.adjusted_idle_timeout < self.idle_timer
             && self.current_action == -1
             && (self.current_target == -1 || !busy)
-            && group_lets_idle(at.group)
+            && group_lets_idle(group)
         {
             // slot 0x240 with 1; the idle part reads no result
             self.idle_timer = 0;
             let _ = self.process_idle(at, computer, ai, side, fx)?;
             return Ok(());
         }
-        if self.patrols(at.group) {
+        if self.patrols(group) {
             return self.patrol_idle_part(at, computer, ai, side, fx);
         }
         if matches!(at.class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
             return self.making_idle_part(at, computer, ai, side, fx);
         }
-        self.idle_part_end(at.class, at.player, at.group)
+        self.idle_part_end(at.class, at.player, group)
     }
 
     /// The idle part's patrol branch (`0x140c67f0b`): "I have a patrol order, checking to see if
@@ -5441,23 +5461,6 @@ impl UnitAi {
         self.process_idle(at, computer, ai, side, fx).map(|_| ())
     }
 
-    /// [`UnitAi::idle_part`] when the update took an order on a target, which in the game ran
-    /// before it: its end waits for the order ([`UnitAi::after_order`]); a timer past its timeout
-    /// would run slot 72 if the order gave the AI no action, which is not modelled.
-    fn idle_part_before_order(&self, busy: bool, at: &Surroundings) -> Result<(), Unsupported> {
-        let class_20 = busy && at.class == CLASS_20;
-        if !class_20
-            && self.adjusted_idle_timeout < self.idle_timer
-            && (self.current_target == -1 || !busy)
-            && group_lets_idle(at.group)
-        {
-            return Err(Unsupported(
-                "an idle part past its timeout after an order on a target",
-            ));
-        }
-        Ok(())
-    }
-
     /// The idle part past slot 72: the patrol branch ([`UnitAi::patrols`]) and class 3's and
     /// 52's actions `0x26b`/`0x26c` (but in [`UnitAi::idle_part`], [`UnitAi::making_idle_part`])
     /// are not modelled. Action `0x2c0` (a member moved aside) ends, the last action taking it,
@@ -5505,18 +5508,14 @@ impl UnitAi {
     /// one with a player's target off the attack order but for a building or wall target
     /// (classes 3, 27,
     /// 39, 49, 52) or a trebuchet's (51, 54), whose search for a better target (slot 0x538 with
-    /// 9, then slot 0x520) is not modelled; nor is the attack order's search.
-    ///
-    /// With an order on a target taken (`ordered`), whose action, target and order the game's
-    /// check reads, the order part and the leash read the AI before it and the outcome after the
-    /// redraw is left for [`UnitAi::after_order`]. True when the timer ran out.
+    /// 9, then slot 0x520) is not modelled; nor is the attack order's search. True when the
+    /// timer ran out.
     fn retarget_check(
         &mut self,
         world_time: u32,
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
-        ordered: bool,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, Unsupported> {
         let order = match (self.current_order, self.current_action) {
@@ -5556,10 +5555,8 @@ impl UnitAi {
         }
         self.last_retarget_time = world_time;
         self.retarget_timer = 750 + ai.rand15() % 500;
-        if !ordered {
-            let target = at.target.map(|t| (t.owner, t.class));
-            self.retarget_outcome(target, at.weapon_range, computer, at.action_state)?;
-        }
+        let target = at.target.map(|t| (t.owner, t.class));
+        self.retarget_outcome(target, at.weapon_range, computer, at.action_state)?;
         Ok(true)
     }
 
@@ -6897,18 +6894,12 @@ mod tests {
         let (mut u, at) = defender(15.4);
         let mut fx = Vec::new();
         let mut r = rng();
-        assert!(
-            u.retarget_check(0, false, &at, &mut r, false, &mut fx)
-                .is_ok()
-        );
+        assert!(u.retarget_check(0, false, &at, &mut r, &mut fx).is_ok());
         assert_eq!(fx, Vec::<Effect>::new());
         // 5.1 tiles off its footprint: it stops, forgets its target and walks back to its state
         // position (FUN_140c5e7d0), then goes on to the retarget check (its timer not used up)
         let (mut u, at) = defender(15.6);
-        assert_eq!(
-            u.retarget_check(0, false, &at, &mut r, false, &mut fx),
-            Ok(false)
-        );
+        assert_eq!(u.retarget_check(0, false, &at, &mut r, &mut fx), Ok(false));
         assert_eq!(
             fx,
             vec![
@@ -8640,6 +8631,7 @@ mod tests {
         let run = |u: &mut UnitAi, at: &Surroundings| {
             u.idle_part(
                 true,
+                at.group,
                 at,
                 false,
                 &mut Well512::default(),
@@ -11136,5 +11128,160 @@ mod tests {
             (u.current_order, u.last_order, u.secondary_timer),
             (-1, PATROL, 750)
         );
+    }
+
+    /// A unit AI with an order on a target ready in its queue, its idle timer, look-around timer
+    /// and retarget timer all past their timeouts.
+    fn ordered(ai_type: u32) -> UnitAi {
+        UnitAi {
+            orders: vec![QueuedOrder {
+                order: ORDER_ON_TARGET,
+                priority: 100,
+                target: 77,
+                ready: true,
+                ..QueuedOrder::default()
+            }],
+            idle_timer: 5000,
+            look_around_timer: 2000,
+            last_retarget_time: 0,
+            retarget_timer: 900,
+            ..idle(ai_type)
+        }
+    }
+
+    /// `0x140c66b10` runs the order on a target inside the update (slot 0x230's case 0x2db), so
+    /// the update stops there: the order and what the rest of the update reads of its start
+    /// ([`AfterOrder`]: its `busy` and group) go to the caller; slot 73, the idle part and the
+    /// look-around check have not run (no draw, the timers as they grew).
+    #[test]
+    fn a_full_update_stops_at_its_order_on_a_target() {
+        let mut u = ordered(SOLDIER_AI);
+        let order = u.orders[0];
+        let mut r = rng();
+        let fx = u
+            .update(
+                100,
+                10_000,
+                false,
+                &Surroundings::default(),
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
+        assert_eq!(
+            fx,
+            vec![
+                Effect::OrderOnTarget(order),
+                Effect::AfterOrder(AfterOrder {
+                    busy: false,
+                    group: None,
+                }),
+            ]
+        );
+        assert_eq!(r.draws, 0);
+        assert_eq!(
+            (
+                u.idle_timer,
+                u.look_around_timer,
+                u.retarget_timer,
+                u.orders.len()
+            ),
+            (5100, 2100, 900, 0)
+        );
+    }
+
+    /// The update's rest after the order (`0x140c66b10` from slot 73 on): the retarget check
+    /// reads the order's attack (its timer redrawn, then a human unit in an attack's work state
+    /// stops there); the idle part sees the action, so an action of a player above Gaia keeps the
+    /// idle timer at 0; the look-around check redraws its timeout.
+    #[test]
+    fn the_rest_after_an_order_that_gave_an_action_reads_it() {
+        let mut u = ordered(SOLDIER_AI);
+        u.orders.clear();
+        u.current_order = ATTACK_ORDER;
+        u.current_action = ATTACK_ACTION;
+        u.current_target = 77;
+        let at = Surroundings {
+            player: 1,
+            target: Some(Seen {
+                owner: 2,
+                class: 6,
+                ..Seen::default()
+            }),
+            action_state: Some(6),
+            ..Surroundings::default()
+        };
+        let mut r = rng();
+        let fx = u
+            .after_order(
+                AfterOrder::default(),
+                10_000,
+                false,
+                &at,
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
+        let mut expected = rng();
+        let (retarget, look) = (expected.rand15(), expected.rand15());
+        assert_eq!(fx, Vec::<Effect>::new());
+        assert_eq!(
+            (
+                u.last_retarget_time,
+                u.retarget_timer,
+                u.idle_timer,
+                u.look_around_timer,
+                u.look_around_timeout,
+                r.draws
+            ),
+            (10_000, 750 + retarget % 500, 0, 0, 4500 + look % 1000, 2)
+        );
+    }
+
+    /// An order that gave the AI no action (no task on its target): the idle timer past its
+    /// timeout restarts and slot 72 runs with 1 (the villager's: its cap of the last human order
+    /// time). With the update's `busy` and a target the order gave, it does not; the idle part's
+    /// end then keeps the timer of a player above Gaia at 0.
+    #[test]
+    fn the_rest_after_an_order_that_gave_no_action_runs_the_idle_check() {
+        let mut u = ordered(CIVILIAN);
+        u.orders.clear();
+        let at = Surroundings {
+            player: 1,
+            ..Surroundings::default()
+        };
+        let mut r = rng();
+        let fx = u
+            .after_order(
+                AfterOrder::default(),
+                10_000,
+                false,
+                &at,
+                &mut r,
+                &mut no_search,
+            )
+            .unwrap();
+        assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
+        assert_eq!((u.idle_timer, r.draws), (0, 1));
+        let mut u = ordered(CIVILIAN);
+        u.orders.clear();
+        u.current_target = 77;
+        let busy = AfterOrder {
+            busy: true,
+            group: None,
+        };
+        let fx = u
+            .after_order(busy, 10_000, false, &at, &mut rng(), &mut no_search)
+            .unwrap();
+        assert_eq!((fx, u.idle_timer), (Vec::<Effect>::new(), 0));
+        // Gaia's unit keeps its timer
+        let mut u = ordered(CIVILIAN);
+        u.orders.clear();
+        u.current_target = 77;
+        let gaia = Surroundings::default();
+        let _ = u
+            .after_order(busy, 10_000, false, &gaia, &mut rng(), &mut no_search)
+            .unwrap();
+        assert_eq!(u.idle_timer, 5000);
     }
 }
