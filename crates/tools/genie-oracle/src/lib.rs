@@ -774,6 +774,8 @@ fn mover(
         },
         substitute_count: m.consecutive_substitute_count,
         ignore_units: s.temp_int.clone(),
+        // the save's userDefinedWaypoints, in the game's layout (x, height, y)
+        user_waypoints: m.user_defined_waypoints.iter().map(vec3).collect(),
         last_turn: m.turn_towards_time,
         angle: m.angle,
         move_to_point: saved_move_to_point(object),
@@ -1846,7 +1848,17 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         retarget_disabled: ai.disable_retargeting,
         alert_mode: ai.alert_mode_value != 0,
         time_since_enemy: ai.time_since_enemy_sighting,
-        patrol_path: ai.has_patrol_path == 1,
+        // the saved patrol (its path's points in the game's layout, length and flags)
+        patrol_path: ai
+            .patrol_path
+            .as_deref()
+            .map(|p| genie_core::unit_ai::PatrolPath {
+                path: genie_core::tile_path::Path {
+                    points: p.m_waypoints.iter().map(vec3).collect(),
+                    length: p.path_length_value,
+                },
+                flags: p.flags_m_bits,
+            }),
         patrol_waypoint: ai.patrol_current_waypoint,
         stop_after_kill: ai.stop_after_target_killed_value != 0,
         home: combat

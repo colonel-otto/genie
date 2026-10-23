@@ -16,6 +16,7 @@
 //! does to its unit comes back as [`Effect`]s, in order.
 
 use crate::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
+use crate::movement::PathAsk;
 use crate::rng::Well512;
 
 /// A notify to a unit AI (the save's `temp_notify`, 0x18 bytes): from `caller` to `recipient`, of
@@ -256,6 +257,17 @@ pub fn first_move(effects: &[Effect]) -> Option<AiMove> {
     })
 }
 
+/// A unit AI's saved patrol (`+0x1c0`, a `Path` of its own): a copy of its unit's top path
+/// (the unit's slot 0x468, `FUN_141157c50`: `FUN_140f95c00` into a new path) with that path's
+/// flags (`+0xc`: bit 0 a loop, bit 1 back and forth, `getPatrolLinear` `FUN_140c4df80`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PatrolPath {
+    /// The points (x, height, y) and the length.
+    pub path: crate::tile_path::Path,
+    /// The path's flags.
+    pub flags: u32,
+}
+
 /// The unit-AI fields the idle update reads and writes, with their offsets in 158041.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UnitAi {
@@ -316,9 +328,11 @@ pub struct UnitAi {
     /// `+0x1b4`, `time_since_enemy_sighting`: seconds since a search last found enemies; each full
     /// update adds the world's dt.
     pub time_since_enemy: f32,
-    /// `+0x1c0` holds a patrol path (the save's `hasPatrolPath`).
-    pub patrol_path: bool,
-    /// `+0x1c8`, `mPatrolCurrentWaypoint`: the patrol path's waypoint the unit walks to.
+    /// `+0x1c0`, the saved patrol (the save's `hasPatrolPath` and its path): what
+    /// `savePatrolInformation` (`FUN_140c63d20`) kept of the unit's patrol when an attack took it
+    /// off it, which `restorePatrolInformation` (`FUN_140c5e5b0`) walks on.
+    pub patrol_path: Option<PatrolPath>,
+    /// `+0x1c8`, `mPatrolCurrentWaypoint`: the saved patrol's waypoint the unit walked to.
     pub patrol_waypoint: i32,
     /// `+0x1a8`, `stop_after_target_killed_value`: a move does not let the current action take its
     /// point (`FUN_140c41c10`).
@@ -1491,8 +1505,11 @@ const CLASS_20: i16 = 20;
 const CLASS_10: i16 = 10;
 /// The class whose stop leaves the state position (`-0xe9a` raw, slot 0xb0).
 const CLASS_18: i16 = 18;
+/// A patrol's path goes back and forth when its point is at least this far from the unit
+/// (`0x140aa2a70`, `DAT_142eb1c98`; the image role `unit_ai::PATROL_TURN_REACH` is still to add).
+const PATROL_TURN_REACH: f32 = 3.0;
 /// The patrol orders (`0x2c7`, `0x2dd`), whose ends reset the idle and secondary timers.
-const PATROL: i32 = 0x2c7;
+pub(crate) const PATROL: i32 = 0x2c7;
 const PATROL_2: i32 = 0x2dd;
 /// Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
 /// `-0xe78` raw).
@@ -1767,7 +1784,7 @@ impl UnitAi {
             retarget_disabled: 0,
             alert_mode: false,
             time_since_enemy: 0.0,
-            patrol_path: false,
+            patrol_path: None,
             patrol_waypoint: 0,
             stop_after_kill: false,
             home: None,
@@ -1790,13 +1807,57 @@ impl UnitAi {
     /// (`UpdateAdjustedIdleTimeout`, unit-AI slot 53, `0x140c41e00`), and the secondary timer is
     /// capped at 750.
     pub fn reset_for_order(&mut self, ai: &mut Well512) {
-        // FUN_140c68de0: the patrol path goes and its waypoint is 0
-        self.patrol_path = false;
-        self.patrol_waypoint = 0;
+        self.zero_patrol();
         if self.adjusted_idle_timeout > 749 {
             self.update_adjusted_idle_timeout(ai);
         }
         self.secondary_timer = self.secondary_timer.min(750);
+    }
+
+    /// `zeroPatrolInformation` (`FUN_140c68de0`): the saved patrol goes and its waypoint is 0.
+    pub fn zero_patrol(&mut self) {
+        self.patrol_path = None;
+        self.patrol_waypoint = 0;
+    }
+
+    /// What a `MoveTo`'s update in state 3 (`0x140aa2a70`) reads of its unit's AI for the path
+    /// it asks (`ai`, None for a unit without one), the unit at `at` and the `MoveTo`'s point
+    /// `point` (x, y): without an AI a unit in range asks anyway and the attack move stays
+    /// (`param_10` 2). With one, on a patrol order (711, 733) the path loops; the saved patrol, if
+    /// any, gives the waypoint to walk on from and its back and forth (`getPatrolLinear`) and goes
+    /// (`zeroPatrolInformation`); else the path goes back and forth when the point is at least 3
+    /// from the unit (`COMISS`, `SETBE`: a NaN distance is). The attack move is on order 733, off
+    /// on any other, as it was while a saved patrol is still held.
+    #[must_use]
+    pub fn path_ask(ai: Option<&mut Self>, at: [f32; 2], point: [f32; 2]) -> PathAsk {
+        let Some(ai) = ai else {
+            return PathAsk {
+                ends_in_range: false,
+                ..PathAsk::default()
+            };
+        };
+        let patrolling = matches!(ai.current_order, PATROL | PATROL_2);
+        let mut ask = PathAsk {
+            ends_in_range: !patrolling,
+            ..PathAsk::default()
+        };
+        if patrolling {
+            ask.patrol = true;
+            if let Some(saved) = ai.patrol_path.as_ref() {
+                ask.resume = ai.patrol_waypoint;
+                ask.back_and_forth = saved.flags & 2 != 0;
+                ai.zero_patrol();
+            } else {
+                let (dx, dy) = (point[0] - at[0], point[1] - at[1]);
+                let d = crate::fmath::sqrt(dy * dy + dx * dx);
+                ask.back_and_forth = crate::fmath::at_most_or_unordered(PATROL_TURN_REACH, d);
+            }
+        }
+        ask.attack_move = ai
+            .patrol_path
+            .is_none()
+            .then_some(ai.current_order == PATROL_2);
+        ask
     }
 
     /// `UpdateAdjustedIdleTimeout` (slot 0x1a8): the base draws around the idle timeout
@@ -2360,7 +2421,7 @@ impl UnitAi {
         if matches!(self.stance, 1 | 2) {
             let _ = self.walk_back(at, fx);
         }
-        if self.patrol_path {
+        if self.patrol_path.is_some() {
             return Err(Unsupported("a soldier's patrol path in its idle check"));
         }
         if at.task_0x69 {
@@ -2471,7 +2532,7 @@ impl UnitAi {
             target: self.current_target,
             target_type: self.target_type,
             last_target_type: self.last_target_type,
-            patrol_path: self.patrol_path,
+            patrol_path: self.patrol_path.is_some(),
         }
     }
 
@@ -3984,7 +4045,7 @@ impl UnitAi {
                 Ok(GO_ON)
             }
             // a MoveTo's moved target: a patrol path's processIdle (slot 0x240 with 1)
-            TARGET_MOVED if self.patrol_path => {
+            TARGET_MOVED if self.patrol_path.is_some() => {
                 Err(Unsupported("a moved target's processIdle on a patrol path"))
             }
             // a moved target, then the kinds "I'm ignoring that." and the action values
@@ -4949,7 +5010,7 @@ impl UnitAi {
         // tiles (DAT_142ed6f20, squared) from its state position, measured from its footprint
         // (FUN_140a847c0), stops (slot 0xb0 with 1), forgets its target and walks back
         if self.stance == 1 && !matches!(self.current_order, 0x2c7 | 0x2dd | 0x323) {
-            if self.patrol_path {
+            if self.patrol_path.is_some() {
                 return Err(Unsupported(
                     "a defending unit's leash with patrol information",
                 ));
@@ -6498,7 +6559,7 @@ mod tests {
                 retarget_disabled: 0,
                 alert_mode: false,
                 time_since_enemy: 0.0,
-                patrol_path: false,
+                patrol_path: None,
                 patrol_waypoint: 0,
                 stop_after_kill: false,
                 home: None,
@@ -6560,7 +6621,7 @@ mod tests {
             idle_timeout: 3000,
             adjusted_idle_timeout: 2600,
             secondary_timer: 900,
-            patrol_path: true,
+            patrol_path: Some(PatrolPath::default()),
             patrol_waypoint: 3,
             ..idle(13)
         };
@@ -6571,7 +6632,7 @@ mod tests {
             (7241 % 1500 + 2250, 750)
         );
         // FUN_140c68de0 first: the patrol path and its waypoint go
-        assert_eq!((u.patrol_path, u.patrol_waypoint), (false, 0));
+        assert_eq!((u.patrol_path, u.patrol_waypoint), (None, 0));
         let mut low = UnitAi {
             idle_timeout: 3000,
             adjusted_idle_timeout: 749,
@@ -7781,7 +7842,7 @@ mod tests {
             u.base_notify(n, 0, &at, false, &mut r, &mut side, &mut Vec::new()),
             Ok(GO_ON)
         );
-        u.patrol_path = true;
+        u.patrol_path = Some(PatrolPath::default());
         assert!(
             u.base_notify(n, 0, &at, false, &mut r, &mut side, &mut Vec::new())
                 .is_err()
@@ -9567,5 +9628,82 @@ mod tests {
         assert!(u.accept(n(70, NO_LONGER_ON_ME, 0), 2));
         assert!(u.accept(n(70, ACTION_INVALIDATED, GATHER_ACTION), 2));
         assert_eq!(u.notifies.len(), 2);
+    }
+
+    /// `0x140aa2a70` in state 3: a unit without an AI asks for its path even in range and keeps
+    /// its attack move; one off the patrol orders ends in range and stops attack-moving.
+    #[test]
+    fn a_unit_off_patrol_asks_a_plain_path() {
+        let ask = UnitAi::path_ask(None, [20.0, 20.0], [30.0, 20.0]);
+        assert_eq!(
+            ask,
+            PathAsk {
+                ends_in_range: false,
+                ..PathAsk::default()
+            }
+        );
+        let mut u = idle(13);
+        let ask = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [30.0, 20.0]);
+        assert_eq!(
+            ask,
+            PathAsk {
+                attack_move: Some(false),
+                ..PathAsk::default()
+            }
+        );
+        // a saved patrol off the patrol orders stays, and so does the attack move
+        u.patrol_path = Some(PatrolPath::default());
+        let ask = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [30.0, 20.0]);
+        assert_eq!((ask.attack_move, u.patrol_path.is_some()), (None, true));
+    }
+
+    /// `0x140aa2a70` in state 3 on a patrol order: the path loops; without a saved patrol it goes
+    /// back and forth from 3 tiles (`SETBE`: a NaN distance too); order 733 attack-moves.
+    #[test]
+    fn a_patrol_order_s_path_loops_and_turns_back_from_three_tiles() {
+        let mut u = UnitAi {
+            current_order: PATROL,
+            ..idle(13)
+        };
+        let ask = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [22.9, 20.0]);
+        assert_eq!(
+            ask,
+            PathAsk {
+                ends_in_range: false,
+                patrol: true,
+                back_and_forth: false,
+                resume: -1,
+                attack_move: Some(false),
+            }
+        );
+        let far = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [20.0, 23.0]);
+        assert!(far.back_and_forth);
+        let nan = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [f32::NAN, 23.0]);
+        assert!(nan.back_and_forth);
+        u.current_order = PATROL_2;
+        let attack = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [22.9, 20.0]);
+        assert_eq!((attack.patrol, attack.attack_move), (true, Some(true)));
+    }
+
+    /// `0x140aa2a70` in state 3 on a patrol order with a saved patrol: its waypoint and its back
+    /// and forth (`getPatrolLinear`, flags bit 1) are the path's, and it goes
+    /// (`zeroPatrolInformation`), which then stops the attack move.
+    #[test]
+    fn a_saved_patrol_gives_its_waypoint_to_the_path_and_goes() {
+        let mut u = UnitAi {
+            current_order: PATROL,
+            patrol_path: Some(PatrolPath {
+                flags: 3,
+                ..PatrolPath::default()
+            }),
+            patrol_waypoint: 2,
+            ..idle(13)
+        };
+        let ask = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [20.5, 20.0]);
+        assert_eq!(
+            (ask.resume, ask.back_and_forth, ask.attack_move),
+            (2, true, Some(false))
+        );
+        assert_eq!((u.patrol_path, u.patrol_waypoint), (None, 0));
     }
 }

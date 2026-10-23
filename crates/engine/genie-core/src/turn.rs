@@ -4678,6 +4678,7 @@ impl Unit {
             moved_at: [0.0; 3],
             substitute_count: 0,
             ignore_units: Vec::new(),
+            user_waypoints: Vec::new(),
             last_turn: 0.0,
             angle,
             move_to_point: None,
@@ -6218,7 +6219,22 @@ impl Unit {
             self.fly(c, others)?;
         }
         let step = match self.move_to.as_mut() {
-            Some(move_to) => move_to.update(c.walk(self.mover.as_mut(), me))?,
+            Some(move_to) => {
+                // its state 3 reads the unit's AI for the path it asks (0x140aa2a70), with its
+                // point: the goal, or the target's place (a target gone fails the update first)
+                let point = match (move_to.target, move_to.goal) {
+                    (-1, goal) => goal.map(|p| [p[0], p[1]]),
+                    (id, _) => c.spatial.get(id).map(|t| [t.position[0], t.position[1]]),
+                };
+                let ask = match point {
+                    Some(p) if move_to.state == MoveTo::Start => {
+                        let at = [me.position[0], me.position[1]];
+                        UnitAi::path_ask(self.ai.as_mut(), at, p)
+                    }
+                    _ => crate::movement::PathAsk::default(),
+                };
+                move_to.update(c.walk(self.mover.as_mut(), me), ask)?
+            }
             None => crate::move_to::MoveStep::default(),
         };
         if step.gave_up {
@@ -9410,6 +9426,7 @@ impl Turns {
             moved_at: position,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            user_waypoints: Vec::new(),
             last_turn: 0.0,
             angle: 0.0,
             move_to_point: None,
@@ -13839,7 +13856,7 @@ mod tests {
         let unit = |id: i32| Unit {
             id,
             ai: Some(UnitAi {
-                patrol_path: true,
+                patrol_path: Some(crate::unit_ai::PatrolPath::default()),
                 patrol_waypoint: 2,
                 adjusted_idle_timeout: 100,
                 secondary_timer: 900,
@@ -13856,7 +13873,7 @@ mod tests {
         t.reset_order_units(&[2, 9, 1]);
         for u in t.players[1].objects.iter().chain(&t.players[1].sleeping) {
             let ai = u.ai.as_ref().unwrap();
-            assert_eq!((ai.patrol_path, ai.secondary_timer), (false, 750));
+            assert_eq!((ai.patrol_path.is_none(), ai.secondary_timer), (true, 750));
         }
     }
 

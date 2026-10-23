@@ -2164,6 +2164,7 @@ mod tests {
             moved_at: [0.0; 3],
             substitute_count: 0,
             ignore_units: Vec::new(),
+            user_waypoints: Vec::new(),
             last_turn: 0.0,
             angle: 0.0,
             move_to_point: None,
