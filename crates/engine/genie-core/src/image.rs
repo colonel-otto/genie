@@ -30,8 +30,14 @@ pub mod attack {
 pub mod build {
     /// 0.009999999776482582
     pub const ARRIVED: f32 = f32::from_bits(0x3c23_d70a);
+    /// 4.0
+    pub const CLEARING_REACH: f32 = f32::from_bits(0x4080_0000);
     /// 0.33000001311302185
     pub const EXTRA_BUILDER: f32 = f32::from_bits(0x3ea8_f5c3);
+    /// 10000.0
+    pub const STACK_WORK: f32 = f32::from_bits(0x461c_4000);
+    /// 1.0
+    pub const STUMP_HP: f32 = f32::from_bits(0x3f80_0000);
     /// 1.2000000476837158
     pub const WONDER_RATE: f32 = f32::from_bits(0x3f99_999a);
 }
@@ -688,6 +694,12 @@ pub mod unit_ai {
 pub mod visibility {
     /// 0.009999999776482582
     pub const EDGE: f32 = f32::from_bits(0x3c23_d70a);
+}
+
+/// The values `crate::wait_solidify`'s port reads.
+pub mod wait_solidify {
+    /// 0.01
+    pub const SOLID_FROM: f64 = f64::from_bits(0x3f84_7ae1_47ae_147b);
 }
 
 /// The values `crate::wall`'s port reads.

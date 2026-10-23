@@ -1165,9 +1165,9 @@ pub struct Cleared {
 /// alone unless their master has height.
 const FLAG_MASTERS: [i16; 3] = [0x112, 0x699, 0x6f9];
 /// The tiles the footprint clearing scans each way of the building's place (`DAT_142eb0f48`).
-pub(crate) const CLEARING_REACH: f32 = 4.0;
+pub(crate) const CLEARING_REACH: f32 = crate::image::build::CLEARING_REACH;
 /// The hit points a tree at most has that the builder's clearing takes (`DAT_14330eb8c`).
-const STUMP_HP: f32 = 1.0;
+const STUMP_HP: f32 = crate::image::build::STUMP_HP;
 /// The masters whose classes (39, the gate, and 52) take their owner's walls (27) off their
 /// footprint, and the tree class (15).
 const GATE: i16 = 39;
@@ -1377,7 +1377,7 @@ impl crate::turn::Turns {
 
 /// The seconds of work a new object's building gets at once from its owner's slot 0x1c0 with its
 /// flag (`FUN_14162ce00`'s `FUN_1411cc430` with `DAT_142eea788`).
-const STACK_WORK: f32 = 10000.0;
+const STACK_WORK: f32 = crate::image::build::STACK_WORK;
 
 /// The guard of an object the routines here reach through the object itself (their callers
 /// hold it): the slice's lists hold every object the world does.
