@@ -456,8 +456,9 @@ impl Turns {
         self.move_aside(p, i, walk)
     }
 
-    /// The enter at the Enter's start ([`crate::turn::Unit::enter_building`], then the start's
-    /// own `set_state(1)`); the load it gives goes to the owner's attributes at once.
+    /// The enter at the Enter's start ([`crate::turn::Unit::enter_building`] into its target,
+    /// any player's live object, then the start's own `set_state(1)`); the load it gives goes to
+    /// the owner's attributes at once.
     fn enter_now(&mut self, player: usize, idx: usize, target: i32) -> Result<(), Unsupported> {
         let inside = self
             .players
@@ -465,19 +466,19 @@ impl Turns {
             .flat_map(|p| p.objects.iter().chain(&p.sleeping))
             .filter(|u| u.life.inside == Some(target))
             .count();
+        let Some(crate::order::Place::Live(tp, ti)) = self.place(target) else {
+            return Err(Unsupported("an enter into a sleeping object"));
+        };
         let mut unit = std::mem::take(&mut self.players[player].objects[idx]);
         let mut adds = Vec::new();
         let result = (|| {
-            let building = self.players[player]
-                .objects
-                .iter()
-                .find(|u| u.id == target)
-                .ok_or(Unsupported("an enter into a building of another player"))?;
+            let building = &self.players[tp].objects[ti];
             let owner = &self.players[player];
             let mut w = crate::turn::EnterWorld {
                 spatial: &mut self.spatial,
                 pathing: &mut self.pathing,
                 masters: self.masters.get(player),
+                target_masters: self.masters.get(tp),
                 graphics: &self.graphics,
                 sprite_rng: self.streams.get(crate::rng::Stream::Sprite),
                 drop_sites: &self.drop_sites,
@@ -502,14 +503,9 @@ impl Turns {
         if let Some(g) = left_group.filter(|&g| self.groups.get(g).is_some()) {
             let _ = self.remove_unit(g, id, target, false)?;
         }
-        if let Some(b) = self.players[player]
-            .objects
-            .iter_mut()
-            .find(|u| u.id == target)
-        {
-            b.firepower += firepower;
-            b.garrison.push(id);
-        }
+        let b = &mut self.players[tp].objects[ti];
+        b.firepower += firepower;
+        b.garrison.push(id);
         for (kind, amount) in adds {
             self.players[player].add_attribute(kind, amount)?;
         }
@@ -3729,6 +3725,37 @@ pub(crate) mod tests {
         // the transport's count takes it: no room for another
         let (bp, b) = t.object(200).unwrap();
         assert!(!t.has_room(bp, b, None).unwrap());
+    }
+
+    #[test]
+    fn a_villager_enters_an_allys_ship_with_its_owners_masters() {
+        // player 2's ship beside player 1's villager: FUN_14120eb10 lets an ally's transport take
+        // it (both ways allied), and the enter adds the villager to the ship's list
+        let mut t = shore_world([5.5, 19.0], [5.5, 20.5]);
+        let k = t.players[1]
+            .objects
+            .iter()
+            .position(|u| u.id == 200)
+            .unwrap();
+        let ship = t.players[1].objects.remove(k);
+        t.players[2].objects.push(ship);
+        let mut placed = *t.spatial.get(200).unwrap();
+        placed.player = 2;
+        t.spatial.insert(200, placed);
+        t.garrison_order(1, &[1000], 200, false, false).unwrap();
+        assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
+        assert_eq!(t.object(200).unwrap().1.garrison, [1000]);
+        // an enemy's ship takes no one in (player 3)
+        let mut t = shore_world([5.5, 19.0], [5.5, 20.5]);
+        let k = t.players[1]
+            .objects
+            .iter()
+            .position(|u| u.id == 200)
+            .unwrap();
+        let ship = t.players[1].objects.remove(k);
+        t.players[3].objects.push(ship);
+        t.garrison_order(1, &[1000], 200, false, false).unwrap();
+        assert_eq!(t.object(1000).unwrap().1.enter, None);
     }
 
     #[test]

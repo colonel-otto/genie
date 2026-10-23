@@ -206,6 +206,9 @@ pub(in crate::turn) struct Context<'a> {
     /// The transports an Enter's `set_state(4)` sent to where they meet the unit (slot 0x340),
     /// which the caller moves after the update ([`Turns::move_transport`]'s move).
     pub(in crate::turn) transport_moves: Vec<(i32, [f32; 3])>,
+    /// Another player's transport or building the unit entered, with what its volleys gain: the
+    /// caller adds them and the unit to its list after the update.
+    pub(in crate::turn) entered: Option<(i32, f32)>,
     /// The waits for foundations the unit's slot 0x388 found while its unit AI ran, which the
     /// caller makes the unit's after the update ([`Turns::wait_for_foundation`]).
     pub(in crate::turn) waits: Vec<Wait>,

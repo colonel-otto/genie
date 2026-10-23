@@ -1097,6 +1097,7 @@ impl Turns {
                     build_command: None,
                     move_aside: Vec::new(),
                     transport_moves: Vec::new(),
+                    entered: None,
                     waits: Vec::new(),
                     main_works: Vec::new(),
                     relations: &player.relations,
@@ -1123,6 +1124,7 @@ impl Turns {
                 let build_command = c.build_command.take();
                 let move_aside = std::mem::take(&mut c.move_aside);
                 let transport_moves = std::mem::take(&mut c.transport_moves);
+                let entered = c.entered.take();
                 let waits = std::mem::take(&mut c.waits);
                 let techs_done = std::mem::take(&mut c.techs_done);
                 let carts = std::mem::take(&mut c.carts);
@@ -1363,6 +1365,13 @@ impl Turns {
                     } else if let Err(e) = self.move_aside(p, i, m) {
                         result = Err(e);
                     }
+                }
+                // another player's transport or building the unit entered
+                if let Some((target, firepower)) = entered
+                    && let Some((_, b)) = self.object_mut(target)
+                {
+                    b.firepower += firepower;
+                    b.garrison.push(id);
                 }
                 // the transports an Enter sent to where they meet the unit (slot 0x340)
                 for (ship, to) in transport_moves {

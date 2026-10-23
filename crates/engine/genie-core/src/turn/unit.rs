@@ -494,21 +494,32 @@ impl Unit {
         me: Me,
     ) -> Result<(), Unsupported> {
         let enter = self.enter.expect("checked by the caller");
-        let target = others.iter().find(|u| u.id == enter.target);
-        let (building, walking, meeting) = match target {
-            Some(t) => {
+        let found = others
+            .iter()
+            .find(|u| u.id == enter.target)
+            .map(|t| (c.player, t))
+            .or_else(|| c.foreign.find(enter.target));
+        // the units inside the target, any player's (its slot 0x498)
+        let foreign = c.foreign;
+        let inside_of = |others: &[Self], id: i32| {
+            let inside = |u: &&Self| u.life.inside == Some(id);
+            let theirs: usize = (0..foreign.before.len() + 1 + foreign.after.len())
+                .filter_map(|q| foreign.player(q))
+                .map(|p| p.objects.iter().chain(&p.sleeping).filter(inside).count())
+                .sum();
+            others.iter().filter(inside).count() + theirs
+        };
+        let (building, walking, meeting) = match found {
+            Some((tp, t)) => {
                 let master = c
-                    .masters
+                    .every_masters
+                    .get(tp)
                     .and_then(|m| m.get(t.life.master_id))
                     .ok_or(Unsupported(
                         "an Enter's building of a master the slice lacks",
                     ))?;
-                let inside = others
-                    .iter()
-                    .filter(|u| u.life.inside == Some(t.id))
-                    .count();
-                let room = inside < usize::from(master.garrison);
-                let (view, walking, meeting) = crate::garrison::enter_view(
+                let room = inside_of(others, t.id) < usize::from(master.garrison);
+                let (mut view, walking, meeting) = crate::garrison::enter_view(
                     c.spatial,
                     c.zones,
                     c.every_masters,
@@ -516,14 +527,13 @@ impl Unit {
                     (t, master, room),
                     enter.range,
                 )?;
+                // FUN_141663dc0 with allies, or Gaia's
+                view.allied = tp == 0 || crate::tasks::allied(c.relations, c.player, tp, true);
                 (Some(view), walking, meeting)
-            }
-            None if c.foreign.find(enter.target).is_some() => {
-                return Err(Unsupported("an Enter into another player's building"));
             }
             None => (None, (0.0, 0.0), Ok(([0.0; 2], 0))),
         };
-        let ship = others.iter().find(|u| u.id == enter.target);
+        let ship = found.map(|(_, t)| t);
         let walk = c.walk(self.mover.as_mut(), me);
         let step = self.enter.as_mut().expect("checked above").update(
             walk,
@@ -544,18 +554,18 @@ impl Unit {
             self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
         }
         if step.enter {
-            let building = others
+            let (tp, building) = others
                 .iter()
                 .find(|u| u.id == enter.target)
-                .ok_or(Unsupported("an enter into a building of another player"))?;
-            let inside = others
-                .iter()
-                .filter(|u| u.life.inside == Some(enter.target))
-                .count();
+                .map(|t| (c.player, t))
+                .or_else(|| c.foreign.find(enter.target))
+                .expect("the update found it");
+            let inside = inside_of(others, enter.target);
             let mut w = EnterWorld {
                 spatial: c.spatial,
                 pathing: c.pathing,
                 masters: c.masters,
+                target_masters: c.every_masters.get(tp),
                 graphics: c.graphics,
                 sprite_rng: c.streams.get(Stream::Sprite),
                 drop_sites: c.drop_sites,
@@ -587,6 +597,9 @@ impl Unit {
             if let Some(b) = others.iter_mut().find(|u| u.id == enter.target) {
                 b.firepower += firepower;
                 b.garrison.push(self.id);
+            } else {
+                // another player's: the caller's after the update
+                c.entered = Some((enter.target, firepower));
             }
         }
         if step.done {
@@ -645,9 +658,13 @@ impl Unit {
             .masters
             .ok_or(Unsupported("an enter without the masters"))?;
         let target = building.id;
-        let bm = masters.get(building.life.master_id).ok_or(Unsupported(
-            "an enter into a building of a master the slice lacks",
-        ))?;
+        let bm = w
+            .target_masters
+            .unwrap_or(masters)
+            .get(building.life.master_id)
+            .ok_or(Unsupported(
+                "an enter into a building of a master the slice lacks",
+            ))?;
         let me = masters
             .get(self.life.master_id)
             .ok_or(Unsupported("an entering unit of a master the slice lacks"))?;
@@ -732,7 +749,8 @@ impl Unit {
         // the building's slot 0x1c0 (FUN_1411cb850 -> FUN_14120b790): a unit (type 70) adds its
         // share to the building's volleys
         if me.kind == 70 {
-            let rate = crate::garrison::attack_rate(bm, masters, building.reload_powerup);
+            let own = w.target_masters.unwrap_or(masters);
+            let rate = crate::garrison::attack_rate(bm, own, building.reload_powerup);
             w.firepower = crate::garrison::share(me, masters, self.reload_powerup, rate)?;
         }
         self.position = [at[0], at[1], self.position[2]];
@@ -6297,6 +6315,8 @@ pub(crate) struct EnterWorld<'a> {
     pub pathing: &'a mut Pathing,
     /// The owner's masters.
     pub masters: Option<&'a Masters>,
+    /// The target's owner's masters, which its master is (the owner's when None).
+    pub target_masters: Option<&'a Masters>,
     /// The graphics, for the standing sprite.
     pub graphics: &'a std::collections::BTreeMap<i16, Graphic>,
     /// The Sprite stream, which a new sprite may draw from.
