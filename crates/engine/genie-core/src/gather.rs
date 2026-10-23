@@ -466,7 +466,8 @@ impl GatherAction {
     }
 
     /// Slot 0x48 (`0x140a903a0`) on the work command's new `target` (one the world holds that is
-    /// no building, or a farm; the caller's tests): its present target in state 6, 7 or 15, or in
+    /// no building, or a farm; the caller's tests): the gathering is not started any more
+    /// (`+0x80` cleared first, whatever follows). Its present target in state 6, 7 or 15, or in
     /// 4 or 11 for a computer player, it keeps as it is. A loaded gatherer (`held`) sent to one of
     /// its player's drop sites carries its load there: the timer clears, the target goes (slot
     /// 0x68 with none) with the point, the drop site becomes the second target (`FUN_140a7a190`)
@@ -494,6 +495,7 @@ impl GatherAction {
         mover: &mut Mover,
         rng: &mut Well512,
     ) -> Result<bool, Unsupported> {
+        self.worked = false;
         if target.id == self.target {
             match self.state {
                 FACE | WORK | 15 => return Ok(true),
@@ -2149,6 +2151,7 @@ mod tests {
         let walking = |state| GatherAction {
             state,
             move_to: Some(MoveTo::Moving),
+            worked: true,
             ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
         };
         let mut g = walking(WALK);
@@ -2175,6 +2178,8 @@ mod tests {
             ),
             (WALK, Some(MoveTo::Start), 28222, -1, [23.5, 93.5, 0.0], 7)
         );
+        // the gathering is not started any more (+0x80 cleared first)
+        assert!(!g.worked);
         for (state, computer) in [(FACE, false), (WORK, false), (WALK, true)] {
             let mut g = walking(state);
             assert_eq!(
